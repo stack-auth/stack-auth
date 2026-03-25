@@ -16,6 +16,7 @@ import { ForgotPassword } from "./forgot-password";
 import { MagicLinkCallback } from "./magic-link-callback";
 import { MFA } from "./mfa";
 import { OAuthCallback } from "./oauth-callback";
+import { Onboarding } from "./onboarding";
 import { PasswordReset } from "./password-reset";
 import { SignOut } from "./sign-out";
 import { TeamInvitation } from "./team-invitation";
@@ -38,6 +39,7 @@ type Components = {
   AccountSettings: typeof AccountSettings,
   CliAuthConfirmation: typeof CliAuthConfirmation,
   MFA: typeof MFA,
+  Onboarding: typeof Onboarding,
 };
 
 type RouteProps = {
@@ -59,6 +61,7 @@ const availablePaths = {
   cliAuthConfirm: 'cli-auth-confirm',
   mfa: 'mfa',
   error: 'error',
+  onboarding: 'onboarding',
 } as const;
 
 const pathAliases = {
@@ -180,6 +183,13 @@ function renderComponent(props: {
       return <MFA
         fullPage={fullPage}
         {...filterUndefinedINU(componentProps?.MFA)}
+      />;
+    }
+    case availablePaths.onboarding: {
+      redirectIfNotHandler?.('onboarding');
+      return <Onboarding
+        fullPage={fullPage}
+        {...filterUndefinedINU(componentProps?.Onboarding)}
       />;
     }
     default: {

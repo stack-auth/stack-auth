@@ -1,7 +1,8 @@
+import { templateThemeIdToThemeMode, themeModeToTemplateThemeId } from "@/lib/email-drafts";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { templateThemeIdSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { templateThemeIdToThemeMode, themeModeToTemplateThemeId } from "@/lib/email-drafts";
+import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
 export const GET = createSmartRouteHandler({
   metadata: { hidden: true },
@@ -25,7 +26,10 @@ export const GET = createSmartRouteHandler({
   }),
   async handler({ auth: { tenancy }, params }) {
     const prisma = await getPrismaClientForTenancy(tenancy);
-    const d = await prisma.emailDraft.findFirstOrThrow({ where: { tenancyId: tenancy.id, id: params.id } });
+    const d = await prisma.emailDraft.findFirst({ where: { tenancyId: tenancy.id, id: params.id } });
+    if (!d) {
+      throw new StatusError(StatusError.NotFound, "No draft found with given id");
+    }
     return {
       statusCode: 200,
       bodyType: "json",
@@ -69,6 +73,37 @@ export const PATCH = createSmartRouteHandler({
         themeId: body.theme_id === false ? null : body.theme_id,
         tsxSource: body.tsx_source,
       },
+    });
+    return {
+      statusCode: 200,
+      bodyType: "json",
+      body: { ok: "ok" },
+    };
+  },
+});
+
+export const DELETE = createSmartRouteHandler({
+  metadata: { hidden: true },
+  request: yupObject({
+    auth: yupObject({
+      type: yupString().oneOf(["admin"]).defined(),
+      tenancy: yupObject({}).defined(),
+    }).defined(),
+    params: yupObject({ id: yupString().uuid().defined() }).defined(),
+  }),
+  response: yupObject({
+    statusCode: yupNumber().oneOf([200]).defined(),
+    bodyType: yupString().oneOf(["json"]).defined(),
+    body: yupObject({ ok: yupString().oneOf(["ok"]).defined() }).defined(),
+  }),
+  async handler({ auth: { tenancy }, params }) {
+    const prisma = await getPrismaClientForTenancy(tenancy);
+    const existing = await prisma.emailDraft.findFirst({ where: { tenancyId: tenancy.id, id: params.id } });
+    if (!existing) {
+      throw new StatusError(StatusError.NotFound, "No draft found with given id");
+    }
+    await prisma.emailDraft.delete({
+      where: { tenancyId_id: { tenancyId: tenancy.id, id: params.id } },
     });
     return {
       statusCode: 200,

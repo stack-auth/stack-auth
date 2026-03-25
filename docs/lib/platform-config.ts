@@ -5,7 +5,7 @@
  * This ensures consistency between code examples, platform selectors, and the header indicator.
  */
 
-export type PlatformName = 'JavaScript' | 'Python';
+export type PlatformName = 'JavaScript' | 'Python' | 'Shell';
 export type FrameworkName = string;
 
 export type PlatformConfig = {
@@ -28,6 +28,11 @@ export const PLATFORMS: PlatformConfig[] = [
     name: 'Python',
     frameworks: ['Django', 'FastAPI', 'Flask'],
     defaultFramework: 'Django',
+  },
+  {
+    name: 'Shell',
+    frameworks: ['Docker', 'Git', 'pnpm'],
+    defaultFramework: 'Docker',
   },
 ];
 

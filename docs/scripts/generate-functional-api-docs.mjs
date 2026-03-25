@@ -427,7 +427,7 @@ async function processApiTypeInIsolation(apiType) {
     
     if (!fs.existsSync(jsonFile)) {
       console.log(`⚠️  OpenAPI file not found: ${jsonFile}`);
-      console.log(`   Run 'pnpm run generate-openapi-fumadocs' from the root to generate OpenAPI schemas first.`);
+      console.log(`   Run 'pnpm run codegen' from the root to generate OpenAPI schemas first.`);
     return;
     }
 

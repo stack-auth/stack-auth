@@ -42,6 +42,7 @@ export const POST = createSmartRouteHandler({
       callbackUrl,
     }, {
       user,
+      shouldSkipDeliverabilityCheck: true,
     });
 
     return {

@@ -1,4 +1,37 @@
+import { throwErr } from "./errors";
 import { nicify } from "./strings";
+
+/**
+ * Creates a proxy that throws an error when any property is accessed, function is called,
+ * or any other operation is performed on it.
+ *
+ * Useful for placeholder values that should never actually be used at runtime.
+ */
+export function throwingProxy<T = any>(error: string | Error): T {
+  const doThrow = (): never => {
+    if (typeof error === "string") {
+      throwErr(error);
+    } else {
+      throwErr(error);
+    }
+  };
+
+  return new Proxy(() => {}, {
+    get: doThrow,
+    set: doThrow,
+    has: doThrow,
+    deleteProperty: doThrow,
+    ownKeys: doThrow,
+    getOwnPropertyDescriptor: doThrow,
+    defineProperty: doThrow,
+    getPrototypeOf: doThrow,
+    setPrototypeOf: doThrow,
+    isExtensible: doThrow,
+    preventExtensions: doThrow,
+    apply: doThrow,
+    construct: doThrow,
+  }) as T;
+}
 
 export function logged<T extends object>(name: string, toLog: T, options: {} = {}): T {
   const proxy = new Proxy(toLog, {

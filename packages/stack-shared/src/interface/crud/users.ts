@@ -1,3 +1,4 @@
+import * as yup from "yup";
 import { CrudTypeOf, createCrud } from "../../crud";
 import * as fieldSchema from "../../schema-fields";
 import { WebhookEvent } from "../webhooks";
@@ -19,7 +20,26 @@ export const usersCrudServerUpdateSchema = fieldSchema.yupObject({
   totp_secret_base64: fieldSchema.userTotpSecretMutationSchema.optional(),
   selected_team_id: fieldSchema.selectedTeamIdSchema.nullable().optional(),
   is_anonymous: fieldSchema.yupBoolean().oneOf([false]).optional(),
-}).defined();
+  restricted_by_admin: fieldSchema.yupBoolean().optional().meta({ openapiField: { description: 'Whether the user is restricted by an administrator. Can be set manually or by sign-up rules.', exampleValue: false } }),
+  restricted_by_admin_reason: fieldSchema.yupString().nullable().optional().meta({ openapiField: { description: 'Public reason shown to the user explaining why they are restricted. Optional.', exampleValue: null } }),
+  restricted_by_admin_private_details: fieldSchema.yupString().nullable().optional().meta({ openapiField: { description: 'Private details about the restriction (e.g., which sign-up rule triggered). Only visible to server access and above.', exampleValue: null } }),
+}).defined().test(
+  "restricted_by_admin_consistency",
+  "When restricted_by_admin is not true, reason and private_details must be null",
+  function(this: yup.TestContext<any>, value: any) {
+    if (value == null) return true;
+    // If restricted_by_admin is false or missing, both reason and private_details must be null
+    if (value.restricted_by_admin !== true) {
+      if (value.restricted_by_admin_reason != null) {
+        return this.createError({ message: "restricted_by_admin_reason must be null when restricted_by_admin is not true" });
+      }
+      if (value.restricted_by_admin_private_details != null) {
+        return this.createError({ message: "restricted_by_admin_private_details must be null when restricted_by_admin is not true" });
+      }
+    }
+    return true;
+  }
+);
 
 export const usersCrudServerReadSchema = fieldSchema.yupObject({
   id: fieldSchema.userIdSchema.defined(),
@@ -39,6 +59,11 @@ export const usersCrudServerReadSchema = fieldSchema.yupObject({
   server_metadata: fieldSchema.userServerMetadataSchema,
   last_active_at_millis: fieldSchema.userLastActiveAtMillisSchema.nonNullable().defined(),
   is_anonymous: fieldSchema.yupBoolean().defined(),
+  is_restricted: fieldSchema.yupBoolean().defined().meta({ openapiField: { description: 'Whether the user is in restricted state (has signed up but not completed onboarding requirements)', exampleValue: false } }),
+  restricted_reason: fieldSchema.restrictedReasonSchema.nullable().defined().meta({ openapiField: { description: 'The reason why the user is restricted (e.g., type: "email_not_verified", "anonymous", or "restricted_by_administrator"), null if not restricted', exampleValue: null } }),
+  restricted_by_admin: fieldSchema.yupBoolean().defined().meta({ openapiField: { description: 'Whether the user is restricted by an administrator. Can be set manually or by sign-up rules.', exampleValue: false } }),
+  restricted_by_admin_reason: fieldSchema.yupString().nullable().defined().meta({ openapiField: { description: 'Public reason shown to the user explaining why they are restricted. Optional.', exampleValue: null } }),
+  restricted_by_admin_private_details: fieldSchema.yupString().nullable().defined().meta({ openapiField: { description: 'Private details about the restriction (e.g., which sign-up rule triggered). Only visible to server access and above.', exampleValue: null } }),
 
   oauth_providers: fieldSchema.yupArray(fieldSchema.yupObject({
     id: fieldSchema.yupString().defined(),
@@ -54,7 +79,26 @@ export const usersCrudServerReadSchema = fieldSchema.yupObject({
    * @deprecated
    */
   requires_totp_mfa: fieldSchema.yupBoolean().defined().meta({ openapiField: { hidden: true, description: 'Whether the user is required to use TOTP MFA to sign in', exampleValue: false } }),
-}).defined();
+}).defined().test("restricted_reason_iff_restricted", "restricted_reason must be present if and only if is_restricted is true", function(this: yup.TestContext<any>, value: any) {
+  if (value == null) return true;
+  return value.is_restricted === !!value.restricted_reason;
+}).test(
+  "restricted_by_admin_consistency",
+  "When restricted_by_admin is not true, reason and private_details must be null",
+  function(this: yup.TestContext<any>, value: any) {
+    if (value == null) return true;
+    // If restricted_by_admin is false or missing, both reason and private_details must be null
+    if (value.restricted_by_admin !== true) {
+      if (value.restricted_by_admin_reason != null) {
+        return this.createError({ message: "restricted_by_admin_reason must be null when restricted_by_admin is not true" });
+      }
+      if (value.restricted_by_admin_private_details != null) {
+        return this.createError({ message: "restricted_by_admin_private_details must be null when restricted_by_admin is not true" });
+      }
+    }
+    return true;
+  }
+);
 
 export const usersCrudServerCreateSchema = usersCrudServerUpdateSchema.omit(['selected_team_id']).concat(fieldSchema.yupObject({
   oauth_providers: fieldSchema.yupArray(fieldSchema.yupObject({
@@ -96,7 +140,7 @@ export const usersCrud = createCrud({
     serverList: {
       tags: ["Users"],
       summary: 'List users',
-      description: 'Lists all the users in the project. Anonymous users are only included if the `include_anonymous` query parameter is set to `true`.',
+      description: 'Lists all the users in the project. By default, only fully onboarded users are returned. Restricted users (those who haven\'t completed onboarding requirements like email verification) are included if `include_restricted` is set to `true`. Anonymous users are included if `include_anonymous` is set to `true` (which also includes restricted users).',
     },
   },
 });

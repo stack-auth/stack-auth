@@ -1,8 +1,8 @@
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle, cn, DelayedInput, Form, Label, Select, SelectContent, SelectTrigger, SelectValue, Switch, Typography, useToast } from "@/components/ui";
 import { yupResolver } from "@hookform/resolvers/yup";
+import { GearIcon } from "@phosphor-icons/react";
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle, cn, DelayedInput, Form, Label, Select, SelectContent, SelectTrigger, SelectValue, Switch, Typography, useToast } from "@stackframe/stack-ui";
-import { Settings } from "lucide-react";
 import React, { useCallback, useEffect, useId, useRef, useState } from "react";
 import { FieldValues, useForm } from "react-hook-form";
 import * as yup from "yup";
@@ -79,7 +79,7 @@ export const SettingSwitch = React.memo(function SettingSwitch(props: {
             disabled={props.disabled}
           />
           <Label className="cursor-pointer" htmlFor={id}>
-            <Typography className="text-sm font-medium leading-none">
+            <Typography type="div" className="text-sm font-medium leading-none">
               {props.label}
             </Typography>
           </Label>
@@ -105,7 +105,7 @@ export const SettingIconButton = forwardRefIfNeeded<
 >((props, ref) => {
   return (
     <Button variant='ghost' size='sm' className="h-8 w-8 p-0" onClick={props.onClick} ref={ref}>
-      <Settings className="w-4 h-4 text-muted-foreground" />
+      <GearIcon className="w-4 h-4 text-muted-foreground" />
     </Button>
   );
 });

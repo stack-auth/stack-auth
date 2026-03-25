@@ -3,7 +3,7 @@ import { Auth, Project, backendContext, niceBackendFetch } from "../../../../../
 
 it("should send a sign-in code per e-mail", async ({ expect }) => {
   await Auth.Otp.sendSignInCode();
-  const messages = await backendContext.value.mailbox.fetchMessages({ noBody: true });
+  const messages = await backendContext.value.mailbox.waitForMessagesWithSubject("Sign in to", { noBody: true });
   expect(messages).toMatchInlineSnapshot(`
     [
       MailboxMessage {
@@ -99,7 +99,8 @@ it("should send otp code to user", async ({ expect }) => {
     },
   });
 
-  const email = (await backendContext.value.mailbox.fetchMessages()).findLast((email) => email.subject.includes("Sign in"));
+  const emails = await backendContext.value.mailbox.waitForMessagesWithSubject("Sign in");
+  const email = emails.findLast((email) => email.subject.includes("Sign in"));
   const match = email?.body?.html.match(/\>([A-Z0-9]{6})\<\/p\>/);
   expect(match).toHaveLength(2);
   const code = match?.[1];

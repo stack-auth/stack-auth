@@ -22,6 +22,22 @@ export function createGlobal<T>(key: string, init: () => T) {
   return globalVar[stackGlobalsSymbol][key] as T;
 }
 
+/**
+ * Like createGlobal, but if the asynchronous initialization fails, the global will be reset and recomputed on the next
+ * invocation.
+ */
+export function createGlobalAsync<T>(key: string, init: () => Promise<T>): Promise<T> {
+  let promise: Promise<T> | null = null;
+  if (!globalVar[stackGlobalsSymbol][key]) {
+    promise = init().catch((e) => {
+      delete globalVar[stackGlobalsSymbol][key];
+      throw e;
+    });
+    globalVar[stackGlobalsSymbol][key] = promise;
+  }
+  return promise ?? globalVar[stackGlobalsSymbol][key] as Promise<T>;
+}
+
 export function getGlobal(key: string): any {
   return globalVar[stackGlobalsSymbol][key];
 }

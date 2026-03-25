@@ -3,24 +3,19 @@
 import { EnvKeys } from "@/components/env-keys";
 import { InlineCode } from "@/components/inline-code";
 import { StyledLink } from "@/components/link";
+import { CaretDownIcon, CaretUpIcon, CheckCircleIcon, CircleIcon, ClockIcon } from "@phosphor-icons/react";
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import {
-  Alert,
-  AlertDescription,
-  AlertTitle,
-  Badge,
-  Button,
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-  Typography,
+  DesignAlert,
+  DesignBadge,
+  DesignButton,
+  DesignCard,
+} from "@/components/design-components";
+import {
   cn
-} from "@stackframe/stack-ui";
+} from "@/components/ui";
 import * as confetti from "canvas-confetti";
-import { CheckCircle2, ChevronDown, ChevronUp, Circle, Clock } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
@@ -28,7 +23,7 @@ import { useAdminApp } from "../use-admin-app";
 
 type GeneratedKeys = {
   projectId: string,
-  publishableClientKey: string,
+  publishableClientKey?: string,
   secretServerKey: string,
 };
 
@@ -63,6 +58,8 @@ const STATUS_META: Record<
 export default function PageClient() {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
+  const projectConfig = project.useConfig();
+  const requirePublishableClientKey = projectConfig.project.requirePublishableClientKey;
   const [keys, setKeys] = useState<GeneratedKeys | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -80,7 +77,7 @@ export default function PageClient() {
     runAsynchronouslyWithAlert(async () => {
       try {
         const newKey = await adminApp.createInternalApiKey({
-          hasPublishableClientKey: true,
+          hasPublishableClientKey: requirePublishableClientKey,
           hasSecretServerKey: true,
           hasSuperSecretAdminKey: false,
           expiresAt: new Date(Date.now() + TWO_HUNDRED_YEARS_IN_MS),
@@ -89,8 +86,8 @@ export default function PageClient() {
 
         setKeys({
           projectId: adminApp.projectId,
-          publishableClientKey: newKey.publishableClientKey!,
-          secretServerKey: newKey.secretServerKey!,
+          publishableClientKey: newKey.publishableClientKey ?? throwErr("Expected publishableClientKey after creating an API key with hasPublishableClientKey: true"),
+          secretServerKey: newKey.secretServerKey ?? throwErr("Expected secretServerKey after creating an API key with hasSecretServerKey: true"),
         });
       } finally {
         setIsGenerating(false);
@@ -133,9 +130,9 @@ export default function PageClient() {
           title: "Vercel project is ready",
           done: isManuallyCompleted("project"),
           detail: (
-            <Typography variant="secondary" className="text-xs">
+            <p className="text-xs text-muted-foreground">
               Navigate to your project dashboard on Vercel.
-            </Typography>
+            </p>
           ),
         },
       ],
@@ -157,14 +154,14 @@ export default function PageClient() {
                 publishableClientKey={keys.publishableClientKey}
                 secretServerKey={keys.secretServerKey}
               />
-              <Typography type="label" variant="secondary" className="text-xs">
+              <p className="text-xs text-muted-foreground">
                 Copy everything now—these values only show once.
-              </Typography>
+              </p>
             </div>
           ) : (
-            <Typography variant="secondary" className="text-xs">
+            <p className="text-xs text-muted-foreground">
               You&apos;ll receive a publishable client key and a secret server key for this project.
-            </Typography>
+            </p>
           ),
         },
       ],
@@ -180,9 +177,9 @@ export default function PageClient() {
           title: "Environment variables configured",
           done: isManuallyCompleted("env-vars"),
           detail: (
-            <Typography variant="secondary" className="text-xs">
+            <p className="text-xs text-muted-foreground">
               In Vercel → &lt;your-project&gt; → Settings → Environment Variables, copy-paste your environment variables into the input fields.
-            </Typography>
+            </p>
           ),
         },
       ],
@@ -198,9 +195,9 @@ export default function PageClient() {
           title: "Deployment triggered",
           done: isManuallyCompleted("deploy"),
           detail: (
-            <Typography variant="secondary" className="text-xs">
+            <p className="text-xs text-muted-foreground">
               In Vercel → &lt;your-project&gt; → Deployments, redeploy both preview and production projects if they share the same Stack Auth project.
-            </Typography>
+            </p>
           ),
         },
       ],
@@ -216,9 +213,9 @@ export default function PageClient() {
           title: "Authentication tested",
           done: isManuallyCompleted("verify"),
           detail: (
-            <Typography variant="secondary" className="text-xs">
+            <p className="text-xs text-muted-foreground">
               Visit <InlineCode>/handler/signup</InlineCode> on your deployed site to confirm the login flow works.
-            </Typography>
+            </p>
           ),
         },
       ],
@@ -271,7 +268,7 @@ export default function PageClient() {
     if (prevAllCompleted !== undefined && !prevAllCompleted && allCompleted) {
       // Create a confetti effect dropping from the top
       const duration = 3000;
-      const animationEnd = Date.now() + duration;
+      const animationEnd = performance.now() + duration;
       const defaults = { startVelocity: 30, spread: 360, ticks: 60, zIndex: 9999 };
 
       function randomInRange(min: number, max: number) {
@@ -279,7 +276,7 @@ export default function PageClient() {
       }
 
       const interval = setInterval(() => {
-        const timeLeft = animationEnd - Date.now();
+        const timeLeft = animationEnd - performance.now();
 
         if (timeLeft <= 0) {
           clearInterval(interval);
@@ -321,8 +318,13 @@ export default function PageClient() {
       <PageLayout
         title="Vercel Integration"
         description="Follow these quick steps to connect Stack Auth with your Vercel project."
+        allowContentOverflow
       >
-        <div className="group relative overflow-hidden rounded-2xl border border-sky-400/40 bg-gradient-to-br from-card/95 to-card p-7 shadow-sm ring-1 ring-sky-400/20 transition-all duration-300 hover:shadow-md dark:border-sky-500/40 dark:shadow-sm dark:ring-sky-500/30">
+        <DesignCard
+          glassmorphic
+          className="group relative overflow-hidden border border-sky-400/40 ring-1 ring-sky-400/20 transition-all duration-300 hover:shadow-md dark:border-sky-500/40 dark:ring-sky-500/30"
+          contentClassName="p-7"
+        >
           {/* Subtle blue glow on bottom border */}
           <div className="pointer-events-none absolute bottom-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-sky-400/30 to-transparent blur-[2px] dark:via-sky-500/40" />
 
@@ -357,7 +359,7 @@ export default function PageClient() {
             {vercelProgress.next ? (
               <div className="flex flex-wrap items-center justify-between gap-4 pt-1">
                 <div className="flex items-center gap-2">
-                  <Clock className="h-4 w-4 text-muted-foreground" />
+                  <ClockIcon className="h-4 w-4 text-muted-foreground" />
                   <span className="text-sm text-muted-foreground">
                     Up next: <span className="font-medium text-foreground">{vercelProgress.next.item.title}</span>
                   </span>
@@ -365,14 +367,14 @@ export default function PageClient() {
               </div>
             ) : (
               <div className="flex items-center gap-2 pt-1">
-                <CheckCircle2 className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
+                <CheckCircleIcon className="h-4 w-4 text-emerald-600 dark:text-emerald-400" />
                 <span className="text-sm text-muted-foreground">
                   All steps complete. Your Vercel integration is ready!
                 </span>
               </div>
             )}
           </div>
-        </div>
+        </DesignCard>
 
         <div className="grid gap-4">
           {steps.map((step, index) => {
@@ -400,19 +402,18 @@ export default function PageClient() {
             );
           })}
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Need more detail?</CardTitle>
-              <CardDescription>See Vercel&apos;s documentation on environment variables for more details.</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <Button asChild variant="secondary">
-                <StyledLink href="https://vercel.com/docs/environment-variables" target="_blank">
-                  Open Vercel documentation
-                </StyledLink>
-              </Button>
-            </CardContent>
-          </Card>
+          <DesignCard
+            glassmorphic
+            title="Need more detail?"
+            subtitle="See Vercel&apos;s documentation on environment variables for more details."
+            icon={ClockIcon}
+          >
+            <DesignButton asChild variant="secondary">
+              <StyledLink href="https://vercel.com/docs/environment-variables" target="_blank">
+                Open Vercel documentation
+              </StyledLink>
+            </DesignButton>
+          </DesignCard>
         </div>
       </PageLayout>
     </AppEnabledGuard>
@@ -441,7 +442,7 @@ function ChecklistRow(props: {
   detail?: React.ReactNode,
   onClick?: () => void,
 }) {
-  const Icon = props.done ? CheckCircle2 : Circle;
+  const Icon = props.done ? CheckCircleIcon : CircleIcon;
   const iconClass = props.done
     ? "text-emerald-500 dark:text-emerald-400"
     : STATUS_META[props.status].inactiveIcon;
@@ -490,38 +491,40 @@ function StepCard(props: {
   const getActionButton = () => {
     if (props.step.id === "project") {
       return (
-        <Button asChild size="sm" className="font-medium border border-border shadow-sm transition-all duration-150 hover:bg-accent active:scale-95 dark:bg-foreground dark:text-background dark:hover:bg-foreground/90">
+        <DesignButton asChild size="sm" className="font-medium border border-border shadow-sm transition-all duration-150 hover:bg-accent active:scale-95 dark:bg-foreground dark:text-background dark:hover:bg-foreground/90">
           <StyledLink href="https://vercel.com/dashboard" target="_blank">
             Go to Vercel
           </StyledLink>
-        </Button>
+        </DesignButton>
       );
     }
     if (props.step.id === "keys" && props.onGenerateKeys) {
       return (
-        <Button
+        <DesignButton
           size="sm"
           onClick={props.onGenerateKeys}
           disabled={props.isGenerating}
           className="font-medium border border-border shadow-sm transition-all duration-150 hover:bg-accent active:scale-95 dark:bg-foreground dark:text-background dark:hover:bg-foreground/90"
         >
           {props.isGenerating ? "Generating..." : "Generate keys"}
-        </Button>
+        </DesignButton>
       );
     }
     return null;
   };
 
   return (
-    <Card
+    <DesignCard
+      glassmorphic
+      contentClassName="p-0"
       className={cn(
         "transition-all duration-300",
         meta.cardClass,
         allItemsDone && "border-emerald-500/30 bg-emerald-500/5 dark:border-emerald-500/40 dark:bg-emerald-500/10"
       )}
     >
-      <CardHeader
-        className="cursor-pointer select-none"
+      <div
+        className="cursor-pointer select-none px-6 pt-5"
         onClick={props.onToggle}
         role="button"
         tabIndex={0}
@@ -535,25 +538,19 @@ function StepCard(props: {
         <div className="flex items-start justify-between gap-4">
           <div className="space-y-1.5 flex-1">
             <div className="flex items-center gap-2">
-              <CardTitle className="text-xl font-semibold">{props.step.title}</CardTitle>
+              <h3 className="text-xl font-semibold">{props.step.title}</h3>
               {allItemsDone && (
-                <Badge
-                  variant="outline"
-                  className="border-emerald-500/50 bg-emerald-500/10 text-emerald-600 dark:border-emerald-500/50 dark:bg-emerald-500/20 dark:text-emerald-400"
-                >
-                  <CheckCircle2 className="mr-1 h-3 w-3" />
-                  Complete
-                </Badge>
+                <DesignBadge label="Complete" icon={CheckCircleIcon} color="green" size="sm" />
               )}
             </div>
-            <CardDescription
+            <p
               className={cn(
-                "text-sm transition-opacity duration-300 ease-in-out",
+                "text-sm text-muted-foreground transition-opacity duration-300 ease-in-out",
                 props.isExpanded ? "opacity-100" : "opacity-0"
               )}
             >
               {props.step.subtitle}
-            </CardDescription>
+            </p>
           </div>
           <button
             type="button"
@@ -565,13 +562,13 @@ function StepCard(props: {
             aria-label={props.isExpanded ? "Collapse section" : "Expand section"}
           >
             {props.isExpanded ? (
-              <ChevronUp className="h-5 w-5 text-muted-foreground" />
+              <CaretUpIcon className="h-5 w-5 text-muted-foreground" />
             ) : (
-              <ChevronDown className="h-5 w-5 text-muted-foreground" />
+              <CaretDownIcon className="h-5 w-5 text-muted-foreground" />
             )}
           </button>
         </div>
-      </CardHeader>
+      </div>
       <div
         className={cn(
           "grid transition-all duration-300 ease-in-out",
@@ -579,7 +576,7 @@ function StepCard(props: {
         )}
       >
         <div className="overflow-hidden">
-          <CardContent className="space-y-4">
+          <div className="space-y-4 px-6 pb-4">
             <ul className="divide-y divide-border/40">
               {props.step.items.map((item) => (
                 <ChecklistRow
@@ -593,17 +590,18 @@ function StepCard(props: {
               ))}
             </ul>
             {props.error && (
-              <Alert variant="destructive">
-                <AlertTitle>Could not generate keys</AlertTitle>
-                <AlertDescription>{props.error}</AlertDescription>
-              </Alert>
+              <DesignAlert
+                variant="error"
+                title="Could not generate keys"
+                description={props.error}
+              />
             )}
-          </CardContent>
-          <CardFooter className="flex justify-end">
+          </div>
+          <div className="flex justify-end px-6 pb-5">
             {getActionButton()}
-          </CardFooter>
+          </div>
         </div>
       </div>
-    </Card>
+    </DesignCard>
   );
 }

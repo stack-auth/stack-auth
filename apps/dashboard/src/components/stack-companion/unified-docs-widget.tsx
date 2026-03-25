@@ -1,6 +1,6 @@
 'use client';
 
-import { ArrowLeft, BookOpen, ExternalLink, Loader2 } from 'lucide-react';
+import { ArrowLeftIcon, BookOpenIcon, ArrowSquareOutIcon, CircleNotchIcon } from '@phosphor-icons/react';
 import { usePathname } from 'next/navigation';
 import { useEffect, useState } from 'react';
 import { getPublicEnvVar } from '../../lib/env';
@@ -350,7 +350,7 @@ export function UnifiedDocsWidget({ isActive }: UnifiedDocsWidgetProps) {
           {loading && (
             <div className="absolute inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center z-10">
               <div className="flex flex-col items-center gap-2">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                <CircleNotchIcon className="h-6 w-6 animate-spin text-muted-foreground" />
                 <div className="text-xs text-muted-foreground">Loading documentation...</div>
               </div>
             </div>
@@ -367,10 +367,10 @@ export function UnifiedDocsWidget({ isActive }: UnifiedDocsWidgetProps) {
                   title="Go back to previous page"
                   disabled={!canGoBack}
                 >
-                  <ArrowLeft className="h-3 w-3" />
+                  <ArrowLeftIcon className="h-3 w-3" />
                   <span>Back</span>
                 </button>
-                <BookOpen className="h-3 w-3 text-muted-foreground" />
+                <BookOpenIcon className="h-3 w-3 text-muted-foreground" />
                 <h4 className="text-xs font-medium text-muted-foreground">{docContent.title}</h4>
               </div>
               <a
@@ -380,7 +380,7 @@ export function UnifiedDocsWidget({ isActive }: UnifiedDocsWidgetProps) {
                 className="text-muted-foreground hover:text-foreground transition-colors"
                 title="Open in new tab"
               >
-                <ExternalLink className="h-3 w-3" />
+                <ArrowSquareOutIcon className="h-3 w-3" />
               </a>
             </div>
           </div>

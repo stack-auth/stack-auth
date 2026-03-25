@@ -2,12 +2,11 @@ import { DevErrorNotifier } from '@/components/dev-error-notifier';
 import { RouterProvider } from '@/components/router';
 import { SiteLoadingIndicatorDisplay } from '@/components/site-loading-indicator';
 import { StyleLink } from '@/components/style-link';
-import { ThemeProvider } from '@/components/theme-provider';
+import { Toaster, cn } from '@/components/ui';
 import { getPublicEnvVar } from '@/lib/env';
 import { stackServerApp } from '@/stack';
 import { StackProvider, StackTheme } from '@stackframe/stack';
 import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
-import { Toaster, cn } from '@stackframe/stack-ui';
 import { Analytics } from "@vercel/analytics/react";
 import { SpeedInsights } from "@vercel/speed-insights/next";
 import { GeistMono } from "geist/font/mono";
@@ -15,13 +14,14 @@ import { GeistSans } from 'geist/font/sans';
 import type { Metadata } from 'next';
 import { Inter as FontSans } from "next/font/google";
 import React from 'react';
-import { VersionAlerter } from '../components/version-alerter';
+// import { VersionAlerter } from '../components/version-alerter';
+import { VersionAlerter } from '@/components/version-alerter';
 import '../polyfills';
 import { BackgroundShine } from './background-shine';
 import { ClientPolyfill } from './client-polyfill';
+import { DevelopmentPortDisplay } from './development-port-display';
 import './globals.css';
-import PageView from './pageview';
-import { CSPostHogProvider, UserIdentity } from './providers';
+import { UserIdentity } from './providers';
 
 export const metadata: Metadata = {
   metadataBase: new URL(getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL') || ''),
@@ -64,6 +64,8 @@ export default function RootLayout({
     throw new Error(`STACK_DEVELOPMENT_TRANSLATION_LOCALE can only be used in development mode (found: ${JSON.stringify(translationLocale)})`);
   }
 
+  const enableReactScanInDevelopment = getPublicEnvVar('NEXT_PUBLIC_STACK_ENABLE_REACT_SCAN_IN_DEVELOPMENT') === 'true';
+
   return (
     <html suppressHydrationWarning lang="en" className={`${GeistSans.variable} ${GeistMono.variable}`}>
       <head>
@@ -72,7 +74,7 @@ export default function RootLayout({
         <StyleLink defer href="https://cdn.jsdelivr.net/npm/katex@0.16.9/dist/katex.css" integrity="sha384-OH8qNTHoMMVNVcKdKewlipV4SErXqccxxlg6HC9Cwjr5oZu2AdBej1TndeCirael" crossOrigin="anonymous" />
 
         {/* eslint-disable-next-line @next/next/no-sync-scripts */}
-        {process.env.NODE_ENV === 'development' && <script
+        {process.env.NODE_ENV === 'development' && enableReactScanInDevelopment && <script
           crossOrigin="anonymous"
           src="//unpkg.com/react-scan/dist/auto.global.js"
         />}
@@ -85,83 +87,35 @@ export default function RootLayout({
             ...attributes,
           });
         })}
+
+        {/* eslint-disable-next-line @next/next/no-sync-scripts */}
+        <script dangerouslySetInnerHTML={{ __html: "(function(){try{var t=localStorage.getItem('theme');var d=document.documentElement;var r=t==='dark'||t==='light'?t:window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';d.classList.add(r);d.style.colorScheme=r}catch(e){}})()" }} />
       </head>
-      <CSPostHogProvider>
-        <body
-          className={cn(
+      <body
+        className={cn(
             "min-h-screen bg-background font-sans antialiased",
             fontSans.variable
           )}
-          suppressHydrationWarning
-        >
-          <Analytics />
-          <PageView />
-          <SpeedInsights />
-          <ThemeProvider>
-            <StackProvider app={stackServerApp} lang={translationLocale as any}>
-              <StackTheme>
-                <ClientPolyfill />
-                <RouterProvider>
-                  <UserIdentity />
-                  <VersionAlerter />
-                  <BackgroundShine />
-                  {children}
-                  <DevelopmentPortDisplay />
-                </RouterProvider>
-              </StackTheme>
-            </StackProvider>
-          </ThemeProvider>
-          <DevErrorNotifier />
-          <Toaster />
-          <SiteLoadingIndicatorDisplay />
-        </body>
-      </CSPostHogProvider>
+        suppressHydrationWarning
+      >
+        <Analytics />
+        <SpeedInsights />
+        <StackProvider app={stackServerApp} lang={translationLocale as any}>
+          <StackTheme>
+            <ClientPolyfill />
+            <RouterProvider>
+              <UserIdentity />
+              <VersionAlerter />
+              <BackgroundShine />
+              {children}
+              <DevelopmentPortDisplay />
+            </RouterProvider>
+          </StackTheme>
+        </StackProvider>
+        <DevErrorNotifier />
+        <Toaster />
+        <SiteLoadingIndicatorDisplay />
+      </body>
     </html>
-  );
-}
-
-function DevelopmentPortDisplay() {
-  const prefix = getPublicEnvVar("NEXT_PUBLIC_STACK_PORT_PREFIX");
-  if (!prefix) return null;
-  const color = ({
-    "91": "#eee",
-    "92": "#fff8e0",
-    "93": "#e0e0ff",
-  } as any)[prefix as any] || undefined;
-  return (
-    <div inert className="fixed top-0 left-0 p-2 text-red-700 animate-[dev-port-slide_120s_linear_infinite] hover:hidden flex gap-2" style={{
-      backgroundColor: color,
-      zIndex: 10000000,
-    }}>
-      <style>{`
-        @keyframes dev-port-slide {
-          0% { transform: translateX(0); }
-          100% { transform: translateX(100vw); }
-        }
-      `}</style>
-      <div className="text-lg">
-        PORT: {prefix}xx
-      </div>
-      <div className="text-xs">
-        <span className="hidden xs:inline sm:hidden">
-          xs
-        </span>
-        <span className="hidden sm:inline md:hidden">
-          sm
-        </span>
-        <span className="hidden md:inline lg:hidden">
-          md
-        </span>
-        <span className="hidden lg:inline xl:hidden">
-          lg
-        </span>
-        <span className="hidden xl:inline 2xl:hidden">
-          xl
-        </span>
-        <span className="hidden 2xl:inline">
-          2xl
-        </span>
-      </div>
-    </div>
   );
 }

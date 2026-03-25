@@ -4,7 +4,7 @@ import { StyledLink } from "@/components/link";
 import { getPublicEnvVar } from "@/lib/env";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { Typography } from "@stackframe/stack-ui";
+import { Typography } from "@/components/ui";
 import { loadStripe } from "@stripe/stripe-js";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useState } from "react";

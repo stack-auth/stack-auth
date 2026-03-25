@@ -15,7 +15,7 @@ describe("OAuth with wildcard domains", () => {
     await InternalApiKey.createAndSetProjectKeys();
 
     // Add exact domain matching our test redirect URL
-    const configResponse = await niceBackendFetch("/api/v1/internal/config/override", {
+    const configResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
       method: "PATCH",
       accessType: "admin",
       headers: {
@@ -47,7 +47,7 @@ describe("OAuth with wildcard domains", () => {
     await InternalApiKey.createAndSetProjectKeys();
 
     // Add exact domain that DOESN'T match our test redirect URL
-    const configResponse = await niceBackendFetch("/api/v1/internal/config/override", {
+    const configResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
       method: "PATCH",
       accessType: "admin",
       headers: {
@@ -92,7 +92,7 @@ describe("OAuth with wildcard domains", () => {
     await InternalApiKey.createAndSetProjectKeys();
 
     // Add wildcard domain
-    const configResponse = await niceBackendFetch("/api/v1/internal/config/override", {
+    const configResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
       method: "PATCH",
       accessType: "admin",
       headers: {
@@ -124,7 +124,7 @@ describe("OAuth with wildcard domains", () => {
     await InternalApiKey.createAndSetProjectKeys();
 
     // Add wildcard domain that doesn't match localhost pattern
-    const configResponse = await niceBackendFetch("/api/v1/internal/config/override", {
+    const configResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
       method: "PATCH",
       accessType: "admin",
       headers: {
@@ -169,7 +169,7 @@ describe("OAuth with wildcard domains", () => {
     await InternalApiKey.createAndSetProjectKeys();
 
     // Add double wildcard domain
-    const configResponse = await niceBackendFetch("/api/v1/internal/config/override", {
+    const configResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
       method: "PATCH",
       accessType: "admin",
       headers: {
@@ -201,7 +201,7 @@ describe("OAuth with wildcard domains", () => {
     await InternalApiKey.createAndSetProjectKeys();
 
     // Add double wildcard for different TLD
-    const configResponse = await niceBackendFetch("/api/v1/internal/config/override", {
+    const configResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
       method: "PATCH",
       accessType: "admin",
       headers: {
@@ -246,7 +246,7 @@ describe("OAuth with wildcard domains", () => {
     await InternalApiKey.createAndSetProjectKeys();
 
     // Add prefix wildcard that should match "localhost"
-    const configResponse = await niceBackendFetch("/api/v1/internal/config/override", {
+    const configResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
       method: "PATCH",
       accessType: "admin",
       headers: {
@@ -278,7 +278,7 @@ describe("OAuth with wildcard domains", () => {
     await InternalApiKey.createAndSetProjectKeys();
 
     // Add prefix wildcard that won't match localhost
-    const configResponse = await niceBackendFetch("/api/v1/internal/config/override", {
+    const configResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
       method: "PATCH",
       accessType: "admin",
       headers: {
@@ -322,7 +322,7 @@ describe("OAuth with wildcard domains", () => {
     });
     await InternalApiKey.createAndSetProjectKeys();
     // Configure multiple domains, only one matches
-    const configResponse = await niceBackendFetch("/api/v1/internal/config/override", {
+    const configResponse = await niceBackendFetch("/api/v1/internal/config/override/environment", {
       method: "PATCH",
       accessType: "admin",
       headers: {

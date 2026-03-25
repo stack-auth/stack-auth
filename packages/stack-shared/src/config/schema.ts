@@ -12,15 +12,18 @@ import { productSchema, userSpecifiedIdSchema, yupBoolean, yupDate, yupMixed, yu
 import { SUPPORTED_CURRENCIES } from "../utils/currency-constants";
 import { StackAssertionError } from "../utils/errors";
 import { allProviders } from "../utils/oauth";
-import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, filterUndefined, get, has, isObjectLike, mapValues, set, typedAssign, typedEntries, typedFromEntries } from "../utils/objects";
+import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, filterUndefined, get, getOrUndefined, has, isObjectLike, mapValues, set, typedAssign, typedEntries, typedFromEntries } from "../utils/objects";
 import { Result } from "../utils/results";
+import { stringCompare } from "../utils/strings";
 import { CollapseObjectUnion, Expand, IntersectAll, IsUnion, typeAssert, typeAssertExtends, typeAssertIs } from "../utils/types";
 import { Config, NormalizationError, NormalizesTo, assertNormalized, getInvalidConfigReason, normalize } from "./format";
+import { migrateCatalogsToProductLines } from "./migrate-catalogs-to-product-lines";
 
 export const configLevels = ['project', 'branch', 'environment', 'organization'] as const;
 export type ConfigLevel = typeof configLevels[number];
 const permissionRegex = /^\$?[a-z0-9_:]+$/;
 const customPermissionRegex = /^[a-z0-9_:]+$/;
+
 declare module "yup" {
   // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
   export interface CustomSchemaMetadata {
@@ -55,6 +58,9 @@ export const projectConfigSchema = yupObject({
       connectionString: yupString().defined()
     }),
   ),
+  project: yupObject({
+    requirePublishableClientKey: yupBoolean(),
+  }),
 });
 
 // --- NEW RBAC Schema ---
@@ -100,20 +106,6 @@ const branchAppsSchema = yupObject({
     yupObject({
       enabled: yupBoolean(),
     }),
-  ).test(
-    'authentication-and-emails-enabled',
-    'authentication and emails must be installed and enabled',
-    function(value) {
-      const hasAuthentication = value['authentication'].enabled === true;
-      const hasEmails = value['emails'].enabled === true;
-      if (!hasAuthentication || !hasEmails) {
-        return this.createError({
-          message: 'authentication and emails must be installed and enabled',
-          path: this.path,
-        });
-      }
-      return true;
-    }
   ),
 });
 // --- END NEW Apps Schema ---
@@ -141,19 +133,38 @@ const branchAuthSchema = yupObject({
       }),
     ),
   }),
+  signUpRules: yupRecord(
+    userSpecifiedIdSchema("signUpRuleId"),
+    yupObject({
+      enabled: yupBoolean(),
+      displayName: yupString(),
+      // Priority for rule ordering (higher number = higher priority, evaluated first)
+      // Rules with same priority are sorted alphabetically by ID
+      priority: yupNumber().integer().min(0),
+      // CEL expression string - evaluated against signup context
+      // Example: 'email.endsWith("@gmail.com") && authMethod == "password"'
+      condition: yupString(),
+      action: yupObject({
+        type: yupString().oneOf(['allow', 'reject', 'restrict', 'log']).defined(),
+        message: yupString().optional(), // for reject action custom message (internal use, not shown to user)
+      }),
+    }),
+  ),
+  signUpRulesDefaultAction: yupString().oneOf(['allow', 'reject']),
 });
 
 export const branchPaymentsSchema = yupObject({
+  blockNewPurchases: yupBoolean(),
   autoPay: yupObject({
     interval: schemaFields.dayIntervalSchema,
   }).optional(),
-  testMode: yupBoolean(),
-  catalogs: yupRecord(
-    userSpecifiedIdSchema("catalogId"),
+  productLines: yupRecord(
+    userSpecifiedIdSchema("productLineId"),
     yupObject({
       displayName: yupString().optional(),
+      customerType: schemaFields.customerTypeSchema,
     }),
-  ).meta({ openapiField: { description: 'The catalogs that products can be in. All products in a catalog (besides add-ons) are mutually exclusive.', exampleValue: { "catalog-id": { displayName: "My Catalog" } } } }),
+  ).meta({ openapiField: { description: 'The product lines that products can be in. All products in a product line (besides add-ons) are mutually exclusive.', exampleValue: { "product-line-id": { displayName: "My Product Line", customerType: "user" } } } }),
   products: yupRecord(
     userSpecifiedIdSchema("productId"),
     productSchema,
@@ -165,14 +176,42 @@ export const branchPaymentsSchema = yupObject({
       customerType: schemaFields.customerTypeSchema,
     }),
   ),
+}).optional().test(
+  'product-customer-type-matches-product-line',
+  'Product customer type must match its product line customer type',
+  function(this: yup.TestContext<yup.AnyObject>, value) {
+    if (!value) return true;
+    for (const [productId, product] of Object.entries(value.products)) {
+      if (!product.productLineId) continue;
+      const productLine = getOrUndefined(value.productLines, product.productLineId);
+      if (productLine === undefined) {
+        return this.createError({
+          message: `Product "${productId}" specifies product line ID "${product.productLineId}", but that product line does not exist`,
+          path: `${this.path}.products.${productId}.productLineId`,
+        });
+      }
+      if (product.customerType !== productLine.customerType) {
+        return this.createError({
+          message: `Product "${productId}" has customer type "${product.customerType}" but its product line "${product.productLineId}" has customer type "${productLine.customerType}"`,
+          path: `${this.path}.products.${productId}.customerType`,
+        });
+      }
+    }
+    return true;
+  }
+);
+
+const branchDomain = yupObject({});
+
+const branchOnboardingSchema = yupObject({
+  requireEmailVerification: yupBoolean(),
 });
 
-const branchDomain = yupObject({
-  allowLocalhost: yupBoolean(),
-});
 
-
-export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, ["sourceOfTruth"]).concat(yupObject({
+export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
+  "sourceOfTruth",
+  "project",
+]).concat(yupObject({
   rbac: branchRbacSchema,
 
   teams: yupObject({
@@ -183,6 +222,8 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
   users: yupObject({
     allowClientUserDeletion: yupBoolean(),
   }),
+
+  onboarding: branchOnboardingSchema,
 
   apiKeys: branchApiKeysSchema,
 
@@ -200,6 +241,21 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
 
   payments: branchPaymentsSchema,
 
+  dbSync: yupObject({
+    externalDatabases: yupRecord(
+      userSpecifiedIdSchema("externalDatabaseId"),
+      yupObject({
+        type: yupString().oneOf(["postgres"]).defined(),
+        connectionString: yupString().when("type", {
+          is: "postgres",
+          then: (schema) => schema.defined(),
+          otherwise: (schema) => schema.optional(),
+        }),
+      }),
+    ),
+  }),
+
+
   dataVault: yupObject({
     stores: yupRecord(
       userSpecifiedIdSchema("storeId"),
@@ -210,6 +266,26 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
   }),
 }));
 
+
+// --- Analytics Schema (environment config only - not pushable) ---
+const environmentAnalyticsSchema = yupObject({
+  queryFolders: yupRecord(
+    userSpecifiedIdSchema("folderId"),
+    yupObject({
+      displayName: yupString(),
+      sortOrder: yupNumber().optional(),
+      queries: yupRecord(
+        userSpecifiedIdSchema("queryId"),
+        yupObject({
+          displayName: yupString(),
+          sqlQuery: yupString(),  // SQL query string (not English language)
+          description: yupString().optional(),
+        }),
+      ),
+    }),
+  ),
+});
+// --- END Analytics Schema ---
 
 export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
   auth: branchConfigSchema.getNested("auth").concat(yupObject({
@@ -223,6 +299,12 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
           clientSecret: schemaFields.oauthClientSecretSchema.optional(),
           facebookConfigId: schemaFields.oauthFacebookConfigIdSchema.optional(),
           microsoftTenantId: schemaFields.oauthMicrosoftTenantIdSchema.optional(),
+          appleBundles: yupRecord(
+            userSpecifiedIdSchema("appleBundleId"),
+            yupObject({
+              bundleId: schemaFields.oauthAppleBundleIdSchema,
+            }),
+          ).optional(),
           allowSignIn: yupBoolean().optional(),
           allowConnectedAccounts: yupBoolean().optional(),
         }),
@@ -233,17 +315,32 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
   emails: branchConfigSchema.getNested("emails").concat(yupObject({
     server: yupObject({
       isShared: yupBoolean(),
-      provider: yupString().oneOf(['resend', 'smtp']).optional(),
+      provider: yupString().oneOf(['resend', 'smtp', 'managed']).optional(),
       host: schemaFields.emailHostSchema.optional().nonEmpty(),
       port: schemaFields.emailPortSchema.optional(),
       username: schemaFields.emailUsernameSchema.optional().nonEmpty(),
-      password: schemaFields.emailPasswordSchema.optional().nonEmpty(),
+      password: schemaFields.emailPasswordSchema.optional().nonEmpty().when(['provider', 'isShared'], {
+        is: (provider: string | undefined, isShared: boolean) => provider === 'managed' && isShared === false,
+        then: (schema) => schema.defined("Password is required when using managed email provider"),
+        otherwise: (schema) => schema.optional(),
+      }),
       senderName: schemaFields.emailSenderNameSchema.optional().nonEmpty(),
       senderEmail: schemaFields.emailSenderEmailSchema.optional().nonEmpty(),
+      managedSubdomain: yupString().optional().nonEmpty().when(['provider', 'isShared'], {
+        is: (provider: string | undefined, isShared: boolean) => provider === 'managed' && isShared === false,
+        then: (schema) => schema.defined("Managed subdomain is required when using managed email provider"),
+        otherwise: (schema) => schema.optional(),
+      }),
+      managedSenderLocalPart: yupString().optional().nonEmpty().when(['provider', 'isShared'], {
+        is: (provider: string | undefined, isShared: boolean) => provider === 'managed' && isShared === false,
+        then: (schema) => schema.defined("Managed sender local part is required when using managed email provider"),
+        otherwise: (schema) => schema.optional(),
+      }),
     }),
   })),
 
   domains: branchConfigSchema.getNested("domains").concat(yupObject({
+    allowLocalhost: yupBoolean(),
     trustedDomains: yupRecord(
       userSpecifiedIdSchema("trustedDomainId"),
       yupObject({
@@ -252,6 +349,13 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
       }),
     ),
   })),
+
+  payments: branchConfigSchema.getNested("payments").concat(yupObject({
+    testMode: yupBoolean(),
+  })),
+
+  analytics: environmentAnalyticsSchema,
+  customDashboards: schemaFields.customDashboardsSchema,
 }));
 
 export const organizationConfigSchema = environmentConfigSchema.concat(yupObject({}));
@@ -299,13 +403,13 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   // END
 
   // BEGIN 2025-07-28: sourceOfTruth was mistakenly written to the environment config in some cases, so let's remove it
-  if (type === "environment") {
+  if (isBranchOrHigher) {
     res = removeProperty(res, p => p.join(".") === "sourceOfTruth");
   }
   // END
 
   // BEGIN 2025-08-25: stripeAccountId and stripeAccountSetupComplete are unused, so let's remove them
-  if (type === "environment") {
+  if (isBranchOrHigher) {
     res = removeProperty(res, p => p.join(".") === "payments.stripeAccountId");
     res = removeProperty(res, p => p.join(".") === "payments.stripeAccountSetupComplete");
   }
@@ -339,6 +443,12 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   if (isBranchOrHigher) {
     res = removeProperty(res, p => p[0] === "workflows");
     res = removeProperty(res, p => p[0] === "apps" && p[1] === "installed" && p[2] === "workflows");
+  }
+  // END
+
+  // BEGIN 2026-01-14: payments.catalogs is now payments.productLines (with customerType inferred from products) and payments.products.*.catalogId is now payments.products.*.productLineId
+  if (isBranchOrHigher) {
+    res = migrateCatalogsToProductLines(res);
   }
   // END
 
@@ -437,6 +547,9 @@ const projectConfigDefaults = {
     connectionStrings: undefined,
     connectionString: undefined,
   },
+  project: {
+    requirePublishableClientKey: false,
+  },
 } as const satisfies DefaultsType<ProjectRenderedConfigBeforeDefaults, []>;
 
 const branchConfigDefaults = {} as const satisfies DefaultsType<BranchRenderedConfigBeforeDefaults, [typeof projectConfigDefaults]>;
@@ -477,6 +590,10 @@ const organizationConfigDefaults = {
     allowClientUserDeletion: false,
   },
 
+  onboarding: {
+    requireEmailVerification: false,
+  },
+
   domains: {
     allowLocalhost: false,
     trustedDomains: (key: string) => ({
@@ -507,8 +624,20 @@ const organizationConfigDefaults = {
         clientSecret: undefined,
         facebookConfigId: undefined,
         microsoftTenantId: undefined,
+        appleBundles: undefined,
       }),
     },
+    signUpRules: (key: string) => ({
+      enabled: false,
+      displayName: undefined,
+      priority: 0,
+      condition: undefined,
+      action: {
+        type: 'allow',
+        message: undefined,
+      },
+    }),
+    signUpRulesDefaultAction: 'allow',
   },
 
   emails: {
@@ -521,6 +650,8 @@ const organizationConfigDefaults = {
       password: undefined,
       senderName: undefined,
       senderEmail: undefined,
+      managedSubdomain: undefined,
+      managedSenderLocalPart: undefined,
     },
     selectedThemeId: DEFAULT_EMAIL_THEME_ID,
     themes: typedAssign((key: string) => ({
@@ -535,14 +666,16 @@ const organizationConfigDefaults = {
   },
 
   payments: {
+    blockNewPurchases: false,
     testMode: true,
     autoPay: undefined,
-    catalogs: (key: string) => ({
+    productLines: (key: string) => ({
       displayName: undefined,
+      customerType: undefined,
     }),
     products: (key: string) => ({
       displayName: key,
-      catalogId: undefined,
+      productLineId: undefined,
       customerType: "user",
       freeTrial: undefined,
       serverOnly: false,
@@ -566,11 +699,36 @@ const organizationConfigDefaults = {
     } as const)
   },
 
+
+  dbSync: {
+    externalDatabases: (key: string) => ({
+      type: undefined,
+      connectionString: undefined,
+    }),
+  },
+
   dataVault: {
     stores: (key: string) => ({
       displayName: "Unnamed Vault",
     }),
   },
+
+  analytics: {
+    queryFolders: (key: string) => ({
+      displayName: "Unnamed Folder",
+      sortOrder: 0,
+      queries: (queryKey: string) => ({
+        displayName: "Unnamed Query",
+        sqlQuery: "",
+        description: undefined,
+      }),
+    }),
+  },
+
+  customDashboards: (key: string) => ({
+    displayName: "Unnamed Dashboard",
+    tsxSource: "Error: Dashboard config is missing source code.",
+  }),
 } as const satisfies DefaultsType<OrganizationRenderedConfigBeforeDefaults, [typeof environmentConfigDefaults, typeof branchConfigDefaults, typeof projectConfigDefaults]>;
 
 type _DeepOmitDefaultsImpl<T, U> = T extends object ? (
@@ -595,13 +753,24 @@ type ReplaceFunctionsWithObjects<T> = T & (T extends (arg: infer K extends strin
 type DeepReplaceFunctionsWithObjects<T> = T extends object ? { [K in keyof ReplaceFunctionsWithObjects<T>]: DeepReplaceFunctionsWithObjects<ReplaceFunctionsWithObjects<T>[K]> } : T;
 typeAssertIs<DeepReplaceFunctionsWithObjects<{ a: { b: 123 } & ((key: string) => number) }>, { a: { b: 123, [key: string]: number } }>()();
 
-function deepReplaceFunctionsWithObjects(obj: any): any {
-  return mapValues({ ...obj }, v => (isObjectLike(v) ? deepReplaceFunctionsWithObjects(v as any) : v));
+function deepReplaceFunctionsWithObjects(obj: any, paths: string[] = []): any {
+  const subPaths = (key: string) => {
+    return paths.filter(p => p.split(".").length > 1 && p.split(".")[0] === key)
+      .map(p => p.split(".").slice(1).join("."));
+  };
+  const currentPaths = [...new Set(paths.map(p => p.split(".")[0]))];
+  const nonDeepReplaced = {
+    ...typeof obj === "function" ? filterUndefined(Object.fromEntries(currentPaths.map(k => [k, obj(k)]))) : {},
+    ...obj,
+  };
+  return mapValues(nonDeepReplaced, (v, k) => (isObjectLike(v) ? deepReplaceFunctionsWithObjects(v as any, subPaths(k as string)) : v));
 }
 import.meta.vitest?.test("deepReplaceFunctionsWithObjects", ({ expect }) => {
   expect(deepReplaceFunctionsWithObjects(() => { })).toEqual({});
   expect(deepReplaceFunctionsWithObjects({ a: 3 })).toEqual({ a: 3 });
   expect(deepReplaceFunctionsWithObjects({ a: () => ({ b: 1 }) })).toEqual({ a: {} });
+  expect(deepReplaceFunctionsWithObjects({ a: () => ({ b: 1 }) }, ["a.c.d"])).toEqual({ a: { c: { b: 1 } } });
+  expect(deepReplaceFunctionsWithObjects(() => ({ b: 1 }), ["a"])).toEqual({ a: { b: 1 } });
   expect(deepReplaceFunctionsWithObjects({ a: typedAssign(() => ({}), { b: { c: 1 } }) })).toEqual({ a: { b: { c: 1 } } });
 });
 
@@ -610,20 +779,27 @@ function applyDefaults<D extends object | ((key: string) => unknown), C extends 
   const res: any = deepReplaceFunctionsWithObjects(defaults);
 
   outer: for (const [key, mergeValue] of Object.entries(config)) {
-    if (mergeValue == null) continue;
-    if (!isObjectLike(mergeValue)) {
+    if (!isObjectLike(mergeValue) && mergeValue !== null) {
       set(res, key, mergeValue);
     } else {
       const keyParts = key.split(".");
       let baseValue: any = defaults;
+      let lastWasFunction = false;
       for (const [index, part] of keyParts.entries()) {
-        baseValue = has(baseValue, part) ? get(baseValue, part) : (typeof baseValue === 'function' ? (baseValue as any)(part) : undefined);
-        if (baseValue === undefined || !isObjectLike(baseValue)) {
-          set(res, key, mergeValue);
+        if (!isObjectLike(baseValue)) {
+          set(res, key, mergeValue ?? null);
           continue outer;
         }
+        lastWasFunction = false;
+        baseValue = has(baseValue, part) ? get(baseValue, part) : (typeof baseValue === 'function' ? (lastWasFunction = true, baseValue as any)(part) : undefined);
       }
-      set(res, key, applyDefaults(baseValue, mergeValue));
+      if (lastWasFunction && mergeValue == null) {
+        set(res, key, null);
+      } else if (!isObjectLike(baseValue)) {
+        set(res, key, mergeValue ?? baseValue ?? null);
+      } else {
+        set(res, key, applyDefaults(baseValue, mergeValue ?? {}) as any);
+      }
     }
   }
   return res as any;
@@ -639,26 +815,44 @@ import.meta.vitest?.test("applyDefaults", ({ expect }) => {
 
   // Functions
   expect(applyDefaults((key: string) => ({ b: key }), { a: {} })).toEqual({ a: { b: "a" } });
-  expect(applyDefaults((key: string) => ({ b: key }), { a: null })).toEqual({});
+  expect(applyDefaults((key: string) => ({ b: key }), { a: null })).toEqual({ a: null });
   expect(applyDefaults((key1: string) => (key2: string) => ({ a: key1, b: key2 }), { c: { d: {} } })).toEqual({ c: { d: { a: "c", b: "d" } } });
   expect(applyDefaults({ a: (key: string) => ({ b: key }) }, { a: { c: { d: 1 } } })).toEqual({ a: { c: { b: "c", d: 1 } } });
   expect(applyDefaults({ a: (key: string) => ({ b: key }) }, {})).toEqual({ a: {} });
   expect(applyDefaults({ a: (key: string) => ({ b: key }) }, { a: null })).toEqual({ a: {} });
+  expect(applyDefaults({ a: (key: string) => ({ c: key }) }, { a: { b: null } })).toEqual({ a: { b: null } });
   expect(applyDefaults({ a: { b: (key: string) => ({ b: key }) } }, {})).toEqual({ a: { b: {} } });
   expect(applyDefaults(typedAssign(() => ({ b: 1 }), { a: { b: 1, c: 2 } }), { a: {} })).toEqual({ a: { b: 1, c: 2 } });
   expect(applyDefaults(typedAssign(() => ({ b: 1 }), { a: { b: 1, c: 2 } }), { d: {} })).toEqual({ a: { b: 1, c: 2 }, d: { b: 1 } });
 
   // Dot notation
   expect(applyDefaults({ a: { b: 1 } }, { "a.c": 2 })).toEqual({ a: { b: 1 }, "a.c": 2 });
-  expect(applyDefaults({ a: { b: 1 } }, { "a.c": null })).toEqual({ a: { b: 1 } });
+  expect(applyDefaults({ a: { b: 1 } }, { "a.c": null })).toEqual({ a: { b: 1 }, "a.c": null });
+  expect(applyDefaults({ a: { b: 1 } }, { a: { b: 2 }, "a.b": null })).toEqual({ a: { b: 2 }, "a.b": 1 });
+  expect(applyDefaults({ a: { b: { c: 1 } } }, { a: { b: { c: 2 } }, "a.b.c": null })).toEqual({ a: { b: { c: 2 } }, "a.b.c": 1 });
+  expect(applyDefaults({}, { a: { b: 2 }, "a.b": null })).toEqual({ a: { b: 2 }, "a.b": null });
+  expect(applyDefaults({ a: { b: 1, c: 2 } }, { "a.c": null })).toEqual({ a: { b: 1, c: 2 }, "a.c": 2 });
+  expect(applyDefaults({ a: { b: 1, c: () => {} } }, { "a.c": null })).toEqual({ a: { b: 1, c: {} }, "a.c": {} });
+  expect(applyDefaults({ a: { b: 1, c: () => {} } }, { "a.c.d": null })).toEqual({ a: { b: 1, c: {} }, "a.c.d": null });
+  expect(applyDefaults({ a: { b: 1 } }, { "a.b": null })).toEqual({ a: { b: 1 }, "a.b": 1 });
+  expect(applyDefaults({ a: { b: { c: 1 } } }, { "a.b": null })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1 } });
+  expect(applyDefaults({ a: {} }, { "a.b": null })).toEqual({ a: {}, "a.b": null });
+  expect(applyDefaults({ a: {} }, { "a": { b: 1 }, "a.b": null })).toEqual({ a: { b: 1 }, "a.b": null });
+  expect(applyDefaults({ a: 1 }, { "a.b": null })).toEqual({ a: 1, "a.b": null });
   expect(applyDefaults({ a: 1 }, { "a.b": 2 })).toEqual({ a: 1, "a.b": 2 });
   expect(applyDefaults({ a: null }, { "a.b": 2 })).toEqual({ a: null, "a.b": 2 });
   expect(applyDefaults({ a: { b: { c: 1 } } }, { "a.b": { d: 2 } })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1, d: 2 } });
-  expect(applyDefaults({ a: { b: { c: 1 } } }, { "a.b": null })).toEqual({ a: { b: { c: 1 } } });
+  expect(applyDefaults({ a: { b: { c: 1 } } }, { "a.b": null })).toEqual({ a: { b: { c: 1 } }, "a.b": { c: 1 } });
   expect(applyDefaults({ a: { b: { c: { d: 1 } } } }, { "a.b.c": {} })).toEqual({ a: { b: { c: { d: 1 } } }, "a.b.c": { d: 1 } });
   expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b": { d: 2 } })).toEqual({ a: {}, "a.b": { c: 1, d: 2 } });
+  expect(applyDefaults({ a: () => () => ({ d: 1 }) }, { "a.b": null })).toEqual({ a: {}, "a.b": null });
   expect(applyDefaults({ a: () => () => ({ d: 1 }) }, { "a.b.c": {} })).toEqual({ a: {}, "a.b.c": { d: 1 } });
   expect(applyDefaults({ a: { b: () => ({ c: 1, d: 2 }) } }, { "a.b.x-y.c": 3 })).toEqual({ a: { b: {} }, "a.b.x-y.c": 3 });
+  expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b.d": 2 })).toEqual({ a: {}, "a.b.d": 2 });
+  expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b.d": 2, "a.e.d": 3 })).toEqual({ a: {}, "a.b.d": 2, "a.e.d": 3 });
+  expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b.d": 2, a: { b: { d: 3 } } })).toEqual({ a: { b: { c: 1, d: 3 } }, "a.b.d": 2 });
+  expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b.d": 2, a: { e: { d: 3 } } })).toEqual({ a: { e: { c: 1, d: 3 } }, "a.b.d": 2 });
+  expect(applyDefaults({ a: () => ({ c: 1 }) }, { "a.b": { d: { e: 2 } }, "a.b.d": null })).toEqual({ a: {}, "a.b": { c: 1, d: { e: 2 } }, "a.b.d": null });
 });
 
 export function applyProjectDefaults<T extends ProjectRenderedConfigBeforeDefaults>(config: T) {
@@ -746,14 +940,10 @@ export async function sanitizeEnvironmentConfig<T extends EnvironmentRenderedCon
 export async function sanitizeOrganizationConfig(config: OrganizationRenderedConfigBeforeSanitization) {
   assertNormalized(config);
   const prepared = await sanitizeEnvironmentConfig(config);
-  const themes: typeof prepared.emails.themes = {
-    ...DEFAULT_EMAIL_THEMES,
-    ...prepared.emails.themes,
-  };
-  const templates: typeof prepared.emails.templates = {
-    ...DEFAULT_EMAIL_TEMPLATES,
-    ...(config.emails.server.isShared ? {} : prepared.emails.templates),
-  };
+
+  const themes: typeof prepared.emails.themes = prepared.emails.themes;
+  const templates: typeof prepared.emails.templates = config.emails.server.isShared ? DEFAULT_EMAIL_TEMPLATES : prepared.emails.templates;
+
   const products = typedFromEntries(typedEntries(prepared.payments.products).map(([key, product]) => {
     const isAddOnTo = product.isAddOnTo === false ?
       false as const :
@@ -773,8 +963,27 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
 
   const appSortIndices = new Map(Object.keys(ALL_APPS).map((appId, index) => [appId, index]));
 
+  // Get all sign-up rules and sort by priority (descending), then by ID (alphabetically)
+  // Note: We don't filter out disabled rules here because the dashboard needs to show them
+  // The runtime evaluation in sign-up-rules.ts handles skipping disabled rules
+  const sortedRuleEntries = typedEntries(prepared.auth.signUpRules)
+    .sort((a, b) => {
+      const priorityA = a[1].priority;
+      const priorityB = b[1].priority;
+      if (priorityA !== priorityB) return priorityB - priorityA;
+      return stringCompare(a[0], b[0]);
+    });
+
   return {
     ...prepared,
+    auth: {
+      ...prepared.auth,
+      oauth: {
+        ...prepared.auth.oauth,
+        providers: typedFromEntries(typedEntries(prepared.auth.oauth.providers).filter(([key, value]) => value.type !== undefined)),
+      },
+      signUpRules: typedFromEntries(sortedRuleEntries),
+    },
     emails: {
       ...prepared.emails,
       selectedThemeId: has(themes, prepared.emails.selectedThemeId) ? prepared.emails.selectedThemeId : DEFAULT_EMAIL_THEME_ID,
@@ -813,6 +1022,30 @@ export async function getConfigOverrideErrors<T extends yup.AnySchema>(schema: T
   if (Object.getPrototypeOf(configOverride) !== Object.getPrototypeOf({})) {
     return Result.error("Config override must be plain old JavaScript object.");
   }
+
+  // Ensure that all keys with dots in them are at the top level of the object, not nested
+  const ensureNoDotsInKeys = (obj: unknown): Result<never, string> | undefined => {
+    if (typeof obj !== "object" || obj === null) {
+      return;
+    }
+    for (const entry of Object.entries(obj)) {
+      if (entry[0].includes(".")) {
+        return Result.error(`Key ${entry[0]} contains a dot, which is not allowed in config override.`);
+      }
+      const result = ensureNoDotsInKeys(entry[1]);
+      if (result) {
+        return result;
+      }
+    }
+    return;
+  };
+  for (const key of Object.keys(configOverride)) {
+    const result = ensureNoDotsInKeys(configOverride[key as keyof typeof configOverride]);
+    if (result) {
+      return result;
+    }
+  }
+
   // Check config format
   const reason = getInvalidConfigReason(configOverride, { configName: 'override' });
   if (reason) return Result.error("Invalid config format: " + reason);
@@ -863,7 +1096,7 @@ export async function getConfigOverrideErrors<T extends yup.AnySchema>(schema: T
         // This is how the implementation would look like, but we don't support arrays in config JSON files (besides tuples)
         // const arraySchema = schema as yup.ArraySchema<any, any, any, any>;
         // const innerType = arraySchema.innerType;
-        // return yupArray(innerType ? getRestrictedSchema(path + ".[]", innerType as any) : undefined);
+        // return yupArray(innerType ? getRestrictedSchema(path + ".[]", innerType as any) : undefined());
       }
       case "tuple": {
         return yupTuple(schemaInfo.items.map((s, index) => getRestrictedSchema(path + `[${index}]`, s)) as any);
@@ -980,7 +1213,61 @@ typeAssertExtends<_ValidatedToHaveNoConfigOverrideErrorsImpl<{ a: { b: { c: stri
  */
 export async function getIncompleteConfigWarnings<T extends yup.AnySchema>(schema: T, incompleteConfig: Config): Promise<Result<null, string>> {
   // every rendered config should also be a config override without errors (regardless of whether it has warnings or not)
-  await assertNoConfigOverrideErrors(schema, incompleteConfig, { allowPropertiesThatCanNoLongerBeOverridden: true });
+  const overrideErrors = await getConfigOverrideErrors(schema, incompleteConfig, { allowPropertiesThatCanNoLongerBeOverridden: true });
+  if (overrideErrors.status === "error") {
+    return overrideErrors;
+  }
+
+  // Check for dot-notation keys that would be silently dropped during rendering.
+  // We simulate the rendering pipeline: apply all defaults, then normalize with
+  // onDotIntoNonObject: "ignore" (same as the actual renderer). Any key that gets
+  // dropped during normalization (because a parent doesn't exist or isn't an object)
+  // means it dots into nothing — the user's change would be silently lost.
+  const withDefaults = applyDefaults(
+    organizationConfigDefaults,
+    applyDefaults(projectConfigDefaults, incompleteConfig),
+  );
+  const droppedKeys: string[] = [];
+  const normalizedWithDefaults = normalize(withDefaults as Config, { onDotIntoNonObject: "ignore", droppedKeys });
+
+  // Only report keys that were in the original incomplete config, not anything from defaults
+  const incompleteConfigDotKeys = new Set(
+    Object.keys(incompleteConfig).filter(k => k.includes('.') && incompleteConfig[k] !== undefined)
+  );
+  const relevantDroppedKeys = droppedKeys.filter(k => incompleteConfigDotKeys.has(k));
+
+  if (relevantDroppedKeys.length > 0) {
+    const messages = relevantDroppedKeys.map(key => {
+      const segments = key.split('.');
+
+      // Walk the normalized config to find the deepest existing parent
+      let current: unknown = normalizedWithDefaults;
+      let lastExistingIdx = -1;
+      for (let i = 0; i < segments.length - 1; i++) {
+        if (current != null && typeof current === 'object' && !Array.isArray(current) && segments[i] in (current as Record<string, unknown>)) {
+          current = (current as Record<string, unknown>)[segments[i]];
+          lastExistingIdx = i;
+        } else {
+          break;
+        }
+      }
+
+      // The non-existent parent is one level deeper than the last existing segment
+      const nonExistentParent = segments.slice(0, lastExistingIdx + 2).join('.');
+
+      // Build a suggested nested object notation starting from the non-existent parent
+      const remainingSegments = segments.slice(lastExistingIdx + 2);
+      let suggestion = '...';
+      for (let i = remainingSegments.length - 1; i >= 0; i--) {
+        suggestion = `{ ${JSON.stringify(remainingSegments[i])}: ${suggestion} }`;
+      }
+      suggestion = `{ ${JSON.stringify(nonExistentParent)}: ${suggestion} }`;
+
+      return `Dot-notation key ${JSON.stringify(key)} will be silently ignored because it references non-existent parent ${JSON.stringify(nonExistentParent)}. Instead of dot notation, use nested object notation like this: ${suggestion}`;
+    });
+
+    return Result.error(messages.join('\n'));
+  }
 
   let normalized: Config;
   try {

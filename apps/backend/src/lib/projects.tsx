@@ -1,5 +1,5 @@
+import { Prisma } from "@/generated/prisma/client";
 import { uploadAndGetUrl } from "@/s3";
-import { Prisma } from "@prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { CompleteConfig, EnvironmentConfigOverrideOverride, ProjectConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -41,6 +41,7 @@ export async function listManagedProjectIds(projectUser: UsersCrud["Admin"]["Rea
 export function getProjectQuery(projectId: string): RawQuery<Promise<Omit<ProjectsCrud["Admin"]["Read"], "config"> | null>> {
   return {
     supportedPrismaClients: ["global"],
+    readOnlyQuery: true,
     sql: Prisma.sql`
           SELECT "Project".*
           FROM "Project"
@@ -65,6 +66,7 @@ export function getProjectQuery(projectId: string): RawQuery<Promise<Omit<Projec
         created_at_millis: new Date(row.createdAt + "Z").getTime(),
         is_production_mode: row.isProductionMode,
         owner_team_id: row.ownerTeamId,
+        onboarding_status: row.onboardingStatus,
       };
     },
   };
@@ -100,22 +102,37 @@ export async function createOrUpdateProjectWithLegacyConfig(
   }
 
   const [projectId, branchId] = await retryTransaction(globalPrismaClient, async (tx) => {
+    const onboardingStatusColumnExistsRows = await tx.$queryRaw<Array<{ exists: boolean }>>`
+      SELECT EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'Project'
+          AND column_name = 'onboardingStatus'
+      ) AS "exists"
+    `;
+    const onboardingStatusColumnExists = onboardingStatusColumnExistsRows[0]?.exists === true;
+
     let project: Prisma.ProjectGetPayload<{}>;
     let branchId: string;
     if (options.type === "create") {
       branchId = DEFAULT_BRANCH_ID;
+      const createData: Prisma.ProjectCreateInput = {
+        id: options.projectId ?? generateUuid(),
+        displayName: options.data.display_name,
+        description: options.data.description ?? "",
+        isProductionMode: options.data.is_production_mode ?? false,
+        ownerTeamId: options.data.owner_team_id,
+        logoUrl: logoUrls['logo_url'],
+        logoFullUrl: logoUrls['logo_full_url'],
+        logoDarkModeUrl: logoUrls['logo_dark_mode_url'],
+        logoFullDarkModeUrl: logoUrls['logo_full_dark_mode_url'],
+      };
+      if (onboardingStatusColumnExists && options.data.onboarding_status !== undefined) {
+        createData.onboardingStatus = options.data.onboarding_status;
+      }
       project = await tx.project.create({
-        data: {
-          id: options.projectId ?? generateUuid(),
-          displayName: options.data.display_name,
-          description: options.data.description ?? "",
-          isProductionMode: options.data.is_production_mode ?? false,
-          ownerTeamId: options.data.owner_team_id,
-          logoUrl: logoUrls['logo_url'],
-          logoFullUrl: logoUrls['logo_full_url'],
-          logoDarkModeUrl: logoUrls['logo_dark_mode_url'],
-          logoFullDarkModeUrl: logoUrls['logo_full_dark_mode_url'],
-        },
+        data: createData,
       });
 
       await tx.tenancy.create({
@@ -137,19 +154,24 @@ export async function createOrUpdateProjectWithLegacyConfig(
         throw new KnownErrors.ProjectNotFound(options.projectId);
       }
 
+      const updateData: Prisma.ProjectUpdateInput = {
+        displayName: options.data.display_name,
+        description: options.data.description === null ? "" : options.data.description,
+        isProductionMode: options.data.is_production_mode,
+        logoUrl: logoUrls['logo_url'],
+        logoFullUrl: logoUrls['logo_full_url'],
+        logoDarkModeUrl: logoUrls['logo_dark_mode_url'],
+        logoFullDarkModeUrl: logoUrls['logo_full_dark_mode_url'],
+      };
+      if (onboardingStatusColumnExists && options.data.onboarding_status !== undefined) {
+        updateData.onboardingStatus = options.data.onboarding_status;
+      }
+
       project = await tx.project.update({
         where: {
           id: projectFound.id,
         },
-        data: {
-          displayName: options.data.display_name,
-          description: options.data.description === null ? "" : options.data.description,
-          isProductionMode: options.data.is_production_mode,
-          logoUrl: logoUrls['logo_url'],
-          logoFullUrl: logoUrls['logo_full_url'],
-          logoDarkModeUrl: logoUrls['logo_dark_mode_url'],
-          logoFullDarkModeUrl: logoUrls['logo_full_dark_mode_url'],
-        },
+        data: updateData,
       });
       branchId = options.branchId;
     }
@@ -188,6 +210,7 @@ export async function createOrUpdateProjectWithLegacyConfig(
             clientSecret: provider.client_secret,
             facebookConfigId: provider.facebook_config_id,
             microsoftTenantId: provider.microsoft_tenant_id,
+            appleBundles: provider.apple_bundle_ids ? typedFromEntries(provider.apple_bundle_ids.map(bundleId => [generateUuid(), { bundleId }] as const)) : undefined,
             allowSignIn: true,
             allowConnectedAccounts: true,
           } satisfies CompleteConfig['auth']['oauth']['providers'][string]
@@ -222,12 +245,16 @@ export async function createOrUpdateProjectWithLegacyConfig(
       senderName: dataOptions.email_config.sender_name,
       senderEmail: dataOptions.email_config.sender_email,
       provider: "smtp",
+      managedSubdomain: undefined,
+      managedSenderLocalPart: undefined,
     } satisfies CompleteConfig['emails']['server'] : undefined,
     'emails.selectedThemeId': dataOptions.email_theme,
     // ======================= rbac =======================
     'rbac.defaultPermissions.teamMember': translateDefaultPermissions(dataOptions.team_member_default_permissions),
     'rbac.defaultPermissions.teamCreator': translateDefaultPermissions(dataOptions.team_creator_default_permissions),
     'rbac.defaultPermissions.signUp': translateDefaultPermissions(dataOptions.user_default_permissions),
+    // ======================= onboarding =======================
+    'onboarding.requireEmailVerification': dataOptions.require_email_verification,
   });
 
   if (options.type === "create") {

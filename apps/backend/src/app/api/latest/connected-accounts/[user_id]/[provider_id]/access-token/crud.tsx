@@ -1,15 +1,14 @@
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
 import { getProvider } from "@/oauth";
-import { TokenSet } from "@/oauth/providers/base";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { connectedAccountAccessTokenCrud } from "@stackframe/stack-shared/dist/interface/crud/connected-accounts";
 import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
+import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
-import { extractScopes } from "@stackframe/stack-shared/dist/utils/strings";
+import { retrieveOrRefreshAccessToken } from "../../../access-token-helpers";
 
 
 export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() => createCrudHandlers(connectedAccountAccessTokenCrud, {
@@ -29,7 +28,7 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() => cre
 
     const provider = { id: providerRaw[0], ...providerRaw[1] };
 
-    if (provider.isShared && getEnvVariable('STACK_ALLOW_SHARED_OAUTH_ACCESS_TOKENS') !== 'true') {
+    if (provider.isShared && !getNodeEnvironment().includes('prod') && getEnvVariable('STACK_ALLOW_SHARED_OAUTH_ACCESS_TOKENS', '') !== 'true') {
       throw new KnownErrors.OAuthAccessTokenNotAvailableWithSharedOAuthKeys();
     }
 
@@ -39,132 +38,34 @@ export const connectedAccountAccessTokenCrudHandlers = createLazyProxy(() => cre
     }
 
     const providerInstance = await getProvider(provider);
-
-    // ====================== retrieve access token if it exists ======================
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
-    const accessTokens = await prisma.oAuthAccessToken.findMany({
+
+    // Legacy endpoint: search tokens across ALL accounts for this provider and user
+    const oauthAccounts = await prisma.projectUserOAuthAccount.findMany({
       where: {
         tenancyId: auth.tenancy.id,
-        projectUserOAuthAccount: {
-          projectUserId: params.user_id,
-          configOAuthProviderId: params.provider_id,
-        },
-        expiresAt: {
-          // is at least 5 minutes in the future
-          gt: new Date(Date.now() + 5 * 60 * 1000),
-        },
-        isValid: true,
+        projectUserId: params.user_id,
+        configOAuthProviderId: params.provider_id,
       },
-      include: {
-        projectUserOAuthAccount: true,
-      },
+      select: { id: true },
     });
-    const filteredTokens = accessTokens.filter((t) => {
-      return extractScopes(data.scope || "").every((scope) => t.scopes.includes(scope));
-    });
-    for (const token of filteredTokens) {
-      // some providers (particularly GitHub) invalidate access tokens on the server-side, in which case we want to request a new access token
-      if (await providerInstance.checkAccessTokenValidity(token.accessToken)) {
-        return { access_token: token.accessToken };
-      } else {
-        // mark the token as invalid
-        await prisma.oAuthAccessToken.update({
-          where: {
-            id: token.id,
-          },
-          data: {
-            isValid: false,
-          },
-        });
-      }
+
+    if (oauthAccounts.length === 0) {
+      throw new KnownErrors.OAuthConnectionNotConnectedToUser();
     }
 
-    // ============== no valid access token found, try to refresh the token ==============
-
-    const refreshTokens = await prisma.oAuthToken.findMany({
-      where: {
+    return await retrieveOrRefreshAccessToken({
+      prisma,
+      providerInstance,
+      tenancyId: auth.tenancy.id,
+      oauthAccountIds: oauthAccounts.map(a => a.id),
+      scope: data.scope,
+      errorContext: {
         tenancyId: auth.tenancy.id,
-        projectUserOAuthAccount: {
-          projectUserId: params.user_id,
-          configOAuthProviderId: params.provider_id,
-        },
-        isValid: true,
-      },
-      include: {
-        projectUserOAuthAccount: true,
+        providerId: params.provider_id,
+        userId: params.user_id,
+        scope: data.scope,
       },
     });
-
-    const filteredRefreshTokens = refreshTokens.filter((t) => {
-      return extractScopes(data.scope || "").every((scope) => t.scopes.includes(scope));
-    });
-
-    if (filteredRefreshTokens.length === 0) {
-      throw new KnownErrors.OAuthConnectionDoesNotHaveRequiredScope();
-    }
-
-    for (const token of filteredRefreshTokens) {
-      let tokenSet: TokenSet;
-      try {
-        tokenSet = await providerInstance.getAccessToken({
-          refreshToken: token.refreshToken,
-          scope: data.scope,
-        });
-      } catch (error) {
-        captureError('oauth-access-token-refresh-error', new StackAssertionError('Error refreshing access token — this might be nothing bad and the refresh token might just be expired, but we should instead of throwing an error check whether this is a legit error or not', {
-          error,
-          tenancyId: auth.tenancy.id,
-          providerId: params.provider_id,
-          userId: params.user_id,
-          refreshToken: token.refreshToken,
-          scope: data.scope,
-        }));
-
-        // mark the token as invalid
-        await prisma.oAuthToken.update({
-          where: { id: token.id },
-          data: { isValid: false },
-        });
-
-        continue;
-      }
-
-      if (tokenSet.accessToken) {
-        await prisma.oAuthAccessToken.create({
-          data: {
-            tenancyId: auth.tenancy.id,
-            accessToken: tokenSet.accessToken,
-            oauthAccountId: token.projectUserOAuthAccount.id,
-            scopes: token.scopes,
-            expiresAt: tokenSet.accessTokenExpiredAt
-          }
-        });
-
-        if (tokenSet.refreshToken) {
-          // mark the old token as invalid, add the new token to the DB
-          const oldToken = token;
-          await prisma.oAuthToken.update({
-            where: { id: oldToken.id },
-            data: { isValid: false },
-          });
-          await prisma.oAuthToken.create({
-            data: {
-              tenancyId: auth.tenancy.id,
-              refreshToken: tokenSet.refreshToken,
-              oauthAccountId: oldToken.projectUserOAuthAccount.id,
-              scopes: oldToken.scopes,
-            }
-          });
-        }
-
-        return { access_token: tokenSet.accessToken };
-      } else {
-        throw new StackAssertionError("No access token returned");
-      }
-    }
-
-    throw new KnownErrors.OAuthConnectionDoesNotHaveRequiredScope();
   },
 }));
-
-

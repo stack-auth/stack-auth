@@ -1,4 +1,4 @@
-import { api, dashboard, docs } from '@/.source';
+import { api, docs } from '@/.source';
 import { loader } from 'fumadocs-core/source';
 import { attachFile } from 'fumadocs-openapi/server';
 import { icons } from 'lucide-react';
@@ -33,16 +33,6 @@ export const source = loader({
 export const apiSource = loader({
   baseUrl: '/api',
   source: api.toFumadocsSource(),
-  pageTree: {
-    attachFile,
-  },
-  icon: createIconResolver(),
-});
-
-// Dashboard source for /dashboard routes
-export const dashboardSource = loader({
-  baseUrl: '/dashboard',
-  source: dashboard.toFumadocsSource(),
   pageTree: {
     attachFile,
   },

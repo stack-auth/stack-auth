@@ -68,7 +68,8 @@ function TeamInvitationInner(props: { fullPage?: boolean, searchParams: Record<s
 
 export function TeamInvitation({ fullPage=false, searchParams }: { fullPage?: boolean, searchParams: Record<string, string> }) {
   const { t } = useTranslation();
-  const user = useUser();
+  // Include restricted users to detect if user needs to complete onboarding
+  const user = useUser({ includeRestricted: true });
   const stackApp = useStackApp();
 
   const invalidJsx = (
@@ -105,6 +106,22 @@ export function TeamInvitation({ fullPage=false, searchParams }: { fullPage?: bo
         secondaryAction={() => stackApp.redirectToHome()}
       >
         <Typography>{t('Sign in or create an account to join the team.')}</Typography>
+      </MessageCard>
+    );
+  }
+
+  // User is restricted (needs to complete onboarding) - redirect to onboarding
+  if (user.isRestricted) {
+    return (
+      <MessageCard
+        title={t('Complete your account setup')}
+        fullPage={fullPage}
+        primaryButtonText={t('Complete setup')}
+        primaryAction={() => stackApp.redirectToOnboarding()}
+        secondaryButtonText={t('Cancel')}
+        secondaryAction={() => stackApp.redirectToHome()}
+      >
+        <Typography>{t('Please complete your account setup before joining teams.')}</Typography>
       </MessageCard>
     );
   }

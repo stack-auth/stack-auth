@@ -1,5 +1,5 @@
 import { ServerUser } from '@stackframe/stack';
-import { ActionDialog, CopyField, Typography } from "@stackframe/stack-ui";
+import { ActionDialog, CopyField, Typography } from "@/components/ui";
 import { useRouter } from './router';
 
 

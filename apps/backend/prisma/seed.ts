@@ -2,21 +2,28 @@
 import { teamMembershipsCrudHandlers } from '@/app/api/latest/team-memberships/crud';
 import { teamsCrudHandlers } from '@/app/api/latest/teams/crud';
 import { usersCrudHandlers } from '@/app/api/latest/users/crud';
-import { overrideEnvironmentConfigOverride } from '@/lib/config';
+import { CustomerType, EmailOutboxCreatedWith, Prisma, PurchaseCreationSource, SubscriptionStatus } from '@/generated/prisma/client';
+import { overrideBranchConfigOverride, overrideEnvironmentConfigOverride, setBranchConfigOverrideSource } from '@/lib/config';
+import {
+  LOCAL_EMULATOR_ADMIN_EMAIL,
+  LOCAL_EMULATOR_ADMIN_PASSWORD,
+  LOCAL_EMULATOR_ADMIN_USER_ID,
+  LOCAL_EMULATOR_OWNER_TEAM_ID,
+  isLocalEmulatorEnabled,
+} from '@/lib/local-emulator';
 import { ensurePermissionDefinition, grantTeamPermission } from '@/lib/permissions';
 import { createOrUpdateProjectWithLegacyConfig, getProject } from '@/lib/projects';
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from '@/lib/tenancies';
-import { getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
-import { CustomerType, Prisma, PrismaClient, PurchaseCreationSource, SubscriptionStatus } from '@prisma/client';
+import { getPrismaClientForTenancy, globalPrismaClient, PrismaClientTransaction } from '@/prisma-client';
 import { ALL_APPS } from '@stackframe/stack-shared/dist/apps/apps-config';
 import { DEFAULT_EMAIL_THEME_ID } from '@stackframe/stack-shared/dist/helpers/emails';
 import { AdminUserProjectsCrud, ProjectsCrud } from '@stackframe/stack-shared/dist/interface/crud/projects';
+import { ITEM_IDS, PLAN_LIMITS } from '@stackframe/stack-shared/dist/plans';
 import { DayInterval } from '@stackframe/stack-shared/dist/utils/dates';
 import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { typedEntries, typedFromEntries } from '@stackframe/stack-shared/dist/utils/objects';
 import { generateUuid } from '@stackframe/stack-shared/dist/utils/uuids';
 
-const globalPrisma = new PrismaClient();
 const DUMMY_PROJECT_ID = '6fbbf22e-f4b2-4c6e-95a1-beab6fa41063';
 const EXPLORATORY_TEAM_DISPLAY_NAME = 'Exploratory Research and Insight Partnership With Very Long Collaborative Name For Testing';
 
@@ -37,15 +44,11 @@ export async function seed() {
   const signUpEnabled = process.env.STACK_SEED_INTERNAL_PROJECT_SIGN_UP_ENABLED === 'true';
   const allowLocalhost = process.env.STACK_SEED_INTERNAL_PROJECT_ALLOW_LOCALHOST === 'true';
 
-  const emulatorEnabled = process.env.STACK_EMULATOR_ENABLED === 'true';
-  const emulatorProjectId = process.env.STACK_EMULATOR_PROJECT_ID;
+  const localEmulatorEnabled = isLocalEmulatorEnabled();
 
   const apiKeyId = '3142e763-b230-44b5-8636-aa62f7489c26';
   const defaultUserId = '33e7c043-d2d1-4187-acd3-f91b5ed64b46';
   const internalTeamId = 'a23e1b7f-ab18-41fc-9ee6-7a9ca9fa543c';
-  const emulatorAdminUserId = '63abbc96-5329-454a-ba56-e0460173c6c1';
-  const emulatorAdminTeamId = '5a0c858b-d9e9-49d4-9943-8ce385d86428';
-
   let internalProject = await getProject('internal');
 
   if (!internalProject) {
@@ -97,10 +100,14 @@ export async function seed() {
     },
   });
 
-  await overrideEnvironmentConfigOverride({
+  await overrideBranchConfigOverride({
     projectId: 'internal',
     branchId: DEFAULT_BRANCH_ID,
-    environmentConfigOverrideOverride: {
+    branchConfigOverrideOverride: {
+      // Disable email verification for internal project - dashboard admins shouldn't need to verify their email
+      onboarding: {
+        requireEmailVerification: false,
+      },
       dataVault: {
         stores: {
           'neon-connection-strings': {
@@ -109,14 +116,30 @@ export async function seed() {
         }
       },
       payments: {
-        catalogs: {
+        productLines: {
           plans: {
             displayName: "Plans",
-          }
+            customerType: "team",
+          },
         },
         products: {
+          free: {
+            productLineId: "plans",
+            displayName: "Free",
+            customerType: "team",
+            serverOnly: false,
+            stackable: false,
+            prices: "include-by-default",
+            includedItems: {
+              [ITEM_IDS.seats]: { quantity: PLAN_LIMITS.free.seats, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.authUsers]: { quantity: PLAN_LIMITS.free.authUsers, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.emailsPerMonth]: { quantity: PLAN_LIMITS.free.emailsPerMonth, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.analyticsTimeoutSeconds]: { quantity: PLAN_LIMITS.free.analyticsTimeoutSeconds, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.analyticsEvents]: { quantity: PLAN_LIMITS.free.analyticsEvents, repeat: "never" as const, expires: "when-purchase-expires" as const },
+            },
+          },
           team: {
-            catalogId: "plans",
+            productLineId: "plans",
             displayName: "Team",
             customerType: "team",
             serverOnly: false,
@@ -125,19 +148,19 @@ export async function seed() {
               monthly: {
                 USD: "49",
                 interval: [1, "month"] as any,
-                serverOnly: false
-              }
+                serverOnly: false,
+              },
             },
             includedItems: {
-              dashboard_admins: {
-                quantity: 3,
-                repeat: "never",
-                expires: "when-purchase-expires"
-              }
-            }
+              [ITEM_IDS.seats]: { quantity: PLAN_LIMITS.team.seats, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.authUsers]: { quantity: PLAN_LIMITS.team.authUsers, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.emailsPerMonth]: { quantity: PLAN_LIMITS.team.emailsPerMonth, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.analyticsTimeoutSeconds]: { quantity: PLAN_LIMITS.team.analyticsTimeoutSeconds, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.analyticsEvents]: { quantity: PLAN_LIMITS.team.analyticsEvents, repeat: "never" as const, expires: "when-purchase-expires" as const },
+            },
           },
           growth: {
-            catalogId: "plans",
+            productLineId: "plans",
             displayName: "Growth",
             customerType: "team",
             serverOnly: false,
@@ -146,63 +169,45 @@ export async function seed() {
               monthly: {
                 USD: "299",
                 interval: [1, "month"] as any,
-                serverOnly: false
-              }
+                serverOnly: false,
+              },
             },
             includedItems: {
-              dashboard_admins: {
-                quantity: 5,
-                repeat: "never",
-                expires: "when-purchase-expires"
-              }
-            }
+              [ITEM_IDS.seats]: { quantity: PLAN_LIMITS.growth.seats, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.authUsers]: { quantity: PLAN_LIMITS.growth.authUsers, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.emailsPerMonth]: { quantity: PLAN_LIMITS.growth.emailsPerMonth, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.analyticsTimeoutSeconds]: { quantity: PLAN_LIMITS.growth.analyticsTimeoutSeconds, repeat: "never" as const, expires: "when-purchase-expires" as const },
+              [ITEM_IDS.analyticsEvents]: { quantity: PLAN_LIMITS.growth.analyticsEvents, repeat: "never" as const, expires: "when-purchase-expires" as const },
+            },
           },
-          free: {
-            catalogId: "plans",
-            displayName: "Free",
-            customerType: "team",
-            serverOnly: false,
-            stackable: false,
-            prices: "include-by-default",
-            includedItems: {
-              dashboard_admins: {
-                quantity: 1,
-                repeat: "never",
-                expires: "when-purchase-expires"
-              }
-            }
-          },
-          "extra-admins": {
-            catalogId: "plans",
-            displayName: "Extra Admins",
+          "extra-seats": {
+            productLineId: "plans",
+            displayName: "Extra Seats",
             customerType: "team",
             serverOnly: false,
             stackable: true,
             prices: {
               monthly: {
-                USD: "49",
+                USD: "29",
                 interval: [1, "month"] as any,
-                serverOnly: false
-              }
+                serverOnly: false,
+              },
             },
             includedItems: {
-              dashboard_admins: {
-                quantity: 1,
-                repeat: "never",
-                expires: "when-purchase-expires"
-              }
+              [ITEM_IDS.seats]: { quantity: 1, repeat: "never" as const, expires: "when-purchase-expires" as const },
             },
             isAddOnTo: {
               team: true,
               growth: true,
-            }
-          }
+            },
+          },
         },
         items: {
-          dashboard_admins: {
-            displayName: "Dashboard Admins",
-            customerType: "team"
-          }
+          [ITEM_IDS.seats]: { displayName: "Dashboard Admins", customerType: "team" as const },
+          [ITEM_IDS.authUsers]: { displayName: "Auth Users", customerType: "team" as const },
+          [ITEM_IDS.emailsPerMonth]: { displayName: "Emails per Month", customerType: "team" as const },
+          [ITEM_IDS.analyticsTimeoutSeconds]: { displayName: "Analytics Timeout (seconds)", customerType: "team" as const },
+          [ITEM_IDS.analyticsEvents]: { displayName: "Analytics Events", customerType: "team" as const },
         },
       },
       apps: {
@@ -264,7 +269,6 @@ export async function seed() {
   const shouldSeedDummyProject = process.env.STACK_SEED_ENABLE_DUMMY_PROJECT === 'true';
   if (shouldSeedDummyProject) {
     await seedDummyProject({
-      globalPrismaClient,
       ownerTeamId: internalTeamId,
       oauthProviderIds,
     });
@@ -276,7 +280,7 @@ export async function seed() {
     superSecretAdminKey: process.env.STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY || throwErr('STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY is not set'),
   };
 
-  await globalPrisma.apiKeySet.upsert({
+  await globalPrismaClient.apiKeySet.upsert({
     where: { projectId_id: { projectId: 'internal', id: apiKeyId } },
     update: {
       ...keySet,
@@ -317,15 +321,8 @@ export async function seed() {
         }
       });
 
-      if (adminInternalAccess) {
-        await internalPrisma.teamMember.create({
-          data: {
-            tenancyId: internalTenancy.id,
-            teamId: internalTeamId,
-            projectUserId: defaultUserId,
-          },
-        });
-      }
+      // Note: TeamMember creation is handled by the upsert below (after this if/else block)
+      // to ensure idempotency when adminInternalAccess changes between runs
 
       if (adminEmail && adminPassword) {
         await usersCrudHandlers.adminUpdate({
@@ -381,24 +378,41 @@ export async function seed() {
       }
     }
 
-    await grantTeamPermission(internalPrisma, {
-      tenancy: internalTenancy,
-      teamId: internalTeamId,
-      userId: defaultUserId,
-      permissionId: "team_admin",
-    });
+    // Create or ensure TeamMember exists before granting permissions.
+    // Using upsert here (instead of create inside the else block above) ensures
+    // idempotency when adminInternalAccess changes between seed runs.
+    if (adminInternalAccess) {
+      await internalPrisma.teamMember.upsert({
+        where: {
+          tenancyId_projectUserId_teamId: {
+            tenancyId: internalTenancy.id,
+            projectUserId: defaultUserId,
+            teamId: internalTeamId,
+          },
+        },
+        create: {
+          tenancyId: internalTenancy.id,
+          teamId: internalTeamId,
+          projectUserId: defaultUserId,
+        },
+        update: {},
+      });
+
+      await grantTeamPermission(internalPrisma, {
+        tenancy: internalTenancy,
+        teamId: internalTeamId,
+        userId: defaultUserId,
+        permissionId: "team_admin",
+      });
+    }
   }
 
-  if (emulatorEnabled) {
-    if (!emulatorProjectId) {
-      throw new Error('STACK_EMULATOR_PROJECT_ID is not set');
-    }
-
+  if (localEmulatorEnabled) {
     const emulatorTeam = await internalPrisma.team.findUnique({
       where: {
         tenancyId_teamId: {
           tenancyId: internalTenancy.id,
-          teamId: emulatorAdminTeamId,
+          teamId: LOCAL_EMULATOR_OWNER_TEAM_ID,
         },
       },
     });
@@ -406,7 +420,7 @@ export async function seed() {
       await internalPrisma.team.create({
         data: {
           tenancyId: internalTenancy.id,
-          teamId: emulatorAdminTeamId,
+          teamId: LOCAL_EMULATOR_OWNER_TEAM_ID,
           displayName: 'Emulator Team',
           mirroredProjectId: "internal",
           mirroredBranchId: DEFAULT_BRANCH_ID,
@@ -419,73 +433,68 @@ export async function seed() {
       where: {
         mirroredProjectId: 'internal',
         mirroredBranchId: DEFAULT_BRANCH_ID,
-        projectUserId: emulatorAdminUserId,
+        projectUserId: LOCAL_EMULATOR_ADMIN_USER_ID,
       }
     });
 
     if (existingUser) {
       console.log('Emulator user already exists, skipping creation');
     } else {
-      const newEmulatorUser = await internalPrisma.projectUser.create({
+      await internalPrisma.projectUser.create({
         data: {
           displayName: 'Local Emulator User',
-          projectUserId: emulatorAdminUserId,
+          projectUserId: LOCAL_EMULATOR_ADMIN_USER_ID,
           tenancyId: internalTenancy.id,
           mirroredProjectId: 'internal',
           mirroredBranchId: DEFAULT_BRANCH_ID,
         }
       });
 
-      await internalPrisma.teamMember.create({
-        data: {
-          tenancyId: internalTenancy.id,
-          teamId: emulatorAdminTeamId,
-          projectUserId: newEmulatorUser.projectUserId,
-        },
-      });
-
-      await usersCrudHandlers.adminUpdate({
-        tenancy: internalTenancy,
-        user_id: newEmulatorUser.projectUserId,
-        data: {
-          password: 'LocalEmulatorPassword',
-          primary_email: 'local-emulator@stack-auth.com',
-          primary_email_auth_enabled: true,
-        },
-      });
-
       console.log('Created emulator user');
     }
 
-    const existingProject = await internalPrisma.project.findUnique({
+    await internalPrisma.teamMember.upsert({
       where: {
-        id: emulatorProjectId,
+        tenancyId_projectUserId_teamId: {
+          tenancyId: internalTenancy.id,
+          projectUserId: LOCAL_EMULATOR_ADMIN_USER_ID,
+          teamId: LOCAL_EMULATOR_OWNER_TEAM_ID,
+        },
+      },
+      create: {
+        tenancyId: internalTenancy.id,
+        teamId: LOCAL_EMULATOR_OWNER_TEAM_ID,
+        projectUserId: LOCAL_EMULATOR_ADMIN_USER_ID,
+      },
+      update: {},
+    });
+
+    await usersCrudHandlers.adminUpdate({
+      tenancy: internalTenancy,
+      user_id: LOCAL_EMULATOR_ADMIN_USER_ID,
+      data: {
+        password: LOCAL_EMULATOR_ADMIN_PASSWORD,
+        primary_email: LOCAL_EMULATOR_ADMIN_EMAIL,
+        primary_email_auth_enabled: true,
       },
     });
 
-    if (existingProject) {
-      console.log('Emulator project already exists, skipping creation');
-    } else {
-      await createOrUpdateProjectWithLegacyConfig({
-        projectId: emulatorProjectId,
-        type: 'create',
-        data: {
-          display_name: 'Emulator Project',
-          owner_team_id: emulatorAdminTeamId,
-          config: {
-            allow_localhost: true,
-            create_team_on_sign_up: false,
-            client_team_creation_enabled: false,
-            passkey_enabled: true,
-            oauth_providers: oauthProviderIds.map((id) => ({
-              id: id as any,
-              type: 'shared',
-            })),
-          }
+    const userTeamMembership = await internalPrisma.teamMember.findUnique({
+      where: {
+        tenancyId_projectUserId_teamId: {
+          tenancyId: internalTenancy.id,
+          projectUserId: LOCAL_EMULATOR_ADMIN_USER_ID,
+          teamId: LOCAL_EMULATOR_OWNER_TEAM_ID,
         },
-      });
-
-      console.log('Created emulator project');
+      },
+      select: {
+        projectUserId: true,
+      },
+    });
+    if (!userTeamMembership) {
+      throw new Error('Local emulator user must be a member of the local emulator owner team');
+    } else {
+      console.log('Ensured emulator user is a member of emulator team');
     }
   }
 
@@ -493,7 +502,6 @@ export async function seed() {
 }
 
 type DummyProjectSeedOptions = {
-  globalPrismaClient: PrismaClient,
   ownerTeamId: string,
   oauthProviderIds: string[],
 };
@@ -519,19 +527,20 @@ type UserSeed = {
 };
 
 type SeedDummyTeamsOptions = {
-  prisma: PrismaClient,
+  prisma: PrismaClientTransaction,
   tenancy: Tenancy,
 };
 
 type SeedDummyUsersOptions = {
-  prisma: PrismaClient,
+  prisma: PrismaClientTransaction,
   tenancy: Tenancy,
   teamNameToId: Map<string, string>,
 };
 
 type PaymentsSetup = {
   paymentsProducts: Record<string, unknown>,
-  paymentsOverride: Record<string, unknown>,
+  paymentsBranchOverride: Record<string, unknown>,
+  paymentsEnvironmentOverride: Record<string, unknown>,
 };
 
 async function seedDummyTeams(options: SeedDummyTeamsOptions): Promise<Map<string, string>> {
@@ -799,7 +808,7 @@ function buildDummyPaymentsSetup(): PaymentsSetup {
   const paymentsProducts = {
     'starter': {
       displayName: 'Starter',
-      catalogId: 'workspace',
+      productLineId: 'workspace',
       customerType: 'user',
       serverOnly: false,
       stackable: false,
@@ -827,7 +836,7 @@ function buildDummyPaymentsSetup(): PaymentsSetup {
     },
     'growth': {
       displayName: 'Growth',
-      catalogId: 'workspace',
+      productLineId: 'workspace',
       customerType: 'user',
       serverOnly: false,
       stackable: false,
@@ -863,7 +872,7 @@ function buildDummyPaymentsSetup(): PaymentsSetup {
     },
     'regression-addon': {
       displayName: 'Regression Add-on',
-      catalogId: 'add_ons',
+      productLineId: 'add_ons',
       customerType: 'user',
       serverOnly: false,
       stackable: true,
@@ -888,14 +897,16 @@ function buildDummyPaymentsSetup(): PaymentsSetup {
     },
   };
 
-  const paymentsOverride = {
-    testMode: true,
-    catalogs: {
+  // Branch config - products, items, productLines
+  const paymentsBranchOverride = {
+    productLines: {
       workspace: {
         displayName: 'Workspace Plans',
+        customerType: 'team',
       },
       add_ons: {
         displayName: 'Add-ons',
+        customerType: 'team',
       },
     },
     items: {
@@ -919,9 +930,15 @@ function buildDummyPaymentsSetup(): PaymentsSetup {
     products: paymentsProducts,
   };
 
+  // Environment config - only testMode
+  const paymentsEnvironmentOverride = {
+    testMode: true,
+  };
+
   return {
     paymentsProducts,
-    paymentsOverride,
+    paymentsBranchOverride,
+    paymentsEnvironmentOverride,
   };
 }
 
@@ -985,20 +1002,86 @@ async function seedDummyProject(options: DummyProjectSeedOptions) {
     tenancy: dummyTenancy,
     teamNameToId,
   });
-  const { paymentsProducts, paymentsOverride } = buildDummyPaymentsSetup();
+  const { paymentsProducts, paymentsBranchOverride, paymentsEnvironmentOverride } = buildDummyPaymentsSetup();
 
-  await overrideEnvironmentConfigOverride({
+  // Set branch-level config (products, items, productLines, apps)
+  await overrideBranchConfigOverride({
     projectId: DUMMY_PROJECT_ID,
     branchId: DEFAULT_BRANCH_ID,
-    environmentConfigOverrideOverride: {
-      payments: paymentsOverride as any,
+    branchConfigOverrideOverride: {
+      auth: {
+        signUpRulesDefaultAction: "allow",
+        signUpRules: {
+          "allow-dummy-domain": {
+            enabled: true,
+            displayName: "Allow @dummy.dev",
+            priority: 4,
+            condition: 'emailDomain == "dummy.dev"',
+            action: {
+              type: "allow",
+            },
+          },
+          "block-disposable-emails": {
+            enabled: true,
+            displayName: "Block disposable emails",
+            priority: 3,
+            condition: 'emailDomain.matches("(?i)mailinator\\\\.com|tempmail\\\\.com")',
+            action: {
+              type: "reject",
+              message: "Disposable emails are not allowed",
+            },
+          },
+          "restrict-free-domains": {
+            enabled: true,
+            displayName: "Restrict free email domains",
+            priority: 2,
+            condition: 'emailDomain in ["gmail.com", "yahoo.com", "outlook.com"]',
+            action: {
+              type: "restrict",
+            },
+          },
+          "log-test-prefix": {
+            enabled: true,
+            displayName: "Log test+ emails",
+            priority: 1,
+            condition: 'email.startsWith("test+")',
+            action: {
+              type: "log",
+            },
+          },
+        },
+      },
+      payments: paymentsBranchOverride as any,
       apps: {
         installed: typedFromEntries(typedEntries(ALL_APPS).map(([key]) => [key, { enabled: true }])),
       },
     },
   });
 
-  await options.globalPrismaClient.project.update({
+  // Set environment-level config (testMode)
+  await overrideEnvironmentConfigOverride({
+    projectId: DUMMY_PROJECT_ID,
+    branchId: DEFAULT_BRANCH_ID,
+    environmentConfigOverrideOverride: {
+      payments: paymentsEnvironmentOverride as any,
+    },
+  });
+
+  // Set the dummy project's branch config source to pushed-from-github with dummy values
+  await setBranchConfigOverrideSource({
+    projectId: DUMMY_PROJECT_ID,
+    branchId: DEFAULT_BRANCH_ID,
+    source: {
+      type: "pushed-from-github",
+      owner: "stack-auth",
+      repo: "dummy-config-repo",
+      branch: "main",
+      commit_hash: "abc123def456789",
+      config_file_path: "stack.config.json",
+    },
+  });
+
+  await globalPrismaClient.project.update({
     where: {
       id: DUMMY_PROJECT_ID,
     },
@@ -1027,11 +1110,18 @@ async function seedDummyProject(options: DummyProjectSeedOptions) {
     userEmailToId,
   });
 
+  await seedDummySessionReplays({
+    prisma: dummyPrisma,
+    tenancyId: dummyTenancy.id,
+    userEmailToId,
+    targetSessionReplayCount: 75
+  });
+
   console.log('Seeded dummy project data');
 }
 
 type TransactionsSeedOptions = {
-  prisma: PrismaClient,
+  prisma: PrismaClientTransaction,
   tenancyId: string,
   teamNameToId: Map<string, string>,
   userEmailToId: Map<string, string>,
@@ -1080,21 +1170,19 @@ type OneTimePurchaseSeed = {
 };
 
 type EmailSeedOptions = {
-  prisma: PrismaClient,
+  prisma: PrismaClientTransaction,
   tenancyId: string,
   userEmailToId: Map<string, string>,
 };
 
-type EmailSeed = {
+type EmailOutboxSeed = {
   id: string,
   subject: string,
-  to: string[],
-  senderConfig: Prisma.InputJsonValue,
   html?: string,
   text?: string,
-  error?: Prisma.InputJsonValue | null,
   createdAt: Date,
   userEmail?: string,
+  hasError?: boolean,
 };
 
 const cloneJson = <T>(value: T): T => JSON.parse(JSON.stringify(value)) as T;
@@ -1220,7 +1308,7 @@ async function seedDummyTransactions(options: TransactionsSeedOptions) {
       priceId: undefined,
       product: cloneJson({
         displayName: 'Legacy Enterprise Pilot',
-        catalogId: 'workspace',
+        productLineId: 'workspace',
         customerType: 'user',
         prices: 'include-by-default',
       }),
@@ -1395,7 +1483,7 @@ async function seedDummyTransactions(options: TransactionsSeedOptions) {
       priceId: 'one_time',
       product: cloneJson({
         displayName: 'Design Audit Pass',
-        catalogId: 'add_ons',
+        productLineId: 'add_ons',
         customerType: 'custom',
         prices: {
           one_time: {
@@ -1456,19 +1544,10 @@ async function seedDummyEmails(options: EmailSeedOptions) {
     return userId;
   };
 
-  const emailSeeds: EmailSeed[] = [
+  const emailSeeds: EmailOutboxSeed[] = [
     {
       id: DUMMY_SEED_IDS.emails.welcomeAmelia,
       subject: 'Welcome to Dummy Project',
-      to: ['amelia.chen@dummy.dev'],
-      senderConfig: {
-        type: 'standard',
-        host: 'smtp.stack.local',
-        port: 587,
-        username: 'stack-app',
-        senderName: 'Dummy Project',
-        senderEmail: 'hello@dummy.dev',
-      },
       html: '<p>Hi Amelia,<br/>Welcome to Dummy Project.</p>',
       text: 'Hi Amelia,\nWelcome to Dummy Project.',
       createdAt: new Date('2024-05-01T13:00:00.000Z'),
@@ -1477,15 +1556,6 @@ async function seedDummyEmails(options: EmailSeedOptions) {
     {
       id: DUMMY_SEED_IDS.emails.passkeyMilo,
       subject: 'Your passkey sign-in link',
-      to: ['milo.adeyemi@dummy.dev'],
-      senderConfig: {
-        type: 'standard',
-        host: 'smtp.stack.local',
-        port: 587,
-        username: 'auth-service',
-        senderName: 'Dummy Auth',
-        senderEmail: 'auth@dummy.dev',
-      },
       html: '<p>Complete your sign-in within <strong>10 minutes</strong>.</p>',
       text: 'Complete your sign-in within 10 minutes.',
       createdAt: new Date('2024-05-02T10:00:00.000Z'),
@@ -1494,88 +1564,65 @@ async function seedDummyEmails(options: EmailSeedOptions) {
     {
       id: DUMMY_SEED_IDS.emails.invitePriya,
       subject: 'Dashboard invite for Ops',
-      to: ['priya.narang@dummy.dev', 'ops@dummy.dev'],
-      senderConfig: {
-        type: 'standard',
-        host: 'smtp-relay.dummy.dev',
-        port: 2525,
-        username: 'relay-invite',
-        senderName: 'Stack Invitations',
-        senderEmail: 'invites@dummy.dev',
-      },
-      html: '<p>Your admin invitation could not be delivered.</p>',
-      error: {
-        message: 'Mailbox full',
-        code: 'MAILBOX_FULL',
-        smtpResponse: '552 Requested mail action aborted: exceeded storage allocation',
-      },
+      html: '<p>Welcome to the dashboard!</p>',
+      hasError: true,
       createdAt: new Date('2024-05-04T18:30:00.000Z'),
       userEmail: 'priya.narang@dummy.dev',
     },
     {
       id: DUMMY_SEED_IDS.emails.statusDigest,
       subject: 'Nightly status digest',
-      to: ['ops@dummy.dev', 'observer@dummy.dev'],
-      senderConfig: {
-        type: 'standard',
-        host: 'api.resend.com',
-        port: 443,
-        username: 'resend-live',
-        senderName: 'Dummy Alerts',
-        senderEmail: 'alerts@dummy.dev',
-      },
       text: 'All services operational. 3 warnings acknowledged.',
       createdAt: new Date('2024-05-06T07:45:00.000Z'),
     },
     {
       id: DUMMY_SEED_IDS.emails.templateFailure,
       subject: 'Template rendering failed - Review',
-      to: ['dev@dummy.dev'],
-      senderConfig: {
-        type: 'standard',
-        host: 'smtp.stack.local',
-        port: 465,
-        username: 'template-engine',
-        senderName: 'Dummy System',
-        senderEmail: 'system@dummy.dev',
-      },
       html: '<p>Rendering failed due to <code>undefined</code> data from billing.</p>',
-      error: {
-        message: 'Template render error',
-        stack: 'ReferenceError: account is not defined',
-      },
+      hasError: true,
       createdAt: new Date('2024-05-08T12:05:00.000Z'),
     },
   ];
 
   for (const email of emailSeeds) {
     const userId = resolveOptionalUserId(email.userEmail);
-    await prisma.sentEmail.upsert({
+    const recipient = userId
+      ? { type: 'user-primary-email', userId }
+      : { type: 'custom-emails', emails: ['unknown@dummy.dev'] };
+
+    await globalPrismaClient.emailOutbox.upsert({
       where: {
         tenancyId_id: {
           tenancyId,
           id: email.id,
         },
       },
-      update: {
-        subject: email.subject,
-        to: email.to,
-        senderConfig: email.senderConfig,
-        html: email.html ?? null,
-        text: email.text ?? null,
-        error: email.error ?? Prisma.JsonNull,
-        userId,
-      },
+      update: {},
       create: {
         tenancyId,
         id: email.id,
-        subject: email.subject,
-        to: email.to,
-        senderConfig: email.senderConfig,
-        html: email.html ?? null,
-        text: email.text ?? null,
-        error: email.error ?? Prisma.JsonNull,
-        userId,
+        tsxSource: '',
+        isHighPriority: false,
+        to: recipient,
+        extraRenderVariables: {},
+        shouldSkipDeliverabilityCheck: false,
+        createdWith: EmailOutboxCreatedWith.PROGRAMMATIC_CALL,
+        scheduledAt: email.createdAt,
+        // Rendering fields - renderedByWorkerId and startedRenderingAt must both be set or both be null
+        renderedByWorkerId: email.id, // use the email id as a dummy worker id
+        startedRenderingAt: email.createdAt,
+        finishedRenderingAt: email.createdAt,
+        renderedSubject: email.subject,
+        renderedHtml: email.html ?? null,
+        renderedText: email.text ?? null,
+        // Sending fields
+        startedSendingAt: email.createdAt,
+        finishedSendingAt: email.createdAt,
+        canHaveDeliveryInfo: false,
+        sendServerErrorExternalMessage: email.hasError ? 'Delivery failed' : null,
+        sendServerErrorExternalDetails: email.hasError ? {} : Prisma.DbNull,
+        sendServerErrorInternalMessage: email.hasError ? "Delivery failed. This is the internal error message." : null,
+        sendServerErrorInternalDetails: email.hasError ? { internalError: "No internal error details." } : Prisma.DbNull,
         createdAt: email.createdAt,
       },
     });
@@ -1646,7 +1693,7 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
       const ipAddress = `${10 + Math.floor(Math.random() * 200)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}`;
 
       // Create EventIpInfo entry with a proper UUID
-      const ipInfoId = generateUuid();
+      const ipInfoId = generateUuid();  // TODO: This should be a deterministic UUID so we don't keep recreating the session info
       await globalPrismaClient.eventIpInfo.upsert({
         where: { id: ipInfoId },
         update: {
@@ -1716,4 +1763,66 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
   }
 
   console.log('Finished seeding session activity events');
+}
+
+type SessionReplaySeedOptions = {
+  prisma: PrismaClientTransaction,
+  tenancyId: string,
+  userEmailToId: Map<string, string>,
+  targetSessionReplayCount?: number,
+};
+
+async function seedDummySessionReplays(options: SessionReplaySeedOptions) {
+  const {
+    prisma,
+    tenancyId,
+    userEmailToId,
+    targetSessionReplayCount = 250,
+  } = options;
+
+  const existingCount = await prisma.sessionReplay.count({
+    where: {
+      tenancyId,
+    },
+  });
+
+  if (existingCount >= targetSessionReplayCount) {
+    console.log(`Dummy project already has ${existingCount} session replays, skipping seeding`);
+    return;
+  }
+
+  const toCreate = targetSessionReplayCount - existingCount;
+  const userIds = Array.from(userEmailToId.values());
+  if (userIds.length === 0) {
+    throw new Error('Cannot seed session replays: no dummy project users exist');
+  }
+
+  const now = new Date();
+  const twoWeeksAgo = new Date(now);
+  twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+
+  const seeds: Prisma.SessionReplayCreateManyInput[] = [];
+  for (let i = 0; i < toCreate; i++) {
+    const startedAt = new Date(
+      twoWeeksAgo.getTime() + Math.random() * (now.getTime() - twoWeeksAgo.getTime()),
+    );
+    const durationMs = 10_000 + Math.floor(Math.random() * (20 * 60 * 1000)); // 10s..20m
+    const lastEventAt = new Date(startedAt.getTime() + durationMs);
+    const projectUserId = userIds[Math.floor(Math.random() * userIds.length)]!;
+
+    seeds.push({
+      tenancyId,
+      refreshTokenId: generateUuid(),
+      projectUserId,
+      id: generateUuid(),
+      startedAt,
+      lastEventAt,
+    });
+  }
+
+  await prisma.sessionReplay.createMany({
+    data: seeds,
+  });
+
+  console.log(`Seeded ${toCreate} session replays`);
 }

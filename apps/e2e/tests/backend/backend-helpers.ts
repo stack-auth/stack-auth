@@ -1,8 +1,10 @@
+import type { ProjectConfigOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { AdminUserProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
 import { encodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { filterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
+import { publishableClientKeyNotNecessarySentinel } from "@stackframe/stack-shared/dist/utils/oauth";
+import { filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { nicify } from "@stackframe/stack-shared/dist/utils/strings";
 import * as jose from "jose";
@@ -94,10 +96,10 @@ function expectSnakeCase(obj: unknown, path: string): void {
     }
   } else {
     for (const [key, value] of Object.entries(obj)) {
-      if (key.match(/[a-z0-9][A-Z][a-z0-9]+/) && !key.includes("_") && !["newUser", "afterCallbackRedirectUrl"].includes(key)) {
+      if (key.match(/^[a-z0-9][A-Z][a-z0-9]+$/) && !key.includes("_") && !["newUser", "afterCallbackRedirectUrl"].includes(key)) {
         throw new StackAssertionError(`Object has camelCase key (expected snake_case): ${path}.${key}`);
       }
-      if (["client_metadata", "server_metadata", "options_json", "credential", "authentication_response", "metadata"].includes(key)) continue;
+      if (["client_metadata", "server_metadata", "options_json", "credential", "authentication_response", "metadata", "variables", "skipped_details"].includes(key)) continue;
       // because email templates
       if (path === "req.body.content.root") continue;
       if (path === "res.body.content.root") continue;
@@ -110,12 +112,13 @@ export async function niceBackendFetch(url: string | URL, options?: Omit<NiceReq
   accessType?: null | "client" | "server" | "admin",
   body?: unknown,
   headers?: Record<string, string | undefined>,
+  omitPublishableClientKey?: boolean,
   userAuth?: {
     accessToken?: string,
     refreshToken?: string,
   },
 }): Promise<NiceResponse> {
-  const { body, headers, accessType, userAuth: userAuthOverride, ...otherOptions } = options ?? {};
+  const { body, headers, accessType, omitPublishableClientKey, userAuth: userAuthOverride, ...otherOptions } = options ?? {};
   if (typeof body === "object") {
     expectSnakeCase(body, "req.body");
   }
@@ -132,7 +135,7 @@ export async function niceBackendFetch(url: string | URL, options?: Omit<NiceReq
       "x-stack-access-type": accessType ?? undefined,
       ...projectKeys !== "no-project" && accessType ? {
         "x-stack-project-id": projectKeys.projectId,
-        "x-stack-publishable-client-key": projectKeys.publishableClientKey,
+        "x-stack-publishable-client-key": omitPublishableClientKey ? undefined : projectKeys.publishableClientKey,
         "x-stack-secret-server-key": projectKeys.secretServerKey,
         "x-stack-super-secret-admin-key": projectKeys.superSecretAdminKey,
         'x-stack-admin-access-token': projectKeys.adminAccessToken,
@@ -186,7 +189,83 @@ export async function bumpEmailAddress(options: { unindexed?: boolean } = {}) {
   return mailbox;
 }
 
+// Type for outbox email items (simplified - full type is EmailOutboxCrud["Server"]["Read"])
+export type OutboxEmail = {
+  id: string,
+  subject?: string,
+  status: string,
+  simple_status: string,
+  to?: {
+    type: string,
+    user_id?: string,
+    [key: string]: unknown,
+  },
+  [key: string]: unknown,
+};
+
+// Helper to get emails from the outbox, filtered by subject if provided
+export async function getOutboxEmails(options?: { subject?: string }): Promise<OutboxEmail[]> {
+  const listResponse = await niceBackendFetch("/api/v1/emails/outbox", {
+    method: "GET",
+    accessType: "server",
+  });
+  const items = listResponse.body.items as OutboxEmail[];
+  if (options?.subject) {
+    return items.filter((e) => e.subject === options.subject);
+  }
+  return items;
+}
+
+// Helper to poll the outbox until the most recent email with the expected subject has the expected status.
+// Note: emails are returned ordered by createdAt desc (newest first), so we check emails[0] specifically
+// to ensure we're waiting for the MOST RECENT email, not an older one with the same subject.
+export async function waitForOutboxEmailWithStatus(subject: string, status: string): Promise<OutboxEmail[]> {
+  const maxRetries = 24;
+  let emails: OutboxEmail[] = [];
+  for (let i = 0; i < maxRetries; i++) {
+    emails = await getOutboxEmails({ subject });
+    // Check the most recent email (first in the list due to createdAt desc ordering)
+    if (emails.length > 0 && emails[0].status === status) {
+      return emails;
+    }
+    await wait(500);
+  }
+  throw new StackAssertionError(
+    `Timeout waiting for outbox email with subject "${subject}" and status "${status}"`,
+    { foundEmails: emails }
+  );
+}
+
 export namespace Auth {
+  export async function fastSignUp(body: any = {}) {
+    const { userId } = await User.create(body);
+    const sessionResponse = await niceBackendFetch(`/api/v1/auth/sessions`, {
+      method: "POST",
+      accessType: "server",
+      body: {
+        user_id: userId,
+        expires_in_millis: 1000 * 60 * 60 * 24 * 365,
+        is_impersonation: false,
+      },
+    });
+    expect(sessionResponse).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": {
+          "access_token": <stripped field 'access_token'>,
+          "refresh_token": <stripped field 'refresh_token'>,
+        },
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+    backendContext.set({ userAuth: { accessToken: sessionResponse.body.access_token, refreshToken: sessionResponse.body.refresh_token } });
+    return {
+      userId,
+      accessToken: sessionResponse.body.access_token,
+      refreshToken: sessionResponse.body.refresh_token,
+    };
+  }
+
   export async function ensureParsableAccessToken() {
     const accessToken = backendContext.value.userAuth?.accessToken;
     if (accessToken) {
@@ -203,6 +282,7 @@ export namespace Auth {
         "iss": expectedIssuer,
         "branch_id": "main",
         "refresh_token_id": expect.any(String),
+        "requires_totp_mfa": expect.any(Boolean),
         "aud": backendContext.value.projectKeys === "no-project" ? expect.any(String) : backendContext.value.projectKeys.projectId,
         "sub": expect.any(String),
         "role": "authenticated",
@@ -211,6 +291,8 @@ export namespace Auth {
         "email_verified": expect.any(Boolean),
         "selected_team_id": expect.toSatisfy(() => true),
         "is_anonymous": expect.any(Boolean),
+        "is_restricted": expect.any(Boolean),
+        "restricted_reason": expect.toSatisfy(() => true),
         "project_id": payload.aud
       });
     }
@@ -366,10 +448,21 @@ export namespace Auth {
           "headers": Headers { <some fields may have been hidden> },
         }
       `);
-      const messages = await mailbox.fetchMessages({ noBody: true });
-      const subjects = messages.map((message) => message.subject);
-      const containsSubstring = subjects.some(str => str.includes("Sign in to"));
-      expect(containsSubstring).toBe(true);
+      for (let i = 0; true; i++) {
+        const messages = await mailbox.fetchMessages();
+        const containsSubstring = messages.some(message => message.subject.includes("Sign in to") && message.body?.html.includes(response.body.nonce));
+        if (containsSubstring) {
+          break;
+        }
+        await wait(100 + i * 20);
+        if (i >= 40) {
+          throw new StackAssertionError(`Sign-in code message not found after ${i} attempts`, {
+            response,
+            messages: messages.map(m => ({ ...m, body: m.body && omit(m.body, ["html"]) })),
+            outboxEmails: await getOutboxEmails(),
+          });
+        }
+      }
       return {
         sendSignInCodeResponse: response,
       };
@@ -377,17 +470,17 @@ export namespace Auth {
 
     export async function signIn() {
       const sendSignInCodeRes = await sendSignInCode();
-      const signInResult = await signInWithCode(await getSignInCodeFromMailbox());
+      const signInResult = await signInWithCode(await getSignInCodeFromMailbox(sendSignInCodeRes.sendSignInCodeResponse.body.nonce));
       return {
         ...sendSignInCodeRes,
         ...signInResult,
       };
     }
 
-    export async function getSignInCodeFromMailbox() {
+    export async function getSignInCodeFromMailbox(nonce?: string) {
       const mailbox = backendContext.value.mailbox;
       const messages = await mailbox.fetchMessages();
-      const message = messages.findLast((message) => message.subject.includes("Sign in to")) ?? throwErr("Sign-in code message not found");
+      const message = messages.filter(message => nonce === undefined || message.body?.html.includes(nonce)).findLast((message) => message.subject.includes("Sign in to")) ?? throwErr("Sign-in code message not found");
       const signInCode = message.body?.text.match(/http:\/\/localhost:12345\/some-callback-url\?code=([a-zA-Z0-9]+)/)?.[1] ?? throwErr("Sign-in URL not found");
       return signInCode;
     }
@@ -429,7 +522,7 @@ export namespace Auth {
   }
 
   export namespace Password {
-    export async function signUpWithEmail(options: { password?: string } = {}) {
+    export async function signUpWithEmail(options: { password?: string, noWaitForEmail?: boolean } = {}) {
       const mailbox = backendContext.value.mailbox;
       const email = mailbox.emailAddress;
       const password = options.password ?? generateSecureRandomString();
@@ -452,8 +545,10 @@ export namespace Auth {
         headers: expect.anything(),
       });
 
-      // the verification email is sent asynchronously, so let's give it a tiny bit of time to arrive
-      await wait(200);
+      // Wait for the verification email to arrive (unless explicitly disabled)
+      if (!options.noWaitForEmail) {
+        await mailbox.waitForMessagesWithSubject("Verify your email");
+      }
 
       backendContext.set({
         userAuth: {
@@ -612,15 +707,19 @@ export namespace Auth {
 
 
   export namespace OAuth {
-    export async function getAuthorizeQuery(options: { forceBranchId?: string } = {}) {
+    export async function getAuthorizeQuery(options: { forceBranchId?: string, includeClientSecret?: boolean } = {}) {
       const projectKeys = backendContext.value.projectKeys;
       if (projectKeys === "no-project") throw new Error("No project keys found in the backend context");
       const branchId = options.forceBranchId ?? backendContext.value.currentBranchId;
       const userAuth = backendContext.value.userAuth;
+      const includeClientSecret = options.includeClientSecret ?? true;
+      const clientSecret = includeClientSecret
+        ? (projectKeys.publishableClientKey ?? publishableClientKeyNotNecessarySentinel)
+        : publishableClientKeyNotNecessarySentinel;
 
       return filterUndefined({
         client_id: !branchId ? projectKeys.projectId : `${projectKeys.projectId}#${branchId}`,
-        client_secret: projectKeys.publishableClientKey ?? throwErr("No publishable client key found in the backend context"),
+        client_secret: clientSecret,
         redirect_uri: localRedirectUrl,
         scope: "legacy",
         response_type: "code",
@@ -632,7 +731,7 @@ export namespace Auth {
       });
     }
 
-    export async function authorize(options: { redirectUrl?: string, errorRedirectUrl?: string, forceBranchId?: string } = {}) {
+    export async function authorize(options: { redirectUrl?: string, errorRedirectUrl?: string, forceBranchId?: string, includeClientSecret?: boolean } = {}) {
       const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
         redirect: "manual",
         query: {
@@ -658,7 +757,7 @@ export namespace Auth {
       };
     }
 
-    export async function getInnerCallbackUrl(options: { authorizeResponse?: NiceResponse, forceBranchId?: string } = {}) {
+    export async function getInnerCallbackUrl(options: { authorizeResponse?: NiceResponse, forceBranchId?: string, includeClientSecret?: boolean } = {}) {
       const authorizeResponse = options.authorizeResponse ?? (await Auth.OAuth.authorize(options)).authorizeResponse;
       const providerPassword = generateSecureRandomString();
       const authLocation = new URL(authorizeResponse.headers.get("location")!);
@@ -739,7 +838,7 @@ export namespace Auth {
       };
     }
 
-    export async function getMaybeFailingAuthorizationCode(options: { innerCallbackUrl?: URL, authorizeResponse?: NiceResponse, forceBranchId?: string } = {}) {
+    export async function getMaybeFailingAuthorizationCode(options: { innerCallbackUrl?: URL, authorizeResponse?: NiceResponse, forceBranchId?: string, includeClientSecret?: boolean } = {}) {
       let authorizeResponse, innerCallbackUrl;
       if (options.innerCallbackUrl && options.authorizeResponse) {
         innerCallbackUrl = options.innerCallbackUrl;
@@ -763,7 +862,7 @@ export namespace Auth {
       };
     }
 
-    export async function getAuthorizationCode(options: { innerCallbackUrl?: URL, authorizeResponse?: NiceResponse, forceBranchId?: string } = {}) {
+    export async function getAuthorizationCode(options: { innerCallbackUrl?: URL, authorizeResponse?: NiceResponse, forceBranchId?: string, includeClientSecret?: boolean } = {}) {
       const { response } = await Auth.OAuth.getMaybeFailingAuthorizationCode(options);
       expect(response).toMatchObject({
         status: 303,
@@ -785,23 +884,27 @@ export namespace Auth {
       };
     }
 
-    export async function signIn(options: { forceBranchId?: string } = {}) {
-      const getAuthorizationCodeResult = await Auth.OAuth.getAuthorizationCode();
+    export async function signIn(options: { forceBranchId?: string, includeClientSecret?: boolean } = {}) {
+      const getAuthorizationCodeResult = await Auth.OAuth.getAuthorizationCode(options);
 
       const projectKeys = backendContext.value.projectKeys;
       if (projectKeys === "no-project") throw new Error("No project keys found in the backend context");
+      const includeClientSecret = options.includeClientSecret ?? true;
+      const clientSecret = includeClientSecret
+        ? (projectKeys.publishableClientKey ?? publishableClientKeyNotNecessarySentinel)
+        : publishableClientKeyNotNecessarySentinel;
 
       const tokenResponse = await niceBackendFetch("/api/v1/auth/oauth/token", {
         method: "POST",
         accessType: "client",
-        body: {
+        body: filterUndefined({
           client_id: projectKeys.projectId,
-          client_secret: projectKeys.publishableClientKey ?? throwErr("No publishable client key found in the backend context"),
+          client_secret: clientSecret,
           code: getAuthorizationCodeResult.authorizationCode,
           redirect_uri: localRedirectUrl,
           code_verifier: "some-code-challenge",
           grant_type: "authorization_code",
-        },
+        }),
       });
       expect(tokenResponse).toMatchObject({
         status: 200,
@@ -901,6 +1004,8 @@ export namespace ContactChannels {
   export async function sendVerificationCode(options?: { contactChannelId?: string }) {
     const contactChannelId = options?.contactChannelId ?? (await ContactChannels.getTheOnlyContactChannel()).id;
     const mailbox = backendContext.value.mailbox;
+    const messagesBefore = await mailbox.fetchMessages({ noBody: true });
+    const countBefore = messagesBefore.filter(m => m.subject.includes("Verify your email")).length;
     const response = await niceBackendFetch(`/api/v1/contact-channels/me/${contactChannelId}/send-verification-code`, {
       method: "POST",
       accessType: "client",
@@ -915,9 +1020,9 @@ export namespace ContactChannels {
         "headers": Headers { <some fields may have been hidden> },
       }
     `);
-    const messages = await mailbox.fetchMessages({ noBody: true });
-    const subjects = messages.map((message) => message.subject);
-    expect(subjects[0].includes("Verify your email")).toBe(true);
+    // Wait for a new verification email to arrive
+    const messages = await mailbox.waitForMessagesWithSubjectCount("Verify your email", countBefore + 1);
+    expect(messages.length).toBeGreaterThanOrEqual(countBefore + 1);
     return {
       sendSignInCodeResponse: response,
     };
@@ -926,7 +1031,7 @@ export namespace ContactChannels {
   export async function verify(options?: { contactChannelId?: string }) {
     const mailbox = backendContext.value.mailbox;
     const sendVerificationCodeRes = await sendVerificationCode(options);
-    const messages = await mailbox.fetchMessages();
+    const messages = await mailbox.waitForMessagesWithSubject("Verify your email");
     const message = messages.findLast((message) => message.subject.includes("Verify your email")) ?? throwErr("Verification code message not found");
     const verificationCode = message.body?.text.match(/http:\/\/localhost:12345\/some-callback-url\?code=([a-zA-Z0-9]+)/)?.[1] ?? throwErr("Verification code not found");
     const response = await niceBackendFetch("/api/v1/contact-channels/verify", {
@@ -958,7 +1063,19 @@ export namespace ProjectApiKey {
         accessType: "server",
         body: data,
       });
-      expect(response.status).toEqual(200);
+      expect(response).toMatchObject({
+        status: 200,
+        body: expect.objectContaining({
+          created_at_millis: expect.any(Number),
+          description: expect.any(String),
+          id: expect.any(String),
+          is_public: expect.any(Boolean),
+          type: expect.any(String),
+          user_id: expect.any(String),
+          value: expect.any(String),
+        }),
+        headers: expect.any(Headers),
+      });
       return {
         createUserApiKeyResponse: response,
       };
@@ -1123,12 +1240,10 @@ export namespace Project {
 
   export async function createAndGetAdminToken(body?: Partial<AdminUserProjectsCrud["Admin"]["Create"]>, useExistingUser?: boolean) {
     backendContext.set({ projectKeys: InternalProjectKeys });
-    const oldMailbox = backendContext.value.mailbox;
     let userId: string | undefined;
     if (!useExistingUser) {
       backendContext.set({ userAuth: null });
-      await bumpEmailAddress({ unindexed: true });
-      const { userId: newUserId } = await Auth.Otp.signIn();
+      const { userId: newUserId } = await Auth.fastSignUp();
       userId = newUserId;
     }
     const adminAccessToken = backendContext.value.userAuth?.accessToken;
@@ -1140,7 +1255,6 @@ export namespace Project {
         projectId,
       },
       userAuth: null,
-      mailbox: oldMailbox,
     });
 
     return {
@@ -1164,12 +1278,94 @@ export namespace Project {
   }
 
   export async function updateConfig(config: any) {
-    const response = await niceBackendFetch(`/api/latest/internal/config/override`, {
+    const response = await niceBackendFetch(`/api/latest/internal/config/override/environment`, {
       accessType: "admin",
       method: "PATCH",
       body: { config_override_string: JSON.stringify(config) },
     });
-    expect(response.body).toMatchInlineSnapshot(`{}`);
+    expect(response.body).toMatchInlineSnapshot(`{ "success": true }`);
+    expect(response.status).toBe(200);
+  }
+
+  export async function updateProjectConfig(config: ProjectConfigOverride) {
+    const response = await niceBackendFetch(`/api/latest/internal/config/override/project`, {
+      accessType: "admin",
+      method: "PATCH",
+      body: { config_override_string: JSON.stringify(config) },
+    });
+    expect(response.body).toMatchInlineSnapshot(`{ "success": true }`);
+    expect(response.status).toBe(200);
+  }
+
+  export type BranchConfigSource =
+    | { type: "pushed-from-github", owner: string, repo: string, branch: string, commit_hash: string, config_file_path: string }
+    | { type: "pushed-from-unknown" }
+    | { type: "unlinked" };
+
+  /**
+   * Push config to branch level. Source defaults to 'unlinked' if not specified.
+   */
+  export async function pushConfig(config: any, source: BranchConfigSource = { type: "unlinked" }) {
+    const response = await niceBackendFetch(`/api/latest/internal/config/override/branch`, {
+      accessType: "admin",
+      method: "PUT",
+      body: {
+        config_string: JSON.stringify(config),
+        source,
+      },
+    });
+    expect(response.body).toMatchInlineSnapshot(`{ "success": true }`);
+    expect(response.status).toBe(200);
+  }
+
+  /**
+   * Update the pushed config (PATCH - preserves source)
+   */
+  export async function updatePushedConfig(config: any) {
+    const response = await niceBackendFetch(`/api/latest/internal/config/override/branch`, {
+      accessType: "admin",
+      method: "PATCH",
+      body: { config_override_string: JSON.stringify(config) },
+    });
+    expect(response.body).toMatchInlineSnapshot(`{ "success": true }`);
+    expect(response.status).toBe(200);
+  }
+
+  /**
+   * Get the current branch config source
+   */
+  export async function getConfigSource(): Promise<BranchConfigSource> {
+    const response = await niceBackendFetch(`/api/latest/internal/config/source`, {
+      accessType: "admin",
+      method: "GET",
+    });
+    expect(response.status).toBe(200);
+    return response.body.source;
+  }
+
+  /**
+   * Unlink the branch config source (set to 'unlinked')
+   */
+  export async function unlinkConfigSource() {
+    const response = await niceBackendFetch(`/api/latest/internal/config/source`, {
+      accessType: "admin",
+      method: "DELETE",
+    });
+    expect(response.body).toMatchInlineSnapshot(`{ "success": true }`);
+    expect(response.status).toBe(200);
+  }
+
+  /**
+   * Reset specific keys from a config override level.
+   * Uses the same nested key logic as the override algorithm.
+   */
+  export async function resetConfigOverrideKeys(level: "branch" | "environment", keys: string[]) {
+    const response = await niceBackendFetch(`/api/latest/internal/config/override/${level}/reset-keys`, {
+      accessType: "admin",
+      method: "POST",
+      body: { keys },
+    });
+    expect(response.body).toMatchInlineSnapshot(`{ "success": true }`);
     expect(response.status).toBe(200);
   }
 }
@@ -1266,7 +1462,7 @@ export namespace Team {
 
   export async function acceptInvitation() {
     const mailbox = backendContext.value.mailbox;
-    const messages = await mailbox.fetchMessages();
+    const messages = await mailbox.waitForMessagesWithSubject("join");
     const message = messages.findLast((message) => message.subject.includes("join")) ?? throwErr("Team invitation message not found");
     const code = message.body?.text.match(/http:\/\/localhost:12345\/some-callback-url\?code=([a-zA-Z0-9]+)/)?.[1] ?? throwErr("Team invitation code not found");
     const response = await niceBackendFetch("/api/v1/team-invitations/accept", {
@@ -1290,16 +1486,6 @@ export namespace Team {
 }
 
 export namespace User {
-  export function setBackendContextFromUser({ mailbox, accessToken, refreshToken }: { mailbox: Mailbox, accessToken: string, refreshToken: string }) {
-    backendContext.set({
-      mailbox,
-      userAuth: {
-        accessToken,
-        refreshToken,
-      },
-    });
-  }
-
   export async function getCurrent() {
     const response = await niceBackendFetch("/api/v1/users/me", {
       accessType: "client",
@@ -1310,42 +1496,27 @@ export namespace User {
     return response.body;
   }
 
-  export async function create({ emailAddress }: { emailAddress?: string } = {}) {
-    // Create new mailbox
-    const email = emailAddress ?? `unindexed-mailbox--${randomUUID()}${generatedEmailSuffix}`;
-    const mailbox = createMailbox(email);
-    const password = generateSecureRandomString();
-    const createUserResponse = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+  export async function create(body?: Record<string, unknown>) {
+    const createUserResponse = await niceBackendFetch("/api/v1/users", {
       method: "POST",
-      accessType: "client",
-      body: {
-        email,
-        password,
-        verification_callback_url: "http://localhost:12345/some-callback-url",
-      },
+      accessType: "server",
+      body: body ?? {},
     });
     expect(createUserResponse).toMatchObject({
-      status: 200,
+      status: 201,
       body: {
-        access_token: expect.any(String),
-        refresh_token: expect.any(String),
-        user_id: expect.any(String),
+        id: expect.any(String),
       },
-      headers: expect.anything(),
     });
     return {
-      userId: createUserResponse.body.user_id,
-      mailbox,
-      accessToken: createUserResponse.body.access_token,
-      refreshToken: createUserResponse.body.refresh_token,
-      password,
+      userId: createUserResponse.body.id,
     };
   }
 
   export async function createMultiple(count: number) {
     const users = [];
     for (let i = 0; i < count; i++) {
-      const user = await User.create({});
+      const user = await User.create();
       users.push(user);
     }
     return users;
@@ -1477,7 +1648,7 @@ export namespace Payments {
     const { userId } = await User.create();
     const response = await niceBackendFetch("/api/latest/payments/purchases/create-purchase-url", {
       method: "POST",
-      accessType: "client",
+      accessType: "server",
       body: {
         customer_type: "user",
         customer_id: userId,

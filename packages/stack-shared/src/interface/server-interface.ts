@@ -11,7 +11,7 @@ import {
   ClientInterfaceOptions,
   StackClientInterface
 } from "./client-interface";
-import { ConnectedAccountAccessTokenCrud } from "./crud/connected-accounts";
+import { ConnectedAccountAccessTokenCrud, ConnectedAccountCrud } from "./crud/connected-accounts";
 import { ContactChannelsCrud } from "./crud/contact-channels";
 import { CurrentUserCrud } from "./crud/current-user";
 import { ItemCrud } from "./crud/items";
@@ -33,7 +33,7 @@ export type ServerAuthApplicationOptions = (
       readonly secretServerKey: string,
     }
     | {
-      readonly projectOwnerSession: InternalSession,
+      readonly projectOwnerSession: InternalSession | (() => Promise<string | null>),
     }
   )
 );
@@ -57,6 +57,81 @@ export class StackServerInterface extends StackClientInterface {
       requestType,
     );
   }
+
+  override async getCustomerBilling(
+    customerType: "user" | "team",
+    customerId: string,
+    session: InternalSession | null,
+  ): Promise<{
+    has_customer: boolean,
+    default_payment_method: {
+      id: string,
+      brand: string | null,
+      last4: string | null,
+      exp_month: number | null,
+      exp_year: number | null,
+    } | null,
+  }> {
+    const response = await this.sendServerRequest(
+      urlString`/payments/billing/${customerType}/${customerId}`,
+      {},
+      session,
+    );
+    return await response.json();
+  }
+
+  override async createCustomerPaymentMethodSetupIntent(
+    customerType: "user" | "team",
+    customerId: string,
+    session: InternalSession | null,
+  ): Promise<{
+    client_secret: string,
+    stripe_account_id: string,
+  }> {
+    const response = await this.sendServerRequest(
+      urlString`/payments/payment-method/${customerType}/${customerId}/setup-intent`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({}),
+      },
+      session,
+    );
+    return await response.json();
+  }
+
+  override async setDefaultCustomerPaymentMethodFromSetupIntent(
+    customerType: "user" | "team",
+    customerId: string,
+    setupIntentId: string,
+    session: InternalSession | null,
+  ): Promise<{
+    default_payment_method: {
+      id: string,
+      brand: string | null,
+      last4: string | null,
+      exp_month: number | null,
+      exp_year: number | null,
+    },
+  }> {
+    const response = await this.sendServerRequest(
+      urlString`/payments/payment-method/${customerType}/${customerId}/set-default`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          setup_intent_id: setupIntentId,
+        }),
+      },
+      session,
+    );
+    return await response.json();
+  }
+
 
   protected async sendServerRequestAndCatchKnownError<E extends typeof KnownErrors[keyof KnownErrors]>(
     path: string,
@@ -227,6 +302,7 @@ export class StackServerInterface extends StackClientInterface {
     orderBy?: 'signedUpAt',
     desc?: boolean,
     query?: string,
+    includeRestricted?: boolean,
     includeAnonymous?: boolean,
   }): Promise<UsersCrud['Server']['List']> {
     const searchParams = new URLSearchParams(filterUndefined({
@@ -240,6 +316,9 @@ export class StackServerInterface extends StackClientInterface {
       } : {},
       ...options.query ? {
         query: options.query,
+      } : {},
+      ...options.includeRestricted ? {
+        include_restricted: 'true',
       } : {},
       ...options.includeAnonymous ? {
         include_anonymous: 'true',
@@ -352,6 +431,27 @@ export class StackServerInterface extends StackClientInterface {
     );
   }
 
+  async listServerUserTeamInvitations(userId: string): Promise<TeamInvitationCrud['Server']['Read'][]> {
+    const response = await this.sendServerRequest(
+      "/team-invitations?" + new URLSearchParams({ user_id: userId }),
+      {},
+      null,
+    );
+    const result = await response.json() as TeamInvitationCrud['Server']['List'];
+    return result.items;
+  }
+
+  async acceptServerTeamInvitationById(
+    invitationId: string,
+    userId: string,
+  ) {
+    await this.sendServerRequest(
+      urlString`/team-invitations/${invitationId}/accept` + "?" + new URLSearchParams({ user_id: userId }),
+      { method: "POST" },
+      null,
+    );
+  }
+
   async updateServerUser(userId: string, update: UsersCrud['Server']['Update']): Promise<UsersCrud['Server']['Read']> {
     const response = await this.sendServerRequest(
       urlString`/users/${userId}`,
@@ -381,6 +481,44 @@ export class StackServerInterface extends StackClientInterface {
         },
         body: JSON.stringify({ scope }),
       },
+      null,
+    );
+    return await response.json();
+  }
+
+  /**
+   * Get access token for a specific connected account by provider ID and provider account ID.
+   * This is the preferred method when dealing with multiple accounts of the same provider.
+   */
+  async createServerProviderAccessTokenByAccount(
+    userId: string,
+    providerId: string,
+    providerAccountId: string,
+    scope: string,
+  ): Promise<ConnectedAccountAccessTokenCrud['Server']['Read']> {
+    const response = await this.sendServerRequest(
+      urlString`/connected-accounts/${userId}/${providerId}/${providerAccountId}/access-token`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ scope }),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  /**
+   * List all connected accounts for a user.
+   */
+  async listServerConnectedAccounts(
+    userId: string,
+  ): Promise<ConnectedAccountCrud['Server']['List']> {
+    const response = await this.sendServerRequest(
+      urlString`/connected-accounts/${userId}`,
+      { method: "GET" },
       null,
     );
     return await response.json();
@@ -632,7 +770,7 @@ export class StackServerInterface extends StackClientInterface {
   }
 
 
-  async listServerSessions(userId: string): Promise<SessionsCrud['Server']['Read'][]> {
+  async listServerSessions(userId: string): Promise<SessionsCrud['Server']['List']> {
     const response = await this.sendServerRequest(
       urlString`/auth/sessions?user_id=${userId}`,
       {
@@ -779,6 +917,7 @@ export class StackServerInterface extends StackClientInterface {
     templateId?: string,
     variables?: Record<string, any>,
     draftId?: string,
+    scheduledAt?: Date,
   }): Promise<Result<void, KnownErrors["RequiresCustomEmailServer"] | KnownErrors["SchemaError"] | KnownErrors["UserIdDoesNotExist"]>> {
     const res = await this.sendServerRequest(
       "/emails/send-email",
@@ -797,11 +936,55 @@ export class StackServerInterface extends StackClientInterface {
           template_id: options.templateId,
           variables: options.variables,
           draft_id: options.draftId,
+          scheduled_at_millis: options.scheduledAt?.getTime(),
         }),
       },
       null,
     );
     return Result.ok(undefined);
+  }
+
+  async getEmailDeliveryInfo(): Promise<{
+    stats: {
+      hour: { sent: number, bounced: number, marked_as_spam: number },
+      day: { sent: number, bounced: number, marked_as_spam: number },
+      week: { sent: number, bounced: number, marked_as_spam: number },
+      month: { sent: number, bounced: number, marked_as_spam: number },
+    },
+    capacity: {
+      rate_per_second: number,
+      boost_multiplier: number,
+      penalty_factor: number,
+      is_boost_active: boolean,
+      boost_expires_at: string | null,
+    },
+  }> {
+    const res = await this.sendServerRequest(
+      "/emails/delivery-info",
+      {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json"
+        },
+      },
+      null,
+    );
+    return await res.json();
+  }
+
+  async activateEmailCapacityBoost(): Promise<{ expires_at: string }> {
+    const res = await this.sendServerRequest(
+      "/emails/capacity-boost",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({}),
+      },
+      null,
+    );
+    return await res.json();
   }
 
   async updateItemQuantity(

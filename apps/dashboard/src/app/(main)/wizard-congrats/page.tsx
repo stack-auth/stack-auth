@@ -1,5 +1,5 @@
 import { Confetti } from "@/components/confetti";
-import { Card, CardContent, CardFooter, CardHeader, InlineCode, Typography } from "@stackframe/stack-ui";
+import { Card, CardContent, CardFooter, CardHeader, InlineCode, Typography } from "@/components/ui";
 import Actions from "./actions";
 import PostHog from "./posthog";
 

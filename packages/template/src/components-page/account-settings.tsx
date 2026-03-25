@@ -1,8 +1,9 @@
 'use client';
 
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { Skeleton, Typography } from '@stackframe/stack-ui';
-import { Contact, ShieldCheck, Bell, Monitor, Key, Settings, CirclePlus } from 'lucide-react';
-import React, { Suspense } from "react";
+import { Contact, ShieldCheck, Bell, Monitor, Key, Settings, CirclePlus, CreditCard } from 'lucide-react';
+import React, { Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useStackApp, useUser } from '..';
 import { MaybeFullPage } from "../components/elements/maybe-full-page";
 import { SidebarLayout } from '../components/elements/sidebar-layout';
@@ -13,6 +14,7 @@ import { ApiKeysPage } from "./account-settings/api-keys/api-keys-page";
 import { EmailsAndAuthPage } from './account-settings/email-and-auth/email-and-auth-page';
 import { NotificationsPage } from './account-settings/notifications/notifications-page';
 import { ProfilePage } from "./account-settings/profile-page/profile-page";
+import { PaymentsPage } from "./account-settings/payments/payments-page";
 import { SettingsPage } from './account-settings/settings/settings-page';
 import { TeamCreationPage } from './account-settings/teams/team-creation-page';
 import { TeamPage } from './account-settings/teams/team-page';
@@ -24,7 +26,8 @@ const iconMap = {
   Monitor,
   Key,
   Settings,
-  CirclePlus
+  CirclePlus,
+  CreditCard,
 } as const;
 
 const Icon = ({ name }: { name: keyof typeof iconMap }) => {
@@ -80,10 +83,75 @@ export function AccountSettings(props: {
   // Use mock data if provided, otherwise use real data
   const user = props.mockUser ? {
     useTeams: () => [], // Mock empty teams for now
+    useBilling: () => ({ hasCustomer: false }), // Mock empty billing for now
   } : userFromHook;
 
   const project = props.mockProject || projectFromHook;
   const teams = user?.useTeams() || [];
+  const billing = user?.useBilling() || null;
+  const teamsKey = useMemo(() => teams.map(team => team.id).join("|"), [teams]);
+  const teamsById = useMemo(() => teams, [teamsKey]);
+  const userRef = useRef(userFromHook ?? null);
+  const userId = userFromHook?.id ?? null;
+  const [paymentsAvailability, setPaymentsAvailability] = useState<{
+    userHasProducts: boolean,
+    teamIdsWithProducts: Set<string>,
+    isReady: boolean,
+  }>(() => ({
+    userHasProducts: false,
+    teamIdsWithProducts: new Set<string>(),
+    isReady: !!props.mockUser,
+  }));
+
+  useEffect(() => {
+    userRef.current = userFromHook ?? null;
+  }, [userFromHook]);
+
+  useEffect(() => {
+    if (props.mockUser || !userId) {
+      return;
+    }
+    let cancelled = false;
+    runAsynchronouslyWithAlert(async () => {
+      const currentUser = userRef.current;
+      if (!currentUser || currentUser.id !== userId) {
+        return;
+      }
+      const [userProducts, teamsWithProducts] = await Promise.all([
+        currentUser.listProducts({ limit: 1 }),
+        Promise.all(teamsById.map(async (team) => {
+          const isTeamAdmin = await currentUser.hasPermission(team, "team_admin");
+          if (!isTeamAdmin) {
+            return null;
+          }
+          const teamProducts = await team.listProducts({ limit: 1 });
+          const hasTeamProducts = teamProducts.some((product) => product.customerType === "team");
+          return hasTeamProducts ? team.id : null;
+        })),
+      ]);
+      if (cancelled) {
+        return;
+      }
+      const userHasProducts = userProducts.some((product) => product.customerType === "user");
+      const teamIdsWithProducts = new Set<string>(teamsWithProducts.filter((id): id is string => id !== null));
+      setPaymentsAvailability({
+        userHasProducts,
+        teamIdsWithProducts,
+        isReady: true,
+      });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [props.mockUser, teamsById, userId]);
+
+  const teamsWithProducts = useMemo(
+    () => teamsById.filter(team => paymentsAvailability.teamIdsWithProducts.has(team.id)),
+    [paymentsAvailability.teamIdsWithProducts, teamsById],
+  );
+  const shouldShowPaymentsTab = props.mockUser
+    || (paymentsAvailability.isReady
+      && (paymentsAvailability.userHasProducts || teamsWithProducts.length > 0));
 
   // If we're not in mock mode and don't have a user, the useUser hook will handle redirect
   if (!props.mockUser && !userFromHook) {
@@ -136,6 +204,19 @@ export function AccountSettings(props: {
               icon: <Icon name="Key" />,
               content: <Suspense fallback={<ApiKeysPageSkeleton/>}>
                 <ApiKeysPage mockApiKeys={props.mockApiKeys} mockMode={!!props.mockUser} />
+              </Suspense>,
+            }] as const : []),
+            ...(shouldShowPaymentsTab ? [{
+              title: t('Payments'),
+              type: 'item',
+              id: 'payments',
+              icon: <Icon name="CreditCard" />,
+              content: <Suspense fallback={<PaymentsPageSkeleton/>}>
+                <PaymentsPage
+                  mockMode={!!props.mockUser}
+                  allowPersonal={paymentsAvailability.userHasProducts}
+                  availableTeams={teamsWithProducts}
+                />
               </Suspense>,
             }] as const : []),
             {
@@ -219,6 +300,15 @@ function ActiveSessionsPageSkeleton() {
 
 function ApiKeysPageSkeleton() {
   return <PageLayout>
+    <Skeleton className="h-9 w-full mt-1"/>
+    <Skeleton className="h-[200px] w-full mt-1 rounded-md"/>
+  </PageLayout>;
+}
+
+function PaymentsPageSkeleton() {
+  return <PageLayout>
+    <Skeleton className="h-6 w-48 mb-2"/>
+    <Skeleton className="h-9 w-full mt-1"/>
     <Skeleton className="h-9 w-full mt-1"/>
     <Skeleton className="h-[200px] w-full mt-1 rounded-md"/>
   </PageLayout>;

@@ -33,6 +33,11 @@ module.exports = {
       {
         selector: "Program:not(:has(:matches(ExportSpecifier[exported.name=generateStaticParams], VariableDeclaration > VariableDeclarator[id.name=generateStaticParams]))):has(ExportDefaultDeclaration > FunctionDeclaration[id.name=Layout])",
         message: 'Layouts must have a generateStaticParams function to be statically generated. Please add `export { generateStaticParams } from "@/lib/generate-empty-static-params";"` to your layout. For more information, see the comment in generate-empty-static-params.tsx.'
+      },
+      {
+        // project.updateConfig is not allowed
+        selector: 'CallExpression[callee.type="MemberExpression"][callee.property.name="updateConfig"]',
+        message: "Calling project.updateConfig is not allowed. Use the custom useUpdateConfig hook instead, as it may show various confirmation dialogs depending on the config source.",
       }
     ],
   },

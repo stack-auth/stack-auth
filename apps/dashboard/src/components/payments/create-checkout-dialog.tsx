@@ -2,7 +2,7 @@ import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-a
 import { ServerUser, Team } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { ActionDialog, InlineCode, Typography, toast } from "@stackframe/stack-ui";
+import { ActionDialog, InlineCode, Typography, toast } from "@/components/ui";
 import { useState } from "react";
 import * as yup from "yup";
 import { FormDialog } from "../form-dialog";

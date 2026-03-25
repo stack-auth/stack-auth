@@ -12,10 +12,10 @@
     "NODE_ENV",
     "QUETZAL_*",
     "OTEL_*",
-    "GOOGLE_AI_API_KEY",
     "DISCORD_WEBHOOK_URL",
     "DISCORD_CHANNEL_ID",
-    "DISCORD_BOT_TOKEN"
+    "DISCORD_BOT_TOKEN",
+    "ENABLE_EXPERIMENTAL_COREPACK"
   ],
   "tasks": {
     "build": {
@@ -26,7 +26,8 @@
         ".env.development",
         ".env.development.local",
         ".env.production",
-        ".env.production.local"
+        ".env.production.local",
+        "tsdown.config.ts"
       ],
       "dependsOn": [
         "^build"
@@ -64,18 +65,10 @@
       ],
       "outputLogs": "new-only"
     },
-    "@stackframe/stack-backend#build": {
+    "@stackframe/backend#build": {
       "dependsOn": [
         "codegen"
       ]
-    },
-    "@stackframe/stack-backend#codegen": {
-      "dependsOn": [
-        "^build"
-      ]
-    },
-    "@stackframe/stack-backend#generate-openapi-fumadocs": {
-      "cache": false
     },
     "clean": {
       "cache": false
@@ -92,6 +85,9 @@
       "dependsOn": []
     },
     "codegen": {
+      "dependsOn": [
+        "^build"
+      ],
       "cache": false
     },
     "typecheck": {

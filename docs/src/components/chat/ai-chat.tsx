@@ -1,11 +1,26 @@
 'use client';
 
-import { useChat } from '@ai-sdk/react';
+import { useChat, type UIMessage } from '@ai-sdk/react';
+import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
+import { convertToModelMessages, DefaultChatTransport, type DynamicToolUIPart } from 'ai';
 import { ChevronDown, ChevronUp, ExternalLink, FileText, Maximize2, Minimize2, Send, X } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 import { useSidebar } from '../layouts/sidebar-context';
 import { MessageFormatter } from './message-formatter';
+
+function getMessageContent(message: UIMessage): string {
+  return message.parts
+    .filter((part): part is { type: "text", text: string } => part.type === "text")
+    .map(part => part.text)
+    .join("");
+}
+
+function getToolInvocations(message: UIMessage): DynamicToolUIPart[] {
+  return message.parts.filter(
+    (part): part is DynamicToolUIPart => part.type === "dynamic-tool"
+  );
+}
 
 // Stack Auth Icon Component (just the icon, not full logo)
 function StackIcon({ size = 20, className }: { size?: number, className?: string }) {
@@ -236,6 +251,7 @@ export function AIChatDrawer() {
 
   const editableRef = useRef<HTMLDivElement>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
   const [isHomePage, setIsHomePage] = useState(false);
   const [isScrolled, setIsScrolled] = useState(false);
   const [pageLoadTime] = useState(Date.now());
@@ -331,32 +347,62 @@ export function AIChatDrawer() {
 
 
   // Calculate position based on homepage and scroll state
-  const topPosition = 'top-0';
-  const height = isHomePage && isScrolled ? 'h-screen' : 'h-[calc(100vh)]';
+  const topPosition = 'top-3';
+  const height = isHomePage && isScrolled ? 'h-[calc(100vh-1.5rem)]' : 'h-[calc(100vh-1.5rem)]';
+
+  const [input, setInput] = useState('');
+  const apiBaseUrl = process.env.NEXT_PUBLIC_STACK_API_URL ?? throwErr("NEXT_PUBLIC_STACK_API_URL is not set");
 
   const {
     messages,
-    input,
-    handleInputChange,
-    handleSubmit,
-    isLoading,
+    sendMessage,
+    status,
     error,
   } = useChat({
-    api: '/api/chat',
-    initialMessages: [],
+    transport: new DefaultChatTransport({
+      api: `${apiBaseUrl}/api/latest/ai/query/stream`,
+      prepareSendMessagesRequest: async ({ messages: uiMessages, headers }) => {
+        const modelMessages = await convertToModelMessages(uiMessages);
+        return {
+          body: {
+            systemPrompt: "docs-ask-ai",
+            tools: ["docs"],
+            quality: "smart",
+            speed: "fast",
+            messages: modelMessages.map(m => ({
+              role: m.role,
+              content: m.content,
+            })),
+          },
+          headers,
+        };
+      },
+    }),
     onError: (error: Error) => {
       console.error('Chat error:', error);
     },
-    onFinish: (message) => {
-      // Send AI response to Discord
-      runAsynchronously(() => sendAIResponseToDiscord(message.content));
+    onFinish: ({ message }: { message: UIMessage }) => {
+      runAsynchronously(() => sendAIResponseToDiscord(getMessageContent(message)));
     },
   });
 
+  const isLoading = status === 'submitted' || status === 'streaming';
+
   // Auto-scroll to bottom when new messages are added
   useEffect(() => {
-    if (messagesEndRef.current) {
-      messagesEndRef.current.scrollIntoView({ behavior: 'smooth' });
+    const container = messagesContainerRef.current;
+    if (!container) return;
+
+    // Check if user is near the bottom (within 100px)
+    const isNearBottom =
+      container.scrollHeight - container.scrollTop - container.clientHeight < 100;
+
+    // Only auto-scroll if user is near the bottom or if this is a new message
+    if (isNearBottom || messages.length === 0) {
+      // Use requestAnimationFrame for smoother scrolling during streaming
+      requestAnimationFrame(() => {
+        container.scrollTop = container.scrollHeight;
+      });
     }
   }, [messages]);
 
@@ -367,6 +413,14 @@ export function AIChatDrawer() {
     }
   }, [input]);
 
+  const submitMessage = () => {
+    const text = input.trim();
+    if (!text || isLoading) return;
+    setInput('');
+    if (editableRef.current) editableRef.current.textContent = '';
+    runAsynchronously(() => sendMessage({ text }));
+  };
+
   // Function to send AI response to Discord webhook
   const sendAIResponseToDiscord = async (response: string) => {
     try {
@@ -374,7 +428,7 @@ export function AIChatDrawer() {
         response: response,
         metadata: {
           sessionId: sessionId,
-          model: 'gemini-2.0-flash',
+          model: 'anthropic/claude-4.5-sonnet',
           temperature: 0,
         }
       };
@@ -429,8 +483,8 @@ export function AIChatDrawer() {
   };
 
   // Enhanced submit handler that also sends to Discord
-  const handleChatSubmit = async (e: React.FormEvent) => {
-    if (!input.trim()) return;
+  const handleChatSubmit = () => {
+    if (!input.trim() || isLoading) return;
 
     // Update session data
     setSessionData(prev => ({
@@ -441,8 +495,7 @@ export function AIChatDrawer() {
     // Send message to Discord webhook
     runAsynchronously(() => sendToDiscord(input.trim()));
 
-    // Continue with normal chat submission
-    handleSubmit(e);
+    submitMessage();
   };
 
   // Starter prompts for users
@@ -465,25 +518,20 @@ export function AIChatDrawer() {
   ];
 
   const handleStarterPromptClick = (prompt: string) => {
-    // Use the handleInputChange from useChat to update the input
-    handleInputChange({ target: { value: prompt } } as React.ChangeEvent<HTMLInputElement>);
-  };
-
-  // Helper function for safe async event handling
-  const handleSubmitSafely = () => {
-    runAsynchronously(() => handleChatSubmit({} as React.FormEvent));
+    setInput(prompt);
+    if (editableRef.current) editableRef.current.textContent = prompt;
   };
 
   return (
     <div
-      className={`fixed ${topPosition} right-0 ${height} bg-fd-background border-l border-fd-border flex flex-col transition-all duration-300 ease-out z-50 ${
+      className={`fixed ${topPosition} right-3 ${height} mb-3 bg-fd-background border border-fd-border rounded-xl flex flex-col transition-all duration-300 ease-out z-50 shadow-lg ${
         isChatExpanded ? 'w-[70vw] z-[70]' : 'w-96'
       } ${
-        isChatOpen ? 'translate-x-0' : 'translate-x-full'
+        isChatOpen ? 'translate-x-0' : 'translate-x-[calc(100%+0.75rem)]'
       }`}
     >
       {/* Header */}
-      <div className="flex items-center justify-between p-3 border-b border-fd-border bg-fd-background">
+      <div className="flex items-center justify-between p-3 border-b border-fd-border bg-fd-background rounded-t-xl">
         <div className="flex items-center gap-2">
           <StackIcon size={18} className="text-fd-primary" />
           <div>
@@ -524,7 +572,7 @@ export function AIChatDrawer() {
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-3 space-y-3">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto p-3 space-y-3">
         {messages.length === 0 ? (
           <div className="text-center py-6">
             <StackIcon size={24} className="text-fd-muted-foreground mx-auto mb-3" />
@@ -546,35 +594,51 @@ export function AIChatDrawer() {
             </div>
           </div>
         ) : (
-          messages.map((message) => (
-            <div
-              key={message.id}
-              className={`flex ${
-                message.role === 'user' ? 'justify-end' : 'justify-start'
-              }`}
-            >
+          messages.map((message) => {
+            const messageContent = getMessageContent(message);
+            const toolInvocations = message.role === "assistant" ? getToolInvocations(message) : [];
+
+            if (message.role === "assistant" && !messageContent && toolInvocations.length === 0) {
+              return null;
+            }
+
+            return (
               <div
-                className={`max-w-[85%] p-2 rounded-lg text-xs ${
-                  message.role === 'user'
-                    ? 'bg-fd-primary/10 border border-fd-primary/20 text-fd-foreground'
-                    : 'bg-fd-muted text-fd-foreground border border-fd-border'
+                key={message.id}
+                className={`flex ${
+                  message.role === 'user' ? 'justify-end' : 'justify-start'
                 }`}
               >
-                {message.role === 'user' ? (
-                  <div className="whitespace-pre-wrap break-words">
-                    {message.content}
-                  </div>
-                ) : (
-                  <>
-                    {message.toolInvocations?.map((toolCall, index) => (
-                      <ToolCallDisplay key={index} toolCall={toolCall} />
-                    ))}
-                    <MessageFormatter content={message.content} />
-                  </>
-                )}
+                <div
+                  className={`max-w-[85%] p-2 rounded-lg text-xs ${
+                    message.role === 'user'
+                      ? 'bg-fd-primary/10 border border-fd-primary/20 text-fd-foreground'
+                      : 'bg-fd-muted text-fd-foreground border border-fd-border'
+                  }`}
+                >
+                  {message.role === 'user' ? (
+                    <div className="whitespace-pre-wrap break-words">
+                      {messageContent}
+                    </div>
+                  ) : (
+                    <>
+                      {toolInvocations.map((part, index) => (
+                        <ToolCallDisplay
+                          key={index}
+                          toolCall={{
+                            toolName: part.toolName,
+                            args: part.input as { id?: string, search_query?: string },
+                            result: part.output as { content?: { text: string }[], text?: string } | undefined,
+                          }}
+                        />
+                      ))}
+                      {messageContent && <MessageFormatter content={messageContent} />}
+                    </>
+                  )}
+                </div>
               </div>
-            </div>
-          ))
+            );
+          })
         )}
 
         {isLoading && (
@@ -619,10 +683,7 @@ export function AIChatDrawer() {
                 style={{ lineHeight: "1.4", minHeight: "20px" }}
                 onInput={(e) => {
                   const value = e.currentTarget.textContent || "";
-                  handleInputChange({
-                    target: { value },
-                  } as React.ChangeEvent<HTMLInputElement>);
-
+                  setInput(value);
                   // Clean up the div if it's empty to show placeholder
                   if (!value.trim()) {
                     e.currentTarget.innerHTML = "";
@@ -631,7 +692,7 @@ export function AIChatDrawer() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter" && !e.shiftKey) {
                     e.preventDefault();
-                    handleSubmitSafely();
+                    handleChatSubmit();
                   }
                 }}
                 onPaste={(e) => {
@@ -639,17 +700,14 @@ export function AIChatDrawer() {
                   const text = e.clipboardData.getData("text/plain");
                   e.currentTarget.textContent =
                     (e.currentTarget.textContent || "") + text;
-                  const value = e.currentTarget.textContent;
-                  handleInputChange({
-                    target: { value },
-                  } as React.ChangeEvent<HTMLInputElement>);
+                  setInput(e.currentTarget.textContent || "");
                 }}
                 data-placeholder="Ask about Stack Auth..."
               />
             </div>
             <button
               disabled={!input.trim() || isLoading}
-              onClick={handleSubmitSafely}
+              onClick={handleChatSubmit}
               className="h-8 w-8 rounded-full p-0 shrink-0 bg-fd-primary text-fd-primary-foreground hover:bg-fd-primary/90 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
             >
               <Send className="w-4 h-4" />

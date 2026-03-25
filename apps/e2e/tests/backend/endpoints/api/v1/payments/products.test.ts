@@ -1,6 +1,6 @@
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { it } from "../../../../../helpers";
-import { Auth, niceBackendFetch, Payments, Project, User } from "../../../../backend-helpers";
+import { Auth, niceBackendFetch, Payments, Project, Team, User } from "../../../../backend-helpers";
 
 async function configureProduct(config: any) {
   await Project.updateConfig({
@@ -28,7 +28,7 @@ it("should reject client requests to grant product", async ({ expect }) => {
       },
     },
   });
-  const { userId } = await User.create();
+  const { userId, accessToken, refreshToken } = await Auth.fastSignUp();
   const response = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
     method: "POST",
     accessType: "client",
@@ -79,7 +79,7 @@ it("should grant configured subscription product and expose it via listing", asy
     },
   });
 
-  const { userId } = await User.create();
+  const { userId, accessToken, refreshToken } = await Auth.fastSignUp();
   const grantResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
     method: "POST",
     accessType: "server",
@@ -98,6 +98,7 @@ it("should grant configured subscription product and expose it via listing", asy
 
   const listResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
     accessType: "client",
+    userAuth: { accessToken, refreshToken },
   });
   expect(listResponse).toMatchInlineSnapshot(`
     NiceResponse {
@@ -127,10 +128,316 @@ it("should grant configured subscription product and expose it via listing", asy
               "stackable": false,
             },
             "quantity": 1,
+            "subscription": {
+              "cancel_at_period_end": false,
+              "current_period_end": <stripped field 'current_period_end'>,
+              "is_cancelable": true,
+              "subscription_id": "<stripped UUID>",
+            },
+            "type": "subscription",
           },
         ],
         "pagination": { "next_cursor": null },
       },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("should allow a signed-in user to cancel their own subscription product", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await configureProduct({
+    products: {
+      "pro-plan": {
+        displayName: "Pro Plan",
+        customerType: "user",
+        serverOnly: false,
+        stackable: false,
+        prices: {
+          monthly: {
+            USD: "1000",
+            interval: [1, "month"],
+          },
+        },
+        includedItems: {},
+      },
+    },
+  });
+
+  const { userId } = await Auth.fastSignUp();
+  await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    method: "POST",
+    accessType: "server",
+    body: {
+      product_id: "pro-plan",
+    },
+  });
+
+  const cancelResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}/pro-plan`, {
+    method: "DELETE",
+    accessType: "client",
+  });
+  expect(cancelResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "success": true },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  const listResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    accessType: "client",
+  });
+  expect(listResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "is_paginated": true,
+        "items": [],
+        "pagination": { "next_cursor": null },
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("should reject a client canceling someone else's subscription product", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await configureProduct({
+    products: {
+      "pro-plan": {
+        displayName: "Pro Plan",
+        customerType: "user",
+        serverOnly: false,
+        stackable: false,
+        prices: {
+          monthly: {
+            USD: "1000",
+            interval: [1, "month"],
+          },
+        },
+        includedItems: {},
+      },
+    },
+  });
+
+  const { userId: userId1 } = await Auth.fastSignUp();
+  await niceBackendFetch(`/api/v1/payments/products/user/${userId1}`, {
+    method: "POST",
+    accessType: "server",
+    body: {
+      product_id: "pro-plan",
+    },
+  });
+
+  const { userId: userId2 } = await Auth.fastSignUp();
+  expect(userId2).not.toEqual(userId1);
+
+  const cancelResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId1}/pro-plan`, {
+    method: "DELETE",
+    accessType: "client",
+  });
+  expect(cancelResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 403,
+      "body": "Clients can only cancel their own subscriptions.",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("should allow a server to cancel someone else's subscription product", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await configureProduct({
+    products: {
+      "pro-plan": {
+        displayName: "Pro Plan",
+        customerType: "user",
+        serverOnly: false,
+        stackable: false,
+        prices: {
+          monthly: {
+            USD: "1000",
+            interval: [1, "month"],
+          },
+        },
+        includedItems: {},
+      },
+    },
+  });
+
+  const { userId } = await Auth.fastSignUp();
+  await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    method: "POST",
+    accessType: "server",
+    body: {
+      product_id: "pro-plan",
+    },
+  });
+
+  const cancelResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}/pro-plan`, {
+    method: "DELETE",
+    accessType: "server",
+  });
+  expect(cancelResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "success": true },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("should cancel all stackable subscription quantities", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await configureProduct({
+    products: {
+      "seats-plan": {
+        displayName: "Seats Plan",
+        customerType: "user",
+        serverOnly: false,
+        stackable: true,
+        prices: {
+          monthly: {
+            USD: "1000",
+            interval: [1, "month"],
+          },
+        },
+        includedItems: {},
+      },
+    },
+  });
+
+  const { userId } = await Auth.fastSignUp();
+  await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    method: "POST",
+    accessType: "server",
+    body: {
+      product_id: "seats-plan",
+    },
+  });
+  await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    method: "POST",
+    accessType: "server",
+    body: {
+      product_id: "seats-plan",
+    },
+  });
+
+  const cancelResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}/seats-plan`, {
+    method: "DELETE",
+    accessType: "client",
+  });
+  expect(cancelResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "success": true },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  const listResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    accessType: "client",
+  });
+  expect(listResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "is_paginated": true,
+        "items": [],
+        "pagination": { "next_cursor": null },
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("should reject canceling a one-time purchase product", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await configureProduct({
+    products: {
+      "one-time": {
+        displayName: "One Time",
+        customerType: "user",
+        serverOnly: false,
+        stackable: false,
+        prices: {
+          once: {
+            USD: "1000",
+          },
+        },
+        includedItems: {},
+      },
+    },
+  });
+
+  const { userId } = await Auth.fastSignUp();
+  await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    method: "POST",
+    accessType: "server",
+    body: {
+      product_id: "one-time",
+    },
+  });
+
+  const cancelResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}/one-time`, {
+    method: "DELETE",
+    accessType: "client",
+  });
+  expect(cancelResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": "This product is a one time purchase and cannot be canceled.",
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("should allow a team admin to cancel a team's subscription product", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await configureProduct({
+    products: {
+      "team-pro-plan": {
+        displayName: "Team Pro Plan",
+        customerType: "team",
+        serverOnly: false,
+        stackable: false,
+        prices: {
+          monthly: {
+            USD: "1000",
+            interval: [1, "month"],
+          },
+        },
+        includedItems: {},
+      },
+    },
+  });
+
+  const { userId } = await Auth.fastSignUp();
+  const { teamId } = await Team.create({ accessType: "server", creatorUserId: userId });
+
+  await niceBackendFetch(`/api/v1/payments/products/team/${teamId}`, {
+    method: "POST",
+    accessType: "server",
+    body: {
+      product_id: "team-pro-plan",
+    },
+  });
+
+  const cancelResponse = await niceBackendFetch(`/api/v1/payments/products/team/${teamId}/team-pro-plan`, {
+    method: "DELETE",
+    accessType: "client",
+  });
+  expect(cancelResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "success": true },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -157,7 +464,7 @@ it("should hide server-only products from clients while exposing them to servers
     },
   });
 
-  const { userId } = await User.create();
+  const { userId, accessToken, refreshToken } = await Auth.fastSignUp();
   const grantResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
     method: "POST",
     accessType: "server",
@@ -176,6 +483,7 @@ it("should hide server-only products from clients while exposing them to servers
 
   const clientListResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
     accessType: "client",
+    userAuth: { accessToken, refreshToken },
   });
 
   expect(clientListResponse).toMatchInlineSnapshot(`
@@ -222,6 +530,13 @@ it("should hide server-only products from clients while exposing them to servers
               "stackable": false,
             },
             "quantity": 1,
+            "subscription": {
+              "cancel_at_period_end": false,
+              "current_period_end": <stripped field 'current_period_end'>,
+              "is_cancelable": true,
+              "subscription_id": "<stripped UUID>",
+            },
+            "type": "subscription",
           },
         ],
         "pagination": { "next_cursor": null },
@@ -252,7 +567,7 @@ it("should prevent granting an already owned non-stackable product", async ({ ex
     },
   });
 
-  const { userId } = await User.create();
+  const { userId, accessToken, refreshToken } = await Auth.fastSignUp();
   const firstGrant = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
     method: "POST",
     accessType: "server",
@@ -310,7 +625,7 @@ it("should allow granting stackable product with custom quantity", async ({ expe
     },
   });
 
-  const { userId } = await User.create();
+  const { userId, accessToken, refreshToken } = await Auth.fastSignUp();
   const grantResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
     method: "POST",
     accessType: "server",
@@ -323,6 +638,7 @@ it("should allow granting stackable product with custom quantity", async ({ expe
 
   const listResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
     accessType: "client",
+    userAuth: { accessToken, refreshToken },
   });
   expect(listResponse).toMatchInlineSnapshot(`
     NiceResponse {
@@ -352,6 +668,13 @@ it("should allow granting stackable product with custom quantity", async ({ expe
               "stackable": true,
             },
             "quantity": 3,
+            "subscription": {
+              "cancel_at_period_end": false,
+              "current_period_end": <stripped field 'current_period_end'>,
+              "is_cancelable": true,
+              "subscription_id": "<stripped UUID>",
+            },
+            "type": "subscription",
           },
         ],
         "pagination": { "next_cursor": null },
@@ -364,7 +687,7 @@ it("should allow granting stackable product with custom quantity", async ({ expe
 it("should grant inline product without needing configuration", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Payments.setup();
-  const { userId } = await Auth.Otp.signIn();
+  const { userId } = await Auth.fastSignUp();
 
   const grantResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
     method: "POST",
@@ -424,8 +747,119 @@ it("should grant inline product without needing configuration", async ({ expect 
               "stackable": false,
             },
             "quantity": 1,
+            "subscription": {
+              "cancel_at_period_end": false,
+              "current_period_end": <stripped field 'current_period_end'>,
+              "is_cancelable": true,
+              "subscription_id": "<stripped UUID>",
+            },
+            "type": "subscription",
           },
         ],
+        "pagination": { "next_cursor": null },
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("should allow canceling an inline product subscription via subscription_id", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Payments.setup();
+  const { userId, accessToken, refreshToken } = await Auth.fastSignUp();
+
+  const grantResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    method: "POST",
+    accessType: "server",
+    body: {
+      product_inline: {
+        display_name: "Inline Sub",
+        customer_type: "user",
+        server_only: false,
+        prices: {
+          monthly: {
+            USD: "500",
+            interval: [1, "month"],
+          },
+        },
+        included_items: {},
+      },
+    },
+  });
+  expect(grantResponse.status).toBe(200);
+
+  const listResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    accessType: "client",
+    userAuth: { accessToken, refreshToken },
+  });
+  expect(listResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "is_paginated": true,
+        "items": [
+          {
+            "id": null,
+            "product": {
+              "client_metadata": null,
+              "client_read_only_metadata": null,
+              "customer_type": "user",
+              "display_name": "Inline Sub",
+              "included_items": {},
+              "prices": {
+                "monthly": {
+                  "USD": "500",
+                  "interval": [
+                    1,
+                    "month",
+                  ],
+                },
+              },
+              "server_metadata": null,
+              "server_only": false,
+              "stackable": false,
+            },
+            "quantity": 1,
+            "subscription": {
+              "cancel_at_period_end": false,
+              "current_period_end": <stripped field 'current_period_end'>,
+              "is_cancelable": true,
+              "subscription_id": "<stripped UUID>",
+            },
+            "type": "subscription",
+          },
+        ],
+        "pagination": { "next_cursor": null },
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+  const items = listResponse.body.items;
+
+  const subscriptionId = items[0].subscription.subscription_id;
+  const cancelResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}/_inline?subscription_id=${encodeURIComponent(subscriptionId)}`, {
+    method: "DELETE",
+    accessType: "client",
+    userAuth: { accessToken, refreshToken },
+  });
+  expect(cancelResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "success": true },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  const afterCancelList = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
+    accessType: "client",
+    userAuth: { accessToken, refreshToken },
+  });
+  expect(afterCancelList).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "is_paginated": true,
+        "items": [],
         "pagination": { "next_cursor": null },
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -436,7 +870,7 @@ it("should grant inline product without needing configuration", async ({ expect 
 it("should reject requests missing product details", async ({ expect }) => {
   await Project.createAndSwitch();
   await Payments.setup();
-  const { userId } = await User.create();
+  const { userId, accessToken, refreshToken } = await Auth.fastSignUp();
 
   const response = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
     method: "POST",
@@ -475,7 +909,7 @@ it("should reject quantity > 1 for non-stackable product", async ({ expect }) =>
     },
   });
 
-  const { userId } = await User.create();
+  const { userId, accessToken, refreshToken } = await Auth.fastSignUp();
   const response = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
     method: "POST",
     accessType: "server",
@@ -515,7 +949,7 @@ it("should reject product/customer type mismatch", async ({ expect }) => {
     },
   });
 
-  const { userId } = await User.create();
+  const { userId, accessToken, refreshToken } = await Auth.fastSignUp();
   const response = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
     method: "POST",
     accessType: "server",
@@ -592,7 +1026,7 @@ it("should return user not found when granting to missing user", async ({ expect
 
 it("listing owned products should require authentication", async ({ expect }) => {
   await Project.createAndSwitch();
-  const { userId } = await User.create();
+  const { userId, accessToken, refreshToken } = await Auth.fastSignUp();
 
   const response = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`);
   expect(response).toMatchInlineSnapshot(`
@@ -617,10 +1051,11 @@ it("listing owned products should require authentication", async ({ expect }) =>
 it("listing products should return empty list when customer owns no products", async ({ expect }) => {
   await Project.createAndSwitch();
   await Payments.setup();
-  const { userId } = await User.create();
+  const { userId, accessToken, refreshToken } = await Auth.fastSignUp();
 
   const response = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
     accessType: "client",
+    userAuth: { accessToken, refreshToken },
   });
 
   expect(response).toMatchInlineSnapshot(`
@@ -671,7 +1106,7 @@ it("listing products should list both subscription and one-time products", async
     },
   });
 
-  const { userId } = await User.create();
+  const { userId, accessToken, refreshToken } = await Auth.fastSignUp();
 
   const grantSubscription = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
     method: "POST",
@@ -693,6 +1128,7 @@ it("listing products should list both subscription and one-time products", async
 
   const response = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
     accessType: "client",
+    userAuth: { accessToken, refreshToken },
   });
 
   expect(response).toMatchInlineSnapshot(`
@@ -723,6 +1159,13 @@ it("listing products should list both subscription and one-time products", async
               "stackable": false,
             },
             "quantity": 1,
+            "subscription": {
+              "cancel_at_period_end": false,
+              "current_period_end": <stripped field 'current_period_end'>,
+              "is_cancelable": true,
+              "subscription_id": "<stripped UUID>",
+            },
+            "type": "subscription",
           },
           {
             "id": "lifetime-addon",
@@ -738,6 +1181,8 @@ it("listing products should list both subscription and one-time products", async
               "stackable": false,
             },
             "quantity": 1,
+            "subscription": null,
+            "type": "one_time",
           },
         ],
         "pagination": { "next_cursor": null },
@@ -794,7 +1239,7 @@ it("listing products should support cursor pagination", async ({ expect }) => {
     },
   });
 
-  const { userId } = await User.create();
+  const { userId, accessToken, refreshToken } = await Auth.fastSignUp();
 
   await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
     method: "POST",
@@ -823,11 +1268,13 @@ it("listing products should support cursor pagination", async ({ expect }) => {
   const basePath = `/api/v1/payments/products/user/${userId}`;
   const allResponse = await niceBackendFetch(basePath, {
     accessType: "client",
+    userAuth: { accessToken, refreshToken },
   });
 
 
   const firstPage = await niceBackendFetch(`${basePath}?limit=1`, {
     accessType: "client",
+    userAuth: { accessToken, refreshToken },
   });
   expect(firstPage).toMatchInlineSnapshot(`
     NiceResponse {
@@ -857,6 +1304,13 @@ it("listing products should support cursor pagination", async ({ expect }) => {
               "stackable": false,
             },
             "quantity": 1,
+            "subscription": {
+              "cancel_at_period_end": false,
+              "current_period_end": <stripped field 'current_period_end'>,
+              "is_cancelable": true,
+              "subscription_id": "<stripped UUID>",
+            },
+            "type": "subscription",
           },
         ],
         "pagination": { "next_cursor": "<stripped UUID>" },
@@ -868,6 +1322,7 @@ it("listing products should support cursor pagination", async ({ expect }) => {
   const cursor = firstPage.body.pagination.next_cursor;
   const secondPage = await niceBackendFetch(`${basePath}?limit=5&cursor=${encodeURIComponent(cursor)}`, {
     accessType: "client",
+    userAuth: { accessToken, refreshToken },
   });
   expect(secondPage).toMatchInlineSnapshot(`
     NiceResponse {
@@ -889,6 +1344,8 @@ it("listing products should support cursor pagination", async ({ expect }) => {
               "stackable": false,
             },
             "quantity": 1,
+            "subscription": null,
+            "type": "one_time",
           },
           {
             "id": "pro-addon",
@@ -904,6 +1361,8 @@ it("listing products should support cursor pagination", async ({ expect }) => {
               "stackable": false,
             },
             "quantity": 1,
+            "subscription": null,
+            "type": "one_time",
           },
         ],
         "pagination": { "next_cursor": null },
@@ -926,9 +1385,9 @@ it("should immediately cancel existing subscriptions when granting a product of 
         displayName: "Item 1",
       },
     },
-    catalogs: {
+    productLines: {
       grp: {
-        displayName: "Catalog",
+        displayName: "Product Line",
       },
     },
     products: {
@@ -937,7 +1396,7 @@ it("should immediately cancel existing subscriptions when granting a product of 
         customerType: "user",
         serverOnly: false,
         stackable: false,
-        catalogId: "grp",
+        productLineId: "grp",
         prices: {
           monthly: {
             USD: "1000",
@@ -957,7 +1416,7 @@ it("should immediately cancel existing subscriptions when granting a product of 
         customerType: "user",
         serverOnly: false,
         stackable: false,
-        catalogId: "grp",
+        productLineId: "grp",
         prices: {
           monthly: {
             USD: "2000",
@@ -975,7 +1434,7 @@ it("should immediately cancel existing subscriptions when granting a product of 
     },
   });
 
-  const { userId } = await User.create();
+  const { userId, accessToken, refreshToken } = await Auth.fastSignUp();
   const grantBaseResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}`, {
     method: "POST",
     accessType: "server",
@@ -1004,6 +1463,7 @@ it("should immediately cancel existing subscriptions when granting a product of 
 
   const itemQuantities = await niceBackendFetch(`/api/v1/payments/items/user/${userId}/i1`, {
     accessType: "client",
+    userAuth: { accessToken, refreshToken },
   });
   expect(itemQuantities).toMatchInlineSnapshot(`
     NiceResponse {

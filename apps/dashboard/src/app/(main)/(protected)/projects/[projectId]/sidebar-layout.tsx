@@ -1,16 +1,11 @@
 'use client';
 
+import { CmdKSearch, CmdKTrigger } from "@/components/cmdk-search";
 import { Link } from "@/components/link";
 import { Logo } from "@/components/logo";
 import { ProjectSwitcher } from "@/components/project-switcher";
 import { StackCompanion } from "@/components/stack-companion";
 import ThemeToggle from "@/components/theme-toggle";
-import { ALL_APPS_FRONTEND, DUMMY_ORIGIN, getAppPath, getItemPath, testAppPath, testItemPath } from "@/lib/apps-frontend";
-import { getPublicEnvVar } from '@/lib/env';
-import { cn } from "@/lib/utils";
-import { UserButton } from "@stackframe/stack";
-import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import {
   Button,
   Sheet,
@@ -22,18 +17,26 @@ import {
   TooltipProvider,
   TooltipTrigger,
   Typography,
-} from "@stackframe/stack-ui";
+} from "@/components/ui";
+import { ALL_APPS_FRONTEND, DUMMY_ORIGIN, getAppPath, getItemPath, testAppPath, testItemPath } from "@/lib/apps-frontend";
+import { useUpdateConfig } from "@/lib/config-update";
+import { cn } from "@/lib/utils";
 import {
-  Blocks,
-  ChevronDown,
-  ChevronRight,
-  Globe,
-  KeyRound,
-  LucideIcon,
-  Menu,
-  PanelLeft,
-  Settings,
-} from "lucide-react";
+  CaretDownIcon,
+  CaretRightIcon,
+  ChartBarIcon,
+  CubeIcon,
+  GearIcon,
+  GlobeIcon,
+  KeyIcon,
+  ListIcon,
+  SidebarIcon,
+  type Icon as PhosphorIcon,
+} from "@phosphor-icons/react";
+import { TooltipPortal } from "@radix-ui/react-tooltip";
+import { UserButton } from "@stackframe/stack";
+import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
+import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { usePathname } from "next/navigation";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useAdminApp, useProjectId } from "./use-admin-app";
@@ -41,7 +44,7 @@ import { useAdminApp, useProjectId } from "./use-admin-app";
 type Item = {
   name: React.ReactNode,
   href: string,
-  icon: LucideIcon,
+  icon: PhosphorIcon,
   regex?: RegExp,
   type: 'item',
 };
@@ -61,7 +64,7 @@ type AppSection = {
 type BottomItem = {
   name: string,
   href: string,
-  icon: LucideIcon,
+  icon: PhosphorIcon,
   external?: boolean,
   regex?: RegExp,
 };
@@ -71,19 +74,19 @@ const bottomItems: BottomItem[] = [
   {
     name: 'Explore Apps',
     href: '/apps',
-    icon: Blocks,
+    icon: CubeIcon,
     regex: /^\/projects\/[^\/]+\/apps(\/.*)?$/,
   },
   {
     name: 'Project Keys',
     href: '/project-keys',
-    icon: KeyRound,
+    icon: KeyIcon,
     regex: /^\/projects\/[^\/]+\/project-keys(\/.*)?$/,
   },
   {
     name: 'Project Settings',
     href: '/project-settings',
-    icon: Settings,
+    icon: GearIcon,
     regex: /^\/projects\/[^\/]+\/project-settings$/,
   },
 ];
@@ -93,8 +96,16 @@ const overviewItem: Item = {
   name: "Overview",
   href: "/",
   regex: /^\/projects\/[^\/]+\/?$/,
-  icon: Globe,
+  icon: GlobeIcon,
   type: 'item'
+};
+
+const dashboardsItem: Item = {
+  name: "Dashboards",
+  href: "/dashboards",
+  regex: /^\/projects\/[^\/]+\/dashboards(\/.*)?$/,
+  icon: ChartBarIcon,
+  type: 'item',
 };
 
 function NavItem({
@@ -147,30 +158,30 @@ function NavItem({
   const isHighlighted = isDirectItemActive || isSectionActive;
 
   const inactiveClasses = cn(
-    "hover:bg-background/60",
+    "hover:bg-white/55 dark:hover:bg-background/60",
     "text-muted-foreground hover:text-foreground"
   );
 
   const buttonClasses = cn(
     "group flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-medium transition-all duration-150 hover:transition-none",
     isHighlighted
-      ? "bg-gradient-to-r from-blue-500/[0.15] to-blue-500/[0.08] text-foreground shadow-[0_0_12px_rgba(59,130,246,0.15)] ring-1 ring-blue-500/20"
+      ? "bg-white/70 text-foreground shadow-sm ring-1 ring-white/60 dark:bg-transparent dark:bg-gradient-to-r dark:from-blue-500/[0.15] dark:to-blue-500/[0.08] dark:shadow-[0_0_12px_rgba(59,130,246,0.15)] dark:ring-blue-500/20"
       : inactiveClasses,
     isSection ? "cursor-default" : "cursor-pointer",
-    isSection && isExpanded && !isHighlighted && "bg-background/30"
+    isSection && isExpanded && !isHighlighted && "bg-white/20 dark:bg-background/30"
   );
 
   const iconClasses = cn(
     "h-4 w-4 flex-shrink-0 transition-colors duration-150 group-hover:transition-none",
     isHighlighted
-      ? "text-blue-600 dark:text-blue-400"
+      ? "text-indigo-700 dark:text-blue-400"
       : "text-muted-foreground group-hover:text-foreground"
   );
 
   const caretClasses = cn(
-    "h-4 w-4 flex-shrink-0 transition-all duration-150 group-hover:transition-none",
+    "h-[13px] w-[13px] flex-shrink-0 transition-all duration-150 group-hover:transition-none",
     isHighlighted
-      ? "text-blue-600 dark:text-blue-400"
+      ? "text-indigo-700 dark:text-blue-400"
       : "text-muted-foreground group-hover:text-foreground",
     isSection && isExpanded && "rotate-180"
   );
@@ -191,8 +202,8 @@ function NavItem({
                 className={cn(
                   "h-9 w-9 p-0 justify-center rounded-lg transition-all duration-150 hover:transition-none",
                   isHighlighted
-                    ? "bg-blue-500/[0.12] shadow-[0_0_12px_rgba(59,130,246,0.15)] ring-1 ring-blue-500/20"
-                    : "hover:bg-background/60 text-muted-foreground hover:text-foreground"
+                    ? "bg-white/70 shadow-sm ring-1 ring-white/60 dark:bg-blue-500/[0.12] dark:shadow-[0_0_12px_rgba(59,130,246,0.15)] dark:ring-blue-500/20"
+                    : "hover:bg-white/40 dark:hover:bg-background/60 text-muted-foreground hover:text-foreground"
                 )}
               >
                 <Link href={collapsedHref ?? "#"} onClick={onClick}>
@@ -207,8 +218,8 @@ function NavItem({
                 className={cn(
                   "h-9 w-9 p-0 justify-center rounded-lg transition-all duration-150 hover:transition-none",
                   isHighlighted
-                    ? "bg-blue-500/[0.12] shadow-[0_0_12px_rgba(59,130,246,0.15)] ring-1 ring-blue-500/20"
-                    : "hover:bg-background/60 text-muted-foreground hover:text-foreground"
+                    ? "bg-white/70 shadow-sm ring-1 ring-white/60 dark:bg-blue-500/[0.12] dark:shadow-[0_0_12px_rgba(59,130,246,0.15)] dark:ring-blue-500/20"
+                    : "hover:bg-white/40 dark:hover:bg-background/60 text-muted-foreground hover:text-foreground"
                 )}
               >
                 <Link href={href ?? "#"} onClick={onClick} className="flex items-center justify-center">
@@ -217,9 +228,11 @@ function NavItem({
               </Button>
             )}
           </TooltipTrigger>
-          <TooltipContent side="right">
-            {item.name}
-          </TooltipContent>
+          <TooltipPortal>
+            <TooltipContent side="right" className="!z-[9999]">
+              {item.name}
+            </TooltipContent>
+          </TooltipPortal>
         </Tooltip>
       </div>
     );
@@ -240,7 +253,7 @@ function NavItem({
             <IconComponent className={iconClasses} />
             <span className="truncate text-sm font-semibold">{item.name}</span>
           </span>
-          <ChevronDown strokeWidth={2} className={caretClasses} />
+          <CaretDownIcon weight="bold" className={caretClasses} />
         </Button>
       ) : (
         <Button
@@ -306,8 +319,8 @@ function NavSubItem({
       className={cn(
         "group flex items-center gap-3 rounded-lg px-3 py-2 text-sm font-medium transition-all duration-150 hover:transition-none",
         isActive
-          ? "bg-gradient-to-r from-blue-500/[0.15] to-blue-500/[0.08] text-foreground shadow-[0_0_12px_rgba(59,130,246,0.15)] ring-1 ring-blue-500/20"
-          : "text-muted-foreground hover:text-foreground hover:bg-background/60"
+          ? "bg-white/70 text-foreground shadow-sm ring-1 ring-white/60 dark:bg-transparent dark:bg-gradient-to-r dark:from-blue-500/[0.15] dark:to-blue-500/[0.08] dark:shadow-[0_0_12px_rgba(59,130,246,0.15)] dark:ring-blue-500/20"
+          : "text-muted-foreground hover:text-foreground hover:bg-white/40 dark:hover:bg-background/60"
       )}
     >
       <span className="relative flex h-2 w-2 items-center justify-center">
@@ -315,8 +328,8 @@ function NavSubItem({
           className={cn(
             "h-2 w-2 rounded-full transition-all duration-150 group-hover:transition-none",
             isActive
-              ? "bg-blue-600 dark:bg-blue-400"
-              : "bg-muted-foreground/40 group-hover:bg-blue-500/50"
+              ? "bg-indigo-700 dark:bg-blue-400"
+              : "bg-muted-foreground/40 group-hover:bg-indigo-500/50 dark:group-hover:bg-blue-500/50"
           )}
         />
       </span>
@@ -430,12 +443,24 @@ function SidebarContent({
 
   return (
     <div className="flex h-full flex-col">
-      <div className={cn("flex flex-grow flex-col overflow-y-auto py-4 transition-all duration-200", isCollapsed ? "px-2" : "px-3")}>
+      <div
+        className={cn("flex flex-grow flex-col overflow-y-auto py-4 transition-all duration-200", isCollapsed ? "px-2" : "px-3")}
+        style={{
+          maskImage: 'linear-gradient(to bottom, transparent 0%, black 24px, black calc(100% - 24px), transparent 100%)',
+          WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 24px, black calc(100% - 24px), transparent 100%)',
+        }}
+      >
         <div className="space-y-3">
           <NavItem
             item={overviewItem}
             onClick={onNavigate}
             href={`/projects/${projectId}${overviewItem.href}`}
+            isCollapsed={isCollapsed}
+          />
+          <NavItem
+            item={dashboardsItem}
+            onClick={onNavigate}
+            href={`/projects/${projectId}${dashboardsItem.href}`}
             isCollapsed={isCollapsed}
           />
         </div>
@@ -463,7 +488,7 @@ function SidebarContent({
         <div className="flex-grow" />
       </div>
 
-      <div className={cn("sticky bottom-0 border-t border-border/30 py-3 backdrop-blur-sm transition-all duration-200 rounded-b-2xl", isCollapsed ? "px-2" : "px-3")}>
+      <div className={cn("sticky bottom-0 border-t border-black/[0.06] dark:border-foreground/10 py-3 transition-all duration-200 dark:backdrop-blur-xl dark:rounded-b-2xl", isCollapsed ? "px-2" : "px-3")}>
         <div className="space-y-2">
           {bottomItems.map((item) => (
             <NavItem
@@ -484,12 +509,14 @@ function SidebarContent({
 
         {/* User button and collapse toggle */}
         <div className={cn(
-          "mt-4 pt-3 border-t border-border/30 flex items-center gap-2",
+          "mt-4 pt-3 border-t border-border/30 flex items-center gap-2 min-w-0",
           isCollapsed ? "justify-center" : "justify-between"
         )}>
           {!isCollapsed && (
-            <div>
-              <UserButton showUserInfo />
+            <div className="min-w-0 flex-1 overflow-hidden max-w-[calc(100%-3rem)]">
+              <div className="w-full min-w-0 [&_button]:min-w-0 [&_button]:w-full [&_button]:max-w-full">
+                <UserButton showUserInfo />
+              </div>
             </div>
           )}
           {onToggleCollapse && (
@@ -499,14 +526,16 @@ function SidebarContent({
                   variant="ghost"
                   size="icon"
                   onClick={onToggleCollapse}
-                  className="h-8 w-8 p-1 text-muted-foreground hover:text-foreground hover:bg-background/60 rounded-lg transition-all duration-150 hover:transition-none"
+                  className="h-8 w-8 p-1 flex-shrink-0 text-muted-foreground hover:text-foreground hover:bg-background/60 rounded-lg transition-all duration-150 hover:transition-none"
                 >
-                  <PanelLeft className={cn("h-4 w-4 transition-transform duration-200", isCollapsed && "rotate-180")} />
+                  <SidebarIcon className={cn("h-4 w-4 transition-transform duration-200", isCollapsed && "rotate-180")} />
                 </Button>
               </TooltipTrigger>
-              <TooltipContent side="right">
-                {isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
-              </TooltipContent>
+              <TooltipPortal>
+                <TooltipContent side="right" className="!z-[9999]">
+                  {isCollapsed ? "Expand sidebar" : "Collapse sidebar"}
+                </TooltipContent>
+              </TooltipPortal>
             </Tooltip>
           )}
         </div>
@@ -515,11 +544,38 @@ function SidebarContent({
   );
 }
 
+function SpotlightSearchWrapper({ projectId }: { projectId: string }) {
+  const stackAdminApp = useAdminApp();
+  const project = stackAdminApp.useProject();
+  const config = project.useConfig();
+  const updateConfig = useUpdateConfig();
+
+  const enabledApps = useMemo(() =>
+    typedEntries(config.apps.installed)
+      .filter(([appId, appConfig]) => appConfig?.enabled && appId in ALL_APPS)
+      .map(([appId]) => appId as AppId),
+    [config.apps.installed]
+  );
+
+  const handleEnableApp = useCallback(async (appId: AppId) => {
+    await updateConfig({
+      adminApp: stackAdminApp,
+      configUpdate: { [`apps.installed.${appId}.enabled`]: true },
+      pushable: true,
+    });
+  }, [stackAdminApp, updateConfig]);
+
+  return <CmdKSearch projectId={projectId} enabledApps={enabledApps} onEnableApp={handleEnableApp} />;
+}
+
 export default function SidebarLayout(props: { children?: React.ReactNode }) {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [isCollapsed, setIsCollapsed] = useState(false);
 
   const projectId = useProjectId();
+  const pathname = usePathname();
+  // Custom dashboard detail pages have a transparent iframe background; the companion should match.
+  const isCustomDashboardPage = /\/dashboards\/[^/]+/.test(pathname);
 
   const toggleCollapsed = useCallback(() => {
     setIsCollapsed(prev => !prev);
@@ -527,71 +583,81 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
 
   return (
     <TooltipProvider>
-      <div className="mx-auto w-full flex flex-col min-h-screen bg-background shadow-2xl border-x border-border/5">
-        {/* Header - Sticky Floating */}
-        <div className="sticky top-3 z-20 mx-3 mb-3 mt-3 flex h-14 items-center justify-between bg-gray-100/80 dark:bg-foreground/5 border border-border/10 dark:border-foreground/5 backdrop-blur-xl px-4 shadow-sm rounded-2xl">
-          {/* Left section: Logo + Menu + Project Switcher */}
-          <div className="flex items-center gap-2">
-            {/* Mobile: Menu button */}
-            <Sheet onOpenChange={(open) => setSidebarOpen(open)} open={sidebarOpen}>
-              <SheetTitle className="hidden">
-                Sidebar Menu
-              </SheetTitle>
-              <SheetTrigger asChild>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  className="lg:hidden h-9 w-9 p-0 text-muted-foreground hover:text-foreground"
+      <div className="mx-auto w-full flex flex-col min-h-screen dark:bg-background dark:shadow-2xl dark:border-x dark:border-border/5">
+        {/* Header - Glassmorphic with vertical blur gradient (light) / Floating card (dark) */}
+        <div className="sticky top-0 z-20 relative dark:top-3 dark:mx-3 dark:mb-3 dark:mt-3 dark:rounded-2xl">
+          {/* Vertical blur layer behind header - light mode only */}
+          <div
+            className="absolute inset-0 h-[calc(100%+0.75rem)] pointer-events-none dark:hidden"
+            style={{
+              backdropFilter: 'blur(16px)',
+              WebkitBackdropFilter: 'blur(16px)',
+              maskImage: 'linear-gradient(to bottom, black 50%, transparent 100%)',
+              WebkitMaskImage: 'linear-gradient(to bottom, black 50%, transparent 100%)',
+            }}
+          />
+          <div className="relative flex h-14 items-center justify-between px-5 dark:bg-foreground/5 dark:px-4 dark:border dark:border-foreground/5 dark:backdrop-blur-2xl dark:shadow-sm dark:rounded-2xl">
+            {/* Left section: Logo + Menu + Project Switcher */}
+            <div className="flex grow-1 items-center gap-2">
+              {/* Mobile: Menu button */}
+              <Sheet onOpenChange={(open) => setSidebarOpen(open)} open={sidebarOpen}>
+                <SheetTitle className="hidden">
+                  Sidebar Menu
+                </SheetTitle>
+                <SheetTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="lg:hidden h-9 w-9 p-0 text-muted-foreground hover:text-foreground"
+                  >
+                    <ListIcon className="h-4 w-4" />
+                  </Button>
+                </SheetTrigger>
+                <SheetContent
+                  aria-describedby={undefined}
+                  side='left'
+                  className="w-[248px] bg-white/90 dark:bg-foreground/5 border-black/[0.06] dark:border-foreground/5 p-0 backdrop-blur-sm shadow-md"
+                  hasCloseButton={false}
                 >
-                  <Menu className="h-4 w-4" />
-                </Button>
-              </SheetTrigger>
-              <SheetContent
-                aria-describedby={undefined}
-                side='left'
-                className="w-[248px] bg-gray-100/90 dark:bg-foreground/5 border-border/10 dark:border-foreground/5 p-0 backdrop-blur-xl shadow-sm"
-                hasCloseButton={false}
-              >
-                <SidebarContent projectId={projectId} onNavigate={() => setSidebarOpen(false)} />
-              </SheetContent>
-            </Sheet>
+                  <SidebarContent projectId={projectId} onNavigate={() => setSidebarOpen(false)} />
+                </SheetContent>
+              </Sheet>
 
-            {/* Desktop: Logo + Breadcrumb + Project Switcher */}
-            <div className="hidden lg:flex items-center gap-2">
-              <Logo height={24} href="/" />
-              <ChevronRight className="h-4 w-4 text-muted-foreground/50" />
-              {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ? (
-                <Logo full width={96} href="/projects" />
-              ) : (
+              {/* Desktop: Logo + Breadcrumb + Project Switcher */}
+              <div className="hidden lg:flex items-center gap-2">
+                <Logo height={24} href="/" />
+                <CaretRightIcon className="h-4 w-4 text-muted-foreground/50" />
                 <ProjectSwitcher currentProjectId={projectId} />
-              )}
+              </div>
+
+              {/* Mobile: Logo */}
+              <div className="lg:hidden">
+                <Logo full height={24} href="/projects" />
+              </div>
             </div>
 
-            {/* Mobile: Logo */}
-            <div className="lg:hidden">
-              <Logo full height={24} href="/projects" />
+            {/* Middle section: Control Center */}
+            <div className="grow-1">
+              <CmdKTrigger />
             </div>
-          </div>
 
-          {/* Right section: Theme toggle and User button */}
-          <div className="flex gap-2 items-center">
-            {getPublicEnvVar("NEXT_PUBLIC_STACK_EMULATOR_ENABLED") === "true" ? (
+            {/* Right section: Search, Theme toggle and User button */}
+            <div className="flex grow-1 gap-2 items-center">
               <ThemeToggle />
-            ) : (
-              <>
-                <ThemeToggle />
-                <UserButton />
-              </>
-            )}
+              <UserButton />
+            </div>
           </div>
         </div>
 
+        {/* Spotlight Search */}
+        <SpotlightSearchWrapper projectId={projectId} />
+
         {/* Body Layout (Left Sidebar + Content + Right Companion) */}
-        <div className="flex flex-1 items-start w-full">
+        <div className="relative flex flex-1 items-start w-full">
           {/* Left Sidebar - Sticky */}
           <aside
             className={cn(
-              "sticky top-20 h-[calc(100vh-6rem)] ml-3 hidden flex-col bg-gray-100/80 dark:bg-foreground/5 border border-border/10 dark:border-foreground/5 backdrop-blur-xl lg:flex z-[10] transition-[width] duration-200 ease-in-out rounded-2xl shadow-sm",
+              "sticky top-14 h-[calc(100vh-3.5rem)] hidden flex-col lg:flex z-[10] transition-[width] duration-200 ease-in-out dark:top-20 dark:h-[calc(100vh-6rem)] dark:ml-3 dark:bg-foreground/5 dark:border dark:border-foreground/5 dark:backdrop-blur-2xl dark:rounded-2xl dark:shadow-sm",
               isCollapsed ? "w-[64px]" : "w-[248px]"
             )}
           >
@@ -603,15 +669,24 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
           </aside>
 
           {/* Main Content Area */}
-          <main className="flex-1 min-w-0 px-2 pb-3">
-            <div className="relative flex flex-col min-h-full">
+          <main className="flex-1 min-w-0 pt-1 pb-3 px-3 lg:pl-0 has-[[data-full-bleed]]:h-[calc(100vh-3.5rem)] dark:py-0 dark:px-2 dark:pb-3 dark:h-[calc(100vh-6rem)]">
+            <div className={cn(
+              "relative flex flex-col overflow-visible dark:h-full dark:overflow-auto has-[[data-full-bleed]]:h-full has-[[data-full-bleed]]:overflow-auto",
+              // Light mode card styling
+              "min-h-[calc(100vh-4.5rem)] bg-white/80 backdrop-blur-xl shadow-[0_4px_24px_rgba(0,0,0,0.06),0_1px_4px_rgba(0,0,0,0.04)] rounded-2xl border border-black/[0.06] lg:pr-20",
+              // Dark mode: remove card styling
+              "dark:min-h-0 dark:bg-transparent dark:backdrop-blur-none dark:shadow-none dark:rounded-none dark:border-0 dark:lg:pr-20",
+              // Full-bleed pages (email editors etc.): remove card styling in light mode too (keep lg:pr-20 for companion space)
+              "has-[[data-full-bleed]]:min-h-0 has-[[data-full-bleed]]:bg-transparent has-[[data-full-bleed]]:backdrop-blur-none has-[[data-full-bleed]]:shadow-none has-[[data-full-bleed]]:rounded-none has-[[data-full-bleed]]:border-0",
+            )}>
               {props.children}
             </div>
           </main>
 
-          {/* Stack Companion -
-          */}
-          <StackCompanion className="hidden lg:flex" />
+          {/* Stack Companion - overlay with reserved content gutter */}
+          <div className="pointer-events-none absolute top-0 right-2 bottom-0 z-30 hidden lg:block">
+            <StackCompanion className="pointer-events-auto" glassBg={isCustomDashboardPage} />
+          </div>
         </div>
       </div>
     </TooltipProvider>

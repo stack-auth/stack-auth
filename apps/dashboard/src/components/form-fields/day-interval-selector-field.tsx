@@ -1,7 +1,7 @@
 import { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { Control, FieldValues, Path } from "react-hook-form";
 import { FieldLabel } from "../form-fields";
-import { FormControl, SelectValue, SelectTrigger, SelectItem, SelectContent, FormItem, FormMessage, Select, SelectGroup, FormField } from "@stackframe/stack-ui";
+import { FormControl, SelectValue, SelectTrigger, SelectItem, SelectContent, FormItem, FormMessage, Select, SelectGroup, FormField } from "@/components/ui";
 
 const intervalOptions = [
   { value: "1-week", label: "1 week" },

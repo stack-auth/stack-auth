@@ -2,7 +2,7 @@
 
 import { Logo } from "@/components/logo";
 import { AdminProject, useUser } from "@stackframe/stack";
-import { Button, Card, CardContent, CardFooter, CardHeader, Input, Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue, Typography } from "@stackframe/stack-ui";
+import { Button, Card, CardContent, CardFooter, CardHeader, Input, Select, SelectContent, SelectGroup, SelectItem, SelectTrigger, SelectValue, Typography } from "@/components/ui";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useState } from "react";

@@ -1,7 +1,7 @@
 'use client';
 
 import { BrandIcons, Button, SimpleTooltip } from '@stackframe/stack-ui';
-import Color from 'color';
+import Color, { ColorInstance } from 'color';
 import { useEffect, useId, useState } from 'react';
 import { useStackApp } from '..';
 import { useTranslation } from '../lib/translations';
@@ -9,7 +9,7 @@ import { useInIframe } from './use-in-iframe';
 
 const iconSize = 22;
 
-const changeColor = (c: Color, value: number) => {
+const changeColor = (c: ColorInstance, value: number) => {
   if (c.isLight()) {
     value = -value;
   }

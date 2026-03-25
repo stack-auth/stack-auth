@@ -1,10 +1,10 @@
 import { teamMembershipsCrudHandlers } from "@/app/api/latest/team-memberships/crud";
-import { sendEmailFromTemplate } from "@/lib/emails";
+import { sendEmailFromDefaultTemplate } from "@/lib/emails";
 import { getItemQuantityForCustomer } from "@/lib/payments";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
-import { VerificationCodeType } from "@prisma/client";
+import { VerificationCodeType } from "@/generated/prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { emailSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { teamsCrudHandlers } from "../../teams/crud";
@@ -54,7 +54,7 @@ export const teamInvitationCodeHandler = createVerificationCodeHandler({
       team_id: createOptions.data.team_id,
     });
 
-    await sendEmailFromTemplate({
+    await sendEmailFromDefaultTemplate({
       tenancy: await getSoleTenancyFromProjectBranch(createOptions.project, createOptions.branchId),
       user: null,
       email: createOptions.method.email,
@@ -63,12 +63,16 @@ export const teamInvitationCodeHandler = createVerificationCodeHandler({
         teamInvitationLink: codeObj.link.toString(),
         teamDisplayName: team.display_name,
       },
+      shouldSkipDeliverabilityCheck: true,
     });
 
     return codeObj;
   },
   async handler(tenancy, {}, data, body, user) {
     if (!user) throw new KnownErrors.UserAuthenticationRequired;
+    if (user.restricted_reason) {
+      throw new KnownErrors.TeamInvitationRestrictedUserNotAllowed(user.restricted_reason);
+    }
     const prisma = await getPrismaClientForTenancy(tenancy);
 
     if (tenancy.project.id === "internal") {
@@ -122,6 +126,9 @@ export const teamInvitationCodeHandler = createVerificationCodeHandler({
   },
   async details(tenancy, {}, data, body, user) {
     if (!user) throw new KnownErrors.UserAuthenticationRequired;
+    if (user.restricted_reason) {
+      throw new KnownErrors.TeamInvitationRestrictedUserNotAllowed(user.restricted_reason);
+    }
 
     const team = await teamsCrudHandlers.adminRead({
       tenancy,

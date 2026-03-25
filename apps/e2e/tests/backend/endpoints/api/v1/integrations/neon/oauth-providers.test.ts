@@ -3,7 +3,7 @@ import { Auth, Project, niceBackendFetch } from "../../../../../backend-helpers"
 
 
 it("creates a new oauth provider", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
 
   const response = await niceBackendFetch(`/api/v1/integrations/neon/oauth-providers`, {
@@ -31,7 +31,7 @@ it("creates a new oauth provider", async ({ expect }) => {
 });
 
 it("lists oauth providers", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
 
   const response1 = await niceBackendFetch(`/api/v1/integrations/neon/oauth-providers`, {
@@ -132,6 +132,7 @@ it("lists oauth providers", async ({ expect }) => {
         "logo_full_dark_mode_url": null,
         "logo_full_url": null,
         "logo_url": null,
+        "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -140,7 +141,7 @@ it("lists oauth providers", async ({ expect }) => {
 });
 
 it("creates standard oauth providers", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
 
   const response1 = await niceBackendFetch(`/api/v1/integrations/neon/oauth-providers`, {
@@ -198,7 +199,7 @@ it("creates standard oauth providers", async ({ expect }) => {
 });
 
 it("updates shared to standard oauth provider", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
 
   const response1 = await niceBackendFetch(`/api/v1/integrations/neon/oauth-providers`, {
@@ -252,7 +253,7 @@ it("updates shared to standard oauth provider", async ({ expect }) => {
 });
 
 it("deletes an oauth provider", async ({ expect }) => {
-  await Auth.Otp.signIn();
+  await Auth.fastSignUp();
   const { adminAccessToken } = await Project.createAndGetAdminToken();
 
   // Create a provider first

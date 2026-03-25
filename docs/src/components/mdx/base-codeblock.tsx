@@ -1,8 +1,10 @@
 'use client';
 
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
+import { Check, Copy } from 'lucide-react';
 import { useEffect, useState, type ReactNode } from 'react';
 import { codeToHtml } from 'shiki';
+import { cn } from '../../lib/cn';
 
 export type BaseCodeblockProps = {
   code: string,
@@ -47,6 +49,17 @@ export function BaseCodeblock({
 }: BaseCodeblockProps) {
   const [highlightedCode, setHighlightedCode] = useState<string>('');
   const [isClient, setIsClient] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = async () => {
+    try {
+      await navigator.clipboard.writeText(code.startsWith(' ') ? code.slice(1) : code);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch (err) {
+      console.error('Failed to copy:', err);
+    }
+  };
 
   // Mark when we're on the client to avoid hydration mismatches
   useEffect(() => {
@@ -148,8 +161,23 @@ export function BaseCodeblock({
         )}
 
         {/* Code Content */}
-        <div className="relative bg-fd-background px-4 py-4 text-sm outline-none dark:bg-[#0A0A0A] rounded-b-xl">
+        <div className="group/code relative bg-fd-background px-4 py-4 text-sm outline-none dark:bg-[#0A0A0A] rounded-b-xl">
           {beforeCodeContent}
+
+          {/* Copy button - visible on hover or when copied */}
+          <button
+            onClick={() => runAsynchronously(handleCopy)}
+            className={cn(
+              "absolute top-3 right-3 z-10 p-1.5 rounded-md transition-all duration-150",
+              "text-fd-muted-foreground hover:text-fd-foreground",
+              "bg-fd-muted/50 hover:bg-fd-muted border border-fd-border/50",
+              "opacity-0 group-hover/code:opacity-100",
+              copied && "opacity-100 text-green-500 hover:text-green-500"
+            )}
+            title={copied ? "Copied!" : "Copy code"}
+          >
+            {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+          </button>
 
           <div className="rounded-lg overflow-auto max-h-[500px] relative">
             <div

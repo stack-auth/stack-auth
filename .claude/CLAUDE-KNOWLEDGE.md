@@ -178,9 +178,9 @@ const [result1, result2] = await Promise.all([
 ```
 
 ### Q: What's the correct way to update project configuration in E2E tests?
-A: Use the `/api/v1/internal/config/override` endpoint with PATCH method and admin access token:
+A: Use the `/api/v1/internal/config/override/environment` endpoint with PATCH method and admin access token:
 ```typescript
-await niceBackendFetch("/api/v1/internal/config/override", {
+await niceBackendFetch("/api/v1/internal/config/override/environment", {
   method: "PATCH",
   accessType: "admin",
   headers: {

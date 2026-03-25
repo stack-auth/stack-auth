@@ -14,10 +14,14 @@ export default function Handler(props: unknown) {
       </div>
       : null}
   </>;
-  return <StackHandler
-    fullPage
-    routeProps={props}
-    app={stackServerApp}
-    componentProps={{ SignIn: { extraInfo }, SignUp: { extraInfo } }}
-  />;
+  return (
+    <div data-stack-handler-page className="min-h-screen">
+      <StackHandler
+        fullPage
+        routeProps={props}
+        app={stackServerApp}
+        componentProps={{ SignIn: { extraInfo }, SignUp: { extraInfo } }}
+      />
+    </div>
+  );
 }

@@ -43,8 +43,9 @@ For vibecoding, it can help to have multiple parallel copies of the codebase ope
   ```sh
   # ~/.bash_profile, ~/.bashrc, ~/.zprofile, ~/.zshrc, ~/.zshenv, etc.
   # note that different coding agents use a different shell in a different mode (login, non-login, interactive, non-interactive, etc.); from my experimentation, as of 2025-10-17 on a Mac, Cursor uses non-interactive zsh (requiring ~/.zshenv), whereas Codex uses a non-interactive login bash (requiring ~/.bash_profile). It's easiest to just add these lines of code to all of your shell configs.
-  eval "$(direnv hook <bash|zsh>)"
-  eval "$(direnv export <bash|zsh>)"
+  # also, make sure to use the correct path to the direnv binary; for example, on a Mac with Homebrew installed, it is /opt/homebrew/bin/direnv
+  eval "$(/path/to/direnv hook <bash|zsh>)"
+  eval "$(/path/to/direnv export <bash|zsh>)"
   ```
 3. Now, create a `.envrc` file in the root of Stack Auth's codebase with the following content:
   ```sh

@@ -4,7 +4,7 @@ import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getOrCreateFeaturebaseUser } from "@stackframe/stack-shared/dist/utils/featurebase";
 
-const STACK_FEATUREBASE_API_KEY = getEnvVariable("STACK_FEATUREBASE_API_KEY");
+const STACK_FEATUREBASE_API_KEY = getEnvVariable("STACK_FEATUREBASE_API_KEY", "");
 
 // POST /api/latest/internal/feature-requests/[featureRequestId]/upvote
 export const POST = createSmartRouteHandler({
@@ -36,6 +36,10 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth, params }) => {
+    if (!STACK_FEATUREBASE_API_KEY) {
+      throw new StackAssertionError("STACK_FEATUREBASE_API_KEY environment variable is not set");
+    }
+
     // Get or create Featurebase user for consistent email handling
     const featurebaseUser = await getOrCreateFeaturebaseUser({
       id: auth.user.id,

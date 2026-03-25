@@ -219,7 +219,7 @@ export function EmailTemplate({ user, project }: Props) {
     NiceResponse {
       "status": 200,
       "body": {
-        "html": "<!DOCTYPE html PUBLIC \\"-//W3C//DTD XHTML 1.0 Transitional//EN\\" \\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\\"><html dir=\\"ltr\\" lang=\\"en\\"><head></head><body><!--$--><table align=\\"center\\" width=\\"100%\\" border=\\"0\\" cellPadding=\\"0\\" cellSpacing=\\"0\\" role=\\"presentation\\" style=\\"max-width:37.5em\\"><tbody><tr style=\\"width:100%\\"><td><div>Preview for <!-- -->John Doe</div></td></tr></tbody></table><!--3--><!--/$--></body></html>",
+        "html": "<!DOCTYPE html PUBLIC \\"-//W3C//DTD XHTML 1.0 Transitional//EN\\" \\"http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd\\"><html dir=\\"ltr\\" lang=\\"en\\"><head></head><body><!--$--><table border=\\"0\\" width=\\"100%\\" cellPadding=\\"0\\" cellSpacing=\\"0\\" role=\\"presentation\\" align=\\"center\\"><tbody><tr><td><table align=\\"center\\" width=\\"100%\\" border=\\"0\\" cellPadding=\\"0\\" cellSpacing=\\"0\\" role=\\"presentation\\" style=\\"max-width:37.5em\\"><tbody><tr style=\\"width:100%\\"><td><div>Preview for <!-- -->John Doe</div></td></tr></tbody></table></td></tr></tbody></table><!--3--><!--/$--></body></html>",
         "notification_category": "Transactional",
         "subject": "Render Draft Subject",
       },
@@ -399,6 +399,360 @@ it("should fail rendering with non-existent theme id", async ({ expect }) => {
         "x-stack-known-error": "SCHEMA_ERROR",
         <some fields may have been hidden>,
       },
+    }
+  `);
+});
+
+it("should delete an email draft", async ({ expect }) => {
+  await Project.createAndSwitch({
+    display_name: "Email Drafts Delete Project",
+    config: { email_config: customEmailConfig },
+  });
+
+  const draftSource = `import { Container } from "@react-email/components";
+import { Subject, NotificationCategory, Props } from "@stackframe/emails";
+export function EmailTemplate({ user, project }: Props) {
+  return (
+    <Container>
+      <Subject value="Draft to Delete" />
+      <NotificationCategory value="Transactional" />
+      <div>This draft will be deleted</div>
+    </Container>
+  );
+}`;
+
+  // Create a draft
+  const createRes = await niceBackendFetch("/api/v1/internal/email-drafts", {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      display_name: "Draft to Delete",
+      theme_id: false,
+      tsx_source: draftSource,
+    },
+  });
+  expect(createRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "id": "<stripped UUID>" },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+  const draftId = createRes.body.id as string;
+
+  // Verify it exists
+  const getRes1 = await niceBackendFetch(`/api/v1/internal/email-drafts/${draftId}`, {
+    method: "GET",
+    accessType: "admin",
+  });
+  expect(getRes1.status).toBe(200);
+
+  // Delete it
+  const deleteRes = await niceBackendFetch(`/api/v1/internal/email-drafts/${draftId}`, {
+    method: "DELETE",
+    accessType: "admin",
+  });
+  expect(deleteRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "ok": "ok" },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  // Verify it no longer exists - return 404 instead of a Prisma error
+  const getRes2 = await niceBackendFetch(`/api/v1/internal/email-drafts/${draftId}`, {
+    method: "GET",
+    accessType: "admin",
+  });
+  expect(getRes2.status).toBe(404);
+
+  // Verify it's not in the list
+  const listRes = await niceBackendFetch("/api/v1/internal/email-drafts", {
+    method: "GET",
+    accessType: "admin",
+  });
+  expect(listRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "drafts": [] },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("should return error when deleting non-existent draft", async ({ expect }) => {
+  await Project.createAndSwitch({
+    display_name: "Email Drafts 404 Project",
+    config: { email_config: customEmailConfig },
+  });
+
+  const nonExistentId = "00000000-0000-0000-0000-000000000000";
+  const deleteRes = await niceBackendFetch(`/api/v1/internal/email-drafts/${nonExistentId}`, {
+    method: "DELETE",
+    accessType: "admin",
+  });
+  // Return a proper 404 so niceBackendFetch doesn't throw
+  expect(deleteRes.status).toBe(404);
+});
+
+it("should reject draft that throws an error when rendered", async ({ expect }) => {
+  await Project.createAndSwitch({
+    display_name: "Email Drafts Invalid JSX Project",
+    config: { email_config: customEmailConfig },
+  });
+
+  const createRes = await niceBackendFetch("/api/v1/internal/email-drafts", {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      display_name: "Throwing Draft",
+      theme_id: false,
+      tsx_source: `
+        import { Subject, NotificationCategory } from "@stackframe/emails";
+        export function EmailTemplate() {
+          throw new Error('Intentional error from draft');
+        }
+      `,
+    },
+  });
+  expect(createRes.status).toBe(200);
+  const draftId = createRes.body.id as string;
+
+  // Attempt to render the draft
+  const renderRes = await niceBackendFetch("/api/v1/emails/render-email", {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      template_tsx_source: `
+        import { Subject, NotificationCategory } from "@stackframe/emails";
+        export function EmailTemplate() {
+          throw new Error('Intentional error from draft');
+        }
+      `,
+      theme_id: false,
+    },
+  });
+  expect(renderRes.status).toBe(400);
+  expect(renderRes.body).toMatchObject({
+    code: "EMAIL_RENDERING_ERROR",
+  });
+  expect(renderRes.body.error).toContain("Intentional error from draft");
+});
+
+it("should reject draft that does not export EmailTemplate function", async ({ expect }) => {
+  await Project.createAndSwitch({
+    display_name: "Email Drafts Invalid JSX Project",
+    config: { email_config: customEmailConfig },
+  });
+
+  const renderRes = await niceBackendFetch("/api/v1/emails/render-email", {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      template_tsx_source: `
+        import { Subject, NotificationCategory } from "@stackframe/emails";
+        export function WrongFunctionName() {
+          return <div>This should fail</div>;
+        }
+      `,
+      theme_id: false,
+    },
+  });
+  expect(renderRes.status).toBe(400);
+  expect(renderRes.body).toMatchObject({
+    code: "EMAIL_RENDERING_ERROR",
+  });
+  // Error message varies by runtime
+  expect(renderRes.body.error).toBeDefined();
+});
+
+it("should reject draft with invalid JSX syntax", async ({ expect }) => {
+  await Project.createAndSwitch({
+    display_name: "Email Drafts Invalid JSX Project",
+    config: { email_config: customEmailConfig },
+  });
+
+  const renderRes = await niceBackendFetch("/api/v1/emails/render-email", {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      template_tsx_source: `
+        export function EmailTemplate() {
+          return <div><span>unclosed tag
+        }
+      `,
+      theme_id: false,
+    },
+  });
+  expect(renderRes.status).toBe(400);
+  expect(renderRes.body).toMatchInlineSnapshot(`
+    {
+      "code": "EMAIL_RENDERING_ERROR",
+      "details": {
+        "error": deindent\`
+          Build failed with 2 errors:
+          virtual:/template.tsx:4:8: ERROR: The character "}" is not valid inside a JSX element
+          virtual:/template.tsx:5:6: ERROR: Unexpected end of file before a closing "span" tag
+        \`,
+      },
+      "error": deindent\`
+        Failed to render email with theme: Build failed with 2 errors:
+        virtual:/template.tsx:4:8: ERROR: The character "}" is not valid inside a JSX element
+        virtual:/template.tsx:5:6: ERROR: Unexpected end of file before a closing "span" tag
+      \`,
+    }
+  `);
+});
+
+it.todo("should reject draft that causes infinite loop during rendering", async ({ expect }) => {
+  await Project.createAndSwitch({
+    display_name: "Email Drafts Invalid JSX Project",
+    config: { email_config: customEmailConfig },
+  });
+
+  const renderRes = await niceBackendFetch("/api/v1/emails/render-email", {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      template_tsx_source: `
+        import { Subject, NotificationCategory } from "@stackframe/emails";
+        export function EmailTemplate() {
+          while (true) {}
+          return <div>Never reached</div>;
+        }
+      `,
+      theme_id: false,
+    },
+  });
+  // Should timeout or return an error, not hang indefinitely
+  expect(renderRes.status).toBe(400);
+  expect(renderRes.body).toMatchInlineSnapshot("todo");
+});
+
+it.todo("should reject draft that allocates too much memory", async ({ expect }) => {
+  await Project.createAndSwitch({
+    display_name: "Email Drafts Invalid JSX Project",
+    config: { email_config: customEmailConfig },
+  });
+
+  const renderRes = await niceBackendFetch("/api/v1/emails/render-email", {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      template_tsx_source: `
+        import { Subject, NotificationCategory } from "@stackframe/emails";
+        export function EmailTemplate() {
+          const arr = [];
+          for (let i = 0; i < 1e9; i++) {
+            arr.push(new Array(1e6).fill('x'));
+          }
+          return <div>{arr.length}</div>;
+        }
+      `,
+      theme_id: false,
+    },
+  });
+  // Should fail due to memory limits, not hang or crash the server
+  expect(renderRes.status).toBe(400);
+  expect(renderRes.body).toMatchObject({
+    code: "EMAIL_RENDERING_ERROR",
+  });
+});
+
+it("should reject draft that exports a non-function", async ({ expect }) => {
+  await Project.createAndSwitch({
+    display_name: "Email Drafts Invalid JSX Project",
+    config: { email_config: customEmailConfig },
+  });
+
+  const renderRes = await niceBackendFetch("/api/v1/emails/render-email", {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      template_tsx_source: `
+        export const EmailTemplate = "not a function";
+      `,
+      theme_id: false,
+    },
+  });
+  expect(renderRes.status).toBe(400);
+  expect(renderRes.body).toMatchObject({
+    code: "EMAIL_RENDERING_ERROR",
+  });
+  // Error message varies by runtime
+  expect(renderRes.body.error).toBeDefined();
+});
+
+it("should reject theme_tsx_source that throws an error when rendered", async ({ expect }) => {
+  await Project.createAndSwitch({
+    display_name: "Email Drafts Invalid JSX Project",
+    config: { email_config: customEmailConfig },
+  });
+
+  const renderRes = await niceBackendFetch("/api/v1/emails/render-email", {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      template_tsx_source: `
+        import { Subject, NotificationCategory } from "@stackframe/emails";
+        export function EmailTemplate() {
+          return <div>Valid template</div>;
+        }
+      `,
+      theme_tsx_source: `
+        import { Html } from '@react-email/components';
+        export function EmailTheme({ children }) {
+          throw new Error('Intentional error from theme');
+        }
+      `,
+    },
+  });
+  expect(renderRes.status).toBe(400);
+  expect(renderRes.body).toMatchObject({
+    code: "EMAIL_RENDERING_ERROR",
+  });
+  expect(renderRes.body.error).toContain("Intentional error from theme");
+});
+
+it("should reject theme_tsx_source that does not export EmailTheme function", async ({ expect }) => {
+  await Project.createAndSwitch({
+    display_name: "Email Drafts Invalid JSX Project",
+    config: { email_config: customEmailConfig },
+  });
+
+  const renderRes = await niceBackendFetch("/api/v1/emails/render-email", {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      template_tsx_source: `
+        import { Subject, NotificationCategory } from "@stackframe/emails";
+        export function EmailTemplate() {
+          return <div>Valid template</div>;
+        }
+      `,
+      theme_tsx_source: `
+        import { Html } from '@react-email/components';
+        export function WrongThemeName({ children }) {
+          return <Html>{children}</Html>;
+        }
+      `,
+    },
+  });
+  expect(renderRes.status).toBe(400);
+  expect(renderRes.body).toMatchInlineSnapshot(`
+    {
+      "code": "EMAIL_RENDERING_ERROR",
+      "details": {
+        "error": deindent\`
+          Build failed with 1 error:
+          virtual:/render.tsx:9:9: ERROR: No matching export in "virtual:/theme.tsx" for import "EmailTheme"
+        \`,
+      },
+      "error": deindent\`
+        Failed to render email with theme: Build failed with 1 error:
+        virtual:/render.tsx:9:9: ERROR: No matching export in "virtual:/theme.tsx" for import "EmailTheme"
+      \`,
     }
   `);
 });

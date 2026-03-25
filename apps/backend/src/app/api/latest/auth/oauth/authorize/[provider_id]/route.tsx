@@ -1,4 +1,4 @@
-import { checkApiKeySet } from "@/lib/internal-api-keys";
+import { checkApiKeySet, throwCheckApiKeySetError } from "@/lib/internal-api-keys";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { decodeAccessToken, oauthCookieSchema } from "@/lib/tokens";
 import { getProjectBranchFromClientId, getProvider } from "@/oauth";
@@ -47,7 +47,7 @@ export const GET = createSmartRouteHandler({
       code_challenge: yupString().defined(),
       code_challenge_method: yupString().defined(),
       response_type: yupString().defined(),
-    }).defined(),
+    }).noUnknown(/* Allow unknown query params such as ttclid, other stuff that's being injected by browsers */ false).defined(),
   }),
   response: yupObject({
     // we never return as we always redirect
@@ -60,8 +60,9 @@ export const GET = createSmartRouteHandler({
       throw new KnownErrors.InvalidOAuthClientIdOrSecret(query.client_id);
     }
 
-    if (!(await checkApiKeySet(tenancy.project.id, { publishableClientKey: query.client_secret }))) {
-      throw new KnownErrors.InvalidPublishableClientKey(tenancy.project.id);
+    const keyCheck = await checkApiKeySet(tenancy.project.id, { publishableClientKey: query.client_secret });
+    if (keyCheck.status === "error") {
+      throwCheckApiKeySetError(keyCheck.error, tenancy.project.id, new KnownErrors.InvalidPublishableClientKey(tenancy.project.id));
     }
 
     const providerRaw = Object.entries(tenancy.config.auth.oauth.providers).find(([providerId, _]) => providerId === params.provider_id);
@@ -78,7 +79,7 @@ export const GET = createSmartRouteHandler({
     // If a token is provided, store it in the outer info so we can use it to link another user to the account, or to upgrade an anonymous user
     let projectUserId: string | undefined;
     if (query.token) {
-      const result = await decodeAccessToken(query.token, { allowAnonymous: true });
+      const result = await decodeAccessToken(query.token, { allowAnonymous: true, allowRestricted: true });
       if (result.status === "error") {
         throw result.error;
       }

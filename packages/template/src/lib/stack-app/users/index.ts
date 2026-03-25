@@ -1,6 +1,7 @@
 import { KnownErrors } from "@stackframe/stack-shared";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
+import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { encodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { GeoInfo } from "@stackframe/stack-shared/dist/utils/geo";
@@ -9,26 +10,25 @@ import { ProviderType } from "@stackframe/stack-shared/dist/utils/oauth";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { ApiKeyCreationOptions, UserApiKey, UserApiKeyFirstView } from "../api-keys";
 import { AsyncStoreProperty, AuthLike } from "../common";
-import { OAuthConnection } from "../connected-accounts";
+import { DeprecatedOAuthConnection, OAuthConnection } from "../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ServerContactChannel, ServerContactChannelCreateOptions } from "../contact-channels";
 import { Customer } from "../customers";
 import { NotificationCategory } from "../notification-categories";
 import { AdminTeamPermission, TeamPermission } from "../permissions";
 import { AdminOwnedProject, AdminProjectCreateOptions } from "../projects";
-import { EditableTeamMemberProfile, ServerTeam, ServerTeamCreateOptions, Team, TeamCreateOptions } from "../teams";
+import { EditableTeamMemberProfile, ReceivedTeamInvitation, ServerTeam, ServerTeamCreateOptions, Team, TeamCreateOptions } from "../teams";
 
 const userGetterErrorMessage = "Stack Auth: useUser() already returns the user object. Use `const user = useUser()` (or `const user = await app.getUser()`) instead of destructuring it like `const { user } = ...`.";
 
-export function attachUserDestructureGuard(target: object): void {
-  const descriptor = Object.getOwnPropertyDescriptor(target, "user");
-  if (descriptor?.get === guardGetter) {
-    return;
-  }
-
-  Object.defineProperty(target, "user", {
-    get: guardGetter,
-    configurable: false,
-    enumerable: false,
+export function withUserDestructureGuard<T extends object>(target: T): T {
+  Object.freeze(target);
+  return new Proxy(target, {
+    get(target, prop, receiver) {
+      if (prop === "user") {
+        return guardGetter();
+      }
+      return target[prop as keyof T];
+    },
   });
 }
 
@@ -65,16 +65,15 @@ export type ServerOAuthProvider = {
 };
 
 
-export type Session = {
-  getTokens(): Promise<{ accessToken: string | null, refreshToken: string | null }>,
-};
-
 /**
  * Contains everything related to the current user session.
  */
 export type Auth = AuthLike<{}> & {
   readonly _internalSession: InternalSession,
-  readonly currentSession: Session,
+  readonly currentSession: {
+    getTokens(): Promise<{ accessToken: string | null, refreshToken: string | null }>,
+    useTokens(): { accessToken: string | null, refreshToken: string | null }, // THIS_LINE_PLATFORM react-like
+  },
 };
 
 /**
@@ -128,6 +127,16 @@ export type BaseUser = {
 
   readonly isMultiFactorRequired: boolean,
   readonly isAnonymous: boolean,
+  /**
+   * Whether the user is in restricted state (signed up but hasn't completed onboarding requirements).
+   * For example, if email verification is required but the user hasn't verified their email yet.
+   */
+  readonly isRestricted: boolean,
+  /**
+   * The reason why the user is restricted, e.g., { type: "email_not_verified" }, { type: "anonymous" }, or { type: "restricted_by_administrator" }.
+   * Null if the user is not restricted.
+   */
+  readonly restrictedReason: RestrictedReason | null,
   toClientJson(): CurrentUserCrud["Client"]["Read"],
 
   /**
@@ -141,7 +150,7 @@ export type BaseUser = {
 }
 
 export type UserExtra = {
-  setDisplayName(displayName: string): Promise<void>,
+  setDisplayName(displayName: string | null): Promise<void>,
   /** @deprecated Use contact channel's sendVerificationEmail instead */
   sendVerificationEmail(): Promise<KnownErrors["EmailAlreadyVerified"] | void>,
   setClientMetadata(metadata: any): Promise<void>,
@@ -162,13 +171,32 @@ export type UserExtra = {
 
   delete(): Promise<void>,
 
-  getConnectedAccount(id: ProviderType, options: { or: 'redirect', scopes?: string[] }): Promise<OAuthConnection>,
-  getConnectedAccount(id: ProviderType, options?: { or?: 'redirect' | 'throw' | 'return-null', scopes?: string[] }): Promise<OAuthConnection | null>,
+  /** @deprecated Use `getOrLinkConnectedAccount` for redirect behavior, or `getConnectedAccount({ provider, providerAccountId })` for existence check. */
+  getConnectedAccount(id: ProviderType, options: { or: 'redirect', scopes?: string[] }): Promise<DeprecatedOAuthConnection>,
+  /** @deprecated Use `getConnectedAccount({ provider, providerAccountId })` for existence check, or `getOrLinkConnectedAccount` for redirect behavior. */
+  getConnectedAccount(id: ProviderType, options?: { or?: 'redirect' | 'throw' | 'return-null', scopes?: string[] }): Promise<DeprecatedOAuthConnection | null>,
+  /** Get a specific connected account by provider and providerAccountId. Returns null if not found. */
+  getConnectedAccount(account: { provider: string, providerAccountId: string }): Promise<OAuthConnection | null>,
 
   // IF_PLATFORM react-like
-  useConnectedAccount(id: ProviderType, options: { or: 'redirect', scopes?: string[] }): OAuthConnection,
-  useConnectedAccount(id: ProviderType, options?: { or?: 'redirect' | 'throw' | 'return-null', scopes?: string[] }): OAuthConnection | null,
+  /** @deprecated Use `useOrLinkConnectedAccount` for redirect behavior, or `useConnectedAccount({ provider, providerAccountId })` for existence check. */
+  useConnectedAccount(id: ProviderType, options: { or: 'redirect', scopes?: string[] }): DeprecatedOAuthConnection,
+  /** @deprecated Use `useConnectedAccount({ provider, providerAccountId })` for existence check, or `useOrLinkConnectedAccount` for redirect behavior. */
+  useConnectedAccount(id: ProviderType, options?: { or?: 'redirect' | 'throw' | 'return-null', scopes?: string[] }): DeprecatedOAuthConnection | null,
+  /** Get a specific connected account by provider and providerAccountId. Returns null if not found. */
+  useConnectedAccount(account: { provider: string, providerAccountId: string }): OAuthConnection | null,
   // END_PLATFORM
+
+  /** List all connected accounts for this user (only those with allowConnectedAccounts enabled). */
+  listConnectedAccounts(): Promise<OAuthConnection[]>,
+  /** React hook to list all connected accounts. */
+  useConnectedAccounts(): OAuthConnection[], // THIS_LINE_PLATFORM react-like
+  /** Redirect the user to the OAuth flow to link a new connected account. Always redirects, never returns. */
+  linkConnectedAccount(provider: string, options?: { scopes?: string[] }): Promise<void>,
+  /** Get a connected account for the given provider, or redirect to link one if none exists or the token/scopes are insufficient. */
+  getOrLinkConnectedAccount(provider: string, options?: { scopes?: string[] }): Promise<OAuthConnection>,
+  /** React hook: get a connected account for the given provider, or redirect to link one if none exists or the token/scopes are insufficient. */
+  useOrLinkConnectedAccount(provider: string, options?: { scopes?: string[] }): OAuthConnection, // THIS_LINE_PLATFORM react-like
 
   hasPermission(scope: Team, permissionId: string): Promise<boolean>,
   hasPermission(permissionId: string): Promise<boolean>,
@@ -188,9 +216,34 @@ export type UserExtra = {
   // END_PLATFORM
 
   readonly selectedTeam: Team | null,
-  setSelectedTeam(team: Team | null): Promise<void>,
+  setSelectedTeam(teamOrId: string | Team | null): Promise<void>,
   createTeam(data: TeamCreateOptions): Promise<Team>,
   leaveTeam(team: Team): Promise<void>,
+
+  /**
+   * Lists all pending team invitations sent to any of the current user's verified email addresses.
+   *
+   * This allows the user to discover which teams have invited them, even if they haven't
+   * joined those teams yet. Only invitations sent to verified email addresses are included.
+   *
+   * @returns An array of `ReceivedTeamInvitation` objects, each containing the team ID, team
+   * display name, recipient email, and expiration date.
+   *
+   * @example
+   * ```ts
+   * const invitations = await user.listTeamInvitations();
+   * for (const invitation of invitations) {
+   *   console.log(`Invited to ${invitation.teamDisplayName} via ${invitation.recipientEmail}`);
+   * }
+   * ```
+   */
+  listTeamInvitations(): Promise<ReceivedTeamInvitation[]>,
+  /**
+   * Lists all pending team invitations sent to any of the current user's verified email addresses.
+   *
+   * React hook version of `listTeamInvitations()`. Automatically re-renders when invitations change.
+   */
+  useTeamInvitations(): ReceivedTeamInvitation[], // THIS_LINE_PLATFORM react-like
 
   getActiveSessions(): Promise<ActiveSession[]>,
   revokeSession(sessionId: string): Promise<void>,
@@ -210,6 +263,7 @@ export type UserExtra = {
 & AsyncStoreProperty<"apiKeys", [], UserApiKey[], true>
 & AsyncStoreProperty<"team", [id: string], Team | null, false>
 & AsyncStoreProperty<"teams", [], Team[], true>
+& AsyncStoreProperty<"teamInvitations", [], ReceivedTeamInvitation[], true>
 & AsyncStoreProperty<"permission", [scope: Team, permissionId: string, options?: { recursive?: boolean }], TeamPermission | null, false>
 & AsyncStoreProperty<"permissions", [scope: Team, options?: { recursive?: boolean }], TeamPermission[], true>;
 
@@ -235,6 +289,9 @@ export type TokenPartialUser = Pick<
   | "primaryEmail"
   | "primaryEmailVerified"
   | "isAnonymous"
+  | "isMultiFactorRequired"
+  | "isRestricted"
+  | "restrictedReason"
 >
 
 export type SyncedPartialUser = TokenPartialUser & Pick<
@@ -249,6 +306,8 @@ export type SyncedPartialUser = TokenPartialUser & Pick<
   | "clientReadOnlyMetadata"
   | "isAnonymous"
   | "hasPassword"
+  | "isRestricted"
+  | "restrictedReason"
 >;
 
 
@@ -263,13 +322,14 @@ export type ActiveSession = {
 };
 
 export type UserUpdateOptions = {
-  displayName?: string,
+  displayName?: string | null,
   clientMetadata?: ReadonlyJson,
   selectedTeamId?: string | null,
   totpMultiFactorSecret?: Uint8Array | null,
   profileImageUrl?: string | null,
   otpAuthEnabled?: boolean,
-  passkeyAuthEnabled?:boolean,
+  passkeyAuthEnabled?: boolean,
+  primaryEmail?: string | null,
 }
 export function userUpdateOptionsToCrud(options: UserUpdateOptions): CurrentUserCrud["Client"]["Update"] {
   return {
@@ -280,6 +340,7 @@ export function userUpdateOptionsToCrud(options: UserUpdateOptions): CurrentUser
     profile_image_url: options.profileImageUrl,
     otp_auth_enabled: options.otpAuthEnabled,
     passkey_auth_enabled: options.passkeyAuthEnabled,
+    primary_email: options.primaryEmail,
   };
 }
 
@@ -292,6 +353,13 @@ export type ServerBaseUser = {
   readonly serverMetadata: any,
   setServerMetadata(metadata: any): Promise<void>,
   setClientReadOnlyMetadata(metadata: any): Promise<void>,
+
+  /** Whether the user is restricted by an administrator. Can be set manually or by sign-up rules. */
+  readonly restrictedByAdmin: boolean,
+  /** Public reason shown to the user explaining why they are restricted. Optional. */
+  readonly restrictedByAdminReason: string | null,
+  /** Private details about the restriction (e.g., which sign-up rule triggered). Only visible to server access and above. */
+  readonly restrictedByAdminPrivateDetails: string | null,
 
   createTeam(data: Omit<ServerTeamCreateOptions, "creatorUserId">): Promise<ServerTeam>,
 
@@ -333,7 +401,9 @@ export type ServerBaseUser = {
   /**
    * Creates a new session object with a refresh token for this user. Can be used to impersonate them.
    */
-  createSession(options?: { expiresInMillis?: number, isImpersonation?: boolean }): Promise<Session>,
+  createSession(options?: { expiresInMillis?: number, isImpersonation?: boolean }): Promise<{
+    getTokens(): Promise<{ accessToken: string | null, refreshToken: string | null }>,
+  }>,
 }
 & AsyncStoreProperty<"team", [id: string], ServerTeam | null, false>
 & AsyncStoreProperty<"teams", [], ServerTeam[], true>
@@ -364,9 +434,13 @@ export type ServerUserUpdateOptions = {
   clientReadOnlyMetadata?: ReadonlyJson,
   serverMetadata?: ReadonlyJson,
   password?: string,
+  restrictedByAdmin?: boolean,
+  restrictedByAdminReason?: string | null,
+  restrictedByAdminPrivateDetails?: string | null,
 } & UserUpdateOptions;
 export function serverUserUpdateOptionsToCrud(options: ServerUserUpdateOptions): CurrentUserCrud["Server"]["Update"] {
-  return {
+  // Base update options
+  const baseUpdate: CurrentUserCrud["Server"]["Update"] = {
     display_name: options.displayName,
     primary_email: options.primaryEmail,
     client_metadata: options.clientMetadata,
@@ -379,6 +453,13 @@ export function serverUserUpdateOptionsToCrud(options: ServerUserUpdateOptions):
     profile_image_url: options.profileImageUrl,
     totp_secret_base64: options.totpMultiFactorSecret != null ? encodeBase64(options.totpMultiFactorSecret) : options.totpMultiFactorSecret,
   };
+  // Add admin restriction fields (may not be in generated types yet but will be at runtime)
+  return {
+    ...baseUpdate,
+    restricted_by_admin: options.restrictedByAdmin,
+    restricted_by_admin_reason: options.restrictedByAdminReason,
+    restricted_by_admin_private_details: options.restrictedByAdminPrivateDetails,
+  } as CurrentUserCrud["Server"]["Update"];
 }
 
 

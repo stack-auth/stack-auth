@@ -43,7 +43,7 @@ const PacificaCard = componentWrapper<
       {...filterUndefined(props)}
     >
       <div
-        className="p-6 overflow-y-auto rounded-[inherit] flex-grow-1"
+        className="p-6 overflow-y-auto rounded-[inherit] grow-1"
         data-pacifica-border
       >
         {fullHeader && (

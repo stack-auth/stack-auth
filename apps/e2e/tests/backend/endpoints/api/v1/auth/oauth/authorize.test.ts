@@ -1,6 +1,32 @@
 import { it } from "../../../../../../helpers";
 import { localhostUrl } from "../../../../../../helpers/ports";
-import { Auth, niceBackendFetch } from "../../../../../backend-helpers";
+import { Auth, Project, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
+
+const enableSharedSpotifyProvider = async () => {
+  await Project.updateConfig({
+    "auth.oauth.providers.spotify": {
+      type: "spotify",
+      isShared: true,
+      allowSignIn: true,
+      allowConnectedAccounts: true,
+    },
+  });
+};
+
+const setupOAuthProject = async (requirePublishableClientKey?: boolean) => {
+  const { projectId } = await Project.createAndSwitch();
+  if (requirePublishableClientKey !== undefined) {
+    await Project.updateProjectConfig({
+      "project.requirePublishableClientKey": requirePublishableClientKey,
+    });
+  }
+  await enableSharedSpotifyProvider();
+  backendContext.set({
+    projectKeys: { projectId },
+    userAuth: null,
+  });
+  return projectId;
+};
 
 it("should redirect the user to the OAuth provider with the right arguments", async ({ expect }) => {
   const response = await Auth.OAuth.authorize();
@@ -94,6 +120,45 @@ it("should fail if an invalid client_secret is provided", async ({ expect }) => 
       },
       "headers": Headers {
         "x-stack-known-error": "INVALID_PUBLISHABLE_CLIENT_KEY",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("should allow public client secret sentinel when publishable keys are not required", async ({ expect }) => {
+  await setupOAuthProject(false);
+
+  const response = await Auth.OAuth.authorize({ includeClientSecret: false });
+  expect(response.authorizeResponse.status).toBe(307);
+});
+
+it("should allow public client secret sentinel when publishable keys are not configured", async ({ expect }) => {
+  await setupOAuthProject();
+
+  const response = await Auth.OAuth.authorize({ includeClientSecret: false });
+  expect(response.authorizeResponse.status).toBe(307);
+});
+
+it("should reject public client secret sentinel when publishable keys are required", async ({ expect }) => {
+  await setupOAuthProject(true);
+
+  const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
+    redirect: "manual",
+    query: {
+      ...await Auth.OAuth.getAuthorizeQuery({ includeClientSecret: false }),
+    },
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 401,
+      "body": {
+        "code": "PUBLISHABLE_CLIENT_KEY_REQUIRED_FOR_PROJECT",
+        "details": { "project_id": "<stripped UUID>" },
+        "error": "Publishable client keys are required for this project. Create one in Project Keys, or disable this requirement there to allow keyless client access.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "PUBLISHABLE_CLIENT_KEY_REQUIRED_FOR_PROJECT",
         <some fields may have been hidden>,
       },
     }

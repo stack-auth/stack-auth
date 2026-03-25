@@ -1,11 +1,12 @@
 'use client';
 
+import { useUser } from '@stackframe/stack';
 import { ArrowRight, Check, Code, Copy, Play, Send, Settings, Zap } from 'lucide-react';
 import { useCallback, useEffect, useState } from 'react';
 import type { OpenAPIOperation, OpenAPIParameter, OpenAPISchema, OpenAPISpec } from '../../lib/openapi-types';
 import { resolveSchema } from '../../lib/openapi-utils';
 import { useAPIPageContext } from './api-page-wrapper';
-import { Button } from './button';
+import { Button } from '../mdx/button';
 
 type EnhancedAPIPageProps = {
   document: string,
@@ -26,6 +27,11 @@ type RequestState = {
     headers?: Record<string, string>,
     loading: boolean,
     error?: string,
+    errorDetails?: {
+      url?: string,
+      method?: string,
+      type?: 'network' | 'cors' | 'timeout' | 'unknown',
+    },
     timestamp?: number,
     duration?: number,
   },
@@ -42,11 +48,13 @@ const HTTP_METHOD_COLORS = {
 
 export function EnhancedAPIPage({ document, operations, description }: EnhancedAPIPageProps) {
   const apiContext = useAPIPageContext();
+  const user = useUser(); // Get user for token refresh
 
   // Use default functions if API context is not available
-  const { sharedHeaders, reportError } = apiContext || {
+  const { sharedHeaders, reportError, updateSharedHeaders } = apiContext || {
     sharedHeaders: {},
-    reportError: () => {}
+    reportError: () => {},
+    updateSharedHeaders: () => {}
   };
 
   const [spec, setSpec] = useState<OpenAPISpec | null>(null);
@@ -205,7 +213,26 @@ export function EnhancedAPIPage({ document, operations, description }: EnhancedA
     }));
 
     try {
-      const baseUrl = spec?.servers?.[0]?.url || '';
+      let headersForRequest = requestState.headers;
+      // Refresh admin access token before making request (if using admin auth)
+      if (user && headersForRequest['X-Stack-Access-Type'] === 'admin') {
+        const authJson = await user.getAuthJson();
+        if (authJson.accessToken) {
+          // Update the admin access token with a fresh one
+          const refreshedHeaders: Record<string, string> = {
+            ...headersForRequest,
+            'X-Stack-Admin-Access-Token': authJson.accessToken,
+          };
+          setRequestState(prev => ({ ...prev, headers: refreshedHeaders }));
+          updateSharedHeaders(refreshedHeaders);
+          headersForRequest = refreshedHeaders;
+        }
+      }
+      // Use local API URL in development, production URL from OpenAPI spec otherwise
+      const defaultBaseUrl = spec?.servers?.[0]?.url || '';
+      const localApiUrl = process.env.NEXT_PUBLIC_STACK_API_URL;
+      const baseUrl = localApiUrl ? localApiUrl + '/api/v1' : defaultBaseUrl;
+
       let url = baseUrl + path;
 
       // Replace path parameters
@@ -231,7 +258,7 @@ export function EnhancedAPIPage({ document, operations, description }: EnhancedA
 
       // Filter out empty headers
       const filteredHeaders = Object.fromEntries(
-        Object.entries(requestState.headers).filter(([key, value]) => key && value)
+        Object.entries(headersForRequest).filter(([key, value]) => key && value)
       );
 
       const requestOptions: RequestInit = {
@@ -240,14 +267,18 @@ export function EnhancedAPIPage({ document, operations, description }: EnhancedA
       };
 
       // Build request body from individual fields
-      if (['POST', 'PUT', 'PATCH'].includes(method.toUpperCase()) && Object.keys(requestState.bodyFields).length > 0) {
-        // Filter out empty values and build JSON body
-        const bodyData = Object.fromEntries(
-          Object.entries(requestState.bodyFields).filter(([, value]) => value !== '' && value !== undefined)
-        );
-        if (Object.keys(bodyData).length > 0) {
-          requestOptions.body = JSON.stringify(bodyData);
-        }
+      // Always send a body for POST/PUT/PATCH - even if empty, some endpoints require it
+      if (['POST', 'PUT', 'PATCH'].includes(method.toUpperCase())) {
+        const bodyData = operation.requestBody
+          ? Object.fromEntries(
+              Object.entries(requestState.bodyFields).filter(([, value]) => value !== '' && value !== undefined)
+            )
+          : {};
+        requestOptions.body = JSON.stringify(bodyData);
+        requestOptions.headers = {
+          ...filteredHeaders,
+          'Content-Type': 'application/json',
+        };
       }
 
       const response = await fetch(url, requestOptions);
@@ -271,22 +302,41 @@ export function EnhancedAPIPage({ document, operations, description }: EnhancedA
         }
       }));
     } catch (err) {
-      const errorMessage = err instanceof Error ? err.message : 'Request failed';
+      const rawMessage = err instanceof Error ? err.message : 'Request failed';
+
+      // Determine error type and create helpful message
+      let errorType: 'network' | 'cors' | 'timeout' | 'unknown' = 'unknown';
+      let errorMessage = rawMessage;
+
+      if (rawMessage === 'Failed to fetch' || rawMessage.includes('NetworkError')) {
+        errorType = 'network';
+        errorMessage = 'Network error: Unable to reach the API server.\n\nThis could be due to:\n• CORS policy blocking the request\n• The API server being unreachable\n• A network connectivity issue';
+      } else if (rawMessage.includes('CORS') || rawMessage.includes('cross-origin')) {
+        errorType = 'cors';
+        errorMessage = 'CORS error: The API server rejected this cross-origin request.\n\nThe API may not allow requests from this domain.';
+      } else if (rawMessage.includes('timeout') || rawMessage.includes('Timeout')) {
+        errorType = 'timeout';
+        errorMessage = 'Request timed out: The API server took too long to respond.';
+      }
 
       // Report network errors as well
-      reportError(0, { message: errorMessage });
+      reportError(0, { message: rawMessage });
 
       setRequestState(prev => ({
         ...prev,
         response: {
           loading: false,
           error: errorMessage,
+          errorDetails: {
+            method: method.toUpperCase(),
+            type: errorType,
+          },
           timestamp: startTime,
           duration: Date.now() - startTime,
         }
       }));
     }
-  }, [spec, requestState.parameters, requestState.headers, requestState.bodyFields, reportError]); // Changed from requestState.body
+  }, [spec, requestState.parameters, requestState.headers, requestState.bodyFields, reportError, user, updateSharedHeaders]);
 
   if (loading) {
     return (
@@ -387,7 +437,11 @@ function ModernAPIPlayground({
   };
 
   const generateCurlCommand = useCallback(() => {
-    const baseUrl = spec.servers?.[0]?.url || '';
+    // Use local API URL in development, production URL otherwise
+    const defaultBaseUrl = spec.servers?.[0]?.url || '';
+    const baseUrl = process.env.NEXT_PUBLIC_STACK_API_URL
+      ? process.env.NEXT_PUBLIC_STACK_API_URL + '/api/v1'
+      : defaultBaseUrl;
     let url = baseUrl + path;
 
     // Replace path parameters
@@ -420,20 +474,26 @@ function ModernAPIPlayground({
       }
     });
 
-    // Add body for POST/PUT/PATCH - build from fields
-    if (['POST', 'PUT', 'PATCH'].includes(method) && Object.keys(requestState.bodyFields).length > 0) {
-      const bodyData = Object.fromEntries(
-        Object.entries(requestState.bodyFields).filter(([, value]) => value !== '' && value !== undefined)
-      );
-      if (Object.keys(bodyData).length > 0) {
-        curlCommand += ` \\\n  -d '${JSON.stringify(bodyData)}'`;
-      }
+    // Add body for POST/PUT/PATCH - always include Content-Type and body
+    // Even if empty, some endpoints require a JSON body to be present
+    if (['POST', 'PUT', 'PATCH'].includes(method)) {
+      const bodyData = operation.requestBody
+        ? Object.fromEntries(
+            Object.entries(requestState.bodyFields).filter(([, value]) => value !== '' && value !== undefined)
+          )
+        : {};
+      curlCommand += ` \\\n  -H "Content-Type: application/json"`;
+      curlCommand += ` \\\n  -d '${JSON.stringify(bodyData)}'`;
     }
 
     return curlCommand;
   }, [operation, path, method, spec, requestState]);
   const generateJavaScriptCode = useCallback(() => {
-    const baseUrl = spec.servers?.[0]?.url || '';
+    // Use local API URL in development, production URL otherwise
+    const defaultBaseUrl = spec.servers?.[0]?.url || '';
+    const baseUrl = process.env.NEXT_PUBLIC_STACK_API_URL
+      ? process.env.NEXT_PUBLIC_STACK_API_URL + '/api/v1'
+      : defaultBaseUrl;
     let url = baseUrl + path;
 
     // Replace path parameters
@@ -461,20 +521,27 @@ function ModernAPIPlayground({
       Object.entries(requestState.headers).filter(([key, value]) => key && value)
     );
 
+    // Add body for POST/PUT/PATCH - always include Content-Type and body
+    // Even if empty, some endpoints require a JSON body to be present
+    if (['POST', 'PUT', 'PATCH'].includes(method)) {
+      const bodyData = operation.requestBody
+        ? Object.fromEntries(
+            Object.entries(requestState.bodyFields).filter(([, value]) => value !== '' && value !== undefined)
+          )
+        : {};
+      const headersWithContentType = { ...headers, 'Content-Type': 'application/json' };
+
+      let jsCode = `const response = await fetch("${url}", {\n  method: "${method}"`;
+      jsCode += `,\n  headers: ${JSON.stringify(headersWithContentType, null, 4).replace(/^/gm, '  ')}`;
+      jsCode += `,\n  body: JSON.stringify(${JSON.stringify(bodyData, null, 2)})`;
+      jsCode += `\n});\n\nconst data = await response.json();\nconsole.log(data);`;
+      return jsCode;
+    }
+
     let jsCode = `const response = await fetch("${url}", {\n  method: "${method}"`;
 
     if (Object.keys(headers).length > 0) {
       jsCode += `,\n  headers: ${JSON.stringify(headers, null, 4).replace(/^/gm, '  ')}`;
-    }
-
-    // Add body for POST/PUT/PATCH - build from fields
-    if (['POST', 'PUT', 'PATCH'].includes(method) && Object.keys(requestState.bodyFields).length > 0) {
-      const bodyData = Object.fromEntries(
-        Object.entries(requestState.bodyFields).filter(([, value]) => value !== '' && value !== undefined)
-      );
-      if (Object.keys(bodyData).length > 0) {
-        jsCode += `,\n  body: ${JSON.stringify(bodyData, null, 2)}`;
-      }
     }
 
     jsCode += `\n});\n\nconst data = await response.json();\nconsole.log(data);`;
@@ -483,7 +550,11 @@ function ModernAPIPlayground({
   }, [operation, path, method, spec, requestState]);
 
   const generatePythonCode = useCallback(() => {
-    const baseUrl = spec.servers?.[0]?.url || '';
+    // Use local API URL in development, production URL otherwise
+    const defaultBaseUrl = spec.servers?.[0]?.url || '';
+    const baseUrl = process.env.NEXT_PUBLIC_STACK_API_URL
+      ? process.env.NEXT_PUBLIC_STACK_API_URL + '/api/v1'
+      : defaultBaseUrl;
     let url = baseUrl + path;
 
     // Replace path parameters
@@ -518,17 +589,16 @@ function ModernAPIPlayground({
       pythonCode += `headers = ${JSON.stringify(headers, null, 2).replace(/"/g, "'")}\n`;
     }
 
-    // Add body for POST/PUT/PATCH - build from fields
-    if (['POST', 'PUT', 'PATCH'].includes(method) && Object.keys(requestState.bodyFields).length > 0) {
-      const bodyData = Object.fromEntries(
-        Object.entries(requestState.bodyFields).filter(([, value]) => value !== '' && value !== undefined)
-      );
-      if (Object.keys(bodyData).length > 0) {
-        pythonCode += `data = ${JSON.stringify(bodyData)}\n\n`;
-        pythonCode += `response = requests.${method.toLowerCase()}(url${Object.keys(headers).length > 0 ? ', headers=headers' : ''}, json=data)\n`;
-      } else {
-        pythonCode += `\nresponse = requests.${method.toLowerCase()}(url${Object.keys(headers).length > 0 ? ', headers=headers' : ''})\n`;
-      }
+    // Add body for POST/PUT/PATCH - always include json body
+    // Even if empty, some endpoints require a JSON body to be present
+    if (['POST', 'PUT', 'PATCH'].includes(method)) {
+      const bodyData = operation.requestBody
+        ? Object.fromEntries(
+            Object.entries(requestState.bodyFields).filter(([, value]) => value !== '' && value !== undefined)
+          )
+        : {};
+      pythonCode += `data = ${JSON.stringify(bodyData)}\n\n`;
+      pythonCode += `response = requests.${method.toLowerCase()}(url${Object.keys(headers).length > 0 ? ', headers=headers' : ''}, json=data)\n`;
     } else {
       pythonCode += `\nresponse = requests.${method.toLowerCase()}(url${Object.keys(headers).length > 0 ? ', headers=headers' : ''})\n`;
     }
@@ -617,36 +687,38 @@ function ModernAPIPlayground({
 
       {/* Content - Stacked Layout */}
       <div className="space-y-8">
-        {/* Request Panel */}
-        <div className="bg-fd-card border border-fd-border rounded-lg">
-          <div className="px-6 py-4 border-b border-fd-border bg-fd-muted/30">
-            <div className="flex items-center gap-2">
-              <Send className="w-4 h-4 text-blue-600 dark:text-blue-400" />
-              <div className="font-semibold text-fd-foreground text-base leading-none">Request</div>
+        {/* Request Panel - only show if there are parameters or request body */}
+        {((operation.parameters && operation.parameters.length > 0) || operation.requestBody) && (
+          <div className="bg-fd-card border border-fd-border rounded-lg">
+            <div className="px-6 py-4 border-b border-fd-border bg-fd-muted/30">
+              <div className="flex items-center gap-2">
+                <Send className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+                <div className="font-semibold text-fd-foreground text-base leading-none">Request</div>
+              </div>
+            </div>
+
+            <div className="p-6 space-y-6">
+              {/* Parameters */}
+              {operation.parameters && operation.parameters.length > 0 && (
+                <ParametersSection
+                  parameters={operation.parameters}
+                  values={requestState.parameters}
+                  onChange={(params) => setRequestState(prev => ({ ...prev, parameters: params }))}
+                />
+              )}
+
+              {/* Request Body Fields */}
+              {operation.requestBody && (
+                <RequestBodyFieldsSection
+                  requestBody={operation.requestBody}
+                  spec={spec}
+                  values={requestState.bodyFields}
+                  onChange={(bodyFields) => setRequestState(prev => ({ ...prev, bodyFields }))}
+                />
+              )}
             </div>
           </div>
-
-          <div className="p-6 space-y-6">
-            {/* Parameters */}
-            {operation.parameters && operation.parameters.length > 0 && (
-              <ParametersSection
-                parameters={operation.parameters}
-                values={requestState.parameters}
-                onChange={(params) => setRequestState(prev => ({ ...prev, parameters: params }))}
-              />
-            )}
-
-            {/* Request Body Fields */}
-            {operation.requestBody && (
-              <RequestBodyFieldsSection
-                requestBody={operation.requestBody}
-                spec={spec}
-                values={requestState.bodyFields}
-                onChange={(bodyFields) => setRequestState(prev => ({ ...prev, bodyFields }))}
-              />
-            )}
-          </div>
-        </div>
+        )}
 
         {/* Response Panel */}
         <ResponsePanel
@@ -1195,9 +1267,21 @@ function ResponsePanel({
                 <p className="text-fd-muted-foreground text-sm text-center leading-relaxed m-0">Sending request...</p>
               </div>
             ) : response.error ? (
-              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4">
-                <p className="text-red-800 dark:text-red-300 font-medium mb-2 leading-none">Request Failed</p>
+              <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 space-y-3">
+                <div className="flex items-center gap-2">
+                  <span className="text-red-800 dark:text-red-300 font-medium leading-none">Request Failed</span>
+                  {response.errorDetails?.type && response.errorDetails.type !== 'unknown' && (
+                    <span className="text-xs bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 px-2 py-0.5 rounded font-mono uppercase">
+                      {response.errorDetails.type}
+                    </span>
+                  )}
+                </div>
                 <p className="text-red-600 dark:text-red-400 text-sm whitespace-pre-wrap break-words leading-relaxed m-0">{response.error}</p>
+                {response.duration && (
+                  <p className="text-red-500/70 dark:text-red-400/70 text-xs m-0">
+                    Failed after {response.duration}ms
+                  </p>
+                )}
               </div>
             ) : response.status ? (
               <div className="space-y-4">

@@ -30,6 +30,7 @@ type MockTeam = {
 type TeamSwitcherProps<AllowNull extends boolean = false> = {
   team?: Team,
   teamId?: string,
+  teams?: Team[],
   allowNull?: AllowNull,
   nullLabel?: string,
   triggerClassName?: string,
@@ -76,7 +77,7 @@ function Inner<AllowNull extends boolean>(props: TeamSwitcherProps<AllowNull>) {
 
   const navigate = app.useNavigate();
   const project = app.useProject();
-  const rawTeams = user?.useTeams();
+  const rawTeams = props.teams ?? user?.useTeams();
   const selectedTeam = props.team || rawTeams?.find(team => team.id === props.teamId);
   const teams = useMemo(() => rawTeams?.sort((a, b) => b.id === selectedTeam?.id ? 1 : -1), [rawTeams, selectedTeam]);
 

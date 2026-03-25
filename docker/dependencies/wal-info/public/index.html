@@ -1,0 +1,399 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WAL Info</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font: 11px/1.4 'SF Mono', Monaco, monospace; background: #0a0a0a; color: #aaa; padding: 8px; }
+    .row { display: flex; gap: 8px; margin-bottom: 8px; flex-wrap: wrap; }
+    .panel { background: #111; border: 1px solid #222; padding: 6px 8px; flex: 1; min-width: 200px; }
+    .panel-title { color: #666; font-size: 9px; text-transform: uppercase; margin-bottom: 4px; letter-spacing: 0.5px; }
+    .val { color: #4f4; font-size: 12px; }
+    .val.warn { color: #fa0; }
+    .val.err { color: #f44; }
+    .val.lsn { color: #a7f; }
+    .kv { display: flex; justify-content: space-between; padding: 2px 0; border-bottom: 1px solid #1a1a1a; }
+    .kv:last-child { border: none; }
+    .k { color: #555; }
+    .dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; margin-right: 4px; }
+    .dot.ok { background: #4f4; }
+    .dot.warn { background: #fa0; }
+    .dot.err { background: #f44; }
+    canvas { background: #0a0a0a; display: block; }
+    .graph-wrap { position: relative; height: 120px; }
+    .tooltip { display: none; position: absolute; background: #1a1a1a; border: 1px solid #333; padding: 4px 6px; font-size: 10px; z-index: 10; pointer-events: none; }
+    .changes { max-height: 200px; overflow-y: auto; }
+    .change { background: #0a0a0a; padding: 4px 6px; margin: 2px 0; border-left: 2px solid #444; font-size: 10px; }
+    .change.insert { border-color: #4f4; }
+    .change.update { border-color: #fa0; }
+    .change.delete { border-color: #f44; }
+    .change.begin { border-color: #48f; }
+    .change.commit { border-color: #a7f; }
+    .change-hdr { color: #555; display: flex; justify-content: space-between; }
+    .change-data { color: #888; white-space: pre-wrap; word-break: break-all; }
+    .ts { display: inline-flex; gap: 8px; font-size: 9px; margin-top: 2px; }
+    .ts-p { color: #48f; }
+    .ts-r { color: #4f4; }
+    .ts-pending { color: #fa0; }
+    select, button { font: 10px monospace; background: #222; color: #aaa; border: 1px solid #333; padding: 3px 6px; cursor: pointer; }
+    button:hover { background: #333; }
+    .tabs { display: flex; gap: 2px; margin-bottom: 4px; }
+    .tab { padding: 4px 8px; background: #1a1a1a; border: none; color: #555; cursor: pointer; font: 10px monospace; }
+    .tab.active { background: #222; color: #aaa; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+    table { width: 100%; border-collapse: collapse; font-size: 10px; }
+    th { text-align: left; padding: 4px; background: #0a0a0a; color: #555; font-weight: normal; }
+    td { padding: 4px; border-bottom: 1px solid #1a1a1a; }
+    .modal { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.9); z-index: 100; overflow-y: auto; }
+    .modal-inner { max-width: 800px; margin: 20px auto; background: #111; border: 1px solid #333; }
+    .modal-hdr { padding: 8px; border-bottom: 1px solid #222; display: flex; justify-content: space-between; }
+    .modal-body { padding: 8px; max-height: 70vh; overflow-y: auto; }
+    .stat-row { display: flex; gap: 16px; padding: 6px 8px; background: #0a0a0a; font-size: 10px; }
+    h1 { font-size: 12px; color: #4af; font-weight: normal; display: inline; }
+    .hdr { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+    .hdr-right { display: flex; gap: 8px; align-items: center; font-size: 10px; color: #555; }
+  </style>
+</head>
+<body>
+  <div class="hdr">
+    <h1>WAL Replication Monitor</h1>
+    <div class="hdr-right">
+      <span id="refresh-time">--</span>
+      <span id="lag-main" class="val">--</span>
+    </div>
+  </div>
+
+  <div class="row">
+    <div class="panel">
+      <div class="panel-title">Primary</div>
+      <div class="kv"><span class="k">LSN</span><span class="val lsn" id="p-lsn">--</span></div>
+      <div class="kv"><span class="k">Insert</span><span class="val lsn" id="p-insert">--</span></div>
+      <div class="kv"><span class="k">WAL File</span><span class="val" id="p-file">--</span></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Replica</div>
+      <div class="kv"><span class="k">Recv</span><span class="val lsn" id="r-recv">--</span></div>
+      <div class="kv"><span class="k">Replay</span><span class="val lsn" id="r-replay">--</span></div>
+      <div class="kv"><span class="k">Lag</span><span class="val" id="r-lag">--</span></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Streaming</div>
+      <div class="kv"><span class="k">Status</span><span class="val" id="s-status">--</span></div>
+      <div class="kv"><span class="k">Write</span><span class="val lsn" id="s-write">--</span></div>
+      <div class="kv"><span class="k">Flush</span><span class="val lsn" id="s-flush">--</span></div>
+    </div>
+    <div class="panel">
+      <div class="panel-title">Slots</div>
+      <div id="slots-list">--</div>
+    </div>
+  </div>
+
+  <div class="panel" style="margin-bottom: 8px;">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+      <span class="panel-title" style="margin: 0;">Lag Graph (click for queries)</span>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <select id="bucket-size">
+          <option value="5000">5s</option>
+          <option value="10000">10s</option>
+          <option value="30000">30s</option>
+          <option value="60000">1m</option>
+        </select>
+        <span id="graph-stats" style="color: #555;"></span>
+      </div>
+    </div>
+    <div class="graph-wrap">
+      <canvas id="lag-graph"></canvas>
+      <div class="tooltip" id="tooltip"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+      <div class="tabs">
+        <button class="tab active" onclick="switchTab('changes')">Changes</button>
+        <button class="tab" onclick="switchTab('history')">History</button>
+      </div>
+      <div style="display: flex; gap: 8px; align-items: center;">
+        <button onclick="consumeChanges()">Consume</button>
+        <button onclick="createSlot()">+ Slot</button>
+        <span id="changes-count" style="color: #555;">0</span>
+      </div>
+    </div>
+    
+    <div id="changes-tab" class="tab-content active">
+      <div id="wal-changes" class="changes">
+        <span style="color: #444;">No changes yet</span>
+      </div>
+    </div>
+    
+    <div id="history-tab" class="tab-content">
+      <table>
+        <thead><tr><th>Time</th><th>Primary</th><th>Replica</th><th>Lag</th></tr></thead>
+        <tbody id="history-body"><tr><td colspan="4" style="color: #444;">--</td></tr></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="modal" id="modal">
+    <div class="modal-inner">
+      <div class="modal-hdr">
+        <span id="modal-title">Queries</span>
+        <button onclick="closeModal()">×</button>
+      </div>
+      <div class="stat-row">
+        <span>Time: <strong id="modal-time">--</strong></span>
+        <span>Lag: <strong id="modal-lag">--</strong></span>
+        <span>Count: <strong id="modal-count">--</strong></span>
+      </div>
+      <div class="modal-body" id="modal-body">--</div>
+    </div>
+  </div>
+
+  <script>
+    let graphData = null, selectedBucket = null;
+    const canvas = document.getElementById('lag-graph');
+    const ctx = canvas.getContext('2d');
+    const tooltip = document.getElementById('tooltip');
+
+    const fmt = (v, d=2) => v != null ? parseFloat(v).toFixed(d) : '--';
+    const fmtTime = s => s ? new Date(s).toLocaleTimeString() : '--';
+    const fmtShort = s => s ? new Date(s).toLocaleTimeString([],{hour:'2-digit',minute:'2-digit',second:'2-digit'}) : '--';
+
+    function getType(d) {
+      if (d.includes('BEGIN')) return 'begin';
+      if (d.includes('COMMIT')) return 'commit';
+      if (d.includes('INSERT') || (d.includes('table') && d.includes(':'))) return 'insert';
+      if (d.includes('UPDATE')) return 'update';
+      if (d.includes('DELETE')) return 'delete';
+      return '';
+    }
+
+    async function fetchStatus() {
+      try {
+        const r = await fetch('/api/status');
+        const d = await r.json();
+        document.getElementById('refresh-time').textContent = fmtShort(d.timestamp);
+        document.getElementById('lag-main').textContent = d.lagBytesFormatted || '--';
+        document.getElementById('lag-main').className = 'val' + (d.lagBytes > 10000 ? ' warn' : '');
+        
+        const p = d.primary?.walPosition;
+        if (p) {
+          document.getElementById('p-lsn').textContent = p.current_lsn || '--';
+          document.getElementById('p-insert').textContent = p.insert_lsn || '--';
+          document.getElementById('p-file').textContent = p.current_wal_file || '--';
+        }
+        
+        const rep = d.replica?.status;
+        if (rep) {
+          document.getElementById('r-recv').textContent = rep.receive_lsn || '--';
+          document.getElementById('r-replay').textContent = rep.replay_lsn || '--';
+          const lag = rep.replay_lag_seconds != null ? parseFloat(rep.replay_lag_seconds) : null;
+          const lagEl = document.getElementById('r-lag');
+          lagEl.textContent = lag != null ? fmt(lag, 3) + 's' : '--';
+          lagEl.className = 'val' + (lag != null && lag < 1 ? '' : ' warn');
+        }
+        
+        const w = d.replica?.walReceiver;
+        if (w) {
+          document.getElementById('s-status').textContent = w.status || '--';
+          document.getElementById('s-write').textContent = w.written_lsn || '--';
+          document.getElementById('s-flush').textContent = w.flushed_lsn || '--';
+        }
+        
+        const slots = d.slots || [];
+        document.getElementById('slots-list').innerHTML = slots.length === 0 ? '<span style="color:#444">none</span>' :
+          slots.map(s => `<div class="kv"><span class="k">${s.slot_name}</span><span><span class="dot ${s.active?'ok':'warn'}"></span>${s.slot_type}</span></div>`).join('');
+      } catch (e) { console.error(e); }
+    }
+
+    async function fetchChanges() {
+      try {
+        const r = await fetch('/api/wal-changes');
+        const d = await r.json();
+        document.getElementById('changes-count').textContent = d.total;
+        const c = document.getElementById('wal-changes');
+        if (!d.changes?.length) { c.innerHTML = '<span style="color:#444">No changes</span>'; return; }
+        c.innerHTML = d.changes.slice(0, 50).map(ch => `
+          <div class="change ${getType(ch.data)}">
+            <div class="change-hdr"><span class="val lsn">${ch.lsn}</span><span>xid:${ch.xid}</span></div>
+            <div class="change-data">${esc(ch.data)}</div>
+            <div class="ts"><span class="ts-p">P:${fmtShort(ch.primaryTimestamp)}</span><span class="${ch.replicaTimestamp?'ts-r':'ts-pending'}">R:${ch.replicaTimestamp?fmtShort(ch.replicaTimestamp):'...'}</span></div>
+          </div>
+        `).join('');
+      } catch (e) { console.error(e); }
+    }
+
+    async function fetchHistory() {
+      try {
+        const r = await fetch('/api/lsn-history');
+        const d = await r.json();
+        const tb = document.getElementById('history-body');
+        if (!d.history?.length) { tb.innerHTML = '<tr><td colspan="4" style="color:#444">--</td></tr>'; return; }
+        tb.innerHTML = d.history.slice().reverse().slice(0, 20).map(e => {
+          const lag = e.replica?.replayLagSeconds != null ? parseFloat(e.replica.replayLagSeconds) : null;
+          return `<tr><td>${fmtShort(e.timestamp)}</td><td class="val lsn">${e.primary?.currentLsn||'--'}</td><td class="val lsn">${e.replica?.replayLsn||'--'}</td><td class="val${lag!=null&&lag<1?'':' warn'}">${lag!=null?fmt(lag,3):''}</td></tr>`;
+        }).join('');
+      } catch (e) { console.error(e); }
+    }
+
+    async function fetchGraph() {
+      try {
+        const bs = document.getElementById('bucket-size').value;
+        const r = await fetch(`/api/lag-graph?bucketSize=${bs}&maxBuckets=60`);
+        graphData = await r.json();
+        renderGraph();
+      } catch (e) { console.error(e); }
+    }
+
+    function renderGraph() {
+      const wrap = canvas.parentElement;
+      canvas.width = wrap.clientWidth;
+      canvas.height = wrap.clientHeight;
+      
+      const { buckets, totalSamples } = graphData;
+      document.getElementById('graph-stats').textContent = `${totalSamples} pts`;
+      
+      const pad = { t: 15, r: 10, b: 15, l: 35 };
+      const w = canvas.width - pad.l - pad.r;
+      const h = canvas.height - pad.t - pad.b;
+      
+      ctx.fillStyle = '#0a0a0a';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      
+      if (!buckets?.length) { ctx.fillStyle = '#333'; ctx.fillText('No data', canvas.width/2-20, canvas.height/2); return; }
+      
+      const maxLag = Math.max(0.1, ...buckets.filter(b=>b.lagSeconds).map(b=>b.lagSeconds.max));
+      const bw = w / buckets.length - 1;
+      
+      // Grid
+      ctx.strokeStyle = '#1a1a1a';
+      ctx.lineWidth = 1;
+      for (let i = 0; i <= 4; i++) {
+        const y = pad.t + h * i / 4;
+        ctx.beginPath(); ctx.moveTo(pad.l, y); ctx.lineTo(pad.l + w, y); ctx.stroke();
+        ctx.fillStyle = '#444';
+        ctx.font = '9px monospace';
+        ctx.textAlign = 'right';
+        ctx.fillText(fmt(maxLag * (4-i) / 4, 2), pad.l - 3, y + 3);
+      }
+      
+      buckets.forEach((b, i) => {
+        const x = pad.l + i * (w / buckets.length);
+        if (b.lagSeconds) {
+          const minY = pad.t + h - (b.lagSeconds.min / maxLag * h);
+          const maxY = pad.t + h - (b.lagSeconds.max / maxLag * h);
+          const avgY = pad.t + h - (b.lagSeconds.avg / maxLag * h);
+          
+          ctx.fillStyle = 'rgba(250,170,0,0.15)';
+          ctx.fillRect(x, maxY, bw, minY - maxY || 2);
+          
+          ctx.fillStyle = '#fa0';
+          ctx.fillRect(x, avgY - 1, bw, 2);
+          
+          if (selectedBucket === i) {
+            ctx.strokeStyle = '#4af';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(x, maxY, bw, minY - maxY || 2);
+          }
+        }
+        
+        if (i % 15 === 0) {
+          ctx.fillStyle = '#333';
+          ctx.font = '8px monospace';
+          ctx.textAlign = 'center';
+          ctx.fillText(fmtShort(new Date(b.startTime)), x + bw/2, canvas.height - 3);
+        }
+      });
+    }
+
+    canvas.addEventListener('mousemove', e => {
+      if (!graphData) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const pad = { l: 35, r: 10 };
+      const w = canvas.width - pad.l - pad.r;
+      if (x < pad.l) { tooltip.style.display = 'none'; return; }
+      
+      const i = Math.floor((x - pad.l) / (w / graphData.buckets.length));
+      const b = graphData.buckets[i];
+      if (!b) { tooltip.style.display = 'none'; return; }
+      
+      tooltip.innerHTML = `${fmtShort(new Date(b.startTime))}-${fmtShort(new Date(b.endTime))}<br>` +
+        (b.lagSeconds ? `min:${fmt(b.lagSeconds.min,3)} max:${fmt(b.lagSeconds.max,3)} avg:${fmt(b.lagSeconds.avg,3)}` : 'no data');
+      tooltip.style.display = 'block';
+      tooltip.style.left = (x + 10) + 'px';
+      tooltip.style.top = (e.clientY - rect.top - 30) + 'px';
+    });
+
+    canvas.addEventListener('mouseleave', () => tooltip.style.display = 'none');
+
+    canvas.addEventListener('click', async e => {
+      if (!graphData) return;
+      const rect = canvas.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const pad = { l: 35, r: 10 };
+      const w = canvas.width - pad.l - pad.r;
+      if (x < pad.l) return;
+      
+      const i = Math.floor((x - pad.l) / (w / graphData.buckets.length));
+      const b = graphData.buckets[i];
+      if (!b) return;
+      
+      selectedBucket = i;
+      renderGraph();
+      showModal(b);
+    });
+
+    async function showModal(b) {
+      document.getElementById('modal-title').textContent = fmtShort(new Date(b.startTime)) + ' - ' + fmtShort(new Date(b.endTime));
+      document.getElementById('modal-time').textContent = fmtShort(new Date(b.startTime)) + '-' + fmtShort(new Date(b.endTime));
+      document.getElementById('modal-lag').textContent = b.lagSeconds ? `${fmt(b.lagSeconds.min,3)}-${fmt(b.lagSeconds.max,3)}s` : '--';
+      document.getElementById('modal-body').innerHTML = 'Loading...';
+      document.getElementById('modal').style.display = 'block';
+      
+      try {
+        const r = await fetch(`/api/wal-changes-range?startTime=${b.startTime}&endTime=${b.endTime}`);
+        const d = await r.json();
+        document.getElementById('modal-count').textContent = d.total;
+        document.getElementById('modal-body').innerHTML = d.changes.length === 0 
+          ? '<span style="color:#444">No changes in this period</span>'
+          : d.changes.map(ch => `
+              <div class="change ${getType(ch.data)}">
+                <div class="change-hdr"><span class="val lsn">${ch.lsn}</span><span>xid:${ch.xid}</span></div>
+                <div class="change-data">${esc(ch.data)}</div>
+                <div class="ts"><span class="ts-p">P:${fmtShort(ch.primaryTimestamp)}</span><span class="${ch.replicaTimestamp?'ts-r':'ts-pending'}">R:${ch.replicaTimestamp?fmtShort(ch.replicaTimestamp):'...'}</span></div>
+              </div>
+            `).join('');
+      } catch (e) { document.getElementById('modal-body').innerHTML = 'Error: ' + e.message; }
+    }
+
+    function closeModal() { document.getElementById('modal').style.display = 'none'; selectedBucket = null; renderGraph(); }
+    document.addEventListener('keydown', e => { if (e.key === 'Escape') closeModal(); });
+    document.getElementById('modal').addEventListener('click', e => { if (e.target.id === 'modal') closeModal(); });
+
+    function esc(t) { const d = document.createElement('div'); d.textContent = t; return d.innerHTML; }
+
+    function switchTab(t) {
+      document.querySelectorAll('.tab').forEach(x => x.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(x => x.classList.remove('active'));
+      document.querySelector(`.tab:nth-child(${t==='changes'?1:2})`).classList.add('active');
+      document.getElementById(t + '-tab').classList.add('active');
+    }
+
+    async function consumeChanges() { await fetch('/api/consume-changes', { method: 'POST', headers: {'Content-Type':'application/json'}, body: '{"limit":50}' }); fetchChanges(); }
+    async function createSlot() { await fetch('/api/create-slot', { method: 'POST' }); fetchStatus(); }
+
+    document.getElementById('bucket-size').addEventListener('change', fetchGraph);
+    window.addEventListener('resize', () => { if (graphData) renderGraph(); });
+
+    fetchStatus(); fetchChanges(); fetchHistory(); fetchGraph();
+    setInterval(fetchStatus, 1000);
+    setInterval(fetchChanges, 2000);
+    setInterval(fetchHistory, 2000);
+    setInterval(fetchGraph, 2000);
+  </script>
+</body>
+</html>

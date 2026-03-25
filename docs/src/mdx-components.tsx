@@ -10,8 +10,7 @@ import { EnhancedAPIPage } from './components/api/enhanced-api-page';
 import { WebhooksAPIPage } from './components/api/webhooks-api-page';
 
 import AppleSecretGenerator from './components/apple-secret-generator';
-import { Card, CardGroup, Info } from './components/mdx';
-import ApiSequenceDiagram from './components/mdx/api-sequence-diagram';
+import { Card, CardGroup, Info, QuickLink, QuickLinks } from './components/mdx';
 import { AuthCard } from './components/mdx/auth-card';
 import { DynamicCodeblock } from './components/mdx/dynamic-code-block';
 import { EmbeddedLink } from './components/mdx/embedded-link';
@@ -29,30 +28,31 @@ import { Accordion, AccordionGroup, ClickableTableOfContents, Icon, Markdown, Pa
 import { PropTable } from './components/prop-table';
 
 import { ImageZoom } from 'fumadocs-ui/components/image-zoom';
-import DocsSelector from './components/homepage/iconHover';
 import { AppCard, AppGrid } from './components/mdx/app-card';
-import { SignInDemo, SignInExtraInfo, SignInPasswordFirstTab, SignInStackAuth } from './components/stack-auth/sign-in';
+import { SignInDemo, SignInPasswordFirstTab, SignInStackAuth } from './components/stack-auth/sign-in';
 import { AccountSettingsStackAuth } from './components/stack-auth/stack-account-settings';
 import { TeamSwitcherDemo } from './components/stack-auth/stack-team-switcher';
 import { StackUserButton } from './components/stack-auth/stack-user-button';
 import { UserButtonDemo } from './components/stack-auth/stack-user-button-demo';
 import { Step, Steps } from './components/steps';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from './components/ui/tabs';
+
 export function getMDXComponents(components?: MDXComponents): MDXComponents {
   return {
     ...defaultMdxComponents,
     ...components,
     ...CodeBlock,
-    //SignIn
+    // Components
     Card,
     CardGroup,
+    QuickLink,
+    QuickLinks,
     Info,
     SignInStackAuth,
     SignInPasswordFirstTab,
     SignInDemo,
     AuthCard,
     AccountSettingsStackAuth,
-    SignInExtraInfo,
     StackUserButton,
     UserButtonDemo,
     TeamSwitcherDemo,
@@ -67,7 +67,6 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     WebhooksAPIPage,
     TypeTable,
     PropTable,
-    ApiSequenceDiagram,
     // SDK Documentation Components
     Markdown,
     ParamField,
@@ -97,7 +96,6 @@ export function getMDXComponents(components?: MDXComponents): MDXComponents {
     // App Components
     AppCard,
     AppGrid,
-    DocsSelector,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     img: (props) => <ImageZoom {...(props as any)} />,
   } as MDXComponents;

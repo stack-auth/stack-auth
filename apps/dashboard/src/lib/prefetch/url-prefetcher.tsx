@@ -4,7 +4,7 @@ import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-a
 import { stackAppInternalsSymbol, useUser } from "@stackframe/stack";
 import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
 import { createCachedRegex } from "@stackframe/stack-shared/dist/utils/regex";
-import { useEffect, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 import { HookPrefetcher, HookPrefetcherCallback } from "./hook-prefetcher";
 
 // note that URL prefetchers are allowed to return early before execution of all hooks (but not call hook conditionally beyond that)
@@ -182,13 +182,11 @@ const urlPrefetchers: Record<string, ((match: RegExpMatchArray, query: URLSearch
     ([_, projectId]) => {
       const adminApp = useAdminApp(projectId);
       const themes = adminApp.useEmailThemes();
-      themes.forEach((theme) => {
-        return [() => {
-          adminApp.useEmailPreview({
-            themeId: theme.id,
-            templateTsxSource: previewTemplateSource,
-          });
-        }];
+      return themes.map((theme) => () => {
+        adminApp.useEmailPreview({
+          themeId: theme.id,
+          templateTsxSource: previewTemplateSource,
+        });
       });
     },
   ],
@@ -261,12 +259,18 @@ function getMatchingPrefetchers(url: URL) {
     .flatMap(([_, prefetchers, match]) => match ? prefetchers.map((prefetcher) => () => prefetcher(match, url.searchParams, url.hash)) : []);
 }
 
-export function UrlPrefetcher(props: { href: string | URL }) {
+export const UrlPrefetcher = memo(function UrlPrefetcher(props: { href: string | URL }) {
   const [url, setUrl] = useState<URL | null>(null);
   useEffect(() => {
     setUrl(new URL(props.href.toString(), window.location.href));
   }, [props.href]);
 
+  // Memoize callbacks to prevent unnecessary re-renders of HookPrefetcher
+  const callbacks = useMemo(() => {
+    if (!url) return [];
+    return getMatchingPrefetchers(url);
+  }, [url]);
+
   if (!url) return null;
-  return <HookPrefetcher key={url.toString()} callbacks={getMatchingPrefetchers(url)} />;
-}
+  return <HookPrefetcher key={url.toString()} callbacks={callbacks} />;
+});

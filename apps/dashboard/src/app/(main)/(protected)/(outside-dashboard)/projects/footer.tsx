@@ -1,5 +1,5 @@
 import { Link } from "@/components/link";
-import { Separator, Typography } from "@stackframe/stack-ui";
+import { Separator, Typography } from "@/components/ui";
 import { FaDiscord, FaGithub, FaLinkedin } from "react-icons/fa";
 
 export default function Footer () {

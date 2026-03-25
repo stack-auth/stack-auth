@@ -1,4 +1,4 @@
-import { throwErr } from "./errors";
+import { StackAssertionError, throwErr } from "./errors";
 import { deindent } from "./strings";
 
 export function isBrowserLike() {
@@ -46,7 +46,7 @@ export function getEnvVariable(name: string, defaultValue?: string | undefined):
     }
   }
 
-  if (value === undefined) {
+  if (!value) {
     if (defaultValue !== undefined) {
       value = defaultValue;
     } else {
@@ -55,6 +55,17 @@ export function getEnvVariable(name: string, defaultValue?: string | undefined):
   }
 
   return value;
+}
+
+export function getEnvBoolean(name: string): boolean {
+  const value = getEnvVariable(name, "false");
+  if (value === "true") {
+    return true;
+  } else if (value === "false") {
+    return false;
+  } else {
+    throw new StackAssertionError(`Environment variable ${name} must be either "true" or "false": found ${JSON.stringify(value)}`);
+  }
 }
 
 export function getNextRuntime() {

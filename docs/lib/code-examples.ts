@@ -15,7 +15,8 @@
 export type CodeExample = {
   language: string;
   framework: string;
-  variant?: 'server' | 'client';
+  /** Variant for tabbed code within the same platform/framework (e.g., 'server'/'client' or 'html'/'script') */
+  variant?: string;
   code: string;
   highlightLanguage: string;
   filename?: string;

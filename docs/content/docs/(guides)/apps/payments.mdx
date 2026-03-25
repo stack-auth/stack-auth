@@ -1,0 +1,294 @@
+---
+title: Payments
+description: Accept payments and manage billing with Stack Auth's Stripe integration
+icon: CreditCard
+---
+
+Stack Auth provides a Payments app that integrates with Stripe to handle billing, subscriptions, and one-time purchases. The SDK provides methods for users and teams to create checkout URLs and manage items like credits, seats, or API quotas.
+
+## Overview
+
+The Payments app enables you to:
+
+- **Accept Payments**: Process subscriptions and one-time purchases through Stripe
+- **Manage Items**: Track billable items like credits, seats, or features
+- **Create Checkout URLs**: Generate Stripe checkout links directly from your SDK
+- **Track Products**: List products owned by users or teams
+- **View Transactions**: Monitor all payment activity in the dashboard
+
+## Quick Setup
+
+1. Enable the Payments app in your dashboard
+2. Connect Stripe in **Payments → Settings**
+3. Create a product line in **Payments → Product Lines**
+4. Create products and attach items in **Payments → Products & Items**
+5. Generate a checkout URL in your app with `createCheckoutUrl(...)`
+6. Turn on test mode in **Payments → Settings** and run test purchases
+7. Verify results in **Payments → Transactions** and **Payments → Customers**
+
+## How Payments Works
+
+At a high level, Payments combines your product catalog (what can be bought) with customer item balances (what each user/team currently has).
+
+<Mermaid chart={`
+sequenceDiagram
+    participant App as Your App
+    participant Stack as Stack Auth
+    participant Stripe as Stripe Checkout
+    participant DB as Item Balance
+
+    App->>Stack: createCheckoutUrl(customer, product)
+    Stack-->>App: checkout URL
+    App->>Stripe: redirect user to checkout
+    Stripe-->>Stack: payment/subscription success
+    Stack->>DB: grant product items
+    Stack-->>App: updated customer products/items
+`} />
+
+### Core Concepts
+
+- **Product**: A sellable offer (one-time or subscription)
+- **Product line**: A mutually exclusive set of products. A customer can only have one active product from the same product line at a time.
+- **Item**: A quantifiable entitlement (credits, seats, API calls, etc.)
+- **Customer**: The owner of purchases and item balances (`user`, `team`, or `custom`)
+- **Transaction**: A successful or failed billing event recorded in the dashboard
+
+### Typical Purchase Flow
+
+1. Define product lines, products, and attached items in **Payments → Product Lines** and **Payments → Products & Items**
+2. Create a checkout URL from your app for a specific customer
+3. User completes payment in Stripe Checkout
+4. Stack updates product ownership and item balances automatically
+5. Your app reads updated balances through `useItem()`, `getItem()`, or `listProducts()`
+
+## Enabling the Payments App
+
+To use payments in your application:
+
+1. Navigate to your Stack Auth dashboard
+2. Go to the **Apps** section
+3. Find and click on **Payments** in the app store
+4. Click the **Enable** button
+5. Follow the Stripe Connect onboarding flow to link your Stripe account
+
+<Info>
+Stack Auth Payments is currently only available for US-based businesses. Support for other countries is coming soon.
+</Info>
+
+## Stripe Integration
+
+### Connecting Your Stripe Account
+
+Stack Auth uses Stripe Connect to securely integrate with your Stripe account:
+
+1. Open **Payments** and start Stripe setup (from the setup prompt or **Payments → Settings**)
+2. Select your country of residence
+3. You'll be redirected to Stripe's onboarding flow
+4. Complete the required information:
+   - Business details
+   - Bank account information
+   - Identity verification
+5. Once approved, payments will be enabled for your project
+
+You can turn on **test mode** to simulate purchases without charging real money while you validate your integration.
+
+## SDK Usage
+
+The Payments functionality is available through the [`Customer`](/docs/sdk/types/customer) interface, which is automatically available on [`CurrentUser`](/docs/sdk/types/user#currentuser) and [`Team`](/docs/sdk/types/team#team) objects.
+
+### Creating Checkout URLs
+
+Generate Stripe checkout URLs to let users purchase products:
+
+<PlatformCodeblock 
+  document="apps/payments"
+  examples={["create-checkout-url"]}
+/>
+
+For team purchases:
+
+<PlatformCodeblock 
+  document="apps/payments"
+  examples={["team-checkout-url"]}
+/>
+
+### Managing Items
+
+Items represent quantifiable resources like credits, API calls, or storage quotas. See the [`Item`](/docs/sdk/types/item) type reference for full details.
+
+#### Getting Item Quantities
+
+Retrieve the current quantity of an item for a user or team:
+
+<PlatformCodeblock 
+  document="apps/payments"
+  examples={["get-item"]}
+/>
+
+#### Real-time Item Updates (React Hook)
+
+Use the `useItem` hook for real-time updates when quantities change:
+
+<PlatformCodeblock 
+  document="apps/payments"
+  examples={["use-item"]}
+/>
+
+#### Consuming Credits (Server-side)
+
+Use `tryDecreaseQuantity` for race-condition-safe credit consumption:
+
+<PlatformCodeblock 
+  document="apps/payments"
+  examples={["consume-credits-server"]}
+/>
+
+<Info>
+Use `tryDecreaseQuantity()` instead of checking the balance and then decreasing. This prevents race conditions where multiple requests could consume more credits than available.
+</Info>
+
+### Listing Products
+
+List products owned by a user or team:
+
+<PlatformCodeblock 
+  document="apps/payments"
+  examples={["list-products"]}
+/>
+
+### Granting Products (Server-side)
+
+Grant products to users programmatically without requiring payment:
+
+<PlatformCodeblock 
+  document="apps/payments"
+  examples={["grant-product-server"]}
+/>
+
+## Dashboard Management
+
+### Product Lines
+
+Configure product lines under **Payments → Product Lines**:
+
+- Group products into mutually exclusive plans/tiers
+- Move products between lines as your pricing model evolves
+- Keep products outside of lines when they should be independently purchasable
+
+### Products & Items
+
+Configure products and item entitlements in **Payments → Products & Items**:
+
+- Create products with display names and pricing
+- Configure items included with each product (e.g., 100 credits per purchase)
+- Set up one-time or recurring billing
+- Choose whether products are for users, teams, or custom customers
+
+### Customers
+
+View and manage customer item balances under **Payments → Customers**:
+
+- Select a customer type (User, Team, or Custom)
+- View item quantities for each customer
+- Manually adjust quantities with optional expiration dates
+- Grant products directly to customers
+
+### Transactions
+
+View all payment activity under **Payments → Transactions**:
+
+- Filter by transaction type (Purchase, Subscription Renewal, etc.)
+- Filter by customer type
+- View transaction details including amount and products
+- Refund eligible transactions
+
+#### Issuing Refunds
+
+Click the refund button in a transaction row to issue a refund. Refunds are only available for non-test mode purchases with associated prices.
+
+Refund support is centered on USD-denominated purchase entries.
+
+### Payouts
+
+View and manage payout information under **Payments → Payouts**.
+
+### Settings
+
+Configure payment infrastructure in **Payments → Settings**:
+
+- Connect or continue Stripe onboarding
+- Toggle test mode
+- Configure available payment methods
+- Optionally block new purchases
+
+### Payment Emails
+
+Email notifications are sent automatically when payments are processed:
+
+- **Payment Receipt**: Sent on successful payment with product details, amount, and receipt link
+- **Payment Failed**: Sent on failed payment with product name, amount, and failure reason
+
+These emails apply to both one-time purchases and subscription renewals. Customize them in the dashboard under **Emails → Templates**.
+
+## Customer Types
+
+Stack Auth supports three types of payment customers:
+
+- **Users**: Individual user accounts in your application
+- **Teams**: Team or organization accounts
+- **Custom Customers**: External entities identified by a custom ID (useful for integrations with external systems)
+
+## Test Mode
+
+During development, you can use test mode:
+
+1. Connect Stripe for the project, then enable test mode in **Payments → Settings**
+2. All purchases will be free and no money will be deducted
+3. Test various scenarios before going live
+
+### Test Card Numbers
+
+When in live mode with Stripe test credentials:
+
+- **Success**: `4242 4242 4242 4242`
+- **Decline**: `4000 0000 0000 0002`
+- **Insufficient Funds**: `4000 0000 0000 9995`
+
+See [Stripe's testing documentation](https://stripe.com/docs/testing) for more test scenarios.
+
+## Type References
+
+For complete API documentation, see:
+
+- [`Customer`](/docs/sdk/types/customer) - Payment methods available on users and teams
+- [`Item`](/docs/sdk/types/item) - Item and ServerItem type definitions
+- [`ServerItem`](/docs/sdk/types/item#serveritem) - Server-side item management methods
+
+## Best Practices
+
+### Security
+
+1. **Validate on Server**: Always validate credit consumption on the server side
+2. **Use `tryDecreaseQuantity`**: This method is atomic and prevents race conditions
+3. **Server-only Operations**: Use `grantProduct` only on the server with proper authorization
+
+### Billing Management
+
+1. **Clear Item Names**: Use descriptive display names for items
+2. **Set Expiration Dates**: Use expiration dates for time-limited credits or features
+3. **Track Changes**: Add descriptions when manually adjusting quantities
+
+### Customer Experience
+
+1. **Return URLs**: Provide return URLs when creating checkout sessions
+2. **Real-time Updates**: Use `useItem()` hooks to show live credit balances
+3. **Handle Insufficient Credits**: Check balances before operations and show clear error messages
+
+## Pricing
+
+Stack Auth does not charge additional fees for the Payments app. You'll only pay:
+
+- Stripe's standard processing fees
+- Any applicable Stripe Connect fees
+
+Transaction limits are determined by your Stripe account tier.

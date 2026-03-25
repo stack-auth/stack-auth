@@ -1,16 +1,17 @@
 'use client';
 
-import { createContext, ReactNode, useContext, useState } from 'react';
+import { createContext, ReactNode, useCallback, useContext, useState } from 'react';
 import { useSidebar } from '../layouts/sidebar-context';
 
 // Stack Auth required headers
+// Note: Content-Type is NOT included here - it's added automatically by fetch when there's a body
 const STACK_AUTH_HEADERS = {
-  'Content-Type': 'application/json',
-  'X-Stack-Access-Type': '', // client or server
+  'X-Stack-Access-Type': '', // client, server, or admin
   'X-Stack-Project-Id': '', // project UUID
   'X-Stack-Publishable-Client-Key': '', // pck_...
   'X-Stack-Secret-Server-Key': '', // ssk_...
   'X-Stack-Access-Token': '', // user's access token
+  'X-Stack-Admin-Access-Token': '', // admin access token (for owned projects)
 };
 
 // Type for API error objects
@@ -23,9 +24,11 @@ type APIError = {
 }
 
 // Context for sharing headers across all API components on the page
+type UpdateSharedHeadersInput = Record<string, string> | ((current: Record<string, string>) => Record<string, string>);
+
 type APIPageContextType = {
   sharedHeaders: Record<string, string>,
-  updateSharedHeaders: (headers: Record<string, string>) => void,
+  updateSharedHeaders: (headers: UpdateSharedHeadersInput) => void,
   reportError: (status: number, error: APIError) => void,
   lastError: { status: number, error: APIError } | null,
   highlightMissingHeaders: boolean,
@@ -57,13 +60,15 @@ export function APIPageWrapper({ children }: APIPageWrapperProps) {
     toggleAuth: () => {}
   };
 
-  const updateSharedHeaders = (headers: Record<string, string>) => {
-    setSharedHeaders(headers);
-    // Clear error highlighting when headers are updated
-    if (highlightMissingHeaders) {
-      setHighlightMissingHeaders(false);
-    }
-  };
+  const updateSharedHeaders = useCallback((headers: UpdateSharedHeadersInput) => {
+    setSharedHeaders(prevHeaders => {
+      if (typeof headers === 'function') {
+        return headers(prevHeaders);
+      }
+      return headers;
+    });
+    setHighlightMissingHeaders(false);
+  }, []);
 
   const reportError = (status: number, error: APIError) => {
     setLastError({ status, error });

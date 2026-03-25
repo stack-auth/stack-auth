@@ -1,4 +1,4 @@
-import { sendEmailFromTemplate } from "@/lib/emails";
+import { sendEmailFromDefaultTemplate } from "@/lib/emails";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -9,6 +9,7 @@ export const POST = createSmartRouteHandler({
     summary: "Send an email to invite a user to a team",
     description: "The user receiving this email can join the team by clicking on the link in the email. If the user does not have an account yet, they will be prompted to create one.",
     tags: ["Teams"],
+    hidden: true,
   },
   request: yupObject({
     auth: yupObject({
@@ -32,7 +33,7 @@ export const POST = createSmartRouteHandler({
       throw new KnownErrors.RedirectUrlNotWhitelisted();
     }
 
-    await sendEmailFromTemplate({
+    await sendEmailFromDefaultTemplate({
       email: body.email,
       tenancy: auth.tenancy,
       user: null,
@@ -41,6 +42,7 @@ export const POST = createSmartRouteHandler({
         signInInvitationLink: body.callback_url,
         teamDisplayName: auth.tenancy.project.display_name,
       },
+      shouldSkipDeliverabilityCheck: true,
     });
 
     return {

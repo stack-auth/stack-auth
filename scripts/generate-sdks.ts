@@ -109,7 +109,7 @@ function processPackageJson(path: string, content: string) {
   } catch (error) {
     throw new Error(`Failed to parse package.json at ${path}`, { cause: error });
   }
-  return JSON.stringify({ "//": COMMENT_LINE, ...jsonObj }, null, 2);
+  return JSON.stringify({ "//": `${COMMENT_LINE} (FOR package.json FILES, PLEASE EDIT package-template.json)`, ...jsonObj }, null, 2);
 }
 
 function baseEditFn(options: {

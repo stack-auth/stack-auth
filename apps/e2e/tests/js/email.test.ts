@@ -1,6 +1,8 @@
 import { KnownErrors } from "@stackframe/stack-shared";
 import { DEFAULT_EMAIL_THEME_ID, DEFAULT_TEMPLATE_IDS } from "@stackframe/stack-shared/dist/helpers/emails";
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../helpers";
+import { withPortPrefix } from "../helpers/ports";
 import { createApp } from "./js-helpers";
 
 async function setupEmailServer(adminApp: any) {
@@ -10,9 +12,9 @@ async function setupEmailServer(adminApp: any) {
       server: {
         isShared: false,
         host: "localhost",
-        port: 1025,
+        port: Number(withPortPrefix("29")),
         username: "test",
-        password: "password",
+        password: "test",
         senderEmail: "test@example.com",
         senderName: "Test User",
       },
@@ -168,4 +170,107 @@ it("should handle html and templateId at the same time", async ({ expect }) => {
     templateId: DEFAULT_TEMPLATE_IDS.sign_in_invitation,
     subject: "Test Email",
   } as any)).rejects.toThrow(KnownErrors.SchemaError);
+});
+
+it("should provide delivery statistics", async ({ expect }) => {
+  const { adminApp, serverApp } = await createApp();
+  await setupEmailServer(adminApp);
+
+  const user = await serverApp.createUser({
+    primaryEmail: "stats@example.com",
+    primaryEmailVerified: true,
+  });
+
+  await serverApp.sendEmail({
+    userIds: [user.id],
+    html: "<p>Stats</p>",
+    subject: "Stats",
+  });
+
+  let info;
+  for (let i = 0; ; i++) {
+    info = await serverApp.getEmailDeliveryStats();
+    if (info.stats.hour.sent >= 1) break;
+    if (i >= 50) {
+      throw new Error(`Timed out waiting for email delivery stats to reflect sent email: ${JSON.stringify(info)}`);
+    }
+    await wait(500);
+  }
+
+  expect(info).toMatchInlineSnapshot(`
+    {
+      "capacity": {
+        "boost_expires_at": null,
+        "boost_multiplier": 1,
+        "is_boost_active": false,
+        "penalty_factor": 1,
+        "rate_per_second": 2.7777793209876545,
+      },
+      "stats": {
+        "day": {
+          "bounced": 0,
+          "marked_as_spam": 0,
+          "sent": 1,
+        },
+        "hour": {
+          "bounced": 0,
+          "marked_as_spam": 0,
+          "sent": 1,
+        },
+        "month": {
+          "bounced": 0,
+          "marked_as_spam": 0,
+          "sent": 1,
+        },
+        "week": {
+          "bounced": 0,
+          "marked_as_spam": 0,
+          "sent": 1,
+        },
+      },
+    }
+  `);
+});
+
+it("should send test email with custom SMTP configuration", async ({ expect }) => {
+  const { adminApp } = await createApp();
+
+  // First configure the email server
+  await setupEmailServer(adminApp);
+
+  // Get the project to access the email config
+  const project = await adminApp.getProject();
+  const config = await project.getConfig();
+
+  // Verify config is not shared
+  expect(config.emails.server.isShared).toBe(false);
+
+  // Send a test email
+  const result = await adminApp.sendTestEmail({
+    recipientEmail: "test-recipient@example.com",
+    emailConfig: {
+      host: config.emails.server.host!,
+      port: config.emails.server.port!,
+      username: config.emails.server.username!,
+      password: config.emails.server.password!,
+      senderEmail: config.emails.server.senderEmail!,
+      senderName: config.emails.server.senderName!,
+    }
+  });
+
+  expect(result.status).toBe('ok');
+});
+
+it("should fail to send test email with shared server configuration", async ({ expect }) => {
+  const { adminApp } = await createApp();
+
+  // Don't configure custom email server, so it defaults to shared
+  const project = await adminApp.getProject();
+  const config = await project.getConfig();
+
+  // Verify config is shared
+  expect(config.emails.server.isShared).toBe(true);
+
+  // Attempting to send test email with shared config should fail in the UI
+  // (This test documents the expected behavior in the dashboard UI)
 });

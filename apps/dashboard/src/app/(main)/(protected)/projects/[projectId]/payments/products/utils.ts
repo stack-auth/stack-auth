@@ -1,5 +1,6 @@
-import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
+import { isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
+import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 
 // ============================================================================
 // Types
@@ -60,6 +61,7 @@ export function freeTrialLabel(tuple: DayInterval | undefined): string | null {
 
 /**
  * Builds a Price object from current state with all required fields
+ * @param freeTrial - Pass `null` to explicitly remove free trial, `undefined` to compute from selection, or a DayInterval to set
  */
 export function buildPriceUpdate(params: {
   amount: string,
@@ -70,7 +72,7 @@ export function buildPriceUpdate(params: {
   freeTrialSelection: 'one-time' | 'custom' | DayInterval[1],
   freeTrialCount: number,
   freeTrialUnit: DayInterval[1] | undefined,
-  freeTrial?: DayInterval,
+  freeTrial?: DayInterval | null,
 }): Price {
   const { amount, serverOnly, intervalSelection, intervalCount, priceInterval, freeTrialSelection, freeTrialCount, freeTrialUnit, freeTrial } = params;
 
@@ -81,10 +83,20 @@ export function buildPriceUpdate(params: {
     (intervalSelection === 'custom' ? (priceInterval || 'month') : intervalSelection) as DayInterval[1]
   ] as DayInterval);
 
-  const freeTrialObj = freeTrial || (freeTrialSelection === 'one-time' ? undefined : ([
-    freeTrialSelection === 'custom' ? freeTrialCount : 1,
-    (freeTrialSelection === 'custom' ? (freeTrialUnit || 'day') : freeTrialSelection) as DayInterval[1]
-  ] as DayInterval));
+  // If freeTrial is explicitly null, don't include it
+  // If freeTrial is a DayInterval, use it
+  // If freeTrial is undefined, compute from selection state
+  let freeTrialObj: DayInterval | undefined;
+  if (freeTrial === null) {
+    freeTrialObj = undefined;
+  } else if (freeTrial !== undefined) {
+    freeTrialObj = freeTrial;
+  } else {
+    freeTrialObj = freeTrialSelection === 'one-time' ? undefined : ([
+      freeTrialSelection === 'custom' ? freeTrialCount : 1,
+      (freeTrialSelection === 'custom' ? (freeTrialUnit || 'day') : freeTrialSelection) as DayInterval[1]
+    ] as DayInterval);
+  }
 
   return {
     USD: normalized,
@@ -92,6 +104,22 @@ export function buildPriceUpdate(params: {
     ...(intervalObj ? { interval: intervalObj } : {}),
     ...(freeTrialObj ? { freeTrial: freeTrialObj } : {}),
   };
+}
+
+/**
+ * Formats a price for display (e.g., "$9.99 / month (7 days free)")
+ */
+export function formatPriceDisplay(price: Price): string {
+  let display = `$${price.USD}`;
+  if (price.interval) {
+    const [count, unit] = price.interval;
+    display += count === 1 ? ` / ${unit}` : ` / ${count} ${unit}s`;
+  }
+  if (price.freeTrial) {
+    const [count, unit] = price.freeTrial;
+    display += ` (${count} ${unit}${count > 1 ? 's' : ''} free)`;
+  }
+  return display;
 }
 
 /**
@@ -113,13 +141,15 @@ export function getPricesObject(draft: Product): PricesObject {
 // ID Validation & Generation
 // ============================================================================
 
-const ID_PATTERN = /^[a-z0-9-]+$/;
+// Re-export utilities from schema-fields for convenience
+export { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
 
 /**
- * Validates if an ID matches the required pattern
+ * Validates if an ID matches the required pattern.
+ * @deprecated Use isValidUserSpecifiedId instead for consistency with schema validation
  */
 export function isValidId(id: string): boolean {
-  return ID_PATTERN.test(id);
+  return isValidUserSpecifiedId(id);
 }
 
 /**
@@ -130,8 +160,9 @@ export function generateUniqueId(prefix: string): string {
 }
 
 /**
- * Sanitizes user input into a valid ID format (lowercase, hyphenated)
+ * Sanitizes user input into a valid ID format.
+ * @deprecated Use sanitizeUserSpecifiedId instead for consistency with schema validation
  */
 export function sanitizeId(input: string): string {
-  return input.toLowerCase().replace(/[^a-z0-9_\-]/g, '-');
+  return sanitizeUserSpecifiedId(input);
 }

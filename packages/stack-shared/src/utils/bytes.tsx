@@ -78,7 +78,7 @@ import.meta.vitest?.test("encodeBase32", ({ expect }) => {
   expect(encodeBase32(new Uint8Array([255]))).toBe("ZW");
   expect(encodeBase32(new Uint8Array([255,255]))).toBe("ZZZG");
 });
-export function decodeBase32(input: string): Uint8Array {
+export function decodeBase32(input: string): Uint8Array<ArrayBuffer> {
   if (!isBase32(input)) {
     throw new StackAssertionError("Invalid base32 string");
   }
@@ -115,7 +115,7 @@ export function encodeBase64(input: Uint8Array): string {
   return btoa([...input].map((b) => String.fromCharCode(b)).join(""));
 }
 
-export function decodeBase64(input: string): Uint8Array {
+export function decodeBase64(input: string): Uint8Array<ArrayBuffer> {
   return new Uint8Array(atob(input).split("").map((char) => char.charCodeAt(0)));
 }
 import.meta.vitest?.test("encodeBase64/decodeBase64", ({ expect }) => {
@@ -177,7 +177,7 @@ export function encodeBase64Url(input: Uint8Array): string {
   return res;
 }
 
-export function decodeBase64Url(input: string): Uint8Array {
+export function decodeBase64Url(input: string): Uint8Array<ArrayBuffer> {
   if (!isBase64Url(input)) {
     throw new StackAssertionError("Invalid base64url string");
   }
@@ -208,7 +208,7 @@ import.meta.vitest?.test("encodeBase64Url/decodeBase64Url", ({ expect }) => {
   expect(() => decodeBase64Url("invalid!")).toThrow();
 });
 
-export function decodeBase64OrBase64Url(input: string): Uint8Array {
+export function decodeBase64OrBase64Url(input: string): Uint8Array<ArrayBuffer> {
   if (isBase64Url(input)) {
     return decodeBase64Url(input);
   } else if (isBase64(input)) {

@@ -9,8 +9,14 @@ export type {
   StackClientAppConstructorOptions,
   StackClientAppJson,
   StackServerAppConstructor,
-  StackServerAppConstructorOptions
+  StackServerAppConstructorOptions,
 } from "./apps";
+
+export type {
+  EmailOutboxListOptions,
+  EmailOutboxListResult,
+  EmailOutboxUpdateOptions
+} from "./apps/interfaces/admin-app";
 
 export type {
   ProjectConfig
@@ -46,6 +52,11 @@ export type {
 } from "./contact-channels";
 
 export type {
+  AdminEmailOutbox,
+  AdminEmailOutboxRecipient,
+  AdminEmailOutboxSimpleStatus,
+  AdminEmailOutboxStatus,
+  AdminSendAttemptError,
   AdminSentEmail
 } from "./email";
 
@@ -73,7 +84,8 @@ export type {
   AdminProject,
   AdminProjectCreateOptions,
   AdminProjectUpdateOptions,
-  Project
+  Project,
+  PushedConfigSource
 } from "./projects";
 
 export type {
@@ -81,6 +93,8 @@ export type {
   ServerListUsersOptions,
   ServerTeam,
   ServerTeamCreateOptions,
+  ReceivedTeamInvitation,
+  SentTeamInvitation,
   ServerTeamMemberProfile,
   ServerTeamUpdateOptions,
   ServerTeamUser,
@@ -101,7 +115,6 @@ export type {
   OAuthProvider,
   ServerOAuthProvider,
   ServerUser,
-  Session,
   User
 } from "./users";
 

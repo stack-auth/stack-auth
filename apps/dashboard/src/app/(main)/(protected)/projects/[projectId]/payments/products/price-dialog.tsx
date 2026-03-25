@@ -2,7 +2,8 @@
 
 import { cn } from "@/lib/utils";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
-import { Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SimpleTooltip, Typography } from "@stackframe/stack-ui";
+import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
+import { Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SimpleTooltip, Typography } from "@/components/ui";
 import { useState } from "react";
 
 const SUPPORTED_CURRENCIES = [
@@ -47,8 +48,8 @@ export function PriceDialog({
     // Validate price ID
     if (!priceId.trim()) {
       newErrors.priceId = "Price ID is required";
-    } else if (!/^[a-z0-9-]+$/.test(priceId)) {
-      newErrors.priceId = "Price ID must contain only lowercase letters, numbers, and hyphens";
+    } else if (!isValidUserSpecifiedId(priceId)) {
+      newErrors.priceId = getUserSpecifiedIdErrorMessage("priceId");
     } else if (!editingPrice && existingPriceIds.includes(priceId)) {
       newErrors.priceId = "This price ID already exists";
     }
@@ -163,7 +164,7 @@ export function PriceDialog({
               id="price-id"
               value={priceId}
               onChange={(e) => {
-                const nextValue = e.target.value.toLowerCase();
+                const nextValue = sanitizeUserSpecifiedId(e.target.value);
                 setPriceId(nextValue);
                 if (errors.priceId) {
                   setErrors(prev => {

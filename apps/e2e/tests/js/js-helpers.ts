@@ -4,6 +4,10 @@ import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import { STACK_BACKEND_BASE_URL, STACK_INTERNAL_PROJECT_ADMIN_KEY, STACK_INTERNAL_PROJECT_CLIENT_KEY, STACK_INTERNAL_PROJECT_SERVER_KEY } from '../helpers';
 
+const testExtraRequestHeaders = {
+  "x-stack-disable-artificial-development-delay": "yes",
+};
+
 export async function scaffoldProject(body?: Omit<AdminProjectCreateOptions, 'displayName' | 'teamId'> & { displayName?: string }) {
   const internalApp = new StackAdminApp({
     projectId: 'internal',
@@ -12,6 +16,7 @@ export async function scaffoldProject(body?: Omit<AdminProjectCreateOptions, 'di
     secretServerKey: STACK_INTERNAL_PROJECT_SERVER_KEY,
     superSecretAdminKey: STACK_INTERNAL_PROJECT_ADMIN_KEY,
     tokenStore: "memory",
+    extraRequestHeaders: testExtraRequestHeaders,
   });
 
   const fakeEmail = `${crypto.randomUUID()}@stack-js-test.example.com`;
@@ -51,6 +56,7 @@ export async function createApp(
     baseUrl: STACK_BACKEND_BASE_URL,
     projectOwnerSession: adminUser._internalSession,
     tokenStore: "memory",
+    extraRequestHeaders: testExtraRequestHeaders,
   });
 
   const apiKey = await adminApp.createInternalApiKey({
@@ -60,13 +66,18 @@ export async function createApp(
     hasSecretServerKey: true,
     hasSuperSecretAdminKey: false,
   });
+  if (!apiKey.secretServerKey) {
+    throw new Error("createInternalApiKey did not return a secretServerKey");
+  }
+  const secretServerKey = apiKey.secretServerKey;
 
   const serverApp = new StackServerApp({
     baseUrl: STACK_BACKEND_BASE_URL,
     projectId: project.id,
     publishableClientKey: apiKey.publishableClientKey,
-    secretServerKey: apiKey.secretServerKey,
+    secretServerKey,
     tokenStore: "memory",
+    extraRequestHeaders: testExtraRequestHeaders,
     ...(appOverrides?.server ?? {}),
   });
 
@@ -75,6 +86,7 @@ export async function createApp(
     projectId: project.id,
     publishableClientKey: apiKey.publishableClientKey,
     tokenStore: "memory",
+    extraRequestHeaders: testExtraRequestHeaders,
     ...(appOverrides?.client ?? {}),
   });
 
@@ -82,5 +94,8 @@ export async function createApp(
     serverApp,
     clientApp,
     adminApp,
+    apiKey,
+    project,
+    secretServerKey,
   };
 }

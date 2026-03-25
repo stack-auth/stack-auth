@@ -1,16 +1,30 @@
+import * as yup from "yup";
 import { KnownErrors } from "../known-errors";
+import { branchConfigSourceSchema, type RestrictedReason } from "../schema-fields";
 import { AccessToken, InternalSession, RefreshToken } from "../sessions";
+import type { MoneyAmount } from "../utils/currency-constants";
+import type { Json } from "../utils/json";
 import { Result } from "../utils/results";
-import { ConfigCrud, ConfigOverrideCrud } from "./crud/config";
+import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "./crud/analytics";
+import { EmailOutboxCrud } from "./crud/email-outbox";
 import { InternalEmailsCrud } from "./crud/emails";
 import { InternalApiKeysCrud } from "./crud/internal-api-keys";
 import { ProjectPermissionDefinitionsCrud } from "./crud/project-permissions";
 import { ProjectsCrud } from "./crud/projects";
+import type {
+  AdminGetSessionReplayAllEventsResponse,
+  AdminGetSessionReplayChunkEventsResponse,
+  AdminListSessionReplayChunksOptions,
+  AdminListSessionReplayChunksResponse,
+  AdminListSessionReplaysOptions,
+  AdminListSessionReplaysResponse
+} from "./crud/session-replays";
 import { SvixTokenCrud } from "./crud/svix-token";
 import { TeamPermissionDefinitionsCrud } from "./crud/team-permissions";
 import type { Transaction, TransactionType } from "./crud/transactions";
 import { ServerAuthApplicationOptions, StackServerInterface } from "./server-interface";
 
+type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
 
 export type ChatContent = Array<
   | { type: "text", text: string }
@@ -22,7 +36,7 @@ export type AdminAuthApplicationOptions = ServerAuthApplicationOptions &(
     superSecretAdminKey: string,
   }
   | {
-    projectOwnerSession: InternalSession,
+    projectOwnerSession: InternalSession | (() => Promise<string | null>),
   }
 );
 
@@ -39,6 +53,7 @@ export type InternalApiKeyCreateCrudResponse = InternalApiKeysCrud["Admin"]["Rea
   secret_server_key?: string,
   super_secret_admin_key?: string,
 };
+
 
 export class StackAdminInterface extends StackServerInterface {
   constructor(public readonly options: AdminAuthApplicationOptions) {
@@ -191,6 +206,16 @@ export class StackAdminInterface extends StackServerInterface {
           "content-type": "application/json",
         },
         body: JSON.stringify(data),
+      },
+      null,
+    );
+  }
+
+  async deleteEmailDraft(id: string): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/email-drafts/${id}`,
+      {
+        method: "DELETE",
       },
       null,
     );
@@ -374,6 +399,69 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
+  async setupManagedEmailProvider(data: {
+    subdomain: string,
+    sender_local_part: string,
+  }): Promise<{
+      domain_id: string,
+      subdomain: string,
+      sender_local_part: string,
+      name_server_records: string[],
+      status: "pending_dns" | "pending_verification" | "verified" | "applied" | "failed",
+    }> {
+    const response = await this.sendAdminRequest("/internal/emails/managed-onboarding/setup", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(data),
+    }, null);
+    return await response.json();
+  }
+
+  async checkManagedEmailStatus(data: {
+    domain_id: string,
+    subdomain: string,
+    sender_local_part: string,
+  }): Promise<{ status: "pending_dns" | "pending_verification" | "verified" | "applied" | "failed" }> {
+    const response = await this.sendAdminRequest("/internal/emails/managed-onboarding/check", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(data),
+    }, null);
+    return await response.json();
+  }
+
+  async listManagedEmailDomains(): Promise<{
+      items: Array<{
+        domain_id: string,
+        subdomain: string,
+        sender_local_part: string,
+        status: "pending_dns" | "pending_verification" | "verified" | "applied" | "failed",
+        name_server_records: string[],
+      }>,
+    }> {
+    const response = await this.sendAdminRequest("/internal/emails/managed-onboarding/list", {
+      method: "GET",
+    }, null);
+    return await response.json();
+  }
+
+  async applyManagedEmailProvider(data: {
+    domain_id: string,
+  }): Promise<{ status: "applied" }> {
+    const response = await this.sendAdminRequest("/internal/emails/managed-onboarding/apply", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(data),
+    }, null);
+    return await response.json();
+  }
+
   async sendSignInInvitationEmail(
     email: string,
     callbackUrl: string,
@@ -392,28 +480,6 @@ export class StackAdminInterface extends StackServerInterface {
       },
       null,
     );
-  }
-
-
-  async sendChatMessage(
-    threadId: string,
-    contextType: "email-theme" | "email-template" | "email-draft",
-    messages: Array<{ role: string, content: any }>,
-    abortSignal?: AbortSignal,
-  ): Promise<{ content: ChatContent }> {
-    const response = await this.sendAdminRequest(
-      `/internal/ai-chat/${threadId}`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ context_type: contextType, messages }),
-        signal: abortSignal,
-      },
-      null,
-    );
-    return await response.json();
   }
 
   async saveChatMessage(threadId: string, message: any): Promise<void> {
@@ -439,7 +505,14 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async renderEmailPreview(options: { themeId?: string | null | false, themeTsxSource?: string, templateId?: string, templateTsxSource?: string }): Promise<{ html: string }> {
+  async renderEmailPreview(options: {
+    themeId?: string | null | false,
+    themeTsxSource?: string,
+    templateId?: string,
+    templateTsxSource?: string,
+    editableMarkers?: boolean,
+    editableSource?: 'template' | 'theme' | 'both',
+  }): Promise<{ html: string, editable_regions?: Record<string, unknown> }> {
     const response = await this.sendAdminRequest(`/emails/render-email`, {
       method: "POST",
       headers: {
@@ -450,6 +523,21 @@ export class StackAdminInterface extends StackServerInterface {
         theme_tsx_source: options.themeTsxSource,
         template_id: options.templateId,
         template_tsx_source: options.templateTsxSource,
+        editable_markers: options.editableMarkers,
+        editable_source: options.editableSource,
+      }),
+    }, null);
+    return await response.json();
+  }
+
+  async rewriteTemplateSourceWithAI(templateTsxSource: string): Promise<{ tsx_source: string }> {
+    const response = await this.sendAdminRequest(`/internal/rewrite-template-source`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        template_tsx_source: templateTsxSource,
       }),
     }, null);
     return await response.json();
@@ -497,6 +585,16 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
+  async deleteEmailTheme(id: string): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/email-themes/${id}`,
+      {
+        method: "DELETE",
+      },
+      null,
+    );
+  }
+
   async updateEmailTemplate(id: string, tsxSource: string, themeId: string | null | false): Promise<{ rendered_html: string }> {
     const response = await this.sendAdminRequest(
       `/internal/email-templates/${id}`,
@@ -512,7 +610,7 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async getConfig(): Promise<ConfigCrud["Admin"]["Read"]> {
+  async getConfig(): Promise<{ config_string: string }> {
     const response = await this.sendAdminRequest(
       `/internal/config`,
       { method: "GET" },
@@ -521,19 +619,76 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async updateConfig(data: { configOverride: any }): Promise<ConfigOverrideCrud["Admin"]["Read"]> {
+  async getConfigOverride(level: "project" | "branch" | "environment"): Promise<{ config_string: string }> {
     const response = await this.sendAdminRequest(
-      `/internal/config/override`,
+      `/internal/config/override/${level}`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async setConfigOverride(level: "project" | "branch" | "environment", configOverride: any, source?: BranchConfigSourceApi): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/config/override/${level}`,
+      {
+        method: "PUT",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          config_string: JSON.stringify(configOverride),
+          ...(source && { source }),
+        }),
+      },
+      null,
+    );
+  }
+
+  async updateConfigOverride(level: "project" | "branch" | "environment", configOverrideOverride: any): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/config/override/${level}`,
       {
         method: "PATCH",
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify({ config_override_string: JSON.stringify(data.configOverride) }),
+        body: JSON.stringify({ config_override_string: JSON.stringify(configOverrideOverride) }),
       },
       null,
     );
-    return await response.json();
+  }
+
+  async getPushedConfigSource(): Promise<BranchConfigSourceApi> {
+    const response = await this.sendAdminRequest(
+      `/internal/config/source`,
+      { method: "GET" },
+      null,
+    );
+    const data = await response.json();
+    return data.source;
+  }
+
+  async unlinkPushedConfigSource(): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/config/source`,
+      { method: "DELETE" },
+      null,
+    );
+  }
+
+  async resetConfigOverrideKeys(level: "branch" | "environment", keys: string[]): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/config/override/${level}/reset-keys`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ keys }),
+      },
+      null,
+    );
   }
   async createEmailTemplate(displayName: string): Promise<{ id: string }> {
     const response = await this.sendAdminRequest(
@@ -550,6 +705,16 @@ export class StackAdminInterface extends StackServerInterface {
       null,
     );
     return await response.json();
+  }
+
+  async deleteEmailTemplate(id: string): Promise<void> {
+    await this.sendAdminRequest(
+      `/internal/email-templates/${id}`,
+      {
+        method: "DELETE",
+      },
+      null,
+    );
   }
 
   async setupPayments(): Promise<{ url: string }> {
@@ -578,6 +743,35 @@ export class StackAdminInterface extends StackServerInterface {
       return null;
     }
     return await response.data.json();
+  }
+
+  async getPaymentMethodConfigs(): Promise<{ configId: string, methods: Array<{ id: string, name: string, enabled: boolean, available: boolean, overridable: boolean }> } | null> {
+    const response = await this.sendAdminRequestAndCatchKnownError(
+      "/internal/payments/method-configs",
+      { method: "GET" },
+      null,
+      [KnownErrors.StripeAccountInfoNotFound],
+    );
+    if (response.status === "error") {
+      return null;
+    }
+    const data = await response.data.json();
+    return {
+      configId: data.config_id,
+      methods: data.methods,
+    };
+  }
+
+  async updatePaymentMethodConfigs(configId: string, updates: Record<string, 'on' | 'off'>): Promise<void> {
+    await this.sendAdminRequest(
+      "/internal/payments/method-configs",
+      {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ config_id: configId, updates }),
+      },
+      null,
+    );
   }
 
   async createStripeWidgetAccountSession(): Promise<{ client_secret: string }> {
@@ -610,7 +804,63 @@ export class StackAdminInterface extends StackServerInterface {
     return { transactions: json.transactions, nextCursor: json.next_cursor };
   }
 
-  async refundTransaction(options: { type: "subscription" | "one-time-purchase", id: string }): Promise<{ success: boolean }> {
+  async listSessionReplays(params?: AdminListSessionReplaysOptions): Promise<AdminListSessionReplaysResponse> {
+    const qs = new URLSearchParams();
+    if (params?.cursor) qs.set("cursor", params.cursor);
+    if (typeof params?.limit === "number") qs.set("limit", String(params.limit));
+    if (params?.user_ids && params.user_ids.length > 0) qs.set("user_ids", params.user_ids.join(","));
+    if (params?.team_ids && params.team_ids.length > 0) qs.set("team_ids", params.team_ids.join(","));
+    if (typeof params?.duration_ms_min === "number") qs.set("duration_ms_min", String(params.duration_ms_min));
+    if (typeof params?.duration_ms_max === "number") qs.set("duration_ms_max", String(params.duration_ms_max));
+    if (typeof params?.last_event_at_from_millis === "number") qs.set("last_event_at_from_millis", String(params.last_event_at_from_millis));
+    if (typeof params?.last_event_at_to_millis === "number") qs.set("last_event_at_to_millis", String(params.last_event_at_to_millis));
+    if (typeof params?.click_count_min === "number") qs.set("click_count_min", String(params.click_count_min));
+    const response = await this.sendAdminRequest(
+      `/internal/session-replays${qs.size ? `?${qs.toString()}` : ""}`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async listSessionReplayChunks(sessionReplayId: string, params?: AdminListSessionReplayChunksOptions): Promise<AdminListSessionReplayChunksResponse> {
+    const qs = new URLSearchParams();
+    if (params?.cursor) qs.set("cursor", params.cursor);
+    if (typeof params?.limit === "number") qs.set("limit", String(params.limit));
+    const response = await this.sendAdminRequest(
+      `/internal/session-replays/${encodeURIComponent(sessionReplayId)}/chunks${qs.size ? `?${qs.toString()}` : ""}`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async getSessionReplayChunkEvents(sessionReplayId: string, chunkId: string): Promise<AdminGetSessionReplayChunkEventsResponse> {
+    const response = await this.sendAdminRequest(
+      `/internal/session-replays/${encodeURIComponent(sessionReplayId)}/chunks/${encodeURIComponent(chunkId)}/events`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async getSessionReplayEvents(sessionReplayId: string, options?: { offset?: number, limit?: number }): Promise<AdminGetSessionReplayAllEventsResponse> {
+    const qs = new URLSearchParams();
+    if (typeof options?.offset === "number") qs.set("offset", String(options.offset));
+    if (typeof options?.limit === "number") qs.set("limit", String(options.limit));
+    const response = await this.sendAdminRequest(
+      `/internal/session-replays/${encodeURIComponent(sessionReplayId)}/events${qs.size ? `?${qs.toString()}` : ""}`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async refundTransaction(options: {
+    type: "subscription" | "one-time-purchase",
+    id: string,
+    refundEntries: Array<{ entryIndex: number, quantity: number, amountUsd: MoneyAmount }>,
+  }): Promise<{ success: boolean }> {
     const response = await this.sendAdminRequest(
       "/internal/payments/transactions/refund",
       {
@@ -618,7 +868,99 @@ export class StackAdminInterface extends StackServerInterface {
         headers: {
           "content-type": "application/json",
         },
-        body: JSON.stringify(options),
+        body: JSON.stringify({
+          type: options.type,
+          id: options.id,
+          refund_entries: options.refundEntries.map((entry) => ({
+            entry_index: entry.entryIndex,
+            quantity: entry.quantity,
+            amount_usd: entry.amountUsd,
+          })),
+        }),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+
+  async previewAffectedUsersByOnboardingChange(
+    onboarding: { require_email_verification?: boolean },
+    limit?: number,
+  ): Promise<{
+    affected_users: Array<{
+      id: string,
+      display_name: string | null,
+      primary_email: string | null,
+      restricted_reason: RestrictedReason,
+    }>,
+    total_affected_count: number,
+  }> {
+    const response = await this.sendAdminRequest(
+      `/internal/onboarding/preview-affected-users${limit ? `?limit=${limit}` : ''}`,
+      {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({ onboarding }),
+      },
+      null,
+    );
+    return await response.json();
+  }
+
+  async queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse> {
+    const response = await this.sendAdminRequest(
+      "/internal/analytics/query",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          query: options.query,
+          params: options.params ?? {},
+          timeout_ms: options.timeout_ms ?? 1000,
+          include_all_branches: options.include_all_branches ?? false,
+        }),
+      },
+      null,
+    );
+
+    return await response.json();
+  }
+
+  async listOutboxEmails(options?: { status?: string, simple_status?: string, limit?: number, cursor?: string }): Promise<EmailOutboxCrud["Server"]["List"]> {
+    const qs = new URLSearchParams();
+    if (options?.status) qs.set('status', options.status);
+    if (options?.simple_status) qs.set('simple_status', options.simple_status);
+    if (options?.limit !== undefined) qs.set('limit', options.limit.toString());
+    if (options?.cursor) qs.set('cursor', options.cursor);
+    const response = await this.sendServerRequest(
+      `/emails/outbox${qs.size ? `?${qs.toString()}` : ''}`,
+      { method: 'GET' },
+      null,
+    );
+    return await response.json();
+  }
+
+  async getOutboxEmail(id: string): Promise<EmailOutboxCrud["Server"]["Read"]> {
+    const response = await this.sendServerRequest(
+      `/emails/outbox/${id}`,
+      { method: 'GET' },
+      null,
+    );
+    return await response.json();
+  }
+
+  async updateOutboxEmail(id: string, data: EmailOutboxCrud["Server"]["Update"]): Promise<EmailOutboxCrud["Server"]["Read"]> {
+    const response = await this.sendServerRequest(
+      `/emails/outbox/${id}`,
+      {
+        method: 'PATCH',
+        headers: {
+          "content-type": "application/json",
+        },
+        body: JSON.stringify(data),
       },
       null,
     );

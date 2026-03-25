@@ -1,7 +1,4 @@
-import { cn } from "@/lib/utils";
-import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import {
-  Button,
   Input,
   Popover,
   PopoverContent,
@@ -10,12 +7,13 @@ import {
   SelectContent,
   SelectItem,
   SelectTrigger,
-  SelectValue,
-  Separator,
-} from "@stackframe/stack-ui";
-import { ChevronsUpDown } from "lucide-react";
+  SelectValue
+} from "@/components/ui";
+import { cn } from "@/lib/utils";
+import { CaretUpDownIcon } from "@phosphor-icons/react";
+import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { useState } from "react";
-import { DEFAULT_INTERVAL_UNITS, intervalLabel } from "./utils";
+import { DEFAULT_INTERVAL_UNITS } from "./utils";
 
 // ============================================================================
 // Small UI Components
@@ -26,14 +24,10 @@ import { DEFAULT_INTERVAL_UNITS, intervalLabel } from "./utils";
  */
 export function OrSeparator() {
   return (
-    <div className="flex items-center justify-center stack-scope mx-8">
-      <div className="flex-1">
-        <Separator />
-      </div>
-      <div className="mx-2 text-sm text-zinc-500">OR</div>
-      <div className="flex-1">
-        <Separator />
-      </div>
+    <div className="flex items-center justify-center my-1">
+      <div className="flex-1 h-px bg-foreground/[0.06]" />
+      <span className="mx-3 text-[10px] font-medium text-muted-foreground/60 uppercase tracking-wider">or</span>
+      <div className="flex-1 h-px bg-foreground/[0.06]" />
     </div>
   );
 }
@@ -142,74 +136,89 @@ export function IntervalPopover({
   const triggerClasses = triggerClassName ?? "text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground cursor-pointer select-none flex items-center gap-1";
 
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger>
-        <div className={cn(triggerClasses, readOnly && "cursor-default")}>
+    <Popover open={open} onOpenChange={(isOpen) => !readOnly && setOpen(isOpen)}>
+      <PopoverTrigger asChild disabled={readOnly}>
+        <button type="button" className={cn(triggerClasses, readOnly && "cursor-default pointer-events-none")}>
           {triggerLabel}
-          <ChevronsUpDown className="h-4 w-4" />
-        </div>
+          <CaretUpDownIcon className="h-4 w-4 text-muted-foreground" />
+        </button>
       </PopoverTrigger>
-      <PopoverContent align="start" className="w-60 p-2">
-        <div className="flex flex-col gap-1">
+      <PopoverContent align="start" className="w-60 p-0 overflow-hidden">
+        <div className="flex flex-col p-1">
           {/* One-time option */}
-          <Button
-            variant={effectiveSelection === 'one-time' ? 'secondary' : 'ghost'}
-            size="sm"
-            className="justify-start"
+          <button
+            className={cn(
+              "flex items-center w-full px-3 py-2 rounded-lg text-left text-sm font-medium",
+              "transition-colors duration-150 hover:transition-none",
+              effectiveSelection === 'one-time'
+                ? "bg-foreground/[0.08] text-foreground"
+                : "hover:bg-foreground/[0.04] text-foreground"
+            )}
             onClick={selectOneTime}
           >
             {noneLabel}
-          </Button>
+          </button>
 
           {/* Fixed interval options */}
           {normalizedUnits.map((unitOption) => (
-            <Button
+            <button
               key={unitOption}
-              variant={effectiveSelection === unitOption ? 'secondary' : 'ghost'}
-              size="sm"
-              className="justify-start"
+              className={cn(
+                "flex items-center w-full px-3 py-2 rounded-lg text-left text-sm font-medium",
+                "transition-colors duration-150 hover:transition-none",
+                effectiveSelection === unitOption
+                  ? "bg-foreground/[0.08] text-foreground"
+                  : "hover:bg-foreground/[0.04] text-foreground"
+              )}
               onClick={() => selectFixed(unitOption)}
             >
               {buttonLabels[unitOption]}
-            </Button>
+            </button>
           ))}
+        </div>
 
-          {/* Custom interval option */}
-          <Separator className="my-1" />
-          <div className="px-2 py-1">
-            <div className="text-xs font-medium text-muted-foreground mb-2">Custom</div>
-            <div className="flex gap-2">
-              <Input
-                type="number"
-                min={1}
-                className="w-20 h-8 text-xs"
-                value={effectiveSelection === 'custom' ? count : 1}
-                onChange={(e) => {
-                  const val = parseInt(e.target.value, 10);
-                  if (val > 0) {
+        {/* Custom interval option */}
+        <div className="border-t border-border/30 p-3">
+          <div className="text-xs font-medium text-muted-foreground mb-2">Custom</div>
+          <div className="flex gap-2">
+            <Input
+              type="number"
+              min={1}
+              className={cn(
+                "w-20 h-9 text-sm",
+                "rounded-lg border border-border/60 dark:border-foreground/[0.1]",
+                "bg-background dark:bg-[hsl(240,10%,10%)]"
+              )}
+              value={effectiveSelection === 'custom' ? count : 1}
+              onChange={(e) => {
+                const val = parseInt(e.target.value, 10);
+                if (val > 0) {
                     applyCustom(val, effectiveUnit);
-                  }
-                }}
-              />
-              <Select
-                value={effectiveUnit}
-                onValueChange={(v) => {
-                  const newUnit = v as DayInterval[1];
+                }
+              }}
+            />
+            <Select
+              value={effectiveUnit}
+              onValueChange={(v) => {
+                const newUnit = v as DayInterval[1];
                   applyCustom(effectiveSelection === 'custom' ? count : 1, newUnit);
-                }}
-              >
-                <SelectTrigger className="h-8 text-xs flex-1">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {normalizedUnits.map((u) => (
-                    <SelectItem key={u} value={u} className="text-xs">
-                      {u}{count !== 1 ? 's' : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
+              }}
+            >
+              <SelectTrigger className={cn(
+                "h-9 text-sm flex-1",
+                "rounded-lg border border-border/60 dark:border-foreground/[0.1]",
+                "bg-background dark:bg-[hsl(240,10%,10%)]"
+              )}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {normalizedUnits.map((u) => (
+                  <SelectItem key={u} value={u} className="text-sm">
+                    {u}{count !== 1 ? 's' : ''}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
         </div>
       </PopoverContent>

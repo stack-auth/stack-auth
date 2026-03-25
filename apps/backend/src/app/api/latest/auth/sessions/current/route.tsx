@@ -1,6 +1,6 @@
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { Prisma } from "@prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 
@@ -27,7 +27,7 @@ export const DELETE = createSmartRouteHandler({
     if (!refreshTokenId) {
       // Only here for transition period, remove this once all access tokens are updated
       // TODO next-release
-      throw new KnownErrors.AccessTokenExpired(new Date());
+      throw new KnownErrors.AccessTokenExpired(new Date(), undefined, undefined, undefined);
     }
 
     try {

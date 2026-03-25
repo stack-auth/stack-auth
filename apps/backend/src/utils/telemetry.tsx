@@ -6,7 +6,7 @@ const tracer = trace.getTracer('stack-backend');
 
 export function withTraceSpan<P extends any[], T>(optionsOrDescription: string | { description: string, attributes?: Record<string, AttributeValue> }, fn: (...args: P) => Promise<T>): (...args: P) => Promise<T> {
   return async (...args: P) => {
-    return await traceSpan(optionsOrDescription, (span) => fn(...args));
+    return await traceSpan(optionsOrDescription, async (span) => await fn(...args));
   };
 }
 

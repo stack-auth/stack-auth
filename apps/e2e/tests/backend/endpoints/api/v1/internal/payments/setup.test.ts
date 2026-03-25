@@ -91,7 +91,7 @@ describe("POST /api/v1/internal/payments/setup", () => {
 
   describe("with admin access", () => {
     it("should return a setup URL when creating new stripe account", async ({ expect }) => {
-      await Auth.Otp.signIn();
+      await Auth.fastSignUp();
       await Project.createAndSwitch();
       const response = await niceBackendFetch("/api/v1/internal/payments/setup", {
         method: "POST",
@@ -109,7 +109,7 @@ describe("POST /api/v1/internal/payments/setup", () => {
     });
 
     it("should reuse existing stripe account when already configured", async ({ expect }) => {
-      await Auth.Otp.signIn();
+      await Auth.fastSignUp();
       await Project.createAndSwitch();
 
       // First call to setup

@@ -4,12 +4,18 @@ import {
   frontmatterSchema,
   metaSchema,
 } from 'fumadocs-mdx/config';
+import { z } from 'zod';
+
+// Extended frontmatter schema with lastModified
+const extendedFrontmatterSchema = frontmatterSchema.extend({
+  lastModified: z.string().optional(),
+});
 
 // You can customise Zod schemas for frontmatter and `meta.json` here
 // see https://fumadocs.vercel.app/docs/mdx/collections#define-docs
 export const docs = defineDocs({
   docs: {
-    schema: frontmatterSchema,
+    schema: extendedFrontmatterSchema,
   },
   meta: {
     schema: metaSchema,
@@ -20,18 +26,7 @@ export const docs = defineDocs({
 export const api = defineDocs({
   dir: './content/api',
   docs: {
-    schema: frontmatterSchema,
-  },
-  meta: {
-    schema: metaSchema,
-  },
-});
-
-// Separate collection for Dashboard content
-export const dashboard = defineDocs({
-  dir: './content/dashboard',
-  docs: {
-    schema: frontmatterSchema,
+    schema: extendedFrontmatterSchema,
   },
   meta: {
     schema: metaSchema,

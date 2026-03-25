@@ -13,7 +13,7 @@ import { RefState, mapRefState, useRefState } from '@stackframe/stack-shared/dis
 import { AsyncResult, Result } from '@stackframe/stack-shared/dist/utils/results';
 import { deindent } from '@stackframe/stack-shared/dist/utils/strings';
 import { generateUuid } from '@stackframe/stack-shared/dist/utils/uuids';
-import { Button, ButtonProps, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input, SimpleTooltip, cn } from '@stackframe/stack-ui';
+import { Button, ButtonProps, Dialog, DialogBody, DialogContent, DialogFooter, DialogHeader, DialogTitle, Input, SimpleTooltip, cn } from '@/components/ui';
 import { ErrorBoundary } from 'next/dist/client/components/error-boundary';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { FaBorderNone, FaPen, FaPlus, FaTrash } from 'react-icons/fa';

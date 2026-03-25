@@ -1,20 +1,21 @@
 "use client";
 
 import { Stepper, StepperPage } from "@/components/stepper";
-import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
-import { Button, Card, CardDescription, CardHeader, CardTitle, Checkbox, Dialog, DialogContent, DialogFooter, DialogTitle, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Typography } from "@stackframe/stack-ui";
-import { ArrowLeft, ArrowRight, CreditCard, Package, Plus, Repeat, Trash2 } from "lucide-react";
+import { Button, Card, CardDescription, CardHeader, CardTitle, Checkbox, Dialog, DialogContent, DialogFooter, DialogTitle, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Typography } from "@/components/ui";
+import { cn } from "@/lib/utils";
+import { ArrowLeftIcon, ArrowRightIcon, CreditCardIcon, PackageIcon, PlusIcon, RepeatIcon, TrashIcon } from "@phosphor-icons/react";
+import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
+import { getOrUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 import { useState } from "react";
-import { CreateCatalogDialog } from "./create-catalog-dialog";
+import { CreateProductLineDialog } from "./create-product-line-dialog";
 import { IncludedItemDialog } from "./included-item-dialog";
 import { ListSection } from "./list-section";
-import { PriceDialog } from "./price-dialog";
+import { PricingSection } from "./pricing-section";
+import { type Price, type Product } from "./utils";
 
 type Template = 'one-time' | 'subscription' | 'addon' | 'scratch';
 
-type Product = CompleteConfig['payments']['products'][string];
 type IncludedItem = Product['includedItems'][string];
-type Price = (Product['prices'] & object)[string];
 
 type ProductDialogProps = {
   open: boolean,
@@ -22,8 +23,8 @@ type ProductDialogProps = {
   onSave: (productId: string, product: Product) => Promise<void>,
   editingProductId?: string,
   editingProduct?: Product,
-  existingProducts: Array<{ id: string, displayName: string, catalogId?: string, customerType: string }>,
-  existingCatalogs: Record<string, { displayName?: string }>,
+  existingProducts: Array<{ id: string, displayName: string, productLineId?: string, customerType: string }>,
+  existingProductLines: Record<string, { displayName?: string, customerType?: string }>,
   existingItems: Array<{ id: string, displayName: string, customerType: string }>,
   onCreateNewItem?: () => void,
 };
@@ -52,7 +53,7 @@ export function ProductDialog({
   editingProductId,
   editingProduct,
   existingProducts,
-  existingCatalogs,
+  existingProductLines,
   existingItems,
   onCreateNewItem
 }: ProductDialogProps) {
@@ -62,7 +63,7 @@ export function ProductDialog({
   const [productId, setProductId] = useState(editingProductId ?? "");
   const [displayName, setDisplayName] = useState(editingProduct?.displayName || "");
   const [customerType, setCustomerType] = useState<'user' | 'team' | 'custom'>(editingProduct?.customerType || 'user');
-  const [catalogId, setCatalogId] = useState(editingProduct?.catalogId || "");
+  const [productLineId, setProductLineId] = useState(editingProduct?.productLineId || "");
   const [isAddOn, setIsAddOn] = useState(!!editingProduct?.isAddOnTo);
   const [isAddOnTo, setIsAddOnTo] = useState<string[]>(editingProduct?.isAddOnTo !== false ? Object.keys(editingProduct?.isAddOnTo || {}) : []);
   const [stackable, setStackable] = useState(editingProduct?.stackable || false);
@@ -73,9 +74,7 @@ export function ProductDialog({
   const [serverOnly, setServerOnly] = useState(editingProduct?.serverOnly || false);
 
   // Dialog states
-  const [showCatalogDialog, setShowCatalogDialog] = useState(false);
-  const [showPriceDialog, setShowPriceDialog] = useState(false);
-  const [editingPriceId, setEditingPriceId] = useState<string | undefined>();
+  const [showProductLineDialog, setShowProductLineDialog] = useState(false);
   const [showItemDialog, setShowItemDialog] = useState(false);
   const [editingItemId, setEditingItemId] = useState<string | undefined>();
 
@@ -119,8 +118,8 @@ export function ProductDialog({
 
     if (!productId.trim()) {
       newErrors.productId = "Product ID is required";
-    } else if (!/^[a-z0-9-]+$/.test(productId)) {
-      newErrors.productId = "Product ID must contain only lowercase letters, numbers, and hyphens";
+    } else if (!isValidUserSpecifiedId(productId)) {
+      newErrors.productId = getUserSpecifiedIdErrorMessage("productId");
     } else if (!editingProduct && existingProducts.some(o => o.id === productId)) {
       newErrors.productId = "This product ID already exists";
     }
@@ -134,11 +133,11 @@ export function ProductDialog({
     }
 
     if (isAddOn && isAddOnTo.length > 0) {
-      const addOnCatalogs = new Set(
-        isAddOnTo.map(productId => existingProducts.find(o => o.id === productId)?.catalogId)
+      const addOnProductLines = new Set(
+        isAddOnTo.map(productId => existingProducts.find(o => o.id === productId)?.productLineId)
       );
-      if (addOnCatalogs.size > 1) {
-        newErrors.isAddOnTo = "All selected products must be in the same catalog";
+      if (addOnProductLines.size > 1) {
+        newErrors.isAddOnTo = "All selected products must be in the same product line";
       }
     }
 
@@ -166,7 +165,7 @@ export function ProductDialog({
     const product: Product = {
       displayName,
       customerType,
-      catalogId: catalogId || undefined,
+      productLineId: productLineId || undefined,
       isAddOnTo: isAddOn ? Object.fromEntries(isAddOnTo.map(id => [id, true])) : false,
       stackable,
       prices: freeByDefault ? "include-by-default" : prices,
@@ -186,7 +185,7 @@ export function ProductDialog({
       setProductId("");
       setDisplayName("");
       setCustomerType('user');
-      setCatalogId("");
+      setProductLineId("");
       setIsAddOn(false);
       setIsAddOnTo([]);
       setStackable(false);
@@ -196,28 +195,6 @@ export function ProductDialog({
     }
     setErrors({});
     onOpenChange(false);
-  };
-
-  const addPrice = (priceId: string, price: Price) => {
-    setPrices(prev => ({
-      ...prev,
-      [priceId]: price,
-    }));
-  };
-
-  const editPrice = (priceId: string, price: Price) => {
-    setPrices(prev => ({
-      ...prev,
-      [priceId]: price,
-    }));
-  };
-
-  const removePrice = (priceId: string) => {
-    setPrices(prev => {
-      const newPrices = { ...prev };
-      delete newPrices[priceId];
-      return newPrices;
-    });
   };
 
   const addIncludedItem = (itemId: string, item: IncludedItem) => {
@@ -240,19 +217,6 @@ export function ProductDialog({
     });
   };
 
-  const formatPriceDisplay = (price: Price) => {
-    let display = `$${price.USD}`;
-    if (price.interval) {
-      const [count, unit] = price.interval;
-      display += count === 1 ? ` / ${unit}` : ` / ${count} ${unit}s`;
-    }
-    if (price.freeTrial) {
-      const [count, unit] = price.freeTrial;
-      display += ` (${count} ${unit}${count > 1 ? 's' : ''} free)`;
-    }
-    return display;
-  };
-
   const getItemDisplay = (itemId: string, item: IncludedItem) => {
     const itemData = existingItems.find(i => i.id === itemId);
     if (!itemData) return itemId;
@@ -270,7 +234,12 @@ export function ProductDialog({
   return (
     <>
       <Dialog open={open} onOpenChange={handleClose}>
-        <DialogContent className="max-w-2xl">
+        <DialogContent className={cn(
+          "max-w-2xl rounded-2xl",
+          "bg-background/95 backdrop-blur-xl",
+          "border border-border/50 dark:border-foreground/[0.1]",
+          "shadow-2xl"
+        )}>
           <Stepper currentStep={currentStep} onStepChange={setCurrentStep} className="min-h-[400px]">
             {/* Step 0: Template Selection (only for new products) */}
             {!editingProduct && (
@@ -285,17 +254,23 @@ export function ProductDialog({
 
                   <div className="grid gap-3 mt-6">
                     <Card
-                      className="cursor-pointer hover:border-primary transition-colors"
+                      className={cn(
+                        "cursor-pointer group",
+                        "rounded-xl border border-border/50 dark:border-foreground/[0.1]",
+                        "bg-foreground/[0.02] hover:bg-foreground/[0.04]",
+                        "hover:border-cyan-500/40 hover:shadow-[0_0_12px_rgba(6,182,212,0.1)]",
+                        "transition-all duration-150 hover:transition-none"
+                      )}
                       onClick={() => applyTemplate('one-time')}
                     >
                       <CardHeader className="pb-3">
                         <div className="flex items-center gap-3">
-                          <div className="p-2 rounded-lg bg-primary/10">
-                            <CreditCard className="h-5 w-5 text-primary" />
+                          <div className="p-2.5 rounded-xl bg-cyan-500/10 dark:bg-cyan-500/[0.15] group-hover:bg-cyan-500/20 transition-colors duration-150 group-hover:transition-none">
+                            <CreditCardIcon className="h-5 w-5 text-cyan-600 dark:text-cyan-400" />
                           </div>
                           <div>
-                            <CardTitle className="text-base">One-time Purchase</CardTitle>
-                            <CardDescription className="text-sm mt-1">
+                            <CardTitle className="text-base font-semibold">One-time Purchase</CardTitle>
+                            <CardDescription className="text-sm mt-1 text-muted-foreground">
                               A single payment for lifetime access to features
                             </CardDescription>
                           </div>
@@ -304,17 +279,23 @@ export function ProductDialog({
                     </Card>
 
                     <Card
-                      className="cursor-pointer hover:border-primary transition-colors"
+                      className={cn(
+                        "cursor-pointer group",
+                        "rounded-xl border border-border/50 dark:border-foreground/[0.1]",
+                        "bg-foreground/[0.02] hover:bg-foreground/[0.04]",
+                        "hover:border-purple-500/40 hover:shadow-[0_0_12px_rgba(168,85,247,0.1)]",
+                        "transition-all duration-150 hover:transition-none"
+                      )}
                       onClick={() => applyTemplate('subscription')}
                     >
                       <CardHeader className="pb-3">
                         <div className="flex items-center gap-3">
-                          <div className="p-2 rounded-lg bg-primary/10">
-                            <Repeat className="h-5 w-5 text-primary" />
+                          <div className="p-2.5 rounded-xl bg-purple-500/10 dark:bg-purple-500/[0.15] group-hover:bg-purple-500/20 transition-colors duration-150 group-hover:transition-none">
+                            <RepeatIcon className="h-5 w-5 text-purple-600 dark:text-purple-400" />
                           </div>
                           <div>
-                            <CardTitle className="text-base">Subscription</CardTitle>
-                            <CardDescription className="text-sm mt-1">
+                            <CardTitle className="text-base font-semibold">Subscription</CardTitle>
+                            <CardDescription className="text-sm mt-1 text-muted-foreground">
                               Recurring payments for continuous access
                             </CardDescription>
                           </div>
@@ -323,17 +304,23 @@ export function ProductDialog({
                     </Card>
 
                     {!isFirstProduct && <Card
-                      className="cursor-pointer hover:border-primary transition-colors"
+                      className={cn(
+                        "cursor-pointer group",
+                        "rounded-xl border border-border/50 dark:border-foreground/[0.1]",
+                        "bg-foreground/[0.02] hover:bg-foreground/[0.04]",
+                        "hover:border-emerald-500/40 hover:shadow-[0_0_12px_rgba(16,185,129,0.1)]",
+                        "transition-all duration-150 hover:transition-none"
+                      )}
                       onClick={() => applyTemplate('addon')}
                     >
                       <CardHeader className="pb-3">
                         <div className="flex items-center gap-3">
-                          <div className="p-2 rounded-lg bg-primary/10">
-                            <Package className="h-5 w-5 text-primary" />
+                          <div className="p-2.5 rounded-xl bg-emerald-500/10 dark:bg-emerald-500/[0.15] group-hover:bg-emerald-500/20 transition-colors duration-150 group-hover:transition-none">
+                            <PackageIcon className="h-5 w-5 text-emerald-600 dark:text-emerald-400" />
                           </div>
                           <div>
-                            <CardTitle className="text-base">Add-on</CardTitle>
-                            <CardDescription className="text-sm mt-1">
+                            <CardTitle className="text-base font-semibold">Add-on</CardTitle>
+                            <CardDescription className="text-sm mt-1 text-muted-foreground">
                               Additional features that complement existing products
                             </CardDescription>
                           </div>
@@ -342,17 +329,23 @@ export function ProductDialog({
                     </Card>}
 
                     <Card
-                      className="cursor-pointer hover:border-primary transition-colors border-dashed"
+                      className={cn(
+                        "cursor-pointer group",
+                        "rounded-xl border border-dashed border-border/60 dark:border-foreground/[0.15]",
+                        "bg-transparent hover:bg-foreground/[0.02]",
+                        "hover:border-foreground/30",
+                        "transition-all duration-150 hover:transition-none"
+                      )}
                       onClick={() => applyTemplate('scratch')}
                     >
                       <CardHeader className="pb-3">
                         <div className="flex items-center gap-3">
-                          <div className="p-2 rounded-lg bg-muted">
-                            <Plus className="h-5 w-5 text-muted-foreground" />
+                          <div className="p-2.5 rounded-xl bg-foreground/[0.05] group-hover:bg-foreground/[0.08] transition-colors duration-150 group-hover:transition-none">
+                            <PlusIcon className="h-5 w-5 text-muted-foreground" />
                           </div>
                           <div>
-                            <CardTitle className="text-base">Create from Scratch</CardTitle>
-                            <CardDescription className="text-sm mt-1">
+                            <CardTitle className="text-base font-semibold">Create from Scratch</CardTitle>
+                            <CardDescription className="text-sm mt-1 text-muted-foreground">
                               Start with a blank product and configure everything yourself
                             </CardDescription>
                           </div>
@@ -374,15 +367,15 @@ export function ProductDialog({
                   </Typography>
                 </div>
 
-                <div className="grid gap-4 mt-6">
+                <div className="grid gap-5 mt-6">
                   {/* Product ID */}
                   <div className="grid gap-2">
-                    <Label htmlFor="product-id">Product ID</Label>
+                    <Label htmlFor="product-id" className="text-sm font-medium">Product ID</Label>
                     <Input
                       id="product-id"
                       value={productId}
                       onChange={(e) => {
-                        const nextValue = e.target.value.toLowerCase();
+                        const nextValue = sanitizeUserSpecifiedId(e.target.value);
                         setProductId(nextValue);
                         if (errors.productId) {
                           setErrors(prev => {
@@ -394,14 +387,20 @@ export function ProductDialog({
                       }}
                       placeholder="e.g., pro-plan"
                       disabled={!!editingProduct}
-                      className={errors.productId ? "border-destructive" : ""}
+                      className={cn(
+                        "h-10 rounded-xl font-mono text-sm",
+                        "bg-foreground/[0.03] border-border/50 dark:border-foreground/[0.1]",
+                        "focus:ring-1 focus:ring-cyan-500/30 focus:border-cyan-500/50",
+                        "transition-all duration-150 hover:transition-none",
+                        errors.productId && "border-destructive focus:ring-destructive/30"
+                      )}
                     />
                     {errors.productId ? (
-                      <Typography type="label" className="text-destructive">
+                      <Typography type="label" className="text-destructive text-xs">
                         {errors.productId}
                       </Typography>
                     ) : (
-                      <Typography type="label" className="text-muted-foreground">
+                      <Typography type="label" className="text-muted-foreground text-xs">
                         Unique identifier used to reference this product in code
                       </Typography>
                     )}
@@ -409,7 +408,7 @@ export function ProductDialog({
 
                   {/* Display Name */}
                   <div className="grid gap-2">
-                    <Label htmlFor="display-name">Display Name</Label>
+                    <Label htmlFor="display-name" className="text-sm font-medium">Display Name</Label>
                     <Input
                       id="display-name"
                       value={displayName}
@@ -424,69 +423,85 @@ export function ProductDialog({
                         }
                       }}
                       placeholder="e.g., Pro Plan"
-                      className={errors.displayName ? "border-destructive" : ""}
+                      className={cn(
+                        "h-10 rounded-xl text-sm",
+                        "bg-foreground/[0.03] border-border/50 dark:border-foreground/[0.1]",
+                        "focus:ring-1 focus:ring-cyan-500/30 focus:border-cyan-500/50",
+                        "transition-all duration-150 hover:transition-none",
+                        errors.displayName && "border-destructive focus:ring-destructive/30"
+                      )}
                     />
                     {errors.displayName ? (
-                      <Typography type="label" className="text-destructive">
+                      <Typography type="label" className="text-destructive text-xs">
                         {errors.displayName}
                       </Typography>
                     ) : (
-                      <Typography type="label" className="text-muted-foreground">
-                        How this product will be displayed to customers
+                      <Typography type="label" className="text-muted-foreground text-xs">
+                        This will be displayed to customers
                       </Typography>
                     )}
                   </div>
 
                   {/* Customer Type */}
                   <div className="grid gap-2">
-                    <Label htmlFor="customer-type">Customer Type</Label>
-                    <Select value={customerType} onValueChange={(value) => setCustomerType(value as typeof customerType)}>
-                      <SelectTrigger>
+                    <Label htmlFor="customer-type" className="text-sm font-medium">Customer Type</Label>
+                    <Select value={customerType} onValueChange={(value) => {
+                      setCustomerType(value as typeof customerType);
+                      // Reset product line since product lines are customer-type-specific
+                      setProductLineId("");
+                    }}>
+                      <SelectTrigger className={cn(
+                        "h-10 rounded-xl text-sm",
+                        "bg-foreground/[0.03] border-border/50 dark:border-foreground/[0.1]",
+                        "focus:ring-1 focus:ring-cyan-500/30 focus:border-cyan-500/50"
+                      )}>
                         <SelectValue />
                       </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="user">User</SelectItem>
-                        <SelectItem value="team">Team</SelectItem>
-                        <SelectItem value="custom">Custom</SelectItem>
+                      <SelectContent className="rounded-xl">
+                        <SelectItem value="user" className="rounded-lg">User</SelectItem>
+                        <SelectItem value="team" className="rounded-lg">Team</SelectItem>
+                        <SelectItem value="custom" className="rounded-lg">Custom</SelectItem>
                       </SelectContent>
                     </Select>
-                    <Typography type="label" className="text-muted-foreground">
+                    <Typography type="label" className="text-muted-foreground text-xs">
                       The type of customer this product is for
                     </Typography>
                   </div>
 
-                  {/* Catalog */}
+                  {/* Product Line */}
                   <div className="grid gap-2">
-                    <Label htmlFor="catalog">Product Catalog (Optional)</Label>
+                    <Label htmlFor="productLine">Product Line (Optional)</Label>
                     <Select
-                      value={catalogId || 'no-catalog'}
+                      value={productLineId || 'no-product-line'}
                       onValueChange={(value) => {
                         if (value === 'create-new') {
-                          setShowCatalogDialog(true);
-                        } else if (value === 'no-catalog') {
-                          setCatalogId('');
+                          setShowProductLineDialog(true);
+                        } else if (value === 'no-product-line') {
+                          setProductLineId('');
                         } else {
-                          setCatalogId(value);
+                          setProductLineId(value);
                         }
                       }}
                     >
                       <SelectTrigger>
-                        <SelectValue placeholder="No catalog" />
+                        <SelectValue placeholder="No product line" />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="no-catalog">No catalog</SelectItem>
-                        {Object.entries(existingCatalogs).map(([id, catalog]) => (
-                          <SelectItem key={id} value={id}>
-                            {catalog.displayName || id}
-                          </SelectItem>
-                        ))}
+                        <SelectItem value="no-product-line">No product line</SelectItem>
+                        {Object.entries(existingProductLines)
+                          .filter(([, productLine]) => productLine.customerType === customerType)
+                          .map(([id, productLine]) => (
+                            <SelectItem key={id} value={id}>
+                              {productLine.displayName || id}
+                            </SelectItem>
+                          ))}
                         <SelectItem value="create-new">
-                          <span className="text-primary">+ Create new catalog</span>
+                          <span className="text-primary">+ Create new product line</span>
                         </SelectItem>
                       </SelectContent>
                     </Select>
                     <Typography type="label" className="text-muted-foreground">
-                      Customers can only have one active product per catalog (except add-ons)
+                      Customers can only have one active product per product line (except add-ons)
                     </Typography>
                   </div>
 
@@ -535,7 +550,7 @@ export function ProductDialog({
                         <div className="grid gap-2">
                           <Label>Add-on to products</Label>
                           <div className="space-y-2 max-h-40 overflow-y-auto border rounded-lg p-2">
-                            {existingProducts.filter(o => !o.id.startsWith('addon')).map(product => (
+                            {existingProducts.map(product => (
                               <div key={product.id} className="flex items-center space-x-2">
                                 <Checkbox
                                   id={`addon-to-${product.id}`}
@@ -557,9 +572,9 @@ export function ProductDialog({
                                 />
                                 <Label htmlFor={`addon-to-${product.id}`} className="cursor-pointer text-sm">
                                   {product.displayName} ({product.id})
-                                  {product.catalogId && (
+                                  {product.productLineId && (
                                     <span className="text-muted-foreground ml-1">
-                                      • {existingCatalogs[product.catalogId].displayName || product.catalogId}
+                                      • {getOrUndefined(existingProductLines, product.productLineId)?.displayName || product.productLineId}
                                     </span>
                                   )}
                                 </Label>
@@ -616,57 +631,12 @@ export function ProductDialog({
                   {/* Prices list */}
                   {!freeByDefault && (
                     <div className="border rounded-lg">
-                      <ListSection
-                        title="Prices"
-                        onAddClick={() => {
-                          setEditingPriceId(undefined);
-                          setShowPriceDialog(true);
-                        }}
-                      >
-                        {Object.values(prices).length === 0 ? (
-                          <div className="p-8 text-center text-muted-foreground">
-                            <Typography type="p">No prices configured yet</Typography>
-                            <Typography type="p" className="text-sm mt-1">
-                              Click the + button to add your first price
-                            </Typography>
-                          </div>
-                        ) : (
-                          <div>
-                            {Object.entries(prices).map(([id, price]) => (
-                              <div
-                                key={id}
-                                className="px-3 py-3 hover:bg-muted/50 flex items-center justify-between catalog transition-colors"
-                              >
-                                <div>
-                                  <div className="font-medium">{formatPriceDisplay(price)}</div>
-                                  <div className="text-xs text-muted-foreground mt-1">
-                                    ID: {id}
-                                    {price.serverOnly && ' • Server-only'}
-                                  </div>
-                                </div>
-                                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => {
-                                      setEditingPriceId(id);
-                                      setShowPriceDialog(true);
-                                    }}
-                                  >
-                                    Edit
-                                  </Button>
-                                  <Button
-                                    variant="ghost"
-                                    size="sm"
-                                    onClick={() => removePrice(id)}
-                                  >
-                                    <Trash2 className="h-4 w-4 text-destructive" />
-                                  </Button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        )}
+                      <ListSection title="Prices">
+                        <PricingSection
+                          prices={prices}
+                          onPricesChange={setPrices}
+                          variant="dialog"
+                        />
                       </ListSection>
                     </div>
                   )}
@@ -704,7 +674,7 @@ export function ProductDialog({
                         {Object.entries(includedItems).map(([itemId, item]) => (
                           <div
                             key={itemId}
-                            className="px-3 py-3 hover:bg-muted/50 flex items-center justify-between catalog transition-colors"
+                            className="px-3 py-3 hover:bg-muted/50 flex items-center justify-between transition-colors"
                           >
                             <div>
                               <div className="font-medium">{getItemDisplay(itemId, item)}</div>
@@ -728,7 +698,7 @@ export function ProductDialog({
                                 size="sm"
                                 onClick={() => removeIncludedItem(itemId)}
                               >
-                                <Trash2 className="h-4 w-4 text-destructive" />
+                                <TrashIcon className="h-4 w-4 text-destructive" />
                               </Button>
                             </div>
                           </div>
@@ -741,26 +711,60 @@ export function ProductDialog({
             </StepperPage>
           </Stepper>
 
-          <DialogFooter className="flex justify-between">
+          <DialogFooter className="flex justify-between pt-4 border-t border-border/30 dark:border-foreground/[0.06]">
             <div className="flex gap-2">
               {currentStep > (editingProduct ? 1 : 0) && (
-                <Button variant="outline" onClick={handleBack}>
-                  <ArrowLeft className="h-4 w-4 mr-2" />
+                <Button
+                  variant="outline"
+                  onClick={handleBack}
+                  className={cn(
+                    "rounded-xl px-4",
+                    "border-border/50 dark:border-foreground/[0.1]",
+                    "hover:bg-foreground/[0.03]",
+                    "transition-all duration-150 hover:transition-none"
+                  )}
+                >
+                  <ArrowLeftIcon className="h-4 w-4 mr-2" />
                   Back
                 </Button>
               )}
             </div>
             {currentStep > 0 && <div className="flex gap-2">
-              <Button variant="outline" onClick={handleClose}>
+              <Button
+                variant="outline"
+                onClick={handleClose}
+                className={cn(
+                  "rounded-xl px-5",
+                  "border-border/50 dark:border-foreground/[0.1]",
+                  "hover:bg-foreground/[0.03]",
+                  "transition-all duration-150 hover:transition-none"
+                )}
+              >
                 Cancel
               </Button>
               {currentStep < 3 ? (
-                <Button onClick={handleNext}>
+                <Button
+                  onClick={handleNext}
+                  className={cn(
+                    "rounded-xl px-5",
+                    "bg-foreground text-background",
+                    "hover:bg-foreground/90",
+                    "transition-all duration-150 hover:transition-none"
+                  )}
+                >
                   Next
-                  <ArrowRight className="h-4 w-4 ml-2" />
+                  <ArrowRightIcon className="h-4 w-4 ml-2" />
                 </Button>
               ) : (
-                <Button onClick={handleSave}>
+                <Button
+                  onClick={handleSave}
+                  className={cn(
+                    "rounded-xl px-5",
+                    "bg-foreground text-background",
+                    "hover:bg-foreground/90",
+                    "transition-all duration-150 hover:transition-none"
+                  )}
+                >
                   {editingProduct ? "Save Changes" : "Create Product"}
                 </Button>
               )}
@@ -770,30 +774,14 @@ export function ProductDialog({
       </Dialog>
 
       {/* Sub-dialogs */}
-      <CreateCatalogDialog
-        open={showCatalogDialog}
-        onOpenChange={setShowCatalogDialog}
-        onCreate={(catalog) => {
-          // In a real app, you'd save the catalog to the backend
-          setCatalogId(catalog.id);
-          setShowCatalogDialog(false);
+      <CreateProductLineDialog
+        open={showProductLineDialog}
+        onOpenChange={setShowProductLineDialog}
+        onCreate={(productLine) => {
+          // In a real app, you'd save the product line to the backend
+          setProductLineId(productLine.id);
+          setShowProductLineDialog(false);
         }}
-      />
-
-      <PriceDialog
-        open={showPriceDialog}
-        onOpenChange={setShowPriceDialog}
-        onSave={(priceId, price) => {
-          if (editingPriceId) {
-            editPrice(editingPriceId, price);
-          } else {
-            addPrice(priceId, price);
-          }
-          setShowPriceDialog(false);
-        }}
-        editingPriceId={editingPriceId}
-        editingPrice={editingPriceId ? prices[editingPriceId] : undefined}
-        existingPriceIds={Object.keys(prices)}
       />
 
       <IncludedItemDialog

@@ -7,6 +7,10 @@
   "typescript.tsdk": "node_modules/typescript/lib",
   "editor.tabSize": 2,
   "cSpell.words": [
+    "glassmorphic",
+    "sparkline",
+    "Clickhouse",
+    "pushable",
     "autoupdate",
     "backlinks",
     "Cancelation",
@@ -16,6 +20,7 @@
     "Ciphertext",
     "cjsx",
     "clsx",
+    "dbgenerated",
     "cmdk",
     "codegen",
     "crockford",
@@ -26,7 +31,6 @@
     "Deindentable",
     "deindented",
     "doesntexist",
-    "DUMBASS",
     "EAUTH",
     "EDNS",
     "EENVELOPE",
@@ -96,7 +100,7 @@
     "tailwindcss",
     "tanstack",
     "totp",
-    "tsup",
+    "tsdown",
     "typecheck",
     "typehack",
     "Uncapitalize",
@@ -171,5 +175,6 @@
     "((?:<!-- *)?(?:#|// @|//|./\\*+|<!--|--|\\* @|{!|{{!--|{{!) *(?:IDEA)(?:\\s*\\([^)]+\\))?:?)((?!\\w)(?: *-->| *\\*/| *!}| *--}}| *}}|(?= *(?:[^:]//|/\\*+|<!--|@|--|{!|{{!--|{{!))|(?: +[^\\n@]*?)(?= *(?:[^:]//|/\\*+|<!--|@|--(?!>)|{!|{{!--|{{!))|(?: +[^@\\n]+)?))": [],
   },
   "editor.formatOnSaveMode": "file",
-  "git.ignoreLimitWarning": true
+  "git.ignoreLimitWarning": true,
+  "chatgpt.commentCodeLensEnabled": false
 }
