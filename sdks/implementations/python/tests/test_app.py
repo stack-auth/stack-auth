@@ -1584,3 +1584,235 @@ class TestAsyncGetPermission:
         perm = await app.get_permission("user-1", "read", team_id="team-1")
         assert perm is None
         await app.aclose()
+
+
+# ---------------------------------------------------------------------------
+# Contact channel test data
+# ---------------------------------------------------------------------------
+
+CONTACT_CHANNEL_JSON = {
+    "id": "cc-1",
+    "value": "alice@example.com",
+    "type": "email",
+    "isPrimary": True,
+    "isVerified": True,
+    "usedForAuth": True,
+}
+
+CONTACT_CHANNEL_JSON_2 = {
+    "id": "cc-2",
+    "value": "bob@example.com",
+    "type": "email",
+    "isPrimary": False,
+    "isVerified": False,
+    "usedForAuth": False,
+}
+
+CONTACT_CHANNELS_LIST_JSON = {
+    "items": [CONTACT_CHANNEL_JSON, CONTACT_CHANNEL_JSON_2]
+}
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - list_contact_channels
+# ---------------------------------------------------------------------------
+
+
+class TestListContactChannels:
+    @respx.mock
+    def test_list_contact_channels(self) -> None:
+        route = respx.get(f"{API_PREFIX}/contact-channels").mock(
+            return_value=httpx.Response(
+                200, json=CONTACT_CHANNELS_LIST_JSON
+            )
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        channels = app.list_contact_channels("user-1")
+        assert len(channels) == 2
+        assert channels[0].id == "cc-1"
+        assert channels[0].value == "alice@example.com"
+        assert channels[0].is_primary is True
+        assert channels[0].is_verified is True
+        assert channels[0].used_for_auth is True
+        assert channels[1].id == "cc-2"
+        assert channels[1].is_primary is False
+        request = route.calls[0].request
+        assert request.url.params["user_id"] == "user-1"
+
+    @respx.mock
+    def test_list_contact_channels_empty(self) -> None:
+        respx.get(f"{API_PREFIX}/contact-channels").mock(
+            return_value=httpx.Response(200, json={"items": []})
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        channels = app.list_contact_channels("user-1")
+        assert channels == []
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - create_contact_channel
+# ---------------------------------------------------------------------------
+
+
+class TestCreateContactChannel:
+    @respx.mock
+    def test_create_contact_channel_basic(self) -> None:
+        route = respx.post(f"{API_PREFIX}/contact-channels").mock(
+            return_value=httpx.Response(200, json=CONTACT_CHANNEL_JSON)
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        channel = app.create_contact_channel(
+            "user-1", value="a@b.com", used_for_auth=True
+        )
+        assert channel.id == "cc-1"
+        assert channel.value == "alice@example.com"
+        import json
+
+        body = json.loads(route.calls[0].request.content)
+        assert body["user_id"] == "user-1"
+        assert body["value"] == "a@b.com"
+        assert body["type"] == "email"
+        assert body["used_for_auth"] is True
+
+    @respx.mock
+    def test_create_contact_channel_with_optional_fields(self) -> None:
+        route = respx.post(f"{API_PREFIX}/contact-channels").mock(
+            return_value=httpx.Response(200, json=CONTACT_CHANNEL_JSON)
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        app.create_contact_channel(
+            "user-1",
+            value="a@b.com",
+            used_for_auth=True,
+            is_primary=True,
+            is_verified=True,
+        )
+        import json
+
+        body = json.loads(route.calls[0].request.content)
+        assert body["is_primary"] is True
+        assert body["is_verified"] is True
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - send_verification_code
+# ---------------------------------------------------------------------------
+
+
+class TestSendVerificationCode:
+    @respx.mock
+    def test_send_verification_code_basic(self) -> None:
+        route = respx.post(
+            f"{API_PREFIX}/contact-channels/cc-1/send-verification-email"
+        ).mock(return_value=httpx.Response(200))
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        result = app.send_verification_code("cc-1")
+        assert result is None
+        assert route.called
+
+    @respx.mock
+    def test_send_verification_code_with_callback_url(self) -> None:
+        route = respx.post(
+            f"{API_PREFIX}/contact-channels/cc-1/send-verification-email"
+        ).mock(return_value=httpx.Response(200))
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        app.send_verification_code(
+            "cc-1", callback_url="https://example.com/verify"
+        )
+        import json
+
+        body = json.loads(route.calls[0].request.content)
+        assert body["callback_url"] == "https://example.com/verify"
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - verify_contact_channel
+# ---------------------------------------------------------------------------
+
+
+class TestVerifyContactChannel:
+    @respx.mock
+    def test_verify_contact_channel(self) -> None:
+        route = respx.post(
+            f"{API_PREFIX}/contact-channels/verify"
+        ).mock(return_value=httpx.Response(200))
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        result = app.verify_contact_channel("abc123")
+        assert result is None
+        import json
+
+        body = json.loads(route.calls[0].request.content)
+        assert body["code"] == "abc123"
+
+
+# ---------------------------------------------------------------------------
+# AsyncStackServerApp - Contact Channels
+# ---------------------------------------------------------------------------
+
+
+class TestAsyncListContactChannels:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_list_contact_channels(self) -> None:
+        respx.get(f"{API_PREFIX}/contact-channels").mock(
+            return_value=httpx.Response(
+                200, json=CONTACT_CHANNELS_LIST_JSON
+            )
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        channels = await app.list_contact_channels("user-1")
+        assert len(channels) == 2
+        assert channels[0].id == "cc-1"
+        assert channels[0].is_primary is True
+        await app.aclose()
+
+
+class TestAsyncCreateContactChannel:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_create_contact_channel(self) -> None:
+        route = respx.post(f"{API_PREFIX}/contact-channels").mock(
+            return_value=httpx.Response(200, json=CONTACT_CHANNEL_JSON)
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        channel = await app.create_contact_channel(
+            "user-1", value="a@b.com", used_for_auth=True
+        )
+        assert channel.id == "cc-1"
+        import json
+
+        body = json.loads(route.calls[0].request.content)
+        assert body["user_id"] == "user-1"
+        assert body["value"] == "a@b.com"
+        await app.aclose()
+
+
+class TestAsyncSendVerificationCode:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_send_verification_code(self) -> None:
+        route = respx.post(
+            f"{API_PREFIX}/contact-channels/cc-1/send-verification-email"
+        ).mock(return_value=httpx.Response(200))
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        result = await app.send_verification_code("cc-1")
+        assert result is None
+        assert route.called
+        await app.aclose()
+
+
+class TestAsyncVerifyContactChannel:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_verify_contact_channel(self) -> None:
+        route = respx.post(
+            f"{API_PREFIX}/contact-channels/verify"
+        ).mock(return_value=httpx.Response(200))
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        result = await app.verify_contact_channel("abc123")
+        assert result is None
+        import json
+
+        body = json.loads(route.calls[0].request.content)
+        assert body["code"] == "abc123"
+        await app.aclose()
