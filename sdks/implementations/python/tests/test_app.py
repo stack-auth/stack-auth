@@ -2413,3 +2413,614 @@ class TestAsyncListConnectedAccounts:
         assert len(accounts) == 1
         assert accounts[0].id == "provider-1"
         await app.aclose()
+
+
+# ===========================================================================
+# Payments
+# ===========================================================================
+
+PRODUCT_JSON = {
+    "id": "prod-1",
+    "quantity": 5,
+    "displayName": "Premium Plan",
+    "customerType": "user",
+    "isServerOnly": False,
+    "stackable": False,
+    "type": "subscription",
+}
+
+ITEM_JSON = {
+    "displayName": "Credits",
+    "quantity": 100,
+    "nonNegativeQuantity": 100,
+}
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - list_products
+# ---------------------------------------------------------------------------
+
+
+class TestListProducts:
+    @respx.mock
+    def test_list_products_with_user_id(self) -> None:
+        respx.get(f"{API_PREFIX}/customers/user/user-1/products").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "items": [PRODUCT_JSON],
+                    "pagination": {"next_cursor": "cur-1"},
+                },
+            )
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        result = app.list_products(user_id="user-1")
+        assert len(result.items) == 1
+        assert result.items[0].display_name == "Premium Plan"
+        assert result.items[0].customer_type == "user"
+        assert result.next_cursor == "cur-1"
+
+    @respx.mock
+    def test_list_products_with_team_id(self) -> None:
+        respx.get(f"{API_PREFIX}/customers/team/team-1/products").mock(
+            return_value=httpx.Response(
+                200, json={"items": [], "pagination": {}}
+            )
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        result = app.list_products(team_id="team-1")
+        assert len(result.items) == 0
+
+    @respx.mock
+    def test_list_products_with_custom_customer_id(self) -> None:
+        respx.get(f"{API_PREFIX}/customers/custom/cust-1/products").mock(
+            return_value=httpx.Response(
+                200,
+                json={"items": [PRODUCT_JSON], "pagination": {}},
+            )
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        result = app.list_products(custom_customer_id="cust-1")
+        assert len(result.items) == 1
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - get_item
+# ---------------------------------------------------------------------------
+
+
+class TestGetItem:
+    @respx.mock
+    def test_get_item_success(self) -> None:
+        respx.get(f"{API_PREFIX}/customers/user/user-1/items/credits").mock(
+            return_value=httpx.Response(200, json=ITEM_JSON)
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        server_item = app.get_item("credits", user_id="user-1")
+        assert server_item.display_name == "Credits"
+        assert server_item.quantity == 100
+        assert server_item.non_negative_quantity == 100
+
+    @respx.mock
+    def test_get_item_increase_quantity(self) -> None:
+        respx.get(f"{API_PREFIX}/customers/user/user-1/items/credits").mock(
+            return_value=httpx.Response(200, json=ITEM_JSON)
+        )
+        qty_route = respx.post(f"{API_PREFIX}/internal/items/quantity-changes").mock(
+            return_value=httpx.Response(200, json={"ok": True})
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        server_item = app.get_item("credits", user_id="user-1")
+        server_item.increase_quantity(10)
+        import json as _json
+
+        body = _json.loads(qty_route.calls[0].request.content)
+        assert body["quantity"] == 10
+        assert body["item_id"] == "credits"
+
+    @respx.mock
+    def test_get_item_decrease_quantity(self) -> None:
+        respx.get(f"{API_PREFIX}/customers/user/user-1/items/credits").mock(
+            return_value=httpx.Response(200, json=ITEM_JSON)
+        )
+        qty_route = respx.post(f"{API_PREFIX}/internal/items/quantity-changes").mock(
+            return_value=httpx.Response(200, json={"ok": True})
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        server_item = app.get_item("credits", user_id="user-1")
+        server_item.decrease_quantity(5)
+        import json as _json
+
+        body = _json.loads(qty_route.calls[0].request.content)
+        assert body["quantity"] == -5
+
+    @respx.mock
+    def test_get_item_try_decrease_quantity(self) -> None:
+        respx.get(f"{API_PREFIX}/customers/user/user-1/items/credits").mock(
+            return_value=httpx.Response(200, json=ITEM_JSON)
+        )
+        respx.post(f"{API_PREFIX}/internal/items/try-decrease").mock(
+            return_value=httpx.Response(200, json={"success": True})
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        server_item = app.get_item("credits", user_id="user-1")
+        assert server_item.try_decrease_quantity(5) is True
+
+    @respx.mock
+    def test_get_item_try_decrease_quantity_fails(self) -> None:
+        respx.get(f"{API_PREFIX}/customers/user/user-1/items/credits").mock(
+            return_value=httpx.Response(200, json=ITEM_JSON)
+        )
+        respx.post(f"{API_PREFIX}/internal/items/try-decrease").mock(
+            return_value=httpx.Response(200, json={"success": False})
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        server_item = app.get_item("credits", user_id="user-1")
+        assert server_item.try_decrease_quantity(999) is False
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - grant_product
+# ---------------------------------------------------------------------------
+
+
+class TestGrantProduct:
+    @respx.mock
+    def test_grant_product_by_id(self) -> None:
+        route = respx.post(f"{API_PREFIX}/customers/user/user-1/products").mock(
+            return_value=httpx.Response(200, json={"ok": True})
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        app.grant_product(product_id="prod-1", user_id="user-1")
+        import json as _json
+
+        body = _json.loads(route.calls[0].request.content)
+        assert body["product_id"] == "prod-1"
+
+    @respx.mock
+    def test_grant_product_with_quantity(self) -> None:
+        route = respx.post(f"{API_PREFIX}/customers/team/team-1/products").mock(
+            return_value=httpx.Response(200, json={"ok": True})
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        app.grant_product(product_id="prod-1", team_id="team-1", quantity=3)
+        import json as _json
+
+        body = _json.loads(route.calls[0].request.content)
+        assert body["product_id"] == "prod-1"
+        assert body["quantity"] == 3
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - cancel_subscription
+# ---------------------------------------------------------------------------
+
+
+class TestCancelSubscription:
+    @respx.mock
+    def test_cancel_subscription(self) -> None:
+        route = respx.post(f"{API_PREFIX}/subscriptions/cancel").mock(
+            return_value=httpx.Response(200, json={"ok": True})
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        app.cancel_subscription("prod-1", user_id="user-1")
+        import json as _json
+
+        body = _json.loads(route.calls[0].request.content)
+        assert body["product_id"] == "prod-1"
+        assert body["user_id"] == "user-1"
+
+    @respx.mock
+    def test_cancel_subscription_with_team(self) -> None:
+        route = respx.post(f"{API_PREFIX}/subscriptions/cancel").mock(
+            return_value=httpx.Response(200, json={"ok": True})
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        app.cancel_subscription("prod-1", team_id="team-1")
+        import json as _json
+
+        body = _json.loads(route.calls[0].request.content)
+        assert body["product_id"] == "prod-1"
+        assert body["team_id"] == "team-1"
+
+
+# ---------------------------------------------------------------------------
+# AsyncStackServerApp - payments
+# ---------------------------------------------------------------------------
+
+
+class TestAsyncListProducts:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_list_products(self) -> None:
+        respx.get(f"{API_PREFIX}/customers/user/user-1/products").mock(
+            return_value=httpx.Response(
+                200,
+                json={"items": [PRODUCT_JSON], "pagination": {}},
+            )
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        result = await app.list_products(user_id="user-1")
+        assert len(result.items) == 1
+        assert result.items[0].display_name == "Premium Plan"
+        await app.aclose()
+
+
+class TestAsyncGetItem:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_get_item(self) -> None:
+        respx.get(f"{API_PREFIX}/customers/user/user-1/items/credits").mock(
+            return_value=httpx.Response(200, json=ITEM_JSON)
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        server_item = await app.get_item("credits", user_id="user-1")
+        assert server_item.display_name == "Credits"
+        assert server_item.quantity == 100
+        await app.aclose()
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_get_item_increase_quantity(self) -> None:
+        respx.get(f"{API_PREFIX}/customers/user/user-1/items/credits").mock(
+            return_value=httpx.Response(200, json=ITEM_JSON)
+        )
+        respx.post(f"{API_PREFIX}/internal/items/quantity-changes").mock(
+            return_value=httpx.Response(200, json={"ok": True})
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        server_item = await app.get_item("credits", user_id="user-1")
+        await server_item.increase_quantity(10)
+        await app.aclose()
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_get_item_try_decrease(self) -> None:
+        respx.get(f"{API_PREFIX}/customers/user/user-1/items/credits").mock(
+            return_value=httpx.Response(200, json=ITEM_JSON)
+        )
+        respx.post(f"{API_PREFIX}/internal/items/try-decrease").mock(
+            return_value=httpx.Response(200, json={"success": True})
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        server_item = await app.get_item("credits", user_id="user-1")
+        result = await server_item.try_decrease_quantity(5)
+        assert result is True
+        await app.aclose()
+
+
+class TestAsyncGrantProduct:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_grant_product(self) -> None:
+        respx.post(f"{API_PREFIX}/customers/user/user-1/products").mock(
+            return_value=httpx.Response(200, json={"ok": True})
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        await app.grant_product(product_id="prod-1", user_id="user-1")
+        await app.aclose()
+
+
+class TestAsyncCancelSubscription:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_cancel_subscription(self) -> None:
+        respx.post(f"{API_PREFIX}/subscriptions/cancel").mock(
+            return_value=httpx.Response(200, json={"ok": True})
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        await app.cancel_subscription("prod-1", user_id="user-1")
+        await app.aclose()
+
+
+# ===========================================================================
+# Email
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - send_email
+# ---------------------------------------------------------------------------
+
+
+class TestSendEmail:
+    @respx.mock
+    def test_send_email_with_html(self) -> None:
+        route = respx.post(f"{API_PREFIX}/emails").mock(
+            return_value=httpx.Response(200, json={"ok": True})
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        app.send_email("alice@example.com", "Hello", html="<h1>Hi</h1>")
+        import json as _json
+
+        body = _json.loads(route.calls[0].request.content)
+        assert body["to"] == "alice@example.com"
+        assert body["subject"] == "Hello"
+        assert body["html"] == "<h1>Hi</h1>"
+        assert "text" not in body
+
+    @respx.mock
+    def test_send_email_with_text(self) -> None:
+        route = respx.post(f"{API_PREFIX}/emails").mock(
+            return_value=httpx.Response(200, json={"ok": True})
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        app.send_email("bob@example.com", "Hi", text="Plain text body")
+        import json as _json
+
+        body = _json.loads(route.calls[0].request.content)
+        assert body["text"] == "Plain text body"
+        assert "html" not in body
+
+    @respx.mock
+    def test_send_email_to_multiple_recipients(self) -> None:
+        route = respx.post(f"{API_PREFIX}/emails").mock(
+            return_value=httpx.Response(200, json={"ok": True})
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        app.send_email(
+            ["alice@example.com", "bob@example.com"],
+            "Group email",
+            html="<p>Hello all</p>",
+        )
+        import json as _json
+
+        body = _json.loads(route.calls[0].request.content)
+        assert body["to"] == ["alice@example.com", "bob@example.com"]
+
+    @respx.mock
+    def test_send_email_with_html_and_text(self) -> None:
+        route = respx.post(f"{API_PREFIX}/emails").mock(
+            return_value=httpx.Response(200, json={"ok": True})
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        app.send_email(
+            "alice@example.com",
+            "Both",
+            html="<h1>HTML</h1>",
+            text="TEXT",
+        )
+        import json as _json
+
+        body = _json.loads(route.calls[0].request.content)
+        assert body["html"] == "<h1>HTML</h1>"
+        assert body["text"] == "TEXT"
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - get_email_delivery_stats
+# ---------------------------------------------------------------------------
+
+
+class TestGetEmailDeliveryStats:
+    @respx.mock
+    def test_get_email_delivery_stats(self) -> None:
+        respx.get(f"{API_PREFIX}/emails/delivery-stats").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "delivered": 100,
+                    "bounced": 5,
+                    "complained": 2,
+                    "total": 107,
+                },
+            )
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        stats = app.get_email_delivery_stats()
+        assert stats.delivered == 100
+        assert stats.bounced == 5
+        assert stats.complained == 2
+        assert stats.total == 107
+
+
+# ---------------------------------------------------------------------------
+# AsyncStackServerApp - email
+# ---------------------------------------------------------------------------
+
+
+class TestAsyncSendEmail:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_send_email(self) -> None:
+        route = respx.post(f"{API_PREFIX}/emails").mock(
+            return_value=httpx.Response(200, json={"ok": True})
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        await app.send_email("alice@example.com", "Hello", html="<h1>Hi</h1>")
+        import json as _json
+
+        body = _json.loads(route.calls[0].request.content)
+        assert body["to"] == "alice@example.com"
+        assert body["subject"] == "Hello"
+        await app.aclose()
+
+
+class TestAsyncGetEmailDeliveryStats:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_get_email_delivery_stats(self) -> None:
+        respx.get(f"{API_PREFIX}/emails/delivery-stats").mock(
+            return_value=httpx.Response(
+                200,
+                json={
+                    "delivered": 50,
+                    "bounced": 1,
+                    "complained": 0,
+                    "total": 51,
+                },
+            )
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        stats = await app.get_email_delivery_stats()
+        assert stats.delivered == 50
+        assert stats.total == 51
+        await app.aclose()
+
+
+# ===========================================================================
+# Data Vault
+# ===========================================================================
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - data vault
+# ---------------------------------------------------------------------------
+
+
+class TestDataVaultStore:
+    @respx.mock
+    def test_get_data_vault_store(self) -> None:
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        store = app.get_data_vault_store("my-store")
+        assert store.id == "my-store"
+
+    @respx.mock
+    def test_vault_get_existing_key(self) -> None:
+        respx.get(f"{API_PREFIX}/data-vault/stores/my-store/items/key1").mock(
+            return_value=httpx.Response(200, json={"value": "hello"})
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        store = app.get_data_vault_store("my-store")
+        assert store.get("key1") == "hello"
+
+    @respx.mock
+    def test_vault_get_missing_key(self) -> None:
+        respx.get(f"{API_PREFIX}/data-vault/stores/my-store/items/missing").mock(
+            return_value=httpx.Response(
+                200,
+                json={"code": "DATA_VAULT_STORE_HASHED_KEY_DOES_NOT_EXIST", "message": "Key not found"},
+                headers={
+                    "x-stack-known-error": "DATA_VAULT_STORE_HASHED_KEY_DOES_NOT_EXIST",
+                    "x-stack-actual-status": "404",
+                },
+            )
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        store = app.get_data_vault_store("my-store")
+        assert store.get("missing") is None
+
+    @respx.mock
+    def test_vault_set(self) -> None:
+        route = respx.put(f"{API_PREFIX}/data-vault/stores/my-store/items/key1").mock(
+            return_value=httpx.Response(200, json={"ok": True})
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        store = app.get_data_vault_store("my-store")
+        store.set("key1", "world")
+        import json as _json
+
+        body = _json.loads(route.calls[0].request.content)
+        assert body["value"] == "world"
+
+    @respx.mock
+    def test_vault_delete(self) -> None:
+        route = respx.delete(f"{API_PREFIX}/data-vault/stores/my-store/items/key1").mock(
+            return_value=httpx.Response(200, json={"ok": True})
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        store = app.get_data_vault_store("my-store")
+        store.delete("key1")
+        assert route.call_count == 1
+
+    @respx.mock
+    def test_vault_list_keys(self) -> None:
+        respx.get(f"{API_PREFIX}/data-vault/stores/my-store/items").mock(
+            return_value=httpx.Response(
+                200, json={"items": ["key1", "key2", "key3"]}
+            )
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        store = app.get_data_vault_store("my-store")
+        keys = store.list_keys()
+        assert keys == ["key1", "key2", "key3"]
+
+    @respx.mock
+    def test_vault_list_keys_empty(self) -> None:
+        respx.get(f"{API_PREFIX}/data-vault/stores/my-store/items").mock(
+            return_value=httpx.Response(200, json={"items": []})
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        store = app.get_data_vault_store("my-store")
+        keys = store.list_keys()
+        assert keys == []
+
+
+# ---------------------------------------------------------------------------
+# AsyncStackServerApp - data vault
+# ---------------------------------------------------------------------------
+
+
+class TestAsyncDataVaultStore:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_get_data_vault_store(self) -> None:
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        store = app.get_data_vault_store("my-store")
+        assert store.id == "my-store"
+        await app.aclose()
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_vault_get_existing_key(self) -> None:
+        respx.get(f"{API_PREFIX}/data-vault/stores/my-store/items/key1").mock(
+            return_value=httpx.Response(200, json={"value": "hello"})
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        store = app.get_data_vault_store("my-store")
+        assert await store.get("key1") == "hello"
+        await app.aclose()
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_vault_get_missing_key(self) -> None:
+        respx.get(f"{API_PREFIX}/data-vault/stores/my-store/items/missing").mock(
+            return_value=httpx.Response(
+                200,
+                json={"code": "DATA_VAULT_STORE_HASHED_KEY_DOES_NOT_EXIST", "message": "Key not found"},
+                headers={
+                    "x-stack-known-error": "DATA_VAULT_STORE_HASHED_KEY_DOES_NOT_EXIST",
+                    "x-stack-actual-status": "404",
+                },
+            )
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        store = app.get_data_vault_store("my-store")
+        assert await store.get("missing") is None
+        await app.aclose()
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_vault_set(self) -> None:
+        respx.put(f"{API_PREFIX}/data-vault/stores/my-store/items/key1").mock(
+            return_value=httpx.Response(200, json={"ok": True})
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        store = app.get_data_vault_store("my-store")
+        await store.set("key1", "world")
+        await app.aclose()
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_vault_delete(self) -> None:
+        respx.delete(f"{API_PREFIX}/data-vault/stores/my-store/items/key1").mock(
+            return_value=httpx.Response(200, json={"ok": True})
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        store = app.get_data_vault_store("my-store")
+        await store.delete("key1")
+        await app.aclose()
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_vault_list_keys(self) -> None:
+        respx.get(f"{API_PREFIX}/data-vault/stores/my-store/items").mock(
+            return_value=httpx.Response(
+                200, json={"items": ["a", "b"]}
+            )
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        store = app.get_data_vault_store("my-store")
+        keys = await store.list_keys()
+        assert keys == ["a", "b"]
+        await app.aclose()
