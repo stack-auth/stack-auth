@@ -666,3 +666,365 @@ class TestAsyncRevokeSession:
         request = route.calls[0].request
         assert request.url.params["user_id"] == "user-123"
         await app.aclose()
+
+
+# ---------------------------------------------------------------------------
+# Team test data
+# ---------------------------------------------------------------------------
+
+TEAM_JSON = {
+    "id": "team-123",
+    "displayName": "Engineering",
+    "profileImageUrl": None,
+    "clientMetadata": {},
+    "clientReadOnlyMetadata": {},
+    "serverMetadata": {"tier": "pro"},
+    "createdAtMillis": 1700000000000,
+}
+
+TEAM_JSON_2 = {
+    "id": "team-456",
+    "displayName": "Design",
+    "profileImageUrl": "https://img.example.com/design.png",
+    "clientMetadata": {"color": "blue"},
+    "clientReadOnlyMetadata": {},
+    "serverMetadata": {},
+    "createdAtMillis": 1700001000000,
+}
+
+TEAMS_LIST_JSON = {"items": [TEAM_JSON, TEAM_JSON_2]}
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - get_team
+# ---------------------------------------------------------------------------
+
+
+class TestGetTeam:
+    @respx.mock
+    def test_get_team_success(self) -> None:
+        respx.get(f"{API_PREFIX}/teams/team-123").mock(
+            return_value=httpx.Response(200, json=TEAM_JSON)
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        team = app.get_team("team-123")
+        assert team is not None
+        assert team.id == "team-123"
+        assert team.display_name == "Engineering"
+        assert team.server_metadata == {"tier": "pro"}
+
+    @respx.mock
+    def test_get_team_not_found(self) -> None:
+        respx.get(f"{API_PREFIX}/teams/nonexistent").mock(
+            return_value=httpx.Response(
+                200,
+                json={"message": "Team not found"},
+                headers={
+                    "x-stack-known-error": "TEAM_NOT_FOUND",
+                    "x-stack-actual-status": "404",
+                },
+            )
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        team = app.get_team("nonexistent")
+        assert team is None
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - list_teams
+# ---------------------------------------------------------------------------
+
+
+class TestListTeams:
+    @respx.mock
+    def test_list_teams_basic(self) -> None:
+        respx.get(f"{API_PREFIX}/teams").mock(
+            return_value=httpx.Response(200, json=TEAMS_LIST_JSON)
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        teams = app.list_teams()
+        assert len(teams) == 2
+        assert teams[0].id == "team-123"
+        assert teams[1].id == "team-456"
+
+    @respx.mock
+    def test_list_teams_with_user_id(self) -> None:
+        route = respx.get(f"{API_PREFIX}/teams").mock(
+            return_value=httpx.Response(200, json={"items": [TEAM_JSON]})
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        teams = app.list_teams(user_id="user-1")
+        assert len(teams) == 1
+        request = route.calls[0].request
+        assert request.url.params["user_id"] == "user-1"
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - create_team
+# ---------------------------------------------------------------------------
+
+
+class TestCreateTeam:
+    @respx.mock
+    def test_create_team_basic(self) -> None:
+        respx.post(f"{API_PREFIX}/teams").mock(
+            return_value=httpx.Response(200, json=TEAM_JSON)
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        team = app.create_team(display_name="Engineering")
+        assert team.id == "team-123"
+        assert team.display_name == "Engineering"
+
+    @respx.mock
+    def test_create_team_with_optional_fields(self) -> None:
+        route = respx.post(f"{API_PREFIX}/teams").mock(
+            return_value=httpx.Response(200, json=TEAM_JSON)
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        app.create_team(
+            display_name="Eng",
+            profile_image_url="https://img.example.com/eng.png",
+            creator_user_id="user-1",
+        )
+        import json
+
+        body = json.loads(route.calls[0].request.content)
+        assert body["display_name"] == "Eng"
+        assert body["profile_image_url"] == "https://img.example.com/eng.png"
+        assert body["creator_user_id"] == "user-1"
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - update_team
+# ---------------------------------------------------------------------------
+
+
+class TestUpdateTeam:
+    @respx.mock
+    def test_update_team_sends_only_provided_fields(self) -> None:
+        route = respx.patch(f"{API_PREFIX}/teams/team-123").mock(
+            return_value=httpx.Response(200, json=TEAM_JSON)
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        team = app.update_team("team-123", display_name="New Name")
+        assert team.id == "team-123"
+        import json
+
+        body = json.loads(route.calls[0].request.content)
+        assert body == {"display_name": "New Name"}
+
+    @respx.mock
+    def test_update_team_sends_none_to_clear_field(self) -> None:
+        route = respx.patch(f"{API_PREFIX}/teams/team-123").mock(
+            return_value=httpx.Response(200, json=TEAM_JSON)
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        app.update_team("team-123", profile_image_url=None)
+        import json
+
+        body = json.loads(route.calls[0].request.content)
+        assert body == {"profile_image_url": None}
+
+    @respx.mock
+    def test_update_team_unset_sentinel(self) -> None:
+        route = respx.patch(f"{API_PREFIX}/teams/team-123").mock(
+            return_value=httpx.Response(200, json=TEAM_JSON)
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        app.update_team("team-123", display_name="X")
+        import json
+
+        body = json.loads(route.calls[0].request.content)
+        assert "server_metadata" not in body
+        assert "client_metadata" not in body
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - delete_team
+# ---------------------------------------------------------------------------
+
+
+class TestDeleteTeam:
+    @respx.mock
+    def test_delete_team(self) -> None:
+        respx.delete(f"{API_PREFIX}/teams/team-123").mock(
+            return_value=httpx.Response(200)
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        result = app.delete_team("team-123")
+        assert result is None
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - get_team_by_api_key
+# ---------------------------------------------------------------------------
+
+
+class TestGetTeamByApiKey:
+    @respx.mock
+    def test_get_team_by_api_key_success(self) -> None:
+        respx.post(f"{API_PREFIX}/api-keys/check").mock(
+            return_value=httpx.Response(200, json={"team_id": "team-123"})
+        )
+        respx.get(f"{API_PREFIX}/teams/team-123").mock(
+            return_value=httpx.Response(200, json=TEAM_JSON)
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        team = app.get_team_by_api_key("sk_team_abc")
+        assert team is not None
+        assert team.id == "team-123"
+
+    @respx.mock
+    def test_get_team_by_api_key_invalid(self) -> None:
+        respx.post(f"{API_PREFIX}/api-keys/check").mock(
+            return_value=httpx.Response(
+                200,
+                json={"message": "API key not valid"},
+                headers={
+                    "x-stack-known-error": "API_KEY_NOT_VALID",
+                    "x-stack-actual-status": "400",
+                },
+            )
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        team = app.get_team_by_api_key("invalid")
+        assert team is None
+
+    @respx.mock
+    def test_get_team_by_api_key_no_team_id(self) -> None:
+        respx.post(f"{API_PREFIX}/api-keys/check").mock(
+            return_value=httpx.Response(200, json={"user_id": "user-1"})
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        team = app.get_team_by_api_key("sk_user_only")
+        assert team is None
+
+
+# ---------------------------------------------------------------------------
+# AsyncStackServerApp - Team CRUD
+# ---------------------------------------------------------------------------
+
+
+class TestAsyncGetTeam:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_get_team_success(self) -> None:
+        respx.get(f"{API_PREFIX}/teams/team-123").mock(
+            return_value=httpx.Response(200, json=TEAM_JSON)
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        team = await app.get_team("team-123")
+        assert team is not None
+        assert team.id == "team-123"
+        assert team.display_name == "Engineering"
+        await app.aclose()
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_get_team_not_found(self) -> None:
+        respx.get(f"{API_PREFIX}/teams/nonexistent").mock(
+            return_value=httpx.Response(
+                200,
+                json={"message": "Team not found"},
+                headers={
+                    "x-stack-known-error": "TEAM_NOT_FOUND",
+                    "x-stack-actual-status": "404",
+                },
+            )
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        team = await app.get_team("nonexistent")
+        assert team is None
+        await app.aclose()
+
+
+class TestAsyncListTeams:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_list_teams(self) -> None:
+        respx.get(f"{API_PREFIX}/teams").mock(
+            return_value=httpx.Response(200, json=TEAMS_LIST_JSON)
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        teams = await app.list_teams()
+        assert len(teams) == 2
+        assert teams[0].id == "team-123"
+        await app.aclose()
+
+
+class TestAsyncCreateTeam:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_create_team(self) -> None:
+        respx.post(f"{API_PREFIX}/teams").mock(
+            return_value=httpx.Response(200, json=TEAM_JSON)
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        team = await app.create_team(display_name="Engineering")
+        assert team.id == "team-123"
+        await app.aclose()
+
+
+class TestAsyncUpdateTeam:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_update_team(self) -> None:
+        route = respx.patch(f"{API_PREFIX}/teams/team-123").mock(
+            return_value=httpx.Response(200, json=TEAM_JSON)
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        team = await app.update_team("team-123", display_name="New")
+        assert team.id == "team-123"
+        import json
+
+        body = json.loads(route.calls[0].request.content)
+        assert body == {"display_name": "New"}
+        await app.aclose()
+
+
+class TestAsyncDeleteTeam:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_delete_team(self) -> None:
+        respx.delete(f"{API_PREFIX}/teams/team-123").mock(
+            return_value=httpx.Response(200)
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        result = await app.delete_team("team-123")
+        assert result is None
+        await app.aclose()
+
+
+class TestAsyncGetTeamByApiKey:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_get_team_by_api_key_success(self) -> None:
+        respx.post(f"{API_PREFIX}/api-keys/check").mock(
+            return_value=httpx.Response(200, json={"team_id": "team-123"})
+        )
+        respx.get(f"{API_PREFIX}/teams/team-123").mock(
+            return_value=httpx.Response(200, json=TEAM_JSON)
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        team = await app.get_team_by_api_key("sk_team_abc")
+        assert team is not None
+        assert team.id == "team-123"
+        await app.aclose()
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_get_team_by_api_key_invalid(self) -> None:
+        respx.post(f"{API_PREFIX}/api-keys/check").mock(
+            return_value=httpx.Response(
+                200,
+                json={"message": "API key not valid"},
+                headers={
+                    "x-stack-known-error": "API_KEY_NOT_VALID",
+                    "x-stack-actual-status": "400",
+                },
+            )
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        team = await app.get_team_by_api_key("invalid")
+        assert team is None
+        await app.aclose()
