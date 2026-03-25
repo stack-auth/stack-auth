@@ -1,5 +1,6 @@
 """Stack Auth data models -- re-exports all model classes."""
 
+from stack_auth.models.data_vault import AsyncDataVaultStore, DataVaultStore
 from stack_auth.models.api_keys import (
     ApiKey,
     TeamApiKey,
@@ -19,6 +20,8 @@ from stack_auth.models.teams import ServerTeam, Team, TeamInvitation, TeamMember
 from stack_auth.models.users import BaseUser, ServerUser
 
 __all__ = [
+    "DataVaultStore",
+    "AsyncDataVaultStore",
     "BaseUser",
     "ServerUser",
     "Team",
