@@ -197,8 +197,9 @@ def resolve_token_store(init: TokenStoreInit, project_id: str) -> TokenStore | N
             access_token=init.get("access_token"),
             refresh_token=init.get("refresh_token"),
         )
-    # Must be RequestLike (has .headers attribute)
-    return RequestTokenStore(init)  # type: ignore[arg-type]
+    if isinstance(init, RequestLike):
+        return RequestTokenStore(init)
+    raise TypeError(f"Invalid token store initializer: {type(init)}")
 
 
 # ---------------------------------------------------------------------------

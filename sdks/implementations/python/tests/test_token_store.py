@@ -215,6 +215,39 @@ class TestTokenStoreRegistry:
     def test_resolve_none(self) -> None:
         assert resolve_token_store(None, "proj") is None
 
+    def test_resolve_raises_type_error_for_invalid_input(self) -> None:
+        with pytest.raises(TypeError, match="Invalid token store initializer"):
+            resolve_token_store(12345, "proj")  # type: ignore[arg-type]
+
+
+# ---------------------------------------------------------------------------
+# RequestLike runtime_checkable isinstance checks
+# ---------------------------------------------------------------------------
+
+class TestRequestLikeProtocol:
+    def test_isinstance_works_on_conforming_object(self) -> None:
+        """RequestLike should be runtime_checkable so isinstance works."""
+        from stack_auth._types import RequestLike
+
+        request = _FakeRequest({"x-stack-auth": "{}"})
+        assert isinstance(request, RequestLike)
+
+    def test_isinstance_rejects_non_conforming_object(self) -> None:
+        """Objects without a .headers property should not pass isinstance."""
+        from stack_auth._types import RequestLike
+
+        assert not isinstance("a string", RequestLike)
+        assert not isinstance(42, RequestLike)
+        assert not isinstance({}, RequestLike)
+
+    def test_resolve_token_store_returns_request_token_store_for_request_like(self) -> None:
+        """resolve_token_store should detect RequestLike via isinstance and return RequestTokenStore."""
+        header_value = json.dumps({"accessToken": "at", "refreshToken": "rt"})
+        request = _FakeRequest({"x-stack-auth": header_value})
+        store = resolve_token_store(request, "proj")
+        assert isinstance(store, RequestTokenStore)
+        assert store.get_stored_access_token() == "at"
+
 
 # ---------------------------------------------------------------------------
 # Helper functions: _is_fresh_enough, _is_expired, _decode_jwt_payload
