@@ -2169,3 +2169,247 @@ class TestAsyncCheckApiKey:
         result = await app.check_api_key("invalid")
         assert result is None
         await app.aclose()
+
+
+# ---------------------------------------------------------------------------
+# OAuth provider test data
+# ---------------------------------------------------------------------------
+
+OAUTH_PROVIDER_JSON = {
+    "id": "provider-1",
+    "type": "google",
+    "userId": "user-1",
+    "accountId": "google-123",
+    "email": "a@b.com",
+    "allowSignIn": True,
+    "allowConnectedAccounts": False,
+}
+
+OAUTH_PROVIDER_JSON_2 = {
+    "id": "provider-2",
+    "type": "github",
+    "userId": "user-1",
+    "accountId": "gh-456",
+    "email": "a@github.com",
+    "allowSignIn": False,
+    "allowConnectedAccounts": True,
+}
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - create_oauth_provider
+# ---------------------------------------------------------------------------
+
+
+class TestCreateOAuthProvider:
+    @respx.mock
+    def test_create_oauth_provider(self) -> None:
+        route = respx.post(f"{API_PREFIX}/users/user-1/oauth-providers").mock(
+            return_value=httpx.Response(200, json=OAUTH_PROVIDER_JSON)
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        provider = app.create_oauth_provider(
+            "user-1",
+            account_id="google-123",
+            provider_config_id="google",
+            email="a@b.com",
+            allow_sign_in=True,
+            allow_connected_accounts=False,
+        )
+        assert provider.id == "provider-1"
+        assert provider.type == "google"
+        assert provider.user_id == "user-1"
+        assert provider.email == "a@b.com"
+        assert provider.allow_sign_in is True
+        assert provider.allow_connected_accounts is False
+
+    @respx.mock
+    def test_create_oauth_provider_sends_correct_body(self) -> None:
+        route = respx.post(f"{API_PREFIX}/users/user-1/oauth-providers").mock(
+            return_value=httpx.Response(200, json=OAUTH_PROVIDER_JSON)
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        app.create_oauth_provider(
+            "user-1",
+            account_id="google-123",
+            provider_config_id="google",
+            email="a@b.com",
+            allow_sign_in=True,
+            allow_connected_accounts=False,
+        )
+        import json
+
+        body = json.loads(route.calls[0].request.content)
+        assert body["account_id"] == "google-123"
+        assert body["provider_config_id"] == "google"
+        assert body["email"] == "a@b.com"
+        assert body["allow_sign_in"] is True
+        assert body["allow_connected_accounts"] is False
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - list_oauth_providers
+# ---------------------------------------------------------------------------
+
+
+class TestListOAuthProviders:
+    @respx.mock
+    def test_list_oauth_providers(self) -> None:
+        respx.get(f"{API_PREFIX}/users/user-1/oauth-providers").mock(
+            return_value=httpx.Response(
+                200,
+                json={"items": [OAUTH_PROVIDER_JSON, OAUTH_PROVIDER_JSON_2]},
+            )
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        providers = app.list_oauth_providers("user-1")
+        assert len(providers) == 2
+        assert providers[0].id == "provider-1"
+        assert providers[1].id == "provider-2"
+
+    @respx.mock
+    def test_list_oauth_providers_empty(self) -> None:
+        respx.get(f"{API_PREFIX}/users/user-1/oauth-providers").mock(
+            return_value=httpx.Response(200, json={"items": []})
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        providers = app.list_oauth_providers("user-1")
+        assert providers == []
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - get_oauth_provider
+# ---------------------------------------------------------------------------
+
+
+class TestGetOAuthProvider:
+    @respx.mock
+    def test_get_oauth_provider_found(self) -> None:
+        respx.get(f"{API_PREFIX}/users/user-1/oauth-providers").mock(
+            return_value=httpx.Response(
+                200,
+                json={"items": [OAUTH_PROVIDER_JSON, OAUTH_PROVIDER_JSON_2]},
+            )
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        provider = app.get_oauth_provider("user-1", "provider-2")
+        assert provider is not None
+        assert provider.id == "provider-2"
+        assert provider.type == "github"
+
+    @respx.mock
+    def test_get_oauth_provider_not_found(self) -> None:
+        respx.get(f"{API_PREFIX}/users/user-1/oauth-providers").mock(
+            return_value=httpx.Response(200, json={"items": []})
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        provider = app.get_oauth_provider("user-1", "nonexistent")
+        assert provider is None
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - list_connected_accounts
+# ---------------------------------------------------------------------------
+
+
+class TestListConnectedAccounts:
+    @respx.mock
+    def test_list_connected_accounts(self) -> None:
+        respx.get(f"{API_PREFIX}/users/user-1/oauth-providers").mock(
+            return_value=httpx.Response(
+                200,
+                json={"items": [OAUTH_PROVIDER_JSON]},
+            )
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        accounts = app.list_connected_accounts("user-1")
+        assert len(accounts) == 1
+        assert accounts[0].id == "provider-1"
+
+
+# ---------------------------------------------------------------------------
+# AsyncStackServerApp - OAuth provider methods
+# ---------------------------------------------------------------------------
+
+
+class TestAsyncCreateOAuthProvider:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_create_oauth_provider(self) -> None:
+        respx.post(f"{API_PREFIX}/users/user-1/oauth-providers").mock(
+            return_value=httpx.Response(200, json=OAUTH_PROVIDER_JSON)
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        provider = await app.create_oauth_provider(
+            "user-1",
+            account_id="google-123",
+            provider_config_id="google",
+            email="a@b.com",
+            allow_sign_in=True,
+            allow_connected_accounts=False,
+        )
+        assert provider.id == "provider-1"
+        assert provider.type == "google"
+        await app.aclose()
+
+
+class TestAsyncListOAuthProviders:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_list_oauth_providers(self) -> None:
+        respx.get(f"{API_PREFIX}/users/user-1/oauth-providers").mock(
+            return_value=httpx.Response(
+                200,
+                json={"items": [OAUTH_PROVIDER_JSON, OAUTH_PROVIDER_JSON_2]},
+            )
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        providers = await app.list_oauth_providers("user-1")
+        assert len(providers) == 2
+        assert providers[0].id == "provider-1"
+        await app.aclose()
+
+
+class TestAsyncGetOAuthProvider:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_get_oauth_provider_found(self) -> None:
+        respx.get(f"{API_PREFIX}/users/user-1/oauth-providers").mock(
+            return_value=httpx.Response(
+                200,
+                json={"items": [OAUTH_PROVIDER_JSON, OAUTH_PROVIDER_JSON_2]},
+            )
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        provider = await app.get_oauth_provider("user-1", "provider-2")
+        assert provider is not None
+        assert provider.id == "provider-2"
+        await app.aclose()
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_get_oauth_provider_not_found(self) -> None:
+        respx.get(f"{API_PREFIX}/users/user-1/oauth-providers").mock(
+            return_value=httpx.Response(200, json={"items": []})
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        provider = await app.get_oauth_provider("user-1", "nonexistent")
+        assert provider is None
+        await app.aclose()
+
+
+class TestAsyncListConnectedAccounts:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_list_connected_accounts(self) -> None:
+        respx.get(f"{API_PREFIX}/users/user-1/oauth-providers").mock(
+            return_value=httpx.Response(
+                200,
+                json={"items": [OAUTH_PROVIDER_JSON]},
+            )
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        accounts = await app.list_connected_accounts("user-1")
+        assert len(accounts) == 1
+        assert accounts[0].id == "provider-1"
+        await app.aclose()

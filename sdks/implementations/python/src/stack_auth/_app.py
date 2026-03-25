@@ -711,6 +711,59 @@ class StackServerApp:
             return None
         return data
 
+    # -- OAuth providers -----------------------------------------------------
+
+    def create_oauth_provider(
+        self,
+        user_id: str,
+        *,
+        account_id: str,
+        provider_config_id: str,
+        email: str,
+        allow_sign_in: bool,
+        allow_connected_accounts: bool,
+    ) -> OAuthProvider:
+        """Link an OAuth provider to a user."""
+        body = _build_params(
+            account_id=account_id,
+            provider_config_id=provider_config_id,
+            email=email,
+            allow_sign_in=allow_sign_in,
+            allow_connected_accounts=allow_connected_accounts,
+        )
+        data = self._client.request(
+            "POST", f"/users/{user_id}/oauth-providers", body=body
+        )
+        return OAuthProvider.model_validate(data)
+
+    def list_oauth_providers(self, user_id: str) -> list[OAuthProvider]:
+        """List OAuth providers linked to a user."""
+        data = self._client.request(
+            "GET", f"/users/{user_id}/oauth-providers"
+        )
+        return [
+            OAuthProvider.model_validate(item)
+            for item in (data or {}).get("items", [])
+        ]
+
+    def get_oauth_provider(
+        self, user_id: str, provider_id: str
+    ) -> OAuthProvider | None:
+        """Get a specific OAuth provider for a user.
+
+        Fetches all providers and filters by *provider_id*.
+        Returns ``None`` if not found.
+        """
+        providers = self.list_oauth_providers(user_id)
+        return next((p for p in providers if p.id == provider_id), None)
+
+    def list_connected_accounts(self, user_id: str) -> list[OAuthProvider]:
+        """List connected accounts for a user.
+
+        This is an alias for :meth:`list_oauth_providers`.
+        """
+        return self.list_oauth_providers(user_id)
+
 
 # ---------------------------------------------------------------------------
 # AsyncStackServerApp (async)
@@ -1328,3 +1381,60 @@ class AsyncStackServerApp:
         if data is None:
             return None
         return data
+
+    # -- OAuth providers -----------------------------------------------------
+
+    async def create_oauth_provider(
+        self,
+        user_id: str,
+        *,
+        account_id: str,
+        provider_config_id: str,
+        email: str,
+        allow_sign_in: bool,
+        allow_connected_accounts: bool,
+    ) -> OAuthProvider:
+        """Link an OAuth provider to a user."""
+        body = _build_params(
+            account_id=account_id,
+            provider_config_id=provider_config_id,
+            email=email,
+            allow_sign_in=allow_sign_in,
+            allow_connected_accounts=allow_connected_accounts,
+        )
+        data = await self._client.request(
+            "POST", f"/users/{user_id}/oauth-providers", body=body
+        )
+        return OAuthProvider.model_validate(data)
+
+    async def list_oauth_providers(
+        self, user_id: str
+    ) -> list[OAuthProvider]:
+        """List OAuth providers linked to a user."""
+        data = await self._client.request(
+            "GET", f"/users/{user_id}/oauth-providers"
+        )
+        return [
+            OAuthProvider.model_validate(item)
+            for item in (data or {}).get("items", [])
+        ]
+
+    async def get_oauth_provider(
+        self, user_id: str, provider_id: str
+    ) -> OAuthProvider | None:
+        """Get a specific OAuth provider for a user.
+
+        Fetches all providers and filters by *provider_id*.
+        Returns ``None`` if not found.
+        """
+        providers = await self.list_oauth_providers(user_id)
+        return next((p for p in providers if p.id == provider_id), None)
+
+    async def list_connected_accounts(
+        self, user_id: str
+    ) -> list[OAuthProvider]:
+        """List connected accounts for a user.
+
+        This is an alias for :meth:`list_oauth_providers`.
+        """
+        return await self.list_oauth_providers(user_id)
