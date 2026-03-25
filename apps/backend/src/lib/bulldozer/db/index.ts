@@ -798,7 +798,6 @@ export declare function declareLFoldTable<
   reducer: SqlMapper<{ oldState: S, oldRowData: OldRD }, { newState: S, newRowData: NewRD }>,
 }): Table<GK, null, NewRD>;
 
-
 // ====== Executing SQL Statements ======
 const BULLDOZER_LOCK_ID = 7857391;  // random number to avoid conflicts with other applications
 export function toQueryableSqlQuery(query: SqlQuery): string {
