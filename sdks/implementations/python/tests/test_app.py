@@ -1816,3 +1816,356 @@ class TestAsyncVerifyContactChannel:
         body = json.loads(route.calls[0].request.content)
         assert body["code"] == "abc123"
         await app.aclose()
+
+
+# ---------------------------------------------------------------------------
+# API key test data
+# ---------------------------------------------------------------------------
+
+USER_API_KEY_JSON = {
+    "id": "key-1",
+    "description": "My key",
+    "expiresAtMillis": 1700100000000,
+    "createdAtMillis": 1700000000000,
+    "isValid": True,
+    "userId": "user-1",
+    "teamId": None,
+}
+
+USER_API_KEY_FIRST_VIEW_JSON = {
+    **USER_API_KEY_JSON,
+    "apiKey": "sk_user_secret_123",
+}
+
+TEAM_API_KEY_JSON = {
+    "id": "key-2",
+    "description": "CI key",
+    "expiresAtMillis": None,
+    "createdAtMillis": 1700000000000,
+    "isValid": True,
+    "teamId": "team-1",
+}
+
+TEAM_API_KEY_FIRST_VIEW_JSON = {
+    **TEAM_API_KEY_JSON,
+    "apiKey": "sk_team_secret_456",
+}
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - create_user_api_key
+# ---------------------------------------------------------------------------
+
+
+class TestCreateUserApiKey:
+    @respx.mock
+    def test_create_user_api_key(self) -> None:
+        route = respx.post(f"{API_PREFIX}/users/user-1/api-keys").mock(
+            return_value=httpx.Response(200, json=USER_API_KEY_FIRST_VIEW_JSON)
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        key = app.create_user_api_key("user-1", description="My key")
+        assert key.id == "key-1"
+        assert key.api_key == "sk_user_secret_123"
+        assert key.user_id == "user-1"
+        assert key.description == "My key"
+
+    @respx.mock
+    def test_create_user_api_key_with_optional_fields(self) -> None:
+        route = respx.post(f"{API_PREFIX}/users/user-1/api-keys").mock(
+            return_value=httpx.Response(200, json=USER_API_KEY_FIRST_VIEW_JSON)
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        key = app.create_user_api_key(
+            "user-1",
+            description="My key",
+            expires_at_millis=1700100000000,
+            scope="read",
+            team_id="team-1",
+        )
+        assert key.id == "key-1"
+        import json
+
+        body = json.loads(route.calls[0].request.content)
+        assert body["description"] == "My key"
+        assert body["expires_at_millis"] == 1700100000000
+        assert body["scope"] == "read"
+        assert body["team_id"] == "team-1"
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - list_user_api_keys
+# ---------------------------------------------------------------------------
+
+
+class TestListUserApiKeys:
+    @respx.mock
+    def test_list_user_api_keys(self) -> None:
+        respx.get(f"{API_PREFIX}/users/user-1/api-keys").mock(
+            return_value=httpx.Response(
+                200, json={"items": [USER_API_KEY_JSON]}
+            )
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        keys = app.list_user_api_keys("user-1")
+        assert len(keys) == 1
+        assert keys[0].id == "key-1"
+        assert keys[0].user_id == "user-1"
+
+    @respx.mock
+    def test_list_user_api_keys_empty(self) -> None:
+        respx.get(f"{API_PREFIX}/users/user-1/api-keys").mock(
+            return_value=httpx.Response(200, json={"items": []})
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        keys = app.list_user_api_keys("user-1")
+        assert keys == []
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - revoke_user_api_key
+# ---------------------------------------------------------------------------
+
+
+class TestRevokeUserApiKey:
+    @respx.mock
+    def test_revoke_user_api_key(self) -> None:
+        route = respx.delete(f"{API_PREFIX}/api-keys/key-1").mock(
+            return_value=httpx.Response(200)
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        result = app.revoke_user_api_key("key-1")
+        assert result is None
+        assert route.called
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - create_team_api_key
+# ---------------------------------------------------------------------------
+
+
+class TestCreateTeamApiKey:
+    @respx.mock
+    def test_create_team_api_key(self) -> None:
+        route = respx.post(f"{API_PREFIX}/teams/team-1/api-keys").mock(
+            return_value=httpx.Response(200, json=TEAM_API_KEY_FIRST_VIEW_JSON)
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        key = app.create_team_api_key("team-1", description="CI key")
+        assert key.id == "key-2"
+        assert key.api_key == "sk_team_secret_456"
+        assert key.team_id == "team-1"
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - list_team_api_keys
+# ---------------------------------------------------------------------------
+
+
+class TestListTeamApiKeys:
+    @respx.mock
+    def test_list_team_api_keys(self) -> None:
+        respx.get(f"{API_PREFIX}/teams/team-1/api-keys").mock(
+            return_value=httpx.Response(
+                200, json={"items": [TEAM_API_KEY_JSON]}
+            )
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        keys = app.list_team_api_keys("team-1")
+        assert len(keys) == 1
+        assert keys[0].id == "key-2"
+        assert keys[0].team_id == "team-1"
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - revoke_team_api_key
+# ---------------------------------------------------------------------------
+
+
+class TestRevokeTeamApiKey:
+    @respx.mock
+    def test_revoke_team_api_key(self) -> None:
+        route = respx.delete(f"{API_PREFIX}/api-keys/key-2").mock(
+            return_value=httpx.Response(200)
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        result = app.revoke_team_api_key("key-2")
+        assert result is None
+        assert route.called
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - check_api_key
+# ---------------------------------------------------------------------------
+
+
+class TestCheckApiKey:
+    @respx.mock
+    def test_check_api_key_valid(self) -> None:
+        respx.post(f"{API_PREFIX}/api-keys/check").mock(
+            return_value=httpx.Response(
+                200, json={"user_id": "user-1", "team_id": "team-1"}
+            )
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        result = app.check_api_key("sk_123")
+        assert result is not None
+        assert result["user_id"] == "user-1"
+        assert result["team_id"] == "team-1"
+
+    @respx.mock
+    def test_check_api_key_invalid(self) -> None:
+        respx.post(f"{API_PREFIX}/api-keys/check").mock(
+            return_value=httpx.Response(
+                200,
+                json={"message": "API key not valid"},
+                headers={
+                    "x-stack-known-error": "API_KEY_NOT_VALID",
+                    "x-stack-actual-status": "400",
+                },
+            )
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        result = app.check_api_key("invalid")
+        assert result is None
+
+    @respx.mock
+    def test_check_api_key_sends_correct_body(self) -> None:
+        route = respx.post(f"{API_PREFIX}/api-keys/check").mock(
+            return_value=httpx.Response(
+                200, json={"user_id": "user-1"}
+            )
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        app.check_api_key("sk_123")
+        import json
+
+        body = json.loads(route.calls[0].request.content)
+        assert body == {"api_key": "sk_123"}
+
+
+# ---------------------------------------------------------------------------
+# AsyncStackServerApp - API key methods
+# ---------------------------------------------------------------------------
+
+
+class TestAsyncCreateUserApiKey:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_create_user_api_key(self) -> None:
+        respx.post(f"{API_PREFIX}/users/user-1/api-keys").mock(
+            return_value=httpx.Response(200, json=USER_API_KEY_FIRST_VIEW_JSON)
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        key = await app.create_user_api_key("user-1", description="My key")
+        assert key.id == "key-1"
+        assert key.api_key == "sk_user_secret_123"
+        await app.aclose()
+
+
+class TestAsyncListUserApiKeys:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_list_user_api_keys(self) -> None:
+        respx.get(f"{API_PREFIX}/users/user-1/api-keys").mock(
+            return_value=httpx.Response(
+                200, json={"items": [USER_API_KEY_JSON]}
+            )
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        keys = await app.list_user_api_keys("user-1")
+        assert len(keys) == 1
+        assert keys[0].id == "key-1"
+        await app.aclose()
+
+
+class TestAsyncRevokeUserApiKey:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_revoke_user_api_key(self) -> None:
+        route = respx.delete(f"{API_PREFIX}/api-keys/key-1").mock(
+            return_value=httpx.Response(200)
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        result = await app.revoke_user_api_key("key-1")
+        assert result is None
+        assert route.called
+        await app.aclose()
+
+
+class TestAsyncCreateTeamApiKey:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_create_team_api_key(self) -> None:
+        respx.post(f"{API_PREFIX}/teams/team-1/api-keys").mock(
+            return_value=httpx.Response(200, json=TEAM_API_KEY_FIRST_VIEW_JSON)
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        key = await app.create_team_api_key("team-1", description="CI key")
+        assert key.id == "key-2"
+        assert key.api_key == "sk_team_secret_456"
+        await app.aclose()
+
+
+class TestAsyncListTeamApiKeys:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_list_team_api_keys(self) -> None:
+        respx.get(f"{API_PREFIX}/teams/team-1/api-keys").mock(
+            return_value=httpx.Response(
+                200, json={"items": [TEAM_API_KEY_JSON]}
+            )
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        keys = await app.list_team_api_keys("team-1")
+        assert len(keys) == 1
+        assert keys[0].id == "key-2"
+        await app.aclose()
+
+
+class TestAsyncRevokeTeamApiKey:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_revoke_team_api_key(self) -> None:
+        route = respx.delete(f"{API_PREFIX}/api-keys/key-2").mock(
+            return_value=httpx.Response(200)
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        result = await app.revoke_team_api_key("key-2")
+        assert result is None
+        assert route.called
+        await app.aclose()
+
+
+class TestAsyncCheckApiKey:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_check_api_key_valid(self) -> None:
+        respx.post(f"{API_PREFIX}/api-keys/check").mock(
+            return_value=httpx.Response(
+                200, json={"user_id": "user-1", "team_id": "team-1"}
+            )
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        result = await app.check_api_key("sk_123")
+        assert result is not None
+        assert result["user_id"] == "user-1"
+        await app.aclose()
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_check_api_key_invalid(self) -> None:
+        respx.post(f"{API_PREFIX}/api-keys/check").mock(
+            return_value=httpx.Response(
+                200,
+                json={"message": "API key not valid"},
+                headers={
+                    "x-stack-known-error": "API_KEY_NOT_VALID",
+                    "x-stack-actual-status": "400",
+                },
+            )
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        result = await app.check_api_key("invalid")
+        assert result is None
+        await app.aclose()

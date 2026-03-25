@@ -17,7 +17,14 @@ from stack_auth._constants import DEFAULT_BASE_URL
 from stack_auth._pagination import PaginatedResult, _PaginationMeta
 from stack_auth._token_store import TokenStore, TokenStoreInit, resolve_token_store
 from stack_auth.errors import ApiKeyError, NotFoundError
+from stack_auth.models.api_keys import (
+    TeamApiKey,
+    TeamApiKeyFirstView,
+    UserApiKey,
+    UserApiKeyFirstView,
+)
 from stack_auth.models.contact_channels import ContactChannel
+from stack_auth.models.oauth import OAuthProvider
 from stack_auth.models.permissions import TeamPermission
 from stack_auth.models.sessions import ActiveSession
 from stack_auth.models.teams import ServerTeam, TeamInvitation, TeamMemberProfile
@@ -616,6 +623,94 @@ class StackServerApp:
             "POST", "/contact-channels/verify", body={"code": code}
         )
 
+    # -- API keys ------------------------------------------------------------
+
+    def create_user_api_key(
+        self,
+        user_id: str,
+        *,
+        description: str,
+        expires_at_millis: Optional[int] = None,
+        scope: Optional[str] = None,
+        team_id: Optional[str] = None,
+    ) -> UserApiKeyFirstView:
+        """Create a user API key.
+
+        Returns the key including the secret (only available at creation time).
+        """
+        body = _build_params(
+            description=description,
+            expires_at_millis=expires_at_millis,
+            scope=scope,
+            team_id=team_id,
+        )
+        data = self._client.request(
+            "POST", f"/users/{user_id}/api-keys", body=body
+        )
+        return UserApiKeyFirstView.model_validate(data)
+
+    def list_user_api_keys(self, user_id: str) -> list[UserApiKey]:
+        """List API keys for a user."""
+        data = self._client.request("GET", f"/users/{user_id}/api-keys")
+        return [
+            UserApiKey.model_validate(item)
+            for item in (data or {}).get("items", [])
+        ]
+
+    def revoke_user_api_key(self, api_key_id: str) -> None:
+        """Revoke (delete) a user API key."""
+        self._client.request("DELETE", f"/api-keys/{api_key_id}")
+
+    def create_team_api_key(
+        self,
+        team_id: str,
+        *,
+        description: str,
+        expires_at_millis: Optional[int] = None,
+        scope: Optional[str] = None,
+    ) -> TeamApiKeyFirstView:
+        """Create a team API key.
+
+        Returns the key including the secret (only available at creation time).
+        """
+        body = _build_params(
+            description=description,
+            expires_at_millis=expires_at_millis,
+            scope=scope,
+        )
+        data = self._client.request(
+            "POST", f"/teams/{team_id}/api-keys", body=body
+        )
+        return TeamApiKeyFirstView.model_validate(data)
+
+    def list_team_api_keys(self, team_id: str) -> list[TeamApiKey]:
+        """List API keys for a team."""
+        data = self._client.request("GET", f"/teams/{team_id}/api-keys")
+        return [
+            TeamApiKey.model_validate(item)
+            for item in (data or {}).get("items", [])
+        ]
+
+    def revoke_team_api_key(self, api_key_id: str) -> None:
+        """Revoke (delete) a team API key."""
+        self._client.request("DELETE", f"/api-keys/{api_key_id}")
+
+    def check_api_key(self, api_key: str) -> dict[str, Any] | None:
+        """Validate an API key and return associated user/team info.
+
+        Returns a dict with ``user_id`` and/or ``team_id``, or ``None``
+        if the key is invalid.
+        """
+        try:
+            data = self._client.request(
+                "POST", "/api-keys/check", body={"api_key": api_key}
+            )
+        except (NotFoundError, ApiKeyError):
+            return None
+        if data is None:
+            return None
+        return data
+
 
 # ---------------------------------------------------------------------------
 # AsyncStackServerApp (async)
@@ -1141,3 +1236,95 @@ class AsyncStackServerApp:
         await self._client.request(
             "POST", "/contact-channels/verify", body={"code": code}
         )
+
+    # -- API keys ------------------------------------------------------------
+
+    async def create_user_api_key(
+        self,
+        user_id: str,
+        *,
+        description: str,
+        expires_at_millis: Optional[int] = None,
+        scope: Optional[str] = None,
+        team_id: Optional[str] = None,
+    ) -> UserApiKeyFirstView:
+        """Create a user API key.
+
+        Returns the key including the secret (only available at creation time).
+        """
+        body = _build_params(
+            description=description,
+            expires_at_millis=expires_at_millis,
+            scope=scope,
+            team_id=team_id,
+        )
+        data = await self._client.request(
+            "POST", f"/users/{user_id}/api-keys", body=body
+        )
+        return UserApiKeyFirstView.model_validate(data)
+
+    async def list_user_api_keys(self, user_id: str) -> list[UserApiKey]:
+        """List API keys for a user."""
+        data = await self._client.request(
+            "GET", f"/users/{user_id}/api-keys"
+        )
+        return [
+            UserApiKey.model_validate(item)
+            for item in (data or {}).get("items", [])
+        ]
+
+    async def revoke_user_api_key(self, api_key_id: str) -> None:
+        """Revoke (delete) a user API key."""
+        await self._client.request("DELETE", f"/api-keys/{api_key_id}")
+
+    async def create_team_api_key(
+        self,
+        team_id: str,
+        *,
+        description: str,
+        expires_at_millis: Optional[int] = None,
+        scope: Optional[str] = None,
+    ) -> TeamApiKeyFirstView:
+        """Create a team API key.
+
+        Returns the key including the secret (only available at creation time).
+        """
+        body = _build_params(
+            description=description,
+            expires_at_millis=expires_at_millis,
+            scope=scope,
+        )
+        data = await self._client.request(
+            "POST", f"/teams/{team_id}/api-keys", body=body
+        )
+        return TeamApiKeyFirstView.model_validate(data)
+
+    async def list_team_api_keys(self, team_id: str) -> list[TeamApiKey]:
+        """List API keys for a team."""
+        data = await self._client.request(
+            "GET", f"/teams/{team_id}/api-keys"
+        )
+        return [
+            TeamApiKey.model_validate(item)
+            for item in (data or {}).get("items", [])
+        ]
+
+    async def revoke_team_api_key(self, api_key_id: str) -> None:
+        """Revoke (delete) a team API key."""
+        await self._client.request("DELETE", f"/api-keys/{api_key_id}")
+
+    async def check_api_key(self, api_key: str) -> dict[str, Any] | None:
+        """Validate an API key and return associated user/team info.
+
+        Returns a dict with ``user_id`` and/or ``team_id``, or ``None``
+        if the key is invalid.
+        """
+        try:
+            data = await self._client.request(
+                "POST", "/api-keys/check", body={"api_key": api_key}
+            )
+        except (NotFoundError, ApiKeyError):
+            return None
+        if data is None:
+            return None
+        return data
