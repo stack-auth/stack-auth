@@ -12,6 +12,7 @@ from __future__ import annotations
 
 from typing import Any, Optional
 
+from stack_auth._auth import TokenPartialUser, decode_access_token_claims
 from stack_auth._client import AsyncAPIClient, SyncAPIClient
 from stack_auth._constants import DEFAULT_BASE_URL
 from stack_auth._pagination import PaginatedResult, _PaginationMeta
@@ -153,6 +154,43 @@ class StackServerApp:
 
     def __exit__(self, *_: Any) -> None:
         self.close()
+
+    # -- partial user (local JWT decode) -------------------------------------
+
+    def get_partial_user(
+        self,
+        *,
+        token_store: TokenStoreInit | None = _UNSET,
+    ) -> TokenPartialUser | None:
+        """Get minimal user info from the access token without a network request.
+
+        Decodes the JWT payload from the token store's access token to extract
+        partial user information. Does NOT verify the token's signature.
+
+        Args:
+            token_store: Override token storage for this call. If not provided,
+                uses the instance's token store. Pass ``None`` explicitly to
+                indicate no token store.
+
+        Returns:
+            A :class:`TokenPartialUser` with user ID and claims from the JWT,
+            or ``None`` if no access token is available or the token is malformed.
+        """
+        if token_store is _UNSET:
+            store = self._token_store
+        elif token_store is None:
+            store = None
+        else:
+            store = resolve_token_store(token_store, self._project_id)
+
+        if store is None:
+            return None
+
+        access_token = store.get_stored_access_token()
+        if access_token is None:
+            return None
+
+        return decode_access_token_claims(access_token)
 
     # -- user CRUD -----------------------------------------------------------
 
@@ -1432,6 +1470,46 @@ class AsyncStackServerApp:
 
     async def __aexit__(self, *_: Any) -> None:
         await self.aclose()
+
+    # -- partial user (local JWT decode) -------------------------------------
+
+    def get_partial_user(
+        self,
+        *,
+        token_store: TokenStoreInit | None = _UNSET,
+    ) -> TokenPartialUser | None:
+        """Get minimal user info from the access token without a network request.
+
+        Decodes the JWT payload from the token store's access token to extract
+        partial user information. Does NOT verify the token's signature.
+
+        Note: This method is synchronous because it performs no network I/O.
+        It only decodes the JWT payload locally.
+
+        Args:
+            token_store: Override token storage for this call. If not provided,
+                uses the instance's token store. Pass ``None`` explicitly to
+                indicate no token store.
+
+        Returns:
+            A :class:`TokenPartialUser` with user ID and claims from the JWT,
+            or ``None`` if no access token is available or the token is malformed.
+        """
+        if token_store is _UNSET:
+            store = self._token_store
+        elif token_store is None:
+            store = None
+        else:
+            store = resolve_token_store(token_store, self._project_id)
+
+        if store is None:
+            return None
+
+        access_token = store.get_stored_access_token()
+        if access_token is None:
+            return None
+
+        return decode_access_token_claims(access_token)
 
     # -- user CRUD -----------------------------------------------------------
 
