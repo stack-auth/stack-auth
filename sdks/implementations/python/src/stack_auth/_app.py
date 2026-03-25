@@ -78,10 +78,41 @@ def _resolve_customer_path(
 class StackServerApp:
     """Synchronous facade for the Stack Auth API.
 
-    Usage::
+    Provides type-safe, synchronous methods for user management, team
+    management, permissions, API keys, OAuth providers, payments, email,
+    and data vault operations.
 
-        app = StackServerApp(project_id="...", secret_server_key="...")
-        user = app.get_user("user-123")
+    Example::
+
+        from stack_auth import StackServerApp
+
+        # Constructor with all parameters
+        app = StackServerApp(
+            project_id="my-project-id",
+            secret_server_key="ssk_...",
+            base_url="https://api.stack-auth.com",
+            token_store=None,  # optional TokenStoreInit
+        )
+
+        # Or use as a context manager for automatic cleanup
+        with StackServerApp(
+            project_id="my-project-id",
+            secret_server_key="ssk_...",
+        ) as app:
+            # User CRUD
+            user = app.create_user(
+                primary_email="alice@example.com",
+                display_name="Alice",
+            )
+            fetched = app.get_user(user.id)
+            users = app.list_users(limit=10)
+
+            # Team operations
+            team = app.create_team(
+                display_name="Engineering",
+                creator_user_id=user.id,
+            )
+            app.add_team_member(team.id, user.id)
     """
 
     def __init__(
@@ -105,7 +136,14 @@ class StackServerApp:
     # -- lifecycle -----------------------------------------------------------
 
     def close(self) -> None:
-        """Close the underlying HTTP client."""
+        """Close the underlying HTTP client.
+
+        Args:
+            (none)
+
+        Returns:
+            None.
+        """
         self._client.close()
 
     def __enter__(self) -> StackServerApp:
@@ -119,7 +157,15 @@ class StackServerApp:
     def get_user(self, user_id: str) -> ServerUser | None:
         """Fetch a user by ID.
 
-        Returns ``None`` if the user is not found.
+        Args:
+            user_id: The unique identifier of the user to retrieve.
+
+        Returns:
+            A :class:`ServerUser` if found, or ``None`` if the user does
+            not exist (HTTP 404).
+
+        Raises:
+            StackAuthError: If the API returns an unexpected error.
         """
         try:
             data = self._client.request("GET", f"/users/{user_id}")
@@ -140,7 +186,21 @@ class StackServerApp:
         include_restricted: Optional[bool] = None,
         include_anonymous: Optional[bool] = None,
     ) -> PaginatedResult[ServerUser]:
-        """List users with optional filtering and pagination."""
+        """List users with optional filtering and pagination.
+
+        Args:
+            cursor: Pagination cursor from a previous response.
+            limit: Maximum number of users to return per page.
+            order_by: Field name to sort by (e.g., ``"created_at"``).
+            desc: If ``True``, sort in descending order.
+            query: Full-text search query to filter users.
+            include_restricted: If ``True``, include restricted users.
+            include_anonymous: If ``True``, include anonymous users.
+
+        Returns:
+            A :class:`PaginatedResult` containing :class:`ServerUser` items
+            and pagination metadata for fetching additional pages.
+        """
         params = _build_params(
             cursor=cursor,
             limit=limit,
@@ -170,7 +230,27 @@ class StackServerApp:
         client_read_only_metadata: Optional[dict[str, Any]] = None,
         server_metadata: Optional[dict[str, Any]] = None,
     ) -> ServerUser:
-        """Create a new user. Only non-None fields are sent."""
+        """Create a new user. Only non-None fields are sent.
+
+        Args:
+            primary_email: The user's primary email address.
+            primary_email_auth_enabled: Whether email-based auth is enabled.
+            password: Initial password for password-based auth.
+            otp_auth_enabled: Whether OTP (one-time password) auth is enabled.
+            display_name: Human-readable display name.
+            primary_email_verified: Whether to mark the email as pre-verified.
+            client_metadata: Arbitrary metadata readable by the client SDK.
+            client_read_only_metadata: Metadata readable but not writable
+                by the client SDK.
+            server_metadata: Metadata only accessible from the server.
+
+        Returns:
+            The newly created :class:`ServerUser`.
+
+        Raises:
+            ValidationError: If the provided fields fail server-side validation.
+            StackAuthError: If the API returns an unexpected error.
+        """
         body = _build_params(
             primary_email=primary_email,
             primary_email_auth_enabled=primary_email_auth_enabled,
@@ -204,6 +284,28 @@ class StackServerApp:
         """Update a user. Only explicitly provided fields are sent.
 
         Pass ``None`` to clear a field. Omit a parameter to leave it unchanged.
+
+        Args:
+            user_id: The unique identifier of the user to update.
+            display_name: New display name, or ``None`` to clear.
+            client_metadata: New client metadata dict, or ``None`` to clear.
+            client_read_only_metadata: New client read-only metadata dict,
+                or ``None`` to clear.
+            server_metadata: New server metadata dict, or ``None`` to clear.
+            primary_email: New primary email, or ``None`` to clear.
+            primary_email_verified: Whether the email is verified.
+            primary_email_auth_enabled: Whether email auth is enabled.
+            password: New password.
+            otp_auth_enabled: Whether OTP auth is enabled.
+            profile_image_url: URL to profile image, or ``None`` to clear.
+            selected_team_id: The user's selected team, or ``None`` to clear.
+
+        Returns:
+            The updated :class:`ServerUser`.
+
+        Raises:
+            ValidationError: If the provided fields fail server-side validation.
+            NotFoundError: If the user does not exist.
         """
         fields = {
             "display_name": display_name,
@@ -223,14 +325,30 @@ class StackServerApp:
         return ServerUser.model_validate(data)
 
     def delete_user(self, user_id: str) -> None:
-        """Delete a user by ID."""
+        """Delete a user by ID.
+
+        Args:
+            user_id: The unique identifier of the user to delete.
+
+        Returns:
+            None.
+
+        Raises:
+            NotFoundError: If the user does not exist.
+        """
         self._client.request("DELETE", f"/users/{user_id}")
 
     def get_user_by_api_key(self, api_key: str) -> ServerUser | None:
         """Look up a user by their API key.
 
         Performs a two-step lookup: first validates the key, then fetches the user.
-        Returns ``None`` if the key is invalid or has no associated user.
+
+        Args:
+            api_key: The API key string to look up.
+
+        Returns:
+            The :class:`ServerUser` associated with the key, or ``None``
+            if the key is invalid or has no associated user.
         """
         try:
             data = self._client.request(
@@ -267,7 +385,13 @@ class StackServerApp:
         """Get a specific session by ID.
 
         Fetches all sessions for the user and filters by *session_id*.
-        Returns ``None`` if the session is not found.
+
+        Args:
+            session_id: The session to retrieve.
+            user_id: The user who owns the session.
+
+        Returns:
+            The :class:`ActiveSession` if found, or ``None``.
         """
         sessions = self.list_sessions(user_id)
         return next((s for s in sessions if s.id == session_id), None)
@@ -278,6 +402,9 @@ class StackServerApp:
         Args:
             session_id: The session to revoke.
             user_id: The user who owns the session.
+
+        Returns:
+            None.
         """
         self._client.request(
             "DELETE",
@@ -290,7 +417,15 @@ class StackServerApp:
     def get_team(self, team_id: str) -> ServerTeam | None:
         """Fetch a team by ID.
 
-        Returns ``None`` if the team is not found.
+        Args:
+            team_id: The unique identifier of the team to retrieve.
+
+        Returns:
+            A :class:`ServerTeam` if found, or ``None`` if the team does
+            not exist (HTTP 404).
+
+        Raises:
+            StackAuthError: If the API returns an unexpected error.
         """
         try:
             data = self._client.request("GET", f"/teams/{team_id}")
@@ -306,6 +441,13 @@ class StackServerApp:
         """List teams, optionally filtered by user membership.
 
         This endpoint does not support pagination.
+
+        Args:
+            user_id: If provided, only return teams where this user
+                is a member.
+
+        Returns:
+            A list of :class:`ServerTeam` objects.
         """
         params = _build_params(user_id=user_id)
         data = self._client.request("GET", "/teams", params=params)
@@ -321,7 +463,20 @@ class StackServerApp:
         profile_image_url: Optional[str] = None,
         creator_user_id: Optional[str] = None,
     ) -> ServerTeam:
-        """Create a new team."""
+        """Create a new team.
+
+        Args:
+            display_name: The display name for the team.
+            profile_image_url: Optional URL for the team's profile image.
+            creator_user_id: If provided, this user will be added as the
+                initial team member and creator.
+
+        Returns:
+            The newly created :class:`ServerTeam`.
+
+        Raises:
+            ValidationError: If the provided fields fail server-side validation.
+        """
         body = _build_params(
             display_name=display_name,
             profile_image_url=profile_image_url,
@@ -343,6 +498,21 @@ class StackServerApp:
         """Update a team. Only explicitly provided fields are sent.
 
         Pass ``None`` to clear a field. Omit a parameter to leave it unchanged.
+
+        Args:
+            team_id: The unique identifier of the team to update.
+            display_name: New display name, or ``None`` to clear.
+            profile_image_url: New profile image URL, or ``None`` to clear.
+            client_metadata: New client metadata dict, or ``None`` to clear.
+            client_read_only_metadata: New client read-only metadata dict,
+                or ``None`` to clear.
+            server_metadata: New server metadata dict, or ``None`` to clear.
+
+        Returns:
+            The updated :class:`ServerTeam`.
+
+        Raises:
+            NotFoundError: If the team does not exist.
         """
         fields = {
             "display_name": display_name,
@@ -356,14 +526,30 @@ class StackServerApp:
         return ServerTeam.model_validate(data)
 
     def delete_team(self, team_id: str) -> None:
-        """Delete a team by ID."""
+        """Delete a team by ID.
+
+        Args:
+            team_id: The unique identifier of the team to delete.
+
+        Returns:
+            None.
+
+        Raises:
+            NotFoundError: If the team does not exist.
+        """
         self._client.request("DELETE", f"/teams/{team_id}")
 
     def get_team_by_api_key(self, api_key: str) -> ServerTeam | None:
         """Look up a team by its API key.
 
         Performs a two-step lookup: first validates the key, then fetches the team.
-        Returns ``None`` if the key is invalid or has no associated team.
+
+        Args:
+            api_key: The API key string to look up.
+
+        Returns:
+            The :class:`ServerTeam` associated with the key, or ``None``
+            if the key is invalid or has no associated team.
         """
         try:
             data = self._client.request(
@@ -378,13 +564,35 @@ class StackServerApp:
     # -- team membership -----------------------------------------------------
 
     def add_team_member(self, team_id: str, user_id: str) -> None:
-        """Add a user to a team."""
+        """Add a user to a team.
+
+        Args:
+            team_id: The team to add the user to.
+            user_id: The user to add.
+
+        Returns:
+            None.
+
+        Raises:
+            NotFoundError: If the team or user does not exist.
+        """
         self._client.request(
             "POST", f"/team-memberships/{team_id}/{user_id}", body={}
         )
 
     def remove_team_member(self, team_id: str, user_id: str) -> None:
-        """Remove a user from a team."""
+        """Remove a user from a team.
+
+        Args:
+            team_id: The team to remove the user from.
+            user_id: The user to remove.
+
+        Returns:
+            None.
+
+        Raises:
+            NotFoundError: If the membership does not exist.
+        """
         self._client.request(
             "DELETE", f"/team-memberships/{team_id}/{user_id}"
         )
@@ -398,14 +606,30 @@ class StackServerApp:
         *,
         callback_url: Optional[str] = None,
     ) -> None:
-        """Send an invitation email to join a team."""
+        """Send an invitation email to join a team.
+
+        Args:
+            team_id: The team to invite the user to.
+            email: The recipient's email address.
+            callback_url: Optional URL to redirect after accepting.
+
+        Returns:
+            None.
+        """
         body = _build_params(
             email=email, team_id=team_id, callback_url=callback_url
         )
         self._client.request("POST", "/team-invitations/send-code", body=body)
 
     def list_team_invitations(self, team_id: str) -> list[TeamInvitation]:
-        """List pending invitations for a team."""
+        """List pending invitations for a team.
+
+        Args:
+            team_id: The team whose invitations to list.
+
+        Returns:
+            A list of :class:`TeamInvitation` objects.
+        """
         data = self._client.request(
             "GET", f"/teams/{team_id}/invitations"
         )
@@ -417,7 +641,15 @@ class StackServerApp:
     def revoke_team_invitation(
         self, team_id: str, invitation_id: str
     ) -> None:
-        """Revoke (delete) a team invitation."""
+        """Revoke (delete) a team invitation.
+
+        Args:
+            team_id: The team that owns the invitation.
+            invitation_id: The invitation to revoke.
+
+        Returns:
+            None.
+        """
         self._client.request(
             "DELETE", f"/teams/{team_id}/invitations/{invitation_id}"
         )
@@ -427,7 +659,14 @@ class StackServerApp:
     def list_team_member_profiles(
         self, team_id: str
     ) -> list[TeamMemberProfile]:
-        """List member profiles for a team."""
+        """List member profiles for a team.
+
+        Args:
+            team_id: The team whose member profiles to list.
+
+        Returns:
+            A list of :class:`TeamMemberProfile` objects.
+        """
         data = self._client.request(
             "GET", "/team-member-profiles", params={"team_id": team_id}
         )
@@ -442,7 +681,13 @@ class StackServerApp:
         """Get a specific team member's profile.
 
         Fetches all member profiles for the team and filters by *user_id*.
-        Returns ``None`` if no profile is found.
+
+        Args:
+            team_id: The team to look up the profile in.
+            user_id: The user whose profile to retrieve.
+
+        Returns:
+            The :class:`TeamMemberProfile` if found, or ``None``.
         """
         profiles = self.list_team_member_profiles(team_id)
         return next((p for p in profiles if p.user_id == user_id), None)
@@ -462,6 +707,9 @@ class StackServerApp:
             user_id: The user to grant the permission to.
             permission_id: The permission to grant.
             team_id: If provided, grants at team scope; otherwise project scope.
+
+        Returns:
+            None.
         """
         body = _build_params(
             team_id=team_id, permission_id=permission_id
@@ -483,6 +731,9 @@ class StackServerApp:
             user_id: The user to revoke the permission from.
             permission_id: The permission to revoke.
             team_id: If provided, revokes at team scope; otherwise project scope.
+
+        Returns:
+            None.
         """
         params = _build_params(team_id=team_id)
         self._client.request(
@@ -636,6 +887,9 @@ class StackServerApp:
         Args:
             contact_channel_id: The channel to send verification for.
             callback_url: Optional URL to redirect after verification.
+
+        Returns:
+            None.
         """
         body = _build_params(callback_url=callback_url)
         self._client.request(
@@ -649,6 +903,9 @@ class StackServerApp:
 
         Args:
             code: The verification code received via email.
+
+        Returns:
+            None.
         """
         self._client.request(
             "POST", "/contact-channels/verify", body={"code": code}
@@ -667,7 +924,17 @@ class StackServerApp:
     ) -> UserApiKeyFirstView:
         """Create a user API key.
 
-        Returns the key including the secret (only available at creation time).
+        Args:
+            user_id: The user to create the key for.
+            description: Human-readable description of the key's purpose.
+            expires_at_millis: Optional expiration timestamp in milliseconds
+                since epoch.
+            scope: Optional scope restriction for the key.
+            team_id: Optional team to associate the key with.
+
+        Returns:
+            A :class:`UserApiKeyFirstView` containing the key including the
+            secret (only available at creation time).
         """
         body = _build_params(
             description=description,
@@ -681,7 +948,14 @@ class StackServerApp:
         return UserApiKeyFirstView.model_validate(data)
 
     def list_user_api_keys(self, user_id: str) -> list[UserApiKey]:
-        """List API keys for a user."""
+        """List API keys for a user.
+
+        Args:
+            user_id: The user whose API keys to list.
+
+        Returns:
+            A list of :class:`UserApiKey` objects (secrets are not included).
+        """
         data = self._client.request("GET", f"/users/{user_id}/api-keys")
         return [
             UserApiKey.model_validate(item)
@@ -689,7 +963,14 @@ class StackServerApp:
         ]
 
     def revoke_user_api_key(self, api_key_id: str) -> None:
-        """Revoke (delete) a user API key."""
+        """Revoke (delete) a user API key.
+
+        Args:
+            api_key_id: The unique identifier of the API key to revoke.
+
+        Returns:
+            None.
+        """
         self._client.request("DELETE", f"/api-keys/{api_key_id}")
 
     def create_team_api_key(
@@ -702,7 +983,16 @@ class StackServerApp:
     ) -> TeamApiKeyFirstView:
         """Create a team API key.
 
-        Returns the key including the secret (only available at creation time).
+        Args:
+            team_id: The team to create the key for.
+            description: Human-readable description of the key's purpose.
+            expires_at_millis: Optional expiration timestamp in milliseconds
+                since epoch.
+            scope: Optional scope restriction for the key.
+
+        Returns:
+            A :class:`TeamApiKeyFirstView` containing the key including the
+            secret (only available at creation time).
         """
         body = _build_params(
             description=description,
@@ -715,7 +1005,14 @@ class StackServerApp:
         return TeamApiKeyFirstView.model_validate(data)
 
     def list_team_api_keys(self, team_id: str) -> list[TeamApiKey]:
-        """List API keys for a team."""
+        """List API keys for a team.
+
+        Args:
+            team_id: The team whose API keys to list.
+
+        Returns:
+            A list of :class:`TeamApiKey` objects (secrets are not included).
+        """
         data = self._client.request("GET", f"/teams/{team_id}/api-keys")
         return [
             TeamApiKey.model_validate(item)
@@ -723,14 +1020,25 @@ class StackServerApp:
         ]
 
     def revoke_team_api_key(self, api_key_id: str) -> None:
-        """Revoke (delete) a team API key."""
+        """Revoke (delete) a team API key.
+
+        Args:
+            api_key_id: The unique identifier of the API key to revoke.
+
+        Returns:
+            None.
+        """
         self._client.request("DELETE", f"/api-keys/{api_key_id}")
 
     def check_api_key(self, api_key: str) -> dict[str, Any] | None:
         """Validate an API key and return associated user/team info.
 
-        Returns a dict with ``user_id`` and/or ``team_id``, or ``None``
-        if the key is invalid.
+        Args:
+            api_key: The API key string to validate.
+
+        Returns:
+            A dict with ``user_id`` and/or ``team_id`` if the key is valid,
+            or ``None`` if the key is invalid.
         """
         try:
             data = self._client.request(
@@ -754,7 +1062,19 @@ class StackServerApp:
         allow_sign_in: bool,
         allow_connected_accounts: bool,
     ) -> OAuthProvider:
-        """Link an OAuth provider to a user."""
+        """Link an OAuth provider to a user.
+
+        Args:
+            user_id: The user to link the provider to.
+            account_id: The external account ID from the OAuth provider.
+            provider_config_id: The provider configuration ID in Stack Auth.
+            email: The email address from the OAuth provider.
+            allow_sign_in: Whether this provider can be used for sign-in.
+            allow_connected_accounts: Whether this counts as a connected account.
+
+        Returns:
+            The created :class:`OAuthProvider` link.
+        """
         body = _build_params(
             account_id=account_id,
             provider_config_id=provider_config_id,
@@ -768,7 +1088,14 @@ class StackServerApp:
         return OAuthProvider.model_validate(data)
 
     def list_oauth_providers(self, user_id: str) -> list[OAuthProvider]:
-        """List OAuth providers linked to a user."""
+        """List OAuth providers linked to a user.
+
+        Args:
+            user_id: The user whose OAuth providers to list.
+
+        Returns:
+            A list of :class:`OAuthProvider` objects.
+        """
         data = self._client.request(
             "GET", f"/users/{user_id}/oauth-providers"
         )
@@ -783,7 +1110,13 @@ class StackServerApp:
         """Get a specific OAuth provider for a user.
 
         Fetches all providers and filters by *provider_id*.
-        Returns ``None`` if not found.
+
+        Args:
+            user_id: The user who owns the provider link.
+            provider_id: The provider ID to look up.
+
+        Returns:
+            The :class:`OAuthProvider` if found, or ``None``.
         """
         providers = self.list_oauth_providers(user_id)
         return next((p for p in providers if p.id == provider_id), None)
@@ -792,6 +1125,12 @@ class StackServerApp:
         """List connected accounts for a user.
 
         This is an alias for :meth:`list_oauth_providers`.
+
+        Args:
+            user_id: The user whose connected accounts to list.
+
+        Returns:
+            A list of :class:`OAuthProvider` objects.
         """
         return self.list_oauth_providers(user_id)
 
@@ -810,6 +1149,19 @@ class StackServerApp:
 
         Exactly one of *user_id*, *team_id*, or *custom_customer_id* must be
         provided.
+
+        Args:
+            user_id: Identify the customer by user ID.
+            team_id: Identify the customer by team ID.
+            custom_customer_id: Identify the customer by custom ID.
+            cursor: Pagination cursor from a previous response.
+            limit: Maximum number of products to return per page.
+
+        Returns:
+            A :class:`PaginatedResult` containing :class:`Product` items.
+
+        Raises:
+            ValueError: If not exactly one customer identifier is provided.
         """
         ctype, cid, _ = _resolve_customer_path(user_id, team_id, custom_customer_id)
         params = _build_params(cursor=cursor, limit=limit)
@@ -834,6 +1186,20 @@ class StackServerApp:
 
         Exactly one of *user_id*, *team_id*, or *custom_customer_id* must be
         provided.
+
+        Args:
+            item_id: The unique identifier of the item.
+            user_id: Identify the customer by user ID.
+            team_id: Identify the customer by team ID.
+            custom_customer_id: Identify the customer by custom ID.
+
+        Returns:
+            A :class:`ServerItem` wrapping the :class:`Item` data and
+            providing ``set_quantity`` and ``increment_quantity`` methods.
+
+        Raises:
+            ValueError: If not exactly one customer identifier is provided.
+            NotFoundError: If the item does not exist.
         """
         ctype, cid, field_name = _resolve_customer_path(
             user_id, team_id, custom_customer_id
@@ -866,6 +1232,20 @@ class StackServerApp:
         Provide either *product_id* (existing product) or *product* (inline
         product definition). Exactly one of *user_id*, *team_id*, or
         *custom_customer_id* must be provided.
+
+        Args:
+            product_id: ID of an existing product to grant.
+            product: Inline product definition dict.
+            user_id: Identify the customer by user ID.
+            team_id: Identify the customer by team ID.
+            custom_customer_id: Identify the customer by custom ID.
+            quantity: Number of units to grant (for quantity-based items).
+
+        Returns:
+            None.
+
+        Raises:
+            ValueError: If not exactly one customer identifier is provided.
         """
         ctype, cid, _ = _resolve_customer_path(user_id, team_id, custom_customer_id)
         body = _build_params(
@@ -889,6 +1269,18 @@ class StackServerApp:
 
         Exactly one of *user_id*, *team_id*, or *custom_customer_id* must be
         provided.
+
+        Args:
+            product_id: The product/subscription to cancel.
+            user_id: Identify the customer by user ID.
+            team_id: Identify the customer by team ID.
+            custom_customer_id: Identify the customer by custom ID.
+
+        Returns:
+            None.
+
+        Raises:
+            ValueError: If not exactly one customer identifier is provided.
         """
         _, cid, field_name = _resolve_customer_path(
             user_id, team_id, custom_customer_id
@@ -913,6 +1305,9 @@ class StackServerApp:
             subject: Email subject line.
             html: HTML body content.
             text: Plain-text body content.
+
+        Returns:
+            None.
         """
         body: dict[str, Any] = {"to": to, "subject": subject}
         if html is not None:
@@ -922,7 +1317,14 @@ class StackServerApp:
         self._client.request("POST", "/emails", body=body)
 
     def get_email_delivery_stats(self) -> EmailDeliveryInfo:
-        """Get email delivery statistics."""
+        """Get email delivery statistics.
+
+        Args:
+            (none)
+
+        Returns:
+            An :class:`EmailDeliveryInfo` with delivery counts and statuses.
+        """
         data = self._client.request("GET", "/emails/delivery-stats")
         return EmailDeliveryInfo.model_validate(data)
 
@@ -934,6 +1336,12 @@ class StackServerApp:
         The returned :class:`DataVaultStore` object provides ``get``,
         ``set``, ``delete``, and ``list_keys`` methods for key-value
         operations within the store.
+
+        Args:
+            store_id: The unique identifier of the data vault store.
+
+        Returns:
+            A :class:`DataVaultStore` for performing key-value operations.
         """
         return DataVaultStore(store_id, _client=self._client)
 
@@ -946,10 +1354,42 @@ class StackServerApp:
 class AsyncStackServerApp:
     """Asynchronous facade for the Stack Auth API.
 
-    Usage::
+    Provides type-safe, asynchronous methods for user management, team
+    management, permissions, API keys, OAuth providers, payments, email,
+    and data vault operations. All methods mirror :class:`StackServerApp`
+    but use ``async``/``await``.
 
-        async with AsyncStackServerApp(project_id="...", secret_server_key="...") as app:
-            user = await app.get_user("user-123")
+    Example::
+
+        from stack_auth import AsyncStackServerApp
+
+        # Constructor with all parameters
+        app = AsyncStackServerApp(
+            project_id="my-project-id",
+            secret_server_key="ssk_...",
+            base_url="https://api.stack-auth.com",
+            token_store=None,  # optional TokenStoreInit
+        )
+
+        # Use as an async context manager for automatic cleanup
+        async with AsyncStackServerApp(
+            project_id="my-project-id",
+            secret_server_key="ssk_...",
+        ) as app:
+            # User CRUD
+            user = await app.create_user(
+                primary_email="alice@example.com",
+                display_name="Alice",
+            )
+            fetched = await app.get_user(user.id)
+            users = await app.list_users(limit=10)
+
+            # Team operations
+            team = await app.create_team(
+                display_name="Engineering",
+                creator_user_id=user.id,
+            )
+            await app.add_team_member(team.id, user.id)
     """
 
     def __init__(
@@ -973,7 +1413,14 @@ class AsyncStackServerApp:
     # -- lifecycle -----------------------------------------------------------
 
     async def aclose(self) -> None:
-        """Close the underlying HTTP client."""
+        """Close the underlying HTTP client.
+
+        Args:
+            (none)
+
+        Returns:
+            None.
+        """
         await self._client.aclose()
 
     async def __aenter__(self) -> AsyncStackServerApp:
@@ -987,7 +1434,15 @@ class AsyncStackServerApp:
     async def get_user(self, user_id: str) -> ServerUser | None:
         """Fetch a user by ID.
 
-        Returns ``None`` if the user is not found.
+        Args:
+            user_id: The unique identifier of the user to retrieve.
+
+        Returns:
+            A :class:`ServerUser` if found, or ``None`` if the user does
+            not exist (HTTP 404).
+
+        Raises:
+            StackAuthError: If the API returns an unexpected error.
         """
         try:
             data = await self._client.request("GET", f"/users/{user_id}")
@@ -1008,7 +1463,21 @@ class AsyncStackServerApp:
         include_restricted: Optional[bool] = None,
         include_anonymous: Optional[bool] = None,
     ) -> PaginatedResult[ServerUser]:
-        """List users with optional filtering and pagination."""
+        """List users with optional filtering and pagination.
+
+        Args:
+            cursor: Pagination cursor from a previous response.
+            limit: Maximum number of users to return per page.
+            order_by: Field name to sort by (e.g., ``"created_at"``).
+            desc: If ``True``, sort in descending order.
+            query: Full-text search query to filter users.
+            include_restricted: If ``True``, include restricted users.
+            include_anonymous: If ``True``, include anonymous users.
+
+        Returns:
+            A :class:`PaginatedResult` containing :class:`ServerUser` items
+            and pagination metadata for fetching additional pages.
+        """
         params = _build_params(
             cursor=cursor,
             limit=limit,
@@ -1038,7 +1507,27 @@ class AsyncStackServerApp:
         client_read_only_metadata: Optional[dict[str, Any]] = None,
         server_metadata: Optional[dict[str, Any]] = None,
     ) -> ServerUser:
-        """Create a new user. Only non-None fields are sent."""
+        """Create a new user. Only non-None fields are sent.
+
+        Args:
+            primary_email: The user's primary email address.
+            primary_email_auth_enabled: Whether email-based auth is enabled.
+            password: Initial password for password-based auth.
+            otp_auth_enabled: Whether OTP (one-time password) auth is enabled.
+            display_name: Human-readable display name.
+            primary_email_verified: Whether to mark the email as pre-verified.
+            client_metadata: Arbitrary metadata readable by the client SDK.
+            client_read_only_metadata: Metadata readable but not writable
+                by the client SDK.
+            server_metadata: Metadata only accessible from the server.
+
+        Returns:
+            The newly created :class:`ServerUser`.
+
+        Raises:
+            ValidationError: If the provided fields fail server-side validation.
+            StackAuthError: If the API returns an unexpected error.
+        """
         body = _build_params(
             primary_email=primary_email,
             primary_email_auth_enabled=primary_email_auth_enabled,
@@ -1072,6 +1561,28 @@ class AsyncStackServerApp:
         """Update a user. Only explicitly provided fields are sent.
 
         Pass ``None`` to clear a field. Omit a parameter to leave it unchanged.
+
+        Args:
+            user_id: The unique identifier of the user to update.
+            display_name: New display name, or ``None`` to clear.
+            client_metadata: New client metadata dict, or ``None`` to clear.
+            client_read_only_metadata: New client read-only metadata dict,
+                or ``None`` to clear.
+            server_metadata: New server metadata dict, or ``None`` to clear.
+            primary_email: New primary email, or ``None`` to clear.
+            primary_email_verified: Whether the email is verified.
+            primary_email_auth_enabled: Whether email auth is enabled.
+            password: New password.
+            otp_auth_enabled: Whether OTP auth is enabled.
+            profile_image_url: URL to profile image, or ``None`` to clear.
+            selected_team_id: The user's selected team, or ``None`` to clear.
+
+        Returns:
+            The updated :class:`ServerUser`.
+
+        Raises:
+            ValidationError: If the provided fields fail server-side validation.
+            NotFoundError: If the user does not exist.
         """
         fields = {
             "display_name": display_name,
@@ -1091,14 +1602,30 @@ class AsyncStackServerApp:
         return ServerUser.model_validate(data)
 
     async def delete_user(self, user_id: str) -> None:
-        """Delete a user by ID."""
+        """Delete a user by ID.
+
+        Args:
+            user_id: The unique identifier of the user to delete.
+
+        Returns:
+            None.
+
+        Raises:
+            NotFoundError: If the user does not exist.
+        """
         await self._client.request("DELETE", f"/users/{user_id}")
 
     async def get_user_by_api_key(self, api_key: str) -> ServerUser | None:
         """Look up a user by their API key.
 
         Performs a two-step lookup: first validates the key, then fetches the user.
-        Returns ``None`` if the key is invalid or has no associated user.
+
+        Args:
+            api_key: The API key string to look up.
+
+        Returns:
+            The :class:`ServerUser` associated with the key, or ``None``
+            if the key is invalid or has no associated user.
         """
         try:
             data = await self._client.request(
@@ -1135,7 +1662,13 @@ class AsyncStackServerApp:
         """Get a specific session by ID.
 
         Fetches all sessions for the user and filters by *session_id*.
-        Returns ``None`` if the session is not found.
+
+        Args:
+            session_id: The session to retrieve.
+            user_id: The user who owns the session.
+
+        Returns:
+            The :class:`ActiveSession` if found, or ``None``.
         """
         sessions = await self.list_sessions(user_id)
         return next((s for s in sessions if s.id == session_id), None)
@@ -1146,6 +1679,9 @@ class AsyncStackServerApp:
         Args:
             session_id: The session to revoke.
             user_id: The user who owns the session.
+
+        Returns:
+            None.
         """
         await self._client.request(
             "DELETE",
@@ -1158,7 +1694,15 @@ class AsyncStackServerApp:
     async def get_team(self, team_id: str) -> ServerTeam | None:
         """Fetch a team by ID.
 
-        Returns ``None`` if the team is not found.
+        Args:
+            team_id: The unique identifier of the team to retrieve.
+
+        Returns:
+            A :class:`ServerTeam` if found, or ``None`` if the team does
+            not exist (HTTP 404).
+
+        Raises:
+            StackAuthError: If the API returns an unexpected error.
         """
         try:
             data = await self._client.request("GET", f"/teams/{team_id}")
@@ -1174,6 +1718,13 @@ class AsyncStackServerApp:
         """List teams, optionally filtered by user membership.
 
         This endpoint does not support pagination.
+
+        Args:
+            user_id: If provided, only return teams where this user
+                is a member.
+
+        Returns:
+            A list of :class:`ServerTeam` objects.
         """
         params = _build_params(user_id=user_id)
         data = await self._client.request("GET", "/teams", params=params)
@@ -1189,7 +1740,20 @@ class AsyncStackServerApp:
         profile_image_url: Optional[str] = None,
         creator_user_id: Optional[str] = None,
     ) -> ServerTeam:
-        """Create a new team."""
+        """Create a new team.
+
+        Args:
+            display_name: The display name for the team.
+            profile_image_url: Optional URL for the team's profile image.
+            creator_user_id: If provided, this user will be added as the
+                initial team member and creator.
+
+        Returns:
+            The newly created :class:`ServerTeam`.
+
+        Raises:
+            ValidationError: If the provided fields fail server-side validation.
+        """
         body = _build_params(
             display_name=display_name,
             profile_image_url=profile_image_url,
@@ -1211,6 +1775,21 @@ class AsyncStackServerApp:
         """Update a team. Only explicitly provided fields are sent.
 
         Pass ``None`` to clear a field. Omit a parameter to leave it unchanged.
+
+        Args:
+            team_id: The unique identifier of the team to update.
+            display_name: New display name, or ``None`` to clear.
+            profile_image_url: New profile image URL, or ``None`` to clear.
+            client_metadata: New client metadata dict, or ``None`` to clear.
+            client_read_only_metadata: New client read-only metadata dict,
+                or ``None`` to clear.
+            server_metadata: New server metadata dict, or ``None`` to clear.
+
+        Returns:
+            The updated :class:`ServerTeam`.
+
+        Raises:
+            NotFoundError: If the team does not exist.
         """
         fields = {
             "display_name": display_name,
@@ -1226,14 +1805,30 @@ class AsyncStackServerApp:
         return ServerTeam.model_validate(data)
 
     async def delete_team(self, team_id: str) -> None:
-        """Delete a team by ID."""
+        """Delete a team by ID.
+
+        Args:
+            team_id: The unique identifier of the team to delete.
+
+        Returns:
+            None.
+
+        Raises:
+            NotFoundError: If the team does not exist.
+        """
         await self._client.request("DELETE", f"/teams/{team_id}")
 
     async def get_team_by_api_key(self, api_key: str) -> ServerTeam | None:
         """Look up a team by its API key.
 
         Performs a two-step lookup: first validates the key, then fetches the team.
-        Returns ``None`` if the key is invalid or has no associated team.
+
+        Args:
+            api_key: The API key string to look up.
+
+        Returns:
+            The :class:`ServerTeam` associated with the key, or ``None``
+            if the key is invalid or has no associated team.
         """
         try:
             data = await self._client.request(
@@ -1248,13 +1843,35 @@ class AsyncStackServerApp:
     # -- team membership -----------------------------------------------------
 
     async def add_team_member(self, team_id: str, user_id: str) -> None:
-        """Add a user to a team."""
+        """Add a user to a team.
+
+        Args:
+            team_id: The team to add the user to.
+            user_id: The user to add.
+
+        Returns:
+            None.
+
+        Raises:
+            NotFoundError: If the team or user does not exist.
+        """
         await self._client.request(
             "POST", f"/team-memberships/{team_id}/{user_id}", body={}
         )
 
     async def remove_team_member(self, team_id: str, user_id: str) -> None:
-        """Remove a user from a team."""
+        """Remove a user from a team.
+
+        Args:
+            team_id: The team to remove the user from.
+            user_id: The user to remove.
+
+        Returns:
+            None.
+
+        Raises:
+            NotFoundError: If the membership does not exist.
+        """
         await self._client.request(
             "DELETE", f"/team-memberships/{team_id}/{user_id}"
         )
@@ -1268,7 +1885,16 @@ class AsyncStackServerApp:
         *,
         callback_url: Optional[str] = None,
     ) -> None:
-        """Send an invitation email to join a team."""
+        """Send an invitation email to join a team.
+
+        Args:
+            team_id: The team to invite the user to.
+            email: The recipient's email address.
+            callback_url: Optional URL to redirect after accepting.
+
+        Returns:
+            None.
+        """
         body = _build_params(
             email=email, team_id=team_id, callback_url=callback_url
         )
@@ -1279,7 +1905,14 @@ class AsyncStackServerApp:
     async def list_team_invitations(
         self, team_id: str
     ) -> list[TeamInvitation]:
-        """List pending invitations for a team."""
+        """List pending invitations for a team.
+
+        Args:
+            team_id: The team whose invitations to list.
+
+        Returns:
+            A list of :class:`TeamInvitation` objects.
+        """
         data = await self._client.request(
             "GET", f"/teams/{team_id}/invitations"
         )
@@ -1291,7 +1924,15 @@ class AsyncStackServerApp:
     async def revoke_team_invitation(
         self, team_id: str, invitation_id: str
     ) -> None:
-        """Revoke (delete) a team invitation."""
+        """Revoke (delete) a team invitation.
+
+        Args:
+            team_id: The team that owns the invitation.
+            invitation_id: The invitation to revoke.
+
+        Returns:
+            None.
+        """
         await self._client.request(
             "DELETE", f"/teams/{team_id}/invitations/{invitation_id}"
         )
@@ -1301,7 +1942,14 @@ class AsyncStackServerApp:
     async def list_team_member_profiles(
         self, team_id: str
     ) -> list[TeamMemberProfile]:
-        """List member profiles for a team."""
+        """List member profiles for a team.
+
+        Args:
+            team_id: The team whose member profiles to list.
+
+        Returns:
+            A list of :class:`TeamMemberProfile` objects.
+        """
         data = await self._client.request(
             "GET", "/team-member-profiles", params={"team_id": team_id}
         )
@@ -1316,7 +1964,13 @@ class AsyncStackServerApp:
         """Get a specific team member's profile.
 
         Fetches all member profiles for the team and filters by *user_id*.
-        Returns ``None`` if no profile is found.
+
+        Args:
+            team_id: The team to look up the profile in.
+            user_id: The user whose profile to retrieve.
+
+        Returns:
+            The :class:`TeamMemberProfile` if found, or ``None``.
         """
         profiles = await self.list_team_member_profiles(team_id)
         return next((p for p in profiles if p.user_id == user_id), None)
@@ -1330,7 +1984,16 @@ class AsyncStackServerApp:
         *,
         team_id: Optional[str] = None,
     ) -> None:
-        """Grant a permission to a user."""
+        """Grant a permission to a user.
+
+        Args:
+            user_id: The user to grant the permission to.
+            permission_id: The permission to grant.
+            team_id: If provided, grants at team scope; otherwise project scope.
+
+        Returns:
+            None.
+        """
         body = _build_params(
             team_id=team_id, permission_id=permission_id
         )
@@ -1345,7 +2008,16 @@ class AsyncStackServerApp:
         *,
         team_id: Optional[str] = None,
     ) -> None:
-        """Revoke a permission from a user."""
+        """Revoke a permission from a user.
+
+        Args:
+            user_id: The user to revoke the permission from.
+            permission_id: The permission to revoke.
+            team_id: If provided, revokes at team scope; otherwise project scope.
+
+        Returns:
+            None.
+        """
         params = _build_params(team_id=team_id)
         await self._client.request(
             "DELETE",
@@ -1360,7 +2032,16 @@ class AsyncStackServerApp:
         team_id: Optional[str] = None,
         direct: Optional[bool] = None,
     ) -> list[TeamPermission]:
-        """List permissions for a user."""
+        """List permissions for a user.
+
+        Args:
+            user_id: The user whose permissions to list.
+            team_id: Filter by team scope.
+            direct: If ``True``, only return directly assigned permissions.
+
+        Returns:
+            A list of :class:`TeamPermission` objects.
+        """
         params = _build_params(team_id=team_id, direct=direct)
         data = await self._client.request(
             "GET", f"/users/{user_id}/permissions", params=params
@@ -1377,7 +2058,16 @@ class AsyncStackServerApp:
         *,
         team_id: Optional[str] = None,
     ) -> bool:
-        """Check if a user has a specific permission."""
+        """Check if a user has a specific permission.
+
+        Args:
+            user_id: The user to check.
+            permission_id: The permission to check for.
+            team_id: Check at team scope if provided.
+
+        Returns:
+            ``True`` if the user has the permission, ``False`` otherwise.
+        """
         params = _build_params(
             team_id=team_id, permission_id=permission_id
         )
@@ -1393,7 +2083,16 @@ class AsyncStackServerApp:
         *,
         team_id: Optional[str] = None,
     ) -> TeamPermission | None:
-        """Get a specific permission for a user."""
+        """Get a specific permission for a user.
+
+        Args:
+            user_id: The user to check.
+            permission_id: The permission to look up.
+            team_id: Check at team scope if provided.
+
+        Returns:
+            The :class:`TeamPermission` if found, or ``None``.
+        """
         params = _build_params(
             team_id=team_id, permission_id=permission_id
         )
@@ -1410,7 +2109,14 @@ class AsyncStackServerApp:
     async def list_contact_channels(
         self, user_id: str
     ) -> list[ContactChannel]:
-        """List contact channels for a user."""
+        """List contact channels for a user.
+
+        Args:
+            user_id: The user whose contact channels to list.
+
+        Returns:
+            A list of :class:`ContactChannel` objects.
+        """
         data = await self._client.request(
             "GET", "/contact-channels", params={"user_id": user_id}
         )
@@ -1429,7 +2135,19 @@ class AsyncStackServerApp:
         is_primary: Optional[bool] = None,
         is_verified: Optional[bool] = None,
     ) -> ContactChannel:
-        """Create a new contact channel for a user."""
+        """Create a new contact channel for a user.
+
+        Args:
+            user_id: The user to create the channel for.
+            value: The channel value (e.g., email address).
+            type: The channel type (default: ``"email"``).
+            used_for_auth: Whether this channel is used for authentication.
+            is_primary: Whether this is the primary channel.
+            is_verified: Whether the channel is pre-verified.
+
+        Returns:
+            The created :class:`ContactChannel`.
+        """
         body = _build_params(
             user_id=user_id,
             value=value,
@@ -1449,7 +2167,15 @@ class AsyncStackServerApp:
         *,
         callback_url: Optional[str] = None,
     ) -> None:
-        """Send a verification email for a contact channel."""
+        """Send a verification email for a contact channel.
+
+        Args:
+            contact_channel_id: The channel to send verification for.
+            callback_url: Optional URL to redirect after verification.
+
+        Returns:
+            None.
+        """
         body = _build_params(callback_url=callback_url)
         await self._client.request(
             "POST",
@@ -1458,7 +2184,14 @@ class AsyncStackServerApp:
         )
 
     async def verify_contact_channel(self, code: str) -> None:
-        """Verify a contact channel with a verification code."""
+        """Verify a contact channel with a verification code.
+
+        Args:
+            code: The verification code received via email.
+
+        Returns:
+            None.
+        """
         await self._client.request(
             "POST", "/contact-channels/verify", body={"code": code}
         )
@@ -1476,7 +2209,17 @@ class AsyncStackServerApp:
     ) -> UserApiKeyFirstView:
         """Create a user API key.
 
-        Returns the key including the secret (only available at creation time).
+        Args:
+            user_id: The user to create the key for.
+            description: Human-readable description of the key's purpose.
+            expires_at_millis: Optional expiration timestamp in milliseconds
+                since epoch.
+            scope: Optional scope restriction for the key.
+            team_id: Optional team to associate the key with.
+
+        Returns:
+            A :class:`UserApiKeyFirstView` containing the key including the
+            secret (only available at creation time).
         """
         body = _build_params(
             description=description,
@@ -1490,7 +2233,14 @@ class AsyncStackServerApp:
         return UserApiKeyFirstView.model_validate(data)
 
     async def list_user_api_keys(self, user_id: str) -> list[UserApiKey]:
-        """List API keys for a user."""
+        """List API keys for a user.
+
+        Args:
+            user_id: The user whose API keys to list.
+
+        Returns:
+            A list of :class:`UserApiKey` objects (secrets are not included).
+        """
         data = await self._client.request(
             "GET", f"/users/{user_id}/api-keys"
         )
@@ -1500,7 +2250,14 @@ class AsyncStackServerApp:
         ]
 
     async def revoke_user_api_key(self, api_key_id: str) -> None:
-        """Revoke (delete) a user API key."""
+        """Revoke (delete) a user API key.
+
+        Args:
+            api_key_id: The unique identifier of the API key to revoke.
+
+        Returns:
+            None.
+        """
         await self._client.request("DELETE", f"/api-keys/{api_key_id}")
 
     async def create_team_api_key(
@@ -1513,7 +2270,16 @@ class AsyncStackServerApp:
     ) -> TeamApiKeyFirstView:
         """Create a team API key.
 
-        Returns the key including the secret (only available at creation time).
+        Args:
+            team_id: The team to create the key for.
+            description: Human-readable description of the key's purpose.
+            expires_at_millis: Optional expiration timestamp in milliseconds
+                since epoch.
+            scope: Optional scope restriction for the key.
+
+        Returns:
+            A :class:`TeamApiKeyFirstView` containing the key including the
+            secret (only available at creation time).
         """
         body = _build_params(
             description=description,
@@ -1526,7 +2292,14 @@ class AsyncStackServerApp:
         return TeamApiKeyFirstView.model_validate(data)
 
     async def list_team_api_keys(self, team_id: str) -> list[TeamApiKey]:
-        """List API keys for a team."""
+        """List API keys for a team.
+
+        Args:
+            team_id: The team whose API keys to list.
+
+        Returns:
+            A list of :class:`TeamApiKey` objects (secrets are not included).
+        """
         data = await self._client.request(
             "GET", f"/teams/{team_id}/api-keys"
         )
@@ -1536,14 +2309,25 @@ class AsyncStackServerApp:
         ]
 
     async def revoke_team_api_key(self, api_key_id: str) -> None:
-        """Revoke (delete) a team API key."""
+        """Revoke (delete) a team API key.
+
+        Args:
+            api_key_id: The unique identifier of the API key to revoke.
+
+        Returns:
+            None.
+        """
         await self._client.request("DELETE", f"/api-keys/{api_key_id}")
 
     async def check_api_key(self, api_key: str) -> dict[str, Any] | None:
         """Validate an API key and return associated user/team info.
 
-        Returns a dict with ``user_id`` and/or ``team_id``, or ``None``
-        if the key is invalid.
+        Args:
+            api_key: The API key string to validate.
+
+        Returns:
+            A dict with ``user_id`` and/or ``team_id`` if the key is valid,
+            or ``None`` if the key is invalid.
         """
         try:
             data = await self._client.request(
@@ -1567,7 +2351,19 @@ class AsyncStackServerApp:
         allow_sign_in: bool,
         allow_connected_accounts: bool,
     ) -> OAuthProvider:
-        """Link an OAuth provider to a user."""
+        """Link an OAuth provider to a user.
+
+        Args:
+            user_id: The user to link the provider to.
+            account_id: The external account ID from the OAuth provider.
+            provider_config_id: The provider configuration ID in Stack Auth.
+            email: The email address from the OAuth provider.
+            allow_sign_in: Whether this provider can be used for sign-in.
+            allow_connected_accounts: Whether this counts as a connected account.
+
+        Returns:
+            The created :class:`OAuthProvider` link.
+        """
         body = _build_params(
             account_id=account_id,
             provider_config_id=provider_config_id,
@@ -1583,7 +2379,14 @@ class AsyncStackServerApp:
     async def list_oauth_providers(
         self, user_id: str
     ) -> list[OAuthProvider]:
-        """List OAuth providers linked to a user."""
+        """List OAuth providers linked to a user.
+
+        Args:
+            user_id: The user whose OAuth providers to list.
+
+        Returns:
+            A list of :class:`OAuthProvider` objects.
+        """
         data = await self._client.request(
             "GET", f"/users/{user_id}/oauth-providers"
         )
@@ -1598,7 +2401,13 @@ class AsyncStackServerApp:
         """Get a specific OAuth provider for a user.
 
         Fetches all providers and filters by *provider_id*.
-        Returns ``None`` if not found.
+
+        Args:
+            user_id: The user who owns the provider link.
+            provider_id: The provider ID to look up.
+
+        Returns:
+            The :class:`OAuthProvider` if found, or ``None``.
         """
         providers = await self.list_oauth_providers(user_id)
         return next((p for p in providers if p.id == provider_id), None)
@@ -1609,6 +2418,12 @@ class AsyncStackServerApp:
         """List connected accounts for a user.
 
         This is an alias for :meth:`list_oauth_providers`.
+
+        Args:
+            user_id: The user whose connected accounts to list.
+
+        Returns:
+            A list of :class:`OAuthProvider` objects.
         """
         return await self.list_oauth_providers(user_id)
 
@@ -1627,6 +2442,19 @@ class AsyncStackServerApp:
 
         Exactly one of *user_id*, *team_id*, or *custom_customer_id* must be
         provided.
+
+        Args:
+            user_id: Identify the customer by user ID.
+            team_id: Identify the customer by team ID.
+            custom_customer_id: Identify the customer by custom ID.
+            cursor: Pagination cursor from a previous response.
+            limit: Maximum number of products to return per page.
+
+        Returns:
+            A :class:`PaginatedResult` containing :class:`Product` items.
+
+        Raises:
+            ValueError: If not exactly one customer identifier is provided.
         """
         ctype, cid, _ = _resolve_customer_path(user_id, team_id, custom_customer_id)
         params = _build_params(cursor=cursor, limit=limit)
@@ -1651,6 +2479,20 @@ class AsyncStackServerApp:
 
         Exactly one of *user_id*, *team_id*, or *custom_customer_id* must be
         provided.
+
+        Args:
+            item_id: The unique identifier of the item.
+            user_id: Identify the customer by user ID.
+            team_id: Identify the customer by team ID.
+            custom_customer_id: Identify the customer by custom ID.
+
+        Returns:
+            An :class:`AsyncServerItem` wrapping the :class:`Item` data and
+            providing ``set_quantity`` and ``increment_quantity`` coroutines.
+
+        Raises:
+            ValueError: If not exactly one customer identifier is provided.
+            NotFoundError: If the item does not exist.
         """
         ctype, cid, field_name = _resolve_customer_path(
             user_id, team_id, custom_customer_id
@@ -1683,6 +2525,20 @@ class AsyncStackServerApp:
         Provide either *product_id* (existing product) or *product* (inline
         product definition). Exactly one of *user_id*, *team_id*, or
         *custom_customer_id* must be provided.
+
+        Args:
+            product_id: ID of an existing product to grant.
+            product: Inline product definition dict.
+            user_id: Identify the customer by user ID.
+            team_id: Identify the customer by team ID.
+            custom_customer_id: Identify the customer by custom ID.
+            quantity: Number of units to grant (for quantity-based items).
+
+        Returns:
+            None.
+
+        Raises:
+            ValueError: If not exactly one customer identifier is provided.
         """
         ctype, cid, _ = _resolve_customer_path(user_id, team_id, custom_customer_id)
         body = _build_params(
@@ -1706,6 +2562,18 @@ class AsyncStackServerApp:
 
         Exactly one of *user_id*, *team_id*, or *custom_customer_id* must be
         provided.
+
+        Args:
+            product_id: The product/subscription to cancel.
+            user_id: Identify the customer by user ID.
+            team_id: Identify the customer by team ID.
+            custom_customer_id: Identify the customer by custom ID.
+
+        Returns:
+            None.
+
+        Raises:
+            ValueError: If not exactly one customer identifier is provided.
         """
         _, cid, field_name = _resolve_customer_path(
             user_id, team_id, custom_customer_id
@@ -1730,6 +2598,9 @@ class AsyncStackServerApp:
             subject: Email subject line.
             html: HTML body content.
             text: Plain-text body content.
+
+        Returns:
+            None.
         """
         body: dict[str, Any] = {"to": to, "subject": subject}
         if html is not None:
@@ -1739,7 +2610,14 @@ class AsyncStackServerApp:
         await self._client.request("POST", "/emails", body=body)
 
     async def get_email_delivery_stats(self) -> EmailDeliveryInfo:
-        """Get email delivery statistics."""
+        """Get email delivery statistics.
+
+        Args:
+            (none)
+
+        Returns:
+            An :class:`EmailDeliveryInfo` with delivery counts and statuses.
+        """
         data = await self._client.request("GET", "/emails/delivery-stats")
         return EmailDeliveryInfo.model_validate(data)
 
@@ -1751,5 +2629,12 @@ class AsyncStackServerApp:
         The returned :class:`AsyncDataVaultStore` object provides async
         ``get``, ``set``, ``delete``, and ``list_keys`` methods for
         key-value operations within the store.
+
+        Args:
+            store_id: The unique identifier of the data vault store.
+
+        Returns:
+            An :class:`AsyncDataVaultStore` for performing async key-value
+            operations.
         """
         return AsyncDataVaultStore(store_id, _client=self._client)
