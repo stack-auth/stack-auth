@@ -335,6 +335,78 @@ class StackServerApp:
             return None
         return self.get_team(data["team_id"])
 
+    # -- team membership -----------------------------------------------------
+
+    def add_team_member(self, team_id: str, user_id: str) -> None:
+        """Add a user to a team."""
+        self._client.request(
+            "POST", f"/team-memberships/{team_id}/{user_id}", body={}
+        )
+
+    def remove_team_member(self, team_id: str, user_id: str) -> None:
+        """Remove a user from a team."""
+        self._client.request(
+            "DELETE", f"/team-memberships/{team_id}/{user_id}"
+        )
+
+    # -- team invitations ----------------------------------------------------
+
+    def send_team_invitation(
+        self,
+        team_id: str,
+        email: str,
+        *,
+        callback_url: Optional[str] = None,
+    ) -> None:
+        """Send an invitation email to join a team."""
+        body = _build_params(
+            email=email, team_id=team_id, callback_url=callback_url
+        )
+        self._client.request("POST", "/team-invitations/send-code", body=body)
+
+    def list_team_invitations(self, team_id: str) -> list[TeamInvitation]:
+        """List pending invitations for a team."""
+        data = self._client.request(
+            "GET", f"/teams/{team_id}/invitations"
+        )
+        return [
+            TeamInvitation.model_validate(item)
+            for item in (data or {}).get("items", [])
+        ]
+
+    def revoke_team_invitation(
+        self, team_id: str, invitation_id: str
+    ) -> None:
+        """Revoke (delete) a team invitation."""
+        self._client.request(
+            "DELETE", f"/teams/{team_id}/invitations/{invitation_id}"
+        )
+
+    # -- team member profiles ------------------------------------------------
+
+    def list_team_member_profiles(
+        self, team_id: str
+    ) -> list[TeamMemberProfile]:
+        """List member profiles for a team."""
+        data = self._client.request(
+            "GET", "/team-member-profiles", params={"team_id": team_id}
+        )
+        return [
+            TeamMemberProfile.model_validate(item)
+            for item in (data or {}).get("items", [])
+        ]
+
+    def get_team_member_profile(
+        self, team_id: str, user_id: str
+    ) -> TeamMemberProfile | None:
+        """Get a specific team member's profile.
+
+        Fetches all member profiles for the team and filters by *user_id*.
+        Returns ``None`` if no profile is found.
+        """
+        profiles = self.list_team_member_profiles(team_id)
+        return next((p for p in profiles if p.user_id == user_id), None)
+
 
 # ---------------------------------------------------------------------------
 # AsyncStackServerApp (async)
@@ -642,3 +714,79 @@ class AsyncStackServerApp:
         if data is None or "team_id" not in data:
             return None
         return await self.get_team(data["team_id"])
+
+    # -- team membership -----------------------------------------------------
+
+    async def add_team_member(self, team_id: str, user_id: str) -> None:
+        """Add a user to a team."""
+        await self._client.request(
+            "POST", f"/team-memberships/{team_id}/{user_id}", body={}
+        )
+
+    async def remove_team_member(self, team_id: str, user_id: str) -> None:
+        """Remove a user from a team."""
+        await self._client.request(
+            "DELETE", f"/team-memberships/{team_id}/{user_id}"
+        )
+
+    # -- team invitations ----------------------------------------------------
+
+    async def send_team_invitation(
+        self,
+        team_id: str,
+        email: str,
+        *,
+        callback_url: Optional[str] = None,
+    ) -> None:
+        """Send an invitation email to join a team."""
+        body = _build_params(
+            email=email, team_id=team_id, callback_url=callback_url
+        )
+        await self._client.request(
+            "POST", "/team-invitations/send-code", body=body
+        )
+
+    async def list_team_invitations(
+        self, team_id: str
+    ) -> list[TeamInvitation]:
+        """List pending invitations for a team."""
+        data = await self._client.request(
+            "GET", f"/teams/{team_id}/invitations"
+        )
+        return [
+            TeamInvitation.model_validate(item)
+            for item in (data or {}).get("items", [])
+        ]
+
+    async def revoke_team_invitation(
+        self, team_id: str, invitation_id: str
+    ) -> None:
+        """Revoke (delete) a team invitation."""
+        await self._client.request(
+            "DELETE", f"/teams/{team_id}/invitations/{invitation_id}"
+        )
+
+    # -- team member profiles ------------------------------------------------
+
+    async def list_team_member_profiles(
+        self, team_id: str
+    ) -> list[TeamMemberProfile]:
+        """List member profiles for a team."""
+        data = await self._client.request(
+            "GET", "/team-member-profiles", params={"team_id": team_id}
+        )
+        return [
+            TeamMemberProfile.model_validate(item)
+            for item in (data or {}).get("items", [])
+        ]
+
+    async def get_team_member_profile(
+        self, team_id: str, user_id: str
+    ) -> TeamMemberProfile | None:
+        """Get a specific team member's profile.
+
+        Fetches all member profiles for the team and filters by *user_id*.
+        Returns ``None`` if no profile is found.
+        """
+        profiles = await self.list_team_member_profiles(team_id)
+        return next((p for p in profiles if p.user_id == user_id), None)

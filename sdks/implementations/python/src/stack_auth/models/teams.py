@@ -37,6 +37,7 @@ class ServerTeam(Team):
 class TeamMemberProfile(StackAuthModel):
     """A user's profile within a specific team."""
 
+    user_id: str = Field(alias="userId")
     display_name: str | None = Field(None, alias="displayName")
     profile_image_url: str | None = Field(None, alias="profileImageUrl")
 
