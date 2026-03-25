@@ -29,9 +29,11 @@ from stack_auth.errors import (
 from stack_auth.models import (
     ActiveSession,
     ApiKey,
+    AsyncDataVaultStore,
     AsyncServerItem,
     BaseUser,
     ContactChannel,
+    DataVaultStore,
     EmailDeliveryInfo,
     GeoInfo,
     Item,
@@ -82,6 +84,8 @@ __all__ = [
     "sync_authenticate_request",
     "async_authenticate_request",
     # Models
+    "DataVaultStore",
+    "AsyncDataVaultStore",
     "BaseUser",
     "ServerUser",
     "Team",

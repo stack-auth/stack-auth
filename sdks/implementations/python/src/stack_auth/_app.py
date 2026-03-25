@@ -17,6 +17,7 @@ from stack_auth._constants import DEFAULT_BASE_URL
 from stack_auth._pagination import PaginatedResult, _PaginationMeta
 from stack_auth._token_store import TokenStore, TokenStoreInit, resolve_token_store
 from stack_auth.errors import ApiKeyError, NotFoundError
+from stack_auth.models.data_vault import AsyncDataVaultStore, DataVaultStore
 from stack_auth.models.email import EmailDeliveryInfo
 from stack_auth.models.payments import AsyncServerItem, Item, Product, ServerItem
 from stack_auth.models.api_keys import (
@@ -925,6 +926,17 @@ class StackServerApp:
         data = self._client.request("GET", "/emails/delivery-stats")
         return EmailDeliveryInfo.model_validate(data)
 
+    # -- data vault ----------------------------------------------------------
+
+    def get_data_vault_store(self, store_id: str) -> DataVaultStore:
+        """Get a data vault store by ID.
+
+        The returned :class:`DataVaultStore` object provides ``get``,
+        ``set``, ``delete``, and ``list_keys`` methods for key-value
+        operations within the store.
+        """
+        return DataVaultStore(store_id, _client=self._client)
+
 
 # ---------------------------------------------------------------------------
 # AsyncStackServerApp (async)
@@ -1730,3 +1742,14 @@ class AsyncStackServerApp:
         """Get email delivery statistics."""
         data = await self._client.request("GET", "/emails/delivery-stats")
         return EmailDeliveryInfo.model_validate(data)
+
+    # -- data vault ----------------------------------------------------------
+
+    def get_data_vault_store(self, store_id: str) -> AsyncDataVaultStore:
+        """Get a data vault store by ID.
+
+        The returned :class:`AsyncDataVaultStore` object provides async
+        ``get``, ``set``, ``delete``, and ``list_keys`` methods for
+        key-value operations within the store.
+        """
+        return AsyncDataVaultStore(store_id, _client=self._client)
