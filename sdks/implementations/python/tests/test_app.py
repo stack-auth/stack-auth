@@ -465,3 +465,204 @@ class TestAsyncGetUserByApiKey:
         user = await app.get_user_by_api_key("invalid")
         assert user is None
         await app.aclose()
+
+
+# ---------------------------------------------------------------------------
+# Session test data
+# ---------------------------------------------------------------------------
+
+SESSION_JSON = {
+    "id": "sess-1",
+    "userId": "user-123",
+    "createdAtMillis": 1700000000000,
+    "isImpersonation": False,
+    "lastUsedAtMillis": 1700001000000,
+    "isCurrentSession": False,
+    "geoInfo": {
+        "city": "San Francisco",
+        "region": "CA",
+        "country": "US",
+        "countryName": "United States",
+        "latitude": 37.7749,
+        "longitude": -122.4194,
+    },
+}
+
+SESSION_JSON_2 = {
+    "id": "sess-2",
+    "userId": "user-123",
+    "createdAtMillis": 1700002000000,
+    "isImpersonation": False,
+    "lastUsedAtMillis": None,
+    "isCurrentSession": True,
+    "geoInfo": None,
+}
+
+SESSIONS_LIST_JSON = {"items": [SESSION_JSON, SESSION_JSON_2]}
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - list_sessions
+# ---------------------------------------------------------------------------
+
+
+class TestListSessions:
+    @respx.mock
+    def test_list_sessions(self) -> None:
+        respx.get(f"{API_PREFIX}/auth/sessions").mock(
+            return_value=httpx.Response(200, json=SESSIONS_LIST_JSON)
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        sessions = app.list_sessions("user-123")
+        assert len(sessions) == 2
+        assert sessions[0].id == "sess-1"
+        assert sessions[0].user_id == "user-123"
+        assert sessions[0].geo_info is not None
+        assert sessions[0].geo_info.city == "San Francisco"
+        assert sessions[1].id == "sess-2"
+        assert sessions[1].is_current_session is True
+
+    @respx.mock
+    def test_list_sessions_sends_user_id_param(self) -> None:
+        route = respx.get(f"{API_PREFIX}/auth/sessions").mock(
+            return_value=httpx.Response(200, json={"items": []})
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        sessions = app.list_sessions("user-456")
+        assert sessions == []
+        request = route.calls[0].request
+        assert request.url.params["user_id"] == "user-456"
+
+    @respx.mock
+    def test_list_sessions_empty(self) -> None:
+        respx.get(f"{API_PREFIX}/auth/sessions").mock(
+            return_value=httpx.Response(200, json={"items": []})
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        sessions = app.list_sessions("user-123")
+        assert sessions == []
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - get_session
+# ---------------------------------------------------------------------------
+
+
+class TestGetSession:
+    @respx.mock
+    def test_get_session_found(self) -> None:
+        respx.get(f"{API_PREFIX}/auth/sessions").mock(
+            return_value=httpx.Response(200, json=SESSIONS_LIST_JSON)
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        session = app.get_session("sess-1", user_id="user-123")
+        assert session is not None
+        assert session.id == "sess-1"
+
+    @respx.mock
+    def test_get_session_not_found(self) -> None:
+        respx.get(f"{API_PREFIX}/auth/sessions").mock(
+            return_value=httpx.Response(200, json=SESSIONS_LIST_JSON)
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        session = app.get_session("nonexistent", user_id="user-123")
+        assert session is None
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - revoke_session
+# ---------------------------------------------------------------------------
+
+
+class TestRevokeSession:
+    @respx.mock
+    def test_revoke_session(self) -> None:
+        route = respx.delete(f"{API_PREFIX}/auth/sessions/sess-1").mock(
+            return_value=httpx.Response(200)
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        result = app.revoke_session("sess-1", user_id="user-123")
+        assert result is None
+        request = route.calls[0].request
+        assert request.url.params["user_id"] == "user-123"
+
+
+# ---------------------------------------------------------------------------
+# AsyncStackServerApp - list_sessions
+# ---------------------------------------------------------------------------
+
+
+class TestAsyncListSessions:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_list_sessions(self) -> None:
+        respx.get(f"{API_PREFIX}/auth/sessions").mock(
+            return_value=httpx.Response(200, json=SESSIONS_LIST_JSON)
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        sessions = await app.list_sessions("user-123")
+        assert len(sessions) == 2
+        assert sessions[0].id == "sess-1"
+        assert sessions[1].id == "sess-2"
+        await app.aclose()
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_list_sessions_empty(self) -> None:
+        respx.get(f"{API_PREFIX}/auth/sessions").mock(
+            return_value=httpx.Response(200, json={"items": []})
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        sessions = await app.list_sessions("user-123")
+        assert sessions == []
+        await app.aclose()
+
+
+# ---------------------------------------------------------------------------
+# AsyncStackServerApp - get_session
+# ---------------------------------------------------------------------------
+
+
+class TestAsyncGetSession:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_get_session_found(self) -> None:
+        respx.get(f"{API_PREFIX}/auth/sessions").mock(
+            return_value=httpx.Response(200, json=SESSIONS_LIST_JSON)
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        session = await app.get_session("sess-1", user_id="user-123")
+        assert session is not None
+        assert session.id == "sess-1"
+        await app.aclose()
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_get_session_not_found(self) -> None:
+        respx.get(f"{API_PREFIX}/auth/sessions").mock(
+            return_value=httpx.Response(200, json=SESSIONS_LIST_JSON)
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        session = await app.get_session("nonexistent", user_id="user-123")
+        assert session is None
+        await app.aclose()
+
+
+# ---------------------------------------------------------------------------
+# AsyncStackServerApp - revoke_session
+# ---------------------------------------------------------------------------
+
+
+class TestAsyncRevokeSession:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_revoke_session(self) -> None:
+        route = respx.delete(f"{API_PREFIX}/auth/sessions/sess-1").mock(
+            return_value=httpx.Response(200)
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        result = await app.revoke_session("sess-1", user_id="user-123")
+        assert result is None
+        request = route.calls[0].request
+        assert request.url.params["user_id"] == "user-123"
+        await app.aclose()
