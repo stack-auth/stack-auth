@@ -1321,3 +1321,266 @@ class TestAsyncGetTeamMemberProfile:
         profile = await app.get_team_member_profile("team-1", "nonexistent")
         assert profile is None
         await app.aclose()
+
+
+# ---------------------------------------------------------------------------
+# Permission test data
+# ---------------------------------------------------------------------------
+
+PERMISSION_JSON = {"id": "read"}
+PERMISSION_JSON_2 = {"id": "write"}
+PERMISSIONS_LIST_JSON = {"items": [PERMISSION_JSON, PERMISSION_JSON_2]}
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - grant_permission
+# ---------------------------------------------------------------------------
+
+
+class TestGrantPermission:
+    @respx.mock
+    def test_grant_permission_with_team_id(self) -> None:
+        route = respx.post(
+            f"{API_PREFIX}/users/user-1/permissions"
+        ).mock(return_value=httpx.Response(200))
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        result = app.grant_permission("user-1", "read", team_id="team-1")
+        assert result is None
+        import json
+
+        body = json.loads(route.calls[0].request.content)
+        assert body["permission_id"] == "read"
+        assert body["team_id"] == "team-1"
+
+    @respx.mock
+    def test_grant_permission_project_level(self) -> None:
+        route = respx.post(
+            f"{API_PREFIX}/users/user-1/permissions"
+        ).mock(return_value=httpx.Response(200))
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        app.grant_permission("user-1", "admin")
+        import json
+
+        body = json.loads(route.calls[0].request.content)
+        assert body["permission_id"] == "admin"
+        assert "team_id" not in body
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - revoke_permission
+# ---------------------------------------------------------------------------
+
+
+class TestRevokePermission:
+    @respx.mock
+    def test_revoke_permission_with_team_id(self) -> None:
+        route = respx.delete(
+            f"{API_PREFIX}/users/user-1/permissions/read"
+        ).mock(return_value=httpx.Response(200))
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        result = app.revoke_permission("user-1", "read", team_id="team-1")
+        assert result is None
+        request = route.calls[0].request
+        assert request.url.params["team_id"] == "team-1"
+
+    @respx.mock
+    def test_revoke_permission_project_level(self) -> None:
+        route = respx.delete(
+            f"{API_PREFIX}/users/user-1/permissions/admin"
+        ).mock(return_value=httpx.Response(200))
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        app.revoke_permission("user-1", "admin")
+        request = route.calls[0].request
+        assert "team_id" not in dict(request.url.params)
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - list_permissions
+# ---------------------------------------------------------------------------
+
+
+class TestListPermissions:
+    @respx.mock
+    def test_list_permissions_with_team_id(self) -> None:
+        route = respx.get(
+            f"{API_PREFIX}/users/user-1/permissions"
+        ).mock(return_value=httpx.Response(200, json=PERMISSIONS_LIST_JSON))
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        perms = app.list_permissions("user-1", team_id="team-1")
+        assert len(perms) == 2
+        assert perms[0].id == "read"
+        assert perms[1].id == "write"
+        request = route.calls[0].request
+        assert request.url.params["team_id"] == "team-1"
+
+    @respx.mock
+    def test_list_permissions_with_direct(self) -> None:
+        route = respx.get(
+            f"{API_PREFIX}/users/user-1/permissions"
+        ).mock(
+            return_value=httpx.Response(
+                200, json={"items": [PERMISSION_JSON]}
+            )
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        perms = app.list_permissions(
+            "user-1", team_id="team-1", direct=True
+        )
+        assert len(perms) == 1
+        request = route.calls[0].request
+        assert request.url.params["direct"] == "true"
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - has_permission
+# ---------------------------------------------------------------------------
+
+
+class TestHasPermission:
+    @respx.mock
+    def test_has_permission_true(self) -> None:
+        respx.get(f"{API_PREFIX}/users/user-1/permissions").mock(
+            return_value=httpx.Response(
+                200, json={"items": [PERMISSION_JSON]}
+            )
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        assert app.has_permission("user-1", "read", team_id="team-1") is True
+
+    @respx.mock
+    def test_has_permission_false(self) -> None:
+        respx.get(f"{API_PREFIX}/users/user-1/permissions").mock(
+            return_value=httpx.Response(200, json={"items": []})
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        assert (
+            app.has_permission("user-1", "read", team_id="team-1") is False
+        )
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - get_permission
+# ---------------------------------------------------------------------------
+
+
+class TestGetPermission:
+    @respx.mock
+    def test_get_permission_found(self) -> None:
+        respx.get(f"{API_PREFIX}/users/user-1/permissions").mock(
+            return_value=httpx.Response(
+                200, json={"items": [PERMISSION_JSON]}
+            )
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        perm = app.get_permission("user-1", "read", team_id="team-1")
+        assert perm is not None
+        assert perm.id == "read"
+
+    @respx.mock
+    def test_get_permission_not_found(self) -> None:
+        respx.get(f"{API_PREFIX}/users/user-1/permissions").mock(
+            return_value=httpx.Response(200, json={"items": []})
+        )
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        perm = app.get_permission("user-1", "read", team_id="team-1")
+        assert perm is None
+
+
+# ---------------------------------------------------------------------------
+# AsyncStackServerApp - Permissions
+# ---------------------------------------------------------------------------
+
+
+class TestAsyncGrantPermission:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_grant_permission(self) -> None:
+        route = respx.post(
+            f"{API_PREFIX}/users/user-1/permissions"
+        ).mock(return_value=httpx.Response(200))
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        result = await app.grant_permission(
+            "user-1", "read", team_id="team-1"
+        )
+        assert result is None
+        import json
+
+        body = json.loads(route.calls[0].request.content)
+        assert body["permission_id"] == "read"
+        assert body["team_id"] == "team-1"
+        await app.aclose()
+
+
+class TestAsyncRevokePermission:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_revoke_permission(self) -> None:
+        route = respx.delete(
+            f"{API_PREFIX}/users/user-1/permissions/read"
+        ).mock(return_value=httpx.Response(200))
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        result = await app.revoke_permission(
+            "user-1", "read", team_id="team-1"
+        )
+        assert result is None
+        request = route.calls[0].request
+        assert request.url.params["team_id"] == "team-1"
+        await app.aclose()
+
+
+class TestAsyncListPermissions:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_list_permissions(self) -> None:
+        respx.get(f"{API_PREFIX}/users/user-1/permissions").mock(
+            return_value=httpx.Response(200, json=PERMISSIONS_LIST_JSON)
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        perms = await app.list_permissions("user-1", team_id="team-1")
+        assert len(perms) == 2
+        assert perms[0].id == "read"
+        await app.aclose()
+
+
+class TestAsyncHasPermission:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_has_permission(self) -> None:
+        respx.get(f"{API_PREFIX}/users/user-1/permissions").mock(
+            return_value=httpx.Response(
+                200, json={"items": [PERMISSION_JSON]}
+            )
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        result = await app.has_permission(
+            "user-1", "read", team_id="team-1"
+        )
+        assert result is True
+        await app.aclose()
+
+
+class TestAsyncGetPermission:
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_get_permission_found(self) -> None:
+        respx.get(f"{API_PREFIX}/users/user-1/permissions").mock(
+            return_value=httpx.Response(
+                200, json={"items": [PERMISSION_JSON]}
+            )
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        perm = await app.get_permission("user-1", "read", team_id="team-1")
+        assert perm is not None
+        assert perm.id == "read"
+        await app.aclose()
+
+    @respx.mock
+    @pytest.mark.asyncio
+    async def test_get_permission_not_found(self) -> None:
+        respx.get(f"{API_PREFIX}/users/user-1/permissions").mock(
+            return_value=httpx.Response(200, json={"items": []})
+        )
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        perm = await app.get_permission("user-1", "read", team_id="team-1")
+        assert perm is None
+        await app.aclose()
