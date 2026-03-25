@@ -1,5 +1,6 @@
 """Stack Auth Python SDK."""
 
+from stack_auth._app import AsyncStackServerApp, StackServerApp
 from stack_auth._auth import (
     AuthState,
     TokenPartialUser,
@@ -51,12 +52,10 @@ from stack_auth.models import (
     UserApiKeyFirstView,
 )
 
-# NOTE: SyncAPIClient and AsyncAPIClient are intentionally NOT exported here.
-# They are internal transport classes in _client.py.
-# Phase 3 will add the public StackServerApp and AsyncStackServerApp facades.
-
 __all__ = [
     "__version__",
+    "StackServerApp",
+    "AsyncStackServerApp",
     "PaginatedResult",
     # Errors
     "StackAuthError",
