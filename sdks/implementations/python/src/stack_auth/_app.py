@@ -17,6 +17,7 @@ from stack_auth._constants import DEFAULT_BASE_URL
 from stack_auth._pagination import PaginatedResult, _PaginationMeta
 from stack_auth._token_store import TokenStore, TokenStoreInit, resolve_token_store
 from stack_auth.errors import ApiKeyError, NotFoundError
+from stack_auth.models.contact_channels import ContactChannel
 from stack_auth.models.permissions import TeamPermission
 from stack_auth.models.sessions import ActiveSession
 from stack_auth.models.teams import ServerTeam, TeamInvitation, TeamMemberProfile
@@ -531,6 +532,90 @@ class StackServerApp:
             return None
         return TeamPermission.model_validate(items[0])
 
+    # -- contact channels ----------------------------------------------------
+
+    def list_contact_channels(self, user_id: str) -> list[ContactChannel]:
+        """List contact channels for a user.
+
+        Args:
+            user_id: The user whose contact channels to list.
+
+        Returns:
+            A list of :class:`ContactChannel` objects.
+        """
+        data = self._client.request(
+            "GET", "/contact-channels", params={"user_id": user_id}
+        )
+        return [
+            ContactChannel.model_validate(item)
+            for item in (data or {}).get("items", [])
+        ]
+
+    def create_contact_channel(
+        self,
+        user_id: str,
+        *,
+        value: str,
+        type: str = "email",
+        used_for_auth: bool,
+        is_primary: Optional[bool] = None,
+        is_verified: Optional[bool] = None,
+    ) -> ContactChannel:
+        """Create a new contact channel for a user.
+
+        Args:
+            user_id: The user to create the channel for.
+            value: The channel value (e.g., email address).
+            type: The channel type (default: ``"email"``).
+            used_for_auth: Whether this channel is used for authentication.
+            is_primary: Whether this is the primary channel.
+            is_verified: Whether the channel is pre-verified.
+
+        Returns:
+            The created :class:`ContactChannel`.
+        """
+        body = _build_params(
+            user_id=user_id,
+            value=value,
+            type=type,
+            used_for_auth=used_for_auth,
+            is_primary=is_primary,
+            is_verified=is_verified,
+        )
+        data = self._client.request(
+            "POST", "/contact-channels", body=body
+        )
+        return ContactChannel.model_validate(data)
+
+    def send_verification_code(
+        self,
+        contact_channel_id: str,
+        *,
+        callback_url: Optional[str] = None,
+    ) -> None:
+        """Send a verification email for a contact channel.
+
+        Args:
+            contact_channel_id: The channel to send verification for.
+            callback_url: Optional URL to redirect after verification.
+        """
+        body = _build_params(callback_url=callback_url)
+        self._client.request(
+            "POST",
+            f"/contact-channels/{contact_channel_id}/send-verification-email",
+            body=body,
+        )
+
+    def verify_contact_channel(self, code: str) -> None:
+        """Verify a contact channel with a verification code.
+
+        Args:
+            code: The verification code received via email.
+        """
+        self._client.request(
+            "POST", "/contact-channels/verify", body={"code": code}
+        )
+
 
 # ---------------------------------------------------------------------------
 # AsyncStackServerApp (async)
@@ -998,3 +1083,61 @@ class AsyncStackServerApp:
         if not items:
             return None
         return TeamPermission.model_validate(items[0])
+
+    # -- contact channels ----------------------------------------------------
+
+    async def list_contact_channels(
+        self, user_id: str
+    ) -> list[ContactChannel]:
+        """List contact channels for a user."""
+        data = await self._client.request(
+            "GET", "/contact-channels", params={"user_id": user_id}
+        )
+        return [
+            ContactChannel.model_validate(item)
+            for item in (data or {}).get("items", [])
+        ]
+
+    async def create_contact_channel(
+        self,
+        user_id: str,
+        *,
+        value: str,
+        type: str = "email",
+        used_for_auth: bool,
+        is_primary: Optional[bool] = None,
+        is_verified: Optional[bool] = None,
+    ) -> ContactChannel:
+        """Create a new contact channel for a user."""
+        body = _build_params(
+            user_id=user_id,
+            value=value,
+            type=type,
+            used_for_auth=used_for_auth,
+            is_primary=is_primary,
+            is_verified=is_verified,
+        )
+        data = await self._client.request(
+            "POST", "/contact-channels", body=body
+        )
+        return ContactChannel.model_validate(data)
+
+    async def send_verification_code(
+        self,
+        contact_channel_id: str,
+        *,
+        callback_url: Optional[str] = None,
+    ) -> None:
+        """Send a verification email for a contact channel."""
+        body = _build_params(callback_url=callback_url)
+        await self._client.request(
+            "POST",
+            f"/contact-channels/{contact_channel_id}/send-verification-email",
+            body=body,
+        )
+
+    async def verify_contact_channel(self, code: str) -> None:
+        """Verify a contact channel with a verification code."""
+        await self._client.request(
+            "POST", "/contact-channels/verify", body={"code": code}
+        )
