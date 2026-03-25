@@ -490,6 +490,9 @@ function getStudioPageHtml(): string {
     .node-type.groupby {
       color: color-mix(in srgb, var(--accent) 80%, white);
     }
+    .node-type.limit {
+      color: color-mix(in srgb, var(--filter) 75%, var(--text));
+    }
     .node-name {
       font-size: 13px;
       font-weight: 700;
@@ -505,6 +508,9 @@ function getStudioPageHtml(): string {
     }
     .node-name.filter {
       color: var(--filter);
+    }
+    .node-name.limit {
+      color: color-mix(in srgb, var(--filter) 85%, var(--text));
     }
     .node-meta {
       font-size: 11px;
@@ -974,7 +980,7 @@ function getStudioPageHtml(): string {
         if (!pos) continue;
         const operatorClass = (() => {
           const normalized = String(table.operator || "unknown").toLowerCase();
-          if (normalized === "stored" || normalized === "map" || normalized === "flatmap" || normalized === "groupby" || normalized === "filter") {
+          if (normalized === "stored" || normalized === "map" || normalized === "flatmap" || normalized === "groupby" || normalized === "filter" || normalized === "limit") {
             return normalized;
           }
           return "derived";

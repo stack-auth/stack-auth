@@ -1,7 +1,7 @@
 import { stringCompare, templateIdentity } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vitest";
-import { declareFilterTable, declareFlatMapTable, declareGroupByTable, declareMapTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
+import { declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLimitTable, declareMapTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
 
 type TestDb = { full: string, base: string };
 
@@ -254,6 +254,15 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     });
     return { fromTable, groupedTable, filteredTable };
   }
+  function createLimitedTable() {
+    const { fromTable, groupedTable } = createGroupedTable();
+    const limitedTable = declareLimitTable({
+      tableId: "users-by-team-limited",
+      fromTable: groupedTable,
+      limit: expr(`2`),
+    });
+    return { fromTable, groupedTable, limitedTable };
+  }
   function createFlatMapMapGroupPipeline() {
     const { fromTable, groupedTable, flatMappedTable } = createFlatMappedTable();
     const mappedAfterFlatMap = declareMapTable({
@@ -378,6 +387,29 @@ describe.sequential("declareStoredTable (real postgres)", () => {
   }
   function registerFilterAuditTrigger(
     table: ReturnType<typeof createFilteredTable>["filteredTable"],
+    event: string,
+  ) {
+    return table.registerRowChangeTrigger((changesTable) => [
+      sqlStatement`
+        INSERT INTO "BulldozerMapTriggerAudit" (
+          "event",
+          "groupKey",
+          "rowIdentifier",
+          "oldRowData",
+          "newRowData"
+        )
+        SELECT
+          ${expr<string>(sqlStringLiteral(event))},
+          "groupKey",
+          "rowIdentifier",
+          "oldRowData",
+          "newRowData"
+        FROM ${changesTable}
+      `,
+    ]);
+  }
+  function registerLimitAuditTrigger(
+    table: ReturnType<typeof createLimitedTable>["limitedTable"],
     event: string,
   ) {
     return table.registerRowChangeTrigger((changesTable) => [
@@ -1821,6 +1853,172 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       { groupKey: "alpha", rowIdentifier: "rows:1", rowData: { team: "alpha", value: 4 } },
       { groupKey: "rows", rowIdentifier: "u1:1", rowData: { team: "rows", value: 5 } },
     ]);
+  });
+
+  test("limitTable init keeps only first N rows per group and stores metadata", async () => {
+    const { fromTable, groupedTable, limitedTable } = createLimitedTable();
+    await runStatements(fromTable.init());
+    await runStatements(fromTable.setRow("a3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(fromTable.setRow("a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("a2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow("b2", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow("b1", expr(`'{"team":"beta","value":1}'::jsonb`)));
+    await runStatements(groupedTable.init());
+    await runStatements(limitedTable.init());
+
+    const groups = await readRows(limitedTable.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(groups.map((row) => row.groupkey).sort(stringCompare)).toEqual(["alpha", "beta"]);
+
+    const allRows = await readRows(limitedTable.listRowsInGroup({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(allRows.map((row) => ({ groupKey: row.groupkey, rowIdentifier: row.rowidentifier, rowData: row.rowdata })).sort((a, b) => stringCompare(`${a.groupKey}:${a.rowIdentifier}`, `${b.groupKey}:${b.rowIdentifier}`))).toEqual([
+      { groupKey: "alpha", rowIdentifier: "a1", rowData: { team: "alpha", value: 1 } },
+      { groupKey: "alpha", rowIdentifier: "a2", rowData: { team: "alpha", value: 2 } },
+      { groupKey: "beta", rowIdentifier: "b1", rowData: { team: "beta", value: 1 } },
+      { groupKey: "beta", rowIdentifier: "b2", rowData: { team: "beta", value: 2 } },
+    ]);
+
+    const metadataRows = await sql`
+      SELECT 1
+      FROM "BulldozerStorageEngine"
+      WHERE "keyPath" = ARRAY[
+        to_jsonb('table'::text),
+        to_jsonb('external:users-by-team-limited'::text),
+        to_jsonb('storage'::text),
+        to_jsonb('metadata'::text)
+      ]::jsonb[]
+    `;
+    expect(metadataRows).toHaveLength(1);
+  });
+
+  test("limitTable membership shifts when boundary rows are inserted, updated, or deleted", async () => {
+    const { fromTable, groupedTable, limitedTable } = createLimitedTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(limitedTable.init());
+
+    await runStatements(fromTable.setRow("u2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow("u3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    let alphaRows = await readRows(limitedTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(alphaRows.map((row) => row.rowidentifier)).toEqual(["u2", "u3"]);
+
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    alphaRows = await readRows(limitedTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(alphaRows.map((row) => row.rowidentifier)).toEqual(["u1", "u2"]);
+
+    await runStatements(fromTable.setRow("u2", expr(`'{"team":"alpha","value":22}'::jsonb`)));
+    alphaRows = await readRows(limitedTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(alphaRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata }))).toEqual([
+      { rowIdentifier: "u1", rowData: { team: "alpha", value: 1 } },
+      { rowIdentifier: "u2", rowData: { team: "alpha", value: 22 } },
+    ]);
+
+    await runStatements(fromTable.deleteRow("u1"));
+    alphaRows = await readRows(limitedTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(alphaRows.map((row) => row.rowidentifier)).toEqual(["u2", "u3"]);
+  });
+
+  test("limitTable trigger stream reconstructs the same final state as listRowsInGroup", async () => {
+    const { fromTable, groupedTable, limitedTable } = createLimitedTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(limitedTable.init());
+    registerLimitAuditTrigger(limitedTable, "limit_change");
+
+    await runStatements(fromTable.setRow("a2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow("a3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(fromTable.setRow("a4", expr(`'{"team":"alpha","value":4}'::jsonb`)));
+    await runStatements(fromTable.setRow("a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.deleteRow("a1"));
+    await runStatements(fromTable.setRow("a5", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+    await runStatements(fromTable.setRow("a0", expr(`'{"team":"alpha","value":0}'::jsonb`)));
+    await runStatements(fromTable.deleteRow("a2"));
+    await runStatements(fromTable.setRow("a0", expr(`'{"team":"beta","value":100}'::jsonb`)));
+
+    const auditRows = (await readMapTriggerAuditRows())
+      .filter((row) => row.event === "limit_change");
+    const reconstructed = new Map<string, { groupKey: string | null, rowIdentifier: string, rowData: unknown }>();
+    for (const row of auditRows) {
+      const groupKey = row.groupKey as string | null;
+      const rowIdentifier = String(row.rowIdentifier);
+      const key = `${groupKey ?? "__NULL__"}:${rowIdentifier}`;
+      if (row.newRowData == null) {
+        reconstructed.delete(key);
+      } else {
+        reconstructed.set(key, { groupKey, rowIdentifier, rowData: row.newRowData });
+      }
+    }
+
+    const actualRows = (await readRows(limitedTable.listRowsInGroup({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }))).map((row) => ({
+      groupKey: row.groupkey as string | null,
+      rowIdentifier: String(row.rowidentifier),
+      rowData: row.rowdata,
+    }));
+    const reconstructedRows = [...reconstructed.values()];
+    const sortRows = (rows: Array<{ groupKey: string | null, rowIdentifier: string, rowData: unknown }>) => rows
+      .sort((a, b) => stringCompare(
+        `${a.groupKey ?? "__NULL__"}:${a.rowIdentifier}:${JSON.stringify(a.rowData)}`,
+        `${b.groupKey ?? "__NULL__"}:${b.rowIdentifier}:${JSON.stringify(b.rowData)}`,
+      ));
+    expect(sortRows(reconstructedRows)).toEqual(sortRows(actualRows));
+  });
+
+  test("limitTable stays no-op while uninitialized", async () => {
+    const { fromTable, groupedTable, limitedTable } = createLimitedTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    registerLimitAuditTrigger(limitedTable, "limit_change");
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("u2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+
+    expect(await readBoolean(limitedTable.isInitialized())).toBe(false);
+    const groups = await readRows(limitedTable.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(groups).toEqual([]);
+    const limitAuditRows = (await readMapTriggerAuditRows()).filter((row) => row.event === "limit_change");
+    expect(limitAuditRows).toEqual([]);
   });
 
   test("flatMap -> map -> groupBy composition stays consistent across updates", async () => {

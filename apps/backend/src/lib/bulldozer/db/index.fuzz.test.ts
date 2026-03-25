@@ -1,7 +1,7 @@
 import { stringCompare, templateIdentity } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vitest";
-import { declareFilterTable, declareFlatMapTable, declareGroupByTable, declareMapTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
+import { declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLimitTable, declareMapTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
 
 type TestDb = { full: string, base: string };
 
@@ -160,6 +160,24 @@ function filterGroups<Row extends Record<string, unknown>>(
     filtered.set(groupKey, { groupKey: group.groupKey, rows });
   }
   return filtered;
+}
+function limitGroups<Row extends Record<string, unknown>>(
+  groups: GroupedRows<Row>,
+  limit: number,
+): GroupedRows<Row> {
+  const limited: GroupedRows<Row> = new Map();
+  for (const [groupKey, group] of groups) {
+    const rows = new Map<string, Row>();
+    const sortedRows = [...group.rows.entries()].sort((a, b) => stringCompare(a[0], b[0]));
+    for (let i = 0; i < Math.min(limit, sortedRows.length); i++) {
+      const entry = sortedRows[i] ?? (() => {
+        throw new Error("limitGroups expected sorted row entry to exist");
+      })();
+      rows.set(entry[0], entry[1]);
+    }
+    limited.set(groupKey, { groupKey: group.groupKey, rows });
+  }
+  return limited;
 }
 
 describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
@@ -641,6 +659,78 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
               endInclusive: true,
             }))).toEqual([]);
             expect(await readRows(mappedAfterFilter.listGroups({
+              start: "start",
+              end: "end",
+              startInclusive: true,
+              endInclusive: true,
+            }))).toEqual([]);
+          }
+        }
+      }
+    }
+  }, 120_000);
+
+  test("fuzz: grouped limit table remains consistent under random mutations and re-inits", async () => {
+    const identifiers = ["l1", "l2", "l3", "l4", "l 5", "l:6"] as const;
+    const teams = ["alpha", "beta", "gamma", null] as const;
+
+    for (const seed of [801]) {
+      const rng = createRng(seed);
+      const sourceRows = new Map<string, SourceRow>();
+      let limitInitialized = true;
+
+      const fromTable = declareStoredTable<{ value: number, team: string | null }>({ tableId: `limit-fuzz-users-${seed}` });
+      const groupedTable = declareGroupByTable({
+        tableId: `limit-fuzz-users-by-team-${seed}`,
+        fromTable,
+        groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+      });
+      const limitedByTeam = declareLimitTable({
+        tableId: `limit-fuzz-users-top2-${seed}`,
+        fromTable: groupedTable,
+        limit: expr(`2`),
+      });
+
+      await runStatements(fromTable.init());
+      await runStatements(groupedTable.init());
+      await runStatements(limitedByTeam.init());
+
+      for (let step = 0; step < 36; step++) {
+        const roll = rng();
+        if (roll < 0.62) {
+          const rowIdentifier = choose(rng, identifiers);
+          const rowData: SourceRow = {
+            team: choose(rng, teams),
+            value: Math.floor(rng() * 100),
+          };
+          sourceRows.set(rowIdentifier, rowData);
+          await runStatements(fromTable.setRow(rowIdentifier, expr(jsonbLiteral(rowData))));
+        } else if (roll < 0.86) {
+          const rowIdentifier = choose(rng, identifiers);
+          sourceRows.delete(rowIdentifier);
+          await runStatements(fromTable.deleteRow(rowIdentifier));
+        } else if (roll < 0.93) {
+          if (limitInitialized) {
+            await runStatements(limitedByTeam.delete());
+            limitInitialized = false;
+          }
+        } else {
+          if (!limitInitialized) {
+            await runStatements(limitedByTeam.init());
+            limitInitialized = true;
+          }
+        }
+
+        if (step % 3 === 0 || step === 35) {
+          const expectedGrouped = computeTeamGroups(sourceRows);
+          const expectedLimited = limitGroups(expectedGrouped, 2);
+          await assertTableMatches(groupedTable, expectedGrouped);
+          if (limitInitialized) {
+            expect(await readBoolean(limitedByTeam.isInitialized())).toBe(true);
+            await assertTableMatches(limitedByTeam, expectedLimited);
+          } else {
+            expect(await readBoolean(limitedByTeam.isInitialized())).toBe(false);
+            expect(await readRows(limitedByTeam.listGroups({
               start: "start",
               end: "end",
               startInclusive: true,

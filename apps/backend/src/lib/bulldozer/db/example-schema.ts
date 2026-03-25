@@ -1,4 +1,4 @@
-import { declareFilterTable, declareFlatMapTable, declareGroupByTable, declareMapTable, declareStoredTable } from "./index";
+import { declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLimitTable, declareMapTable, declareStoredTable } from "./index";
 
 const mapper = (sql: string) => ({ type: "mapper" as const, sql });
 const predicate = (sql: string) => ({ type: "predicate" as const, sql });
@@ -106,6 +106,11 @@ export const exampleFungibleLedgerSchema = (() => {
     fromTable: entriesByAccount,
     filter: predicate(`("rowData"->'counterparty') IS NOT NULL`),
   });
+  const accountCounterpartySample = declareLimitTable({
+    tableId: "bulldozer-example-ledger-account-counterparty-sample",
+    fromTable: accountEntriesWithCounterparty,
+    limit: { type: "expression", sql: "1" },
+  });
 
   // Keep only large-value entries to model risk/alerting-style subsets.
   const highValueEntriesByAsset = declareFilterTable({
@@ -119,6 +124,11 @@ export const exampleFungibleLedgerSchema = (() => {
     tableId: "bulldozer-example-ledger-high-value-entries-by-asset-account",
     fromTable: highValueEntriesByAsset,
     groupBy: mapper(`"rowData"->'accountId' AS "groupKey"`),
+  });
+  const highValueEntriesByAssetAccountTop = declareLimitTable({
+    tableId: "bulldozer-example-ledger-high-value-entries-by-asset-account-top",
+    fromTable: highValueEntriesByAssetAccount,
+    limit: { type: "expression", sql: "3" },
   });
 
   // Enrich asset-grouped rows for downstream analytics views.
@@ -146,8 +156,10 @@ export const exampleFungibleLedgerSchema = (() => {
     accountEntryLegs,
     accountAssetPartitions,
     accountEntriesWithCounterparty,
+    accountCounterpartySample,
     highValueEntriesByAsset,
     highValueEntriesByAssetAccount,
+    highValueEntriesByAssetAccountTop,
     assetEntriesNormalized,
   };
 })();
