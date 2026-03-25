@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import time
 from typing import Any, Mapping
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -225,6 +226,65 @@ class TestAsyncAuthenticateRequest:
 
         with patch("stack_auth._auth.async_verify_token", new_callable=AsyncMock, side_effect=Exception("expired")):
             request = FakeRequest({"Authorization": "Bearer bad-async-jwt"})
+            result = await async_authenticate_request(request, fetcher=fetcher)
+
+        assert result.status == "unauthenticated"
+        assert result.user_id is None
+
+
+# ---------------------------------------------------------------------------
+# Debug logging on authentication failure
+# ---------------------------------------------------------------------------
+
+
+class TestSyncAuthenticateRequestLogging:
+    """Verify that sync_authenticate_request emits debug log on failure."""
+
+    def test_logs_debug_on_verification_failure(self, caplog: pytest.LogCaptureFixture) -> None:
+        fetcher = MagicMock(spec=SyncJWKSFetcher)
+
+        with (
+            patch("stack_auth._auth.sync_verify_token", side_effect=Exception("bad token")),
+            caplog.at_level(logging.DEBUG, logger="stack_auth"),
+        ):
+            request = FakeRequest({"Authorization": "Bearer invalid-jwt"})
+            result = sync_authenticate_request(request, fetcher=fetcher)
+
+        assert result.status == "unauthenticated"
+        assert any("authenticate_request failed" in record.message for record in caplog.records)
+
+    def test_still_returns_unauthenticated_after_logging(self) -> None:
+        fetcher = MagicMock(spec=SyncJWKSFetcher)
+
+        with patch("stack_auth._auth.sync_verify_token", side_effect=ValueError("corrupt")):
+            request = FakeRequest({"Authorization": "Bearer corrupt-jwt"})
+            result = sync_authenticate_request(request, fetcher=fetcher)
+
+        assert result.status == "unauthenticated"
+        assert result.user_id is None
+
+
+class TestAsyncAuthenticateRequestLogging:
+    """Verify that async_authenticate_request emits debug log on failure."""
+
+    async def test_logs_debug_on_verification_failure(self, caplog: pytest.LogCaptureFixture) -> None:
+        fetcher = MagicMock(spec=AsyncJWKSFetcher)
+
+        with (
+            patch("stack_auth._auth.async_verify_token", new_callable=AsyncMock, side_effect=Exception("bad token")),
+            caplog.at_level(logging.DEBUG, logger="stack_auth"),
+        ):
+            request = FakeRequest({"Authorization": "Bearer invalid-async-jwt"})
+            result = await async_authenticate_request(request, fetcher=fetcher)
+
+        assert result.status == "unauthenticated"
+        assert any("authenticate_request failed" in record.message for record in caplog.records)
+
+    async def test_still_returns_unauthenticated_after_logging(self) -> None:
+        fetcher = MagicMock(spec=AsyncJWKSFetcher)
+
+        with patch("stack_auth._auth.async_verify_token", new_callable=AsyncMock, side_effect=ValueError("corrupt")):
+            request = FakeRequest({"Authorization": "Bearer corrupt-async-jwt"})
             result = await async_authenticate_request(request, fetcher=fetcher)
 
         assert result.status == "unauthenticated"

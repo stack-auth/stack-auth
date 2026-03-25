@@ -9,8 +9,11 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 from dataclasses import dataclass
 from typing import Any, Literal, Mapping
+
+logger = logging.getLogger("stack_auth")
 
 from stack_auth._jwt import (
     AsyncJWKSFetcher,
@@ -159,6 +162,7 @@ def sync_authenticate_request(
             token=token,
         )
     except Exception:
+        logger.debug("authenticate_request failed", exc_info=True)
         return AuthState(status="unauthenticated")
 
 
@@ -194,4 +198,5 @@ async def async_authenticate_request(
             token=token,
         )
     except Exception:
+        logger.debug("authenticate_request failed", exc_info=True)
         return AuthState(status="unauthenticated")
