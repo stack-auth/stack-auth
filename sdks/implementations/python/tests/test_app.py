@@ -3,12 +3,26 @@
 from __future__ import annotations
 
 import asyncio
+import base64
+import json
 
 import httpx
 import pytest
 import respx
 
 from stack_auth._app import AsyncStackServerApp, StackServerApp
+from stack_auth._auth import TokenPartialUser
+
+
+def _make_jwt(claims: dict) -> str:
+    """Build a fake JWT with the given payload claims (no real signature)."""
+    header = base64.urlsafe_b64encode(
+        json.dumps({"typ": "JWT", "alg": "RS256"}).encode()
+    ).rstrip(b"=").decode()
+    payload = base64.urlsafe_b64encode(
+        json.dumps(claims).encode()
+    ).rstrip(b"=").decode()
+    return f"{header}.{payload}.fake_signature"
 
 
 # ---------------------------------------------------------------------------
@@ -3032,3 +3046,94 @@ class TestAsyncDataVaultStore:
         keys = await store.list_keys()
         assert keys == ["a", "b"]
         await app.aclose()
+
+
+# ---------------------------------------------------------------------------
+# StackServerApp - get_partial_user
+# ---------------------------------------------------------------------------
+
+
+class TestGetPartialUser:
+    def test_returns_partial_user_from_valid_token(self) -> None:
+        token = _make_jwt({
+            "sub": "user-abc",
+            "name": "Alice",
+            "email": "alice@example.com",
+            "email_verified": True,
+            "is_anonymous": False,
+            "is_multi_factor_required": False,
+            "is_restricted": False,
+            "restricted_reason": None,
+        })
+        app = StackServerApp(
+            project_id="proj",
+            secret_server_key="sk",
+            token_store={"access_token": token},
+        )
+        result = app.get_partial_user()
+        assert result is not None
+        assert isinstance(result, TokenPartialUser)
+        assert result.id == "user-abc"
+        assert result.display_name == "Alice"
+        assert result.primary_email == "alice@example.com"
+
+    def test_returns_none_when_token_store_is_none(self) -> None:
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        result = app.get_partial_user()
+        assert result is None
+
+    def test_returns_none_with_explicit_none_override(self) -> None:
+        token = _make_jwt({"sub": "user-abc"})
+        app = StackServerApp(
+            project_id="proj",
+            secret_server_key="sk",
+            token_store={"access_token": token},
+        )
+        result = app.get_partial_user(token_store=None)
+        assert result is None
+
+    def test_returns_none_with_empty_store(self) -> None:
+        app = StackServerApp(
+            project_id="proj",
+            secret_server_key="sk",
+            token_store={},
+        )
+        result = app.get_partial_user()
+        assert result is None
+
+    def test_override_token_store(self) -> None:
+        token = _make_jwt({"sub": "user-override"})
+        app = StackServerApp(project_id="proj", secret_server_key="sk")
+        result = app.get_partial_user(token_store={"access_token": token})
+        assert result is not None
+        assert result.id == "user-override"
+
+
+class TestAsyncGetPartialUser:
+    def test_async_returns_partial_user(self) -> None:
+        token = _make_jwt({
+            "sub": "user-async",
+            "name": "Bob",
+            "email": "bob@example.com",
+            "email_verified": False,
+            "is_anonymous": False,
+            "is_multi_factor_required": False,
+            "is_restricted": False,
+            "restricted_reason": None,
+        })
+        app = AsyncStackServerApp(
+            project_id="proj",
+            secret_server_key="sk",
+            token_store={"access_token": token},
+        )
+        # get_partial_user is sync even on async app (no I/O)
+        result = app.get_partial_user()
+        assert result is not None
+        assert isinstance(result, TokenPartialUser)
+        assert result.id == "user-async"
+        assert result.display_name == "Bob"
+
+    def test_async_returns_none_without_store(self) -> None:
+        app = AsyncStackServerApp(project_id="proj", secret_server_key="sk")
+        result = app.get_partial_user()
+        assert result is None
