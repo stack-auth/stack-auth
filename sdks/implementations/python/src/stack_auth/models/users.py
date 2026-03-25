@@ -23,9 +23,9 @@ class BaseUser(StackAuthModel):
     profile_image_url: str | None = Field(None, alias="profileImageUrl")
     signed_up_at_millis: int = Field(alias="signedUpAtMillis")
     last_active_at_millis: int | None = Field(None, alias="lastActiveAtMillis")
-    client_metadata: dict[str, Any] = Field(default_factory=dict, alias="clientMetadata")
-    client_read_only_metadata: dict[str, Any] = Field(
-        default_factory=dict, alias="clientReadOnlyMetadata"
+    client_metadata: dict[str, Any] | None = Field(None, alias="clientMetadata")
+    client_read_only_metadata: dict[str, Any] | None = Field(
+        None, alias="clientReadOnlyMetadata"
     )
     has_password: bool = Field(False, alias="hasPassword")
     otp_auth_enabled: bool = Field(False, alias="otpAuthEnabled")
@@ -52,4 +52,4 @@ class ServerUser(BaseUser):
     Extends BaseUser with server-only metadata.
     """
 
-    server_metadata: dict[str, Any] = Field(default_factory=dict, alias="serverMetadata")
+    server_metadata: dict[str, Any] | None = Field(None, alias="serverMetadata")

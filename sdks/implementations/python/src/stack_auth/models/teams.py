@@ -16,16 +16,16 @@ class Team(StackAuthModel):
     id: str
     display_name: str = Field(alias="displayName")
     profile_image_url: str | None = Field(None, alias="profileImageUrl")
-    client_metadata: dict[str, Any] = Field(default_factory=dict, alias="clientMetadata")
-    client_read_only_metadata: dict[str, Any] = Field(
-        default_factory=dict, alias="clientReadOnlyMetadata"
+    client_metadata: dict[str, Any] | None = Field(None, alias="clientMetadata")
+    client_read_only_metadata: dict[str, Any] | None = Field(
+        None, alias="clientReadOnlyMetadata"
     )
 
 
 class ServerTeam(Team):
     """Server-side team with additional management capabilities."""
 
-    server_metadata: dict[str, Any] = Field(default_factory=dict, alias="serverMetadata")
+    server_metadata: dict[str, Any] | None = Field(None, alias="serverMetadata")
     created_at_millis: int = Field(alias="createdAtMillis")
 
     @property
