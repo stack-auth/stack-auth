@@ -9,6 +9,7 @@ import time
 from typing import Any, Mapping
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import jwt
 import pytest
 
 from stack_auth._auth import (
@@ -183,7 +184,7 @@ class TestSyncAuthenticateRequest:
     def test_returns_unauthenticated_when_verification_fails(self) -> None:
         fetcher = MagicMock(spec=SyncJWKSFetcher)
 
-        with patch("stack_auth._auth.sync_verify_token", side_effect=Exception("bad token")):
+        with patch("stack_auth._auth.sync_verify_token", side_effect=jwt.PyJWTError("bad token")):
             request = FakeRequest({"Authorization": "Bearer expired-jwt"})
             result = sync_authenticate_request(request, fetcher=fetcher)
 
@@ -224,7 +225,7 @@ class TestAsyncAuthenticateRequest:
     async def test_returns_unauthenticated_when_verification_fails(self) -> None:
         fetcher = MagicMock(spec=AsyncJWKSFetcher)
 
-        with patch("stack_auth._auth.async_verify_token", new_callable=AsyncMock, side_effect=Exception("expired")):
+        with patch("stack_auth._auth.async_verify_token", new_callable=AsyncMock, side_effect=jwt.PyJWTError("expired")):
             request = FakeRequest({"Authorization": "Bearer bad-async-jwt"})
             result = await async_authenticate_request(request, fetcher=fetcher)
 
@@ -244,7 +245,7 @@ class TestSyncAuthenticateRequestLogging:
         fetcher = MagicMock(spec=SyncJWKSFetcher)
 
         with (
-            patch("stack_auth._auth.sync_verify_token", side_effect=Exception("bad token")),
+            patch("stack_auth._auth.sync_verify_token", side_effect=jwt.PyJWTError("bad token")),
             caplog.at_level(logging.DEBUG, logger="stack_auth"),
         ):
             request = FakeRequest({"Authorization": "Bearer invalid-jwt"})
@@ -271,7 +272,7 @@ class TestAsyncAuthenticateRequestLogging:
         fetcher = MagicMock(spec=AsyncJWKSFetcher)
 
         with (
-            patch("stack_auth._auth.async_verify_token", new_callable=AsyncMock, side_effect=Exception("bad token")),
+            patch("stack_auth._auth.async_verify_token", new_callable=AsyncMock, side_effect=jwt.PyJWTError("bad token")),
             caplog.at_level(logging.DEBUG, logger="stack_auth"),
         ):
             request = FakeRequest({"Authorization": "Bearer invalid-async-jwt"})

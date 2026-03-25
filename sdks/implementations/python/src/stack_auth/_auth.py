@@ -13,6 +13,9 @@ import logging
 from dataclasses import dataclass
 from typing import Any, Literal, Mapping
 
+import httpx
+import jwt
+
 logger = logging.getLogger("stack_auth")
 
 from stack_auth._jwt import (
@@ -161,8 +164,8 @@ def sync_authenticate_request(
             claims=claims,
             token=token,
         )
-    except Exception:
-        logger.debug("authenticate_request failed", exc_info=True)
+    except (jwt.PyJWTError, httpx.HTTPError, ValueError, KeyError) as exc:
+        logger.debug("authenticate_request failed", exc_info=exc)
         return AuthState(status="unauthenticated")
 
 
@@ -197,6 +200,6 @@ async def async_authenticate_request(
             claims=claims,
             token=token,
         )
-    except Exception:
-        logger.debug("authenticate_request failed", exc_info=True)
+    except (jwt.PyJWTError, httpx.HTTPError, ValueError, KeyError) as exc:
+        logger.debug("authenticate_request failed", exc_info=exc)
         return AuthState(status="unauthenticated")

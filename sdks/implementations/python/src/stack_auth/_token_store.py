@@ -18,9 +18,13 @@ import time
 from abc import ABC, abstractmethod
 from typing import Any, Awaitable, Callable, Literal, Union
 
+import logging
+
 import httpx
 
 from stack_auth._types import RequestLike
+
+logger = logging.getLogger("stack_auth")
 
 
 # ---------------------------------------------------------------------------
@@ -164,6 +168,14 @@ class RequestTokenStore(TokenStore):
 # ---------------------------------------------------------------------------
 
 _token_store_registry: dict[str, MemoryTokenStore] = {}
+"""Module-level registry mapping project_id to shared MemoryTokenStore instances.
+
+Per SDK spec (Token Store Registry): all uses of "memory" with the same project_id
+must share the same underlying token store instance and refresh lock. This dict
+ensures that invariant.
+
+To reset in tests: ``stack_auth._token_store._token_store_registry.clear()``
+"""
 
 
 def _get_or_create_memory_store(project_id: str) -> MemoryTokenStore:
@@ -220,7 +232,7 @@ def _decode_jwt_payload(token: str) -> dict[str, Any] | None:
         payload_b64 += "=" * (-len(payload_b64) % 4)
         payload_bytes = base64.urlsafe_b64decode(payload_b64)
         return json.loads(payload_bytes)  # type: ignore[no-any-return]
-    except (ValueError, json.JSONDecodeError, Exception):
+    except (ValueError, json.JSONDecodeError):
         return None
 
 
@@ -350,7 +362,8 @@ def _refresh_access_token_sync(
             data = resp.json()
             return (True, data.get("access_token"))
         return (False, None)
-    except Exception:
+    except (httpx.HTTPError, ValueError, KeyError) as exc:
+        logger.debug("Token refresh failed (sync)", exc_info=exc)
         return (False, None)
 
 
@@ -380,5 +393,6 @@ async def _refresh_access_token_async(
             data = resp.json()
             return (True, data.get("access_token"))
         return (False, None)
-    except Exception:
+    except (httpx.HTTPError, ValueError, KeyError) as exc:
+        logger.debug("Token refresh failed (async)", exc_info=exc)
         return (False, None)
