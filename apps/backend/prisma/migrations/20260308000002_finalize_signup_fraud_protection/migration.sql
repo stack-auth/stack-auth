@@ -28,8 +28,13 @@ ALTER TABLE "ProjectUser" VALIDATE CONSTRAINT "ProjectUser_risk_score_bot_range"
 -- RUN_OUTSIDE_TRANSACTION_SENTINEL
 ALTER TABLE "ProjectUser" VALIDATE CONSTRAINT "ProjectUser_risk_score_free_trial_abuse_range";
 
--- Enforce `signedUpAt` after the backfill is complete. We intentionally require
--- inserts to provide the value explicitly instead of hiding that behavior in a trigger.
+-- Enforce `signedUpAt` after the backfill is complete.  Set a DEFAULT first so
+-- that inserts omitting the column still get a sensible value (CURRENT_TIMESTAMP).
+-- SPLIT_STATEMENT_SENTINEL
+-- SINGLE_STATEMENT_SENTINEL
+-- RUN_OUTSIDE_TRANSACTION_SENTINEL
+ALTER TABLE "ProjectUser" ALTER COLUMN "signedUpAt" SET DEFAULT CURRENT_TIMESTAMP;
+
 -- SPLIT_STATEMENT_SENTINEL
 -- SINGLE_STATEMENT_SENTINEL
 -- RUN_OUTSIDE_TRANSACTION_SENTINEL

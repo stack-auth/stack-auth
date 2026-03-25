@@ -71,7 +71,7 @@ export const postMigration = async (sql: Sql) => {
   `;
   expect(colInfo).toHaveLength(1);
   expect(colInfo[0].is_nullable).toBe('NO');
-  expect(colInfo[0].column_default).toBe(null);
+  expect(colInfo[0].column_default).toBe('CURRENT_TIMESTAMP');
 
   await sql`
     INSERT INTO "Project" ("id", "createdAt", "updatedAt", "displayName", "description", "isProductionMode")
@@ -82,7 +82,9 @@ export const postMigration = async (sql: Sql) => {
     VALUES (${tenancyId}::uuid, NOW(), NOW(), ${projectId}, 'main', 'TRUE'::"BooleanTrue")
   `;
 
-  await expect(sql`
+  // INSERT without signedUpAt should succeed — DEFAULT CURRENT_TIMESTAMP fills it in.
+  const defaultUserId = randomUUID();
+  await sql`
     INSERT INTO "ProjectUser" (
       "projectUserId",
       "tenancyId",
@@ -92,7 +94,7 @@ export const postMigration = async (sql: Sql) => {
       "updatedAt",
       "lastActiveAt"
     ) VALUES (
-      ${userId}::uuid,
+      ${defaultUserId}::uuid,
       ${tenancyId}::uuid,
       ${projectId},
       'main',
@@ -100,8 +102,17 @@ export const postMigration = async (sql: Sql) => {
       NOW(),
       NOW()
     )
-  `).rejects.toThrow(/signedUpAt/);
+  `;
 
+  const defaultRows = await sql`
+    SELECT "signedUpAt"
+    FROM "ProjectUser"
+    WHERE "projectUserId" = ${defaultUserId}::uuid
+  `;
+  expect(defaultRows).toHaveLength(1);
+  expect(defaultRows[0].signedUpAt).not.toBeNull();
+
+  // INSERT with explicit signedUpAt should use the provided value.
   await sql`
     INSERT INTO "ProjectUser" (
       "projectUserId",
