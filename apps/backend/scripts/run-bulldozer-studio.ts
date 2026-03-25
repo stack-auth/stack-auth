@@ -337,6 +337,7 @@ function getStudioPageHtml(): string {
       --text: #f2f2f2;
       --muted: #b0b0b0;
       --accent: #66a3ff;
+      --filter: #f7b955;
       --danger: #ff5f56;
       --ok: #35c769;
       --mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
@@ -350,6 +351,7 @@ function getStudioPageHtml(): string {
       --text: #111111;
       --muted: #555555;
       --accent: #245ee9;
+      --filter: #b06b00;
       --danger: #d72638;
       --ok: #118a3e;
     }
@@ -476,6 +478,18 @@ function getStudioPageHtml(): string {
     .node-type.derived {
       color: var(--accent);
     }
+    .node-type.filter {
+      color: var(--filter);
+    }
+    .node-type.map {
+      color: var(--accent);
+    }
+    .node-type.flatmap {
+      color: color-mix(in srgb, var(--accent) 70%, var(--ok));
+    }
+    .node-type.groupby {
+      color: color-mix(in srgb, var(--accent) 80%, white);
+    }
     .node-name {
       font-size: 13px;
       font-weight: 700;
@@ -488,6 +502,9 @@ function getStudioPageHtml(): string {
     }
     .node-name.derived {
       color: var(--text);
+    }
+    .node-name.filter {
+      color: var(--filter);
     }
     .node-meta {
       font-size: 11px;
@@ -955,18 +972,24 @@ function getStudioPageHtml(): string {
       for (const table of tables) {
         const pos = positions.get(table.id);
         if (!pos) continue;
-        const isStoredTable = String(table.operator || "").toLowerCase() === "stored";
+        const operatorClass = (() => {
+          const normalized = String(table.operator || "unknown").toLowerCase();
+          if (normalized === "stored" || normalized === "map" || normalized === "flatmap" || normalized === "groupby" || normalized === "filter") {
+            return normalized;
+          }
+          return "derived";
+        })();
         const node = document.createElement("div");
         node.className = "node" + (state.selectedTableId === table.id ? " active" : "");
         node.style.left = pos.x + "px";
         node.style.top = pos.y + "px";
 
         const type = document.createElement("div");
-        type.className = "node-type " + (isStoredTable ? "stored" : "derived");
+        type.className = "node-type " + operatorClass;
         type.textContent = String(table.operator || "unknown");
 
         const name = document.createElement("div");
-        name.className = "node-name mono " + (isStoredTable ? "stored" : "derived");
+        name.className = "node-name mono " + operatorClass;
         name.textContent = table.name;
 
         const meta = document.createElement("div");
@@ -980,7 +1003,7 @@ function getStudioPageHtml(): string {
         left.className = "row";
         if (!table.initialized) {
           const initBtn = document.createElement("button");
-          initBtn.className = "btn good";
+          initBtn.className = "btn bad";
           initBtn.textContent = "🚀 init";
           initBtn.onclick = (event) => {
             event.stopPropagation();
@@ -989,6 +1012,7 @@ function getStudioPageHtml(): string {
             });
           };
           left.appendChild(initBtn);
+          node.style.borderColor = "red";
         }
         const focusBtn = document.createElement("button");
         focusBtn.className = "btn icon";
@@ -1021,7 +1045,7 @@ function getStudioPageHtml(): string {
     }
 
     function getRawInputDefault() {
-      return "{\\n  \\"accountId\\": \\"acct-demo\\",\\n  \\"asset\\": \\"USD\\",\\n  \\"amount\\": \\"10.00\\",\\n  \\"side\\": \\"credit\\",\\n  \\"txHash\\": \\"0xdemo\\",\\n  \\"blockNumber\\": 1,\\n  \\"timestamp\\": \\"2026-01-01T00:00:00Z\\",\\n  \\"counterparty\\": null,\\n  \\"memo\\": null\\n}";
+      return "{\\n  \\"accountId\\": \\"acct-demo\\",\\n  \\"asset\\": \\"USD\\",\\n  \\"amount\\": \\"1500.00\\",\\n  \\"side\\": \\"credit\\",\\n  \\"txHash\\": \\"0xdemo\\",\\n  \\"blockNumber\\": 1,\\n  \\"timestamp\\": \\"2026-01-01T00:00:00Z\\",\\n  \\"counterparty\\": \\"acct-peer\\",\\n  \\"memo\\": null\\n}";
     }
 
     async function loadSchema() {

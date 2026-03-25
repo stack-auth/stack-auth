@@ -1,7 +1,7 @@
 import { stringCompare, templateIdentity } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vitest";
-import { declareFlatMapTable, declareGroupByTable, declareMapTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
+import { declareFilterTable, declareFlatMapTable, declareGroupByTable, declareMapTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
 
 type TestDb = { full: string, base: string };
 
@@ -145,6 +145,21 @@ function flatMapGroups<OldRow extends Record<string, unknown>, NewRow extends Re
     mapped.set(groupKey, { groupKey: group.groupKey, rows });
   }
   return mapped;
+}
+function filterGroups<Row extends Record<string, unknown>>(
+  groups: GroupedRows<Row>,
+  predicateFn: (row: Row) => boolean,
+): GroupedRows<Row> {
+  const filtered: GroupedRows<Row> = new Map();
+  for (const [groupKey, group] of groups) {
+    const rows = new Map<string, Row>();
+    for (const [rowIdentifier, rowData] of group.rows) {
+      if (!predicateFn(rowData)) continue;
+      rows.set(`${rowIdentifier}:1`, rowData);
+    }
+    filtered.set(groupKey, { groupKey: group.groupKey, rows });
+  }
+  return filtered;
 }
 
 describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
@@ -529,6 +544,108 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
             expect(flatGroups).toEqual([]);
             expect(mappedGroups).toEqual([]);
             expect(kindGroups).toEqual([]);
+          }
+        }
+      }
+    }
+  }, 120_000);
+
+  test("fuzz: filter/map pipelines preserve invariants under random mutations and re-inits", async () => {
+    const identifiers = ["ff1", "ff2", "ff3", "ff:4", "ff 5"] as const;
+    const teams = ["alpha", "beta", "gamma", null] as const;
+
+    for (const seed of [701]) {
+      const rng = createRng(seed);
+      const sourceRows = new Map<string, SourceRow>();
+      let filterPipelineInitialized = true;
+
+      const fromTable = declareStoredTable<{ value: number, team: string | null }>({ tableId: `filter-fuzz-users-${seed}` });
+      const groupedTable = declareGroupByTable({
+        tableId: `filter-fuzz-users-by-team-${seed}`,
+        fromTable,
+        groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+      });
+      const filterTable = declareFilterTable({
+        tableId: `filter-fuzz-users-threshold-${seed}`,
+        fromTable: groupedTable,
+        filter: { type: "predicate", sql: `("rowData"->'team') IS NOT NULL AND (("rowData"->>'value')::int) >= 10` },
+      });
+      const mappedAfterFilter = declareMapTable({
+        tableId: `filter-fuzz-users-mapped-${seed}`,
+        fromTable: filterTable,
+        mapper: mapper(`
+          ("rowData"->'team') AS "team",
+          (("rowData"->>'value')::int * 10) AS "scaledValue"
+        `),
+      });
+
+      await runStatements(fromTable.init());
+      await runStatements(groupedTable.init());
+      await runStatements(filterTable.init());
+      await runStatements(mappedAfterFilter.init());
+
+      for (let step = 0; step < 28; step++) {
+        const roll = rng();
+        if (roll < 0.6) {
+          const rowIdentifier = choose(rng, identifiers);
+          const rowData: SourceRow = {
+            team: choose(rng, teams),
+            value: Math.floor(rng() * 35) - 5,
+          };
+          sourceRows.set(rowIdentifier, rowData);
+          await runStatements(fromTable.setRow(rowIdentifier, expr(jsonbLiteral(rowData))));
+        } else if (roll < 0.82) {
+          const rowIdentifier = choose(rng, identifiers);
+          sourceRows.delete(rowIdentifier);
+          await runStatements(fromTable.deleteRow(rowIdentifier));
+        } else if (roll < 0.9) {
+          if (filterPipelineInitialized) {
+            await runStatements(mappedAfterFilter.delete());
+            await runStatements(filterTable.delete());
+            filterPipelineInitialized = false;
+          }
+        } else {
+          if (!filterPipelineInitialized) {
+            await runStatements(filterTable.init());
+            await runStatements(mappedAfterFilter.init());
+            filterPipelineInitialized = true;
+          }
+        }
+
+        if (step % 3 === 0 || step === 27) {
+          const expectedGrouped = computeTeamGroups(sourceRows);
+          const expectedFiltered = filterGroups(expectedGrouped, (row) => row.team != null && row.value >= 10);
+          const expectedMapped = mapGroups(expectedFiltered, (row) => {
+            if (row.team == null) {
+              throw new Error("expected non-null team after filter predicate");
+            }
+            return {
+              team: row.team,
+              scaledValue: row.value * 10,
+            };
+          });
+
+          await assertTableMatches(groupedTable, expectedGrouped);
+          if (filterPipelineInitialized) {
+            expect(await readBoolean(filterTable.isInitialized())).toBe(true);
+            expect(await readBoolean(mappedAfterFilter.isInitialized())).toBe(true);
+            await assertTableMatches(filterTable, expectedFiltered);
+            await assertTableMatches(mappedAfterFilter, expectedMapped);
+          } else {
+            expect(await readBoolean(filterTable.isInitialized())).toBe(false);
+            expect(await readBoolean(mappedAfterFilter.isInitialized())).toBe(false);
+            expect(await readRows(filterTable.listGroups({
+              start: "start",
+              end: "end",
+              startInclusive: true,
+              endInclusive: true,
+            }))).toEqual([]);
+            expect(await readRows(mappedAfterFilter.listGroups({
+              start: "start",
+              end: "end",
+              startInclusive: true,
+              endInclusive: true,
+            }))).toEqual([]);
           }
         }
       }

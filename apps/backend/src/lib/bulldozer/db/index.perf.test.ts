@@ -1,7 +1,7 @@
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { declareFlatMapTable, declareGroupByTable, declareMapTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
+import { declareFilterTable, declareFlatMapTable, declareGroupByTable, declareMapTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
 
 type TestDb = { full: string, base: string };
 type SqlExpression<T> = { type: "expression", sql: string };
@@ -32,6 +32,8 @@ const LOAD_DERIVED_COUNT_QUERY_MAX_MS = 10_000;
 const LOAD_EXPANDING_INIT_MAX_MS = 120_000;
 const LOAD_EXPANDING_COUNT_QUERY_MAX_MS = 15_000;
 const LOAD_FILTERED_QUERY_MAX_MS = 4_000;
+const LOAD_FILTER_TABLE_INIT_MAX_MS = 90_000;
+const LOAD_FILTER_TABLE_COUNT_QUERY_MAX_MS = 8_000;
 
 function getTestDbUrls(): TestDb {
   const env = Reflect.get(import.meta, "env");
@@ -422,6 +424,11 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       fromTable: mappedTwice,
       groupBy: { type: "mapper", sql: `"rowData"->'bucket' AS "groupKey"` },
     });
+    const filteredHighValue = declareFilterTable({
+      tableId: "load-prefilled-users-high-value",
+      fromTable: groupedByTeam,
+      filter: { type: "predicate", sql: `( ("rowData"->>'value')::int ) >= 700` },
+    });
     const expandedByTeam = declareFlatMapTable({
       tableId: "load-prefilled-users-expanded",
       fromTable: groupedByTeam,
@@ -457,6 +464,10 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       await runStatements(groupedByBucket.init());
     });
     expect(bucketInit.elapsedMs).toBeLessThan(LOAD_DERIVED_INIT_MAX_MS);
+    const filterInit = await measureMs("load init filteredHighValue", async () => {
+      await runStatements(filteredHighValue.init());
+    });
+    expect(filterInit.elapsedMs).toBeLessThan(LOAD_FILTER_TABLE_INIT_MAX_MS);
     const expandInit = await measureMs("load init expandedByTeam", async () => {
       await runStatements(expandedByTeam.init());
     });
@@ -486,11 +497,18 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       startInclusive: true,
       endInclusive: true,
     });
+    const filteredHighValueCountQuery = filteredHighValue.listRowsInGroup({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    });
     const derivedCounts = await measureMs("load count derived tables", async () => {
       return await Promise.all([
         sql.unsafe(`SELECT COUNT(*)::int AS "count" FROM (${toQueryableSqlQuery(groupedCountQuery)}) AS "rows"`),
         sql.unsafe(`SELECT COUNT(*)::int AS "count" FROM (${toQueryableSqlQuery(mappedCountQuery)}) AS "rows"`),
         sql.unsafe(`SELECT COUNT(*)::int AS "count" FROM (${toQueryableSqlQuery(bucketCountQuery)}) AS "rows"`),
+        sql.unsafe(`SELECT COUNT(*)::int AS "count" FROM (${toQueryableSqlQuery(filteredHighValueCountQuery)}) AS "rows"`),
         sql.unsafe(`SELECT COUNT(*)::int AS "count" FROM (${toQueryableSqlQuery(expandedCountQuery)}) AS "rows"`),
       ]);
     });
@@ -498,7 +516,18 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     expect(Number(derivedCounts.result[0][0].count)).toBe(loadRowCount - 1);
     expect(Number(derivedCounts.result[1][0].count)).toBe(loadRowCount - 1);
     expect(Number(derivedCounts.result[2][0].count)).toBe(loadRowCount - 1);
-    expect(Number(derivedCounts.result[3][0].count)).toBe((loadRowCount - 1) * 2);
+    expect(Number(derivedCounts.result[3][0].count)).toBeGreaterThan(0);
+    expect(Number(derivedCounts.result[3][0].count)).toBeLessThan(loadRowCount);
+    expect(Number(derivedCounts.result[4][0].count)).toBe((loadRowCount - 1) * 2);
+
+    const filteredHighValueCountOnly = await measureMs("load count filteredHighValue table only", async () => {
+      return await sql.unsafe(`
+        SELECT COUNT(*)::int AS "count"
+        FROM (${toQueryableSqlQuery(filteredHighValueCountQuery)}) AS "rows"
+      `);
+    });
+    expect(filteredHighValueCountOnly.elapsedMs).toBeLessThan(LOAD_FILTER_TABLE_COUNT_QUERY_MAX_MS);
+    expect(Number(filteredHighValueCountOnly.result[0].count)).toBeGreaterThan(0);
 
     const expandedCountOnly = await measureMs("load count expanded table only", async () => {
       return await sql.unsafe(`
@@ -564,6 +593,16 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       { rowIdentifier: "seed-100000:1", rowData: { team: "delta", kind: "base", mappedValue: 1009 } },
       { rowIdentifier: "seed-100000:2", rowData: { team: "delta", kind: "double", mappedValue: 1998 } },
     ]);
+    const filteredDeltaRows = await readRows(filteredHighValue.listRowsInGroup({
+      groupKey: expr(`to_jsonb('delta'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(filteredDeltaRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata }))).toEqual([
+      { rowIdentifier: "seed-100000:1", rowData: { team: "delta", value: 999 } },
+    ]);
 
     const bulkDelete = await measureMs("load full table delete", async () => {
       await runStatements(table.delete());
@@ -583,7 +622,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     `;
     expect(isInitializedRows[0].initialized).toBe(false);
 
-    logLine(`[bulldozer-perf] load thresholds(ms): prefill<=${LOAD_PREFILL_MAX_MS}, baseCount<=${LOAD_COUNT_QUERY_MAX_MS}, setRowAvg<=${LOAD_SET_ROW_AVG_MAX_MS} over ${LOAD_SET_ROW_AVG_ITERATIONS}, pointDelete<=${LOAD_POINT_MUTATION_MAX_MS}, derivedInit<=${LOAD_DERIVED_INIT_MAX_MS}, expandingInit<=${LOAD_EXPANDING_INIT_MAX_MS}, derivedCount<=${LOAD_DERIVED_COUNT_QUERY_MAX_MS}, expandingCount<=${LOAD_EXPANDING_COUNT_QUERY_MAX_MS}, filteredQuery<=${LOAD_FILTERED_QUERY_MAX_MS}, tableDelete<=${LOAD_TABLE_DELETE_MAX_MS}`);
+    logLine(`[bulldozer-perf] load thresholds(ms): prefill<=${LOAD_PREFILL_MAX_MS}, baseCount<=${LOAD_COUNT_QUERY_MAX_MS}, setRowAvg<=${LOAD_SET_ROW_AVG_MAX_MS} over ${LOAD_SET_ROW_AVG_ITERATIONS}, pointDelete<=${LOAD_POINT_MUTATION_MAX_MS}, derivedInit<=${LOAD_DERIVED_INIT_MAX_MS}, filterInit<=${LOAD_FILTER_TABLE_INIT_MAX_MS}, expandingInit<=${LOAD_EXPANDING_INIT_MAX_MS}, derivedCount<=${LOAD_DERIVED_COUNT_QUERY_MAX_MS}, filterCount<=${LOAD_FILTER_TABLE_COUNT_QUERY_MAX_MS}, expandingCount<=${LOAD_EXPANDING_COUNT_QUERY_MAX_MS}, filteredQuery<=${LOAD_FILTERED_QUERY_MAX_MS}, tableDelete<=${LOAD_TABLE_DELETE_MAX_MS}`);
   }, 180_000);
 });
 
