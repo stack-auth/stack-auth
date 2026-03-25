@@ -361,6 +361,30 @@ export class StackClientInterface {
     }
   }
 
+  async sendAnalyticsSpanBatch(
+    body: string,
+    session: InternalSession | null,
+    options: { keepalive: boolean },
+  ): Promise<Result<Response, Error>> {
+    try {
+      const response = await this.sendClientRequest(
+        "/analytics/spans/batch",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+          keepalive: options.keepalive,
+        },
+        session,
+        "client",
+        this.getAnalyticsApiUrl(),
+      );
+      return Result.ok(response);
+    } catch (e) {
+      return Result.error(e instanceof Error ? e : new Error(String(e)));
+    }
+  }
+
   protected async sendClientRequestAndCatchKnownError<E extends typeof KnownErrors[keyof KnownErrors]>(
     path: string,
     requestOptions: RequestInit,

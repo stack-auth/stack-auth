@@ -2,6 +2,7 @@
 
 import { Alert, Button, Dialog, DialogContent, DialogHeader, DialogTitle, Skeleton, Switch, Typography } from "@/components/ui";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { StyledLink } from "@/components/link";
 import { useFromNow } from "@/hooks/use-from-now";
 import {
@@ -18,7 +19,7 @@ import {
 import { cn } from "@/lib/utils";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { ArrowsClockwiseIcon, CursorClickIcon, FastForwardIcon, FunnelSimpleIcon, GearIcon, MonitorPlayIcon, PauseIcon, PlayIcon, XIcon } from "@phosphor-icons/react";
+import { ArrowsClockwiseIcon, CloudArrowDownIcon, CursorClickIcon, FastForwardIcon, FunnelSimpleIcon, GearIcon, MonitorPlayIcon, PauseIcon, PlayIcon, XIcon } from "@phosphor-icons/react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { UserSearchPicker } from "@/components/data-table/user-search-picker";
@@ -163,13 +164,40 @@ type TimelineEvent = {
   eventType: string,
   eventAtMs: number,
   data: Record<string, unknown>,
+  isServerEvent?: boolean,
 };
 
 type TimelineMarker = {
   timeMs: number,
   eventType: string,
   label: string,
+  isServerEvent?: boolean,
+  event?: TimelineEvent,
 };
+
+// All known event types for filtering (including server events and custom)
+const ALL_KNOWN_EVENT_TYPES = [
+  "$click",
+  "$page-view",
+  "$tab-in",
+  "$tab-out",
+  "$window-focus",
+  "$window-blur",
+  "$submit",
+  "$scroll-depth",
+  "$rage-click",
+  "$copy",
+  "$paste",
+  "$error",
+  "$request",
+  "server.error",
+] as const;
+
+function formatTimelinePath(data: Record<string, unknown>): string | null {
+  const path = (data.path as string | undefined) ?? (data.url as string | undefined) ?? null;
+  if (path == null || path.length === 0) return null;
+  return path.length > 30 ? path.slice(0, 27) + "..." : path;
+}
 
 function formatEventTooltip(event: TimelineEvent): string {
   const d = event.data;
@@ -178,11 +206,222 @@ function formatEventTooltip(event: TimelineEvent): string {
     return `Clicked ${tag}`;
   }
   if (event.eventType === "$page-view") {
-    const path = (d.path as string | undefined) ?? (d.url as string | undefined) ?? "/";
-    const truncated = path.length > 30 ? path.slice(0, 27) + "..." : path;
-    return truncated;
+    return formatTimelinePath(d) ?? "/";
   }
-  return event.eventType;
+  if (event.eventType === "$tab-out") {
+    const path = formatTimelinePath(d);
+    return path ? `Tab out: ${path}` : "Tab out";
+  }
+  if (event.eventType === "$tab-in") {
+    const path = formatTimelinePath(d);
+    return path ? `Tab in: ${path}` : "Tab in";
+  }
+  if (event.eventType === "$window-focus") {
+    return "Window focus";
+  }
+  if (event.eventType === "$window-blur") {
+    return "Window blur";
+  }
+  if (event.eventType === "$submit") {
+    const tag = (d.submitter_tag_name as string | null | undefined) ?? "form";
+    return `Submitted via ${tag}`;
+  }
+  if (event.eventType === "$scroll-depth") {
+    const depth = d.depth_percent;
+    return typeof depth === "number" ? `Scrolled ${depth}%` : "Scroll depth";
+  }
+  if (event.eventType === "$rage-click") {
+    const tag = (d.tag_name as string | null | undefined) ?? "element";
+    return `Rage click on ${tag}`;
+  }
+  if (event.eventType === "$copy") {
+    const tag = (d.tag_name as string | null | undefined) ?? "element";
+    return `Copied from ${tag}`;
+  }
+  if (event.eventType === "$paste") {
+    const tag = (d.tag_name as string | null | undefined) ?? "element";
+    return `Pasted into ${tag}`;
+  }
+  if (event.eventType === "$error") {
+    const message = (d.error_message as string | null | undefined) ?? "Error";
+    return message.length > 30 ? `Error: ${message.slice(0, 27)}...` : `Error: ${message}`;
+  }
+  if (event.eventType === "$request") {
+    const method = (d.method as string | null | undefined) ?? "";
+    const path = formatTimelinePath(d);
+    const status = d.status_code as number | null | undefined;
+    const parts = [method, path].filter(Boolean).join(" ");
+    return status ? `${parts} (${status})` : (parts || "Request");
+  }
+  if (event.eventType === "server.error") {
+    const message = (d.error_message as string | null | undefined) ?? "Server Error";
+    return message.length > 30 ? `Server: ${message.slice(0, 27)}...` : `Server: ${message}`;
+  }
+  // Custom events
+  const label = event.eventType.startsWith("$") ? event.eventType : event.eventType;
+  return label.length > 30 ? label.slice(0, 27) + "..." : label;
+}
+
+function getTimelineMarkerColorClasses(eventType: string, isServerEvent?: boolean) {
+  if (eventType === "$click") {
+    return "bg-blue-500/70 hover:bg-blue-400";
+  }
+  if (eventType === "$error") {
+    return "bg-red-500/80 hover:bg-red-400";
+  }
+  if (eventType === "server.error") {
+    return "bg-red-600/90 hover:bg-red-500";
+  }
+  if (eventType === "$request") {
+    return "bg-purple-500/80 hover:bg-purple-400";
+  }
+  if (eventType === "$tab-out") {
+    return "bg-amber-500/80 hover:bg-amber-400";
+  }
+  if (eventType === "$tab-in") {
+    return "bg-cyan-500/80 hover:bg-cyan-400";
+  }
+  if (eventType === "$window-focus") {
+    return "bg-sky-500/80 hover:bg-sky-400";
+  }
+  if (eventType === "$window-blur") {
+    return "bg-orange-500/80 hover:bg-orange-400";
+  }
+  if (eventType === "$submit") {
+    return "bg-indigo-500/80 hover:bg-indigo-400";
+  }
+  if (eventType === "$scroll-depth") {
+    return "bg-violet-500/80 hover:bg-violet-400";
+  }
+  if (eventType === "$rage-click") {
+    return "bg-rose-500/80 hover:bg-rose-400";
+  }
+  if (eventType === "$copy") {
+    return "bg-slate-500/80 hover:bg-slate-400";
+  }
+  if (eventType === "$paste") {
+    return "bg-lime-500/80 hover:bg-lime-400";
+  }
+  // Custom events — use teal for client, purple-ish for server
+  if (isServerEvent) {
+    return "bg-fuchsia-500/80 hover:bg-fuchsia-400";
+  }
+  return "bg-emerald-500/70 hover:bg-emerald-400";
+}
+
+/** Color dot classes for filter chips (no hover state needed) */
+function getEventTypeDotColor(eventType: string): string {
+  if (eventType === "$click") return "bg-blue-500";
+  if (eventType === "$error") return "bg-red-500";
+  if (eventType === "server.error") return "bg-red-600";
+  if (eventType === "$request") return "bg-purple-500";
+  if (eventType === "$tab-out") return "bg-amber-500";
+  if (eventType === "$tab-in") return "bg-cyan-500";
+  if (eventType === "$window-focus") return "bg-sky-500";
+  if (eventType === "$window-blur") return "bg-orange-500";
+  if (eventType === "$submit") return "bg-indigo-500";
+  if (eventType === "$scroll-depth") return "bg-violet-500";
+  if (eventType === "$rage-click") return "bg-rose-500";
+  if (eventType === "$copy") return "bg-slate-500";
+  if (eventType === "$paste") return "bg-lime-500";
+  if (eventType === "$page-view") return "bg-emerald-500";
+  return "bg-teal-500";
+}
+
+/** Short display name for event type filter chips */
+function getEventTypeShortName(eventType: string): string {
+  return eventType;
+}
+
+/** Format error stack frames for display */
+function formatStackFrames(frames: unknown): string | null {
+  if (!Array.isArray(frames) || frames.length === 0) return null;
+  return frames
+    .slice(0, 5)
+    .map((f: any) => {
+      const fn = (f.function as string | undefined) ?? "<anonymous>";
+      const file = (f.filename as string | undefined) ?? "";
+      const line = f.lineno as number | undefined;
+      const col = f.colno as number | undefined;
+      const loc = [file, line, col].filter(Boolean).join(":");
+      return loc ? `  at ${fn} (${loc})` : `  at ${fn}`;
+    })
+    .join("\n");
+}
+
+/** Error detail popover content */
+function ErrorDetailContent({ event }: { event: TimelineEvent }) {
+  const d = event.data;
+  const errorName = (d.error_name as string | null | undefined) ?? null;
+  const errorMessage = (d.error_message as string | null | undefined) ?? "Unknown error";
+  const stackFrames = formatStackFrames(d.stack_frames);
+  const release = (d.release as string | null | undefined) ?? null;
+
+  return (
+    <div className="space-y-2 max-w-xs">
+      {errorName && (
+        <div className="text-xs font-semibold text-red-600 dark:text-red-400">{errorName}</div>
+      )}
+      <div className="text-xs break-words">{errorMessage}</div>
+      {stackFrames && (
+        <pre className="text-[10px] text-muted-foreground bg-muted/40 rounded p-2 overflow-auto max-h-32 whitespace-pre font-mono">
+          {stackFrames}
+        </pre>
+      )}
+      {release && (
+        <div className="text-[10px] text-muted-foreground">Release: {release}</div>
+      )}
+    </div>
+  );
+}
+
+/** Event type filter bar */
+function EventTypeFilterBar({
+  eventTypes,
+  enabledTypes,
+  onToggle,
+  onToggleAll,
+}: {
+  eventTypes: string[],
+  enabledTypes: Set<string>,
+  onToggle: (eventType: string) => void,
+  onToggleAll: () => void,
+}) {
+  const allEnabled = eventTypes.every((t) => enabledTypes.has(t));
+
+  return (
+    <div className="shrink-0 flex items-center gap-1 px-3 py-1 border-t border-border/30 bg-muted/20 overflow-x-auto">
+      <button
+        onClick={onToggleAll}
+        className={cn(
+          "shrink-0 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] font-medium transition-colors hover:transition-none",
+          allEnabled
+            ? "border-foreground/20 bg-foreground/10 text-foreground"
+            : "border-border/50 text-muted-foreground hover:text-foreground hover:bg-muted/40"
+        )}
+      >
+        All
+      </button>
+      {eventTypes.map((t) => {
+        const isEnabled = enabledTypes.has(t);
+        return (
+          <button
+            key={t}
+            onClick={() => onToggle(t)}
+            className={cn(
+              "shrink-0 inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] transition-colors hover:transition-none",
+              isEnabled
+                ? "border-foreground/20 bg-foreground/5 text-foreground"
+                : "border-border/40 text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/30"
+            )}
+          >
+            <span className={cn("w-1.5 h-1.5 rounded-full shrink-0", getEventTypeDotColor(t), !isEnabled && "opacity-40")} />
+            {getEventTypeShortName(t)}
+          </button>
+        );
+      })}
+    </div>
+  );
 }
 
 function DisplayDate({ date }: { date: Date }) {
@@ -260,6 +499,7 @@ function Timeline({
 }) {
   const [currentTime, setCurrentTime] = useState(0);
   const [hoveredMarkerIndex, setHoveredMarkerIndex] = useState<number | null>(null);
+  const [errorPopoverIndex, setErrorPopoverIndex] = useState<number | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number>(0);
 
@@ -285,6 +525,7 @@ function Timeline({
 
   const hasMarkers = (markers?.length ?? 0) > 0;
   const hoveredMarker = hoveredMarkerIndex !== null ? markers?.[hoveredMarkerIndex] ?? null : null;
+  const errorPopoverMarker = errorPopoverIndex !== null ? markers?.[errorPopoverIndex] ?? null : null;
 
   return (
     <div className={cn("border-t border-border/30 bg-background px-3 flex items-center gap-3", hasMarkers ? "py-1.5" : "py-2")}>
@@ -308,27 +549,70 @@ function Timeline({
             {markers?.map((marker, i) => {
               const left = totalTimeMs > 0 ? (marker.timeMs / totalTimeMs) * 100 : 0;
               if (left < 0 || left > 100) return null;
-              const isClick = marker.eventType === "$click";
-              return (
+              const isError = marker.eventType === "$error" || marker.eventType === "server.error";
+              const isServer = marker.isServerEvent;
+
+              const markerEl = (
                 <div
                   key={i}
                   className={cn(
-                    "absolute bottom-0 w-[3px] h-3 rounded-sm cursor-pointer",
-                    "transition-colors",
-                    isClick
-                      ? "bg-blue-500/70 hover:bg-blue-400"
-                      : "bg-emerald-500/70 hover:bg-emerald-400",
+                    "absolute bottom-0 w-[3px] rounded-sm cursor-pointer",
+                    "transition-colors hover:transition-none",
+                    getTimelineMarkerColorClasses(marker.eventType, isServer),
+                    isError ? "h-3.5" : "h-3",
+                    isServer && "border-l border-l-purple-300/50",
                   )}
                   style={{ left: `${left}%`, marginLeft: "-1.5px" }}
                   onMouseEnter={() => setHoveredMarkerIndex(i)}
                   onMouseLeave={() => setHoveredMarkerIndex((prev) => prev === i ? null : prev)}
-                  onClick={() => onSeek(marker.timeMs)}
+                  onClick={(e) => {
+                    if (isError && marker.event) {
+                      e.stopPropagation();
+                      setErrorPopoverIndex((prev) => prev === i ? null : i);
+                    } else {
+                      onSeek(marker.timeMs);
+                    }
+                  }}
                 />
               );
+
+              // Wrap error markers in a Popover
+              if (isError && marker.event) {
+                return (
+                  <Popover
+                    key={i}
+                    open={errorPopoverIndex === i}
+                    onOpenChange={(open) => setErrorPopoverIndex(open ? i : null)}
+                  >
+                    <PopoverTrigger asChild>
+                      {markerEl}
+                    </PopoverTrigger>
+                    <PopoverContent
+                      side="top"
+                      align="center"
+                      className="w-auto max-w-sm p-3"
+                      onOpenAutoFocus={(e) => e.preventDefault()}
+                    >
+                      <ErrorDetailContent event={marker.event} />
+                      <button
+                        className="mt-2 text-[10px] text-blue-500 hover:underline"
+                        onClick={() => {
+                          onSeek(marker.timeMs);
+                          setErrorPopoverIndex(null);
+                        }}
+                      >
+                        Jump to {formatTimelineMs(marker.timeMs)}
+                      </button>
+                    </PopoverContent>
+                  </Popover>
+                );
+              }
+
+              return markerEl;
             })}
 
-            {/* Custom tooltip */}
-            {hoveredMarker && (() => {
+            {/* Custom tooltip (not shown when popover is open) */}
+            {hoveredMarker && errorPopoverIndex === null && (() => {
               const left = totalTimeMs > 0 ? (hoveredMarker.timeMs / totalTimeMs) * 100 : 0;
               return (
                 <div
@@ -336,7 +620,12 @@ function Timeline({
                   style={{ left: `${left}%` }}
                 >
                   <div className="rounded-md bg-primary px-3 py-1.5 text-xs text-primary-foreground whitespace-nowrap max-w-52">
-                    <div className="truncate">{hoveredMarker.label}</div>
+                    <div className="flex items-center gap-1.5 truncate">
+                      {hoveredMarker.isServerEvent && (
+                        <CloudArrowDownIcon className="h-3 w-3 shrink-0 opacity-70" />
+                      )}
+                      <span className="truncate">{hoveredMarker.label}</span>
+                    </div>
                     <div className="text-[10px] opacity-70">{formatTimelineMs(hoveredMarker.timeMs)}</div>
                   </div>
                 </div>
@@ -475,6 +764,7 @@ export default function PageClient() {
   const [draftFilters, setDraftFilters] = useState<ReplayFilters>(EMPTY_FILTERS);
   const [clickCountsByReplayId, setClickCountsByReplayId] = useState<Map<string, number>>(new Map());
   const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
+  const [enabledEventTypes, setEnabledEventTypes] = useState<Set<string>>(() => new Set(ALL_KNOWN_EVENT_TYPES));
 
   const listBoxRef = useRef<HTMLDivElement | null>(null);
 
@@ -1145,26 +1435,29 @@ export default function PageClient() {
     let cancelled = false;
     setTimelineEvents([]);
     runAsynchronously(async () => {
+      // Fetch all events linked to this session replay
       const res = await adminApp.queryAnalytics({
         query: `SELECT event_type,
                        toUnixTimestamp64Milli(event_at) as event_at_ms,
                        data
                 FROM default.events
                 WHERE session_replay_id = {id:String}
-                  AND event_type IN ('$click', '$page-view')
                 ORDER BY event_at ASC
-                LIMIT 2000`,
+                LIMIT 3000`,
         params: { id: selectedRecordingId },
         include_all_branches: false,
         timeout_ms: 15000,
       });
       if (cancelled) return;
+      const serverEventTypes = new Set(["$request", "server.error"]);
       setTimelineEvents(res.result.map((r: any) => ({
         eventType: r.event_type as string,
         eventAtMs: Number(r.event_at_ms),
         data: typeof r.data === "string"
           ? JSON.parse(r.data)
           : (r.data ?? {}),
+        isServerEvent: serverEventTypes.has(r.event_type as string)
+          || (typeof r.data === "object" && r.data?.source === "server"),
       })));
     }, { noErrorLogging: true });
     return () => {
@@ -1349,14 +1642,59 @@ export default function PageClient() {
 
   const showMainTabLabel = renderableStreamCount > 1;
 
+  // Collect unique event types actually present in the data (for filter bar)
+  const presentEventTypes = useMemo(() => {
+    const types = new Set<string>();
+    for (const e of timelineEvents) {
+      types.add(e.eventType);
+    }
+    // Sort: known types first in order, then custom alphabetically
+    const known = ALL_KNOWN_EVENT_TYPES.filter((t) => types.has(t));
+    const custom = [...types].filter((t) => !ALL_KNOWN_EVENT_TYPES.includes(t as any)).sort();
+    return [...known, ...custom];
+  }, [timelineEvents]);
+
+  const handleToggleEventType = useCallback((eventType: string) => {
+    setEnabledEventTypes((prev) => {
+      const next = new Set(prev);
+      if (next.has(eventType)) {
+        next.delete(eventType);
+      } else {
+        next.add(eventType);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleToggleAllEventTypes = useCallback(() => {
+    setEnabledEventTypes((prev) => {
+      const allEnabled = presentEventTypes.every((t) => prev.has(t));
+      if (allEnabled) {
+        // Disable all
+        return new Set<string>();
+      }
+      // Enable all
+      const next = new Set(prev);
+      for (const t of presentEventTypes) {
+        next.add(t);
+      }
+      return next;
+    });
+  }, [presentEventTypes]);
+
   const timelineMarkers = useMemo(() => {
     if (timelineEvents.length === 0 || ms.globalTotalMs <= 0) return [];
-    return timelineEvents.map((e): TimelineMarker => ({
-      timeMs: e.eventAtMs - ms.globalStartTs,
-      eventType: e.eventType,
-      label: formatEventTooltip(e),
-    })).filter(m => m.timeMs >= 0 && m.timeMs <= ms.globalTotalMs);
-  }, [timelineEvents, ms.globalStartTs, ms.globalTotalMs]);
+    return timelineEvents
+      .filter((e) => enabledEventTypes.has(e.eventType))
+      .map((e): TimelineMarker => ({
+        timeMs: e.eventAtMs - ms.globalStartTs,
+        eventType: e.eventType,
+        label: formatEventTooltip(e),
+        isServerEvent: e.isServerEvent,
+        event: e,
+      }))
+      .filter(m => m.timeMs >= 0 && m.timeMs <= ms.globalTotalMs);
+  }, [timelineEvents, ms.globalStartTs, ms.globalTotalMs, enabledEventTypes]);
 
   const activeFilterCount = useMemo(() => filtersActiveCount(appliedFilters), [appliedFilters]);
 
@@ -1932,16 +2270,26 @@ export default function PageClient() {
                     </div>
 
                     {activeStream && activeHasEvents && (
-                      <Timeline
-                        getCurrentTimeMs={getCurrentGlobalTimeMs}
-                        playerIsPlaying={playerIsPlaying}
-                        totalTimeMs={ms.globalTotalMs}
-                        onTogglePlayPause={togglePlayPause}
-                        onSeek={handleSeek}
-                        playerSpeed={ms.settings.playerSpeed}
-                        onSpeedChange={updateSpeed}
-                        markers={timelineMarkers}
-                      />
+                      <>
+                        {presentEventTypes.length > 1 && (
+                          <EventTypeFilterBar
+                            eventTypes={presentEventTypes}
+                            enabledTypes={enabledEventTypes}
+                            onToggle={handleToggleEventType}
+                            onToggleAll={handleToggleAllEventTypes}
+                          />
+                        )}
+                        <Timeline
+                          getCurrentTimeMs={getCurrentGlobalTimeMs}
+                          playerIsPlaying={playerIsPlaying}
+                          totalTimeMs={ms.globalTotalMs}
+                          onTogglePlayPause={togglePlayPause}
+                          onSeek={handleSeek}
+                          playerSpeed={ms.settings.playerSpeed}
+                          onSpeedChange={updateSpeed}
+                          markers={timelineMarkers}
+                        />
+                      </>
                     )}
                   </div>
                 </div>

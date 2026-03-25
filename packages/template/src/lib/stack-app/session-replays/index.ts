@@ -15,7 +15,6 @@ export type AdminSessionReplayChunk = {
   id: string,
   batchId: string,
   sessionReplaySegmentId: string | null,
-  browserSessionId: string | null,
   eventCount: number,
   byteLength: number,
   firstEventAt: Date,

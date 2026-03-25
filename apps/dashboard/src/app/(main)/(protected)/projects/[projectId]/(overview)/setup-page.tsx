@@ -1,7 +1,7 @@
 'use client';
 
 import { CodeBlock } from '@/components/code-block';
-import { APIEnvKeys, NextJsEnvKeys } from '@/components/env-keys';
+import { APIEnvKeys, FrameworkEnvKeys, type EnvSnippetPreset } from '@/components/env-keys';
 import { InlineCode } from '@/components/inline-code';
 import { StyledLink } from '@/components/link';
 import { Tabs, TabsContent, TabsList, TabsTrigger, Typography, cn } from "@/components/ui";
@@ -15,6 +15,7 @@ import Image from 'next/image';
 import { Suspense, useRef, useState } from "react";
 import type { GlobeMethods } from 'react-globe.gl';
 import { PageLayout } from "../page-layout";
+import { getSetupFramework, setupFrameworkGroups, type SetupFrameworkId } from './setup-frameworks';
 import { useAdminApp } from '../use-admin-app';
 import { globeImages } from './globe';
 import styles from './setup-page.module.css';
@@ -27,15 +28,14 @@ const nameClasses = "text-green-600 dark:text-green-500";
 
 export default function SetupPage(props: { toMetrics: () => void }) {
   const adminApp = useAdminApp();
-  const [selectedFramework, setSelectedFramework] = useState<'nextjs' | 'react' | 'javascript' | 'python'>('nextjs');
+  const [selectedFramework, setSelectedFramework] = useState<SetupFrameworkId>('nextjs');
   const [keys, setKeys] = useState<{ projectId: string, publishableClientKey?: string, secretServerKey: string } | null>(null);
   const projectConfig = adminApp.useProject().useConfig();
   const requirePublishableClientKey = projectConfig.project.requirePublishableClientKey;
   const publishableClientKeyValue = keys?.publishableClientKey ?? "...";
+  const framework = getSetupFramework(selectedFramework);
   const optionalPublishableClientKeyProp = (indent: string) =>
     requirePublishableClientKey ? `\n${indent}publishableClientKey: "${publishableClientKeyValue}",` : "";
-  const optionalPublishableClientKeyHeader = (indent: string) =>
-    requirePublishableClientKey ? `\n${indent}'x-stack-publishable-client-key': "${publishableClientKeyValue}",` : "";
 
   const onGenerateKeys = async () => {
     const newKey = await adminApp.createInternalApiKey({
@@ -53,375 +53,277 @@ export default function SetupPage(props: { toMetrics: () => void }) {
     });
   };
 
-  const nextJsSteps = [
-    {
-      step: 2,
-      title: "Install Stack Auth",
-      content: <>
-        <Typography>
-          In a new or existing Next.js project, install Stack Auth as a dependency into your project:
-        </Typography>
-        <CodeBlock
-          language="bash"
-          content={`npx @stackframe/stack-cli@latest init`}
-          customRender={
-            <div className="p-4 font-mono text-sm">
-              <span className={commandClasses}>pnpx</span> <span className={nameClasses}>@stackframe/stack-cli@latest</span> init
-            </div>
-          }
-          title="Terminal"
-          icon="terminal"
-        />
-      </>
-    },
-    {
-      step: 3,
-      title: "Create Keys",
-      content: <>
-        <Typography>
-          Put these keys in the <InlineCode>.env.local</InlineCode> file.
-        </Typography>
-        <StackAuthKeys keys={keys} onGenerateKeys={onGenerateKeys} type="next" />
-      </>
-    },
-    {
-      step: 4,
-      title: "Done",
-      content: <>
-        <Typography>
-          If you start your Next.js app with npm run dev and navigate to <StyledLink href="http://localhost:3000/handler/signup">http://localhost:3000/handler/signup</StyledLink>, you will see the sign-up page.
-        </Typography>
-      </>
-    },
-  ];
+  const stackClientSnippet = deindent`
+    import { StackClientApp } from "${framework.packageName}";
+    ${selectedFramework === "react-router" ? 'import { useNavigate } from "react-router-dom";' : ""}
+    ${selectedFramework === "tanstack-start" ? 'import { useNavigate } from "@tanstack/react-router";' : ""}
 
-  const reactSteps = [
-    {
-      step: 2,
-      title: "Install Stack Auth",
-      content: <>
-        <Typography>
-          In a new or existing React project, install Stack Auth&apos;s dependencies:
-        </Typography>
-        <CodeBlock
-          language="bash"
-          content={`npm install @stackframe/react`}
-          customRender={
-            <div className="p-4 font-mono text-sm">
-              <span className={commandClasses}>npm install</span> <span className={nameClasses}>@stackframe/react</span>
-            </div>
-          }
-          title="Terminal"
-          icon="terminal"
-        />
-      </>
-    },
-    {
-      step: 3,
-      title: "Create Keys",
-      content: <StackAuthKeys keys={keys} onGenerateKeys={onGenerateKeys} type="raw" />
-    },
-    {
-      step: 4,
-      title: "Create stack/client.ts file",
-      content: <>
-        <Typography>
-          Create a new file called <InlineCode>stack/client.ts</InlineCode> and add the following code. Here we use react-router-dom as an example.
-        </Typography>
-        <CodeBlock
-          language="tsx"
-          content={deindent`
-            import { StackClientApp } from "@stackframe/react";
-            import { useNavigate } from "react-router-dom";
-            
-            export const stackClientApp = new StackClientApp({
-              // You should store these in environment variables
-              projectId: "${keys?.projectId ?? "..."}",${optionalPublishableClientKeyProp("  ")}
-              tokenStore: "cookie",
-              redirectMethod: {
-                useNavigate,
-              }
+    export const stackClientApp = new StackClientApp({
+      ${framework.envPreset === "nextjs" ? "// Environment variables are automatically read" : `projectId: "${keys?.projectId ?? "..."}",${optionalPublishableClientKeyProp("  ")}`}
+      tokenStore: "${framework.packageName === "@stackframe/stack" ? "nextjs-cookie" : "cookie"}",${selectedFramework === "react-router" || selectedFramework === "tanstack-start" ? `
+      redirectMethod: {
+        useNavigate,
+      },` : ""}
+    });
+  `;
+
+  const stackServerSnippet = deindent`
+    import { StackServerApp } from "${framework.packageName}";
+
+    export const stackServerApp = new StackServerApp({
+      projectId: "${keys?.projectId ?? "..."}",${optionalPublishableClientKeyProp("  ")}
+      secretServerKey: "${keys?.secretServerKey ?? "..."}",
+      tokenStore: "memory",
+    });
+  `;
+
+  const installCommand = selectedFramework === "nextjs"
+    ? "npx @stackframe/stack-cli@latest init"
+    : `npm install ${framework.packageName}`;
+
+  const installStep = {
+    step: 2,
+    title: "Install Stack Auth",
+    content: <>
+      <Typography>
+        {selectedFramework === "nextjs"
+          ? "In a new or existing Next.js project, install Stack Auth using the initializer."
+          : `Install ${framework.packageName} for ${framework.name}.`}
+      </Typography>
+      <CodeBlock
+        language="bash"
+        content={installCommand}
+        customRender={
+          <div className="p-4 font-mono text-sm">
+            <span className={commandClasses}>{selectedFramework === "nextjs" ? "pnpx" : "npm install"}</span>{" "}
+            <span className={nameClasses}>{selectedFramework === "nextjs" ? "@stackframe/stack-cli@latest init" : framework.packageName}</span>
+          </div>
+        }
+        title="Terminal"
+        icon="terminal"
+      />
+    </>,
+  };
+
+  const keysStep = {
+    step: 3,
+    title: "Create Keys",
+    content: <>
+      <Typography>
+        {framework.envPreset
+          ? "Copy these into the framework-specific env format or configuration file."
+          : "Copy these raw keys into your runtime bindings, secrets manager, or server env configuration."}
+      </Typography>
+      <StackAuthKeys
+        keys={keys}
+        onGenerateKeys={onGenerateKeys}
+        envPreset={framework.envPreset}
+      />
+    </>,
+  };
+
+  const configStep = {
+    step: 4,
+    title: "Create Stack app files",
+    content: <>
+      {(selectedFramework === "nextjs" || selectedFramework === "react-router" || selectedFramework === "tanstack-start" || selectedFramework === "nuxt" || selectedFramework === "sveltekit") ? (
+        <Tabs defaultValue="client">
+          <TabsList>
+            <TabsTrigger value="client">Client</TabsTrigger>
+            <TabsTrigger value="server">Server</TabsTrigger>
+          </TabsList>
+          <TabsContent value="client">
+            <CodeBlock language="typescript" content={stackClientSnippet} title="stack/client.ts" icon="code" />
+          </TabsContent>
+          <TabsContent value="server">
+            <CodeBlock language="typescript" content={selectedFramework === "nextjs" ? deindent`
+              import "server-only";
+              import { StackServerApp } from "@stackframe/stack";
+              import { stackClientApp } from "./client";
+
+              export const stackServerApp = new StackServerApp({
+                inheritsFrom: stackClientApp,
+              });
+            ` : stackServerSnippet} title="stack/server.ts" icon="code" />
+          </TabsContent>
+        </Tabs>
+      ) : (
+        <CodeBlock language="typescript" content={selectedFramework === "cloudflare-workers" ? deindent`
+          import { StackServerApp } from "@stackframe/js";
+
+          export function createStackServerApp(env: Env) {
+            return new StackServerApp({
+              projectId: env.STACK_PROJECT_ID,${optionalPublishableClientKeyProp("      ")}
+              secretServerKey: env.STACK_SECRET_SERVER_KEY,
+              tokenStore: "memory",
             });
-          `}
-          title="stack/client.ts"
-          icon="code"
-        />
-      </>
-    },
-    {
-      step: 5,
-      title: "Update App.tsx",
-      content: <>
-        <Typography>
-          Update your App.tsx file to wrap the entire app with a <InlineCode>StackProvider</InlineCode> and <InlineCode>StackTheme</InlineCode> and add a <InlineCode>StackHandler</InlineCode> component to handle the authentication flow.
-        </Typography>
-        <CodeBlock
-          language="tsx"
-          maxHeight={300}
-          content={deindent`
-            import { StackHandler, StackProvider, StackTheme } from "@stackframe/react";
-            import { Suspense } from "react";
-            import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
-            import { stackClientApp } from "./stack/client";
-
-            function HandlerRoutes() {
-              const location = useLocation();
-              
-              return (
-                <StackHandler app={stackClientApp} location={location.pathname} fullPage />
-              );
-            }
-
-            export default function App() {
-              return (
-                <Suspense fallback={"Loading..."}>
-                  <BrowserRouter>
-                    <StackProvider app={stackClientApp}>
-                      <StackTheme>
-                        <Routes>
-                          <Route path="/handler/*" element={<HandlerRoutes />} />
-                          <Route path="/" element={<div>hello world</div>} />
-                        </Routes>
-                      </StackTheme>
-                    </StackProvider>
-                  </BrowserRouter>
-                </Suspense>
-              );
-            }
-          `}
-          title="App.tsx"
-          icon="code"
-        />
-      </>
-    },
-    {
-      step: 6,
-      title: "Done",
-      content: <>
-        <Typography>
-          If you start your React app with npm run dev and navigate to <StyledLink href="http://localhost:5173/handler/signup">http://localhost:5173/handler/signup</StyledLink>, you will see the sign-up page.
-        </Typography>
-      </>
-    }
-  ];
-
-  const javascriptSteps = [
-    {
-      step: 2,
-      title: "Install Stack Auth",
-      content: <>
-        <Typography>
-          Install Stack Auth using npm:
-        </Typography>
-        <CodeBlock
-          language="bash"
-          content={`npm install @stackframe/js`}
-          customRender={
-            <div className="p-4 font-mono text-sm">
-              <span className={commandClasses}>npm install</span> <span className={nameClasses}>@stackframe/js</span>
-            </div>
           }
-          title="Terminal"
-          icon="terminal"
-        />
-      </>
-    },
-    {
-      step: 3,
-      title: "Create Keys",
-      content: <StackAuthKeys keys={keys} onGenerateKeys={onGenerateKeys} type="raw" />
-    },
-    {
-      step: 4,
-      title: "Initialize the app",
-      content: <>
-        <Typography>
-          Create a new file for your Stack app initialization:
-        </Typography>
-        <Tabs defaultValue="server">
-          <TabsList>
-            <TabsTrigger value="server">Server</TabsTrigger>
-            <TabsTrigger value="client">Client</TabsTrigger>
-          </TabsList>
-          <TabsContent value="server">
-            <CodeBlock
-              language="typescript"
-              content={deindent`
-                import { StackServerApp } from "@stackframe/js";
+        ` : stackServerSnippet} title="stack/server.ts" icon="code" />
+      )}
+    </>,
+  };
 
-                const stackServerApp = new StackServerApp({
-                  // You should store these in environment variables based on your project setup
-                  projectId: "${keys?.projectId ?? "..."}",${optionalPublishableClientKeyProp("  ")}
-                  secretServerKey: "${keys?.secretServerKey ?? "..."}",
-                  tokenStore: "memory",
-                });
-              `}
-              title="stack/server.ts"
-              icon="code"
-            />
-          </TabsContent>
-          <TabsContent value="client">
-            <CodeBlock
-              language="typescript"
-              content={deindent`
-                import { StackClientApp } from "@stackframe/js";
+  const integrationStep = {
+    step: 5,
+    title: framework.usesStackHandler ? "Integrate Stack into your app" : "Use Stack in your routes and handlers",
+    content: <>
+      <CodeBlock
+        language="tsx"
+        maxHeight={320}
+        content={selectedFramework === "nextjs" ? deindent`
+          'use client';
+          import { useAnalytics, useUser } from "@stackframe/stack";
 
-                const stackClientApp = new StackClientApp({
-                  // You should store these in environment variables
-                  projectId: "your-project-id",${optionalPublishableClientKeyProp("  ")}
-                  tokenStore: "cookie",
-                });
-              `}
-              title="stack/client.ts"
-              icon="code"
-            />
-          </TabsContent>
-        </Tabs>
-      </>
-    },
-    {
-      step: 5,
-      title: "Example usage",
-      content: <>
-        <Tabs defaultValue="server">
-          <TabsList>
-            <TabsTrigger value="server">Server</TabsTrigger>
-            <TabsTrigger value="client">Client</TabsTrigger>
-          </TabsList>
-          <TabsContent value="server">
-            <CodeBlock
-              language="typescript"
-              content={deindent`
-                import { stackServerApp } from "@/stack/server";
+          export default function Dashboard() {
+            const user = useUser();
+            const { track } = useAnalytics();
 
-                const user = await stackServerApp.getUser("user_id");
+            if (!user) return <div>Please sign in</div>;
 
-                await user.update({
-                  displayName: "New Display Name",
-                });
-
-                const team = await stackServerApp.createTeam({
-                  name: "New Team",
-                });
-
-                await team.addUser(user.id);
-              `}
-              title="Example server usage"
-              icon="code"
-            />
-          </TabsContent>
-          <TabsContent value="client">
-            <CodeBlock
-              language="typescript"
-              content={deindent`
-                import { stackClientApp } from "@/stack/client";
-
-                await stackClientApp.signInWithCredential({
-                  email: "test@example.com",
-                  password: "password123",
-                });
-
-                const user = await stackClientApp.getUser();
-
-                await user.update({
-                  displayName: "New Display Name",
-                });
-
-                await user.signOut();
-              `}
-              title="Example client usage"
-              icon="code"
-            />
-          </TabsContent>
-        </Tabs>
-      </>
-    }
-  ];
-
-  const pythonSteps = [
-    {
-      step: 2,
-      title: "Install requests",
-      content: <>
-        <Typography>
-          Install the requests library to make HTTP requests to the Stack Auth API:
-        </Typography>
-        <CodeBlock
-          language="bash"
-          content={`pip install requests`}
-          customRender={
-            <div className="p-4 font-mono text-sm">
-              <span className={commandClasses}>pip install</span> <span className={nameClasses}>requests</span>
-            </div>
+            return (
+              <button onClick={() => track("dashboard.viewed", { framework: "nextjs" })}>
+                Hello, {user.displayName}!
+              </button>
+            );
           }
-          title="Terminal"
-          icon="terminal"
-        />
-      </>
-    },
-    {
-      step: 3,
-      title: "Create Keys",
-      content: <StackAuthKeys keys={keys} onGenerateKeys={onGenerateKeys} type="raw" />
-    },
-    {
-      step: 4,
-      title: "Create helper function",
-      content: <>
-        <Typography>
-          Create a helper function to make requests to the Stack Auth API:
-        </Typography>
-        <CodeBlock
-          language="python"
-          content={deindent`
-            import requests
+        ` : selectedFramework === "react-router" ? deindent`
+          import { StackHandler, StackProvider, StackTheme, useAnalytics } from "@stackframe/react";
+          import { Suspense } from "react";
+          import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
+          import { stackClientApp } from "./stack/client";
 
-            def stack_auth_request(method, endpoint, **kwargs):
-              res = requests.request(
-                method,
-                f'https://api.stack-auth.com/{endpoint}',
-                headers={
-                  'x-stack-access-type': 'server',
-                  # You should store these in environment variables
-                  'x-stack-project-id': "${keys?.projectId ?? "..."}",${optionalPublishableClientKeyHeader("  ")}
-                  'x-stack-secret-server-key': "${keys?.secretServerKey ?? "..."}",
-                  **kwargs.pop('headers', {}),
-                },
-                **kwargs,
-              )
-              if res.status_code >= 400:
-                raise Exception(f"Stack Auth API request failed with {res.status_code}: {res.text}")
-              return res.json()
-          `}
-          title="stack_auth.py"
-          icon="code"
-        />
-      </>
-    },
-    {
-      step: 5,
-      title: "Make requests",
-      content: <>
-        <Typography>
-          You can now make requests to the Stack Auth API:
-        </Typography>
-        <CodeBlock
-          language="python"
-          content={deindent`
-            # Get current project info
-            print(stack_auth_request('GET', '/api/v1/projects/current'))
+          function HandlerRoutes() {
+            const location = useLocation();
+            return <StackHandler app={stackClientApp} location={location.pathname} fullPage />;
+          }
 
-            # Get user info with access token
-            print(stack_auth_request('GET', '/api/v1/users/me', headers={
-              'x-stack-access-token': access_token,
-            }))
-          `}
-          title="example.py"
-          icon="code"
-        />
-      </>
-    }
-  ];
+          function Dashboard() {
+            const { track } = useAnalytics();
+            return <button onClick={() => track("dashboard.viewed", { framework: "react-router" })}>Track event</button>;
+          }
+
+          export default function App() {
+            return (
+              <Suspense fallback={"Loading..."}>
+                <BrowserRouter>
+                  <StackProvider app={stackClientApp}>
+                    <StackTheme>
+                      <Routes>
+                        <Route path="/handler/*" element={<HandlerRoutes />} />
+                        <Route path="/" element={<Dashboard />} />
+                      </Routes>
+                    </StackTheme>
+                  </StackProvider>
+                </BrowserRouter>
+              </Suspense>
+            );
+          }
+        ` : selectedFramework === "tanstack-start" ? deindent`
+          import { StackHandler, StackProvider, StackTheme, useAnalytics } from "@stackframe/react";
+          import { createFileRoute, useRouterState } from "@tanstack/react-router";
+          import { stackClientApp } from "../stack/client";
+
+          export const Route = createFileRoute("/handler/$")({
+            component: HandlerRoute,
+          });
+
+          function HandlerRoute() {
+            const pathname = useRouterState({ select: (state) => state.location.pathname });
+            return <StackHandler app={stackClientApp} location={pathname} fullPage />;
+          }
+
+          export function Dashboard() {
+            const { track } = useAnalytics();
+            return <button onClick={() => track("dashboard.viewed", { framework: "tanstack-start" })}>Track event</button>;
+          }
+        ` : selectedFramework === "nuxt" ? deindent`
+          import { tokenStoreFromHeaders } from "@stackframe/js";
+          import { stackServerApp } from "~/stack/server";
+
+          export default defineEventHandler(async (event) => {
+            const tokenStore = tokenStoreFromHeaders(event.node.req.headers);
+            const user = await stackServerApp.getUser({ tokenStore });
+            await stackServerApp.track("dashboard.viewed", { framework: "nuxt" }, { tokenStore });
+            return { userId: user?.id ?? null };
+          });
+        ` : selectedFramework === "sveltekit" ? deindent`
+          import { stackServerApp } from "$lib/stack/server";
+
+          export async function load({ request }) {
+            const user = await stackServerApp.getUser({ tokenStore: request });
+            await stackServerApp.track("dashboard.viewed", { framework: "sveltekit" }, { tokenStore: request });
+            return { userId: user?.id ?? null };
+          }
+        ` : selectedFramework === "nestjs" ? deindent`
+          import { Controller, Get, Req } from "@nestjs/common";
+          import { tokenStoreFromHeaders } from "@stackframe/js";
+          import { stackServerApp } from "./stack/server";
+
+          @Controller("profile")
+          export class ProfileController {
+            @Get()
+            async read(@Req() req: { headers: Record<string, string | string[] | undefined> }) {
+              const tokenStore = tokenStoreFromHeaders(req.headers);
+              const user = await stackServerApp.getUser({ tokenStore });
+              await stackServerApp.track("dashboard.viewed", { framework: "nestjs" }, { tokenStore });
+              return { userId: user?.id ?? null };
+            }
+          }
+        ` : selectedFramework === "express" ? deindent`
+          import express from "express";
+          import { tokenStoreFromHeaders } from "@stackframe/js";
+          import { stackServerApp } from "./stack/server";
+
+          const app = express();
+          app.get("/profile", async (req, res) => {
+            const tokenStore = tokenStoreFromHeaders(req.headers);
+            const user = await stackServerApp.getUser({ tokenStore });
+            await stackServerApp.track("dashboard.viewed", { framework: "express" }, { tokenStore });
+            res.json({ userId: user?.id ?? null });
+          });
+        ` : selectedFramework === "hono" ? deindent`
+          import { Hono } from "hono";
+          import { stackServerApp } from "./stack/server";
+
+          const app = new Hono();
+          app.get("/profile", async (c) => {
+            const user = await stackServerApp.getUser({ tokenStore: c.req.raw });
+            await stackServerApp.track("dashboard.viewed", { framework: "hono" }, { tokenStore: c.req.raw });
+            return c.json({ userId: user?.id ?? null });
+          });
+        ` : deindent`
+          import { createStackServerApp } from "./stack/server";
+
+          export default {
+            async fetch(request: Request, env: Env) {
+              const stackServerApp = createStackServerApp(env);
+              const user = await stackServerApp.getUser({ tokenStore: request });
+              await stackServerApp.track("dashboard.viewed", { framework: "cloudflare-workers" }, { tokenStore: request });
+              return Response.json({ userId: user?.id ?? null });
+            },
+          };
+        `}
+        title={framework.usesStackHandler ? "App integration" : "Route / handler usage"}
+        icon="code"
+      />
+    </>,
+  };
+
+  const doneStep = {
+    step: 6,
+    title: "Done",
+    content: (
+      <Typography>
+        {selectedFramework === "nextjs" ? (
+          <>If you start your Next.js app and navigate to <StyledLink href="http://localhost:3000/handler/signup">http://localhost:3000/handler/signup</StyledLink>, you should see the sign-up page.</>
+        ) : framework.usesStackHandler ? (
+          <>Start your app and open the handler route you mounted. Then trigger a page render or button click that calls <InlineCode>useAnalytics()</InlineCode> to verify the client-side flow.</>
+        ) : (
+          <>Start your server/runtime and verify one request can call <InlineCode>stackServerApp.getUser()</InlineCode> and <InlineCode>stackServerApp.track()</InlineCode> using the selected framework pattern.</>
+        )}
+      </Typography>
+    ),
+  };
 
 
   return (
@@ -468,54 +370,48 @@ export default function SetupPage(props: { toMetrics: () => void }) {
               step: 1,
               title: "Select your framework",
               content: <div>
-                <div className="flex gap-4 flex-wrap">
-                  {([{
-                    id: 'nextjs',
-                    name: 'Next.js',
-                    reverseIfDark: true,
-                    imgSrc: '/next-logo.svg',
-                  }, {
-                    id: 'react',
-                    name: 'React',
-                    reverseIfDark: false,
-                    imgSrc: '/react-logo.svg',
-                  }, {
-                    id: 'javascript',
-                    name: 'JavaScript',
-                    reverseIfDark: false,
-                    imgSrc: '/javascript-logo.svg',
-                  }, {
-                    id: 'python',
-                    name: 'Python',
-                    reverseIfDark: false,
-                    imgSrc: '/python-logo.svg',
-                  }] as const).map(({ name, imgSrc: src, reverseIfDark, id }) => (
-                    <DesignButton
-                      key={id}
-                      variant={id === selectedFramework ? 'secondary' : 'plain'} className='h-24 w-24 flex flex-col items-center justify-center gap-2 '
-                      onClick={() => setSelectedFramework(id)}
-                    >
-                      <Image
-                        src={src}
-                        alt={name}
-
-                        className={reverseIfDark ? "dark:invert" : undefined}
-                        width="0"
-                        height="0"
-                        sizes="100vw"
-                        style={{ width: '30px', height: 'auto' }}
-                      />
-                      <Typography type='label'>{name}</Typography>
-                    </DesignButton>
+                <div className="flex flex-col gap-8">
+                  {setupFrameworkGroups.map((group) => (
+                    <div key={group.id} className="flex flex-col gap-3">
+                      <Typography type="label">{group.name}</Typography>
+                      <div className="flex gap-4 flex-wrap">
+                        {group.frameworkIds.map((frameworkId) => {
+                          const groupFramework = getSetupFramework(frameworkId);
+                          return (
+                            <DesignButton
+                              key={frameworkId}
+                              variant={frameworkId === selectedFramework ? 'secondary' : 'plain'}
+                              className='h-24 w-28 flex flex-col items-center justify-center gap-2'
+                              onClick={() => setSelectedFramework(frameworkId)}
+                            >
+                              <Image
+                                src={groupFramework.imgSrc}
+                                alt={groupFramework.name}
+                                className={groupFramework.reverseIfDark ? "dark:invert" : undefined}
+                                width="0"
+                                height="0"
+                                sizes="100vw"
+                                style={{ width: '30px', height: 'auto' }}
+                              />
+                              <Typography type='label'>{groupFramework.name}</Typography>
+                            </DesignButton>
+                          );
+                        })}
+                      </div>
+                    </div>
                   ))}
+                  <Typography type="label" variant="secondary">
+                    Need Nitro, Fastify, Elysia, Astro, Standalone, OpenTelemetry, or log streaming? The docs cover those as runtime-supported or integration-level recipes.
+                  </Typography>
                 </div>
               </div>,
             },
-            ...(selectedFramework === 'nextjs' ? nextJsSteps : []),
-            ...(selectedFramework === 'react' ? reactSteps : []),
-            ...(selectedFramework === 'javascript' ? javascriptSteps : []),
-            ...(selectedFramework === 'python' ? pythonSteps : []),
-          ].map((item, index) => (
+            installStep,
+            keysStep,
+            configStep,
+            integrationStep,
+            doneStep,
+          ].map((item) => (
             <li key={item.step} className={cn("ms-6 flex flex-col lg:flex-row gap-10 mb-20")}>
               <div className="flex flex-col justify-center gap-2 max-w-[180px] min-w-[180px]">
                 <span className={`absolute flex items-center justify-center w-8 h-8 bg-gray-100 dark:bg-gray-70 rounded-full -start-4 ring-4 ring-white dark:ring-gray-900`}>
@@ -612,17 +508,18 @@ function GlobeIllustrationInner() {
 function StackAuthKeys(props: {
   keys: { projectId: string, publishableClientKey?: string, secretServerKey: string } | null,
   onGenerateKeys: () => Promise<void>,
-  type: 'next' | 'raw',
+  envPreset: EnvSnippetPreset | null,
 }) {
   return (
     <div className="w-full border rounded-xl p-8 gap-4 flex flex-col">
       {props.keys ? (
         <>
-          {props.type === 'next' ? (
-            <NextJsEnvKeys
+          {props.envPreset ? (
+            <FrameworkEnvKeys
               projectId={props.keys.projectId}
               publishableClientKey={props.keys.publishableClientKey}
               secretServerKey={props.keys.secretServerKey}
+              defaultPreset={props.envPreset}
             />
           ) : (
             <APIEnvKeys

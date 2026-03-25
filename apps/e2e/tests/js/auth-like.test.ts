@@ -1,3 +1,4 @@
+import { tokenStoreFromHeaders } from "@stackframe/js";
 import { it } from "../helpers";
 import { createApp } from "./js-helpers";
 
@@ -487,12 +488,9 @@ it("getUser should work with x-stack-auth header in request-like tokenStore", as
   // Get the auth headers from the signed-in user
   const authHeaders = await clientApp.getAuthHeaders();
 
-  // Create a request-like object with x-stack-auth header
-  const requestLike = {
-    headers: new Headers({
-      "x-stack-auth": authHeaders["x-stack-auth"],
-    }),
-  };
+  const requestLike = tokenStoreFromHeaders({
+    "X-Stack-Auth": authHeaders["x-stack-auth"],
+  });
 
   // Call getUser with the request-like tokenStore
   const serverUser = await serverApp.getUser({ tokenStore: requestLike });
@@ -500,6 +498,24 @@ it("getUser should work with x-stack-auth header in request-like tokenStore", as
 
   expect(serverUser).not.toBeNull();
   expect(serverUser!.primaryEmail).toBe("test@test.com");
+  expect(serverUser!.id).toBe(clientUser.id);
+});
+
+it("getUser should work with raw Request tokenStore", async ({ expect }) => {
+  const { serverApp, clientApp } = await createApp({});
+  await signIn(clientApp);
+
+  const authHeaders = await clientApp.getAuthHeaders();
+  const request = new Request("https://example.test/profile", {
+    headers: {
+      "x-stack-auth": authHeaders["x-stack-auth"],
+    },
+  });
+
+  const serverUser = await serverApp.getUser({ tokenStore: request });
+  const clientUser = await clientApp.getUser({ or: "throw" });
+
+  expect(serverUser).not.toBeNull();
   expect(serverUser!.id).toBe(clientUser.id);
 });
 

@@ -17,22 +17,35 @@ export async function runClickhouseMigrations() {
   await client.exec({ query: USERS_TABLE_BASE_SQL });
   await client.exec({ query: USERS_VIEW_SQL });
   await client.exec({ query: EVENTS_ADD_REPLAY_COLUMNS_SQL });
+  await client.exec({ query: EVENTS_ADD_EVENT_ID_COLUMNS_SQL });
   await client.exec({ query: TOKEN_REFRESH_EVENT_ROW_FORMAT_MUTATION_SQL });
   await client.exec({ query: BACKFILL_REFRESH_TOKEN_ID_COLUMN_SQL });
   await client.exec({ query: SIGN_UP_RULE_TRIGGER_EVENT_ROW_FORMAT_MUTATION_SQL });
-  // Recreate the events view so SELECT * picks up columns added by EVENTS_ADD_REPLAY_COLUMNS_SQL
+  await client.exec({ query: SPANS_TABLE_SQL });
+  await client.exec({ query: SPANS_VIEW_SQL });
+  await client.exec({ query: EVENTS_ADD_FROM_SERVER_COLUMN_SQL });
+  await client.exec({ query: SPANS_ADD_FROM_SERVER_COLUMN_SQL });
+  await client.exec({ query: EVENTS_ADD_TRACE_ID_COLUMN_SQL });
+  await client.exec({ query: SPANS_ADD_TRACE_ID_COLUMN_SQL });
+  // Recreate the events view so SELECT * picks up columns added by migrations
   await client.exec({ query: EVENTS_VIEW_SQL });
+  // Recreate the spans view so SELECT * picks up columns added by migrations
+  await client.exec({ query: SPANS_VIEW_SQL });
   const queries = [
     "REVOKE ALL PRIVILEGES ON *.* FROM limited_user;",
     "REVOKE ALL FROM limited_user;",
     "GRANT SELECT ON default.events TO limited_user;",
     "GRANT SELECT ON default.users TO limited_user;",
+    "GRANT SELECT ON default.spans TO limited_user;",
   ];
   await client.exec({
     query: "CREATE ROW POLICY IF NOT EXISTS events_project_isolation ON default.events FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user",
   });
   await client.exec({
     query: "CREATE ROW POLICY IF NOT EXISTS users_project_isolation ON default.users FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user",
+  });
+  await client.exec({
+    query: "CREATE ROW POLICY IF NOT EXISTS spans_project_isolation ON default.spans FOR SELECT USING project_id = getSetting('SQL_project_id') AND branch_id = getSetting('SQL_branch_id') TO limited_user",
   });
   for (const query of queries) {
     await client.exec({ query });
@@ -50,7 +63,7 @@ CREATE TABLE IF NOT EXISTS analytics_internal.events (
     branch_id        String,
     user_id          Nullable(String),
     team_id          Nullable(String),
-    created_at DateTime64(3, 'UTC') DEFAULT now64(3)
+    created_at       DateTime64(3, 'UTC') DEFAULT now64(3)
 )
 ENGINE MergeTree
 PARTITION BY toYYYYMM(event_at)
@@ -58,7 +71,7 @@ ORDER BY (project_id, branch_id, event_at);
 `;
 
 const EVENTS_VIEW_SQL = `
-CREATE OR REPLACE VIEW default.events 
+CREATE OR REPLACE VIEW default.events
 SQL SECURITY DEFINER
 AS
 SELECT *
@@ -146,7 +159,7 @@ ORDER BY (project_id, branch_id, id);
 `;
 
 const USERS_VIEW_SQL = `
-CREATE OR REPLACE VIEW default.users 
+CREATE OR REPLACE VIEW default.users
 SQL SECURITY DEFINER
 AS
 SELECT
@@ -195,6 +208,63 @@ UPDATE refresh_token_id = data.refresh_token_id::Nullable(String)
 WHERE event_type = '$token-refresh'
   AND refresh_token_id IS NULL
   AND data.refresh_token_id::Nullable(String) IS NOT NULL;
+`;
+
+const EVENTS_ADD_EVENT_ID_COLUMNS_SQL = `
+ALTER TABLE analytics_internal.events
+  ADD COLUMN IF NOT EXISTS event_id String DEFAULT '' AFTER event_type,
+  ADD COLUMN IF NOT EXISTS parent_span_ids Array(String) DEFAULT [] AFTER event_id;
+`;
+
+const SPANS_TABLE_SQL = `
+CREATE TABLE IF NOT EXISTS analytics_internal.spans (
+    span_type        LowCardinality(String),
+    span_id          String,
+    started_at       DateTime64(3, 'UTC'),
+    created_at       DateTime64(3, 'UTC') DEFAULT now64(3),
+    ended_at           Nullable(DateTime64(3, 'UTC')),
+    parent_ids       Array(String) DEFAULT [],
+    data             JSON,
+    project_id       String,
+    branch_id        String,
+    user_id          Nullable(String),
+    team_id          Nullable(String),
+    refresh_token_id Nullable(String),
+    session_replay_id Nullable(String),
+    session_replay_segment_id Nullable(String)
+)
+ENGINE ReplacingMergeTree(created_at)
+PARTITION BY toYYYYMM(started_at)
+ORDER BY (project_id, branch_id, span_id);
+`;
+
+const SPANS_VIEW_SQL = `
+CREATE OR REPLACE VIEW default.spans
+SQL SECURITY DEFINER
+AS
+SELECT *
+FROM analytics_internal.spans
+FINAL;
+`;
+
+const EVENTS_ADD_FROM_SERVER_COLUMN_SQL = `
+ALTER TABLE analytics_internal.events
+  ADD COLUMN IF NOT EXISTS from_server Bool DEFAULT false AFTER session_replay_segment_id;
+`;
+
+const SPANS_ADD_FROM_SERVER_COLUMN_SQL = `
+ALTER TABLE analytics_internal.spans
+  ADD COLUMN IF NOT EXISTS from_server Bool DEFAULT false AFTER session_replay_segment_id;
+`;
+
+const EVENTS_ADD_TRACE_ID_COLUMN_SQL = `
+ALTER TABLE analytics_internal.events
+  ADD COLUMN IF NOT EXISTS trace_id Nullable(String) AFTER event_id;
+`;
+
+const SPANS_ADD_TRACE_ID_COLUMN_SQL = `
+ALTER TABLE analytics_internal.spans
+  ADD COLUMN IF NOT EXISTS trace_id Nullable(String) AFTER span_id;
 `;
 
 const EXTERNAL_ANALYTICS_DB_SQL = `

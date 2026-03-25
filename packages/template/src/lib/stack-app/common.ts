@@ -74,6 +74,47 @@ export type RequestLike = {
   },
 };
 
+export type TokenStoreHeadersInit =
+  | RequestLike["headers"]
+  | Headers
+  | Record<string, string | string[] | undefined>;
+
+function isHeadersGetter(headers: TokenStoreHeadersInit): headers is RequestLike["headers"] | Headers {
+  return "get" in headers && typeof headers.get === "function";
+}
+
+export function tokenStoreFromHeaders(headers: TokenStoreHeadersInit): RequestLike {
+  if (isHeadersGetter(headers)) {
+    return {
+      headers: {
+        get(name: string) {
+          return headers.get(name);
+        },
+      },
+    };
+  }
+
+  return {
+    headers: {
+      get(name: string) {
+        const normalizedName = name.toLowerCase();
+        const matchingHeaderKey = Object.keys(headers).find((key) => key.toLowerCase() === normalizedName);
+        const headerValue = headers[matchingHeaderKey ?? normalizedName];
+        if (typeof headerValue === "string") {
+          return headerValue;
+        }
+        if (Array.isArray(headerValue)) {
+          if (normalizedName === "cookie") {
+            return headerValue.join("; ");
+          }
+          return headerValue[0] ?? null;
+        }
+        return null;
+      },
+    },
+  };
+}
+
 export type TokenStoreInit<HasTokenStore extends boolean = boolean> =
   HasTokenStore extends true ? (
     | "cookie"

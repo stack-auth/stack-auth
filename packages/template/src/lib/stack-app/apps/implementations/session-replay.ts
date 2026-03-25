@@ -37,6 +37,13 @@ export type AnalyticsOptions = {
    * set `enabled: true` to opt in.
    */
   replays?: AnalyticsReplayOptions,
+
+  /**
+   * Sample rate for traces (spans created via `startSpan()`).
+   * A number between 0.0 (drop all) and 1.0 (keep all). Default: 1.0.
+   * Events (`trackEvent`, `captureException`, auto-captured) are not sampled.
+   */
+  tracesSampleRate?: number,
 };
 
 /**
@@ -134,6 +141,11 @@ export type SessionRecorderDeps = {
   sendBatch: (body: string, options: { keepalive: boolean }) => Promise<Result<Response, Error>>,
 };
 
+export type SessionReplayLinkState = {
+  sessionReplayId: string | null,
+  sessionReplaySegmentId: string,
+};
+
 export class SessionRecorder {
   private _started = false;
   private _cancelled = false;
@@ -149,6 +161,7 @@ export class SessionRecorder {
   private _takingSnapshot = false;
   private _flushInProgress = false;
   private _lastKnownAccessToken: string | null = null;
+  private _lastSessionReplayId: string | null = null;
   private readonly _sessionReplaySegmentId: string;
   private readonly _storageKey: string;
   private readonly _deps: SessionRecorderDeps;
@@ -190,6 +203,13 @@ export class SessionRecorder {
   clearBuffer() {
     this._events = [];
     this._approxBytes = 0;
+  }
+
+  getCurrentLinkState(): SessionReplayLinkState {
+    return {
+      sessionReplayId: this._lastSessionReplayId,
+      sessionReplaySegmentId: this._sessionReplaySegmentId,
+    };
   }
 
   private _persistActivity(nowMs: number): StoredSession {
@@ -241,6 +261,12 @@ export class SessionRecorder {
 
       if (!res.data.ok) {
         console.warn("SessionRecorder flush failed:", res.data.status, await res.data.text());
+        return;
+      }
+
+      const json = await res.data.json() as { session_replay_id?: unknown };
+      if (typeof json.session_replay_id === "string") {
+        this._lastSessionReplayId = json.session_replay_id;
       }
     } finally {
       this._flushInProgress = false;

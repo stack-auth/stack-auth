@@ -7,11 +7,13 @@ title: Setup
 Before getting started, make sure you have a project set up for your chosen platform:
 
 - **Next.js**: A [Next.js project](https://nextjs.org/docs/getting-started/installation) using the app router (Stack Auth does not support the pages router on Next.js)
-- **React**: A [React project](https://react.dev/learn/creating-a-react-app) (we show examples with Vite)
-- **JavaScript**: A Node.js project with Express
+- **React Router / TanStack Start**: A [React project](https://react.dev/learn/creating-a-react-app) (we show examples with Vite-style env access)
+- **Nuxt / SvelteKit**: A project created with the corresponding framework starter
+- **NestJS / Express / Hono / Cloudflare Workers**: A JavaScript or TypeScript server/runtime project
+- **JavaScript**: A Node.js project when you want the generic JS setup path
 - **Python**: A Python environment with your chosen framework (Django, FastAPI, or Flask)
 
-We recommend using our **setup wizard** for JavaScript frameworks for a seamless installation experience. For Python, we recommend using the REST API approach.
+We recommend the **setup wizard** for Next.js, generic React, and backend JS projects. For the explicitly supported framework recipes below, use the manual installation tab. For Python, we recommend using the REST API approach.
 
 ### Setup Wizard / Manual Installation
 <Tabs defaultValue="wizard">
@@ -27,7 +29,7 @@ We recommend using our **setup wizard** for JavaScript frameworks for a seamless
       </Step>
       
       <Info>
-        The setup wizard is available for JavaScript/TypeScript frameworks. For Python projects, please use the manual installation method.
+        The setup wizard is best today for Next.js, generic React, and backend JS projects. Nuxt, SvelteKit, React Router, TanStack Start, NestJS, Hono, and Cloudflare Workers should use the manual installation recipes below.
       </Info>
 
       Run Stack's installation wizard with the following command:
@@ -71,7 +73,7 @@ We recommend using our **setup wizard** for JavaScript frameworks for a seamless
   
   <TabsContent value="manual">
     <Info>
-      Note: The setup wizard also supports existing, complicated projects. Cases where manual installation is necessary are rare for JavaScript frameworks.
+      Note: The manual tab is the recommended path for the first-wave framework recipes on this page, even if your project is already complex.
     </Info>
 
     <Steps>
@@ -118,10 +120,10 @@ We recommend using our **setup wizard** for JavaScript frameworks for a seamless
       />
 
       <Step>
-      ### Set up authentication handlers (Frontend frameworks only)
+      ### Set up authentication handlers (when the framework has Stack UI support)
       </Step>
       
-      For JavaScript frameworks, create the authentication handler:
+      For frameworks with Stack UI components, create the authentication handler. For server-only or `@stackframe/js` setups, the example will explain the recommended alternative:
 
       <PlatformCodeblock
         document="setup/setup"
@@ -130,10 +132,10 @@ We recommend using our **setup wizard** for JavaScript frameworks for a seamless
       />
 
       <Step>
-      ### Add providers (Next.js and React only)
+      ### Add providers (Next.js and React-like frameworks only)
       </Step>
 
-      For Next.js and React, wrap your app with Stack providers:
+      For Next.js, React Router, TanStack Start, and generic React, wrap your app with Stack providers:
 
       <PlatformCodeblock
         document="setup/setup"
@@ -142,10 +144,10 @@ We recommend using our **setup wizard** for JavaScript frameworks for a seamless
       />
 
       <Step>
-      ### Add loading boundary (Next.js only)
+      ### Add loading boundary
       </Step>
       
-      For Next.js, add a Suspense boundary:
+      Add the framework-appropriate loading setup:
 
       <PlatformCodeblock
         document="setup/setup"
@@ -154,10 +156,10 @@ We recommend using our **setup wizard** for JavaScript frameworks for a seamless
       />
 
       <Step>
-      ### Add suspense boundary (React only)
+      ### Add suspense boundary
       </Step>
 
-      For React, add a suspense boundary:
+      Add a React Suspense boundary when the selected framework uses `@stackframe/react`:
 
       <PlatformCodeblock
         document="setup/setup"
@@ -186,7 +188,7 @@ That's it! Stack is now configured in your project.
 
 ### What you'll see
 
-For JavaScript frameworks with built-in UI components, you'll see the Stack Auth sign-up page:
+For JavaScript frameworks with built-in Stack UI components, you'll see the Stack Auth sign-up page:
 
 <img
   src="/imgs/sign-in.png"
@@ -204,7 +206,7 @@ After signing up/in, you will be redirected back to the home page. You can also 
   className="mx-auto block rounded-lg"
 />
 
-For Python and backend-only JavaScript setups, you'll interact with Stack Auth through the REST API.
+For Python and backend-oriented JavaScript setups, you'll integrate Stack Auth through `StackServerApp`, your own routes/components, or the REST API.
 
 ## Example usage
 

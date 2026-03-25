@@ -6,7 +6,13 @@ import { CustomerInvoicesList, CustomerInvoicesRequestOptions, CustomerProductsL
 import { Project } from "../../projects";
 import { ProjectCurrentUser, SyncedPartialUser, TokenPartialUser } from "../../users";
 import { _StackClientAppImpl } from "../implementations";
+import { AnalyticsReplayLinkOptions } from "../implementations/analytics-events";
 import { AnalyticsOptions } from "../implementations/session-replay";
+import type { Span, StartSpanOptions } from "../implementations/tracing";
+
+export type TrackClientAnalyticsEventOptions = AnalyticsReplayLinkOptions & {
+  at?: Date | number,
+};
 
 export type StackClientAppConstructorOptions<HasTokenStore extends boolean, ProjectId extends string> = {
   baseUrl?: string | { browser: string, server: string },
@@ -25,6 +31,12 @@ export type StackClientAppConstructorOptions<HasTokenStore extends boolean, Proj
    * the app is never used or disposed of immediately. To disable this behavior, set this option to true.
    */
   noAutomaticPrefetch?: boolean,
+
+  /**
+   * Release identifier (e.g., git SHA or package version). Attached to $error events
+   * for source map resolution.
+   */
+  release?: string,
 
   /**
    * Options for analytics and session recording. Replays are disabled by default;
@@ -53,6 +65,20 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
     readonly version: string,
 
     readonly urls: Readonly<HandlerUrls>,
+
+    trackEvent(eventType: string, data?: Record<string, unknown>, options?: TrackClientAnalyticsEventOptions): Promise<void>,
+    captureException(error: unknown, extraData?: Record<string, unknown>): void,
+    flushAnalytics(): Promise<void>,
+    register(properties: Record<string, unknown>): void,
+    unregister(key: string): void,
+
+    startSpan<T>(name: string, callback: (span: Span) => T | Promise<T>): Promise<T>,
+    startSpan<T>(name: string, options: StartSpanOptions, callback: (span: Span) => T | Promise<T>): Promise<T>,
+    startSpan(name: string): Span,
+    startSpan(name: string, options: StartSpanOptions): Span,
+
+    getActiveSpan(): Span | null,
+    getTraceHeaders(): Record<string, string>,
 
     signInWithOAuth(provider: string, options?: { returnTo?: string }): Promise<void>,
     signInWithCredential(options: { email: string, password: string, noRedirect?: boolean }): Promise<Result<undefined, KnownErrors["EmailPasswordMismatch"] | KnownErrors["InvalidTotpCode"]>>,

@@ -29,10 +29,15 @@ flowchart LR
 
 ### What Gets Tracked
 
-Stack collects both client-side and server-side analytics events:
+Stack collects three types of telemetry following the OpenTelemetry standard:
 
-- **Client-side events**: browser interaction events like `$page-view` and `$click`
-- **Server-side events**: currently `$token-refresh` and `$sign-up-rule-trigger`
+**Events** — discrete occurrences stored in the `events` table:
+- **Browser auto-capture**: `$page-view`, `$click`, `$tab-in`, `$tab-out`, `$window-focus`, `$window-blur`, `$submit`, `$scroll-depth`, `$rage-click`, `$copy`, `$paste`, and `$error` (with full stack traces)
+- **Server auto-capture**: `$request` (via `middleware()`) and backend events like `$token-refresh` and `$sign-up-rule-trigger`
+- **Custom events**: any event name that does not start with `$` — sent via `trackEvent()`
+
+**Spans** — timed operations stored in the `spans` table:
+- Created via `startSpan()` to trace timed operations and form distributed traces
 
 ## Enabling the Analytics App
 
@@ -48,12 +53,87 @@ To use analytics in your project:
 1. Enable Analytics in your Stack Auth dashboard (**Apps → Analytics**)
 2. Initialize Stack Auth on your frontend with `StackClientApp`/`StackProvider`
 3. Sign in with a real user session
-4. Open the app and navigate/click around
+4. Open the app, navigate/click around, or call `trackEvent()` for your own events
 5. Check **Analytics → Tables** to confirm events are arriving
 
-After setup, Stack automatically captures client-side `$page-view` and `$click` events.
+After setup, Stack automatically captures browser events (`$page-view`, `$click`, `$error`, etc.) and `$error` events with full stack traces.
+
+### Error Tracking
+
+`$error` events automatically include parsed stack traces (`stack_frames`) with filename, line number, column number, and function name. Set the `release` option on your app to enable source map resolution:
+
+```ts
+new StackClientApp({
+  // ...
+  release: process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ?? "dev",
+});
+```
 
 If you want replay recordings, also enable `analytics.replays.enabled` in your client app config.
+
+You can tune the noisier browser signals with public env vars. The defaults are:
+
+- `NEXT_PUBLIC_STACK_ANALYTICS_RAGE_CLICK_THRESHOLD=3`
+- `NEXT_PUBLIC_STACK_ANALYTICS_RAGE_CLICK_WINDOW_MS=1000`
+- `NEXT_PUBLIC_STACK_ANALYTICS_RAGE_CLICK_RADIUS_PX=24`
+- `NEXT_PUBLIC_STACK_ANALYTICS_SCROLL_DEPTH_STEP_PERCENT=25`
+
+Clipboard event capture only records that a copy or paste happened plus lightweight metadata like element type and clipboard MIME types. It does not record clipboard contents.
+
+## Custom Events
+
+Use `trackEvent(name, data?, options?)` to write your own analytics events through the same pipeline as Stack-managed events.
+
+- Custom event names must not start with `$`
+- Event payloads must be JSON-serializable objects
+- Client events follow the current authenticated Stack session
+- Client events automatically attach the current `sessionReplayId` and `sessionReplaySegmentId` when replay recording is enabled and a replay has been established
+- Server events can be request-bound or project-scoped
+- Both client and server `trackEvent()` calls accept `options.sessionReplayId` and `options.sessionReplaySegmentId` when you want to associate an event with a specific replay explicitly
+
+### Client Example
+
+```tsx
+import { useAnalytics } from "@stackframe/stack";
+
+export function CheckoutButton() {
+  const { trackEvent } = useAnalytics();
+
+  return (
+    <button
+      onClick={() => trackEvent("checkout.started", {
+        cart_value: 4200,
+        currency: "usd",
+      })}
+    >
+      Checkout
+    </button>
+  );
+}
+```
+
+### Server Example
+
+```ts
+import { StackServerApp } from "@stackframe/js";
+
+const stackServerApp = new StackServerApp({
+  projectId: process.env.STACK_PROJECT_ID!,
+  publishableClientKey: process.env.STACK_PUBLISHABLE_CLIENT_KEY!,
+  secretServerKey: process.env.STACK_SECRET_SERVER_KEY!,
+  tokenStore: "memory",
+});
+
+await stackServerApp.trackEvent("billing.invoice.created", {
+  invoice_id: "inv_123",
+});
+```
+
+### Raw REST Ingestion
+
+For custom integrations outside the SDKs, send batches to `POST /api/v1/analytics/events/batch` with client, server, or admin auth. Use the same event shape as the SDKs: `batch_id`, `sent_at_ms`, and an `events` array containing `{ event_type, event_at_ms, data }`.
+
+See the [Custom Events Support Matrix](./analytics-custom-events) for framework coverage and integration recipes.
 
 ## Tables
 

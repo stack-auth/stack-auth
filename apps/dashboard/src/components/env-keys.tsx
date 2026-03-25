@@ -1,21 +1,70 @@
 import { getPublicEnvVar } from '@/lib/env';
 import { Button, CopyField, Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui";
 
-function getEnvFileContent(props: {
+export type EnvSnippetPreset = "nextjs" | "vite" | "nuxt" | "sveltekit";
+
+const envSnippetPresetLabels: Record<EnvSnippetPreset, string> = {
+  nextjs: "Next.js",
+  vite: "Vite",
+  nuxt: "Nuxt",
+  sveltekit: "SvelteKit",
+};
+
+function getFrameworkPublicEnvEntries(props: {
+  projectId: string,
+  publishableClientKey?: string,
+  preset: EnvSnippetPreset,
+}) {
+  const apiUrl = getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL') === "https://api.stack-auth.com"
+    ? undefined
+    : getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL');
+
+  switch (props.preset) {
+    case "nextjs": {
+      return {
+        NEXT_PUBLIC_STACK_API_URL: apiUrl,
+        NEXT_PUBLIC_STACK_PROJECT_ID: props.projectId,
+        NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: props.publishableClientKey,
+      };
+    }
+    case "vite": {
+      return {
+        VITE_STACK_API_URL: apiUrl,
+        VITE_STACK_PROJECT_ID: props.projectId,
+        VITE_STACK_PUBLISHABLE_CLIENT_KEY: props.publishableClientKey,
+      };
+    }
+    case "nuxt": {
+      return {
+        NUXT_PUBLIC_STACK_API_URL: apiUrl,
+        NUXT_PUBLIC_STACK_PROJECT_ID: props.projectId,
+        NUXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: props.publishableClientKey,
+      };
+    }
+    case "sveltekit": {
+      return {
+        PUBLIC_STACK_API_URL: apiUrl,
+        PUBLIC_STACK_PROJECT_ID: props.projectId,
+        PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: props.publishableClientKey,
+      };
+    }
+  }
+}
+
+export function getEnvFileContent(props: {
   projectId: string,
   publishableClientKey?: string,
   secretServerKey?: string,
   superSecretAdminKey?: string,
+  preset: EnvSnippetPreset,
 }) {
   const envFileContent = Object.entries({
-    NEXT_PUBLIC_STACK_API_URL: getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL') === "https://api.stack-auth.com" ? undefined : getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL'),
-    NEXT_PUBLIC_STACK_PROJECT_ID: props.projectId,
-    NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY: props.publishableClientKey,
+    ...getFrameworkPublicEnvEntries(props),
     STACK_SECRET_SERVER_KEY: props.secretServerKey,
     STACK_SUPER_SECRET_ADMIN_KEY: props.superSecretAdminKey,
   })
-    .filter(([k, v]) => v)
-    .map(([k, v]) => `${k}=${v}`)
+    .filter(([, value]) => value != null)
+    .map(([key, value]) => `${key}=${value}`)
     .join("\n");
 
   return envFileContent;
@@ -26,9 +75,12 @@ export function EnvKeys(props: {
   publishableClientKey?: string,
   secretServerKey?: string,
   superSecretAdminKey?: string,
+  defaultPreset?: EnvSnippetPreset,
 }) {
+  const defaultPreset = props.defaultPreset ?? "nextjs";
+
   const handleDownloadKeys = () => {
-    const blob = new Blob([getEnvFileContent(props)], { type: "text/plain" });
+    const blob = new Blob([getEnvFileContent({ ...props, preset: defaultPreset })], { type: "text/plain" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -42,14 +94,14 @@ export function EnvKeys(props: {
     <Tabs defaultValue={"env"}>
       <TabsList className="flex">
         <TabsTrigger value="env" className="flex-grow">
-          Next.js
+          Env Snippets
         </TabsTrigger>
         <TabsTrigger value="keys" className="flex-grow">
           API Keys
         </TabsTrigger>
       </TabsList>
       <TabsContent value={"env"}>
-        <NextJsEnvKeys {...props} />
+        <FrameworkEnvKeys {...props} defaultPreset={defaultPreset} />
       </TabsContent>
       <TabsContent value={"keys"}>
         <APIEnvKeys {...props} />
@@ -109,21 +161,47 @@ export function APIEnvKeys(props: {
   );
 }
 
+export function FrameworkEnvKeys(props: {
+  projectId: string,
+  publishableClientKey?: string,
+  secretServerKey?: string,
+  superSecretAdminKey?: string,
+  defaultPreset?: EnvSnippetPreset,
+}) {
+  const defaultPreset = props.defaultPreset ?? "nextjs";
+
+  return (
+    <Tabs defaultValue={defaultPreset}>
+      <TabsList className="grid grid-cols-2 md:grid-cols-4">
+        {(Object.keys(envSnippetPresetLabels) as EnvSnippetPreset[]).map((preset) => (
+          <TabsTrigger key={preset} value={preset}>
+            {envSnippetPresetLabels[preset]}
+          </TabsTrigger>
+        ))}
+      </TabsList>
+      {(Object.keys(envSnippetPresetLabels) as EnvSnippetPreset[]).map((preset) => {
+        const envFileContent = getEnvFileContent({ ...props, preset });
+        return (
+          <TabsContent key={preset} value={preset}>
+            <CopyField
+              type="textarea"
+              monospace
+              height={envFileContent.split("\n").length * 26}
+              value={envFileContent}
+              fixedSize
+            />
+          </TabsContent>
+        );
+      })}
+    </Tabs>
+  );
+}
+
 export function NextJsEnvKeys(props: {
   projectId: string,
   publishableClientKey?: string,
   secretServerKey?: string,
   superSecretAdminKey?: string,
 }) {
-  const envFileContent = getEnvFileContent(props);
-
-  return (
-    <CopyField
-      type="textarea"
-      monospace
-      height={envFileContent.split("\n").length * 26}
-      value={envFileContent}
-      fixedSize
-    />
-  );
+  return <FrameworkEnvKeys {...props} defaultPreset="nextjs" />;
 }

@@ -6,7 +6,7 @@ Stack Auth is a managed user authentication solution. It is developer-friendly a
 
 Stack Auth gets you started in just five minutes, after which you'll be ready to use all of its features as you grow your project. Our managed service is completely optional and you can export your user data and self-host, for free, at any time.
 
-We support Next.js frontends, along with any backend that can use our [REST API](https://docs.stack-auth.com/rest-api/overview). Check out our [setup guide](https://docs.stack-auth.com/getting-started/setup) to get started.
+We support Next.js, React Router, TanStack Start, Nuxt, SvelteKit, NestJS, Express, Hono, Cloudflare Workers, and generic JavaScript runtimes through our JavaScript SDK packages, along with any backend that can use our [REST API](https://docs.stack-auth.com/rest-api/overview). Check out our [setup guide](https://docs.stack-auth.com/getting-started/setup) to get started.
 
 ## 📦 Installation & Setup
 

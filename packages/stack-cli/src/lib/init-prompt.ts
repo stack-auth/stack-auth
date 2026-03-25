@@ -21,8 +21,8 @@ Run the install command using whatever package manager the project uses (npm, ya
 | Framework | Package |
 |-----------|---------|
 | Next.js | \`@stackframe/stack\` |
-| React | \`@stackframe/react\` |
-| Vanilla JS | \`@stackframe/js\` |
+| React Router / TanStack Start / React | \`@stackframe/react\` |
+| Nuxt / SvelteKit / NestJS / Express / Hono / Cloudflare Workers / Vanilla JS | \`@stackframe/js\` |
 
 ### 2) Create the Stack apps
 
@@ -31,11 +31,11 @@ Depending on whether you're on a client or a server, you will want to create sta
 The stack client app has client-level permissions. It contains most of the useful methods and hooks for your client-side code.
 The stack server app has full read and write access to all users. It requires STACK_SECRET_SERVER_KEY env variable and should only be used in secure context
 
-In Next.js, env vars are auto-detected (NEXT_PUBLIC_STACK_PROJECT_ID etc.), so the constructor needs no explicit config. For other frameworks, you must pass projectId explicitly using the framework's env var access method. Pass publishableClientKey only if your project is configured to require publishable client keys.
+In Next.js, env vars are auto-detected (NEXT_PUBLIC_STACK_PROJECT_ID etc.), so the constructor needs no explicit config. For other frameworks, pass projectId explicitly using that framework's env var access method. Pass publishableClientKey only if your project is configured to require publishable client keys.
 
-The tokenStore should be "nextjs-cookie" for Next.js, or "cookie" for all other frameworks.
+The tokenStore should be "nextjs-cookie" for Next.js, "cookie" for browser/client frameworks, and usually "memory" for standalone server apps.
 
-Make sure to set redirectMethod on non next.js frameworks. For example for tanstack router import like so:
+Make sure to set redirectMethod on React Router and TanStack Start style apps. For example for TanStack Router import like so:
 import { useNavigate } from '@tanstack/react-router'
 
 \`\`\`ts
@@ -52,7 +52,7 @@ export const stackClientApp = new StackClientApp({
 });
 \`\`\`
 
-If the framework has server-side support (e.g. Next.js), also create a server app:
+If the framework has server-side support (for example Next.js, Nuxt, SvelteKit, NestJS, Express, Hono, or Cloudflare Workers), also create a server app:
 
 \`\`\`ts
 // src/stack/server.ts
@@ -71,7 +71,7 @@ This sets up pages for sign in, sign up, password reset, etc.
 
 \`\`\`tsx
 import { StackHandler } from "@stackframe/stack"; // Next.js
-// import { StackHandler } from "@stackframe/react"; // React
+// import { StackHandler } from "@stackframe/react"; // React Router / TanStack Start / generic React
 
 export default function Handler() {
   return <StackHandler fullPage />;
@@ -80,7 +80,7 @@ export default function Handler() {
 
 ### 4) Create a Suspense boundary
 
-Suspense is necessary for many stack auth hooks such as useUser to function. Add a loading component with a custom loading indicator for the current project. Don't add if one already exists
+Suspense is necessary for many React-side Stack Auth hooks such as useUser to function. Add a loading component or Suspense fallback where appropriate. Don't add one if the framework does not use React UI components.
 
 For example:
 \`\`\`tsx
@@ -95,7 +95,7 @@ export default function Loading() {
 
 This is only necessary if not using local emulator. Ensure these are ignored by git.
 
-Rename the env var keys in .env to match the framework's convention for client-exposed variables. For example, Vite requires VITE_ prefix, Next.js uses NEXT_PUBLIC_, etc. The values should stay the same — only rename the keys.
+Rename the env var keys in .env to match the framework's convention for client-exposed variables. For example, Vite requires VITE_ prefix, Next.js uses NEXT_PUBLIC_, Nuxt uses NUXT_PUBLIC_, and SvelteKit uses PUBLIC_. The values should stay the same — only rename the keys.
 
 The required variables are:
 - Project ID (e.g. NEXT_PUBLIC_STACK_PROJECT_ID, VITE_STACK_PROJECT_ID, etc.)
@@ -103,7 +103,7 @@ The required variables are:
 
 The publishable client key (e.g. NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY, VITE_STACK_PUBLISHABLE_CLIENT_KEY, etc.) is only required if your project has publishable client keys enabled as a requirement.
 
-### 6) React only: Wrap the entire page in a Stack provider
+### 6) React-like apps only: Wrap the app in a Stack provider
 
 This is used for the useUser and useStackApp hooks.
 

@@ -1,3 +1,5 @@
+import { trace } from "@opentelemetry/api";
+import { SeverityNumber, logs } from "@opentelemetry/api-logs";
 import withPostHog from "@/analytics";
 import { globalPrismaClient } from "@/prisma-client";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
@@ -52,6 +54,126 @@ function toClickhouseEndUserIpInfo(ipInfo: EndUserIpInfo | null): ClickhouseEndU
     longitude: ipInfo.longitude ?? undefined,
     tz_identifier: ipInfo.tzIdentifier ?? undefined,
   };
+}
+
+const analyticsLogger = logs.getLogger("stack-backend");
+
+export type AnalyticsEventInsertRow = {
+  event_type: string,
+  event_id: string,
+  trace_id: string | null,
+  event_at: Date,
+  parent_span_ids: string[],
+  data: Record<string, unknown>,
+  project_id: string,
+  branch_id: string,
+  user_id: string | null,
+  team_id: string | null,
+  refresh_token_id: string | null,
+  session_replay_id: string | null,
+  session_replay_segment_id: string | null,
+  from_server: boolean,
+};
+
+type AnalyticsEventEnvelope = Omit<AnalyticsEventInsertRow, "event_at"> & {
+  event_at: string,
+};
+
+// Lone surrogates (\uD800-\uDFFF not part of a valid pair) are technically
+// representable in JS strings but rejected by ClickHouse's JSON parser.
+// eslint-disable-next-line no-control-regex
+const LONE_SURROGATE_RE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
+
+function stripLoneSurrogates(value: unknown): unknown {
+  if (typeof value === "string") {
+    return value.replace(LONE_SURROGATE_RE, "\uFFFD");
+  }
+  if (Array.isArray(value)) {
+    return value.map(stripLoneSurrogates);
+  }
+  if (value !== null && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value).map(([key, innerValue]) => [key, stripLoneSurrogates(innerValue)])
+    );
+  }
+  return value;
+}
+
+function sanitizeAnalyticsEventData(data: Record<string, unknown>): Record<string, unknown> {
+  const sanitized = stripLoneSurrogates(data);
+  if (sanitized === null || typeof sanitized !== "object" || Array.isArray(sanitized)) {
+    throw new StackAssertionError("Analytics event data must be a JSON object", { data });
+  }
+  return sanitized as Record<string, unknown>;
+}
+
+function toAnalyticsEventEnvelope(row: AnalyticsEventInsertRow): AnalyticsEventEnvelope {
+  return {
+    ...row,
+    event_at: row.event_at.toISOString(),
+  };
+}
+
+function getAnalyticsEventTelemetryAttributes(event: AnalyticsEventEnvelope) {
+  return filterUndefined({
+    "stack.analytics.event_type": event.event_type,
+    "stack.analytics.event_id": event.event_id,
+    "stack.analytics.trace_id": event.trace_id ?? undefined,
+    "stack.analytics.event_at": event.event_at,
+    "stack.analytics.parent_span_ids": event.parent_span_ids.length > 0 ? event.parent_span_ids.join(",") : undefined,
+    "stack.analytics.project_id": event.project_id,
+    "stack.analytics.branch_id": event.branch_id,
+    "stack.analytics.user_id": event.user_id ?? undefined,
+    "stack.analytics.team_id": event.team_id ?? undefined,
+    "stack.analytics.refresh_token_id": event.refresh_token_id ?? undefined,
+    "stack.analytics.session_replay_id": event.session_replay_id ?? undefined,
+    "stack.analytics.session_replay_segment_id": event.session_replay_segment_id ?? undefined,
+    "stack.analytics.data_json": JSON.stringify(event.data),
+  });
+}
+
+function exportAnalyticsEvent(row: AnalyticsEventInsertRow) {
+  const event = toAnalyticsEventEnvelope(row);
+  const attributes = getAnalyticsEventTelemetryAttributes(event);
+
+  analyticsLogger.emit({
+    severityNumber: SeverityNumber.INFO,
+    severityText: "INFO",
+    body: JSON.stringify(event),
+    attributes,
+  });
+
+  trace.getActiveSpan()?.addEvent("stack.analytics.event", attributes);
+
+  console.info(JSON.stringify({
+    type: "stack.analytics.event",
+    ...event,
+  }));
+}
+
+export async function insertAnalyticsEvents(rows: AnalyticsEventInsertRow[]): Promise<void> {
+  if (rows.length === 0) {
+    return;
+  }
+
+  const sanitizedRows = rows.map((row) => ({
+    ...row,
+    data: sanitizeAnalyticsEventData(row.data),
+  }));
+
+  await getClickhouseAdminClient().insert({
+    table: "analytics_internal.events",
+    values: sanitizedRows,
+    format: "JSONEachRow",
+    clickhouse_settings: {
+      date_time_input_format: "best_effort",
+      async_insert: 1,
+    },
+  });
+
+  for (const row of sanitizedRows) {
+    exportAnalyticsEvent(row);
+  }
 }
 
 /**
@@ -177,6 +299,7 @@ export const SystemEventTypes = stripEventTypeSuffixFromKeys({
   SignUpRuleTriggerEventType,
 } as const);
 const systemEventTypesById = new Map(Object.values(SystemEventTypes).map(eventType => [eventType.id, eventType]));
+const clickhouseSystemEventTypeIds = new Set(["$token-refresh", "$sign-up-rule-trigger"]);
 
 function stripEventTypeSuffixFromKeys<T extends Record<`${string}EventType`, unknown>>(t: T): { [K in keyof T as K extends `${infer Key}EventType` ? Key : never]: T[K] } {
   return Object.fromEntries(Object.entries(t).map(([key, value]) => [key.replace(/EventType$/, ""), value])) as any;
@@ -187,6 +310,67 @@ type DataOfMany<T extends EventType[]> = UnionToIntersection<T extends unknown ?
 type DataOf<T extends EventType> =
   & yup.InferType<T["dataSchema"]>
   & DataOfMany<T["inherits"]>;
+
+function getAnalyticsDataForLoggedEvent(eventTypeId: string, dataRecord: Record<string, unknown> | null | undefined): Record<string, unknown> {
+  if (eventTypeId === "$token-refresh") {
+    const refreshTokenId =
+      typeof dataRecord === "object" && dataRecord && typeof dataRecord.refreshTokenId === "string"
+        ? dataRecord.refreshTokenId
+        : throwErr(new StackAssertionError("refreshTokenId is required for $token-refresh ClickHouse event", { dataRecord }));
+    const isAnonymous =
+      typeof dataRecord === "object" && dataRecord && typeof dataRecord.isAnonymous === "boolean"
+        ? dataRecord.isAnonymous
+        : throwErr(new StackAssertionError("isAnonymous is required for $token-refresh ClickHouse event", { dataRecord }));
+    const ipInfo =
+      typeof dataRecord === "object" && dataRecord
+        ? (dataRecord.ipInfo as EndUserIpInfo | null | undefined)
+        : undefined;
+    return {
+      refresh_token_id: refreshTokenId,
+      is_anonymous: isAnonymous,
+      ip_info: toClickhouseEndUserIpInfo(ipInfo ?? null),
+    };
+  }
+
+  if (eventTypeId === "$sign-up-rule-trigger") {
+    const ruleId =
+      typeof dataRecord === "object" && dataRecord && typeof dataRecord.ruleId === "string"
+        ? dataRecord.ruleId
+        : throwErr(new StackAssertionError("ruleId is required for $sign-up-rule-trigger ClickHouse event", { dataRecord }));
+    const action =
+      typeof dataRecord === "object" && dataRecord && typeof dataRecord.action === "string"
+        ? dataRecord.action
+        : throwErr(new StackAssertionError("action is required for $sign-up-rule-trigger ClickHouse event", { dataRecord }));
+    const email =
+      typeof dataRecord === "object" && dataRecord
+        ? (dataRecord.email as string | null | undefined) ?? null
+        : null;
+    const authMethod =
+      typeof dataRecord === "object" && dataRecord
+        ? (dataRecord.authMethod as string | null | undefined) ?? null
+        : null;
+    const oauthProvider =
+      typeof dataRecord === "object" && dataRecord
+        ? (dataRecord.oauthProvider as string | null | undefined) ?? null
+        : null;
+    return {
+      rule_id: ruleId,
+      action,
+      email,
+      auth_method: authMethod,
+      oauth_provider: oauthProvider,
+    };
+  }
+
+  if (dataRecord === null || dataRecord === undefined || Array.isArray(dataRecord)) {
+    throw new StackAssertionError(
+      `Analytics event data for ${eventTypeId} must be a JSON object`,
+      { dataRecord },
+    );
+  }
+
+  return dataRecord;
+}
 
 /**
  * Do not wrap this function in waitUntil or runAsynchronously as it may use dynamic APIs
@@ -211,8 +395,6 @@ export async function logEvent<T extends EventType[]>(
       if (!systemEventTypesById.has(eventType.id as any)) {
         throw new StackAssertionError(`Invalid system event type: ${eventType.id}`, { eventType });
       }
-    } else {
-      throw new StackAssertionError(`Non-system event types are not supported yet`, { eventType });
     }
   }
 
@@ -267,7 +449,9 @@ export async function logEvent<T extends EventType[]>(
     // log event in DB
     await globalPrismaClient.event.create({
       data: {
-        systemEventTypeIds: eventTypesArray.map(eventType => eventType.id),
+        systemEventTypeIds: eventTypesArray
+          .filter((eventType) => eventType.id.startsWith("$"))
+          .map((eventType) => eventType.id),
         data: data as any,
         isEndUserIpInfoGuessTrusted: !endUserInfo?.maybeSpoofed,
         endUserIpInfoGuess: endUserInfoInner ? {
@@ -287,94 +471,44 @@ export async function logEvent<T extends EventType[]>(
       },
     });
 
-    // Log specific events to ClickHouse
-    const clickhouseEventTypes = ['$token-refresh', '$sign-up-rule-trigger'];
-    const matchingEventType = eventTypesArray.find(e => clickhouseEventTypes.includes(e.id));
-    if (matchingEventType) {
-      let clickhouseEventData: Record<string, unknown>;
-      if (matchingEventType.id === "$token-refresh") {
-        const refreshTokenId =
-          typeof dataRecord === "object" && dataRecord && typeof dataRecord.refreshTokenId === "string"
-            ? dataRecord.refreshTokenId
-            : throwErr(new StackAssertionError("refreshTokenId is required for $token-refresh ClickHouse event", { dataRecord }));
-        const isAnonymous =
-          typeof dataRecord === "object" && dataRecord && typeof dataRecord.isAnonymous === "boolean"
-            ? dataRecord.isAnonymous
-            : throwErr(new StackAssertionError("isAnonymous is required for $token-refresh ClickHouse event", { dataRecord }));
-        const ipInfo =
-          typeof dataRecord === "object" && dataRecord
-            ? (dataRecord.ipInfo as EndUserIpInfo | null | undefined)
-            : undefined;
-        clickhouseEventData = {
-          refresh_token_id: refreshTokenId,
-          is_anonymous: isAnonymous,
-          ip_info: toClickhouseEndUserIpInfo(ipInfo ?? null),
-        };
-      } else if (matchingEventType.id === "$sign-up-rule-trigger") {
-        const ruleId =
-          typeof dataRecord === "object" && dataRecord && typeof dataRecord.ruleId === "string"
-            ? dataRecord.ruleId
-            : throwErr(new StackAssertionError("ruleId is required for $sign-up-rule-trigger ClickHouse event", { dataRecord }));
-        const action =
-          typeof dataRecord === "object" && dataRecord && typeof dataRecord.action === "string"
-            ? dataRecord.action
-            : throwErr(new StackAssertionError("action is required for $sign-up-rule-trigger ClickHouse event", { dataRecord }));
-        const email =
-          typeof dataRecord === "object" && dataRecord
-            ? (dataRecord.email as string | null | undefined) ?? null
-            : null;
-        const authMethod =
-          typeof dataRecord === "object" && dataRecord
-            ? (dataRecord.authMethod as string | null | undefined) ?? null
-            : null;
-        const oauthProvider =
-          typeof dataRecord === "object" && dataRecord
-            ? (dataRecord.oauthProvider as string | null | undefined) ?? null
-            : null;
-        clickhouseEventData = {
-          rule_id: ruleId,
-          action,
-          email,
-          auth_method: authMethod,
-          oauth_provider: oauthProvider,
-        };
-      } else {
-        throw new StackAssertionError(`Unhandled ClickHouse event type: ${matchingEventType.id}`, { matchingEventType });
-      }
+    const analyticsRows = eventTypes
+      .filter((eventType) => !eventType.id.startsWith("$") || clickhouseSystemEventTypeIds.has(eventType.id))
+      .map((eventType) => {
+        if (!projectId) {
+          throw new StackAssertionError(
+            `projectId is required for ClickHouse event insertion (${eventType.id})`,
+            { eventType, dataRecord },
+          );
+        }
 
-      if (!projectId) {
-        throw new StackAssertionError(
-          `projectId is required for ClickHouse event insertion (${matchingEventType.id})`,
-          { matchingEventType, dataRecord }
-        );
-      }
-      const clickhouseClient = getClickhouseAdminClient();
-      // Resolve refresh_token_id: prefer explicit option, fall back to data for $token-refresh events
-      const resolvedRefreshTokenId = options.refreshTokenId
-        ?? (matchingEventType.id === "$token-refresh" && typeof (clickhouseEventData as any).refresh_token_id === "string"
-          ? (clickhouseEventData as any).refresh_token_id as string
-          : null);
+        const analyticsData = getAnalyticsDataForLoggedEvent(eventType.id, dataRecord);
+        const resolvedRefreshTokenId = options.refreshTokenId
+          ?? (eventType.id === "$token-refresh" && typeof analyticsData.refresh_token_id === "string"
+            ? analyticsData.refresh_token_id
+            : null);
 
-      await clickhouseClient.insert({
-        table: "analytics_internal.events",
-        values: [{
-          event_type: matchingEventType.id,
+        const sessionReplayId = options.sessionReplayId ?? null;
+        const sessionReplaySegmentId = options.sessionReplaySegmentId ?? null;
+        return {
+          event_type: eventType.id,
+          event_id: generateUuid(),
+          trace_id: generateUuid(),
           event_at: timeRange.end,
-          data: clickhouseEventData,
+          parent_span_ids: sessionReplaySegmentId ? [sessionReplaySegmentId] : [],
+          data: analyticsData,
           project_id: projectId,
           branch_id: branchId,
           user_id: userId || null,
           team_id: null,
           refresh_token_id: resolvedRefreshTokenId ?? null,
-          session_replay_id: options.sessionReplayId ?? null,
+          session_replay_id: sessionReplayId,
           session_replay_segment_id: options.sessionReplaySegmentId ?? null,
-        }],
-        format: "JSONEachRow",
-        clickhouse_settings: {
-          date_time_input_format: "best_effort",
-          async_insert: 1,
-        },
+          from_server: true,
+        } satisfies AnalyticsEventInsertRow;
       });
+
+    if (analyticsRows.length > 0) {
+      await insertAnalyticsEvents(analyticsRows);
     }
 
     // log event in PostHog

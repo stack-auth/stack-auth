@@ -13,11 +13,17 @@ Follow this workflow without asking for extra clarification unless a step fails.
 ### 0) Framework Detection (REQUIRED FIRST STEP)
 Before proceeding, you MUST identify the project framework:
 - **Check for Next.js**: Look for `next.config.js`, `next.config.mjs`, or `package.json` with Next.js dependencies
-- **Check for React**: Look for `package.json` with React dependencies but NO Next.js dependencies
-- **If neither is detected**: STOP and alert the user that Stack Auth only supports Next.js and React projects
+- **Check for React Router / TanStack Start**: Look for React dependencies plus `react-router-dom` or `@tanstack/react-router`
+- **Check for Nuxt**: Look for `nuxt.config.*` or `nuxt` dependency
+- **Check for SvelteKit**: Look for `svelte.config.*` or `@sveltejs/kit`
+- **Check for NestJS**: Look for `@nestjs/*` dependencies
+- **Check for Express**: Look for `express` dependency
+- **Check for Hono**: Look for `hono` dependency
+- **Check for Cloudflare Workers**: Look for `wrangler.*`, `workers-types`, or Cloudflare bindings/config
+- **If none of the above are detected**: Do NOT say Stack Auth is unsupported. Route the user to the closest manual JavaScript recipe or, if the project is not JavaScript/TypeScript, to the REST API
 - **If framework is unclear**: STOP and ask the user to clarify their project type
 
-**IMPORTANT**: Only proceed with the installation if you can clearly identify the project as either Next.js or React.
+**IMPORTANT**: Next.js can use the full initializer flow. The other first-wave frameworks should use the manual recipe flow unless the repository already clearly matches a currently scaffoldable path.
 
 ### 1) Run the Stack Auth initializer
 - Use the `stack-auth` MCP server (`ask_stack_auth` tool), or run the command:
@@ -25,10 +31,13 @@ Before proceeding, you MUST identify the project framework:
     ```bash
     npx @stackframe/stack-cli@latest init
     ```
-  - **For React projects**:
+  - **For generic React projects**:
     ```bash
     npx @stackframe/stack-cli@latest init
     ```
+- For React Router, TanStack Start, Nuxt, SvelteKit, NestJS, Express, Hono, and Cloudflare Workers:
+  - Prefer the manual recipe in the docs setup guide
+  - Do not promise framework-specific file generation unless the repo already contains those files
 - Accept defaults for Next.js (App Router) or React.
 - Add all generated files to the repo.
 
@@ -73,6 +82,22 @@ export const stackClientApp = new StackClientApp({
   // }
 });
 ```
+
+#### For React Router / TanStack Start:
+- Use `@stackframe/react`
+- Set `redirectMethod: { useNavigate }` with the framework's router hook
+- Mount `StackHandler` in a route such as `/handler/*`
+
+#### For Nuxt / SvelteKit:
+- Use `@stackframe/js`
+- Create explicit `stack/client.ts` and `stack/server.ts` files
+- Do not tell the user that `StackHandler` exists here; instead use the framework's own pages/routes and call `StackClientApp` / `StackServerApp` directly
+
+#### For NestJS / Express / Hono / Cloudflare Workers:
+- Use `@stackframe/js`
+- Focus on `StackServerApp`
+- For Node-style headers, use `tokenStoreFromHeaders(req.headers)` when you need request-bound auth
+- For Hono / Cloudflare Workers, pass the incoming `Request` directly as `tokenStore`
 
 **⚠️ MANDATORY STOP POINT ⚠️**
 **DO NOT CONTINUE TO STEP 4 UNTIL USER ADDS THEIR KEYS**

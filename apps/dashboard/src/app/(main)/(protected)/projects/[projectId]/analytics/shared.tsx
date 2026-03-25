@@ -16,7 +16,7 @@ import {
 } from "@phosphor-icons/react";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useVirtualizer } from "@tanstack/react-virtual";
-import { useMemo, useRef } from "react";
+import { useEffect, useMemo, useRef } from "react";
 
 // ============================================================================
 // Types
@@ -190,19 +190,35 @@ export function VirtualizedFlatTable({
   columns,
   rows,
   onRowClick,
+  onLoadMore,
+  hasMore = false,
+  loadingMore = false,
 }: {
   columns: string[],
   rows: RowData[],
   onRowClick: (row: RowData) => void,
+  onLoadMore?: () => void,
+  hasMore?: boolean,
+  loadingMore?: boolean,
 }) {
   const parentRef = useRef<HTMLDivElement>(null);
 
   const rowVirtualizer = useVirtualizer({
-    count: rows.length,
+    count: rows.length + (hasMore ? 1 : 0),
     getScrollElement: () => parentRef.current,
     estimateSize: () => 36,
     overscan: 10,
   });
+
+  // Trigger load more when scrolling near the end
+  const virtualItems = rowVirtualizer.getVirtualItems();
+  const lastVisibleIndex = virtualItems.length > 0 ? virtualItems[virtualItems.length - 1]?.index ?? -1 : -1;
+
+  useEffect(() => {
+    if (onLoadMore && lastVisibleIndex >= rows.length - 5 && hasMore && !loadingMore) {
+      onLoadMore();
+    }
+  }, [lastVisibleIndex, rows.length, hasMore, loadingMore, onLoadMore]);
 
   // Column widths - distribute based on content type
   const columnWidths = useMemo(() => {
@@ -257,8 +273,23 @@ export function VirtualizedFlatTable({
             }}
           >
             {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-              const row = rows[virtualRow.index];
+              if (virtualRow.index >= rows.length) {
+                return (
+                  <div
+                    key="loader"
+                    className="absolute left-0 right-0 flex items-center justify-center py-3"
+                    style={{ top: `${virtualRow.start}px`, height: `${virtualRow.size}px` }}
+                  >
+                    {loadingMore ? (
+                      <span className="text-xs text-muted-foreground animate-pulse">Loading more...</span>
+                    ) : (
+                      <span className="text-xs text-muted-foreground/50">Scroll to load more</span>
+                    )}
+                  </div>
+                );
+              }
 
+              const row = rows[virtualRow.index];
               return (
                 <div
                   key={virtualRow.index}
