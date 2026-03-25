@@ -97,7 +97,7 @@ class ExplicitTokenStore(TokenStore):
     Supports CAS update to in-memory state to prevent infinite refresh loops.
     """
 
-    def __init__(self, access_token: str, refresh_token: str) -> None:
+    def __init__(self, access_token: str | None = None, refresh_token: str | None = None) -> None:
         super().__init__()
         self._access_token: str | None = access_token
         self._refresh_token: str | None = refresh_token
@@ -194,8 +194,8 @@ def resolve_token_store(init: TokenStoreInit, project_id: str) -> TokenStore | N
         return _get_or_create_memory_store(project_id)
     if isinstance(init, dict):
         return ExplicitTokenStore(
-            access_token=init.get("access_token", ""),
-            refresh_token=init.get("refresh_token", ""),
+            access_token=init.get("access_token"),
+            refresh_token=init.get("refresh_token"),
         )
     # Must be RequestLike (has .headers attribute)
     return RequestTokenStore(init)  # type: ignore[arg-type]

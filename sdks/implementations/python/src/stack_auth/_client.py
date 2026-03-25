@@ -38,10 +38,12 @@ class BaseAPIClient(Generic[HttpxClientT]):
         base_url: str = DEFAULT_BASE_URL,
         project_id: str,
         secret_server_key: str,
+        publishable_client_key: str | None = None,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._project_id = project_id
         self._secret_server_key = secret_server_key
+        self._publishable_client_key = publishable_client_key
         self._client: HttpxClientT | None = None
 
     # ------------------------------------------------------------------
@@ -49,7 +51,7 @@ class BaseAPIClient(Generic[HttpxClientT]):
     # ------------------------------------------------------------------
 
     def _build_headers(self) -> dict[str, str]:
-        return {
+        headers = {
             "x-stack-project-id": self._project_id,
             "x-stack-access-type": "server",
             "x-stack-secret-server-key": self._secret_server_key,
@@ -57,6 +59,9 @@ class BaseAPIClient(Generic[HttpxClientT]):
             "x-stack-override-error-status": "true",
             "x-stack-random-nonce": str(uuid.uuid4()),
         }
+        if self._publishable_client_key is not None:
+            headers["x-stack-publishable-client-key"] = self._publishable_client_key
+        return headers
 
     def _build_url(self, path: str) -> str:
         return f"{self._base_url}/api/{API_VERSION}{path}"

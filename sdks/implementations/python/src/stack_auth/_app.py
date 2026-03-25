@@ -120,6 +120,7 @@ class StackServerApp:
         *,
         project_id: str,
         secret_server_key: str,
+        publishable_client_key: str | None = None,
         base_url: str = DEFAULT_BASE_URL,
         token_store: TokenStoreInit | None = None,
     ) -> None:
@@ -127,6 +128,7 @@ class StackServerApp:
         self._client = SyncAPIClient(
             project_id=project_id,
             secret_server_key=secret_server_key,
+            publishable_client_key=publishable_client_key,
             base_url=base_url,
         )
         self._token_store: TokenStore | None = None
@@ -1397,6 +1399,7 @@ class AsyncStackServerApp:
         *,
         project_id: str,
         secret_server_key: str,
+        publishable_client_key: str | None = None,
         base_url: str = DEFAULT_BASE_URL,
         token_store: TokenStoreInit | None = None,
     ) -> None:
@@ -1404,6 +1407,7 @@ class AsyncStackServerApp:
         self._client = AsyncAPIClient(
             project_id=project_id,
             secret_server_key=secret_server_key,
+            publishable_client_key=publishable_client_key,
             base_url=base_url,
         )
         self._token_store: TokenStore | None = None
