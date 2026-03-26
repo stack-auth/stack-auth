@@ -1,5 +1,6 @@
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
 import createEmailableClient from "emailable";
 
@@ -41,17 +42,15 @@ function validateVerifyResponse(value: unknown) {
 
 async function verifyWithRetries(verifyFn: () => Promise<unknown>, maxAttempts: number, delayBaseMs: number) {
   for (let i = 0; i < maxAttempts; i++) {
-    try {
-      return await verifyFn();
-    } catch (error) {
-      const code = (error != null && typeof error === "object" && !Array.isArray(error))
-        ? Reflect.get(error, "code")
-        : null;
-      if (code !== 249) throw error; // only retry rate-limit errors
-      if (i < maxAttempts - 1) {
-        await new Promise(r => setTimeout(r, (Math.random() + 0.5) * delayBaseMs * (2 ** i)));
+    const res: any = await verifyFn();
+    if (!("state" in res)) {
+      if ("message" in res && res.message.includes("Your request is taking longer than normal")) {
+        await wait((Math.random() + 0.5) * delayBaseMs * (2 ** i));
+        continue;
       }
+      throw new StackAssertionError("Emailable returned an unexpected response body", { response: res });
     }
+    return res;
   }
   throw new StackAssertionError("Timed out while verifying email address with Emailable");
 }
@@ -81,46 +80,45 @@ export async function checkEmailWithEmailable(
     _clientFactory?: (apiKey: string) => { verify: (email: string) => Promise<unknown> },
   },
 ): Promise<EmailableCheckResult> {
-  const rawApiKey = getEnvVariable("STACK_EMAILABLE_API_KEY", "");
-  const emailDomain = email.split("@")[1]?.toLowerCase() ?? "";
+  try {
+    const rawApiKey = getEnvVariable("STACK_EMAILABLE_API_KEY", "");
+    const emailDomain = email.split("@")[1]?.toLowerCase() ?? "";
 
-  // Always reject the explicit test domain, regardless of API key
-  if (emailDomain === EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN) {
-    const testResponse = buildTestUndeliverableResponse(email);
-    return { status: "not-deliverable", emailableResponse: testResponse, emailableScore: testResponse.score };
-  }
+    // Always reject the explicit test domain, regardless of API key
+    if (emailDomain === EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN) {
+      const testResponse = buildTestUndeliverableResponse(email);
+      return { status: "not-deliverable", emailableResponse: testResponse, emailableScore: testResponse.score };
+    }
 
-  if (!rawApiKey) {
-    if (["development", "test"].includes(getNodeEnvironment())) {
+    if (!rawApiKey) {
+      if (["development", "test"].includes(getNodeEnvironment())) {
+        return { status: "ok", emailableScore: null };
+      }
+      throw new StackAssertionError("STACK_EMAILABLE_API_KEY must not be empty; set it to 'disable_email_validation' to disable email validation");
+    }
+
+    const apiKey = rawApiKey === "disable_email_validation" ? "" : rawApiKey;
+    if (!apiKey || isReservedTestDomain(emailDomain)) {
       return { status: "ok", emailableScore: null };
     }
-    throw new StackAssertionError("STACK_EMAILABLE_API_KEY must not be empty; set it to 'disable_email_validation' to disable email validation");
+
+    const clientFactory = options?._clientFactory ?? createEmailableClient;
+    const retryDelayBase = options?.retryExponentialDelayBaseMs ?? RETRY_BACKOFF_BASE_MS;
+
+    return await traceSpan("checking email address with Emailable", async () => {
+      const client = clientFactory(apiKey);
+      const raw = await verifyWithRetries(() => client.verify(email), 4, retryDelayBase);
+      const response = validateVerifyResponse(raw);
+
+      if (response.state === "undeliverable" || response.disposable) {
+        return { status: "not-deliverable", emailableResponse: response, emailableScore: response.score };
+      }
+      return { status: "ok", emailableScore: response.score };
+    });
+  } catch (error) {
+    captureError("emailable-api-error", error);
+    return { status: "error", error, emailableScore: null };
   }
-
-  const apiKey = rawApiKey === "disable_email_validation" ? "" : rawApiKey;
-  if (!apiKey || isReservedTestDomain(emailDomain)) {
-    return { status: "ok", emailableScore: null };
-  }
-
-  const clientFactory = options?._clientFactory ?? createEmailableClient;
-  const retryDelayBase = options?.retryExponentialDelayBaseMs ?? RETRY_BACKOFF_BASE_MS;
-
-  return await traceSpan("checking email address with Emailable", async () => {
-    const client = clientFactory(apiKey);
-    let raw: unknown;
-    try {
-      raw = await verifyWithRetries(() => client.verify(email), 4, retryDelayBase);
-    } catch (error) {
-      captureError("emailable-api-error", error);
-      return { status: "error", error, emailableScore: null };
-    }
-    const response = validateVerifyResponse(raw);
-
-    if (response.state === "undeliverable" || response.disposable) {
-      return { status: "not-deliverable", emailableResponse: response, emailableScore: response.score };
-    }
-    return { status: "ok", emailableScore: response.score };
-  });
 }
 
 
