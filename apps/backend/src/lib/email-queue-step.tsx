@@ -124,6 +124,7 @@ async function retryEmailsStuckInRendering(): Promise<void> {
     data: {
       renderedByWorkerId: null,
       startedRenderingAt: null,
+      shouldUpdateSequenceId: true,
     },
   });
   if (res.length > 0) {
@@ -327,6 +328,7 @@ async function renderTenancyEmails(workerId: string, tenancyId: string, group: E
         renderErrorInternalMessage: error,
         renderErrorInternalDetails: { error },
         finishedRenderingAt: new Date(),
+        shouldUpdateSequenceId: true,
       },
     });
   };
@@ -347,6 +349,7 @@ async function renderTenancyEmails(workerId: string, tenancyId: string, group: E
         renderErrorInternalMessage: null,
         renderErrorInternalDetails: Prisma.DbNull,
         finishedRenderingAt: new Date(),
+        shouldUpdateSequenceId: true,
       },
     });
   };
@@ -437,7 +440,7 @@ async function queueReadyEmails(): Promise<{ queuedCount: number }> {
   // Query 1: Fresh emails (scheduledAt has passed, no retry pending)
   const freshEmails = await globalPrismaClient.$queryRaw<{ id: string }[]>`
     UPDATE "EmailOutbox"
-    SET "isQueued" = TRUE
+    SET "isQueued" = TRUE, "shouldUpdateSequenceId" = TRUE
     WHERE "isQueued" = FALSE
       AND "isPaused" = FALSE
       AND "skippedReason" IS NULL
@@ -452,7 +455,7 @@ async function queueReadyEmails(): Promise<{ queuedCount: number }> {
   // Clear nextSendRetryAt when queuing so the email is in a clean "queued" state.
   const retryEmails = await globalPrismaClient.$queryRaw<{ id: string }[]>`
     UPDATE "EmailOutbox"
-    SET "isQueued" = TRUE, "nextSendRetryAt" = NULL
+    SET "isQueued" = TRUE, "nextSendRetryAt" = NULL, "shouldUpdateSequenceId" = TRUE
     WHERE "isQueued" = FALSE
       AND "isPaused" = FALSE
       AND "skippedReason" IS NULL
@@ -678,6 +681,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
             sendRetries: newAttemptCount,
             nextSendRetryAt: new Date(Date.now() + backoffMs),
             sendAttemptErrors: updatedErrors as Prisma.InputJsonArray,
+            shouldUpdateSequenceId: true,
           },
         });
       } else {
@@ -718,6 +722,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
               failureReason,
               allAttemptErrors: updatedErrors as Json[],
             },
+            shouldUpdateSequenceId: true,
           },
         });
       }
@@ -738,6 +743,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
           sendServerErrorExternalDetails: Prisma.DbNull,
           sendServerErrorInternalMessage: null,
           sendServerErrorInternalDetails: Prisma.DbNull,
+          shouldUpdateSequenceId: true,
         },
       });
     }
@@ -758,6 +764,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
         sendServerErrorExternalDetails: {},
         sendServerErrorInternalMessage: errorToNiceString(error),
         sendServerErrorInternalDetails: {},
+        shouldUpdateSequenceId: true,
       },
     });
   }
@@ -843,6 +850,7 @@ async function markSkipped(row: EmailOutbox, reason: EmailOutboxSkippedReason, d
     data: {
       skippedReason: reason,
       skippedDetails: details as Prisma.InputJsonValue,
+      shouldUpdateSequenceId: true,
     },
   });
 }

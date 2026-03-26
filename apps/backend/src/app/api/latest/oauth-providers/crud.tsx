@@ -1,3 +1,4 @@
+import { recordExternalDbSyncDeletion } from "@/lib/external-db-sync";
 import { ensureUserExists } from "@/lib/request-checks";
 import { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
@@ -355,6 +356,12 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
           },
         });
       }
+
+      await recordExternalDbSyncDeletion(tx, {
+        tableName: "ProjectUserOAuthAccount",
+        tenancyId: auth.tenancy.id,
+        oauthAccountId: params.provider_id,
+      });
 
       await tx.projectUserOAuthAccount.delete({
         where: {

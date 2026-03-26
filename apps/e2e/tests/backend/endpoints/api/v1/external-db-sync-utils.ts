@@ -150,31 +150,35 @@ export async function waitForCondition(
 }
 
 /**
- * Wait for data to appear in external DB (relies on automatic cron job)
+ * Generic helper to wait for a row to appear or disappear in the external DB.
+ * Handles the common pattern of catching "table does not exist" (42P01) errors.
  */
-export async function waitForSyncedData(client: Client, email: string, expectedName?: string) {
-
+async function waitForExternalDbRow(
+  client: Client,
+  query: string,
+  params: unknown[],
+  opts: { shouldExist: boolean, description: string, checkRow?: (row: Record<string, unknown>) => boolean },
+) {
   await waitForCondition(
     async () => {
       let res;
       try {
-        res = await client.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, [email]);
+        res = await client.query(query, params);
       } catch (err: any) {
         if (err && err.code === '42P01') {
           return false;
         }
         throw err;
       }
-      if (res.rows.length === 0) {
-        return false;
+      if (opts.shouldExist) {
+        if (res.rows.length === 0) return false;
+        if (opts.checkRow && !opts.checkRow(res.rows[0])) return false;
+        return true;
       }
-      if (expectedName && res.rows[0].display_name !== expectedName) {
-        return false;
-      }
-      return true;
+      return res.rows.length === 0;
     },
     {
-      description: `data for ${email} to appear in external DB`,
+      description: opts.description,
       timeoutMs: 180000,
       intervalMs: 500,
     }
@@ -182,27 +186,30 @@ export async function waitForSyncedData(client: Client, email: string, expectedN
 }
 
 /**
+ * Wait for data to appear in external DB (relies on automatic cron job)
+ */
+export async function waitForSyncedData(client: Client, email: string, expectedName?: string) {
+  await waitForExternalDbRow(
+    client,
+    `SELECT * FROM "users" WHERE "primary_email" = $1`,
+    [email],
+    {
+      shouldExist: true,
+      description: `data for ${email} to appear in external DB`,
+      checkRow: expectedName ? (row) => row.display_name === expectedName : undefined,
+    },
+  );
+}
+
+/**
  * Wait for data to be removed from external DB (relies on automatic cron job)
  */
 export async function waitForSyncedDeletion(client: Client, email: string) {
-  await waitForCondition(
-    async () => {
-      let res;
-      try {
-        res = await client.query(`SELECT * FROM "users" WHERE "primary_email" = $1`, [email]);
-      } catch (err: any) {
-        if (err && err.code === '42P01') {
-          return false;
-        }
-        throw err;
-      }
-      return res.rows.length === 0;
-    },
-    {
-      description: `data for ${email} to be removed from external DB`,
-      timeoutMs: 180000,
-      intervalMs: 500,
-    }
+  await waitForExternalDbRow(
+    client,
+    `SELECT * FROM "users" WHERE "primary_email" = $1`,
+    [email],
+    { shouldExist: false, description: `data for ${email} to be removed from external DB` },
   );
 }
 
@@ -214,7 +221,7 @@ export async function waitForTable(client: Client, tableName: string) {
     async () => {
       const res = await client.query(`
         SELECT EXISTS (
-          SELECT FROM information_schema.tables 
+          SELECT FROM information_schema.tables
           WHERE table_schema = 'public'
           AND table_name = $1
         );
@@ -265,13 +272,197 @@ export async function countUsersInExternalDb(client: Client): Promise<number> {
   }
 }
 
+export async function waitForSyncedTeam(client: Client, displayName: string) {
+  await waitForExternalDbRow(client, `SELECT * FROM "teams" WHERE "display_name" = $1`, [displayName], {
+    shouldExist: true,
+    description: `team "${displayName}" to appear in external DB`,
+  });
+}
+
+export async function waitForSyncedTeamDeletion(client: Client, teamId: string) {
+  await waitForExternalDbRow(client, `SELECT * FROM "teams" WHERE "id" = $1`, [teamId], {
+    shouldExist: false,
+    description: `team ${teamId} to be removed from external DB`,
+  });
+}
+
+export async function waitForSyncedTeamMember(client: Client, teamId: string, userId: string) {
+  await waitForExternalDbRow(client, `SELECT * FROM "team_member_profiles" WHERE "team_id" = $1 AND "user_id" = $2`, [teamId, userId], {
+    shouldExist: true,
+    description: `team member (team=${teamId}, user=${userId}) to appear in external DB`,
+  });
+}
+
+export async function waitForSyncedTeamMemberDeletion(client: Client, teamId: string, userId: string) {
+  await waitForExternalDbRow(client, `SELECT * FROM "team_member_profiles" WHERE "team_id" = $1 AND "user_id" = $2`, [teamId, userId], {
+    shouldExist: false,
+    description: `team member (team=${teamId}, user=${userId}) to be removed from external DB`,
+  });
+}
+
+export async function waitForSyncedContactChannel(client: Client, value: string) {
+  await waitForExternalDbRow(client, `SELECT * FROM "contact_channels" WHERE "value" = $1`, [value], {
+    shouldExist: true,
+    description: `contact channel "${value}" to appear in external DB`,
+  });
+}
+
+export async function waitForSyncedContactChannelDeletion(client: Client, value: string) {
+  await waitForExternalDbRow(client, `SELECT * FROM "contact_channels" WHERE "value" = $1`, [value], {
+    shouldExist: false,
+    description: `contact channel "${value}" to be removed from external DB`,
+  });
+}
+
+export async function waitForSyncedTeamPermission(client: Client, teamId: string, userId: string, permissionId: string) {
+  await waitForExternalDbRow(client, `SELECT * FROM "team_permissions" WHERE "team_id" = $1 AND "user_id" = $2 AND "permission_id" = $3`, [teamId, userId, permissionId], {
+    shouldExist: true,
+    description: `team permission (team=${teamId}, user=${userId}, perm=${permissionId}) to appear in external DB`,
+  });
+}
+
+export async function waitForSyncedTeamPermissionDeletion(client: Client, teamId: string, userId: string, permissionId: string) {
+  await waitForExternalDbRow(client, `SELECT * FROM "team_permissions" WHERE "team_id" = $1 AND "user_id" = $2 AND "permission_id" = $3`, [teamId, userId, permissionId], {
+    shouldExist: false,
+    description: `team permission (team=${teamId}, user=${userId}, perm=${permissionId}) to be removed from external DB`,
+  });
+}
+
+export async function waitForSyncedTeamInvitation(client: Client, recipientEmail: string) {
+  await waitForExternalDbRow(client, `SELECT * FROM "team_invitations" WHERE "recipient_email" = $1`, [recipientEmail], {
+    shouldExist: true,
+    description: `team invitation for "${recipientEmail}" to appear in external DB`,
+  });
+}
+
+export async function waitForSyncedTeamInvitationDeletion(client: Client, invitationId: string) {
+  await waitForExternalDbRow(client, `SELECT * FROM "team_invitations" WHERE "id" = $1`, [invitationId], {
+    shouldExist: false,
+    description: `team invitation ${invitationId} to be removed from external DB`,
+  });
+}
+
+export async function waitForSyncedEmailOutbox(client: Client, emailId: string, expectedStatus?: string) {
+  await waitForExternalDbRow(
+    client,
+    `SELECT * FROM "email_outboxes" WHERE "id" = $1`,
+    [emailId],
+    {
+      shouldExist: true,
+      description: `email outbox "${emailId}" to appear in external DB`,
+      checkRow: expectedStatus ? (row) => row.status === expectedStatus : undefined,
+    },
+  );
+}
+
+export async function waitForSyncedSessionReplay(client: Client, replayId: string, expectedChunkCount?: number) {
+  await waitForExternalDbRow(
+    client,
+    `SELECT * FROM "session_replays" WHERE "id" = $1`,
+    [replayId],
+    {
+      shouldExist: true,
+      description: `session replay "${replayId}" to appear in external DB`,
+      checkRow: expectedChunkCount == null ? undefined : (row) => Number(row.chunk_count) === expectedChunkCount,
+    },
+  );
+}
+
+export async function waitForSyncedProjectPermission(client: Client, userId: string, permissionId: string) {
+  await waitForExternalDbRow(client, `SELECT * FROM "project_permissions" WHERE "user_id" = $1 AND "permission_id" = $2`, [userId, permissionId], {
+    shouldExist: true,
+    description: `project permission (user=${userId}, perm=${permissionId}) to appear in external DB`,
+  });
+}
+
+export async function waitForSyncedProjectPermissionDeletion(client: Client, userId: string, permissionId: string) {
+  await waitForExternalDbRow(client, `SELECT * FROM "project_permissions" WHERE "user_id" = $1 AND "permission_id" = $2`, [userId, permissionId], {
+    shouldExist: false,
+    description: `project permission (user=${userId}, perm=${permissionId}) to be removed from external DB`,
+  });
+}
+
+export async function waitForSyncedNotificationPreference(client: Client, userId: string, notificationCategoryId: string) {
+  await waitForExternalDbRow(client, `SELECT * FROM "notification_preferences" WHERE "user_id" = $1 AND "notification_category_id" = $2`, [userId, notificationCategoryId], {
+    shouldExist: true,
+    description: `notification preference (user=${userId}, category=${notificationCategoryId}) to appear in external DB`,
+  });
+}
+
+export async function waitForSyncedNotificationPreferenceDeletion(client: Client, notificationPreferenceId: string) {
+  await waitForExternalDbRow(client, `SELECT * FROM "notification_preferences" WHERE "id" = $1`, [notificationPreferenceId], {
+    shouldExist: false,
+    description: `notification preference ${notificationPreferenceId} to be removed from external DB`,
+  });
+}
+
+export async function waitForSyncedRefreshToken(client: Client, refreshTokenId: string) {
+  await waitForExternalDbRow(
+    client,
+    `SELECT * FROM "refresh_tokens" WHERE "id" = $1`,
+    [refreshTokenId],
+    {
+      shouldExist: true,
+      description: `refresh token "${refreshTokenId}" to appear in external DB`,
+    },
+  );
+}
+
+export async function waitForSyncedRefreshTokenDeletion(client: Client, refreshTokenId: string) {
+  await waitForExternalDbRow(
+    client,
+    `SELECT * FROM "refresh_tokens" WHERE "id" = $1`,
+    [refreshTokenId],
+    {
+      shouldExist: false,
+      description: `refresh token "${refreshTokenId}" to be removed from external DB`,
+    },
+  );
+}
+
+export async function waitForSyncedConnectedAccount(client: Client, accountId: string) {
+  await waitForExternalDbRow(
+    client,
+    `SELECT * FROM "connected_accounts" WHERE "id" = $1`,
+    [accountId],
+    {
+      shouldExist: true,
+      description: `connected account "${accountId}" to appear in external DB`,
+    },
+  );
+}
+
+export async function waitForSyncedConnectedAccountDeletion(client: Client, accountId: string) {
+  await waitForExternalDbRow(
+    client,
+    `SELECT * FROM "connected_accounts" WHERE "id" = $1`,
+    [accountId],
+    {
+      shouldExist: false,
+      description: `connected account "${accountId}" to be removed from external DB`,
+    },
+  );
+}
+
+export async function waitForSyncedEmailOutboxByStatus(client: Client, status: string) {
+  await waitForExternalDbRow(
+    client,
+    `SELECT * FROM "email_outboxes" WHERE "status" = $1`,
+    [status],
+    {
+      shouldExist: true,
+      description: `email outbox with status "${status}" to appear in external DB`,
+    },
+  );
+}
+
 /**
  * Helper to create a project and update its config with external DB settings.
  * Tracks the project for cleanup later.
  */
 export async function createProjectWithExternalDb(
   externalDatabases: any,
-  projectOptions?: { display_name?: string, description?: string },
+  projectOptions?: { display_name?: string, description?: string, config?: Record<string, unknown> },
   options?: { projectTracker?: ProjectContext[] }
 ) {
   const project = await Project.createAndSwitch(projectOptions);

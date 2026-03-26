@@ -2,7 +2,7 @@ import { BooleanTrue, Prisma } from "@/generated/prisma/client";
 import { getRenderedOrganizationConfigQuery, getRenderedProjectConfigQuery } from "@/lib/config";
 import { demoteAllContactChannelsToNonPrimary, setContactChannelAsPrimaryByValue } from "@/lib/contact-channel";
 import { normalizeEmail } from "@/lib/emails";
-import { recordExternalDbSyncContactChannelDeletionsForUser, recordExternalDbSyncDeletion, withExternalDbSyncUpdate } from "@/lib/external-db-sync";
+import { recordExternalDbSyncContactChannelDeletionsForUser, recordExternalDbSyncDeletion, recordExternalDbSyncNotificationPreferenceDeletionsForUser, recordExternalDbSyncOAuthAccountDeletionsForUser, recordExternalDbSyncProjectPermissionDeletionsForUser, recordExternalDbSyncRefreshTokenDeletionsForUser, recordExternalDbSyncTeamMemberDeletionsForUser, recordExternalDbSyncTeamPermissionDeletionsForUser, withExternalDbSyncUpdate } from "@/lib/external-db-sync";
 import { grantDefaultProjectPermissions } from "@/lib/permissions";
 import { ensureTeamMembershipExists, ensureUserExists } from "@/lib/request-checks";
 import { Tenancy } from "@/lib/tenancies";
@@ -1190,6 +1190,11 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
 
     // if user password changed, reset all refresh tokens
     if (passwordHash !== undefined) {
+      await recordExternalDbSyncRefreshTokenDeletionsForUser(globalPrismaClient, {
+        tenancyId: auth.tenancy.id,
+        projectUserId: params.user_id,
+      });
+
       await globalPrismaClient.projectUserRefreshToken.deleteMany({
         where: {
           tenancyId: auth.tenancy.id,
@@ -1232,6 +1237,36 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       });
 
       await recordExternalDbSyncContactChannelDeletionsForUser(tx, {
+        tenancyId: auth.tenancy.id,
+        projectUserId: params.user_id,
+      });
+
+      await recordExternalDbSyncTeamMemberDeletionsForUser(tx, {
+        tenancyId: auth.tenancy.id,
+        projectUserId: params.user_id,
+      });
+
+      await recordExternalDbSyncTeamPermissionDeletionsForUser(tx, {
+        tenancyId: auth.tenancy.id,
+        projectUserId: params.user_id,
+      });
+
+      await recordExternalDbSyncProjectPermissionDeletionsForUser(tx, {
+        tenancyId: auth.tenancy.id,
+        projectUserId: params.user_id,
+      });
+
+      await recordExternalDbSyncNotificationPreferenceDeletionsForUser(tx, {
+        tenancyId: auth.tenancy.id,
+        projectUserId: params.user_id,
+      });
+
+      await recordExternalDbSyncRefreshTokenDeletionsForUser(tx, {
+        tenancyId: auth.tenancy.id,
+        projectUserId: params.user_id,
+      });
+
+      await recordExternalDbSyncOAuthAccountDeletionsForUser(tx, {
         tenancyId: auth.tenancy.id,
         projectUserId: params.user_id,
       });

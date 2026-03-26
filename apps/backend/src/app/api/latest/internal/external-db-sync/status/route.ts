@@ -87,6 +87,7 @@ const globalSchema = yupObject({
   sequencer: yupObject({
     project_users: sequenceStatsSchema.defined(),
     contact_channels: sequenceStatsSchema.defined(),
+    email_outboxes: sequenceStatsSchema.defined(),
     deleted_rows: sequenceStatsSchema.shape({
       by_table: yupArray(deletedRowByTableSchema).defined(),
     }).defined(),
@@ -119,6 +120,7 @@ const responseSchema = yupObject({
     sequencer: yupObject({
       project_users: sequenceStatsSchema.defined(),
       contact_channels: sequenceStatsSchema.defined(),
+      email_outboxes: sequenceStatsSchema.defined(),
       deleted_rows: sequenceStatsSchema.shape({
         by_table: yupArray(deletedRowByTableSchema).defined(),
       }).defined(),
@@ -233,6 +235,7 @@ function maxBigIntString(values: Array<string | null | undefined>): string | nul
 
 function buildMappingInternalStats(
   projectUsersStats: SequenceStats,
+  emailOutboxStats: SequenceStats,
   deletedRowsByTable: DeletedRowSummary[],
 ) {
   const deletedProjectUserStats = deletedRowsByTable.find((row) => row.table_name === "ProjectUser") ?? null;
@@ -262,6 +265,13 @@ function buildMappingInternalStats(
     internal_min_sequence_id: usersMappingMin,
     internal_max_sequence_id: usersMappingMax,
     internal_pending_count: usersMappingPending,
+  });
+
+  mappingInternalStats.set("email_outboxes", {
+    mapping_id: "email_outboxes",
+    internal_min_sequence_id: emailOutboxStats.min_sequence_id,
+    internal_max_sequence_id: emailOutboxStats.max_sequence_id,
+    internal_pending_count: emailOutboxStats.pending,
   });
 
   const mappings = Array.from(mappingInternalStats.values());
@@ -299,6 +309,17 @@ async function fetchInternalStats(tenancyId: string | null) {
     FROM "ContactChannel"
     ${tenancyWhere}
   `).at(0) ?? throwErr("Contact channel stats query returned no rows.");
+
+  const emailOutboxStatsRow = (await globalPrismaClient.$queryRaw<SequenceStatsRow[]>`
+    SELECT
+      COUNT(*)::bigint AS "total",
+      COUNT(*) FILTER (WHERE "shouldUpdateSequenceId" = TRUE OR "sequenceId" IS NULL)::bigint AS "pending",
+      COUNT(*) FILTER (WHERE "sequenceId" IS NULL)::bigint AS "null_sequence_id",
+      MIN("sequenceId") AS "min_sequence_id",
+      MAX("sequenceId") AS "max_sequence_id"
+    FROM "EmailOutbox"
+    ${tenancyWhere}
+  `).at(0) ?? throwErr("Email outbox stats query returned no rows.");
 
   const deletedRowStatsRow = (await globalPrismaClient.$queryRaw<SequenceStatsRow[]>`
     SELECT
@@ -346,6 +367,7 @@ async function fetchInternalStats(tenancyId: string | null) {
 
   const projectUsersStats = formatSequenceStats(projectUserStatsRow);
   const contactChannelStats = formatSequenceStats(contactChannelStatsRow);
+  const emailOutboxStats = formatSequenceStats(emailOutboxStatsRow);
   const deletedRowStats = formatSequenceStats(deletedRowStatsRow);
 
   const deletedRowsByTable = deletedRowsByTableRows.map((row) => ({
@@ -353,11 +375,12 @@ async function fetchInternalStats(tenancyId: string | null) {
     ...formatSequenceStats(row),
   }));
 
-  const { mappings, mappingStatuses } = buildMappingInternalStats(projectUsersStats, deletedRowsByTable);
+  const { mappings, mappingStatuses } = buildMappingInternalStats(projectUsersStats, emailOutboxStats, deletedRowsByTable);
 
   return {
     projectUsersStats,
     contactChannelStats,
+    emailOutboxStats,
     deletedRowStats,
     deletedRowsByTable,
     outgoingStatsRow,
@@ -1003,6 +1026,7 @@ export const GET = createSmartRouteHandler({
             sequencer: {
               project_users: globalStats.projectUsersStats,
               contact_channels: globalStats.contactChannelStats,
+              email_outboxes: globalStats.emailOutboxStats,
               deleted_rows: {
                 ...globalStats.deletedRowStats,
                 by_table: globalStats.deletedRowsByTable,
@@ -1021,6 +1045,7 @@ export const GET = createSmartRouteHandler({
           sequencer: {
             project_users: currentStats.projectUsersStats,
             contact_channels: currentStats.contactChannelStats,
+            email_outboxes: currentStats.emailOutboxStats,
             deleted_rows: {
               ...currentStats.deletedRowStats,
               by_table: currentStats.deletedRowsByTable,

@@ -1,3 +1,4 @@
+import { withExternalDbSyncUpdate } from "@/lib/external-db-sync";
 import { listNotificationCategories } from "@/lib/notification-categories";
 import { ensureUserExists } from "@/lib/request-checks";
 import { getPrismaClientForTenancy } from "@/prisma-client";
@@ -40,15 +41,15 @@ export const notificationPreferencesCrudHandlers = createLazyProxy(() => createC
           notificationCategoryId: params.notification_category_id,
         },
       },
-      update: {
+      update: withExternalDbSyncUpdate({
         enabled: data.enabled,
-      },
-      create: {
+      }),
+      create: withExternalDbSyncUpdate({
         tenancyId: auth.tenancy.id,
         projectUserId: userId,
         notificationCategoryId: params.notification_category_id,
         enabled: data.enabled,
-      },
+      }),
     });
 
     return {
