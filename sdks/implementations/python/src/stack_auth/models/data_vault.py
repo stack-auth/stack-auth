@@ -34,7 +34,10 @@ class DataVaultStore:
 
     def delete(self, key: str) -> None:
         """Delete a key-value pair. No error if key doesn't exist."""
-        self._client.request("DELETE", f"{self._base_path}/{key}")
+        try:
+            self._client.request("DELETE", f"{self._base_path}/{key}")
+        except NotFoundError:
+            pass
 
     def list_keys(self) -> list[str]:
         """Return all keys in the store."""
@@ -74,7 +77,10 @@ class AsyncDataVaultStore:
 
     async def delete(self, key: str) -> None:
         """Delete a key-value pair. No error if key doesn't exist."""
-        await self._client.request("DELETE", f"{self._base_path}/{key}")
+        try:
+            await self._client.request("DELETE", f"{self._base_path}/{key}")
+        except NotFoundError:
+            pass
 
     async def list_keys(self) -> list[str]:
         """Return all keys in the store."""
