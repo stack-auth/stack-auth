@@ -1369,6 +1369,8 @@ class StackServerApp:
             An :class:`EmailDeliveryInfo` with delivery counts and statuses.
         """
         data = self._client.request("GET", "/emails/delivery-stats")
+        if data is None:
+            return EmailDeliveryInfo(delivered=0, bounced=0, complained=0, total=0)
         return EmailDeliveryInfo.model_validate(data)
 
     # -- data vault ----------------------------------------------------------
@@ -2707,6 +2709,8 @@ class AsyncStackServerApp:
             An :class:`EmailDeliveryInfo` with delivery counts and statuses.
         """
         data = await self._client.request("GET", "/emails/delivery-stats")
+        if data is None:
+            return EmailDeliveryInfo(delivered=0, bounced=0, complained=0, total=0)
         return EmailDeliveryInfo.model_validate(data)
 
     # -- data vault ----------------------------------------------------------

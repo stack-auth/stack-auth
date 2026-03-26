@@ -78,13 +78,20 @@ class BaseAPIClient(Generic[HttpxClientT]):
         """
         # Determine real status
         actual_status_header = response.headers.get("x-stack-actual-status")
-        actual_status = int(actual_status_header) if actual_status_header else response.status_code
+        if actual_status_header:
+            try:
+                actual_status = int(actual_status_header)
+            except ValueError:
+                actual_status = response.status_code
+        else:
+            actual_status = response.status_code
 
         # Known-error dispatch
         known_error = response.headers.get("x-stack-known-error")
         if known_error:
             try:
-                body = response.json()
+                parsed = response.json()
+                body = parsed if isinstance(parsed, dict) else {}
             except Exception:
                 body = {}
             raise StackAuthError.from_response(
@@ -170,7 +177,10 @@ class SyncAPIClient(BaseAPIClient[httpx.Client]):
 
                 # Check for 429 via x-stack-actual-status
                 actual_status_hdr = resp.headers.get("x-stack-actual-status")
-                actual_status = int(actual_status_hdr) if actual_status_hdr else resp.status_code
+                try:
+                    actual_status = int(actual_status_hdr) if actual_status_hdr else resp.status_code
+                except ValueError:
+                    actual_status = resp.status_code
 
                 # 429 retries apply to ALL methods (including POST/PATCH).
                 # Unlike network errors, a 429 guarantees the server did NOT
@@ -251,7 +261,10 @@ class AsyncAPIClient(BaseAPIClient[httpx.AsyncClient]):
                 )
 
                 actual_status_hdr = resp.headers.get("x-stack-actual-status")
-                actual_status = int(actual_status_hdr) if actual_status_hdr else resp.status_code
+                try:
+                    actual_status = int(actual_status_hdr) if actual_status_hdr else resp.status_code
+                except ValueError:
+                    actual_status = resp.status_code
 
                 # 429 retries apply to ALL methods (including POST/PATCH).
                 # Unlike network errors, a 429 guarantees the server did NOT
