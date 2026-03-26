@@ -1248,6 +1248,8 @@ class StackServerApp:
         data = self._client.request(
             "GET", f"/customers/{ctype}/{cid}/items/{item_id}"
         )
+        if data is None:
+            raise NotFoundError(code="ITEM_NOT_FOUND", message=f"Item '{item_id}' not found")
         item = Item.model_validate(data)
         return ServerItem(
             item,
@@ -2584,6 +2586,8 @@ class AsyncStackServerApp:
         data = await self._client.request(
             "GET", f"/customers/{ctype}/{cid}/items/{item_id}"
         )
+        if data is None:
+            raise NotFoundError(code="ITEM_NOT_FOUND", message=f"Item '{item_id}' not found")
         item = Item.model_validate(data)
         return AsyncServerItem(
             item,
