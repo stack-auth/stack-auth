@@ -78,9 +78,7 @@ export function visualTreeToCel(node: RuleNode): string {
 
 function normalizeConditionValue(condition: ConditionNode): ConditionNode['value'] {
   if (condition.field !== 'countryCode') return condition.value;
-  if (typeof condition.value === 'number') {
-    throw new StackAssertionError(`Invalid numeric value for countryCode: ${condition.value}. Country codes must be strings.`);
-  }
+  if (typeof condition.value === 'number') return condition.value;
   return Array.isArray(condition.value)
     ? condition.value.map(normalizeCountryCode)
     : normalizeCountryCode(condition.value);
