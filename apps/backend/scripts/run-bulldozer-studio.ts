@@ -456,6 +456,8 @@ function getStudioPageHtml(): string {
       grid-template-rows: auto auto 1fr auto;
       gap: 6px;
       transition: border-color 0.15s ease;
+      cursor: grab;
+      user-select: none;
     }
     .node:hover {
       border-color: var(--accent);
@@ -463,6 +465,11 @@ function getStudioPageHtml(): string {
     .node.active {
       border-color: var(--accent);
       box-shadow: inset 0 0 0 1px var(--accent);
+    }
+    .node.dragging {
+      cursor: grabbing;
+      z-index: 4;
+      box-shadow: 0 10px 28px rgba(0, 0, 0, 0.22), inset 0 0 0 1px var(--accent);
     }
     .node-type {
       font-size: 28px;
@@ -493,6 +500,9 @@ function getStudioPageHtml(): string {
     .node-type.limit {
       color: color-mix(in srgb, var(--filter) 75%, var(--text));
     }
+    .node-type.concat {
+      color: color-mix(in srgb, var(--accent) 60%, var(--filter));
+    }
     .node-name {
       font-size: 13px;
       font-weight: 700;
@@ -511,6 +521,9 @@ function getStudioPageHtml(): string {
     }
     .node-name.limit {
       color: color-mix(in srgb, var(--filter) 85%, var(--text));
+    }
+    .node-name.concat {
+      color: color-mix(in srgb, var(--accent) 55%, var(--filter));
     }
     .node-meta {
       font-size: 11px;
@@ -729,7 +742,31 @@ function getStudioPageHtml(): string {
     const COLUMN_GAP_X = 320;
     const SCENE_MARGIN = 40;
     const THEME_STORAGE_KEY = "bulldozer-studio-theme";
+    const NODE_POSITIONS_STORAGE_KEY = "bulldozer-studio-node-positions-v1";
     const VERSION_POLL_INTERVAL_MS = 1200;
+
+    function loadStoredNodePositions() {
+      try {
+        const raw = window.localStorage.getItem(NODE_POSITIONS_STORAGE_KEY);
+        if (!raw) return {};
+        const parsed = JSON.parse(raw);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return {};
+        const result = {};
+        for (const [key, value] of Object.entries(parsed)) {
+          if (!value || typeof value !== "object" || Array.isArray(value)) continue;
+          const x = Number(value.x);
+          const y = Number(value.y);
+          if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+          result[key] = { x, y };
+        }
+        return result;
+      } catch (error) {
+        return {};
+      }
+    }
+    function persistNodePositions() {
+      window.localStorage.setItem(NODE_POSITIONS_STORAGE_KEY, JSON.stringify(state.manualNodePositions));
+    }
 
     const state = {
       mode: "table",
@@ -747,12 +784,19 @@ function getStudioPageHtml(): string {
         y: 24,
         scale: 1,
       },
+      manualNodePositions: loadStoredNodePositions(),
       dragging: {
         active: false,
+        kind: null,
         startX: 0,
         startY: 0,
         startOffsetX: 0,
         startOffsetY: 0,
+        nodeId: null,
+        nodeStartX: 0,
+        nodeStartY: 0,
+        moved: false,
+        suppressClickTableId: null,
       },
     };
 
@@ -820,6 +864,10 @@ function getStudioPageHtml(): string {
       if (a === b) return 0;
       return a < b ? -1 : 1;
     }
+    function compareNumbers(a, b) {
+      if (a === b) return 0;
+      return a < b ? -1 : 1;
+    }
 
     async function fetchJson(path, init) {
       const response = await fetch(path, init);
@@ -856,11 +904,57 @@ function getStudioPageHtml(): string {
       visiting.delete(tableId);
       return depth;
     }
+    function getAverageOrderValue(ids, orderMap, fallback) {
+      const values = ids
+        .map((id) => orderMap.get(id))
+        .filter((value) => typeof value === "number");
+      if (values.length === 0) return fallback;
+      return values.reduce((sum, value) => sum + value, 0) / values.length;
+    }
+    function getNodePosition(tableId) {
+      const stored = state.manualNodePositions[tableId];
+      if (!stored || typeof stored !== "object") return null;
+      const x = Number(stored.x);
+      const y = Number(stored.y);
+      if (!Number.isFinite(x) || !Number.isFinite(y)) return null;
+      return {
+        x: Math.max(SCENE_MARGIN / 2, x),
+        y: Math.max(SCENE_MARGIN / 2, y),
+      };
+    }
+    function pruneNodePositions(tables) {
+      const validIds = new Set(tables.map((table) => String(table.id)));
+      let changed = false;
+      const next = {};
+      for (const [tableId, value] of Object.entries(state.manualNodePositions)) {
+        if (!validIds.has(tableId)) {
+          changed = true;
+          continue;
+        }
+        next[tableId] = value;
+      }
+      if (!changed) return;
+      state.manualNodePositions = next;
+      persistNodePositions();
+    }
 
     function layoutGraph(tables) {
       const tableMap = new Map(tables.map((table) => [table.id, table]));
+      const reverseDependencies = new Map();
       const depthCache = new Map();
       const byDepth = new Map();
+
+      for (const table of tables) {
+        reverseDependencies.set(table.id, []);
+      }
+      for (const table of tables) {
+        const dependencies = Array.isArray(table.dependencies) ? table.dependencies : [];
+        for (const dependencyId of dependencies) {
+          const existing = reverseDependencies.get(dependencyId) ?? [];
+          existing.push(table.id);
+          reverseDependencies.set(dependencyId, existing);
+        }
+      }
 
       for (const table of tables) {
         const depth = computeDepth(table.id, tableMap, depthCache, new Set());
@@ -873,18 +967,66 @@ function getStudioPageHtml(): string {
       let sceneWidth = 600;
       let sceneHeight = 600;
 
+      for (const depth of depths) {
+        const row = byDepth.get(depth);
+        row.sort((a, b) => compareStrings(String(a.name), String(b.name)));
+      }
+
+      for (let iteration = 0; iteration < 6; iteration++) {
+        const orderMap = new Map();
+        for (const depth of depths) {
+          const row = byDepth.get(depth) ?? [];
+          for (let i = 0; i < row.length; i++) {
+            orderMap.set(row[i].id, i);
+          }
+        }
+        for (let depthIndex = 1; depthIndex < depths.length; depthIndex++) {
+          const depth = depths[depthIndex];
+          const row = byDepth.get(depth) ?? [];
+          row.sort((a, b) => {
+            const aDeps = Array.isArray(a.dependencies) ? a.dependencies : [];
+            const bDeps = Array.isArray(b.dependencies) ? b.dependencies : [];
+            const aScore = getAverageOrderValue(aDeps, orderMap, Number.MAX_SAFE_INTEGER / 4);
+            const bScore = getAverageOrderValue(bDeps, orderMap, Number.MAX_SAFE_INTEGER / 4);
+            return compareNumbers(aScore, bScore) || compareStrings(String(a.name), String(b.name));
+          });
+        }
+
+        orderMap.clear();
+        for (const depth of depths) {
+          const row = byDepth.get(depth) ?? [];
+          for (let i = 0; i < row.length; i++) {
+            orderMap.set(row[i].id, i);
+          }
+        }
+        for (let depthIndex = depths.length - 2; depthIndex >= 0; depthIndex--) {
+          const depth = depths[depthIndex];
+          const row = byDepth.get(depth) ?? [];
+          row.sort((a, b) => {
+            const aDependents = reverseDependencies.get(a.id) ?? [];
+            const bDependents = reverseDependencies.get(b.id) ?? [];
+            const aScore = getAverageOrderValue(aDependents, orderMap, Number.MAX_SAFE_INTEGER / 4);
+            const bScore = getAverageOrderValue(bDependents, orderMap, Number.MAX_SAFE_INTEGER / 4);
+            return compareNumbers(aScore, bScore) || compareStrings(String(a.name), String(b.name));
+          });
+        }
+      }
+
       for (let depthIndex = 0; depthIndex < depths.length; depthIndex++) {
         const depth = depths[depthIndex];
         const row = byDepth.get(depth);
-        row.sort((a, b) => compareStrings(String(a.name), String(b.name)));
         const totalWidth = row.length * NODE_WIDTH + (row.length - 1) * COLUMN_GAP_X;
         const startX = SCENE_MARGIN + Math.max(0, (900 - totalWidth) / 2);
         const y = SCENE_MARGIN + depthIndex * LEVEL_GAP_Y;
         for (let i = 0; i < row.length; i++) {
-          const x = startX + i * (NODE_WIDTH + COLUMN_GAP_X);
-          positions.set(row[i].id, { x, y });
+          const defaultX = startX + i * (NODE_WIDTH + COLUMN_GAP_X);
+          const defaultY = y;
+          const manualPosition = getNodePosition(row[i].id);
+          const x = manualPosition ? manualPosition.x : defaultX;
+          const finalY = manualPosition ? manualPosition.y : defaultY;
+          positions.set(row[i].id, { x, y: finalY });
           sceneWidth = Math.max(sceneWidth, x + NODE_WIDTH + SCENE_MARGIN);
-          sceneHeight = Math.max(sceneHeight, y + NODE_HEIGHT + SCENE_MARGIN);
+          sceneHeight = Math.max(sceneHeight, finalY + NODE_HEIGHT + SCENE_MARGIN);
         }
       }
 
@@ -892,7 +1034,153 @@ function getStudioPageHtml(): string {
         positions,
         sceneWidth,
         sceneHeight,
+        depthById: depthCache,
       };
+    }
+    function syncSceneDimensions() {
+      if (!state.graphLayout) return;
+      graphScene.style.width = state.graphLayout.sceneWidth + "px";
+      graphScene.style.height = state.graphLayout.sceneHeight + "px";
+      graphEdges.setAttribute("width", String(state.graphLayout.sceneWidth));
+      graphEdges.setAttribute("height", String(state.graphLayout.sceneHeight));
+      graphEdges.setAttribute("viewBox", "0 0 " + state.graphLayout.sceneWidth + " " + state.graphLayout.sceneHeight);
+      graphNodes.style.width = state.graphLayout.sceneWidth + "px";
+      graphNodes.style.height = state.graphLayout.sceneHeight + "px";
+    }
+    function buildGraphEdges(tables, positions, depthById) {
+      const edges = [];
+      const outgoingByNode = new Map();
+      const incomingByNode = new Map();
+      for (const table of tables) {
+        const to = positions.get(table.id);
+        if (!to) continue;
+        const dependencies = Array.isArray(table.dependencies) ? table.dependencies : [];
+        for (const dependencyId of dependencies) {
+          const from = positions.get(dependencyId);
+          if (!from) continue;
+          const edge = {
+            id: dependencyId + "->" + table.id,
+            fromId: dependencyId,
+            toId: table.id,
+            from,
+            to,
+            depthFrom: depthById.get(dependencyId) ?? 0,
+            depthTo: depthById.get(table.id) ?? 0,
+            sourceSlotIndex: 0,
+            sourceSlotCount: 1,
+            targetSlotIndex: 0,
+            targetSlotCount: 1,
+            laneOffset: 0,
+          };
+          edges.push(edge);
+          const outgoing = outgoingByNode.get(dependencyId) ?? [];
+          outgoing.push(edge);
+          outgoingByNode.set(dependencyId, outgoing);
+          const incoming = incomingByNode.get(table.id) ?? [];
+          incoming.push(edge);
+          incomingByNode.set(table.id, incoming);
+        }
+      }
+
+      for (const [nodeId, nodeEdges] of outgoingByNode.entries()) {
+        nodeEdges.sort((a, b) => compareNumbers(a.to.x, b.to.x) || compareStrings(a.toId, b.toId));
+        for (let i = 0; i < nodeEdges.length; i++) {
+          nodeEdges[i].sourceSlotIndex = i;
+          nodeEdges[i].sourceSlotCount = nodeEdges.length;
+        }
+      }
+      for (const [nodeId, nodeEdges] of incomingByNode.entries()) {
+        nodeEdges.sort((a, b) => compareNumbers(a.from.x, b.from.x) || compareStrings(a.fromId, b.fromId));
+        for (let i = 0; i < nodeEdges.length; i++) {
+          nodeEdges[i].targetSlotIndex = i;
+          nodeEdges[i].targetSlotCount = nodeEdges.length;
+        }
+      }
+
+      const edgesByDepthSpan = new Map();
+      for (const edge of edges) {
+        const bucketKey = edge.depthFrom + "->" + edge.depthTo;
+        const bucket = edgesByDepthSpan.get(bucketKey) ?? [];
+        bucket.push(edge);
+        edgesByDepthSpan.set(bucketKey, bucket);
+      }
+      for (const bucket of edgesByDepthSpan.values()) {
+        bucket.sort((a, b) => {
+          const aCenter = (a.from.x + a.to.x) / 2;
+          const bCenter = (b.from.x + b.to.x) / 2;
+          return compareNumbers(aCenter, bCenter) || compareStrings(a.id, b.id);
+        });
+        for (let i = 0; i < bucket.length; i++) {
+          const centeredIndex = i - (bucket.length - 1) / 2;
+          bucket[i].laneOffset = Math.max(-4, Math.min(4, centeredIndex)) * 18;
+        }
+      }
+
+      return edges;
+    }
+    function getEdgeAnchorX(position, slotIndex, slotCount) {
+      if (slotCount <= 1) return position.x + NODE_WIDTH / 2;
+      return position.x + ((slotIndex + 1) / (slotCount + 1)) * NODE_WIDTH;
+    }
+    function renderGraphEdges(tables) {
+      graphEdges.innerHTML = "";
+      if (!state.graphLayout) return;
+      const positions = state.graphLayout.positions;
+
+      const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
+      const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
+      marker.setAttribute("id", "arrow");
+      marker.setAttribute("viewBox", "0 0 10 10");
+      marker.setAttribute("refX", "9");
+      marker.setAttribute("refY", "5");
+      marker.setAttribute("markerWidth", "7");
+      marker.setAttribute("markerHeight", "7");
+      marker.setAttribute("orient", "auto");
+      const markerPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      markerPath.setAttribute("d", "M 0 0 L 10 5 L 0 10 z");
+      markerPath.setAttribute("fill", "var(--accent)");
+      marker.appendChild(markerPath);
+      defs.appendChild(marker);
+      graphEdges.appendChild(defs);
+
+      const edges = buildGraphEdges(tables, positions, state.graphLayout.depthById ?? new Map());
+      for (const edge of edges) {
+        const startX = getEdgeAnchorX(edge.from, edge.sourceSlotIndex, edge.sourceSlotCount);
+        const startY = edge.from.y + NODE_HEIGHT;
+        const endX = getEdgeAnchorX(edge.to, edge.targetSlotIndex, edge.targetSlotCount);
+        const endY = edge.to.y;
+        const laneY = Math.min(endY - 20, Math.max(startY + 20, (startY + endY) / 2 + edge.laneOffset));
+        const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+        path.setAttribute("d", "M " + startX + " " + startY + " C " + startX + " " + laneY + ", " + endX + " " + laneY + ", " + endX + " " + endY);
+        path.setAttribute("fill", "none");
+        path.setAttribute("stroke", "var(--accent)");
+        path.setAttribute("stroke-width", "1.7");
+        path.setAttribute("stroke-linecap", "round");
+        path.setAttribute("stroke-linejoin", "round");
+        path.setAttribute("marker-end", "url(#arrow)");
+        graphEdges.appendChild(path);
+      }
+    }
+    function syncNodePositions() {
+      if (!state.graphLayout) return;
+      const positions = state.graphLayout.positions;
+      for (const node of graphNodes.querySelectorAll(".node")) {
+        const tableId = node.getAttribute("data-table-id");
+        if (!tableId) continue;
+        const position = positions.get(tableId);
+        if (!position) continue;
+        node.style.left = position.x + "px";
+        node.style.top = position.y + "px";
+      }
+    }
+    function relayoutGraph() {
+      if (!state.schema || !Array.isArray(state.schema.tables)) return;
+      pruneNodePositions(state.schema.tables);
+      state.graphLayout = layoutGraph(state.schema.tables);
+      syncSceneDimensions();
+      renderGraphEdges(state.schema.tables);
+      syncNodePositions();
+      updateSceneTransform();
     }
 
     function updateSceneTransform() {
@@ -927,68 +1215,17 @@ function getStudioPageHtml(): string {
       if (!state.schema || !Array.isArray(state.schema.tables)) return;
 
       const tables = state.schema.tables;
-      state.graphLayout = layoutGraph(tables);
-      const positions = state.graphLayout.positions;
-      graphScene.style.width = state.graphLayout.sceneWidth + "px";
-      graphScene.style.height = state.graphLayout.sceneHeight + "px";
-      graphEdges.setAttribute("width", String(state.graphLayout.sceneWidth));
-      graphEdges.setAttribute("height", String(state.graphLayout.sceneHeight));
-      graphEdges.setAttribute("viewBox", "0 0 " + state.graphLayout.sceneWidth + " " + state.graphLayout.sceneHeight);
-      graphNodes.style.width = state.graphLayout.sceneWidth + "px";
-      graphNodes.style.height = state.graphLayout.sceneHeight + "px";
-
-      const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
-      const marker = document.createElementNS("http://www.w3.org/2000/svg", "marker");
-      marker.setAttribute("id", "arrow");
-      marker.setAttribute("viewBox", "0 0 10 10");
-      marker.setAttribute("refX", "9");
-      marker.setAttribute("refY", "5");
-      marker.setAttribute("markerWidth", "7");
-      marker.setAttribute("markerHeight", "7");
-      marker.setAttribute("orient", "auto");
-      const markerPath = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      markerPath.setAttribute("d", "M 0 0 L 10 5 L 0 10 z");
-      markerPath.setAttribute("fill", "var(--accent)");
-      marker.appendChild(markerPath);
-      defs.appendChild(marker);
-      graphEdges.appendChild(defs);
-
       for (const table of tables) {
-        const to = positions.get(table.id);
-        if (!to) continue;
-        const dependencies = Array.isArray(table.dependencies) ? table.dependencies : [];
-        for (const dependencyId of dependencies) {
-          const from = positions.get(dependencyId);
-          if (!from) continue;
-          const startX = from.x + NODE_WIDTH / 2;
-          const startY = from.y + NODE_HEIGHT;
-          const endX = to.x + NODE_WIDTH / 2;
-          const endY = to.y;
-          const midY = startY + (endY - startY) / 2;
-          const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-          path.setAttribute("d", "M " + startX + " " + startY + " V " + midY + " H " + endX + " V " + endY);
-          path.setAttribute("fill", "none");
-          path.setAttribute("stroke", "var(--accent)");
-          path.setAttribute("stroke-width", "1.7");
-          path.setAttribute("marker-end", "url(#arrow)");
-          graphEdges.appendChild(path);
-        }
-      }
-
-      for (const table of tables) {
-        const pos = positions.get(table.id);
-        if (!pos) continue;
         const operatorClass = (() => {
           const normalized = String(table.operator || "unknown").toLowerCase();
-          if (normalized === "stored" || normalized === "map" || normalized === "flatmap" || normalized === "groupby" || normalized === "filter" || normalized === "limit") {
+          if (normalized === "stored" || normalized === "map" || normalized === "flatmap" || normalized === "groupby" || normalized === "filter" || normalized === "limit" || normalized === "concat") {
             return normalized;
           }
           return "derived";
         })();
         const node = document.createElement("div");
         node.className = "node" + (state.selectedTableId === table.id ? " active" : "");
-        node.style.left = pos.x + "px";
-        node.style.top = pos.y + "px";
+        node.setAttribute("data-table-id", String(table.id));
 
         const type = document.createElement("div");
         type.className = "node-type " + operatorClass;
@@ -1038,7 +1275,30 @@ function getStudioPageHtml(): string {
         node.appendChild(name);
         node.appendChild(meta);
         node.appendChild(actions);
+        node.addEventListener("mousedown", (event) => {
+          const target = event.target;
+          if (!(target instanceof HTMLElement)) return;
+          if (target.closest("button")) return;
+          const position = state.graphLayout?.positions.get(table.id);
+          if (!position) return;
+          event.preventDefault();
+          event.stopPropagation();
+          state.dragging.active = true;
+          state.dragging.kind = "node";
+          state.dragging.nodeId = String(table.id);
+          state.dragging.startX = event.clientX;
+          state.dragging.startY = event.clientY;
+          state.dragging.nodeStartX = position.x;
+          state.dragging.nodeStartY = position.y;
+          state.dragging.moved = false;
+          node.classList.add("dragging");
+          graphShell.classList.add("dragging");
+        });
         node.onclick = () => {
+          if (state.dragging.suppressClickTableId === table.id) {
+            state.dragging.suppressClickTableId = null;
+            return;
+          }
           runUiAction("load table details", async () => {
             setMode("table");
             await selectTable(table.id);
@@ -1047,7 +1307,7 @@ function getStudioPageHtml(): string {
         graphNodes.appendChild(node);
       }
 
-      updateSceneTransform();
+      relayoutGraph();
     }
 
     function getRawInputDefault() {
@@ -1479,22 +1739,52 @@ function getStudioPageHtml(): string {
         if (!(target instanceof HTMLElement)) return;
         if (target.closest(".node")) return;
         state.dragging.active = true;
+        state.dragging.kind = "pan";
         state.dragging.startX = event.clientX;
         state.dragging.startY = event.clientY;
         state.dragging.startOffsetX = state.viewport.x;
         state.dragging.startOffsetY = state.viewport.y;
+        state.dragging.moved = false;
         graphShell.classList.add("dragging");
       });
 
       window.addEventListener("mousemove", (event) => {
         if (!state.dragging.active) return;
-        state.viewport.x = state.dragging.startOffsetX + (event.clientX - state.dragging.startX);
-        state.viewport.y = state.dragging.startOffsetY + (event.clientY - state.dragging.startY);
-        updateSceneTransform();
+        const deltaX = event.clientX - state.dragging.startX;
+        const deltaY = event.clientY - state.dragging.startY;
+        if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) {
+          state.dragging.moved = true;
+        }
+        if (state.dragging.kind === "pan") {
+          state.viewport.x = state.dragging.startOffsetX + deltaX;
+          state.viewport.y = state.dragging.startOffsetY + deltaY;
+          updateSceneTransform();
+          return;
+        }
+        if (state.dragging.kind === "node" && state.dragging.nodeId) {
+          const nextX = Math.max(SCENE_MARGIN / 2, state.dragging.nodeStartX + deltaX / state.viewport.scale);
+          const nextY = Math.max(SCENE_MARGIN / 2, state.dragging.nodeStartY + deltaY / state.viewport.scale);
+          state.manualNodePositions[state.dragging.nodeId] = { x: nextX, y: nextY };
+          persistNodePositions();
+          relayoutGraph();
+        }
       });
 
       window.addEventListener("mouseup", () => {
+        if (state.dragging.kind === "node" && state.dragging.nodeId && state.dragging.moved) {
+          state.dragging.suppressClickTableId = state.dragging.nodeId;
+        }
+        const draggingNodeId = state.dragging.nodeId;
+        if (draggingNodeId) {
+          const node = graphNodes.querySelector('[data-table-id="' + draggingNodeId.replaceAll('"', '\\"') + '"]');
+          if (node instanceof HTMLElement) {
+            node.classList.remove("dragging");
+          }
+        }
         state.dragging.active = false;
+        state.dragging.kind = null;
+        state.dragging.nodeId = null;
+        state.dragging.moved = false;
         graphShell.classList.remove("dragging");
       });
     }

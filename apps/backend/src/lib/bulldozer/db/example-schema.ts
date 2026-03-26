@@ -1,4 +1,4 @@
-import { declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLimitTable, declareMapTable, declareStoredTable } from "./index";
+import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLimitTable, declareMapTable, declareStoredTable } from "./index";
 
 const mapper = (sql: string) => ({ type: "mapper" as const, sql });
 const predicate = (sql: string) => ({ type: "predicate" as const, sql });
@@ -125,6 +125,10 @@ export const exampleFungibleLedgerSchema = (() => {
     fromTable: highValueEntriesByAsset,
     groupBy: mapper(`"rowData"->'accountId' AS "groupKey"`),
   });
+  const accountPriorityEntries = declareConcatTable({
+    tableId: "bulldozer-example-ledger-account-priority-entries",
+    tables: [accountEntriesWithCounterparty, highValueEntriesByAssetAccount],
+  });
   const highValueEntriesByAssetAccountTop = declareLimitTable({
     tableId: "bulldozer-example-ledger-high-value-entries-by-asset-account-top",
     fromTable: highValueEntriesByAssetAccount,
@@ -159,6 +163,7 @@ export const exampleFungibleLedgerSchema = (() => {
     accountCounterpartySample,
     highValueEntriesByAsset,
     highValueEntriesByAssetAccount,
+    accountPriorityEntries,
     highValueEntriesByAssetAccountTop,
     assetEntriesNormalized,
   };

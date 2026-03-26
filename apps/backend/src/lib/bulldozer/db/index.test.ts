@@ -1,7 +1,7 @@
 import { stringCompare, templateIdentity } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vitest";
-import { declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLimitTable, declareMapTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
+import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLimitTable, declareMapTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
 
 type TestDb = { full: string, base: string };
 
@@ -263,6 +263,25 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     });
     return { fromTable, groupedTable, limitedTable };
   }
+  function createConcatenatedTable() {
+    const fromTableA = declareStoredTable<{ value: number, team: string }>({ tableId: "users-a" });
+    const fromTableB = declareStoredTable<{ value: number, team: string }>({ tableId: "users-b" });
+    const groupedTableA = declareGroupByTable({
+      tableId: "users-a-by-team",
+      fromTable: fromTableA,
+      groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+    });
+    const groupedTableB = declareGroupByTable({
+      tableId: "users-b-by-team",
+      fromTable: fromTableB,
+      groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+    });
+    const concatenatedTable = declareConcatTable({
+      tableId: "users-by-team-concat",
+      tables: [groupedTableA, groupedTableB],
+    });
+    return { fromTableA, fromTableB, groupedTableA, groupedTableB, concatenatedTable };
+  }
   function createFlatMapMapGroupPipeline() {
     const { fromTable, groupedTable, flatMappedTable } = createFlatMappedTable();
     const mappedAfterFlatMap = declareMapTable({
@@ -410,6 +429,29 @@ describe.sequential("declareStoredTable (real postgres)", () => {
   }
   function registerLimitAuditTrigger(
     table: ReturnType<typeof createLimitedTable>["limitedTable"],
+    event: string,
+  ) {
+    return table.registerRowChangeTrigger((changesTable) => [
+      sqlStatement`
+        INSERT INTO "BulldozerMapTriggerAudit" (
+          "event",
+          "groupKey",
+          "rowIdentifier",
+          "oldRowData",
+          "newRowData"
+        )
+        SELECT
+          ${expr<string>(sqlStringLiteral(event))},
+          "groupKey",
+          "rowIdentifier",
+          "oldRowData",
+          "newRowData"
+        FROM ${changesTable}
+      `,
+    ]);
+  }
+  function registerConcatAuditTrigger(
+    table: ReturnType<typeof createConcatenatedTable>["concatenatedTable"],
     event: string,
   ) {
     return table.registerRowChangeTrigger((changesTable) => [
@@ -2019,6 +2061,163 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     expect(groups).toEqual([]);
     const limitAuditRows = (await readMapTriggerAuditRows()).filter((row) => row.event === "limit_change");
     expect(limitAuditRows).toEqual([]);
+  });
+
+  test("concatTable virtually concatenates grouped inputs and prefixes row identifiers", async () => {
+    const { fromTableA, fromTableB, groupedTableA, groupedTableB, concatenatedTable } = createConcatenatedTable();
+    await runStatements(fromTableA.init());
+    await runStatements(fromTableB.init());
+    await runStatements(groupedTableA.init());
+    await runStatements(groupedTableB.init());
+
+    await runStatements(fromTableA.setRow("a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTableA.setRow("a2", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTableB.setRow("b1", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(fromTableB.setRow("b2", expr(`'{"team":"gamma","value":4}'::jsonb`)));
+
+    expect(await readBoolean(concatenatedTable.isInitialized())).toBe(false);
+    expect(await readRows(concatenatedTable.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }))).toEqual([]);
+    await runStatements(concatenatedTable.init());
+    expect(await readBoolean(concatenatedTable.isInitialized())).toBe(true);
+
+    const groups = await readRows(concatenatedTable.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(groups.map((row) => row.groupkey).sort(stringCompare)).toEqual(["alpha", "beta", "gamma"]);
+
+    const alphaRows = await readRows(concatenatedTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(alphaRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata }))).toEqual([
+      { rowIdentifier: "0:a1", rowData: { team: "alpha", value: 1 } },
+      { rowIdentifier: "1:b1", rowData: { team: "alpha", value: 3 } },
+    ]);
+
+    const allRows = await readRows(concatenatedTable.listRowsInGroup({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(allRows.map((row) => ({
+      groupKey: row.groupkey,
+      rowIdentifier: row.rowidentifier,
+      rowData: row.rowdata,
+    }))).toEqual([
+      { groupKey: "alpha", rowIdentifier: "0:a1", rowData: { team: "alpha", value: 1 } },
+      { groupKey: "beta", rowIdentifier: "0:a2", rowData: { team: "beta", value: 2 } },
+      { groupKey: "alpha", rowIdentifier: "1:b1", rowData: { team: "alpha", value: 3 } },
+      { groupKey: "gamma", rowIdentifier: "1:b2", rowData: { team: "gamma", value: 4 } },
+    ]);
+  });
+
+  test("concatTable forwards prefixed trigger changes from each input table", async () => {
+    const { fromTableA, fromTableB, groupedTableA, groupedTableB, concatenatedTable } = createConcatenatedTable();
+    await runStatements(fromTableA.init());
+    await runStatements(fromTableB.init());
+    await runStatements(groupedTableA.init());
+    await runStatements(groupedTableB.init());
+    await runStatements(concatenatedTable.init());
+    registerConcatAuditTrigger(concatenatedTable, "concat_change");
+
+    await runStatements(fromTableA.setRow("a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTableB.setRow("b1", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTableB.setRow("b1", expr(`'{"team":"gamma","value":5}'::jsonb`)));
+    await runStatements(fromTableA.deleteRow("a1"));
+
+    const auditRows = (await readMapTriggerAuditRows())
+      .filter((row) => row.event === "concat_change")
+      .map((row) => ({
+        groupKey: row.groupKey,
+        rowIdentifier: row.rowIdentifier,
+        oldRowData: row.oldRowData,
+        newRowData: row.newRowData,
+      }));
+    expect(auditRows).toEqual([
+      { groupKey: "alpha", rowIdentifier: "0:a1", oldRowData: null, newRowData: { team: "alpha", value: 1 } },
+      { groupKey: "beta", rowIdentifier: "1:b1", oldRowData: null, newRowData: { team: "beta", value: 2 } },
+      { groupKey: "beta", rowIdentifier: "1:b1", oldRowData: { team: "beta", value: 2 }, newRowData: null },
+      { groupKey: "gamma", rowIdentifier: "1:b1", oldRowData: null, newRowData: { team: "gamma", value: 5 } },
+      { groupKey: "alpha", rowIdentifier: "0:a1", oldRowData: { team: "alpha", value: 1 }, newRowData: null },
+    ]);
+  });
+
+  test("concatTable stays virtual but requires its own metadata initialization", async () => {
+    const { fromTableA, fromTableB, groupedTableA, groupedTableB, concatenatedTable } = createConcatenatedTable();
+
+    expect(await readBoolean(concatenatedTable.isInitialized())).toBe(false);
+
+    const beforeInitGroups = await readRows(concatenatedTable.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(beforeInitGroups).toEqual([]);
+
+    await runStatements(fromTableA.init());
+    await runStatements(groupedTableA.init());
+    await runStatements(fromTableA.setRow("a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    expect(await readBoolean(concatenatedTable.isInitialized())).toBe(false);
+
+    const oneSideOnlyRows = await readRows(concatenatedTable.listRowsInGroup({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(oneSideOnlyRows).toEqual([]);
+
+    await runStatements(concatenatedTable.init());
+    expect(await readBoolean(concatenatedTable.isInitialized())).toBe(true);
+    const rowsAfterConcatInit = await readRows(concatenatedTable.listRowsInGroup({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(rowsAfterConcatInit.map((row) => row.rowidentifier)).toEqual(["0:a1"]);
+
+    await runStatements(fromTableB.init());
+    await runStatements(groupedTableB.init());
+    await runStatements(fromTableB.setRow("b1", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    expect(await readBoolean(concatenatedTable.isInitialized())).toBe(true);
+
+    await runStatements(concatenatedTable.delete());
+    expect(await readBoolean(concatenatedTable.isInitialized())).toBe(false);
+
+    const rowsAfterDelete = await readRows(concatenatedTable.listRowsInGroup({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(rowsAfterDelete).toEqual([]);
+
+    await runStatements(concatenatedTable.init());
+    expect(await readBoolean(concatenatedTable.isInitialized())).toBe(true);
+
+    await runStatements(groupedTableB.delete());
+    expect(await readBoolean(concatenatedTable.isInitialized())).toBe(true);
+    const rowsAfterInputDelete = await readRows(concatenatedTable.listRowsInGroup({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(rowsAfterInputDelete.map((row) => row.rowidentifier)).toEqual(["0:a1"]);
   });
 
   test("flatMap -> map -> groupBy composition stays consistent across updates", async () => {

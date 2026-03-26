@@ -30,6 +30,10 @@ export type Table<GK extends Json, SK extends Json, RD extends RowData> = {
   registerRowChangeTrigger(trigger: (changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => SqlStatement[]): { deregister: () => void },
 };
 
+
+// ====== Table implementations ======
+// IMPORTANT NOTE: For every new table implementation, we should also add tests (unit, fuzzing, & perf; including an entry in the "hundreds of thousands" perf test), an example in the example schema, and support in Bulldozer Studio.
+
 export function declareStoredTable<RD extends RowData>(options: {
   tableId: TableId,
 }): Table<null, null, RD> & {
@@ -1360,13 +1364,178 @@ export function declareLimitTable<
   };
 }
 
-export declare function declareConcatTable<
+export function declareConcatTable<
   GK extends Json,
   RD extends RowData,
 >(options: {
   tableId: TableId,
   tables: Table<GK, any, RD>[],
-}): Table<GK, null, RD>;
+}): Table<GK, null, RD> {
+  const firstTable = options.tables[0] ?? (() => {
+    throw new StackAssertionError("declareConcatTable requires at least one input table", { tableId: options.tableId });
+  })();
+  const triggers = new Map<string, (changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => SqlStatement[]>();
+  const rawExpression = <T>(sql: string): SqlExpression<T> => ({ type: "expression", sql });
+  const isInitializedExpression = sqlExpression`
+    EXISTS (
+      SELECT 1 FROM "BulldozerStorageEngine"
+      WHERE "keyPath" = ${getStorageEnginePath(options.tableId, ["metadata"])}::jsonb[]
+    )
+  `;
+  const createConcatenatedRowIdentifierSql = (tableIndex: number, rowIdentifierSql: string) =>
+    `${quoteSqlStringLiteral(`${tableIndex}:`).sql} || ${rowIdentifierSql}`;
+  const getInputInitializedSql = (table: Table<GK, any, RD>) => table.isInitialized().sql;
+  const getUnionedListGroupsSql = (queryOptions: Parameters<typeof firstTable.listGroups>[0]) => {
+    return options.tables
+      .map((table) => deindent`
+        SELECT "sourceGroups"."groupkey" AS "groupKey"
+        FROM (${table.listGroups(queryOptions).sql}) AS "sourceGroups"
+        WHERE ${getInputInitializedSql(table)}
+      `)
+      .join("\nUNION ALL\n");
+  };
+  const getUnionedListRowsSql = (queryOptions: Parameters<typeof firstTable.listRowsInGroup>[0] & { allGroups: boolean }) => {
+    return options.tables.map((table, tableIndex) => {
+      if (queryOptions.allGroups) {
+        return deindent`
+          SELECT
+            "sourceRows"."groupkey" AS "groupKey",
+            ${createConcatenatedRowIdentifierSql(tableIndex, `"sourceRows"."rowidentifier"`)} AS "rowIdentifier",
+            'null'::jsonb AS "rowSortKey",
+            "sourceRows"."rowdata" AS "rowData",
+            ${tableIndex}::int AS "sourceTableIndex",
+            row_number() OVER (
+              ORDER BY "sourceRows"."groupkey" ASC, "sourceRows"."rowsortkey" ASC, "sourceRows"."rowidentifier" ASC
+            ) AS "sourceRowIndex"
+          FROM (${table.listRowsInGroup({
+            start: "start",
+            end: "end",
+            startInclusive: true,
+            endInclusive: true,
+          }).sql}) AS "sourceRows"
+          WHERE ${getInputInitializedSql(table)}
+        `;
+      }
+      const groupKey = queryOptions.groupKey ?? (() => {
+        throw new StackAssertionError("declareConcatTable specific-group query requires a group key");
+      })();
+      return deindent`
+        SELECT
+          ${createConcatenatedRowIdentifierSql(tableIndex, `"sourceRows"."rowidentifier"`)} AS "rowIdentifier",
+          'null'::jsonb AS "rowSortKey",
+          "sourceRows"."rowdata" AS "rowData",
+          ${tableIndex}::int AS "sourceTableIndex",
+          row_number() OVER (
+            ORDER BY "sourceRows"."rowsortkey" ASC, "sourceRows"."rowidentifier" ASC
+          ) AS "sourceRowIndex"
+        FROM (${table.listRowsInGroup({
+          groupKey,
+          start: "start",
+          end: "end",
+          startInclusive: true,
+          endInclusive: true,
+        }).sql}) AS "sourceRows"
+        WHERE ${getInputInitializedSql(table)}
+      `;
+    }).join("\nUNION ALL\n");
+  };
+
+  options.tables.forEach((table, tableIndex) => {
+    table.registerRowChangeTrigger((changesTable) => {
+      const concatChangesTableName = `concat_changes_${generateSecureRandomString()}`;
+      return [
+        sqlQuery`
+          SELECT
+            "changes"."groupKey" AS "groupKey",
+            ${rawExpression<RowIdentifier>(createConcatenatedRowIdentifierSql(tableIndex, `"changes"."rowIdentifier"`))} AS "rowIdentifier",
+            'null'::jsonb AS "oldRowSortKey",
+            'null'::jsonb AS "newRowSortKey",
+            "changes"."oldRowData" AS "oldRowData",
+            "changes"."newRowData" AS "newRowData"
+          FROM ${changesTable} AS "changes"
+          WHERE ${isInitializedExpression}
+            AND ${rawExpression<boolean>(getInputInitializedSql(table))}
+        `.toStatement(concatChangesTableName),
+        ...[...triggers.values()].flatMap((trigger) => trigger(quoteSqlIdentifier(concatChangesTableName))),
+      ];
+    });
+  });
+
+  return {
+    tableId: options.tableId,
+    inputTables: options.tables,
+    debugArgs: {
+      operator: "concat",
+      tableId: tableIdToDebugString(options.tableId),
+      inputTableIds: options.tables.map((table) => tableIdToDebugString(table.tableId)),
+    },
+    listGroups: ({ start, end, startInclusive, endInclusive }) => sqlQuery`
+      SELECT DISTINCT "concatGroups"."groupKey" AS groupKey
+      FROM (${rawExpression(getUnionedListGroupsSql({ start, end, startInclusive, endInclusive }))}) AS "concatGroups"
+      WHERE ${isInitializedExpression}
+    `,
+    listRowsInGroup: ({ groupKey, start, end, startInclusive, endInclusive }) => groupKey != null ? sqlQuery`
+      SELECT
+        "concatRows"."rowIdentifier" AS rowIdentifier,
+        "concatRows"."rowSortKey" AS rowSortKey,
+        "concatRows"."rowData" AS rowData
+      FROM (${rawExpression(getUnionedListRowsSql({
+        groupKey,
+        start,
+        end,
+        startInclusive,
+        endInclusive,
+        allGroups: false,
+      }))}) AS "concatRows"
+      WHERE ${isInitializedExpression}
+        AND ${singleNullSortKeyRangePredicate({ start, end, startInclusive, endInclusive })}
+      ORDER BY "concatRows"."sourceTableIndex" ASC, "concatRows"."sourceRowIndex" ASC, "concatRows"."rowIdentifier" ASC
+    ` : sqlQuery`
+      SELECT
+        "concatRows"."groupKey" AS groupKey,
+        "concatRows"."rowIdentifier" AS rowIdentifier,
+        "concatRows"."rowSortKey" AS rowSortKey,
+        "concatRows"."rowData" AS rowData
+      FROM (${rawExpression(getUnionedListRowsSql({
+        start,
+        end,
+        startInclusive,
+        endInclusive,
+        allGroups: true,
+      }))}) AS "concatRows"
+      WHERE ${isInitializedExpression}
+        AND ${singleNullSortKeyRangePredicate({ start, end, startInclusive, endInclusive })}
+      ORDER BY "concatRows"."sourceTableIndex" ASC, "concatRows"."sourceRowIndex" ASC, "concatRows"."rowIdentifier" ASC
+    `,
+    compareGroupKeys: firstTable.compareGroupKeys,
+    compareSortKeys: () => sqlExpression`0`,
+    init: () => [sqlStatement`
+      INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
+      VALUES
+      (gen_random_uuid(), ${getTablePath(options.tableId)}, 'null'::jsonb),
+      (gen_random_uuid(), ${sqlArray([...getTablePathSegments(options.tableId), quoteSqlJsonbLiteral("table")])}::jsonb[], 'null'::jsonb),
+      (gen_random_uuid(), ${getStorageEnginePath(options.tableId, [])}::jsonb[], 'null'::jsonb),
+      (gen_random_uuid(), ${getStorageEnginePath(options.tableId, ["metadata"])}::jsonb[], '{ "version": 1 }'::jsonb)
+    `],
+    delete: () => [sqlStatement`
+      WITH RECURSIVE "pathsToDelete" AS (
+        SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
+        UNION ALL
+        SELECT "BulldozerStorageEngine"."keyPath" AS "path"
+        FROM "BulldozerStorageEngine"
+        INNER JOIN "pathsToDelete" ON "BulldozerStorageEngine"."keyPathParent" = "pathsToDelete"."path"
+      )
+      DELETE FROM "BulldozerStorageEngine"
+      WHERE "keyPath" IN (SELECT "path" FROM "pathsToDelete")
+    `],
+    isInitialized: () => isInitializedExpression,
+    registerRowChangeTrigger: (trigger) => {
+      const id = generateSecureRandomString();
+      triggers.set(id, trigger);
+      return { deregister: () => triggers.delete(id) };
+    },
+  };
+}
 
 export declare function declareSortTable<
   GK extends Json,

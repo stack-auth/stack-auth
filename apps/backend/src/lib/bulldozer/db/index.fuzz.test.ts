@@ -1,7 +1,7 @@
-import { stringCompare, templateIdentity } from "@stackframe/stack-shared/dist/utils/strings";
+import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
-import { declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLimitTable, declareMapTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
+import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLimitTable, declareMapTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
 
 type TestDb = { full: string, base: string };
 
@@ -261,6 +261,24 @@ function limitGroups<Row extends Record<string, unknown>>(
     limited.set(groupKey, { groupKey: group.groupKey, rows });
   }
   return limited;
+}
+function concatGroups<Row extends Record<string, unknown>>(
+  groupsList: GroupedRows<Row>[],
+): GroupedRows<Row> {
+  const concatenated: GroupedRows<Row> = new Map();
+  for (let tableIndex = 0; tableIndex < groupsList.length; tableIndex++) {
+    const groups = groupsList[tableIndex] ?? (() => {
+      throw new Error("concatGroups expected grouped rows for table index");
+    })();
+    for (const [groupKey, group] of groups) {
+      const existing = concatenated.get(groupKey) ?? { groupKey: group.groupKey, rows: new Map<string, Row>() };
+      for (const [rowIdentifier, rowData] of group.rows) {
+        existing.rows.set(`${tableIndex}:${rowIdentifier}`, rowData);
+      }
+      concatenated.set(groupKey, existing);
+    }
+  }
+  return concatenated;
 }
 
 describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
@@ -935,6 +953,105 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
               startInclusive: true,
               endInclusive: true,
             }))).toEqual([]);
+          }
+        }
+      }
+    }
+  }, 120_000);
+
+  test("fuzz: virtual concat table preserves prefixed rows across parallel source mutations", async () => {
+    const identifiers = ["c1", "c2", "c3", "c:4", "c 5", "c/6", "c'7"] as const;
+    const teams = ["alpha", "beta", "gamma"] as const;
+
+    for (const seed of [1801]) {
+      const rng = createRng(seed);
+      const sourceRowsA = new Map<string, SourceRow>();
+      const sourceRowsB = new Map<string, SourceRow>();
+      let secondInputInitialized = true;
+      let concatInitialized = true;
+
+      const fromTableA = declareStoredTable<{ value: number, team: string | null }>({ tableId: `concat-fuzz-users-a-${seed}` });
+      const fromTableB = declareStoredTable<{ value: number, team: string | null }>({ tableId: `concat-fuzz-users-b-${seed}` });
+      const groupedTableA = declareGroupByTable({
+        tableId: `concat-fuzz-users-a-by-team-${seed}`,
+        fromTable: fromTableA,
+        groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+      });
+      const groupedTableB = declareGroupByTable({
+        tableId: `concat-fuzz-users-b-by-team-${seed}`,
+        fromTable: fromTableB,
+        groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+      });
+      const concatenatedTable = declareConcatTable({
+        tableId: `concat-fuzz-users-by-team-${seed}`,
+        tables: [groupedTableA, groupedTableB],
+      });
+
+      await runStatements(fromTableA.init());
+      await runStatements(fromTableB.init());
+      await runStatements(groupedTableA.init());
+      await runStatements(groupedTableB.init());
+      await runStatements(concatenatedTable.init());
+
+      for (let step = 0; step < 24; step++) {
+        const roll = rng();
+        const mutateTableA = roll < 0.42;
+        const mutateTableB = roll >= 0.42 && roll < 0.84;
+        const targetRows = mutateTableA ? sourceRowsA : sourceRowsB;
+        const targetTable = mutateTableA ? fromTableA : fromTableB;
+
+        if (mutateTableA || mutateTableB) {
+          if (rng() < 0.68) {
+            const rowIdentifier = choose(rng, identifiers);
+            const rowData: SourceRow = {
+              team: choose(rng, teams),
+              value: Math.floor(rng() * 60),
+            };
+            targetRows.set(rowIdentifier, rowData);
+            await runStatements(targetTable.setRow(rowIdentifier, expr(jsonbLiteral(rowData))));
+          } else {
+            const rowIdentifier = choose(rng, identifiers);
+            targetRows.delete(rowIdentifier);
+            await runStatements(targetTable.deleteRow(rowIdentifier));
+          }
+        } else if (roll < 0.90) {
+          if (secondInputInitialized) {
+            await runStatements(groupedTableB.delete());
+            secondInputInitialized = false;
+          }
+        } else if (roll < 0.95) {
+          if (concatInitialized) {
+            await runStatements(concatenatedTable.delete());
+            concatInitialized = false;
+          }
+        } else {
+          if (!secondInputInitialized) {
+            await runStatements(groupedTableB.init());
+            secondInputInitialized = true;
+          } else if (!concatInitialized) {
+            await runStatements(concatenatedTable.init());
+            concatInitialized = true;
+          }
+        }
+
+        if (step % 3 === 0 || step === 23) {
+          const expectedA = computeTeamGroups(sourceRowsA);
+          const expectedB = computeTeamGroups(sourceRowsB);
+          if (!concatInitialized) {
+            expect(await readBoolean(concatenatedTable.isInitialized())).toBe(false);
+            const groups = await readRows(concatenatedTable.listGroups({
+              start: "start",
+              end: "end",
+              startInclusive: true,
+              endInclusive: true,
+            }));
+            expect(groups).toEqual([]);
+          } else if (secondInputInitialized) {
+            expect(await readBoolean(concatenatedTable.isInitialized())).toBe(true);
+            await assertTableMatches(concatenatedTable, concatGroups([expectedA, expectedB]));
+          } else {
+            expect(await readBoolean(concatenatedTable.isInitialized())).toBe(true);
+            await assertTableMatches(concatenatedTable, concatGroups([expectedA]));
           }
         }
       }

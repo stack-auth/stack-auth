@@ -1,7 +1,7 @@
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLimitTable, declareMapTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
+import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLimitTable, declareMapTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
 
 type TestDb = { full: string, base: string };
 type SqlExpression<T> = { type: "expression", sql: string };
@@ -37,7 +37,11 @@ const LOAD_FILTER_TABLE_INIT_MAX_MS = 90_000;
 const LOAD_FILTER_TABLE_COUNT_QUERY_MAX_MS = 8_000;
 const LOAD_LIMIT_TABLE_INIT_MAX_MS = 90_000;
 const LOAD_LIMIT_TABLE_COUNT_QUERY_MAX_MS = 8_000;
+const LOAD_CONCAT_TABLE_INIT_MAX_MS = 10_000;
+const LOAD_CONCAT_TABLE_COUNT_QUERY_MAX_MS = 8_000;
 const STACKED_MAP_PIPELINE_MUTATION_MAX_MS = 400;
+const VIRTUAL_CONCAT_COUNT_QUERY_MAX_MS = 500;
+const VIRTUAL_CONCAT_LOAD_ROW_COUNT = 5_000;
 
 function getTestDbUrls(): TestDb {
   const env = Reflect.get(import.meta, "env");
@@ -398,6 +402,61 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     expect(deleteMutation.elapsedMs).toBeLessThan(STACKED_MAP_PIPELINE_MUTATION_MAX_MS);
   });
 
+  it("regression: virtual concat queries stay fast after metadata-only initialization", async () => {
+    const tableAId = "perf-concat-users-a";
+    const tableBId = "perf-concat-users-b";
+    const fromTableA = declareStoredTable<{ value: number, team: string | null }>({ tableId: tableAId });
+    const fromTableB = declareStoredTable<{ value: number, team: string | null }>({ tableId: tableBId });
+    const groupedByTeamA = declareGroupByTable({
+      tableId: "perf-concat-users-a-by-team",
+      fromTable: fromTableA,
+      groupBy: { type: "mapper", sql: `"rowData"->'team' AS "groupKey"` },
+    });
+    const groupedByTeamB = declareGroupByTable({
+      tableId: "perf-concat-users-b-by-team",
+      fromTable: fromTableB,
+      groupBy: { type: "mapper", sql: `"rowData"->'team' AS "groupKey"` },
+    });
+    const concatenatedByTeam = declareConcatTable({
+      tableId: "perf-concat-users-by-team",
+      tables: [groupedByTeamA, groupedByTeamB],
+    });
+
+    expect((await readRows(concatenatedByTeam.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    })))).toEqual([]);
+
+    await prefillStoredTableInSingleStatement(tableAId, VIRTUAL_CONCAT_LOAD_ROW_COUNT);
+    await prefillStoredTableInSingleStatement(tableBId, VIRTUAL_CONCAT_LOAD_ROW_COUNT);
+    await runStatements(groupedByTeamA.init());
+    await runStatements(groupedByTeamB.init());
+    await runStatements(concatenatedByTeam.init());
+    expect(await readRows(concatenatedByTeam.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }))).not.toEqual([]);
+
+    const concatenatedCountQuery = concatenatedByTeam.listRowsInGroup({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    });
+    const countRows = await measureMs("virtual concat count query", async () => {
+      return await sql.unsafe(`
+        SELECT COUNT(*)::int AS "count"
+        FROM (${toQueryableSqlQuery(concatenatedCountQuery)}) AS "rows"
+      `);
+    });
+    expect(countRows.elapsedMs).toBeLessThan(VIRTUAL_CONCAT_COUNT_QUERY_MAX_MS);
+    expect(Number(countRows.result[0].count)).toBe(VIRTUAL_CONCAT_LOAD_ROW_COUNT * 2);
+  });
+
   it("load test: prefilled stored table with hundreds of thousands of rows stays functional and fast", async () => {
     const loadRowCount = DEFAULT_LOAD_ROW_COUNT;
     const tableId = "load-prefilled-users";
@@ -499,6 +558,10 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       fromTable: groupedByTeam,
       filter: { type: "predicate", sql: `( ("rowData"->>'value')::int ) >= 700` },
     });
+    const concatenatedByTeam = declareConcatTable({
+      tableId: "load-prefilled-users-concat",
+      tables: [groupedByTeam, filteredHighValue],
+    });
     const limitedByTeam = declareLimitTable({
       tableId: "load-prefilled-users-top-team-rows",
       fromTable: groupedByTeam,
@@ -543,6 +606,10 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       await runStatements(filteredHighValue.init());
     });
     expect(filterInit.elapsedMs).toBeLessThan(LOAD_FILTER_TABLE_INIT_MAX_MS);
+    const concatInit = await measureMs("load init concatenatedByTeam", async () => {
+      await runStatements(concatenatedByTeam.init());
+    });
+    expect(concatInit.elapsedMs).toBeLessThan(LOAD_CONCAT_TABLE_INIT_MAX_MS);
     const limitInit = await measureMs("load init limitedByTeam", async () => {
       await runStatements(limitedByTeam.init());
     });
@@ -582,6 +649,12 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       startInclusive: true,
       endInclusive: true,
     });
+    const concatenatedByTeamCountQuery = concatenatedByTeam.listRowsInGroup({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    });
     const limitedByTeamCountQuery = limitedByTeam.listRowsInGroup({
       start: "start",
       end: "end",
@@ -594,6 +667,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
         sql.unsafe(`SELECT COUNT(*)::int AS "count" FROM (${toQueryableSqlQuery(mappedCountQuery)}) AS "rows"`),
         sql.unsafe(`SELECT COUNT(*)::int AS "count" FROM (${toQueryableSqlQuery(bucketCountQuery)}) AS "rows"`),
         sql.unsafe(`SELECT COUNT(*)::int AS "count" FROM (${toQueryableSqlQuery(filteredHighValueCountQuery)}) AS "rows"`),
+        sql.unsafe(`SELECT COUNT(*)::int AS "count" FROM (${toQueryableSqlQuery(concatenatedByTeamCountQuery)}) AS "rows"`),
         sql.unsafe(`SELECT COUNT(*)::int AS "count" FROM (${toQueryableSqlQuery(limitedByTeamCountQuery)}) AS "rows"`),
         sql.unsafe(`SELECT COUNT(*)::int AS "count" FROM (${toQueryableSqlQuery(expandedCountQuery)}) AS "rows"`),
       ]);
@@ -604,9 +678,11 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     expect(Number(derivedCounts.result[2][0].count)).toBe(loadRowCount - 1);
     expect(Number(derivedCounts.result[3][0].count)).toBeGreaterThan(0);
     expect(Number(derivedCounts.result[3][0].count)).toBeLessThan(loadRowCount);
-    expect(Number(derivedCounts.result[4][0].count)).toBeGreaterThan(0);
-    expect(Number(derivedCounts.result[4][0].count)).toBeLessThanOrEqual(100);
-    expect(Number(derivedCounts.result[5][0].count)).toBe((loadRowCount - 1) * 2);
+    expect(Number(derivedCounts.result[4][0].count)).toBeGreaterThan(loadRowCount - 1);
+    expect(Number(derivedCounts.result[4][0].count)).toBeLessThan((loadRowCount - 1) * 2);
+    expect(Number(derivedCounts.result[5][0].count)).toBeGreaterThan(0);
+    expect(Number(derivedCounts.result[5][0].count)).toBeLessThanOrEqual(100);
+    expect(Number(derivedCounts.result[6][0].count)).toBe((loadRowCount - 1) * 2);
 
     const filteredHighValueCountOnly = await measureMs("load count filteredHighValue table only", async () => {
       return await sql.unsafe(`
@@ -616,6 +692,16 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     });
     expect(filteredHighValueCountOnly.elapsedMs).toBeLessThan(LOAD_FILTER_TABLE_COUNT_QUERY_MAX_MS);
     expect(Number(filteredHighValueCountOnly.result[0].count)).toBeGreaterThan(0);
+
+    const concatenatedByTeamCountOnly = await measureMs("load count concatenatedByTeam table only", async () => {
+      return await sql.unsafe(`
+        SELECT COUNT(*)::int AS "count"
+        FROM (${toQueryableSqlQuery(concatenatedByTeamCountQuery)}) AS "rows"
+      `);
+    });
+    expect(concatenatedByTeamCountOnly.elapsedMs).toBeLessThan(LOAD_CONCAT_TABLE_COUNT_QUERY_MAX_MS);
+    expect(Number(concatenatedByTeamCountOnly.result[0].count)).toBeGreaterThan(loadRowCount - 1);
+    expect(Number(concatenatedByTeamCountOnly.result[0].count)).toBeLessThan((loadRowCount - 1) * 2);
 
     const limitedByTeamCountOnly = await measureMs("load count limitedByTeam table only", async () => {
       return await sql.unsafe(`
@@ -701,6 +787,17 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     expect(filteredDeltaRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata }))).toEqual([
       { rowIdentifier: "seed-100000:1", rowData: { team: "delta", value: 999 } },
     ]);
+    const concatenatedDeltaRows = await readRows(concatenatedByTeam.listRowsInGroup({
+      groupKey: expr(`to_jsonb('delta'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(concatenatedDeltaRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata }))).toEqual([
+      { rowIdentifier: "0:seed-100000", rowData: { team: "delta", value: 999 } },
+      { rowIdentifier: "1:seed-100000:1", rowData: { team: "delta", value: 999 } },
+    ]);
     const limitedDeltaRows = await readRows(limitedByTeam.listRowsInGroup({
       groupKey: expr(`to_jsonb('delta'::text)`),
       start: "start",
@@ -729,7 +826,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     `;
     expect(isInitializedRows[0].initialized).toBe(false);
 
-    logLine(`[bulldozer-perf] load thresholds(ms): prefill<=${LOAD_PREFILL_MAX_MS}, baseCount<=${LOAD_COUNT_QUERY_MAX_MS}, setRowAvg<=${LOAD_SET_ROW_AVG_MAX_MS} over ${LOAD_SET_ROW_AVG_ITERATIONS}, pointDelete<=${LOAD_POINT_MUTATION_MAX_MS}, derivedInit<=${LOAD_DERIVED_INIT_MAX_MS}, filterInit<=${LOAD_FILTER_TABLE_INIT_MAX_MS}, limitInit<=${LOAD_LIMIT_TABLE_INIT_MAX_MS}, expandingInit<=${LOAD_EXPANDING_INIT_MAX_MS}, derivedCount<=${LOAD_DERIVED_COUNT_QUERY_MAX_MS}, filterCount<=${LOAD_FILTER_TABLE_COUNT_QUERY_MAX_MS}, limitCount<=${LOAD_LIMIT_TABLE_COUNT_QUERY_MAX_MS}, expandingCount<=${LOAD_EXPANDING_COUNT_QUERY_MAX_MS}, filteredQuery<=${LOAD_FILTERED_QUERY_MAX_MS}, tableDelete<=${LOAD_TABLE_DELETE_MAX_MS}`);
+    logLine(`[bulldozer-perf] load thresholds(ms): prefill<=${LOAD_PREFILL_MAX_MS}, baseCount<=${LOAD_COUNT_QUERY_MAX_MS}, setRowAvg<=${LOAD_SET_ROW_AVG_MAX_MS} over ${LOAD_SET_ROW_AVG_ITERATIONS}, pointDelete<=${LOAD_POINT_MUTATION_MAX_MS}, derivedInit<=${LOAD_DERIVED_INIT_MAX_MS}, filterInit<=${LOAD_FILTER_TABLE_INIT_MAX_MS}, concatInit<=${LOAD_CONCAT_TABLE_INIT_MAX_MS}, limitInit<=${LOAD_LIMIT_TABLE_INIT_MAX_MS}, expandingInit<=${LOAD_EXPANDING_INIT_MAX_MS}, derivedCount<=${LOAD_DERIVED_COUNT_QUERY_MAX_MS}, filterCount<=${LOAD_FILTER_TABLE_COUNT_QUERY_MAX_MS}, concatCount<=${LOAD_CONCAT_TABLE_COUNT_QUERY_MAX_MS}, limitCount<=${LOAD_LIMIT_TABLE_COUNT_QUERY_MAX_MS}, expandingCount<=${LOAD_EXPANDING_COUNT_QUERY_MAX_MS}, filteredQuery<=${LOAD_FILTERED_QUERY_MAX_MS}, tableDelete<=${LOAD_TABLE_DELETE_MAX_MS}`);
   }, 180_000);
 });
 
