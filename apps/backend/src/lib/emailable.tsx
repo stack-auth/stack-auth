@@ -116,7 +116,7 @@ export async function checkEmailWithEmailable(
       return { status: "ok", emailableScore: response.score };
     });
   } catch (error) {
-    captureError("emailable-api-error", error);
+    captureError("emailable-api-error", new StackAssertionError("Error while checking email address with Emailable", { cause: error, email, options }));
     return { status: "error", error, emailableScore: null };
   }
 }
