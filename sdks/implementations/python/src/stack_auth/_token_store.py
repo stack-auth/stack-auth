@@ -390,6 +390,8 @@ def _refresh_access_token_sync(
         )
         if resp.status_code == 200:
             data = resp.json()
+            if not isinstance(data, dict):
+                return (False, None)
             return (True, data.get("access_token"))
         return (False, None)
     except (httpx.HTTPError, ValueError, KeyError) as exc:
@@ -421,6 +423,8 @@ async def _refresh_access_token_async(
         )
         if resp.status_code == 200:
             data = resp.json()
+            if not isinstance(data, dict):
+                return (False, None)
             return (True, data.get("access_token"))
         return (False, None)
     except (httpx.HTTPError, ValueError, KeyError) as exc:
