@@ -10,6 +10,9 @@ export type AnalyticsReplayLinkOptions = {
 
 const autoCapturedAnalyticsEventTypeSet = new Set<string>(AUTO_CAPTURED_ANALYTICS_EVENT_TYPES);
 
+/** Server-only $-prefixed event types (e.g. $request from middleware). Not client-sendable. */
+const serverOnlyAnalyticsEventTypes = new Set<string>(["$request"]);
+
 export function assertValidAnalyticsEventName(
   eventType: string,
   options: { allowAutoCapturedReservedType?: boolean } = {},
@@ -17,7 +20,7 @@ export function assertValidAnalyticsEventName(
   if (!eventType) {
     throw new StackAssertionError("Analytics event type must not be empty");
   }
-  if (options.allowAutoCapturedReservedType && autoCapturedAnalyticsEventTypeSet.has(eventType)) {
+  if (options.allowAutoCapturedReservedType && (autoCapturedAnalyticsEventTypeSet.has(eventType) || serverOnlyAnalyticsEventTypes.has(eventType))) {
     return;
   }
   if (eventType.startsWith("$")) {

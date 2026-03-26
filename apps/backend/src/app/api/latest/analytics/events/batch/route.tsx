@@ -1,4 +1,4 @@
-import { isValidPublicAnalyticsEventType, PUBLIC_STACK_ANALYTICS_EVENT_TYPE_LIST, UUID_RE } from "@/lib/analytics-validation";
+import { isValidClientAnalyticsEventType, isValidPublicAnalyticsEventType, PUBLIC_STACK_ANALYTICS_EVENT_TYPE_LIST, UUID_RE } from "@/lib/analytics-validation";
 import { insertAnalyticsEvents } from "@/lib/events";
 import { findRecentSessionReplay } from "@/lib/session-replays";
 import { getPrismaClientForTenancy } from "@/prisma-client";
@@ -68,6 +68,9 @@ export const POST = createSmartRouteHandler({
     }
     if (auth.type === "client" && body.events.some((event) => event.user_id != null || event.team_id != null)) {
       throw new StatusError(StatusError.BadRequest, "Client analytics events cannot override user_id or team_id");
+    }
+    if (auth.type === "client" && body.events.some((event) => !isValidClientAnalyticsEventType(event.event_type))) {
+      throw new StatusError(StatusError.BadRequest, "Client analytics events cannot use server-only event types");
     }
 
     const projectId = auth.tenancy.project.id;

@@ -12,9 +12,16 @@ export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f
 
 export const CUSTOM_ANALYTICS_NAME_RE = /^[A-Za-z0-9._:-]+$/;
 
-const PUBLIC_STACK_ANALYTICS_EVENT_TYPE_SET = new Set<string>(AUTO_CAPTURED_ANALYTICS_EVENT_TYPES);
+/** $-prefixed event types that browser clients may send. */
+const CLIENT_ANALYTICS_EVENT_TYPE_SET = new Set<string>(AUTO_CAPTURED_ANALYTICS_EVENT_TYPES);
 
-export const PUBLIC_STACK_ANALYTICS_EVENT_TYPE_LIST = AUTO_CAPTURED_ANALYTICS_EVENT_TYPES
+/** $-prefixed event types that only server/admin auth may send. */
+const SERVER_ONLY_ANALYTICS_EVENT_TYPES = ["$request"] as const;
+
+const ALL_PUBLIC_ANALYTICS_EVENT_TYPES = [...AUTO_CAPTURED_ANALYTICS_EVENT_TYPES, ...SERVER_ONLY_ANALYTICS_EVENT_TYPES];
+const ALL_PUBLIC_ANALYTICS_EVENT_TYPE_SET = new Set<string>(ALL_PUBLIC_ANALYTICS_EVENT_TYPES);
+
+export const PUBLIC_STACK_ANALYTICS_EVENT_TYPE_LIST = ALL_PUBLIC_ANALYTICS_EVENT_TYPES
   .map((eventType) => `"${eventType}"`)
   .join(", ");
 
@@ -38,10 +45,17 @@ export function isValidCustomAnalyticsName(
 }
 
 /**
- * Pre-built validator for event_type.
+ * Validates event_type for client auth (browser auto-captured + custom names).
+ */
+export function isValidClientAnalyticsEventType(eventType: string | undefined): boolean {
+  return isValidCustomAnalyticsName(eventType, CLIENT_ANALYTICS_EVENT_TYPE_SET);
+}
+
+/**
+ * Validates event_type for server/admin auth (all public types + custom names).
  */
 export function isValidPublicAnalyticsEventType(eventType: string | undefined): boolean {
-  return isValidCustomAnalyticsName(eventType, PUBLIC_STACK_ANALYTICS_EVENT_TYPE_SET);
+  return isValidCustomAnalyticsName(eventType, ALL_PUBLIC_ANALYTICS_EVENT_TYPE_SET);
 }
 
 /**

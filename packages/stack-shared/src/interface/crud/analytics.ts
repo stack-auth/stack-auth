@@ -40,8 +40,10 @@ export type AnalyticsBatchSpan = {
 };
 
 /**
- * Auto-captured (Stack-managed) analytics event types that clients are allowed to send.
- * These are the only `$`-prefixed event types permitted from the client.
+ * Auto-captured (Stack-managed) analytics event types that browser clients are
+ * allowed to send. These are the only `$`-prefixed event types permitted from
+ * client auth. Server-only types like `$request` are validated separately on
+ * the backend.
  *
  * Span types have no public `$`-prefixed types — all `$`-prefixed spans
  * ($session-replay, $session-replay-segment) are created server-side only.
@@ -59,7 +61,6 @@ export const AUTO_CAPTURED_ANALYTICS_EVENT_TYPES = [
   "$copy",
   "$paste",
   "$error",
-  "$request",
 ] as const;
 export type AutoCapturedAnalyticsEventType = typeof AUTO_CAPTURED_ANALYTICS_EVENT_TYPES[number];
 
