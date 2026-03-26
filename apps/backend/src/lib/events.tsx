@@ -79,25 +79,7 @@ type AnalyticsEventEnvelope = Omit<AnalyticsEventInsertRow, "event_at"> & {
   event_at: string,
 };
 
-// Lone surrogates (\uD800-\uDFFF not part of a valid pair) are technically
-// representable in JS strings but rejected by ClickHouse's JSON parser.
-// eslint-disable-next-line no-control-regex
-const LONE_SURROGATE_RE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF])[\uDC00-\uDFFF]/g;
-
-function stripLoneSurrogates(value: unknown): unknown {
-  if (typeof value === "string") {
-    return value.replace(LONE_SURROGATE_RE, "\uFFFD");
-  }
-  if (Array.isArray(value)) {
-    return value.map(stripLoneSurrogates);
-  }
-  if (value !== null && typeof value === "object") {
-    return Object.fromEntries(
-      Object.entries(value).map(([key, innerValue]) => [key, stripLoneSurrogates(innerValue)])
-    );
-  }
-  return value;
-}
+import { stripLoneSurrogates } from "@/lib/analytics-validation";
 
 function sanitizeAnalyticsEventData(data: Record<string, unknown>): Record<string, unknown> {
   const sanitized = stripLoneSurrogates(data);

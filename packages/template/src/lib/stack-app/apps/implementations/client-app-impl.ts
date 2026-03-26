@@ -74,6 +74,11 @@ function isSameOriginUrl(url: string): boolean {
   }
 }
 
+// Shared mutable state for the fetch monkey-patch so it's applied at most once
+// globally, even across multiple StackClientApp instances (e.g. HMR, tests).
+let _fetchPatched = false;
+let _activeSessionRecorder: SessionRecorder | null = null;
+
 let isReactServer = false;
 // IF_PLATFORM next
 import * as sc from "@stackframe/stack-sc";
@@ -568,44 +573,44 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
 
     if (isBrowserLike()) {
-      // Monkey-patch window.fetch to inject x-stack-trace and x-stack-replay headers
-      // on same-origin requests so server-side events/spans can be linked back.
-      const sessionRecorder = this._sessionRecorder;
-      const originalFetch = window.fetch;
-      window.fetch = function patchedFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
-        // Determine the request URL to check if it's same-origin
-        let requestUrl: string;
-        if (input instanceof URL) {
-          requestUrl = input.href;
-        } else if (input instanceof Request) {
-          requestUrl = input.url;
-        } else {
-          requestUrl = input;
-        }
+      // Update the shared recorder ref so the fetch patch always uses the latest instance
+      _activeSessionRecorder = this._sessionRecorder;
 
-        const isSameOrigin = isSameOriginUrl(requestUrl);
-        if (isSameOrigin) {
-          const headers = new Headers(init?.headers);
-          // Inject trace context from the active span for distributed tracing
-          const activeSpan = getActiveSpanFromTracing();
-          if (activeSpan && !headers.has("x-stack-trace")) {
-            const traceHeaders = serializeTraceContext(activeSpan);
-            for (const [key, value] of Object.entries(traceHeaders)) {
-              headers.set(key, value);
+      // Patch window.fetch at most once globally to inject tracing/replay headers
+      if (!_fetchPatched) {
+        _fetchPatched = true;
+        const originalFetch = window.fetch;
+        window.fetch = function patchedFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+          let requestUrl: string;
+          if (input instanceof URL) {
+            requestUrl = input.href;
+          } else if (input instanceof Request) {
+            requestUrl = input.url;
+          } else {
+            requestUrl = input;
+          }
+
+          if (isSameOriginUrl(requestUrl)) {
+            const headers = new Headers(init?.headers);
+            const activeSpan = getActiveSpanFromTracing();
+            if (activeSpan && !headers.has("x-stack-trace")) {
+              const traceHeaders = serializeTraceContext(activeSpan);
+              for (const [key, value] of Object.entries(traceHeaders)) {
+                headers.set(key, value);
+              }
             }
+            if (_activeSessionRecorder && !headers.has("x-stack-replay")) {
+              const linkState = _activeSessionRecorder.getCurrentLinkState();
+              headers.set("x-stack-replay", JSON.stringify({
+                session_replay_id: linkState.sessionReplayId ?? undefined,
+                session_replay_segment_id: linkState.sessionReplaySegmentId,
+              }));
+            }
+            return originalFetch.call(window, input, { ...init, headers });
           }
-          // Inject replay link if replays are active
-          if (sessionRecorder && !headers.has("x-stack-replay")) {
-            const linkState = sessionRecorder.getCurrentLinkState();
-            headers.set("x-stack-replay", JSON.stringify({
-              session_replay_id: linkState.sessionReplayId ?? undefined,
-              session_replay_segment_id: linkState.sessionReplaySegmentId,
-            }));
-          }
-          return originalFetch.call(window, input, { ...init, headers });
-        }
-        return originalFetch.call(window, input, init);
-      };
+          return originalFetch.call(window, input, init);
+        };
+      }
       this._eventTracker = new EventTracker({
         projectId: this.projectId,
         release: this._release,

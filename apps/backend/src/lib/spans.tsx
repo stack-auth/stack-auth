@@ -1,3 +1,4 @@
+import { stripLoneSurrogates } from "@/lib/analytics-validation";
 import { getClickhouseAdminClient } from "./clickhouse";
 
 export type SpanInsertRow = {
@@ -21,9 +22,14 @@ export type SpanInsertRow = {
 export async function insertSpans(rows: SpanInsertRow[]): Promise<void> {
   if (rows.length === 0) return;
 
+  const sanitizedRows = rows.map((row) => ({
+    ...row,
+    data: stripLoneSurrogates(row.data) as Record<string, unknown>,
+  }));
+
   await getClickhouseAdminClient().insert({
     table: "analytics_internal.spans",
-    values: rows,
+    values: sanitizedRows,
     format: "JSONEachRow",
     clickhouse_settings: {
       date_time_input_format: "best_effort",

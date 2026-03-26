@@ -1,5 +1,6 @@
 import { WebAuthnError, startRegistration } from "@simplewebauthn/browser";
 import { KnownErrors, StackServerInterface } from "@stackframe/stack-shared";
+import type { AnalyticsBatchSpan } from "@stackframe/stack-shared/dist/interface/crud/analytics";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { ItemCrud } from "@stackframe/stack-shared/dist/interface/crud/items";
 import { NotificationPreferenceCrud } from "@stackframe/stack-shared/dist/interface/crud/notification-preferences";
@@ -24,7 +25,7 @@ import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud, apiKeyUpdateOptionsToCrud } from "../../api-keys";
-import { ConvexCtx, GetCurrentUserOptions } from "../../common";
+import { ConvexCtx, GetCurrentUserOptions, RequestLike, tokenStoreFromHeaders } from "../../common";
 import { DeprecatedOAuthConnection, OAuthConnection } from "../../connected-accounts";
 import { ServerContactChannel, ServerContactChannelCreateOptions, ServerContactChannelUpdateOptions, serverContactChannelCreateOptionsToCrud, serverContactChannelUpdateOptionsToCrud } from "../../contact-channels";
 import { Customer, CustomerProductsList, CustomerProductsRequestOptions, InlineProduct, ServerItem } from "../../customers";
@@ -34,14 +35,12 @@ import { NotificationCategory } from "../../notification-categories";
 import { AdminProjectPermissionDefinition, AdminTeamPermission, AdminTeamPermissionDefinition } from "../../permissions";
 import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions, ServerTeamUpdateOptions, ServerTeamUser, Team, serverTeamCreateOptionsToCrud, serverTeamUpdateOptionsToCrud } from "../../teams";
 import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
-import { RequestLike, tokenStoreFromHeaders } from "../../common";
 import { StackServerAppConstructorOptions, TrackServerAnalyticsEventOptions } from "../interfaces/server-app";
-import { _StackClientAppImplIncomplete } from "./client-app-impl";
-import type { AnalyticsBatchSpan } from "@stackframe/stack-shared/dist/interface/crud/analytics";
 import { assertValidAnalyticsEventName, normalizeAnalyticsEventAt, normalizeAnalyticsEventPayload, normalizeAnalyticsReplayLinkOptions } from "./analytics-events";
+import { _StackClientAppImplIncomplete } from "./client-app-impl";
+import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, resolveConstructorOptions } from "./common";
 import { ServerBatcher } from "./server-event-batcher";
 import { type Span, type StartSpanOptions, SpanImpl, extractReplayLink, extractTraceContext, getActiveSpan as getActiveSpanFromTracing, getErrorMetadata as getErrorMetadataFromTracing, noopSpan, runWithSpan } from "./tracing";
-import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, resolveConstructorOptions } from "./common";
 
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
@@ -658,7 +657,9 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       parentIds.push(segmentSpanId);
     }
 
-    const capturedOptions = options;
+    // Resolve user context once eagerly — reused by onEnd without extra API calls
+    const userContextPromise = this._resolveUserContext(options);
+
     const span = new SpanImpl({
       spanType: name,
       traceId,
@@ -669,7 +670,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       sessionReplaySegmentId: segmentSpanId,
       onEnd: (endedSpan) => {
         runAsynchronously(async () => {
-          const { session, userId, teamId } = await this._resolveUserContext(capturedOptions as any);
+          const { session, userId, teamId } = await userContextPromise;
           this._serverSpanBatcher.push({
             ...endedSpan.toPayload(),
             user_id: userId ?? undefined,
