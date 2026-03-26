@@ -13,9 +13,8 @@ const VERIFY_STATES = ["deliverable", "undeliverable", "risky", "unknown"] as co
 type EmailableVerifyResponse = ReturnType<typeof validateVerifyResponse>;
 
 export type EmailableCheckResult =
-  | { status: "ok", emailableScore: number | null }
+  | { status: "deliverable", emailableScore: number | null }
   | { status: "not-deliverable", emailableResponse: EmailableVerifyResponse, emailableScore: number | null }
-  | { status: "error", error: unknown, emailableScore: null };
 
 
 // ── Helpers ────────────────────────────────────────────────────────────
@@ -92,14 +91,14 @@ export async function checkEmailWithEmailable(
 
     if (!rawApiKey) {
       if (["development", "test"].includes(getNodeEnvironment())) {
-        return { status: "ok", emailableScore: null };
+        return { status: "deliverable", emailableScore: null };
       }
       throw new StackAssertionError("STACK_EMAILABLE_API_KEY must not be empty; set it to 'disable_email_validation' to disable email validation");
     }
 
     const apiKey = rawApiKey === "disable_email_validation" ? "" : rawApiKey;
     if (!apiKey || isReservedTestDomain(emailDomain)) {
-      return { status: "ok", emailableScore: null };
+      return { status: "deliverable", emailableScore: null };
     }
 
     const clientFactory = options?._clientFactory ?? createEmailableClient;
@@ -114,11 +113,12 @@ export async function checkEmailWithEmailable(
       if (response.state === "undeliverable") {
         return { status: "not-deliverable", emailableResponse: response, emailableScore: response.score };
       }
-      return { status: "ok", emailableScore: response.score };
+      return { status: "deliverable", emailableScore: response.score };
     });
   } catch (error) {
     captureError("emailable-api-error", new StackAssertionError("Error while checking email address with Emailable", { cause: error, email, options }));
-    return { status: "error", error, emailableScore: null };
+    // If there's an error, let's pretend the email is deliverable, albeit with the score unavailable
+    return { status: "deliverable", emailableScore: null };
   }
 }
 
@@ -156,17 +156,29 @@ import.meta.vitest?.describe("checkEmailWithEmailable(...)", () => {
 
   test("returns ok for deliverable email", async ({ expect }) => {
     const result = await checkEmailWithEmailable("test@gmail.com", { _clientFactory: deliverableClient });
-    expect(result.status).toBe("ok");
+    expect(result).toMatchObject({ status: "deliverable", emailableScore: 95 });
   });
 
-  test("returns error on API error", async ({ expect }) => {
+  test("successfully retries and verifies deliverable email if Emailable asks for a retry the first time", async ({ expect }) => {
+    let retryCount = 0;
+    const retryClient = fakeClient(async () => retryCount++ === 0 ? {
+      message: "Your request is taking longer than normal. Please send your request again."
+    } : {
+      state: "deliverable", disposable: false, score: 95, domain: "gmail.com", email: "test@gmail.com", user: "test",
+    });
+    const result = await checkEmailWithEmailable("test@gmail.com", { _clientFactory: retryClient });
+    expect(retryCount).toBe(2);
+    expect(result).toMatchObject({ status: "deliverable", emailableScore: 95 });
+  });
+
+  test("returns deliverable on API error", async ({ expect }) => {
     const result = await checkEmailWithEmailable("test@gmail.com", { _clientFactory: errorClient });
-    expect(result.status).toBe("error");
+    expect(result).toMatchObject({ status: "deliverable", emailableScore: null });
   });
 
-  test("throws on malformed Emailable response bodies", async ({ expect }) => {
+  test("returns deliverable on malformed Emailable response bodies", async ({ expect }) => {
     const malformedClient = fakeClient(async () => "definitely not an object");
-    await expect(checkEmailWithEmailable("test@gmail.com", { _clientFactory: malformedClient }))
-      .rejects.toThrowError("Emailable returned a non-object response body");
+    const result = await checkEmailWithEmailable("test@gmail.com", { _clientFactory: malformedClient });
+    expect(result).toMatchObject({ status: "deliverable", emailableScore: null });
   });
 });
