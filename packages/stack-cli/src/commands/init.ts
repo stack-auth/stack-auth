@@ -52,20 +52,22 @@ async function runInit(program: Command, opts: InitOptions) {
     throw new CliError("Non-interactive environment detected. Pass --mode <create|link-config|link-cloud> to specify the init mode.");
   }
 
-  const mode: string = "link";
-  // TODO: re-enable local emulator option
-  // const mode: string = opts.mode ?? await select({
-  //   message: "Would you like to link to an existing project, or create a new one?",
-  //   choices: [
-  //     { name: "Create a new project (local emulator)", value: "create" as const },
-  //     { name: "Link an existing project", value: "link" as const },
-  //   ],
-  // });
+  const enableLocalEmulator = process.env.STACK_LOCAL_EMULATOR_ENABLED === "true";
+
+  const mode: string = enableLocalEmulator
+    ? (opts.mode ?? await select({
+      message: "Would you like to link to an existing project, or create a new one?",
+      choices: [
+        { name: "Create a new project (local emulator)", value: "create" as const },
+        { name: "Link an existing project", value: "link" as const },
+      ],
+    }))
+    : "link-cloud";
 
   let configPath: string | undefined;
 
   if (mode === "link" || mode === "link-config" || mode === "link-cloud") {
-    const result = await handleLink(flags, opts, outputDir);
+    const result = await handleLink(flags, { ...opts, mode: opts.mode ?? mode as InitOptions["mode"] }, outputDir);
     configPath = result.configPath;
   } else if (mode === "create") {
     const result = await handleCreate(opts, outputDir);

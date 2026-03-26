@@ -579,6 +579,13 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       restrictedByAdmin: crudWithAdminRestriction.restricted_by_admin,
       restrictedByAdminReason: crudWithAdminRestriction.restricted_by_admin_reason,
       restrictedByAdminPrivateDetails: crudWithAdminRestriction.restricted_by_admin_private_details,
+      countryCode: crud.country_code,
+      riskScores: {
+        signUp: {
+          bot: crud.risk_scores.sign_up.bot,
+          freeTrialAbuse: crud.risk_scores.sign_up.free_trial_abuse,
+        },
+      },
       async setPrimaryEmail(email: string | null, options?: { verified?: boolean }) {
         await app._updateServerUser(crud.id, { primaryEmail: email, primaryEmailVerified: options?.verified });
       },

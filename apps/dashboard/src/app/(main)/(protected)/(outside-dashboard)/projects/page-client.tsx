@@ -8,7 +8,7 @@ import { getPublicEnvVar } from "@/lib/env";
 import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
 import { GearIcon } from "@phosphor-icons/react";
 import { AdminOwnedProject, Team, useStackApp, useUser } from "@stackframe/stack";
-import { projectOnboardingStatusValues, strictEmailSchema, type ProjectOnboardingStatus, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
+import { projectOnboardingStatusValues, strictEmailSchema, yupObject, type ProjectOnboardingStatus } from "@stackframe/stack-shared/dist/schema-fields";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
 import { runAsynchronously, runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { useQueryState } from "@stackframe/stack-shared/dist/utils/react";
@@ -273,7 +273,7 @@ export default function PageClient() {
           </DialogHeader>
           <div className="space-y-3">
             <Typography variant="secondary">
-              Enter the absolute path to your local Stack config file. If it does not exist yet, the local emulator will generate it with a default config, create or reuse the mapped project, and open it in the dashboard.
+              Enter the absolute path to your local Stack config file. The local emulator will create or reuse the mapped project and open it in the dashboard.
             </Typography>
             <Input
               autoFocus
@@ -287,7 +287,7 @@ export default function PageClient() {
               Cancel
             </Button>
             <Button onClick={handleOpenConfigFile} loading={openingConfigFile}>
-              Open or create project
+              Open project
             </Button>
           </DialogFooter>
         </DialogContent>

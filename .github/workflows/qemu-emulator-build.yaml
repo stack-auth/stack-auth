@@ -8,7 +8,6 @@ on:
   pull_request:
     paths:
       - 'docker/local-emulator/**'
-      - 'packages/stack-cli/src/commands/emulator.ts'
       - '.github/workflows/qemu-emulator-build.yaml'
   workflow_dispatch:
     inputs:
@@ -56,6 +55,9 @@ jobs:
           EMULATOR_PROVISION_TIMEOUT=6000 \
             docker/local-emulator/qemu/build-image.sh ${{ matrix.arch }}
 
+      - name: Generate emulator env
+        run: node docker/local-emulator/generate-env-development.mjs
+
       - name: Start emulator and verify
         run: |
           chmod +x docker/local-emulator/qemu/run-emulator.sh
@@ -69,7 +71,7 @@ jobs:
             docker/local-emulator/qemu/run-emulator.sh status
 
       - name: Stop emulator
-        if: ${{ always() }}
+        if: always()
         run: |
           EMULATOR_ARCH=${{ matrix.arch }} \
             docker/local-emulator/qemu/run-emulator.sh stop
@@ -87,9 +89,71 @@ jobs:
           retention-days: 30
           compression-level: 0
 
+  test:
+    name: Smoke Test (${{ matrix.arch }})
+    needs: build
+    runs-on: ubicloud-standard-8
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install QEMU dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 qemu-utils genisoimage socat
+
+      - name: Download built image
+        uses: actions/download-artifact@v4
+        with:
+          name: qemu-emulator-${{ matrix.arch }}
+          path: docker/local-emulator/qemu/images/
+
+      - name: Generate emulator env
+        run: node docker/local-emulator/generate-env-development.mjs
+
+      - name: Start emulator from artifact
+        run: |
+          chmod +x docker/local-emulator/qemu/run-emulator.sh docker/local-emulator/qemu/common.sh
+          EMULATOR_ARCH=${{ matrix.arch }} \
+          EMULATOR_READY_TIMEOUT=600 \
+            docker/local-emulator/qemu/run-emulator.sh start
+
+      - name: Verify services are healthy
+        run: |
+          EMULATOR_ARCH=${{ matrix.arch }} \
+            docker/local-emulator/qemu/run-emulator.sh status
+
+      - name: Smoke test — backend health
+        run: curl -sf http://localhost:26701/health?db=1
+
+      - name: Smoke test — dashboard reachable
+        run: curl -sf -o /dev/null -w "HTTP %{http_code}\n" http://localhost:26700/handler/sign-in
+
+      - name: Smoke test — MinIO health
+        run: curl -sf http://localhost:26702/minio/health/live
+
+      - name: Smoke test — Inbucket reachable
+        run: curl -sf -o /dev/null -w "HTTP %{http_code}\n" http://localhost:26703/
+
+      - name: Stop emulator
+        if: always()
+        run: |
+          EMULATOR_ARCH=${{ matrix.arch }} \
+            docker/local-emulator/qemu/run-emulator.sh stop
+
+      - name: Print serial log on failure
+        if: failure()
+        run: tail -100 docker/local-emulator/qemu/run/vm/serial.log 2>/dev/null || true
+
   publish:
     name: Publish to GitHub Releases
-    needs: build
+    needs: [build, test]
     if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || (github.event_name == 'workflow_dispatch' && inputs.publish)
     runs-on: ubuntu-latest
     permissions:
@@ -117,22 +181,22 @@ jobs:
             cp "$f" release/
           done
 
-          cat > release-notes.md <<'EOF'
+          cat > release-notes.md <<EOF
           ## QEMU Emulator Images
 
-          Built from `${{ github.ref_name }}` @ `${{ github.sha }}`
+          Built from \`${BRANCH}\` @ \`${GITHUB_SHA}\`
 
           ### Images
           | File | Description |
           |------|-------------|
-          | `stack-emulator-arm64.qcow2` | ARM64 emulator image |
-          | `stack-emulator-amd64.qcow2` | AMD64 emulator image |
+          | \`stack-emulator-arm64.qcow2\` | ARM64 emulator image |
+          | \`stack-emulator-amd64.qcow2\` | AMD64 emulator image |
 
           ### Usage
-          ```bash
+          \`\`\`bash
           stack emulator pull
-          stack emulator run
-          ```
+          stack emulator start
+          \`\`\`
           EOF
 
           ls -lh release/

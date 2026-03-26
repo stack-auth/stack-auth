@@ -196,7 +196,7 @@ const content = `${entries.map((entry) => {
 if (args[0] === "--check") {
   const currentContent = fs.readFileSync(outputPath, "utf8");
   if (currentContent !== content) {
-    throw new Error(`${path.relative(rootDir, outputPath)} is out of date. Run pnpm run generate-local-emulator-env.`);
+    throw new Error(`${path.relative(rootDir, outputPath)} is out of date. Run pnpm run emulator:generate-env.`);
   }
 
   console.log(`${path.relative(rootDir, outputPath)} is up to date.`);

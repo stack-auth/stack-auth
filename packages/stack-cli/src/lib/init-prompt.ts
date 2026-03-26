@@ -1,6 +1,6 @@
-// TODO: Use configPath in the prompt once local emulator is set up:
-// Add "npx @stackframe/stack-cli emulator run --config-file ${configPath}" to project dev command
-export const createInitPrompt = (options: { web: boolean, configPath?: string, createGithubAction: boolean }) => `=============================
+export const createInitPrompt = (options: { web: boolean, configPath?: string, createGithubAction: boolean }) => {
+  const githubActionStepNum = options.configPath ? 8 : 7;
+  return `=============================
 STACK AUTH SETUP INSTRUCTIONS
 =============================
 
@@ -31,7 +31,7 @@ Depending on whether you're on a client or a server, you will want to create sta
 The stack client app has client-level permissions. It contains most of the useful methods and hooks for your client-side code.
 The stack server app has full read and write access to all users. It requires STACK_SECRET_SERVER_KEY env variable and should only be used in secure context
 
-In Next.js, env vars are auto-detected (NEXT_PUBLIC_STACK_PROJECT_ID etc.), so the constructor needs no explicit config. For other frameworks, you must pass projectId and publishableClientKey explicitly using the framework's env var access method.
+In Next.js, env vars are auto-detected (NEXT_PUBLIC_STACK_PROJECT_ID etc.), so the constructor needs no explicit config. For other frameworks, you must pass projectId explicitly using the framework's env var access method. Pass publishableClientKey only if your project is configured to require publishable client keys.
 
 The tokenStore should be "nextjs-cookie" for Next.js, or "cookie" for all other frameworks.
 
@@ -44,7 +44,7 @@ import { StackClientApp } from "@stackframe/stack"; // or "@stackframe/react" or
 
 export const stackClientApp = new StackClientApp({
   // Next.js: omit projectId/publishableClientKey (auto-detected from NEXT_PUBLIC_ env vars)
-  // Other frameworks: pass explicitly, e.g. for Vite:
+  // Other frameworks: pass projectId explicitly, and publishableClientKey only if required by your project. For Vite:
   //   projectId: import.meta.env.VITE_STACK_PROJECT_ID,
   //   publishableClientKey: import.meta.env.VITE_STACK_PUBLISHABLE_CLIENT_KEY,
   tokenStore: "nextjs-cookie", // or "cookie" for non-Next.js,
@@ -99,8 +99,9 @@ Rename the env var keys in .env to match the framework's convention for client-e
 
 The required variables are:
 - Project ID (e.g. NEXT_PUBLIC_STACK_PROJECT_ID, VITE_STACK_PROJECT_ID, etc.)
-- Publishable client key (e.g. NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY, VITE_STACK_PUBLISHABLE_CLIENT_KEY, etc.)
 - Secret server key: STACK_SECRET_SERVER_KEY (only for frameworks with server-side support, no prefix needed)
+
+The publishable client key (e.g. NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY, VITE_STACK_PUBLISHABLE_CLIENT_KEY, etc.) is only required if your project has publishable client keys enabled as a requirement.
 
 ### 6) React only: Wrap the entire page in a Stack provider
 
@@ -122,9 +123,50 @@ return (
   </body>
 );
 \`\`\`
-${options.createGithubAction ? `
-### 7) Create a GitHub Action to push config
+${options.configPath ? `
+### 7) Add the emulator to your dev command
 
-Create a GitHub Actions workflow file (e.g. \`.github/workflows/stack-config-push.yml\`) that runs on push to your main branch and pushes your Stack Auth config to the cloud. The workflow should use \`npx @stackframe/stack-cli config push --config-file <path-to-your-stack.config.ts> --project-id <your-project-id>\` to sync your local config. Make sure to store any required secrets (like \`STACK_SECRET_SERVER_KEY\`) as GitHub repository secrets and pass them as environment variables in the workflow.
+Update your project's dev script (in package.json or equivalent) to run through the Stack emulator. This ensures local development uses a local Stack Auth instance instead of the cloud.
+
+Replace your dev command (e.g. \`next dev\`) with:
+
+\`\`\`
+npx @stackframe/stack-cli emulator run --config-file ${options.configPath} "<your-original-dev-command>"
+\`\`\`
+
+For example, in package.json:
+
+\`\`\`json
+{
+  "scripts": {
+    "dev": "npx @stackframe/stack-cli emulator run --config-file ${options.configPath} \\"next dev\\""
+  }
+}
+\`\`\`
+
+This will automatically start the emulator, run your dev server with the correct environment, and stop the emulator when the dev server exits.
+
+For non-Next.js frameworks (e.g. Vite, Expo), also pass \`--config-env-var\` to set the config file path under a framework-appropriate environment variable name, and pass it to your StackClientApp constructor:
+
+\`\`\`json
+{
+  "scripts": {
+    "dev": "npx @stackframe/stack-cli emulator run --config-file ${options.configPath} --config-env-var VITE_STACK_LOCAL_EMULATOR_CONFIG_FILE_PATH \\"vite\\""
+  }
+}
+\`\`\`
+
+Then in your StackClientApp constructor:
+
+\`\`\`ts
+const stackClientApp = new StackClientApp({
+  localEmulatorConfigFilePath: import.meta.env.VITE_STACK_LOCAL_EMULATOR_CONFIG_FILE_PATH,
+  tokenStore: "cookie",
+});
+\`\`\`
+` : ""}${options.createGithubAction ? `
+### ${githubActionStepNum}) Create a GitHub Action to push config
+
+Create a GitHub Actions workflow file (e.g. \`.github/workflows/stack-config-push.yml\`) that runs on push to your main branch and pushes your Stack Auth config to the cloud. The workflow should use \`npx @stackframe/stack-cli config push --config-file ${options.configPath ?? "<path-to-your-stack.config.ts>"} --project-id <your-project-id>\` to sync your local config. Make sure to store any required secrets (like \`STACK_SECRET_SERVER_KEY\`) as GitHub repository secrets and pass them as environment variables in the workflow.
 ` : ""}`;
-
+};

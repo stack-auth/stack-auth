@@ -505,11 +505,10 @@ describe("Stack CLI — Emulator", () => {
     const { stdout, exitCode } = await runCliBare(["emulator", "--help"]);
     expect(exitCode).toBe(0);
     expect(stdout).toContain("pull");
-    expect(stdout).toContain("run");
+    expect(stdout).toContain("start");
     expect(stdout).toContain("stop");
     expect(stdout).toContain("reset");
     expect(stdout).toContain("status");
-    expect(stdout).toContain("build");
     expect(stdout).toContain("list-releases");
   });
 
@@ -522,16 +521,10 @@ describe("Stack CLI — Emulator", () => {
     expect(stdout).toContain("--repo");
   });
 
-  it("emulator build help shows arch option", async ({ expect }) => {
-    const { stdout, exitCode } = await runCliBare(["emulator", "build", "--help"]);
-    expect(exitCode).toBe(0);
-    expect(stdout).toContain("--arch");
-  });
-
   it("emulator pull rejects invalid arch values", async ({ expect }) => {
     const { stderr, exitCode } = await runCliBareFromSource(["emulator", "pull", "--arch", "sparc"]);
     expect(exitCode).toBe(1);
-    expect(stderr).toContain("Invalid --arch: sparc; expected one of: arm64, amd64.");
+    expect(stderr).toContain("Invalid architecture: sparc. Expected arm64 or amd64.");
   });
 
   it("emulator list-releases help shows repo option", async ({ expect }) => {

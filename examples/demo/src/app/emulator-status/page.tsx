@@ -163,16 +163,22 @@ export default function EmulatorStatusPage() {
             <Typography type="h4">Quick Start</Typography>
           </CardHeader>
           <CardContent className="space-y-3">
-            <Typography className="text-sm">Start the all-in-one local emulator dependencies:</Typography>
+            <Typography className="text-sm">Start the QEMU local emulator:</Typography>
             <pre className="bg-gray-100 dark:bg-gray-900 rounded p-3 text-xs font-mono overflow-x-auto">
-              {`# Start (single container with all services)
-pnpm run emulator-compose up --detach --build
+              {`# Pull the latest image and start the emulator
+pnpm run emulator:start
 
-# Stop and remove volumes
-pnpm run emulator-compose down -v`}
+# Check service health
+pnpm run emulator:status
+
+# Stop (data is preserved)
+pnpm run emulator:stop
+
+# Reset for a fresh boot
+pnpm run emulator:reset`}
             </pre>
             <Typography className="text-sm text-gray-500">
-              This single container replaces the 17+ containers from the full docker-compose setup.
+              Dashboard: localhost:26700 | Backend: localhost:26701
             </Typography>
           </CardContent>
         </Card>

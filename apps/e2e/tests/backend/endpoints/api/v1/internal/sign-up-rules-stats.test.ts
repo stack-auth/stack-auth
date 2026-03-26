@@ -100,6 +100,7 @@ describe("with admin access", () => {
     const response = await niceBackendFetch("/api/v1/internal/sign-up-rules-stats", { accessType: "admin" });
     expect(response.status).toBe(200);
     expect(response.body).toHaveProperty('rule_triggers');
+    expect(response.body).toHaveProperty('analytics_hours');
     expect(response.body).toHaveProperty('total_triggers');
     expect(response.body).toHaveProperty('triggers_by_action');
     expect(response.body.triggers_by_action).toHaveProperty('allow');
@@ -141,8 +142,10 @@ describe("with admin access", () => {
       NiceResponse {
         "status": 200,
         "body": {
+          "analytics_hours": 48,
           "rule_triggers": [
             {
+              "all_time_count": 1,
               "hourly_counts": <stripped field 'hourly_counts'>,
               "rule_id": "test-rule",
               "total_count": 1,
