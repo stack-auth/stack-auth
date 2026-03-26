@@ -110,7 +110,7 @@ export async function checkEmailWithEmailable(
       const raw = await verifyWithRetries(() => client.verify(email), 4, retryDelayBase);
       const response = validateVerifyResponse(raw);
 
-      if (response.state === "undeliverable" || response.disposable) {
+      if (response.state === "undeliverable") {
         console.log("Checked email address with Emailable and found it to be not deliverable", { email, response });
         return { status: "not-deliverable", emailableResponse: response, emailableScore: response.score };
       }
