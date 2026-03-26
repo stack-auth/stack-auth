@@ -125,6 +125,15 @@ class StackServerApp:
         base_url: str = DEFAULT_BASE_URL,
         token_store: TokenStoreInit | None = None,
     ) -> None:
+        """Initialize the synchronous Stack Auth application client.
+
+        Args:
+            project_id: The Stack Auth project identifier.
+            secret_server_key: Server-side secret key for authentication.
+            publishable_client_key: Optional publishable client key.
+            base_url: Stack Auth API base URL.
+            token_store: Optional token storage initializer for user sessions.
+        """
         self._project_id = project_id
         self._client = SyncAPIClient(
             project_id=project_id,
@@ -150,9 +159,11 @@ class StackServerApp:
         self._client.close()
 
     def __enter__(self) -> StackServerApp:
+        """Enter the context manager."""
         return self
 
     def __exit__(self, *_: Any) -> None:
+        """Exit the context manager and close the client."""
         self.close()
 
     # -- partial user (local JWT decode) -------------------------------------
@@ -1446,6 +1457,15 @@ class AsyncStackServerApp:
         base_url: str = DEFAULT_BASE_URL,
         token_store: TokenStoreInit | None = None,
     ) -> None:
+        """Initialize the asynchronous Stack Auth application client.
+
+        Args:
+            project_id: The Stack Auth project identifier.
+            secret_server_key: Server-side secret key for authentication.
+            publishable_client_key: Optional publishable client key.
+            base_url: Stack Auth API base URL.
+            token_store: Optional token storage initializer for user sessions.
+        """
         self._project_id = project_id
         self._client = AsyncAPIClient(
             project_id=project_id,
@@ -1471,9 +1491,11 @@ class AsyncStackServerApp:
         await self._client.aclose()
 
     async def __aenter__(self) -> AsyncStackServerApp:
+        """Enter the async context manager."""
         return self
 
     async def __aexit__(self, *_: Any) -> None:
+        """Exit the async context manager and close the client."""
         await self.aclose()
 
     # -- partial user (local JWT decode) -------------------------------------

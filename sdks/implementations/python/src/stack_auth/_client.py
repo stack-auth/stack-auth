@@ -40,6 +40,14 @@ class BaseAPIClient(Generic[HttpxClientT]):
         secret_server_key: str,
         publishable_client_key: str | None = None,
     ) -> None:
+        """Initialize the API client.
+
+        Args:
+            base_url: Stack Auth API base URL.
+            project_id: The Stack Auth project identifier.
+            secret_server_key: Server-side secret key for authentication.
+            publishable_client_key: Optional publishable client key.
+        """
         self._base_url = base_url.rstrip("/")
         self._project_id = project_id
         self._secret_server_key = secret_server_key
@@ -51,6 +59,7 @@ class BaseAPIClient(Generic[HttpxClientT]):
     # ------------------------------------------------------------------
 
     def _build_headers(self) -> dict[str, str]:
+        """Build HTTP headers required for every Stack Auth API request."""
         headers = {
             "x-stack-project-id": self._project_id,
             "x-stack-access-type": "server",
@@ -64,6 +73,7 @@ class BaseAPIClient(Generic[HttpxClientT]):
         return headers
 
     def _build_url(self, path: str) -> str:
+        """Construct the full API URL for the given endpoint path."""
         return f"{self._base_url}/api/{API_VERSION}{path}"
 
     # ------------------------------------------------------------------
@@ -114,10 +124,12 @@ class BaseAPIClient(Generic[HttpxClientT]):
     # ------------------------------------------------------------------
 
     def _should_retry(self, method: str, attempt: int) -> bool:
+        """Return True if the request method is idempotent and retries remain."""
         return method.upper() in self.IDEMPOTENT_METHODS and attempt < self.MAX_RETRIES
 
     @staticmethod
     def _get_retry_delay(attempt: int, response: httpx.Response | None = None) -> float:
+        """Calculate retry delay using Retry-After header or exponential backoff."""
         if response is not None and response.status_code == 429:
             retry_after = response.headers.get("Retry-After")
             if retry_after is not None:
@@ -142,6 +154,7 @@ class SyncAPIClient(BaseAPIClient[httpx.Client]):
     """Synchronous HTTP client using :class:`httpx.Client`."""
 
     def _get_client(self) -> httpx.Client:
+        """Return the underlying httpx.Client, creating it lazily if needed."""
         if self._client is None:
             self._client = httpx.Client(timeout=httpx.Timeout(30.0))
         return self._client
@@ -154,6 +167,20 @@ class SyncAPIClient(BaseAPIClient[httpx.Client]):
         body: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
+        """Send a synchronous HTTP request with retry and error handling.
+
+        Args:
+            method: HTTP method (GET, POST, PUT, PATCH, DELETE).
+            path: API endpoint path (appended to the base URL).
+            body: Optional JSON body for the request.
+            params: Optional query parameters.
+
+        Returns:
+            Parsed JSON response dict, or None for empty responses.
+
+        Raises:
+            StackAuthError: On known API errors or non-2xx responses.
+        """
         url = self._build_url(path)
         headers = self._build_headers()
 
@@ -213,14 +240,17 @@ class SyncAPIClient(BaseAPIClient[httpx.Client]):
     # ------------------------------------------------------------------
 
     def close(self) -> None:
+        """Close the underlying HTTP client and release resources."""
         if self._client is not None:
             self._client.close()
             self._client = None
 
     def __enter__(self) -> SyncAPIClient:
+        """Enter the context manager."""
         return self
 
     def __exit__(self, *_: Any) -> None:
+        """Exit the context manager and close the client."""
         self.close()
 
 
@@ -228,6 +258,7 @@ class AsyncAPIClient(BaseAPIClient[httpx.AsyncClient]):
     """Asynchronous HTTP client using :class:`httpx.AsyncClient`."""
 
     def _get_client(self) -> httpx.AsyncClient:
+        """Return the underlying httpx.AsyncClient, creating it lazily if needed."""
         if self._client is None:
             self._client = httpx.AsyncClient(timeout=httpx.Timeout(30.0))
         return self._client
@@ -240,6 +271,20 @@ class AsyncAPIClient(BaseAPIClient[httpx.AsyncClient]):
         body: dict[str, Any] | None = None,
         params: dict[str, Any] | None = None,
     ) -> dict[str, Any] | None:
+        """Send an asynchronous HTTP request with retry and error handling.
+
+        Args:
+            method: HTTP method (GET, POST, PUT, PATCH, DELETE).
+            path: API endpoint path (appended to the base URL).
+            body: Optional JSON body for the request.
+            params: Optional query parameters.
+
+        Returns:
+            Parsed JSON response dict, or None for empty responses.
+
+        Raises:
+            StackAuthError: On known API errors or non-2xx responses.
+        """
         url = self._build_url(path)
         headers = self._build_headers()
 
@@ -296,12 +341,15 @@ class AsyncAPIClient(BaseAPIClient[httpx.AsyncClient]):
     # ------------------------------------------------------------------
 
     async def aclose(self) -> None:
+        """Close the underlying async HTTP client and release resources."""
         if self._client is not None:
             await self._client.aclose()
             self._client = None
 
     async def __aenter__(self) -> AsyncAPIClient:
+        """Enter the async context manager."""
         return self
 
     async def __aexit__(self, *_: Any) -> None:
+        """Exit the async context manager and close the client."""
         await self.aclose()

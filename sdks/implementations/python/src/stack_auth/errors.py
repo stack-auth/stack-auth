@@ -15,6 +15,13 @@ class StackAuthError(Exception):
     """
 
     def __init__(self, code: str, message: str, details: dict[str, Any] | None = None) -> None:
+        """Initialize a StackAuthError.
+
+        Args:
+            code: The error code string from the Stack Auth API.
+            message: Human-readable error description.
+            details: Optional dictionary with additional error context.
+        """
         self.code = code
         self.message = message
         self.details = details

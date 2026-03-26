@@ -32,6 +32,12 @@ class AsyncJWKSFetcher:
     """
 
     def __init__(self, jwks_url: str, http_client: httpx.AsyncClient) -> None:
+        """Initialize the async JWKS fetcher.
+
+        Args:
+            jwks_url: The URL of the JWKS endpoint.
+            http_client: An httpx.AsyncClient for making HTTP requests.
+        """
         self._jwks_url = jwks_url
         self._http_client = http_client
         self._cache: dict[str, Any] | None = None
@@ -84,6 +90,12 @@ class SyncJWKSFetcher:
     """
 
     def __init__(self, jwks_url: str, http_client: httpx.Client) -> None:
+        """Initialize the sync JWKS fetcher.
+
+        Args:
+            jwks_url: The URL of the JWKS endpoint.
+            http_client: An httpx.Client for making HTTP requests.
+        """
         self._jwks_url = jwks_url
         self._http_client = http_client
         self._cache: dict[str, Any] | None = None

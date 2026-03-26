@@ -22,6 +22,12 @@ class DataVaultStore:
     """
 
     def __init__(self, store_id: str, *, _client: Any) -> None:
+        """Initialize a synchronous data vault store.
+
+        Args:
+            store_id: The data vault store identifier.
+            _client: The internal HTTP client used for API requests.
+        """
         self.id = store_id
         self._client = _client
         self._base_path = f"/data-vault/stores/{store_id}/items"
@@ -69,6 +75,12 @@ class AsyncDataVaultStore:
     """
 
     def __init__(self, store_id: str, *, _client: Any) -> None:
+        """Initialize an asynchronous data vault store.
+
+        Args:
+            store_id: The data vault store identifier.
+            _client: The internal async HTTP client used for API requests.
+        """
         self.id = store_id
         self._client = _client
         self._base_path = f"/data-vault/stores/{store_id}/items"

@@ -38,6 +38,7 @@ class TokenStore(ABC):
     """
 
     def __init__(self) -> None:
+        """Initialize the token store with sync and async CAS locks."""
         self._sync_lock = threading.Lock()
         self._async_lock = asyncio.Lock()
 
@@ -70,14 +71,17 @@ class MemoryTokenStore(TokenStore):
     """In-memory token store. Shared per project_id via the module registry."""
 
     def __init__(self) -> None:
+        """Initialize with empty access and refresh tokens."""
         super().__init__()
         self._access_token: str | None = None
         self._refresh_token: str | None = None
 
     def get_stored_access_token(self) -> str | None:
+        """Return the stored access token, or None if not set."""
         return self._access_token
 
     def get_stored_refresh_token(self) -> str | None:
+        """Return the stored refresh token, or None if not set."""
         return self._refresh_token
 
     def compare_and_set(
@@ -86,6 +90,7 @@ class MemoryTokenStore(TokenStore):
         new_refresh_token: str | None,
         new_access_token: str | None,
     ) -> None:
+        """Atomically update tokens if the current refresh token matches."""
         if self._refresh_token == compare_refresh_token:
             self._refresh_token = new_refresh_token
             self._access_token = new_access_token
@@ -102,14 +107,22 @@ class ExplicitTokenStore(TokenStore):
     """
 
     def __init__(self, access_token: str | None = None, refresh_token: str | None = None) -> None:
+        """Initialize with explicit token values.
+
+        Args:
+            access_token: Initial access token, or None.
+            refresh_token: Initial refresh token, or None.
+        """
         super().__init__()
         self._access_token: str | None = access_token
         self._refresh_token: str | None = refresh_token
 
     def get_stored_access_token(self) -> str | None:
+        """Return the stored access token, or None if not set."""
         return self._access_token
 
     def get_stored_refresh_token(self) -> str | None:
+        """Return the stored refresh token, or None if not set."""
         return self._refresh_token
 
     def compare_and_set(
@@ -118,6 +131,7 @@ class ExplicitTokenStore(TokenStore):
         new_refresh_token: str | None,
         new_access_token: str | None,
     ) -> None:
+        """Atomically update tokens if the current refresh token matches."""
         if self._refresh_token == compare_refresh_token:
             self._refresh_token = new_refresh_token
             self._access_token = new_access_token
@@ -134,6 +148,11 @@ class RequestTokenStore(TokenStore):
     """
 
     def __init__(self, request: RequestLike) -> None:
+        """Initialize by extracting tokens from the request's x-stack-auth header.
+
+        Args:
+            request: A request-like object whose headers may contain x-stack-auth.
+        """
         super().__init__()
         self._access_token: str | None = None
         self._refresh_token: str | None = None
@@ -147,9 +166,11 @@ class RequestTokenStore(TokenStore):
                 pass
 
     def get_stored_access_token(self) -> str | None:
+        """Return the stored access token, or None if not set."""
         return self._access_token
 
     def get_stored_refresh_token(self) -> str | None:
+        """Return the stored refresh token, or None if not set."""
         return self._refresh_token
 
     def compare_and_set(
@@ -158,6 +179,7 @@ class RequestTokenStore(TokenStore):
         new_refresh_token: str | None,
         new_access_token: str | None,
     ) -> None:
+        """Atomically update tokens if the current refresh token matches."""
         if self._refresh_token == compare_refresh_token:
             self._refresh_token = new_refresh_token
             self._access_token = new_access_token

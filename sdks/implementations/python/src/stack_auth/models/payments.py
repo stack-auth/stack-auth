@@ -47,6 +47,16 @@ class ServerItem:
         _customer_id_field: str,
         _customer_id_value: str,
     ) -> None:
+        """Initialize a server-side item from an Item model.
+
+        Args:
+            item: The underlying Item data model.
+            _client: The internal HTTP client used for API requests.
+            _customer_path: API path prefix for the customer.
+            _item_id: The item identifier.
+            _customer_id_field: Body field name for the customer ID.
+            _customer_id_value: The customer ID value.
+        """
         self.display_name = item.display_name
         self.quantity = item.quantity
         self.non_negative_quantity = item.non_negative_quantity
@@ -57,6 +67,7 @@ class ServerItem:
         self._customer_id_value = _customer_id_value
 
     def _quantity_body(self, quantity: int) -> dict[str, Any]:
+        """Build the request body for a quantity change operation."""
         return {
             self._customer_id_field: self._customer_id_value,
             "item_id": self._item_id,
@@ -112,6 +123,16 @@ class AsyncServerItem:
         _customer_id_field: str,
         _customer_id_value: str,
     ) -> None:
+        """Initialize an async server-side item from an Item model.
+
+        Args:
+            item: The underlying Item data model.
+            _client: The internal async HTTP client used for API requests.
+            _customer_path: API path prefix for the customer.
+            _item_id: The item identifier.
+            _customer_id_field: Body field name for the customer ID.
+            _customer_id_value: The customer ID value.
+        """
         self.display_name = item.display_name
         self.quantity = item.quantity
         self.non_negative_quantity = item.non_negative_quantity
@@ -122,6 +143,7 @@ class AsyncServerItem:
         self._customer_id_value = _customer_id_value
 
     def _quantity_body(self, quantity: int) -> dict[str, Any]:
+        """Build the request body for a quantity change operation."""
         return {
             self._customer_id_field: self._customer_id_value,
             "item_id": self._item_id,
