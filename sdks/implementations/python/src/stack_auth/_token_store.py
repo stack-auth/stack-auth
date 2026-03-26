@@ -16,8 +16,10 @@ import json
 import threading
 import time
 from abc import ABC, abstractmethod
-from collections.abc import Awaitable, Callable
-from typing import Any, Literal
+from typing import TYPE_CHECKING, Any, Literal
+
+if TYPE_CHECKING:
+    from collections.abc import Awaitable, Callable
 
 import logging
 
@@ -393,7 +395,10 @@ def _refresh_access_token_sync(
             data = resp.json()
             if not isinstance(data, dict):
                 return (False, None)
-            return (True, data.get("access_token"))
+            access_token = data.get("access_token")
+            if not access_token:
+                return (False, None)
+            return (True, access_token)
         return (False, None)
     except (httpx.HTTPError, ValueError, KeyError) as exc:
         logger.debug("Token refresh failed (sync)", exc_info=exc)
@@ -426,7 +431,10 @@ async def _refresh_access_token_async(
             data = resp.json()
             if not isinstance(data, dict):
                 return (False, None)
-            return (True, data.get("access_token"))
+            access_token = data.get("access_token")
+            if not access_token:
+                return (False, None)
+            return (True, access_token)
         return (False, None)
     except (httpx.HTTPError, ValueError, KeyError) as exc:
         logger.debug("Token refresh failed (async)", exc_info=exc)
