@@ -169,16 +169,21 @@ async def async_verify_token(
     key = await fetcher.get_signing_key(kid)
 
     kwargs: dict[str, Any] = {}
+    options: dict[str, bool] = {"verify_exp": True}
     if audience is not None:
         kwargs["audience"] = audience
+    else:
+        options["verify_aud"] = False
     if issuer is not None:
         kwargs["issuer"] = issuer
+    else:
+        options["verify_iss"] = False
 
     return jwt.decode(  # type: ignore[no-any-return]
         token,
         key,
         algorithms=ALLOWED_ALGORITHMS,
-        options={"verify_exp": True},
+        options=options,
         **kwargs,
     )
 
@@ -218,15 +223,20 @@ def sync_verify_token(
     key = fetcher.get_signing_key(kid)
 
     kwargs: dict[str, Any] = {}
+    options: dict[str, bool] = {"verify_exp": True}
     if audience is not None:
         kwargs["audience"] = audience
+    else:
+        options["verify_aud"] = False
     if issuer is not None:
         kwargs["issuer"] = issuer
+    else:
+        options["verify_iss"] = False
 
     return jwt.decode(  # type: ignore[no-any-return]
         token,
         key,
         algorithms=ALLOWED_ALGORITHMS,
-        options={"verify_exp": True},
+        options=options,
         **kwargs,
     )

@@ -6,6 +6,14 @@ from typing import Any
 
 from stack_auth.errors import NotFoundError
 
+# Only suppress key-not-found errors; store-not-found should propagate.
+_KEY_NOT_FOUND_CODE = "DATA_VAULT_STORE_HASHED_KEY_DOES_NOT_EXIST"
+
+
+def _is_key_not_found(err: NotFoundError) -> bool:
+    """Return True if the error is specifically a missing key, not a missing store."""
+    return getattr(err, "code", None) == _KEY_NOT_FOUND_CODE
+
 
 class DataVaultStore:
     """Synchronous data vault store -- a server-side key-value store.
@@ -22,8 +30,10 @@ class DataVaultStore:
         """Get the value for a key, or ``None`` if not found."""
         try:
             data = self._client.request("GET", f"{self._base_path}/{key}")
-        except NotFoundError:
-            return None
+        except NotFoundError as err:
+            if _is_key_not_found(err):
+                return None
+            raise
         if data is None:
             return None
         return data.get("value") if isinstance(data, dict) else data
@@ -36,8 +46,10 @@ class DataVaultStore:
         """Delete a key-value pair. No error if key doesn't exist."""
         try:
             self._client.request("DELETE", f"{self._base_path}/{key}")
-        except NotFoundError:
-            pass
+        except NotFoundError as err:
+            if _is_key_not_found(err):
+                return
+            raise
 
     def list_keys(self) -> list[str]:
         """Return all keys in the store."""
@@ -65,8 +77,10 @@ class AsyncDataVaultStore:
         """Get the value for a key, or ``None`` if not found."""
         try:
             data = await self._client.request("GET", f"{self._base_path}/{key}")
-        except NotFoundError:
-            return None
+        except NotFoundError as err:
+            if _is_key_not_found(err):
+                return None
+            raise
         if data is None:
             return None
         return data.get("value") if isinstance(data, dict) else data
@@ -79,8 +93,10 @@ class AsyncDataVaultStore:
         """Delete a key-value pair. No error if key doesn't exist."""
         try:
             await self._client.request("DELETE", f"{self._base_path}/{key}")
-        except NotFoundError:
-            pass
+        except NotFoundError as err:
+            if _is_key_not_found(err):
+                return
+            raise
 
     async def list_keys(self) -> list[str]:
         """Return all keys in the store."""
