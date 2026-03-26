@@ -1299,8 +1299,11 @@ class StackServerApp:
             None.
 
         Raises:
-            ValueError: If not exactly one customer identifier is provided.
+            ValueError: If not exactly one customer identifier is provided,
+                or if both/neither of product_id and product are given.
         """
+        if (product_id is None) == (product is None):
+            raise ValueError("Provide exactly one of product_id or product, not both or neither")
         ctype, cid, _ = _resolve_customer_path(user_id, team_id, custom_customer_id)
         body = _build_params(
             product_id=product_id,
@@ -2650,8 +2653,11 @@ class AsyncStackServerApp:
             None.
 
         Raises:
-            ValueError: If not exactly one customer identifier is provided.
+            ValueError: If not exactly one customer identifier is provided,
+                or if both/neither of product_id and product are given.
         """
+        if (product_id is None) == (product is None):
+            raise ValueError("Provide exactly one of product_id or product, not both or neither")
         ctype, cid, _ = _resolve_customer_path(user_id, team_id, custom_customer_id)
         body = _build_params(
             product_id=product_id,
