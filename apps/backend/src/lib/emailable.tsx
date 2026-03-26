@@ -10,7 +10,7 @@ export const EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN = "emailable-not-deliverable.
 // ── Types ──────────────────────────────────────────────────────────────
 
 const VERIFY_STATES = ["deliverable", "undeliverable", "risky", "unknown"] as const;
-type EmailableVerifyResponse = ReturnType<typeof validateVerifyResponse>;
+type EmailableVerifyResponse = NonNullable<ReturnType<typeof validateVerifyResponse>>;
 
 export type EmailableCheckResult =
   | { status: "ok", emailableScore: number | null }
@@ -29,12 +29,14 @@ function isReservedTestDomain(emailDomain: string): boolean {
 
 function validateVerifyResponse(value: unknown) {
   if (value == null || typeof value !== "object" || Array.isArray(value)) {
-    throw new StackAssertionError("Emailable returned a non-object response body", { value });
+    captureError("emailable-invalid-response", new StackAssertionError("Emailable returned a non-object response body", { value }));
+    return null;
   }
   const response = Object.assign(Object.create(null), value) as Record<string, unknown>;
   const { state, disposable, score } = response;
   if (typeof state !== "string" || !VERIFY_STATES.some(s => s === state)) {
-    throw new StackAssertionError("Emailable verify response has invalid or missing state", { response });
+    captureError("emailable-invalid-response", new StackAssertionError("Emailable verify response has invalid or missing state", { response }));
+    return null;
   }
   const parsedScore = typeof score === "number" && score >= 0 && score <= 100 ? score : null;
   return { ...response, state, disposable: disposable === true, score: parsedScore };
@@ -43,16 +45,18 @@ function validateVerifyResponse(value: unknown) {
 async function verifyWithRetries(verifyFn: () => Promise<unknown>, maxAttempts: number, delayBaseMs: number) {
   for (let i = 0; i < maxAttempts; i++) {
     const res: any = await verifyFn();
-    if (!("state" in res)) {
-      if ("message" in res && res.message.includes("Your request is taking longer than normal")) {
-        await wait((Math.random() + 0.5) * delayBaseMs * (2 ** i));
-        continue;
-      }
-      throw new StackAssertionError("Emailable returned an unexpected response body", { response: res });
+    if (res != null && typeof res === "object" && "state" in res) {
+      return res;
     }
-    return res;
+    if (res != null && typeof res === "object" && "message" in res && res.message.includes("Your request is taking longer than normal")) {
+      await wait((Math.random() + 0.5) * delayBaseMs * (2 ** i));
+      continue;
+    }
+    captureError("emailable-unexpected-response", new StackAssertionError("Emailable returned an unexpected response body", { response: res }));
+    return null;
   }
-  throw new StackAssertionError("Timed out while verifying email address with Emailable");
+  captureError("emailable-timeout", new StackAssertionError("Timed out while verifying email address with Emailable"));
+  return null;
 }
 
 function buildTestUndeliverableResponse(email: string) {
@@ -109,12 +113,12 @@ export async function checkEmailWithEmailable(
       const client = clientFactory(apiKey);
       const raw = await verifyWithRetries(() => client.verify(email), 4, retryDelayBase);
       console.log("Received emailable response", { email, raw });
-      const response = validateVerifyResponse(raw);
+      const response = raw != null ? validateVerifyResponse(raw) : null;
 
-      if (response.state === "undeliverable") {
+      if (response?.state === "undeliverable") {
         return { status: "not-deliverable", emailableResponse: response, emailableScore: response.score };
       }
-      return { status: "ok", emailableScore: response.score };
+      return { status: "ok", emailableScore: response?.score ?? null };
     });
   } catch (error) {
     captureError("emailable-api-error", new StackAssertionError("Error while checking email address with Emailable", { cause: error, email, options }));
@@ -164,9 +168,9 @@ import.meta.vitest?.describe("checkEmailWithEmailable(...)", () => {
     expect(result.status).toBe("error");
   });
 
-  test("throws on malformed Emailable response bodies", async ({ expect }) => {
+  test("returns ok on malformed Emailable response bodies", async ({ expect }) => {
     const malformedClient = fakeClient(async () => "definitely not an object");
-    await expect(checkEmailWithEmailable("test@gmail.com", { _clientFactory: malformedClient }))
-      .rejects.toThrowError("Emailable returned a non-object response body");
+    const result = await checkEmailWithEmailable("test@gmail.com", { _clientFactory: malformedClient });
+    expect(result).toMatchObject({ status: "ok", emailableScore: null });
   });
 });

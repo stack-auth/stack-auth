@@ -4,6 +4,8 @@ import { KnownErrors } from "@stackframe/stack-shared";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { normalizeCountryCode, validCountryCodeSet } from "@stackframe/stack-shared/dist/schema-fields";
 import { SignUpAuthMethod } from "@stackframe/stack-shared/dist/utils/auth-methods";
+import { getEnvBoolean, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
+import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { KeyIntersect } from "@stackframe/stack-shared/dist/utils/types";
 import { createSignUpRuleContext } from "./cel-evaluator";
 import { BestEffortEndUserRequestContext, getBestEffortEndUserRequestContext } from "./end-users";
@@ -11,8 +13,6 @@ import { calculateSignUpRiskAssessment } from "./risk-scores";
 import { evaluateSignUpRules } from "./sign-up-rules";
 import { Tenancy } from "./tenancies";
 import { SignUpTurnstileAssessment } from "./turnstile";
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
-import { getEnvBoolean, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 
 /**
  * Options for sign-up rule evaluation context.
@@ -86,6 +86,9 @@ export function getDerivedSignUpCountryCode(requestCountryCode: string | null, e
     if (validCountryCodeSet.has(normalized)) {
       return normalized;
     }
+    captureError("getDerivedSignUpCountryCode", new StackAssertionError(`Received non-ISO 3166-1 alpha-2 country code from geo headers: ${JSON.stringify(requestCountryCode)}`, {
+      extraData: { requestCountryCode },
+    }));
   }
   return null;
 }
@@ -191,9 +194,7 @@ export async function createOrUpgradeAnonymousUserWithRules(
   const requestIpTrusted = signUpRuleOptions.ipTrusted ?? endUserRequestContext?.ipTrusted ?? null;
   // EndUserLocation.countryCode is string | undefined; coerce to string | null for downstream consumers
   const requestCountryCode = signUpRuleOptions.countryCode ?? endUserRequestContext?.location?.countryCode ?? null;
-  const countryCode = signUpRuleOptions.countryCode !== null
-    ? signUpRuleOptions.countryCode
-    : getDerivedSignUpCountryCode(requestCountryCode, email);
+  const countryCode = getDerivedSignUpCountryCode(requestCountryCode, email);
   const countryCodeToPersist = currentUser?.is_anonymous && currentUser.country_code != null
     ? currentUser.country_code
     : countryCode;
