@@ -199,7 +199,7 @@ _ERROR_CODE_MAP: dict[str, type[StackAuthError]] = {
     # ConflictError
     "TEAM_ALREADY_EXISTS": ConflictError,
     "TEAM_MEMBERSHIP_ALREADY_EXISTS": ConflictError,
-    "TEAM_MEMBERSHIP_NOT_FOUND": ConflictError,
+    "TEAM_MEMBERSHIP_NOT_FOUND": NotFoundError,
     "EMAIL_TEMPLATE_ALREADY_EXISTS": ConflictError,
     "CONTACT_CHANNEL_ALREADY_USED_FOR_AUTH_BY_SOMEONE_ELSE": ConflictError,
     # OAuthError
