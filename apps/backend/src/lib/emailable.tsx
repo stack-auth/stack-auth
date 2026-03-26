@@ -108,10 +108,10 @@ export async function checkEmailWithEmailable(
     return await traceSpan("checking email address with Emailable", async () => {
       const client = clientFactory(apiKey);
       const raw = await verifyWithRetries(() => client.verify(email), 4, retryDelayBase);
+      console.log("Received emailable response", { email, raw });
       const response = validateVerifyResponse(raw);
 
       if (response.state === "undeliverable") {
-        console.log("Checked email address with Emailable and found it to be not deliverable", { email, response });
         return { status: "not-deliverable", emailableResponse: response, emailableScore: response.score };
       }
       return { status: "ok", emailableScore: response.score };
