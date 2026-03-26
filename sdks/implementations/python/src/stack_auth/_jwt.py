@@ -7,6 +7,8 @@ to prevent CVE-2022-29217 style algorithm confusion attacks.
 
 from __future__ import annotations
 
+import asyncio
+import threading
 import time
 from typing import Any
 
@@ -34,6 +36,7 @@ class AsyncJWKSFetcher:
         self._http_client = http_client
         self._cache: dict[str, Any] | None = None
         self._cache_time: float = 0.0
+        self._fetch_lock = asyncio.Lock()
 
     async def get_signing_key(self, kid: str) -> Any:
         """Return the RSA public key for the given key ID.
@@ -55,16 +58,21 @@ class AsyncJWKSFetcher:
         return RSAAlgorithm.from_jwk(key_data)
 
     async def _fetch_jwks(self, force: bool = False) -> dict[str, Any]:
-        """Fetch JWKS from the endpoint, using cache if fresh."""
-        now = time.monotonic()
-        if not force and self._cache is not None and (now - self._cache_time) < JWKS_CACHE_TTL:
-            return self._cache
+        """Fetch JWKS from the endpoint, using cache if fresh.
 
-        response = await self._http_client.get(self._jwks_url)
-        response.raise_for_status()
-        self._cache = response.json()
-        self._cache_time = time.monotonic()
-        return self._cache  # type: ignore[return-value]
+        Uses an asyncio.Lock to deduplicate concurrent fetches so only one
+        HTTP request is made when multiple coroutines hit a cold or expired cache.
+        """
+        async with self._fetch_lock:
+            now = time.monotonic()
+            if not force and self._cache is not None and (now - self._cache_time) < JWKS_CACHE_TTL:
+                return self._cache
+
+            response = await self._http_client.get(self._jwks_url)
+            response.raise_for_status()
+            self._cache = response.json()
+            self._cache_time = time.monotonic()
+            return self._cache  # type: ignore[return-value]
 
 
 class SyncJWKSFetcher:
@@ -80,6 +88,7 @@ class SyncJWKSFetcher:
         self._http_client = http_client
         self._cache: dict[str, Any] | None = None
         self._cache_time: float = 0.0
+        self._fetch_lock = threading.Lock()
 
     def get_signing_key(self, kid: str) -> Any:
         """Return the RSA public key for the given key ID.
@@ -100,16 +109,21 @@ class SyncJWKSFetcher:
         return RSAAlgorithm.from_jwk(key_data)
 
     def _fetch_jwks(self, force: bool = False) -> dict[str, Any]:
-        """Fetch JWKS from the endpoint, using cache if fresh."""
-        now = time.monotonic()
-        if not force and self._cache is not None and (now - self._cache_time) < JWKS_CACHE_TTL:
-            return self._cache
+        """Fetch JWKS from the endpoint, using cache if fresh.
 
-        response = self._http_client.get(self._jwks_url)
-        response.raise_for_status()
-        self._cache = response.json()
-        self._cache_time = time.monotonic()
-        return self._cache  # type: ignore[return-value]
+        Uses a threading.Lock to deduplicate concurrent fetches so only one
+        HTTP request is made when multiple threads hit a cold or expired cache.
+        """
+        with self._fetch_lock:
+            now = time.monotonic()
+            if not force and self._cache is not None and (now - self._cache_time) < JWKS_CACHE_TTL:
+                return self._cache
+
+            response = self._http_client.get(self._jwks_url)
+            response.raise_for_status()
+            self._cache = response.json()
+            self._cache_time = time.monotonic()
+            return self._cache  # type: ignore[return-value]
 
 
 def _find_key(jwks: dict[str, Any], kid: str) -> dict[str, Any] | None:

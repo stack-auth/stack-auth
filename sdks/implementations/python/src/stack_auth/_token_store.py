@@ -177,12 +177,20 @@ ensures that invariant.
 To reset in tests: ``stack_auth._token_store._token_store_registry.clear()``
 """
 
+_registry_lock = threading.Lock()
+"""Guards _token_store_registry against concurrent check-then-set races."""
+
 
 def _get_or_create_memory_store(project_id: str) -> MemoryTokenStore:
-    """Return the shared MemoryTokenStore for a project, creating one if needed."""
-    if project_id not in _token_store_registry:
-        _token_store_registry[project_id] = MemoryTokenStore()
-    return _token_store_registry[project_id]
+    """Return the shared MemoryTokenStore for a project, creating one if needed.
+
+    Thread-safe: uses _registry_lock to prevent two threads from creating
+    duplicate stores for the same project_id.
+    """
+    with _registry_lock:
+        if project_id not in _token_store_registry:
+            _token_store_registry[project_id] = MemoryTokenStore()
+        return _token_store_registry[project_id]
 
 
 # ---------------------------------------------------------------------------

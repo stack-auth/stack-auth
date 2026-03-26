@@ -1235,7 +1235,8 @@ class StackServerApp:
 
         Returns:
             A :class:`ServerItem` wrapping the :class:`Item` data and
-            providing ``set_quantity`` and ``increment_quantity`` methods.
+            providing ``increase_quantity``, ``decrease_quantity``, and
+            ``try_decrease_quantity`` methods.
 
         Raises:
             ValueError: If not exactly one customer identifier is provided.
@@ -2570,7 +2571,8 @@ class AsyncStackServerApp:
 
         Returns:
             An :class:`AsyncServerItem` wrapping the :class:`Item` data and
-            providing ``set_quantity`` and ``increment_quantity`` coroutines.
+            providing ``increase_quantity``, ``decrease_quantity``, and
+            ``try_decrease_quantity`` coroutines.
 
         Raises:
             ValueError: If not exactly one customer identifier is provided.

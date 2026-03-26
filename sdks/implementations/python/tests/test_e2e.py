@@ -302,12 +302,15 @@ class TestAuthenticateRequestE2E:
     """
 
     def test_unauthenticated_request_without_token(self, app: StackServerApp) -> None:
+        import httpx as httpx_client
+
         from stack_auth._auth import sync_authenticate_request
         from stack_auth._jwt import SyncJWKSFetcher
 
+        jwks_url = f"{BASE_URL}/api/v1/projects/{PROJECT_ID}/.well-known/jwks.json"
         fetcher = SyncJWKSFetcher(
-            project_id=PROJECT_ID,
-            base_url=BASE_URL,
+            jwks_url=jwks_url,
+            http_client=httpx_client.Client(),
         )
 
         class FakeRequest:
@@ -320,12 +323,15 @@ class TestAuthenticateRequestE2E:
         assert result.status == "unauthenticated"
 
     def test_invalid_token_returns_unauthenticated(self, app: StackServerApp) -> None:
+        import httpx as httpx_client
+
         from stack_auth._auth import sync_authenticate_request
         from stack_auth._jwt import SyncJWKSFetcher
 
+        jwks_url = f"{BASE_URL}/api/v1/projects/{PROJECT_ID}/.well-known/jwks.json"
         fetcher = SyncJWKSFetcher(
-            project_id=PROJECT_ID,
-            base_url=BASE_URL,
+            jwks_url=jwks_url,
+            http_client=httpx_client.Client(),
         )
 
         class FakeRequest:

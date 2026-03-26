@@ -192,7 +192,7 @@ app = StackServerApp(
 
 ```bash
 # Clone the repo
-git clone https://github.com/ejirocodes/stack-auth.git
+git clone https://github.com/stack-auth/stack-auth.git
 cd stack-auth/sdks/implementations/python
 
 # Install in dev mode
