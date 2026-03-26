@@ -178,4 +178,31 @@ describe("local emulator project endpoint", () => {
     expect(projectBResponse.status).toBe(200);
     expect(projectBResponse.body.owner_team_id).toBe(LOCAL_EMULATOR_OWNER_TEAM_ID);
   });
+
+  it.runIf(isLocalEmulator)("concurrent requests for the same path return the same project", async ({ expect }) => {
+    const configPath = await createTempConfigFile();
+
+    // Fire multiple requests in parallel to trigger the race condition
+    const responses = await Promise.all(
+      Array.from({ length: 5 }, () =>
+        niceBackendFetch(LOCAL_EMULATOR_PROJECT_ENDPOINT, {
+          accessType: "admin",
+          method: "POST",
+          body: {
+            absolute_file_path: configPath,
+          },
+        })
+      )
+    );
+
+    for (const response of responses) {
+      expect(response.status).toBe(200);
+    }
+
+    const projectIds = new Set(responses.map((r) => r.body.project_id));
+    expect(projectIds.size).toBe(1);
+
+    const credentialKeys = new Set(responses.map((r) => r.body.publishable_client_key));
+    expect(credentialKeys.size).toBe(1);
+  });
 });

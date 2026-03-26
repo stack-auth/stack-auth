@@ -485,6 +485,7 @@ function ProjectOnboardingWizard(props: {
   setMode: (mode: string | null) => void,
   setStatus: (status: ProjectOnboardingStatus) => Promise<void>,
   onComplete: () => void,
+  isLocalEmulator?: boolean,
 }) {
   const router = useRouter();
   const { project, status, setMode, setStatus, onComplete } = props;
@@ -550,7 +551,7 @@ function ProjectOnboardingWizard(props: {
   }, [completeConfig, project, project.id, status]);
 
   const emailThemes = project.app.useEmailThemes();
-  const includePayments = selectedApps.has("payments") || status === "payments_setup" || completeConfig.apps.installed.payments?.enabled === true;
+  const includePayments = !props.isLocalEmulator && (selectedApps.has("payments") || status === "payments_setup" || completeConfig.apps.installed.payments?.enabled === true);
   const timelineSteps = useMemo(() => buildTimeline(includePayments), [includePayments]);
   const currentTimelineIndex = useMemo(() => getStepIndex(timelineSteps, status), [status, timelineSteps]);
 
@@ -577,6 +578,17 @@ function ProjectOnboardingWizard(props: {
       await setStatus("email_theme_setup");
     });
   }, [setStatus, status]);
+
+  // In local emulator mode, skip config_choice (no meaningful choice)
+  useEffect(() => {
+    if (!props.isLocalEmulator || status !== "config_choice") {
+      return;
+    }
+
+    runAsynchronouslyWithAlert(async () => {
+      await setStatus("apps_selection");
+    });
+  }, [props.isLocalEmulator, setStatus, status]);
 
   const authPreviewProject = useMemo(() => {
     return {
@@ -787,10 +799,12 @@ function ProjectOnboardingWizard(props: {
               loading={saving}
               onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
                 const appConfigUpdateEntries = new Map(
-                  ALL_APP_IDS.map((appId) => [
-                    `apps.installed.${appId}.enabled`,
-                    selectedApps.has(appId),
-                  ])
+                  ALL_APP_IDS
+                    .filter((appId) => selectedApps.has(appId))
+                    .map((appId) => [
+                      `apps.installed.${appId}.enabled`,
+                      true,
+                    ])
                 );
 
                 const configUpdated = await updateConfig({
@@ -926,24 +940,21 @@ function ProjectOnboardingWizard(props: {
                   configUpdate: {
                     "auth.oauth.providers.google": signInMethods.has("google") ? {
                       type: "google",
-                      isShared: true,
                       allowSignIn: true,
                       allowConnectedAccounts: true,
                     } : null,
                     "auth.oauth.providers.github": signInMethods.has("github") ? {
                       type: "github",
-                      isShared: true,
                       allowSignIn: true,
                       allowConnectedAccounts: true,
                     } : null,
                     "auth.oauth.providers.microsoft": signInMethods.has("microsoft") ? {
                       type: "microsoft",
-                      isShared: true,
                       allowSignIn: true,
                       allowConnectedAccounts: true,
                     } : null,
                   },
-                  pushable: false,
+                  pushable: true,
                 });
 
                 if (!providersUpdated) {
@@ -1412,7 +1423,7 @@ export default function PageClient() {
     await appInternals.refreshOwnedProjects();
   };
 
-  if (isLocalEmulator) {
+  if (isLocalEmulator && selectedProjectId == null) {
     return (
       <div className="w-full flex-grow flex items-center justify-center p-4">
         <div className="max-w-lg w-full rounded-lg border border-border p-6 space-y-4">
@@ -1658,6 +1669,7 @@ export default function PageClient() {
         onComplete={() => {
           router.push(`/projects/${encodeURIComponent(selectedProject.id)}`);
         }}
+        isLocalEmulator={isLocalEmulator}
       />
     </div>
   );

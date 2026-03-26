@@ -81,7 +81,7 @@ export function getUrls(partial: Partial<HandlerUrls>): HandlerUrls {
   };
 }
 
-export const localEmulatorBaseUrl = "http://localhost:8102";
+export const localEmulatorBaseUrl = "http://localhost:16702";
 
 export const LOCAL_EMULATOR_INTERNAL_PUBLISHABLE_CLIENT_KEY = "local-emulator-publishable-client-key";
 export const LOCAL_EMULATOR_INTERNAL_SECRET_SERVER_KEY = "local-emulator-secret-server-key";

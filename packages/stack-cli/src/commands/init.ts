@@ -1,9 +1,9 @@
 import { Command } from "commander";
-import { select, input, checkbox, confirm } from "@inquirer/prompts";
+import { select, input, confirm } from "@inquirer/prompts";
 import * as fs from "fs";
 import * as path from "path";
 import { StackClientApp } from "@stackframe/js";
-import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
+
 import { resolveLoginConfig, resolveSessionAuth, DEFAULT_PUBLISHABLE_CLIENT_KEY } from "../lib/auth.js";
 import { getInternalUser } from "../lib/app.js";
 import { writeConfigValue } from "../lib/config.js";
@@ -14,7 +14,6 @@ import { runClaudeAgent } from "../lib/claude-agent.js";
 
 type InitOptions = {
   mode?: "create" | "link-config" | "link-cloud",
-  apps?: string,
   configFile?: string,
   selectProjectId?: string,
   outputDir?: string,
@@ -26,18 +25,11 @@ export function registerInitCommand(program: Command) {
     .command("init")
     .description("Initialize Stack Auth in your project")
     .option("--mode <mode>", "Mode: create, link-config, or link-cloud (skips interactive prompts)")
-    .option("--apps <apps>", "Comma-separated app IDs to enable (for create mode)")
     .option("--config-file <path>", "Path to existing config file (for link-config mode)")
     .option("--select-project-id <id>", "Project ID to link (for link-cloud mode)")
     .option("--output-dir <dir>", "Directory to write output files (defaults to cwd)")
     .option("--no-agent", "Skip Claude agent and print setup instructions instead")
     .action(async (opts: InitOptions) => {
-      const hasFlags = opts.mode != null;
-
-      if (!hasFlags && isNonInteractiveEnv()) {
-        throw new CliError("stack init requires an interactive terminal. Use --mode flag for non-interactive usage.");
-      }
-
       try {
         await runInit(program, opts);
       } catch (error: unknown) {
@@ -55,6 +47,10 @@ async function runInit(program: Command, opts: InitOptions) {
   const outputDir = opts.outputDir ? path.resolve(opts.outputDir) : process.cwd();
 
   console.log("Welcome to Stack Auth!\n");
+
+  if (!opts.mode && isNonInteractiveEnv()) {
+    throw new CliError("Non-interactive environment detected. Pass --mode <create|link-config|link-cloud> to specify the init mode.");
+  }
 
   const mode: string = "link";
   // TODO: re-enable local emulator option
@@ -78,7 +74,7 @@ async function runInit(program: Command, opts: InitOptions) {
     throw new CliError(`Unknown mode: ${mode}`);
   }
 
-  const initPrompt = createInitPrompt(false, configPath);
+  const initPrompt = createInitPrompt({ web: false, configPath, createGithubAction: mode === "create" });
   const useAgent = opts.agent !== false && !isNonInteractiveEnv();
 
   if (useAgent) {
@@ -103,15 +99,16 @@ async function handleLink(flags: Record<string, unknown>, opts: InitOptions, out
   } else if (opts.mode === "link-cloud") {
     source = "cloud";
   } else {
-    source = "cloud";
-    // TODO: re-enable config file linking option
-    // source = await select({
-    //   message: "How would you like to link your project?",
-    //   choices: [
-    //     { name: "Link from config file", value: "config-file" as const },
-    //     { name: "Link from app.stack-auth.com", value: "cloud" as const },
-    //   ],
-    // });
+    if (isNonInteractiveEnv()) {
+      throw new CliError("Non-interactive environment detected. Use --mode link-config or --mode link-cloud to specify the link source.");
+    }
+    source = await select({
+      message: "How would you like to link your project?",
+      choices: [
+        { name: "Link from config file", value: "config-file" as const },
+        { name: "Link from app.stack-auth.com", value: "cloud" as const },
+      ],
+    });
   }
 
   if (source === "config-file") {
@@ -121,6 +118,10 @@ async function handleLink(flags: Record<string, unknown>, opts: InitOptions, out
 }
 
 async function handleLinkFromConfigFile(opts: InitOptions): Promise<{ configPath: string }> {
+  if (!opts.configFile && isNonInteractiveEnv()) {
+    throw new CliError("Non-interactive environment detected. Pass --config-file <path> to specify the config file path.");
+  }
+
   const filePath = opts.configFile ?? await input({
     message: "Path to your existing stack.config.ts:",
     validate: (value) => {
@@ -173,6 +174,9 @@ async function handleLinkFromCloud(flags: Record<string, unknown>, opts: InitOpt
     }
     projectId = opts.selectProjectId;
   } else {
+    if (isNonInteractiveEnv()) {
+      throw new CliError("Non-interactive environment detected. Pass --select-project-id <id> to specify which project to link.");
+    }
     projectId = await select({
       message: "Select a project:",
       choices: projects.map((p) => ({
@@ -259,42 +263,7 @@ async function handleCreate(opts: InitOptions, outputDir: string): Promise<{ con
 
   console.log(`\nCreating a new config file at ${configPath}!\n`);
 
-  let selectedApps: string[];
-
-  if (opts.apps) {
-    selectedApps = opts.apps.split(",").map((s) => s.trim()).filter(Boolean);
-    const validAppIds = Object.keys(ALL_APPS);
-    const invalidApps = selectedApps.filter((id) => !validAppIds.includes(id));
-    if (invalidApps.length > 0) {
-      throw new CliError(`Unknown app IDs: ${invalidApps.join(", ")}. Valid IDs: ${validAppIds.join(", ")}`);
-    }
-  } else {
-    const stageOrder = { stable: 0, beta: 1 } as const;
-    const appEntries = Object.entries(ALL_APPS)
-      .filter(([, app]) => app.stage !== "alpha")
-      .sort((a, b) => stageOrder[a[1].stage as keyof typeof stageOrder] - stageOrder[b[1].stage as keyof typeof stageOrder]);
-
-    selectedApps = await checkbox({
-      message: "Select apps to enable:",
-      choices: appEntries.map(([id, app]) => ({
-        name: `${app.displayName} - ${app.subtitle}${app.stage !== "stable" ? ` (${app.stage})` : ""}`,
-        value: id,
-        checked: id === "authentication",
-      })),
-    });
-  }
-
-  const installed = Object.fromEntries(
-    selectedApps.map((appId) => [appId, { enabled: true }])
-  );
-
-  const config = {
-    apps: {
-      installed,
-    },
-  };
-
-  const content = `export const config = ${JSON.stringify(config, null, 2)};\n`;
+  const content = `export const config = {};\n`;
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
   fs.writeFileSync(configPath, content);
 

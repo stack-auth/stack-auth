@@ -1,11 +1,11 @@
 // TODO: Use configPath in the prompt once local emulator is set up:
 // Add "npx @stackframe/stack-cli emulator run --config-file ${configPath}" to project dev command
-export const createInitPrompt = (web: boolean, configPath?: string) => `=============================
+export const createInitPrompt = (options: { web: boolean, configPath?: string, createGithubAction: boolean }) => `=============================
 STACK AUTH SETUP INSTRUCTIONS
 =============================
 
 These instructions describe how to set up Stack Auth.
-${web ? `
+${options.web ? `
 First of all, if you have access to a terminal, it is better to use the \`npx @stackframe/stack-cli init\`` : ""}
 
 Install mcp server from https://mcp.stack-auth.com if not already installed
@@ -122,5 +122,9 @@ return (
   </body>
 );
 \`\`\`
-`;
+${options.createGithubAction ? `
+### 7) Create a GitHub Action to push config
+
+Create a GitHub Actions workflow file (e.g. \`.github/workflows/stack-config-push.yml\`) that runs on push to your main branch and pushes your Stack Auth config to the cloud. The workflow should use \`npx @stackframe/stack-cli config push --config-file <path-to-your-stack.config.ts> --project-id <your-project-id>\` to sync your local config. Make sure to store any required secrets (like \`STACK_SECRET_SERVER_KEY\`) as GitHub repository secrets and pass them as environment variables in the workflow.
+` : ""}`;
 

@@ -175,7 +175,13 @@ export default function PageClient() {
       setOpenConfigFileDialog(false);
       setAbsoluteConfigFilePath("");
       await appInternals.refreshOwnedProjects();
-      router.push(`/projects/${encodeURIComponent(responseBody.project_id)}`);
+
+      const onboardingStatus = "onboarding_status" in responseBody ? responseBody.onboarding_status : "completed";
+      if (typeof onboardingStatus === "string" && onboardingStatus !== "completed") {
+        router.push(`/new-project?project_id=${encodeURIComponent(responseBody.project_id)}`);
+      } else {
+        router.push(`/projects/${encodeURIComponent(responseBody.project_id)}`);
+      }
       await wait(2000);
     } finally {
       setOpeningConfigFile(false);
