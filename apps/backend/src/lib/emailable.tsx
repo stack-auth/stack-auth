@@ -107,14 +107,14 @@ export async function checkEmailWithEmailable(
 
   return await traceSpan("checking email address with Emailable", async () => {
     const client = clientFactory(apiKey);
-    let raw: unknown;
+    let response: ReturnType<typeof validateVerifyResponse>;
     try {
-      raw = await verifyWithRetries(() => client.verify(email), 4, retryDelayBase);
+      const raw = await verifyWithRetries(() => client.verify(email), 4, retryDelayBase);
+      response = validateVerifyResponse(raw);
     } catch (error) {
       captureError("emailable-api-error", error);
       return { status: "error", error, emailableScore: null };
     }
-    const response = validateVerifyResponse(raw);
 
     if (response.state === "undeliverable" || response.disposable) {
       return { status: "not-deliverable", emailableResponse: response, emailableScore: response.score };
@@ -165,9 +165,9 @@ import.meta.vitest?.describe("checkEmailWithEmailable(...)", () => {
     expect(result.status).toBe("error");
   });
 
-  test("throws on malformed Emailable response bodies", async ({ expect }) => {
+  test("returns error on malformed Emailable response bodies", async ({ expect }) => {
     const malformedClient = fakeClient(async () => "definitely not an object");
-    await expect(checkEmailWithEmailable("test@gmail.com", { _clientFactory: malformedClient }))
-      .rejects.toThrowError("Emailable returned a non-object response body");
+    const result = await checkEmailWithEmailable("test@gmail.com", { _clientFactory: malformedClient });
+    expect(result.status).toBe("error");
   });
 });

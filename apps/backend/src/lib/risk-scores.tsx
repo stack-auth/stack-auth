@@ -2,6 +2,7 @@ import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, sqlQuoteIdent } f
 import { signUpRiskEngine } from "@/private";
 import type { SignUpRiskScoresCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import type { SignUpAuthMethod } from "@stackframe/stack-shared/dist/utils/auth-methods";
+import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { checkEmailWithEmailable } from "./emailable";
 import { type DerivedSignUpHeuristicFacts } from "./sign-up-heuristics";
 import type { Tenancy } from "./tenancies";
@@ -98,9 +99,14 @@ async function loadRecentSignUpStats(
 
 function createDependencies(tenancy: Tenancy) {
   return {
-    checkPrimaryEmailRisk: async (email: string) => ({
-      emailableScore: (await checkEmailWithEmailable(email)).emailableScore,
-    }),
+    checkPrimaryEmailRisk: async (email: string) => {
+      try {
+        return { emailableScore: (await checkEmailWithEmailable(email)).emailableScore };
+      } catch (error) {
+        captureError("check-primary-email-risk", error);
+        return { emailableScore: null };
+      }
+    },
     loadRecentSignUpStats: (request: SignUpRiskRecentStatsRequest) => loadRecentSignUpStats(tenancy, request),
   };
 }
