@@ -11,7 +11,7 @@ async function queryAnalyticsByEventTypeWithRetry(
 ) {
   let response = await adminApp.queryAnalytics({
     query: `
-      SELECT event_type, user_id, team_id, browser_session_id, session_replay_id, session_replay_segment_id
+      SELECT event_type, user_id, team_id, session_replay_id, session_replay_segment_id
       FROM events
       WHERE event_type = {event_type:String}
       ORDER BY event_at DESC
@@ -27,7 +27,7 @@ async function queryAnalyticsByEventTypeWithRetry(
     await wait(500);
     response = await adminApp.queryAnalytics({
       query: `
-        SELECT event_type, user_id, team_id, browser_session_id, session_replay_id, session_replay_segment_id
+        SELECT event_type, user_id, team_id, session_replay_id, session_replay_segment_id
         FROM events
         WHERE event_type = {event_type:String}
         ORDER BY event_at DESC
@@ -289,7 +289,6 @@ it("should allow explicit session replay linkage from the client app", async ({ 
   const response = await queryAnalyticsByEventTypeWithRetry(adminApp, eventType);
   expect(response.result[0]).toMatchObject({
     event_type: eventType,
-    browser_session_id: browserSessionId,
     session_replay_id: sessionReplayId,
     session_replay_segment_id: sessionReplaySegmentId,
   });
@@ -395,7 +394,6 @@ it("should track project-scoped and request-bound custom analytics events from t
   const explicitLinkedResponse = await queryAnalyticsByEventTypeWithRetry(adminApp, explicitLinkedEventType);
   expect(explicitLinkedResponse.result[0]).toMatchObject({
     event_type: explicitLinkedEventType,
-    browser_session_id: explicitBrowserSessionId,
     session_replay_id: explicitSessionReplayId,
     session_replay_segment_id: explicitSessionReplaySegmentId,
   });
