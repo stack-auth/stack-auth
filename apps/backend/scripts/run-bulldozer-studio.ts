@@ -1,6 +1,7 @@
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import ELK from "elkjs/lib/elk.bundled.js";
 import http from "node:http";
 import { exampleFungibleLedgerSchema } from "../src/lib/bulldozer/db/example-schema";
 import { toQueryableSqlQuery } from "../src/lib/bulldozer/db/index";
@@ -38,6 +39,12 @@ type StudioTableRecord = {
 const STUDIO_PORT = Number(`${getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81")}39`);
 const BULLDOZER_LOCK_ID = 7857391;
 const STUDIO_INSTANCE_ID = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+const GRAPH_NODE_WIDTH = 260;
+const GRAPH_NODE_HEIGHT = 126;
+const GRAPH_LEVEL_GAP_Y = 230;
+const GRAPH_COLUMN_GAP_X = 320;
+const GRAPH_SCENE_MARGIN = 40;
+const elk = new ELK();
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
@@ -195,6 +202,58 @@ async function getTableSnapshot(record: StudioTableRecord): Promise<{
     supportsDeleteRow: isStudioStoredTable(record.table),
     initialized: await readBoolean(record.table.isInitialized()),
   };
+}
+
+async function computeStudioLayout(tables: Array<Awaited<ReturnType<typeof getTableSnapshot>>>): Promise<null | {
+  positions: Record<string, { x: number, y: number }>,
+  sceneWidth: number,
+  sceneHeight: number,
+}> {
+  try {
+    const layout = await elk.layout({
+      id: "bulldozer-studio",
+      layoutOptions: {
+        "elk.algorithm": "layered",
+        "elk.direction": "DOWN",
+        "elk.padding": `[top=${GRAPH_SCENE_MARGIN},left=${GRAPH_SCENE_MARGIN},bottom=${GRAPH_SCENE_MARGIN},right=${GRAPH_SCENE_MARGIN}]`,
+        "elk.spacing.nodeNode": String(Math.floor(GRAPH_COLUMN_GAP_X / 2)),
+        "elk.layered.spacing.nodeNodeBetweenLayers": String(Math.floor(GRAPH_LEVEL_GAP_Y / 2)),
+        "elk.layered.crossingMinimization.strategy": "LAYER_SWEEP",
+        "elk.layered.nodePlacement.strategy": "NETWORK_SIMPLEX",
+        "elk.layered.considerModelOrder.strategy": "NODES_AND_EDGES",
+        "elk.layered.thoroughness": "40",
+      },
+      children: tables.map((table) => ({
+        id: table.id,
+        width: GRAPH_NODE_WIDTH,
+        height: GRAPH_NODE_HEIGHT,
+      })),
+      edges: tables.flatMap((table) => {
+        return table.dependencies.map((dependencyId, index) => ({
+          id: `${dependencyId}->${table.id}:${index}`,
+          sources: [dependencyId],
+          targets: [table.id],
+        }));
+      }),
+    });
+
+    const positions: Record<string, { x: number, y: number }> = {};
+    for (const child of layout.children ?? []) {
+      if (typeof child.id !== "string") continue;
+      positions[child.id] = {
+        x: Number(child.x ?? 0),
+        y: Number(child.y ?? 0),
+      };
+    }
+
+    return {
+      positions,
+      sceneWidth: Number(Reflect.get(layout, "width") ?? 600),
+      sceneHeight: Number(Reflect.get(layout, "height") ?? 600),
+    };
+  } catch (error) {
+    return null;
+  }
 }
 
 async function getTableDetails(record: StudioTableRecord): Promise<{
@@ -736,11 +795,11 @@ function getStudioPageHtml(): string {
   </dialog>
 
   <script>
-    const NODE_WIDTH = 260;
-    const NODE_HEIGHT = 126;
-    const LEVEL_GAP_Y = 230;
-    const COLUMN_GAP_X = 320;
-    const SCENE_MARGIN = 40;
+    const NODE_WIDTH = ${GRAPH_NODE_WIDTH};
+    const NODE_HEIGHT = ${GRAPH_NODE_HEIGHT};
+    const LEVEL_GAP_Y = ${GRAPH_LEVEL_GAP_Y};
+    const COLUMN_GAP_X = ${GRAPH_COLUMN_GAP_X};
+    const SCENE_MARGIN = ${GRAPH_SCENE_MARGIN};
     const THEME_STORAGE_KEY = "bulldozer-studio-theme";
     const NODE_POSITIONS_STORAGE_KEY = "bulldozer-studio-node-positions-v1";
     const VERSION_POLL_INTERVAL_MS = 1200;
@@ -938,7 +997,7 @@ function getStudioPageHtml(): string {
       persistNodePositions();
     }
 
-    function layoutGraph(tables) {
+    function layoutGraph(tables, baseLayout) {
       const tableMap = new Map(tables.map((table) => [table.id, table]));
       const reverseDependencies = new Map();
       const depthCache = new Map();
@@ -964,8 +1023,42 @@ function getStudioPageHtml(): string {
 
       const depths = [...byDepth.keys()].sort((a, b) => a - b);
       const positions = new Map();
-      let sceneWidth = 600;
-      let sceneHeight = 600;
+      let sceneWidth = typeof baseLayout?.sceneWidth === "number" ? baseLayout.sceneWidth : 600;
+      let sceneHeight = typeof baseLayout?.sceneHeight === "number" ? baseLayout.sceneHeight : 600;
+      const basePositions = baseLayout && typeof baseLayout === "object" && baseLayout.positions && typeof baseLayout.positions === "object"
+        ? baseLayout.positions
+        : null;
+
+      if (basePositions) {
+        for (const table of tables) {
+          const fallbackDepth = depthCache.get(table.id) ?? 0;
+          const fallbackIndex = (byDepth.get(fallbackDepth) ?? []).findIndex((rowTable) => rowTable.id === table.id);
+          const fallbackX = SCENE_MARGIN + Math.max(0, fallbackIndex) * (NODE_WIDTH + COLUMN_GAP_X);
+          const fallbackY = SCENE_MARGIN + fallbackDepth * LEVEL_GAP_Y;
+          const basePosition = basePositions[table.id];
+          const manualPosition = getNodePosition(table.id);
+          const x = manualPosition
+            ? manualPosition.x
+            : Number.isFinite(Number(basePosition?.x))
+              ? Number(basePosition.x)
+              : fallbackX;
+          const y = manualPosition
+            ? manualPosition.y
+            : Number.isFinite(Number(basePosition?.y))
+              ? Number(basePosition.y)
+              : fallbackY;
+          positions.set(table.id, { x, y });
+          sceneWidth = Math.max(sceneWidth, x + NODE_WIDTH + SCENE_MARGIN);
+          sceneHeight = Math.max(sceneHeight, y + NODE_HEIGHT + SCENE_MARGIN);
+        }
+
+        return {
+          positions,
+          sceneWidth,
+          sceneHeight,
+          depthById: depthCache,
+        };
+      }
 
       for (const depth of depths) {
         const row = byDepth.get(depth);
@@ -1176,7 +1269,7 @@ function getStudioPageHtml(): string {
     function relayoutGraph() {
       if (!state.schema || !Array.isArray(state.schema.tables)) return;
       pruneNodePositions(state.schema.tables);
-      state.graphLayout = layoutGraph(state.schema.tables);
+      state.graphLayout = layoutGraph(state.schema.tables, state.schema.layout);
       syncSceneDimensions();
       renderGraphEdges(state.schema.tables);
       syncNodePositions();
@@ -1846,7 +1939,8 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
 
   if (method === "GET" && pathname === "/api/schema") {
     const tables = await Promise.all(registry.tables.map((table) => getTableSnapshot(table)));
-    sendJson(response, 200, { tables });
+    const layout = await computeStudioLayout(tables);
+    sendJson(response, 200, { tables, layout });
     return;
   }
 
