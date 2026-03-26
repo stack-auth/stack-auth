@@ -111,6 +111,7 @@ export async function checkEmailWithEmailable(
       const response = validateVerifyResponse(raw);
 
       if (response.state === "undeliverable" || response.disposable) {
+        console.log("Checked email address with Emailable and found it to be not deliverable", { email, response });
         return { status: "not-deliverable", emailableResponse: response, emailableScore: response.score };
       }
       return { status: "ok", emailableScore: response.score };
