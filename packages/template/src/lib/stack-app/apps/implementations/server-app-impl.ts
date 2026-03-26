@@ -414,7 +414,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   private readonly _serverEventBatcher: ServerBatcher<any>;
   private readonly _serverSpanBatcher: ServerBatcher<AnalyticsBatchSpan>;
-  private readonly _waitUntil: ((promise: Promise<any>) => void) | undefined;
+  private readonly _waitUntil: ((promise: Promise<unknown>) => void) | undefined;
 
   constructor(options: StackServerAppConstructorOptions<HasTokenStore, ProjectId>, extraOptions?: { uniqueIdentifier?: string, checkString?: string, interface?: StackServerInterface }) {
     const resolvedOptions = resolveConstructorOptions(options);
@@ -433,8 +433,9 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       }),
     });
 
+    const g = globalThis as Record<string, unknown>;
     this._waitUntil = resolvedOptions.waitUntil
-      ?? (typeof (globalThis as any).waitUntil === "function" ? (globalThis as any).waitUntil as (p: Promise<any>) => void : undefined);
+      ?? (typeof g.waitUntil === "function" ? g.waitUntil as (p: Promise<unknown>) => void : undefined);
 
     this._serverEventBatcher = new ServerBatcher({
       sendBatch: (body, session, opts) => this._interface.sendServerAnalyticsEventBatch(body, session, opts),
@@ -474,23 +475,20 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   /** @internal — used by middleware() to emit auto-captured events like $request */
   _trackAutoCapturedEvent(eventType: string, data: Record<string, unknown>, request?: RequestLike | { headers: Record<string, string | string[] | undefined> }): void {
-    const opts = request ? { tokenStore: request } as any : undefined;
-    this._trackEventInternal(eventType, data, opts, true);
+    this._trackEventInternal(eventType, data, request, true);
   }
 
   private _normalizeRequestArg(
     optionsOrRequest: TrackServerAnalyticsEventOptions<HasTokenStore> | RequestLike | { headers: Record<string, string | string[] | undefined> } | undefined,
-  ): { options: TrackServerAnalyticsEventOptions<HasTokenStore> | undefined; headersSource: any } {
+  ): { options: TrackServerAnalyticsEventOptions<HasTokenStore> | undefined; headersSource: { headers: unknown } | null } {
     if (optionsOrRequest == null) return { options: undefined, headersSource: null };
 
     if (!("headers" in optionsOrRequest)) {
-      // No headers → must be a plain options object
       return { options: optionsOrRequest as TrackServerAnalyticsEventOptions<HasTokenStore>, headersSource: null };
     }
 
-    const headers = (optionsOrRequest as any).headers;
-    if (typeof headers?.get === "function") {
-      // Fetch-style Request (headers.get is a function)
+    const { headers } = optionsOrRequest;
+    if (typeof (headers as Record<string, unknown>)?.get === "function") {
       return {
         options: { tokenStore: optionsOrRequest as RequestLike } as TrackServerAnalyticsEventOptions<HasTokenStore>,
         headersSource: optionsOrRequest,
@@ -498,13 +496,11 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
 
     if ("tokenStore" in optionsOrRequest) {
-      // Options object that happens to also have a headers property
       return { options: optionsOrRequest as TrackServerAnalyticsEventOptions<HasTokenStore>, headersSource: null };
     }
 
-    // Express-style req with plain headers object
     return {
-      options: { tokenStore: tokenStoreFromHeaders(headers) } as TrackServerAnalyticsEventOptions<HasTokenStore>,
+      options: { tokenStore: tokenStoreFromHeaders(headers as Record<string, string | string[] | undefined>) } as TrackServerAnalyticsEventOptions<HasTokenStore>,
       headersSource: optionsOrRequest,
     };
   }
@@ -601,17 +597,18 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     optionsOrRequestOrCallback?: StartSpanOptions | TrackServerAnalyticsEventOptions<HasTokenStore> | RequestLike | { headers: Record<string, string | string[] | undefined> } | ((span: Span) => T | Promise<T>),
     maybeCallback?: (span: Span) => T | Promise<T>,
   ): Span | Promise<T> {
-    let options: (StartSpanOptions & { userId?: string; teamId?: string; tokenStore?: any; sessionReplayId?: string; sessionReplaySegmentId?: string }) | undefined;
+    type MergedOptions = StartSpanOptions & TrackServerAnalyticsEventOptions<HasTokenStore>;
+    let options: MergedOptions | undefined;
     let callback: ((span: Span) => T | Promise<T>) | undefined;
-    let headersSource: any = null;
+    let headersSource: { headers: unknown } | null = null;
 
     if (typeof optionsOrRequestOrCallback === "function") {
       callback = optionsOrRequestOrCallback;
     } else {
       const normalized = this._normalizeRequestArg(
-        optionsOrRequestOrCallback as any,
+        optionsOrRequestOrCallback as TrackServerAnalyticsEventOptions<HasTokenStore> | RequestLike | { headers: Record<string, string | string[] | undefined> } | undefined,
       );
-      options = normalized.options as any;
+      options = normalized.options as MergedOptions | undefined;
       headersSource = normalized.headersSource;
       callback = maybeCallback;
     }
@@ -631,7 +628,10 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     let incomingReplayId: string | null = null;
     let incomingReplaySegmentId: string | null = null;
 
-    const reqHeaders = headersSource?.headers ?? (options as any)?.tokenStore?.headers;
+    const tokenStoreHeaders = options?.tokenStore != null && typeof options.tokenStore === "object" && "headers" in options.tokenStore
+      ? (options.tokenStore as { headers: unknown }).headers
+      : null;
+    const reqHeaders = headersSource?.headers ?? tokenStoreHeaders;
     if (reqHeaders) {
       const traceCtx = extractTraceContext(reqHeaders);
       incomingTraceId = traceCtx.traceId;
@@ -643,7 +643,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
     const resolvedParent = options?.parent ?? contextParent;
     const traceId = options?.traceId ?? incomingTraceId ?? resolvedParent?.traceId ?? undefined;
-    const segmentSpanId = (options as any)?.sessionReplaySegmentId ?? incomingReplaySegmentId ?? undefined;
+    const segmentSpanId = options?.sessionReplaySegmentId ?? incomingReplaySegmentId ?? undefined;
 
     const parentIds: string[] = [];
     if (options?.parentSpanId) {
@@ -666,7 +666,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       parentIds,
       data: options?.attributes,
       startedAtMs: options?.startTime instanceof Date ? options.startTime.getTime() : options?.startTime ?? undefined,
-      sessionReplayId: (options as any)?.sessionReplayId ?? incomingReplayId ?? undefined,
+      sessionReplayId: options?.sessionReplayId ?? incomingReplayId ?? undefined,
       sessionReplaySegmentId: segmentSpanId,
       onEnd: (endedSpan) => {
         runAsynchronously(async () => {

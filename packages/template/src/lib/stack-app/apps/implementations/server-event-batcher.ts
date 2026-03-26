@@ -13,11 +13,14 @@ export type ServerBatcherDeps = {
 // Use globalThis with Symbol.for so shutdown state is shared even if this module
 // is loaded as both CJS and ESM in the same process (dual-package hazard).
 const GLOBAL_KEY = Symbol.for("stack-auth:ServerBatcher");
-function getGlobalState(): { shutdownRegistered: boolean; instances: Set<ServerBatcher<any>> } {
-  let state = (globalThis as any)[GLOBAL_KEY];
+type GlobalBatcherState = { shutdownRegistered: boolean; instances: Set<{ flush(): Promise<void> }> };
+const _globalRecord = globalThis as unknown as Record<symbol, GlobalBatcherState | undefined>;
+
+function getGlobalState(): GlobalBatcherState {
+  let state = _globalRecord[GLOBAL_KEY];
   if (!state) {
-    state = { shutdownRegistered: false, instances: new Set<ServerBatcher<any>>() };
-    (globalThis as any)[GLOBAL_KEY] = state;
+    state = { shutdownRegistered: false, instances: new Set() };
+    _globalRecord[GLOBAL_KEY] = state;
   }
   return state;
 }

@@ -219,9 +219,9 @@ function getSpanStorage(): AsyncLocalStorageLike<SpanImpl> {
   _spanStorageInitialized = true;
 
   try {
-    const ALS = (globalThis as any).AsyncLocalStorage;
+    const ALS = (globalThis as Record<string, unknown>).AsyncLocalStorage;
     if (typeof ALS === "function") {
-      _spanStorage = new ALS() as AsyncLocalStorageLike<SpanImpl>;
+      _spanStorage = new (ALS as new () => AsyncLocalStorageLike<SpanImpl>)();
       return _spanStorage;
     }
   } catch {
@@ -244,28 +244,30 @@ export function runWithSpan<T>(span: SpanImpl, fn: () => T): T {
 
 export function readHeader(headers: unknown, name: string): string | null {
   if (headers == null || typeof headers !== "object") return null;
-  if (typeof (headers as any).get === "function") {
-    return (headers as any).get(name) as string | null;
+  const h = headers as Record<string, unknown>;
+  if ("get" in h && typeof h.get === "function") {
+    return (h.get as (name: string) => string | null)(name);
   }
-  const val = (headers as Record<string, unknown>)[name];
+  const val = h[name];
   if (typeof val === "string") return val;
   if (Array.isArray(val)) return val[0] ?? null;
   return null;
 }
 
-function readJsonHeader<T extends Record<string, string | null>>(
+function readJsonHeader(
   headers: unknown,
   name: string,
-  fields: (keyof T & string)[],
-): T {
-  const result = Object.fromEntries(fields.map((f) => [f, null])) as T;
+  fields: string[],
+): Record<string, string | null> {
+  const result: Record<string, string | null> = {};
+  for (const f of fields) result[f] = null;
   const raw = readHeader(headers, name);
   if (!raw) return result;
   try {
     const parsed = JSON.parse(raw) as Record<string, unknown>;
     for (const field of fields) {
       if (typeof parsed[field] === "string") {
-        (result as any)[field] = parsed[field];
+        result[field] = parsed[field] as string;
       }
     }
   } catch {
