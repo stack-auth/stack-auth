@@ -17,7 +17,7 @@ import httpx
 
 from stack_auth._constants import API_VERSION, DEFAULT_BASE_URL, SDK_NAME
 from stack_auth._version import __version__
-from stack_auth.errors import StackAuthError
+from stack_auth.errors import RateLimitError, StackAuthError
 
 HttpxClientT = TypeVar("HttpxClientT", httpx.Client, httpx.AsyncClient)
 
@@ -115,6 +115,10 @@ class BaseAPIClient(Generic[HttpxClientT]):
             if response.content:
                 return actual_status, response.json()
             return actual_status, None
+
+        # Rate limit (429 that exhausted retries)
+        if actual_status == 429:
+            raise RateLimitError(code="RATE_LIMIT_EXCEEDED", message="Rate limit exceeded after retries")
 
         # Unrecognised error
         raise StackAuthError(code="HTTP_ERROR", message=f"HTTP {actual_status}")
