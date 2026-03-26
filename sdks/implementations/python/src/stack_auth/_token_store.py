@@ -16,7 +16,8 @@ import json
 import threading
 import time
 from abc import ABC, abstractmethod
-from typing import Any, Awaitable, Callable, Literal, Union
+from collections.abc import Awaitable, Callable
+from typing import Any, Literal
 
 import logging
 
@@ -219,7 +220,7 @@ def _get_or_create_memory_store(project_id: str) -> MemoryTokenStore:
 # TokenStoreInit type and resolver
 # ---------------------------------------------------------------------------
 
-TokenStoreInit = Union[Literal["memory"], dict, RequestLike, None]
+TokenStoreInit = Literal["memory"] | dict | RequestLike | None
 
 
 def resolve_token_store(init: TokenStoreInit, project_id: str) -> TokenStore | None:
