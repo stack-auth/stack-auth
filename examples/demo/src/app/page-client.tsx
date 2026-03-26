@@ -228,7 +228,7 @@ LIMIT 20`
 
                 <div className="rounded-md border bg-black/5 p-4 dark:bg-white/5">
                   <Typography className="mb-2 font-medium">Server errors linked to replays</Typography>
-                  <pre className="overflow-x-auto text-sm">{`SELECT event_at, data.error_name, data.error_message, browser_session_id, session_replay_id, session_replay_segment_id FROM events WHERE event_type = 'server.error' ORDER BY event_at DESC LIMIT 20`}</pre>
+                  <pre className="overflow-x-auto text-sm">{`SELECT event_at, data.error_name, data.error_message, session_replay_id, session_replay_segment_id FROM events WHERE event_type = 'server.error' ORDER BY event_at DESC LIMIT 20`}</pre>
                 </div>
 
               </div>

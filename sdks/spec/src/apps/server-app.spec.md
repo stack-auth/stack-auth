@@ -13,7 +13,7 @@ Required:
   secretServerKey: string - from Stack Auth dashboard
 
 Optional:
-  waitUntil: (promise: Promise<any>) => void
+  waitUntil: (promise: Promise<unknown>) => void
     Callback to extend the lifetime of the serverless function until a promise
     resolves. Ensures analytics flushes complete before the runtime shuts down.
     - Vercel: `import { waitUntil } from '@vercel/functions'`
@@ -42,8 +42,6 @@ Arguments:
   - An options object with the following fields:
     options.at: Date | number?
       Event timestamp. If Date, use `.getTime()`. Default: `Date.now()`
-    options.browserSessionId: string?
-      Explicit browser session ID to associate with the event
     options.sessionReplayId: string?
       Explicit session replay ID to associate with the event
     options.sessionReplaySegmentId: string?
@@ -58,7 +56,7 @@ Arguments:
 
 Behavior:
 1. Validate eventType and payload synchronously
-2. Validate any provided browserSessionId/sessionReplayId/sessionReplaySegmentId as UUIDs
+2. Validate any provided sessionReplayId/sessionReplaySegmentId as UUIDs
 3. Buffer the event and resolve user context in the background (non-blocking)
 4. If userId/teamId are omitted, derive them from the current user/session when possible
 5. Events are batched and flushed periodically or when thresholds are reached:
@@ -75,7 +73,6 @@ Request body:
         data: object,
         user_id?: string,
         team_id?: string,
-        browser_session_id?: string,
         session_replay_id?: string,
         session_replay_segment_id?: string
       }

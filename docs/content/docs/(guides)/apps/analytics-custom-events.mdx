@@ -6,7 +6,7 @@ icon: Signal
 
 Use Stack Auth custom analytics events when you want application-specific product, billing, support, or operational events to land in the same Analytics dataset as Stack-managed events.
 
-When replay recording is enabled in the browser SDK, client-side `trackEvent()` calls automatically attach the current replay linkage once a replay has been established. That linkage includes `browserSessionId`, `sessionReplayId`, and `sessionReplaySegmentId`, and you can pass any of them explicitly in `trackEvent(..., options)` on both the client and server SDKs.
+When replay recording is enabled in the browser SDK, client-side `trackEvent()` calls automatically attach the current replay linkage once a replay has been established. That linkage includes `sessionReplayId` and `sessionReplaySegmentId`, and you can pass either of them explicitly in `trackEvent(..., options)` on both the client and server SDKs.
 
 ## Support Matrix
 
@@ -130,7 +130,6 @@ Inside a span, you can also use `span.recordException(err)` which sets the span 
     {
       "event_type": "shipment.created",
       "event_at_ms": 1774267200000,
-      "browser_session_id": "f0dc1d92-1d6d-4c87-8a9f-93ecb17b6f18",
       "session_replay_id": "6b0e615f-71d1-4cc3-8fcf-59238db49d87",
       "session_replay_segment_id": "f5304076-59d2-4465-9c5c-2c6f179f5e23",
       "data": {

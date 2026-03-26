@@ -31,6 +31,7 @@ const EVENTS_TABLE_COLUMNS = {
   refresh_token_id: { type: "string", label: "Refresh Token" },
   session_replay_id: { type: "string", label: "Session Replay" },
   session_replay_segment_id: { type: "string", label: "Segment ID" },
+  from_server: { type: "string", label: "From Server" },
 } as const satisfies Record<string, { type: ColumnType; label: string }>;
 
 const SPANS_TABLE_COLUMNS: Record<string, { type: ColumnType; label: string }> = {
@@ -39,15 +40,14 @@ const SPANS_TABLE_COLUMNS: Record<string, { type: ColumnType; label: string }> =
   trace_id: { type: "string", label: "Trace ID" },
   started_at: { type: "datetime", label: "Started At" },
   created_at: { type: "datetime", label: "Created At" },
-  ended_at: { type: "datetime", label: "End At" },
+  ended_at: { type: "datetime", label: "Ended At" },
   parent_ids: { type: "string", label: "Parent IDs" },
-  project_id: { type: "string", label: "Project ID" },
-  branch_id: { type: "string", label: "Branch ID" },
   user_id: { type: "string", label: "User ID" },
   team_id: { type: "string", label: "Team ID" },
   refresh_token_id: { type: "string", label: "Refresh Token ID" },
   session_replay_id: { type: "string", label: "Session Replay ID" },
   session_replay_segment_id: { type: "string", label: "Segment ID" },
+  from_server: { type: "string", label: "From Server" },
 };
 
 export const TABLE_CONFIGS = {
