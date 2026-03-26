@@ -172,6 +172,11 @@ class SyncAPIClient(BaseAPIClient[httpx.Client]):
                 actual_status_hdr = resp.headers.get("x-stack-actual-status")
                 actual_status = int(actual_status_hdr) if actual_status_hdr else resp.status_code
 
+                # 429 retries apply to ALL methods (including POST/PATCH).
+                # Unlike network errors, a 429 guarantees the server did NOT
+                # process the request, so retrying is safe regardless of
+                # idempotency. This matches the SDK spec and the behavior of
+                # Stripe, Anthropic, and OpenAI SDKs.
                 if actual_status == 429 and attempt < self.MAX_RETRIES:
                     delay = self._get_retry_delay(attempt, resp)
                     time.sleep(delay)
@@ -248,6 +253,11 @@ class AsyncAPIClient(BaseAPIClient[httpx.AsyncClient]):
                 actual_status_hdr = resp.headers.get("x-stack-actual-status")
                 actual_status = int(actual_status_hdr) if actual_status_hdr else resp.status_code
 
+                # 429 retries apply to ALL methods (including POST/PATCH).
+                # Unlike network errors, a 429 guarantees the server did NOT
+                # process the request, so retrying is safe regardless of
+                # idempotency. This matches the SDK spec and the behavior of
+                # Stripe, Anthropic, and OpenAI SDKs.
                 if actual_status == 429 and attempt < self.MAX_RETRIES:
                     delay = self._get_retry_delay(attempt, resp)
                     await asyncio.sleep(delay)
