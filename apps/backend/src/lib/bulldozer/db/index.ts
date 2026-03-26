@@ -850,7 +850,6 @@ export function declareMapTable<
     `,
   });
 
-
   return {
     tableId: options.tableId,
     inputTables: [options.fromTable],
@@ -888,7 +887,6 @@ export function declareMapTable<
         WHERE "keyPath" = ${getStorageEnginePath(options.tableId, ["metadata"])}::jsonb[]
       )
     `,
-
     ...pick(nestedFlatMapTable, [
       "compareGroupKeys",
       "compareSortKeys",
@@ -1362,6 +1360,14 @@ export function declareLimitTable<
   };
 }
 
+export declare function declareConcatTable<
+  GK extends Json,
+  RD extends RowData,
+>(options: {
+  tableId: TableId,
+  tables: Table<GK, any, RD>[],
+}): Table<GK, null, RD>;
+
 export declare function declareSortTable<
   GK extends Json,
   OldSK extends Json,
@@ -1394,6 +1400,8 @@ export function toQueryableSqlQuery(query: SqlQuery): string {
 export function toExecutableSqlTransaction(statements: SqlStatement[]): string {
   return deindent`
     BEGIN;
+
+    SET LOCAL jit = off;
 
     SELECT pg_advisory_xact_lock(${BULLDOZER_LOCK_ID});
 

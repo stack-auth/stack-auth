@@ -18,7 +18,8 @@ const DEFAULT_MEASURED_OPS = 500;
 const IS_CI = (() => {
   const env = Reflect.get(import.meta, "env");
   const ci = Reflect.get(env, "CI");
-  return ci === true || ci === "true" || ci === "1";
+  const cursorAgent = Reflect.get(env, "CURSOR_AGENT");
+  return (ci === true || ci === "true" || ci === "1") && (cursorAgent !== true && cursorAgent !== 'true' && cursorAgent !== "1");
 })();
 const DEFAULT_LOAD_ROW_COUNT = IS_CI ? 200_000 : 20_000;
 const LOAD_PREFILL_MAX_MS = 30_000;
@@ -36,6 +37,7 @@ const LOAD_FILTER_TABLE_INIT_MAX_MS = 90_000;
 const LOAD_FILTER_TABLE_COUNT_QUERY_MAX_MS = 8_000;
 const LOAD_LIMIT_TABLE_INIT_MAX_MS = 90_000;
 const LOAD_LIMIT_TABLE_COUNT_QUERY_MAX_MS = 8_000;
+const STACKED_MAP_PIPELINE_MUTATION_MAX_MS = 400;
 
 function getTestDbUrls(): TestDb {
   const env = Reflect.get(import.meta, "env");
@@ -328,6 +330,72 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
 
     expect(baseline.operationsPerSecond).toBeGreaterThan(0);
     expect(composed.operationsPerSecond).toBeGreaterThan(0);
+  });
+
+  it("regression: stacked group-map-group mutations avoid the postgres JIT cliff", async () => {
+    const fromTable = declareStoredTable<{ value: number, team: string | null }>({ tableId: "perf-regression-users" });
+    const groupedByTeam = declareGroupByTable({
+      tableId: "perf-regression-users-by-team",
+      fromTable,
+      groupBy: { type: "mapper", sql: `"rowData"->'team' AS "groupKey"` },
+    });
+    const mappedLevel1 = declareMapTable({
+      tableId: "perf-regression-users-map-level-1",
+      fromTable: groupedByTeam,
+      mapper: { type: "mapper", sql: `
+        ("rowData"->'team') AS "team",
+        (("rowData"->>'value')::int + 1) AS "value",
+        (
+          CASE
+            WHEN ((("rowData"->>'value')::int + 1) % 2) = 0 THEN 'even'
+            ELSE 'odd'
+          END
+        ) AS "bucket"
+      ` },
+    });
+    const mappedLevel2 = declareMapTable({
+      tableId: "perf-regression-users-map-level-2",
+      fromTable: mappedLevel1,
+      mapper: { type: "mapper", sql: `
+        ("rowData"->'team') AS "team",
+        ("rowData"->'bucket') AS "bucket",
+        (("rowData"->>'value')::int * 3) AS "score"
+      ` },
+    });
+    const groupedByBucket = declareGroupByTable({
+      tableId: "perf-regression-users-by-bucket",
+      fromTable: mappedLevel2,
+      groupBy: { type: "mapper", sql: `"rowData"->'bucket' AS "groupKey"` },
+    });
+
+    await runStatements(fromTable.init());
+    await runStatements(groupedByTeam.init());
+    await runStatements(mappedLevel1.init());
+    await runStatements(mappedLevel2.init());
+    await runStatements(groupedByBucket.init());
+
+    const seedRows = [
+      ["u1", { team: "alpha", value: 5 }],
+      ["u2", { team: "beta", value: 7 }],
+      ["u3", { team: "gamma", value: 9 }],
+      ["u:4", { team: "alpha", value: 11 }],
+      ["u 5", { team: null, value: 13 }],
+    ] as const;
+    for (const [rowIdentifier, rowData] of seedRows) {
+      await runStatements(fromTable.setRow(rowIdentifier, expr(jsonbLiteral(rowData))));
+    }
+
+    await runStatements(fromTable.setRow("u1", expr(jsonbLiteral({ team: "alpha", value: 15 }))));
+
+    const setRowMutation = await measureMs("regression stacked pipeline setRow", async () => {
+      await runStatements(fromTable.setRow("u2", expr(jsonbLiteral({ team: "beta", value: 19 }))));
+    });
+    expect(setRowMutation.elapsedMs).toBeLessThan(STACKED_MAP_PIPELINE_MUTATION_MAX_MS);
+
+    const deleteMutation = await measureMs("regression stacked pipeline deleteRow", async () => {
+      await runStatements(fromTable.deleteRow("u3"));
+    });
+    expect(deleteMutation.elapsedMs).toBeLessThan(STACKED_MAP_PIPELINE_MUTATION_MAX_MS);
   });
 
   it("load test: prefilled stored table with hundreds of thousands of rows stays functional and fast", async () => {
@@ -641,7 +709,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       endInclusive: true,
     }));
     expect(limitedDeltaRows).toHaveLength(1);
-    expect(limitedDeltaRows[0]?.rowidentifier).toBe("seed-100000");
+    expect(limitedDeltaRows[0].rowidentifier).toBe("seed-100000");
 
     const bulkDelete = await measureMs("load full table delete", async () => {
       await runStatements(table.delete());

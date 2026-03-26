@@ -1,0 +1,706 @@
+BEGIN;
+
+SET LOCAL jit = off;
+
+SELECT pg_advisory_xact_lock(7857391);
+
+WITH __dummy_statement_1__ AS (SELECT 1),
+"old_rows_qzm5g336vh1djv54sn9hwf7510yxxrzv5h4kwrgqgxrer" AS (
+  
+            SELECT "value"->'rowData' AS "oldRowData"
+            FROM "BulldozerStorageEngine"
+            WHERE "keyPath" = ARRAY['"table"'::jsonb, '"external:fuzz-users-101"'::jsonb, '"storage"'::jsonb, '"rows"'::jsonb, '"u2"'::jsonb]::jsonb[]
+          
+),
+"upserted_rows_c2sk1nywpsygs51cfqnd7qg3jd8nk7zh6jjqry0j6bwzr" AS (
+  
+            INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
+            VALUES (
+              gen_random_uuid(),
+              ARRAY['"table"'::jsonb, '"external:fuzz-users-101"'::jsonb, '"storage"'::jsonb, '"rows"'::jsonb, '"u2"'::jsonb]::jsonb[],
+              
+          jsonb_build_object(
+            'rowData', '{"team":"beta","value":21}'::jsonb::jsonb
+          )
+        ::jsonb
+            )
+            ON CONFLICT ("keyPath") DO UPDATE
+            SET "value" = 
+          jsonb_build_object(
+            'rowData', '{"team":"beta","value":21}'::jsonb::jsonb
+          )
+        ::jsonb
+            RETURNING "value"->'rowData' AS "newRowData"
+          
+),
+"changes_rpbs2y486ebg9ae3n089fya0018rngx9228gz5yjpwjdg" AS (
+  
+            SELECT
+              'null'::jsonb AS "groupKey",
+              'u2'::text AS "rowIdentifier",
+              'null'::jsonb AS "oldRowSortKey",
+              'null'::jsonb AS "newRowSortKey",
+              "old_rows_qzm5g336vh1djv54sn9hwf7510yxxrzv5h4kwrgqgxrer"."oldRowData" AS "oldRowData",
+              "upserted_rows_c2sk1nywpsygs51cfqnd7qg3jd8nk7zh6jjqry0j6bwzr"."newRowData" AS "newRowData"
+            FROM "upserted_rows_c2sk1nywpsygs51cfqnd7qg3jd8nk7zh6jjqry0j6bwzr"
+            LEFT JOIN "old_rows_qzm5g336vh1djv54sn9hwf7510yxxrzv5h4kwrgqgxrer" ON true
+          
+),
+"mapped_changes_v70kjg6fn4dna3s5krv29khdqyym6b0q4s6kt011wnzqr" AS (
+  
+          SELECT
+            "changes"."rowIdentifier" AS "rowIdentifier",
+            "changes"."oldRowData" AS "oldRowData",
+            "changes"."newRowData" AS "newRowData",
+            ("changes"."oldRowData" IS NOT NULL AND jsonb_typeof("changes"."oldRowData") = 'object') AS "hasOldRow",
+            ("changes"."newRowData" IS NOT NULL AND jsonb_typeof("changes"."newRowData") = 'object') AS "hasNewRow",
+            "oldGroup"."groupKey" AS "oldGroupKey",
+            "newGroup"."groupKey" AS "newGroupKey"
+          FROM "changes_rpbs2y486ebg9ae3n089fya0018rngx9228gz5yjpwjdg" AS "changes"
+          LEFT JOIN LATERAL (
+            SELECT "mapped"."groupKey"
+            FROM (
+              SELECT "rowData"->'team' AS "groupKey"
+              FROM (
+                SELECT
+                  "changes"."rowIdentifier" AS "rowIdentifier",
+                  "changes"."oldRowData" AS "rowData"
+              ) AS "groupByInput"
+            ) AS "mapped"
+          ) AS "oldGroup" ON ("changes"."oldRowData" IS NOT NULL AND jsonb_typeof("changes"."oldRowData") = 'object')
+          LEFT JOIN LATERAL (
+            SELECT "mapped"."groupKey"
+            FROM (
+              SELECT "rowData"->'team' AS "groupKey"
+              FROM (
+                SELECT
+                  "changes"."rowIdentifier" AS "rowIdentifier",
+                  "changes"."newRowData" AS "rowData"
+              ) AS "groupByInput"
+            ) AS "mapped"
+          ) AS "newGroup" ON ("changes"."newRowData" IS NOT NULL AND jsonb_typeof("changes"."newRowData") = 'object')
+          WHERE 
+      EXISTS (
+        SELECT 1 FROM "BulldozerStorageEngine"
+        WHERE "keyPath" = ARRAY['"table"'::jsonb, '"external:fuzz-users-by-team-101"'::jsonb, '"storage"'::jsonb, '"metadata"'::jsonb]::jsonb[]
+      )
+    
+        
+),
+"unnamed_statement_6bw6129p" AS (
+  
+          INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
+          SELECT
+            gen_random_uuid(),
+            "insertRows"."keyPath",
+            "insertRows"."value"
+          FROM (
+            SELECT DISTINCT
+              ARRAY['"table"'::jsonb, '"external:fuzz-users-by-team-101"'::jsonb, '"storage"'::jsonb, '"groups"'::jsonb, "newGroupKey"]::jsonb[] AS "keyPath",
+              'null'::jsonb AS "value"
+            FROM "mapped_changes_v70kjg6fn4dna3s5krv29khdqyym6b0q4s6kt011wnzqr"
+            WHERE "hasNewRow"
+            UNION
+            SELECT DISTINCT
+              ARRAY['"table"'::jsonb, '"external:fuzz-users-by-team-101"'::jsonb, '"storage"'::jsonb, '"groups"'::jsonb, "newGroupKey", '"rows"'::jsonb]::jsonb[] AS "keyPath",
+              'null'::jsonb AS "value"
+            FROM "mapped_changes_v70kjg6fn4dna3s5krv29khdqyym6b0q4s6kt011wnzqr"
+            WHERE "hasNewRow"
+          ) AS "insertRows"
+          ON CONFLICT ("keyPath") DO NOTHING
+        
+),
+"unnamed_statement_3bp4fqz7" AS (
+  
+          DELETE FROM "BulldozerStorageEngine" AS "target"
+          USING "mapped_changes_v70kjg6fn4dna3s5krv29khdqyym6b0q4s6kt011wnzqr" AS "changes"
+          WHERE "changes"."hasOldRow"
+            AND "target"."keyPath" = ARRAY['"table"'::jsonb, '"external:fuzz-users-by-team-101"'::jsonb, '"storage"'::jsonb, '"groups"'::jsonb, "changes"."oldGroupKey", '"rows"'::jsonb, to_jsonb("changes"."rowIdentifier"::text)]::jsonb[]
+        
+),
+"unnamed_statement_je3f1c7g" AS (
+  
+          INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
+          SELECT
+            gen_random_uuid(),
+            ARRAY['"table"'::jsonb, '"external:fuzz-users-by-team-101"'::jsonb, '"storage"'::jsonb, '"groups"'::jsonb, "newGroupKey", '"rows"'::jsonb, to_jsonb("rowIdentifier"::text)]::jsonb[],
+            jsonb_build_object('rowData', "newRowData")
+          FROM "mapped_changes_v70kjg6fn4dna3s5krv29khdqyym6b0q4s6kt011wnzqr"
+          WHERE "hasNewRow"
+          ON CONFLICT ("keyPath") DO UPDATE
+          SET "value" = EXCLUDED."value"
+        
+),
+"unnamed_statement_rxdy9p42" AS (
+  
+          DELETE FROM "BulldozerStorageEngine" AS "staleGroupPath"
+          USING "mapped_changes_v70kjg6fn4dna3s5krv29khdqyym6b0q4s6kt011wnzqr" AS "changes"
+          WHERE "changes"."hasOldRow"
+            AND "staleGroupPath"."keyPath" IN (
+              ARRAY['"table"'::jsonb, '"external:fuzz-users-by-team-101"'::jsonb, '"storage"'::jsonb, '"groups"'::jsonb, "changes"."oldGroupKey", '"rows"'::jsonb]::jsonb[],
+              ARRAY['"table"'::jsonb, '"external:fuzz-users-by-team-101"'::jsonb, '"storage"'::jsonb, '"groups"'::jsonb, "changes"."oldGroupKey"]::jsonb[]
+            )
+            AND NOT EXISTS (
+              SELECT 1
+              FROM "BulldozerStorageEngine" AS "groupRow"
+              WHERE "groupRow"."keyPathParent" = ARRAY['"table"'::jsonb, '"external:fuzz-users-by-team-101"'::jsonb, '"storage"'::jsonb, '"groups"'::jsonb, "changes"."oldGroupKey", '"rows"'::jsonb]::jsonb[]
+                AND NOT EXISTS (
+                  SELECT 1
+                  FROM "mapped_changes_v70kjg6fn4dna3s5krv29khdqyym6b0q4s6kt011wnzqr" AS "deletingRow"
+                  WHERE "deletingRow"."hasOldRow"
+                    AND "deletingRow"."oldGroupKey" IS NOT DISTINCT FROM "changes"."oldGroupKey"
+                    AND "groupRow"."keyPath" = ARRAY['"table"'::jsonb, '"external:fuzz-users-by-team-101"'::jsonb, '"storage"'::jsonb, '"groups"'::jsonb, "deletingRow"."oldGroupKey", '"rows"'::jsonb, to_jsonb("deletingRow"."rowIdentifier"::text)]::jsonb[]
+                )
+            )
+            AND NOT EXISTS (
+              SELECT 1
+              FROM "mapped_changes_v70kjg6fn4dna3s5krv29khdqyym6b0q4s6kt011wnzqr" AS "insertingRow"
+              WHERE "insertingRow"."hasNewRow"
+                AND "insertingRow"."newGroupKey" IS NOT DISTINCT FROM "changes"."oldGroupKey"
+            )
+        
+),
+"grouped_changes_w9bytqkqjvr4kyczj0nahg3v1qn45y4mjrcgzky0d1zxr" AS (
+  
+          SELECT
+            "oldGroupKey" AS "groupKey",
+            "rowIdentifier" AS "rowIdentifier",
+            'null'::jsonb AS "oldRowSortKey",
+            'null'::jsonb AS "newRowSortKey",
+            "oldRowData" AS "oldRowData",
+            CASE
+              WHEN "hasNewRow" AND "oldGroupKey" IS NOT DISTINCT FROM "newGroupKey" THEN "newRowData"
+              ELSE 'null'::jsonb
+            END AS "newRowData"
+          FROM "mapped_changes_v70kjg6fn4dna3s5krv29khdqyym6b0q4s6kt011wnzqr"
+          WHERE "hasOldRow"
+          UNION ALL
+          SELECT
+            "newGroupKey" AS "groupKey",
+            "rowIdentifier" AS "rowIdentifier",
+            'null'::jsonb AS "oldRowSortKey",
+            'null'::jsonb AS "newRowSortKey",
+            'null'::jsonb AS "oldRowData",
+            "newRowData" AS "newRowData"
+          FROM "mapped_changes_v70kjg6fn4dna3s5krv29khdqyym6b0q4s6kt011wnzqr"
+          WHERE "hasNewRow"
+            AND (NOT "hasOldRow" OR "oldGroupKey" IS DISTINCT FROM "newGroupKey")
+        
+),
+"mapped_changes_yjwm0xz9dar7fw7fzpr2r8qj3yv026rggya55xxv858fr" AS (
+  
+          SELECT
+            "changes"."groupKey" AS "groupKey",
+            "changes"."rowIdentifier" AS "sourceRowIdentifier",
+            ("changes"."oldRowData" IS NOT NULL AND jsonb_typeof("changes"."oldRowData") = 'object') AS "hasOldRow",
+            ("changes"."newRowData" IS NOT NULL AND jsonb_typeof("changes"."newRowData") = 'object') AS "hasNewRow",
+            "oldMapped"."rows" AS "oldMappedRows",
+            "newMapped"."rows" AS "newMappedRows"
+          FROM "grouped_changes_w9bytqkqjvr4kyczj0nahg3v1qn45y4mjrcgzky0d1zxr" AS "changes"
+          LEFT JOIN LATERAL (
+            SELECT "mapped"."rows" AS "rows"
+            FROM (
+              SELECT 
+        jsonb_build_array(
+          COALESCE(
+            (
+              SELECT to_jsonb("mapped")
+              FROM (
+                SELECT ("rowData"->'team') AS "team", (("rowData"->>'value')::int + 10) AS "valuePlusTen"
+              ) AS "mapped"
+            ),
+            'null'::jsonb
+          )
+        ) AS "rows"
+      
+              FROM (
+                SELECT
+                  "changes"."rowIdentifier" AS "rowIdentifier",
+                  "changes"."oldRowData" AS "rowData"
+              ) AS "mapperInput"
+            ) AS "mapped"
+          ) AS "oldMapped" ON ("changes"."oldRowData" IS NOT NULL AND jsonb_typeof("changes"."oldRowData") = 'object')
+          LEFT JOIN LATERAL (
+            SELECT "mapped"."rows" AS "rows"
+            FROM (
+              SELECT 
+        jsonb_build_array(
+          COALESCE(
+            (
+              SELECT to_jsonb("mapped")
+              FROM (
+                SELECT ("rowData"->'team') AS "team", (("rowData"->>'value')::int + 10) AS "valuePlusTen"
+              ) AS "mapped"
+            ),
+            'null'::jsonb
+          )
+        ) AS "rows"
+      
+              FROM (
+                SELECT
+                  "changes"."rowIdentifier" AS "rowIdentifier",
+                  "changes"."newRowData" AS "rowData"
+              ) AS "mapperInput"
+            ) AS "mapped"
+          ) AS "newMapped" ON ("changes"."newRowData" IS NOT NULL AND jsonb_typeof("changes"."newRowData") = 'object')
+          WHERE 
+      EXISTS (
+        SELECT 1 FROM "BulldozerStorageEngine"
+        WHERE "keyPath" = ARRAY['"table"'::jsonb, '"external:fuzz-users-map-level-1-101"'::jsonb, '"table"'::jsonb, '"internal:map"'::jsonb, '"storage"'::jsonb, '"metadata"'::jsonb]::jsonb[]
+      )
+    
+        
+),
+"old_flat_rows_c387p2qzpg01std6py4vzn1y3j9y19wx690yeveywhspg" AS (
+  
+          SELECT
+            "changes"."groupKey" AS "groupKey",
+            ("changes"."sourceRowIdentifier" || ':' || ("flatRow"."flatIndex"::text)) AS "rowIdentifier",
+            "flatRow"."rowData" AS "rowData"
+          FROM "mapped_changes_yjwm0xz9dar7fw7fzpr2r8qj3yv026rggya55xxv858fr" AS "changes"
+          CROSS JOIN LATERAL jsonb_array_elements(
+            CASE
+              WHEN "changes"."hasOldRow" THEN (
+                CASE
+                  WHEN jsonb_typeof("changes"."oldMappedRows") = 'array' THEN "changes"."oldMappedRows"
+                  ELSE '[]'::jsonb
+                END
+              )
+              ELSE '[]'::jsonb
+            END
+          ) WITH ORDINALITY AS "flatRow"("rowData", "flatIndex")
+        
+),
+"new_flat_rows_b05fbprh41k3y6awcxh9tx83nbgzzfky5jkwfz18gveg8" AS (
+  
+          SELECT
+            "changes"."groupKey" AS "groupKey",
+            ("changes"."sourceRowIdentifier" || ':' || ("flatRow"."flatIndex"::text)) AS "rowIdentifier",
+            "flatRow"."rowData" AS "rowData"
+          FROM "mapped_changes_yjwm0xz9dar7fw7fzpr2r8qj3yv026rggya55xxv858fr" AS "changes"
+          CROSS JOIN LATERAL jsonb_array_elements(
+            CASE
+              WHEN "changes"."hasNewRow" THEN (
+                CASE
+                  WHEN jsonb_typeof("changes"."newMappedRows") = 'array' THEN "changes"."newMappedRows"
+                  ELSE '[]'::jsonb
+                END
+              )
+              ELSE '[]'::jsonb
+            END
+          ) WITH ORDINALITY AS "flatRow"("rowData", "flatIndex")
+        
+),
+"unnamed_statement_733m8521" AS (
+  
+          INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
+          SELECT
+            gen_random_uuid(),
+            "insertRows"."keyPath",
+            "insertRows"."value"
+          FROM (
+            SELECT DISTINCT
+              ARRAY['"table"'::jsonb, '"external:fuzz-users-map-level-1-101"'::jsonb, '"table"'::jsonb, '"internal:map"'::jsonb, '"storage"'::jsonb, '"groups"'::jsonb, "groupKey"]::jsonb[] AS "keyPath",
+              'null'::jsonb AS "value"
+            FROM "new_flat_rows_b05fbprh41k3y6awcxh9tx83nbgzzfky5jkwfz18gveg8"
+            UNION
+            SELECT DISTINCT
+              ARRAY['"table"'::jsonb, '"external:fuzz-users-map-level-1-101"'::jsonb, '"table"'::jsonb, '"internal:map"'::jsonb, '"storage"'::jsonb, '"groups"'::jsonb, "groupKey", '"rows"'::jsonb]::jsonb[] AS "keyPath",
+              'null'::jsonb AS "value"
+            FROM "new_flat_rows_b05fbprh41k3y6awcxh9tx83nbgzzfky5jkwfz18gveg8"
+          ) AS "insertRows"
+          ON CONFLICT ("keyPath") DO NOTHING
+        
+),
+"unnamed_statement_5fsnnkka" AS (
+  
+          DELETE FROM "BulldozerStorageEngine" AS "target"
+          USING "old_flat_rows_c387p2qzpg01std6py4vzn1y3j9y19wx690yeveywhspg" AS "changes"
+          WHERE "target"."keyPath" = ARRAY['"table"'::jsonb, '"external:fuzz-users-map-level-1-101"'::jsonb, '"table"'::jsonb, '"internal:map"'::jsonb, '"storage"'::jsonb, '"groups"'::jsonb, "changes"."groupKey", '"rows"'::jsonb, to_jsonb("changes"."rowIdentifier"::text)]::jsonb[]
+        
+),
+"unnamed_statement_93gncc42" AS (
+  
+          INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
+          SELECT
+            gen_random_uuid(),
+            ARRAY['"table"'::jsonb, '"external:fuzz-users-map-level-1-101"'::jsonb, '"table"'::jsonb, '"internal:map"'::jsonb, '"storage"'::jsonb, '"groups"'::jsonb, "groupKey", '"rows"'::jsonb, to_jsonb("rowIdentifier"::text)]::jsonb[],
+            jsonb_build_object('rowData', "rowData")
+          FROM "new_flat_rows_b05fbprh41k3y6awcxh9tx83nbgzzfky5jkwfz18gveg8"
+          ON CONFLICT ("keyPath") DO UPDATE
+          SET "value" = EXCLUDED."value"
+        
+),
+"unnamed_statement_fpzbmw3j" AS (
+  
+          DELETE FROM "BulldozerStorageEngine" AS "staleGroupPath"
+          USING "old_flat_rows_c387p2qzpg01std6py4vzn1y3j9y19wx690yeveywhspg" AS "changes"
+          WHERE "staleGroupPath"."keyPath" IN (
+            ARRAY['"table"'::jsonb, '"external:fuzz-users-map-level-1-101"'::jsonb, '"table"'::jsonb, '"internal:map"'::jsonb, '"storage"'::jsonb, '"groups"'::jsonb, "changes"."groupKey", '"rows"'::jsonb]::jsonb[],
+            ARRAY['"table"'::jsonb, '"external:fuzz-users-map-level-1-101"'::jsonb, '"table"'::jsonb, '"internal:map"'::jsonb, '"storage"'::jsonb, '"groups"'::jsonb, "changes"."groupKey"]::jsonb[]
+          )
+            AND NOT EXISTS (
+              SELECT 1
+              FROM "BulldozerStorageEngine" AS "groupRow"
+              WHERE "groupRow"."keyPathParent" = ARRAY['"table"'::jsonb, '"external:fuzz-users-map-level-1-101"'::jsonb, '"table"'::jsonb, '"internal:map"'::jsonb, '"storage"'::jsonb, '"groups"'::jsonb, "changes"."groupKey", '"rows"'::jsonb]::jsonb[]
+                AND NOT EXISTS (
+                  SELECT 1
+                  FROM "old_flat_rows_c387p2qzpg01std6py4vzn1y3j9y19wx690yeveywhspg" AS "deletingRow"
+                  WHERE "deletingRow"."groupKey" IS NOT DISTINCT FROM "changes"."groupKey"
+                    AND "groupRow"."keyPath" = ARRAY['"table"'::jsonb, '"external:fuzz-users-map-level-1-101"'::jsonb, '"table"'::jsonb, '"internal:map"'::jsonb, '"storage"'::jsonb, '"groups"'::jsonb, "deletingRow"."groupKey", '"rows"'::jsonb, to_jsonb("deletingRow"."rowIdentifier"::text)]::jsonb[]
+                )
+            )
+            AND NOT EXISTS (
+              SELECT 1
+              FROM "new_flat_rows_b05fbprh41k3y6awcxh9tx83nbgzzfky5jkwfz18gveg8" AS "insertingRow"
+              WHERE "insertingRow"."groupKey" IS NOT DISTINCT FROM "changes"."groupKey"
+            )
+        
+),
+"flat_map_changes_ag6q3tne5fy9c7mbbr325v6hy6g60scj9rrntqx598s30" AS (
+  
+          SELECT
+            COALESCE("newRows"."groupKey", "oldRows"."groupKey") AS "groupKey",
+            COALESCE("newRows"."rowIdentifier", "oldRows"."rowIdentifier") AS "rowIdentifier",
+            'null'::jsonb AS "oldRowSortKey",
+            'null'::jsonb AS "newRowSortKey",
+            CASE WHEN "oldRows"."rowData" IS NULL THEN 'null'::jsonb ELSE "oldRows"."rowData" END AS "oldRowData",
+            CASE WHEN "newRows"."rowData" IS NULL THEN 'null'::jsonb ELSE "newRows"."rowData" END AS "newRowData"
+          FROM "old_flat_rows_c387p2qzpg01std6py4vzn1y3j9y19wx690yeveywhspg" AS "oldRows"
+          FULL OUTER JOIN "new_flat_rows_b05fbprh41k3y6awcxh9tx83nbgzzfky5jkwfz18gveg8" AS "newRows"
+            ON "oldRows"."groupKey" IS NOT DISTINCT FROM "newRows"."groupKey"
+            AND "oldRows"."rowIdentifier" = "newRows"."rowIdentifier"
+          WHERE "oldRows"."rowData" IS DISTINCT FROM "newRows"."rowData"
+        
+),
+"mapped_changes_hpypfyd2pxhhmb2x1tpgwjfq3sydfhqg37vct76x43zrg" AS (
+  
+          SELECT
+            "changes"."groupKey" AS "groupKey",
+            "changes"."rowIdentifier" AS "sourceRowIdentifier",
+            ("changes"."oldRowData" IS NOT NULL AND jsonb_typeof("changes"."oldRowData") = 'object') AS "hasOldRow",
+            ("changes"."newRowData" IS NOT NULL AND jsonb_typeof("changes"."newRowData") = 'object') AS "hasNewRow",
+            "oldMapped"."rows" AS "oldMappedRows",
+            "newMapped"."rows" AS "newMappedRows"
+          FROM "flat_map_changes_ag6q3tne5fy9c7mbbr325v6hy6g60scj9rrntqx598s30" AS "changes"
+          LEFT JOIN LATERAL (
+            SELECT "mapped"."rows" AS "rows"
+            FROM (
+              SELECT 
+        jsonb_build_array(
+          COALESCE(
+            (
+              SELECT to_jsonb("mapped")
+              FROM (
+                SELECT ("rowData"->'team') AS "team", (("rowData"->>'valuePlusTen')::int * 2) AS "valueScaled", (CASE WHEN (("rowData"->>'valuePlusTen')::int * 2) >= 30 THEN 'high' ELSE 'low' END) AS "bucket"
+              ) AS "mapped"
+            ),
+            'null'::jsonb
+          )
+        ) AS "rows"
+      
+              FROM (
+                SELECT
+                  "changes"."rowIdentifier" AS "rowIdentifier",
+                  "changes"."oldRowData" AS "rowData"
+              ) AS "mapperInput"
+            ) AS "mapped"
+          ) AS "oldMapped" ON ("changes"."oldRowData" IS NOT NULL AND jsonb_typeof("changes"."oldRowData") = 'object')
+          LEFT JOIN LATERAL (
+            SELECT "mapped"."rows" AS "rows"
+            FROM (
+              SELECT 
+        jsonb_build_array(
+          COALESCE(
+            (
+              SELECT to_jsonb("mapped")
+              FROM (
+                SELECT ("rowData"->'team') AS "team", (("rowData"->>'valuePlusTen')::int * 2) AS "valueScaled", (CASE WHEN (("rowData"->>'valuePlusTen')::int * 2) >= 30 THEN 'high' ELSE 'low' END) AS "bucket"
+              ) AS "mapped"
+            ),
+            'null'::jsonb
+          )
+        ) AS "rows"
+      
+              FROM (
+                SELECT
+                  "changes"."rowIdentifier" AS "rowIdentifier",
+                  "changes"."newRowData" AS "rowData"
+              ) AS "mapperInput"
+            ) AS "mapped"
+          ) AS "newMapped" ON ("changes"."newRowData" IS NOT NULL AND jsonb_typeof("changes"."newRowData") = 'object')
+          WHERE 
+      EXISTS (
+        SELECT 1 FROM "BulldozerStorageEngine"
+        WHERE "keyPath" = ARRAY['"table"'::jsonb, '"external:fuzz-users-map-level-2-101"'::jsonb, '"table"'::jsonb, '"internal:map"'::jsonb, '"storage"'::jsonb, '"metadata"'::jsonb]::jsonb[]
+      )
+    
+        
+),
+"old_flat_rows_jqg9m7ygb2dprm9fkcjnd73w4wjyjr6m305c3nd7zrdtr" AS (
+  
+          SELECT
+            "changes"."groupKey" AS "groupKey",
+            ("changes"."sourceRowIdentifier" || ':' || ("flatRow"."flatIndex"::text)) AS "rowIdentifier",
+            "flatRow"."rowData" AS "rowData"
+          FROM "mapped_changes_hpypfyd2pxhhmb2x1tpgwjfq3sydfhqg37vct76x43zrg" AS "changes"
+          CROSS JOIN LATERAL jsonb_array_elements(
+            CASE
+              WHEN "changes"."hasOldRow" THEN (
+                CASE
+                  WHEN jsonb_typeof("changes"."oldMappedRows") = 'array' THEN "changes"."oldMappedRows"
+                  ELSE '[]'::jsonb
+                END
+              )
+              ELSE '[]'::jsonb
+            END
+          ) WITH ORDINALITY AS "flatRow"("rowData", "flatIndex")
+        
+),
+"new_flat_rows_81x457bywzj9cmmwrg0a75328rvf1aa0tqd4n9s1vtbqg" AS (
+  
+          SELECT
+            "changes"."groupKey" AS "groupKey",
+            ("changes"."sourceRowIdentifier" || ':' || ("flatRow"."flatIndex"::text)) AS "rowIdentifier",
+            "flatRow"."rowData" AS "rowData"
+          FROM "mapped_changes_hpypfyd2pxhhmb2x1tpgwjfq3sydfhqg37vct76x43zrg" AS "changes"
+          CROSS JOIN LATERAL jsonb_array_elements(
+            CASE
+              WHEN "changes"."hasNewRow" THEN (
+                CASE
+                  WHEN jsonb_typeof("changes"."newMappedRows") = 'array' THEN "changes"."newMappedRows"
+                  ELSE '[]'::jsonb
+                END
+              )
+              ELSE '[]'::jsonb
+            END
+          ) WITH ORDINALITY AS "flatRow"("rowData", "flatIndex")
+        
+),
+"unnamed_statement_6wwsxhrt" AS (
+  
+          INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
+          SELECT
+            gen_random_uuid(),
+            "insertRows"."keyPath",
+            "insertRows"."value"
+          FROM (
+            SELECT DISTINCT
+              ARRAY['"table"'::jsonb, '"external:fuzz-users-map-level-2-101"'::jsonb, '"table"'::jsonb, '"internal:map"'::jsonb, '"storage"'::jsonb, '"groups"'::jsonb, "groupKey"]::jsonb[] AS "keyPath",
+              'null'::jsonb AS "value"
+            FROM "new_flat_rows_81x457bywzj9cmmwrg0a75328rvf1aa0tqd4n9s1vtbqg"
+            UNION
+            SELECT DISTINCT
+              ARRAY['"table"'::jsonb, '"external:fuzz-users-map-level-2-101"'::jsonb, '"table"'::jsonb, '"internal:map"'::jsonb, '"storage"'::jsonb, '"groups"'::jsonb, "groupKey", '"rows"'::jsonb]::jsonb[] AS "keyPath",
+              'null'::jsonb AS "value"
+            FROM "new_flat_rows_81x457bywzj9cmmwrg0a75328rvf1aa0tqd4n9s1vtbqg"
+          ) AS "insertRows"
+          ON CONFLICT ("keyPath") DO NOTHING
+        
+),
+"unnamed_statement_rmr146nf" AS (
+  
+          DELETE FROM "BulldozerStorageEngine" AS "target"
+          USING "old_flat_rows_jqg9m7ygb2dprm9fkcjnd73w4wjyjr6m305c3nd7zrdtr" AS "changes"
+          WHERE "target"."keyPath" = ARRAY['"table"'::jsonb, '"external:fuzz-users-map-level-2-101"'::jsonb, '"table"'::jsonb, '"internal:map"'::jsonb, '"storage"'::jsonb, '"groups"'::jsonb, "changes"."groupKey", '"rows"'::jsonb, to_jsonb("changes"."rowIdentifier"::text)]::jsonb[]
+        
+),
+"unnamed_statement_d4mggz1p" AS (
+  
+          INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
+          SELECT
+            gen_random_uuid(),
+            ARRAY['"table"'::jsonb, '"external:fuzz-users-map-level-2-101"'::jsonb, '"table"'::jsonb, '"internal:map"'::jsonb, '"storage"'::jsonb, '"groups"'::jsonb, "groupKey", '"rows"'::jsonb, to_jsonb("rowIdentifier"::text)]::jsonb[],
+            jsonb_build_object('rowData', "rowData")
+          FROM "new_flat_rows_81x457bywzj9cmmwrg0a75328rvf1aa0tqd4n9s1vtbqg"
+          ON CONFLICT ("keyPath") DO UPDATE
+          SET "value" = EXCLUDED."value"
+        
+),
+"unnamed_statement_q6c1gdbq" AS (
+  
+          DELETE FROM "BulldozerStorageEngine" AS "staleGroupPath"
+          USING "old_flat_rows_jqg9m7ygb2dprm9fkcjnd73w4wjyjr6m305c3nd7zrdtr" AS "changes"
+          WHERE "staleGroupPath"."keyPath" IN (
+            ARRAY['"table"'::jsonb, '"external:fuzz-users-map-level-2-101"'::jsonb, '"table"'::jsonb, '"internal:map"'::jsonb, '"storage"'::jsonb, '"groups"'::jsonb, "changes"."groupKey", '"rows"'::jsonb]::jsonb[],
+            ARRAY['"table"'::jsonb, '"external:fuzz-users-map-level-2-101"'::jsonb, '"table"'::jsonb, '"internal:map"'::jsonb, '"storage"'::jsonb, '"groups"'::jsonb, "changes"."groupKey"]::jsonb[]
+          )
+            AND NOT EXISTS (
+              SELECT 1
+              FROM "BulldozerStorageEngine" AS "groupRow"
+              WHERE "groupRow"."keyPathParent" = ARRAY['"table"'::jsonb, '"external:fuzz-users-map-level-2-101"'::jsonb, '"table"'::jsonb, '"internal:map"'::jsonb, '"storage"'::jsonb, '"groups"'::jsonb, "changes"."groupKey", '"rows"'::jsonb]::jsonb[]
+                AND NOT EXISTS (
+                  SELECT 1
+                  FROM "old_flat_rows_jqg9m7ygb2dprm9fkcjnd73w4wjyjr6m305c3nd7zrdtr" AS "deletingRow"
+                  WHERE "deletingRow"."groupKey" IS NOT DISTINCT FROM "changes"."groupKey"
+                    AND "groupRow"."keyPath" = ARRAY['"table"'::jsonb, '"external:fuzz-users-map-level-2-101"'::jsonb, '"table"'::jsonb, '"internal:map"'::jsonb, '"storage"'::jsonb, '"groups"'::jsonb, "deletingRow"."groupKey", '"rows"'::jsonb, to_jsonb("deletingRow"."rowIdentifier"::text)]::jsonb[]
+                )
+            )
+            AND NOT EXISTS (
+              SELECT 1
+              FROM "new_flat_rows_81x457bywzj9cmmwrg0a75328rvf1aa0tqd4n9s1vtbqg" AS "insertingRow"
+              WHERE "insertingRow"."groupKey" IS NOT DISTINCT FROM "changes"."groupKey"
+            )
+        
+),
+"flat_map_changes_hfe1g0gz05jxzx6j8ma5dv2n1fegvheyr3hrpp5rtgx78" AS (
+  
+          SELECT
+            COALESCE("newRows"."groupKey", "oldRows"."groupKey") AS "groupKey",
+            COALESCE("newRows"."rowIdentifier", "oldRows"."rowIdentifier") AS "rowIdentifier",
+            'null'::jsonb AS "oldRowSortKey",
+            'null'::jsonb AS "newRowSortKey",
+            CASE WHEN "oldRows"."rowData" IS NULL THEN 'null'::jsonb ELSE "oldRows"."rowData" END AS "oldRowData",
+            CASE WHEN "newRows"."rowData" IS NULL THEN 'null'::jsonb ELSE "newRows"."rowData" END AS "newRowData"
+          FROM "old_flat_rows_jqg9m7ygb2dprm9fkcjnd73w4wjyjr6m305c3nd7zrdtr" AS "oldRows"
+          FULL OUTER JOIN "new_flat_rows_81x457bywzj9cmmwrg0a75328rvf1aa0tqd4n9s1vtbqg" AS "newRows"
+            ON "oldRows"."groupKey" IS NOT DISTINCT FROM "newRows"."groupKey"
+            AND "oldRows"."rowIdentifier" = "newRows"."rowIdentifier"
+          WHERE "oldRows"."rowData" IS DISTINCT FROM "newRows"."rowData"
+        
+),
+"mapped_changes_9hat6erjww49qyv9pavsrffg590njzr9z5xpdja4h7t9g" AS (
+  
+          SELECT
+            "changes"."rowIdentifier" AS "rowIdentifier",
+            "changes"."oldRowData" AS "oldRowData",
+            "changes"."newRowData" AS "newRowData",
+            ("changes"."oldRowData" IS NOT NULL AND jsonb_typeof("changes"."oldRowData") = 'object') AS "hasOldRow",
+            ("changes"."newRowData" IS NOT NULL AND jsonb_typeof("changes"."newRowData") = 'object') AS "hasNewRow",
+            "oldGroup"."groupKey" AS "oldGroupKey",
+            "newGroup"."groupKey" AS "newGroupKey"
+          FROM "flat_map_changes_hfe1g0gz05jxzx6j8ma5dv2n1fegvheyr3hrpp5rtgx78" AS "changes"
+          LEFT JOIN LATERAL (
+            SELECT "mapped"."groupKey"
+            FROM (
+              SELECT "rowData"->'bucket' AS "groupKey"
+              FROM (
+                SELECT
+                  "changes"."rowIdentifier" AS "rowIdentifier",
+                  "changes"."oldRowData" AS "rowData"
+              ) AS "groupByInput"
+            ) AS "mapped"
+          ) AS "oldGroup" ON ("changes"."oldRowData" IS NOT NULL AND jsonb_typeof("changes"."oldRowData") = 'object')
+          LEFT JOIN LATERAL (
+            SELECT "mapped"."groupKey"
+            FROM (
+              SELECT "rowData"->'bucket' AS "groupKey"
+              FROM (
+                SELECT
+                  "changes"."rowIdentifier" AS "rowIdentifier",
+                  "changes"."newRowData" AS "rowData"
+              ) AS "groupByInput"
+            ) AS "mapped"
+          ) AS "newGroup" ON ("changes"."newRowData" IS NOT NULL AND jsonb_typeof("changes"."newRowData") = 'object')
+          WHERE 
+      EXISTS (
+        SELECT 1 FROM "BulldozerStorageEngine"
+        WHERE "keyPath" = ARRAY['"table"'::jsonb, '"external:fuzz-users-by-bucket-101"'::jsonb, '"storage"'::jsonb, '"metadata"'::jsonb]::jsonb[]
+      )
+    
+        
+),
+"unnamed_statement_br2pqz8w" AS (
+  
+          INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
+          SELECT
+            gen_random_uuid(),
+            "insertRows"."keyPath",
+            "insertRows"."value"
+          FROM (
+            SELECT DISTINCT
+              ARRAY['"table"'::jsonb, '"external:fuzz-users-by-bucket-101"'::jsonb, '"storage"'::jsonb, '"groups"'::jsonb, "newGroupKey"]::jsonb[] AS "keyPath",
+              'null'::jsonb AS "value"
+            FROM "mapped_changes_9hat6erjww49qyv9pavsrffg590njzr9z5xpdja4h7t9g"
+            WHERE "hasNewRow"
+            UNION
+            SELECT DISTINCT
+              ARRAY['"table"'::jsonb, '"external:fuzz-users-by-bucket-101"'::jsonb, '"storage"'::jsonb, '"groups"'::jsonb, "newGroupKey", '"rows"'::jsonb]::jsonb[] AS "keyPath",
+              'null'::jsonb AS "value"
+            FROM "mapped_changes_9hat6erjww49qyv9pavsrffg590njzr9z5xpdja4h7t9g"
+            WHERE "hasNewRow"
+          ) AS "insertRows"
+          ON CONFLICT ("keyPath") DO NOTHING
+        
+),
+"unnamed_statement_zvcwftv3" AS (
+  
+          DELETE FROM "BulldozerStorageEngine" AS "target"
+          USING "mapped_changes_9hat6erjww49qyv9pavsrffg590njzr9z5xpdja4h7t9g" AS "changes"
+          WHERE "changes"."hasOldRow"
+            AND "target"."keyPath" = ARRAY['"table"'::jsonb, '"external:fuzz-users-by-bucket-101"'::jsonb, '"storage"'::jsonb, '"groups"'::jsonb, "changes"."oldGroupKey", '"rows"'::jsonb, to_jsonb("changes"."rowIdentifier"::text)]::jsonb[]
+        
+),
+"unnamed_statement_e5kztjcm" AS (
+  
+          INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
+          SELECT
+            gen_random_uuid(),
+            ARRAY['"table"'::jsonb, '"external:fuzz-users-by-bucket-101"'::jsonb, '"storage"'::jsonb, '"groups"'::jsonb, "newGroupKey", '"rows"'::jsonb, to_jsonb("rowIdentifier"::text)]::jsonb[],
+            jsonb_build_object('rowData', "newRowData")
+          FROM "mapped_changes_9hat6erjww49qyv9pavsrffg590njzr9z5xpdja4h7t9g"
+          WHERE "hasNewRow"
+          ON CONFLICT ("keyPath") DO UPDATE
+          SET "value" = EXCLUDED."value"
+        
+),
+"unnamed_statement_fmaqky9q" AS (
+  
+          DELETE FROM "BulldozerStorageEngine" AS "staleGroupPath"
+          USING "mapped_changes_9hat6erjww49qyv9pavsrffg590njzr9z5xpdja4h7t9g" AS "changes"
+          WHERE "changes"."hasOldRow"
+            AND "staleGroupPath"."keyPath" IN (
+              ARRAY['"table"'::jsonb, '"external:fuzz-users-by-bucket-101"'::jsonb, '"storage"'::jsonb, '"groups"'::jsonb, "changes"."oldGroupKey", '"rows"'::jsonb]::jsonb[],
+              ARRAY['"table"'::jsonb, '"external:fuzz-users-by-bucket-101"'::jsonb, '"storage"'::jsonb, '"groups"'::jsonb, "changes"."oldGroupKey"]::jsonb[]
+            )
+            AND NOT EXISTS (
+              SELECT 1
+              FROM "BulldozerStorageEngine" AS "groupRow"
+              WHERE "groupRow"."keyPathParent" = ARRAY['"table"'::jsonb, '"external:fuzz-users-by-bucket-101"'::jsonb, '"storage"'::jsonb, '"groups"'::jsonb, "changes"."oldGroupKey", '"rows"'::jsonb]::jsonb[]
+                AND NOT EXISTS (
+                  SELECT 1
+                  FROM "mapped_changes_9hat6erjww49qyv9pavsrffg590njzr9z5xpdja4h7t9g" AS "deletingRow"
+                  WHERE "deletingRow"."hasOldRow"
+                    AND "deletingRow"."oldGroupKey" IS NOT DISTINCT FROM "changes"."oldGroupKey"
+                    AND "groupRow"."keyPath" = ARRAY['"table"'::jsonb, '"external:fuzz-users-by-bucket-101"'::jsonb, '"storage"'::jsonb, '"groups"'::jsonb, "deletingRow"."oldGroupKey", '"rows"'::jsonb, to_jsonb("deletingRow"."rowIdentifier"::text)]::jsonb[]
+                )
+            )
+            AND NOT EXISTS (
+              SELECT 1
+              FROM "mapped_changes_9hat6erjww49qyv9pavsrffg590njzr9z5xpdja4h7t9g" AS "insertingRow"
+              WHERE "insertingRow"."hasNewRow"
+                AND "insertingRow"."newGroupKey" IS NOT DISTINCT FROM "changes"."oldGroupKey"
+            )
+        
+),
+"grouped_changes_e4p857w4kzj7vda37xcp61a730wq7472960nn1p1xz03g" AS (
+  
+          SELECT
+            "oldGroupKey" AS "groupKey",
+            "rowIdentifier" AS "rowIdentifier",
+            'null'::jsonb AS "oldRowSortKey",
+            'null'::jsonb AS "newRowSortKey",
+            "oldRowData" AS "oldRowData",
+            CASE
+              WHEN "hasNewRow" AND "oldGroupKey" IS NOT DISTINCT FROM "newGroupKey" THEN "newRowData"
+              ELSE 'null'::jsonb
+            END AS "newRowData"
+          FROM "mapped_changes_9hat6erjww49qyv9pavsrffg590njzr9z5xpdja4h7t9g"
+          WHERE "hasOldRow"
+          UNION ALL
+          SELECT
+            "newGroupKey" AS "groupKey",
+            "rowIdentifier" AS "rowIdentifier",
+            'null'::jsonb AS "oldRowSortKey",
+            'null'::jsonb AS "newRowSortKey",
+            'null'::jsonb AS "oldRowData",
+            "newRowData" AS "newRowData"
+          FROM "mapped_changes_9hat6erjww49qyv9pavsrffg590njzr9z5xpdja4h7t9g"
+          WHERE "hasNewRow"
+            AND (NOT "hasOldRow" OR "oldGroupKey" IS DISTINCT FROM "newGroupKey")
+        
+),
+__dummy_statement_2__ AS (SELECT 1)
+SELECT 1;
+
+COMMIT;

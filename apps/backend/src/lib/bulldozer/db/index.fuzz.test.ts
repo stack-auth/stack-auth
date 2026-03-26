@@ -1,6 +1,6 @@
 import { stringCompare, templateIdentity } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
 import { declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLimitTable, declareMapTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
 
 type TestDb = { full: string, base: string };
@@ -36,6 +36,86 @@ type TeamBucketRow = { team: string | null, valueScaled: number, bucket: string 
 type TeamFlatMappedRow = { team: string | null, kind: string, mappedValue: number };
 type TeamFlatMappedPlusRow = { team: string | null, kind: string, mappedValuePlusOne: number };
 type GroupedRows<T extends Record<string, unknown>> = Map<string, { groupKey: string | null, rows: Map<string, T> }>;
+type TraceSectionStats = {
+  count: number,
+  totalMs: number,
+  maxMs: number,
+  slowestExample: string,
+};
+type TraceBucket = {
+  totalTrackedMs: number,
+  sections: Map<string, TraceSectionStats>,
+  slowOps: Array<{ opKind: string, ms: number, detail: string }>,
+};
+
+const FUZZ_TRACE_ENABLED = (() => {
+  const env = Reflect.get(import.meta, "env");
+  const value = Reflect.get(env, "STACK_BULLDOZER_FUZZ_TRACE") ?? Reflect.get(env, "BULLDOZER_FUZZ_TRACE");
+  return value === true || value === "true" || value === "1";
+})();
+const MAX_SLOW_OPS = 20;
+const tracesByTest = new Map<string, TraceBucket>();
+
+function getCurrentTestNameForTrace(): string {
+  return expect.getState().currentTestName ?? "__unknown_test__";
+}
+function getTraceBucket(testName: string): TraceBucket {
+  const existing = tracesByTest.get(testName);
+  if (existing != null) return existing;
+  const created: TraceBucket = { totalTrackedMs: 0, sections: new Map(), slowOps: [] };
+  tracesByTest.set(testName, created);
+  return created;
+}
+function trimSqlForTrace(input: string): string {
+  const trimmed = input.replaceAll(/\s+/g, " ").trim();
+  if (trimmed.length <= 180) return trimmed;
+  return `${trimmed.slice(0, 177)}...`;
+}
+function callerForTrace(fallback: string): string {
+  const stack = (new Error().stack ?? "").split("\n").map((line) => line.trim());
+  const preferred = stack.find((line) =>
+    line.includes("index.fuzz.test.ts")
+    && !line.includes("callerForTrace")
+    && !line.includes("traceOperation")
+    && !line.includes("runStatements")
+    && !line.includes("readRows")
+    && !line.includes("readBoolean"),
+  );
+  if (preferred != null) return preferred;
+  return stack[3] ?? fallback;
+}
+function traceOperation(options: { opKind: "tx" | "query" | "expr", section: string, ms: number, detail: string }) {
+  if (!FUZZ_TRACE_ENABLED) return;
+  const testName = getCurrentTestNameForTrace();
+  const bucket = getTraceBucket(testName);
+  bucket.totalTrackedMs += options.ms;
+  const key = `${options.opKind}:${options.section}`;
+  const existing = bucket.sections.get(key);
+  if (existing != null) {
+    existing.count += 1;
+    existing.totalMs += options.ms;
+    if (options.ms > existing.maxMs) {
+      existing.maxMs = options.ms;
+      existing.slowestExample = options.detail;
+    }
+  } else {
+    bucket.sections.set(key, {
+      count: 1,
+      totalMs: options.ms,
+      maxMs: options.ms,
+      slowestExample: options.detail,
+    });
+  }
+  bucket.slowOps.push({
+    opKind: options.opKind,
+    ms: options.ms,
+    detail: `${options.section} :: ${options.detail}`,
+  });
+  bucket.slowOps.sort((a, b) => b.ms - a.ms);
+  if (bucket.slowOps.length > MAX_SLOW_OPS) {
+    bucket.slowOps.length = MAX_SLOW_OPS;
+  }
+}
 
 function expr<T>(sql: string): SqlExpression<T> {
   return { type: "expression", sql };
@@ -73,6 +153,9 @@ function groupKeyExpression(groupKey: string | null): SqlExpression<unknown> {
   return groupKey === null
     ? expr(`'null'::jsonb`)
     : expr(`to_jsonb(${sqlStringLiteral(groupKey)}::text)`);
+}
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 function computeTeamGroups(rows: Map<string, SourceRow>): GroupedRows<{ team: string | null, value: number }> {
@@ -186,18 +269,68 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
   const adminSql = postgres(dbUrls.base, { onnotice: () => undefined });
   const sql = postgres(dbUrls.full, { onnotice: () => undefined, max: 1 });
 
-  async function runStatements(statements: SqlStatement[]) {
-    await sql.unsafe(toExecutableSqlTransaction(statements));
+  async function runStatements(statements: SqlStatement[], traceSection?: string) {
+    const txSql = toExecutableSqlTransaction(statements);
+    const startedAt = performance.now();
+    await sql.unsafe(txSql);
+    const elapsedMs = performance.now() - startedAt;
+    let rowCountDetail = "";
+    if (FUZZ_TRACE_ENABLED) {
+      const countRows = await sql.unsafe(`SELECT COUNT(*)::int AS "count" FROM "BulldozerStorageEngine"`);
+      if (countRows.length === 0) {
+        throw new Error("expected count row for BulldozerStorageEngine");
+      }
+      const firstCountRow = countRows[0];
+      rowCountDetail = ` storageRows=${Number(firstCountRow.count)}`;
+    }
+    const detail = `statements=${statements.length} txSqlChars=${txSql.length}${rowCountDetail} first=${trimSqlForTrace(statements[0]?.sql ?? "none")}`;
+    traceOperation({
+      opKind: "tx",
+      section: traceSection ?? callerForTrace("runStatements"),
+      ms: elapsedMs,
+      detail,
+    });
   }
-  async function readBoolean(expression: SqlExpression<boolean>) {
+  async function readBoolean(expression: SqlExpression<boolean>, traceSection?: string) {
+    const startedAt = performance.now();
     const rows = await sql.unsafe(`SELECT (${expression.sql}) AS "value"`);
+    const elapsedMs = performance.now() - startedAt;
+    traceOperation({
+      opKind: "expr",
+      section: traceSection ?? callerForTrace("readBoolean"),
+      ms: elapsedMs,
+      detail: trimSqlForTrace(expression.sql),
+    });
     return rows[0].value === true;
   }
-  async function readRows(query: SqlQuery) {
-    return await sql.unsafe(toQueryableSqlQuery(query));
+  async function readRows(query: SqlQuery, traceSection?: string) {
+    const startedAt = performance.now();
+    const rows = await sql.unsafe(toQueryableSqlQuery(query));
+    const elapsedMs = performance.now() - startedAt;
+    traceOperation({
+      opKind: "query",
+      section: traceSection ?? callerForTrace("readRows"),
+      ms: elapsedMs,
+      detail: trimSqlForTrace(toQueryableSqlQuery(query)),
+    });
+    return rows;
   }
 
   async function assertTableMatches<RowData extends Record<string, unknown>>(table: QueryableTable, expected: GroupedRows<RowData>) {
+    const tableLabel = (() => {
+      const maybeRecord = table as unknown;
+      if (isRecord(maybeRecord)) {
+        const debugArgs = Reflect.get(maybeRecord, "debugArgs");
+        if (isRecord(debugArgs)) {
+          const tableId = Reflect.get(debugArgs, "tableId");
+          const operator = Reflect.get(debugArgs, "operator");
+          if (typeof tableId === "string" && typeof operator === "string") {
+            return `${operator}:${tableId}`;
+          }
+        }
+      }
+      return "table";
+    })();
     const expectedGroups = [...expected.values()]
       .filter((group) => group.rows.size > 0)
       .map((group) => group.groupKey)
@@ -208,7 +341,7 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
       end: "end",
       startInclusive: true,
       endInclusive: true,
-    })))
+    }), `${tableLabel}.listGroups`))
       .map((row) => row.groupkey as string | null)
       .sort(nullableStringCompare);
 
@@ -226,7 +359,7 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
       end: "end",
       startInclusive: true,
       endInclusive: true,
-    })))
+    }), `${tableLabel}.listRowsInGroup(all)`))
       .map((row) => ({
         groupKey: row.groupkey as string | null,
         rowIdentifier: row.rowidentifier as string,
@@ -250,7 +383,7 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
         end: "end",
         startInclusive: true,
         endInclusive: true,
-      })))
+      }), `${tableLabel}.listRowsInGroup(group)`))
         .map((row) => ({ rowIdentifier: row.rowidentifier as string, rowData: row.rowdata as Record<string, unknown> }))
         .sort((a, b) => stringCompare(a.rowIdentifier, b.rowIdentifier));
       expect(actualRows).toEqual(expectedRows);
@@ -262,7 +395,7 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
       end: "end",
       startInclusive: true,
       endInclusive: true,
-    }));
+    }), `${tableLabel}.listRowsInGroup(missing)`);
     expect(missingRows).toEqual([]);
   }
 
@@ -271,8 +404,25 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
   });
 
   beforeEach(async () => {
+    const createExtensionStartedAt = performance.now();
     await sql`CREATE EXTENSION IF NOT EXISTS pgcrypto`;
+    traceOperation({
+      opKind: "query",
+      section: "beforeEach.createExtension",
+      ms: performance.now() - createExtensionStartedAt,
+      detail: "CREATE EXTENSION IF NOT EXISTS pgcrypto",
+    });
+
+    const dropTableStartedAt = performance.now();
     await sql`DROP TABLE IF EXISTS "BulldozerStorageEngine"`;
+    traceOperation({
+      opKind: "query",
+      section: "beforeEach.dropTable",
+      ms: performance.now() - dropTableStartedAt,
+      detail: `DROP TABLE IF EXISTS "BulldozerStorageEngine"`,
+    });
+
+    const createTableStartedAt = performance.now();
     await sql`
       CREATE TABLE "BulldozerStorageEngine" (
         "id" UUID NOT NULL DEFAULT gen_random_uuid(),
@@ -292,13 +442,62 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
           ON DELETE CASCADE
       )
     `;
+    traceOperation({
+      opKind: "query",
+      section: "beforeEach.createTable",
+      ms: performance.now() - createTableStartedAt,
+      detail: `CREATE TABLE "BulldozerStorageEngine"`,
+    });
+
+    const createIndexStartedAt = performance.now();
     await sql`CREATE INDEX "BulldozerStorageEngine_keyPathParent_idx" ON "BulldozerStorageEngine"("keyPathParent")`;
+    traceOperation({
+      opKind: "query",
+      section: "beforeEach.createIndex",
+      ms: performance.now() - createIndexStartedAt,
+      detail: `CREATE INDEX "BulldozerStorageEngine_keyPathParent_idx"`,
+    });
+
+    const seedRootsStartedAt = performance.now();
     await sql`
       INSERT INTO "BulldozerStorageEngine" ("keyPath", "value")
       VALUES
         (ARRAY[]::jsonb[], 'null'::jsonb),
         (ARRAY[to_jsonb('table'::text)]::jsonb[], 'null'::jsonb)
     `;
+    traceOperation({
+      opKind: "query",
+      section: "beforeEach.seedRoots",
+      ms: performance.now() - seedRootsStartedAt,
+      detail: `INSERT root key paths`,
+    });
+  });
+
+  afterEach(() => {
+    if (!FUZZ_TRACE_ENABLED) return;
+    const testName = getCurrentTestNameForTrace();
+    const bucket = tracesByTest.get(testName);
+    if (bucket == null) return;
+
+    const topSections = [...bucket.sections.entries()]
+      .sort((a, b) => b[1].totalMs - a[1].totalMs)
+      .slice(0, 12);
+    const topOps = bucket.slowOps.slice(0, 12);
+
+    console.log(`\n[bulldozer-fuzz-trace] ${testName}`);
+    console.log(`[bulldozer-fuzz-trace] tracked_total_ms=${bucket.totalTrackedMs.toFixed(1)} sections=${bucket.sections.size}`);
+    for (const [sectionName, stats] of topSections) {
+      console.log(
+        `[bulldozer-fuzz-trace] section=${sectionName} count=${stats.count} total_ms=${stats.totalMs.toFixed(1)} avg_ms=${(stats.totalMs / stats.count).toFixed(2)} max_ms=${stats.maxMs.toFixed(1)} slowest="${stats.slowestExample}"`,
+      );
+    }
+    for (const op of topOps) {
+      console.log(
+        `[bulldozer-fuzz-trace] slow_op kind=${op.opKind} ms=${op.ms.toFixed(1)} detail="${op.detail}"`,
+      );
+    }
+
+    tracesByTest.delete(testName);
   });
 
   afterAll(async () => {

@@ -79,6 +79,9 @@ A: Run lint from `apps/dashboard` directly (for example `pnpm lint -- "src/app/(
 Q: How should unsubscribe-link e2e tests avoid breakage from email theme/layout changes?
 A: In `apps/e2e/tests/backend/endpoints/api/v1/unsubscribe-link.test.ts`, avoid snapshotting the entire rendered HTML for transactional emails; assert stable behavior instead (email content present and `/api/v1/emails/unsubscribe-link` absent) so cosmetic wrapper/style changes do not fail the test.
 
+Q: Why is the JIT disabled for Bulldozer DB mutations with only a few rows?
+A: PostgreSQL JIT can dominate runtime for Bulldozer's giant single-statement CTE transactions. In a `group -> map -> map -> group` mutation with only 31 SQL statements and ~8 source rows, `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON, VERBOSE)` showed ~1.4ms planning, ~1598.9ms execution, and ~1597.5ms of JIT time (`Optimization` ~836ms, `Emission` ~740ms) while the actual plan nodes were sub-millisecond. Disabling JIT locally for Bulldozer transactions with `SET LOCAL jit = off;` in `toExecutableSqlTransaction()` dropped the same query to ~0.63ms execution and brought the stacked fuzz case from ~41s to ~0.34s.
+
 Q: How should dashboard pages update project config values?
 A: Do not call `project.updateConfig(...)` directly from dashboard pages; lint enforces using `useUpdateConfig()` from `apps/dashboard/src/lib/config-update.tsx` so pushable-config confirmation flows are handled consistently.
 
