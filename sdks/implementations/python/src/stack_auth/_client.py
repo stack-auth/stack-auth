@@ -86,15 +86,7 @@ class BaseAPIClient(Generic[HttpxClientT]):
         Returns ``(actual_status, parsed_json)`` on success.
         Raises the appropriate :class:`StackAuthError` subclass on failure.
         """
-        # Determine real status
-        actual_status_header = response.headers.get("x-stack-actual-status")
-        if actual_status_header:
-            try:
-                actual_status = int(actual_status_header)
-            except ValueError:
-                actual_status = response.status_code
-        else:
-            actual_status = response.status_code
+        actual_status = self._get_actual_status(response)
 
         # Known-error dispatch
         known_error = response.headers.get("x-stack-known-error")
@@ -127,6 +119,20 @@ class BaseAPIClient(Generic[HttpxClientT]):
     # Retry helpers
     # ------------------------------------------------------------------
 
+    @staticmethod
+    def _get_actual_status(response: httpx.Response) -> int:
+        """Extract the real HTTP status, preferring x-stack-actual-status header.
+
+        Falls back to response.status_code if the header is absent or malformed.
+        """
+        header = response.headers.get("x-stack-actual-status")
+        if header:
+            try:
+                return int(header)
+            except ValueError:
+                pass
+        return response.status_code
+
     def _should_retry(self, method: str, attempt: int) -> bool:
         """Return True if the request method is idempotent and retries remain."""
         return method.upper() in self.IDEMPOTENT_METHODS and attempt < self.MAX_RETRIES
@@ -134,17 +140,9 @@ class BaseAPIClient(Generic[HttpxClientT]):
     @staticmethod
     def _get_retry_delay(attempt: int, response: httpx.Response | None = None) -> float:
         """Calculate retry delay using Retry-After header or exponential backoff."""
-        if response is not None and response.status_code == 429:
-            retry_after = response.headers.get("Retry-After")
-            if retry_after is not None:
-                try:
-                    return float(retry_after)
-                except ValueError:
-                    pass
-        # Check x-stack-actual-status for 429 too
         if response is not None:
-            actual = response.headers.get("x-stack-actual-status")
-            if actual == "429":
+            actual_status = BaseAPIClient._get_actual_status(response)
+            if actual_status == 429:
                 retry_after = response.headers.get("Retry-After")
                 if retry_after is not None:
                     try:
@@ -207,11 +205,7 @@ class SyncAPIClient(BaseAPIClient[httpx.Client]):
                 )
 
                 # Check for 429 via x-stack-actual-status
-                actual_status_hdr = resp.headers.get("x-stack-actual-status")
-                try:
-                    actual_status = int(actual_status_hdr) if actual_status_hdr else resp.status_code
-                except ValueError:
-                    actual_status = resp.status_code
+                actual_status = self._get_actual_status(resp)
 
                 # 429 retries apply to ALL methods (including POST/PATCH).
                 # Unlike network errors, a 429 guarantees the server did NOT
@@ -309,11 +303,7 @@ class AsyncAPIClient(BaseAPIClient[httpx.AsyncClient]):
                     params=params,
                 )
 
-                actual_status_hdr = resp.headers.get("x-stack-actual-status")
-                try:
-                    actual_status = int(actual_status_hdr) if actual_status_hdr else resp.status_code
-                except ValueError:
-                    actual_status = resp.status_code
+                actual_status = self._get_actual_status(resp)
 
                 # 429 retries apply to ALL methods (including POST/PATCH).
                 # Unlike network errors, a 429 guarantees the server did NOT
