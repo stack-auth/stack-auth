@@ -5,7 +5,7 @@ import { generateUuid } from "./session-replay";
 
 export type ServerBatcherDeps = {
   sendBatch: (body: string, session: InternalSession | null, options: { keepalive: boolean }) => Promise<Result<Response, Error>>,
-  waitUntil?: (promise: Promise<any>) => void,
+  waitUntil?: (promise: Promise<unknown>) => void,
   payloadKey: string,
   maxPerBatch: number,
 };

@@ -488,7 +488,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
 
     const { headers } = optionsOrRequest;
-    if (typeof (headers as Record<string, unknown>)?.get === "function") {
+    if (typeof (headers as Record<string, unknown>).get === "function") {
       return {
         options: { tokenStore: optionsOrRequest as RequestLike } as TrackServerAnalyticsEventOptions<HasTokenStore>,
         headersSource: optionsOrRequest,

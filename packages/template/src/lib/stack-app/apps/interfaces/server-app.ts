@@ -31,7 +31,7 @@ export type StackServerAppConstructorOptions<HasTokenStore extends boolean, Proj
    * If omitted, the SDK auto-detects `globalThis.waitUntil` (available in
    * some runtimes). Falls back to fire-and-forget if unavailable.
    */
-  waitUntil?: (promise: Promise<any>) => void,
+  waitUntil?: (promise: Promise<unknown>) => void,
 };
 
 export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId extends string = string> = (

@@ -1649,8 +1649,9 @@ export default function PageClient() {
       types.add(e.eventType);
     }
     // Sort: known types first in order, then custom alphabetically
+    const knownSet = new Set<string>(ALL_KNOWN_EVENT_TYPES);
     const known = ALL_KNOWN_EVENT_TYPES.filter((t) => types.has(t));
-    const custom = [...types].filter((t) => !ALL_KNOWN_EVENT_TYPES.includes(t as any)).sort();
+    const custom = [...types].filter((t) => !knownSet.has(t)).sort();
     return [...known, ...custom];
   }, [timelineEvents]);
 
