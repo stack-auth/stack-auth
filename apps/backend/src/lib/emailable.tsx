@@ -45,9 +45,9 @@ async function verifyWithRetries(verifyFn: () => Promise<unknown>, maxAttempts: 
     const res: any = await verifyFn();
     if (!("state" in res)) {
       if ("message" in res && res.message.includes("Your request is taking longer than normal")) {
-      await wait((Math.random() + 0.5) * delayBaseMs * (2 ** i));
-      continue;
-    }
+        await wait((Math.random() + 0.5) * delayBaseMs * (2 ** i));
+        continue;
+      }
       throw new StackAssertionError("Emailable returned an unexpected response body", { response: res });
     }
     return res;
