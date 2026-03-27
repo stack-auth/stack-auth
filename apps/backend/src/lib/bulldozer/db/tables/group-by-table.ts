@@ -1,0 +1,315 @@
+import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
+import type { Json, RowData, RowIdentifier, SqlExpression, SqlMapper, SqlStatement, TableId } from "../utilities";
+import {
+  getStorageEnginePath,
+  getTablePath,
+  quoteSqlIdentifier,
+  quoteSqlStringLiteral,
+  sqlExpression,
+  sqlQuery,
+  sqlStatement,
+  singleNullSortKeyRangePredicate,
+  tableIdToDebugString,
+} from "../utilities";
+import type { Table } from "../table-type";
+
+export function declareGroupByTable<
+  GK extends Json,
+  OldRD extends RowData,
+  NewRD extends RowData,
+>(options: {
+  tableId: TableId,
+  fromTable: Table<GK, any, OldRD>,
+  groupBy: SqlMapper<{ rowIdentifier: RowIdentifier, rowData: OldRD }, { groupKey: GK }>,
+}): Table<GK, null, NewRD> {
+  const triggers = new Map<string, (changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => SqlStatement[]>();
+  const getGroupKeyPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey]);
+  const getGroupRowsPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey, "rows"]);
+  const getGroupRowPath = (groupKey: SqlExpression<Json>, rowIdentifier: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey, "rows", rowIdentifier]);
+  const isInitializedExpression = sqlExpression`
+    EXISTS (
+      SELECT 1 FROM "BulldozerStorageEngine"
+      WHERE "keyPath" = ${getStorageEnginePath(options.tableId, ["metadata"])}::jsonb[]
+    )
+  `;
+
+  options.fromTable.registerRowChangeTrigger((fromChangesTable) => {
+    const mappedChangesTableName = `mapped_changes_${generateSecureRandomString()}`;
+    const groupedChangesTableName = `grouped_changes_${generateSecureRandomString()}`;
+
+    return [
+      sqlQuery`
+        SELECT
+          "changes"."rowIdentifier" AS "rowIdentifier",
+          "changes"."oldRowData" AS "oldRowData",
+          "changes"."newRowData" AS "newRowData",
+          ("changes"."oldRowData" IS NOT NULL AND jsonb_typeof("changes"."oldRowData") = 'object') AS "hasOldRow",
+          ("changes"."newRowData" IS NOT NULL AND jsonb_typeof("changes"."newRowData") = 'object') AS "hasNewRow",
+          "oldGroup"."groupKey" AS "oldGroupKey",
+          "newGroup"."groupKey" AS "newGroupKey"
+        FROM ${fromChangesTable} AS "changes"
+        LEFT JOIN LATERAL (
+          SELECT "mapped"."groupKey"
+          FROM (
+            SELECT ${options.groupBy}
+            FROM (
+              SELECT
+                "changes"."rowIdentifier" AS "rowIdentifier",
+                "changes"."oldRowData" AS "rowData"
+            ) AS "groupByInput"
+          ) AS "mapped"
+        ) AS "oldGroup" ON ("changes"."oldRowData" IS NOT NULL AND jsonb_typeof("changes"."oldRowData") = 'object')
+        LEFT JOIN LATERAL (
+          SELECT "mapped"."groupKey"
+          FROM (
+            SELECT ${options.groupBy}
+            FROM (
+              SELECT
+                "changes"."rowIdentifier" AS "rowIdentifier",
+                "changes"."newRowData" AS "rowData"
+            ) AS "groupByInput"
+          ) AS "mapped"
+        ) AS "newGroup" ON ("changes"."newRowData" IS NOT NULL AND jsonb_typeof("changes"."newRowData") = 'object')
+        WHERE ${isInitializedExpression}
+      `.toStatement(mappedChangesTableName),
+      sqlStatement`
+        INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
+        SELECT
+          gen_random_uuid(),
+          "insertRows"."keyPath",
+          "insertRows"."value"
+        FROM (
+          SELECT DISTINCT
+            ${getGroupKeyPath(sqlExpression`"newGroupKey"`)}::jsonb[] AS "keyPath",
+            'null'::jsonb AS "value"
+          FROM ${quoteSqlIdentifier(mappedChangesTableName)}
+          WHERE "hasNewRow"
+          UNION
+          SELECT DISTINCT
+            ${getGroupRowsPath(sqlExpression`"newGroupKey"`)}::jsonb[] AS "keyPath",
+            'null'::jsonb AS "value"
+          FROM ${quoteSqlIdentifier(mappedChangesTableName)}
+          WHERE "hasNewRow"
+        ) AS "insertRows"
+        ON CONFLICT ("keyPath") DO NOTHING
+      `,
+      sqlStatement`
+        DELETE FROM "BulldozerStorageEngine" AS "target"
+        USING ${quoteSqlIdentifier(mappedChangesTableName)} AS "changes"
+        WHERE "changes"."hasOldRow"
+          AND "target"."keyPath" = ${getGroupRowPath(
+            sqlExpression`"changes"."oldGroupKey"`,
+            sqlExpression`to_jsonb("changes"."rowIdentifier"::text)`,
+          )}::jsonb[]
+      `,
+      sqlStatement`
+        INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
+        SELECT
+          gen_random_uuid(),
+          ${getGroupRowPath(
+            sqlExpression`"newGroupKey"`,
+            sqlExpression`to_jsonb("rowIdentifier"::text)`,
+          )}::jsonb[],
+          jsonb_build_object('rowData', "newRowData")
+        FROM ${quoteSqlIdentifier(mappedChangesTableName)}
+        WHERE "hasNewRow"
+        ON CONFLICT ("keyPath") DO UPDATE
+        SET "value" = EXCLUDED."value"
+      `,
+      sqlStatement`
+        DELETE FROM "BulldozerStorageEngine" AS "staleGroupPath"
+        USING ${quoteSqlIdentifier(mappedChangesTableName)} AS "changes"
+        WHERE "changes"."hasOldRow"
+          AND "staleGroupPath"."keyPath" IN (
+            ${getGroupRowsPath(sqlExpression`"changes"."oldGroupKey"`)}::jsonb[],
+            ${getGroupKeyPath(sqlExpression`"changes"."oldGroupKey"`)}::jsonb[]
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM "BulldozerStorageEngine" AS "groupRow"
+            WHERE "groupRow"."keyPathParent" = ${getGroupRowsPath(sqlExpression`"changes"."oldGroupKey"`)}::jsonb[]
+              AND NOT EXISTS (
+                SELECT 1
+                FROM ${quoteSqlIdentifier(mappedChangesTableName)} AS "deletingRow"
+                WHERE "deletingRow"."hasOldRow"
+                  AND "deletingRow"."oldGroupKey" IS NOT DISTINCT FROM "changes"."oldGroupKey"
+                  AND "groupRow"."keyPath" = ${getGroupRowPath(
+                    sqlExpression`"deletingRow"."oldGroupKey"`,
+                    sqlExpression`to_jsonb("deletingRow"."rowIdentifier"::text)`,
+                  )}::jsonb[]
+              )
+          )
+          AND NOT EXISTS (
+            SELECT 1
+            FROM ${quoteSqlIdentifier(mappedChangesTableName)} AS "insertingRow"
+            WHERE "insertingRow"."hasNewRow"
+              AND "insertingRow"."newGroupKey" IS NOT DISTINCT FROM "changes"."oldGroupKey"
+          )
+      `,
+      sqlQuery`
+        SELECT
+          "oldGroupKey" AS "groupKey",
+          "rowIdentifier" AS "rowIdentifier",
+          'null'::jsonb AS "oldRowSortKey",
+          'null'::jsonb AS "newRowSortKey",
+          "oldRowData" AS "oldRowData",
+          CASE
+            WHEN "hasNewRow" AND "oldGroupKey" IS NOT DISTINCT FROM "newGroupKey" THEN "newRowData"
+            ELSE 'null'::jsonb
+          END AS "newRowData"
+        FROM ${quoteSqlIdentifier(mappedChangesTableName)}
+        WHERE "hasOldRow"
+        UNION ALL
+        SELECT
+          "newGroupKey" AS "groupKey",
+          "rowIdentifier" AS "rowIdentifier",
+          'null'::jsonb AS "oldRowSortKey",
+          'null'::jsonb AS "newRowSortKey",
+          'null'::jsonb AS "oldRowData",
+          "newRowData" AS "newRowData"
+        FROM ${quoteSqlIdentifier(mappedChangesTableName)}
+        WHERE "hasNewRow"
+          AND (NOT "hasOldRow" OR "oldGroupKey" IS DISTINCT FROM "newGroupKey")
+      `.toStatement(groupedChangesTableName),
+      ...[...triggers.values()].flatMap((trigger) => trigger(quoteSqlIdentifier(groupedChangesTableName))),
+    ];
+  });
+
+  return {
+    tableId: options.tableId,
+    inputTables: [options.fromTable],
+    debugArgs: {
+      operator: "groupBy",
+      tableId: tableIdToDebugString(options.tableId),
+      fromTableId: tableIdToDebugString(options.fromTable.tableId),
+      groupBySql: options.groupBy.sql,
+    },
+    compareGroupKeys: (a, b) => sqlExpression` 0 `,
+    compareSortKeys: (a, b) => sqlExpression` 0 `,
+    init: () => {
+      const fromTableAllRowsTableName = `from_table_all_rows_${generateSecureRandomString()}`;
+      const fromTableRowsWithGroupKeyTableName = `from_table_rows_with_group_key_${generateSecureRandomString()}`;
+
+      return [
+        sqlStatement`
+          INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
+          VALUES
+          (gen_random_uuid(), ${getTablePath(options.tableId)}, 'null'::jsonb),
+          (gen_random_uuid(), ${getStorageEnginePath(options.tableId, [])}, 'null'::jsonb),
+          (gen_random_uuid(), ${getStorageEnginePath(options.tableId, ["groups"])}, 'null'::jsonb),
+          (gen_random_uuid(), ${getStorageEnginePath(options.tableId, ["metadata"])}, '{ "version": 1 }'::jsonb)
+        `,
+        options.fromTable.listRowsInGroup({
+          start: "start",
+          end: "end",
+          startInclusive: true,
+          endInclusive: true,
+        }).toStatement(fromTableAllRowsTableName),
+        sqlQuery`
+          SELECT
+            "rows"."rowidentifier" AS "rowIdentifier",
+            "rows"."rowdata" AS "rowData",
+            "mapped"."groupKey" AS "groupKey"
+          FROM ${quoteSqlIdentifier(fromTableAllRowsTableName)} AS "rows"
+          LEFT JOIN LATERAL (
+            SELECT "mapped"."groupKey"
+            FROM (
+              SELECT ${options.groupBy}
+              FROM (
+                SELECT
+                  "rows"."rowidentifier" AS "rowIdentifier",
+                  "rows"."rowdata" AS "rowData"
+              ) AS "groupByInput"
+            ) AS "mapped"
+          ) AS "mapped" ON true
+        `.toStatement(fromTableRowsWithGroupKeyTableName),
+        sqlStatement`
+          INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
+          SELECT
+            gen_random_uuid(),
+            "insertRows"."keyPath",
+            "insertRows"."value"
+          FROM (
+            SELECT DISTINCT
+              ${getGroupKeyPath(sqlExpression`"groupKey"`)}::jsonb[] AS "keyPath",
+              'null'::jsonb AS "value"
+            FROM ${quoteSqlIdentifier(fromTableRowsWithGroupKeyTableName)}
+            UNION
+            SELECT DISTINCT
+              ${getGroupRowsPath(sqlExpression`"groupKey"`)}::jsonb[] AS "keyPath",
+              'null'::jsonb AS "value"
+            FROM ${quoteSqlIdentifier(fromTableRowsWithGroupKeyTableName)}
+            UNION
+            SELECT
+              ${getGroupRowPath(
+                sqlExpression`"groupKey"`,
+                sqlExpression`to_jsonb("rowIdentifier"::text)`,
+              )}::jsonb[] AS "keyPath",
+              jsonb_build_object('rowData', "rowData") AS "value"
+            FROM ${quoteSqlIdentifier(fromTableRowsWithGroupKeyTableName)}
+          ) AS "insertRows"
+        `,
+      ];
+    },
+    delete: () => [sqlStatement`
+      WITH RECURSIVE "pathsToDelete" AS (
+        SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
+        UNION ALL
+        SELECT "BulldozerStorageEngine"."keyPath" AS "path"
+        FROM "BulldozerStorageEngine"
+        INNER JOIN "pathsToDelete" ON "BulldozerStorageEngine"."keyPathParent" = "pathsToDelete"."path"
+      )
+      DELETE FROM "BulldozerStorageEngine"
+      WHERE "keyPath" IN (SELECT "path" FROM "pathsToDelete")
+    `],
+    isInitialized: () => sqlExpression`
+      EXISTS (
+        SELECT 1 FROM "BulldozerStorageEngine"
+        WHERE "keyPath" = ${getStorageEnginePath(options.tableId, ["metadata"])}::jsonb[]
+      )
+    `,
+    listGroups: ({ start, end, startInclusive, endInclusive }) => sqlQuery`
+      SELECT "groupPath"."keyPath"[cardinality("groupPath"."keyPath")] AS groupKey
+      FROM "BulldozerStorageEngine" AS "groupPath"
+      WHERE "groupPath"."keyPathParent" = ${getStorageEnginePath(options.tableId, ["groups"])}::jsonb[]
+        AND EXISTS (
+          SELECT 1
+          FROM "BulldozerStorageEngine" AS "groupRowsPath"
+          INNER JOIN "BulldozerStorageEngine" AS "groupRow"
+            ON "groupRow"."keyPathParent" = "groupRowsPath"."keyPath"
+          WHERE "groupRowsPath"."keyPathParent" = "groupPath"."keyPath"
+            AND "groupRowsPath"."keyPath"[cardinality("groupRowsPath"."keyPath")] = to_jsonb('rows'::text)
+        )
+        AND ${singleNullSortKeyRangePredicate({ start, end, startInclusive, endInclusive })}
+    `,
+    listRowsInGroup: ({ groupKey, start, end, startInclusive, endInclusive }) => groupKey ? sqlQuery`
+      SELECT
+        ("keyPath"[cardinality("keyPath")] #>> '{}') AS rowIdentifier,
+        'null'::jsonb AS rowSortKey,
+        "value"->'rowData' AS rowData
+      FROM "BulldozerStorageEngine"
+      WHERE "keyPathParent" = ${getStorageEnginePath(options.tableId, ["groups", groupKey, "rows"])}::jsonb[]
+        AND ${singleNullSortKeyRangePredicate({ start, end, startInclusive, endInclusive })}
+    ` : sqlQuery`
+      -- Get all rows from all groups
+      SELECT
+        "groupPath"."keyPath"[cardinality("groupPath"."keyPath")] AS groupKey,
+        ("rows"."keyPath"[cardinality("rows"."keyPath")] #>> '{}') AS rowIdentifier,
+        'null'::jsonb AS rowSortKey,
+        "rows"."value"->'rowData' AS rowData
+      FROM "BulldozerStorageEngine" AS "groupPath"
+      INNER JOIN "BulldozerStorageEngine" AS "groupRowsPath"
+        ON "groupRowsPath"."keyPathParent" = "groupPath"."keyPath"
+      INNER JOIN "BulldozerStorageEngine" AS "rows"
+        ON "rows"."keyPathParent" = "groupRowsPath"."keyPath"
+      WHERE "groupPath"."keyPathParent" = ${getStorageEnginePath(options.tableId, ["groups"])}::jsonb[]
+        AND "groupRowsPath"."keyPath"[cardinality("groupRowsPath"."keyPath")] = to_jsonb('rows'::text)
+        AND ${singleNullSortKeyRangePredicate({ start, end, startInclusive, endInclusive })}
+    `,
+    registerRowChangeTrigger: (trigger) => {
+      const id = generateSecureRandomString();
+      triggers.set(id, trigger);
+      return { deregister: () => triggers.delete(id) };
+    },
+  };
+}
