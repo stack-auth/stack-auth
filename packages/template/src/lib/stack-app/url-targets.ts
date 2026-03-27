@@ -1,10 +1,88 @@
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { envVars } from "../env";
-import { HandlerUrlOptions, HandlerUrlTarget, HandlerUrls, ResolvedHandlerUrls } from "./common";
+import { DefaultHandlerUrlTarget, HandlerPageUrls, HandlerUrlOptions, HandlerUrlTarget, HandlerUrls, ResolvedHandlerUrls } from "./common";
 
 const defaultHostedHandlerDomainSuffix = ".built-with-stack-auth.com";
 const hostedHandlerProjectIdPlaceholder = "{projectId}";
 const hostedHandlerPathPlaceholder = "{hostedPath}";
+
+type CustomPagePrompt = {
+  title: string,
+  fullPrompt: string,
+  versions: Record<number, {
+    minSdkVersion: `${number}.${number}.${number}`,
+    upgradePrompt: string,
+  }>,
+};
+
+const customPagePrompts: Record<keyof Omit<HandlerPageUrls, "handler">, CustomPagePrompt> = {
+  signIn: {
+    title: "Sign In",
+    fullPrompt: deindent``,
+    versions: {},
+  },
+  signUp: {
+    title: "Sign Up",
+    fullPrompt: deindent``,
+    versions: {},
+  },
+  signOut: {
+    title: "Sign Out",
+    fullPrompt: deindent``,
+    versions: {},
+  },
+  emailVerification: {
+    title: "Email Verification",
+    fullPrompt: deindent``,
+    versions: {},
+  },
+  passwordReset: {
+    title: "Password Reset",
+    fullPrompt: deindent``,
+    versions: {},
+  },
+  forgotPassword: {
+    title: "Forgot Password",
+    fullPrompt: deindent``,
+    versions: {},
+  },
+  oauthCallback: {
+    title: "OAuth Callback",
+    fullPrompt: deindent``,
+    versions: {},
+  },
+  magicLinkCallback: {
+    title: "Magic Link Callback",
+    fullPrompt: deindent``,
+    versions: {},
+  },
+  accountSettings: {
+    title: "Account Settings",
+    fullPrompt: deindent``,
+    versions: {},
+  },
+  teamInvitation: {
+    title: "Team Invitation",
+    fullPrompt: deindent``,
+    versions: {},
+  },
+  mfa: {
+    title: "MFA",
+    fullPrompt: deindent``,
+    versions: {},
+  },
+  error: {
+    title: "Error",
+    fullPrompt: deindent``,
+    versions: {},
+  },
+  onboarding: {
+    title: "Onboarding",
+    fullPrompt: deindent``,
+    versions: {},
+  },
+};
 
 const replaceStackPortPrefix = <T extends string | undefined>(input: T): T => {
   if (!input) return input;
@@ -111,6 +189,23 @@ const getHostedHandlerUrlTemplate = (): string => {
   return `https://${hostedHandlerProjectIdPlaceholder}${getHostedHandlerDomainSuffix()}/${hostedHandlerPathPlaceholder}`;
 };
 
+const resolveCustomTargetUrl = (options: {
+  target: { type: "custom", url: string, version: number },
+  handlerName: keyof HandlerUrls,
+}): string => {
+  const handlerName = options.handlerName;
+  if (handlerName in customPagePrompts) {
+    const customPagePrompt = customPagePrompts[handlerName as keyof typeof customPagePrompts];
+    if (options.target.version === 0 || options.target.version in customPagePrompt.versions) {
+      return options.target.url;
+    }
+
+    throw new Error(`Unsupported custom page version ${options.target.version} for ${options.handlerName} page at ${options.target.url}. The latest supported version of this page is ${Math.max(0, ...Object.keys(customPagePrompt.versions).map(Number))}. Please upgrade your Stack Auth SDK to a version that supports this version.`);
+  } else {
+    throw new Error(`URL target ${options.handlerName} cannot be a custom page. Please specify the URL as a string instead.`);
+  }
+};
+
 export const getHostedHandlerUrl = (options: { projectId: string, pagePath: string }): string => {
   const normalizedPagePath = options.pagePath.replace(/^\/+/, "");
   const hostedPath = normalizedPagePath.length > 0 ? `handler/${normalizedPagePath}` : "handler";
@@ -141,13 +236,27 @@ const resolveUrlTarget = (options: {
         pagePath: getHostedPagePathForHandlerName(options.handlerName),
       });
     }
+    case "custom": {
+      return resolveCustomTargetUrl({
+        target: options.target,
+        handlerName: options.handlerName,
+      });
+    }
   }
 };
 
 export const resolveHandlerUrls = (options: { urls: HandlerUrlOptions | undefined, projectId: string }): ResolvedHandlerUrls => {
   const configuredUrls = options.urls;
   const defaultTarget: HandlerUrlTarget = configuredUrls?.default ?? { type: "handler-component" };
-  const handlerComponentBasePath = typeof configuredUrls?.handler === "string" ? configuredUrls.handler : "/handler";
+  let handlerComponentBasePath = "/handler";
+  if (typeof configuredUrls?.handler === "string") {
+    handlerComponentBasePath = configuredUrls.handler;
+  } else if (configuredUrls?.handler != null && configuredUrls.handler.type === "custom") {
+    handlerComponentBasePath = resolveCustomTargetUrl({
+      target: configuredUrls.handler,
+      handlerName: "handler",
+    });
+  }
 
   const home = resolveUrlTarget({
     target: configuredUrls?.home ?? defaultTarget,
@@ -265,7 +374,7 @@ export const resolveHandlerUrls = (options: { urls: HandlerUrlOptions | undefine
 };
 
 export const resolveUnknownHandlerPathFallbackUrl = (options: {
-  defaultTarget: HandlerUrlTarget | undefined,
+  defaultTarget: DefaultHandlerUrlTarget | undefined,
   projectId: string,
   unknownPath: string,
 }): string | null => {
@@ -273,13 +382,18 @@ export const resolveUnknownHandlerPathFallbackUrl = (options: {
   if (typeof defaultTarget === "string") {
     return defaultTarget;
   }
-  if (defaultTarget.type === "handler-component") {
-    return null;
+
+  switch (defaultTarget.type) {
+    case "handler-component": {
+      return null;
+    }
+    case "hosted": {
+      return getHostedHandlerUrl({
+        projectId: options.projectId,
+        pagePath: options.unknownPath,
+      });
+    }
   }
-  return getHostedHandlerUrl({
-    projectId: options.projectId,
-    pagePath: options.unknownPath,
-  });
 };
 
 export const isHostedHandlerUrlForProject = (options: { url: string, projectId: string }): boolean => {

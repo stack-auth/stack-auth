@@ -147,3 +147,9 @@ A: The generator script writes `apps/backend/src/private/implementation.generate
 
 Q: Why did EventTracker throw `Reflect.get called on non-object` in JS cookie tests?
 A: Partial browser mocks can expose `window` without a real `history` object. Calling `Reflect.get(historyObject, "pushState")` throws before type checks. Use normal guarded access (`Object.getOwnPropertyDescriptor(window, "history")?.value`) plus type guards for `pushState`/`replaceState`, and patch/restore methods directly without `Reflect`.
+
+Q: How are custom handler URL target versions validated?
+A: In `packages/template/src/lib/stack-app/url-targets.ts`, `{ type: "custom", url, version }` always allows `version: 0`. Any non-zero version is only allowed when that version exists in `customPagePrompts[handlerName].versions`; otherwise resolution throws `StackAssertionError` including `supportedVersions`.
+
+Q: What ordering matters for custom handler URL target version checks?
+A: In `resolveCustomTargetUrl` (`packages/template/src/lib/stack-app/url-targets.ts`), check `version === 0` before handler-name eligibility checks. Otherwise `{ type: "custom", version: 0 }` can be incorrectly rejected for `handler`, breaking legacy string-alias behavior.

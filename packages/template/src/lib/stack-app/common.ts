@@ -85,28 +85,34 @@ export type TokenStoreInit<HasTokenStore extends boolean = boolean> =
   : HasTokenStore extends false ? null
   : TokenStoreInit<true> | TokenStoreInit<false>;
 
-export type HandlerUrls = {
-  handler: HandlerUrlTarget,
-  signIn: HandlerUrlTarget,
-  signUp: HandlerUrlTarget,
-  afterSignIn: HandlerUrlTarget,
-  afterSignUp: HandlerUrlTarget,
-  signOut: HandlerUrlTarget,
-  afterSignOut: HandlerUrlTarget,
-  emailVerification: HandlerUrlTarget,
-  passwordReset: HandlerUrlTarget,
-  forgotPassword: HandlerUrlTarget,
-  home: HandlerUrlTarget,
-  oauthCallback: HandlerUrlTarget,
-  magicLinkCallback: HandlerUrlTarget,
-  accountSettings: HandlerUrlTarget,
-  teamInvitation: HandlerUrlTarget,
-  mfa: HandlerUrlTarget,
-  error: HandlerUrlTarget,
-  onboarding: HandlerUrlTarget,
-}
-export type HandlerUrlTarget = string | { type: "hosted" | "handler-component" };
-export type HandlerUrlOptions = Partial<HandlerUrls> & { default?: HandlerUrlTarget };
+export type HandlerPageUrls = Record<
+  | "handler"
+  | "signIn"
+  | "signUp"
+  | "signOut"
+  | "emailVerification"
+  | "passwordReset"
+  | "forgotPassword"
+  | "oauthCallback"
+  | "magicLinkCallback"
+  | "accountSettings"
+  | "teamInvitation"
+  | "mfa"
+  | "error"
+  | "onboarding",
+  string | { type: "custom", url: string, version: number } | { type: "hosted" | "handler-component" }
+>;
+export type HandlerRedirectUrls = Record<
+  | "afterSignIn"
+  | "afterSignUp"
+  | "afterSignOut"
+  | "home",
+  string
+>;
+export type HandlerUrls = HandlerPageUrls & HandlerRedirectUrls;
+export type HandlerUrlTarget = HandlerUrls[keyof HandlerUrls];
+export type DefaultHandlerUrlTarget = string | { type: "hosted" | "handler-component" };
+export type HandlerUrlOptions = Partial<HandlerUrls> & { default?: DefaultHandlerUrlTarget };
 export type ResolvedHandlerUrls = {
   [K in keyof HandlerUrls]: string;
 };

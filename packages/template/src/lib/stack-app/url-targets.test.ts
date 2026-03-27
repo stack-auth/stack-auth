@@ -18,6 +18,47 @@ describe("handler URL targets", () => {
     expect(urls.signIn).toBe("/custom-handler/sign-in");
   });
 
+  it("treats custom v0 page targets like legacy string targets", () => {
+    const urls = resolveHandlerUrls({
+      projectId: "project-id",
+      urls: {
+        handler: "/custom-handler",
+        signIn: { type: "handler-component" },
+        signUp: { type: "custom", url: "/sign-up-explicit", version: 0 },
+      },
+    });
+
+    expect(urls.signIn).toBe("/custom-handler/sign-in");
+    expect(urls.signUp).toBe("/sign-up-explicit");
+  });
+
+  it("throws on v0 custom target for handler page", () => {
+    expect(() => resolveHandlerUrls({
+      projectId: "project-id",
+      urls: {
+        handler: { type: "custom", url: "/custom-handler", version: 0 },
+      },
+    })).toThrowError(/cannot be a custom page/);
+  });
+
+  it("throws on unsupported non-zero custom target versions", () => {
+    expect(() => resolveHandlerUrls({
+      projectId: "project-id",
+      urls: {
+        signIn: { type: "custom", url: "/custom-sign-in", version: 1 },
+      },
+    })).toThrowError(/Unsupported custom page version/);
+  });
+
+  it("throws on non-zero custom version for handler page", () => {
+    expect(() => resolveHandlerUrls({
+      projectId: "project-id",
+      urls: {
+        handler: { type: "custom", url: "/custom-handler", version: 1 },
+      },
+    })).toThrowError(/cannot be a custom page/);
+  });
+
   it("uses hosted defaults for unspecified URLs", () => {
     vi.stubEnv("NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX", ".example-stack-hosted.test");
 
