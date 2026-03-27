@@ -1,7 +1,7 @@
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
+import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLFoldTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
 
 type TestDb = { full: string, base: string };
 type SqlExpression<T> = { type: "expression", sql: string };
@@ -41,6 +41,8 @@ const LOAD_CONCAT_TABLE_INIT_MAX_MS = 10_000;
 const LOAD_CONCAT_TABLE_COUNT_QUERY_MAX_MS = 8_000;
 const LOAD_SORT_TABLE_INIT_MAX_MS = 90_000;
 const LOAD_SORT_TABLE_COUNT_QUERY_MAX_MS = 8_000;
+const LOAD_LFOLD_TABLE_INIT_MAX_MS = 120_000;
+const LOAD_LFOLD_TABLE_COUNT_QUERY_MAX_MS = 12_000;
 const STACKED_MAP_PIPELINE_MUTATION_MAX_MS = 400;
 const VIRTUAL_CONCAT_COUNT_QUERY_MAX_MS = 500;
 const VIRTUAL_CONCAT_LOAD_ROW_COUNT = 5_000;
@@ -796,10 +798,31 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       getSortKey: { type: "mapper", sql: `( ("rowData"->>'value')::int ) AS "newSortKey"` },
       compareSortKeys: (a, b) => expr(`(((${a.sql}) #>> '{}')::int) - (((${b.sql}) #>> '{}')::int)`),
     });
+    const foldedHighValueByTeam = declareLFoldTable({
+      tableId: "load-prefilled-users-high-value-folded",
+      fromTable: sortedHighValueByTeam,
+      initialState: expr(`'0'::jsonb`),
+      reducer: { type: "mapper", sql: `
+        (
+          COALESCE(("oldState"#>>'{}')::int, 0) + (("oldRowData"->>'value')::int)
+        ) AS "newState",
+        jsonb_build_array(
+          jsonb_build_object(
+            'team', "oldRowData"->'team',
+            'value', (("oldRowData"->>'value')::int),
+            'runningTotal', COALESCE(("oldState"#>>'{}')::int, 0) + (("oldRowData"->>'value')::int)
+          )
+        ) AS "newRowsData"
+      ` },
+    });
     const sortInit = await measureMs("load init sortedHighValueByTeam", async () => {
       await runStatements(sortedHighValueByTeam.init());
     });
     expect(sortInit.elapsedMs).toBeLessThan(LOAD_SORT_TABLE_INIT_MAX_MS);
+    const lFoldInit = await measureMs("load init foldedHighValueByTeam", async () => {
+      await runStatements(foldedHighValueByTeam.init());
+    });
+    expect(lFoldInit.elapsedMs).toBeLessThan(LOAD_LFOLD_TABLE_INIT_MAX_MS);
     const sortedDeltaRows = await readRows(sortedHighValueByTeam.listRowsInGroup({
       groupKey: expr(`to_jsonb('delta'::text)`),
       start: "start",
@@ -810,6 +833,34 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     expect(sortedDeltaRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowSortKey: row.rowsortkey, rowData: row.rowdata }))).toEqual([
       { rowIdentifier: "seed-100000:1", rowSortKey: 999, rowData: { team: "delta", value: 999 } },
     ]);
+    const foldedDeltaRows = await readRows(foldedHighValueByTeam.listRowsInGroup({
+      groupKey: expr(`to_jsonb('delta'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(foldedDeltaRows).toHaveLength(1);
+    expect(foldedDeltaRows[0].rowidentifier).toBe("seed-100000:1:1");
+    expect(foldedDeltaRows[0].rowdata).toEqual({
+      team: "delta",
+      value: 999,
+      runningTotal: 999,
+    });
+    const foldedHighValueCountOnly = await measureMs("load count foldedHighValueByTeam table only", async () => {
+      return await sql.unsafe(`
+        SELECT COUNT(*)::int AS "count"
+        FROM (${toQueryableSqlQuery(foldedHighValueByTeam.listRowsInGroup({
+          start: "start",
+          end: "end",
+          startInclusive: true,
+          endInclusive: true,
+        }))}) AS "rows"
+      `);
+    });
+    expect(foldedHighValueCountOnly.elapsedMs).toBeLessThan(LOAD_LFOLD_TABLE_COUNT_QUERY_MAX_MS);
+    expect(Number(foldedHighValueCountOnly.result[0].count)).toBeGreaterThan(0);
+    expect(Number(foldedHighValueCountOnly.result[0].count)).toBeLessThanOrEqual(Number(filteredHighValueCountOnly.result[0].count) + 1);
     const concatenatedDeltaRows = await readRows(concatenatedByTeam.listRowsInGroup({
       groupKey: expr(`to_jsonb('delta'::text)`),
       start: "start",
@@ -849,7 +900,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     `;
     expect(isInitializedRows[0].initialized).toBe(false);
 
-    logLine(`[bulldozer-perf] load thresholds(ms): prefill<=${LOAD_PREFILL_MAX_MS}, baseCount<=${LOAD_COUNT_QUERY_MAX_MS}, setRowAvg<=${LOAD_SET_ROW_AVG_MAX_MS} over ${LOAD_SET_ROW_AVG_ITERATIONS}, pointDelete<=${LOAD_POINT_MUTATION_MAX_MS}, derivedInit<=${LOAD_DERIVED_INIT_MAX_MS}, filterInit<=${LOAD_FILTER_TABLE_INIT_MAX_MS}, sortInit<=${LOAD_SORT_TABLE_INIT_MAX_MS}, concatInit<=${LOAD_CONCAT_TABLE_INIT_MAX_MS}, limitInit<=${LOAD_LIMIT_TABLE_INIT_MAX_MS}, expandingInit<=${LOAD_EXPANDING_INIT_MAX_MS}, derivedCount<=${LOAD_DERIVED_COUNT_QUERY_MAX_MS}, filterCount<=${LOAD_FILTER_TABLE_COUNT_QUERY_MAX_MS}, concatCount<=${LOAD_CONCAT_TABLE_COUNT_QUERY_MAX_MS}, limitCount<=${LOAD_LIMIT_TABLE_COUNT_QUERY_MAX_MS}, expandingCount<=${LOAD_EXPANDING_COUNT_QUERY_MAX_MS}, filteredQuery<=${LOAD_FILTERED_QUERY_MAX_MS}, tableDelete<=${LOAD_TABLE_DELETE_MAX_MS}`);
+    logLine(`[bulldozer-perf] load thresholds(ms): prefill<=${LOAD_PREFILL_MAX_MS}, baseCount<=${LOAD_COUNT_QUERY_MAX_MS}, setRowAvg<=${LOAD_SET_ROW_AVG_MAX_MS} over ${LOAD_SET_ROW_AVG_ITERATIONS}, pointDelete<=${LOAD_POINT_MUTATION_MAX_MS}, derivedInit<=${LOAD_DERIVED_INIT_MAX_MS}, filterInit<=${LOAD_FILTER_TABLE_INIT_MAX_MS}, sortInit<=${LOAD_SORT_TABLE_INIT_MAX_MS}, lfoldInit<=${LOAD_LFOLD_TABLE_INIT_MAX_MS}, concatInit<=${LOAD_CONCAT_TABLE_INIT_MAX_MS}, limitInit<=${LOAD_LIMIT_TABLE_INIT_MAX_MS}, expandingInit<=${LOAD_EXPANDING_INIT_MAX_MS}, derivedCount<=${LOAD_DERIVED_COUNT_QUERY_MAX_MS}, filterCount<=${LOAD_FILTER_TABLE_COUNT_QUERY_MAX_MS}, lfoldCount<=${LOAD_LFOLD_TABLE_COUNT_QUERY_MAX_MS}, concatCount<=${LOAD_CONCAT_TABLE_COUNT_QUERY_MAX_MS}, limitCount<=${LOAD_LIMIT_TABLE_COUNT_QUERY_MAX_MS}, expandingCount<=${LOAD_EXPANDING_COUNT_QUERY_MAX_MS}, filteredQuery<=${LOAD_FILTERED_QUERY_MAX_MS}, tableDelete<=${LOAD_TABLE_DELETE_MAX_MS}`);
   }, 180_000);
 });
 

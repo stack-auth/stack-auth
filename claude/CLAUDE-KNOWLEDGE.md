@@ -108,3 +108,6 @@ A: The generator script writes `apps/backend/src/private/implementation.generate
 
 Q: When do Bulldozer transactions need sequential temp-table execution instead of the default giant CTE executor?
 A: Most Bulldozer operators should keep using the original giant-CTE executor because it is faster and matches existing semantics. `declareSortTable` is the exception for its bulk-init path: it needs real temp tables so a transaction-local PL/pgSQL helper can read intermediate sorted rows by table name. The safe split is to keep the CTE executor by default and switch to sequential execution only when a statement uses `pg_temp.bulldozer_sort_bulk_init_from_table`. Also, plain side-effecting `SELECT pg_temp.helper(...)` CTEs are not reliable unless they are wrapped in a data-modifying statement such as `INSERT INTO pg_temp.bulldozer_side_effects ...`.
+
+Q: Why can initializing a Bulldozer operator with an internal child table fail with `BulldozerStorageEngine_keyPathParent_fkey`?
+A: Internal child table paths add an extra `"table"` segment (for example `.../table/external:parent/table/internal:child`). The parent operator must insert the intermediate `.../table` keyPath before running the child table `init()`. Without that node, inserting the child root path violates the storage engine parent foreign key.

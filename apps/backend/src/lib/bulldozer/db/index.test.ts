@@ -1,7 +1,7 @@
 import { stringCompare, templateIdentity } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vitest";
-import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
+import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLFoldTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
 
 type TestDb = { full: string, base: string };
 
@@ -292,6 +292,43 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     });
     return { fromTable, groupedTable, sortedTable };
   }
+  function createLFoldTable() {
+    const { fromTable, groupedTable, sortedTable } = createSortedTable();
+    const lFoldTable = declareLFoldTable({
+      tableId: "users-by-team-lfold",
+      fromTable: sortedTable,
+      initialState: expr(`'0'::jsonb`),
+      reducer: mapper(`
+        (
+          COALESCE(("oldState"#>>'{}')::int, 0) + (("oldRowData"->>'value')::int)
+        ) AS "newState",
+        (
+          CASE
+            WHEN ((("oldRowData"->>'value')::int) % 2) = 0 THEN jsonb_build_array(
+              jsonb_build_object(
+                'kind', 'running',
+                'runningTotal', COALESCE(("oldState"#>>'{}')::int, 0) + (("oldRowData"->>'value')::int),
+                'value', (("oldRowData"->>'value')::int)
+              ),
+              jsonb_build_object(
+                'kind', 'even-marker',
+                'runningTotal', COALESCE(("oldState"#>>'{}')::int, 0) + (("oldRowData"->>'value')::int),
+                'value', (("oldRowData"->>'value')::int)
+              )
+            )
+            ELSE jsonb_build_array(
+              jsonb_build_object(
+                'kind', 'running',
+                'runningTotal', COALESCE(("oldState"#>>'{}')::int, 0) + (("oldRowData"->>'value')::int),
+                'value', (("oldRowData"->>'value')::int)
+              )
+            )
+          END
+        ) AS "newRowsData"
+      `),
+    });
+    return { fromTable, groupedTable, sortedTable, lFoldTable };
+  }
   function createFlatMapMapGroupPipeline() {
     const { fromTable, groupedTable, flatMappedTable } = createFlatMappedTable();
     const mappedAfterFlatMap = declareMapTable({
@@ -485,6 +522,35 @@ describe.sequential("declareStoredTable (real postgres)", () => {
   }
   function registerSortAuditTrigger(
     table: ReturnType<typeof createSortedTable>["sortedTable"],
+    event: string,
+  ) {
+    return table.registerRowChangeTrigger((changesTable) => [
+      sqlStatement`
+        INSERT INTO "BulldozerMapTriggerAudit" (
+          "event",
+          "groupKey",
+          "rowIdentifier",
+          "oldRowData",
+          "newRowData"
+        )
+        SELECT
+          ${expr<string>(sqlStringLiteral(event))},
+          "groupKey",
+          "rowIdentifier",
+          jsonb_build_object(
+            'rowSortKey', "oldRowSortKey",
+            'rowData', "oldRowData"
+          ),
+          jsonb_build_object(
+            'rowSortKey', "newRowSortKey",
+            'rowData', "newRowData"
+          )
+        FROM ${changesTable}
+      `,
+    ]);
+  }
+  function registerLFoldAuditTrigger(
+    table: ReturnType<typeof createLFoldTable>["lFoldTable"],
     event: string,
   ) {
     return table.registerRowChangeTrigger((changesTable) => [
@@ -2369,6 +2435,213 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     expect(await readBoolean(sortedTable.isInitialized())).toBe(false);
     expect((await readMapTriggerAuditRows()).filter((row) => row.event === "sort_change")).toEqual([]);
     expect(await readRows(sortedTable.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }))).toEqual([]);
+  });
+
+  test("lFoldTable init backfills flattened rows in deterministic sorted order", async () => {
+    const { fromTable, groupedTable, sortedTable, lFoldTable } = createLFoldTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(fromTable.setRow("a2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow("a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("a3", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow("b1", expr(`'{"team":"beta","value":4}'::jsonb`)));
+    await runStatements(sortedTable.init());
+    await runStatements(lFoldTable.init());
+
+    expect(await readBoolean(lFoldTable.isInitialized())).toBe(true);
+    const groups = await readRows(lFoldTable.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(groups.map((row) => row.groupkey).sort(stringCompare)).toEqual(["alpha", "beta"]);
+
+    const alphaRows = await readRows(lFoldTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(alphaRows.map((row) => ({
+      rowIdentifier: row.rowidentifier,
+      rowSortKey: row.rowsortkey,
+      rowData: row.rowdata,
+    }))).toEqual([
+      { rowIdentifier: "a1:1", rowSortKey: 1, rowData: { kind: "running", runningTotal: 1, value: 1 } },
+      { rowIdentifier: "a2:1", rowSortKey: 2, rowData: { kind: "running", runningTotal: 3, value: 2 } },
+      { rowIdentifier: "a2:2", rowSortKey: 2, rowData: { kind: "even-marker", runningTotal: 3, value: 2 } },
+      { rowIdentifier: "a3:1", rowSortKey: 2, rowData: { kind: "running", runningTotal: 5, value: 2 } },
+      { rowIdentifier: "a3:2", rowSortKey: 2, rowData: { kind: "even-marker", runningTotal: 5, value: 2 } },
+    ]);
+  });
+
+  test("lFoldTable recomputes only affected suffix and handles reorder/delete transitions", async () => {
+    const { fromTable, groupedTable, sortedTable, lFoldTable } = createLFoldTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(sortedTable.init());
+    await runStatements(lFoldTable.init());
+
+    await runStatements(fromTable.setRow("a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("a2", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(fromTable.setRow("a3", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+
+    const beforeTailUpdate = await readRows(lFoldTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(beforeTailUpdate.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata }))).toEqual([
+      { rowIdentifier: "a1:1", rowData: { kind: "running", runningTotal: 1, value: 1 } },
+      { rowIdentifier: "a2:1", rowData: { kind: "running", runningTotal: 4, value: 3 } },
+      { rowIdentifier: "a3:1", rowData: { kind: "running", runningTotal: 9, value: 5 } },
+    ]);
+
+    await runStatements(fromTable.setRow("a3", expr(`'{"team":"alpha","value":6}'::jsonb`)));
+    const afterTailUpdate = await readRows(lFoldTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(afterTailUpdate.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata }))).toEqual([
+      { rowIdentifier: "a1:1", rowData: { kind: "running", runningTotal: 1, value: 1 } },
+      { rowIdentifier: "a2:1", rowData: { kind: "running", runningTotal: 4, value: 3 } },
+      { rowIdentifier: "a3:1", rowData: { kind: "running", runningTotal: 10, value: 6 } },
+      { rowIdentifier: "a3:2", rowData: { kind: "even-marker", runningTotal: 10, value: 6 } },
+    ]);
+
+    await runStatements(fromTable.setRow("a2", expr(`'{"team":"alpha","value":0}'::jsonb`)));
+    const afterMiddleMove = await readRows(lFoldTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(afterMiddleMove.map((row) => ({ rowIdentifier: row.rowidentifier, rowSortKey: row.rowsortkey, rowData: row.rowdata }))).toEqual([
+      { rowIdentifier: "a2:1", rowSortKey: 0, rowData: { kind: "running", runningTotal: 0, value: 0 } },
+      { rowIdentifier: "a2:2", rowSortKey: 0, rowData: { kind: "even-marker", runningTotal: 0, value: 0 } },
+      { rowIdentifier: "a1:1", rowSortKey: 1, rowData: { kind: "running", runningTotal: 1, value: 1 } },
+      { rowIdentifier: "a3:1", rowSortKey: 6, rowData: { kind: "running", runningTotal: 7, value: 6 } },
+      { rowIdentifier: "a3:2", rowSortKey: 6, rowData: { kind: "even-marker", runningTotal: 7, value: 6 } },
+    ]);
+
+    await runStatements(fromTable.deleteRow("a1"));
+    const afterDelete = await readRows(lFoldTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(afterDelete.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata }))).toEqual([
+      { rowIdentifier: "a2:1", rowData: { kind: "running", runningTotal: 0, value: 0 } },
+      { rowIdentifier: "a2:2", rowData: { kind: "even-marker", runningTotal: 0, value: 0 } },
+      { rowIdentifier: "a3:1", rowData: { kind: "running", runningTotal: 6, value: 6 } },
+      { rowIdentifier: "a3:2", rowData: { kind: "even-marker", runningTotal: 6, value: 6 } },
+    ]);
+  });
+
+  test("lFoldTable trigger stream reconstructs exact final table state", async () => {
+    const { fromTable, groupedTable, sortedTable, lFoldTable } = createLFoldTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(sortedTable.init());
+    await runStatements(lFoldTable.init());
+    registerLFoldAuditTrigger(lFoldTable, "lfold_change");
+
+    await runStatements(fromTable.setRow("a3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(fromTable.setRow("a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("a2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow("b1", expr(`'{"team":"beta","value":4}'::jsonb`)));
+    await runStatements(fromTable.setRow("a2", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow("a3", expr(`'{"team":"alpha","value":6}'::jsonb`)));
+    await runStatements(fromTable.deleteRow("a1"));
+
+    const auditRows = (await readMapTriggerAuditRows()).filter((row) => row.event === "lfold_change");
+    const reconstructed = new Map<string, { groupKey: string | null, rowIdentifier: string, rowSortKey: unknown, rowData: unknown }>();
+    for (const row of auditRows) {
+      const groupKey = row.groupKey as string | null;
+      const rowIdentifier = String(row.rowIdentifier);
+      const key = `${groupKey ?? "__NULL__"}:${rowIdentifier}`;
+      const payload = row.newRowData as Record<string, unknown> | null;
+      const newRowData = payload == null ? null : Reflect.get(payload, "rowData");
+      const newRowSortKey = payload == null ? null : Reflect.get(payload, "rowSortKey");
+      if (newRowData == null) {
+        reconstructed.delete(key);
+      } else {
+        reconstructed.set(key, { groupKey, rowIdentifier, rowSortKey: newRowSortKey, rowData: newRowData });
+      }
+    }
+
+    const actualRows = (await readRows(lFoldTable.listRowsInGroup({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }))).map((row) => ({
+      groupKey: row.groupkey as string | null,
+      rowIdentifier: String(row.rowidentifier),
+      rowSortKey: row.rowsortkey,
+      rowData: row.rowdata,
+    }));
+    const reconstructedRows = [...reconstructed.values()];
+    const sortRows = (rows: Array<{ groupKey: string | null, rowIdentifier: string, rowSortKey: unknown, rowData: unknown }>) => rows
+      .sort((a, b) => stringCompare(
+        `${a.groupKey ?? "__NULL__"}:${a.rowIdentifier}:${JSON.stringify(a.rowSortKey)}:${JSON.stringify(a.rowData)}`,
+        `${b.groupKey ?? "__NULL__"}:${b.rowIdentifier}:${JSON.stringify(b.rowSortKey)}:${JSON.stringify(b.rowData)}`,
+      ));
+    expect(sortRows(reconstructedRows)).toEqual(sortRows(actualRows));
+  });
+
+  test("lFoldTable uses rowIdentifier as deterministic tie-breaker for equal sort keys", async () => {
+    const { fromTable, groupedTable, sortedTable, lFoldTable } = createLFoldTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(sortedTable.init());
+    await runStatements(lFoldTable.init());
+
+    await runStatements(fromTable.setRow("z", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow("a", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+
+    const alphaRows = await readRows(lFoldTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(alphaRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata }))).toEqual([
+      { rowIdentifier: "a:1", rowData: { kind: "running", runningTotal: 2, value: 2 } },
+      { rowIdentifier: "a:2", rowData: { kind: "even-marker", runningTotal: 2, value: 2 } },
+      { rowIdentifier: "z:1", rowData: { kind: "running", runningTotal: 4, value: 2 } },
+      { rowIdentifier: "z:2", rowData: { kind: "even-marker", runningTotal: 4, value: 2 } },
+    ]);
+  });
+
+  test("lFoldTable stays no-op while uninitialized", async () => {
+    const { fromTable, groupedTable, sortedTable, lFoldTable } = createLFoldTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(sortedTable.init());
+    registerLFoldAuditTrigger(lFoldTable, "lfold_change");
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+    await runStatements(fromTable.setRow("u2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+
+    expect(await readBoolean(lFoldTable.isInitialized())).toBe(false);
+    expect((await readMapTriggerAuditRows()).filter((row) => row.event === "lfold_change")).toEqual([]);
+    expect(await readRows(lFoldTable.listGroups({
       start: "start",
       end: "end",
       startInclusive: true,

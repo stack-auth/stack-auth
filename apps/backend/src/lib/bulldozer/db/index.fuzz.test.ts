@@ -1,7 +1,7 @@
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
-import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
+import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLFoldTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
 
 type TestDb = { full: string, base: string };
 
@@ -294,6 +294,68 @@ function sortedRowsForGroups<Row extends Record<string, unknown>>(groups: Groupe
         rowSortKey: Number(Reflect.get(rowData, "value")),
         rowData,
       }));
+  });
+}
+function lFoldGroupsForSortedInput(groups: GroupedRows<{ team: string | null, value: number }>) {
+  const folded: GroupedRows<{ kind: string, runningTotal: number, value: number }> = new Map();
+  for (const [groupKey, group] of groups) {
+    const rows = new Map<string, { kind: string, runningTotal: number, value: number }>();
+    let runningTotal = 0;
+    const sortedEntries = [...group.rows.entries()].sort((a, b) => {
+      const byValue = (a[1].value - b[1].value);
+      return byValue !== 0 ? byValue : stringCompare(a[0], b[0]);
+    });
+    for (const [rowIdentifier, rowData] of sortedEntries) {
+      runningTotal += rowData.value;
+      rows.set(`${rowIdentifier}:1`, {
+        kind: "running",
+        runningTotal,
+        value: rowData.value,
+      });
+      if (rowData.value % 2 === 0) {
+        rows.set(`${rowIdentifier}:2`, {
+          kind: "even-marker",
+          runningTotal,
+          value: rowData.value,
+        });
+      }
+    }
+    folded.set(groupKey, { groupKey: group.groupKey, rows });
+  }
+  return folded;
+}
+function lFoldRowsWithSortKeys(groups: GroupedRows<{ team: string | null, value: number }>) {
+  const rows: Array<{ groupKey: string | null, rowIdentifier: string, rowSortKey: number, rowData: { kind: string, runningTotal: number, value: number } }> = [];
+  for (const group of groups.values()) {
+    let runningTotal = 0;
+    const sortedEntries = [...group.rows.entries()].sort((a, b) => {
+      const byValue = (a[1].value - b[1].value);
+      return byValue !== 0 ? byValue : stringCompare(a[0], b[0]);
+    });
+    for (const [rowIdentifier, rowData] of sortedEntries) {
+      runningTotal += rowData.value;
+      rows.push({
+        groupKey: group.groupKey,
+        rowIdentifier: `${rowIdentifier}:1`,
+        rowSortKey: rowData.value,
+        rowData: { kind: "running", runningTotal, value: rowData.value },
+      });
+      if (rowData.value % 2 === 0) {
+        rows.push({
+          groupKey: group.groupKey,
+          rowIdentifier: `${rowIdentifier}:2`,
+          rowSortKey: rowData.value,
+          rowData: { kind: "even-marker", runningTotal, value: rowData.value },
+        });
+      }
+    }
+  }
+  return rows.sort((a, b) => {
+    const byGroup = nullableStringCompare(a.groupKey, b.groupKey);
+    if (byGroup !== 0) return byGroup;
+    const bySort = a.rowSortKey - b.rowSortKey;
+    if (bySort !== 0) return bySort;
+    return stringCompare(a.rowIdentifier, b.rowIdentifier);
   });
 }
 
@@ -1154,6 +1216,157 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
             rowData: row.rowdata as Record<string, unknown>,
           }));
           expect(actualRows).toEqual(sortedRowsForGroups(expectedGrouped));
+        }
+      }
+    }
+  }, 120_000);
+
+  test("fuzz: lfold table preserves folded suffix invariants under random mutations and re-inits", async () => {
+    const identifiers = ["lf1", "lf2", "lf3", "lf4", "lf:5", "lf 6", "lf/7"] as const;
+    const teams = ["alpha", "beta", "gamma", null] as const;
+
+    for (const seed of [2601]) {
+      const rng = createRng(seed);
+      const sourceRows = new Map<string, SourceRow>();
+      let lFoldInitialized = true;
+
+      const fromTable = declareStoredTable<{ value: number, team: string | null }>({ tableId: `lfold-fuzz-users-${seed}` });
+      const groupedTable = declareGroupByTable({
+        tableId: `lfold-fuzz-users-by-team-${seed}`,
+        fromTable,
+        groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+      });
+      const sortedTable = declareSortTable({
+        tableId: `lfold-fuzz-users-sorted-${seed}`,
+        fromTable: groupedTable,
+        getSortKey: mapper(`(("rowData"->>'value')::int) AS "newSortKey"`),
+        compareSortKeys: (a, b) => expr(`(((${a.sql}) #>> '{}')::int) - (((${b.sql}) #>> '{}')::int)`),
+      });
+      const lFoldTable = declareLFoldTable({
+        tableId: `lfold-fuzz-users-folded-${seed}`,
+        fromTable: sortedTable,
+        initialState: expr(`'0'::jsonb`),
+        reducer: mapper(`
+          (
+            COALESCE(("oldState"#>>'{}')::int, 0) + (("oldRowData"->>'value')::int)
+          ) AS "newState",
+          (
+            CASE
+              WHEN ((("oldRowData"->>'value')::int) % 2) = 0 THEN jsonb_build_array(
+                jsonb_build_object(
+                  'kind', 'running',
+                  'runningTotal', COALESCE(("oldState"#>>'{}')::int, 0) + (("oldRowData"->>'value')::int),
+                  'value', (("oldRowData"->>'value')::int)
+                ),
+                jsonb_build_object(
+                  'kind', 'even-marker',
+                  'runningTotal', COALESCE(("oldState"#>>'{}')::int, 0) + (("oldRowData"->>'value')::int),
+                  'value', (("oldRowData"->>'value')::int)
+                )
+              )
+              ELSE jsonb_build_array(
+                jsonb_build_object(
+                  'kind', 'running',
+                  'runningTotal', COALESCE(("oldState"#>>'{}')::int, 0) + (("oldRowData"->>'value')::int),
+                  'value', (("oldRowData"->>'value')::int)
+                )
+              )
+            END
+          ) AS "newRowsData"
+        `),
+      });
+
+      await runStatements(fromTable.init());
+      await runStatements(groupedTable.init());
+      await runStatements(sortedTable.init());
+      await runStatements(lFoldTable.init());
+
+      for (let step = 0; step < 30; step++) {
+        const roll = rng();
+        if (roll < 0.62) {
+          const rowIdentifier = choose(rng, identifiers);
+          const rowData: SourceRow = {
+            team: choose(rng, teams),
+            value: Math.floor(rng() * 90),
+          };
+          sourceRows.set(rowIdentifier, rowData);
+          await runStatements(fromTable.setRow(rowIdentifier, expr(jsonbLiteral(rowData))));
+        } else if (roll < 0.86) {
+          const rowIdentifier = choose(rng, identifiers);
+          sourceRows.delete(rowIdentifier);
+          await runStatements(fromTable.deleteRow(rowIdentifier));
+        } else if (roll < 0.93) {
+          if (lFoldInitialized) {
+            await runStatements(lFoldTable.delete());
+            lFoldInitialized = false;
+          }
+        } else if (!lFoldInitialized) {
+          await runStatements(lFoldTable.init());
+          lFoldInitialized = true;
+        }
+
+        if (step % 3 === 0 || step === 29) {
+          const expectedGrouped = computeTeamGroups(sourceRows);
+          await assertTableMatches(groupedTable, expectedGrouped);
+
+          const expectedSortedRows = sortedRowsForGroups(expectedGrouped);
+          const actualSortedRows = (await readRows(sortedTable.listRowsInGroup({
+            start: "start",
+            end: "end",
+            startInclusive: true,
+            endInclusive: true,
+          }))).map((row) => ({
+            groupKey: row.groupkey as string | null,
+            rowIdentifier: row.rowidentifier as string,
+            rowSortKey: Number(row.rowsortkey),
+            rowData: row.rowdata as Record<string, unknown>,
+          })).sort((a, b) => {
+            const byGroup = nullableStringCompare(a.groupKey, b.groupKey);
+            if (byGroup !== 0) return byGroup;
+            const bySortKey = a.rowSortKey - b.rowSortKey;
+            if (bySortKey !== 0) return bySortKey;
+            return stringCompare(a.rowIdentifier, b.rowIdentifier);
+          });
+          const sortedExpectedRows = [...expectedSortedRows].sort((a, b) => {
+            const byGroup = nullableStringCompare(a.groupKey, b.groupKey);
+            if (byGroup !== 0) return byGroup;
+            const bySortKey = a.rowSortKey - b.rowSortKey;
+            if (bySortKey !== 0) return bySortKey;
+            return stringCompare(a.rowIdentifier, b.rowIdentifier);
+          });
+          expect(actualSortedRows).toEqual(sortedExpectedRows);
+
+          if (!lFoldInitialized) {
+            expect(await readBoolean(lFoldTable.isInitialized())).toBe(false);
+            expect(await readRows(lFoldTable.listGroups({
+              start: "start",
+              end: "end",
+              startInclusive: true,
+              endInclusive: true,
+            }))).toEqual([]);
+            continue;
+          }
+
+          expect(await readBoolean(lFoldTable.isInitialized())).toBe(true);
+          await assertTableMatches(lFoldTable, lFoldGroupsForSortedInput(expectedGrouped));
+          const actualFoldRows = (await readRows(lFoldTable.listRowsInGroup({
+            start: "start",
+            end: "end",
+            startInclusive: true,
+            endInclusive: true,
+          }))).map((row) => ({
+            groupKey: row.groupkey as string | null,
+            rowIdentifier: row.rowidentifier as string,
+            rowSortKey: Number(row.rowsortkey),
+            rowData: row.rowdata as { kind: string, runningTotal: number, value: number },
+          })).sort((a, b) => {
+            const byGroup = nullableStringCompare(a.groupKey, b.groupKey);
+            if (byGroup !== 0) return byGroup;
+            const bySort = a.rowSortKey - b.rowSortKey;
+            if (bySort !== 0) return bySort;
+            return stringCompare(a.rowIdentifier, b.rowIdentifier);
+          });
+          expect(actualFoldRows).toEqual(lFoldRowsWithSortKeys(expectedGrouped));
         }
       }
     }

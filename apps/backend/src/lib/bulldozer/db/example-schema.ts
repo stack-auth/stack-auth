@@ -1,4 +1,4 @@
-import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable } from "./index";
+import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLFoldTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable } from "./index";
 
 const mapper = (sql: string) => ({ type: "mapper" as const, sql });
 const predicate = (sql: string) => ({ type: "predicate" as const, sql });
@@ -117,6 +117,44 @@ export const exampleFungibleLedgerSchema = (() => {
     fromTable: accountEntriesWithCounterparty,
     limit: { type: "expression", sql: "1" },
   });
+  const accountEntriesRunningExposure = declareLFoldTable({
+    tableId: "bulldozer-example-ledger-account-entries-running-exposure",
+    fromTable: accountEntriesSortedByAmount,
+    initialState: { type: "expression", sql: "'0'::jsonb" },
+    reducer: mapper(`
+      (
+        COALESCE(("oldState"#>>'{}')::numeric, 0)
+        + (
+          CASE
+            WHEN "oldRowData"->>'side' = 'credit' THEN (("oldRowData"->>'amount')::numeric)
+            ELSE -(("oldRowData"->>'amount')::numeric)
+          END
+        )
+      ) AS "newState",
+      jsonb_build_array(
+        jsonb_build_object(
+          'accountId', "oldRowData"->'accountId',
+          'asset', "oldRowData"->'asset',
+          'txHash', "oldRowData"->'txHash',
+          'delta',
+            CASE
+              WHEN "oldRowData"->>'side' = 'credit' THEN (("oldRowData"->>'amount')::numeric)
+              ELSE -(("oldRowData"->>'amount')::numeric)
+            END,
+          'runningExposure',
+            (
+              COALESCE(("oldState"#>>'{}')::numeric, 0)
+              + (
+                CASE
+                  WHEN "oldRowData"->>'side' = 'credit' THEN (("oldRowData"->>'amount')::numeric)
+                  ELSE -(("oldRowData"->>'amount')::numeric)
+                END
+              )
+            )
+        )
+      ) AS "newRowsData"
+    `),
+  });
 
   // Keep only large-value entries to model risk/alerting-style subsets.
   const highValueEntriesByAsset = declareFilterTable({
@@ -168,6 +206,7 @@ export const exampleFungibleLedgerSchema = (() => {
     accountEntriesWithCounterparty,
     accountEntriesSortedByAmount,
     accountCounterpartySample,
+    accountEntriesRunningExposure,
     highValueEntriesByAsset,
     highValueEntriesByAssetAccount,
     accountPriorityEntries,
