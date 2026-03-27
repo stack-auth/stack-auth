@@ -73,6 +73,8 @@ isReactServer = sc.isReactServer;
 const NextNavigation = scrambleDuringCompileTime(NextNavigationUnscrambled);
 // END_PLATFORM
 
+const prefetchedCrossDomainHandoffTtlMs = 55 * 60 * 1000;
+
 
 const allClientApps = new Map<string, [checkString: string | undefined, app: StackClientApp<any, any>]>();
 
@@ -374,6 +376,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   private _anonymousSignUpInProgress: Promise<{ accessToken: string, refreshToken: string }> | null = null;
   private _prefetchedCrossDomainHandoffParams: CrossDomainHandoffParams | null = null;
+  private _prefetchedCrossDomainHandoffParamsFetchedAt = 0;
   private _isPrefetchingCrossDomainHandoffParams = false;
 
   protected async _createCookieHelper(overrideTokenStoreInit?: TokenStoreInit): Promise<CookieHelper> {
@@ -2162,18 +2165,22 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   protected _prefetchCrossDomainHandoffParamsIfNeeded() {
     const canWriteOauthVerifierCookie = this._tokenStoreInit === "cookie" || this._tokenStoreInit === "nextjs-cookie";
     if (
-      typeof window === "undefined"
+      !isBrowserLike()
       || !canWriteOauthVerifierCookie
       || this._isPrefetchingCrossDomainHandoffParams
-      || this._prefetchedCrossDomainHandoffParams != null
+      || this._getFreshPrefetchedCrossDomainHandoffParams() != null
     ) {
       return;
     }
     this._isPrefetchingCrossDomainHandoffParams = true;
     runAsynchronously(async () => {
       try {
+        if (!isBrowserLike()) {
+          return;
+        }
         const { state, codeChallenge } = await saveVerifierAndState();
         this._prefetchedCrossDomainHandoffParams = { state, codeChallenge };
+        this._prefetchedCrossDomainHandoffParamsFetchedAt = performance.now();
       } finally {
         this._isPrefetchingCrossDomainHandoffParams = false;
       }
@@ -2186,8 +2193,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       return fromQuery;
     }
 
-    if (this._prefetchedCrossDomainHandoffParams != null) {
-      return this._prefetchedCrossDomainHandoffParams;
+    const prefetched = this._getFreshPrefetchedCrossDomainHandoffParams();
+    if (prefetched != null) {
+      return prefetched;
     }
 
     this._prefetchCrossDomainHandoffParamsIfNeeded();
@@ -2199,8 +2207,13 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     if (fromQuery != null) {
       return fromQuery;
     }
+    const prefetched = this._getFreshPrefetchedCrossDomainHandoffParams();
+    if (prefetched != null) {
+      return prefetched;
+    }
     const { state, codeChallenge } = await saveVerifierAndState();
     this._prefetchedCrossDomainHandoffParams = { state, codeChallenge };
+    this._prefetchedCrossDomainHandoffParamsFetchedAt = performance.now();
     return { state, codeChallenge };
   }
 
@@ -2209,6 +2222,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       urls: {
         ...this._urlOptions,
         default: { type: "handler-component" },
+        oauthCallback: { type: "handler-component" },
       },
       projectId: this.projectId,
     }).oauthCallback;
@@ -2238,11 +2252,26 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
       session,
     );
+    if (!response.ok) {
+      throw new StackAssertionError(`Cross-domain authorization endpoint failed: ${response.status} ${await response.text()}`);
+    }
     const result = await response.json();
     if (!("redirect_url" in result) || typeof result.redirect_url !== "string") {
       throw new StackAssertionError("Cross-domain authorization endpoint returned an invalid payload", { result });
     }
     return result.redirect_url;
+  }
+
+  protected _getFreshPrefetchedCrossDomainHandoffParams(): CrossDomainHandoffParams | null {
+    if (this._prefetchedCrossDomainHandoffParams == null) {
+      return null;
+    }
+    if (performance.now() - this._prefetchedCrossDomainHandoffParamsFetchedAt > prefetchedCrossDomainHandoffTtlMs) {
+      this._prefetchedCrossDomainHandoffParams = null;
+      this._prefetchedCrossDomainHandoffParamsFetchedAt = 0;
+      return null;
+    }
+    return this._prefetchedCrossDomainHandoffParams;
   }
 
   protected async _getCurrentUrl() {

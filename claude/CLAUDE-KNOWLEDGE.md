@@ -80,7 +80,7 @@ Q: How should unsubscribe-link e2e tests avoid breakage from email theme/layout 
 A: In `apps/e2e/tests/backend/endpoints/api/v1/unsubscribe-link.test.ts`, avoid snapshotting the entire rendered HTML for transactional emails; assert stable behavior instead (email content present and `/api/v1/emails/unsubscribe-link` absent) so cosmetic wrapper/style changes do not fail the test.
 
 Q: How do cross-domain auth handoffs avoid creating extra refresh-token sessions?
-A: The cross-domain authorize route must carry the current `refreshTokenId` through authorization-code exchange and OAuth token issuance must reuse that ID. We encode handoff metadata (`afterCallbackRedirectUrl`, `refreshTokenId`) into a prefixed payload stored in `afterCallbackRedirectUrl`, decode it in `OAuthModel._getOrCreateRefreshTokenObj`, and sanitize `after_callback_redirect_url` in `saveToken` so clients only receive the original redirect URL.
+A: The cross-domain authorize route must carry the current `refreshTokenId` through authorization-code exchange and OAuth token issuance must reuse that ID. Keep `afterCallbackRedirectUrl` URL-only and persist refresh-token linkage in `ProjectUserAuthorizationCode.grantedRefreshTokenId`; then return that as `user.refreshTokenId` in `getAuthorizationCode` so token issuance can reuse the same refresh-token row with ownership checks.
 
 Q: Is there a manual demo page for cross-domain auth handoff verification?
 A: Yes — `examples/demo/src/app/cross-domain-handoff/page.tsx` provides one-click triggers for client sign-in/sign-up redirects, server protected-page redirects, and OAuth provider sign-in, plus runtime URL visibility for manual verification.
@@ -96,6 +96,9 @@ A: Cross-domain handoff should still run when handoff params indicate a differen
 
 Q: How should `app.urls.signIn`/`signOut` behave for hosted cross-domain flows?
 A: In browser contexts, `app.urls` should return redirect-ready handler URLs for `signIn`, `signUp`, `onboarding`, and `signOut`: include `after_auth_return_to`, preserve existing cross-domain handoff params, and for hosted sign-in/up/onboarding populate cross-domain callback targets (`/handler/oauth-callback` with `stack_cross_domain_auth=1`) so plain `router.push(app.urls.signIn)` / `<Link href={app.urls.signOut}>` keeps return-to-domain behavior.
+
+Q: What should happen if hosted `after_auth_return_to` requires cross-domain handoff but URL params are missing?
+A: In `planRedirectToHandler` (`redirect-page-urls.ts`), do not throw immediately. Generate missing PKCE handoff `state`/`codeChallenge` via `getCrossDomainHandoffParams(currentUrl)` and default `afterCallbackRedirectUrl` to `currentUrl.toString()`, then continue with cross-domain authorize planning.
 
 Q: How do we avoid duplicating redirect-back URL logic between `app.urls` and `redirectTo*`?
 A: Keep redirect math and handler policy decisions in `redirect-page-urls.ts` (for example `resolveAppUrlsForCurrentPage`, `resolveRedirectBackAwareHandlerUrlForRedirect`, `getHandlerRedirectPolicy`) and keep `client-app-impl` as orchestration only (state/cookies/network/redirect side effects). Redirect execution should start from raw resolved URLs (not `this.urls`) so `noRedirectBack` still works as expected.
@@ -117,6 +120,9 @@ A: E2E JS tests import `@stackframe/js` from built `dist`, so new helper files c
 
 Q: How should dashboard pages update project config values?
 A: Do not call `project.updateConfig(...)` directly from dashboard pages; lint enforces using `useUpdateConfig()` from `apps/dashboard/src/lib/config-update.tsx` so pushable-config confirmation flows are handled consistently.
+
+Q: How should EventTracker behave in test environments with partial DOM mocks?
+A: In `packages/template/src/lib/stack-app/apps/implementations/event-tracker.ts`, gate `start()` behind runtime capability checks (DOM listener APIs and screen dimensions), and patch `window.history` instead of global `history`. This prevents crashes like `Cannot read properties of undefined (reading 'width')` in non-browser test stubs while keeping browser behavior unchanged.
 
 Q: How can the dashboard find resumable onboarding state without SDK type changes?
 A: Query `/internal/projects` via `stackAppInternalsSymbol` and read each project's `onboarding_status`; this avoids relying on `AdminOwnedProject` fields that may lag until generated package copies are rebuilt.

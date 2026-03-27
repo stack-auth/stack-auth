@@ -23,7 +23,9 @@ export async function signInWithOAuth(
     provider: options.provider,
     redirectUrl: constructRedirectUrl(options.redirectUrl, "redirectUrl"),
     errorRedirectUrl: constructRedirectUrl(options.errorRedirectUrl, "errorRedirectUrl"),
-    afterCallbackRedirectUrl: options.afterCallbackRedirectUrl,
+    afterCallbackRedirectUrl: options.afterCallbackRedirectUrl == null
+      ? undefined
+      : constructRedirectUrl(options.afterCallbackRedirectUrl, "afterCallbackRedirectUrl"),
     codeChallenge,
     state,
     type: "authenticate",

@@ -1,3 +1,4 @@
+import { checkApiKeySet, throwCheckApiKeySetError } from "@/lib/internal-api-keys";
 import { isAcceptedNativeAppUrl, validateRedirectUrl } from "@/lib/redirect-urls";
 import { Tenancy } from "@/lib/tenancies";
 import { isRefreshTokenValid } from "@/lib/tokens";
@@ -156,10 +157,19 @@ export const POST = createSmartRouteHandler({
       id: user.id,
       refreshTokenId: refreshTokenObj.id,
     };
+    const publishableClientKey = headers["x-stack-publishable-client-key"]?.[0] ?? publishableClientKeyNotNecessarySentinel;
+    const keyCheck = await checkApiKeySet(tenancy.project.id, { publishableClientKey });
+    if (keyCheck.status === "error") {
+      throwCheckApiKeySetError(
+        keyCheck.error,
+        tenancy.project.id,
+        new KnownErrors.InvalidPublishableClientKey(tenancy.project.id),
+      );
+    }
     const redirectUrl = await createCrossDomainAuthorizeRedirect({
       tenancy,
       user: userWithSession,
-      publishableClientKey: headers["x-stack-publishable-client-key"]?.[0] ?? publishableClientKeyNotNecessarySentinel,
+      publishableClientKey,
       body,
     });
 

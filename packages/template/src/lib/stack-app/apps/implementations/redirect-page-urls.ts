@@ -257,16 +257,15 @@ export async function planRedirectToHandler(options: {
     if (crossDomainHandoff == null) {
       return { type: "redirect", url: redirectBackUrl };
     }
-    const state = crossDomainHandoff.handoffParams.state;
-    const codeChallenge = crossDomainHandoff.handoffParams.codeChallenge;
-    const afterCallbackRedirectUrl = crossDomainHandoff.handoffParams.afterCallbackRedirectUrl;
-    if (state == null || codeChallenge == null || afterCallbackRedirectUrl == null) {
-      throw new StackAssertionError("Cross-domain handoff policy was selected but required params were missing", {
-        state,
-        codeChallenge,
-        afterCallbackRedirectUrl,
-      });
+    let state = crossDomainHandoff.handoffParams.state;
+    let codeChallenge = crossDomainHandoff.handoffParams.codeChallenge;
+    let afterCallbackRedirectUrl = crossDomainHandoff.handoffParams.afterCallbackRedirectUrl;
+    if (state == null || codeChallenge == null) {
+      const generatedHandoffParams = await options.getCrossDomainHandoffParams(options.currentUrl);
+      state ??= generatedHandoffParams.state;
+      codeChallenge ??= generatedHandoffParams.codeChallenge;
     }
+    afterCallbackRedirectUrl ??= options.currentUrl.toString();
     return {
       type: "cross-domain-authorize",
       redirectUri: crossDomainHandoff.redirectBackTarget.toString(),

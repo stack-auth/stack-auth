@@ -21,13 +21,15 @@ export function OAuthCallback({ fullPage }: { fullPage?: boolean }) {
     if (called.current) return;
     called.current = true;
     let hasRedirected = false;
+    let callbackError: unknown = null;
     try {
       hasRedirected = await app.callOAuthCallback();
     } catch (e) {
+      callbackError = e;
       captureError("<OAuthCallback />", e);
       setError(e);
     }
-    if (!hasRedirected && (!error || envVars.NODE_ENV === 'production')) {
+    if (!hasRedirected && (callbackError == null || envVars.NODE_ENV === "production")) {
       await app.redirectToSignIn({ noRedirectBack: true });
     }
   }), []);

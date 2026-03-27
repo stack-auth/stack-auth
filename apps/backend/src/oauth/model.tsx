@@ -8,7 +8,7 @@ import { createRefreshTokenObj, decodeAccessToken, generateAccessTokenFromRefres
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { AuthorizationCode, AuthorizationCodeModel, Client, Falsey, RefreshToken, Token, User } from "@node-oauth/oauth2-server";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { StackAssertionError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, StatusError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { getProjectBranchFromClientId } from ".";
 const PrismaClientKnownRequestError = Prisma.PrismaClientKnownRequestError;
 
@@ -124,10 +124,7 @@ export class OAuthModel implements AuthorizationCodeModel {
         },
       });
       if (refreshTokenObj && refreshTokenObj.projectUserId !== user.id) {
-        throw new StackAssertionError("Cross-domain handoff refresh token does not belong to the authenticated user", {
-          refreshTokenProjectUserId: refreshTokenObj.projectUserId,
-          userId: user.id,
-        });
+        throw new StatusError(401, "Cross-domain handoff refresh token does not belong to the authenticated user.");
       }
       if (refreshTokenObj && await isRefreshTokenValid({ tenancy, refreshTokenObj })) {
         return refreshTokenObj;
@@ -151,7 +148,7 @@ export class OAuthModel implements AuthorizationCodeModel {
   }
 
   async saveToken(token: Token, client: Client, user: User): Promise<Token | Falsey> {
-    const afterCallbackRedirectUrl = user.afterCallbackRedirectUrl;
+    const afterCallbackRedirectUrl = user.afterCallbackRedirectUrl ?? null;
 
     if (token.refreshToken) {
       const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(client.id));

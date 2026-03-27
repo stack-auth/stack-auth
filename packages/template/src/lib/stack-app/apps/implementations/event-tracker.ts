@@ -31,8 +31,8 @@ export class EventTracker {
   private readonly _sessionReplaySegmentId: string;
   private readonly _deps: EventTrackerDeps;
 
-  private _originalPushState: typeof history.pushState | null = null;
-  private _originalReplaceState: typeof history.replaceState | null = null;
+  private _originalPushState: History["pushState"] | null = null;
+  private _originalReplaceState: History["replaceState"] | null = null;
 
   constructor(deps: EventTrackerDeps) {
     this._deps = deps;
@@ -42,6 +42,18 @@ export class EventTracker {
   start() {
     if (this._started) return;
     if (!isBrowserLike()) return;
+    const screenObject = Reflect.get(window, "screen");
+    if (
+      typeof window.addEventListener !== "function"
+      || typeof window.removeEventListener !== "function"
+      || typeof document.addEventListener !== "function"
+      || typeof document.removeEventListener !== "function"
+      || typeof screenObject !== "object"
+      || typeof Reflect.get(screenObject, "width") !== "number"
+      || typeof Reflect.get(screenObject, "height") !== "number"
+    ) {
+      return;
+    }
     this._started = true;
 
     this._setupPageViewCapture();
@@ -99,20 +111,26 @@ export class EventTracker {
   private _setupPageViewCapture() {
     // Fire initial page-view
     this._capturePageView("initial");
+    const historyObject = window["history"];
+    const originalPushState = Reflect.get(historyObject, "pushState");
+    const originalReplaceState = Reflect.get(historyObject, "replaceState");
+    if (typeof originalPushState !== "function" || typeof originalReplaceState !== "function") {
+      return;
+    }
 
     // Monkey-patch history.pushState
-    this._originalPushState = history.pushState.bind(history);
-    history.pushState = (...args: Parameters<typeof history.pushState>) => {
+    this._originalPushState = (...args: Parameters<History["pushState"]>) => originalPushState.apply(historyObject, args);
+    Reflect.set(historyObject, "pushState", (...args: Parameters<History["pushState"]>) => {
       this._originalPushState!(...args);
       this._capturePageView("push");
-    };
+    });
 
     // Monkey-patch history.replaceState
-    this._originalReplaceState = history.replaceState.bind(history);
-    history.replaceState = (...args: Parameters<typeof history.replaceState>) => {
+    this._originalReplaceState = (...args: Parameters<History["replaceState"]>) => originalReplaceState.apply(historyObject, args);
+    Reflect.set(historyObject, "replaceState", (...args: Parameters<History["replaceState"]>) => {
       this._originalReplaceState!(...args);
       this._capturePageView("replace");
-    };
+    });
 
     // Listen for popstate (back/forward navigation)
     window.addEventListener("popstate", this._onPopState);
@@ -205,12 +223,13 @@ export class EventTracker {
     }
 
     // Restore history methods
+    const historyObject = Reflect.get(window, "history");
     if (this._originalPushState) {
-      history.pushState = this._originalPushState;
+      Reflect.set(historyObject, "pushState", this._originalPushState);
       this._originalPushState = null;
     }
     if (this._originalReplaceState) {
-      history.replaceState = this._originalReplaceState;
+      Reflect.set(historyObject, "replaceState", this._originalReplaceState);
       this._originalReplaceState = null;
     }
 
