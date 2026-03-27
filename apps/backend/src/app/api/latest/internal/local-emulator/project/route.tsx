@@ -250,7 +250,7 @@ export const POST = createSmartRouteHandler({
         secret_server_key: result.secretServerKey,
         super_secret_admin_key: result.superSecretAdminKey,
         branch_config_override_string: JSON.stringify(fileConfig),
-        onboarding_status: result.onboardingStatus,
+        onboarding_status: result.onboardingStatus ?? "",
       },
     };
   },

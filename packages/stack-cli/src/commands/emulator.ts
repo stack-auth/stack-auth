@@ -76,16 +76,16 @@ function isEmulatorRunning(): boolean {
   }
 }
 
-async function startEmulator(arch: EmulatorArch) {
+async function startEmulator(arch: "arm64" | "amd64") {
   const qemuDir = findQemuDir();
   const img = join(qemuDir, "images", `stack-emulator-${arch}.qcow2`);
 
   if (!existsSync(img)) {
     console.log("No emulator image found. Pulling latest...");
-    await pullImage(arch);
+    pullRelease(arch);
   }
 
-  await runScript(qemuDir, "run-emulator.sh", ["start"], { EMULATOR_ARCH: arch });
+  await runEmulator("start", { EMULATOR_ARCH: arch });
 }
 
 export function registerEmulatorCommand(program: Command) {
@@ -180,7 +180,7 @@ export function registerEmulatorCommand(program: Command) {
         if (!alreadyRunning) {
           console.log("\nStopping emulator...");
           try {
-            await runEmulatorAction("stop");
+            await runEmulator("stop");
           } catch {
             // best-effort stop
           }
