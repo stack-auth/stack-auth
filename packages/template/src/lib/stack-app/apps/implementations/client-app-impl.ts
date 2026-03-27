@@ -31,6 +31,8 @@ import { suspend, suspendIfSsr, use } from "@stackframe/stack-shared/dist/utils/
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { Store, storeLock } from "@stackframe/stack-shared/dist/utils/stores";
 import { deindent, mergeScopeStrings } from "@stackframe/stack-shared/dist/utils/strings";
+import { BotChallengeExecutionFailedError, BotChallengeUserCancelledError, withBotChallengeFlow } from "@stackframe/stack-shared/dist/utils/turnstile-flow";
+import type { TurnstileAction } from "@stackframe/stack-shared/dist/utils/turnstile";
 import { isRelative } from "@stackframe/stack-shared/dist/utils/urls";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as cookie from "cookie";
@@ -38,7 +40,7 @@ import * as NextNavigationUnscrambled from "next/navigation"; // import the enti
 import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import type * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
-import { addNewOAuthProviderOrScope, callOAuthCallback, signInWithOAuth } from "../../../auth";
+import { addNewOAuthProviderOrScope, callOAuthCallback } from "../../../auth";
 import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, isSecure as isSecureCookieContext, saveVerifierAndState, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud } from "../../api-keys";
 import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrlOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, ResolvedHandlerUrls, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
@@ -74,7 +76,6 @@ const NextNavigation = scrambleDuringCompileTime(NextNavigationUnscrambled);
 // END_PLATFORM
 
 const prefetchedCrossDomainHandoffTtlMs = 55 * 60 * 1000;
-
 
 const allClientApps = new Map<string, [checkString: string | undefined, app: StackClientApp<any, any>]>();
 
@@ -1039,6 +1040,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
     const tokenStore = this._getOrCreateTokenStore(await this._createCookieHelper());
     tokenStore.set(tokens);
+
+    // Pre-fetch the current user for the new session so the cache is already
+    // populated when useUser() re-renders, avoiding a stale-cache render cycle.
+    const newSession = this._getSessionFromTokenStore(tokenStore);
+    this._currentUserCache.getOrWait([newSession], "write-only").catch(() => {});
   }
 
   protected _hasPersistentTokenStore(overrideTokenStoreInit?: TokenStoreInit): this is StackClientApp<true, ProjectId> {
@@ -2133,6 +2139,97 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return clientVersion;
   }
 
+  private _botChallengeSiteKeysWarned = false;
+  private _getBotChallengeSiteKeys(): { visibleSiteKey: string, invisibleSiteKey: string } | null {
+    if (!isBrowserLike()) return null;
+
+    const visibleSiteKey = process.env.NEXT_PUBLIC_STACK_BOT_CHALLENGE_SITE_KEY;
+    if (!visibleSiteKey) {
+      if (!this._botChallengeSiteKeysWarned) {
+        this._botChallengeSiteKeysWarned = true;
+        console.warn("[stack-auth] NEXT_PUBLIC_STACK_BOT_CHALLENGE_SITE_KEY is not set — bot challenge fraud protection is disabled. Set the env variable to enable it.");
+      }
+      return null;
+    }
+
+    const invisibleSiteKey = process.env.NEXT_PUBLIC_STACK_BOT_CHALLENGE_INVISIBLE_SITE_KEY ?? visibleSiteKey;
+
+    return { visibleSiteKey, invisibleSiteKey };
+  }
+
+  private _getBotChallengeFlowFailure(error: unknown): { type: "cancelled" | "failed", knownError: KnownErrors["BotChallengeFailed"] } | null {
+    if (error instanceof BotChallengeUserCancelledError) {
+      return {
+        type: "cancelled",
+        knownError: new KnownErrors.BotChallengeFailed("Bot challenge cancelled by user"),
+      };
+    }
+    if (error instanceof BotChallengeExecutionFailedError) {
+      return {
+        type: "failed",
+        knownError: new KnownErrors.BotChallengeFailed(error.message),
+      };
+    }
+    return null;
+  }
+
+  private _normalizeBotChallengeResult<T, E>(result: Result<T, E | KnownErrors["BotChallengeRequired"] | KnownErrors["BotChallengeFailed"]>): Result<T, E | KnownErrors["BotChallengeFailed"]> {
+    if (result.status === "ok") {
+      return result;
+    }
+
+    if (KnownErrors.BotChallengeRequired.isInstance(result.error)) {
+      captureError("bot-challenge-unexpected-after-flow", result.error);
+      return Result.error(new KnownErrors.BotChallengeFailed("Unexpected bot challenge after flow completion"));
+    }
+
+    return Result.error(result.error);
+  }
+
+  private _toInterfaceBotChallengeInput(challenge: { token?: string, phase?: "invisible" | "visible", unavailable?: true }) {
+    if (challenge.unavailable) {
+      return {
+        phase: "visible" as const,
+      };
+    }
+
+    return {
+      token: challenge.token,
+      phase: challenge.phase,
+    };
+  }
+
+  private async _executeResultWithBotChallengeFlow<T, E>(options: {
+    action: TurnstileAction,
+    execute: (challenge: { token?: string, phase?: "invisible" | "visible", unavailable?: true }) => Promise<Result<T, E | KnownErrors["BotChallengeRequired"] | KnownErrors["BotChallengeFailed"]>>,
+  }): Promise<Result<T, E | KnownErrors["BotChallengeFailed"]>> {
+    const siteKeys = this._getBotChallengeSiteKeys();
+    let result: Result<T, E | KnownErrors["BotChallengeRequired"] | KnownErrors["BotChallengeFailed"]>;
+
+    try {
+      if (siteKeys) {
+        result = await withBotChallengeFlow({
+          ...siteKeys,
+          action: options.action,
+          execute: options.execute,
+          isChallengeRequired: (flowResult) => {
+            return flowResult.status === "error" && KnownErrors.BotChallengeRequired.isInstance(flowResult.error);
+          },
+        });
+      } else {
+        result = await options.execute({});
+      }
+    } catch (e) {
+      const flowFailure = this._getBotChallengeFlowFailure(e);
+      if (flowFailure) {
+        return Result.error(flowFailure.knownError);
+      }
+      throw e;
+    }
+
+    return this._normalizeBotChallengeResult(result);
+  }
+
   protected async _isTrusted(url: string): Promise<boolean> {
     // TODO: At some point, we should use the project's trusted domains for this instead of just requiring the URL to be relative
     // (note that when we do this, that should be on-top of the relativity check, not replacing it)
@@ -2379,8 +2476,16 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return await this._interface.sendForgotPasswordEmail(email, options?.callbackUrl ?? constructRedirectUrl(this.urls.passwordReset, "callbackUrl"));
   }
 
-  async sendMagicLinkEmail(email: string, options?: { callbackUrl?: string }): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"]>> {
-    return await this._interface.sendMagicLinkEmail(email, options?.callbackUrl ?? constructRedirectUrl(this.urls.magicLinkCallback, "callbackUrl"));
+  async sendMagicLinkEmail(email: string, options?: {
+    callbackUrl?: string,
+  }): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"] | KnownErrors["BotChallengeFailed"]>> {
+    const callbackUrl = options?.callbackUrl ?? constructRedirectUrl(this.urls.magicLinkCallback, "callbackUrl");
+    return await this._executeResultWithBotChallengeFlow({
+      action: "send_magic_link_email",
+      execute: async (challenge) => {
+        return await this._interface.sendMagicLinkEmail(email, callbackUrl, this._toInterfaceBotChallengeInput(challenge));
+      },
+    });
   }
 
   async resetPassword(options: { password: string, code: string }): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>> {
@@ -2639,7 +2744,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return res;
   }
 
-  async signInWithOAuth(provider: ProviderType, options?: { returnTo?: string }) {
+  async signInWithOAuth(provider: ProviderType, options?: {
+    returnTo?: string,
+  }) {
     if (typeof window === "undefined") {
       throw new Error("signInWithOAuth can currently only be called in a browser environment");
     }
@@ -2650,17 +2757,53 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     const afterCallbackRedirectUrl = currentUrl.searchParams.has("after_auth_return_to")
       ? currentUrl.toString()
       : undefined;
-    await signInWithOAuth(
-      this._interface,
-      {
+    const siteKeys = this._getBotChallengeSiteKeys();
+    const { codeChallenge, state } = await saveVerifierAndState();
+
+    const executeOAuth = async (challenge: { token?: string, phase?: "invisible" | "visible", unavailable?: true }) => {
+      return await this._interface.authorizeOAuth({
         provider,
-        redirectUrl: options?.returnTo ?? this.urls.oauthCallback,
-        errorRedirectUrl: this.urls.error,
+        redirectUrl: constructRedirectUrl(options?.returnTo ?? this.urls.oauthCallback, "redirectUrl"),
+        errorRedirectUrl: constructRedirectUrl(this.urls.error, "errorRedirectUrl"),
         afterCallbackRedirectUrl,
+        type: "authenticate",
         providerScope: this._oauthScopesOnSignIn[provider]?.join(" "),
-      },
-      session,
-    );
+        codeChallenge,
+        state,
+        botChallenge: this._toInterfaceBotChallengeInput(challenge),
+        session,
+      });
+    };
+
+    let authorizeResult;
+    try {
+      if (siteKeys) {
+        authorizeResult = await withBotChallengeFlow({
+          ...siteKeys,
+          action: "oauth_authenticate",
+          execute: executeOAuth,
+          isChallengeRequired: (result) => {
+            return result.status === "error" && KnownErrors.BotChallengeRequired.isInstance(result.error);
+          },
+        });
+      } else {
+        // Server safe: just call execute with no bot challenge params
+        authorizeResult = await executeOAuth({});
+      }
+    } catch (e) {
+      const flowFailure = this._getBotChallengeFlowFailure(e);
+      if (flowFailure?.type === "cancelled") {
+        return;
+      }
+      if (flowFailure?.type === "failed") {
+        throw flowFailure.knownError;
+      }
+      throw e;
+    }
+
+    const location = Result.orThrow(authorizeResult);
+    window.location.assign(location);
+    await neverResolve();
   }
 
   /**
@@ -2729,7 +2872,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     noRedirect?: boolean,
     noVerificationCallback?: boolean,
     verificationCallbackUrl?: string,
-  }): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors['PasswordRequirementsNotMet']>> {
+  }): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors['PasswordRequirementsNotMet'] | KnownErrors["BotChallengeFailed"]>> {
     if (options.noVerificationCallback && options.verificationCallbackUrl) {
       throw new StackAssertionError("verificationCallbackUrl is not allowed when noVerificationCallback is true");
     }
@@ -2737,28 +2880,42 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     const session = await this._getSession();
     const emailVerificationRedirectUrl = options.noVerificationCallback ? undefined : options.verificationCallbackUrl ?? constructRedirectUrl(this.urls.emailVerification, "verificationCallbackUrl");
 
-    let result = await this._interface.signUpWithCredential(
-      options.email,
-      options.password,
-      emailVerificationRedirectUrl,
-      session
-    );
-
-    // If the redirect URL is not whitelisted and we didn't explicitly opt out of verification,
-    // retry with undefined (no email verification) and log a warning
-    if (result.status === 'error' &&
-      result.error instanceof KnownErrors.RedirectUrlNotWhitelisted &&
-      !options.noVerificationCallback &&
-      emailVerificationRedirectUrl !== undefined) {
-      console.error("Warning: The verification callback URL is not trusted. Proceeding with signup without email verification. Please add your domain to the trusted domains list in your Stack Auth dashboard.", { url: emailVerificationRedirectUrl });
-
-      result = await this._interface.signUpWithCredential(
+    const executeSignUp = async (challenge: { token?: string, phase?: "invisible" | "visible", unavailable?: true }) => {
+      let result = await this._interface.signUpWithCredential(
         options.email,
         options.password,
-        undefined, // No email verification
-        session
+        emailVerificationRedirectUrl,
+        session,
+        this._toInterfaceBotChallengeInput(challenge),
       );
-    }
+
+      // If the auto-constructed redirect URL is not whitelisted, gracefully fall back
+      // to signing up without email verification rather than failing.
+      // If the user explicitly provided a verificationCallbackUrl, propagate the error.
+      if (result.status === 'error' &&
+        result.error instanceof KnownErrors.RedirectUrlNotWhitelisted &&
+        emailVerificationRedirectUrl !== undefined) {
+        if (!options.verificationCallbackUrl) {
+          captureError("signup-verification-url-not-whitelisted", new StackAssertionError("The auto-constructed verification callback URL is not whitelisted; proceeding without email verification", { emailVerificationRedirectUrl }));
+
+          result = await this._interface.signUpWithCredential(
+            options.email,
+            options.password,
+            undefined, // No email verification
+            session,
+            this._toInterfaceBotChallengeInput(challenge),
+          );
+        }
+      }
+
+      return result;
+    };
+
+    let result;
+    result = await this._executeResultWithBotChallengeFlow({
+      action: "sign_up_with_credential",
+      execute: executeSignUp,
+    });
 
     if (result.status === 'ok') {
       await this._signInToAccountWithTokens(result.data);
@@ -3268,6 +3425,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
       refreshOwnedProjects: async () => {
         await this._refreshOwnedProjects(await this._getSession());
+      },
+      signInWithTokens: async (tokens: { accessToken: string, refreshToken: string }) => {
+        await this._signInToAccountWithTokens(tokens);
       },
     };
   };

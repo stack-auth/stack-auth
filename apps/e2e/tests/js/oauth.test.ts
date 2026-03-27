@@ -46,21 +46,9 @@ it("adds provider_scope from oauthScopesOnSignIn for authenticate flow", async (
     globalThis.document = previousDocument;
   }
 
-  const parsed = new URL(assignedUrl!);
-  expect(parsed.searchParams.get("provider_scope")).toBe("repo");
-  const response = await fetch(assignedUrl!, { redirect: "manual" });
-  expect(response).toMatchInlineSnapshot(`
-    Response {
-      "status": 307,
-      "headers": Headers {
-        "location": "https://github.com/login/oauth/authorize?client_id=test_client_id&scope=user%3Aemail+repo&response_type=code&redirect_uri=%3Cstripped+query+param%3E&code_challenge_method=S256&code_challenge=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&access_type=offline&prompt=consent",
-        "set-cookie": <setting cookie "stack-oauth-inner-<stripped cookie name key>" at path "/" to "true">,
-        <some fields may have been hidden>,
-      },
-    }
-  `);
-  const redirectUrl = new URL(response.headers.get("location")!);
-  const scope = decodeURIComponent(redirectUrl.searchParams.get("scope")!);
+  // The SDK now receives the OAuth provider URL directly via JSON response
+  const oauthUrl = new URL(assignedUrl!);
+  const scope = decodeURIComponent(oauthUrl.searchParams.get("scope")!);
   expect(scope).toBe("user:email repo");
 }, { timeout: 40_000 });
 

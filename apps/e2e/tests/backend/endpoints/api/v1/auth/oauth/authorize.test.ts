@@ -1,4 +1,4 @@
-import { it } from "../../../../../../helpers";
+import { it, localRedirectUrl } from "../../../../../../helpers";
 import { localhostUrl } from "../../../../../../helpers/ports";
 import { Auth, Project, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
 
@@ -46,6 +46,25 @@ it("should redirect the user to the OAuth provider with the right arguments even
   expect(secondLocation).toBeTruthy();
   expect(secondLocation).toMatchInlineSnapshot(`"http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>14/auth?client_id=spotify&scope=openid+offline_access&response_type=code&redirect_uri=%3Cstripped+query+param%3E&code_challenge_method=S256&code_challenge=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&access_type=offline&prompt=consent"`);
   expect(response.authorizeResponse.headers.get("set-cookie")).toMatch(/^stack-oauth-inner-[^;]+=[^;]+; Path=\/; Expires=[^;]+; Max-Age=\d+;( Secure;)? HttpOnly$/);
+});
+
+it("should return the OAuth location as JSON when requested by the SDK flow", async ({ expect }) => {
+  const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
+    query: {
+      ...await Auth.OAuth.getAuthorizeQuery(),
+      stack_response_mode: "json",
+    },
+  });
+
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "location": "http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>14/auth?client_id=spotify&scope=openid+offline_access&response_type=code&redirect_uri=%3Cstripped+query+param%3E&code_challenge_method=S256&code_challenge=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&access_type=offline&prompt=consent" },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+  // In JSON mode, PKCE prevents CSRF so no cookie is needed
+  expect(response.headers.get("set-cookie")).toBeNull();
 });
 
 it("should not redirect the user to the OAuth provider with the right arguments when forcing a branch id that does not exist", async ({ expect }) => {

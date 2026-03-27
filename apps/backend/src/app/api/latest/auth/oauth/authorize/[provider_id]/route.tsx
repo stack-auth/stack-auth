@@ -2,17 +2,19 @@ import { checkApiKeySet, throwCheckApiKeySetError } from "@/lib/internal-api-key
 import { isAcceptedNativeAppUrl, validateRedirectUrl } from "@/lib/redirect-urls";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { decodeAccessToken, oauthCookieSchema } from "@/lib/tokens";
+import { botChallengeFlowRequestSchemaFields, getRequestContextAndBotChallengeAssessment } from "@/lib/turnstile";
 import { getProjectBranchFromClientId, getProvider } from "@/oauth";
 import { globalPrismaClient } from "@/prisma-client";
+import type { SmartResponse } from "@/route-handlers/smart-response";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { urlSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { urlSchema, yupArray, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { generators } from "openid-client";
-import * as yup from "yup";
+import type { InferType, Schema } from "yup";
 
 const outerOAuthFlowExpirationInMinutes = 10;
 
@@ -37,6 +39,8 @@ export const GET = createSmartRouteHandler({
       error_redirect_url: urlSchema.optional().meta({ openapiField: { hidden: true } }),
       error_redirect_uri: urlSchema.optional(),
       after_callback_redirect_url: urlSchema.optional(),
+      stack_response_mode: yupString().oneOf(["json", "redirect"]).default("redirect"),
+      ...botChallengeFlowRequestSchemaFields,
 
       // oauth parameters
       client_id: yupString().defined(),
@@ -50,11 +54,25 @@ export const GET = createSmartRouteHandler({
       response_type: yupString().defined(),
     }).noUnknown(/* Allow unknown query params such as ttclid, other stuff that's being injected by browsers */ false).defined(),
   }),
-  response: yupObject({
-    // we never return as we always redirect
-    statusCode: yupNumber().oneOf([302]).defined(),
-    bodyType: yupString().oneOf(["empty"]).defined(),
-  }),
+  response: yupUnion(
+    yupObject({
+      // The SDK uses stack_response_mode=json so it can intercept bot challenges before navigating.
+      // The redirect path (default) is the legacy browser-direct flow.
+      statusCode: yupNumber().oneOf([200]).defined(),
+      bodyType: yupString().oneOf(["json"]).defined(),
+      body: yupObject({
+        location: yupString().defined(),
+      }).defined(),
+    }).defined(),
+    yupObject({
+      statusCode: yupNumber().oneOf([307]).defined(),
+      headers: yupObject({
+        location: yupArray(yupString().defined()).defined(),
+      }).defined(),
+      bodyType: yupString().oneOf(["text"]).defined(),
+      body: yupString().defined(),
+    }).defined(),
+  ) as unknown as Schema<SmartResponse>,
   async handler({ params, query }, fullReq) {
     const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(query.client_id), true);
     if (!tenancy) {
@@ -83,6 +101,8 @@ export const GET = createSmartRouteHandler({
     ) {
       throw new KnownErrors.RedirectUrlNotWhitelisted();
     }
+
+    const { turnstileAssessment } = await getRequestContextAndBotChallengeAssessment(query, "oauth_authenticate", tenancy);
 
     // If a token is provided, store it in the outer info so we can use it to link another user to the account, or to upgrade an anonymous user
     let projectUserId: string | undefined;
@@ -134,13 +154,28 @@ export const GET = createSmartRouteHandler({
           providerScope: query.provider_scope,
           errorRedirectUrl: query.error_redirect_uri || query.error_redirect_url,
           afterCallbackRedirectUrl: query.after_callback_redirect_url,
-        } satisfies yup.InferType<typeof oauthCookieSchema>,
+          turnstileResult: turnstileAssessment.status,
+          turnstileVisibleChallengeResult: turnstileAssessment.visibleChallengeResult,
+          responseMode: query.stack_response_mode,
+        } satisfies InferType<typeof oauthCookieSchema>,
         expiresAt: new Date(Date.now() + 1000 * 60 * outerOAuthFlowExpirationInMinutes),
       },
     });
 
-    // prevent CSRF by keeping track of the inner state in cookies
-    // the callback route must ensure that the inner state cookie is set
+    if (query.stack_response_mode === "json") {
+      // In JSON mode the client controls the flow programmatically and PKCE
+      // already prevents CSRF, so we skip the cookie (which would require
+      // credentials: "include" and a non-wildcard CORS origin).
+      return {
+        statusCode: 200,
+        bodyType: "json",
+        body: {
+          location: oauthUrl,
+        },
+      };
+    }
+
+    // For browser-redirect mode, set a CSRF cookie that the callback route checks.
     (await cookies()).set(
       "stack-oauth-inner-" + innerState,
       "true",
