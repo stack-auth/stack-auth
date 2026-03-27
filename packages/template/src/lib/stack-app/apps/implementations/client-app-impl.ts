@@ -74,10 +74,42 @@ function isSameOriginUrl(url: string): boolean {
   }
 }
 
+function _fetchWithHeaders(
+  originalFetch: typeof window.fetch,
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+  requestUrl: string,
+  isSameOrigin: boolean,
+): Promise<Response> {
+  if (isSameOrigin) {
+    const headers = new Headers(init?.headers);
+    const activeSpan = getActiveSpanFromTracing();
+    if (activeSpan && !headers.has("x-stack-trace")) {
+      const traceHeaders = serializeTraceContext(activeSpan);
+      for (const [key, value] of Object.entries(traceHeaders)) {
+        headers.set(key, value);
+      }
+    }
+    if (_activeSessionRecorder && !headers.has("x-stack-replay")) {
+      const linkState = _activeSessionRecorder.getCurrentLinkState();
+      headers.set("x-stack-replay", JSON.stringify({
+        session_replay_id: linkState.sessionReplayId ?? undefined,
+        session_replay_segment_id: linkState.sessionReplaySegmentId,
+      }));
+    }
+    return originalFetch.call(window, input, { ...init, headers });
+  }
+  return originalFetch.call(window, input, init);
+}
+
 // Shared mutable state for the fetch monkey-patch so it's applied at most once
 // globally, even across multiple StackClientApp instances (e.g. HMR, tests).
 let _fetchPatched = false;
 let _activeSessionRecorder: SessionRecorder | null = null;
+let _instrumentFetch = false;
+let _instrumentFetchOrigins: "same-origin" | "all" = "same-origin";
+let _activeSpanBatcher: ClientSpanBatcher | null = null;
+let _tracesSampleRate = 1.0;
 
 let isReactServer = false;
 // IF_PLATFORM next
@@ -573,10 +605,14 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
 
     if (isBrowserLike()) {
-      // Update the shared recorder ref so the fetch patch always uses the latest instance
+      // Update the shared refs so the fetch patch always uses the latest instance
       _activeSessionRecorder = this._sessionRecorder;
+      _instrumentFetch = this._analyticsOptions?.instrumentFetch ?? false;
+      _instrumentFetchOrigins = this._analyticsOptions?.instrumentFetchOrigins ?? "same-origin";
+      _tracesSampleRate = this._analyticsOptions?.tracesSampleRate ?? 1.0;
 
       // Patch window.fetch at most once globally to inject tracing/replay headers
+      // and optionally create http.client spans
       if (!_fetchPatched) {
         _fetchPatched = true;
         const originalFetch = window.fetch;
@@ -590,11 +626,51 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
             requestUrl = input;
           }
 
-          if (isSameOriginUrl(requestUrl)) {
+          const isSameOrigin = isSameOriginUrl(requestUrl);
+          const isAnalyticsUrl = requestUrl.includes("/api/v1/analytics/");
+          const method = init?.method?.toUpperCase() ?? "GET";
+
+          // Determine whether to create a span for this request
+          const shouldInstrument = _instrumentFetch
+            && _activeSpanBatcher
+            && !isAnalyticsUrl
+            && (_instrumentFetchOrigins === "all" || isSameOrigin);
+
+          // Strip query string from URL for span data (avoid leaking tokens)
+          const sanitizedUrl = (() => {
+            try {
+              return requestUrl.split("?")[0]!.split("#")[0]!;
+            } catch {
+              return requestUrl;
+            }
+          })();
+
+          if (shouldInstrument) {
+            const parentSpan = getActiveSpanFromTracing();
+            // Root spans are subject to sampling; child spans inherit
+            const isSampled = parentSpan ? true : Math.random() < _tracesSampleRate;
+            if (!isSampled) {
+              // Still inject headers even if not creating a span
+              return _fetchWithHeaders(originalFetch, input, init, requestUrl, isSameOrigin);
+            }
+
+            const replayLink = _activeSessionRecorder?.getCurrentLinkState();
+            const span = new SpanImpl({
+              spanType: "http.client",
+              traceId: parentSpan?.traceId,
+              parentIds: parentSpan ? [parentSpan.spanId] : undefined,
+              data: { "http.method": method, "http.url": sanitizedUrl },
+              sessionReplayId: replayLink?.sessionReplayId,
+              sessionReplaySegmentId: replayLink?.sessionReplaySegmentId,
+              onEnd: (s) => {
+                _activeSpanBatcher?.push(s.toPayload());
+              },
+            });
+
+            // Inject headers using the fetch span as context
             const headers = new Headers(init?.headers);
-            const activeSpan = getActiveSpanFromTracing();
-            if (activeSpan && !headers.has("x-stack-trace")) {
-              const traceHeaders = serializeTraceContext(activeSpan);
+            if (!headers.has("x-stack-trace")) {
+              const traceHeaders = serializeTraceContext(span);
               for (const [key, value] of Object.entries(traceHeaders)) {
                 headers.set(key, value);
               }
@@ -606,9 +682,26 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
                 session_replay_segment_id: linkState.sessionReplaySegmentId,
               }));
             }
-            return originalFetch.call(window, input, { ...init, headers });
+
+            return originalFetch.call(window, input, { ...init, headers }).then(
+              (response: Response) => {
+                span.setAttribute("http.status_code", response.status);
+                const contentLength = response.headers.get("content-length");
+                if (contentLength) span.setAttribute("http.response_content_length", parseInt(contentLength, 10));
+                span.setStatus(response.status >= 400 ? "error" : "ok");
+                span.end();
+                return response;
+              },
+              (error: unknown) => {
+                span.recordException(error);
+                span.end();
+                throw error;
+              },
+            );
           }
-          return originalFetch.call(window, input, init);
+
+          // No instrumentation — just inject headers for same-origin
+          return _fetchWithHeaders(originalFetch, input, init, requestUrl, isSameOrigin);
         };
       }
       this._eventTracker = new EventTracker({
@@ -629,6 +722,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         sendBatch: async (body, opts) => {
           return await this._interface.sendAnalyticsEventBatch(body, await this._getSession(), opts);
         },
+      }, {
+        errorDedupWindowMs: this._analyticsOptions?.errorDedupWindowMs,
+        beforeSend: this._analyticsOptions?.beforeSend,
+        captureConsoleErrors: this._analyticsOptions?.captureConsoleErrors,
+        wrapBrowserApis: this._analyticsOptions?.wrapBrowserApis,
       });
       this._eventTracker.start();
 
@@ -638,6 +736,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         },
       });
       this._clientSpanBatcher.start();
+      _activeSpanBatcher = this._clientSpanBatcher;
     }
   }
 
@@ -2265,12 +2364,13 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
   }
 
-  captureException(error: unknown, extraData?: Record<string, unknown>): void {
+  captureException(error: unknown, extraData?: Record<string, unknown> & { fingerprint?: string[] }): void {
     if (this._eventTracker) {
       this._eventTracker.captureException(error, extraData);
       return;
     }
     // Non-browser fallback: send as a single-event batch
+    const { fingerprint, ...rest } = extraData ?? {};
     const errorMetadata = getErrorMetadataFromTracing(error);
     runAsynchronously(async () => {
       const auth = await this.getAuthJson();
@@ -2285,7 +2385,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
             // only set trace_id when the event is inside an active span; standalone events don't need one
             trace_id: getActiveSpanFromTracing()?.traceId ?? undefined,
             event_at_ms: Date.now(),
-            data: { source: "manual", ...errorMetadata, ...extraData },
+            data: { source: "manual", ...errorMetadata, ...rest, ...(fingerprint ? { $fingerprint: fingerprint } : {}) },
           }],
         }),
         await this._getSession(),

@@ -8,4 +8,8 @@ export const stackServerApp = new StackServerApp({
   urls: {
     accountSettings: '/settings',
   },
+  analytics: {
+    replays: { enabled: true },
+    instrumentFetch: true,
+  },
 });

@@ -10,6 +10,7 @@ import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCr
 import { _StackServerAppImpl } from "../implementations";
 import { StackClientApp, StackClientAppConstructorOptions, TrackClientAnalyticsEventOptions } from "./client-app";
 import type { Span, StartSpanOptions } from "../implementations/tracing";
+import type { StackSpanExporter, StackSpanExporterOptions } from "../implementations/otel-exporter";
 
 export type TrackServerAnalyticsEventOptions<HasTokenStore extends boolean> = TrackClientAnalyticsEventOptions & {
   userId?: string,
@@ -54,6 +55,15 @@ export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId ex
     flushAnalytics(): Promise<void>,
 
     middleware(): (req: any, res: any, next: (...args: any[]) => void) => void,
+
+    /**
+     * Creates an OpenTelemetry-compatible SpanExporter that pipes OTel spans
+     * into Stack Auth analytics. Use with any OTel TracerProvider.
+     *
+     * Users must bring their own `@opentelemetry/sdk-trace-base` or
+     * `@opentelemetry/sdk-trace-node`.
+     */
+    createOTelSpanExporter(options?: StackSpanExporterOptions): StackSpanExporter,
 
     createTeam(data: ServerTeamCreateOptions): Promise<ServerTeam>,
     /**

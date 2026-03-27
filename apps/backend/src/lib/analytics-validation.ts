@@ -8,7 +8,8 @@
 
 import { AUTO_CAPTURED_ANALYTICS_EVENT_TYPES } from "@stackframe/stack-shared/dist/interface/crud/analytics";
 
-export const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+// Accepts standard UUIDs, and also 16-char / 32-char hex strings for OpenTelemetry IDs.
+export const UUID_RE = /^(?:[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}|[0-9a-f]{16}|[0-9a-f]{32})$/i;
 
 export const CUSTOM_ANALYTICS_NAME_RE = /^[A-Za-z0-9._:-]+$/;
 

@@ -137,6 +137,25 @@ LIMIT 20`
                     Trigger Error
                   </Button>
                   <Button
+                    variant="destructive"
+                    onClick={() => {
+                      app.captureException(
+                        new Error("Fingerprinted demo error"),
+                        { fingerprint: ["demo", "custom-group"], component: "page-client" },
+                      );
+                    }}
+                  >
+                    Fingerprinted Error
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      console.error("Demo console.error capture");
+                    }}
+                  >
+                    console.error
+                  </Button>
+                  <Button
                     variant="secondary"
                     disabled={serverApiResult.status === 'loading'}
                     onClick={async () => {
@@ -229,6 +248,11 @@ LIMIT 20`
                 <div className="rounded-md border bg-black/5 p-4 dark:bg-white/5">
                   <Typography className="mb-2 font-medium">Server errors linked to replays</Typography>
                   <pre className="overflow-x-auto text-sm">{`SELECT event_at, data.error_name, data.error_message, session_replay_id, session_replay_segment_id FROM events WHERE event_type = 'server.error' ORDER BY event_at DESC LIMIT 20`}</pre>
+                </div>
+
+                <div className="rounded-md border bg-black/5 p-4 dark:bg-white/5">
+                  <Typography className="mb-2 font-medium">Error fingerprint grouping</Typography>
+                  <pre className="overflow-x-auto text-sm">{`SELECT data.\`$fingerprint\` as fingerprint, count() as occurrences, max(event_at) as last_seen FROM events WHERE event_type = '$error' GROUP BY fingerprint ORDER BY occurrences DESC LIMIT 20`}</pre>
                 </div>
 
               </div>

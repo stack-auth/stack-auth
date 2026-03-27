@@ -2,7 +2,7 @@ import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { generateUuid } from "./session-replay";
+import { generateUuid, type BeforeSendEvent } from "./session-replay";
 import type { AnalyticsBatchEvent } from "@stackframe/stack-shared/dist/interface/crud/analytics";
 import {
   type AnalyticsReplayLinkOptions,
@@ -18,6 +18,7 @@ export { parseStackFrames } from "./parse-stack-frames";
 const FLUSH_INTERVAL_MS = 10_000;
 const MAX_EVENTS_PER_BATCH = 50;
 const MAX_APPROX_BYTES_PER_BATCH = 64_000;
+const DEFAULT_DEDUP_WINDOW_MS = 5_000;
 const DEFAULT_RAGE_CLICK_THRESHOLD = 3;
 const DEFAULT_RAGE_CLICK_WINDOW_MS = 1_000;
 const DEFAULT_RAGE_CLICK_RADIUS_PX = 24;
@@ -86,6 +87,13 @@ export type EventTrackerDeps = {
   sendBatch: (body: string, options: { keepalive: boolean }) => Promise<Result<Response, Error>>,
 };
 
+export type EventTrackerOptions = {
+  errorDedupWindowMs?: number,
+  beforeSend?: (event: BeforeSendEvent) => BeforeSendEvent | null,
+  captureConsoleErrors?: boolean,
+  wrapBrowserApis?: boolean,
+};
+
 export class EventTracker {
   private _started = false;
   private _cancelled = false;
@@ -100,15 +108,38 @@ export class EventTracker {
   private _emittedScrollDepthThresholds = new Set<number>();
   private readonly _fallbackSessionReplaySegmentId: string;
   private readonly _deps: EventTrackerDeps;
+  private readonly _options: EventTrackerOptions;
   private readonly _captureConfig: TrackerCaptureConfig;
+
+  // Error deduplication state
+  private _lastErrorKey: string | null = null;
+  private _lastErrorTimestampMs = 0;
+  private _dedupCount = 0;
+  private _lastErrorData: Record<string, unknown> | null = null;
+  private readonly _dedupWindowMs: number;
+
+  // console.error capture state
+  private _originalConsoleError: typeof console.error | null = null;
+  private _inConsoleErrorCapture = false;
+
+  // API wrapping state
+  private static _apiWrappingPatched = false;
+  private _originalSetTimeout: typeof globalThis.setTimeout | null = null;
+  private _originalSetInterval: typeof globalThis.setInterval | null = null;
+  private _originalRAF: typeof requestAnimationFrame | null = null;
+  private _originalAddEventListener: typeof EventTarget.prototype.addEventListener | null = null;
+  private _originalRemoveEventListener: typeof EventTarget.prototype.removeEventListener | null = null;
+  private _wrappedListeners = new WeakMap<Function, Function>();
 
   private _originalPushState: typeof history.pushState | null = null;
   private _originalReplaceState: typeof history.replaceState | null = null;
 
-  constructor(deps: EventTrackerDeps) {
+  constructor(deps: EventTrackerDeps, options?: EventTrackerOptions) {
     this._deps = deps;
+    this._options = options ?? {};
     this._fallbackSessionReplaySegmentId = generateUuid();
     this._captureConfig = getTrackerCaptureConfig();
+    this._dedupWindowMs = this._options.errorDedupWindowMs ?? DEFAULT_DEDUP_WINDOW_MS;
   }
 
   start() {
@@ -119,6 +150,13 @@ export class EventTracker {
     this._setupPageViewCapture();
     this._setupClickCapture();
     this._setupLifecycleListeners();
+
+    if (this._options.captureConsoleErrors) {
+      this._setupConsoleErrorCapture();
+    }
+    if (this._options.wrapBrowserApis) {
+      this._setupApiWrapping();
+    }
 
     this._flushTimer = setInterval(() => this._tick(), FLUSH_INTERVAL_MS);
   }
@@ -142,7 +180,8 @@ export class EventTracker {
     await this._flush({ keepalive: false });
   }
 
-  captureException(error: unknown, extraData?: Record<string, unknown>) {
+  captureException(error: unknown, extraData?: Record<string, unknown> & { fingerprint?: string[] }) {
+    const { fingerprint, ...rest } = extraData ?? {};
     this._pushAutoCapturedEvent("$error", {
       source: "manual",
       ...getErrorMetadata(error),
@@ -152,7 +191,8 @@ export class EventTracker {
         url: window.location.href,
         title: document.title,
       } : {}),
-      ...extraData,
+      ...rest,
+      ...(fingerprint ? { $fingerprint: fingerprint } : {}),
     });
   }
 
@@ -165,9 +205,51 @@ export class EventTracker {
     });
   }
 
+  private _flushPendingDedup() {
+    if (this._dedupCount > 0 && this._lastErrorData) {
+      this._enqueueEvent("$error", {
+        ...this._lastErrorData,
+        deduplicated_count: this._dedupCount,
+      });
+    }
+    this._lastErrorKey = null;
+    this._lastErrorData = null;
+    this._dedupCount = 0;
+    this._lastErrorTimestampMs = 0;
+  }
+
   private _pushAutoCapturedEvent(eventType: AutoCapturedAnalyticsEventType, data: Record<string, unknown>) {
     assertValidAnalyticsEventName(eventType, { allowAutoCapturedReservedType: true });
+
+    // Error deduplication: collapse consecutive identical errors within the window
+    if (eventType === "$error" && this._dedupWindowMs > 0) {
+      const errorKey = `${String(data.error_name ?? "")}::${String(data.error_message ?? "")}`;
+      const nowMs = Date.now();
+      if (errorKey === this._lastErrorKey && nowMs - this._lastErrorTimestampMs <= this._dedupWindowMs) {
+        this._dedupCount++;
+        this._lastErrorTimestampMs = nowMs;
+        return;
+      }
+      // Different error or window expired — flush any pending dedup first
+      this._flushPendingDedup();
+      this._lastErrorKey = errorKey;
+      this._lastErrorTimestampMs = nowMs;
+      this._lastErrorData = { ...data };
+    }
+
     this._enqueueEvent(eventType, data);
+  }
+
+  private _generateDefaultFingerprint(data: Record<string, unknown>): string[] {
+    const parts: string[] = [];
+    if (typeof data.error_name === "string") parts.push(data.error_name);
+    const frames = data.stack_frames;
+    if (Array.isArray(frames) && frames.length > 0) {
+      const f = frames[0] as { filename?: string, function_name?: string };
+      if (f.filename) parts.push(f.filename);
+      if (f.function_name) parts.push(f.function_name);
+    }
+    return parts.length > 0 ? parts : ["{{ default }}"];
   }
 
   private _enqueueEvent(eventType: string, data: Record<string, unknown>, options?: { at?: Date | number } & AnalyticsReplayLinkOptions) {
@@ -183,9 +265,36 @@ export class EventTracker {
       ...(segmentSpanId ? [segmentSpanId] : []),
     ];
     const superProps = this._deps.getSuperProperties?.() ?? {};
-    const normalizedData = normalizeAnalyticsEventPayload(data);
+    let normalizedData = normalizeAnalyticsEventPayload(data);
+    let resolvedEventType = eventType;
+
+    // beforeSend hook: let user inspect, modify, or drop the event
+    if (this._options.beforeSend) {
+      try {
+        const publicEvent: BeforeSendEvent = {
+          event_type: resolvedEventType,
+          data: normalizedData,
+          fingerprint: Array.isArray(normalizedData.$fingerprint) ? normalizedData.$fingerprint as string[] : undefined,
+        };
+        const result = this._options.beforeSend(publicEvent);
+        if (result === null) return;
+        normalizedData = result.data;
+        resolvedEventType = result.event_type;
+        if (result.fingerprint) {
+          normalizedData.$fingerprint = result.fingerprint;
+        }
+      } catch {
+        // Swallow user errors to avoid breaking the pipeline
+      }
+    }
+
+    // Auto-generate fingerprint for $error events if not already set
+    if (resolvedEventType === "$error" && !normalizedData.$fingerprint) {
+      normalizedData.$fingerprint = this._generateDefaultFingerprint(normalizedData);
+    }
+
     const event: AnalyticsBatchEvent = {
-      event_type: eventType,
+      event_type: resolvedEventType,
       event_id: generateUuid(),
       // only set trace_id when inside an active span
       trace_id: activeSpan?.traceId ?? undefined,
@@ -551,10 +660,190 @@ export class EventTracker {
     };
   }
 
+  private _captureWrappedApiError(error: unknown, apiName: string) {
+    this._pushAutoCapturedEvent("$error", {
+      source: `api-wrap:${apiName}`,
+      ...getErrorMetadata(error),
+      ...(this._deps.release ? { release: this._deps.release } : {}),
+      path: window.location.pathname,
+      url: window.location.href,
+      title: document.title,
+    });
+  }
+
+  private _setupConsoleErrorCapture() {
+    this._originalConsoleError = console.error;
+    const self = this;
+    console.error = function (...args: unknown[]) {
+      self._originalConsoleError!.apply(console, args);
+      if (self._inConsoleErrorCapture) return;
+      self._inConsoleErrorCapture = true;
+      try {
+        const firstArg = args[0];
+        const errorMeta = firstArg instanceof Error
+          ? getErrorMetadata(firstArg)
+          : {
+            error_name: null,
+            error_message: args.map(String).join(" "),
+            error_kind: "console.error",
+            stack: null,
+            stack_frames: [],
+          };
+        self._pushAutoCapturedEvent("$error", {
+          source: "console-error",
+          ...errorMeta,
+          ...(self._deps.release ? { release: self._deps.release } : {}),
+          ...(isBrowserLike() ? {
+            path: window.location.pathname,
+            url: window.location.href,
+            title: document.title,
+          } : {}),
+        });
+      } finally {
+        self._inConsoleErrorCapture = false;
+      }
+    };
+  }
+
+  private _setupApiWrapping() {
+    if (EventTracker._apiWrappingPatched) return;
+    EventTracker._apiWrappingPatched = true;
+
+    const self = this;
+
+    // Wrap setTimeout
+    this._originalSetTimeout = window.setTimeout as typeof globalThis.setTimeout;
+    const origSetTimeout = this._originalSetTimeout;
+    (window as any).setTimeout = function (handler: TimerHandler, timeout?: number, ...args: unknown[]) {
+      if (typeof handler !== "function") {
+        return origSetTimeout(handler, timeout, ...args);
+      }
+      const wrappedHandler = function (this: unknown) {
+        try {
+          return (handler as Function).apply(this, args);
+        } catch (error) {
+          self._captureWrappedApiError(error, "setTimeout");
+          throw error;
+        }
+      };
+      return origSetTimeout(wrappedHandler, timeout);
+    } as typeof window.setTimeout;
+
+    // Wrap setInterval
+    this._originalSetInterval = window.setInterval as typeof globalThis.setInterval;
+    const origSetInterval = this._originalSetInterval;
+    (window as any).setInterval = function (handler: TimerHandler, timeout?: number, ...args: unknown[]) {
+      if (typeof handler !== "function") {
+        return origSetInterval(handler, timeout, ...args);
+      }
+      const wrappedHandler = function (this: unknown) {
+        try {
+          return (handler as Function).apply(this, args);
+        } catch (error) {
+          self._captureWrappedApiError(error, "setInterval");
+          throw error;
+        }
+      };
+      return origSetInterval(wrappedHandler, timeout);
+    } as typeof window.setInterval;
+
+    // Wrap requestAnimationFrame
+    if (typeof window.requestAnimationFrame === "function") {
+      this._originalRAF = window.requestAnimationFrame;
+      const origRAF = this._originalRAF;
+      window.requestAnimationFrame = function (callback: FrameRequestCallback) {
+        return origRAF(function (time: number) {
+          try {
+            return callback(time);
+          } catch (error) {
+            self._captureWrappedApiError(error, "requestAnimationFrame");
+            throw error;
+          }
+        });
+      };
+    }
+
+    // Wrap addEventListener / removeEventListener
+    this._originalAddEventListener = EventTarget.prototype.addEventListener;
+    this._originalRemoveEventListener = EventTarget.prototype.removeEventListener;
+    const origAddEventListener = this._originalAddEventListener;
+    const origRemoveEventListener = this._originalRemoveEventListener;
+    const wrappedListeners = this._wrappedListeners;
+
+    EventTarget.prototype.addEventListener = function (
+      type: string,
+      listener: EventListenerOrEventListenerObject | null,
+      options?: boolean | AddEventListenerOptions,
+    ) {
+      if (typeof listener === "function") {
+        let wrappedListener = wrappedListeners.get(listener);
+        if (!wrappedListener) {
+          wrappedListener = function (this: unknown, event: Event) {
+            try {
+              return (listener as Function).call(this, event);
+            } catch (error) {
+              self._captureWrappedApiError(error, `addEventListener:${type}`);
+              throw error;
+            }
+          };
+          wrappedListeners.set(listener, wrappedListener);
+        }
+        return origAddEventListener.call(this, type, wrappedListener as EventListener, options);
+      }
+      return origAddEventListener.call(this, type, listener, options);
+    };
+
+    EventTarget.prototype.removeEventListener = function (
+      type: string,
+      listener: EventListenerOrEventListenerObject | null,
+      options?: boolean | EventListenerOptions,
+    ) {
+      if (typeof listener === "function") {
+        const wrappedListener = wrappedListeners.get(listener);
+        if (wrappedListener) {
+          origRemoveEventListener.call(this, type, wrappedListener as EventListener, options);
+          return;
+        }
+      }
+      origRemoveEventListener.call(this, type, listener, options);
+    };
+  }
+
   private _teardown() {
+    // Drain pending dedup state
+    this._flushPendingDedup();
+
     if (this._detachListeners) {
       this._detachListeners();
       this._detachListeners = null;
+    }
+
+    // Restore console.error
+    if (this._originalConsoleError) {
+      console.error = this._originalConsoleError;
+      this._originalConsoleError = null;
+    }
+
+    // Restore wrapped APIs
+    if (this._originalSetTimeout) {
+      window.setTimeout = this._originalSetTimeout as typeof window.setTimeout;
+      this._originalSetTimeout = null;
+    }
+    if (this._originalSetInterval) {
+      window.setInterval = this._originalSetInterval as typeof window.setInterval;
+      this._originalSetInterval = null;
+    }
+    if (this._originalRAF) {
+      window.requestAnimationFrame = this._originalRAF;
+      this._originalRAF = null;
+    }
+    if (this._originalAddEventListener) {
+      EventTarget.prototype.addEventListener = this._originalAddEventListener;
+      this._originalAddEventListener = null;
+    }
+    if (this._originalRemoveEventListener) {
+      EventTarget.prototype.removeEventListener = this._originalRemoveEventListener;
+      this._originalRemoveEventListener = null;
     }
 
     // Restore history methods
@@ -577,6 +866,8 @@ export class EventTracker {
   }
 
   private async _flush(options: { keepalive: boolean }) {
+    // Drain any pending deduplicated errors before flushing
+    this._flushPendingDedup();
     if (!this._lastKnownAccessToken) return;
     if (this._events.length === 0) return;
 

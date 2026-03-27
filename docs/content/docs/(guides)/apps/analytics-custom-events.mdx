@@ -113,6 +113,12 @@ Errors are auto-captured in the browser via `window.onerror` and `unhandledrejec
 app.captureException(err);
 app.captureException(err, { component: "checkout" });
 
+// With custom fingerprint for grouping
+app.captureException(err, {
+  fingerprint: ["payment-flow", "stripe-timeout"],
+  component: "checkout",
+});
+
 // Server — pass request for user attribution
 serverApp.captureException(err, req);
 serverApp.captureException(err, req, { route: "/api/checkout" });
@@ -297,3 +303,54 @@ const app = new StackClientApp({
 - Only **root spans** are sampled — child spans inherit the parent's decision
 - Sampled-out spans return a no-op: the callback still runs, but nothing is sent
 - Events (`trackEvent`, `captureException`, auto-captured) are **never** sampled
+
+## Full Analytics Configuration
+
+All analytics options are set on the `analytics` field of the app constructor:
+
+```ts
+const app = new StackClientApp({
+  projectId: "...",
+  release: process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ?? "dev",
+  analytics: {
+    // Session replay (default: disabled)
+    replays: {
+      enabled: true,
+      maskAllInputs: true,     // default: true
+      blockClass: "no-record", // CSS class or RegExp
+      blockSelector: ".sensitive",
+    },
+
+    // Trace sampling (default: 1.0 = keep all)
+    tracesSampleRate: 0.1,
+
+    // beforeSend hook — inspect/modify/drop events (default: undefined)
+    beforeSend: (event) => {
+      if (event.event_type === "$error" && event.data.filename?.includes("extension://")) {
+        return null; // drop
+      }
+      return event;
+    },
+
+    // Error dedup window in ms (default: 5000, set to 0 to disable)
+    errorDedupWindowMs: 5000,
+
+    // Capture console.error() as $error events (default: false)
+    captureConsoleErrors: false,
+
+    // Wrap setTimeout/setInterval/rAF/addEventListener (default: false)
+    wrapBrowserApis: false,
+  },
+});
+```
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `replays` | `object` | `undefined` | Session replay recording options |
+| `tracesSampleRate` | `number` | `1.0` | Fraction of traces to keep (0.0–1.0) |
+| `beforeSend` | `function` | `undefined` | Inspect/modify/drop events before send. Return `null` to drop. |
+| `errorDedupWindowMs` | `number` | `5000` | Window for deduplicating consecutive identical errors. `0` disables. |
+| `captureConsoleErrors` | `boolean` | `false` | Capture `console.error()` calls as `$error` events |
+| `wrapBrowserApis` | `boolean` | `false` | Wrap `setTimeout`/`setInterval`/`rAF`/`addEventListener` to catch callback errors |
+| `instrumentFetch` | `boolean` | `false` | Auto-create `http.client` spans for `fetch` requests |
+| `instrumentFetchOrigins` | `string` | `"same-origin"` | `"same-origin"` or `"all"` — which fetch origins to instrument |

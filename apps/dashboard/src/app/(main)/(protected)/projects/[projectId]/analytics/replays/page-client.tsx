@@ -2,7 +2,6 @@
 
 import { Alert, Button, Dialog, DialogContent, DialogHeader, DialogTitle, Skeleton, Switch, Typography } from "@/components/ui";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { StyledLink } from "@/components/link";
 import { useFromNow } from "@/hooks/use-from-now";
 import {
@@ -172,7 +171,6 @@ type TimelineMarker = {
   eventType: string,
   label: string,
   isServerEvent?: boolean,
-  event?: TimelineEvent,
 };
 
 // All known event types for filtering (including server events and custom)
@@ -333,48 +331,6 @@ function getEventTypeShortName(eventType: string): string {
   return eventType;
 }
 
-/** Format error stack frames for display */
-function formatStackFrames(frames: unknown): string | null {
-  if (!Array.isArray(frames) || frames.length === 0) return null;
-  return frames
-    .slice(0, 5)
-    .map((f: any) => {
-      const fn = (f.function as string | undefined) ?? "<anonymous>";
-      const file = (f.filename as string | undefined) ?? "";
-      const line = f.lineno as number | undefined;
-      const col = f.colno as number | undefined;
-      const loc = [file, line, col].filter(Boolean).join(":");
-      return loc ? `  at ${fn} (${loc})` : `  at ${fn}`;
-    })
-    .join("\n");
-}
-
-/** Error detail popover content */
-function ErrorDetailContent({ event }: { event: TimelineEvent }) {
-  const d = event.data;
-  const errorName = (d.error_name as string | null | undefined) ?? null;
-  const errorMessage = (d.error_message as string | null | undefined) ?? "Unknown error";
-  const stackFrames = formatStackFrames(d.stack_frames);
-  const release = (d.release as string | null | undefined) ?? null;
-
-  return (
-    <div className="space-y-2 max-w-xs">
-      {errorName && (
-        <div className="text-xs font-semibold text-red-600 dark:text-red-400">{errorName}</div>
-      )}
-      <div className="text-xs break-words">{errorMessage}</div>
-      {stackFrames && (
-        <pre className="text-[10px] text-muted-foreground bg-muted/40 rounded p-2 overflow-auto max-h-32 whitespace-pre font-mono">
-          {stackFrames}
-        </pre>
-      )}
-      {release && (
-        <div className="text-[10px] text-muted-foreground">Release: {release}</div>
-      )}
-    </div>
-  );
-}
-
 /** Event type filter bar */
 function EventTypeFilterBar({
   eventTypes,
@@ -499,7 +455,6 @@ function Timeline({
 }) {
   const [currentTime, setCurrentTime] = useState(0);
   const [hoveredMarkerIndex, setHoveredMarkerIndex] = useState<number | null>(null);
-  const [errorPopoverIndex, setErrorPopoverIndex] = useState<number | null>(null);
   const trackRef = useRef<HTMLDivElement | null>(null);
   const rafRef = useRef<number>(0);
 
@@ -525,7 +480,6 @@ function Timeline({
 
   const hasMarkers = (markers?.length ?? 0) > 0;
   const hoveredMarker = hoveredMarkerIndex !== null ? markers?.[hoveredMarkerIndex] ?? null : null;
-  const errorPopoverMarker = errorPopoverIndex !== null ? markers?.[errorPopoverIndex] ?? null : null;
 
   return (
     <div className={cn("border-t border-border/30 bg-background px-3 flex items-center gap-3", hasMarkers ? "py-1.5" : "py-2")}>
@@ -552,7 +506,7 @@ function Timeline({
               const isError = marker.eventType === "$error" || marker.eventType === "server.error";
               const isServer = marker.isServerEvent;
 
-              const markerEl = (
+              return (
                 <div
                   key={i}
                   className={cn(
@@ -565,54 +519,12 @@ function Timeline({
                   style={{ left: `${left}%`, marginLeft: "-1.5px" }}
                   onMouseEnter={() => setHoveredMarkerIndex(i)}
                   onMouseLeave={() => setHoveredMarkerIndex((prev) => prev === i ? null : prev)}
-                  onClick={(e) => {
-                    if (isError && marker.event) {
-                      e.stopPropagation();
-                      setErrorPopoverIndex((prev) => prev === i ? null : i);
-                    } else {
-                      onSeek(marker.timeMs);
-                    }
-                  }}
+                  onClick={() => onSeek(marker.timeMs)}
                 />
               );
-
-              // Wrap error markers in a Popover
-              if (isError && marker.event) {
-                return (
-                  <Popover
-                    key={i}
-                    open={errorPopoverIndex === i}
-                    onOpenChange={(open) => setErrorPopoverIndex(open ? i : null)}
-                  >
-                    <PopoverTrigger asChild>
-                      {markerEl}
-                    </PopoverTrigger>
-                    <PopoverContent
-                      side="top"
-                      align="center"
-                      className="w-auto max-w-sm p-3"
-                      onOpenAutoFocus={(e) => e.preventDefault()}
-                    >
-                      <ErrorDetailContent event={marker.event} />
-                      <button
-                        className="mt-2 text-[10px] text-blue-500 hover:underline"
-                        onClick={() => {
-                          onSeek(marker.timeMs);
-                          setErrorPopoverIndex(null);
-                        }}
-                      >
-                        Jump to {formatTimelineMs(marker.timeMs)}
-                      </button>
-                    </PopoverContent>
-                  </Popover>
-                );
-              }
-
-              return markerEl;
             })}
 
-            {/* Custom tooltip (not shown when popover is open) */}
-            {hoveredMarker && errorPopoverIndex === null && (() => {
+            {hoveredMarker && (() => {
               const left = totalTimeMs > 0 ? (hoveredMarker.timeMs / totalTimeMs) * 100 : 0;
               return (
                 <div
@@ -1692,7 +1604,6 @@ export default function PageClient() {
         eventType: e.eventType,
         label: formatEventTooltip(e),
         isServerEvent: e.isServerEvent,
-        event: e,
       }))
       .filter(m => m.timeMs >= 0 && m.timeMs <= ms.globalTotalMs);
   }, [timelineEvents, ms.globalStartTs, ms.globalTotalMs, enabledEventTypes]);

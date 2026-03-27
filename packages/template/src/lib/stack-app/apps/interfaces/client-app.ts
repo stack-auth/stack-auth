@@ -67,7 +67,7 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
     readonly urls: Readonly<HandlerUrls>,
 
     trackEvent(eventType: string, data?: Record<string, unknown>, options?: TrackClientAnalyticsEventOptions): Promise<void>,
-    captureException(error: unknown, extraData?: Record<string, unknown>): void,
+    captureException(error: unknown, extraData?: Record<string, unknown> & { fingerprint?: string[] }): void,
     flushAnalytics(): Promise<void>,
     register(properties: Record<string, unknown>): void,
     unregister(key: string): void,

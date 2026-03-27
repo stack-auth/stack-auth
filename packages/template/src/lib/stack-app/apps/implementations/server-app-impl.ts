@@ -39,8 +39,9 @@ import { StackServerAppConstructorOptions, TrackServerAnalyticsEventOptions } fr
 import { assertValidAnalyticsEventName, normalizeAnalyticsEventAt, normalizeAnalyticsEventPayload, normalizeAnalyticsReplayLinkOptions } from "./analytics-events";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, resolveConstructorOptions } from "./common";
+import { StackSpanExporter, type StackSpanExporterOptions } from "./otel-exporter";
 import { ServerBatcher } from "./server-event-batcher";
-import { type Span, type StartSpanOptions, SpanImpl, extractReplayLink, extractTraceContext, getActiveSpan as getActiveSpanFromTracing, getErrorMetadata as getErrorMetadataFromTracing, noopSpan, runWithSpan } from "./tracing";
+import { SpanImpl, extractReplayLink, extractTraceContext, getActiveSpan as getActiveSpanFromTracing, getErrorMetadata as getErrorMetadataFromTracing, noopSpan, runWithSpan, type Span, type StartSpanOptions } from "./tracing";
 
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
@@ -704,15 +705,40 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   middleware(): (req: any, res: any, next: (...args: any[]) => void) => void {
     return (req: any, res: any, next: (...args: any[]) => void) => {
       const startTimeMs = Date.now();
+      const method = (req.method ?? "GET").toUpperCase() as string;
+      const path = (req.originalUrl ?? req.url ?? "/") as string;
+
+      // Extract trace context from incoming headers for distributed tracing
+      const headers = req.headers ?? {};
+      const { traceId, parentSpanId } = extractTraceContext(headers);
+      const { sessionReplayId, sessionReplaySegmentId } = extractReplayLink(headers);
+
+      // Create http.server span for this request
+      const span = new SpanImpl({
+        spanType: "http.server",
+        traceId: traceId ?? undefined,
+        parentIds: parentSpanId ? [parentSpanId] : undefined,
+        data: { "http.method": method, "http.route": path },
+        startedAtMs: startTimeMs,
+        sessionReplayId,
+        sessionReplaySegmentId,
+        onEnd: (endedSpan) => {
+          this._serverSpanBatcher.push(endedSpan.toPayload(), null);
+        },
+      });
 
       const onFinish = () => {
         res.removeListener("finish", onFinish);
-        this._trackAutoCapturedEvent("$request", {
-          method: (req.method ?? "GET").toUpperCase(),
-          path: req.originalUrl ?? req.url ?? "/",
-          status: res.statusCode ?? 200,
-          duration_ms: Date.now() - startTimeMs,
-        }, req);
+
+        const statusCode = res.statusCode ?? 200;
+        const durationMs = Date.now() - startTimeMs;
+
+        // End the http.server span
+        span.setAttribute("http.status_code", statusCode);
+        span.setAttribute("http.duration_ms", durationMs);
+        span.setStatus(statusCode >= 400 ? "error" : "ok");
+        span.end();
+
         const flushPromise = this.flushAnalytics();
         if (this._waitUntil) {
           this._waitUntil(flushPromise);
@@ -722,10 +748,18 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       };
 
       res.on("finish", onFinish);
-      next();
+      // Run next() within span context so child spans are linked
+      runWithSpan(span, () => next());
     };
   }
 
+
+  createOTelSpanExporter(options?: StackSpanExporterOptions): StackSpanExporter {
+    return new StackSpanExporter(
+      (span) => this._serverSpanBatcher.push(span, null),
+      options,
+    );
+  }
 
   protected _serverApiKeyFromCrud(crud: TeamApiKeysCrud['Client']['Read']): ApiKey<"team">;
   protected _serverApiKeyFromCrud(crud: UserApiKeysCrud['Client']['Read']): ApiKey<"user">;

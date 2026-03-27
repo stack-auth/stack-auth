@@ -513,4 +513,331 @@ describe("EventTracker", () => {
       'Custom analytics event types cannot start with "$": $checkout.completed',
     );
   });
+
+  // ---------- beforeSend ----------
+
+  it("beforeSend can modify event data", async () => {
+    vi.useFakeTimers();
+    const sendBatch = vi.fn(async (body: string) => Result.ok(new Response(body, { status: 200 })));
+
+    const tracker = new EventTracker({
+      projectId: "project-id",
+      getAccessToken: async () => "access-token",
+      sendBatch,
+    }, {
+      beforeSend: (event) => ({ ...event, data: { ...event.data, injected: true } }),
+    });
+
+    tracker.start();
+    await flushTimersAndMicrotasks();
+    tracker.clearBuffer();
+    sendBatch.mockClear();
+
+    tracker.trackEvent("test.event", { original: true });
+    await flushTimersAndMicrotasks();
+
+    const payload = JSON.parse(sendBatch.mock.calls[0]![0] as string) as { events: Array<{ data: Record<string, unknown> }> };
+    expect(payload.events[0]!.data).toMatchObject({ original: true, injected: true });
+    tracker.stop();
+  });
+
+  it("beforeSend can drop events by returning null", async () => {
+    vi.useFakeTimers();
+    const sendBatch = vi.fn(async (body: string) => Result.ok(new Response(body, { status: 200 })));
+
+    const tracker = new EventTracker({
+      projectId: "project-id",
+      getAccessToken: async () => "access-token",
+      sendBatch,
+    }, {
+      beforeSend: () => null,
+    });
+
+    tracker.start();
+    await flushTimersAndMicrotasks();
+    tracker.clearBuffer();
+    sendBatch.mockClear();
+
+    tracker.trackEvent("test.event", { should_be_dropped: true });
+    await flushTimersAndMicrotasks();
+
+    expect(sendBatch).not.toHaveBeenCalled();
+    tracker.stop();
+  });
+
+  it("beforeSend errors are swallowed and the event still enqueues", async () => {
+    vi.useFakeTimers();
+    const sendBatch = vi.fn(async (body: string) => Result.ok(new Response(body, { status: 200 })));
+
+    const tracker = new EventTracker({
+      projectId: "project-id",
+      getAccessToken: async () => "access-token",
+      sendBatch,
+    }, {
+      beforeSend: () => { throw new Error("user bug"); },
+    });
+
+    tracker.start();
+    await flushTimersAndMicrotasks();
+    tracker.clearBuffer();
+    sendBatch.mockClear();
+
+    tracker.trackEvent("test.event", { value: 1 });
+    await flushTimersAndMicrotasks();
+
+    expect(sendBatch).toHaveBeenCalledTimes(1);
+    tracker.stop();
+  });
+
+  // ---------- Fingerprinting ----------
+
+  it("auto-generates $fingerprint for $error events", async () => {
+    vi.useFakeTimers();
+    const sendBatch = vi.fn(async (body: string) => Result.ok(new Response(body, { status: 200 })));
+
+    const tracker = new EventTracker({
+      projectId: "project-id",
+      getAccessToken: async () => "access-token",
+      sendBatch,
+    });
+
+    tracker.start();
+    await flushTimersAndMicrotasks();
+    tracker.clearBuffer();
+    sendBatch.mockClear();
+
+    tracker.captureException(new Error("test error"));
+    await flushTimersAndMicrotasks();
+
+    const payload = JSON.parse(sendBatch.mock.calls[0]![0] as string) as { events: Array<{ event_type: string, data: Record<string, unknown> }> };
+    const errorEvent = payload.events.find((e) => e.event_type === "$error");
+    expect(errorEvent).toBeDefined();
+    expect(errorEvent!.data.$fingerprint).toBeDefined();
+    expect(Array.isArray(errorEvent!.data.$fingerprint)).toBe(true);
+    expect((errorEvent!.data.$fingerprint as string[])[0]).toBe("Error");
+    tracker.stop();
+  });
+
+  it("user-supplied fingerprint overrides auto-generated one", async () => {
+    vi.useFakeTimers();
+    const sendBatch = vi.fn(async (body: string) => Result.ok(new Response(body, { status: 200 })));
+
+    const tracker = new EventTracker({
+      projectId: "project-id",
+      getAccessToken: async () => "access-token",
+      sendBatch,
+    });
+
+    tracker.start();
+    await flushTimersAndMicrotasks();
+    tracker.clearBuffer();
+    sendBatch.mockClear();
+
+    tracker.captureException(new Error("test"), { fingerprint: ["custom", "group"] });
+    await flushTimersAndMicrotasks();
+
+    const payload = JSON.parse(sendBatch.mock.calls[0]![0] as string) as { events: Array<{ data: Record<string, unknown> }> };
+    expect(payload.events[0]!.data.$fingerprint).toEqual(["custom", "group"]);
+    tracker.stop();
+  });
+
+  it("beforeSend can set fingerprint on an event", async () => {
+    vi.useFakeTimers();
+    const sendBatch = vi.fn(async (body: string) => Result.ok(new Response(body, { status: 200 })));
+
+    const tracker = new EventTracker({
+      projectId: "project-id",
+      getAccessToken: async () => "access-token",
+      sendBatch,
+    }, {
+      beforeSend: (event) => ({ ...event, fingerprint: ["from-hook"] }),
+    });
+
+    tracker.start();
+    await flushTimersAndMicrotasks();
+    tracker.clearBuffer();
+    sendBatch.mockClear();
+
+    tracker.captureException(new Error("x"));
+    await flushTimersAndMicrotasks();
+
+    const payload = JSON.parse(sendBatch.mock.calls[0]![0] as string) as { events: Array<{ data: Record<string, unknown> }> };
+    expect(payload.events[0]!.data.$fingerprint).toEqual(["from-hook"]);
+    tracker.stop();
+  });
+
+  // ---------- Error Deduplication ----------
+
+  it("deduplicates consecutive identical errors", async () => {
+    vi.useFakeTimers();
+    const sendBatch = vi.fn(async (body: string) => Result.ok(new Response(body, { status: 200 })));
+
+    const tracker = new EventTracker({
+      projectId: "project-id",
+      getAccessToken: async () => "access-token",
+      sendBatch,
+    }, {
+      errorDedupWindowMs: 5000,
+    });
+
+    tracker.start();
+    await flushTimersAndMicrotasks();
+    tracker.clearBuffer();
+    sendBatch.mockClear();
+
+    // Fire 5 identical errors rapidly
+    for (let i = 0; i < 5; i++) {
+      window.dispatchEvent(new ErrorEvent("error", {
+        message: "Same error",
+        error: new Error("Same error"),
+      }));
+    }
+
+    await flushTimersAndMicrotasks();
+
+    const payload = JSON.parse(sendBatch.mock.calls[0]![0] as string) as { events: Array<{ event_type: string, data: Record<string, unknown> }> };
+    const errorEvents = payload.events.filter((e) => e.event_type === "$error");
+    // Should have only the first occurrence enqueued (dedup summary flushed on timer)
+    expect(errorEvents.length).toBe(2); // first error + dedup summary
+    const dedupEvent = errorEvents.find((e) => typeof e.data.deduplicated_count === "number");
+    expect(dedupEvent).toBeDefined();
+    expect(dedupEvent!.data.deduplicated_count).toBe(4);
+
+    tracker.stop();
+  });
+
+  it("does not deduplicate when window is 0 (disabled)", async () => {
+    vi.useFakeTimers();
+    const sendBatch = vi.fn(async (body: string) => Result.ok(new Response(body, { status: 200 })));
+
+    const tracker = new EventTracker({
+      projectId: "project-id",
+      getAccessToken: async () => "access-token",
+      sendBatch,
+    }, {
+      errorDedupWindowMs: 0,
+    });
+
+    tracker.start();
+    await flushTimersAndMicrotasks();
+    tracker.clearBuffer();
+    sendBatch.mockClear();
+
+    for (let i = 0; i < 3; i++) {
+      window.dispatchEvent(new ErrorEvent("error", {
+        message: "Repeated",
+        error: new Error("Repeated"),
+      }));
+    }
+
+    await flushTimersAndMicrotasks();
+
+    const payload = JSON.parse(sendBatch.mock.calls[0]![0] as string) as { events: Array<{ event_type: string }> };
+    const errorEvents = payload.events.filter((e) => e.event_type === "$error");
+    expect(errorEvents.length).toBe(3);
+
+    tracker.stop();
+  });
+
+  // ---------- console.error capture ----------
+
+  it("captures console.error as $error events when enabled", async () => {
+    vi.useFakeTimers();
+    const sendBatch = vi.fn(async (body: string) => Result.ok(new Response(body, { status: 200 })));
+    const originalConsoleError = console.error;
+
+    const tracker = new EventTracker({
+      projectId: "project-id",
+      getAccessToken: async () => "access-token",
+      sendBatch,
+    }, {
+      captureConsoleErrors: true,
+    });
+
+    tracker.start();
+    await flushTimersAndMicrotasks();
+    tracker.clearBuffer();
+    sendBatch.mockClear();
+
+    console.error("something went wrong");
+    await flushTimersAndMicrotasks();
+
+    const payload = JSON.parse(sendBatch.mock.calls[0]![0] as string) as { events: Array<{ event_type: string, data: Record<string, unknown> }> };
+    const errorEvent = payload.events.find((e) => e.event_type === "$error" && e.data.source === "console-error");
+    expect(errorEvent).toBeDefined();
+    expect(errorEvent!.data.error_message).toBe("something went wrong");
+
+    tracker.stop();
+    // Ensure original was restored
+    expect(console.error).toBe(originalConsoleError);
+  });
+
+  it("captures console.error with Error objects", async () => {
+    vi.useFakeTimers();
+    const sendBatch = vi.fn(async (body: string) => Result.ok(new Response(body, { status: 200 })));
+
+    const tracker = new EventTracker({
+      projectId: "project-id",
+      getAccessToken: async () => "access-token",
+      sendBatch,
+    }, {
+      captureConsoleErrors: true,
+    });
+
+    tracker.start();
+    await flushTimersAndMicrotasks();
+    tracker.clearBuffer();
+    sendBatch.mockClear();
+
+    console.error(new Error("Error object"));
+    await flushTimersAndMicrotasks();
+
+    const payload = JSON.parse(sendBatch.mock.calls[0]![0] as string) as { events: Array<{ event_type: string, data: Record<string, unknown> }> };
+    const errorEvent = payload.events.find((e) => e.event_type === "$error" && e.data.source === "console-error");
+    expect(errorEvent).toBeDefined();
+    expect(errorEvent!.data.error_name).toBe("Error");
+    expect(errorEvent!.data.error_message).toBe("Error object");
+
+    tracker.stop();
+  });
+
+  // ---------- API wrapping ----------
+
+  it("captures errors in setTimeout callbacks when wrapBrowserApis is enabled", async () => {
+    vi.useFakeTimers();
+    const sendBatch = vi.fn(async (body: string) => Result.ok(new Response(body, { status: 200 })));
+
+    // Reset static guard
+    (EventTracker as any)._apiWrappingPatched = false;
+
+    const tracker = new EventTracker({
+      projectId: "project-id",
+      getAccessToken: async () => "access-token",
+      sendBatch,
+    }, {
+      wrapBrowserApis: true,
+    });
+
+    tracker.start();
+    await flushTimersAndMicrotasks();
+    tracker.clearBuffer();
+    sendBatch.mockClear();
+
+    const error = new Error("setTimeout error");
+    expect(() => {
+      setTimeout(() => {
+        throw error;
+      }, 100);
+      vi.advanceTimersByTime(200);
+    }).toThrow("setTimeout error");
+
+    await flushTimersAndMicrotasks();
+
+    const payload = JSON.parse(sendBatch.mock.calls[0]![0] as string) as { events: Array<{ event_type: string, data: Record<string, unknown> }> };
+    const errorEvent = payload.events.find((e) => e.event_type === "$error" && e.data.source === "api-wrap:setTimeout");
+    expect(errorEvent).toBeDefined();
+    expect(errorEvent!.data.error_message).toBe("setTimeout error");
+
+    tracker.stop();
+  });
 });
