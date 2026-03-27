@@ -100,9 +100,6 @@ A: In browser contexts, `app.urls` should return redirect-ready handler URLs for
 Q: What should happen if hosted `after_auth_return_to` requires cross-domain handoff but URL params are missing?
 A: In `planRedirectToHandler` (`redirect-page-urls.ts`), do not throw immediately. Generate missing PKCE handoff `state`/`codeChallenge` via `getCrossDomainHandoffParams(currentUrl)` and default `afterCallbackRedirectUrl` to `currentUrl.toString()`, then continue with cross-domain authorize planning.
 
-Q: How do we avoid duplicating redirect-back URL logic between `app.urls` and `redirectTo*`?
-A: Keep redirect math and handler policy decisions in `redirect-page-urls.ts` (for example `resolveAppUrlsForCurrentPage`, `resolveRedirectBackAwareHandlerUrlForRedirect`, `getHandlerRedirectPolicy`) and keep `client-app-impl` as orchestration only (state/cookies/network/redirect side effects). Redirect execution should start from raw resolved URLs (not `this.urls`) so `noRedirectBack` still works as expected.
-
 Q: What is the cleanest split for `_redirectToHandler`?
 A: Put branching/policy into a pure planner (`planRedirectToHandler`) in `redirect-page-urls.ts` that returns either a direct redirect URL or a cross-domain authorize payload; keep `client-app-impl` as the executor for side effects (calling authorize endpoint and navigating).
 

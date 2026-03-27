@@ -1,6 +1,6 @@
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getRelativePart } from "@stackframe/stack-shared/dist/utils/urls";
-import { HandlerUrls, ResolvedHandlerUrls } from "../../common";
+import { HandlerUrls } from "../../common";
 
 export const crossDomainAuthQueryParams = {
   marker: "stack_cross_domain_auth",
@@ -154,44 +154,6 @@ type RedirectToHandlerPlan =
     afterCallbackRedirectUrl: string,
   };
 
-export function resolveAppUrlsForCurrentPage(options: {
-  resolvedUrls: ResolvedHandlerUrls,
-  currentUrl: URL,
-  crossDomainHandoffParams: CrossDomainHandoffParams | null,
-  localOAuthCallbackUrl: string,
-}): ResolvedHandlerUrls {
-  return {
-    ...options.resolvedUrls,
-    signIn: buildRedirectBackAwareHandlerUrl({
-      handlerName: "signIn",
-      rawHandlerUrl: options.resolvedUrls.signIn,
-      currentUrl: options.currentUrl,
-      crossDomainHandoffParams: options.crossDomainHandoffParams,
-      localOAuthCallbackUrl: options.localOAuthCallbackUrl,
-    }),
-    signUp: buildRedirectBackAwareHandlerUrl({
-      handlerName: "signUp",
-      rawHandlerUrl: options.resolvedUrls.signUp,
-      currentUrl: options.currentUrl,
-      crossDomainHandoffParams: options.crossDomainHandoffParams,
-      localOAuthCallbackUrl: options.localOAuthCallbackUrl,
-    }),
-    onboarding: buildRedirectBackAwareHandlerUrl({
-      handlerName: "onboarding",
-      rawHandlerUrl: options.resolvedUrls.onboarding,
-      currentUrl: options.currentUrl,
-      crossDomainHandoffParams: options.crossDomainHandoffParams,
-      localOAuthCallbackUrl: options.localOAuthCallbackUrl,
-    }),
-    signOut: buildRedirectBackAwareHandlerUrl({
-      handlerName: "signOut",
-      rawHandlerUrl: options.resolvedUrls.signOut,
-      currentUrl: options.currentUrl,
-      crossDomainHandoffParams: options.crossDomainHandoffParams,
-      localOAuthCallbackUrl: options.localOAuthCallbackUrl,
-    }),
-  };
-}
 
 async function resolveRedirectBackAwareHandlerUrlForRedirect(options: {
   handlerName: RedirectBackAwareHandlerName,
