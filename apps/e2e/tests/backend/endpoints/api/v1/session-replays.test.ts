@@ -553,6 +553,140 @@ it("admin list session replays paginates without skipping items", async ({ expec
   expect(secondId).not.toBe(firstId);
 });
 
+it("admin can fetch a single session replay by id", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  await Auth.Otp.signIn();
+
+  const upload = await uploadBatch({
+    browserSessionId: randomUUID(),
+    batchId: randomUUID(),
+    startedAtMs: 1_700_000_000_000,
+    sentAtMs: 1_700_000_000_400,
+    events: [
+      { type: 2, timestamp: 1_700_000_000_100 },
+      { type: 3, timestamp: 1_700_000_000_250 },
+    ],
+  });
+  expect(upload.status).toBe(200);
+  const recordingId = upload.body?.session_replay_id;
+  expect(typeof recordingId).toBe("string");
+  if (typeof recordingId !== "string") {
+    throw new Error("Expected session replay id.");
+  }
+
+  const res = await niceBackendFetch(`/api/v1/internal/session-replays/${recordingId}`, {
+    method: "GET",
+    accessType: "admin",
+  });
+
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "chunk_count": 1,
+        "event_count": 2,
+        "id": "<stripped UUID>",
+        "last_event_at_millis": 1700000000250,
+        "project_user": {
+          "display_name": null,
+          "id": "<stripped UUID>",
+          "primary_email": "default-mailbox--<stripped UUID>@stack-generated.example.com",
+        },
+        "started_at_millis": 1700000000100,
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("admin get session replay returns 404 for nonexistent id", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Auth.Otp.signIn();
+
+  const fakeId = randomUUID();
+  const res = await niceBackendFetch(`/api/v1/internal/session-replays/${fakeId}`, {
+    method: "GET",
+    accessType: "admin",
+  });
+
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 404,
+      "body": {
+        "code": "ITEM_NOT_FOUND",
+        "details": { "item_id": "<stripped UUID>" },
+        "error": "Item with ID \\"<stripped UUID>\\" not found.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "ITEM_NOT_FOUND",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("non-admin access cannot call single session replay endpoint", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  await Auth.Otp.signIn();
+
+  const upload = await uploadBatch({
+    browserSessionId: randomUUID(),
+    batchId: randomUUID(),
+    startedAtMs: 1_700_000_000_000,
+    sentAtMs: 1_700_000_000_400,
+    events: [{ type: 1, timestamp: 1_700_000_000_100 }],
+  });
+  expect(upload.status).toBe(200);
+  const recordingId = upload.body?.session_replay_id;
+  expect(typeof recordingId).toBe("string");
+
+  const clientRes = await niceBackendFetch(`/api/v1/internal/session-replays/${recordingId}`, {
+    method: "GET",
+    accessType: "client",
+  });
+  expect(clientRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 401,
+      "body": {
+        "code": "INSUFFICIENT_ACCESS_TYPE",
+        "details": {
+          "actual_access_type": "client",
+          "allowed_access_types": ["admin"],
+        },
+        "error": "The x-stack-access-type header must be 'admin', but was 'client'.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+
+  const serverRes = await niceBackendFetch(`/api/v1/internal/session-replays/${recordingId}`, {
+    method: "GET",
+    accessType: "server",
+  });
+  expect(serverRes).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 401,
+      "body": {
+        "code": "INSUFFICIENT_ACCESS_TYPE",
+        "details": {
+          "actual_access_type": "server",
+          "allowed_access_types": ["admin"],
+        },
+        "error": "The x-stack-access-type header must be 'admin', but was 'server'.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "INSUFFICIENT_ACCESS_TYPE",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
 it("admin list session replays rejects unknown cursor", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Auth.Otp.signIn();
