@@ -2,6 +2,8 @@ import { describe } from "vitest";
 import { it } from "../../../../../../helpers";
 import { Auth, InternalApiKey, Project, niceBackendFetch } from "../../../../../backend-helpers";
 
+const isLocalEmulator = process.env.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR === "true";
+
 describe("Passkey with wildcard domains", () => {
   it("should store wildcard domains in config correctly", async ({ expect }) => {
     const { adminAccessToken } = await Project.createAndSwitch({
@@ -287,11 +289,17 @@ describe("Passkey with wildcard domains", () => {
       },
     });
 
-    expect(registerResponse.status).toBe(400);
-    expect(registerResponse.body).toMatchObject({
-      code: "PASSKEY_REGISTRATION_FAILED",
-      error: expect.stringContaining("origin is not allowed")
-    });
+    if (isLocalEmulator) {
+      // In local emulator mode, localhost is always allowed regardless of domain config
+      expect(registerResponse.status).toBe(200);
+      expect(registerResponse.body).toHaveProperty("user_handle");
+    } else {
+      expect(registerResponse.status).toBe(400);
+      expect(registerResponse.body).toMatchObject({
+        code: "PASSKEY_REGISTRATION_FAILED",
+        error: expect.stringContaining("origin is not allowed"),
+      });
+    }
   });
 
   it("should FAIL passkey sign-in with non-matching wildcard domain", async ({ expect }) => {
@@ -359,11 +367,21 @@ describe("Passkey with wildcard domains", () => {
       },
     });
 
-    expect(signinResponse.status).toBe(400);
-    expect(signinResponse.body).toMatchObject({
-      code: "PASSKEY_AUTHENTICATION_FAILED",
-      error: expect.stringContaining("origin is not allowed")
-    });
+    if (isLocalEmulator) {
+      // In local emulator mode, localhost is always allowed regardless of domain config,
+      // so the origin check passes but signature verification fails instead
+      expect(signinResponse.status).toBe(400);
+      expect(signinResponse.body).toMatchObject({
+        code: "PASSKEY_AUTHENTICATION_FAILED",
+        error: expect.stringContaining("signature"),
+      });
+    } else {
+      expect(signinResponse.status).toBe(400);
+      expect(signinResponse.body).toMatchObject({
+        code: "PASSKEY_AUTHENTICATION_FAILED",
+        error: expect.stringContaining("origin is not allowed"),
+      });
+    }
   });
 
   it("should work with prefix wildcard pattern for passkey", async ({ expect }) => {

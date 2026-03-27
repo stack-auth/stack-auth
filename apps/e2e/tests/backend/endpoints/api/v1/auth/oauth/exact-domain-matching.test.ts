@@ -2,6 +2,8 @@ import { describe } from "vitest";
 import { it } from "../../../../../../helpers";
 import { Auth, InternalApiKey, Project, niceBackendFetch } from "../../../../../backend-helpers";
 
+const isLocalEmulator = process.env.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR === "true";
+
 describe("OAuth with exact domain matching", () => {
   it("should allow OAuth with exact matching domain", async ({ expect }) => {
     const { adminAccessToken } = await Project.createAndSwitch({
@@ -65,20 +67,35 @@ describe("OAuth with exact domain matching", () => {
 
     // Try to complete the OAuth flow - it should fail at the callback stage
     const { response } = await Auth.OAuth.getMaybeFailingAuthorizationCode();
-    expect(response).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 400,
-        "body": {
-          "code": "REDIRECT_URL_NOT_WHITELISTED",
-          "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
-        },
-        "headers": Headers {
-          "set-cookie": <deleting cookie 'stack-oauth-inner-<stripped cookie name key>' at path '/'>,
-          "x-stack-known-error": "REDIRECT_URL_NOT_WHITELISTED",
-          <some fields may have been hidden>,
-        },
-      }
-    `);
+    if (isLocalEmulator) {
+      // In local emulator mode, localhost is always allowed regardless of domain config
+      expect(response).toMatchInlineSnapshot(`
+        NiceResponse {
+          "status": 303,
+          "body": {},
+          "headers": Headers {
+            "location": "http://stack-test.localhost/some-callback-url?code=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E",
+            "set-cookie": <deleting cookie 'stack-oauth-inner-<stripped cookie name key>' at path '/'>,
+            <some fields may have been hidden>,
+          },
+        }
+      `);
+    } else {
+      expect(response).toMatchInlineSnapshot(`
+        NiceResponse {
+          "status": 400,
+          "body": {
+            "code": "REDIRECT_URL_NOT_WHITELISTED",
+            "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
+          },
+          "headers": Headers {
+            "set-cookie": <deleting cookie 'stack-oauth-inner-<stripped cookie name key>' at path '/'>,
+            "x-stack-known-error": "REDIRECT_URL_NOT_WHITELISTED",
+            <some fields may have been hidden>,
+          },
+        }
+      `);
+    }
   });
 
   it("should match exact subdomain but not other subdomains", async ({ expect }) => {
@@ -110,20 +127,35 @@ describe("OAuth with exact domain matching", () => {
 
     // Try to complete the OAuth flow - it should fail at the callback stage
     const { response } = await Auth.OAuth.getMaybeFailingAuthorizationCode();
-    expect(response).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 400,
-        "body": {
-          "code": "REDIRECT_URL_NOT_WHITELISTED",
-          "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
-        },
-        "headers": Headers {
-          "set-cookie": <deleting cookie 'stack-oauth-inner-<stripped cookie name key>' at path '/'>,
-          "x-stack-known-error": "REDIRECT_URL_NOT_WHITELISTED",
-          <some fields may have been hidden>,
-        },
-      }
-    `);
+    if (isLocalEmulator) {
+      // In local emulator mode, localhost is always allowed regardless of domain config
+      expect(response).toMatchInlineSnapshot(`
+        NiceResponse {
+          "status": 303,
+          "body": {},
+          "headers": Headers {
+            "location": "http://stack-test.localhost/some-callback-url?code=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E",
+            "set-cookie": <deleting cookie 'stack-oauth-inner-<stripped cookie name key>' at path '/'>,
+            <some fields may have been hidden>,
+          },
+        }
+      `);
+    } else {
+      expect(response).toMatchInlineSnapshot(`
+        NiceResponse {
+          "status": 400,
+          "body": {
+            "code": "REDIRECT_URL_NOT_WHITELISTED",
+            "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
+          },
+          "headers": Headers {
+            "set-cookie": <deleting cookie 'stack-oauth-inner-<stripped cookie name key>' at path '/'>,
+            "x-stack-known-error": "REDIRECT_URL_NOT_WHITELISTED",
+            <some fields may have been hidden>,
+          },
+        }
+      `);
+    }
   });
 
   it("should require exact port matching", async ({ expect }) => {
@@ -155,20 +187,35 @@ describe("OAuth with exact domain matching", () => {
 
     // Try to complete the OAuth flow - it should fail at the callback stage
     const { response } = await Auth.OAuth.getMaybeFailingAuthorizationCode();
-    expect(response).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 400,
-        "body": {
-          "code": "REDIRECT_URL_NOT_WHITELISTED",
-          "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
-        },
-        "headers": Headers {
-          "set-cookie": <deleting cookie 'stack-oauth-inner-<stripped cookie name key>' at path '/'>,
-          "x-stack-known-error": "REDIRECT_URL_NOT_WHITELISTED",
-          <some fields may have been hidden>,
-        },
-      }
-    `);
+    if (isLocalEmulator) {
+      // In local emulator mode, localhost is always allowed regardless of domain config
+      expect(response).toMatchInlineSnapshot(`
+        NiceResponse {
+          "status": 303,
+          "body": {},
+          "headers": Headers {
+            "location": "http://stack-test.localhost/some-callback-url?code=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E",
+            "set-cookie": <deleting cookie 'stack-oauth-inner-<stripped cookie name key>' at path '/'>,
+            <some fields may have been hidden>,
+          },
+        }
+      `);
+    } else {
+      expect(response).toMatchInlineSnapshot(`
+        NiceResponse {
+          "status": 400,
+          "body": {
+            "code": "REDIRECT_URL_NOT_WHITELISTED",
+            "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
+          },
+          "headers": Headers {
+            "set-cookie": <deleting cookie 'stack-oauth-inner-<stripped cookie name key>' at path '/'>,
+            "x-stack-known-error": "REDIRECT_URL_NOT_WHITELISTED",
+            <some fields may have been hidden>,
+          },
+        }
+      `);
+    }
   });
 
   it("should require exact protocol matching", async ({ expect }) => {
@@ -200,20 +247,35 @@ describe("OAuth with exact domain matching", () => {
 
     // Try to complete the OAuth flow - it should fail at the callback stage
     const { response } = await Auth.OAuth.getMaybeFailingAuthorizationCode();
-    expect(response).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 400,
-        "body": {
-          "code": "REDIRECT_URL_NOT_WHITELISTED",
-          "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
-        },
-        "headers": Headers {
-          "set-cookie": <deleting cookie 'stack-oauth-inner-<stripped cookie name key>' at path '/'>,
-          "x-stack-known-error": "REDIRECT_URL_NOT_WHITELISTED",
-          <some fields may have been hidden>,
-        },
-      }
-    `);
+    if (isLocalEmulator) {
+      // In local emulator mode, localhost is always allowed regardless of domain config
+      expect(response).toMatchInlineSnapshot(`
+        NiceResponse {
+          "status": 303,
+          "body": {},
+          "headers": Headers {
+            "location": "http://stack-test.localhost/some-callback-url?code=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E",
+            "set-cookie": <deleting cookie 'stack-oauth-inner-<stripped cookie name key>' at path '/'>,
+            <some fields may have been hidden>,
+          },
+        }
+      `);
+    } else {
+      expect(response).toMatchInlineSnapshot(`
+        NiceResponse {
+          "status": 400,
+          "body": {
+            "code": "REDIRECT_URL_NOT_WHITELISTED",
+            "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
+          },
+          "headers": Headers {
+            "set-cookie": <deleting cookie 'stack-oauth-inner-<stripped cookie name key>' at path '/'>,
+            "x-stack-known-error": "REDIRECT_URL_NOT_WHITELISTED",
+            <some fields may have been hidden>,
+          },
+        }
+      `);
+    }
   });
 
   it("should match path prefix correctly", async ({ expect }) => {
@@ -325,19 +387,34 @@ describe("OAuth with exact domain matching", () => {
 
     // Try to complete the OAuth flow - it should fail at the callback stage
     const { response } = await Auth.OAuth.getMaybeFailingAuthorizationCode();
-    expect(response).toMatchInlineSnapshot(`
-      NiceResponse {
-        "status": 400,
-        "body": {
-          "code": "REDIRECT_URL_NOT_WHITELISTED",
-          "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
-        },
-        "headers": Headers {
-          "set-cookie": <deleting cookie 'stack-oauth-inner-<stripped cookie name key>' at path '/'>,
-          "x-stack-known-error": "REDIRECT_URL_NOT_WHITELISTED",
-          <some fields may have been hidden>,
-        },
-      }
-    `);
+    if (isLocalEmulator) {
+      // In local emulator mode, localhost is always allowed regardless of domain config
+      expect(response).toMatchInlineSnapshot(`
+        NiceResponse {
+          "status": 303,
+          "body": {},
+          "headers": Headers {
+            "location": "http://stack-test.localhost/some-callback-url?code=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E",
+            "set-cookie": <deleting cookie 'stack-oauth-inner-<stripped cookie name key>' at path '/'>,
+            <some fields may have been hidden>,
+          },
+        }
+      `);
+    } else {
+      expect(response).toMatchInlineSnapshot(`
+        NiceResponse {
+          "status": 400,
+          "body": {
+            "code": "REDIRECT_URL_NOT_WHITELISTED",
+            "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
+          },
+          "headers": Headers {
+            "set-cookie": <deleting cookie 'stack-oauth-inner-<stripped cookie name key>' at path '/'>,
+            "x-stack-known-error": "REDIRECT_URL_NOT_WHITELISTED",
+            <some fields may have been hidden>,
+          },
+        }
+      `);
+    }
   });
 });
