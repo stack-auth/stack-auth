@@ -1,44 +1,63 @@
+'use client';
+
 import { cn } from "@/components/ui";
-import { useDebouncedAction } from "@/hooks/use-debounced-action";
 import { buildStackAuthHeaders } from "@/lib/api-headers";
 import { getPublicEnvVar } from "@/lib/env";
 import { useChat, type UIMessage } from "@ai-sdk/react";
-import { PaperPlaneTiltIcon, SparkleIcon, SpinnerGapIcon } from "@phosphor-icons/react";
+import { ArrowCounterClockwiseIcon, PaperPlaneTiltIcon, SparkleIcon, SpinnerGapIcon } from "@phosphor-icons/react";
 import { useUser } from "@stackframe/stack";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { convertToModelMessages, DefaultChatTransport } from "ai";
 import { usePathname } from "next/navigation";
-import { memo, useCallback, useEffect, useRef, useState } from "react";
-import { CmdKPreviewProps } from "../cmdk-commands";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AssistantMessage,
   getMessageContent,
   getToolInvocations,
   UserMessage,
   useWordStreaming,
-} from "./ai-chat-shared";
+} from "../commands/ai-chat-shared";
 
+export function AIChatWidget({ isActive }: { isActive: boolean }) {
+  const [input, setInput] = useState("");
+  const [conversationStarted, setConversationStarted] = useState(false);
+  const [conversationKey, setConversationKey] = useState(0);
 
-/**
- * AI Chat Preview Component
- *
- * Displays an AI chat conversation. Sends the initial query on mount
- * and supports follow-up questions.
- */
-export function AIChatPreview({ query, ...rest }: CmdKPreviewProps) {
-  return <AIChatPreviewInner key={query} query={query} {...rest} />;
+  if (!isActive) return null;
+
+  return (
+    <AIChatWidgetInner
+      key={conversationKey}
+      input={input}
+      setInput={setInput}
+      conversationStarted={conversationStarted}
+      setConversationStarted={setConversationStarted}
+      onNewConversation={() => {
+        setConversationKey(prev => prev + 1);
+        setConversationStarted(false);
+        setInput("");
+      }}
+    />
+  );
 }
 
-
-const AIChatPreviewInner = memo(function AIChatPreview({
-  query,
-  registerOnFocus,
-  unregisterOnFocus,
-  onBlur,
-}: CmdKPreviewProps) {
+function AIChatWidgetInner({
+  input,
+  setInput,
+  conversationStarted,
+  setConversationStarted,
+  onNewConversation,
+}: {
+  input: string,
+  setInput: (v: string) => void,
+  conversationStarted: boolean,
+  setConversationStarted: (v: boolean) => void,
+  onNewConversation: () => void,
+}) {
   const [followUpInput, setFollowUpInput] = useState("");
   const messagesContainerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
   const followUpInputRef = useRef<HTMLInputElement>(null);
   const lastMessageCountRef = useRef(0);
   const isNearBottomRef = useRef(true);
@@ -46,7 +65,6 @@ const AIChatPreviewInner = memo(function AIChatPreview({
   const pathname = usePathname();
   const projectId = pathname.startsWith("/projects/") ? pathname.split("/")[2] : undefined;
 
-  const trimmedQuery = query.trim();
   const backendBaseUrl = getPublicEnvVar("NEXT_PUBLIC_BROWSER_STACK_API_URL") ?? getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_BROWSER_STACK_API_URL is not set");
 
   const {
@@ -80,30 +98,18 @@ const AIChatPreviewInner = memo(function AIChatPreview({
 
   const aiLoading = status === "submitted" || status === "streaming";
 
-  // Send initial query on mount (once) with debounce
-  useDebouncedAction({
-    action: async () => {
-      await sendMessage({ text: trimmedQuery });
-    },
-    delayMs: 400,
-    skip: !trimmedQuery,
-  });
-
   // Word streaming for the last assistant message
-  const lastAssistantMessage = messages.slice(1).findLast((m: UIMessage) => m.role === "assistant");
+  const lastAssistantMessage = messages.findLast((m: UIMessage) => m.role === "assistant");
   const lastAssistantContent = lastAssistantMessage ? getMessageContent(lastAssistantMessage) : "";
-  const { displayedWordCount, targetWordCount, getDisplayContent, isRevealing } = useWordStreaming(lastAssistantContent);
+  const { displayedWordCount, getDisplayContent, isRevealing } = useWordStreaming(lastAssistantContent);
   const isStreaming = aiLoading && lastAssistantMessage;
 
-  // Focus handler registration
+  // Auto-focus input on mount
   useEffect(() => {
-    const focusHandler = () => {
-      followUpInputRef.current?.focus();
-      followUpInputRef.current?.select();
-    };
-    registerOnFocus(focusHandler);
-    return () => unregisterOnFocus(focusHandler);
-  }, [registerOnFocus, unregisterOnFocus]);
+    if (!conversationStarted) {
+      inputRef.current?.focus();
+    }
+  }, [conversationStarted]);
 
   // Track if user is near the bottom of the scroll container
   const handleScroll = useCallback(() => {
@@ -129,12 +135,34 @@ const AIChatPreviewInner = memo(function AIChatPreview({
     lastMessageCountRef.current = messageCount;
   }, [messages, aiLoading]);
 
+  // Handle initial question submit
+  const handleSubmit = useCallback(() => {
+    if (!input.trim() || aiLoading) return;
+    setConversationStarted(true);
+    runAsynchronously(sendMessage({ text: input.trim() }));
+    setInput("");
+    requestAnimationFrame(() => {
+      followUpInputRef.current?.focus();
+    });
+  }, [input, aiLoading, sendMessage, setConversationStarted, setInput]);
+
+  // Handle initial input keyboard
+  const handleInputKeyDown = useCallback(
+    (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        handleSubmit();
+      }
+    },
+    [handleSubmit]
+  );
+
   // Handle follow-up questions
   const handleFollowUp = useCallback(() => {
     if (!followUpInput.trim() || aiLoading) return;
-    const input = followUpInput;
+    const text = followUpInput;
     setFollowUpInput("");
-    runAsynchronously(sendMessage({ text: input }));
+    runAsynchronously(sendMessage({ text }));
     requestAnimationFrame(() => {
       followUpInputRef.current?.focus();
     });
@@ -146,14 +174,7 @@ const AIChatPreviewInner = memo(function AIChatPreview({
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         e.stopPropagation();
-        runAsynchronously(handleFollowUp());
-      } else if (e.key === "ArrowLeft") {
-        const input = e.currentTarget;
-        if (input.selectionStart === 0 && input.selectionEnd === 0) {
-          e.preventDefault();
-          e.stopPropagation();
-          onBlur();
-        }
+        handleFollowUp();
       } else if (e.key === "ArrowUp" || e.key === "ArrowDown") {
         e.preventDefault();
         e.stopPropagation();
@@ -164,22 +185,75 @@ const AIChatPreviewInner = memo(function AIChatPreview({
         }
       }
     },
-    [handleFollowUp, onBlur]
+    [handleFollowUp]
   );
 
   // Determine what to show in the loading state
-  const showLoadingIndicator = messages.length === 0 || (aiLoading && !messages.some((m: UIMessage) => m.role === "assistant" && getMessageContent(m)));
+  const showLoadingIndicator = conversationStarted && (messages.length === 0 || (aiLoading && !messages.some((m: UIMessage) => m.role === "assistant" && getMessageContent(m))));
 
+  // Initial state - show input
+  if (!conversationStarted) {
+    return (
+      <div className="flex flex-col h-full">
+        <div className="flex-1 flex flex-col items-center justify-center px-6 gap-4">
+          <div className="w-10 h-10 rounded-full bg-purple-500/10 flex items-center justify-center">
+            <SparkleIcon className="h-5 w-5 text-purple-400" />
+          </div>
+          <div className="text-center space-y-1.5">
+            <h3 className="text-sm font-semibold text-foreground">Ask AI</h3>
+            <p className="text-xs text-muted-foreground/70 max-w-[240px]">
+              Get AI-powered answers about Stack Auth, your project, and analytics
+            </p>
+          </div>
+        </div>
+
+        <div className="shrink-0 border-t border-foreground/[0.05] px-3.5 py-2.5">
+          <div className="flex items-center gap-2 rounded-lg bg-foreground/[0.03] px-3 py-1.5 ring-1 ring-foreground/[0.05] focus-within:ring-purple-500/25 transition-shadow">
+            <input
+              ref={inputRef}
+              type="text"
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={handleInputKeyDown}
+              placeholder="Ask a question..."
+              className="flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground/40"
+              autoComplete="off"
+              autoCorrect="off"
+              spellCheck={false}
+            />
+            <button
+              onClick={handleSubmit}
+              disabled={!input.trim() || aiLoading}
+              className={cn(
+                "p-1 rounded transition-colors hover:transition-none",
+                input.trim() && !aiLoading
+                  ? "text-purple-400 hover:text-purple-300 hover:bg-purple-500/10"
+                  : "text-muted-foreground/25 cursor-not-allowed"
+              )}
+              type="button"
+            >
+              <PaperPlaneTiltIcon className="h-3.5 w-3.5" />
+            </button>
+          </div>
+          <p className="text-[9px] text-muted-foreground/40 mt-1.5 text-center">
+            Enter to send
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // Conversation view
   return (
-    <div className="flex flex-col h-full w-full">
-      {/* Messages - skip the first user message (the initial query) */}
+    <div className="flex flex-col h-full">
+      {/* Messages */}
       <div
         ref={messagesContainerRef}
         onScroll={handleScroll}
         className="flex-1 overflow-y-auto overscroll-contain px-4 py-3 space-y-4"
         style={{ scrollbarGutter: "stable" }}
       >
-        {messages.slice(1).map((message: UIMessage, index: number, arr: UIMessage[]) => {
+        {messages.map((message: UIMessage, index: number, arr: UIMessage[]) => {
           const messageContent = getMessageContent(message);
           const toolInvocations = message.role === "assistant" ? getToolInvocations(message) : [];
 
@@ -222,7 +296,7 @@ const AIChatPreviewInner = memo(function AIChatPreview({
           </div>
         )}
 
-        {/* Streaming indicator - show when still loading or still revealing words */}
+        {/* Streaming indicator */}
         {(isStreaming || isRevealing) && displayedWordCount > 0 && (
           <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/50 pl-8">
             <span className="inline-flex gap-0.5">
@@ -242,7 +316,7 @@ const AIChatPreviewInner = memo(function AIChatPreview({
         )}
       </div>
 
-      {/* Follow-up input */}
+      {/* Follow-up input + new conversation button */}
       <div className="shrink-0 border-t border-foreground/[0.05] px-3.5 py-2.5">
         <div className="flex items-center gap-2 rounded-lg bg-foreground/[0.03] px-3 py-1.5 ring-1 ring-foreground/[0.05] focus-within:ring-purple-500/25 transition-shadow">
           <input
@@ -258,7 +332,7 @@ const AIChatPreviewInner = memo(function AIChatPreview({
             spellCheck={false}
           />
           <button
-            onClick={() => runAsynchronously(handleFollowUp())}
+            onClick={() => handleFollowUp()}
             disabled={!followUpInput.trim() || aiLoading}
             className={cn(
               "p-1 rounded transition-colors hover:transition-none",
@@ -271,10 +345,26 @@ const AIChatPreviewInner = memo(function AIChatPreview({
             <PaperPlaneTiltIcon className="h-3.5 w-3.5" />
           </button>
         </div>
-        <p className="text-[9px] text-muted-foreground/40 mt-1.5 text-center">
-          Enter to send
-        </p>
+        <div className="flex items-center justify-between mt-1.5">
+          <button
+            onClick={onNewConversation}
+            disabled={aiLoading}
+            className={cn(
+              "flex items-center gap-1 text-[9px] transition-colors hover:transition-none",
+              aiLoading
+                ? "text-muted-foreground/25 cursor-not-allowed"
+                : "text-muted-foreground/40 hover:text-muted-foreground/70"
+            )}
+            type="button"
+          >
+            <ArrowCounterClockwiseIcon className="h-2.5 w-2.5" />
+            <span>New conversation</span>
+          </button>
+          <p className="text-[9px] text-muted-foreground/40">
+            Enter to send
+          </p>
+        </div>
       </div>
     </div>
   );
-});
+}
