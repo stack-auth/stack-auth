@@ -276,11 +276,11 @@ model ProjectUser {
   restrictedByAdminPrivateDetails String? // Private details (server access only)
 
   // Sign-up metadata
-  signedUpAt            DateTime
-  signUpIp              String?
-  signUpIpTrusted       Boolean?
-  signUpEmailNormalized String?
-  signUpEmailBase       String?
+  signedUpAt                      DateTime @default(now())
+  signUpIp                        String?
+  signUpIpTrusted                 Boolean?
+  signUpEmailNormalized           String?
+  signUpEmailBase                 String?
 
   // Sign-up risk scores (0-100, set at sign-up time)
   signUpRiskScoreBot            Int @default(0) @db.SmallInt
@@ -631,6 +631,9 @@ model ProjectUserAuthorizationCode {
 
   newUser                  Boolean
   afterCallbackRedirectUrl String?
+  /// Refresh token ID that should be granted when this authorization code is exchanged.
+  /// NULL means no specific refresh token is preselected, so the token endpoint follows normal issuance/reuse logic.
+  grantedRefreshTokenId    String? @db.Uuid
 
   @@id([tenancyId, authorizationCode])
 }
