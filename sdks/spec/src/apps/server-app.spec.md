@@ -12,8 +12,136 @@ Extends StackClientApp constructor options with:
 Required:
   secretServerKey: string - from Stack Auth dashboard
 
+Optional:
+  waitUntil: (promise: Promise<unknown>) => void
+    Callback to extend the lifetime of the serverless function until a promise
+    resolves. Ensures analytics flushes complete before the runtime shuts down.
+    - Vercel: `import { waitUntil } from '@vercel/functions'`
+    - Cloudflare Workers: `(p) => ctx.waitUntil(p)`
+    If omitted, auto-detects `globalThis.waitUntil`. Falls back to fire-and-forget.
+
 The secretServerKey enables server-only operations like listing all users,
 creating users, and accessing server metadata.
+
+
+## trackEvent(eventType, data?, optionsOrRequest?)
+
+Send a custom analytics event from the server. Non-blocking — events are buffered
+and flushed in the background.
+
+Arguments:
+  eventType: string
+    Custom event name. MUST NOT start with `$`.
+    Allowed characters: letters, numbers, `.`, `_`, `:`, `-`
+  data: object?
+    JSON-serializable object payload. Default: `{}`
+
+  The third argument can be one of:
+  - A request object (Fetch API Request, Express req, or any object with headers)
+    to automatically derive user context from auth headers
+  - An options object with the following fields:
+    options.at: Date | number?
+      Event timestamp. If Date, use `.getTime()`. Default: `Date.now()`
+    options.sessionReplayId: string?
+      Explicit session replay ID to associate with the event
+    options.sessionReplaySegmentId: string?
+      Explicit session replay segment ID to associate with the event
+    options.userId: string?
+      Explicit user ID override for the event row
+    options.teamId: string?
+      Explicit team ID override for the event row
+    options.tokenStore: TokenStore?
+      Optional request/session context. When present, implementations SHOULD derive
+      user context from it if userId/teamId are not explicitly provided.
+
+Behavior:
+1. Validate eventType and payload synchronously
+2. Validate any provided sessionReplayId/sessionReplaySegmentId as UUIDs
+3. Buffer the event and resolve user context in the background (non-blocking)
+4. If userId/teamId are omitted, derive them from the current user/session when possible
+5. Events are batched and flushed periodically or when thresholds are reached:
+   POST /api/v1/analytics/events/batch [server-only]
+
+Request body:
+  {
+    batch_id: uuid,
+    sent_at_ms: number,
+    events: [
+      {
+        event_type: string,
+        event_at_ms: number,
+        data: object,
+        user_id?: string,
+        team_id?: string,
+        session_replay_id?: string,
+        session_replay_segment_id?: string
+      }
+    ]
+  }
+
+This supports both:
+- request-bound events (user/session context present)
+- project-scoped events (no user context)
+
+
+## flushAnalytics()
+
+Flush all buffered server-side analytics events and spans immediately.
+
+Returns: Promise<void> that resolves after all buffered data has been sent.
+
+Use this when you need to ensure events/spans are delivered before the process exits
+(e.g., in serverless environments, test teardown, or graceful shutdown handlers).
+
+
+## startSpan(name, optionsOrRequestOrCallback?, callback?)
+
+Create a traced span for a timed server-side operation.
+
+Overloads:
+  startSpan(name, callback)           — callback form, auto-ends
+  startSpan(name, options, callback)  — with explicit options
+  startSpan(name, request, callback)  — extract trace context from request
+  startSpan(name)                     — manual form
+  startSpan(name, options)            — manual form with options
+
+Arguments:
+  name: string — span type name (no `$` prefix)
+  request: RequestLike | { headers } — extracts `x-stack-trace` for distributed tracing
+    and `x-stack-replay` for session replay linkage. Also derives user identity.
+  options: same as client StartSpanOptions, plus:
+    userId: string? — explicit user override
+    teamId: string? — explicit team override
+    tokenStore: TokenStoreInit? — for auth context extraction
+    sessionReplayId: string? — explicit replay linkage
+    sessionReplaySegmentId: string? — explicit segment linkage
+  callback: (span: Span) => T | Promise<T>
+
+Context propagation:
+  - Uses `globalThis.AsyncLocalStorage` (available in Node.js 16+, Deno, Bun,
+    Cloudflare Workers, and all serverless runtimes). Nested startSpan() calls
+    auto-detect parent span across `await` boundaries.
+  - Events tracked inside a span callback auto-get the span in parent_span_ids.
+  - trace_id is inherited from incoming x-stack-trace header or parent span.
+
+## captureException(error, optionsOrRequest?, extraData?)
+
+Manually report a caught error as a `$error` analytics event.
+
+Arguments:
+  error: unknown — the error to report
+  optionsOrRequest: options object or request for user attribution (same as trackEvent)
+  extraData: object? — additional key-value data merged into the event
+
+Behavior:
+  - Same error metadata extraction as client (error_name, stack_frames, etc.)
+  - Derives user context from request headers when provided
+  - Auto-linked to active span and session replay
+  - Non-blocking: buffered and flushed in background
+
+## getActiveSpan()
+
+Returns the currently active Span, or null.
 
 
 ## getUser(id)

@@ -1,8 +1,10 @@
+import { UUID_RE } from "@/lib/analytics-validation";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { uploadBytes } from "@/s3";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { Prisma } from "@/generated/prisma/client";
 import { findRecentSessionReplay } from "@/lib/session-replays";
+import { insertSpans } from "@/lib/spans";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -11,8 +13,6 @@ import { promisify } from "node:util";
 import { gzip as gzipCb } from "node:zlib";
 
 const gzip = promisify(gzipCb);
-
-const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const MAX_BODY_BYTES = 1_000_000;
 const MAX_EVENTS = 5_000;
@@ -126,6 +126,44 @@ export const POST = createSmartRouteHandler({
         lastEventAt: new Date(newLastEventAtMs),
       },
     });
+
+    // Upsert spans for the replay and segment (ReplacingMergeTree deduplicates by span_id, keeping latest created_at)
+    await insertSpans([
+      {
+        span_type: "$session-replay",
+        span_id: replayId,
+        trace_id: replayId,
+        started_at: new Date(newStartedAtMs),
+        ended_at: new Date(newLastEventAtMs),
+        parent_ids: [],
+        data: {},
+        project_id: projectId,
+        branch_id: branchId,
+        user_id: projectUserId,
+        team_id: null,
+        refresh_token_id: refreshTokenId,
+        session_replay_id: replayId,
+        session_replay_segment_id: null,
+        from_server: auth.type !== "client",
+      },
+      {
+        span_type: "$session-replay-segment",
+        span_id: sessionReplaySegmentId,
+        trace_id: replayId,
+        started_at: new Date(firstMs),
+        ended_at: new Date(lastMs),
+        parent_ids: [replayId],
+        data: {},
+        project_id: projectId,
+        branch_id: branchId,
+        user_id: projectUserId,
+        team_id: null,
+        refresh_token_id: refreshTokenId,
+        session_replay_id: replayId,
+        session_replay_segment_id: sessionReplaySegmentId,
+        from_server: auth.type !== "client",
+      },
+    ]);
 
     // If we already have this batch for this session, return deduped without touching S3.
     const existingChunk = await prisma.sessionReplayChunk.findUnique({

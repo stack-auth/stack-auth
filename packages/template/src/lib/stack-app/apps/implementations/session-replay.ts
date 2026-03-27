@@ -31,12 +31,86 @@ export type AnalyticsReplayOptions = {
   blockSelector?: string,
 };
 
+/**
+ * A narrow, public view of an analytics event exposed to the `beforeSend` hook.
+ * Internal fields (`event_id`, `trace_id`, `parent_span_ids`, etc.) are deliberately
+ * hidden so user code cannot corrupt them.
+ */
+export type BeforeSendEvent = {
+  event_type: string,
+  data: Record<string, unknown>,
+  fingerprint?: string[],
+};
+
 export type AnalyticsOptions = {
   /**
    * Options for session replay recording. Replays are disabled by default;
    * set `enabled: true` to opt in.
    */
   replays?: AnalyticsReplayOptions,
+
+  /**
+   * Sample rate for traces (spans created via `startSpan()`).
+   * A number between 0.0 (drop all) and 1.0 (keep all). Default: 1.0.
+   * Events (`trackEvent`, `captureException`, auto-captured) are not sampled.
+   */
+  tracesSampleRate?: number,
+
+  /**
+   * Inspect, modify, or drop events before they are enqueued for sending.
+   * Return the event (possibly modified) to keep it, or `null` to drop it.
+   * Applies to all event types (auto-captured, custom, and errors).
+   *
+   * Exceptions thrown inside this callback are silently swallowed to avoid
+   * breaking the event pipeline.
+   */
+  beforeSend?: (event: BeforeSendEvent) => BeforeSendEvent | null,
+
+  /**
+   * Deduplication window in milliseconds for consecutive identical errors
+   * (matched by `error_name` + `error_message`). Set to `0` to disable.
+   *
+   * @default 5000
+   */
+  errorDedupWindowMs?: number,
+
+  /**
+   * Capture `console.error()` calls as `$error` events.
+   * Disabled by default because many libraries use `console.error` for
+   * non-critical warnings.
+   *
+   * @default false
+   */
+  captureConsoleErrors?: boolean,
+
+  /**
+   * Wrap browser APIs (`setTimeout`, `setInterval`, `requestAnimationFrame`,
+   * `addEventListener`) to capture errors thrown inside callbacks that would
+   * otherwise be swallowed. Caught errors are re-thrown after capture.
+   *
+   * Disabled by default because it globally modifies fundamental browser APIs
+   * and may interfere with third-party libraries.
+   *
+   * @default false
+   */
+  wrapBrowserApis?: boolean,
+
+  /**
+   * Automatically create `http.client` spans for `fetch` requests.
+   * Captures method, URL, status code, and duration.
+   *
+   * @default false
+   */
+  instrumentFetch?: boolean,
+
+  /**
+   * Which origins to instrument when `instrumentFetch` is enabled.
+   * - `"same-origin"`: Only instrument requests to the same origin (default).
+   * - `"all"`: Instrument all fetch requests including cross-origin.
+   *
+   * @default "same-origin"
+   */
+  instrumentFetchOrigins?: "same-origin" | "all",
 };
 
 /**
@@ -46,10 +120,17 @@ export type AnalyticsOptions = {
  * the actual runtime value is JSON-safe.
  */
 export function analyticsOptionsToJson(options: AnalyticsOptions | undefined): AnalyticsOptions | undefined {
-  if (!options?.replays?.blockClass) return options;
-  const { blockClass, ...rest } = options.replays;
-  if (!(blockClass instanceof RegExp)) return options;
+  if (!options) return options;
+  // Strip non-serializable fields (functions) — they are restored from the
+  // original constructor options, not from the JSON representation.
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
+  const { beforeSend: _beforeSend, ...serializable } = options;
+  const current = serializable as AnalyticsOptions;
+  if (!current.replays?.blockClass) return current;
+  const { blockClass, ...rest } = current.replays;
+  if (!(blockClass instanceof RegExp)) return current;
   return {
+    ...current,
     replays: {
       ...rest,
       // eslint-disable-next-line @typescript-eslint/no-unsafe-assignment
@@ -134,6 +215,11 @@ export type SessionRecorderDeps = {
   sendBatch: (body: string, options: { keepalive: boolean }) => Promise<Result<Response, Error>>,
 };
 
+export type SessionReplayLinkState = {
+  sessionReplayId: string | null,
+  sessionReplaySegmentId: string,
+};
+
 export class SessionRecorder {
   private _started = false;
   private _cancelled = false;
@@ -149,6 +235,7 @@ export class SessionRecorder {
   private _takingSnapshot = false;
   private _flushInProgress = false;
   private _lastKnownAccessToken: string | null = null;
+  private _lastSessionReplayId: string | null = null;
   private readonly _sessionReplaySegmentId: string;
   private readonly _storageKey: string;
   private readonly _deps: SessionRecorderDeps;
@@ -190,6 +277,13 @@ export class SessionRecorder {
   clearBuffer() {
     this._events = [];
     this._approxBytes = 0;
+  }
+
+  getCurrentLinkState(): SessionReplayLinkState {
+    return {
+      sessionReplayId: this._lastSessionReplayId,
+      sessionReplaySegmentId: this._sessionReplaySegmentId,
+    };
   }
 
   private _persistActivity(nowMs: number): StoredSession {
@@ -241,6 +335,12 @@ export class SessionRecorder {
 
       if (!res.data.ok) {
         console.warn("SessionRecorder flush failed:", res.data.status, await res.data.text());
+        return;
+      }
+
+      const json = await res.data.json() as { session_replay_id?: unknown };
+      if (typeof json.session_replay_id === "string") {
+        this._lastSessionReplayId = json.session_replay_id;
       }
     } finally {
       this._flushInProgress = false;

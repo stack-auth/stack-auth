@@ -1,5 +1,8 @@
 # CLAUDE Knowledge Base
 
+Q: Where do dashboard project setup framework logos live?
+A: SVGs in `apps/dashboard/public/` (e.g. `nuxt-logo.svg`, `tanstack-start-logo.svg`). Monochrome icons are typically pulled from the Simple Icons CDN (`https://cdn.simpleicons.org/<slug>/000000`); frameworks use `reverseIfDark: true` with `dark:invert` on the image so black glyphs stay visible on dark backgrounds.
+
 Q: How are the development ports derived now that NEXT_PUBLIC_STACK_PORT_PREFIX exists?
 A: Host ports use `${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}` plus the two-digit suffix (e.g., Postgres is `${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}28`, Inbucket SMTP `${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}29`, POP3 `${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}30`, and OTLP `${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}31` by default).
 
@@ -104,3 +107,41 @@ Q: How does the Stack Auth docs MCP relate to the ask-chat API and doc tools?
 A: The public MCP (`/api/internal/mcp` on the docs site) exposes only `ask_stack_auth`, which POSTs to `/api/latest/ai/query/generate` with `tools: ["docs"]` and `systemPrompt: "docs-ask-ai"`. The backend no longer loads doc tools via MCP; `createDocsTools()` calls the docs app `POST /api/internal/docs-tools` with typed actions (same behavior as before). Optional `STACK_INTERNAL_DOCS_TOOLS_SECRET` gates the internal route; `STACK_DOCS_INTERNAL_BASE_URL` overrides the docs origin for the backend.
 Q: Where is the private sign-up risk engine generated entrypoint in backend now?
 A: The generator script writes `apps/backend/src/private/implementation.generated.ts` (not `src/generated/private-sign-up-risk-engine.ts`), and backend runtime imports should target `@/private/implementation.generated`.
+Q: How does custom analytics event ingestion work now?
+A: `POST /api/v1/analytics/events/batch` now accepts Stack-managed browser events (`$page-view`, `$click`) plus custom event names without a `$` prefix. Client auth still requires a user + refresh token and may not override `user_id`/`team_id`; server/admin auth derives project/branch from auth and can write project-scoped or explicit user/team-scoped rows.
+
+Q: Where is shared analytics export fan-out implemented?
+A: `apps/backend/src/lib/events.tsx` now owns the shared `insertAnalyticsEvents()` helper. It sanitizes lone surrogates, inserts into `analytics_internal.events`, emits an OpenTelemetry log, adds a span event when a span is active, and writes a structured JSON application log line for each ingested event.
+
+Q: What framework support model does evlog document?
+A: Based on the DeepWiki pass over `HugoRCD/evlog`, evlog has three real integration lanes: a first-class Nuxt module (`evlog/nuxt`), a first-class Nitro plugin (`evlog/nitro`) that explicitly names frameworks like TanStack Start, and a first-class standalone TypeScript mode (`initLogger`, `createRequestLogger`, manual `log.emit()`). Log export is custom-hook based via `evlog:drain`, while OpenTelemetry support is not documented; platforms like Next.js, React Router, NestJS, Express, Hono, Fastify, Elysia, and Cloudflare Workers are not first-class and would need generic/manual integration.
+
+Q: Which Stack-managed browser analytics events feed replay timelines now?
+A: Auto-captured browser analytics now include `$page-view`, `$click`, `$tab-in`, and `$tab-out`. The client capture lives in `packages/template/src/lib/stack-app/apps/implementations/event-tracker.ts`, backend allowlisting lives in `apps/backend/src/app/api/latest/analytics/events/batch/route.tsx`, and the replay timeline query/marker UI in `apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/analytics/replays/page-client.tsx` now includes the tab visibility events.
+
+Q: How should first-wave framework support map onto the Stack SDKs and setup UI?
+A: Wave 1 treats Next.js, React Router, TanStack Start, Nuxt, SvelteKit, NestJS, Express, Hono, and Cloudflare Workers as explicit first-class frameworks. The shared helper is `tokenStoreFromHeaders(headers)` in `packages/template/src/lib/stack-app/common.ts`, exported through all three SDK package families. The dashboard setup selector groups them as React apps (Next.js, React Router, TanStack Start), Full-stack JS (Nuxt, SvelteKit), and Server/edge (NestJS, Express, Hono, Cloudflare Workers), while Nitro, Fastify, Elysia, Astro, Standalone, Custom Integration, OpenTelemetry, and Log Streaming remain runtime-supported or integration-level in docs.
+
+Q: How do custom analytics events link to session replays now?
+A: `trackEvent()` on both `StackClientApp` and `StackServerApp` now accepts `sessionReplayId` and `sessionReplaySegmentId`. In the browser, when replay recording is enabled, the analytics `EventTracker` automatically reuses the `SessionRecorder`'s current replay segment id and, after the first successful replay upload, its server-issued `sessionReplayId` too; this fixes the old mismatch where tracker and recorder generated separate segment ids. The analytics batch endpoint also accepts batch-level and event-level `session_replay_id` / `session_replay_segment_id`, with event-level values overriding batch defaults, and client callers may only reference replay ids that belong to their current refresh-token session.
+
+Q: Which replay-linked fields can custom analytics events carry now?
+A: Custom analytics events support `sessionReplayId`/`session_replay_id` and `sessionReplaySegmentId`/`session_replay_segment_id`. Browser-side `trackEvent()` automatically fills both from the active `SessionRecorder` when replay recording is enabled, and queued events can override them explicitly. Note: `browser_session_id` is only used in the session-replays batch API (`/api/v1/session-replays/batch`), not in analytics events.
+
+Q: Which browser analytics events are auto-captured for replays, and how are the noisy ones tuned?
+A: Replay/browser auto-capture now covers `$page-view`, `$click`, `$tab-in`, `$tab-out`, `$window-focus`, `$window-blur`, `$submit`, `$scroll-depth`, `$rage-click`, `$copy`, `$paste`, and `$error`. The client tracker reads `NEXT_PUBLIC_STACK_ANALYTICS_RAGE_CLICK_THRESHOLD` (default `3`), `NEXT_PUBLIC_STACK_ANALYTICS_RAGE_CLICK_WINDOW_MS` (default `1000`), `NEXT_PUBLIC_STACK_ANALYTICS_RAGE_CLICK_RADIUS_PX` (default `24`), and `NEXT_PUBLIC_STACK_ANALYTICS_SCROLL_DEPTH_STEP_PERCENT` (default `25`), and copy/paste capture records only event metadata plus clipboard MIME types, never clipboard contents.
+
+Q: Where can I manually fire a custom analytics event in the demo app?
+A: The signed-in home page in `examples/demo/src/app/page-client.tsx` now has a "Send Custom Event" button. It calls `app.trackEvent(...)`, shows the generated event type inline, and renders both an "all custom events" query and an exact query for the event that was just sent.
+
+Q: How does server-side `trackEvent()` work now?
+A: Server-side `trackEvent()` is non-blocking. It validates the event synchronously, then buffers it via `ServerEventBatcher` (`packages/template/src/lib/stack-app/apps/implementations/server-event-batcher.ts`). User-ID resolution and HTTP sending happen in the background via `runAsynchronously`. Events are batched (50 events / 64KB / 10s interval) and grouped by session before flushing. Call `await serverApp.flushAnalytics()` to force-flush. The method also accepts a request object (Fetch API `Request`, Express `req`, or any object with `headers`) directly as the 3rd argument instead of wrapping in `{ tokenStore: ... }`.
+
+Q: What are the analytics data signals?
+A: Currently two signals are implemented: **Events** (`analytics_internal.events`) — discrete occurrences like `$page-view`, `$click`, `$error`, `$request`, and custom events. **Spans** (`analytics_internal.spans`) — timed operations forming distributed traces. Each signal has its own ClickHouse table, batch API endpoint, and SDK surface. Metrics/Web Vitals are not yet implemented.
+
+Q: How do enhanced $error events work?
+A: `$error` events now include `stack` (raw Error.stack string) and `stack_frames` (parsed array of `{function_name, filename, lineno, colno}`, max 50 frames). The `parseStackFrames()` function in `event-tracker.ts` handles both Chrome/V8 and Firefox stack trace formats. When the `release` option is configured on the app constructor, it's attached to all `$error` events for source map resolution.
+
+Q: Is there a Nitro plugin for analytics?
+A: No. The Nitro integration file (`packages/template/src/integrations/nitro.ts`) does not exist. Nitro/Nuxt users should use `StackServerApp.trackEvent()` directly in server routes with `waitUntil` for flush.

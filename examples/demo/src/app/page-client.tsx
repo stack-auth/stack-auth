@@ -5,11 +5,33 @@ import { Button, buttonVariants, Card, CardContent, CardFooter, CardHeader, Typo
 import Image from 'next/image';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { useState } from 'react';
+
+type LastTrackedEvent = {
+  eventType: string,
+  trackedAtIso: string,
+};
+
+type ServerApiResult = {
+  status: 'idle' | 'loading' | 'success' | 'error',
+  message?: string,
+};
 
 export default function PageClient() {
   const user = useUser({ includeRestricted: true });
   const router = useRouter();
   const app = useStackApp();
+  const [lastTrackedEvent, setLastTrackedEvent] = useState<LastTrackedEvent | null>(null);
+  const [serverApiResult, setServerApiResult] = useState<ServerApiResult>({ status: 'idle' });
+  const [serverErrorResult, setServerErrorResult] = useState<ServerApiResult>({ status: 'idle' });
+  const customEventsQuery = `SELECT * FROM default.events WHERE NOT startsWith(event_type, '$') ORDER BY event_at DESC LIMIT 20`;
+  const lastTrackedEventQuery = lastTrackedEvent
+    ? `SELECT event_at, event_type, user_id, team_id, data
+FROM events
+WHERE event_type = '${lastTrackedEvent.eventType}'
+ORDER BY event_at DESC
+LIMIT 20`
+    : null;
 
   const authButtons = (
     <div className='flex flex-col gap-5 justify-center items-center'>
@@ -77,6 +99,164 @@ export default function PageClient() {
                 </Link>
               </div>
             </CardFooter>
+          </Card>
+
+          <Card className="w-full max-w-2xl">
+            <CardHeader>
+              <Typography type="h4">Custom analytics event demo</Typography>
+              <Typography>
+                Send a real custom event from this demo app, then paste the query below into Query Analytics.
+              </Typography>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-col gap-4">
+                <div className="flex flex-wrap items-center gap-3">
+                  <Button
+                    onClick={async () => {
+                      const trackedAtIso = new Date().toISOString();
+                      const eventType = `demo.custom.${crypto.randomUUID()}`;
+                      await app.trackEvent(eventType, {
+                        source: "examples/demo",
+                        tracked_at: trackedAtIso,
+                        user_display_name: user.displayName ?? user.primaryEmail ?? user.id,
+                      });
+                      setLastTrackedEvent({ eventType, trackedAtIso });
+                    }}
+                  >
+                    Send Custom Event
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => {
+                      // Intentionally unhandled — triggers unhandledrejection which
+                      // EventTracker captures as a $error event in all environments
+                      // eslint-disable-next-line @typescript-eslint/no-floating-promises
+                      Promise.reject(new Error(`Demo error ${crypto.randomUUID().slice(0, 8)}`));
+                    }}
+                  >
+                    Trigger Error
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={() => {
+                      app.captureException(
+                        new Error("Fingerprinted demo error"),
+                        { fingerprint: ["demo", "custom-group"], component: "page-client" },
+                      );
+                    }}
+                  >
+                    Fingerprinted Error
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={() => {
+                      console.error("Demo console.error capture");
+                    }}
+                  >
+                    console.error
+                  </Button>
+                  <Button
+                    variant="secondary"
+                    disabled={serverApiResult.status === 'loading'}
+                    onClick={async () => {
+                      setServerApiResult({ status: 'loading' });
+                      try {
+                        const res = await fetch('/api/analytics-demo', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ action: 'button-click' }),
+                        });
+                        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+                        setServerApiResult({ status: 'success', message: `Tracked at ${new Date().toISOString()}` });
+                      } catch (e) {
+                        setServerApiResult({ status: 'error', message: String(e) });
+                      }
+                    }}
+                  >
+                    {serverApiResult.status === 'loading' ? 'Calling...' : 'Call Server API'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    disabled={serverErrorResult.status === 'loading'}
+                    onClick={async () => {
+                      setServerErrorResult({ status: 'loading' });
+                      try {
+                        const res = await fetch('/api/analytics-demo', {
+                          method: 'POST',
+                          headers: { 'Content-Type': 'application/json' },
+                          body: JSON.stringify({ action: 'trigger-server-error' }),
+                        });
+                        const json = await res.json();
+                        setServerErrorResult({
+                          status: res.ok ? 'success' : 'error',
+                          message: json.error ?? `HTTP ${res.status}`,
+                        });
+                      } catch (e) {
+                        setServerErrorResult({ status: 'error', message: String(e) });
+                      }
+                    }}
+                  >
+                    {serverErrorResult.status === 'loading' ? 'Triggering...' : 'Trigger Server Error'}
+                  </Button>
+                  {serverErrorResult.status === 'error' && serverErrorResult.message && (
+                    <Typography className="text-sm text-orange-600 dark:text-orange-400">
+                      Server error tracked (linked to replay). {serverErrorResult.message}
+                    </Typography>
+                  )}
+                  {lastTrackedEvent && (
+                    <Typography className="text-sm">
+                      Sent <span className="font-mono">{lastTrackedEvent.eventType}</span>
+                    </Typography>
+                  )}
+                  {serverApiResult.status === 'success' && serverApiResult.message && (
+                    <Typography className="text-sm text-green-600 dark:text-green-400">
+                      Server event tracked. {serverApiResult.message}
+                    </Typography>
+                  )}
+                  {serverApiResult.status === 'error' && serverApiResult.message && (
+                    <Typography className="text-sm text-red-600 dark:text-red-400">
+                      Error: {serverApiResult.message}
+                    </Typography>
+                  )}
+                </div>
+
+                <div className="rounded-md border bg-black/5 p-4 dark:bg-white/5">
+                  <Typography className="mb-2 font-medium">Custom events (yours + server-side)</Typography>
+                  <pre className="overflow-x-auto text-sm">{customEventsQuery}</pre>
+                </div>
+
+                {lastTrackedEvent && lastTrackedEventQuery && (
+                  <div className="rounded-md border bg-black/5 p-4 dark:bg-white/5">
+                    <Typography className="mb-2 font-medium">Query the event you just sent</Typography>
+                    <pre className="overflow-x-auto text-sm">{lastTrackedEventQuery}</pre>
+                    <Typography className="mt-2 text-sm">
+                      Event timestamp: <span className="font-mono">{lastTrackedEvent.trackedAtIso}</span>
+                    </Typography>
+                  </div>
+                )}
+
+                <div className="rounded-md border bg-black/5 p-4 dark:bg-white/5">
+                  <Typography className="mb-2 font-medium">Auto-captured events ($page-view, $click, etc.)</Typography>
+                  <pre className="overflow-x-auto text-sm">{`SELECT event_at, event_type, data FROM default.events WHERE startsWith(event_type, '$') ORDER BY event_at DESC LIMIT 50`}</pre>
+                </div>
+
+                <div className="rounded-md border bg-black/5 p-4 dark:bg-white/5">
+                  <Typography className="mb-2 font-medium">Errors with stack traces</Typography>
+                  <pre className="overflow-x-auto text-sm">{`SELECT event_at, data.error_name, data.error_message, data.stack_frames, data.release FROM events WHERE event_type = '$error' ORDER BY event_at DESC LIMIT 20`}</pre>
+                </div>
+
+                <div className="rounded-md border bg-black/5 p-4 dark:bg-white/5">
+                  <Typography className="mb-2 font-medium">Server errors linked to replays</Typography>
+                  <pre className="overflow-x-auto text-sm">{`SELECT event_at, data.error_name, data.error_message, session_replay_id, session_replay_segment_id FROM events WHERE event_type = 'server.error' ORDER BY event_at DESC LIMIT 20`}</pre>
+                </div>
+
+                <div className="rounded-md border bg-black/5 p-4 dark:bg-white/5">
+                  <Typography className="mb-2 font-medium">Error fingerprint grouping</Typography>
+                  <pre className="overflow-x-auto text-sm">{`SELECT data.\`$fingerprint\` as fingerprint, count() as occurrences, max(event_at) as last_seen FROM events WHERE event_type = '$error' GROUP BY fingerprint ORDER BY occurrences DESC LIMIT 20`}</pre>
+                </div>
+
+              </div>
+            </CardContent>
           </Card>
         </div>
       ) : authButtons}

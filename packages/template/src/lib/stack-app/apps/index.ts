@@ -4,7 +4,8 @@ export {
 export type {
   StackClientAppConstructor,
   StackClientAppConstructorOptions,
-  StackClientAppJson
+  StackClientAppJson,
+  TrackClientAnalyticsEventOptions,
 } from "./interfaces/client-app";
 
 export {
@@ -12,7 +13,8 @@ export {
 } from "./interfaces/server-app";
 export type {
   StackServerAppConstructor,
-  StackServerAppConstructorOptions
+  StackServerAppConstructorOptions,
+  TrackServerAnalyticsEventOptions,
 } from "./interfaces/server-app";
 
 export {
@@ -23,3 +25,8 @@ export type {
   StackAdminAppConstructorOptions,
 } from "./interfaces/admin-app";
 
+export type {
+  Span,
+  SpanStatus,
+  StartSpanOptions,
+} from "./implementations/tracing";

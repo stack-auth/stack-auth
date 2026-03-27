@@ -1,0 +1,356 @@
+---
+title: Analytics Custom Events
+description: Framework support matrix and recipes for custom analytics events
+icon: Signal
+---
+
+Use Stack Auth custom analytics events when you want application-specific product, billing, support, or operational events to land in the same Analytics dataset as Stack-managed events.
+
+When replay recording is enabled in the browser SDK, client-side `trackEvent()` calls automatically attach the current replay linkage once a replay has been established. That linkage includes `sessionReplayId` and `sessionReplaySegmentId`, and you can pass either of them explicitly in `trackEvent(..., options)` on both the client and server SDKs.
+
+## Support Matrix
+
+| Framework / Runtime | Support tier | Package | Client `trackEvent()` | Server `trackEvent()` | Notes |
+| --- | --- | --- | --- | --- | --- |
+| Next.js | First-class | `@stackframe/stack` | Yes | Yes | `useAnalytics()` in client components and `StackServerApp.trackEvent()` on the server |
+| React Router | First-class | `@stackframe/react` | Yes | N/A | Use `useAnalytics()` inside route components |
+| TanStack Start | First-class | `@stackframe/react` | Yes | N/A | Use `useAnalytics()` in client-rendered UI |
+| Nuxt | First-class | `@stackframe/js` | Yes | Yes | Use `StackClientApp` / `StackServerApp` directly |
+| SvelteKit | First-class | `@stackframe/js` | Yes | Yes | Raw `Request` works as a request-bound token store |
+| NestJS | First-class | `@stackframe/js` | N/A | Yes | Pass `req` directly as the 3rd argument |
+| Express | First-class | `@stackframe/js` | N/A | Yes | Pass `req` directly as the 3rd argument |
+| Hono | First-class | `@stackframe/js` | N/A | Yes | Pass `c.req.raw` directly as the 3rd argument |
+| Cloudflare Workers | First-class | `@stackframe/js` | N/A | Yes | Pass the incoming `Request` directly, use `waitUntil` for flush |
+| Nitro / Nuxt | First-class | `@stackframe/js` | Yes | Yes | Use `StackServerApp` directly with `waitUntil` |
+| Fastify | Runtime-supported | `@stackframe/js` | N/A | Yes | Pass `req` directly as the 3rd argument |
+| Elysia | Runtime-supported | `@stackframe/js` | N/A | Yes | Same `StackServerApp.trackEvent()` API |
+| Astro | Runtime-supported | `@stackframe/js` | Yes | Yes | Use client or server app depending where the event originates |
+| Standalone / Node scripts | Runtime-supported | `@stackframe/js` | N/A | Yes | Great for cron jobs and queue workers |
+| Custom Integration | Integration | REST | Depends on auth | Depends on auth | Send batches to `POST /api/v1/analytics/events/batch` |
+| OpenTelemetry export | Integration | Backend | N/A | N/A | Ingested events are emitted into the deployment OTel pipeline |
+| Log streaming | Integration | Backend | N/A | N/A | Ingested events are also written as structured JSON logs |
+
+## Recipes
+
+### Client-side (all frameworks)
+
+Call `trackEvent()` directly on your `StackClientApp` instance. The returned promise resolves once the event has been delivered:
+
+```ts
+await app.trackEvent("upgrade.clicked", {
+  plan: "pro",
+  source: "pricing-page",
+});
+```
+
+### Server-side (all frameworks)
+
+Call `trackEvent()` on your `StackServerApp` instance, passing the request for user attribution:
+
+```ts
+await serverApp.trackEvent("support.ticket.created", {
+  channel: "chat",
+}, req);
+```
+
+Any Fetch API `Request`, Express-style `req`, or Hono `c.req.raw` works as the 3rd argument.
+
+### Fire-and-forget
+
+If you don't need confirmation that the event was delivered, simply don't `await` the call. Internally events are still batched — non-awaited calls that happen close together will be sent in the same HTTP request:
+
+```ts
+// Fire-and-forget — events are batched and sent in the background
+serverApp.trackEvent("page.viewed", { path: "/pricing" }, req);
+serverApp.trackEvent("feature.used", { name: "export" }, req);
+```
+
+You can also use `flushAnalytics()` to wait for all pending analytics (including auto-captured events) to be delivered at once — useful before a process exits or a serverless function returns:
+
+```ts
+serverApp.trackEvent("job.finished", { duration });
+serverApp.trackEvent("job.result", { status: "ok" });
+await serverApp.flushAnalytics();
+```
+
+### Serverless environments
+
+In serverless runtimes (Vercel, Cloudflare Workers, Lambda), the function may shut down before buffered analytics are flushed. Pass `waitUntil` to the constructor to extend the function's lifetime:
+
+```ts
+// Vercel
+import { waitUntil } from "@vercel/functions";
+
+const serverApp = new StackServerApp({
+  projectId: "...",
+  secretServerKey: "...",
+  waitUntil,
+});
+```
+
+```ts
+// Cloudflare Workers
+export default {
+  async fetch(request, env, ctx) {
+    const serverApp = new StackServerApp({
+      projectId: "...",
+      secretServerKey: "...",
+      waitUntil: (p) => ctx.waitUntil(p),
+    });
+    // ...
+  },
+};
+```
+
+If omitted, the SDK auto-detects `globalThis.waitUntil` (available in some runtimes). Falls back to fire-and-forget if unavailable.
+
+### Error capture
+
+Errors are auto-captured in the browser via `window.onerror` and `unhandledrejection`. For manual error capture:
+
+```ts
+// Client
+app.captureException(err);
+app.captureException(err, { component: "checkout" });
+
+// With custom fingerprint for grouping
+app.captureException(err, {
+  fingerprint: ["payment-flow", "stripe-timeout"],
+  component: "checkout",
+});
+
+// Server — pass request for user attribution
+serverApp.captureException(err, req);
+serverApp.captureException(err, req, { route: "/api/checkout" });
+```
+
+Inside a span, you can also use `span.recordException(err)` which sets the span status to error and attaches the error metadata.
+
+### Raw REST Integration
+
+```json
+{
+  "batch_id": "7f3bc8d8-6608-479f-9a53-b26c12d89f07",
+  "sent_at_ms": 1774267200000,
+  "events": [
+    {
+      "event_type": "shipment.created",
+      "event_at_ms": 1774267200000,
+      "session_replay_id": "6b0e615f-71d1-4cc3-8fcf-59238db49d87",
+      "session_replay_segment_id": "f5304076-59d2-4465-9c5c-2c6f179f5e23",
+      "data": {
+        "carrier": "ups",
+        "priority": "overnight"
+      }
+    }
+  ]
+}
+```
+
+## Naming Rules
+
+- Reserve the `$` prefix for Stack-managed events
+- Use only letters, numbers, `.`, `_`, `:`, and `-`
+- Keep payloads as JSON-serializable objects
+
+## Tracing & Spans
+
+Stack Auth includes built-in tracing with `startSpan()`. Spans measure timed operations and automatically link to events, session replays, and other spans.
+
+### Client-side span
+
+```ts
+await app.startSpan("checkout.click", async (span) => {
+  app.trackEvent("checkout.started", { source: "button" }); // auto-linked to span
+  await submitOrder();
+  span.setStatus("ok");
+});
+```
+
+The callback form auto-ends the span when the callback returns. If it throws, the span records the error and re-throws.
+
+### Server-side span
+
+```ts
+await serverApp.startSpan("api.create-order", req, async (span) => {
+  const body = await req.json();
+  span.setAttribute("item_count", body.items.length);
+  const order = await createOrder(body);
+  span.setStatus("ok");
+  return order;
+});
+```
+
+Pass the request as the 2nd argument (same as `trackEvent`) to extract user identity and trace context.
+
+### Distributed tracing (client to server)
+
+When a `fetch` is made inside an active span, the SDK automatically injects an `x-stack-trace` header on same-origin requests. Server-side `startSpan()` reads this header and makes the server span a child of the client span:
+
+```ts
+// Client — trace context auto-injected into fetch
+await app.startSpan("checkout.flow", async (span) => {
+  app.trackEvent("checkout.started", { total: 99.99 });
+  const res = await fetch("/api/checkout", { method: "POST", body: JSON.stringify({ items }) });
+  span.setStatus(res.ok ? "ok" : "error");
+});
+
+// Server — automatically becomes a child span
+await serverApp.startSpan("api.checkout", req, async (span) => {
+  const order = await processOrder(await req.json());
+  span.setStatus("ok");
+  return order;
+});
+```
+
+### Nested spans
+
+Nested `startSpan()` calls automatically detect the parent via `AsyncLocalStorage`, which is available in Node.js, Deno, Bun, Cloudflare Workers, and all serverless runtimes:
+
+```ts
+await serverApp.startSpan("order.process", async (parent) => {
+  // Child spans automatically become children of "order.process"
+  await serverApp.startSpan("order.validate", async (v) => {
+    await validateOrder(order);
+    v.setStatus("ok");
+  });
+  await serverApp.startSpan("order.charge", async (c) => {
+    await chargeCard(order.paymentMethod);
+    c.setStatus("ok");
+  });
+  parent.setStatus("ok");
+});
+```
+
+This also works on the client when `AsyncLocalStorage` is available (e.g., Next.js SSR). In pure browser environments, context is lost across `await` — use the span callback argument and pass `parentSpanId` explicitly for nesting:
+
+```ts
+await app.startSpan("outer", async (outerSpan) => {
+  await someAsyncWork();
+  // Pass the parent span object directly — traceId and parentId are inherited
+  await app.startSpan("inner", { parent: outerSpan }, async (innerSpan) => {
+    innerSpan.setStatus("ok");
+  });
+  outerSpan.setStatus("ok");
+});
+```
+
+| Environment | Auto-parent across `await` | Fallback |
+| --- | --- | --- |
+| Node.js, Deno, Bun | Yes | N/A |
+| Serverless (Vercel, Lambda, Cloudflare Workers) | Yes | N/A |
+| Browser (SSR with AsyncLocalStorage) | Yes | N/A |
+| Browser (client-side JS) | No | Pass `parentSpanId` explicitly |
+
+### Manual spans
+
+For cases where the callback form doesn't fit (e.g., event emitters), use the manual form:
+
+```ts
+const span = serverApp.startSpan("file-upload");
+try {
+  await uploadFile(file);
+  span.setStatus("ok");
+} catch (err) {
+  span.recordException(err);
+  throw err;
+} finally {
+  span.end();
+}
+```
+
+### Span API
+
+| Method | Description |
+| --- | --- |
+| `span.spanId` | UUID of this span |
+| `span.traceId` | UUID of the trace this span belongs to |
+| `span.isEnded` | Whether `end()` has been called |
+| `span.setAttribute(key, value)` | Set a key-value attribute |
+| `span.setAttributes(attrs)` | Bulk-set attributes |
+| `span.setStatus(status, message?)` | Set status: `'ok'` \| `'error'` \| `'unset'` |
+| `span.recordException(error)` | Set status to `'error'` and attach error metadata |
+| `span.end()` | End the span (idempotent) |
+
+## Super Properties
+
+Register properties that are automatically merged into every event's `data`:
+
+```ts
+app.register({ plan: "pro", environment: "production" });
+
+app.trackEvent("checkout", { amount: 99 });
+// → data: { plan: "pro", environment: "production", amount: 99 }
+
+app.unregister("plan"); // remove a single key
+```
+
+Event-specific data takes precedence over super properties. Works on both client and server apps.
+
+## Sampling
+
+Control what percentage of traces are kept with `tracesSampleRate`:
+
+```ts
+const app = new StackClientApp({
+  projectId: "...",
+  analytics: {
+    tracesSampleRate: 0.1, // keep 10% of traces
+  },
+});
+```
+
+- Only **root spans** are sampled — child spans inherit the parent's decision
+- Sampled-out spans return a no-op: the callback still runs, but nothing is sent
+- Events (`trackEvent`, `captureException`, auto-captured) are **never** sampled
+
+## Full Analytics Configuration
+
+All analytics options are set on the `analytics` field of the app constructor:
+
+```ts
+const app = new StackClientApp({
+  projectId: "...",
+  release: process.env.NEXT_PUBLIC_VERCEL_GIT_COMMIT_SHA ?? "dev",
+  analytics: {
+    // Session replay (default: disabled)
+    replays: {
+      enabled: true,
+      maskAllInputs: true,     // default: true
+      blockClass: "no-record", // CSS class or RegExp
+      blockSelector: ".sensitive",
+    },
+
+    // Trace sampling (default: 1.0 = keep all)
+    tracesSampleRate: 0.1,
+
+    // beforeSend hook — inspect/modify/drop events (default: undefined)
+    beforeSend: (event) => {
+      if (event.event_type === "$error" && event.data.filename?.includes("extension://")) {
+        return null; // drop
+      }
+      return event;
+    },
+
+    // Error dedup window in ms (default: 5000, set to 0 to disable)
+    errorDedupWindowMs: 5000,
+
+    // Capture console.error() as $error events (default: false)
+    captureConsoleErrors: false,
+
+    // Wrap setTimeout/setInterval/rAF/addEventListener (default: false)
+    wrapBrowserApis: false,
+  },
+});
+```
+
+| Option | Type | Default | Description |
+|---|---|---|---|
+| `replays` | `object` | `undefined` | Session replay recording options |
+| `tracesSampleRate` | `number` | `1.0` | Fraction of traces to keep (0.0–1.0) |
+| `beforeSend` | `function` | `undefined` | Inspect/modify/drop events before send. Return `null` to drop. |
+| `errorDedupWindowMs` | `number` | `5000` | Window for deduplicating consecutive identical errors. `0` disables. |
+| `captureConsoleErrors` | `boolean` | `false` | Capture `console.error()` calls as `$error` events |
+| `wrapBrowserApis` | `boolean` | `false` | Wrap `setTimeout`/`setInterval`/`rAF`/`addEventListener` to catch callback errors |
+| `instrumentFetch` | `boolean` | `false` | Auto-create `http.client` spans for `fetch` requests |
+| `instrumentFetchOrigins` | `string` | `"same-origin"` | `"same-origin"` or `"all"` — which fetch origins to instrument |

@@ -157,6 +157,38 @@ TokenStoreInit =
 
 This is the "token store" that developers interface with with the SDK, so this is the value that's passed to the constructor or any functions that require a token store. The SDK implementation then converts this to a concrete token store implementation as detailed below.
 
+### tokenStoreFromHeaders(headers) [JS-ONLY]
+
+Convert request headers into a `RequestLike` token store that can be passed to
+`StackServerApp` methods such as `getUser()` or `track()`.
+
+Arguments:
+  headers:
+    - Fetch `Headers`
+    - Any object with `.get(name): string | null`
+    - Node-style header object: `Record<string, string | string[] | undefined>`
+
+Returns:
+  `{ headers: { get(name): string | null } }`
+
+Behavior:
+1. Preserve case-insensitive header lookup
+2. For Node-style string headers, return the string value directly
+3. For Node-style array headers:
+   - If header name is `cookie`, join values with `"; "`
+   - Otherwise, return the first value
+
+Examples:
+```ts
+const authHeaders = await stackClientApp.getAuthHeaders();
+
+await stackServerApp.getUser({
+  tokenStore: tokenStoreFromHeaders({
+    "x-stack-auth": authHeaders["x-stack-auth"],
+  }),
+});
+```
+
 ### Token Store Interface
 
 Token stores have some properties and methods. Some are abstract and are implemented by the token store itself.

@@ -58,6 +58,54 @@ export class StackServerInterface extends StackClientInterface {
     );
   }
 
+  async sendServerAnalyticsEventBatch(
+    body: string,
+    session: InternalSession | null,
+    options: { keepalive: boolean },
+    requestType: "server" | "admin" = "server",
+  ): Promise<Result<Response, Error>> {
+    try {
+      const response = await this.sendServerRequest(
+        "/analytics/events/batch",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+          keepalive: options.keepalive,
+        },
+        session,
+        requestType,
+      );
+      return Result.ok(response);
+    } catch (e) {
+      return Result.error(e instanceof Error ? e : new Error(String(e)));
+    }
+  }
+
+  async sendServerAnalyticsSpanBatch(
+    body: string,
+    session: InternalSession | null,
+    options: { keepalive: boolean },
+    requestType: "server" | "admin" = "server",
+  ): Promise<Result<Response, Error>> {
+    try {
+      const response = await this.sendServerRequest(
+        "/analytics/spans/batch",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body,
+          keepalive: options.keepalive,
+        },
+        session,
+        requestType,
+      );
+      return Result.ok(response);
+    } catch (e) {
+      return Result.error(e instanceof Error ? e : new Error(String(e)));
+    }
+  }
+
   override async getCustomerBilling(
     customerType: "user" | "team",
     customerId: string,

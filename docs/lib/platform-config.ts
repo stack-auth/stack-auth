@@ -21,7 +21,20 @@ export type PlatformConfig = {
 export const PLATFORMS: PlatformConfig[] = [
   {
     name: 'JavaScript',
-    frameworks: ['Next.js', 'React', 'Express', 'Node.js', 'Vanilla JavaScript'],
+    frameworks: [
+      'Next.js',
+      'React Router',
+      'TanStack Start',
+      'Nuxt',
+      'SvelteKit',
+      'NestJS',
+      'Express',
+      'Hono',
+      'Cloudflare Workers',
+      'React',
+      'Node.js',
+      'Vanilla JavaScript',
+    ],
     defaultFramework: 'Next.js',
   },
   {
@@ -80,4 +93,3 @@ export function isValidPlatformFramework(platform: string, framework: string): b
 export function getPlatformConfig(platform: PlatformName): PlatformConfig | undefined {
   return PLATFORMS.find(p => p.name === platform);
 }
-

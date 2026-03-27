@@ -30,10 +30,11 @@ import {
 } from "@phosphor-icons/react";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
+import { QueryBuilder, type QueryTable, TABLE_CONFIGS, parseSql } from "../query-builder";
 import {
   ErrorDisplay,
   FolderWithId,
@@ -41,6 +42,19 @@ import {
   RowDetailDialog,
   VirtualizedFlatTable
 } from "../shared";
+
+// Pagination helpers
+function parseLimitFromQuery(query: string): number | null {
+  const match = query.match(/\bLIMIT\s+(\d+)\b/i);
+  return match ? parseInt(match[1], 10) : null;
+}
+
+function addOffsetToQuery(query: string, offset: number): string {
+  if (/\bOFFSET\s+\d+\b/i.test(query)) {
+    return query.replace(/\bOFFSET\s+\d+\b/i, `OFFSET ${offset}`);
+  }
+  return query.replace(/\bLIMIT\s+(\d+)\b/i, `LIMIT $1 OFFSET ${offset}`);
+}
 
 // Delete icon button for sidebar items
 function DeleteIconButton({ onClick }: { onClick: () => void }) {
@@ -337,6 +351,32 @@ function QueriesContent() {
   const [selectedRow, setSelectedRow] = useState<RowData | null>(null);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
 
+  // Table selection with auto-detection from SQL
+  const [selectedTable, setSelectedTable] = useState<QueryTable>("events");
+
+  const handleTableChange = useCallback((newTable: QueryTable) => {
+    setSelectedTable(newTable);
+    const config2 = TABLE_CONFIGS[newTable];
+    setSqlQuery(`SELECT *\nFROM ${config2.sqlTable}\nORDER BY ${config2.defaultOrderBy} DESC\nLIMIT 100`);
+  }, []);
+
+  // Auto-detect table when SQL is manually edited
+  useEffect(() => {
+    const parsed = parseSql(sqlQuery);
+    if (parsed && parsed.table !== selectedTable) {
+      setSelectedTable(parsed.table);
+    }
+  }, [sqlQuery]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Pagination state
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [hasMore, setHasMore] = useState(false);
+  const [lastQueryRan, setLastQueryRan] = useState("");
+
+  // Live mode state
+  const [liveMode, setLiveMode] = useState(false);
+  const runQueryRef = useRef<(q?: string) => Promise<void>>();
+
   // Selection state
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [selectedQueryId, setSelectedQueryId] = useState<string | null>(null);
@@ -367,13 +407,17 @@ function QueriesContent() {
       .sort((a, b) => a.sortOrder - b.sortOrder);
   }, [config]);
 
-  const runQuery = useCallback(async (queryToRun?: string) => {
+  const runQuery = useCallback(async (queryToRun?: string, append = false) => {
     const trimmedQuery = (queryToRun ?? sqlQuery).trim();
     if (!trimmedQuery) return;
 
-    setLoading(true);
+    if (append) {
+      setLoadingMore(true);
+    } else {
+      setLoading(true);
+      setHasQueried(true);
+    }
     setError(null);
-    setHasQueried(true);
 
     try {
       const response = await adminApp.queryAnalytics({
@@ -385,22 +429,56 @@ function QueriesContent() {
       const newRows = response.result as RowData[];
       const newColumns = newRows.length > 0 ? Object.keys(newRows[0]) : [];
 
-      setColumns(newColumns);
-      setRows(newRows);
+      if (append) {
+        setRows((prev) => [...prev, ...newRows]);
+      } else {
+        setColumns(newColumns);
+        setRows(newRows);
+        setLastQueryRan(trimmedQuery);
+      }
+
+      // Detect if there might be more rows
+      const limit = parseLimitFromQuery(trimmedQuery);
+      setHasMore(limit !== null && newRows.length >= limit);
     } catch (e: unknown) {
       setError(e);
-      setColumns([]);
-      setRows([]);
+      if (!append) {
+        setColumns([]);
+        setRows([]);
+      }
     } finally {
       setLoading(false);
+      setLoadingMore(false);
     }
   }, [adminApp, sqlQuery]);
+
+  runQueryRef.current = runQuery;
+
+  const handleLoadMore = useCallback(() => {
+    if (loadingMore || !hasMore || !lastQueryRan || liveMode) return;
+    const query = addOffsetToQuery(lastQueryRan, rows.length);
+    runAsynchronouslyWithAlert(() => runQuery(query, true));
+  }, [loadingMore, hasMore, lastQueryRan, liveMode, rows.length, runQuery]);
+
+  // Live mode polling
+  const LIVE_POLL_MS = 3_000;
+
+  useEffect(() => {
+    if (!liveMode || !lastQueryRan) return;
+    const interval = setInterval(() => {
+      runAsynchronouslyWithAlert(() => runQueryRef.current?.(lastQueryRan) ?? Promise.resolve());
+    }, LIVE_POLL_MS);
+    return () => clearInterval(interval);
+  }, [liveMode, lastQueryRan]);
 
   const handleSelectQuery = (folderId: string, query: { id: string, displayName: string, sqlQuery: string, description?: string }) => {
     setSelectedFolderId(folderId);
     setSelectedQueryId(query.id);
     setSqlQuery(query.sqlQuery);
     setError(null);
+    // Auto-detect table from saved query SQL
+    const parsed = parseSql(query.sqlQuery);
+    if (parsed) setSelectedTable(parsed.table);
     // Run the query immediately after selecting it
     runAsynchronouslyWithAlert(() => runQuery(query.sqlQuery));
   };
@@ -508,6 +586,8 @@ function QueriesContent() {
     setRows([]);
     setColumns([]);
     setError(null);
+    setLiveMode(false);
+    setHasMore(false);
   };
 
   const handleConfirmDelete = async () => {
@@ -605,38 +685,57 @@ function QueriesContent() {
       <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
         {/* Query input area */}
         <div className="p-4 border-b border-border/30">
-          <div className="flex items-start gap-3">
-            <div className="flex-1">
-              <Textarea
-                value={sqlQuery}
-                onChange={(e) => setSqlQuery(e.target.value)}
-                placeholder="SELECT * FROM default.events ORDER BY event_at DESC LIMIT 100"
-                className="font-mono text-sm min-h-[80px] resize-y bg-background/60"
-                onKeyDown={(e) => {
-                  if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !loading) {
-                    e.preventDefault();
-                    runAsynchronouslyWithAlert(runQuery);
-                  }
-                }}
-              />
-              <p className="text-[10px] text-muted-foreground mt-1.5">
-                Cmd+Enter to run
-              </p>
+          {/* Table selector */}
+          <div className="flex items-center gap-2 mb-3">
+            <span className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+              Table
+            </span>
+            <div className="flex gap-1">
+              {(Object.keys(TABLE_CONFIGS) as QueryTable[]).map((t) => (
+                <button
+                  key={t}
+                  onClick={() => handleTableChange(t)}
+                  className={cn(
+                    "px-2.5 py-1 rounded-md text-[11px] font-mono transition-colors duration-150 hover:transition-none",
+                    selectedTable === t
+                      ? "bg-cyan-500/15 text-cyan-600 dark:text-cyan-400 ring-1 ring-cyan-500/25"
+                      : "bg-foreground/[0.04] text-muted-foreground hover:bg-foreground/[0.08]"
+                  )}
+                >
+                  {t}
+                </button>
+              ))}
             </div>
-            <div className="flex flex-col gap-2">
-              <Button
-                size="sm"
-                onClick={() => runAsynchronouslyWithAlert(runQuery)}
-                disabled={!sqlQuery.trim() || loading}
-                className="gap-1.5"
-              >
-                {loading ? (
-                  <SpinnerGapIcon className="h-4 w-4 animate-spin" />
-                ) : (
-                  <PlayIcon className="h-4 w-4" />
-                )}
-                Run
-              </Button>
+          </div>
+
+          {/* Query builder accordion */}
+          <details className="mb-3 group">
+            <summary className="flex items-center gap-1.5 cursor-pointer select-none text-xs font-semibold uppercase tracking-wider text-muted-foreground hover:text-foreground transition-colors duration-150 hover:transition-none mb-2">
+              <CaretRightIcon className="h-3 w-3 transition-transform duration-150 group-open:rotate-90" />
+              Query Builder
+            </summary>
+            <div className="mb-3">
+              <QueryBuilder key={selectedTable} sql={sqlQuery} onSqlChange={setSqlQuery} table={selectedTable} />
+            </div>
+          </details>
+
+          <Textarea
+            value={sqlQuery}
+            onChange={(e) => setSqlQuery(e.target.value)}
+            placeholder={`SELECT * FROM ${TABLE_CONFIGS[selectedTable].sqlTable} ORDER BY ${TABLE_CONFIGS[selectedTable].defaultOrderBy} DESC LIMIT 100`}
+            className="font-mono text-sm min-h-[80px] resize-y bg-background/60"
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.metaKey || e.ctrlKey) && !loading) {
+                e.preventDefault();
+                runAsynchronouslyWithAlert(runQuery);
+              }
+            }}
+          />
+          <div className="flex items-center justify-between mt-2">
+            <p className="text-[10px] text-muted-foreground">
+              Cmd+Enter to run
+            </p>
+            <div className="flex items-center gap-2">
               {selectedQueryId ? (
                 <Button
                   variant="secondary"
@@ -669,13 +768,26 @@ function QueriesContent() {
               >
                 Save As...
               </Button>
+              <Button
+                size="sm"
+                onClick={() => runAsynchronouslyWithAlert(runQuery)}
+                disabled={!sqlQuery.trim() || loading}
+                className="gap-1.5"
+              >
+                {loading ? (
+                  <SpinnerGapIcon className="h-4 w-4 animate-spin" />
+                ) : (
+                  <PlayIcon className="h-4 w-4" />
+                )}
+                Run
+              </Button>
             </div>
           </div>
         </div>
 
         {/* Results area */}
         <div className="flex-1 min-h-0 flex flex-col overflow-hidden">
-          {loading ? (
+          {loading && rows.length === 0 ? (
             <LoadingState />
           ) : error ? (
             <ErrorDisplay error={error} onRetry={runQuery} />
@@ -685,11 +797,34 @@ function QueriesContent() {
             <NoResultsState />
           ) : (
             <>
-              {/* Header with row count */}
+              {/* Header with row count + live toggle */}
               <div className="flex items-center justify-between px-4 py-2 border-b border-border/30 shrink-0">
                 <span className="text-xs text-muted-foreground">
                   {rows.length.toLocaleString()} row{rows.length !== 1 ? "s" : ""}
+                  {hasMore && "+"}
+                  {loading && " · refreshing..."}
                 </span>
+                <button
+                  onClick={() => {
+                    if (!liveMode && !lastQueryRan) {
+                      // Run query first before enabling live
+                      runAsynchronouslyWithAlert(runQuery);
+                    }
+                    setLiveMode((prev) => !prev);
+                  }}
+                  className={cn(
+                    "flex items-center gap-1.5 px-2 py-1 rounded-lg text-[11px] font-medium transition-colors duration-150 hover:transition-none",
+                    liveMode
+                      ? "bg-green-500/15 text-green-600 dark:text-green-400 ring-1 ring-green-500/30"
+                      : "bg-foreground/[0.04] text-muted-foreground hover:bg-foreground/[0.08]"
+                  )}
+                >
+                  <span className={cn(
+                    "inline-block h-1.5 w-1.5 rounded-full",
+                    liveMode ? "bg-green-500 animate-pulse" : "bg-muted-foreground/40"
+                  )} />
+                  Live
+                </button>
               </div>
 
               {/* Table */}
@@ -700,6 +835,9 @@ function QueriesContent() {
                   setSelectedRow(row);
                   setDetailDialogOpen(true);
                 }}
+                onLoadMore={liveMode ? undefined : handleLoadMore}
+                hasMore={!liveMode && hasMore}
+                loadingMore={loadingMore}
               />
             </>
           )}

@@ -3,13 +3,18 @@ export {
   StackServerApp
 } from "./apps";
 export type {
+  Span,
+  SpanStatus,
+  StartSpanOptions,
   StackAdminAppConstructor,
   StackAdminAppConstructorOptions,
   StackClientAppConstructor,
   StackClientAppConstructorOptions,
   StackClientAppJson,
+  TrackClientAnalyticsEventOptions,
   StackServerAppConstructor,
   StackServerAppConstructorOptions,
+  TrackServerAnalyticsEventOptions,
 } from "./apps";
 
 export type {
@@ -31,14 +36,18 @@ export type {
 } from "./internal-api-keys";
 
 export {
-  stackAppInternalsSymbol
+  stackAppInternalsSymbol,
+  tokenStoreFromHeaders,
 } from "./common";
 export type {
   GetCurrentUserOptions,
   /** @deprecated Use GetCurrentUserOptions instead */
   GetCurrentUserOptions as GetUserOptions,
   HandlerUrls,
-  OAuthScopesOnSignIn
+  OAuthScopesOnSignIn,
+  RequestLike,
+  TokenStoreHeadersInit,
+  TokenStoreInit,
 } from "./common";
 
 export type {
@@ -117,4 +126,3 @@ export type {
   ServerUser,
   User
 } from "./users";
-

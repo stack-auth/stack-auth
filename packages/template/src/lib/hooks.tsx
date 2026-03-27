@@ -46,3 +46,12 @@ export function useStackApp<ProjectId extends string>(options: { projectIdMustMa
   }
   return stackApp as StackClientApp<true, ProjectId>;
 }
+
+export function useAnalytics<ProjectId extends string>(options: { projectIdMustMatch?: ProjectId } = {}) {
+  const stackApp = useStackApp(options);
+  return {
+    trackEvent: stackApp.trackEvent.bind(stackApp),
+    captureException: stackApp.captureException.bind(stackApp),
+    startSpan: stackApp.startSpan.bind(stackApp),
+  };
+}

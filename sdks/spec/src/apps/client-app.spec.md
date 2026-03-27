@@ -45,6 +45,170 @@ Optional:
 On construct: prefetch project info (GET /projects/current) unless noAutomaticPrefetch=true.
 
 
+## trackEvent(eventType, data?, options?)
+
+Send a custom analytics event through Stack Auth's analytics ingestion pipeline.
+
+Arguments:
+  eventType: string
+    Custom event name. MUST NOT start with `$`.
+    Allowed characters: letters, numbers, `.`, `_`, `:`, `-`
+  data: object?
+    JSON-serializable object payload. Default: `{}`
+  options.at: Date | number?
+    Event timestamp. If Date, use `.getTime()`. Default: `Date.now()`
+  options.sessionReplayId: string?
+    Explicit session replay ID to associate with the event
+  options.sessionReplaySegmentId: string?
+    Explicit session replay segment ID to associate with the event
+
+Behavior:
+1. Validate eventType and payload
+2. Validate any provided sessionReplayId/sessionReplaySegmentId as UUIDs
+3. In browser-like environments, enqueue the event into the shared analytics queue used by auto-captured `$page-view` / `$click`
+4. If session replay recording is enabled and there is an active replay segment, automatically attach the current sessionReplayId/sessionReplaySegmentId linkage to queued events unless explicitly overridden
+5. In non-browser environments, send a single-event batch directly to:
+   POST /api/v1/analytics/events/batch
+6. If there is no current Stack session/token, do nothing instead of failing
+
+Request body:
+  {
+    session_replay_id?: string,
+    session_replay_segment_id?: string,
+    batch_id: uuid,
+    sent_at_ms: number,
+    events: [
+      {
+        event_type: string,
+        event_at_ms: number,
+        data: object,
+        session_replay_id?: string,
+        session_replay_segment_id?: string
+      }
+    ]
+  }
+
+Errors:
+  Throw if eventType is invalid or payload is not a JSON-serializable object.
+
+
+## startSpan(name, optionsOrCallback?, callback?)
+
+Create a traced span for a timed operation.
+
+Overloads:
+  startSpan(name, callback)           — callback form, auto-ends on return/throw
+  startSpan(name, options, callback)  — callback form with options
+  startSpan(name)                     — manual form, user calls span.end()
+  startSpan(name, options)            — manual form with options
+
+Arguments:
+  name: string
+    Span type name. Same naming rules as trackEvent (no `$` prefix).
+  options.attributes: object?
+    Initial key-value attributes to set on the span.
+  options.parentSpanId: string?
+    Override auto-detected parent span ID.
+  options.traceId: string?
+    Override auto-detected trace ID.
+  options.startTime: Date | number?
+    Override start time. Default: `Date.now()`
+  callback: (span: Span) => T | Promise<T>
+    When provided, the span auto-ends when the callback returns.
+    If the callback throws, `span.recordException(err)` is called,
+    `span.end()` is called, and the error is re-thrown.
+
+Returns:
+  Callback form: Promise<T> (the callback's return value)
+  Manual form: Span object
+
+Span interface:
+  spanId: string (readonly)     — UUID of this span
+  traceId: string (readonly)    — UUID of the trace this span belongs to
+  isEnded: boolean (readonly)   — whether end() has been called
+  setAttribute(key, value)      — set a key-value attribute
+  setAttributes(attrs)          — bulk-set attributes
+  setStatus(status, message?)   — set status: 'ok' | 'error' | 'unset'
+  recordException(error)        — set status to 'error' and attach error metadata
+  end()                         — end the span (idempotent)
+
+Context propagation:
+  - Uses `globalThis.AsyncLocalStorage` when available (Node.js, Deno, Bun,
+    Cloudflare Workers, SSR). Nested spans auto-parent across `await`.
+  - Falls back to a synchronous save/restore stack in pure browser environments
+    where AsyncLocalStorage is unavailable. Context is lost across `await` —
+    use the span callback argument and pass `parentSpanId` explicitly.
+  - Events tracked inside a span callback auto-get the span in parent_span_ids.
+  - fetch() calls inside a span auto-inject `x-stack-trace` header on same-origin.
+
+## captureException(error, extraData?)
+
+Manually report a caught error as a `$error` analytics event.
+
+Arguments:
+  error: unknown — the error to report (Error, string, or any value)
+  extraData: object? — additional key-value data merged into the event
+
+Behavior:
+  - Extracts error_name, error_message, error_kind, stack, stack_frames
+  - Attaches page context (url, path, title) in browser environments
+  - Attaches release identifier if configured
+  - Auto-linked to active span (parent_span_ids) and session replay
+  - Non-blocking: buffered and flushed in background
+
+## getActiveSpan()
+
+Returns the currently active Span, or null if none is active.
+
+## getTraceHeaders()
+
+Returns a `Record<string, string>` with the `x-stack-trace` header for manual injection
+into non-fetch transports. Returns `{}` if no span is active.
+
+
+## register(properties)
+
+Set super properties that are automatically merged into every event's `data`.
+Event-specific data takes precedence over super properties.
+
+Arguments:
+  properties: Record<string, unknown> — key-value pairs to merge
+
+## unregister(key)
+
+Remove a single super property.
+
+Arguments:
+  key: string — the property key to remove
+
+
+## Constructor option: release
+
+  release: string?
+    Release identifier (e.g., git SHA or package version). Attached to auto-captured
+    `$error` events for source map resolution.
+
+## Constructor option: analytics.tracesSampleRate
+
+  analytics.tracesSampleRate: number?
+    Sample rate for traces (0.0–1.0). Default: 1.0 (keep all).
+    Only root spans are sampled — child spans inherit the parent's decision.
+    Sampled-out spans return a no-op (callback still runs, nothing is sent).
+    Events (trackEvent, captureException, auto-captured) are never sampled.
+
+
+## Auto-captured: $error events [BROWSER-LIKE]
+
+Automatically captured via `window.onerror` and `unhandledrejection`. Data includes:
+  source: "window-error" | "unhandled-rejection"
+  error_name, error_message, error_kind: Error classification
+  stack: string? — raw Error.stack
+  stack_frames: Array<{function_name, filename, lineno, colno}> — parsed stack trace (max 50)
+  release: string? — from constructor option
+  filename, lineno, colno: from ErrorEvent (window.onerror only)
+  url, path, title: page context
+
+
 ## signInWithOAuth(provider, options?)  [BROWSER-LIKE]
 
 Starts an OAuth authentication flow with the specified provider.

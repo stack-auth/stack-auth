@@ -1,22 +1,70 @@
 import { KnownErrors } from "@stackframe/stack-shared";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import type { GenericQueryCtx } from "convex/server";
-import { AsyncStoreProperty, GetCurrentPartialUserOptions, GetCurrentUserOptions } from "../../common";
+import { AsyncStoreProperty, GetCurrentPartialUserOptions, GetCurrentUserOptions, RequestLike, TokenStoreInit } from "../../common";
 import { CustomerProductsList, CustomerProductsRequestOptions, InlineProduct, ServerItem } from "../../customers";
 import { DataVaultStore } from "../../data-vault";
 import { EmailDeliveryInfo, SendEmailOptions } from "../../email";
 import { ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions } from "../../teams";
 import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, SyncedPartialServerUser, TokenPartialUser } from "../../users";
 import { _StackServerAppImpl } from "../implementations";
-import { StackClientApp, StackClientAppConstructorOptions } from "./client-app";
+import { StackClientApp, StackClientAppConstructorOptions, TrackClientAnalyticsEventOptions } from "./client-app";
+import type { Span, StartSpanOptions } from "../implementations/tracing";
+import type { StackSpanExporter, StackSpanExporterOptions } from "../implementations/otel-exporter";
 
+export type TrackServerAnalyticsEventOptions<HasTokenStore extends boolean> = TrackClientAnalyticsEventOptions & {
+  userId?: string,
+  teamId?: string,
+  tokenStore?: TokenStoreInit<HasTokenStore>,
+};
 
 export type StackServerAppConstructorOptions<HasTokenStore extends boolean, ProjectId extends string> = StackClientAppConstructorOptions<HasTokenStore, ProjectId> & {
   secretServerKey?: string,
+
+  /**
+   * Callback to extend the lifetime of the serverless function until a promise
+   * resolves. Used to ensure analytics flushes complete before the runtime
+   * shuts down.
+   *
+   * - Vercel: `import { waitUntil } from '@vercel/functions'`
+   * - Cloudflare Workers: `ctx.waitUntil`
+   *
+   * If omitted, the SDK auto-detects `globalThis.waitUntil` (available in
+   * some runtimes). Falls back to fire-and-forget if unavailable.
+   */
+  waitUntil?: (promise: Promise<unknown>) => void,
 };
 
 export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId extends string = string> = (
   & {
+    trackEvent(eventType: string, data?: Record<string, unknown>, options?: TrackServerAnalyticsEventOptions<HasTokenStore>): Promise<void>,
+    trackEvent(eventType: string, data: Record<string, unknown> | undefined, request: RequestLike): Promise<void>,
+    trackEvent(eventType: string, data: Record<string, unknown> | undefined, request: { headers: Record<string, string | string[] | undefined> }): Promise<void>,
+
+    captureException(error: unknown, optionsOrRequest?: TrackServerAnalyticsEventOptions<HasTokenStore> | RequestLike | { headers: Record<string, string | string[] | undefined> }, extraData?: Record<string, unknown>): void,
+
+    startSpan<T>(name: string, callback: (span: Span) => T | Promise<T>): Promise<T>,
+    startSpan<T>(name: string, options: StartSpanOptions | TrackServerAnalyticsEventOptions<HasTokenStore>, callback: (span: Span) => T | Promise<T>): Promise<T>,
+    startSpan<T>(name: string, request: RequestLike, callback: (span: Span) => T | Promise<T>): Promise<T>,
+    startSpan<T>(name: string, request: { headers: Record<string, string | string[] | undefined> }, callback: (span: Span) => T | Promise<T>): Promise<T>,
+    startSpan(name: string): Span,
+    startSpan(name: string, options: StartSpanOptions | TrackServerAnalyticsEventOptions<HasTokenStore>): Span,
+
+    getActiveSpan(): Span | null,
+
+    flushAnalytics(): Promise<void>,
+
+    middleware(): (req: any, res: any, next: (...args: any[]) => void) => void,
+
+    /**
+     * Creates an OpenTelemetry-compatible SpanExporter that pipes OTel spans
+     * into Stack Auth analytics. Use with any OTel TracerProvider.
+     *
+     * Users must bring their own `@opentelemetry/sdk-trace-base` or
+     * `@opentelemetry/sdk-trace-node`.
+     */
+    createOTelSpanExporter(options?: StackSpanExporterOptions): StackSpanExporter,
+
     createTeam(data: ServerTeamCreateOptions): Promise<ServerTeam>,
     /**
      * @deprecated use `getUser()` instead

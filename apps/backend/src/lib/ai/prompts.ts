@@ -74,7 +74,7 @@ Run a ClickHouse SQL query against the project's analytics database. Only SELECT
 Available tables:
 
 **events** - User activity events
-- event_type: LowCardinality(String) - $token-refresh is the only valid event_type right now, it occurs whenever an access token is refreshed
+- event_type: LowCardinality(String) - Event name. Stack-managed events use a \`$\` prefix (for example \`$token-refresh\`, \`$page-view\`, \`$click\`, \`$tab-in\`, \`$tab-out\`, \`$window-focus\`, \`$window-blur\`, \`$submit\`, \`$scroll-depth\`, \`$rage-click\`, \`$copy\`, \`$paste\`, \`$error\`), and projects may also send custom event names without a \`$\` prefix
 - event_at: DateTime64(3, 'UTC') - When the event occurred
 - data: JSON - Additional event data
 - user_id: Nullable(String) - Associated user ID
@@ -646,7 +646,7 @@ CLICKHOUSE (queryAnalytics only)
 Available tables:
 
 events:
-- event_type: LowCardinality(String) ($token-refresh only)
+- event_type: LowCardinality(String) (Stack-managed \`$...\` events plus custom event names without a \`$\` prefix)
 - event_at: DateTime64(3, 'UTC')
 - data: JSON
 - user_id: Nullable(String)
@@ -756,7 +756,7 @@ You are helping users query their Stack Auth project's analytics data using Clic
 **Available Tables:**
 
 **events** - User activity events
-- event_type: LowCardinality(String) - $token-refresh is the only valid event_type right now, it occurs whenever an access token is refreshed
+- event_type: LowCardinality(String) - Event name. Stack-managed events use a \`$\` prefix (for example \`$token-refresh\`, \`$page-view\`, \`$click\`, \`$tab-in\`, \`$tab-out\`, \`$window-focus\`, \`$window-blur\`, \`$submit\`, \`$scroll-depth\`, \`$rage-click\`, \`$copy\`, \`$paste\`, \`$error\`), and projects may also send custom event names without a \`$\` prefix
 - event_at: DateTime64(3, 'UTC') - When the event occurred
 - data: JSON - Additional event data
 - user_id: Nullable(String) - Associated user ID

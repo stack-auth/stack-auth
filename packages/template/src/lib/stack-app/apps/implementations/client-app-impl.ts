@@ -52,15 +52,64 @@ import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
 import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, Team, TeamCreateOptions, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
-import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
+import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson, TrackClientAnalyticsEventOptions } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
+import { assertValidAnalyticsEventName, normalizeAnalyticsEventAt, normalizeAnalyticsEventPayload, normalizeAnalyticsReplayLinkOptions } from "./analytics-events";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getAnalyticsBaseUrl, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveConstructorOptions } from "./common";
 import { EventTracker } from "./event-tracker";
 import { AnalyticsOptions, SessionRecorder, analyticsOptionsFromJson, analyticsOptionsToJson } from "./session-replay";
+import { ClientSpanBatcher } from "./span-batcher";
+import { type Span, type StartSpanOptions, SpanImpl, getActiveSpan as getActiveSpanFromTracing, getErrorMetadata as getErrorMetadataFromTracing, noopSpan, runWithSpan, serializeTraceContext } from "./tracing";
 
 // IF_PLATFORM react-like
 import { useAsyncCache } from "./common";
 // END_PLATFORM
+
+function isSameOriginUrl(url: string): boolean {
+  if (isRelative(url)) return true;
+  try {
+    return typeof window !== "undefined" && new URL(url).origin === window.location.origin;
+  } catch {
+    return false;
+  }
+}
+
+function _fetchWithHeaders(
+  originalFetch: typeof window.fetch,
+  input: RequestInfo | URL,
+  init: RequestInit | undefined,
+  requestUrl: string,
+  isSameOrigin: boolean,
+): Promise<Response> {
+  if (isSameOrigin) {
+    const headers = new Headers(init?.headers);
+    const activeSpan = getActiveSpanFromTracing();
+    if (activeSpan && !headers.has("x-stack-trace")) {
+      const traceHeaders = serializeTraceContext(activeSpan);
+      for (const [key, value] of Object.entries(traceHeaders)) {
+        headers.set(key, value);
+      }
+    }
+    if (_activeSessionRecorder && !headers.has("x-stack-replay")) {
+      const linkState = _activeSessionRecorder.getCurrentLinkState();
+      headers.set("x-stack-replay", JSON.stringify({
+        session_replay_id: linkState.sessionReplayId ?? undefined,
+        session_replay_segment_id: linkState.sessionReplaySegmentId,
+      }));
+    }
+    return originalFetch.call(window, input, { ...init, headers });
+  }
+  return originalFetch.call(window, input, init);
+}
+
+// Shared mutable state for the fetch monkey-patch so it's applied at most once
+// globally, even across multiple StackClientApp instances (e.g. HMR, tests).
+let _fetchPatched = false;
+let _activeSessionRecorder: SessionRecorder | null = null;
+let _instrumentFetch = false;
+let _instrumentFetchOrigins: "same-origin" | "all" = "same-origin";
+let _activeSpanBatcher: ClientSpanBatcher | null = null;
+let _tracesSampleRate = 1.0;
 
 let isReactServer = false;
 // IF_PLATFORM next
@@ -98,9 +147,12 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   protected readonly _urlOptions: Partial<HandlerUrls>;
   protected readonly _oauthScopesOnSignIn: Partial<OAuthScopesOnSignIn>;
 
-  private readonly _analyticsOptions: AnalyticsOptions | undefined;
+  protected readonly _analyticsOptions: AnalyticsOptions | undefined;
+  private readonly _release: string | null;
   private _sessionRecorder: SessionRecorder | null = null;
   private _eventTracker: EventTracker | null = null;
+  private _clientSpanBatcher: ClientSpanBatcher | null = null;
+  protected _superProperties = new Map<string, unknown>();
 
   private __DEMO_ENABLE_SLIGHT_FETCH_DELAY = false;
   private readonly _ownedAdminApps = new DependenciesMap<[InternalSession, string], _StackAdminAppImplIncomplete<false, string>>();
@@ -535,6 +587,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
 
     this._analyticsOptions = resolvedOptions.analytics;
+    this._release = resolvedOptions.release ?? null;
     const getAnalyticsAccessToken = async (): Promise<string | null> => {
       this._ensurePersistentTokenStore();
       return await (await this.getUser({ or: "anonymous" })).getAccessToken();
@@ -552,14 +605,138 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
 
     if (isBrowserLike()) {
+      // Update the shared refs so the fetch patch always uses the latest instance
+      _activeSessionRecorder = this._sessionRecorder;
+      _instrumentFetch = this._analyticsOptions?.instrumentFetch ?? false;
+      _instrumentFetchOrigins = this._analyticsOptions?.instrumentFetchOrigins ?? "same-origin";
+      _tracesSampleRate = this._analyticsOptions?.tracesSampleRate ?? 1.0;
+
+      // Patch window.fetch at most once globally to inject tracing/replay headers
+      // and optionally create http.client spans
+      if (!_fetchPatched) {
+        _fetchPatched = true;
+        const originalFetch = window.fetch;
+        window.fetch = function patchedFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+          let requestUrl: string;
+          if (input instanceof URL) {
+            requestUrl = input.href;
+          } else if (input instanceof Request) {
+            requestUrl = input.url;
+          } else {
+            requestUrl = input;
+          }
+
+          const isSameOrigin = isSameOriginUrl(requestUrl);
+          const isAnalyticsUrl = requestUrl.includes("/api/v1/analytics/");
+          const method = init?.method?.toUpperCase() ?? "GET";
+
+          // Determine whether to create a span for this request
+          const shouldInstrument = _instrumentFetch
+            && _activeSpanBatcher
+            && !isAnalyticsUrl
+            && (_instrumentFetchOrigins === "all" || isSameOrigin);
+
+          // Strip query string from URL for span data (avoid leaking tokens)
+          const sanitizedUrl = (() => {
+            try {
+              return requestUrl.split("?")[0]!.split("#")[0]!;
+            } catch {
+              return requestUrl;
+            }
+          })();
+
+          if (shouldInstrument) {
+            const parentSpan = getActiveSpanFromTracing();
+            // Root spans are subject to sampling; child spans inherit
+            const isSampled = parentSpan ? true : Math.random() < _tracesSampleRate;
+            if (!isSampled) {
+              // Still inject headers even if not creating a span
+              return _fetchWithHeaders(originalFetch, input, init, requestUrl, isSameOrigin);
+            }
+
+            const replayLink = _activeSessionRecorder?.getCurrentLinkState();
+            const span = new SpanImpl({
+              spanType: "http.client",
+              traceId: parentSpan?.traceId,
+              parentIds: parentSpan ? [parentSpan.spanId] : undefined,
+              data: { "http.method": method, "http.url": sanitizedUrl },
+              sessionReplayId: replayLink?.sessionReplayId,
+              sessionReplaySegmentId: replayLink?.sessionReplaySegmentId,
+              onEnd: (s) => {
+                _activeSpanBatcher?.push(s.toPayload());
+              },
+            });
+
+            // Inject headers using the fetch span as context
+            const headers = new Headers(init?.headers);
+            if (!headers.has("x-stack-trace")) {
+              const traceHeaders = serializeTraceContext(span);
+              for (const [key, value] of Object.entries(traceHeaders)) {
+                headers.set(key, value);
+              }
+            }
+            if (_activeSessionRecorder && !headers.has("x-stack-replay")) {
+              const linkState = _activeSessionRecorder.getCurrentLinkState();
+              headers.set("x-stack-replay", JSON.stringify({
+                session_replay_id: linkState.sessionReplayId ?? undefined,
+                session_replay_segment_id: linkState.sessionReplaySegmentId,
+              }));
+            }
+
+            return originalFetch.call(window, input, { ...init, headers }).then(
+              (response: Response) => {
+                span.setAttribute("http.status_code", response.status);
+                const contentLength = response.headers.get("content-length");
+                if (contentLength) span.setAttribute("http.response_content_length", parseInt(contentLength, 10));
+                span.setStatus(response.status >= 400 ? "error" : "ok");
+                span.end();
+                return response;
+              },
+              (error: unknown) => {
+                span.recordException(error);
+                span.end();
+                throw error;
+              },
+            );
+          }
+
+          // No instrumentation — just inject headers for same-origin
+          return _fetchWithHeaders(originalFetch, input, init, requestUrl, isSameOrigin);
+        };
+      }
       this._eventTracker = new EventTracker({
         projectId: this.projectId,
+        release: this._release,
         getAccessToken: getAnalyticsAccessToken,
+        getReplayLinkOptions: () => {
+          const replayLinkState = this._sessionRecorder?.getCurrentLinkState();
+          if (replayLinkState == null) {
+            return null;
+          }
+          return {
+            sessionReplayId: replayLinkState.sessionReplayId ?? undefined,
+            sessionReplaySegmentId: replayLinkState.sessionReplaySegmentId,
+          };
+        },
+        getSuperProperties: () => Object.fromEntries(this._superProperties),
         sendBatch: async (body, opts) => {
           return await this._interface.sendAnalyticsEventBatch(body, await this._getSession(), opts);
         },
+      }, {
+        errorDedupWindowMs: this._analyticsOptions?.errorDedupWindowMs,
+        beforeSend: this._analyticsOptions?.beforeSend,
+        captureConsoleErrors: this._analyticsOptions?.captureConsoleErrors,
+        wrapBrowserApis: this._analyticsOptions?.wrapBrowserApis,
       });
       this._eventTracker.start();
+
+      this._clientSpanBatcher = new ClientSpanBatcher({
+        sendBatch: async (body, opts) => {
+          return await this._interface.sendAnalyticsSpanBatch(body, await this._getSession(), opts);
+        },
+      });
+      this._clientSpanBatcher.start();
+      _activeSpanBatcher = this._clientSpanBatcher;
     }
   }
 
@@ -2133,6 +2310,197 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return clientVersion;
   }
 
+  async trackEvent(eventType: string, data?: Record<string, unknown>, options?: TrackClientAnalyticsEventOptions): Promise<void> {
+    assertValidAnalyticsEventName(eventType);
+    this._ensurePersistentTokenStore();
+
+    if (this._eventTracker) {
+      this._eventTracker.trackEvent(eventType, data, options);
+      // Flush immediately so the returned promise resolves only after the event
+      // has been delivered. The buffer is still useful for fire-and-forget callers
+      // (captureException, auto-captured events, non-awaited trackEvent calls)
+      // that rely on the background 10s flush.
+      await this.flushAnalytics();
+      return;
+    }
+
+    const auth = await this.getAuthJson();
+    if (auth.accessToken == null && auth.refreshToken == null) {
+      return;
+    }
+
+    const replayLinkOptions = normalizeAnalyticsReplayLinkOptions({
+      sessionReplayId: options?.sessionReplayId,
+      sessionReplaySegmentId: options?.sessionReplaySegmentId,
+    });
+
+    const response = await this._interface.sendAnalyticsEventBatch(
+      JSON.stringify({
+        ...replayLinkOptions,
+        batch_id: generateUuid(),
+        sent_at_ms: Date.now(),
+        events: [{
+          event_type: eventType,
+          event_id: generateUuid(),
+          // only set trace_id when the event is inside an active span; standalone events don't need one
+          trace_id: getActiveSpanFromTracing()?.traceId ?? undefined,
+          event_at_ms: normalizeAnalyticsEventAt(options?.at),
+          data: { ...Object.fromEntries(this._superProperties), ...normalizeAnalyticsEventPayload(data) },
+          ...replayLinkOptions,
+        }],
+      }),
+      await this._getSession(),
+      { keepalive: false },
+    );
+
+    if (response.status === "error") {
+      throw response.error;
+    }
+    if (!response.data.ok) {
+      throw new StackAssertionError(
+        `Analytics event request failed with status ${response.data.status}`,
+        { responseText: await response.data.text() },
+      );
+    }
+  }
+
+  captureException(error: unknown, extraData?: Record<string, unknown> & { fingerprint?: string[] }): void {
+    if (this._eventTracker) {
+      this._eventTracker.captureException(error, extraData);
+      return;
+    }
+    // Non-browser fallback: send as a single-event batch
+    const { fingerprint, ...rest } = extraData ?? {};
+    const errorMetadata = getErrorMetadataFromTracing(error);
+    runAsynchronously(async () => {
+      const auth = await this.getAuthJson();
+      if (auth.accessToken == null && auth.refreshToken == null) return;
+      await this._interface.sendAnalyticsEventBatch(
+        JSON.stringify({
+          batch_id: generateUuid(),
+          sent_at_ms: Date.now(),
+          events: [{
+            event_type: "$error",
+            event_id: generateUuid(),
+            // only set trace_id when the event is inside an active span; standalone events don't need one
+            trace_id: getActiveSpanFromTracing()?.traceId ?? undefined,
+            event_at_ms: Date.now(),
+            data: { source: "manual", ...errorMetadata, ...rest, ...(fingerprint ? { $fingerprint: fingerprint } : {}) },
+          }],
+        }),
+        await this._getSession(),
+        { keepalive: false },
+      );
+    });
+  }
+
+  async flushAnalytics(): Promise<void> {
+    await Promise.all([
+      this._eventTracker?.flush(),
+      this._clientSpanBatcher?.flush(),
+    ]);
+  }
+
+  register(properties: Record<string, unknown>): void {
+    for (const [key, value] of Object.entries(properties)) {
+      this._superProperties.set(key, value);
+    }
+  }
+
+  unregister(key: string): void {
+    this._superProperties.delete(key);
+  }
+
+  startSpan<T>(name: string, callback: (span: Span) => T | Promise<T>): Promise<T>;
+  startSpan<T>(name: string, options: StartSpanOptions, callback: (span: Span) => T | Promise<T>): Promise<T>;
+  startSpan(name: string): Span;
+  startSpan(name: string, options: StartSpanOptions): Span;
+  startSpan<T>(name: string, optionsOrCallback?: StartSpanOptions | ((span: Span) => T | Promise<T>), maybeCallback?: (span: Span) => T | Promise<T>): Span | Promise<T> {
+    let options: StartSpanOptions | undefined;
+    let callback: ((span: Span) => T | Promise<T>) | undefined;
+
+    if (typeof optionsOrCallback === "function") {
+      callback = optionsOrCallback;
+    } else {
+      options = optionsOrCallback;
+      callback = maybeCallback;
+    }
+
+    // Sampling: drop this trace if rate is below threshold (only for root spans)
+    const sampleRate = this._analyticsOptions?.tracesSampleRate;
+    const isRootSpan = !options?.parent && !options?.parentSpanId && !getActiveSpanFromTracing();
+    if (isRootSpan && sampleRate !== undefined && sampleRate < 1 && Math.random() >= sampleRate) {
+      if (callback) {
+        return callback(noopSpan) as Promise<T>;
+      }
+      return noopSpan;
+    }
+
+    const explicitParent = options?.parent;
+    const contextParent = getActiveSpanFromTracing();
+    const resolvedParent = explicitParent ?? contextParent;
+    const traceId = options?.traceId ?? resolvedParent?.traceId ?? undefined;
+
+    const replayLinkState = this._sessionRecorder?.getCurrentLinkState();
+    const segmentSpanId = replayLinkState?.sessionReplaySegmentId;
+
+    // Build parent_ids: explicit parent or context parent, plus replay segment
+    const parentIds: string[] = [];
+    if (options?.parentSpanId) {
+      parentIds.push(options.parentSpanId);
+    } else if (resolvedParent) {
+      parentIds.push(resolvedParent.spanId);
+    }
+    if (segmentSpanId && !parentIds.includes(segmentSpanId)) {
+      parentIds.push(segmentSpanId);
+    }
+
+    const span = new SpanImpl({
+      spanType: name,
+      traceId,
+      parentIds,
+      data: options?.attributes,
+      startedAtMs: options?.startTime instanceof Date ? options.startTime.getTime() : options?.startTime ?? undefined,
+      sessionReplayId: replayLinkState?.sessionReplayId,
+      sessionReplaySegmentId: segmentSpanId,
+      onEnd: (endedSpan) => {
+        this._clientSpanBatcher?.push(endedSpan.toPayload());
+      },
+    });
+
+    if (!callback) {
+      // Manual form — user calls span.end()
+      return span;
+    }
+
+    // Callback form — auto-end on return/throw
+    return (async () => {
+      try {
+        const result = await runWithSpan(span, () => callback(span));
+        if (!span.isEnded) {
+          span.end();
+        }
+        return result;
+      } catch (err) {
+        if (!span.isEnded) {
+          span.recordException(err);
+          span.end();
+        }
+        throw err;
+      }
+    })();
+  }
+
+  getActiveSpan(): Span | null {
+    return getActiveSpanFromTracing();
+  }
+
+  getTraceHeaders(): Record<string, string> {
+    const activeSpan = getActiveSpanFromTracing();
+    if (!activeSpan) return {};
+    return serializeTraceContext(activeSpan);
+  }
+
   private _botChallengeSiteKeysWarned = false;
   private _getBotChallengeSiteKeys(): { visibleSiteKey: string, invisibleSiteKey: string } | null {
     if (!isBrowserLike()) return null;
@@ -2227,7 +2595,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   protected async _isTrusted(url: string): Promise<boolean> {
     // TODO: At some point, we should use the project's trusted domains for this instead of just requiring the URL to be relative
     // (note that when we do this, that should be on-top of the relativity check, not replacing it)
-    return isRelative(url) || (typeof window !== "undefined" && window.location.origin === new URL(url).origin);
+    return isSameOriginUrl(url);
   }
 
   get urls(): Readonly<HandlerUrls> {

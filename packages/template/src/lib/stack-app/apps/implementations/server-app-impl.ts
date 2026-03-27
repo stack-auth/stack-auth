@@ -1,5 +1,6 @@
 import { WebAuthnError, startRegistration } from "@simplewebauthn/browser";
 import { KnownErrors, StackServerInterface } from "@stackframe/stack-shared";
+import type { AnalyticsBatchSpan } from "@stackframe/stack-shared/dist/interface/crud/analytics";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { ItemCrud } from "@stackframe/stack-shared/dist/interface/crud/items";
 import { NotificationPreferenceCrud } from "@stackframe/stack-shared/dist/interface/crud/notification-preferences";
@@ -19,11 +20,12 @@ import { ProviderType } from "@stackframe/stack-shared/dist/utils/oauth";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { suspend } from "@stackframe/stack-shared/dist/utils/react";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
+import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud, apiKeyUpdateOptionsToCrud } from "../../api-keys";
-import { ConvexCtx, GetCurrentUserOptions } from "../../common";
+import { ConvexCtx, GetCurrentUserOptions, RequestLike, tokenStoreFromHeaders } from "../../common";
 import { DeprecatedOAuthConnection, OAuthConnection } from "../../connected-accounts";
 import { ServerContactChannel, ServerContactChannelCreateOptions, ServerContactChannelUpdateOptions, serverContactChannelCreateOptionsToCrud, serverContactChannelUpdateOptionsToCrud } from "../../contact-channels";
 import { Customer, CustomerProductsList, CustomerProductsRequestOptions, InlineProduct, ServerItem } from "../../customers";
@@ -33,9 +35,13 @@ import { NotificationCategory } from "../../notification-categories";
 import { AdminProjectPermissionDefinition, AdminTeamPermission, AdminTeamPermissionDefinition } from "../../permissions";
 import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions, ServerTeamUpdateOptions, ServerTeamUser, Team, serverTeamCreateOptionsToCrud, serverTeamUpdateOptionsToCrud } from "../../teams";
 import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
-import { StackServerAppConstructorOptions } from "../interfaces/server-app";
+import { StackServerAppConstructorOptions, TrackServerAnalyticsEventOptions } from "../interfaces/server-app";
+import { assertValidAnalyticsEventName, normalizeAnalyticsEventAt, normalizeAnalyticsEventPayload, normalizeAnalyticsReplayLinkOptions } from "./analytics-events";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
 import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, resolveConstructorOptions } from "./common";
+import { StackSpanExporter, type StackSpanExporterOptions } from "./otel-exporter";
+import { ServerBatcher } from "./server-event-batcher";
+import { SpanImpl, extractReplayLink, extractTraceContext, getActiveSpan as getActiveSpanFromTracing, getErrorMetadata as getErrorMetadataFromTracing, noopSpan, runWithSpan, type Span, type StartSpanOptions } from "./tracing";
 
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
@@ -407,6 +413,10 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     };
   }
 
+  private readonly _serverEventBatcher: ServerBatcher<any>;
+  private readonly _serverSpanBatcher: ServerBatcher<AnalyticsBatchSpan>;
+  private readonly _waitUntil: ((promise: Promise<unknown>) => void) | undefined;
+
   constructor(options: StackServerAppConstructorOptions<HasTokenStore, ProjectId>, extraOptions?: { uniqueIdentifier?: string, checkString?: string, interface?: StackServerInterface }) {
     const resolvedOptions = resolveConstructorOptions(options);
 
@@ -423,8 +433,333 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         secretServerKey: resolvedOptions.secretServerKey ?? getDefaultSecretServerKey(),
       }),
     });
+
+    const g = globalThis as Record<string, unknown>;
+    this._waitUntil = resolvedOptions.waitUntil
+      ?? (typeof g.waitUntil === "function" ? g.waitUntil as (p: Promise<unknown>) => void : undefined);
+
+    this._serverEventBatcher = new ServerBatcher({
+      sendBatch: (body, session, opts) => this._interface.sendServerAnalyticsEventBatch(body, session, opts),
+      waitUntil: this._waitUntil,
+      payloadKey: "events",
+      maxPerBatch: 50,
+    });
+    this._serverEventBatcher.start();
+
+    this._serverSpanBatcher = new ServerBatcher({
+      sendBatch: (body, session, opts) => this._interface.sendServerAnalyticsSpanBatch(body, session, opts),
+      waitUntil: this._waitUntil,
+      payloadKey: "spans",
+      maxPerBatch: 200,
+    });
+    this._serverSpanBatcher.start();
   }
 
+  async trackEvent(eventType: string, data?: Record<string, unknown>, optionsOrRequest?: TrackServerAnalyticsEventOptions<HasTokenStore> | RequestLike | { headers: Record<string, string | string[] | undefined> }): Promise<void> {
+    await this._trackEventInternalAsync(eventType, data, optionsOrRequest, false);
+    // Flush immediately so the returned promise resolves only after the event
+    // has been delivered. This bypasses the batcher's interval/size triggers —
+    // the buffer is still useful for fire-and-forget callers (captureException,
+    // auto-captured events, non-awaited trackEvent calls) that rely on the
+    // background 10s flush.
+    await this.flushAnalytics();
+  }
+
+  captureException(
+    error: unknown,
+    optionsOrRequest?: TrackServerAnalyticsEventOptions<HasTokenStore> | RequestLike | { headers: Record<string, string | string[] | undefined> },
+    extraData?: Record<string, unknown>,
+  ): void {
+    const errorMetadata = getErrorMetadataFromTracing(error);
+    this._trackEventInternal("$error", { source: "manual", ...errorMetadata, ...extraData }, optionsOrRequest, true);
+  }
+
+  /** @internal — used by middleware() to emit auto-captured events like $request */
+  _trackAutoCapturedEvent(eventType: string, data: Record<string, unknown>, request?: RequestLike | { headers: Record<string, string | string[] | undefined> }): void {
+    this._trackEventInternal(eventType, data, request, true);
+  }
+
+  private _normalizeRequestArg(
+    optionsOrRequest: TrackServerAnalyticsEventOptions<HasTokenStore> | RequestLike | { headers: Record<string, string | string[] | undefined> } | undefined,
+  ): { options: TrackServerAnalyticsEventOptions<HasTokenStore> | undefined; headersSource: { headers: unknown } | null } {
+    if (optionsOrRequest == null) return { options: undefined, headersSource: null };
+
+    if (!("headers" in optionsOrRequest)) {
+      return { options: optionsOrRequest as TrackServerAnalyticsEventOptions<HasTokenStore>, headersSource: null };
+    }
+
+    const { headers } = optionsOrRequest;
+    if (typeof (headers as Record<string, unknown>).get === "function") {
+      return {
+        options: { tokenStore: optionsOrRequest as RequestLike } as TrackServerAnalyticsEventOptions<HasTokenStore>,
+        headersSource: optionsOrRequest,
+      };
+    }
+
+    if ("tokenStore" in optionsOrRequest) {
+      return { options: optionsOrRequest as TrackServerAnalyticsEventOptions<HasTokenStore>, headersSource: null };
+    }
+
+    return {
+      options: { tokenStore: tokenStoreFromHeaders(headers as Record<string, string | string[] | undefined>) } as TrackServerAnalyticsEventOptions<HasTokenStore>,
+      headersSource: optionsOrRequest,
+    };
+  }
+
+  private async _resolveUserContext(options?: TrackServerAnalyticsEventOptions<HasTokenStore>) {
+    const hasTokenStore = options?.tokenStore !== undefined || this._tokenStoreInit !== null;
+    const session = hasTokenStore ? await this._getSession(options?.tokenStore) : null;
+
+    let userId = options?.userId ?? null;
+    let teamId = options?.teamId ?? null;
+    if ((userId === null || teamId === null) && hasTokenStore) {
+      const currentUser = session ? await this._interface.getServerUserByToken(session) : null;
+      if (currentUser !== null) {
+        userId = userId ?? currentUser.id;
+        teamId = teamId ?? currentUser.selected_team?.id ?? null;
+      }
+    }
+
+    return { session, userId, teamId };
+  }
+
+  private _trackEventInternal(
+    eventType: string,
+    data?: Record<string, unknown>,
+    optionsOrRequest?: TrackServerAnalyticsEventOptions<HasTokenStore> | RequestLike | { headers: Record<string, string | string[] | undefined> },
+    allowAutoCaptured?: boolean,
+  ): void {
+    runAsynchronously(() => this._trackEventInternalAsync(eventType, data, optionsOrRequest, allowAutoCaptured));
+  }
+
+  private async _trackEventInternalAsync(
+    eventType: string,
+    data?: Record<string, unknown>,
+    optionsOrRequest?: TrackServerAnalyticsEventOptions<HasTokenStore> | RequestLike | { headers: Record<string, string | string[] | undefined> },
+    allowAutoCaptured?: boolean,
+  ): Promise<void> {
+    assertValidAnalyticsEventName(eventType, { allowAutoCapturedReservedType: allowAutoCaptured });
+
+    const { options: rawOptions, headersSource } = this._normalizeRequestArg(
+      optionsOrRequest,
+    );
+
+    let options = rawOptions;
+    if (options && !options.sessionReplayId && !options.sessionReplaySegmentId && headersSource) {
+      const replay = extractReplayLink(headersSource.headers);
+      if (replay.sessionReplayId) options = { ...options, sessionReplayId: replay.sessionReplayId };
+      if (replay.sessionReplaySegmentId) options = { ...options, sessionReplaySegmentId: replay.sessionReplaySegmentId };
+    }
+
+    const eventAtMs = normalizeAnalyticsEventAt(options?.at);
+    const rawEventData = normalizeAnalyticsEventPayload(data);
+    const eventData = this._superProperties.size > 0
+      ? { ...Object.fromEntries(this._superProperties), ...rawEventData }
+      : rawEventData;
+    const replayLinkOptions = normalizeAnalyticsReplayLinkOptions({
+      sessionReplayId: options?.sessionReplayId,
+      sessionReplaySegmentId: options?.sessionReplaySegmentId,
+    });
+
+    const { session, userId, teamId } = await this._resolveUserContext(options);
+
+    const segmentSpanId = replayLinkOptions.session_replay_segment_id;
+    const activeSpan = getActiveSpanFromTracing();
+    const parentSpanIds = [
+      ...(activeSpan ? [activeSpan.spanId] : []),
+      ...(segmentSpanId ? [segmentSpanId] : []),
+    ];
+    this._serverEventBatcher.push({
+      event_type: eventType,
+      event_id: generateUuid(),
+      // only set trace_id when the event is inside an active span; standalone events don't need one
+      trace_id: activeSpan?.traceId ?? undefined,
+      event_at_ms: eventAtMs,
+      ...(parentSpanIds.length > 0 ? { parent_span_ids: parentSpanIds } : {}),
+      data: eventData,
+      user_id: userId ?? undefined,
+      team_id: teamId ?? undefined,
+      ...replayLinkOptions,
+    }, session);
+  }
+
+  async flushAnalytics(): Promise<void> {
+    await this._serverEventBatcher.flush();
+    await this._serverSpanBatcher.flush();
+  }
+
+  startSpan<T>(name: string, callback: (span: Span) => T | Promise<T>): Promise<T>;
+  startSpan<T>(name: string, options: StartSpanOptions | TrackServerAnalyticsEventOptions<HasTokenStore>, callback: (span: Span) => T | Promise<T>): Promise<T>;
+  startSpan<T>(name: string, request: RequestLike | { headers: Record<string, string | string[] | undefined> }, callback: (span: Span) => T | Promise<T>): Promise<T>;
+  startSpan(name: string): Span;
+  startSpan(name: string, options: StartSpanOptions | TrackServerAnalyticsEventOptions<HasTokenStore>): Span;
+  startSpan<T>(
+    name: string,
+    optionsOrRequestOrCallback?: StartSpanOptions | TrackServerAnalyticsEventOptions<HasTokenStore> | RequestLike | { headers: Record<string, string | string[] | undefined> } | ((span: Span) => T | Promise<T>),
+    maybeCallback?: (span: Span) => T | Promise<T>,
+  ): Span | Promise<T> {
+    type MergedOptions = StartSpanOptions & TrackServerAnalyticsEventOptions<HasTokenStore>;
+    let options: MergedOptions | undefined;
+    let callback: ((span: Span) => T | Promise<T>) | undefined;
+    let headersSource: { headers: unknown } | null = null;
+
+    if (typeof optionsOrRequestOrCallback === "function") {
+      callback = optionsOrRequestOrCallback;
+    } else {
+      const normalized = this._normalizeRequestArg(
+        optionsOrRequestOrCallback as TrackServerAnalyticsEventOptions<HasTokenStore> | RequestLike | { headers: Record<string, string | string[] | undefined> } | undefined,
+      );
+      options = normalized.options as MergedOptions | undefined;
+      headersSource = normalized.headersSource;
+      callback = maybeCallback;
+    }
+
+    // Sampling: only for root spans without incoming trace
+    const sampleRate = this._analyticsOptions?.tracesSampleRate;
+    const contextParent = getActiveSpanFromTracing();
+    const hasIncomingTrace = headersSource != null || options?.parent || options?.parentSpanId || contextParent;
+    if (!hasIncomingTrace && sampleRate !== undefined && sampleRate < 1 && Math.random() >= sampleRate) {
+      if (callback) return callback(noopSpan) as Promise<T>;
+      return noopSpan;
+    }
+
+    // Extract trace + replay context from request headers
+    let incomingTraceId: string | null = null;
+    let incomingParentSpanId: string | null = null;
+    let incomingReplayId: string | null = null;
+    let incomingReplaySegmentId: string | null = null;
+
+    const tokenStoreHeaders = options?.tokenStore != null && typeof options.tokenStore === "object" && "headers" in options.tokenStore
+      ? (options.tokenStore as { headers: unknown }).headers
+      : null;
+    const reqHeaders = headersSource?.headers ?? tokenStoreHeaders;
+    if (reqHeaders) {
+      const traceCtx = extractTraceContext(reqHeaders);
+      incomingTraceId = traceCtx.traceId;
+      incomingParentSpanId = traceCtx.parentSpanId;
+      const replay = extractReplayLink(reqHeaders);
+      incomingReplayId = replay.sessionReplayId;
+      incomingReplaySegmentId = replay.sessionReplaySegmentId;
+    }
+
+    const resolvedParent = options?.parent ?? contextParent;
+    const traceId = options?.traceId ?? incomingTraceId ?? resolvedParent?.traceId ?? undefined;
+    const segmentSpanId = options?.sessionReplaySegmentId ?? incomingReplaySegmentId ?? undefined;
+
+    const parentIds: string[] = [];
+    if (options?.parentSpanId) {
+      parentIds.push(options.parentSpanId);
+    } else if (incomingParentSpanId) {
+      parentIds.push(incomingParentSpanId);
+    } else if (resolvedParent) {
+      parentIds.push(resolvedParent.spanId);
+    }
+    if (segmentSpanId && !parentIds.includes(segmentSpanId)) {
+      parentIds.push(segmentSpanId);
+    }
+
+    // Resolve user context once eagerly — reused by onEnd without extra API calls
+    const userContextPromise = this._resolveUserContext(options);
+
+    const span = new SpanImpl({
+      spanType: name,
+      traceId,
+      parentIds,
+      data: options?.attributes,
+      startedAtMs: options?.startTime instanceof Date ? options.startTime.getTime() : options?.startTime ?? undefined,
+      sessionReplayId: options?.sessionReplayId ?? incomingReplayId ?? undefined,
+      sessionReplaySegmentId: segmentSpanId,
+      onEnd: (endedSpan) => {
+        runAsynchronously(async () => {
+          const { session, userId, teamId } = await userContextPromise;
+          this._serverSpanBatcher.push({
+            ...endedSpan.toPayload(),
+            user_id: userId ?? undefined,
+            team_id: teamId ?? undefined,
+          }, session);
+        });
+      },
+    });
+
+    if (!callback) return span;
+
+    return (async () => {
+      try {
+        const result = await runWithSpan(span, () => callback(span));
+        if (!span.isEnded) span.end();
+        return result;
+      } catch (err) {
+        if (!span.isEnded) {
+          span.recordException(err);
+          span.end();
+        }
+        throw err;
+      }
+    })();
+  }
+
+  getActiveSpan(): Span | null {
+    return getActiveSpanFromTracing();
+  }
+
+  middleware(): (req: any, res: any, next: (...args: any[]) => void) => void {
+    return (req: any, res: any, next: (...args: any[]) => void) => {
+      const startTimeMs = Date.now();
+      const method = (req.method ?? "GET").toUpperCase() as string;
+      const path = (req.originalUrl ?? req.url ?? "/") as string;
+
+      // Extract trace context from incoming headers for distributed tracing
+      const headers = req.headers ?? {};
+      const { traceId, parentSpanId } = extractTraceContext(headers);
+      const { sessionReplayId, sessionReplaySegmentId } = extractReplayLink(headers);
+
+      // Create http.server span for this request
+      const span = new SpanImpl({
+        spanType: "http.server",
+        traceId: traceId ?? undefined,
+        parentIds: parentSpanId ? [parentSpanId] : undefined,
+        data: { "http.method": method, "http.route": path },
+        startedAtMs: startTimeMs,
+        sessionReplayId,
+        sessionReplaySegmentId,
+        onEnd: (endedSpan) => {
+          this._serverSpanBatcher.push(endedSpan.toPayload(), null);
+        },
+      });
+
+      const onFinish = () => {
+        res.removeListener("finish", onFinish);
+
+        const statusCode = res.statusCode ?? 200;
+        const durationMs = Date.now() - startTimeMs;
+
+        // End the http.server span
+        span.setAttribute("http.status_code", statusCode);
+        span.setAttribute("http.duration_ms", durationMs);
+        span.setStatus(statusCode >= 400 ? "error" : "ok");
+        span.end();
+
+        const flushPromise = this.flushAnalytics();
+        if (this._waitUntil) {
+          this._waitUntil(flushPromise);
+        } else {
+          runAsynchronously(flushPromise);
+        }
+      };
+
+      res.on("finish", onFinish);
+      // Run next() within span context so child spans are linked
+      runWithSpan(span, () => next());
+    };
+  }
+
+
+  createOTelSpanExporter(options?: StackSpanExporterOptions): StackSpanExporter {
+    return new StackSpanExporter(
+      (span) => this._serverSpanBatcher.push(span, null),
+      options,
+    );
+  }
 
   protected _serverApiKeyFromCrud(crud: TeamApiKeysCrud['Client']['Read']): ApiKey<"team">;
   protected _serverApiKeyFromCrud(crud: UserApiKeysCrud['Client']['Read']): ApiKey<"user">;
