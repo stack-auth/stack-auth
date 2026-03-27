@@ -7,6 +7,26 @@ const FLUSH_INTERVAL_MS = 10_000;
 const MAX_EVENTS_PER_BATCH = 50;
 const MAX_APPROX_BYTES_PER_BATCH = 64_000;
 
+function hasScreenDimensions(value: unknown): value is { width: number, height: number } {
+  if (value == null || typeof value !== "object") {
+    return false;
+  }
+  if (!("width" in value) || !("height" in value)) {
+    return false;
+  }
+  return typeof value.width === "number" && typeof value.height === "number";
+}
+
+function hasHistoryMethods(value: unknown): value is { pushState: History["pushState"], replaceState: History["replaceState"] } {
+  if (value == null || typeof value !== "object") {
+    return false;
+  }
+  if (!("pushState" in value) || !("replaceState" in value)) {
+    return false;
+  }
+  return typeof value.pushState === "function" && typeof value.replaceState === "function";
+}
+
 export type EventTrackerDeps = {
   projectId: string,
   getAccessToken: () => Promise<string | null>,
@@ -42,15 +62,13 @@ export class EventTracker {
   start() {
     if (this._started) return;
     if (!isBrowserLike()) return;
-    const screenObject = Reflect.get(window, "screen");
+    const screenObject = Object.getOwnPropertyDescriptor(window, "screen")?.value;
     if (
       typeof window.addEventListener !== "function"
       || typeof window.removeEventListener !== "function"
       || typeof document.addEventListener !== "function"
       || typeof document.removeEventListener !== "function"
-      || typeof screenObject !== "object"
-      || typeof Reflect.get(screenObject, "width") !== "number"
-      || typeof Reflect.get(screenObject, "height") !== "number"
+      || !hasScreenDimensions(screenObject)
     ) {
       return;
     }
@@ -87,6 +105,11 @@ export class EventTracker {
   }
 
   private _capturePageView(entryType: "initial" | "push" | "replace" | "pop") {
+    const screenObject = Object.getOwnPropertyDescriptor(window, "screen")?.value;
+    if (!hasScreenDimensions(screenObject)) {
+      return;
+    }
+
     const url = window.location.href;
     if (url === this._lastUrl && entryType !== "initial") return;
     this._lastUrl = url;
@@ -102,8 +125,8 @@ export class EventTracker {
         entry_type: entryType,
         viewport_width: window.innerWidth,
         viewport_height: window.innerHeight,
-        screen_width: window.screen.width,
-        screen_height: window.screen.height,
+        screen_width: screenObject.width,
+        screen_height: screenObject.height,
       },
     });
   }
@@ -111,26 +134,26 @@ export class EventTracker {
   private _setupPageViewCapture() {
     // Fire initial page-view
     this._capturePageView("initial");
-    const historyObject = window["history"];
-    const originalPushState = Reflect.get(historyObject, "pushState");
-    const originalReplaceState = Reflect.get(historyObject, "replaceState");
-    if (typeof originalPushState !== "function" || typeof originalReplaceState !== "function") {
+    const historyObject = Object.getOwnPropertyDescriptor(window, "history")?.value;
+    if (!hasHistoryMethods(historyObject)) {
       return;
     }
+    const originalPushState = historyObject.pushState;
+    const originalReplaceState = historyObject.replaceState;
 
     // Monkey-patch history.pushState
     this._originalPushState = (...args: Parameters<History["pushState"]>) => originalPushState.apply(historyObject, args);
-    Reflect.set(historyObject, "pushState", (...args: Parameters<History["pushState"]>) => {
+    historyObject.pushState = (...args: Parameters<History["pushState"]>) => {
       this._originalPushState!(...args);
       this._capturePageView("push");
-    });
+    };
 
     // Monkey-patch history.replaceState
     this._originalReplaceState = (...args: Parameters<History["replaceState"]>) => originalReplaceState.apply(historyObject, args);
-    Reflect.set(historyObject, "replaceState", (...args: Parameters<History["replaceState"]>) => {
+    historyObject.replaceState = (...args: Parameters<History["replaceState"]>) => {
       this._originalReplaceState!(...args);
       this._capturePageView("replace");
-    });
+    };
 
     // Listen for popstate (back/forward navigation)
     window.addEventListener("popstate", this._onPopState);
@@ -223,15 +246,17 @@ export class EventTracker {
     }
 
     // Restore history methods
-    const historyObject = Reflect.get(window, "history");
-    if (this._originalPushState) {
-      Reflect.set(historyObject, "pushState", this._originalPushState);
-      this._originalPushState = null;
+    const historyObject = Object.getOwnPropertyDescriptor(window, "history")?.value;
+    if (hasHistoryMethods(historyObject)) {
+      if (this._originalPushState) {
+        historyObject.pushState = this._originalPushState;
+      }
+      if (this._originalReplaceState) {
+        historyObject.replaceState = this._originalReplaceState;
+      }
     }
-    if (this._originalReplaceState) {
-      Reflect.set(historyObject, "replaceState", this._originalReplaceState);
-      this._originalReplaceState = null;
-    }
+    this._originalPushState = null;
+    this._originalReplaceState = null;
 
     window.removeEventListener("popstate", this._onPopState);
     document.removeEventListener("click", this._onClickCapture, { capture: true });

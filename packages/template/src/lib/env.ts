@@ -68,6 +68,12 @@ export const envVars = {
   get NEXT_PUBLIC_STACK_STRIPE_PUBLISHABLE_KEY() {
     return (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_STACK_STRIPE_PUBLISHABLE_KEY : undefined) ?? undefined;
   },
+  get NEXT_PUBLIC_STACK_BOT_CHALLENGE_SITE_KEY() {
+    return (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_STACK_BOT_CHALLENGE_SITE_KEY : undefined) ?? undefined;
+  },
+  get NEXT_PUBLIC_STACK_BOT_CHALLENGE_INVISIBLE_SITE_KEY() {
+    return (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_STACK_BOT_CHALLENGE_INVISIBLE_SITE_KEY : undefined) ?? undefined;
+  },
   get NODE_ENV() {
     return (typeof process !== "undefined" ? process.env.NODE_ENV : undefined) ?? undefined;
   },

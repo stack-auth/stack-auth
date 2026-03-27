@@ -144,3 +144,6 @@ A: Only write `onboardingStatus` when the `Project.onboardingStatus` column exis
 
 Q: Where is the private sign-up risk engine generated entrypoint in backend now?
 A: The generator script writes `apps/backend/src/private/implementation.generated.ts` (not `src/generated/private-sign-up-risk-engine.ts`), and backend runtime imports should target `@/private/implementation.generated`.
+
+Q: Why did EventTracker throw `Reflect.get called on non-object` in JS cookie tests?
+A: Partial browser mocks can expose `window` without a real `history` object. Calling `Reflect.get(historyObject, "pushState")` throws before type checks. Use normal guarded access (`Object.getOwnPropertyDescriptor(window, "history")?.value`) plus type guards for `pushState`/`replaceState`, and patch/restore methods directly without `Reflect`.

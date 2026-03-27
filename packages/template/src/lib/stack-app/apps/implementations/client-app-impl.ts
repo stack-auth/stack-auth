@@ -42,6 +42,7 @@ import type * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { addNewOAuthProviderOrScope, callOAuthCallback } from "../../../auth";
 import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, isSecure as isSecureCookieContext, saveVerifierAndState, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
+import { envVars } from "../../../env";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud } from "../../api-keys";
 import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrlOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, ResolvedHandlerUrls, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
 import { DeprecatedOAuthConnection, OAuthConnection } from "../../connected-accounts";
@@ -2143,7 +2144,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   private _getBotChallengeSiteKeys(): { visibleSiteKey: string, invisibleSiteKey: string } | null {
     if (!isBrowserLike()) return null;
 
-    const visibleSiteKey = process.env.NEXT_PUBLIC_STACK_BOT_CHALLENGE_SITE_KEY;
+    const visibleSiteKey = envVars.NEXT_PUBLIC_STACK_BOT_CHALLENGE_SITE_KEY;
     if (!visibleSiteKey) {
       if (!this._botChallengeSiteKeysWarned) {
         this._botChallengeSiteKeysWarned = true;
@@ -2152,7 +2153,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       return null;
     }
 
-    const invisibleSiteKey = process.env.NEXT_PUBLIC_STACK_BOT_CHALLENGE_INVISIBLE_SITE_KEY ?? visibleSiteKey;
+    const invisibleSiteKey = envVars.NEXT_PUBLIC_STACK_BOT_CHALLENGE_INVISIBLE_SITE_KEY ?? visibleSiteKey;
 
     return { visibleSiteKey, invisibleSiteKey };
   }
