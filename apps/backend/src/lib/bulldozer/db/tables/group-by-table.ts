@@ -15,13 +15,12 @@ import type { Table } from "../table-type";
 
 export function declareGroupByTable<
   GK extends Json,
-  OldRD extends RowData,
-  NewRD extends RowData,
+  RD extends RowData,
 >(options: {
   tableId: TableId,
-  fromTable: Table<GK, any, OldRD>,
-  groupBy: SqlMapper<{ rowIdentifier: RowIdentifier, rowData: OldRD }, { groupKey: GK }>,
-}): Table<GK, null, NewRD> {
+  fromTable: Table<GK, any, RD>,
+  groupBy: SqlMapper<{ rowIdentifier: RowIdentifier, rowData: RD }, { groupKey: GK }>,
+}): Table<GK, null, RD> {
   const triggers = new Map<string, (changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => SqlStatement[]>();
   const getGroupKeyPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey]);
   const getGroupRowsPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey, "rows"]);
