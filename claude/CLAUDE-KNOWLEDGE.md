@@ -111,3 +111,6 @@ A: Most Bulldozer operators should keep using the original giant-CTE executor be
 
 Q: Why can initializing a Bulldozer operator with an internal child table fail with `BulldozerStorageEngine_keyPathParent_fkey`?
 A: Internal child table paths add an extra `"table"` segment (for example `.../table/external:parent/table/internal:child`). The parent operator must insert the intermediate `.../table` keyPath before running the child table `init()`. Without that node, inserting the child root path violates the storage engine parent foreign key.
+
+Q: Why can a multi-input operator like `declareLeftJoinTable` read stale upstream rows inside trigger execution?
+A: Bulldozer executes most statement batches as one giant CTE transaction for speed. Within that single statement snapshot, downstream reads of `BulldozerStorageEngine` may not see upstream writes from earlier CTEs unless data is passed explicitly. For left-join trigger correctness (especially when one input depends on the other), force sequential execution for those statements (for example with a sentinel checked in `toExecutableSqlStatements`) or derive new input state directly from change tables instead of re-reading storage.

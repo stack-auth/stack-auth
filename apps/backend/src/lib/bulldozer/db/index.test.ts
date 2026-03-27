@@ -1,7 +1,7 @@
 import { stringCompare, templateIdentity } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vitest";
-import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLFoldTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
+import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLeftJoinTable, declareLFoldTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
 
 type TestDb = { full: string, base: string };
 
@@ -329,6 +329,27 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     });
     return { fromTable, groupedTable, sortedTable, lFoldTable };
   }
+  function createLeftJoinedTable() {
+    const fromTable = declareStoredTable<{ value: number, team: string | null }>({ tableId: "left-join-users" });
+    const joinTable = declareStoredTable<{ team: string | null, threshold: number, label: string }>({ tableId: "left-join-rules" });
+    const groupedFromTable = declareGroupByTable({
+      tableId: "left-join-users-by-team",
+      fromTable,
+      groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+    });
+    const groupedJoinTable = declareGroupByTable({
+      tableId: "left-join-rules-by-team",
+      fromTable: joinTable,
+      groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+    });
+    const leftJoinedTable = declareLeftJoinTable({
+      tableId: "left-join-users-rules",
+      leftTable: groupedFromTable,
+      rightTable: groupedJoinTable,
+      on: predicate(`(("rightRowData"->>'threshold')::int) <= (("leftRowData"->>'value')::int)`),
+    });
+    return { fromTable, joinTable, groupedFromTable, groupedJoinTable, leftJoinedTable };
+  }
   function createFlatMapMapGroupPipeline() {
     const { fromTable, groupedTable, flatMappedTable } = createFlatMappedTable();
     const mappedAfterFlatMap = declareMapTable({
@@ -574,6 +595,29 @@ describe.sequential("declareStoredTable (real postgres)", () => {
             'rowSortKey', "newRowSortKey",
             'rowData', "newRowData"
           )
+        FROM ${changesTable}
+      `,
+    ]);
+  }
+  function registerLeftJoinAuditTrigger(
+    table: ReturnType<typeof createLeftJoinedTable>["leftJoinedTable"],
+    event: string,
+  ) {
+    return table.registerRowChangeTrigger((changesTable) => [
+      sqlStatement`
+        INSERT INTO "BulldozerMapTriggerAudit" (
+          "event",
+          "groupKey",
+          "rowIdentifier",
+          "oldRowData",
+          "newRowData"
+        )
+        SELECT
+          ${expr<string>(sqlStringLiteral(event))},
+          "groupKey",
+          "rowIdentifier",
+          "oldRowData",
+          "newRowData"
         FROM ${changesTable}
       `,
     ]);
@@ -2642,6 +2686,196 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     expect(await readBoolean(lFoldTable.isInitialized())).toBe(false);
     expect((await readMapTriggerAuditRows()).filter((row) => row.event === "lfold_change")).toEqual([]);
     expect(await readRows(lFoldTable.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }))).toEqual([]);
+  });
+
+  test("leftJoinTable init backfills matches and unmatched left rows per group", async () => {
+    const { fromTable, joinTable, groupedFromTable, groupedJoinTable, leftJoinedTable } = createLeftJoinedTable();
+    await runStatements(fromTable.init());
+    await runStatements(joinTable.init());
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+    await runStatements(fromTable.setRow("u2", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("u3", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(joinTable.setRow("r1", expr(`'{"team":"alpha","threshold":2,"label":"silver"}'::jsonb`)));
+    await runStatements(joinTable.setRow("r2", expr(`'{"team":"alpha","threshold":4,"label":"gold"}'::jsonb`)));
+    await runStatements(joinTable.setRow("r3", expr(`'{"team":"beta","threshold":3,"label":"vip"}'::jsonb`)));
+    await runStatements(groupedFromTable.init());
+    await runStatements(groupedJoinTable.init());
+    await runStatements(leftJoinedTable.init());
+
+    expect(await readBoolean(leftJoinedTable.isInitialized())).toBe(true);
+    const groups = await readRows(leftJoinedTable.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(groups.map((row) => row.groupkey).sort(stringCompare)).toEqual(["alpha", "beta"]);
+
+    const alphaRows = await readRows(leftJoinedTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(alphaRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata })).sort((a, b) => stringCompare(a.rowIdentifier, b.rowIdentifier))).toEqual([
+      {
+        rowIdentifier: `["u1", "r1"]`,
+        rowData: {
+          leftRowData: { team: "alpha", value: 5 },
+          rightRowData: { team: "alpha", threshold: 2, label: "silver" },
+        },
+      },
+      {
+        rowIdentifier: `["u1", "r2"]`,
+        rowData: {
+          leftRowData: { team: "alpha", value: 5 },
+          rightRowData: { team: "alpha", threshold: 4, label: "gold" },
+        },
+      },
+      {
+        rowIdentifier: `["u2", null]`,
+        rowData: {
+          leftRowData: { team: "alpha", value: 1 },
+          rightRowData: null,
+        },
+      },
+    ]);
+
+    const betaRows = await readRows(leftJoinedTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('beta'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(betaRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata }))).toEqual([
+      {
+        rowIdentifier: `["u3", null]`,
+        rowData: {
+          leftRowData: { team: "beta", value: 2 },
+          rightRowData: null,
+        },
+      },
+    ]);
+  });
+
+  test("leftJoinTable recomputes touched groups when either input table changes", async () => {
+    const { fromTable, joinTable, groupedFromTable, groupedJoinTable, leftJoinedTable } = createLeftJoinedTable();
+    await runStatements(fromTable.init());
+    await runStatements(joinTable.init());
+    await runStatements(groupedFromTable.init());
+    await runStatements(groupedJoinTable.init());
+    await runStatements(leftJoinedTable.init());
+
+    await runStatements(joinTable.setRow("r1", expr(`'{"team":"alpha","threshold":2,"label":"silver"}'::jsonb`)));
+    await runStatements(joinTable.setRow("r2", expr(`'{"team":"alpha","threshold":4,"label":"gold"}'::jsonb`)));
+    await runStatements(joinTable.setRow("rb1", expr(`'{"team":"beta","threshold":3,"label":"beta-rule"}'::jsonb`)));
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+    await runStatements(fromTable.setRow("u2", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("u3", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow("u2", expr(`'{"team":"alpha","value":4}'::jsonb`)));
+    await runStatements(joinTable.setRow("r1", expr(`'{"team":"alpha","threshold":6,"label":"silver"}'::jsonb`)));
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"beta","value":5}'::jsonb`)));
+    await runStatements(joinTable.deleteRow("rb1"));
+    await runStatements(fromTable.deleteRow("u3"));
+    await runStatements(fromTable.deleteRow("u2"));
+
+    const groups = await readRows(leftJoinedTable.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(groups.map((row) => row.groupkey)).toEqual(["beta"]);
+
+    const betaRows = await readRows(leftJoinedTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('beta'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(betaRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata }))).toEqual([
+      {
+        rowIdentifier: `["u1", null]`,
+        rowData: {
+          leftRowData: { team: "beta", value: 5 },
+          rightRowData: null,
+        },
+      },
+    ]);
+  });
+
+  test("leftJoinTable trigger stream reconstructs exact final table state", async () => {
+    const { fromTable, joinTable, groupedFromTable, groupedJoinTable, leftJoinedTable } = createLeftJoinedTable();
+    await runStatements(fromTable.init());
+    await runStatements(joinTable.init());
+    await runStatements(groupedFromTable.init());
+    await runStatements(groupedJoinTable.init());
+    await runStatements(leftJoinedTable.init());
+    registerLeftJoinAuditTrigger(leftJoinedTable, "left_join_change");
+
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow("u2", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+    await runStatements(fromTable.setRow("u3", expr(`'{"team":"beta","value":7}'::jsonb`)));
+    await runStatements(joinTable.setRow("r1", expr(`'{"team":"alpha","threshold":3,"label":"silver"}'::jsonb`)));
+    await runStatements(joinTable.setRow("r2", expr(`'{"team":"alpha","threshold":5,"label":"gold"}'::jsonb`)));
+    await runStatements(joinTable.setRow("r3", expr(`'{"team":"beta","threshold":6,"label":"beta"}'::jsonb`)));
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"beta","value":8}'::jsonb`)));
+    await runStatements(joinTable.deleteRow("r2"));
+    await runStatements(fromTable.deleteRow("u3"));
+
+    const auditRows = (await readMapTriggerAuditRows()).filter((row) => row.event === "left_join_change");
+    const reconstructed = new Map<string, { groupKey: string | null, rowIdentifier: string, rowData: unknown }>();
+    for (const row of auditRows) {
+      const groupKey = row.groupKey as string | null;
+      const rowIdentifier = String(row.rowIdentifier);
+      const key = `${groupKey ?? "__NULL__"}:${rowIdentifier}`;
+      if (row.newRowData == null) {
+        reconstructed.delete(key);
+      } else {
+        reconstructed.set(key, { groupKey, rowIdentifier, rowData: row.newRowData });
+      }
+    }
+
+    const actualRows = (await readRows(leftJoinedTable.listRowsInGroup({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }))).map((row) => ({
+      groupKey: row.groupkey as string | null,
+      rowIdentifier: String(row.rowidentifier),
+      rowData: row.rowdata,
+    }));
+    const reconstructedRows = [...reconstructed.values()];
+    const sortRows = (rows: Array<{ groupKey: string | null, rowIdentifier: string, rowData: unknown }>) => rows
+      .sort((a, b) => stringCompare(
+        `${a.groupKey ?? "__NULL__"}:${a.rowIdentifier}:${JSON.stringify(a.rowData)}`,
+        `${b.groupKey ?? "__NULL__"}:${b.rowIdentifier}:${JSON.stringify(b.rowData)}`,
+      ));
+    expect(sortRows(reconstructedRows)).toEqual(sortRows(actualRows));
+  });
+
+  test("leftJoinTable stays no-op while uninitialized", async () => {
+    const { fromTable, joinTable, groupedFromTable, groupedJoinTable, leftJoinedTable } = createLeftJoinedTable();
+    await runStatements(fromTable.init());
+    await runStatements(joinTable.init());
+    await runStatements(groupedFromTable.init());
+    await runStatements(groupedJoinTable.init());
+    registerLeftJoinAuditTrigger(leftJoinedTable, "left_join_change");
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+    await runStatements(joinTable.setRow("r1", expr(`'{"team":"alpha","threshold":2,"label":"silver"}'::jsonb`)));
+
+    expect(await readBoolean(leftJoinedTable.isInitialized())).toBe(false);
+    expect((await readMapTriggerAuditRows()).filter((row) => row.event === "left_join_change")).toEqual([]);
+    expect(await readRows(leftJoinedTable.listGroups({
       start: "start",
       end: "end",
       startInclusive: true,

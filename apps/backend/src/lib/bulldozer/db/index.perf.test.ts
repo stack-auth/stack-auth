@@ -1,7 +1,7 @@
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLFoldTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
+import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLeftJoinTable, declareLFoldTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
 
 type TestDb = { full: string, base: string };
 type SqlExpression<T> = { type: "expression", sql: string };
@@ -43,6 +43,8 @@ const LOAD_SORT_TABLE_INIT_MAX_MS = 90_000;
 const LOAD_SORT_TABLE_COUNT_QUERY_MAX_MS = 8_000;
 const LOAD_LFOLD_TABLE_INIT_MAX_MS = 120_000;
 const LOAD_LFOLD_TABLE_COUNT_QUERY_MAX_MS = 12_000;
+const LOAD_LEFT_JOIN_TABLE_INIT_MAX_MS = 90_000;
+const LOAD_LEFT_JOIN_TABLE_COUNT_QUERY_MAX_MS = 8_000;
 const STACKED_MAP_PIPELINE_MUTATION_MAX_MS = 400;
 const VIRTUAL_CONCAT_COUNT_QUERY_MAX_MS = 500;
 const VIRTUAL_CONCAT_LOAD_ROW_COUNT = 5_000;
@@ -530,6 +532,14 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       fromTable: table,
       groupBy: { type: "mapper", sql: `"rowData"->'team' AS "groupKey"` },
     });
+    const leftJoinRulesTable = declareStoredTable<{ team: string | null, threshold: number, label: string }>({
+      tableId: "load-prefilled-users-left-join-rules",
+    });
+    const leftJoinRulesByTeam = declareGroupByTable({
+      tableId: "load-prefilled-users-left-join-rules-by-team",
+      fromTable: leftJoinRulesTable,
+      groupBy: { type: "mapper", sql: `"rowData"->'team' AS "groupKey"` },
+    });
     const mappedByTeam = declareMapTable({
       tableId: "load-prefilled-users-mapped",
       fromTable: groupedByTeam,
@@ -572,6 +582,12 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       fromTable: groupedByTeam,
       limit: expr(`25`),
     });
+    const leftJoinedTopByTeam = declareLeftJoinTable({
+      tableId: "load-prefilled-users-left-join-top-team-rows",
+      leftTable: limitedByTeam,
+      rightTable: leftJoinRulesByTeam,
+      on: { type: "predicate", sql: `(("rightRowData"->>'threshold')::int) <= (("leftRowData"->>'value')::int)` },
+    });
     const expandedByTeam = declareFlatMapTable({
       tableId: "load-prefilled-users-expanded",
       fromTable: groupedByTeam,
@@ -590,6 +606,16 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
         ) AS "rows"
       ` },
     });
+
+    await runStatements(leftJoinRulesTable.init());
+    await runStatements(leftJoinRulesTable.setRow("rule-alpha", expr(jsonbLiteral({ team: "alpha", threshold: 0, label: "alpha-rule" }))));
+    await runStatements(leftJoinRulesTable.setRow("rule-beta", expr(jsonbLiteral({ team: "beta", threshold: 0, label: "beta-rule" }))));
+    await runStatements(leftJoinRulesTable.setRow("rule-gamma", expr(jsonbLiteral({ team: "gamma", threshold: 0, label: "gamma-rule" }))));
+    await runStatements(leftJoinRulesTable.setRow("rule-null", expr(jsonbLiteral({ team: null, threshold: 0, label: "null-rule" }))));
+    const leftJoinRulesInit = await measureMs("load init leftJoinRulesByTeam", async () => {
+      await runStatements(leftJoinRulesByTeam.init());
+    });
+    expect(leftJoinRulesInit.elapsedMs).toBeLessThan(LOAD_DERIVED_INIT_MAX_MS);
 
     const groupInit = await measureMs("load init groupedByTeam", async () => {
       await runStatements(groupedByTeam.init());
@@ -881,6 +907,40 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     }));
     expect(limitedDeltaRows).toHaveLength(1);
     expect(limitedDeltaRows[0].rowidentifier).toBe("seed-100000");
+    const leftJoinInit = await measureMs("load init leftJoinedTopByTeam", async () => {
+      await runStatements(leftJoinedTopByTeam.init());
+    });
+    expect(leftJoinInit.elapsedMs).toBeLessThan(LOAD_LEFT_JOIN_TABLE_INIT_MAX_MS);
+    const leftJoinedTopByTeamCountQuery = leftJoinedTopByTeam.listRowsInGroup({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    });
+    const leftJoinedTopByTeamCountOnly = await measureMs("load count leftJoinedTopByTeam table only", async () => {
+      return await sql.unsafe(`
+        SELECT COUNT(*)::int AS "count"
+        FROM (${toQueryableSqlQuery(leftJoinedTopByTeamCountQuery)}) AS "rows"
+      `);
+    });
+    expect(leftJoinedTopByTeamCountOnly.elapsedMs).toBeLessThan(LOAD_LEFT_JOIN_TABLE_COUNT_QUERY_MAX_MS);
+    expect(Number(leftJoinedTopByTeamCountOnly.result[0].count)).toBe(Number(limitedByTeamCountOnly.result[0].count) + 1);
+    const leftJoinedDeltaRows = await readRows(leftJoinedTopByTeam.listRowsInGroup({
+      groupKey: expr(`to_jsonb('delta'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(leftJoinedDeltaRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata }))).toEqual([
+      {
+        rowIdentifier: `["seed-100000", null]`,
+        rowData: {
+          leftRowData: { team: "delta", value: 999 },
+          rightRowData: null,
+        },
+      },
+    ]);
 
     const bulkDelete = await measureMs("load full table delete", async () => {
       await runStatements(table.delete());
@@ -900,7 +960,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     `;
     expect(isInitializedRows[0].initialized).toBe(false);
 
-    logLine(`[bulldozer-perf] load thresholds(ms): prefill<=${LOAD_PREFILL_MAX_MS}, baseCount<=${LOAD_COUNT_QUERY_MAX_MS}, setRowAvg<=${LOAD_SET_ROW_AVG_MAX_MS} over ${LOAD_SET_ROW_AVG_ITERATIONS}, pointDelete<=${LOAD_POINT_MUTATION_MAX_MS}, derivedInit<=${LOAD_DERIVED_INIT_MAX_MS}, filterInit<=${LOAD_FILTER_TABLE_INIT_MAX_MS}, sortInit<=${LOAD_SORT_TABLE_INIT_MAX_MS}, lfoldInit<=${LOAD_LFOLD_TABLE_INIT_MAX_MS}, concatInit<=${LOAD_CONCAT_TABLE_INIT_MAX_MS}, limitInit<=${LOAD_LIMIT_TABLE_INIT_MAX_MS}, expandingInit<=${LOAD_EXPANDING_INIT_MAX_MS}, derivedCount<=${LOAD_DERIVED_COUNT_QUERY_MAX_MS}, filterCount<=${LOAD_FILTER_TABLE_COUNT_QUERY_MAX_MS}, lfoldCount<=${LOAD_LFOLD_TABLE_COUNT_QUERY_MAX_MS}, concatCount<=${LOAD_CONCAT_TABLE_COUNT_QUERY_MAX_MS}, limitCount<=${LOAD_LIMIT_TABLE_COUNT_QUERY_MAX_MS}, expandingCount<=${LOAD_EXPANDING_COUNT_QUERY_MAX_MS}, filteredQuery<=${LOAD_FILTERED_QUERY_MAX_MS}, tableDelete<=${LOAD_TABLE_DELETE_MAX_MS}`);
+    logLine(`[bulldozer-perf] load thresholds(ms): prefill<=${LOAD_PREFILL_MAX_MS}, baseCount<=${LOAD_COUNT_QUERY_MAX_MS}, setRowAvg<=${LOAD_SET_ROW_AVG_MAX_MS} over ${LOAD_SET_ROW_AVG_ITERATIONS}, pointDelete<=${LOAD_POINT_MUTATION_MAX_MS}, derivedInit<=${LOAD_DERIVED_INIT_MAX_MS}, filterInit<=${LOAD_FILTER_TABLE_INIT_MAX_MS}, sortInit<=${LOAD_SORT_TABLE_INIT_MAX_MS}, lfoldInit<=${LOAD_LFOLD_TABLE_INIT_MAX_MS}, leftJoinInit<=${LOAD_LEFT_JOIN_TABLE_INIT_MAX_MS}, concatInit<=${LOAD_CONCAT_TABLE_INIT_MAX_MS}, limitInit<=${LOAD_LIMIT_TABLE_INIT_MAX_MS}, expandingInit<=${LOAD_EXPANDING_INIT_MAX_MS}, derivedCount<=${LOAD_DERIVED_COUNT_QUERY_MAX_MS}, filterCount<=${LOAD_FILTER_TABLE_COUNT_QUERY_MAX_MS}, lfoldCount<=${LOAD_LFOLD_TABLE_COUNT_QUERY_MAX_MS}, leftJoinCount<=${LOAD_LEFT_JOIN_TABLE_COUNT_QUERY_MAX_MS}, concatCount<=${LOAD_CONCAT_TABLE_COUNT_QUERY_MAX_MS}, limitCount<=${LOAD_LIMIT_TABLE_COUNT_QUERY_MAX_MS}, expandingCount<=${LOAD_EXPANDING_COUNT_QUERY_MAX_MS}, filteredQuery<=${LOAD_FILTERED_QUERY_MAX_MS}, tableDelete<=${LOAD_TABLE_DELETE_MAX_MS}`);
   }, 180_000);
 });
 

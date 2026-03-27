@@ -560,6 +560,9 @@ function getStudioPageHtml(): string {
     .node-type.lfold {
       color: color-mix(in srgb, var(--accent) 60%, var(--danger));
     }
+    .node-type.leftjoin {
+      color: color-mix(in srgb, var(--accent) 55%, var(--ok));
+    }
     .node-name {
       font-size: 13px;
       font-weight: 700;
@@ -587,6 +590,9 @@ function getStudioPageHtml(): string {
     }
     .node-name.lfold {
       color: color-mix(in srgb, var(--accent) 70%, var(--danger));
+    }
+    .node-name.leftjoin {
+      color: color-mix(in srgb, var(--accent) 60%, var(--ok));
     }
     .node-meta {
       font-size: 11px;
@@ -1315,7 +1321,7 @@ function getStudioPageHtml(): string {
       for (const table of tables) {
         const operatorClass = (() => {
           const normalized = String(table.operator || "unknown").toLowerCase();
-          if (normalized === "stored" || normalized === "map" || normalized === "flatmap" || normalized === "groupby" || normalized === "filter" || normalized === "limit" || normalized === "concat" || normalized === "sort" || normalized === "lfold") {
+          if (normalized === "stored" || normalized === "map" || normalized === "flatmap" || normalized === "groupby" || normalized === "filter" || normalized === "limit" || normalized === "concat" || normalized === "sort" || normalized === "lfold" || normalized === "leftjoin") {
             return normalized;
           }
           return "derived";

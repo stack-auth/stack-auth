@@ -1,4 +1,4 @@
-import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLFoldTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable } from "./index";
+import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLeftJoinTable, declareLFoldTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable } from "./index";
 
 const mapper = (sql: string) => ({ type: "mapper" as const, sql });
 const predicate = (sql: string) => ({ type: "predicate" as const, sql });
@@ -112,10 +112,24 @@ export const exampleFungibleLedgerSchema = (() => {
     getSortKey: mapper(`(("rowData"->>'amount')::numeric) AS "newSortKey"`),
     compareSortKeys: (a, b) => ({ type: "expression", sql: `(((${a.sql}) #>> '{}')::numeric > ((${b.sql}) #>> '{}')::numeric)::int - (((${a.sql}) #>> '{}')::numeric < ((${b.sql}) #>> '{}')::numeric)::int` }),
   });
+  // Keep a small account-local sample used as reference counterparties for joins.
   const accountCounterpartySample = declareLimitTable({
     tableId: "bulldozer-example-ledger-account-counterparty-sample",
     fromTable: accountEntriesWithCounterparty,
-    limit: { type: "expression", sql: "1" },
+    limit: { type: "expression", sql: "3" },
+  });
+  // For each counterparty row, join to sampled peer rows (same counterparty+asset)
+  // while excluding the exact same source row. This demonstrates a practical
+  // left-join pattern for reference matching/anomaly-style lookups.
+  const accountCounterpartyJoinedSample = declareLeftJoinTable({
+    tableId: "bulldozer-example-ledger-account-counterparty-joined-sample",
+    leftTable: accountEntriesWithCounterparty,
+    rightTable: accountCounterpartySample,
+    on: predicate(`
+      "leftRowIdentifier" IS DISTINCT FROM "rightRowIdentifier"
+      AND ("leftRowData"->'counterparty') IS NOT DISTINCT FROM ("rightRowData"->'counterparty')
+      AND ("leftRowData"->'asset') IS NOT DISTINCT FROM ("rightRowData"->'asset')
+    `),
   });
   const accountEntriesRunningExposure = declareLFoldTable({
     tableId: "bulldozer-example-ledger-account-entries-running-exposure",
@@ -206,6 +220,7 @@ export const exampleFungibleLedgerSchema = (() => {
     accountEntriesWithCounterparty,
     accountEntriesSortedByAmount,
     accountCounterpartySample,
+    accountCounterpartyJoinedSample,
     accountEntriesRunningExposure,
     highValueEntriesByAsset,
     highValueEntriesByAssetAccount,

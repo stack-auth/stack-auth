@@ -1,7 +1,7 @@
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
-import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLFoldTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
+import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLeftJoinTable, declareLFoldTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
 
 type TestDb = { full: string, base: string };
 
@@ -31,6 +31,7 @@ type QueryableTable = {
   listRowsInGroup(options: { groupKey?: SqlExpression<unknown>, start: "start", end: "end", startInclusive: boolean, endInclusive: boolean }): SqlQuery,
 };
 type SourceRow = { team: string | null, value: number };
+type JoinRuleRow = { team: string | null, threshold: number, label: string };
 type TeamMappedRow = { team: string | null, valuePlusTen: number };
 type TeamBucketRow = { team: string | null, valueScaled: number, bucket: string };
 type TeamFlatMappedRow = { team: string | null, kind: string, mappedValue: number };
@@ -174,6 +175,22 @@ function computeTeamGroups(rows: Map<string, SourceRow>): GroupedRows<{ team: st
   }
   return groups;
 }
+function computeRuleGroups(rows: Map<string, JoinRuleRow>): GroupedRows<JoinRuleRow> {
+  const groups: GroupedRows<JoinRuleRow> = new Map();
+  for (const [rowIdentifier, row] of rows) {
+    const key = groupDiscriminator(row.team);
+    const existing = groups.get(key);
+    if (existing != null) {
+      existing.rows.set(rowIdentifier, { team: row.team, threshold: row.threshold, label: row.label });
+    } else {
+      groups.set(key, {
+        groupKey: row.team,
+        rows: new Map([[rowIdentifier, { team: row.team, threshold: row.threshold, label: row.label }]]),
+      });
+    }
+  }
+  return groups;
+}
 function mapGroups<OldRow extends Record<string, unknown>, NewRow extends Record<string, unknown>>(
   groups: GroupedRows<OldRow>,
   mapperFn: (row: OldRow) => NewRow,
@@ -279,6 +296,45 @@ function concatGroups<Row extends Record<string, unknown>>(
     }
   }
   return concatenated;
+}
+function leftJoinRowIdentifier(leftRowIdentifier: string, rightRowIdentifier: string | null): string {
+  return `[${JSON.stringify(leftRowIdentifier)}, ${rightRowIdentifier === null ? "null" : JSON.stringify(rightRowIdentifier)}]`;
+}
+function leftJoinGroups<
+  FromRow extends Record<string, unknown>,
+  JoinRow extends Record<string, unknown>,
+>(
+  fromGroups: GroupedRows<FromRow>,
+  joinGroups: GroupedRows<JoinRow>,
+  predicateFn: (fromRow: FromRow, joinRow: JoinRow) => boolean,
+): GroupedRows<Record<string, unknown>> {
+  const joined: GroupedRows<Record<string, unknown>> = new Map();
+  for (const [groupKey, fromGroup] of fromGroups) {
+    const joinGroup = joinGroups.get(groupKey);
+    const rows = new Map<string, Record<string, unknown>>();
+    const sortedFromRows = [...fromGroup.rows.entries()].sort((a, b) => stringCompare(a[0], b[0]));
+    const sortedJoinRows = joinGroup == null
+      ? []
+      : [...joinGroup.rows.entries()].sort((a, b) => stringCompare(a[0], b[0]));
+    for (const [leftRowIdentifier, leftRowData] of sortedFromRows) {
+      const matches = sortedJoinRows.filter((joinEntry) => predicateFn(leftRowData, joinEntry[1]));
+      if (matches.length === 0) {
+        rows.set(leftJoinRowIdentifier(leftRowIdentifier, null), {
+          leftRowData: { ...leftRowData },
+          rightRowData: null,
+        });
+        continue;
+      }
+      for (const [rightRowIdentifier, rightRowData] of matches) {
+        rows.set(leftJoinRowIdentifier(leftRowIdentifier, rightRowIdentifier), {
+          leftRowData: { ...leftRowData },
+          rightRowData: { ...rightRowData },
+        });
+      }
+    }
+    joined.set(groupKey, { groupKey: fromGroup.groupKey, rows });
+  }
+  return joined;
 }
 function sortedRowsForGroups<Row extends Record<string, unknown>>(groups: GroupedRows<Row>) {
   return [...groups.values()].flatMap((group) => {
@@ -1367,6 +1423,113 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
             return stringCompare(a.rowIdentifier, b.rowIdentifier);
           });
           expect(actualFoldRows).toEqual(lFoldRowsWithSortKeys(expectedGrouped));
+        }
+      }
+    }
+  }, 120_000);
+
+  test("fuzz: left join table preserves join invariants under random mutations and re-inits", async () => {
+    const userIdentifiers = ["lj-u1", "lj-u2", "lj-u3", "lj-u4", "lj-u:5", "lj-u 6"] as const;
+    const ruleIdentifiers = ["lj-r1", "lj-r2", "lj-r3", "lj-r4", "lj-r:5", "lj-r 6"] as const;
+    const teams = ["alpha", "beta", "gamma", null] as const;
+    const labels = ["bronze", "silver", "gold", "vip"] as const;
+
+    for (const seed of [3001]) {
+      const rng = createRng(seed);
+      const sourceRows = new Map<string, SourceRow>();
+      const ruleRows = new Map<string, JoinRuleRow>();
+      let leftJoinInitialized = true;
+
+      const fromTable = declareStoredTable<{ value: number, team: string | null }>({ tableId: `left-join-fuzz-users-${seed}` });
+      const joinTable = declareStoredTable<{ team: string | null, threshold: number, label: string }>({ tableId: `left-join-fuzz-rules-${seed}` });
+      const groupedFromTable = declareGroupByTable({
+        tableId: `left-join-fuzz-users-by-team-${seed}`,
+        fromTable,
+        groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+      });
+      const groupedJoinTable = declareGroupByTable({
+        tableId: `left-join-fuzz-rules-by-team-${seed}`,
+        fromTable: joinTable,
+        groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+      });
+      const leftJoinedTable = declareLeftJoinTable({
+        tableId: `left-join-fuzz-result-${seed}`,
+        leftTable: groupedFromTable,
+        rightTable: groupedJoinTable,
+        on: { type: "predicate", sql: `(("rightRowData"->>'threshold')::int) <= (("leftRowData"->>'value')::int)` },
+      });
+
+      await runStatements(fromTable.init());
+      await runStatements(joinTable.init());
+      await runStatements(groupedFromTable.init());
+      await runStatements(groupedJoinTable.init());
+      await runStatements(leftJoinedTable.init());
+
+      for (let step = 0; step < 36; step++) {
+        const roll = rng();
+        if (roll < 0.42) {
+          const rowIdentifier = choose(rng, userIdentifiers);
+          const rowData: SourceRow = {
+            team: choose(rng, teams),
+            value: Math.floor(rng() * 90),
+          };
+          sourceRows.set(rowIdentifier, rowData);
+          await runStatements(fromTable.setRow(rowIdentifier, expr(jsonbLiteral(rowData))));
+        } else if (roll < 0.56) {
+          const rowIdentifier = choose(rng, userIdentifiers);
+          sourceRows.delete(rowIdentifier);
+          await runStatements(fromTable.deleteRow(rowIdentifier));
+        } else if (roll < 0.82) {
+          const rowIdentifier = choose(rng, ruleIdentifiers);
+          const rowData: JoinRuleRow = {
+            team: choose(rng, teams),
+            threshold: Math.floor(rng() * 90),
+            label: choose(rng, labels),
+          };
+          ruleRows.set(rowIdentifier, rowData);
+          await runStatements(joinTable.setRow(rowIdentifier, expr(jsonbLiteral(rowData))));
+        } else if (roll < 0.90) {
+          const rowIdentifier = choose(rng, ruleIdentifiers);
+          ruleRows.delete(rowIdentifier);
+          await runStatements(joinTable.deleteRow(rowIdentifier));
+        } else if (roll < 0.95) {
+          if (leftJoinInitialized) {
+            await runStatements(leftJoinedTable.delete());
+            leftJoinInitialized = false;
+          }
+        } else if (!leftJoinInitialized) {
+          await runStatements(leftJoinedTable.init());
+          leftJoinInitialized = true;
+        }
+
+        if (step % 3 === 0 || step === 35) {
+          const expectedGroupedFrom = computeTeamGroups(sourceRows);
+          const expectedGroupedJoin = computeRuleGroups(ruleRows);
+          await assertTableMatches(groupedFromTable, expectedGroupedFrom);
+          await assertTableMatches(groupedJoinTable, expectedGroupedJoin);
+
+          if (!leftJoinInitialized) {
+            expect(await readBoolean(leftJoinedTable.isInitialized())).toBe(false);
+            expect(await readRows(leftJoinedTable.listGroups({
+              start: "start",
+              end: "end",
+              startInclusive: true,
+              endInclusive: true,
+            }))).toEqual([]);
+            continue;
+          }
+
+          expect(await readBoolean(leftJoinedTable.isInitialized())).toBe(true);
+          const expectedLeftJoined = leftJoinGroups(
+            expectedGroupedFrom,
+            expectedGroupedJoin,
+            (fromRow, joinRow) => {
+              const fromValue = Number(Reflect.get(fromRow, "value"));
+              const joinThreshold = Number(Reflect.get(joinRow, "threshold"));
+              return joinThreshold <= fromValue;
+            },
+          );
+          await assertTableMatches(leftJoinedTable, expectedLeftJoined);
         }
       }
     }
