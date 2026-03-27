@@ -114,3 +114,5 @@ A: Built-in names come from `BUILTIN_STACK_DEV_TOOL_COMPONENT_NAMES` in `package
 
 Q: Why did Next.js report `Can't resolve '../utils.js'` from `packages/stack/dist/esm/dev-tool/tabs/console-tab.js`?
 A: `tsdown` emits each source file as its own chunk and marks relative imports as external, so `console-tab.js` expects a sibling `utils.js`. If `utils.ts` was added but `packages/stack` was not fully rebuilt (or `dist` was partially updated), that file can be missing. Dev-tool URL/key helpers live in `dev-tool-context.tsx` so tabs import them from the same module as the context (no separate `dev-tool/utils` chunk). After template changes, run `pnpm run generate-sdks` and rebuild `@stackframe/stack` so `dist` stays consistent.
+Q: Where is the private sign-up risk engine generated entrypoint in backend now?
+A: The generator script writes `apps/backend/src/private/implementation.generated.ts` (not `src/generated/private-sign-up-risk-engine.ts`), and backend runtime imports should target `@/private/implementation.generated`.
