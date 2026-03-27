@@ -1,3 +1,4 @@
+import { isLocalEmulatorEnabled } from '@/lib/local-emulator';
 import { traceSpan } from '@/utils/telemetry';
 import { runAsynchronouslyAndWaitUntil } from '@/utils/vercel';
 import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
@@ -27,11 +28,13 @@ function createFreestyleEngine(): JsEngine {
       let baseUrl = getEnvVariable("STACK_FREESTYLE_API_ENDPOINT", "") || undefined;
 
       if (apiKey === "mock_stack_freestyle_key") {
-        if (!["development", "test"].includes(getNodeEnvironment())) {
+        if (!["development", "test"].includes(getNodeEnvironment()) && !isLocalEmulatorEnabled()) {
           throw new StackAssertionError("Mock Freestyle key used in production; please set the STACK_FREESTYLE_API_KEY environment variable.");
         }
-        const prefix = getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81");
-        baseUrl = `http://localhost:${prefix}22`;
+        if (!baseUrl) {
+          const prefix = getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81");
+          baseUrl = `http://localhost:${prefix}22`;
+        }
       }
 
       const freestyle = new FreestyleClient({
@@ -147,7 +150,7 @@ export async function executeJavascript(code: string, options: ExecuteJavascript
 
       return await runWithFallback(code, options);
     } else {
-      if (getNodeEnvironment().includes("prod")) {
+      if (getNodeEnvironment().includes("prod") && !isLocalEmulatorEnabled()) {
         throw new StackAssertionError("STACK_VERCEL_SANDBOX_TOKEN is set to the disabled sentinel value in production. Please configure a real Vercel Sandbox token.");
       }
 

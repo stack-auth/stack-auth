@@ -2,6 +2,7 @@ import { createMfaRequiredError } from "@/app/api/latest/auth/mfa/sign-in/verifi
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
 import { Prisma } from "@/generated/prisma/client";
 import { checkApiKeySet } from "@/lib/internal-api-keys";
+import { isLocalEmulatorEnabled } from "@/lib/local-emulator";
 import { isAcceptedNativeAppUrl, validateRedirectUrl } from "@/lib/redirect-urls";
 import { getSoleTenancyFromProjectBranch, getTenancy } from "@/lib/tenancies";
 import { createRefreshTokenObj, decodeAccessToken, generateAccessTokenFromRefreshTokenIfValid, isRefreshTokenValid } from "@/lib/tokens";
@@ -75,7 +76,7 @@ export class OAuthModel implements AuthorizationCodeModel {
       throw e;
     }
 
-    if (redirectUris.length === 0 && tenancy.config.domains.allowLocalhost) {
+    if (redirectUris.length === 0 && (tenancy.config.domains.allowLocalhost || isLocalEmulatorEnabled())) {
       redirectUris.push("http://localhost");
     }
 

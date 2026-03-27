@@ -1,3 +1,4 @@
+import { isLocalEmulatorEnabled } from "@/lib/local-emulator";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { traceSpan } from "@/utils/telemetry";
 import { yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
@@ -155,7 +156,7 @@ export const POST = createSmartRouteHandler({
     }
 
     const useInbucket = getEnvVariable("STACK_EMAIL_MONITOR_USE_INBUCKET") === "true";
-    if (useInbucket && getNodeEnvironment().includes("prod")) {
+    if (useInbucket && getNodeEnvironment().includes("prod") && !isLocalEmulatorEnabled()) {
       throw new StackAssertionError("Inbucket is not supported as the email monitor inbox in production");
     }
 

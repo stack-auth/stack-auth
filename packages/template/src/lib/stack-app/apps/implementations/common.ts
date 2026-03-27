@@ -81,7 +81,44 @@ export function getUrls(partial: Partial<HandlerUrls>): HandlerUrls {
   };
 }
 
-export function getDefaultProjectId() {
+export const localEmulatorBaseUrl = "http://localhost:26701";
+
+export const LOCAL_EMULATOR_INTERNAL_PUBLISHABLE_CLIENT_KEY = "local-emulator-publishable-client-key";
+export const LOCAL_EMULATOR_INTERNAL_SECRET_SERVER_KEY = "local-emulator-secret-server-key";
+export const LOCAL_EMULATOR_INTERNAL_SUPER_SECRET_ADMIN_KEY = "local-emulator-super-secret-admin-key";
+
+export function getLocalEmulatorConfigFilePath(explicitOption?: string): string | undefined {
+  return explicitOption || process.env.NEXT_PUBLIC_STACK_LOCAL_EMULATOR_CONFIG_FILE_PATH || undefined;
+}
+
+export function fetchEmulatorProjectCredentials(emulatorConfigFilePath: string): Promise<{
+  project_id: string,
+  publishable_client_key: string,
+  secret_server_key: string,
+  super_secret_admin_key: string,
+}> {
+  return (async () => {
+    const res = await fetch(`${localEmulatorBaseUrl}/api/v1/internal/local-emulator/project`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "X-Stack-Project-Id": "internal",
+        "X-Stack-Access-Type": "client",
+        "X-Stack-Publishable-Client-Key": LOCAL_EMULATOR_INTERNAL_PUBLISHABLE_CLIENT_KEY,
+      },
+      body: JSON.stringify({ absolute_file_path: emulatorConfigFilePath }),
+    });
+    if (!res.ok) {
+      throw new Error(`Failed to initialize local emulator: ${res.status} ${await res.text()}`);
+    }
+    return await res.json();
+  })();
+}
+
+export function getDefaultProjectId(options?: { isEmulator?: boolean }) {
+  if (options?.isEmulator) {
+    return process.env.NEXT_PUBLIC_STACK_PROJECT_ID || process.env.STACK_PROJECT_ID || "internal";
+  }
   return process.env.NEXT_PUBLIC_STACK_PROJECT_ID || process.env.STACK_PROJECT_ID || throwErr(new Error("Welcome to Stack Auth! It seems that you haven't provided a project ID. Please create a project on the Stack dashboard at https://app.stack-auth.com and put it in the NEXT_PUBLIC_STACK_PROJECT_ID environment variable."));
 }
 
@@ -89,11 +126,17 @@ export function getDefaultPublishableClientKey() {
   return process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY || process.env.STACK_PUBLISHABLE_CLIENT_KEY;
 }
 
-export function getDefaultSecretServerKey() {
+export function getDefaultSecretServerKey(options?: { isEmulator?: boolean }) {
+  if (options?.isEmulator) {
+    return process.env.STACK_SECRET_SERVER_KEY || LOCAL_EMULATOR_INTERNAL_SECRET_SERVER_KEY;
+  }
   return process.env.STACK_SECRET_SERVER_KEY || throwErr(new Error("No secret server key provided. Please copy your key from the Stack dashboard and put it in the STACK_SECRET_SERVER_KEY environment variable."));
 }
 
-export function getDefaultSuperSecretAdminKey() {
+export function getDefaultSuperSecretAdminKey(options?: { isEmulator?: boolean }) {
+  if (options?.isEmulator) {
+    return process.env.STACK_SUPER_SECRET_ADMIN_KEY || LOCAL_EMULATOR_INTERNAL_SUPER_SECRET_ADMIN_KEY;
+  }
   return process.env.STACK_SUPER_SECRET_ADMIN_KEY || throwErr(new Error("No super secret admin key provided. Please copy your key from the Stack dashboard and put it in the STACK_SUPER_SECRET_ADMIN_KEY environment variable."));
 }
 
@@ -119,7 +162,7 @@ export function getDefaultExtraRequestHeaders() {
  * @returns The configured base URL without trailing slash
 
  */
-export function getBaseUrl(userSpecifiedBaseUrl: string | { browser: string, server: string } | undefined) {
+export function getBaseUrl(userSpecifiedBaseUrl: string | { browser: string, server: string } | undefined, options?: { isEmulator?: boolean }) {
   let url;
   if (userSpecifiedBaseUrl) {
     if (typeof userSpecifiedBaseUrl === "string") {
@@ -138,7 +181,7 @@ export function getBaseUrl(userSpecifiedBaseUrl: string | { browser: string, ser
     } else {
       url = process.env.NEXT_PUBLIC_SERVER_STACK_API_URL || process.env.NEXT_PUBLIC_STACK_API_URL_SERVER || process.env.STACK_API_URL_SERVER;
     }
-    url = url || process.env.NEXT_PUBLIC_STACK_API_URL || process.env.STACK_API_URL || process.env.NEXT_PUBLIC_STACK_URL || defaultBaseUrl;
+    url = url || process.env.NEXT_PUBLIC_STACK_API_URL || process.env.STACK_API_URL || process.env.NEXT_PUBLIC_STACK_URL || (options?.isEmulator ? localEmulatorBaseUrl : defaultBaseUrl);
   }
 
   return replaceStackPortPrefix(url.endsWith('/') ? url.slice(0, -1) : url);

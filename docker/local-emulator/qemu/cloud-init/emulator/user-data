@@ -15,7 +15,7 @@ chpasswd:
     stack:stack-emulator
   expire: false
 
-ssh_pwauth: false
+ssh_pwauth: true
 
 package_update: true
 package_upgrade: false
@@ -91,7 +91,10 @@ write_files:
       STACK_CLICKHOUSE_URL=http://${DEPS_HOST}:8123
       STACK_EMAIL_MONITOR_VERIFICATION_CALLBACK_URL=http://localhost:${P}01/handler/email-verification
       STACK_EMAIL_MONITOR_INBUCKET_API_URL=http://${DEPS_HOST}:9001
-      STACK_OAUTH_MOCK_URL=http://${HOST_SERVICES_HOST}:${P}14
+      STACK_OAUTH_MOCK_URL=http://localhost:${P}14
+      STACK_FREESTYLE_API_ENDPOINT=http://${DEPS_HOST}:8180
+      STACK_STRIPE_MOCK_PORT=12111
+      NEXT_PUBLIC_STACK_STRIPE_PUBLISHABLE_KEY=pk_test_mock_publishable_key_for_local_emulator
       BACKEND_PORT=${P}02
       DASHBOARD_PORT=${P}01
       COMPUTED
@@ -163,8 +166,8 @@ write_files:
       WantedBy=multi-user.target
 
 runcmd:
-  - systemctl disable --now ssh || true
-  - systemctl mask ssh || true
+  - systemctl unmask ssh || true
+  - systemctl enable --now ssh || true
   - bash /usr/local/bin/install-emulator-containers
   - systemctl daemon-reload
   - systemctl enable stack.service

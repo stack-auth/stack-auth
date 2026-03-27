@@ -2,7 +2,7 @@ import { type RequestBody } from "@/lib/ai/schema";
 
 export async function forwardToProduction(
   mode: "stream" | "generate",
-  body: RequestBody,
+  body: Omit<RequestBody, "projectId"> | RequestBody,
 ): Promise<Response> {
   const productionUrl = `https://api.stack-auth.com/api/latest/ai/query/${mode}`;
   const forwardHeaders = new Headers();

@@ -1,6 +1,11 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { isAcceptedNativeAppUrl, validateRedirectUrl } from './redirect-urls';
 import { Tenancy } from './tenancies';
+
+// Mock isLocalEmulatorEnabled to false so unit tests always test actual domain matching logic
+vi.mock('./local-emulator', () => ({
+  isLocalEmulatorEnabled: () => false,
+}));
 
 describe('validateRedirectUrl', () => {
   const createMockTenancy = (config: Partial<Tenancy['config']>): Tenancy => {

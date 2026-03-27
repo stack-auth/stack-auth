@@ -287,11 +287,13 @@ export async function createOrUpdateProjectWithLegacyConfig(
     configOverrideOverride['apps.installed.authentication.enabled'] ??= true;
     configOverrideOverride['apps.installed.emails.enabled'] ??= true;
   }
-  await overrideEnvironmentConfigOverride({
-    projectId: projectId,
-    branchId: branchId,
-    environmentConfigOverrideOverride: configOverrideOverride,
-  });
+  if (Object.keys(configOverrideOverride).length > 0) {
+    await overrideEnvironmentConfigOverride({
+      projectId: projectId,
+      branchId: branchId,
+      environmentConfigOverrideOverride: configOverrideOverride,
+    });
+  }
 
 
   const result = await getProject(projectId);

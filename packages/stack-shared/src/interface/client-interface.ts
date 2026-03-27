@@ -111,12 +111,29 @@ function getBotChallengeRequestFields(botChallenge: BotChallengeInput | undefine
 export class StackClientInterface {
   private pendingNetworkDiagnostics?: ReturnType<StackClientInterface["_runNetworkDiagnosticsInner"]>;
 
+  protected _projectIdOverride?: string;
+  protected _publishableClientKeyOverride?: string;
+
   constructor(public readonly options: ClientInterfaceOptions) {
     // nothing here
   }
 
   get projectId() {
-    return this.options.projectId;
+    return this._projectIdOverride ?? this.options.projectId;
+  }
+
+  get publishableClientKey(): string | undefined {
+    return this._publishableClientKeyOverride
+      ?? ("publishableClientKey" in this.options ? this.options.publishableClientKey : undefined);
+  }
+
+  _updateEmulatorCredentials(opts: { projectId?: string, publishableClientKey?: string }) {
+    if (opts.projectId) {
+      this._projectIdOverride = opts.projectId;
+    }
+    if (opts.publishableClientKey) {
+      this._publishableClientKeyOverride = opts.publishableClientKey;
+    }
   }
 
   getApiUrl() {
@@ -458,8 +475,8 @@ export class StackClientInterface {
           "X-Stack-Refresh-Token": tokenObj.refreshToken.token,
         } : {}),
         "X-Stack-Allow-Anonymous-User": "true",
-        ...("publishableClientKey" in this.options && this.options.publishableClientKey ? {
-          "X-Stack-Publishable-Client-Key": this.options.publishableClientKey,
+        ...(this.publishableClientKey ? {
+          "X-Stack-Publishable-Client-Key": this.publishableClientKey,
         } : {}),
         ...(adminTokenObj ? {
           "X-Stack-Admin-Access-Token": adminTokenObj.accessToken.token,

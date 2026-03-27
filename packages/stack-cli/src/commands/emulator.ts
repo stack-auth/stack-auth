@@ -63,6 +63,31 @@ function pullRelease(arch: "arm64" | "amd64", opts: { repo?: string; branch?: st
   console.log(`Downloaded: ${dest}`);
 }
 
+function isEmulatorRunning(): boolean {
+  const qemuDir = findQemuDir();
+  try {
+    execFileSync(join(qemuDir, "run-emulator.sh"), ["status"], {
+      stdio: "pipe",
+      cwd: qemuDir,
+    });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function startEmulator(arch: "arm64" | "amd64") {
+  const qemuDir = findQemuDir();
+  const img = join(qemuDir, "images", `stack-emulator-${arch}.qcow2`);
+
+  if (!existsSync(img)) {
+    console.log("No emulator image found. Pulling latest...");
+    pullRelease(arch);
+  }
+
+  await runEmulator("start", { EMULATOR_ARCH: arch });
+}
+
 export function registerEmulatorCommand(program: Command) {
   const emulator = program.command("emulator").description("Manage the QEMU local emulator");
 
@@ -108,16 +133,74 @@ export function registerEmulatorCommand(program: Command) {
 
   emulator
     .command("start")
-    .description("Start the emulator in the background (auto-pulls the latest image if none exists)")
-    .option("--arch <arch>", "Target architecture (default: current system arch). Non-native uses software emulation and is significantly slower.")
+    .description("Start the emulator (auto-pulls if no image exists)")
+    .option("--arch <arch>", "Target architecture")
     .action(async (opts) => {
       const arch = resolveArch(opts.arch);
-      const img = join(findQemuDir(), "images", `stack-emulator-${arch}.qcow2`);
-      if (!existsSync(img)) {
-        console.log("No emulator image found. Pulling latest...");
-        pullRelease(arch);
+      await startEmulator(arch);
+    });
+
+  emulator
+    .command("run")
+    .description("Start the emulator, run a command, and stop the emulator when the command exits")
+    .argument("<cmd>", "Command to run (e.g. \"npm run dev\")")
+    .option("--arch <arch>", "Target architecture")
+    .option("--config-file <path>", "Path to a config file (sets NEXT_PUBLIC_STACK_LOCAL_EMULATOR_CONFIG_FILE_PATH)")
+    .option("--config-env-var <name>", "Environment variable name to set the config file path (default: NEXT_PUBLIC_STACK_LOCAL_EMULATOR_CONFIG_FILE_PATH)")
+    .action(async (cmd: string, opts: { arch?: string, configFile?: string, configEnvVar?: string }) => {
+      const arch = resolveArch(opts.arch);
+
+      if (opts.configFile) {
+        const resolvedConfigFile = resolve(opts.configFile);
+        if (!existsSync(resolvedConfigFile)) {
+          throw new CliError(`Config file not found: ${resolvedConfigFile}`);
+        }
       }
-      await runEmulator("start", { EMULATOR_ARCH: arch });
+
+      const alreadyRunning = isEmulatorRunning();
+      if (alreadyRunning) {
+        console.log("Emulator already running, reusing existing instance.");
+      } else {
+        await startEmulator(arch);
+      }
+
+      const childEnv: Record<string, string> = { ...process.env as Record<string, string> };
+      if (opts.configFile) {
+        const envVarName = opts.configEnvVar || "NEXT_PUBLIC_STACK_LOCAL_EMULATOR_CONFIG_FILE_PATH";
+        childEnv[envVarName] = resolve(opts.configFile);
+      }
+
+      const child = spawn(cmd, {
+        shell: true,
+        stdio: "inherit",
+        env: childEnv,
+      });
+
+      const cleanup = async () => {
+        if (!alreadyRunning) {
+          console.log("\nStopping emulator...");
+          try {
+            await runEmulator("stop");
+          } catch {
+            // best-effort stop
+          }
+        }
+      };
+
+      child.on("close", (code) => {
+        cleanup().then(() => {
+          process.exit(code ?? 1);
+        }).catch(() => {
+          process.exit(code ?? 1);
+        });
+      });
+
+      process.on("SIGINT", () => {
+        child.kill("SIGINT");
+      });
+      process.on("SIGTERM", () => {
+        child.kill("SIGTERM");
+      });
     });
 
   emulator.command("stop").description("Stop the emulator (data preserved; use 'reset' to clear)").action(() => runEmulator("stop"));

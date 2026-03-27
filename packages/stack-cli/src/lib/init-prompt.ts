@@ -1,11 +1,11 @@
-// TODO: Use configPath in the prompt once local emulator is set up:
-// Add "npx @stackframe/stack-cli emulator run --config-file ${configPath}" to project dev command
-export const createInitPrompt = (web: boolean, configPath?: string) => `=============================
+export const createInitPrompt = (options: { web: boolean, configPath?: string, createGithubAction: boolean }) => {
+  const githubActionStepNum = options.configPath ? 8 : 7;
+  return `=============================
 STACK AUTH SETUP INSTRUCTIONS
 =============================
 
 These instructions describe how to set up Stack Auth.
-${web ? `
+${options.web ? `
 First of all, if you have access to a terminal, it is better to use the \`npx @stackframe/stack-cli init\`` : ""}
 
 Install mcp server from https://mcp.stack-auth.com if not already installed
@@ -123,4 +123,50 @@ return (
   </body>
 );
 \`\`\`
-`;
+${options.configPath ? `
+### 7) Add the emulator to your dev command
+
+Update your project's dev script (in package.json or equivalent) to run through the Stack emulator. This ensures local development uses a local Stack Auth instance instead of the cloud.
+
+Replace your dev command (e.g. \`next dev\`) with:
+
+\`\`\`
+npx @stackframe/stack-cli emulator run --config-file ${options.configPath} "<your-original-dev-command>"
+\`\`\`
+
+For example, in package.json:
+
+\`\`\`json
+{
+  "scripts": {
+    "dev": "npx @stackframe/stack-cli emulator run --config-file ${options.configPath} \\"next dev\\""
+  }
+}
+\`\`\`
+
+This will automatically start the emulator, run your dev server with the correct environment, and stop the emulator when the dev server exits.
+
+For non-Next.js frameworks (e.g. Vite, Expo), also pass \`--config-env-var\` to set the config file path under a framework-appropriate environment variable name, and pass it to your StackClientApp constructor:
+
+\`\`\`json
+{
+  "scripts": {
+    "dev": "npx @stackframe/stack-cli emulator run --config-file ${options.configPath} --config-env-var VITE_STACK_LOCAL_EMULATOR_CONFIG_FILE_PATH \\"vite\\""
+  }
+}
+\`\`\`
+
+Then in your StackClientApp constructor:
+
+\`\`\`ts
+const stackClientApp = new StackClientApp({
+  localEmulatorConfigFilePath: import.meta.env.VITE_STACK_LOCAL_EMULATOR_CONFIG_FILE_PATH,
+  tokenStore: "cookie",
+});
+\`\`\`
+` : ""}${options.createGithubAction ? `
+### ${githubActionStepNum}) Create a GitHub Action to push config
+
+Create a GitHub Actions workflow file (e.g. \`.github/workflows/stack-config-push.yml\`) that runs on push to your main branch and pushes your Stack Auth config to the cloud. The workflow should use \`npx @stackframe/stack-cli config push --config-file ${options.configPath ?? "<path-to-your-stack.config.ts>"} --project-id <your-project-id>\` to sync your local config. Make sure to store any required secrets (like \`STACK_SECRET_SERVER_KEY\`) as GitHub repository secrets and pass them as environment variables in the workflow.
+` : ""}`;
+};

@@ -1,5 +1,6 @@
 import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { createUrlIfValid, isLocalhost, matchHostnamePattern } from "@stackframe/stack-shared/dist/utils/urls";
+import { isLocalEmulatorEnabled } from "./local-emulator";
 import { Tenancy } from "./tenancies";
 
 /**
@@ -85,8 +86,8 @@ export function validateRedirectUrl(
   const url = createUrlIfValid(urlOrString);
   if (!url) return false;
 
-  // Check localhost permission
-  if (tenancy.config.domains.allowLocalhost && isLocalhost(url)) {
+  // Check localhost permission — always allow in local emulator mode
+  if ((tenancy.config.domains.allowLocalhost || isLocalEmulatorEnabled()) && isLocalhost(url)) {
     return true;
   }
 

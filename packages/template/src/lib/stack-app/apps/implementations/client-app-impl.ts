@@ -54,7 +54,7 @@ import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, 
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
-import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getAnalyticsBaseUrl, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveConstructorOptions } from "./common";
+import { LOCAL_EMULATOR_INTERNAL_PUBLISHABLE_CLIENT_KEY, TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, fetchEmulatorProjectCredentials, getAnalyticsBaseUrl, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getLocalEmulatorConfigFilePath, getUrls, resolveConstructorOptions } from "./common";
 import { EventTracker } from "./event-tracker";
 import { AnalyticsOptions, SessionRecorder, analyticsOptionsFromJson, analyticsOptionsToJson } from "./session-replay";
 
@@ -102,6 +102,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   private _sessionRecorder: SessionRecorder | null = null;
   private _eventTracker: EventTracker | null = null;
 
+  protected _emulatorInitPromise: Promise<void> | null = null;
   private __DEMO_ENABLE_SLIGHT_FETCH_DELAY = false;
   private readonly _ownedAdminApps = new DependenciesMap<[InternalSession, string], _StackAdminAppImplIncomplete<false, string>>();
 
@@ -500,26 +501,40 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     this._options = resolvedOptions;
     this._extraOptions = extraOptions;
 
-    const projectId = resolvedOptions.projectId ?? getDefaultProjectId();
+    const emulatorConfigFilePath = getLocalEmulatorConfigFilePath(resolvedOptions.localEmulatorConfigFilePath);
+    const isEmulator = !!emulatorConfigFilePath;
+
+    const projectId = resolvedOptions.projectId ?? getDefaultProjectId({ isEmulator });
     if (projectId !== "internal" && !(projectId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i))) {
       throw new Error(`Invalid project ID: ${projectId}. Project IDs must be UUIDs. Please check your environment variables and/or your StackApp.`);
     }
 
-    const publishableClientKey = resolvedOptions.publishableClientKey ?? getDefaultPublishableClientKey();
+    const publishableClientKey = resolvedOptions.publishableClientKey ?? getDefaultPublishableClientKey() ?? (isEmulator ? LOCAL_EMULATOR_INTERNAL_PUBLISHABLE_CLIENT_KEY : undefined);
 
     if (extraOptions && extraOptions.interface) {
       this._interface = extraOptions.interface;
     } else {
       this._interface = new StackClientInterface({
-        getBaseUrl: () => getBaseUrl(resolvedOptions.baseUrl),
-        getAnalyticsBaseUrl: () => getAnalyticsBaseUrl(getBaseUrl(resolvedOptions.baseUrl)),
+        getBaseUrl: () => getBaseUrl(resolvedOptions.baseUrl, { isEmulator }),
+        getAnalyticsBaseUrl: () => getAnalyticsBaseUrl(getBaseUrl(resolvedOptions.baseUrl, { isEmulator })),
         extraRequestHeaders: resolvedOptions.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
         projectId,
         clientVersion,
         ...(publishableClientKey != null ? { publishableClientKey } : {}),
         prepareRequest: async () => {
+          if (this._emulatorInitPromise) await this._emulatorInitPromise;
           await cookies?.(); // THIS_LINE_PLATFORM next
         }
+      });
+    }
+
+    if (isEmulator && !(extraOptions && extraOptions.interface)) {
+      const iface = this._interface;
+      this._emulatorInitPromise = fetchEmulatorProjectCredentials(emulatorConfigFilePath!).then((data) => {
+        iface._updateEmulatorCredentials({
+          projectId: data.project_id,
+          publishableClientKey: data.publishable_client_key,
+        });
       });
     }
 
@@ -3239,9 +3254,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           throw new StackAssertionError("Cannot serialize to JSON from an application with a non-string redirect method");
         }
 
-        const publishableClientKey = "publishableClientKey" in this._interface.options
-          ? this._interface.options.publishableClientKey
-          : undefined;
+        const publishableClientKey = this._interface.publishableClientKey;
 
         return {
           baseUrl: this._options.baseUrl,
@@ -3254,6 +3267,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           redirectMethod: this._redirectMethod,
           extraRequestHeaders: this._options.extraRequestHeaders,
           analytics: analyticsOptionsToJson(this._analyticsOptions),
+          ...(this._options.localEmulatorConfigFilePath != null ? { localEmulatorConfigFilePath: this._options.localEmulatorConfigFilePath } : {}),
         };
       },
       setCurrentUser: (userJsonPromise: Promise<CurrentUserCrud['Client']['Read'] | null>) => {

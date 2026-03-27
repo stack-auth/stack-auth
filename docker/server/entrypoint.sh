@@ -11,9 +11,15 @@ fi
 
 # ============= ENV VARS =============
 
-export STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY=${STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY:-$(openssl rand -base64 32)}
-export STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY=${STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY:-$(openssl rand -base64 32)}
-export STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY=${STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY:-$(openssl rand -base64 32)}
+if [ "$NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR" = "true" ]; then
+  export STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY=${STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY:-local-emulator-publishable-client-key}
+  export STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY=${STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY:-local-emulator-secret-server-key}
+  export STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY=${STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY:-local-emulator-super-secret-admin-key}
+else
+  export STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY=${STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY:-$(openssl rand -base64 32)}
+  export STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY=${STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY:-$(openssl rand -base64 32)}
+  export STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY=${STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY:-$(openssl rand -base64 32)}
+fi
 
 export NEXT_PUBLIC_STACK_PROJECT_ID=internal
 export NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=${STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY}
@@ -23,11 +29,11 @@ export STACK_SUPER_SECRET_ADMIN_KEY=${STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_A
 export NEXT_PUBLIC_BROWSER_STACK_DASHBOARD_URL=${NEXT_PUBLIC_STACK_DASHBOARD_URL}
 export NEXT_PUBLIC_STACK_PORT_PREFIX=${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}
 PORT_PREFIX=${NEXT_PUBLIC_STACK_PORT_PREFIX}
-export NEXT_PUBLIC_SERVER_STACK_DASHBOARD_URL="http://localhost:${PORT_PREFIX}01"
-export NEXT_PUBLIC_BROWSER_STACK_API_URL=${NEXT_PUBLIC_STACK_API_URL}
-export NEXT_PUBLIC_SERVER_STACK_API_URL="http://localhost:${PORT_PREFIX}02"
 export BACKEND_PORT=${BACKEND_PORT:-${PORT_PREFIX}02}
 export DASHBOARD_PORT=${DASHBOARD_PORT:-${PORT_PREFIX}01}
+export NEXT_PUBLIC_SERVER_STACK_DASHBOARD_URL="http://localhost:${DASHBOARD_PORT}"
+export NEXT_PUBLIC_BROWSER_STACK_API_URL=${NEXT_PUBLIC_STACK_API_URL}
+export NEXT_PUBLIC_SERVER_STACK_API_URL="http://localhost:${BACKEND_PORT}"
 
 export USE_INLINE_ENV_VARS=true
 
@@ -114,12 +120,27 @@ done
 
 # ============= START BACKEND AND DASHBOARD =============
 
+# When running inside the QEMU emulator with a 9p host mount, the guest kernel
+# checks file permissions using guest UIDs. Files on the host are owned by the
+# host user (e.g. UID 501) so the app processes must run as that UID to be able
+# to read/write config files on the host filesystem (including in sticky-bit
+# directories like /tmp).
+HOST_MOUNT_ROOT="${STACK_LOCAL_EMULATOR_HOST_MOUNT_ROOT:-}"
+RUN_AS=""
+if [ -n "$HOST_MOUNT_ROOT" ] && [ -d "$HOST_MOUNT_ROOT" ]; then
+  HOST_UID=$(stat -c %u "$HOST_MOUNT_ROOT/etc" 2>/dev/null || echo "")
+  if [ -n "$HOST_UID" ] && [ "$HOST_UID" != "0" ]; then
+    useradd -u "$HOST_UID" -M -s /bin/false -d "$WORK_DIR" hostuser 2>/dev/null || true
+    RUN_AS="gosu $HOST_UID"
+  fi
+fi
+
 echo "Starting backend on port $BACKEND_PORT..."
 cd "$WORK_DIR"
-PORT=$BACKEND_PORT HOSTNAME=0.0.0.0 node apps/backend/server.js &
+$RUN_AS env PORT=$BACKEND_PORT HOSTNAME=0.0.0.0 node apps/backend/server.js &
 
 echo "Starting dashboard on port $DASHBOARD_PORT..."
-PORT=$DASHBOARD_PORT HOSTNAME=0.0.0.0 node apps/dashboard/server.js &
+$RUN_AS env PORT=$DASHBOARD_PORT HOSTNAME=0.0.0.0 node apps/dashboard/server.js &
 
 # Wait for both to finish
 wait -n
