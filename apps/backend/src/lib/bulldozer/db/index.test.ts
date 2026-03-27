@@ -1,7 +1,7 @@
 import { stringCompare, templateIdentity } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vitest";
-import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLimitTable, declareMapTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
+import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
 
 type TestDb = { full: string, base: string };
 
@@ -282,6 +282,16 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     });
     return { fromTableA, fromTableB, groupedTableA, groupedTableB, concatenatedTable };
   }
+  function createSortedTable() {
+    const { fromTable, groupedTable } = createGroupedTable();
+    const sortedTable = declareSortTable({
+      tableId: "users-by-team-sorted",
+      fromTable: groupedTable,
+      getSortKey: mapper(`(("rowData"->>'value')::int) AS "newSortKey"`),
+      compareSortKeys: (a, b) => expr(`(((${a.sql}) #>> '{}')::int) - (((${b.sql}) #>> '{}')::int)`),
+    });
+    return { fromTable, groupedTable, sortedTable };
+  }
   function createFlatMapMapGroupPipeline() {
     const { fromTable, groupedTable, flatMappedTable } = createFlatMappedTable();
     const mappedAfterFlatMap = declareMapTable({
@@ -469,6 +479,35 @@ describe.sequential("declareStoredTable (real postgres)", () => {
           "rowIdentifier",
           "oldRowData",
           "newRowData"
+        FROM ${changesTable}
+      `,
+    ]);
+  }
+  function registerSortAuditTrigger(
+    table: ReturnType<typeof createSortedTable>["sortedTable"],
+    event: string,
+  ) {
+    return table.registerRowChangeTrigger((changesTable) => [
+      sqlStatement`
+        INSERT INTO "BulldozerMapTriggerAudit" (
+          "event",
+          "groupKey",
+          "rowIdentifier",
+          "oldRowData",
+          "newRowData"
+        )
+        SELECT
+          ${expr<string>(sqlStringLiteral(event))},
+          "groupKey",
+          "rowIdentifier",
+          jsonb_build_object(
+            'rowSortKey', "oldRowSortKey",
+            'rowData', "oldRowData"
+          ),
+          jsonb_build_object(
+            'rowSortKey', "newRowSortKey",
+            'rowData', "newRowData"
+          )
         FROM ${changesTable}
       `,
     ]);
@@ -2218,6 +2257,123 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       endInclusive: true,
     }));
     expect(rowsAfterInputDelete.map((row) => row.rowidentifier)).toEqual(["0:a1"]);
+  });
+
+  test("sortTable init backfills rows in computed sort order and stores metadata", async () => {
+    const { fromTable, groupedTable, sortedTable } = createSortedTable();
+    await runStatements(fromTable.init());
+    await runStatements(fromTable.setRow("a3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(fromTable.setRow("a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("a2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow("b2", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow("b1", expr(`'{"team":"beta","value":1}'::jsonb`)));
+    await runStatements(groupedTable.init());
+    await runStatements(sortedTable.init());
+
+    expect(await readBoolean(sortedTable.isInitialized())).toBe(true);
+    const groups = await readRows(sortedTable.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(groups.map((row) => row.groupkey).sort(stringCompare)).toEqual(["alpha", "beta"]);
+
+    const alphaRows = await readRows(sortedTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(alphaRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowSortKey: row.rowsortkey, rowData: row.rowdata }))).toEqual([
+      { rowIdentifier: "a1", rowSortKey: 1, rowData: { team: "alpha", value: 1 } },
+      { rowIdentifier: "a2", rowSortKey: 2, rowData: { team: "alpha", value: 2 } },
+      { rowIdentifier: "a3", rowSortKey: 3, rowData: { team: "alpha", value: 3 } },
+    ]);
+
+    const metadataRows = await sql`
+      SELECT 1
+      FROM "BulldozerStorageEngine"
+      WHERE "keyPath" = ARRAY[
+        to_jsonb('table'::text),
+        to_jsonb('external:users-by-team-sorted'::text),
+        to_jsonb('storage'::text),
+        to_jsonb('metadata'::text)
+      ]::jsonb[]
+    `;
+    expect(metadataRows).toHaveLength(1);
+  });
+
+  test("sortTable emits insert, update, move, and delete changes with computed sort keys", async () => {
+    const { fromTable, groupedTable, sortedTable } = createSortedTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(sortedTable.init());
+    registerSortAuditTrigger(sortedTable, "sort_change");
+
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(fromTable.setRow("u2", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":0}'::jsonb`)));
+    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":1}'::jsonb`)));
+    await runStatements(fromTable.deleteRow("u1"));
+
+    const auditRows = (await readMapTriggerAuditRows())
+      .filter((row) => row.event === "sort_change")
+      .map((row) => ({
+        groupKey: row.groupKey,
+        rowIdentifier: row.rowIdentifier,
+        oldRowData: row.oldRowData,
+        newRowData: row.newRowData,
+      }));
+    expect(auditRows).toEqual([
+      { groupKey: "alpha", rowIdentifier: "u1", oldRowData: { rowSortKey: null, rowData: null }, newRowData: { rowSortKey: 3, rowData: { team: "alpha", value: 3 } } },
+      { groupKey: "alpha", rowIdentifier: "u2", oldRowData: { rowSortKey: null, rowData: null }, newRowData: { rowSortKey: 1, rowData: { team: "alpha", value: 1 } } },
+      { groupKey: "alpha", rowIdentifier: "u1", oldRowData: { rowSortKey: 3, rowData: { team: "alpha", value: 3 } }, newRowData: { rowSortKey: 0, rowData: { team: "alpha", value: 0 } } },
+      { groupKey: "alpha", rowIdentifier: "u2", oldRowData: { rowSortKey: 1, rowData: { team: "alpha", value: 1 } }, newRowData: { rowSortKey: null, rowData: null } },
+      { groupKey: "beta", rowIdentifier: "u2", oldRowData: { rowSortKey: null, rowData: null }, newRowData: { rowSortKey: 1, rowData: { team: "beta", value: 1 } } },
+      { groupKey: "alpha", rowIdentifier: "u1", oldRowData: { rowSortKey: 0, rowData: { team: "alpha", value: 0 } }, newRowData: { rowSortKey: null, rowData: null } },
+    ]);
+  });
+
+  test("sortTable listRowsInGroup supports sort key range filtering", async () => {
+    const { fromTable, groupedTable, sortedTable } = createSortedTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(sortedTable.init());
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("u2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow("u3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(fromTable.setRow("u4", expr(`'{"team":"alpha","value":4}'::jsonb`)));
+
+    const midRows = await readRows(sortedTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: expr(`to_jsonb(2)`),
+      end: expr(`to_jsonb(4)`),
+      startInclusive: true,
+      endInclusive: false,
+    }));
+    expect(midRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowSortKey: row.rowsortkey }))).toEqual([
+      { rowIdentifier: "u2", rowSortKey: 2 },
+      { rowIdentifier: "u3", rowSortKey: 3 },
+    ]);
+  });
+
+  test("sortTable stays no-op while uninitialized", async () => {
+    const { fromTable, groupedTable, sortedTable } = createSortedTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    registerSortAuditTrigger(sortedTable, "sort_change");
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+
+    expect(await readBoolean(sortedTable.isInitialized())).toBe(false);
+    expect((await readMapTriggerAuditRows()).filter((row) => row.event === "sort_change")).toEqual([]);
+    expect(await readRows(sortedTable.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }))).toEqual([]);
   });
 
   test("flatMap -> map -> groupBy composition stays consistent across updates", async () => {

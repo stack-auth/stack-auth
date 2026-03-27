@@ -1,4 +1,4 @@
-import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLimitTable, declareMapTable, declareStoredTable } from "./index";
+import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable } from "./index";
 
 const mapper = (sql: string) => ({ type: "mapper" as const, sql });
 const predicate = (sql: string) => ({ type: "predicate" as const, sql });
@@ -106,6 +106,12 @@ export const exampleFungibleLedgerSchema = (() => {
     fromTable: entriesByAccount,
     filter: predicate(`("rowData"->'counterparty') IS NOT NULL`),
   });
+  const accountEntriesSortedByAmount = declareSortTable({
+    tableId: "bulldozer-example-ledger-account-entries-sorted-by-amount",
+    fromTable: entriesByAccount,
+    getSortKey: mapper(`(("rowData"->>'amount')::numeric) AS "newSortKey"`),
+    compareSortKeys: (a, b) => ({ type: "expression", sql: `(((${a.sql}) #>> '{}')::numeric > ((${b.sql}) #>> '{}')::numeric)::int - (((${a.sql}) #>> '{}')::numeric < ((${b.sql}) #>> '{}')::numeric)::int` }),
+  });
   const accountCounterpartySample = declareLimitTable({
     tableId: "bulldozer-example-ledger-account-counterparty-sample",
     fromTable: accountEntriesWithCounterparty,
@@ -160,6 +166,7 @@ export const exampleFungibleLedgerSchema = (() => {
     accountEntryLegs,
     accountAssetPartitions,
     accountEntriesWithCounterparty,
+    accountEntriesSortedByAmount,
     accountCounterpartySample,
     highValueEntriesByAsset,
     highValueEntriesByAssetAccount,

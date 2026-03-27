@@ -1,7 +1,7 @@
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
-import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLimitTable, declareMapTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
+import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
 
 type TestDb = { full: string, base: string };
 
@@ -279,6 +279,22 @@ function concatGroups<Row extends Record<string, unknown>>(
     }
   }
   return concatenated;
+}
+function sortedRowsForGroups<Row extends Record<string, unknown>>(groups: GroupedRows<Row>) {
+  return [...groups.values()].flatMap((group) => {
+    return [...group.rows.entries()]
+      .sort((a, b) => {
+        const leftValue = Number(Reflect.get(a[1], "value"));
+        const rightValue = Number(Reflect.get(b[1], "value"));
+        return leftValue - rightValue || stringCompare(a[0], b[0]);
+      })
+      .map(([rowIdentifier, rowData]) => ({
+        groupKey: group.groupKey,
+        rowIdentifier,
+        rowSortKey: Number(Reflect.get(rowData, "value")),
+        rowData,
+      }));
+  });
 }
 
 describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
@@ -1053,6 +1069,91 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
             expect(await readBoolean(concatenatedTable.isInitialized())).toBe(true);
             await assertTableMatches(concatenatedTable, concatGroups([expectedA]));
           }
+        }
+      }
+    }
+  }, 120_000);
+
+  test("fuzz: sort table preserves sorted order under random mutations and re-inits", async () => {
+    const identifiers = ["s1", "s2", "s3", "s4", "s:5", "s 6", "s/7", "s'8"] as const;
+    const teams = ["alpha", "beta", "gamma", null] as const;
+
+    for (const seed of [2201]) {
+      const rng = createRng(seed);
+      const sourceRows = new Map<string, SourceRow>();
+      let sortInitialized = true;
+
+      const fromTable = declareStoredTable<{ value: number, team: string | null }>({ tableId: `sort-fuzz-users-${seed}` });
+      const groupedTable = declareGroupByTable({
+        tableId: `sort-fuzz-users-by-team-${seed}`,
+        fromTable,
+        groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+      });
+      const sortedTable = declareSortTable({
+        tableId: `sort-fuzz-users-sorted-${seed}`,
+        fromTable: groupedTable,
+        getSortKey: mapper(`(("rowData"->>'value')::int) AS "newSortKey"`),
+        compareSortKeys: (a, b) => expr(`(((${a.sql}) #>> '{}')::int) - (((${b.sql}) #>> '{}')::int)`),
+      });
+
+      await runStatements(fromTable.init());
+      await runStatements(groupedTable.init());
+      await runStatements(sortedTable.init());
+
+      for (let step = 0; step < 24; step++) {
+        const roll = rng();
+        if (roll < 0.62) {
+          const rowIdentifier = choose(rng, identifiers);
+          const rowData: SourceRow = {
+            team: choose(rng, teams),
+            value: Math.floor(rng() * 80),
+          };
+          sourceRows.set(rowIdentifier, rowData);
+          await runStatements(fromTable.setRow(rowIdentifier, expr(jsonbLiteral(rowData))));
+        } else if (roll < 0.86) {
+          const rowIdentifier = choose(rng, identifiers);
+          sourceRows.delete(rowIdentifier);
+          await runStatements(fromTable.deleteRow(rowIdentifier));
+        } else if (roll < 0.93) {
+          if (sortInitialized) {
+            await runStatements(sortedTable.delete());
+            sortInitialized = false;
+          }
+        } else {
+          if (!sortInitialized) {
+            await runStatements(sortedTable.init());
+            sortInitialized = true;
+          }
+        }
+
+        if (step % 3 === 0 || step === 23) {
+          const expectedGrouped = computeTeamGroups(sourceRows);
+          await assertTableMatches(groupedTable, expectedGrouped);
+
+          if (!sortInitialized) {
+            expect(await readBoolean(sortedTable.isInitialized())).toBe(false);
+            expect(await readRows(sortedTable.listGroups({
+              start: "start",
+              end: "end",
+              startInclusive: true,
+              endInclusive: true,
+            }))).toEqual([]);
+            continue;
+          }
+
+          expect(await readBoolean(sortedTable.isInitialized())).toBe(true);
+          const actualRows = (await readRows(sortedTable.listRowsInGroup({
+            start: "start",
+            end: "end",
+            startInclusive: true,
+            endInclusive: true,
+          }))).map((row) => ({
+            groupKey: row.groupkey as string | null,
+            rowIdentifier: row.rowidentifier as string,
+            rowSortKey: Number(row.rowsortkey),
+            rowData: row.rowdata as Record<string, unknown>,
+          }));
+          expect(actualRows).toEqual(sortedRowsForGroups(expectedGrouped));
         }
       }
     }

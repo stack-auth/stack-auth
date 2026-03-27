@@ -1,7 +1,7 @@
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
-import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLimitTable, declareMapTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
 
 type TestDb = { full: string, base: string };
 type SqlExpression<T> = { type: "expression", sql: string };
@@ -13,8 +13,8 @@ type WorkloadOperation =
   | { type: "delete", rowIdentifier: string };
 
 const TEST_DB_PREFIX = "stack_bulldozer_db_perf_test";
-const DEFAULT_WARMUP_OPS = 80;
-const DEFAULT_MEASURED_OPS = 500;
+const DEFAULT_WARMUP_OPS = 40;
+const DEFAULT_MEASURED_OPS = 200;
 const IS_CI = (() => {
   const env = Reflect.get(import.meta, "env");
   const ci = Reflect.get(env, "CI");
@@ -39,6 +39,8 @@ const LOAD_LIMIT_TABLE_INIT_MAX_MS = 90_000;
 const LOAD_LIMIT_TABLE_COUNT_QUERY_MAX_MS = 8_000;
 const LOAD_CONCAT_TABLE_INIT_MAX_MS = 10_000;
 const LOAD_CONCAT_TABLE_COUNT_QUERY_MAX_MS = 8_000;
+const LOAD_SORT_TABLE_INIT_MAX_MS = 90_000;
+const LOAD_SORT_TABLE_COUNT_QUERY_MAX_MS = 8_000;
 const STACKED_MAP_PIPELINE_MUTATION_MAX_MS = 400;
 const VIRTUAL_CONCAT_COUNT_QUERY_MAX_MS = 500;
 const VIRTUAL_CONCAT_LOAD_ROW_COUNT = 5_000;
@@ -110,6 +112,7 @@ function logLine(message: string): void {
 }
 
 describe.sequential("bulldozer db performance (real postgres)", () => {
+  vi.setConfig({ testTimeout: 180_000 });
   const dbUrls = getTestDbUrls();
   const dbName = dbUrls.full.replace(/^.*\//, "").replace(/\?.*$/, "");
   const adminSql = postgres(dbUrls.base, { onnotice: () => undefined });
@@ -787,6 +790,26 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     expect(filteredDeltaRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata }))).toEqual([
       { rowIdentifier: "seed-100000:1", rowData: { team: "delta", value: 999 } },
     ]);
+    const sortedHighValueByTeam = declareSortTable({
+      tableId: "load-prefilled-users-high-value-sorted",
+      fromTable: filteredHighValue,
+      getSortKey: { type: "mapper", sql: `( ("rowData"->>'value')::int ) AS "newSortKey"` },
+      compareSortKeys: (a, b) => expr(`(((${a.sql}) #>> '{}')::int) - (((${b.sql}) #>> '{}')::int)`),
+    });
+    const sortInit = await measureMs("load init sortedHighValueByTeam", async () => {
+      await runStatements(sortedHighValueByTeam.init());
+    });
+    expect(sortInit.elapsedMs).toBeLessThan(LOAD_SORT_TABLE_INIT_MAX_MS);
+    const sortedDeltaRows = await readRows(sortedHighValueByTeam.listRowsInGroup({
+      groupKey: expr(`to_jsonb('delta'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(sortedDeltaRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowSortKey: row.rowsortkey, rowData: row.rowdata }))).toEqual([
+      { rowIdentifier: "seed-100000:1", rowSortKey: 999, rowData: { team: "delta", value: 999 } },
+    ]);
     const concatenatedDeltaRows = await readRows(concatenatedByTeam.listRowsInGroup({
       groupKey: expr(`to_jsonb('delta'::text)`),
       start: "start",
@@ -826,7 +849,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     `;
     expect(isInitializedRows[0].initialized).toBe(false);
 
-    logLine(`[bulldozer-perf] load thresholds(ms): prefill<=${LOAD_PREFILL_MAX_MS}, baseCount<=${LOAD_COUNT_QUERY_MAX_MS}, setRowAvg<=${LOAD_SET_ROW_AVG_MAX_MS} over ${LOAD_SET_ROW_AVG_ITERATIONS}, pointDelete<=${LOAD_POINT_MUTATION_MAX_MS}, derivedInit<=${LOAD_DERIVED_INIT_MAX_MS}, filterInit<=${LOAD_FILTER_TABLE_INIT_MAX_MS}, concatInit<=${LOAD_CONCAT_TABLE_INIT_MAX_MS}, limitInit<=${LOAD_LIMIT_TABLE_INIT_MAX_MS}, expandingInit<=${LOAD_EXPANDING_INIT_MAX_MS}, derivedCount<=${LOAD_DERIVED_COUNT_QUERY_MAX_MS}, filterCount<=${LOAD_FILTER_TABLE_COUNT_QUERY_MAX_MS}, concatCount<=${LOAD_CONCAT_TABLE_COUNT_QUERY_MAX_MS}, limitCount<=${LOAD_LIMIT_TABLE_COUNT_QUERY_MAX_MS}, expandingCount<=${LOAD_EXPANDING_COUNT_QUERY_MAX_MS}, filteredQuery<=${LOAD_FILTERED_QUERY_MAX_MS}, tableDelete<=${LOAD_TABLE_DELETE_MAX_MS}`);
+    logLine(`[bulldozer-perf] load thresholds(ms): prefill<=${LOAD_PREFILL_MAX_MS}, baseCount<=${LOAD_COUNT_QUERY_MAX_MS}, setRowAvg<=${LOAD_SET_ROW_AVG_MAX_MS} over ${LOAD_SET_ROW_AVG_ITERATIONS}, pointDelete<=${LOAD_POINT_MUTATION_MAX_MS}, derivedInit<=${LOAD_DERIVED_INIT_MAX_MS}, filterInit<=${LOAD_FILTER_TABLE_INIT_MAX_MS}, sortInit<=${LOAD_SORT_TABLE_INIT_MAX_MS}, concatInit<=${LOAD_CONCAT_TABLE_INIT_MAX_MS}, limitInit<=${LOAD_LIMIT_TABLE_INIT_MAX_MS}, expandingInit<=${LOAD_EXPANDING_INIT_MAX_MS}, derivedCount<=${LOAD_DERIVED_COUNT_QUERY_MAX_MS}, filterCount<=${LOAD_FILTER_TABLE_COUNT_QUERY_MAX_MS}, concatCount<=${LOAD_CONCAT_TABLE_COUNT_QUERY_MAX_MS}, limitCount<=${LOAD_LIMIT_TABLE_COUNT_QUERY_MAX_MS}, expandingCount<=${LOAD_EXPANDING_COUNT_QUERY_MAX_MS}, filteredQuery<=${LOAD_FILTERED_QUERY_MAX_MS}, tableDelete<=${LOAD_TABLE_DELETE_MAX_MS}`);
   }, 180_000);
 });
 

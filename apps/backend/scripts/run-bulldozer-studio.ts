@@ -4,7 +4,7 @@ import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import ELK from "elkjs/lib/elk.bundled.js";
 import http from "node:http";
 import { exampleFungibleLedgerSchema } from "../src/lib/bulldozer/db/example-schema";
-import { toQueryableSqlQuery } from "../src/lib/bulldozer/db/index";
+import { toExecutableSqlStatements, toQueryableSqlQuery } from "../src/lib/bulldozer/db/index";
 import { globalPrismaClient, retryTransaction } from "../src/prisma-client";
 
 type JsonPrimitive = string | number | boolean | null;
@@ -133,19 +133,11 @@ function createTableRegistry(schema: Record<string, unknown>): {
 const schemaObject: Record<string, unknown> = exampleFungibleLedgerSchema;
 const registry = createTableRegistry(schemaObject);
 
-function toExecutableSqlCteStatement(statements: SqlStatement[]): string {
-  const cteStatements = statements.map((statement, index) => {
-    const outputName = statement.outputName ?? `unnamed_statement_${index}`;
-    return `${quoteSqlIdentifier(outputName)} AS (\n${statement.sql}\n)`;
-  }).join(",\n");
-
-  return `WITH __dummy_statement_1__ AS (SELECT 1),\n${cteStatements},\n__dummy_statement_2__ AS (SELECT 1)\nSELECT 1;`;
-}
-
 async function executeStatements(statements: SqlStatement[]): Promise<void> {
   await retryTransaction(globalPrismaClient, async (tx) => {
+    await tx.$executeRawUnsafe(`SET LOCAL jit = off`);
     await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${BULLDOZER_LOCK_ID})`);
-    await tx.$executeRawUnsafe(toExecutableSqlCteStatement(statements));
+    await tx.$executeRawUnsafe(toExecutableSqlStatements(statements));
   });
 }
 
@@ -562,6 +554,9 @@ function getStudioPageHtml(): string {
     .node-type.concat {
       color: color-mix(in srgb, var(--accent) 60%, var(--filter));
     }
+    .node-type.sort {
+      color: color-mix(in srgb, var(--accent) 75%, var(--ok));
+    }
     .node-name {
       font-size: 13px;
       font-weight: 700;
@@ -583,6 +578,9 @@ function getStudioPageHtml(): string {
     }
     .node-name.concat {
       color: color-mix(in srgb, var(--accent) 55%, var(--filter));
+    }
+    .node-name.sort {
+      color: color-mix(in srgb, var(--accent) 80%, var(--ok));
     }
     .node-meta {
       font-size: 11px;
@@ -1311,7 +1309,7 @@ function getStudioPageHtml(): string {
       for (const table of tables) {
         const operatorClass = (() => {
           const normalized = String(table.operator || "unknown").toLowerCase();
-          if (normalized === "stored" || normalized === "map" || normalized === "flatmap" || normalized === "groupby" || normalized === "filter" || normalized === "limit" || normalized === "concat") {
+          if (normalized === "stored" || normalized === "map" || normalized === "flatmap" || normalized === "groupby" || normalized === "filter" || normalized === "limit" || normalized === "concat" || normalized === "sort") {
             return normalized;
           }
           return "derived";
