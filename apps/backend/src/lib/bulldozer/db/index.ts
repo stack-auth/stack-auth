@@ -442,15 +442,17 @@ export function declareGroupByTable<
     ` : sqlQuery`
       -- Get all rows from all groups
       SELECT
-        "groupRows"."keyPath"[cardinality("groupRows"."keyPath") - 1] AS groupKey,
+        "groupPath"."keyPath"[cardinality("groupPath"."keyPath")] AS groupKey,
         ("rows"."keyPath"[cardinality("rows"."keyPath")] #>> '{}') AS rowIdentifier,
         'null'::jsonb AS rowSortKey,
         "rows"."value"->'rowData' AS rowData
-      FROM "BulldozerStorageEngine" AS "groupRows"
-      INNER JOIN "BulldozerStorageEngine" AS "rows" ON "rows"."keyPathParent" = "groupRows"."keyPath"
-      WHERE "groupRows"."keyPathParent"[1:cardinality(${getStorageEnginePath(options.tableId, ["groups"])}::jsonb[])] = ${getStorageEnginePath(options.tableId, ["groups"])}::jsonb[]
-        AND cardinality("groupRows"."keyPath") = cardinality(${getStorageEnginePath(options.tableId, ["groups"])}::jsonb[]) + 2
-        AND "groupRows"."keyPath"[cardinality("groupRows"."keyPath")] = to_jsonb('rows'::text)
+      FROM "BulldozerStorageEngine" AS "groupPath"
+      INNER JOIN "BulldozerStorageEngine" AS "groupRowsPath"
+        ON "groupRowsPath"."keyPathParent" = "groupPath"."keyPath"
+      INNER JOIN "BulldozerStorageEngine" AS "rows"
+        ON "rows"."keyPathParent" = "groupRowsPath"."keyPath"
+      WHERE "groupPath"."keyPathParent" = ${getStorageEnginePath(options.tableId, ["groups"])}::jsonb[]
+        AND "groupRowsPath"."keyPath"[cardinality("groupRowsPath"."keyPath")] = to_jsonb('rows'::text)
         AND ${singleNullSortKeyRangePredicate({ start, end, startInclusive, endInclusive })}
     `,
     registerRowChangeTrigger: (trigger) => {
@@ -808,15 +810,17 @@ export function declareFlatMapTable<
         AND ${singleNullSortKeyRangePredicate({ start, end, startInclusive, endInclusive })}
     ` : sqlQuery`
       SELECT
-        "groupRows"."keyPath"[cardinality("groupRows"."keyPath") - 1] AS groupKey,
+        "groupPath"."keyPath"[cardinality("groupPath"."keyPath")] AS groupKey,
         ("rows"."keyPath"[cardinality("rows"."keyPath")] #>> '{}') AS rowIdentifier,
         'null'::jsonb AS rowSortKey,
         "rows"."value"->'rowData' AS rowData
-      FROM "BulldozerStorageEngine" AS "groupRows"
-      INNER JOIN "BulldozerStorageEngine" AS "rows" ON "rows"."keyPathParent" = "groupRows"."keyPath"
-      WHERE "groupRows"."keyPathParent"[1:cardinality(${getStorageEnginePath(options.tableId, ["groups"])}::jsonb[])] = ${getStorageEnginePath(options.tableId, ["groups"])}::jsonb[]
-        AND cardinality("groupRows"."keyPath") = cardinality(${getStorageEnginePath(options.tableId, ["groups"])}::jsonb[]) + 2
-        AND "groupRows"."keyPath"[cardinality("groupRows"."keyPath")] = to_jsonb('rows'::text)
+      FROM "BulldozerStorageEngine" AS "groupPath"
+      INNER JOIN "BulldozerStorageEngine" AS "groupRowsPath"
+        ON "groupRowsPath"."keyPathParent" = "groupPath"."keyPath"
+      INNER JOIN "BulldozerStorageEngine" AS "rows"
+        ON "rows"."keyPathParent" = "groupRowsPath"."keyPath"
+      WHERE "groupPath"."keyPathParent" = ${getStorageEnginePath(options.tableId, ["groups"])}::jsonb[]
+        AND "groupRowsPath"."keyPath"[cardinality("groupRowsPath"."keyPath")] = to_jsonb('rows'::text)
         AND ${singleNullSortKeyRangePredicate({ start, end, startInclusive, endInclusive })}
     `,
     registerRowChangeTrigger: (trigger) => {
@@ -1331,15 +1335,17 @@ export function declareLimitTable<
       ORDER BY rowSortKey ASC, rowIdentifier ASC
     ` : sqlQuery`
       SELECT
-        "groupRows"."keyPath"[cardinality("groupRows"."keyPath") - 1] AS groupKey,
+        "groupPath"."keyPath"[cardinality("groupPath"."keyPath")] AS groupKey,
         ("rows"."keyPath"[cardinality("rows"."keyPath")] #>> '{}') AS rowIdentifier,
         "rows"."value"->'rowSortKey' AS rowSortKey,
         "rows"."value"->'rowData' AS rowData
-      FROM "BulldozerStorageEngine" AS "groupRows"
-      INNER JOIN "BulldozerStorageEngine" AS "rows" ON "rows"."keyPathParent" = "groupRows"."keyPath"
-      WHERE "groupRows"."keyPathParent"[1:cardinality(${getStorageEnginePath(options.tableId, ["groups"])}::jsonb[])] = ${getStorageEnginePath(options.tableId, ["groups"])}::jsonb[]
-        AND cardinality("groupRows"."keyPath") = cardinality(${getStorageEnginePath(options.tableId, ["groups"])}::jsonb[]) + 2
-        AND "groupRows"."keyPath"[cardinality("groupRows"."keyPath")] = to_jsonb('rows'::text)
+      FROM "BulldozerStorageEngine" AS "groupPath"
+      INNER JOIN "BulldozerStorageEngine" AS "groupRowsPath"
+        ON "groupRowsPath"."keyPathParent" = "groupPath"."keyPath"
+      INNER JOIN "BulldozerStorageEngine" AS "rows"
+        ON "rows"."keyPathParent" = "groupRowsPath"."keyPath"
+      WHERE "groupPath"."keyPathParent" = ${getStorageEnginePath(options.tableId, ["groups"])}::jsonb[]
+        AND "groupRowsPath"."keyPath"[cardinality("groupRowsPath"."keyPath")] = to_jsonb('rows'::text)
         AND ${
           start === "start"
             ? sqlExpression`1 = 1`
@@ -2384,17 +2390,19 @@ export function declareLFoldTable<
         ...sourceSortTable.init(),
         sqlQuery`
           SELECT
-            "groupRows"."keyPath"[cardinality("groupRows"."keyPath") - 1] AS "groupKey",
+            "groupPath"."keyPath"[cardinality("groupPath"."keyPath")] AS "groupKey",
             ("sourceRows"."keyPath"[cardinality("sourceRows"."keyPath")] #>> '{}') AS "rowIdentifier",
             "sourceRows"."value"->'rowSortKey' AS "rowSortKey",
             "sourceRows"."value"->'rowData' AS "rowData",
             "sourceRows"."value"->>'prevRowIdentifier' AS "prevRowIdentifier",
             "sourceRows"."value"->>'nextRowIdentifier' AS "nextRowIdentifier"
-          FROM "BulldozerStorageEngine" AS "groupRows"
-          INNER JOIN "BulldozerStorageEngine" AS "sourceRows" ON "sourceRows"."keyPathParent" = "groupRows"."keyPath"
-          WHERE "groupRows"."keyPathParent"[1:cardinality(${getStorageEnginePath(sourceSortTableId, ["groups"])}::jsonb[])] = ${getStorageEnginePath(sourceSortTableId, ["groups"])}::jsonb[]
-            AND cardinality("groupRows"."keyPath") = cardinality(${getStorageEnginePath(sourceSortTableId, ["groups"])}::jsonb[]) + 2
-            AND "groupRows"."keyPath"[cardinality("groupRows"."keyPath")] = to_jsonb('rows'::text)
+          FROM "BulldozerStorageEngine" AS "groupPath"
+          INNER JOIN "BulldozerStorageEngine" AS "groupRowsPath"
+            ON "groupRowsPath"."keyPathParent" = "groupPath"."keyPath"
+          INNER JOIN "BulldozerStorageEngine" AS "sourceRows"
+            ON "sourceRows"."keyPathParent" = "groupRowsPath"."keyPath"
+          WHERE "groupPath"."keyPathParent" = ${getStorageEnginePath(sourceSortTableId, ["groups"])}::jsonb[]
+            AND "groupRowsPath"."keyPath"[cardinality("groupRowsPath"."keyPath")] = to_jsonb('rows'::text)
         `.toStatement(allSourceRowsTableName),
         sqlQuery`
           SELECT
@@ -2607,15 +2615,17 @@ export function declareLFoldTable<
       ORDER BY rowSortKey ASC, rowIdentifier ASC
     ` : sqlQuery`
       SELECT
-        "groupRows"."keyPath"[cardinality("groupRows"."keyPath") - 1] AS groupKey,
+        "groupPath"."keyPath"[cardinality("groupPath"."keyPath")] AS groupKey,
         ("rows"."keyPath"[cardinality("rows"."keyPath")] #>> '{}') AS rowIdentifier,
         "rows"."value"->'rowSortKey' AS rowSortKey,
         "rows"."value"->'rowData' AS rowData
-      FROM "BulldozerStorageEngine" AS "groupRows"
-      INNER JOIN "BulldozerStorageEngine" AS "rows" ON "rows"."keyPathParent" = "groupRows"."keyPath"
-      WHERE "groupRows"."keyPathParent"[1:cardinality(${groupsPath}::jsonb[])] = ${groupsPath}::jsonb[]
-        AND cardinality("groupRows"."keyPath") = cardinality(${groupsPath}::jsonb[]) + 2
-        AND "groupRows"."keyPath"[cardinality("groupRows"."keyPath")] = to_jsonb('rows'::text)
+      FROM "BulldozerStorageEngine" AS "groupPath"
+      INNER JOIN "BulldozerStorageEngine" AS "groupRowsPath"
+        ON "groupRowsPath"."keyPathParent" = "groupPath"."keyPath"
+      INNER JOIN "BulldozerStorageEngine" AS "rows"
+        ON "rows"."keyPathParent" = "groupRowsPath"."keyPath"
+      WHERE "groupPath"."keyPathParent" = ${groupsPath}::jsonb[]
+        AND "groupRowsPath"."keyPath"[cardinality("groupRowsPath"."keyPath")] = to_jsonb('rows'::text)
         AND ${sortRangePredicate(sqlExpression`"rows"."value"->'rowSortKey'`, { start, end, startInclusive, endInclusive })}
       ORDER BY groupKey ASC, rowSortKey ASC, rowIdentifier ASC
     `,
