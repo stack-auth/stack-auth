@@ -8,9 +8,9 @@ import { getPublicEnvVar } from "@/lib/env";
 import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
 import { GearIcon } from "@phosphor-icons/react";
 import { AdminOwnedProject, Team, useStackApp, useUser } from "@stackframe/stack";
-import { strictEmailSchema, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
+import { projectOnboardingStatusValues, strictEmailSchema, type ProjectOnboardingStatus, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
-import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronously, runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { useQueryState } from "@stackframe/stack-shared/dist/utils/react";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
@@ -21,6 +21,8 @@ type StackAppInternals = {
   sendRequest: (path: string, requestOptions: RequestInit, requestType?: "client" | "server" | "admin") => Promise<Response>,
   refreshOwnedProjects: () => Promise<void>,
 };
+
+const PROJECT_ONBOARDING_STATUSES = projectOnboardingStatusValues;
 
 function isStackAppInternals(value: unknown): value is StackAppInternals {
   return (
@@ -33,8 +35,26 @@ function isStackAppInternals(value: unknown): value is StackAppInternals {
   );
 }
 
+function getStackAppInternals(appValue: unknown): StackAppInternals {
+  if (appValue == null || typeof appValue !== "object") {
+    throw new Error("The Stack app instance is unavailable.");
+  }
+
+  const internals = Reflect.get(appValue, stackAppInternalsSymbol);
+  if (!isStackAppInternals(internals)) {
+    throw new Error("The Stack client app cannot send internal requests.");
+  }
+
+  return internals;
+}
+
+function isProjectOnboardingStatus(value: unknown): value is ProjectOnboardingStatus {
+  return typeof value === "string" && PROJECT_ONBOARDING_STATUSES.some((status) => status === value);
+}
+
 export default function PageClient() {
   const app = useStackApp();
+  const appInternals = useMemo(() => getStackAppInternals(app), [app]);
   const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
   const rawProjects = user.useOwnedProjects();
   const teams = user.useTeams();
@@ -44,6 +64,8 @@ export default function PageClient() {
   const [openConfigFileDialog, setOpenConfigFileDialog] = useState(false);
   const [absoluteConfigFilePath, setAbsoluteConfigFilePath] = useState("");
   const [openingConfigFile, setOpeningConfigFile] = useState(false);
+  const [projectStatuses, setProjectStatuses] = useState<Map<string, ProjectOnboardingStatus>>(new Map());
+  const [loadingProjectStatuses, setLoadingProjectStatuses] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
@@ -51,6 +73,49 @@ export default function PageClient() {
       router.push('/new-project');
     }
   }, [isLocalEmulator, router, rawProjects]);
+
+  useEffect(() => {
+    let cancelled = false;
+    runAsynchronouslyWithAlert(async () => {
+      setLoadingProjectStatuses(true);
+      try {
+        const response = await appInternals.sendRequest("/internal/projects", {}, "client");
+        if (!response.ok) {
+          throw new Error(`Failed to load projects: ${response.status} ${await response.text()}`);
+        }
+
+        const body = await response.json();
+        if (body == null || typeof body !== "object" || !("items" in body) || !Array.isArray(body.items)) {
+          throw new Error("Project list endpoint returned an invalid response.");
+        }
+
+        const statusMap = new Map<string, ProjectOnboardingStatus>();
+        for (const item of body.items) {
+          if (item == null || typeof item !== "object" || !("id" in item) || typeof item.id !== "string") {
+            continue;
+          }
+
+          const onboardingStatus = "onboarding_status" in item ? item.onboarding_status : undefined;
+          if (!isProjectOnboardingStatus(onboardingStatus)) {
+            throw new Error(`Project ${item.id} returned an invalid onboarding status.`);
+          }
+          statusMap.set(item.id, onboardingStatus);
+        }
+
+        if (!cancelled) {
+          setProjectStatuses(statusMap);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingProjectStatuses(false);
+        }
+      }
+    });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [appInternals, rawProjects.length]);
 
   const handleOpenConfigFile = async () => {
     const trimmedPath = absoluteConfigFilePath.trim();
@@ -67,11 +132,6 @@ export default function PageClient() {
 
     setOpeningConfigFile(true);
     try {
-      const appInternals = Reflect.get(app, stackAppInternalsSymbol);
-      if (!isStackAppInternals(appInternals)) {
-        throw new Error("The Stack client app cannot send internal requests.");
-      }
-
       const response = await appInternals.sendRequest(
         "/internal/local-emulator/project",
         {
@@ -240,9 +300,24 @@ export default function PageClient() {
               )}
             </div>
             <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
-              {projects.map((project) => (
-                <ProjectCard key={project.id} project={project} />
-              ))}
+              {projects.map((project) => {
+                const onboardingStatus = projectStatuses.get(project.id);
+                if (!loadingProjectStatuses && onboardingStatus == null) {
+                  throw new Error(`Missing onboarding status for project ${project.id}.`);
+                }
+                const projectHref = onboardingStatus === "completed"
+                  ? `/projects/${encodeURIComponent(project.id)}`
+                  : `/new-project?project_id=${encodeURIComponent(project.id)}`;
+
+                return (
+                  <ProjectCard
+                    key={project.id}
+                    project={project}
+                    href={projectHref}
+                    showIncompleteBadge={!loadingProjectStatuses && onboardingStatus !== "completed"}
+                  />
+                );
+              })}
             </div>
           </div>
         );

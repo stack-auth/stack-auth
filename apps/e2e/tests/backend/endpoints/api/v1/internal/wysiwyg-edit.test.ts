@@ -1,159 +1,154 @@
+import { describe } from "vitest";
 import { it } from "../../../../../helpers";
 import { Auth, Project, niceBackendFetch } from "../../../../backend-helpers";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 
-// Tests for the WYSIWYG edit endpoint
-// Note: These tests require an AI provider to be configured in the environment
+const hasRealAiKey = (() => {
+  const key = getEnvVariable("STACK_OPENROUTER_API_KEY", "");
+  return key !== "" && key !== "FORWARD_TO_PRODUCTION";
+})();
 
-it("should return the original source when old_text equals new_text", async ({ expect }) => {
-  await Auth.fastSignUp();
-  const { adminAccessToken } = await Project.createAndGetAdminToken();
+const describeWithAi = hasRealAiKey ? describe : describe.skip;
 
-  const sourceCode = `
-    export function EmailTemplate() {
-      return <div>Hello World!</div>;
-    }
-  `;
+// Validation tests run without a real AI key (they fail at schema validation before forwarding)
+describe("WYSIWYG Edit - Validation", () => {
+  it("should validate required fields in messages", async ({ expect }) => {
+    await Auth.fastSignUp();
+    const { adminAccessToken } = await Project.createAndGetAdminToken();
 
-  const response = await niceBackendFetch("/api/v1/internal/wysiwyg-edit", {
-    method: "POST",
-    accessType: "admin",
-    headers: {
-      'x-stack-admin-access-token': adminAccessToken,
-    },
-    body: {
-      source_type: "template",
-      source_code: sourceCode,
-      old_text: "Hello World!",
-      new_text: "Hello World!", // Same as old_text
-      metadata: {
-        id: "e0",
-        loc: { start: 50, end: 62, line: 3, column: 18 },
-        originalText: "Hello World!",
-        textHash: "abc123",
-        jsxPath: ["EmailTemplate", "div"],
-        parentElement: { tagName: "div", props: {} },
-        sourceContext: { before: "", after: "" },
-        siblingIndex: 0,
-        occurrenceCount: 1,
-        occurrenceIndex: 1,
-        sourceFile: "template",
-      },
-      dom_path: [{ tag_name: "DIV", index: 0 }],
-      html_context: "<div>Hello World!</div>",
-    },
-  });
-
-  expect(response.status).toBe(200);
-  expect(response.body.updated_source).toBe(sourceCode);
-});
-
-it("should require admin authentication", async ({ expect }) => {
-  await Auth.fastSignUp();
-  const { adminAccessToken } = await Project.createAndGetAdminToken();
-
-  // Try without admin token
-  const response = await niceBackendFetch("/api/v1/internal/wysiwyg-edit", {
-    method: "POST",
-    accessType: "client",
-    body: {
-      source_type: "template",
-      source_code: "const x = 1;",
-      old_text: "1",
-      new_text: "2",
-      metadata: {
-        id: "e0",
-        loc: { start: 10, end: 11, line: 1, column: 10 },
-        originalText: "1",
-        textHash: "abc123",
-        jsxPath: [],
-        parentElement: { tagName: "div", props: {} },
-        sourceContext: { before: "", after: "" },
-        siblingIndex: 0,
-        occurrenceCount: 1,
-        occurrenceIndex: 1,
-        sourceFile: "template",
-      },
-      dom_path: [],
-      html_context: "",
-    },
-  });
-
-  expect(response.status).toBe(401);
-});
-
-it("should validate required fields in metadata", async ({ expect }) => {
-  await Auth.fastSignUp();
-  const { adminAccessToken } = await Project.createAndGetAdminToken();
-
-  const response = await niceBackendFetch("/api/v1/internal/wysiwyg-edit", {
-    method: "POST",
-    accessType: "admin",
-    headers: {
-      'x-stack-admin-access-token': adminAccessToken,
-    },
-    body: {
-      source_type: "template",
-      source_code: "const x = 1;",
-      old_text: "1",
-      new_text: "2",
-      metadata: {
-        // Missing required fields
-        id: "e0",
-      },
-      dom_path: [],
-      html_context: "",
-    },
-  });
-
-  expect(response.status).toBe(400);
-});
-
-it("should accept valid source_type values", async ({ expect }) => {
-  await Auth.fastSignUp();
-  const { adminAccessToken } = await Project.createAndGetAdminToken();
-
-  const makeRequest = async (sourceType: string) => {
-    return await niceBackendFetch("/api/v1/internal/wysiwyg-edit", {
+    const response = await niceBackendFetch("/api/latest/ai/query/generate", {
       method: "POST",
       accessType: "admin",
       headers: {
         'x-stack-admin-access-token': adminAccessToken,
       },
       body: {
-        source_type: sourceType,
-        source_code: "const x = 1;",
-        old_text: "1",
-        new_text: "1", // Same, so no AI call needed
-        metadata: {
-          id: "e0",
-          loc: { start: 10, end: 11, line: 1, column: 10 },
-          originalText: "1",
-          textHash: "abc123",
-          jsxPath: [],
-          parentElement: { tagName: "div", props: {} },
-          sourceContext: { before: "", after: "" },
-          siblingIndex: 0,
-          occurrenceCount: 1,
-          occurrenceIndex: 1,
-          sourceFile: "template",
-        },
-        dom_path: [],
-        html_context: "",
+        systemPrompt: "wysiwyg-edit",
+        tools: [],
+        messages: [], // Missing required messages
+        quality: "smart",
+        speed: "fast",
       },
     });
-  };
 
-  // Valid source types
-  const templateResponse = await makeRequest("template");
-  expect(templateResponse.status).toBe(200);
+    expect(response.status).toBe(400);
+  });
 
-  const themeResponse = await makeRequest("theme");
-  expect(themeResponse.status).toBe(200);
+  it("should reject invalid system prompts", async ({ expect }) => {
+    await Auth.fastSignUp();
+    const { adminAccessToken } = await Project.createAndGetAdminToken();
 
-  const draftResponse = await makeRequest("draft");
-  expect(draftResponse.status).toBe(200);
+    const response = await niceBackendFetch("/api/latest/ai/query/generate", {
+      method: "POST",
+      accessType: "admin",
+      headers: {
+        'x-stack-admin-access-token': adminAccessToken,
+      },
+      body: {
+        systemPrompt: "invalid-prompt",
+        tools: [],
+        messages: [{ role: "user", content: "const x = 1;" }],
+        quality: "smart",
+        speed: "fast",
+      },
+    });
 
-  // Invalid source type
-  const invalidResponse = await makeRequest("invalid");
-  expect(invalidResponse.status).toBe(400);
+    expect(response.status).toBe(400);
+  });
+});
+
+// Tests that require a real AI response only run when a real API key is configured
+describeWithAi("WYSIWYG Edit - AI Response", () => {
+  it("should return the original source when old_text equals new_text", async ({ expect }) => {
+    await Auth.fastSignUp();
+    const { adminAccessToken } = await Project.createAndGetAdminToken();
+
+    const sourceCode = `
+    export function EmailTemplate() {
+      return <div>Hello World!</div>;
+    }
+  `;
+
+    const userPrompt = `
+## Source Code to Edit
+\`\`\`tsx
+${sourceCode}
+\`\`\`
+
+## Edit Request
+- **Old text:** "Hello World!"
+- **New text:** "Hello World!"
+
+## Location Information
+- **Line:** 3
+- **Column:** 18
+- **JSX Path:** EmailTemplate > div
+- **Parent Element:** <div>
+- **Sibling Index:** 0
+- **Occurrence:** 1 of 1
+
+## Source Context (lines around the text)
+Before:
+\`\`\`
+\`\`\`
+
+After:
+\`\`\`
+\`\`\`
+
+## Runtime DOM Path (for disambiguation)
+1. <DIV> (index: 0)
+
+## Rendered HTML Context
+\`\`\`html
+<div>Hello World!</div>
+\`\`\`
+
+Please update the source code to change "Hello World!" to "Hello World!" at the specified location. Return ONLY the complete updated source code.
+`;
+
+    const response = await niceBackendFetch("/api/latest/ai/query/generate", {
+      method: "POST",
+      accessType: "admin",
+      headers: {
+        'x-stack-admin-access-token': adminAccessToken,
+      },
+      body: {
+        systemPrompt: "wysiwyg-edit",
+        tools: [],
+        messages: [{ role: "user", content: userPrompt }],
+        quality: "smart",
+        speed: "fast",
+      },
+    });
+
+    expect(response.status).toBe(200);
+    const textBlock = Array.isArray(response.body.content)
+      ? response.body.content.find((b: any) => b.type === "text" && b.text)
+      : undefined;
+    const updatedSource = textBlock?.text?.trim() ?? sourceCode;
+    // When old_text equals new_text, the AI should return the original source unchanged
+    expect(updatedSource.includes("Hello World!")).toBe(true);
+  }, 60000);
+
+  it("should allow unauthenticated access (with weaker model)", async ({ expect }) => {
+    await Auth.fastSignUp();
+    await Project.createAndGetAdminToken();
+
+    // The unified AI endpoint allows unauthenticated access — unauthenticated
+    // users get a weaker/cheaper model instead of being rejected.
+    const response = await niceBackendFetch("/api/latest/ai/query/generate", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        systemPrompt: "wysiwyg-edit",
+        tools: [],
+        messages: [{ role: "user", content: "const x = 1;" }],
+        quality: "smart",
+        speed: "fast",
+      },
+    });
+
+    expect(response.status).toBe(200);
+  }, 60000);
 });

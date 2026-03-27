@@ -1,6 +1,6 @@
 "use client";
 
-import { DesignDataTable } from "@/components/design-components/table";
+import { DesignDataTable } from "@/components/design-components";
 import { useRouter } from "@/components/router";
 import { Spinner, Typography } from "@/components/ui";
 import { AdminEmailOutbox, AdminEmailOutboxStatus } from "@stackframe/stack";
