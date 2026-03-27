@@ -58,7 +58,7 @@ import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } 
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getAnalyticsBaseUrl, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveConstructorOptions } from "./common";
 import { EventTracker } from "./event-tracker";
-import { crossDomainAuthQueryParams, getCrossDomainHandoffParamsFromCurrentUrl, planRedirectToHandler, resolveAppUrlsForCurrentPage } from "./redirect-page-urls";
+import { crossDomainAuthQueryParams, getCrossDomainHandoffParamsFromCurrentUrl, planRedirectToHandler } from "./redirect-page-urls";
 import type { CrossDomainHandoffParams } from "./redirect-page-urls";
 import { AnalyticsOptions, SessionRecorder, analyticsOptionsFromJson, analyticsOptionsToJson } from "./session-replay";
 
@@ -2244,20 +2244,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
 
   get urls(): Readonly<ResolvedHandlerUrls> {
-    const resolved = getUrls(this._urlOptions, { projectId: this.projectId });
-    if (isReactServer || typeof window === "undefined") {
-      return resolved;
-    }
-
-    const currentUrl = new URL(window.location.href);
-    const localOAuthCallbackUrl = this._getLocalOAuthCallbackHandlerUrl();
-    const crossDomainHandoffParams = this._getCrossDomainHandoffParamsForUrlsGetter(currentUrl);
-    return resolveAppUrlsForCurrentPage({
-      resolvedUrls: resolved,
-      currentUrl,
-      crossDomainHandoffParams,
-      localOAuthCallbackUrl,
-    });
+    return getUrls(this._urlOptions, { projectId: this.projectId });
   }
 
   protected _prefetchCrossDomainHandoffParamsIfNeeded() {

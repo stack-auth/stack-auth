@@ -65,6 +65,8 @@ const availablePaths = {
   onboarding: 'onboarding',
 } as const;
 
+const placeholderOrigin = "http://example.com";
+
 const pathAliases = {
   // also includes the uppercase and non-dashed versions
   ...Object.fromEntries(Object.entries(availablePaths).map(([key, value]) => [value, value])),
@@ -258,14 +260,16 @@ export function StackHandlerClient(props: BaseHandlerProps & Partial<RouteProps>
     if (isCrossDomainLocalOauthCallback) {
       return;
     }
-    const urlObject = new URL(url, window.location.origin);
-    const isLocalHandlerTarget = urlObject.origin === window.location.origin
-      && (urlObject.pathname === handlerPath || urlObject.pathname.startsWith(`${handlerPath}/`));
+    const urlObject = new URL(url, placeholderOrigin);
+    const isHandlerPathTarget = urlObject.pathname === handlerPath || urlObject.pathname.startsWith(`${handlerPath}/`);
+    const isLocalHandlerTarget = typeof window === "undefined"
+      ? isHandlerPathTarget
+      : urlObject.origin === window.location.origin && isHandlerPathTarget;
     if (isLocalHandlerTarget) {
       return;
     }
 
-    const urlObj = new URL(url, "http://example.com");
+    const urlObj = new URL(url, placeholderOrigin);
     for (const [key, value] of Object.entries(searchParams)) {
       urlObj.searchParams.set(key, value);
     }

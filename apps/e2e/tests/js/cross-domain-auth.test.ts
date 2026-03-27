@@ -82,7 +82,7 @@ it("adds secure cross-domain handoff parameters when redirecting to hosted sign-
   });
 });
 
-it("includes redirect-back params in app.urls.signIn for hosted flows", async ({ expect }) => {
+it("returns static app.urls.signIn for hosted flows", async ({ expect }) => {
   await withHostedDomainSuffix(async () => {
     const projectId = "44444444-4444-4444-8444-444444444444";
     const currentHref = `${localRedirectUrl}/private-page?foo=bar`;
@@ -102,19 +102,10 @@ it("includes redirect-back params in app.urls.signIn for hosted flows", async ({
       const signInUrl = new URL(clientApp.urls.signIn);
       expect(signInUrl.origin).toBe(`https://${projectId}.example-stack-hosted.test`);
       expect(signInUrl.pathname).toBe("/handler/sign-in");
-      expect(signInUrl.searchParams.get("stack_cross_domain_after_callback_redirect_url")).toBe(currentHref);
-
-      const callbackUrl = new URL(signInUrl.searchParams.get("after_auth_return_to") ?? "");
-      expect(callbackUrl.origin).toBe(new URL(localRedirectUrl).origin);
-      expect(callbackUrl.pathname).toBe("/handler/oauth-callback");
-      expect(callbackUrl.searchParams.get("stack_cross_domain_auth")).toBe("1");
-
-      const maybeState = signInUrl.searchParams.get("stack_cross_domain_state");
-      const maybeChallenge = signInUrl.searchParams.get("stack_cross_domain_code_challenge");
-      if (maybeState != null || maybeChallenge != null) {
-        expect(maybeState).toEqual(expect.any(String));
-        expect(maybeChallenge).toEqual(expect.any(String));
-      }
+      expect(signInUrl.searchParams.get("after_auth_return_to")).toBeNull();
+      expect(signInUrl.searchParams.get("stack_cross_domain_state")).toBeNull();
+      expect(signInUrl.searchParams.get("stack_cross_domain_code_challenge")).toBeNull();
+      expect(signInUrl.searchParams.get("stack_cross_domain_after_callback_redirect_url")).toBeNull();
     } finally {
       globalThis.window = previousWindow;
       globalThis.document = previousDocument;
@@ -122,7 +113,7 @@ it("includes redirect-back params in app.urls.signIn for hosted flows", async ({
   });
 });
 
-it("includes after_auth_return_to in app.urls.signOut for hosted flows", async ({ expect }) => {
+it("returns static app.urls.signOut for hosted flows", async ({ expect }) => {
   await withHostedDomainSuffix(async () => {
     const projectId = "55555555-5555-4555-8555-555555555555";
     const currentHref = `${localRedirectUrl}/signed-in-page?foo=bar`;
@@ -142,7 +133,7 @@ it("includes after_auth_return_to in app.urls.signOut for hosted flows", async (
       const signOutUrl = new URL(clientApp.urls.signOut);
       expect(signOutUrl.origin).toBe(`https://${projectId}.example-stack-hosted.test`);
       expect(signOutUrl.pathname).toBe("/handler/sign-out");
-      expect(signOutUrl.searchParams.get("after_auth_return_to")).toBe(currentHref);
+      expect(signOutUrl.searchParams.get("after_auth_return_to")).toBeNull();
     } finally {
       globalThis.window = previousWindow;
       globalThis.document = previousDocument;

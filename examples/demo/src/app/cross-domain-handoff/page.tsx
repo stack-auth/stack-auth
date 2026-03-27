@@ -10,7 +10,6 @@ export default function CrossDomainHandoffPage() {
   const user = useUser();
 
   const currentUrl = typeof window === "undefined" ? "unknown" : window.location.href;
-  const isHostedSignIn = app.urls.signIn.startsWith("https://");
   const extraRedirectActions: Array<{ label: string, run: () => Promise<void> }> = [
     { label: "redirectToAccountSettings()", run: async () => await app.redirectToAccountSettings() },
     { label: "redirectToHome()", run: async () => await app.redirectToHome() },
@@ -26,11 +25,11 @@ export default function CrossDomainHandoffPage() {
     { label: "redirectToError()", run: async () => await app.redirectToError() },
   ];
   const rawUrlActions: Array<{ label: string, href: string }> = [
-    { label: "Account Settings URL", href: app.urls.accountSettings },
-    { label: "OAuth Callback URL", href: app.urls.oauthCallback },
-    { label: "Team Invitation URL", href: app.urls.teamInvitation },
-    { label: "MFA URL", href: app.urls.mfa },
-    { label: "Error URL", href: app.urls.error },
+    { label: "Account Settings URL", href: "/handler/account-settings" },
+    { label: "OAuth Callback URL", href: "/handler/oauth-callback" },
+    { label: "Team Invitation URL", href: "/handler/team-invitation" },
+    { label: "MFA URL", href: "/handler/mfa" },
+    { label: "Error URL", href: "/handler/error" },
   ];
 
   return (
@@ -49,11 +48,10 @@ export default function CrossDomainHandoffPage() {
             <div className="space-y-2 text-sm">
               <div><span className="font-semibold">Signed in:</span> {user ? "yes" : "no"}</div>
               <div><span className="font-semibold">Current URL:</span> <code>{currentUrl}</code></div>
-              <div><span className="font-semibold">Sign-in URL:</span> <code>{app.urls.signIn}</code></div>
-              <div><span className="font-semibold">OAuth callback URL:</span> <code>{app.urls.oauthCallback}</code></div>
+              <div><span className="font-semibold">Sign-in route:</span> <code>/handler/sign-in</code></div>
+              <div><span className="font-semibold">OAuth callback route:</span> <code>/handler/oauth-callback</code></div>
               <div>
-                <span className="font-semibold">Cross-domain mode:</span>{" "}
-                {isHostedSignIn ? "active (hosted sign-in URL is absolute)" : "inactive (sign-in URL is local/relative)"}
+                <span className="font-semibold">Cross-domain mode:</span> driven by redirect methods and current URL state
               </div>
             </div>
           </CardContent>

@@ -149,7 +149,10 @@ Q: Why did EventTracker throw `Reflect.get called on non-object` in JS cookie te
 A: Partial browser mocks can expose `window` without a real `history` object. Calling `Reflect.get(historyObject, "pushState")` throws before type checks. Use normal guarded access (`Object.getOwnPropertyDescriptor(window, "history")?.value`) plus type guards for `pushState`/`replaceState`, and patch/restore methods directly without `Reflect`.
 
 Q: How are custom handler URL target versions validated?
-A: In `packages/template/src/lib/stack-app/url-targets.ts`, `{ type: "custom", url, version }` always allows `version: 0`. Any non-zero version is only allowed when that version exists in `customPagePrompts[handlerName].versions`; otherwise resolution throws `StackAssertionError` including `supportedVersions`.
+A: In `packages/template/src/lib/stack-app/url-targets.ts`, custom targets are only allowed for handler names listed in `customPagePrompts` (not for `handler`). For allowed pages, `version: 0` is always accepted and non-zero versions must exist in `customPagePrompts[handlerName].versions`; otherwise an error is thrown.
 
-Q: What ordering matters for custom handler URL target version checks?
-A: In `resolveCustomTargetUrl` (`packages/template/src/lib/stack-app/url-targets.ts`), check `version === 0` before handler-name eligibility checks. Otherwise `{ type: "custom", version: 0 }` can be incorrectly rejected for `handler`, breaking legacy string-alias behavior.
+Q: How should `StackHandlerClient.redirectIfNotHandler` avoid SSR `window` crashes?
+A: In `packages/template/src/components-page/stack-handler-client.tsx`, parse handler URLs with a placeholder origin (`http://example.com`) and avoid reading `window` on the server path. For SSR, compare only handler path shape; for browser, keep origin+path checks using `window.location.origin`.
+
+Q: What is the current `app.urls` contract after deprecating runtime URL mutation?
+A: `app.urls` is now static (`getUrls(...)` only) and no longer injects runtime `after_auth_return_to` / `stack_cross_domain_*` params from `window.location`. For navigation flows, examples and consumers should use `redirectToXyz()` methods instead (for example `redirectToSignIn()` / `redirectToSignOut()`), while tests for hosted flows should assert dynamic params on actual redirect methods, not on `app.urls`.
