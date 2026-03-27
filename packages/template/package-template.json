@@ -86,6 +86,10 @@
     "LICENSE"
   ],
   "dependencies": {
+    "//": "NEXT_LINE_PLATFORM react-like",
+    "@ai-sdk/react": "^3.0.72",
+    "//": "NEXT_LINE_PLATFORM react-like",
+    "ai": "^6.0.0",
     "@hookform/resolvers": "^5.2.2",
     "//": "NEXT_LINE_PLATFORM react-like",
     "@stripe/react-stripe-js": "^3.8.1",

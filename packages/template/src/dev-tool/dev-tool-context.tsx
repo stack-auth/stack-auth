@@ -6,7 +6,7 @@ import { stackAppInternalsSymbol, type StackClientApp } from "../lib/stack-app";
 
 // IF_PLATFORM react-like
 
-export type TabId = 'overview' | 'components' | 'docs' | 'dashboard' | 'console' | 'support';
+export type TabId = 'overview' | 'components' | 'ai' | 'docs' | 'dashboard' | 'console' | 'support';
 
 export type RegisteredComponent = {
   name: string;
@@ -32,7 +32,12 @@ export type EventLogEntry = {
   message: string;
 };
 
-export type ConsoleSubTab = 'console' | 'events' | 'info';
+export type ConsoleSubTab = 'logs' | 'config';
+
+export type SupportPrefill = {
+  feedbackType: 'bug';
+  message: string;
+};
 
 export type DevToolState = {
   isOpen: boolean;
@@ -40,6 +45,8 @@ export type DevToolState = {
   consoleSubTab: ConsoleSubTab;
   panelWidth: number;
   panelHeight: number;
+  supportPrefill?: SupportPrefill;
+  showExportDialog?: boolean;
 };
 
 const STORAGE_KEY = '__stack-dev-tool-state';
@@ -48,7 +55,7 @@ const MAX_LOG_ENTRIES = 500;
 const DEFAULT_STATE: DevToolState = {
   isOpen: false,
   activeTab: 'overview',
-  consoleSubTab: 'console',
+  consoleSubTab: 'logs',
   panelWidth: 800,
   panelHeight: 520,
 };

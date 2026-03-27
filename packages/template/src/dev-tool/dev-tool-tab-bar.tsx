@@ -7,7 +7,7 @@ import React, { useEffect, useRef, useState } from "react";
 export type TabDef<T extends string = string> = {
   id: T;
   label: string;
-  icon?: string;
+  icon?: React.ReactNode;
 };
 
 /**
@@ -29,13 +29,12 @@ function useTabIndicator<T extends string>(
     const btn = bar.querySelector<HTMLElement>(`[data-tab-id="${activeTab}"]`);
     if (!btn) return;
 
-    const barRect = bar.getBoundingClientRect();
-    const btnRect = btn.getBoundingClientRect();
-
+    // Use offset* instead of getBoundingClientRect so the measurement isn't
+    // affected by CSS transforms (e.g. the panel's scale-in animation).
     setStyle({
-      transform: `translateX(${btnRect.left - barRect.left}px)`,
-      width: `${btnRect.width}px`,
-      height: `${btnRect.height}px`,
+      transform: `translateX(${btn.offsetLeft}px)`,
+      width: `${btn.offsetWidth}px`,
+      height: `${btn.offsetHeight}px`,
       opacity: 1,
       transition: initialRef.current ? 'none' : undefined,
     });

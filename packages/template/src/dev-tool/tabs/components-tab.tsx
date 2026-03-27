@@ -1,47 +1,55 @@
 "use client";
 
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import React, { Suspense, useEffect, useState } from "react";
+import React, { Suspense, useMemo, useState } from "react";
 import { TooltipProvider } from "@stackframe/stack-ui";
 import { CATALOG_NAMES, COMPONENT_CATALOG } from "../component-catalog";
-import { DevToolComponentPreviewProvider, globalRegistry } from "../hooks/use-component-registry";
+import { DevToolComponentPreviewProvider } from "../hooks/use-component-registry";
+import { useStackApp } from "../../lib/hooks";
+import type { HandlerUrls } from "../../lib/stack-app/common";
 
 // IF_PLATFORM react-like
 
-type ComponentInfo = {
-  name: string;
-  instanceId: string;
-  props: Record<string, unknown>;
-  mountedAt: number;
+/**
+ * Pages that should appear in the "Pages" section of the left sidebar.
+ * Maps HandlerUrls keys to display labels.
+ */
+const PAGE_ENTRIES: { key: keyof HandlerUrls; label: string }[] = [
+  { key: "signIn", label: "Sign-in" },
+  { key: "signUp", label: "Sign-up" },
+  { key: "forgotPassword", label: "Forgot password" },
+  { key: "passwordReset", label: "Password reset" },
+  { key: "emailVerification", label: "Email verification" },
+  { key: "accountSettings", label: "Account settings" },
+  { key: "teamInvitation", label: "Team invitation" },
+  { key: "mfa", label: "MFA" },
+  { key: "onboarding", label: "Onboarding" },
+  { key: "error", label: "Error" },
+];
+
+/**
+ * Components that are page-level (rendered full-screen via StackHandler).
+ * These are shown in the Pages section, not the Components section.
+ */
+const PAGE_COMPONENT_NAMES = new Set([
+  "AccountSettings",
+  "AuthPage",
+  "EmailVerification",
+  "ForgotPassword",
+  "PasswordReset",
+  "SignIn",
+  "SignUp",
+]);
+
+function isHostedUrl(url: string, handlerBase: string): boolean {
+  return url === handlerBase || url.startsWith(handlerBase + "/");
+}
+
+type PageInfo = {
+  key: keyof HandlerUrls;
+  label: string;
+  url: string;
+  hosted: boolean;
 };
-
-function formatTime(timestamp: number): string {
-  const date = new Date(timestamp);
-  return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
-}
-
-function formatPropValue(value: unknown): string {
-  if (value === undefined) return 'undefined';
-  if (value === null) return 'null';
-  if (typeof value === 'boolean') return value.toString();
-  if (typeof value === 'string') return `"${value}"`;
-  if (typeof value === 'number') return value.toString();
-  if (typeof value === 'function') return 'fn()';
-  if (typeof value === 'object') {
-    try {
-      return JSON.stringify(value, null, 0).slice(0, 80);
-    } catch {
-      return '[Object]';
-    }
-  }
-  return String(value);
-}
-
-function getInstancesForName(components: Map<string, ComponentInfo>, name: string): ComponentInfo[] {
-  return [...components.values()]
-    .filter((c) => c.name === name)
-    .sort((a, b) => a.mountedAt - b.mountedAt);
-}
 
 function sanitizeForPreview(value: unknown, seen: WeakSet<object> = new WeakSet()): unknown {
   if (typeof value === "function") {
@@ -189,40 +197,11 @@ function getBuiltInPrompt(name: string, propsSnapshot: Record<string, unknown>):
   return promptLines.join("\n");
 }
 
-function getCustomPrompt(name: string, propsSnapshot: Record<string, unknown>, displayName?: string): string {
-  const sanitized = sanitizeForPrompt(propsSnapshot) as Record<string, unknown>;
-  const promptLines = [
-    `Implement the React component \`${displayName ?? name}\` so it matches the dev tool preview and preserves the existing public API.`,
-    "",
-    "Requirements:",
-    "- Keep the component name and external behavior aligned with the existing app.",
-    "- Reuse the current design system and surrounding app patterns instead of inventing a new UI direction.",
-    "- Treat the prop snapshot below as the starting contract unless the codebase already defines something stricter.",
-    "",
-    "Start from this JSX usage:",
-    "```tsx",
-    formatJsxSnippet(name, propsSnapshot),
-    "```",
-  ];
-
-  if (Object.keys(sanitized).length > 0) {
-    promptLines.push(
-      "",
-      "Current prop snapshot from the dev tool:",
-      "```json",
-      JSON.stringify(sanitized, null, 2),
-      "```"
-    );
-  }
-
-  return promptLines.join("\n");
-}
-
-function getImplementationPrompt(name: string, propsSnapshot: Record<string, unknown>, displayName?: string): string {
+function getImplementationPrompt(name: string, propsSnapshot: Record<string, unknown>): string {
   if (name in COMPONENT_CATALOG) {
     return getBuiltInPrompt(name, propsSnapshot);
   }
-  return getCustomPrompt(name, propsSnapshot, displayName);
+  return "";
 }
 
 type PreviewErrorBoundaryState = { error: Error | null };
@@ -251,11 +230,9 @@ class PreviewErrorBoundary extends React.Component<
 }
 
 /**
- * Renders a live preview of a catalog component. Uses the catalog entry's
- * `preview` field: `'none'` skips it, a function overrides, otherwise the
- * component is rendered directly with the given props.
+ * Renders a live preview of a catalog component.
  */
-function DevToolComponentPreview({ name, propsSnapshot }: { name: string; propsSnapshot: Record<string, unknown> }) {
+function DevToolComponentPreview({ name }: { name: string }) {
   if (!Object.prototype.hasOwnProperty.call(COMPONENT_CATALOG, name)) {
     return <div className="sdt-preview-unavailable">Unknown component: {name}</div>;
   }
@@ -269,10 +246,9 @@ function DevToolComponentPreview({ name, propsSnapshot }: { name: string; propsS
     );
   }
 
-  const sanitized = sanitizeForPreview(propsSnapshot) as Record<string, unknown>;
   const content = entry.preview
-    ? entry.preview(sanitized)
-    : React.createElement(entry.component, sanitized);
+    ? entry.preview({})
+    : React.createElement(entry.component, {});
 
   return (
     <PreviewErrorBoundary>
@@ -287,11 +263,11 @@ function DevToolComponentPreview({ name, propsSnapshot }: { name: string; propsS
 
 function ComponentPreviewHeader(props: {
   name: string;
-  propsSnapshot: Record<string, unknown>;
-  displayName?: string;
 }) {
   const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
-  const prompt = getImplementationPrompt(props.name, props.propsSnapshot, props.displayName);
+  const prompt = getImplementationPrompt(props.name, {});
+
+  if (!prompt) return null;
 
   return (
     <div className="sdt-component-preview-header">
@@ -316,264 +292,114 @@ function ComponentPreviewHeader(props: {
   );
 }
 
-function MountedComponentDetail({ component }: { component: ComponentInfo }) {
-  const propEntries = Object.entries(component.props).filter(
-    ([key]) => key !== 'children'
-  );
-
-  return (
-    <div className="sdt-component-detail">
-      <h3>&lt;{component.name} /&gt;</h3>
-      <div className="sdt-component-detail-sub">
-        Mounted at {formatTime(component.mountedAt)} &bull; Instance: {component.instanceId}
-      </div>
-
-      <ComponentPreviewHeader
-        name={component.name}
-        propsSnapshot={component.props}
-      />
-      <div className="sdt-component-preview-frame">
-        <DevToolComponentPreview
-          key={component.instanceId}
-          name={component.name}
-          propsSnapshot={component.props}
-        />
-      </div>
-
-      {propEntries.length > 0 ? (
-        <table className="sdt-props-table">
-          <thead>
-            <tr>
-              <th>Prop</th>
-              <th>Value</th>
-            </tr>
-          </thead>
-          <tbody>
-            {propEntries.map(([key, value]) => (
-              <tr key={key}>
-                <td>{key}</td>
-                <td>{formatPropValue(value)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      ) : (
-        <div className="sdt-empty-state" style={{ padding: '20px' }}>
-          <div>No props passed</div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-function UnmountedComponentDetail({ name }: { name: string }) {
+function ComponentDetail({ name }: { name: string }) {
   return (
     <div className="sdt-component-detail">
       <h3>&lt;{name} /&gt;</h3>
-      <div className="sdt-component-detail-sub">Not mounted on the current route</div>
 
-      <ComponentPreviewHeader
-        name={name}
-        propsSnapshot={{}}
-      />
+      <ComponentPreviewHeader name={name} />
       <div className="sdt-component-preview-frame">
-        <DevToolComponentPreview name={name} propsSnapshot={{}} />
+        <DevToolComponentPreview name={name} />
       </div>
-
-      <p className="sdt-unmounted-hint">
-        This component is not rendered on the current page.
-      </p>
     </div>
   );
 }
 
-function ComponentNameRows(props: {
-  names: readonly string[];
-  labelForName: (name: string) => string;
-  components: Map<string, ComponentInfo>;
-  selectedInstanceId: string | null;
-  selectedUnmountedName: string | null;
-  expandedNames: Set<string>;
-  setExpandedNames: React.Dispatch<React.SetStateAction<Set<string>>>;
-  setSelectedInstanceId: (id: string | null) => void;
-  setSelectedUnmountedName: (name: string | null) => void;
-}) {
-  const {
-    names,
-    labelForName,
-    components,
-    selectedInstanceId,
-    selectedUnmountedName,
-    expandedNames,
-    setExpandedNames,
-    setSelectedInstanceId,
-    setSelectedUnmountedName,
-  } = props;
+function PageDetail({ page }: { page: PageInfo }) {
+  const fullUrl = typeof window !== "undefined"
+    ? new URL(page.url, window.location.origin).toString()
+    : page.url;
 
   return (
-    <>
-      {names.map((name) => {
-        const instances = getInstancesForName(components, name);
-        const inUse = instances.length > 0;
-        const isExpanded = expandedNames.has(name);
-        const rowSelected =
-          (selectedUnmountedName === name && !inUse) ||
-          (inUse && instances.some((i) => i.instanceId === selectedInstanceId));
-
-        const openOrSelect = () => {
-          setSelectedUnmountedName(null);
-          if (!inUse) {
-            setSelectedInstanceId(null);
-            setSelectedUnmountedName(name);
-            return;
-          }
-          if (instances.length === 1) {
-            setSelectedInstanceId(instances[0].instanceId);
-            return;
-          }
-          setExpandedNames((prev) => {
-            const next = new Set(prev);
-            if (next.has(name)) {
-              next.delete(name);
-            } else {
-              next.add(name);
-            }
-            return next;
-          });
-        };
-
-        return (
-          <React.Fragment key={name}>
-            <div
-              className="sdt-component-item"
-              data-selected={rowSelected}
-              onClick={openOrSelect}
-            >
-              <span
-                className={`sdt-component-status ${inUse ? "sdt-component-status--on" : "sdt-component-status--off"}`}
-                title={inUse ? "In use on this page" : "Not mounted on this page"}
-              />
-              <span>{labelForName(name)}</span>
-              {instances.length > 1 && (
-                <span className="sdt-component-expand" aria-hidden>
-                  {instances.length}×{isExpanded ? " \u2212" : " +"}
-                </span>
-              )}
-            </div>
-            {instances.length > 1 && isExpanded
-              ? instances.map((inst, index) => (
-                <div
-                  key={inst.instanceId}
-                  className="sdt-component-item sdt-component-item-nested"
-                  data-selected={selectedInstanceId === inst.instanceId}
-                  onClick={(e) => {
-                      e.stopPropagation();
-                      setSelectedUnmountedName(null);
-                      setSelectedInstanceId(inst.instanceId);
-                  }}
-                >
-                  <span className="sdt-component-status sdt-component-status--on" />
-                  <span>
-                      #{index + 1} · {formatTime(inst.mountedAt)}
-                  </span>
-                </div>
-              ))
-              : null}
-          </React.Fragment>
-        );
-      })}
-    </>
+    <div className="sdt-component-detail">
+      <h3>{page.label}</h3>
+      <div className="sdt-component-detail-sub">
+        <span className={`sdt-badge ${page.hosted ? "sdt-badge-info" : "sdt-badge-success"}`}>
+          {page.hosted ? "Hosted" : "Custom"}
+        </span>
+        <span style={{ marginLeft: 8, fontFamily: "var(--sdt-font-mono)", fontSize: 12 }}>{page.url}</span>
+      </div>
+      <div className="sdt-page-iframe-frame">
+        <iframe
+          src={fullUrl}
+          title={page.label}
+          className="sdt-page-iframe"
+        />
+      </div>
+    </div>
   );
 }
 
+type Selection =
+  | { type: "page"; key: keyof HandlerUrls }
+  | { type: "component"; name: string };
+
 export function ComponentsTab() {
-  const [components, setComponents] = useState<Map<string, ComponentInfo>>(
-    () => new Map(globalRegistry.components)
+  const app = useStackApp();
+  const urls = app.urls;
+  const handlerBase = urls.handler;
+  const [selection, setSelection] = useState<Selection | null>(null);
+
+  const pages = useMemo<PageInfo[]>(() =>
+    PAGE_ENTRIES.map((entry) => ({
+      key: entry.key,
+      label: entry.label,
+      url: urls[entry.key],
+      hosted: isHostedUrl(urls[entry.key], handlerBase),
+    })),
+    [urls, handlerBase]
   );
-  const [catalog, setCatalog] = useState(() => new Map(globalRegistry.customCatalog));
-  const [selectedInstanceId, setSelectedInstanceId] = useState<string | null>(null);
-  const [selectedUnmountedName, setSelectedUnmountedName] = useState<string | null>(null);
-  const [expandedNames, setExpandedNames] = useState<Set<string>>(() => new Set());
 
-  useEffect(() => {
-    setComponents(new Map(globalRegistry.components));
-    setCatalog(new Map(globalRegistry.customCatalog));
-    return globalRegistry.subscribe(() => {
-      setComponents(new Map(globalRegistry.components));
-      setCatalog(new Map(globalRegistry.customCatalog));
-    });
-  }, []);
+  const componentNames = useMemo(
+    () => CATALOG_NAMES.filter((name) => !PAGE_COMPONENT_NAMES.has(name)),
+    []
+  );
 
-  useEffect(() => {
-    if (selectedInstanceId == null) {
-      return;
-    }
-    const comp = components.get(selectedInstanceId);
-    if (comp == null) {
-      return;
-    }
-    const group = getInstancesForName(components, comp.name);
-    if (group.length > 1) {
-      setExpandedNames((prev) => new Set(prev).add(comp.name));
-    }
-  }, [selectedInstanceId, components]);
-
-  const builtinSet = new Set(CATALOG_NAMES);
-  const instanceNames = new Set([...components.values()].map((c) => c.name));
-  const extraNames = [...instanceNames].filter((n) => !builtinSet.has(n) && !catalog.has(n));
-  const yourAppNames = [...new Set([...catalog.keys(), ...extraNames])].sort(stringCompare);
-
-  const selectedComponent =
-    selectedInstanceId != null ? components.get(selectedInstanceId) ?? null : null;
-
-  const labelForCatalog = (name: string) => catalog.get(name)?.displayName ?? name;
+  const selectedPage = selection?.type === "page"
+    ? pages.find((p) => p.key === selection.key) ?? null
+    : null;
 
   return (
     <div className="sdt-split-pane">
       <div className="sdt-split-left">
         <div className="sdt-component-list">
-          <div className="sdt-component-group-label">Stack SDK</div>
-          <ComponentNameRows
-            names={CATALOG_NAMES}
-            labelForName={(name) => name}
-            components={components}
-            selectedInstanceId={selectedInstanceId}
-            selectedUnmountedName={selectedUnmountedName}
-            expandedNames={expandedNames}
-            setExpandedNames={setExpandedNames}
-            setSelectedInstanceId={setSelectedInstanceId}
-            setSelectedUnmountedName={setSelectedUnmountedName}
-          />
-          {yourAppNames.length > 0 ? (
-            <>
-              <div className="sdt-component-group-label">Your app</div>
-              <ComponentNameRows
-                names={yourAppNames}
-                labelForName={labelForCatalog}
-                components={components}
-                selectedInstanceId={selectedInstanceId}
-                selectedUnmountedName={selectedUnmountedName}
-                expandedNames={expandedNames}
-                setExpandedNames={setExpandedNames}
-                setSelectedInstanceId={setSelectedInstanceId}
-                setSelectedUnmountedName={setSelectedUnmountedName}
-              />
-            </>
-          ) : null}
+          <div className="sdt-component-group-label">Pages</div>
+          {pages.map((page) => (
+            <div
+              key={page.key}
+              className="sdt-component-item"
+              data-selected={selection?.type === "page" && selection.key === page.key}
+              onClick={() => setSelection({ type: "page", key: page.key })}
+            >
+              <span style={{ flex: 1 }}>{page.label}</span>
+              <span className={`sdt-badge ${page.hosted ? "sdt-badge-info" : "sdt-badge-success"}`}>
+                {page.hosted ? "Hosted" : "Custom"}
+              </span>
+            </div>
+          ))}
+
+          <div className="sdt-component-group-label">Components</div>
+          {componentNames.map((name) => (
+            <div
+              key={name}
+              className="sdt-component-item"
+              data-selected={selection?.type === "component" && selection.name === name}
+              onClick={() => setSelection({ type: "component", name })}
+            >
+              <span>{name}</span>
+            </div>
+          ))}
         </div>
       </div>
       <div className="sdt-split-right">
-        {selectedComponent ? (
-          <MountedComponentDetail component={selectedComponent} />
-        ) : selectedUnmountedName != null ? (
-          <UnmountedComponentDetail name={selectedUnmountedName} />
+        {selectedPage ? (
+          <PageDetail page={selectedPage} />
+        ) : selection?.type === "component" ? (
+          <ComponentDetail name={selection.name} />
         ) : (
           <div className="sdt-empty-state">
             <div className="sdt-empty-state-icon">{'\u2190'}</div>
-            <div>Select a component to view details</div>
-            <div style={{ fontSize: '12px', color: 'var(--sdt-text-tertiary)', marginTop: '8px' }}>
-              Green = mounted on this route. Gray = not rendered here.
-            </div>
+            <div>Select a page or component to view details</div>
           </div>
         )}
       </div>

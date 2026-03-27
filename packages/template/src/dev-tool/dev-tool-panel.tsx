@@ -7,23 +7,32 @@ import { OverviewTab } from "./tabs/overview-tab";
 import { ComponentsTab } from "./tabs/components-tab";
 import { DocsTab } from "./tabs/docs-tab";
 import { DashboardTab } from "./tabs/dashboard-tab";
-import { ConsoleTab } from "./tabs/console-tab";
+import { ConsoleTab, ExportDialog } from "./tabs/console-tab";
 import { SupportTab } from "./tabs/support-tab";
+import { AITab } from "./tabs/ai-tab";
 
 // IF_PLATFORM react-like
 
+const TabIcon = ({ children }: { children: React.ReactNode }) => (
+  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+    {children}
+  </svg>
+);
+
 const TABS: TabDef<TabId>[] = [
-  { id: 'overview', label: 'Overview', icon: '\u2139\uFE0F' },
-  { id: 'components', label: 'Components', icon: '\uD83E\uDDE9' },
-  { id: 'docs', label: 'Docs', icon: '\uD83D\uDCDA' },
-  { id: 'dashboard', label: 'Dashboard', icon: '\uD83D\uDCCA' },
-  { id: 'console', label: 'Console', icon: '\uD83D\uDDA5\uFE0F' },
-  { id: 'support', label: 'Support', icon: '\uD83D\uDCAC' },
+  { id: 'overview', label: 'Overview', icon: <TabIcon><circle cx="12" cy="12" r="10" /><line x1="12" y1="16" x2="12" y2="12" /><line x1="12" y1="8" x2="12.01" y2="8" /></TabIcon> },
+  { id: 'components', label: 'Components', icon: <TabIcon><rect x="3" y="3" width="7" height="7" /><rect x="14" y="3" width="7" height="7" /><rect x="14" y="14" width="7" height="7" /><rect x="3" y="14" width="7" height="7" /></TabIcon> },
+  { id: 'ai', label: 'AI', icon: <TabIcon><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" /></TabIcon> },
+  { id: 'docs', label: 'Docs', icon: <TabIcon><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" /><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z" /></TabIcon> },
+  { id: 'dashboard', label: 'Dashboard', icon: <TabIcon><line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" /></TabIcon> },
+  { id: 'console', label: 'Console', icon: <TabIcon><polyline points="4 17 10 11 4 5" /><line x1="12" y1="19" x2="20" y2="19" /></TabIcon> },
+  { id: 'support', label: 'Support', icon: <TabIcon><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" /></TabIcon> },
 ];
 
 const TAB_COMPONENTS: Record<TabId, React.ComponentType> = {
   overview: OverviewTab,
   components: ComponentsTab,
+  ai: AITab,
   docs: DocsTab,
   dashboard: DashboardTab,
   console: ConsoleTab,
@@ -190,6 +199,10 @@ export function DevToolPanel({ onClose }: { onClose: () => void }) {
           <TabContent activeTab={state.activeTab} />
         </div>
       </div>
+
+      {state.showExportDialog && (
+        <ExportDialog onClose={() => setState((prev) => ({ ...prev, showExportDialog: false }))} />
+      )}
     </div>
   );
 }
