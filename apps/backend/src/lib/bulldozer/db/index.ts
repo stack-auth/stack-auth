@@ -2922,6 +2922,7 @@ export function declareLeftJoinTable<
     compareGroupKeys: options.leftTable.compareGroupKeys,
     compareSortKeys: () => sqlExpression`0`,
     init: () => {
+      const leftGroupsTableName = `left_groups_${generateSecureRandomString()}`;
       const leftRowsTableName = `left_rows_${generateSecureRandomString()}`;
       const rightRowsTableName = `right_rows_${generateSecureRandomString()}`;
       const leftJoinedRowsTableName = `left_joined_rows_${generateSecureRandomString()}`;
@@ -2935,13 +2936,21 @@ export function declareLeftJoinTable<
           (gen_random_uuid(), ${groupsPath}, 'null'::jsonb),
           (gen_random_uuid(), ${getStorageEnginePath(options.tableId, ["metadata"])}, '{ "version": 1 }'::jsonb)
         `,
+        options.leftTable.listGroups({
+          start: "start",
+          end: "end",
+          startInclusive: true,
+          endInclusive: true,
+        }).toStatement(leftGroupsTableName),
         sqlQuery`
           SELECT
-            "rows"."groupkey" AS "groupKey",
+            "groups"."groupkey" AS "groupKey",
             "rows"."rowidentifier" AS "leftRowIdentifier",
             "rows"."rowdata" AS "leftRowData"
-          FROM (
+          FROM ${quoteSqlIdentifier(leftGroupsTableName)} AS "groups"
+          CROSS JOIN LATERAL (
             ${options.leftTable.listRowsInGroup({
+              groupKey: sqlExpression`"groups"."groupkey"`,
               start: "start",
               end: "end",
               startInclusive: true,
@@ -2951,11 +2960,13 @@ export function declareLeftJoinTable<
         `.toStatement(leftRowsTableName),
         sqlQuery`
           SELECT
-            "rows"."groupkey" AS "groupKey",
+            "groups"."groupkey" AS "groupKey",
             "rows"."rowidentifier" AS "rightRowIdentifier",
             "rows"."rowdata" AS "rightRowData"
-          FROM (
+          FROM ${quoteSqlIdentifier(leftGroupsTableName)} AS "groups"
+          CROSS JOIN LATERAL (
             ${options.rightTable.listRowsInGroup({
+              groupKey: sqlExpression`"groups"."groupkey"`,
               start: "start",
               end: "end",
               startInclusive: true,
@@ -3045,15 +3056,17 @@ export function declareLeftJoinTable<
         AND ${singleNullSortKeyRangePredicate({ start, end, startInclusive, endInclusive })}
     ` : sqlQuery`
       SELECT
-        "groupRows"."keyPath"[cardinality("groupRows"."keyPath") - 1] AS groupKey,
+        "groupPath"."keyPath"[cardinality("groupPath"."keyPath")] AS groupKey,
         ("rows"."keyPath"[cardinality("rows"."keyPath")] #>> '{}') AS rowIdentifier,
         'null'::jsonb AS rowSortKey,
         "rows"."value"->'rowData' AS rowData
-      FROM "BulldozerStorageEngine" AS "groupRows"
-      INNER JOIN "BulldozerStorageEngine" AS "rows" ON "rows"."keyPathParent" = "groupRows"."keyPath"
-      WHERE "groupRows"."keyPathParent"[1:cardinality(${groupsPath}::jsonb[])] = ${groupsPath}::jsonb[]
-        AND cardinality("groupRows"."keyPath") = cardinality(${groupsPath}::jsonb[]) + 2
-        AND "groupRows"."keyPath"[cardinality("groupRows"."keyPath")] = to_jsonb('rows'::text)
+      FROM "BulldozerStorageEngine" AS "groupPath"
+      INNER JOIN "BulldozerStorageEngine" AS "groupRowsPath"
+        ON "groupRowsPath"."keyPathParent" = "groupPath"."keyPath"
+      INNER JOIN "BulldozerStorageEngine" AS "rows"
+        ON "rows"."keyPathParent" = "groupRowsPath"."keyPath"
+      WHERE "groupPath"."keyPathParent" = ${groupsPath}::jsonb[]
+        AND "groupRowsPath"."keyPath"[cardinality("groupRowsPath"."keyPath")] = to_jsonb('rows'::text)
         AND ${singleNullSortKeyRangePredicate({ start, end, startInclusive, endInclusive })}
     `,
     registerRowChangeTrigger: (trigger) => {
