@@ -1,6 +1,6 @@
 ---
 title: Self-host
-lastModified: "2026-01-10"
+lastModified: "2026-03-10"
 ---
 
 <Info type="danger">
@@ -77,6 +77,44 @@ Your IDE may show an error on all `@stackframe/XYZ` imports. To fix this, simply
 You can also open Prisma Studio to see the database interface and edit data directly:
 
 <PlatformCodeblock document="others/self-host" examples={["prisma-studio"]} hidePlatformSelector />
+
+## Local Emulator Mode
+
+**Local emulator mode** lets you map projects to local config files during development, instead of creating them through the dashboard.
+
+### Enabling Local Emulator Mode
+
+Set this environment variable in both your backend and dashboard `.env` files:
+
+```
+NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR=true
+```
+
+### How It Works
+
+When local emulator mode is enabled:
+
+1. **Auto-login**: The dashboard automatically signs you in with a pre-configured emulator account
+2. **Config file-based projects**: Instead of "Create Project", you'll see "Open config file" to map a local `stack.config.ts` file to a project
+3. **Branch config from files**: Project configuration is read from and written directly to your local config file
+4. **Read-only environment config**: Environment configuration cannot be modified—make these changes in your production deployment instead
+
+### Opening a Project from a Config File
+
+1. Go to the Projects page in the dashboard
+2. Click **Open config file**
+3. Enter the absolute path to your `stack.config.ts` file (e.g., `/Users/you/myapp/stack.config.ts`)
+4. The emulator will create or reuse a project mapped to that file path
+
+Your config file should export a `config` object:
+
+```ts title="stack.config.ts"
+export const config = {
+  // Your branch configuration
+} as const;
+```
+
+Changes you make to branch-level settings in the dashboard will be written back to this file, making it easy to version control your configuration.
 
 ## Run individual services
 
