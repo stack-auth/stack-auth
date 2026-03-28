@@ -48,7 +48,7 @@ export type DesignListItemRowProps = {
 
 function ListItemButtons({ buttons }: { buttons: DesignListItemButton[] }) {
   return (
-    <div className="relative flex items-center gap-2">
+    <div className="relative flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
       {buttons.map((button) => {
         const display = button.display ?? "text";
 
