@@ -28,8 +28,9 @@ return <div>Hi, {user.displayName}</div>;`,
         language: 'JavaScript',
         framework: 'Next.js',
         code: `NEXT_PUBLIC_STACK_PROJECT_ID=<your-project-id>
-NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>
-STACK_SECRET_SERVER_KEY=<your-secret-server-key>`,
+STACK_SECRET_SERVER_KEY=<your-secret-server-key>
+# Only required if your project is configured to require publishable client keys:
+# NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>`,
         highlightLanguage: 'bash',
         filename: '.env.local'
       },
@@ -39,7 +40,8 @@ STACK_SECRET_SERVER_KEY=<your-secret-server-key>`,
         code: `// Update the values in stack/client.ts created by the wizard
 export const stackClientApp = new StackClientApp({
   projectId: "your-project-id",
-  publishableClientKey: "your-publishable-client-key",
+  // Only include if your project requires publishable client keys:
+  // publishableClientKey: "your-publishable-client-key",
   tokenStore: "cookie",
 });`,
         highlightLanguage: 'typescript',
@@ -49,8 +51,9 @@ export const stackClientApp = new StackClientApp({
         language: 'JavaScript',
         framework: 'Vanilla JavaScript',
         code: `STACK_PROJECT_ID=<your-project-id>
-STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>
-STACK_SECRET_SERVER_KEY=<your-secret-server-key>`,
+STACK_SECRET_SERVER_KEY=<your-secret-server-key>
+# Only required if your project is configured to require publishable client keys:
+# STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>`,
         highlightLanguage: 'bash',
         filename: '.env'
       }
@@ -71,8 +74,9 @@ STACK_SECRET_SERVER_KEY=<your-secret-server-key>`,
         language: 'JavaScript',
         framework: 'Next.js',
         code: `NEXT_PUBLIC_STACK_PROJECT_ID=<your-project-id>
-NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>
-STACK_SECRET_SERVER_KEY=<your-secret-server-key>`,
+STACK_SECRET_SERVER_KEY=<your-secret-server-key>
+# Only required if your project is configured to require publishable client keys:
+# NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>`,
         highlightLanguage: 'bash',
         filename: '.env.local'
       },
@@ -81,7 +85,8 @@ STACK_SECRET_SERVER_KEY=<your-secret-server-key>`,
         framework: 'React',
         code: `# Store these in environment variables or directly in the client file during development
 VITE_STACK_PROJECT_ID=<your-project-id>
-VITE_STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>`,
+# Only required if your project is configured to require publishable client keys:
+# VITE_STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>`,
         highlightLanguage: 'bash',
         filename: '.env'
       },
@@ -89,8 +94,9 @@ VITE_STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>`,
         language: 'JavaScript',
         framework: 'Express',
         code: `STACK_PROJECT_ID=<your-project-id>
-STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>
-STACK_SECRET_SERVER_KEY=<your-secret-server-key>`,
+STACK_SECRET_SERVER_KEY=<your-secret-server-key>
+# Only required if your project is configured to require publishable client keys:
+# STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>`,
         highlightLanguage: 'bash',
         filename: '.env'
       },
@@ -98,8 +104,9 @@ STACK_SECRET_SERVER_KEY=<your-secret-server-key>`,
         language: 'JavaScript',
         framework: 'Node.js',
         code: `STACK_PROJECT_ID=<your-project-id>
-STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>
-STACK_SECRET_SERVER_KEY=<your-secret-server-key>`,
+STACK_SECRET_SERVER_KEY=<your-secret-server-key>
+# Only required if your project is configured to require publishable client keys:
+# STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>`,
         highlightLanguage: 'bash',
         filename: '.env'
       },
@@ -109,18 +116,21 @@ STACK_SECRET_SERVER_KEY=<your-secret-server-key>`,
         code: `import os
 
 stack_project_id = os.getenv("STACK_PROJECT_ID")
-stack_publishable_client_key = os.getenv("STACK_PUBLISHABLE_CLIENT_KEY")
-stack_secret_server_key = os.getenv("STACK_SECRET_SERVER_KEY")`,
+stack_secret_server_key = os.getenv("STACK_SECRET_SERVER_KEY")
+# Only required if your project is configured to require publishable client keys:
+# stack_publishable_client_key = os.getenv("STACK_PUBLISHABLE_CLIENT_KEY")`,
         highlightLanguage: 'python',
         filename: 'settings.py'
       },
       {
-        language: 'Python',        framework: 'FastAPI',
+        language: 'Python',
+        framework: 'FastAPI',
         code: `import os
 
 stack_project_id = os.getenv("STACK_PROJECT_ID")
-stack_publishable_client_key = os.getenv("STACK_PUBLISHABLE_CLIENT_KEY")
-stack_secret_server_key = os.getenv("STACK_SECRET_SERVER_KEY")`,
+stack_secret_server_key = os.getenv("STACK_SECRET_SERVER_KEY")
+# Only required if your project is configured to require publishable client keys:
+# stack_publishable_client_key = os.getenv("STACK_PUBLISHABLE_CLIENT_KEY")`,
         highlightLanguage: 'python',
         filename: 'main.py'
       },
@@ -130,8 +140,9 @@ stack_secret_server_key = os.getenv("STACK_SECRET_SERVER_KEY")`,
         code: `import os
 
 stack_project_id = os.getenv("STACK_PROJECT_ID")
-stack_publishable_client_key = os.getenv("STACK_PUBLISHABLE_CLIENT_KEY")
-stack_secret_server_key = os.getenv("STACK_SECRET_SERVER_KEY")`,
+stack_secret_server_key = os.getenv("STACK_SECRET_SERVER_KEY")
+# Only required if your project is configured to require publishable client keys:
+# stack_publishable_client_key = os.getenv("STACK_PUBLISHABLE_CLIENT_KEY")`,
         highlightLanguage: 'python',
         filename: 'app.py'
       }
@@ -173,7 +184,8 @@ export const stackClientApp = new StackClientApp({
 
 export const stackClientApp = new StackClientApp({
   projectId: process.env.VITE_STACK_PROJECT_ID || "your-project-id",
-  publishableClientKey: process.env.VITE_STACK_PUBLISHABLE_CLIENT_KEY || "your-publishable-client-key",
+  // Only include if your project requires publishable client keys:
+  // publishableClientKey: process.env.VITE_STACK_PUBLISHABLE_CLIENT_KEY,
   tokenStore: "cookie",
   // redirectMethod: { useNavigate }, // Set this for non-Next.js frameworks
 });`,
@@ -188,8 +200,9 @@ export const stackClientApp = new StackClientApp({
 
 export const stackServerApp = new StackServerApp({
   projectId: process.env.STACK_PROJECT_ID,
-  publishableClientKey: process.env.STACK_PUBLISHABLE_CLIENT_KEY,
   secretServerKey: process.env.STACK_SECRET_SERVER_KEY,
+  // Only include if your project requires publishable client keys:
+  // publishableClientKey: process.env.STACK_PUBLISHABLE_CLIENT_KEY,
   tokenStore: "memory",
 });`,
         highlightLanguage: 'typescript',
@@ -203,7 +216,8 @@ export const stackServerApp = new StackServerApp({
 
 export const stackClientApp = new StackClientApp({
   projectId: process.env.STACK_PROJECT_ID,
-  publishableClientKey: process.env.STACK_PUBLISHABLE_CLIENT_KEY,
+  // Only include if your project requires publishable client keys:
+  // publishableClientKey: process.env.STACK_PUBLISHABLE_CLIENT_KEY,
   tokenStore: "cookie",
 });`,
         highlightLanguage: 'typescript',
@@ -217,8 +231,9 @@ export const stackClientApp = new StackClientApp({
 
 export const stackServerApp = new StackServerApp({
   projectId: process.env.STACK_PROJECT_ID,
-  publishableClientKey: process.env.STACK_PUBLISHABLE_CLIENT_KEY,
   secretServerKey: process.env.STACK_SECRET_SERVER_KEY,
+  // Only include if your project requires publishable client keys:
+  // publishableClientKey: process.env.STACK_PUBLISHABLE_CLIENT_KEY,
   tokenStore: "memory",
 });`,
         highlightLanguage: 'javascript',
@@ -232,7 +247,8 @@ export const stackServerApp = new StackServerApp({
 
 export const stackClientApp = new StackClientApp({
   projectId: process.env.STACK_PROJECT_ID,
-  publishableClientKey: process.env.STACK_PUBLISHABLE_CLIENT_KEY,
+  // Only include if your project requires publishable client keys:
+  // publishableClientKey: process.env.STACK_PUBLISHABLE_CLIENT_KEY,
   tokenStore: "cookie",
 });`,
         highlightLanguage: 'javascript',
@@ -244,16 +260,18 @@ export const stackClientApp = new StackClientApp({
         code: `import requests
 
 def stack_auth_request(method, endpoint, **kwargs):
+    headers = {
+        'x-stack-access-type': 'server',  # or 'client' if you're only accessing the client API
+        'x-stack-project-id': stack_project_id,
+        'x-stack-secret-server-key': stack_secret_server_key,  # not necessary if access type is 'client'
+        **kwargs.pop('headers', {}),
+    }
+    # Only include if your project requires publishable client keys:
+    # headers['x-stack-publishable-client-key'] = stack_publishable_client_key
     res = requests.request(
         method,
         f'https://api.stack-auth.com/{endpoint}',
-        headers={
-            'x-stack-access-type': 'server',  # or 'client' if you're only accessing the client API
-            'x-stack-project-id': stack_project_id,
-            'x-stack-publishable-client-key': stack_publishable_client_key,
-            'x-stack-secret-server-key': stack_secret_server_key,  # not necessary if access type is 'client'
-            **kwargs.pop('headers', {}),
-        },
+        headers=headers,
         **kwargs,
     )
     if res.status_code >= 400:
@@ -268,16 +286,18 @@ def stack_auth_request(method, endpoint, **kwargs):
         code: `import requests
 
 def stack_auth_request(method, endpoint, **kwargs):
+    headers = {
+        'x-stack-access-type': 'server',  # or 'client' if you're only accessing the client API
+        'x-stack-project-id': stack_project_id,
+        'x-stack-secret-server-key': stack_secret_server_key,  # not necessary if access type is 'client'
+        **kwargs.pop('headers', {}),
+    }
+    # Only include if your project requires publishable client keys:
+    # headers['x-stack-publishable-client-key'] = stack_publishable_client_key
     res = requests.request(
         method,
         f'https://api.stack-auth.com/{endpoint}',
-        headers={
-            'x-stack-access-type': 'server',  # or 'client' if you're only accessing the client API
-            'x-stack-project-id': stack_project_id,
-            'x-stack-publishable-client-key': stack_publishable_client_key,
-            'x-stack-secret-server-key': stack_secret_server_key,  # not necessary if access type is 'client'
-            **kwargs.pop('headers', {}),
-        },
+        headers=headers,
         **kwargs,
     )
     if res.status_code >= 400:
@@ -292,16 +312,18 @@ def stack_auth_request(method, endpoint, **kwargs):
         code: `import requests
 
 def stack_auth_request(method, endpoint, **kwargs):
+    headers = {
+        'x-stack-access-type': 'server',  # or 'client' if you're only accessing the client API
+        'x-stack-project-id': stack_project_id,
+        'x-stack-secret-server-key': stack_secret_server_key,  # not necessary if access type is 'client'
+        **kwargs.pop('headers', {}),
+    }
+    # Only include if your project requires publishable client keys:
+    # headers['x-stack-publishable-client-key'] = stack_publishable_client_key
     res = requests.request(
         method,
         f'https://api.stack-auth.com/{endpoint}',
-        headers={
-            'x-stack-access-type': 'server',  # or 'client' if you're only accessing the client API
-            'x-stack-project-id': stack_project_id,
-            'x-stack-publishable-client-key': stack_publishable_client_key,
-            'x-stack-secret-server-key': stack_secret_server_key,  # not necessary if access type is 'client'
-            **kwargs.pop('headers', {}),
-        },
+        headers=headers,
         **kwargs,
     )
     if res.status_code >= 400:
