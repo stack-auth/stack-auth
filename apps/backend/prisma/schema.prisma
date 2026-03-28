@@ -1090,6 +1090,29 @@ model ThreadMessage {
   @@id([tenancyId, id])
 }
 
+model AiConversation {
+  id            String   @id @default(uuid()) @db.Uuid
+  projectUserId String   @db.Uuid
+  projectId     String
+  title         String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  messages      AiMessage[]
+
+  @@index([projectUserId, updatedAt(sort: Desc)])
+}
+
+model AiMessage {
+  id             String         @id @default(uuid()) @db.Uuid
+  conversationId String         @db.Uuid
+  role           String
+  content        Json
+  createdAt      DateTime       @default(now())
+  conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, createdAt(sort: Asc)])
+}
+
 enum CustomerType {
   USER
   TEAM

@@ -1,10 +1,18 @@
 'use client';
 
 import { cn } from "@/components/ui";
+import {
+  createConversation,
+  deleteConversation,
+  getConversation,
+  listConversations,
+  replaceConversationMessages,
+  type ConversationSummary,
+} from "@/hooks/use-ai-conversations";
 import { buildStackAuthHeaders } from "@/lib/api-headers";
 import { getPublicEnvVar } from "@/lib/env";
 import { useChat, type UIMessage } from "@ai-sdk/react";
-import { ArrowCounterClockwiseIcon, PaperPlaneTiltIcon, SparkleIcon, SpinnerGapIcon } from "@phosphor-icons/react";
+import { ArrowCounterClockwiseIcon, ArrowLeftIcon, ChatCircleDotsIcon, PaperPlaneTiltIcon, PlusIcon, SparkleIcon, SpinnerGapIcon, TrashIcon } from "@phosphor-icons/react";
 import { useUser } from "@stackframe/stack";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
@@ -19,41 +27,247 @@ import {
   useWordStreaming,
 } from "../commands/ai-chat-shared";
 
+type ViewMode =
+  | { view: 'list' }
+  | { view: 'chat', conversationId: string | null, initialMessages: UIMessage[] };
+
+function formatRelativeTime(dateString: string): string {
+  const date = new Date(dateString);
+  const now = new Date();
+  const diffMs = now.getTime() - date.getTime();
+  const diffMins = Math.floor(diffMs / 60000);
+  if (diffMins < 1) return "just now";
+  if (diffMins < 60) return `${diffMins}m ago`;
+  const diffHours = Math.floor(diffMins / 60);
+  if (diffHours < 24) return `${diffHours}h ago`;
+  const diffDays = Math.floor(diffHours / 24);
+  if (diffDays < 30) return `${diffDays}d ago`;
+  return date.toLocaleDateString();
+}
+
+function ConversationList({
+  projectId,
+  onSelectConversation,
+  onNewChat,
+}: {
+  projectId: string | undefined,
+  onSelectConversation: (id: string) => void,
+  onNewChat: () => void,
+}) {
+  const currentUser = useUser();
+  const [conversations, setConversations] = useState<ConversationSummary[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!projectId) {
+      setLoading(false);
+      return;
+    }
+    runAsynchronously(async () => {
+      try {
+        const result = await listConversations(currentUser, projectId);
+        setConversations(result);
+      } finally {
+        setLoading(false);
+      }
+    });
+  }, [currentUser, projectId]);
+
+  const handleDelete = useCallback((e: React.MouseEvent, id: string) => {
+    e.stopPropagation();
+    setDeletingId(id);
+    runAsynchronously(async () => {
+      try {
+        await deleteConversation(currentUser, id);
+        setConversations(prev => prev.filter(c => c.id !== id));
+      } finally {
+        setDeletingId(null);
+      }
+    });
+  }, [currentUser]);
+
+  if (loading) {
+    return (
+      <div className="flex flex-col h-full">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-foreground/[0.05]">
+          <span className="text-xs font-medium text-muted-foreground">Chat History</span>
+          <button
+            onClick={onNewChat}
+            className="flex items-center gap-1 text-[11px] text-purple-400 hover:text-purple-300 transition-colors"
+            type="button"
+          >
+            <PlusIcon className="h-3 w-3" />
+            <span>New Chat</span>
+          </button>
+        </div>
+        <div className="flex-1 px-3 py-2 space-y-2">
+          {[...Array(3)].map((_, i) => (
+            <div key={i} className="h-14 rounded-lg bg-foreground/[0.03] animate-pulse" />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex flex-col h-full">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-foreground/[0.05]">
+        <span className="text-xs font-medium text-muted-foreground">Chat History</span>
+        <button
+          onClick={onNewChat}
+          className="flex items-center gap-1 text-[11px] text-purple-400 hover:text-purple-300 transition-colors"
+          type="button"
+        >
+          <PlusIcon className="h-3 w-3" />
+          <span>New Chat</span>
+        </button>
+      </div>
+
+      <div className="flex-1 overflow-y-auto px-2 py-2 space-y-1">
+        {conversations.length === 0 ? (
+          <div className="flex flex-col items-center justify-center h-full gap-3 text-center px-6">
+            <ChatCircleDotsIcon className="h-8 w-8 text-muted-foreground/30" />
+            <div className="space-y-1">
+              <p className="text-xs text-muted-foreground/60">No conversations yet</p>
+              <button
+                onClick={onNewChat}
+                className="text-xs text-purple-400 hover:text-purple-300 transition-colors"
+                type="button"
+              >
+                Start a new chat
+              </button>
+            </div>
+          </div>
+        ) : (
+          conversations.map(conv => (
+            <div
+              key={conv.id}
+              onClick={() => onSelectConversation(conv.id)}
+              className="w-full text-left px-3 py-2.5 rounded-lg hover:bg-foreground/[0.04] transition-colors group flex items-start gap-2 cursor-pointer"
+            >
+              <SparkleIcon className="h-3.5 w-3.5 text-purple-400/60 mt-0.5 shrink-0" />
+              <div className="flex-1 min-w-0">
+                <p className="text-[13px] text-foreground truncate">
+                  {conv.title.length > 40 ? `${conv.title.slice(0, 40)}...` : conv.title}
+                </p>
+                <p className="text-[10px] text-muted-foreground/50 mt-0.5">
+                  {formatRelativeTime(conv.updatedAt)}
+                </p>
+              </div>
+              <button
+                onClick={(e) => handleDelete(e, conv.id)}
+                disabled={deletingId === conv.id}
+                className="opacity-0 group-hover:opacity-100 p-1 text-muted-foreground/40 hover:text-red-400 transition-all shrink-0"
+                type="button"
+              >
+                {deletingId === conv.id ? (
+                  <SpinnerGapIcon className="h-3 w-3 animate-spin" />
+                ) : (
+                  <TrashIcon className="h-3 w-3" />
+                )}
+              </button>
+            </div>
+          ))
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function AIChatWidget({ isActive }: { isActive: boolean }) {
-  const [input, setInput] = useState("");
-  const [conversationStarted, setConversationStarted] = useState(false);
+  const currentUser = useUser();
+  const pathname = usePathname();
+  const projectId = pathname.startsWith("/projects/") ? pathname.split("/")[2] : undefined;
+  const [viewMode, setViewMode] = useState<ViewMode>({ view: 'chat', conversationId: null, initialMessages: [] });
   const [conversationKey, setConversationKey] = useState(0);
 
+  useEffect(() => {
+    if (!projectId) return;
+    runAsynchronously(async () => {
+      const conversations = await listConversations(currentUser, projectId);
+      if (conversations.length > 0) {
+        const conv = await getConversation(currentUser, conversations[0].id);
+        const initialMessages: UIMessage[] = conv.messages.map((msg) => ({
+          id: msg.id,
+          role: msg.role as "user" | "assistant",
+          parts: msg.content as UIMessage["parts"],
+        }));
+        setViewMode({ view: 'chat', conversationId: conversations[0].id, initialMessages });
+        setConversationKey(prev => prev + 1);
+      }
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleSelectConversation = useCallback(async (id: string) => {
+    const conv = await getConversation(currentUser, id);
+    const initialMessages: UIMessage[] = conv.messages.map((msg) => ({
+      id: msg.id,
+      role: msg.role as "user" | "assistant",
+      parts: msg.content as UIMessage["parts"],
+    }));
+    setConversationKey(prev => prev + 1);
+    setViewMode({ view: 'chat', conversationId: id, initialMessages });
+  }, [currentUser]);
+
+  const handleNewChat = useCallback(() => {
+    setConversationKey(prev => prev + 1);
+    setViewMode({ view: 'chat', conversationId: null, initialMessages: [] });
+  }, []);
+
+  const handleBackToList = useCallback(() => {
+    setViewMode({ view: 'list' });
+  }, []);
+
+  const handleConversationCreated = useCallback((id: string) => {
+    setViewMode(prev => {
+      if (prev.view === 'chat') {
+        return { ...prev, conversationId: id };
+      }
+      return prev;
+    });
+  }, []);
+
   if (!isActive) return null;
+
+  if (viewMode.view === 'list') {
+    return (
+      <ConversationList
+        projectId={projectId}
+        onSelectConversation={(id) => runAsynchronously(handleSelectConversation(id))}
+        onNewChat={handleNewChat}
+      />
+    );
+  }
 
   return (
     <AIChatWidgetInner
       key={conversationKey}
-      input={input}
-      setInput={setInput}
-      conversationStarted={conversationStarted}
-      setConversationStarted={setConversationStarted}
-      onNewConversation={() => {
-        setConversationKey(prev => prev + 1);
-        setConversationStarted(false);
-        setInput("");
-      }}
+      projectId={projectId}
+      conversationId={viewMode.conversationId}
+      initialMessages={viewMode.initialMessages}
+      onConversationCreated={handleConversationCreated}
+      onBackToList={handleBackToList}
+      onNewChat={handleNewChat}
     />
   );
 }
 
 function AIChatWidgetInner({
-  input,
-  setInput,
-  conversationStarted,
-  setConversationStarted,
-  onNewConversation,
+  projectId,
+  conversationId: initialConversationId,
+  initialMessages,
+  onConversationCreated,
+  onBackToList,
+  onNewChat,
 }: {
-  input: string,
-  setInput: (v: string) => void,
-  conversationStarted: boolean,
-  setConversationStarted: (v: boolean) => void,
-  onNewConversation: () => void,
+  projectId: string | undefined,
+  conversationId: string | null,
+  initialMessages: UIMessage[],
+  onConversationCreated: (id: string) => void,
+  onBackToList: () => void,
+  onNewChat: () => void,
 }) {
   const [followUpInput, setFollowUpInput] = useState("");
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -62,10 +276,15 @@ function AIChatWidgetInner({
   const lastMessageCountRef = useRef(0);
   const isNearBottomRef = useRef(true);
   const currentUser = useUser();
-  const pathname = usePathname();
-  const projectId = pathname.startsWith("/projects/") ? pathname.split("/")[2] : undefined;
+  const conversationIdRef = useRef(initialConversationId);
+  const prevStatusRef = useRef<string>("");
+  const isSavingRef = useRef(false);
 
   const backendBaseUrl = getPublicEnvVar("NEXT_PUBLIC_BROWSER_STACK_API_URL") ?? getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_BROWSER_STACK_API_URL is not set");
+
+  const hasInitialMessages = initialMessages.length > 0;
+  const [input, setInput] = useState("");
+  const [conversationStarted, setConversationStarted] = useState(hasInitialMessages);
 
   const {
     messages,
@@ -73,6 +292,7 @@ function AIChatWidgetInner({
     sendMessage,
     error: aiError,
   } = useChat({
+    messages: hasInitialMessages ? initialMessages : undefined,
     transport: new DefaultChatTransport({
       api: `${backendBaseUrl}/api/latest/ai/query/stream`,
       headers: () => buildStackAuthHeaders(currentUser),
@@ -98,6 +318,57 @@ function AIChatWidgetInner({
 
   const aiLoading = status === "submitted" || status === "streaming";
 
+  // Save conversation when streaming completes
+  useEffect(() => {
+    const prevStatus = prevStatusRef.current;
+    prevStatusRef.current = status;
+
+    const completedOk = (prevStatus === "streaming" || prevStatus === "submitted") && status === "ready";
+    const completedWithError = (prevStatus === "streaming" || prevStatus === "submitted") && status === "error";
+
+    if (
+      (completedOk || completedWithError) &&
+      messages.length > 0 &&
+      !isSavingRef.current
+    ) {
+      isSavingRef.current = true;
+      // On error, only save user messages (strip any partial/failed assistant turn)
+      const safeMessages = completedWithError
+        ? messages.filter(m => m.role === "user")
+        : messages;
+      if (safeMessages.length === 0) {
+        isSavingRef.current = false;
+        return;
+      }
+      const messagesToSave = safeMessages.map(m => ({
+        role: m.role,
+        content: m.parts,
+      }));
+      const firstUserMessage = messages.find(m => m.role === "user");
+      const title = firstUserMessage
+        ? getMessageContent(firstUserMessage).slice(0, 50) || "New conversation"
+        : "New conversation";
+
+      runAsynchronously(async () => {
+        try {
+          if (conversationIdRef.current) {
+            await replaceConversationMessages(currentUser, conversationIdRef.current, messagesToSave);
+          } else if (projectId) {
+            const result = await createConversation(currentUser, {
+              title,
+              projectId,
+              messages: messagesToSave,
+            });
+            conversationIdRef.current = result.id;
+            onConversationCreated(result.id);
+          }
+        } finally {
+          isSavingRef.current = false;
+        }
+      });
+    }
+  }, [status, messages, currentUser, projectId, onConversationCreated]);
+
   // Word streaming for the last assistant message
   const lastAssistantMessage = messages.findLast((m: UIMessage) => m.role === "assistant");
   const lastAssistantContent = lastAssistantMessage ? getMessageContent(lastAssistantMessage) : "";
@@ -108,6 +379,8 @@ function AIChatWidgetInner({
   useEffect(() => {
     if (!conversationStarted) {
       inputRef.current?.focus();
+    } else {
+      followUpInputRef.current?.focus();
     }
   }, [conversationStarted]);
 
@@ -144,7 +417,7 @@ function AIChatWidgetInner({
     requestAnimationFrame(() => {
       followUpInputRef.current?.focus();
     });
-  }, [input, aiLoading, sendMessage, setConversationStarted, setInput]);
+  }, [input, aiLoading, sendMessage]);
 
   // Handle initial input keyboard
   const handleInputKeyDown = useCallback(
@@ -195,6 +468,18 @@ function AIChatWidgetInner({
   if (!conversationStarted) {
     return (
       <div className="flex flex-col h-full">
+        {/* Back button */}
+        <div className="px-3 py-2 border-b border-foreground/[0.05]">
+          <button
+            onClick={onBackToList}
+            className="flex items-center gap-1 text-[11px] text-muted-foreground/60 hover:text-muted-foreground transition-colors"
+            type="button"
+          >
+            <ArrowLeftIcon className="h-3 w-3" />
+            <span>Back to history</span>
+          </button>
+        </div>
+
         <div className="flex-1 flex flex-col items-center justify-center px-6 gap-4">
           <div className="w-10 h-10 rounded-full bg-purple-500/10 flex items-center justify-center">
             <SparkleIcon className="h-5 w-5 text-purple-400" />
@@ -246,6 +531,24 @@ function AIChatWidgetInner({
   // Conversation view
   return (
     <div className="flex flex-col h-full">
+      {/* Back button */}
+      <div className="px-3 py-2 border-b border-foreground/[0.05] flex items-center justify-between">
+        <button
+          onClick={onBackToList}
+          disabled={aiLoading}
+          className={cn(
+            "flex items-center gap-1 text-[11px] transition-colors",
+            aiLoading
+              ? "text-muted-foreground/25 cursor-not-allowed"
+              : "text-muted-foreground/60 hover:text-muted-foreground"
+          )}
+          type="button"
+        >
+          <ArrowLeftIcon className="h-3 w-3" />
+          <span>Back to history</span>
+        </button>
+      </div>
+
       {/* Messages */}
       <div
         ref={messagesContainerRef}
@@ -260,7 +563,7 @@ function AIChatWidgetInner({
           // For the last assistant message, apply word-by-word streaming
           const isLastAssistant = message.role === "assistant" &&
             index === arr.length - 1 - (arr[arr.length - 1]?.role === "user" ? 1 : 0);
-          const displayContent = message.role === "assistant" && isLastAssistant
+          const displayContent = message.role === "assistant" && isLastAssistant && aiLoading
             ? getDisplayContent(messageContent)
             : messageContent;
 
@@ -347,7 +650,7 @@ function AIChatWidgetInner({
         </div>
         <div className="flex items-center justify-between mt-1.5">
           <button
-            onClick={onNewConversation}
+            onClick={onNewChat}
             disabled={aiLoading}
             className={cn(
               "flex items-center gap-1 text-[9px] transition-colors hover:transition-none",
