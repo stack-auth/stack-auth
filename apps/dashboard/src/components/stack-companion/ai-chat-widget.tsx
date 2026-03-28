@@ -1,18 +1,15 @@
 'use client';
 
 import { cn } from "@/components/ui";
-import { buildStackAuthHeaders } from "@/lib/api-headers";
-import { getPublicEnvVar } from "@/lib/env";
 import { useChat, type UIMessage } from "@ai-sdk/react";
 import { ArrowCounterClockwiseIcon, PaperPlaneTiltIcon, SparkleIcon, SpinnerGapIcon } from "@phosphor-icons/react";
 import { useUser } from "@stackframe/stack";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { convertToModelMessages, DefaultChatTransport } from "ai";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   AssistantMessage,
+  createAskAiTransport,
   getMessageContent,
   getToolInvocations,
   UserMessage,
@@ -65,41 +62,19 @@ function AIChatWidgetInner({
   const pathname = usePathname();
   const projectId = pathname.startsWith("/projects/") ? pathname.split("/")[2] : undefined;
 
-  const backendBaseUrl = getPublicEnvVar("NEXT_PUBLIC_BROWSER_STACK_API_URL") ?? getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_BROWSER_STACK_API_URL is not set");
-
   const {
     messages,
     status,
     sendMessage,
     error: aiError,
   } = useChat({
-    transport: new DefaultChatTransport({
-      api: `${backendBaseUrl}/api/latest/ai/query/stream`,
-      headers: () => buildStackAuthHeaders(currentUser),
-      prepareSendMessagesRequest: async ({ messages: uiMessages, headers }) => {
-        const modelMessages = await convertToModelMessages(uiMessages);
-        return {
-          body: {
-            systemPrompt: "command-center-ask-ai",
-            tools: ["docs", "sql-query"],
-            quality: "smart",
-            speed: "slow",
-            projectId,
-            messages: modelMessages.map(m => ({
-              role: m.role,
-              content: m.content,
-            })),
-          },
-          headers,
-        };
-      },
-    }),
+    transport: createAskAiTransport({ currentUser, projectId }),
   });
 
   const aiLoading = status === "submitted" || status === "streaming";
 
   // Word streaming for the last assistant message
-  const lastAssistantMessage = messages.findLast((m: UIMessage) => m.role === "assistant");
+  const lastAssistantMessage = messages.slice().reverse().find((m: UIMessage) => m.role === "assistant");
   const lastAssistantContent = lastAssistantMessage ? getMessageContent(lastAssistantMessage) : "";
   const { displayedWordCount, getDisplayContent, isRevealing } = useWordStreaming(lastAssistantContent);
   const isStreaming = aiLoading && lastAssistantMessage;
@@ -159,8 +134,8 @@ function AIChatWidgetInner({
 
   // Handle follow-up questions
   const handleFollowUp = useCallback(() => {
-    if (!followUpInput.trim() || aiLoading) return;
-    const text = followUpInput;
+    const text = followUpInput.trim();
+    if (!text || aiLoading) return;
     setFollowUpInput("");
     runAsynchronously(sendMessage({ text }));
     requestAnimationFrame(() => {

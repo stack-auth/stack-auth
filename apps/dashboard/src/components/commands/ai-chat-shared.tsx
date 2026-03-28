@@ -1,11 +1,45 @@
 import { cn } from "@/components/ui";
+import { buildStackAuthHeaders, type CurrentUser } from "@/lib/api-headers";
+import { getPublicEnvVar } from "@/lib/env";
 import type { UIMessage } from "@ai-sdk/react";
 import { ArrowSquareOutIcon, CaretDownIcon, CheckIcon, CopyIcon, DatabaseIcon, SparkleIcon, SpinnerGapIcon, UserIcon } from "@phosphor-icons/react";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { convertToModelMessages, DefaultChatTransport } from "ai";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
+export function createAskAiTransport({
+  currentUser,
+  projectId,
+}: {
+  currentUser: CurrentUser | null | undefined,
+  projectId: string | undefined,
+}): DefaultChatTransport<UIMessage> {
+  const backendBaseUrl = getPublicEnvVar("NEXT_PUBLIC_BROWSER_STACK_API_URL") ?? getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_BROWSER_STACK_API_URL is not set");
+  return new DefaultChatTransport<UIMessage>({
+    api: `${backendBaseUrl}/api/latest/ai/query/stream`,
+    headers: () => buildStackAuthHeaders(currentUser),
+    prepareSendMessagesRequest: async ({ messages: uiMessages, headers }) => {
+      const modelMessages = await convertToModelMessages(uiMessages);
+      return {
+        body: {
+          systemPrompt: "command-center-ask-ai",
+          tools: ["docs", "sql-query"],
+          quality: "smart",
+          speed: "slow",
+          projectId,
+          messages: modelMessages.map(m => ({
+            role: m.role,
+            content: m.content,
+          })),
+        },
+        headers,
+      };
+    },
+  });
+}
 
 // Memoized copy button for performance
 export const CopyButton = memo(function CopyButton({ text, className, size = "sm" }: {
@@ -149,15 +183,8 @@ export const SmartLink = memo(function SmartLink({ href, children }: {
   );
 });
 
-// Tool invocation type from AI SDK (matches the actual UIMessage part structure)
-export type ToolInvocationPart = {
-  type: `tool-${string}`,
-  toolCallId: string,
-  state: "input-streaming" | "input-available" | "output-available" | "output-error" | "approval-requested" | "approval-responded" | "output-denied",
-  input: unknown,
-  output?: unknown,
-  errorText?: string,
-};
+export type ToolInvocationPart = Extract<UIMessage["parts"][number], { type: `tool-${string}` }>;
+
 
 // Expandable tool invocation card
 export const ToolInvocationCard = memo(function ToolInvocationCard({
@@ -405,9 +432,9 @@ export function getMessageContent(message: UIMessage): string {
 
 // Helper to extract tool invocations from UIMessage parts
 export function getToolInvocations(message: UIMessage): ToolInvocationPart[] {
-  return message.parts
-    .filter((part) => part.type.startsWith("tool-"))
-    .map((part) => part as unknown as ToolInvocationPart);
+  return message.parts.filter(
+    (part): part is ToolInvocationPart => part.type.startsWith("tool-")
+  );
 }
 
 // Memoized user message component
