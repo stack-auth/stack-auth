@@ -1,6 +1,7 @@
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+import type { Table } from "..";
 import type { Json, RowData, RowIdentifier, SqlExpression, SqlStatement, TableId } from "../utilities";
 import {
   getStorageEnginePath,
@@ -9,14 +10,13 @@ import {
   quoteSqlIdentifier,
   quoteSqlJsonbLiteral,
   quoteSqlStringLiteral,
+  singleNullSortKeyRangePredicate,
   sqlArray,
   sqlExpression,
   sqlQuery,
   sqlStatement,
-  singleNullSortKeyRangePredicate,
   tableIdToDebugString,
 } from "../utilities";
-import type { Table } from "../table-type";
 
 export function declareConcatTable<
   GK extends Json,

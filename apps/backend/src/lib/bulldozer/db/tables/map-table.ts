@@ -1,24 +1,18 @@
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { pick } from "@stackframe/stack-shared/dist/utils/objects";
-import type { Json, RowData, RowIdentifier, SqlExpression, SqlMapper, SqlStatement, TableId } from "../utilities";
+import type { Table } from "..";
+import type { Json, RowData, SqlMapper, TableId } from "../utilities";
 import {
-  getStorageEnginePath,
-  getTablePath,
-  getTablePathSegments,
-  quoteSqlIdentifier,
-  quoteSqlJsonbLiteral,
-  quoteSqlStringLiteral,
-  sqlArray,
-  sqlExpression,
-  sqlMapper,
-  sqlPredicate,
-  sqlQuery,
-  sqlStatement,
-  singleNullSortKeyRangePredicate,
-  tableIdToDebugString,
+    getStorageEnginePath,
+    getTablePath,
+    getTablePathSegments,
+    quoteSqlJsonbLiteral,
+    sqlArray,
+    sqlExpression,
+    sqlMapper,
+    sqlStatement,
+    tableIdToDebugString
 } from "../utilities";
 import { declareFlatMapTable } from "./flat-map-table";
-import type { Table } from "../table-type";
 
 export function declareMapTable<
   GK extends Json,

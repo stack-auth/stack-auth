@@ -1,4 +1,5 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
+import type { Table } from "..";
 import type { Json, RowData, RowIdentifier, SqlExpression, SqlMapper, SqlStatement, TableId } from "../utilities";
 import {
   getStorageEnginePath,
@@ -6,16 +7,13 @@ import {
   getTablePathSegments,
   quoteSqlIdentifier,
   quoteSqlJsonbLiteral,
-  quoteSqlStringLiteral,
   sqlArray,
   sqlExpression,
   sqlMapper,
   sqlQuery,
   sqlStatement,
-  singleNullSortKeyRangePredicate,
-  tableIdToDebugString,
+  tableIdToDebugString
 } from "../utilities";
-import type { Table } from "../table-type";
 import { declareSortTable } from "./sort-table";
 
 /**
@@ -53,12 +51,17 @@ export function declareLFoldTable<
   reducer: SqlMapper<{ oldState: S, oldRowData: OldRD }, { newState: S, newRowsData: NewRD[] }>,
 }): Table<GK, SK, NewRD> {
   const triggers = new Map<string, (changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => SqlStatement[]>();
-  const sourceSortTableId: TableId = {
+  const fromTableOperator = (
+    "operator" in options.fromTable.debugArgs
+    && typeof options.fromTable.debugArgs.operator === "string"
+  ) ? options.fromTable.debugArgs.operator : null;
+  const reusesInputSortTable = fromTableOperator === "sort";
+  const sourceSortTableId: TableId = reusesInputSortTable ? options.fromTable.tableId : {
     tableType: "internal",
     internalId: "lfold-source-sort",
     parent: options.tableId,
   };
-  const sourceSortTable = declareSortTable({
+  const sourceSortTable: Table<GK, SK, OldRD> = reusesInputSortTable ? options.fromTable : declareSortTable({
     tableId: sourceSortTableId,
     fromTable: options.fromTable,
     getSortKey: sqlMapper`
@@ -496,10 +499,11 @@ export function declareLFoldTable<
           (gen_random_uuid(), ${groupsPath}, 'null'::jsonb),
           (gen_random_uuid(), ${getStorageEnginePath(options.tableId, ["metadata"])}, '{ "version": 1 }'::jsonb)
         `,
-        ...sourceSortTable.init(),
+        ...(reusesInputSortTable ? [] : sourceSortTable.init()),
         sqlQuery`
           SELECT
             "groupPath"."keyPath"[cardinality("groupPath"."keyPath")] AS "groupKey",
+            ("groupPath"."keyPath"[cardinality("groupPath"."keyPath")]::text) AS "groupKeyText",
             ("sourceRows"."keyPath"[cardinality("sourceRows"."keyPath")] #>> '{}') AS "rowIdentifier",
             "sourceRows"."value"->'rowSortKey' AS "rowSortKey",
             "sourceRows"."value"->'rowData' AS "rowData",
@@ -516,6 +520,7 @@ export function declareLFoldTable<
         sqlQuery`
           SELECT
             "sourceRows"."groupKey" AS "groupKey",
+            "sourceRows"."groupKeyText" AS "groupKeyText",
             "sourceRows"."rowIdentifier" AS "rowIdentifier",
             "sourceRows"."rowSortKey" AS "rowSortKey",
             "sourceRows"."rowData" AS "rowData",
@@ -528,6 +533,7 @@ export function declareLFoldTable<
           WITH RECURSIVE "recomputedRows" AS (
             SELECT
               "firstRows"."groupKey" AS "groupKey",
+              "firstRows"."groupKeyText" AS "groupKeyText",
               "firstRows"."rowIdentifier" AS "rowIdentifier",
               "firstRows"."rowSortKey" AS "rowSortKey",
               "firstRows"."rowData" AS "rowData",
@@ -557,6 +563,7 @@ export function declareLFoldTable<
 
             SELECT
               "nextRows"."groupKey" AS "groupKey",
+              "nextRows"."groupKeyText" AS "groupKeyText",
               "nextRows"."rowIdentifier" AS "rowIdentifier",
               "nextRows"."rowSortKey" AS "rowSortKey",
               "nextRows"."rowData" AS "rowData",
@@ -566,7 +573,7 @@ export function declareLFoldTable<
               "reduced"."newRowsData" AS "newRowsData"
             FROM "recomputedRows"
             INNER JOIN ${quoteSqlIdentifier(allSourceRowsTableName)} AS "nextRows"
-              ON "nextRows"."groupKey" IS NOT DISTINCT FROM "recomputedRows"."groupKey"
+              ON "nextRows"."groupKeyText" = "recomputedRows"."groupKeyText"
               AND "nextRows"."rowIdentifier" = "recomputedRows"."nextRowIdentifier"
             CROSS JOIN LATERAL (
               SELECT

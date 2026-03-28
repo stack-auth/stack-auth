@@ -1,17 +1,15 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
-import type { Json, RowData, RowIdentifier, SqlExpression, SqlMapper, SqlPredicate, SqlStatement, TableId } from "../utilities";
+import type { Table } from "..";
+import type { Json, RowData, SqlExpression, SqlStatement, TableId } from "../utilities";
 import {
-  getStorageEnginePath,
-  getTablePath,
-  quoteSqlIdentifier,
-  quoteSqlStringLiteral,
-  sqlExpression,
-  sqlQuery,
-  sqlStatement,
-  singleNullSortKeyRangePredicate,
-  tableIdToDebugString,
+    getStorageEnginePath,
+    getTablePath,
+    quoteSqlIdentifier,
+    sqlExpression,
+    sqlQuery,
+    sqlStatement,
+    tableIdToDebugString
 } from "../utilities";
-import type { Table } from "../table-type";
 
 export function declareLimitTable<
   GK extends Json,

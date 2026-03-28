@@ -1,17 +1,17 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
+import type { Table } from "..";
 import type { RowData, RowIdentifier, SqlExpression, SqlStatement, TableId } from "../utilities";
 import {
-  getStorageEnginePath,
-  getTablePath,
-  quoteSqlIdentifier,
-  quoteSqlStringLiteral,
-  sqlExpression,
-  sqlQuery,
-  sqlStatement,
-  singleNullSortKeyRangePredicate,
-  tableIdToDebugString,
+    getStorageEnginePath,
+    getTablePath,
+    quoteSqlIdentifier,
+    quoteSqlStringLiteral,
+    singleNullSortKeyRangePredicate,
+    sqlExpression,
+    sqlQuery,
+    sqlStatement,
+    tableIdToDebugString,
 } from "../utilities";
-import type { Table } from "../table-type";
 
 export function declareStoredTable<RD extends RowData>(options: {
   tableId: TableId,

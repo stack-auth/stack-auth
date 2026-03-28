@@ -21,12 +21,15 @@ const IS_CI = (() => {
   const cursorAgent = Reflect.get(env, "CURSOR_AGENT");
   return (ci === true || ci === "true" || ci === "1") && (cursorAgent !== true && cursorAgent !== 'true' && cursorAgent !== "1");
 })();
-const DEFAULT_LOAD_ROW_COUNT = IS_CI ? 200_000 : 20_000;
+const DEFAULT_LOAD_ROW_COUNT = IS_CI ? 200_000 : 20_0000;
 const LOAD_PREFILL_MAX_MS = 30_000;
 const LOAD_COUNT_QUERY_MAX_MS = 5_000;
 const LOAD_POINT_MUTATION_MAX_MS = 400;
 const LOAD_SET_ROW_AVG_ITERATIONS = 10;
 const LOAD_SET_ROW_AVG_MAX_MS = 50;
+const LOAD_ONLINE_MUTATION_MAX_MS = 50;
+const LOAD_SUBSET_ITERATION_MAX_MS = 50;
+const LOAD_SUBSET_ITERATION_ROW_COUNT = 1_000;
 const LOAD_TABLE_DELETE_MAX_MS = 20_000;
 const LOAD_DERIVED_INIT_MAX_MS = 90_000;
 const LOAD_DERIVED_COUNT_QUERY_MAX_MS = 10_000;
@@ -121,9 +124,10 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
   const dbName = dbUrls.full.replace(/^.*\//, "").replace(/\?.*$/, "");
   const adminSql = postgres(dbUrls.base, { onnotice: () => undefined });
   const sql = postgres(dbUrls.full, { onnotice: () => undefined, max: 1 });
+  const PERF_STATEMENT_TIMEOUT = "180s";
 
   async function runStatements(statements: SqlStatement[]) {
-    await sql.unsafe(toExecutableSqlTransaction(statements));
+    await sql.unsafe(toExecutableSqlTransaction(statements, { statementTimeout: PERF_STATEMENT_TIMEOUT }));
   }
 
   async function readRows(query: SqlQuery) {
@@ -515,6 +519,18 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     const setRowAverageMs = setRowIterationTimes.reduce((acc, value) => acc + value, 0) / setRowIterationTimes.length;
     logLine(`[bulldozer-perf] load setRow average (${LOAD_SET_ROW_AVG_ITERATIONS} iterations): ${setRowAverageMs.toFixed(1)} ms`);
     expect(setRowAverageMs).toBeLessThanOrEqual(LOAD_SET_ROW_AVG_MAX_MS);
+    const onlineInsert = await measureMs("load online setRow insert (stored table)", async () => {
+      await runStatements(table.setRow("perf-online-row", expr(jsonbLiteral({ team: "beta", value: 111 }))));
+    });
+    expect(onlineInsert.elapsedMs).toBeLessThanOrEqual(LOAD_ONLINE_MUTATION_MAX_MS);
+    const onlineUpdate = await measureMs("load online setRow update (stored table)", async () => {
+      await runStatements(table.setRow("perf-online-row", expr(jsonbLiteral({ team: "beta", value: 222 }))));
+    });
+    expect(onlineUpdate.elapsedMs).toBeLessThanOrEqual(LOAD_ONLINE_MUTATION_MAX_MS);
+    const onlineDelete = await measureMs("load online deleteRow (stored table)", async () => {
+      await runStatements(table.deleteRow("perf-online-row"));
+    });
+    expect(onlineDelete.elapsedMs).toBeLessThanOrEqual(LOAD_ONLINE_MUTATION_MAX_MS);
 
     const pointDelete = await measureMs("load point delete (deleteRow existing)", async () => {
       await runStatements(table.deleteRow(`seed-${Math.floor(loadRowCount / 2) - 1}`));
@@ -818,6 +834,21 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     expect(filteredDeltaRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata }))).toEqual([
       { rowIdentifier: "seed-100000:1", rowData: { team: "delta", value: 999 } },
     ]);
+    const groupedSubsetFromStart = await measureMs(`load iterate groupedByTeam subset from start (${LOAD_SUBSET_ITERATION_ROW_COUNT} rows)`, async () => {
+      return await sql.unsafe(`
+        SELECT *
+        FROM (${toQueryableSqlQuery(groupedByTeam.listRowsInGroup({
+          groupKey: expr(`to_jsonb('beta'::text)`),
+          start: "start",
+          end: "end",
+          startInclusive: true,
+          endInclusive: true,
+        }))}) AS "rows"
+        LIMIT ${LOAD_SUBSET_ITERATION_ROW_COUNT}
+      `);
+    });
+    expect(groupedSubsetFromStart.elapsedMs).toBeLessThanOrEqual(LOAD_SUBSET_ITERATION_MAX_MS);
+    expect(groupedSubsetFromStart.result).toHaveLength(LOAD_SUBSET_ITERATION_ROW_COUNT);
     const sortedHighValueByTeam = declareSortTable({
       tableId: "load-prefilled-users-high-value-sorted",
       fromTable: filteredHighValue,
@@ -845,6 +876,36 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       await runStatements(sortedHighValueByTeam.init());
     });
     expect(sortInit.elapsedMs).toBeLessThan(LOAD_SORT_TABLE_INIT_MAX_MS);
+    const sortedSubsetFromStart = await measureMs(`load iterate sortedHighValueByTeam subset from start (${LOAD_SUBSET_ITERATION_ROW_COUNT} rows)`, async () => {
+      return await sql.unsafe(`
+        SELECT *
+        FROM (${toQueryableSqlQuery(sortedHighValueByTeam.listRowsInGroup({
+          groupKey: expr(`to_jsonb('beta'::text)`),
+          start: "start",
+          end: expr(`to_jsonb(719::int)`),
+          startInclusive: true,
+          endInclusive: true,
+        }))}) AS "rows"
+        LIMIT ${LOAD_SUBSET_ITERATION_ROW_COUNT}
+      `);
+    });
+    expect(sortedSubsetFromStart.elapsedMs).toBeLessThanOrEqual(LOAD_SUBSET_ITERATION_MAX_MS);
+    expect(sortedSubsetFromStart.result).toHaveLength(LOAD_SUBSET_ITERATION_ROW_COUNT);
+    const sortedSubsetFromSortKey = await measureMs(`load iterate sortedHighValueByTeam subset from sort-key cursor (${LOAD_SUBSET_ITERATION_ROW_COUNT} rows)`, async () => {
+      return await sql.unsafe(`
+        SELECT *
+        FROM (${toQueryableSqlQuery(sortedHighValueByTeam.listRowsInGroup({
+          groupKey: expr(`to_jsonb('beta'::text)`),
+          start: expr(`to_jsonb(900::int)`),
+          end: expr(`to_jsonb(919::int)`),
+          startInclusive: true,
+          endInclusive: true,
+        }))}) AS "rows"
+        LIMIT ${LOAD_SUBSET_ITERATION_ROW_COUNT}
+      `);
+    });
+    expect(sortedSubsetFromSortKey.elapsedMs).toBeLessThanOrEqual(LOAD_SUBSET_ITERATION_MAX_MS);
+    expect(sortedSubsetFromSortKey.result).toHaveLength(LOAD_SUBSET_ITERATION_ROW_COUNT);
     const lFoldInit = await measureMs("load init foldedHighValueByTeam", async () => {
       await runStatements(foldedHighValueByTeam.init());
     });
@@ -941,7 +1002,6 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
         },
       },
     ]);
-
     const bulkDelete = await measureMs("load full table delete", async () => {
       await runStatements(table.delete());
     });
@@ -960,7 +1020,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     `;
     expect(isInitializedRows[0].initialized).toBe(false);
 
-    logLine(`[bulldozer-perf] load thresholds(ms): prefill<=${LOAD_PREFILL_MAX_MS}, baseCount<=${LOAD_COUNT_QUERY_MAX_MS}, setRowAvg<=${LOAD_SET_ROW_AVG_MAX_MS} over ${LOAD_SET_ROW_AVG_ITERATIONS}, pointDelete<=${LOAD_POINT_MUTATION_MAX_MS}, derivedInit<=${LOAD_DERIVED_INIT_MAX_MS}, filterInit<=${LOAD_FILTER_TABLE_INIT_MAX_MS}, sortInit<=${LOAD_SORT_TABLE_INIT_MAX_MS}, lfoldInit<=${LOAD_LFOLD_TABLE_INIT_MAX_MS}, leftJoinInit<=${LOAD_LEFT_JOIN_TABLE_INIT_MAX_MS}, concatInit<=${LOAD_CONCAT_TABLE_INIT_MAX_MS}, limitInit<=${LOAD_LIMIT_TABLE_INIT_MAX_MS}, expandingInit<=${LOAD_EXPANDING_INIT_MAX_MS}, derivedCount<=${LOAD_DERIVED_COUNT_QUERY_MAX_MS}, filterCount<=${LOAD_FILTER_TABLE_COUNT_QUERY_MAX_MS}, lfoldCount<=${LOAD_LFOLD_TABLE_COUNT_QUERY_MAX_MS}, leftJoinCount<=${LOAD_LEFT_JOIN_TABLE_COUNT_QUERY_MAX_MS}, concatCount<=${LOAD_CONCAT_TABLE_COUNT_QUERY_MAX_MS}, limitCount<=${LOAD_LIMIT_TABLE_COUNT_QUERY_MAX_MS}, expandingCount<=${LOAD_EXPANDING_COUNT_QUERY_MAX_MS}, filteredQuery<=${LOAD_FILTERED_QUERY_MAX_MS}, tableDelete<=${LOAD_TABLE_DELETE_MAX_MS}`);
-  }, 180_000);
+    logLine(`[bulldozer-perf] load thresholds(ms): prefill<=${LOAD_PREFILL_MAX_MS}, baseCount<=${LOAD_COUNT_QUERY_MAX_MS}, setRowAvg<=${LOAD_SET_ROW_AVG_MAX_MS} over ${LOAD_SET_ROW_AVG_ITERATIONS}, pointDelete<=${LOAD_POINT_MUTATION_MAX_MS}, onlineMutation<=${LOAD_ONLINE_MUTATION_MAX_MS}, subsetIteration<=${LOAD_SUBSET_ITERATION_MAX_MS} for ${LOAD_SUBSET_ITERATION_ROW_COUNT} rows, derivedInit<=${LOAD_DERIVED_INIT_MAX_MS}, filterInit<=${LOAD_FILTER_TABLE_INIT_MAX_MS}, sortInit<=${LOAD_SORT_TABLE_INIT_MAX_MS}, lfoldInit<=${LOAD_LFOLD_TABLE_INIT_MAX_MS}, leftJoinInit<=${LOAD_LEFT_JOIN_TABLE_INIT_MAX_MS}, concatInit<=${LOAD_CONCAT_TABLE_INIT_MAX_MS}, limitInit<=${LOAD_LIMIT_TABLE_INIT_MAX_MS}, expandingInit<=${LOAD_EXPANDING_INIT_MAX_MS}, derivedCount<=${LOAD_DERIVED_COUNT_QUERY_MAX_MS}, filterCount<=${LOAD_FILTER_TABLE_COUNT_QUERY_MAX_MS}, lfoldCount<=${LOAD_LFOLD_TABLE_COUNT_QUERY_MAX_MS}, leftJoinCount<=${LOAD_LEFT_JOIN_TABLE_COUNT_QUERY_MAX_MS}, concatCount<=${LOAD_CONCAT_TABLE_COUNT_QUERY_MAX_MS}, limitCount<=${LOAD_LIMIT_TABLE_COUNT_QUERY_MAX_MS}, expandingCount<=${LOAD_EXPANDING_COUNT_QUERY_MAX_MS}, filteredQuery<=${LOAD_FILTERED_QUERY_MAX_MS}, tableDelete<=${LOAD_TABLE_DELETE_MAX_MS}`);
+  }, 300_000);
 });
 

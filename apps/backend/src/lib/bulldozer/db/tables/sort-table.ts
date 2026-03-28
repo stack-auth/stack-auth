@@ -1,17 +1,16 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
-import type { Json, RowData, RowIdentifier, SqlExpression, SqlMapper, SqlPredicate, SqlStatement, TableId } from "../utilities";
+import type { Table } from "..";
+import type { Json, RowData, RowIdentifier, SqlExpression, SqlMapper, SqlStatement, TableId } from "../utilities";
 import {
-  getStorageEnginePath,
-  getTablePath,
-  quoteSqlIdentifier,
-  quoteSqlStringLiteral,
-  sqlExpression,
-  sqlQuery,
-  sqlStatement,
-  singleNullSortKeyRangePredicate,
-  tableIdToDebugString,
+    getStorageEnginePath,
+    getTablePath,
+    quoteSqlIdentifier,
+    quoteSqlStringLiteral,
+    sqlExpression,
+    sqlQuery,
+    sqlStatement,
+    tableIdToDebugString
 } from "../utilities";
-import type { Table } from "../table-type";
 
 export function declareSortTable<
   GK extends Json,
@@ -282,13 +281,30 @@ export function declareSortTable<
       WITH RECURSIVE "orderedRows" AS (
         SELECT
           0 AS "rowIndex",
-          ("headRow"."keyPath"[cardinality("headRow"."keyPath")] #>> '{}') AS "rowIdentifier",
-          "headRow"."value" AS "nodeValue"
+          ("startRow"."keyPath"[cardinality("startRow"."keyPath")] #>> '{}') AS "rowIdentifier",
+          "startRow"."value" AS "nodeValue"
         FROM "BulldozerStorageEngine" AS "groupMetadata"
-        INNER JOIN "BulldozerStorageEngine" AS "headRow"
-          ON "headRow"."keyPath" = ${getGroupRowPath(groupKey, sqlExpression`to_jsonb("groupMetadata"."value"->>'headRowIdentifier')`)}::jsonb[]
+        CROSS JOIN LATERAL (
+          SELECT ${
+            start === "start"
+              ? sqlExpression`"groupMetadata"."value"->>'headRowIdentifier'`
+              : sqlExpression`pg_temp.bulldozer_sort_find_successor(${groupsPath}::jsonb[], ${groupKey}, ${compareSortKeysSqlLiteral}::text, ''::text, ${start})`
+          } AS "startRowIdentifier"
+        ) AS "startLookup"
+        INNER JOIN "BulldozerStorageEngine" AS "startRow"
+          ON "startRow"."keyPath" = ${getGroupRowPath(
+            groupKey,
+            sqlExpression`to_jsonb("startLookup"."startRowIdentifier")`,
+          )}::jsonb[]
         WHERE "groupMetadata"."keyPath" = ${getGroupMetadataPath(groupKey)}::jsonb[]
-          AND ("groupMetadata"."value"->>'headRowIdentifier') IS NOT NULL
+          AND "startLookup"."startRowIdentifier" IS NOT NULL
+          AND ${
+            end === "end"
+              ? sqlExpression`1 = 1`
+              : endInclusive
+                ? sqlExpression`${options.compareSortKeys(sqlExpression`"startRow"."value"->'rowSortKey'`, end)} <= 0`
+                : sqlExpression`${options.compareSortKeys(sqlExpression`"startRow"."value"->'rowSortKey'`, end)} < 0`
+          }
 
         UNION ALL
 
@@ -300,6 +316,13 @@ export function declareSortTable<
         INNER JOIN "BulldozerStorageEngine" AS "nextRow"
           ON "orderedRows"."nodeValue"->>'nextRowIdentifier' IS NOT NULL
           AND "nextRow"."keyPath" = ${getGroupRowPath(groupKey, sqlExpression`to_jsonb("orderedRows"."nodeValue"->>'nextRowIdentifier')`)}::jsonb[]
+          AND ${
+            end === "end"
+              ? sqlExpression`1 = 1`
+              : endInclusive
+                ? sqlExpression`${options.compareSortKeys(sqlExpression`"nextRow"."value"->'rowSortKey'`, end)} <= 0`
+                : sqlExpression`${options.compareSortKeys(sqlExpression`"nextRow"."value"->'rowSortKey'`, end)} < 0`
+          }
       )
       SELECT
         "orderedRows"."rowIdentifier" AS rowIdentifier,

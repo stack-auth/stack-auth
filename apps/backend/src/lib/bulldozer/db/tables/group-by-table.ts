@@ -1,17 +1,16 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
+import type { Table } from "..";
 import type { Json, RowData, RowIdentifier, SqlExpression, SqlMapper, SqlStatement, TableId } from "../utilities";
 import {
-  getStorageEnginePath,
-  getTablePath,
-  quoteSqlIdentifier,
-  quoteSqlStringLiteral,
-  sqlExpression,
-  sqlQuery,
-  sqlStatement,
-  singleNullSortKeyRangePredicate,
-  tableIdToDebugString,
+    getStorageEnginePath,
+    getTablePath,
+    quoteSqlIdentifier,
+    singleNullSortKeyRangePredicate,
+    sqlExpression,
+    sqlQuery,
+    sqlStatement,
+    tableIdToDebugString
 } from "../utilities";
-import type { Table } from "../table-type";
 
 export function declareGroupByTable<
   GK extends Json,

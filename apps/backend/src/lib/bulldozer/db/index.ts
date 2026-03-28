@@ -35,16 +35,16 @@ export type Table<GK extends Json, SK extends Json, RD extends RowData> = {
   registerRowChangeTrigger(trigger: (changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => SqlStatement[]): { deregister: () => void },
 };
 
-export { declareStoredTable } from "./tables/stored-table";
-export { declareGroupByTable } from "./tables/group-by-table";
-export { declareFlatMapTable } from "./tables/flat-map-table";
-export { declareMapTable } from "./tables/map-table";
-export { declareFilterTable } from "./tables/filter-table";
-export { declareLimitTable } from "./tables/limit-table";
 export { declareConcatTable } from "./tables/concat-table";
-export { declareSortTable } from "./tables/sort-table";
+export { declareFilterTable } from "./tables/filter-table";
+export { declareFlatMapTable } from "./tables/flat-map-table";
+export { declareGroupByTable } from "./tables/group-by-table";
 export { declareLFoldTable } from "./tables/l-fold-table";
 export { declareLeftJoinTable } from "./tables/left-join-table";
+export { declareLimitTable } from "./tables/limit-table";
+export { declareMapTable } from "./tables/map-table";
+export { declareSortTable } from "./tables/sort-table";
+export { declareStoredTable } from "./tables/stored-table";
 
 const BULLDOZER_LOCK_ID = 7857391;  // random number to avoid conflicts with other applications
 
@@ -85,11 +85,12 @@ export function toExecutableSqlStatements(statements: SqlStatement[]): string {
     ${executableStatements}
   `;
 }
-export function toExecutableSqlTransaction(statements: SqlStatement[]): string {
+export function toExecutableSqlTransaction(statements: SqlStatement[], options: { statementTimeout?: string } = {}): string {
   return deindent`
     BEGIN;
 
     SET LOCAL jit = off;
+    ${options.statementTimeout ? `SET LOCAL statement_timeout = '${options.statementTimeout}';` : ""}
 
     SELECT pg_advisory_xact_lock(${BULLDOZER_LOCK_ID});
 
