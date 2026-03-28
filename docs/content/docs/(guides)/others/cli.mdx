@@ -1,0 +1,179 @@
+---
+title: Stack CLI
+lastModified: "2026-03-13"
+---
+
+The Stack CLI lets you manage projects and configuration from the terminal. You can authenticate, push and pull config files, and execute JavaScript with a pre-configured `StackServerApp`.
+
+<Info>
+Looking to build a CLI app that uses Stack Auth for user authentication? See the [CLI Authentication guide](/docs/others/cli-authentication).
+</Info>
+
+## Installation
+
+Install the Stack CLI globally using npm:
+
+```sh title="Terminal"
+npm install -g @stackframe/stack-cli
+```
+
+Or run it directly with npx:
+
+```sh title="Terminal"
+npx @stackframe/stack-cli <command>
+```
+
+## Authentication
+
+Run `stack login` to authenticate—this opens your browser and stores a refresh token at `~/.config/stack-auth/credentials.json` (with 0o600 permissions).
+
+```sh title="Terminal"
+stack login
+```
+
+To log out and clear credentials, run `stack logout`:
+
+```sh title="Terminal"
+stack logout
+```
+
+## Commands
+
+### Project Management
+
+List your projects and create new ones from the command line. Add the `--json` flag to any command for machine-readable output, useful for scripting and CI/CD pipelines.
+
+```sh title="Terminal"
+# List all projects you own
+stack project list
+
+# List projects as JSON
+stack --json project list
+
+# Create a new project
+stack project create --display-name "My New Project"
+```
+
+### Configuration Management
+
+Use the `stack config` commands to manage your project's branch configuration as code. Pull the current configuration to a local TypeScript or JavaScript file, edit it, and push it back. This makes it easy to version-control your configuration and make changes programmatically.
+
+```sh title="Terminal"
+# Pull configuration to a local file
+stack --project-id <your-project-id> config pull --config-file ./stack-config.ts
+
+# Push configuration from a local file
+stack --project-id <your-project-id> config push --config-file ./stack-config.ts
+```
+
+The config file exports a `config` object:
+
+```ts title="stack-config.ts"
+export const config = {
+  // Your project configuration
+} as const;
+```
+
+<Info>
+Config files must have a `.js` or `.ts` extension.
+</Info>
+
+### Execute JavaScript
+
+`stack exec` runs JavaScript code with a pre-configured `StackServerApp` instance available as `stackServerApp`. Useful for quick admin tasks, scripting, and automation.
+
+The code runs in an async context, so you can use `await` directly. Results are output as JSON.
+
+```sh title="Terminal"
+# Get the number of users
+stack --project-id <your-project-id> exec "const users = await stackServerApp.listUsers(); return users.length"
+
+# Create a user
+stack --project-id <your-project-id> exec "return await stackServerApp.createUser({ primaryEmail: 'test@example.com', password: 'securepassword123' })"
+
+# List all teams
+stack --project-id <your-project-id> exec "return await stackServerApp.listTeams()"
+```
+
+For available `stackServerApp` methods, see the [SDK documentation](/docs/sdk).
+
+### Initialize a Project
+
+Run `stack init` to set up Stack Auth in your project.
+
+#### Interactive Mode
+
+Run `stack init` without flags:
+
+```sh title="Terminal"
+stack init
+```
+
+This links your local project to an existing project on app.stack-auth.com. You'll select your project and the CLI will create a `.env` file with your API keys. After setup, a Claude agent automatically configures your project by detecting your framework, installing dependencies, and creating the necessary files. If the agent fails, you'll see manual setup instructions instead.
+
+#### Init Modes
+
+Pass `--mode` to use a specific initialization flow:
+
+**Link-cloud mode** (default) connects to a project on app.stack-auth.com and creates a `.env` file with API keys:
+
+```sh title="Terminal"
+stack init --mode link-cloud --select-project-id your-project-id
+```
+
+**Link-config mode** links to an existing config file:
+
+```sh title="Terminal"
+stack init --mode link-config --config-file ./path/to/stack.config.ts
+```
+
+#### Init Options
+
+| Option | Description |
+|--------|-------------|
+| `--mode <mode>` | Init mode: `link-cloud` (default) or `link-config` |
+| `--config-file <path>` | Path to existing config file (for `link-config` mode) |
+| `--select-project-id <id>` | Project ID to link (for `link-cloud` mode) |
+| `--output-dir <dir>` | Directory to write output files (defaults to current directory) |
+| `--no-agent` | Skip the Claude agent and print manual setup instructions |
+
+#### Non-Interactive Usage
+
+For CI/CD pipelines or scripts, use `--mode link-cloud` with `--select-project-id` to skip interactive prompts.
+
+## Global Options
+
+| Option | Description |
+|--------|-------------|
+| `--project-id <id>` | Specify the project ID to use |
+| `--json` | Output results in JSON format |
+| `--help` | Show help for a command |
+| `--version` | Show the CLI version |
+
+## Environment Variables
+
+You can use environment variables to override the CLI's default behavior. This is especially useful in CI/CD pipelines or automated workflows where interactive login isn't possible.
+
+| Variable | Description |
+|----------|-------------|
+| `STACK_PROJECT_ID` | Default project ID |
+| `STACK_CLI_REFRESH_TOKEN` | Authentication refresh token (bypasses `stack login`) |
+| `STACK_API_URL` | Override the Stack Auth API URL |
+| `STACK_CLI_PUBLISHABLE_CLIENT_KEY` | Override the publishable client key |
+| `STACK_CLI_CONFIG_PATH` | Custom path for the credentials file |
+
+### CI/CD Example
+
+For CI/CD pipelines, set `STACK_CLI_REFRESH_TOKEN` and `STACK_PROJECT_ID` as environment variables:
+
+```sh title="Terminal"
+export STACK_CLI_REFRESH_TOKEN="your-refresh-token"
+export STACK_PROJECT_ID="your-project-id"
+
+# Now you can run commands without interactive login
+stack exec "return await stackServerApp.listUsers()"
+```
+
+<Info>
+To get a refresh token for CI/CD, run `stack login` locally, then copy the token from `~/.config/stack-auth/credentials.json`.
+</Info>

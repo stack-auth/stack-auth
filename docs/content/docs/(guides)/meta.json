@@ -43,6 +43,7 @@
     "customization/internationalization",
     "customization/page-examples",
     "---Other---",
+    "others/cli",
     "others/cli-authentication",
     "others/self-host",
     "others/supabase",
