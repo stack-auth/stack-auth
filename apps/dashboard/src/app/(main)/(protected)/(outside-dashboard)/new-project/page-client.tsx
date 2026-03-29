@@ -1595,23 +1595,38 @@ export default function PageClient() {
         </Dialog>
 
         <Dialog open={isCreateTeamOpen} onOpenChange={setIsCreateTeamOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Create Team</DialogTitle>
-              <DialogDescription>This team will be available immediately for project ownership.</DialogDescription>
+          <DialogContent
+            className="overflow-hidden border-0 bg-white/90 p-0 shadow-2xl backdrop-blur-xl ring-1 ring-black/[0.06] dark:bg-background/75 dark:ring-white/[0.08] sm:max-w-[640px] sm:rounded-3xl"
+            overlayProps={{ className: "bg-black/70 backdrop-blur-[2px]" }}
+            noCloseButton
+          >
+            <DialogHeader className="px-6 pb-0 pt-6 text-left">
+              <div className="flex items-center gap-3">
+                <div className="rounded-2xl bg-blue-500/10 p-2.5 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400">
+                  <PlusCircleIcon className="h-5 w-5" />
+                </div>
+                <div className="space-y-1">
+                  <DialogTitle className="text-xl font-semibold tracking-tight">Create Team</DialogTitle>
+                </div>
+              </div>
+              <DialogDescription>
+                This team will be available immediately for project ownership.
+              </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-2">
-              <Label htmlFor="new-team-name">Team name</Label>
-              <DesignInput
-                id="new-team-name"
-                value={newTeamName}
-                onChange={(event) => setNewTeamName(event.target.value)}
-                placeholder="Acme Team"
-              />
+            <div className="space-y-5 px-6 py-6">
+              <div className="space-y-2">
+                <Label htmlFor="new-team-name">Team name</Label>
+                <DesignInput
+                  id="new-team-name"
+                  value={newTeamName}
+                  onChange={(event) => setNewTeamName(event.target.value)}
+                  placeholder="Acme Team"
+                />
+              </div>
             </div>
 
-            <DialogFooter>
+            <DialogFooter className="px-6 pb-6 pt-0 sm:justify-end sm:space-x-2">
               <DesignButton variant="outline" className="rounded-xl" onClick={() => setIsCreateTeamOpen(false)} disabled={creatingTeam}>
                 Cancel
               </DesignButton>
