@@ -6,6 +6,8 @@ import { DefaultHandlerUrlTarget, HandlerPageUrls, HandlerUrlOptions, HandlerUrl
 const defaultHostedHandlerDomainSuffix = ".built-with-stack-auth.com";
 const hostedHandlerProjectIdPlaceholder = "{projectId}";
 const hostedHandlerPathPlaceholder = "{hostedPath}";
+const localUrlPlaceholderOrigin = "http://example.com";
+const schemePrefixRegex = /^[a-zA-Z][a-zA-Z\d+\-.]*:/;
 
 type CustomPagePrompt = {
   title: string,
@@ -214,6 +216,33 @@ export const getHostedHandlerUrl = (options: { projectId: string, pagePath: stri
     .replaceAll(hostedHandlerProjectIdPlaceholder, options.projectId)
     .replaceAll(hostedHandlerPathPlaceholder, hostedPath);
   return new URL(templateFilled).toString();
+};
+
+const isRelativeUrlString = (url: string): boolean => {
+  if (url.startsWith("//")) {
+    return false;
+  }
+  return !schemePrefixRegex.test(url);
+};
+
+export const isLocalHandlerUrlTarget = (options: {
+  targetUrl: string,
+  handlerPath: string,
+  currentOrigin?: string,
+}): boolean => {
+  const urlObject = new URL(options.targetUrl, localUrlPlaceholderOrigin);
+  const isHandlerPathTarget = urlObject.pathname === options.handlerPath
+    || urlObject.pathname.startsWith(`${options.handlerPath}/`);
+  if (!isHandlerPathTarget) {
+    return false;
+  }
+
+  // On server we only have path information, so treat matching handler paths as local.
+  if (options.currentOrigin == null) {
+    return true;
+  }
+
+  return isRelativeUrlString(options.targetUrl) || urlObject.origin === options.currentOrigin;
 };
 
 const resolveUrlTarget = (options: {
