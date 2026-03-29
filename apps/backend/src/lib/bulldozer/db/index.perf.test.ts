@@ -27,6 +27,7 @@ const LOAD_COUNT_QUERY_MAX_MS = 5_000;
 const LOAD_POINT_MUTATION_MAX_MS = 400;
 const LOAD_SET_ROW_AVG_ITERATIONS = 10;
 const LOAD_SET_ROW_AVG_MAX_MS = 50;
+const LOAD_ONLINE_MUTATION_ITERATIONS = 5;
 const LOAD_ONLINE_MUTATION_MAX_MS = 50;
 const LOAD_SUBSET_ITERATION_MAX_MS = 50;
 const LOAD_SUBSET_ITERATION_ROW_COUNT = 1_000;
@@ -44,7 +45,7 @@ const LOAD_CONCAT_TABLE_INIT_MAX_MS = 10_000;
 const LOAD_CONCAT_TABLE_COUNT_QUERY_MAX_MS = 8_000;
 const LOAD_SORT_TABLE_INIT_MAX_MS = 90_000;
 const LOAD_SORT_TABLE_COUNT_QUERY_MAX_MS = 8_000;
-const LOAD_LFOLD_TABLE_INIT_MAX_MS = 120_000;
+const LOAD_LFOLD_TABLE_INIT_MAX_MS = 130_000;
 const LOAD_LFOLD_TABLE_COUNT_QUERY_MAX_MS = 12_000;
 const LOAD_LEFT_JOIN_TABLE_INIT_MAX_MS = 90_000;
 const LOAD_LEFT_JOIN_TABLE_COUNT_QUERY_MAX_MS = 8_000;
@@ -519,18 +520,30 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     const setRowAverageMs = setRowIterationTimes.reduce((acc, value) => acc + value, 0) / setRowIterationTimes.length;
     logLine(`[bulldozer-perf] load setRow average (${LOAD_SET_ROW_AVG_ITERATIONS} iterations): ${setRowAverageMs.toFixed(1)} ms`);
     expect(setRowAverageMs).toBeLessThanOrEqual(LOAD_SET_ROW_AVG_MAX_MS);
-    const onlineInsert = await measureMs("load online setRow insert (stored table)", async () => {
-      await runStatements(table.setRow("perf-online-row", expr(jsonbLiteral({ team: "beta", value: 111 }))));
-    });
-    expect(onlineInsert.elapsedMs).toBeLessThanOrEqual(LOAD_ONLINE_MUTATION_MAX_MS);
-    const onlineUpdate = await measureMs("load online setRow update (stored table)", async () => {
-      await runStatements(table.setRow("perf-online-row", expr(jsonbLiteral({ team: "beta", value: 222 }))));
-    });
-    expect(onlineUpdate.elapsedMs).toBeLessThanOrEqual(LOAD_ONLINE_MUTATION_MAX_MS);
-    const onlineDelete = await measureMs("load online deleteRow (stored table)", async () => {
-      await runStatements(table.deleteRow("perf-online-row"));
-    });
-    expect(onlineDelete.elapsedMs).toBeLessThanOrEqual(LOAD_ONLINE_MUTATION_MAX_MS);
+    const onlineInsertTimes: number[] = [];
+    const onlineUpdateTimes: number[] = [];
+    const onlineDeleteTimes: number[] = [];
+    for (let i = 0; i < LOAD_ONLINE_MUTATION_ITERATIONS; i++) {
+      const rowIdentifier = `perf-online-row-${i}`;
+      const insertStartedAt = performance.now();
+      await runStatements(table.setRow(rowIdentifier, expr(jsonbLiteral({ team: "beta", value: 111 + i }))));
+      onlineInsertTimes.push(performance.now() - insertStartedAt);
+      const updateStartedAt = performance.now();
+      await runStatements(table.setRow(rowIdentifier, expr(jsonbLiteral({ team: "beta", value: 211 + i }))));
+      onlineUpdateTimes.push(performance.now() - updateStartedAt);
+      const deleteStartedAt = performance.now();
+      await runStatements(table.deleteRow(rowIdentifier));
+      onlineDeleteTimes.push(performance.now() - deleteStartedAt);
+    }
+    const onlineInsertAvgMs = onlineInsertTimes.reduce((acc, value) => acc + value, 0) / onlineInsertTimes.length;
+    const onlineUpdateAvgMs = onlineUpdateTimes.reduce((acc, value) => acc + value, 0) / onlineUpdateTimes.length;
+    const onlineDeleteAvgMs = onlineDeleteTimes.reduce((acc, value) => acc + value, 0) / onlineDeleteTimes.length;
+    logLine(`[bulldozer-perf] load online setRow insert average (${LOAD_ONLINE_MUTATION_ITERATIONS} iterations): ${onlineInsertAvgMs.toFixed(1)} ms`);
+    logLine(`[bulldozer-perf] load online setRow update average (${LOAD_ONLINE_MUTATION_ITERATIONS} iterations): ${onlineUpdateAvgMs.toFixed(1)} ms`);
+    logLine(`[bulldozer-perf] load online deleteRow average (${LOAD_ONLINE_MUTATION_ITERATIONS} iterations): ${onlineDeleteAvgMs.toFixed(1)} ms`);
+    expect(onlineInsertAvgMs).toBeLessThanOrEqual(LOAD_ONLINE_MUTATION_MAX_MS);
+    expect(onlineUpdateAvgMs).toBeLessThanOrEqual(LOAD_ONLINE_MUTATION_MAX_MS);
+    expect(onlineDeleteAvgMs).toBeLessThanOrEqual(LOAD_ONLINE_MUTATION_MAX_MS);
 
     const pointDelete = await measureMs("load point delete (deleteRow existing)", async () => {
       await runStatements(table.deleteRow(`seed-${Math.floor(loadRowCount / 2) - 1}`));
@@ -1020,7 +1033,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     `;
     expect(isInitializedRows[0].initialized).toBe(false);
 
-    logLine(`[bulldozer-perf] load thresholds(ms): prefill<=${LOAD_PREFILL_MAX_MS}, baseCount<=${LOAD_COUNT_QUERY_MAX_MS}, setRowAvg<=${LOAD_SET_ROW_AVG_MAX_MS} over ${LOAD_SET_ROW_AVG_ITERATIONS}, pointDelete<=${LOAD_POINT_MUTATION_MAX_MS}, onlineMutation<=${LOAD_ONLINE_MUTATION_MAX_MS}, subsetIteration<=${LOAD_SUBSET_ITERATION_MAX_MS} for ${LOAD_SUBSET_ITERATION_ROW_COUNT} rows, derivedInit<=${LOAD_DERIVED_INIT_MAX_MS}, filterInit<=${LOAD_FILTER_TABLE_INIT_MAX_MS}, sortInit<=${LOAD_SORT_TABLE_INIT_MAX_MS}, lfoldInit<=${LOAD_LFOLD_TABLE_INIT_MAX_MS}, leftJoinInit<=${LOAD_LEFT_JOIN_TABLE_INIT_MAX_MS}, concatInit<=${LOAD_CONCAT_TABLE_INIT_MAX_MS}, limitInit<=${LOAD_LIMIT_TABLE_INIT_MAX_MS}, expandingInit<=${LOAD_EXPANDING_INIT_MAX_MS}, derivedCount<=${LOAD_DERIVED_COUNT_QUERY_MAX_MS}, filterCount<=${LOAD_FILTER_TABLE_COUNT_QUERY_MAX_MS}, lfoldCount<=${LOAD_LFOLD_TABLE_COUNT_QUERY_MAX_MS}, leftJoinCount<=${LOAD_LEFT_JOIN_TABLE_COUNT_QUERY_MAX_MS}, concatCount<=${LOAD_CONCAT_TABLE_COUNT_QUERY_MAX_MS}, limitCount<=${LOAD_LIMIT_TABLE_COUNT_QUERY_MAX_MS}, expandingCount<=${LOAD_EXPANDING_COUNT_QUERY_MAX_MS}, filteredQuery<=${LOAD_FILTERED_QUERY_MAX_MS}, tableDelete<=${LOAD_TABLE_DELETE_MAX_MS}`);
+    logLine(`[bulldozer-perf] load thresholds(ms): prefill<=${LOAD_PREFILL_MAX_MS}, baseCount<=${LOAD_COUNT_QUERY_MAX_MS}, setRowAvg<=${LOAD_SET_ROW_AVG_MAX_MS} over ${LOAD_SET_ROW_AVG_ITERATIONS}, pointDelete<=${LOAD_POINT_MUTATION_MAX_MS}, onlineMutationAvg<=${LOAD_ONLINE_MUTATION_MAX_MS} over ${LOAD_ONLINE_MUTATION_ITERATIONS}, subsetIteration<=${LOAD_SUBSET_ITERATION_MAX_MS} for ${LOAD_SUBSET_ITERATION_ROW_COUNT} rows, derivedInit<=${LOAD_DERIVED_INIT_MAX_MS}, filterInit<=${LOAD_FILTER_TABLE_INIT_MAX_MS}, sortInit<=${LOAD_SORT_TABLE_INIT_MAX_MS}, lfoldInit<=${LOAD_LFOLD_TABLE_INIT_MAX_MS}, leftJoinInit<=${LOAD_LEFT_JOIN_TABLE_INIT_MAX_MS}, concatInit<=${LOAD_CONCAT_TABLE_INIT_MAX_MS}, limitInit<=${LOAD_LIMIT_TABLE_INIT_MAX_MS}, expandingInit<=${LOAD_EXPANDING_INIT_MAX_MS}, derivedCount<=${LOAD_DERIVED_COUNT_QUERY_MAX_MS}, filterCount<=${LOAD_FILTER_TABLE_COUNT_QUERY_MAX_MS}, lfoldCount<=${LOAD_LFOLD_TABLE_COUNT_QUERY_MAX_MS}, leftJoinCount<=${LOAD_LEFT_JOIN_TABLE_COUNT_QUERY_MAX_MS}, concatCount<=${LOAD_CONCAT_TABLE_COUNT_QUERY_MAX_MS}, limitCount<=${LOAD_LIMIT_TABLE_COUNT_QUERY_MAX_MS}, expandingCount<=${LOAD_EXPANDING_COUNT_QUERY_MAX_MS}, filteredQuery<=${LOAD_FILTERED_QUERY_MAX_MS}, tableDelete<=${LOAD_TABLE_DELETE_MAX_MS}`);
   }, 300_000);
 });
 

@@ -24,6 +24,9 @@ export function declareGroupByTable<
   const getGroupKeyPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey]);
   const getGroupRowsPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey, "rows"]);
   const getGroupRowPath = (groupKey: SqlExpression<Json>, rowIdentifier: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey, "rows", rowIdentifier]);
+  const compareGroupKeys = (a: SqlExpression<GK>, b: SqlExpression<GK>) => sqlExpression`
+    ((${a}) > (${b}))::int - ((${a}) < (${b}))::int
+  `;
   const isInitializedExpression = sqlExpression`
     EXISTS (
       SELECT 1 FROM "BulldozerStorageEngine"
@@ -182,7 +185,7 @@ export function declareGroupByTable<
       fromTableId: tableIdToDebugString(options.fromTable.tableId),
       groupBySql: options.groupBy.sql,
     },
-    compareGroupKeys: (a, b) => sqlExpression` 0 `,
+    compareGroupKeys,
     compareSortKeys: (a, b) => sqlExpression` 0 `,
     init: () => {
       const fromTableAllRowsTableName = `from_table_all_rows_${generateSecureRandomString()}`;
@@ -278,7 +281,21 @@ export function declareGroupByTable<
           WHERE "groupRowsPath"."keyPathParent" = "groupPath"."keyPath"
             AND "groupRowsPath"."keyPath"[cardinality("groupRowsPath"."keyPath")] = to_jsonb('rows'::text)
         )
-        AND ${singleNullSortKeyRangePredicate({ start, end, startInclusive, endInclusive })}
+        AND ${
+          start === "start"
+            ? sqlExpression`1 = 1`
+            : startInclusive
+              ? sqlExpression`${compareGroupKeys(sqlExpression`"groupPath"."keyPath"[cardinality("groupPath"."keyPath")]`, start)} >= 0`
+              : sqlExpression`${compareGroupKeys(sqlExpression`"groupPath"."keyPath"[cardinality("groupPath"."keyPath")]`, start)} > 0`
+        }
+        AND ${
+          end === "end"
+            ? sqlExpression`1 = 1`
+            : endInclusive
+              ? sqlExpression`${compareGroupKeys(sqlExpression`"groupPath"."keyPath"[cardinality("groupPath"."keyPath")]`, end)} <= 0`
+              : sqlExpression`${compareGroupKeys(sqlExpression`"groupPath"."keyPath"[cardinality("groupPath"."keyPath")]`, end)} < 0`
+        }
+      ORDER BY "groupPath"."keyPath"[cardinality("groupPath"."keyPath")] ASC
     `,
     listRowsInGroup: ({ groupKey, start, end, startInclusive, endInclusive }) => groupKey ? sqlQuery`
       SELECT

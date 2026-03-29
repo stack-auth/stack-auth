@@ -1112,7 +1112,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     expect(groupsAfterReinit.map((row) => row.groupkey).sort(stringCompare)).toEqual(["alpha", "beta"]);
   });
 
-  test("groupBy listGroups returns all groups when the range is inclusive", async () => {
+  test("groupBy listGroups applies group-key ranges", async () => {
     const { fromTable, groupedTable } = createGroupedTable();
     await runStatements(fromTable.init());
     await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
@@ -1126,7 +1126,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       startInclusive: true,
       endInclusive: true,
     }));
-    expect(inclusive.map((row) => row.groupkey).sort(stringCompare)).toEqual(["alpha", "beta", "gamma"]);
+    expect(inclusive.map((row) => row.groupkey).sort(stringCompare)).toEqual(["beta", "gamma"]);
 
     const exclusive = await readRows(groupedTable.listGroups({
       start: expr(`to_jsonb('beta'::text)`),

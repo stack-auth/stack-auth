@@ -101,6 +101,112 @@ function keyPathSqlLiteral(pathSegments: string[]): string {
   return `ARRAY[${pathSegments.map((segment) => quoteSqlJsonbLiteral(segment)).join(", ")}]::jsonb[]`;
 }
 
+function splitSqlStatements(sqlScript: string): string[] {
+  const statements: string[] = [];
+  let statementStart = 0;
+  let index = 0;
+  let inSingleQuote = false;
+  let inDoubleQuote = false;
+  let inLineComment = false;
+  let blockCommentDepth = 0;
+  let dollarQuoteTag: null | string = null;
+  while (index < sqlScript.length) {
+    const current = sqlScript[index];
+    const next = sqlScript[index + 1];
+
+    if (inLineComment) {
+      if (current === "\n") inLineComment = false;
+      index++;
+      continue;
+    }
+    if (blockCommentDepth > 0) {
+      if (current === "/" && next === "*") {
+        blockCommentDepth++;
+        index += 2;
+        continue;
+      }
+      if (current === "*" && next === "/") {
+        blockCommentDepth--;
+        index += 2;
+        continue;
+      }
+      index++;
+      continue;
+    }
+    if (dollarQuoteTag !== null) {
+      if (sqlScript.startsWith(dollarQuoteTag, index)) {
+        index += dollarQuoteTag.length;
+        dollarQuoteTag = null;
+      } else {
+        index++;
+      }
+      continue;
+    }
+    if (inSingleQuote) {
+      if (current === "'") {
+        if (next === "'") {
+          index += 2;
+          continue;
+        }
+        inSingleQuote = false;
+      }
+      index++;
+      continue;
+    }
+    if (inDoubleQuote) {
+      if (current === "\"") inDoubleQuote = false;
+      index++;
+      continue;
+    }
+
+    if (current === "-" && next === "-") {
+      inLineComment = true;
+      index += 2;
+      continue;
+    }
+    if (current === "/" && next === "*") {
+      blockCommentDepth = 1;
+      index += 2;
+      continue;
+    }
+    if (current === "'") {
+      inSingleQuote = true;
+      index++;
+      continue;
+    }
+    if (current === "\"") {
+      inDoubleQuote = true;
+      index++;
+      continue;
+    }
+    if (current === "$") {
+      let tagEnd = index + 1;
+      while (tagEnd < sqlScript.length && /[a-zA-Z0-9_]/.test(sqlScript[tagEnd] ?? "")) {
+        tagEnd++;
+      }
+      if (sqlScript[tagEnd] === "$") {
+        dollarQuoteTag = sqlScript.slice(index, tagEnd + 1);
+        index = tagEnd + 1;
+        continue;
+      }
+    }
+    if (current === ";") {
+      const statement = sqlScript.slice(statementStart, index).trim();
+      if (statement.length > 0) {
+        statements.push(statement);
+      }
+      statementStart = index + 1;
+    }
+    index++;
+  }
+
+  const trailingStatement = sqlScript.slice(statementStart).trim();
+  if (trailingStatement.length > 0) {
+    statements.push(trailingStatement);
+  }
+  return statements;
+}
+
 function tableIdToString(tableId: unknown): string {
   if (typeof tableId === "string") return tableId;
   return JSON.stringify(tableId);
@@ -134,10 +240,14 @@ const schemaObject: Record<string, unknown> = exampleFungibleLedgerSchema;
 const registry = createTableRegistry(schemaObject);
 
 async function executeStatements(statements: SqlStatement[]): Promise<void> {
+  const sqlScript = toExecutableSqlStatements(statements);
+  const executableStatements = splitSqlStatements(sqlScript);
   await retryTransaction(globalPrismaClient, async (tx) => {
     await tx.$executeRawUnsafe(`SET LOCAL jit = off`);
     await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${BULLDOZER_LOCK_ID})`);
-    await tx.$executeRawUnsafe(toExecutableSqlStatements(statements));
+    for (const statement of executableStatements) {
+      await tx.$executeRawUnsafe(statement);
+    }
   });
 }
 
@@ -229,17 +339,17 @@ async function computeStudioLayout(tables: Array<Awaited<ReturnType<typeof getTa
       }),
     });
 
-    const positions: Record<string, { x: number, y: number }> = {};
+    const positions = new Map<string, { x: number, y: number }>();
     for (const child of layout.children ?? []) {
       if (typeof child.id !== "string") continue;
-      positions[child.id] = {
+      positions.set(child.id, {
         x: Number(child.x ?? 0),
         y: Number(child.y ?? 0),
-      };
+      });
     }
 
     return {
-      positions,
+      positions: Object.fromEntries(positions),
       sceneWidth: Number(Reflect.get(layout, "width") ?? 600),
       sceneHeight: Number(Reflect.get(layout, "height") ?? 600),
     };
@@ -1532,13 +1642,24 @@ function getStudioPageHtml(): string {
       info.className = "detail-section";
       const kv = document.createElement("div");
       kv.className = "kv";
-      kv.innerHTML = ""
-        + "<div class='kv-key'>name</div><div class='mono'>" + table.name + "</div>"
-        + "<div class='kv-key'>tableId</div><div class='mono'>" + table.tableId + "</div>"
-        + "<div class='kv-key'>operator</div><div class='mono'>" + table.operator + "</div>"
-        + "<div class='kv-key'>initialized</div><div>" + String(table.initialized) + "</div>"
-        + "<div class='kv-key'>dependencies</div><div class='mono'>" + (table.dependencies.length === 0 ? "(none)" : table.dependencies.join(", ")) + "</div>"
-        + "<div class='kv-key'>rows(all groups)</div><div class='mono'>" + String(details.totalRows) + "</div>";
+      const appendInfoRow = (label: string, value: string, isMonospace = false) => {
+        const keyCell = document.createElement("div");
+        keyCell.className = "kv-key";
+        keyCell.textContent = label;
+        const valueCell = document.createElement("div");
+        if (isMonospace) {
+          valueCell.className = "mono";
+        }
+        valueCell.textContent = value;
+        kv.appendChild(keyCell);
+        kv.appendChild(valueCell);
+      };
+      appendInfoRow("name", table.name, true);
+      appendInfoRow("tableId", table.tableId, true);
+      appendInfoRow("operator", table.operator, true);
+      appendInfoRow("initialized", String(table.initialized));
+      appendInfoRow("dependencies", table.dependencies.length === 0 ? "(none)" : table.dependencies.join(", "), true);
+      appendInfoRow("rows(all groups)", String(details.totalRows), true);
       info.appendChild(kv);
       detailsPane.appendChild(info);
 
@@ -2038,6 +2159,12 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
   if (method === "POST" && pathname === "/api/raw/delete") {
     const body = requireRecord(await readJsonBody(request), "raw delete body must be an object.");
     const pathSegments = requireStringArray(Reflect.get(body, "pathSegments"), "pathSegments must be a string[]");
+    if (
+      pathSegments.length === 0
+      || (pathSegments.length === 1 && pathSegments[0] === "table")
+    ) {
+      throw new StackAssertionError("Deleting reserved root paths is not allowed.");
+    }
     await retryTransaction(globalPrismaClient, async (tx) => {
       await tx.$executeRawUnsafe(`
         DELETE FROM "BulldozerStorageEngine"

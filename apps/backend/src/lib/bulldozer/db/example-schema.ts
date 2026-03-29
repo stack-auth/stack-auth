@@ -104,7 +104,7 @@ export const exampleFungibleLedgerSchema = (() => {
   const accountEntriesWithCounterparty = declareFilterTable({
     tableId: "bulldozer-example-ledger-account-entries-with-counterparty",
     fromTable: entriesByAccount,
-    filter: predicate(`("rowData"->'counterparty') IS NOT NULL`),
+    filter: predicate(`("rowData"->>'counterparty') IS NOT NULL`),
   });
   const accountEntriesSortedByAmount = declareSortTable({
     tableId: "bulldozer-example-ledger-account-entries-sorted-by-amount",

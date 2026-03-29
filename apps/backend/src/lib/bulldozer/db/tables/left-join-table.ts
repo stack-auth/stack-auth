@@ -439,6 +439,7 @@ export function declareLeftJoinTable<
       FROM "BulldozerStorageEngine" AS "row"
       WHERE "row"."keyPathParent" = ${getGroupRowsPath(groupKey)}::jsonb[]
         AND ${singleNullSortKeyRangePredicate({ start, end, startInclusive, endInclusive })}
+      ORDER BY rowIdentifier ASC
     ` : sqlQuery`
       SELECT
         "groupPath"."keyPath"[cardinality("groupPath"."keyPath")] AS groupKey,
@@ -453,6 +454,7 @@ export function declareLeftJoinTable<
       WHERE "groupPath"."keyPathParent" = ${groupsPath}::jsonb[]
         AND "groupRowsPath"."keyPath"[cardinality("groupRowsPath"."keyPath")] = to_jsonb('rows'::text)
         AND ${singleNullSortKeyRangePredicate({ start, end, startInclusive, endInclusive })}
+      ORDER BY groupKey ASC, rowIdentifier ASC
     `,
     registerRowChangeTrigger: (trigger) => {
       const id = generateSecureRandomString();
