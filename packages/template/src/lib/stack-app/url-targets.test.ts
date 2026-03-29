@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { resolveHandlerUrls, resolveUnknownHandlerPathFallbackUrl } from "./url-targets";
+import { isLocalHandlerUrlTarget, resolveHandlerUrls, resolveUnknownHandlerPathFallbackUrl } from "./url-targets";
 
 describe("handler URL targets", () => {
   afterEach(() => {
@@ -110,5 +110,39 @@ describe("handler URL targets", () => {
         default: { type: "hosted" },
       },
     })).toThrowError(/\{projectId\} and \{hostedPath\}/);
+  });
+});
+
+describe("isLocalHandlerUrlTarget", () => {
+  it("treats relative handler URLs as local targets", () => {
+    expect(isLocalHandlerUrlTarget({
+      targetUrl: "/handler/sign-in",
+      handlerPath: "/handler",
+      currentOrigin: "http://p91.localhost:9101",
+    })).toBe(true);
+  });
+
+  it("treats same-origin absolute handler URLs as local targets", () => {
+    expect(isLocalHandlerUrlTarget({
+      targetUrl: "http://p91.localhost:9101/handler/sign-in",
+      handlerPath: "/handler",
+      currentOrigin: "http://p91.localhost:9101",
+    })).toBe(true);
+  });
+
+  it("treats cross-origin absolute handler URLs as non-local targets", () => {
+    expect(isLocalHandlerUrlTarget({
+      targetUrl: "https://project-id.built-with-stack-auth.com/handler/sign-in",
+      handlerPath: "/handler",
+      currentOrigin: "http://p91.localhost:9101",
+    })).toBe(false);
+  });
+
+  it("treats non-handler paths as non-local targets", () => {
+    expect(isLocalHandlerUrlTarget({
+      targetUrl: "/projects",
+      handlerPath: "/handler",
+      currentOrigin: "http://p91.localhost:9101",
+    })).toBe(false);
   });
 });
