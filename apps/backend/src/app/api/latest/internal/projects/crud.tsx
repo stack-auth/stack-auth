@@ -16,17 +16,14 @@ export const adminUserProjectsCrudHandlers = createLazyProxy(() => createCrudHan
     projectId: projectIdSchema.defined(),
   }),
   onPrepare: async ({ auth }) => {
-    if (auth.project.id !== "internal") {
-      throw new KnownErrors.ExpectedInternalProject();
-    }
     if (!auth.user) {
       throw new KnownErrors.UserAuthenticationRequired;
     }
-  },
-  onCreate: async ({ auth, data }) => {
     if (auth.project.id !== "internal") {
       throw new KnownErrors.ExpectedInternalProject();
     }
+  },
+  onCreate: async ({ auth, data }) => {
     const user = auth.user ?? throwErr('auth.user is required');
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
     await ensureTeamMembershipExists(prisma, {
@@ -53,9 +50,6 @@ export const adminUserProjectsCrudHandlers = createLazyProxy(() => createCrudHan
     };
   },
   onList: async ({ auth }) => {
-    if (auth.project.id !== "internal") {
-      throw new KnownErrors.ExpectedInternalProject();
-    }
     if (!auth.user) {
       throw new KnownErrors.UserAuthenticationRequired();
     }
