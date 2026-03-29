@@ -8,7 +8,7 @@ import { useMemo } from 'react';
 import { SignIn, SignUp, StackServerApp } from "..";
 import { useStackApp } from "../lib/hooks";
 import { HandlerUrls, StackClientApp, stackAppInternalsSymbol } from "../lib/stack-app";
-import { resolveUnknownHandlerPathFallbackUrl } from "../lib/stack-app/url-targets";
+import { isLocalHandlerUrlTarget, resolveUnknownHandlerPathFallbackUrl } from "../lib/stack-app/url-targets";
 import { AccountSettings } from "./account-settings";
 import { CliAuthConfirmation } from "./cli-auth-confirm";
 import { EmailVerification } from "./email-verification";
@@ -260,11 +260,11 @@ export function StackHandlerClient(props: BaseHandlerProps & Partial<RouteProps>
     if (isCrossDomainLocalOauthCallback) {
       return;
     }
-    const urlObject = new URL(url, placeholderOrigin);
-    const isHandlerPathTarget = urlObject.pathname === handlerPath || urlObject.pathname.startsWith(`${handlerPath}/`);
-    const isLocalHandlerTarget = typeof window === "undefined"
-      ? isHandlerPathTarget
-      : urlObject.origin === window.location.origin && isHandlerPathTarget;
+    const isLocalHandlerTarget = isLocalHandlerUrlTarget({
+      targetUrl: url,
+      handlerPath,
+      currentOrigin: typeof window === "undefined" ? undefined : window.location.origin,
+    });
     if (isLocalHandlerTarget) {
       return;
     }
