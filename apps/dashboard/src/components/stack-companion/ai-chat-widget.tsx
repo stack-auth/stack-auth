@@ -122,6 +122,7 @@ function AIChatWidgetInner({
   // Handle initial input keyboard
   const handleInputKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.nativeEvent.isComposing) return;
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         handleSubmit();
@@ -144,6 +145,7 @@ function AIChatWidgetInner({
   // Handle follow-up input keyboard
   const handleFollowUpKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.nativeEvent.isComposing) return;
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         e.stopPropagation();
@@ -197,6 +199,7 @@ function AIChatWidgetInner({
             <button
               onClick={handleSubmit}
               disabled={!input.trim() || aiLoading}
+              aria-label="Send message"
               className={cn(
                 "p-1 rounded transition-colors hover:transition-none",
                 input.trim() && !aiLoading
@@ -307,6 +310,7 @@ function AIChatWidgetInner({
           <button
             onClick={() => handleFollowUp()}
             disabled={!followUpInput.trim() || aiLoading}
+            aria-label="Send message"
             className={cn(
               "p-1 rounded transition-colors hover:transition-none",
               followUpInput.trim() && !aiLoading

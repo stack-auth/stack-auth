@@ -121,6 +121,7 @@ const AIChatPreviewInner = memo(function AIChatPreview({
   // Handle follow-up input keyboard
   const handleFollowUpKeyDown = useCallback(
     (e: React.KeyboardEvent<HTMLInputElement>) => {
+      if (e.nativeEvent.isComposing) return;
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         e.stopPropagation();

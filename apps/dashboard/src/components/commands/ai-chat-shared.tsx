@@ -14,10 +14,10 @@ export function createAskAiTransport({
   currentUser,
   projectId,
 }: {
-  currentUser: CurrentUser | null | undefined,
+  currentUser: CurrentUser | null,
   projectId: string | undefined,
 }): DefaultChatTransport<UIMessage> {
-  const backendBaseUrl = getPublicEnvVar("NEXT_PUBLIC_BROWSER_STACK_API_URL") ?? getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_BROWSER_STACK_API_URL is not set");
+  const backendBaseUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_STACK_API_URL is not set");
   return new DefaultChatTransport<UIMessage>({
     api: `${backendBaseUrl}/api/latest/ai/query/stream`,
     headers: () => buildStackAuthHeaders(currentUser),
@@ -501,28 +501,29 @@ export const AssistantMessage = memo(function AssistantMessage({
 export function useWordStreaming(content: string) {
   const [displayedWordCount, setDisplayedWordCount] = useState(0);
   const targetWordCount = content ? countWords(content) : 0;
-  const targetWordCountRef = useRef(targetWordCount);
-  targetWordCountRef.current = targetWordCount;
+  const previousContentRef = useRef("");
 
-  // Reset when content is cleared
-  const hasContent = Boolean(content);
   useEffect(() => {
-    if (!hasContent) {
+    if (!content) {
       setDisplayedWordCount(0);
+      previousContentRef.current = "";
       return;
     }
+    if (!content.startsWith(previousContentRef.current)) {
+      setDisplayedWordCount(0);
+    }
+    previousContentRef.current = content;
+  }, [content]);
 
-    const intervalId = setInterval(() => {
-      setDisplayedWordCount(prev => {
-        if (prev < targetWordCountRef.current) {
-          return prev + 1;
-        }
-        return prev;
-      });
+  useEffect(() => {
+    if (targetWordCount === 0 || displayedWordCount >= targetWordCount) {
+      return;
+    }
+    const timeoutId = setTimeout(() => {
+      setDisplayedWordCount(prev => Math.min(prev + 1, targetWordCount));
     }, 15);
-
-    return () => clearInterval(intervalId);
-  }, [hasContent]);
+    return () => clearTimeout(timeoutId);
+  }, [displayedWordCount, targetWordCount]);
 
   return {
     displayedWordCount,
