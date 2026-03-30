@@ -16,12 +16,10 @@ import {
   useWordStreaming,
 } from "../commands/ai-chat-shared";
 
-export function AIChatWidget({ isActive }: { isActive: boolean }) {
+export function AIChatWidget() {
   const [input, setInput] = useState("");
   const [conversationStarted, setConversationStarted] = useState(false);
   const [conversationKey, setConversationKey] = useState(0);
-
-  if (!isActive) return null;
 
   return (
     <AIChatWidgetInner

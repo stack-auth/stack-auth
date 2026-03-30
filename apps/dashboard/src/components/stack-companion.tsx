@@ -433,7 +433,7 @@ export function StackCompanion({ className, glassBg = false }: { className?: str
         "flex-1 overflow-x-hidden no-drag cursor-auto",
         activeItem === 'ask-ai' ? "overflow-hidden p-0 flex flex-col" : "overflow-y-auto p-5"
       )}>
-        {activeItem === 'ask-ai' && <AIChatWidget isActive={true} />}
+        {activeItem === 'ask-ai' && <AIChatWidget />}
         {activeItem === 'docs' && <UnifiedDocsWidget isActive={true} />}
         {activeItem === 'feedback' && <FeatureRequestBoard isActive={true} />}
         {activeItem === 'changelog' && <ChangelogWidget isActive={true} initialData={changelogData} />}
