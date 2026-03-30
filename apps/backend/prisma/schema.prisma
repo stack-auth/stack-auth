@@ -1092,7 +1092,7 @@ model ThreadMessage {
 }
 
 model AiConversation {
-  id            String   @id @default(uuid()) @db.Uuid
+  id            String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   projectUserId String   @db.Uuid
   projectId     String
   project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
@@ -1105,7 +1105,7 @@ model AiConversation {
 }
 
 model AiMessage {
-  id             String         @id @default(uuid()) @db.Uuid
+  id             String         @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   conversationId String         @db.Uuid
   position       Int
   role           String
