@@ -56,11 +56,7 @@ export function declareConcatTable<
             "sourceRows"."groupkey" AS "groupKey",
             ${createConcatenatedRowIdentifierSql(tableIndex, `"sourceRows"."rowidentifier"`)} AS "rowIdentifier",
             'null'::jsonb AS "rowSortKey",
-            "sourceRows"."rowdata" AS "rowData",
-            ${tableIndex}::int AS "sourceTableIndex",
-            row_number() OVER (
-              ORDER BY "sourceRows"."groupkey" ASC, "sourceRows"."rowsortkey" ASC, "sourceRows"."rowidentifier" ASC
-            ) AS "sourceRowIndex"
+            "sourceRows"."rowdata" AS "rowData"
           FROM (${table.listRowsInGroup({
             start: "start",
             end: "end",
@@ -77,11 +73,7 @@ export function declareConcatTable<
         SELECT
           ${createConcatenatedRowIdentifierSql(tableIndex, `"sourceRows"."rowidentifier"`)} AS "rowIdentifier",
           'null'::jsonb AS "rowSortKey",
-          "sourceRows"."rowdata" AS "rowData",
-          ${tableIndex}::int AS "sourceTableIndex",
-          row_number() OVER (
-            ORDER BY "sourceRows"."rowsortkey" ASC, "sourceRows"."rowidentifier" ASC
-          ) AS "sourceRowIndex"
+          "sourceRows"."rowdata" AS "rowData"
         FROM (${table.listRowsInGroup({
           groupKey,
           start: "start",
@@ -143,7 +135,6 @@ export function declareConcatTable<
       }))}) AS "concatRows"
       WHERE ${isInitializedExpression}
         AND ${singleNullSortKeyRangePredicate({ start, end, startInclusive, endInclusive })}
-      ORDER BY "concatRows"."sourceTableIndex" ASC, "concatRows"."sourceRowIndex" ASC, "concatRows"."rowIdentifier" ASC
     ` : sqlQuery`
       SELECT
         "concatRows"."groupKey" AS groupKey,
@@ -159,7 +150,6 @@ export function declareConcatTable<
       }))}) AS "concatRows"
       WHERE ${isInitializedExpression}
         AND ${singleNullSortKeyRangePredicate({ start, end, startInclusive, endInclusive })}
-      ORDER BY "concatRows"."sourceTableIndex" ASC, "concatRows"."sourceRowIndex" ASC, "concatRows"."rowIdentifier" ASC
     `,
     compareGroupKeys: firstTable.compareGroupKeys,
     compareSortKeys: () => sqlExpression`0`,

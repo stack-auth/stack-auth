@@ -1,6 +1,6 @@
 import { stringCompare, templateIdentity } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
-import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it, test } from "vitest";
 import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLeftJoinTable, declareLFoldTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
 
 type TestDb = { full: string, base: string };
@@ -291,6 +291,42 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       compareSortKeys: (a, b) => expr(`(((${a.sql}) #>> '{}')::int) - (((${b.sql}) #>> '{}')::int)`),
     });
     return { fromTable, groupedTable, sortedTable };
+  }
+  function createDescendingSortedTable() {
+    const { fromTable, groupedTable } = createGroupedTable();
+    const sortedTable = declareSortTable({
+      tableId: "users-by-team-sorted-desc",
+      fromTable: groupedTable,
+      getSortKey: mapper(`(("rowData"->>'value')::int) AS "newSortKey"`),
+      compareSortKeys: (a, b) => expr(`(((${b.sql}) #>> '{}')::int) - (((${a.sql}) #>> '{}')::int)`),
+    });
+    return { fromTable, groupedTable, sortedTable };
+  }
+  function createDescendingLimitedTable() {
+    const { fromTable, groupedTable, sortedTable } = createDescendingSortedTable();
+    const limitedTable = declareLimitTable({
+      tableId: "users-by-team-limit-desc",
+      fromTable: sortedTable,
+      limit: expr(`2`),
+    });
+    return { fromTable, groupedTable, sortedTable, limitedTable };
+  }
+  function createDescendingLFoldTable() {
+    const { fromTable, groupedTable, sortedTable } = createDescendingSortedTable();
+    const lFoldTable = declareLFoldTable({
+      tableId: "users-by-team-lfold-desc",
+      fromTable: sortedTable,
+      initialState: expr(`'0'::jsonb`),
+      reducer: mapper(`
+        "oldState" AS "newState",
+        jsonb_build_array(
+          jsonb_build_object(
+            'value', (("oldRowData"->>'value')::int)
+          )
+        ) AS "newRowsData"
+      `),
+    });
+    return { fromTable, groupedTable, sortedTable, lFoldTable };
   }
   function createLFoldTable() {
     const { fromTable, groupedTable, sortedTable } = createSortedTable();
@@ -2249,10 +2285,13 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       startInclusive: true,
       endInclusive: true,
     }));
-    expect(alphaRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata }))).toEqual([
-      { rowIdentifier: "0:a1", rowData: { team: "alpha", value: 1 } },
-      { rowIdentifier: "1:b1", rowData: { team: "alpha", value: 3 } },
-    ]);
+    expect(alphaRows
+      .map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata }))
+      .sort((a, b) => stringCompare(a.rowIdentifier, b.rowIdentifier)))
+      .toEqual([
+        { rowIdentifier: "0:a1", rowData: { team: "alpha", value: 1 } },
+        { rowIdentifier: "1:b1", rowData: { team: "alpha", value: 3 } },
+      ]);
 
     const allRows = await readRows(concatenatedTable.listRowsInGroup({
       start: "start",
@@ -2260,16 +2299,19 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       startInclusive: true,
       endInclusive: true,
     }));
-    expect(allRows.map((row) => ({
-      groupKey: row.groupkey,
-      rowIdentifier: row.rowidentifier,
-      rowData: row.rowdata,
-    }))).toEqual([
-      { groupKey: "alpha", rowIdentifier: "0:a1", rowData: { team: "alpha", value: 1 } },
-      { groupKey: "beta", rowIdentifier: "0:a2", rowData: { team: "beta", value: 2 } },
-      { groupKey: "alpha", rowIdentifier: "1:b1", rowData: { team: "alpha", value: 3 } },
-      { groupKey: "gamma", rowIdentifier: "1:b2", rowData: { team: "gamma", value: 4 } },
-    ]);
+    expect(allRows
+      .map((row) => ({
+        groupKey: row.groupkey,
+        rowIdentifier: row.rowidentifier,
+        rowData: row.rowdata,
+      }))
+      .sort((a, b) => stringCompare(`${a.groupKey}:${a.rowIdentifier}`, `${b.groupKey}:${b.rowIdentifier}`)))
+      .toEqual([
+        { groupKey: "alpha", rowIdentifier: "0:a1", rowData: { team: "alpha", value: 1 } },
+        { groupKey: "alpha", rowIdentifier: "1:b1", rowData: { team: "alpha", value: 3 } },
+        { groupKey: "beta", rowIdentifier: "0:a2", rowData: { team: "beta", value: 2 } },
+        { groupKey: "gamma", rowIdentifier: "1:b2", rowData: { team: "gamma", value: 4 } },
+      ]);
   });
 
   test("concatTable forwards prefixed trigger changes from each input table", async () => {
@@ -2810,6 +2852,93 @@ describe.sequential("declareStoredTable (real postgres)", () => {
         },
       },
     ]);
+  });
+
+  test("leftJoinTable listRowsInGroup is deterministically ordered by rowIdentifier", async () => {
+    const { fromTable, joinTable, groupedFromTable, groupedJoinTable, leftJoinedTable } = createLeftJoinedTable();
+    await runStatements(fromTable.init());
+    await runStatements(joinTable.init());
+    await runStatements(groupedFromTable.init());
+    await runStatements(groupedJoinTable.init());
+    await runStatements(leftJoinedTable.init());
+
+    await runStatements(fromTable.setRow("u2", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+    await runStatements(joinTable.setRow("r2", expr(`'{"team":"alpha","threshold":1,"label":"rule-2"}'::jsonb`)));
+    await runStatements(joinTable.setRow("r1", expr(`'{"team":"alpha","threshold":1,"label":"rule-1"}'::jsonb`)));
+
+    const alphaRows = await readRows(leftJoinedTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(alphaRows.map((row) => row.rowidentifier)).toEqual([
+      `["u1", "r1"]`,
+      `["u1", "r2"]`,
+      `["u2", "r1"]`,
+      `["u2", "r2"]`,
+    ]);
+  });
+
+  it.fails("known issue: sortTable bulk init should respect descending comparator", async () => {
+    const { fromTable, groupedTable, sortedTable } = createDescendingSortedTable();
+    await runStatements(fromTable.init());
+    await runStatements(fromTable.setRow("a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("a2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow("a3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(groupedTable.init());
+    await runStatements(sortedTable.init());
+
+    const alphaRows = await readRows(sortedTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(alphaRows.map((row) => row.rowidentifier)).toEqual(["a3", "a2", "a1"]);
+  });
+
+  it.fails("known issue: limitTable should honor source comparator for top-N", async () => {
+    const { fromTable, groupedTable, sortedTable, limitedTable } = createDescendingLimitedTable();
+    await runStatements(fromTable.init());
+    await runStatements(fromTable.setRow("a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("a2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow("a3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(groupedTable.init());
+    await runStatements(sortedTable.init());
+    await runStatements(limitedTable.init());
+
+    const alphaRows = await readRows(limitedTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(alphaRows.map((row) => row.rowidentifier)).toEqual(["a3", "a2"]);
+  });
+
+  it.fails("known issue: lFoldTable read order should match source comparator", async () => {
+    const { fromTable, groupedTable, sortedTable, lFoldTable } = createDescendingLFoldTable();
+    await runStatements(fromTable.init());
+    await runStatements(fromTable.setRow("a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("a2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow("a3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(groupedTable.init());
+    await runStatements(sortedTable.init());
+    await runStatements(lFoldTable.init());
+
+    const alphaRows = await readRows(lFoldTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(alphaRows.map((row) => row.rowidentifier)).toEqual(["a3:1", "a2:1", "a1:1"]);
   });
 
   test("leftJoinTable trigger stream reconstructs exact final table state", async () => {

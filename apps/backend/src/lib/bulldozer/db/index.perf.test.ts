@@ -968,10 +968,13 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       startInclusive: true,
       endInclusive: true,
     }));
-    expect(concatenatedDeltaRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata }))).toEqual([
-      { rowIdentifier: "0:seed-100000", rowData: { team: "delta", value: 999 } },
-      { rowIdentifier: "1:seed-100000:1", rowData: { team: "delta", value: 999 } },
-    ]);
+    expect(concatenatedDeltaRows
+      .map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata }))
+      .sort((a, b) => stringCompare(a.rowIdentifier, b.rowIdentifier)))
+      .toEqual([
+        { rowIdentifier: "0:seed-100000", rowData: { team: "delta", value: 999 } },
+        { rowIdentifier: "1:seed-100000:1", rowData: { team: "delta", value: 999 } },
+      ]);
     const limitedDeltaRows = await readRows(limitedByTeam.listRowsInGroup({
       groupKey: expr(`to_jsonb('delta'::text)`),
       start: "start",
