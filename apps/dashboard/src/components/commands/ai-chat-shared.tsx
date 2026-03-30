@@ -85,8 +85,8 @@ export function truncateUrl(url: string, maxLength = 50): string {
   if (url.length <= maxLength) return url;
   const match = url.match(/^https?:\/\/([^/?#]+)(\/[^?#]*)?(\?[^#]*)?(#.*)?$/);
   if (match) {
-    const host = match[1] ?? "";
-    const path = (match[2] ?? "") + (match[3] ?? "");
+    const host = match[1];
+    const path = (match[2] || "") + (match[3] || "");
     if (path.length > 30) {
       return host + path.slice(0, 20) + "..." + path.slice(-10);
     }
