@@ -210,9 +210,9 @@ export const ToolInvocationCard = memo(function ToolInvocationCard({
 
   const { label, icon: Icon } = getToolDisplay();
 
-  const input = invocation.input as { query?: string } | undefined;
+  const input = invocation.input as { query?: string };
   const queryArg = input?.query;
-  const result = invocation.output as { success?: boolean, result?: unknown[], error?: string, rowCount?: number } | undefined;
+  const result = invocation.output as { success?: boolean, result?: unknown[], error?: string, rowCount?: number };
 
   return (
     <div
