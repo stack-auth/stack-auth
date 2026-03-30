@@ -10,9 +10,9 @@ import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises'
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import packageJson from '../../package.json';
 import { FeedbackForm } from './feedback-form';
+import { AIChatWidget } from './stack-companion/ai-chat-widget';
 import { ChangelogWidget } from './stack-companion/changelog-widget';
 import { FeatureRequestBoard } from './stack-companion/feature-request-board';
-import { AIChatWidget } from './stack-companion/ai-chat-widget';
 import { UnifiedDocsWidget } from './stack-companion/unified-docs-widget';
 
 /**
@@ -433,7 +433,7 @@ export function StackCompanion({ className, glassBg = false }: { className?: str
         "flex-1 overflow-x-hidden no-drag cursor-auto",
         activeItem === 'ask-ai' ? "overflow-hidden p-0 flex flex-col" : "overflow-y-auto p-5"
       )}>
-        {activeItem === 'ask-ai' && <AIChatWidget isActive={true} />}
+        {activeItem === 'ask-ai' && <AIChatWidget />}
         {activeItem === 'docs' && <UnifiedDocsWidget isActive={true} />}
         {activeItem === 'feedback' && <FeatureRequestBoard isActive={true} />}
         {activeItem === 'changelog' && <ChangelogWidget isActive={true} initialData={changelogData} />}

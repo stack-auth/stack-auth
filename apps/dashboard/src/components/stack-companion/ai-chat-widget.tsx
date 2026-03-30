@@ -175,7 +175,7 @@ function ConversationList({
   );
 }
 
-export function AIChatWidget({ isActive }: { isActive: boolean }) {
+export function AIChatWidget() {
   const currentUser = useUser();
   const pathname = usePathname();
   const projectId = pathname.startsWith("/projects/") ? pathname.split("/")[2] : undefined;
@@ -228,8 +228,6 @@ export function AIChatWidget({ isActive }: { isActive: boolean }) {
       return prev;
     });
   }, []);
-
-  if (!isActive) return null;
 
   if (viewMode.view === 'list') {
     return (
@@ -370,7 +368,7 @@ function AIChatWidgetInner({
   }, [status, messages, currentUser, projectId, onConversationCreated]);
 
   // Word streaming for the last assistant message
-  const lastAssistantMessage = messages.findLast((m: UIMessage) => m.role === "assistant");
+  const lastAssistantMessage = messages.slice().reverse().find((m: UIMessage) => m.role === "assistant");
   const lastAssistantContent = lastAssistantMessage ? getMessageContent(lastAssistantMessage) : "";
   const { displayedWordCount, getDisplayContent, isRevealing } = useWordStreaming(lastAssistantContent);
   const isStreaming = aiLoading && lastAssistantMessage;
@@ -432,8 +430,8 @@ function AIChatWidgetInner({
 
   // Handle follow-up questions
   const handleFollowUp = useCallback(() => {
-    if (!followUpInput.trim() || aiLoading) return;
-    const text = followUpInput;
+    const text = followUpInput.trim();
+    if (!text || aiLoading) return;
     setFollowUpInput("");
     runAsynchronously(sendMessage({ text }));
     requestAnimationFrame(() => {
