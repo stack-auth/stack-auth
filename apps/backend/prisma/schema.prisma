@@ -43,6 +43,7 @@ model Project {
   branchConfigOverrides      BranchConfigOverride[]
   environmentConfigOverrides EnvironmentConfigOverride[]
   localEmulatorProject       LocalEmulatorProject?
+  aiConversations            AiConversation[]
 
   @@index([ownerTeamId], map: "Project_ownerTeamId_idx")
 }
@@ -1088,6 +1089,31 @@ model ThreadMessage {
   createdAt DateTime @default(now())
 
   @@id([tenancyId, id])
+}
+
+model AiConversation {
+  id            String   @id @default(uuid()) @db.Uuid
+  projectUserId String   @db.Uuid
+  projectId     String
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title         String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  messages      AiMessage[]
+
+  @@index([projectUserId, projectId, updatedAt(sort: Desc)])
+}
+
+model AiMessage {
+  id             String         @id @default(uuid()) @db.Uuid
+  conversationId String         @db.Uuid
+  position       Int
+  role           String
+  content        Json
+  createdAt      DateTime       @default(now())
+  conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, position])
 }
 
 enum CustomerType {

@@ -10,9 +10,9 @@ import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises'
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import packageJson from '../../package.json';
 import { FeedbackForm } from './feedback-form';
+import { AIChatWidget } from './stack-companion/ai-chat-widget';
 import { ChangelogWidget } from './stack-companion/changelog-widget';
 import { FeatureRequestBoard } from './stack-companion/feature-request-board';
-import { AIChatWidget } from './stack-companion/ai-chat-widget';
 import { UnifiedDocsWidget } from './stack-companion/unified-docs-widget';
 
 /**
