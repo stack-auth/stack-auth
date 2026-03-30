@@ -1,17 +1,7 @@
-import { globalPrismaClient } from "@/prisma-client";
+import { globalPrismaClient, retryTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-
-async function getOwnedConversation(conversationId: string, userId: string) {
-  const conversation = await globalPrismaClient.aiConversation.findUnique({
-    where: { id: conversationId },
-  });
-  if (!conversation || conversation.projectUserId !== userId) {
-    throw new StatusError(StatusError.NotFound, "Conversation not found");
-  }
-  return conversation;
-}
+import { getOwnedConversation } from "../../utils";
 
 export const PUT = createSmartRouteHandler({
   metadata: {
@@ -32,7 +22,7 @@ export const PUT = createSmartRouteHandler({
     body: yupObject({
       messages: yupArray(
         yupObject({
-          role: yupString().defined(),
+          role: yupString().oneOf(["user", "assistant"]).defined(),
           content: yupMixed().defined(),
         })
       ).defined(),
@@ -46,19 +36,27 @@ export const PUT = createSmartRouteHandler({
   handler: async ({ auth, params, body }) => {
     await getOwnedConversation(params.conversationId, auth.user.id);
 
-    await globalPrismaClient.aiMessage.deleteMany({
-      where: { conversationId: params.conversationId },
-    });
-
-    if (body.messages.length > 0) {
-      await globalPrismaClient.aiMessage.createMany({
-        data: body.messages.map((msg) => ({
-          conversationId: params.conversationId,
-          role: msg.role,
-          content: msg.content as object,
-        })),
+    await retryTransaction(globalPrismaClient, async (tx) => {
+      await tx.aiMessage.deleteMany({
+        where: { conversationId: params.conversationId },
       });
-    }
+
+      if (body.messages.length > 0) {
+        await tx.aiMessage.createMany({
+          data: body.messages.map((msg, index) => ({
+            conversationId: params.conversationId,
+            position: index,
+            role: msg.role,
+            content: msg.content as object,
+          })),
+        });
+      }
+
+      await tx.aiConversation.update({
+        where: { id: params.conversationId },
+        data: { updatedAt: new Date() },
+      });
+    });
 
     return {
       statusCode: 200 as const,

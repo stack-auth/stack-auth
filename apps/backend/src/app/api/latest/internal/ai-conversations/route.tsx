@@ -1,4 +1,4 @@
-import { globalPrismaClient } from "@/prisma-client";
+import { globalPrismaClient, retryTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 
@@ -79,7 +79,7 @@ export const POST = createSmartRouteHandler({
       projectId: yupString().defined(),
       messages: yupArray(
         yupObject({
-          role: yupString().defined(),
+          role: yupString().oneOf(["user", "assistant"]).defined(),
           content: yupMixed().defined(),
         })
       ).defined(),
@@ -95,23 +95,28 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth, body }) => {
-    const conversation = await globalPrismaClient.aiConversation.create({
-      data: {
-        projectUserId: auth.user.id,
-        title: body.title,
-        projectId: body.projectId,
-      },
-    });
-
-    if (body.messages.length > 0) {
-      await globalPrismaClient.aiMessage.createMany({
-        data: body.messages.map((msg) => ({
-          conversationId: conversation.id,
-          role: msg.role,
-          content: msg.content as object,
-        })),
+    const conversation = await retryTransaction(globalPrismaClient, async (tx) => {
+      const conv = await tx.aiConversation.create({
+        data: {
+          projectUserId: auth.user.id,
+          title: body.title,
+          projectId: body.projectId,
+        },
       });
-    }
+
+      if (body.messages.length > 0) {
+        await tx.aiMessage.createMany({
+          data: body.messages.map((msg, index) => ({
+            conversationId: conv.id,
+            position: index,
+            role: msg.role,
+            content: msg.content as object,
+          })),
+        });
+      }
+
+      return conv;
+    });
 
     return {
       statusCode: 200 as const,

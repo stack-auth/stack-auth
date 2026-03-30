@@ -15,7 +15,7 @@ export type ConversationDetail = {
   projectId: string,
   messages: Array<{
     id: string,
-    role: string,
+    role: "user" | "assistant",
     content: unknown,
   }>,
 };

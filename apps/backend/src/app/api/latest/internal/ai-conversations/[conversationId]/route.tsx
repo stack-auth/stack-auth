@@ -1,17 +1,7 @@
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-
-async function getOwnedConversation(conversationId: string, userId: string) {
-  const conversation = await globalPrismaClient.aiConversation.findUnique({
-    where: { id: conversationId },
-  });
-  if (!conversation || conversation.projectUserId !== userId) {
-    throw new StatusError(StatusError.NotFound, "Conversation not found");
-  }
-  return conversation;
-}
+import { getOwnedConversation } from "../utils";
 
 export const GET = createSmartRouteHandler({
   metadata: {
@@ -50,7 +40,7 @@ export const GET = createSmartRouteHandler({
 
     const messages = await globalPrismaClient.aiMessage.findMany({
       where: { conversationId: conversation.id },
-      orderBy: { createdAt: "asc" },
+      orderBy: { position: "asc" },
       select: {
         id: true,
         role: true,

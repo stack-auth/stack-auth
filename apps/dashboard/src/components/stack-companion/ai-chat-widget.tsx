@@ -15,7 +15,7 @@ import { useChat, type UIMessage } from "@ai-sdk/react";
 import { ArrowCounterClockwiseIcon, ArrowLeftIcon, ChatCircleDotsIcon, PaperPlaneTiltIcon, PlusIcon, SparkleIcon, SpinnerGapIcon, TrashIcon } from "@phosphor-icons/react";
 import { useUser } from "@stackframe/stack";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { convertToModelMessages, DefaultChatTransport } from "ai";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -64,7 +64,7 @@ function ConversationList({
       setLoading(false);
       return;
     }
-    runAsynchronously(async () => {
+    runAsynchronouslyWithAlert(async () => {
       try {
         const result = await listConversations(currentUser, projectId);
         setConversations(result);
@@ -77,7 +77,7 @@ function ConversationList({
   const handleDelete = useCallback((e: React.MouseEvent, id: string) => {
     e.stopPropagation();
     setDeletingId(id);
-    runAsynchronously(async () => {
+    runAsynchronouslyWithAlert(async () => {
       try {
         await deleteConversation(currentUser, id);
         setConversations(prev => prev.filter(c => c.id !== id));
@@ -160,6 +160,8 @@ function ConversationList({
                 disabled={deletingId === conv.id}
                 className="opacity-0 group-hover:opacity-100 p-1 text-muted-foreground/40 hover:text-red-400 transition-all shrink-0"
                 type="button"
+                aria-label="Delete conversation"
+                title="Delete conversation"
               >
                 {deletingId === conv.id ? (
                   <SpinnerGapIcon className="h-3 w-3 animate-spin" />
@@ -184,13 +186,13 @@ export function AIChatWidget() {
 
   useEffect(() => {
     if (!projectId) return;
-    runAsynchronously(async () => {
+    runAsynchronouslyWithAlert(async () => {
       const conversations = await listConversations(currentUser, projectId);
       if (conversations.length > 0) {
         const conv = await getConversation(currentUser, conversations[0].id);
         const initialMessages: UIMessage[] = conv.messages.map((msg) => ({
           id: msg.id,
-          role: msg.role as "user" | "assistant",
+          role: msg.role,
           parts: msg.content as UIMessage["parts"],
         }));
         setViewMode({ view: 'chat', conversationId: conversations[0].id, initialMessages });
@@ -198,13 +200,13 @@ export function AIChatWidget() {
       }
     });
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [projectId]);
 
   const handleSelectConversation = useCallback(async (id: string) => {
     const conv = await getConversation(currentUser, id);
     const initialMessages: UIMessage[] = conv.messages.map((msg) => ({
       id: msg.id,
-      role: msg.role as "user" | "assistant",
+      role: msg.role,
       parts: msg.content as UIMessage["parts"],
     }));
     setConversationKey(prev => prev + 1);
@@ -233,7 +235,7 @@ export function AIChatWidget() {
     return (
       <ConversationList
         projectId={projectId}
-        onSelectConversation={(id) => runAsynchronously(handleSelectConversation(id))}
+        onSelectConversation={(id) => runAsynchronouslyWithAlert(handleSelectConversation(id))}
         onNewChat={handleNewChat}
       />
     );
@@ -277,6 +279,7 @@ function AIChatWidgetInner({
   const conversationIdRef = useRef(initialConversationId);
   const prevStatusRef = useRef<string>("");
   const isSavingRef = useRef(false);
+  const pendingMessagesRef = useRef<{ messages: Array<{ role: string; content: unknown }>; title: string } | null>(null);
 
   const backendBaseUrl = getPublicEnvVar("NEXT_PUBLIC_BROWSER_STACK_API_URL") ?? getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_BROWSER_STACK_API_URL is not set");
 
@@ -316,6 +319,30 @@ function AIChatWidgetInner({
 
   const aiLoading = status === "submitted" || status === "streaming";
 
+  const doSave = useCallback(async (messagesToSave: Array<{ role: string; content: unknown }>, title: string) => {
+    isSavingRef.current = true;
+    try {
+      if (conversationIdRef.current) {
+        await replaceConversationMessages(currentUser, conversationIdRef.current, messagesToSave);
+      } else if (projectId) {
+        const result = await createConversation(currentUser, {
+          title,
+          projectId,
+          messages: messagesToSave,
+        });
+        conversationIdRef.current = result.id;
+        onConversationCreated(result.id);
+      }
+    } finally {
+      isSavingRef.current = false;
+      const pending = pendingMessagesRef.current;
+      pendingMessagesRef.current = null;
+      if (pending) {
+        await doSave(pending.messages, pending.title);
+      }
+    }
+  }, [currentUser, projectId, onConversationCreated]);
+
   // Save conversation when streaming completes
   useEffect(() => {
     const prevStatus = prevStatusRef.current;
@@ -326,18 +353,14 @@ function AIChatWidgetInner({
 
     if (
       (completedOk || completedWithError) &&
-      messages.length > 0 &&
-      !isSavingRef.current
+      messages.length > 0
     ) {
-      isSavingRef.current = true;
       // On error, only save user messages (strip any partial/failed assistant turn)
       const safeMessages = completedWithError
         ? messages.filter(m => m.role === "user")
         : messages;
-      if (safeMessages.length === 0) {
-        isSavingRef.current = false;
-        return;
-      }
+      if (safeMessages.length === 0) return;
+
       const messagesToSave = safeMessages.map(m => ({
         role: m.role,
         content: m.parts,
@@ -347,25 +370,14 @@ function AIChatWidgetInner({
         ? getMessageContent(firstUserMessage).slice(0, 50) || "New conversation"
         : "New conversation";
 
-      runAsynchronously(async () => {
-        try {
-          if (conversationIdRef.current) {
-            await replaceConversationMessages(currentUser, conversationIdRef.current, messagesToSave);
-          } else if (projectId) {
-            const result = await createConversation(currentUser, {
-              title,
-              projectId,
-              messages: messagesToSave,
-            });
-            conversationIdRef.current = result.id;
-            onConversationCreated(result.id);
-          }
-        } finally {
-          isSavingRef.current = false;
-        }
-      });
+      if (isSavingRef.current) {
+        pendingMessagesRef.current = { messages: messagesToSave, title };
+        return;
+      }
+
+      runAsynchronouslyWithAlert(doSave(messagesToSave, title));
     }
-  }, [status, messages, currentUser, projectId, onConversationCreated]);
+  }, [status, messages, doSave]);
 
   // Word streaming for the last assistant message
   const lastAssistantMessage = messages.slice().reverse().find((m: UIMessage) => m.role === "assistant");
@@ -514,6 +526,8 @@ function AIChatWidgetInner({
                   : "text-muted-foreground/25 cursor-not-allowed"
               )}
               type="button"
+              aria-label="Send message"
+              title="Send message"
             >
               <PaperPlaneTiltIcon className="h-3.5 w-3.5" />
             </button>
@@ -642,6 +656,8 @@ function AIChatWidgetInner({
                 : "text-muted-foreground/25 cursor-not-allowed"
             )}
             type="button"
+            aria-label="Send message"
+            title="Send message"
           >
             <PaperPlaneTiltIcon className="h-3.5 w-3.5" />
           </button>
