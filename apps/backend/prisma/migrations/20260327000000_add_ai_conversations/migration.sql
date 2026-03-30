@@ -2,7 +2,7 @@
 CREATE TABLE "AiConversation" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),
     "projectUserId" UUID NOT NULL,
-    "projectId" TEXT NOT NULL,
+    "projectId" TEXT NOT NULL REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE,
     "title" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
     "updatedAt" TIMESTAMP(3) NOT NULL,
@@ -13,7 +13,7 @@ CREATE TABLE "AiConversation" (
 -- CreateTable
 CREATE TABLE "AiMessage" (
     "id" UUID NOT NULL DEFAULT gen_random_uuid(),
-    "conversationId" UUID NOT NULL,
+    "conversationId" UUID NOT NULL REFERENCES "AiConversation"("id") ON DELETE CASCADE ON UPDATE CASCADE,
     "position" INTEGER NOT NULL,
     "role" TEXT NOT NULL,
     "content" JSONB NOT NULL,
@@ -27,9 +27,3 @@ CREATE INDEX "AiConversation_projectUserId_projectId_updatedAt_idx" ON "AiConver
 
 -- CreateIndex
 CREATE INDEX "AiMessage_conversationId_position_idx" ON "AiMessage"("conversationId", "position" ASC);
-
--- AddForeignKey
-ALTER TABLE "AiConversation" ADD CONSTRAINT "AiConversation_projectId_fkey" FOREIGN KEY ("projectId") REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE;
-
--- AddForeignKey
-ALTER TABLE "AiMessage" ADD CONSTRAINT "AiMessage_conversationId_fkey" FOREIGN KEY ("conversationId") REFERENCES "AiConversation"("id") ON DELETE CASCADE ON UPDATE CASCADE;
