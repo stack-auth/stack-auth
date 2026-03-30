@@ -48,7 +48,10 @@ export const POST = createSmartRouteHandler({
 
     // Verify user has access to the target project
     if (projectId != null) {
-      const user = fullReq.auth?.user;
+      if (fullReq.auth?.project.id !== "internal") {
+        throw new StatusError(StatusError.Forbidden, "You do not have access to this project");
+      }
+      const user = fullReq.auth.user;
       if (user == null) {
         throw new StatusError(StatusError.Forbidden, "You do not have access to this project");
       }
