@@ -232,7 +232,7 @@ export function MyTeamSwitcher() {
             <div className="flex items-center justify-center p-4 stack-reset">
               <SelectedTeamSwitcher
                 noUpdateSelectedTeam={props.noUpdateSelectedTeam}
-                urlMap={props.urlMap ? (team: { id: string } | null) => team ? `/teams/${team.id}/dashboard` : '/' : undefined}
+                urlMap={props.urlMap ? (team: { id: string }) => `/teams/${team.id}/dashboard` : undefined}
                 mockUser={currentMockUser}
                 mockTeams={currentMockTeams}
                 mockProject={currentMockProject}

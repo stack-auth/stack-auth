@@ -231,19 +231,34 @@ export function useDevToolContext() {
 }
 
 /**
- * Derives the dashboard base URL from the resolved Stack Auth API base URL.
- *
- * Mapping:
- *   - Production API  `https://api.stack-auth.com`  → `https://app.stack-auth.com`
- *   - Local dev API   `http://localhost:8102`        → `http://localhost:8101`  (port XX02 → XX01)
- *   - Self-hosted     `https://api.myapp.com`        → `https://app.myapp.com`
+ * Resolves the API base URL from a StackClientApp instance.
  */
-export function deriveDashboardBaseUrl(apiBaseUrl: string): string {
+export function resolveApiBaseUrl(app: StackClientApp<true>): string {
+  const opts = app[stackAppInternalsSymbol].getConstructorOptions();
+  return getBaseUrl(opts.baseUrl);
+}
+
+/**
+ * Derives the dashboard base URL from the Stack Auth API base URL.
+ *
+ * The dashboard URL is configured on the backend as NEXT_PUBLIC_STACK_DASHBOARD_URL
+ * but not currently exposed to the client SDK. This function derives it using
+ * the conventions from the local emulator and hosted Stack Auth:
+ *
+ *   - Production API  `https://api.stack-auth.com`  → `https://app.stack-auth.com`
+ *   - Local emulator  `http://localhost:8102`        → `http://localhost:8101`
+ *     (the emulator uses port prefix XX, with XX02 for API and XX01 for dashboard)
+ *   - Self-hosted     `https://api.myapp.com`        → `https://app.myapp.com`
+ *
+ * TODO: expose dashboardUrl as a field on StackClientApp constructor options so
+ * it can be configured explicitly instead of relying on URL convention heuristics.
+ */
+function deriveDashboardBaseUrl(apiBaseUrl: string): string {
   try {
     const url = new URL(apiBaseUrl);
 
-    // localhost / 127.0.0.1: shift port from XX02 → XX01
-    if (url.hostname === 'localhost' || url.hostname === '127.0.0.1') {
+    // Local emulator convention: API runs on port XX02, dashboard on XX01
+    if (url.hostname === 'localhost' || url.hostname === '127.0.0.1' || url.hostname === '[::1]') {
       const port = url.port;
       if (port && port.endsWith('02')) {
         url.port = port.slice(0, -2) + '01';
@@ -251,7 +266,7 @@ export function deriveDashboardBaseUrl(apiBaseUrl: string): string {
       return url.origin;
     }
 
-    // Hosted: api.example.com → app.example.com
+    // Hosted convention: api.example.com → app.example.com
     if (url.hostname.startsWith('api.')) {
       url.hostname = 'app.' + url.hostname.slice(4);
       return url.origin;
@@ -261,14 +276,6 @@ export function deriveDashboardBaseUrl(apiBaseUrl: string): string {
   } catch {
     return 'https://app.stack-auth.com';
   }
-}
-
-/**
- * Resolves the API base URL from a StackClientApp instance.
- */
-export function resolveApiBaseUrl(app: StackClientApp<true>): string {
-  const opts = app[stackAppInternalsSymbol].getConstructorOptions();
-  return getBaseUrl(opts.baseUrl);
 }
 
 /**

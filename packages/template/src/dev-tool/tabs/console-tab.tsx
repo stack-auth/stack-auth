@@ -168,7 +168,7 @@ function buildExportContent(
 
   lines.push(`--- Environment ---`);
   lines.push(`SDK Version: ${typeof window !== 'undefined' ? (window as any).__STACK_VERSION__ || 'Unknown' : 'Unknown'}`);
-  lines.push(`Environment: ${process.env.NODE_ENV}`);
+  lines.push(`Environment: ${typeof window !== 'undefined' ? (window.location.hostname === 'localhost' ? 'development' : 'production') : 'unknown'}`);
   lines.push(`URL: ${typeof window !== 'undefined' ? window.location.href : 'N/A'}`);
   lines.push(`User Agent: ${typeof navigator !== 'undefined' ? navigator.userAgent : 'N/A'}`);
   lines.push('');

@@ -1,5 +1,3 @@
-'use client';
-
 import { AuthPage } from "./auth-page";
 
 export function SignIn(props: {
