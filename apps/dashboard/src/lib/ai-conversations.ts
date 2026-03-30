@@ -68,7 +68,7 @@ export async function getConversation(
   currentUser: CurrentUser | undefined | null,
   conversationId: string,
 ): Promise<ConversationDetail> {
-  const response = await apiFetch(currentUser, `/${conversationId}`);
+  const response = await apiFetch(currentUser, `/${encodeURIComponent(conversationId)}`);
   return await response.json();
 }
 
