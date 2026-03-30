@@ -211,7 +211,7 @@ export const ToolInvocationCard = memo(function ToolInvocationCard({
   const { label, icon: Icon } = getToolDisplay();
 
   const input = invocation.input as { query?: string };
-  const queryArg = input?.query;
+  const queryArg = input.query;
   const result = invocation.output as { success?: boolean, result?: unknown[], error?: string, rowCount?: number };
 
   return (
@@ -239,11 +239,11 @@ export const ToolInvocationCard = memo(function ToolInvocationCard({
           <SpinnerGapIcon className="h-3 w-3 text-purple-400 animate-spin shrink-0" />
         ) : hasError ? (
           <span className="text-[10px] text-red-400/80 shrink-0">Error</span>
-        ) : hasResult && result?.success ? (
+        ) : hasResult && result.success ? (
           <span className="text-[10px] text-green-400/80 shrink-0">
             {result.rowCount} {result.rowCount === 1 ? "row" : "rows"}
           </span>
-        ) : hasResult && !result?.success ? (
+        ) : hasResult && !result.success ? (
           <span className="text-[10px] text-red-400/80 shrink-0">Error</span>
         ) : null}
         <div className={cn(
@@ -280,7 +280,7 @@ export const ToolInvocationCard = memo(function ToolInvocationCard({
             )}
 
             {/* Result */}
-            {hasResult && result && (
+            {hasResult && (
               <div>
                 <div className="flex items-center justify-between mb-1">
                   <span className="text-[9px] font-medium text-muted-foreground/60 uppercase tracking-wider">
