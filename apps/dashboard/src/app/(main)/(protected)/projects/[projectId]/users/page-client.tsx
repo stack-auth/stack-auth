@@ -24,7 +24,11 @@ function TotalUsersDisplay() {
       {metrics.total_users}
       {anonymousUsersCount > 0 ? (
         <>
-          {" "}(+ {anonymousUsersCount} anonymous)
+          {" "}(+ {anonymousUsersCount}{" "}
+          <SimpleTooltip tooltip="When analytics are enabled, visitors that have not signed up yet are counted as anonymous users.">
+            <span className="underline decoration-dotted underline-offset-2">anonymous visitors</span>
+          </SimpleTooltip>
+          )
         </>
       ) : null}
     </>
