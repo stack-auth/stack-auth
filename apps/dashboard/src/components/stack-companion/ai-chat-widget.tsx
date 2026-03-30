@@ -8,7 +8,7 @@ import {
   listConversations,
   replaceConversationMessages,
   type ConversationSummary,
-} from "@/hooks/use-ai-conversations";
+} from "@/lib/ai-conversations";
 import { buildStackAuthHeaders } from "@/lib/api-headers";
 import { getPublicEnvVar } from "@/lib/env";
 import { useChat, type UIMessage } from "@ai-sdk/react";
@@ -199,8 +199,7 @@ export function AIChatWidget() {
         setConversationKey(prev => prev + 1);
       }
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projectId]);
+  }, [projectId, currentUser]);
 
   const handleSelectConversation = useCallback(async (id: string) => {
     const conv = await getConversation(currentUser, id);
