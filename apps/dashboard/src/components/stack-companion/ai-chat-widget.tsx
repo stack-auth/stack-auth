@@ -521,6 +521,7 @@ function AIChatWidgetInner({
               onClick={handleSubmit}
               disabled={!input.trim() || aiLoading}
               aria-label="Send message"
+              title="Send message"
               className={cn(
                 "p-1 rounded transition-colors hover:transition-none",
                 input.trim() && !aiLoading
@@ -528,8 +529,6 @@ function AIChatWidgetInner({
                   : "text-muted-foreground/25 cursor-not-allowed"
               )}
               type="button"
-              aria-label="Send message"
-              title="Send message"
             >
               <PaperPlaneTiltIcon className="h-3.5 w-3.5" />
             </button>
@@ -652,6 +651,7 @@ function AIChatWidgetInner({
             onClick={() => handleFollowUp()}
             disabled={!followUpInput.trim() || aiLoading}
             aria-label="Send message"
+            title="Send message"
             className={cn(
               "p-1 rounded transition-colors hover:transition-none",
               followUpInput.trim() && !aiLoading
@@ -659,8 +659,6 @@ function AIChatWidgetInner({
                 : "text-muted-foreground/25 cursor-not-allowed"
             )}
             type="button"
-            aria-label="Send message"
-            title="Send message"
           >
             <PaperPlaneTiltIcon className="h-3.5 w-3.5" />
           </button>
