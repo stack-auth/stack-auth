@@ -47,7 +47,7 @@ Stack Auth JWTs contain standardized headers and claims that power authenticatio
 - **`email`**: The user's primary email address (nullable)
 - **`email_verified`**: Whether the user's email has been verified
 - **`selected_team_id`**: The currently selected team ID (nullable)
-- **`signed_up_at_millis`**: When this user signed up (Unix timestamp in milliseconds)
+- **`signed_up_at`**: When this user signed up (Unix timestamp in seconds)
 - **`is_anonymous`**: Whether this is an anonymous user session
 - **`is_restricted`**: Whether the user is restricted (e.g., unverified email, anonymous, or restricted by an administrator)
 - **`restricted_reason`**: Why the user is restricted (nullable). The `type` field is `anonymous`, `email_not_verified`, or `restricted_by_administrator`
@@ -72,7 +72,7 @@ Here's what a typical Stack Auth JWT payload looks like:
   "email": "john@example.com",
   "email_verified": true,
   "selected_team_id": "team_789",
-  "signed_up_at_millis": 1735000000000,
+  "signed_up_at": 1735000000,
   "is_anonymous": false,
   "is_restricted": false,
   "restricted_reason": null,
