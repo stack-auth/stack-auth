@@ -366,8 +366,8 @@ describe("access token refresh on user property changes", () => {
     });
   });
 
-  describe("signed_up_at_millis claim", () => {
-    it("should include signed_up_at_millis and keep it stable across token refreshes", async ({ expect }) => {
+  describe("signed_up_at claim", () => {
+    it("should include signed_up_at and keep it stable across token refreshes", async ({ expect }) => {
       const { clientApp } = await createApp({
         config: {
           credentialEnabled: true,
@@ -385,7 +385,8 @@ describe("access token refresh on user property changes", () => {
       expect(initialToken).toBeDefined();
 
       const initialPayload = decodeAccessToken(initialToken!);
-      expect(initialPayload.signed_up_at_millis).toBe(user.signedUpAt.getTime());
+      const signedUpAtSeconds = Math.floor(user.signedUpAt.getTime() / 1000);
+      expect(initialPayload.signed_up_at).toBe(signedUpAtSeconds);
 
       await user.setDisplayName("Updated display name");
 
@@ -393,7 +394,7 @@ describe("access token refresh on user property changes", () => {
       expect(refreshedToken).toBeDefined();
 
       const refreshedPayload = decodeAccessToken(refreshedToken!);
-      expect(refreshedPayload.signed_up_at_millis).toBe(user.signedUpAt.getTime());
+      expect(refreshedPayload.signed_up_at).toBe(signedUpAtSeconds);
     });
   });
 
