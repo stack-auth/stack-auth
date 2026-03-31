@@ -50,6 +50,7 @@ Stack Auth JWTs contain standardized headers and claims that power authenticatio
 - **`is_anonymous`**: Whether this is an anonymous user session
 - **`is_restricted`**: Whether the user is restricted (e.g., unverified email, anonymous, or restricted by an administrator)
 - **`restricted_reason`**: Why the user is restricted (nullable). The `type` field is `anonymous`, `email_not_verified`, or `restricted_by_administrator`
+- **`requires_totp_mfa`**: Whether the user requires multi-factor authentication
 
 ## Example JWT Payload
 
@@ -65,7 +66,6 @@ Here's what a typical Stack Auth JWT payload looks like:
   "project_id": "project_abcdef",
   "branch_id": "main",
   "refresh_token_id": "refresh_xyz789",
-  "requires_totp_mfa": false,
   "role": "authenticated",
   "name": "John Doe",
   "email": "john@example.com",
@@ -73,7 +73,8 @@ Here's what a typical Stack Auth JWT payload looks like:
   "selected_team_id": "team_789",
   "is_anonymous": false,
   "is_restricted": false,
-  "restricted_reason": null
+  "restricted_reason": null,
+  "requires_totp_mfa": false
 }
 ```
 
