@@ -41,6 +41,7 @@ import {
   Typography,
   useToast
 } from "@/components/ui";
+import { DesignEditableGrid, type DesignEditableGridItem } from "@/components/design-components";
 import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialogs";
 import { AtIcon, CalendarIcon, CheckIcon, DotsThreeIcon, EnvelopeIcon, GlobeIcon, HashIcon, ProhibitIcon, ShieldIcon, SquareIcon, XIcon } from "@phosphor-icons/react";
 import { ServerContactChannel, ServerOAuthProvider, ServerUser } from "@stackframe/stack";
@@ -51,7 +52,7 @@ import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { captureError, StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
@@ -59,24 +60,6 @@ import { useAdminApp } from "../../use-admin-app";
 import { parseRiskScore } from "@/lib/risk-score-utils";
 
 const userMetadataDocsUrl = "https://docs.stack-auth.com/docs/concepts/custom-user-data";
-
-type UserInfoProps = {
-  icon: React.ReactNode,
-  children: React.ReactNode,
-  name: string,
-}
-
-function UserInfo({ icon, name, children }: UserInfoProps) {
-  return (
-    <>
-      <span className="flex gap-2 items-center">
-        <span className="opacity-75">{icon}</span>
-        <span className="font-semibold whitespace-nowrap mr-2">{name}</span>
-      </span>
-      {children}
-    </>
-  );
-}
 
 export default function PageClient({ userId }: { userId: string }) {
   const stackAdminApp = useAdminApp();
@@ -309,39 +292,6 @@ function RestrictionDialog({
   );
 }
 
-// Restriction row that looks like an editable input but opens a dialog
-function RestrictedStatusRow({ user }: { user: ServerUser }) {
-  const [dialogOpen, setDialogOpen] = useState(false);
-
-  const isRestricted = user.isRestricted;
-  const reasonText = getRestrictionReasonText(user);
-
-  const displayValue = isRestricted ? `Yes — ${reasonText}` : 'No';
-
-  return (
-    <>
-      <UserInfo icon={<ProhibitIcon size={16}/>} name="Restricted">
-        <button
-          type="button"
-          onClick={() => setDialogOpen(true)}
-          className={cn(
-            "w-full text-left px-1 py-0 rounded-md text-sm",
-            "hover:ring-1 hover:ring-slate-300 dark:hover:ring-gray-500 hover:bg-slate-50 dark:hover:bg-gray-800 hover:cursor-pointer",
-            "focus:outline-none focus-visible:ring-1 focus-visible:ring-slate-500 dark:focus-visible:ring-gray-50 focus-visible:bg-slate-100 dark:focus-visible:bg-gray-800",
-            "transition-colors hover:transition-none",
-          )}
-        >
-          {displayValue}
-        </button>
-      </UserInfo>
-      <RestrictionDialog
-        user={user}
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-      />
-    </>
-  );
-}
 
 // Restriction banner shown at top of page when user is restricted
 function RestrictionBanner({ user }: { user: ServerUser }) {
@@ -386,56 +336,85 @@ function RestrictionBanner({ user }: { user: ServerUser }) {
   );
 }
 
-type UserDetailsProps = {
-  user: ServerUser,
-};
+function UserDetails({ user }: { user: ServerUser }) {
+  const [restrictionDialogOpen, setRestrictionDialogOpen] = useState(false);
 
-function UserDetails({ user }: UserDetailsProps) {
-  const [newPassword, setNewPassword] = useState<string | null>(null);
+  const isRestricted = user.isRestricted;
+  const reasonText = getRestrictionReasonText(user);
+  const restrictedDisplayValue = isRestricted ? `Yes — ${reasonText}` : 'No';
 
-
-  return (
-    <div className="grid grid-cols-[min-content_1fr] lg:grid-cols-[min-content_1fr_min-content_1fr] gap-2 text-sm px-4">
-      <UserInfo icon={<HashIcon size={16}/>} name="User ID">
-        <EditableInput value={user.id} readOnly />
-      </UserInfo>
-      <UserInfo icon={<EnvelopeIcon size={16}/>} name="Primary email">
-        <EditableInput value={user.primaryEmail ?? ""} placeholder={"-"} readOnly/>
-      </UserInfo>
-      <UserInfo icon={<AtIcon size={16}/>} name="Display name">
-        <EditableInput value={user.displayName ?? ""} placeholder={"-"} onUpdate={async (newName) => {
-          await user.setDisplayName(newName);
-        }}/>
-      </UserInfo>
-      <UserInfo icon={<SquareIcon size={16}/>} name="Password">
-        <EditableInput
-          value={""}
-          placeholder={user.hasPassword ? "************" : "-"}
-          mode="password"
-          onUpdate={async (newPassword) => {
-            await user.setPassword({ password: newPassword });
-          }}
-        />
-      </UserInfo>
-      <UserInfo icon={<ShieldIcon size={16}/>} name="2-factor auth">
-        <EditableInput value={user.isMultiFactorRequired ? 'Enabled' : ''} placeholder='Disabled' readOnly />
-      </UserInfo>
-      <UserInfo icon={<CalendarIcon size={16}/>} name="Signed up at">
-        <EditableInput value={user.signedUpAt.toDateString()} readOnly />
-      </UserInfo>
-      <UserInfo icon={<ShieldIcon size={16}/>} name="Risk score: bot">
-        <EditableInput value={String(user.riskScores.signUp.bot)} onUpdate={async (newValue) => {
-          await user.update({
-            riskScores: {
-              signUp: {
-                bot: parseRiskScore(newValue),
-                freeTrialAbuse: user.riskScores.signUp.freeTrialAbuse,
-              },
+  const items = useMemo<DesignEditableGridItem[]>(() => [
+    {
+      type: "text",
+      icon: <HashIcon size={14} />,
+      name: "User ID",
+      value: user.id,
+      readOnly: true,
+    },
+    {
+      type: "text",
+      icon: <EnvelopeIcon size={14} />,
+      name: "Primary email",
+      value: user.primaryEmail ?? "",
+      placeholder: "-",
+      readOnly: true,
+    },
+    {
+      type: "text",
+      icon: <AtIcon size={14} />,
+      name: "Display name",
+      value: user.displayName ?? "",
+      placeholder: "-",
+      onUpdate: async (newName) => {
+        await user.setDisplayName(newName);
+      },
+    },
+    {
+      type: "text",
+      icon: <SquareIcon size={14} />,
+      name: "Password",
+      value: "",
+      placeholder: user.hasPassword ? "************" : "-",
+      onUpdate: async (newPassword) => {
+        await user.setPassword({ password: newPassword });
+      },
+    },
+    {
+      type: "text",
+      icon: <ShieldIcon size={14} />,
+      name: "2-factor auth",
+      value: user.isMultiFactorRequired ? "Enabled" : "",
+      placeholder: "Disabled",
+      readOnly: true,
+    },
+    {
+      type: "text",
+      icon: <CalendarIcon size={14} />,
+      name: "Signed up at",
+      value: user.signedUpAt.toDateString(),
+      readOnly: true,
+    },
+    {
+      type: "text",
+      icon: <ShieldIcon size={14} />,
+      name: "Risk score: bot",
+      value: String(user.riskScores.signUp.bot),
+      onUpdate: async (newValue) => {
+        await user.update({
+          riskScores: {
+            signUp: {
+              bot: parseRiskScore(newValue),
+              freeTrialAbuse: user.riskScores.signUp.freeTrialAbuse,
             },
-          });
-        }} />
-      </UserInfo>
-      <UserInfo icon={<GlobeIcon size={16}/>} name="Sign-up country code">
+          },
+        });
+      },
+    },
+    {
+      type: "custom",
+      icon: <GlobeIcon size={14} />,
+      name: "Sign-up country code",
+      children: (
         <CountryCodeSelect
           value={user.countryCode ?? null}
           onChange={(newValue) => {
@@ -446,23 +425,49 @@ function UserDetails({ user }: UserDetailsProps) {
             });
           }}
           placeholder="-"
-          className="w-full h-8 text-sm"
+          className="w-full h-7 text-sm"
         />
-      </UserInfo>
-      <UserInfo icon={<ShieldIcon size={16}/>} name="Risk score: free trial abuse">
-        <EditableInput value={String(user.riskScores.signUp.freeTrialAbuse)} onUpdate={async (newValue) => {
-          await user.update({
-            riskScores: {
-              signUp: {
-                bot: user.riskScores.signUp.bot,
-                freeTrialAbuse: parseRiskScore(newValue),
-              },
+      ),
+    },
+    {
+      type: "text",
+      icon: <ShieldIcon size={14} />,
+      name: "Risk score: free trial abuse",
+      value: String(user.riskScores.signUp.freeTrialAbuse),
+      onUpdate: async (newValue) => {
+        await user.update({
+          riskScores: {
+            signUp: {
+              bot: user.riskScores.signUp.bot,
+              freeTrialAbuse: parseRiskScore(newValue),
             },
-          });
-        }} />
-      </UserInfo>
-      <RestrictedStatusRow user={user} />
-    </div>
+          },
+        });
+      },
+    },
+    {
+      type: "custom-button",
+      icon: <ProhibitIcon size={14} />,
+      name: "Restricted",
+      children: restrictedDisplayValue,
+      onClick: () => setRestrictionDialogOpen(true),
+    },
+  ], [user, restrictedDisplayValue]);
+
+  return (
+    <>
+      <DesignEditableGrid
+        items={items}
+        columns={2}
+        size="sm"
+        deferredSave={false}
+      />
+      <RestrictionDialog
+        user={user}
+        open={restrictionDialogOpen}
+        onOpenChange={setRestrictionDialogOpen}
+      />
+    </>
   );
 }
 
