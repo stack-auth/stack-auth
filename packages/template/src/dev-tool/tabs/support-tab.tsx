@@ -3,7 +3,6 @@
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import { useStackApp } from "../../lib/hooks";
-import { stackAppInternalsSymbol } from "../../lib/stack-app/common";
 import { resolveApiBaseUrl, useDevToolContext, type SupportPrefill } from "../dev-tool-context";
 import { DevToolTabBar, type TabDef } from "../dev-tool-tab-bar";
 import { IframeTab } from "../iframe-tab";
@@ -52,19 +51,12 @@ function FeedbackForm({ prefill }: { prefill?: SupportPrefill }) {
     setErrorMessage("");
 
     try {
-      const opts = (app as any)[stackAppInternalsSymbol]?.getConstructorOptions?.() ?? {};
-      const stackHeaders: Record<string, string> = {
-        "Content-Type": "application/json",
-        "Accept": "application/json",
-        "X-Stack-Access-Type": "client",
-        "X-Stack-Project-Id": app.projectId,
-      };
-      if ("publishableClientKey" in opts && opts.publishableClientKey) {
-        stackHeaders["X-Stack-Publishable-Client-Key"] = opts.publishableClientKey;
-      }
       const response = await fetch(`${apiBaseUrl}/api/latest/internal/feedback`, {
         method: "POST",
-        headers: stackHeaders,
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+        },
         body: JSON.stringify({
           name: name.trim() || undefined,
           email: email.trim(),

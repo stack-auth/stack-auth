@@ -3,6 +3,14 @@ import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { envVars } from "../env";
 import { DefaultHandlerUrlTarget, HandlerPageUrls, HandlerUrlOptions, HandlerUrlTarget, HandlerUrls, ResolvedHandlerUrls } from "./common";
 
+// IF_PLATFORM next
+let sdkPackageName = "@stackframe/stack";
+// ELSE_IF_PLATFORM react
+sdkPackageName = "@stackframe/react";
+// ELSE_PLATFORM
+sdkPackageName = "@stackframe/js";
+// END_PLATFORM
+
 const defaultHostedHandlerDomainSuffix = ".built-with-stack-auth.com";
 const hostedHandlerProjectIdPlaceholder = "{projectId}";
 const hostedHandlerPathPlaceholder = "{hostedPath}";
@@ -25,7 +33,7 @@ const customPagePrompts: Record<keyof Omit<HandlerPageUrls, "handler">, CustomPa
     fullPrompt: deindent`
       Create a custom sign-in page for my app using Stack Auth. The page should:
 
-      1. Use \`useStackApp()\` and \`useUser()\` from \`@stackframe/stack\`
+      1. Use \`useStackApp()\` and \`useUser()\` from \`${sdkPackageName}\`
       2. If the user is already signed in, show a "you are already signed in" message (don't show the form)
       3. Use \`app.useProject()\` to read the project config and conditionally render auth methods:
          a. If \`project.config.oauthProviders.length > 0\`, render an OAuth button for each provider. Each button calls \`app.signInWithOAuth("<providerId>")\`
@@ -58,7 +66,7 @@ const customPagePrompts: Record<keyof Omit<HandlerPageUrls, "handler">, CustomPa
     fullPrompt: deindent`
       Create a custom sign-up page for my app using Stack Auth. The page should:
 
-      1. Use \`useStackApp()\` and \`useUser()\` from \`@stackframe/stack\`
+      1. Use \`useStackApp()\` and \`useUser()\` from \`${sdkPackageName}\`
       2. If the user is already signed in, show a "you are already signed in" message
       3. If \`project.config.signUpEnabled\` is false, show a "sign up is not enabled" message
       4. Use \`app.useProject()\` to read the project config and conditionally render auth methods:
@@ -79,7 +87,18 @@ const customPagePrompts: Record<keyof Omit<HandlerPageUrls, "handler">, CustomPa
       6. Show an "Already have an account? Sign in" link pointing to \`app.urls.signIn\`
       7. Handle loading states on all buttons/forms
     `,
-    versions: {},
+    versions: {
+      1: {
+        minSdkVersion: "3.0.0",
+        upgradePrompt: "Upgrade the custom Sign Up page to version 1. Add support for passkey sign-up when `project.config.passkeyEnabled` is true. Show a 'Sign up with Passkey' button that calls `app.signUpWithPasskey()`. Also add a divider between OAuth/passkey and credential/magic-link sections.",
+        changelog: "Added passkey authentication support and improved section dividers between auth methods.",
+      },
+      2: {
+        minSdkVersion: "3.0.0",
+        upgradePrompt: "Upgrade the custom Sign Up page to version 2. Add support for passkey sign-up when `project.config.passkeyEnabled` is true. Show a 'Sign up with Passkey' button that calls `app.signUpWithPasskey()`. Also add a divider between OAuth/passkey and credential/magic-link sections.",
+        changelog: "Added support for passkey sign-up and improved section dividers between auth methods.",
+      },
+    },
   },
   signOut: {
     title: "Sign Out",
@@ -91,7 +110,7 @@ const customPagePrompts: Record<keyof Omit<HandlerPageUrls, "handler">, CustomPa
     fullPrompt: deindent`
       Create a custom email verification page for my app using Stack Auth. The page should:
 
-      1. Use \`useStackApp()\` from \`@stackframe/stack\`
+      1. Use \`useStackApp()\` from \`${sdkPackageName}\`
       2. Read the \`code\` from URL search params (e.g. \`searchParams.code\`)
       3. If no code is present, show an "Invalid Verification Link" message
       4. If code is present, show a confirmation screen: "Do you want to verify your email?" with a "Verify" button and a "Cancel" button
@@ -109,7 +128,7 @@ const customPagePrompts: Record<keyof Omit<HandlerPageUrls, "handler">, CustomPa
     fullPrompt: deindent`
       Create a custom password reset page for my app using Stack Auth. The page should:
 
-      1. Use \`useStackApp()\` from \`@stackframe/stack\`
+      1. Use \`useStackApp()\` from \`${sdkPackageName}\`
       2. Read the \`code\` from URL search params
       3. If no code is present, show an "Invalid Password Reset Link" message
       4. First, verify the code is valid by calling \`app.verifyPasswordResetCode(code)\`:
@@ -132,7 +151,7 @@ const customPagePrompts: Record<keyof Omit<HandlerPageUrls, "handler">, CustomPa
     fullPrompt: deindent`
       Create a custom forgot password page for my app using Stack Auth. The page should:
 
-      1. Use \`useStackApp()\` and \`useUser()\` from \`@stackframe/stack\`
+      1. Use \`useStackApp()\` and \`useUser()\` from \`${sdkPackageName}\`
       2. If the user is already signed in, show a "you are already signed in" message (don't show the form)
       3. Show a "Reset Your Password" heading with a "Don't need to reset? Sign in" link pointing to \`app.urls.signIn\`
       4. Form contains:
@@ -159,7 +178,7 @@ const customPagePrompts: Record<keyof Omit<HandlerPageUrls, "handler">, CustomPa
     fullPrompt: deindent`
       Create a custom account settings page for my app using Stack Auth. The page should:
 
-      1. Use \`useUser({ or: "redirect" })\` to get the current user (redirects to sign-in if not authenticated) and \`useStackApp()\` from \`@stackframe/stack\`
+      1. Use \`useUser({ or: "redirect" })\` to get the current user (redirects to sign-in if not authenticated) and \`useStackApp()\` from \`${sdkPackageName}\`
       2. Use \`app.useProject()\` to read project config for conditional sections
       3. Use a sidebar layout with these sections:
          a. **My Profile** — display name editing, profile image upload. Use \`user.update()\` to save
@@ -184,7 +203,7 @@ const customPagePrompts: Record<keyof Omit<HandlerPageUrls, "handler">, CustomPa
     fullPrompt: deindent`
       Create a custom team invitation page for my app using Stack Auth. The page should:
 
-      1. Use \`useStackApp()\` and \`useUser({ includeRestricted: true })\` from \`@stackframe/stack\`
+      1. Use \`useStackApp()\` and \`useUser({ includeRestricted: true })\` from \`${sdkPackageName}\`
       2. Read the \`code\` from URL search params
       3. If no code is present, show "Invalid Team Invitation Link"
       4. If user is not signed in, show "Sign in or create an account to join the team" with a "Sign in" button (calls \`app.redirectToSignIn()\`) and a "Cancel" button
@@ -206,7 +225,7 @@ const customPagePrompts: Record<keyof Omit<HandlerPageUrls, "handler">, CustomPa
     fullPrompt: deindent`
       Create a custom MFA (multi-factor authentication) page for my app using Stack Auth. The page should:
 
-      1. Use \`useStackApp()\` from \`@stackframe/stack\`
+      1. Use \`useStackApp()\` from \`${sdkPackageName}\`
       2. On mount, read the MFA attempt code from \`window.sessionStorage.getItem("stack_mfa_attempt_code")\`
       3. Show a "Multi-Factor Authentication" heading with instruction: "Enter the six-digit code from your authenticator app"
       4. Render a 6-digit OTP input (numeric, uppercase)
@@ -227,7 +246,7 @@ const customPagePrompts: Record<keyof Omit<HandlerPageUrls, "handler">, CustomPa
     fullPrompt: deindent`
       Create a custom error page for my app using Stack Auth. The page should:
 
-      1. Use \`useStackApp()\` from \`@stackframe/stack\`
+      1. Use \`useStackApp()\` from \`${sdkPackageName}\`
       2. Read \`errorCode\`, \`message\`, and \`details\` from URL search params
       3. If \`errorCode\` or \`message\` is missing, show a generic "Unknown Error" page
       4. Parse the error with \`KnownError.fromJson({ code: errorCode, message, details: JSON.parse(details) })\` from \`@stackframe/stack-shared\`
@@ -245,7 +264,7 @@ const customPagePrompts: Record<keyof Omit<HandlerPageUrls, "handler">, CustomPa
     fullPrompt: deindent`
       Create a custom onboarding page for my app using Stack Auth. The page should:
 
-      1. Use \`useUser({ or: "return-null", includeRestricted: true })\` and \`useStackApp()\` from \`@stackframe/stack\`
+      1. Use \`useUser({ or: "return-null", includeRestricted: true })\` and \`useStackApp()\` from \`${sdkPackageName}\`
       2. Handle three routing cases before showing any form:
          - If user exists and is NOT restricted → they've completed onboarding, redirect with \`app.redirectToAfterSignIn()\`
          - If user is null or anonymous → redirect to \`app.redirectToSignIn()\`
@@ -606,22 +625,42 @@ export const resolveUnknownHandlerPathFallbackUrl = (options: {
   }
 };
 
-export function getPagePrompt(pageName: string): { title: string; fullPrompt: string; upgradePrompt: string | null; latestVersion: number } | null {
+export function getPagePrompt(pageName: string, currentVersion?: number): { title: string; fullPrompt: string; upgradePrompt: string | null; latestVersion: number } | null {
   if (!(pageName in customPagePrompts)) return null;
   const prompt = customPagePrompts[pageName as keyof typeof customPagePrompts];
   const versionKeys = Object.keys(prompt.versions).map(Number);
   const latestVersion = versionKeys.length > 0 ? Math.max(...versionKeys) : 0;
-  const upgradeEntry = latestVersion > 0 ? prompt.versions[latestVersion] : undefined;
-  return { title: prompt.title, fullPrompt: prompt.fullPrompt, upgradePrompt: upgradeEntry?.upgradePrompt ?? null, latestVersion };
+
+  let upgradePrompt: string | null = null;
+  if (currentVersion != null) {
+    const relevantVersions = versionKeys
+      .filter(v => v > currentVersion)
+      .sort((a, b) => a - b);
+    const prompts = relevantVersions
+      .map(v => prompt.versions[v].upgradePrompt)
+      .filter(p => p.length > 0);
+    upgradePrompt = prompts.length > 0 ? prompts.join("\n\n") : null;
+  } else {
+    const upgradeEntry = latestVersion > 0 ? prompt.versions[latestVersion] : undefined;
+    upgradePrompt = upgradeEntry?.upgradePrompt ?? null;
+  }
+
+  return { title: prompt.title, fullPrompt: prompt.fullPrompt, upgradePrompt, latestVersion };
 }
 
-export function getLatestPageVersions(): Record<string, { version: number; changelog: string | null }> {
+export function getLatestPageVersions(): Record<string, { version: number; changelogs: Record<number, string> }> {
   return Object.fromEntries(
     Object.entries(customPagePrompts).map(([key, prompt]) => {
       const versionKeys = Object.keys(prompt.versions).map(Number);
       const latest = versionKeys.length > 0 ? Math.max(...versionKeys) : 0;
-      const entry = latest > 0 ? prompt.versions[latest] : undefined;
-      return [key, { version: latest, changelog: entry?.changelog ?? null }];
+      const changelogs: Record<number, string> = {};
+      for (const v of versionKeys) {
+        const entry = prompt.versions[v];
+        if (entry.changelog) {
+          changelogs[v] = entry.changelog;
+        }
+      }
+      return [key, { version: latest, changelogs }];
     })
   );
 }

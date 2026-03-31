@@ -1239,53 +1239,6 @@ export const devToolCSS = `
     border: 1px solid var(--sdt-border-subtle);
   }
 
-  /* --- Preview (collapsible) --- */
-  .stack-devtool .sdt-pg-preview-toggle {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--sdt-text-tertiary);
-    cursor: pointer;
-    padding: 4px 0;
-    transition: color 0.12s ease;
-    user-select: none;
-  }
-
-  .stack-devtool .sdt-pg-preview-toggle:hover {
-    color: var(--sdt-text-secondary);
-  }
-
-  .stack-devtool .sdt-pg-preview-toggle-chevron {
-    font-size: 10px;
-    transition: transform 0.15s ease;
-    display: inline-block;
-  }
-
-  .stack-devtool .sdt-pg-preview-toggle-chevron[data-open="true"] {
-    transform: rotate(90deg);
-  }
-
-  .stack-devtool .sdt-pg-preview {
-    display: flex;
-    flex-direction: column;
-    border: 1px solid var(--sdt-border-subtle);
-    border-radius: 10px;
-    overflow: hidden;
-  }
-
-  .stack-devtool .sdt-pg-iframe-wrap {
-    height: 400px;
-  }
-
-  .stack-devtool .sdt-pg-iframe {
-    width: 100%;
-    height: 100%;
-    border: none;
-    background: #fff;
-  }
-
   .stack-devtool .sdt-preview-loading,
   .stack-devtool .sdt-preview-unavailable {
     font-size: 12px;

@@ -15,7 +15,7 @@ export const GET = createSmartRouteHandler({
     body: yupObject({
       versions: yupRecord(yupString().defined(), yupObject({
         version: yupNumber().defined(),
-        changelog: yupString().nullable().defined(),
+        changelogs: yupRecord(yupString().defined(), yupString().defined()).defined(),
       }).defined()).defined(),
     }).defined(),
   }),

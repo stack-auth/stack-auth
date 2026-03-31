@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useStackApp } from "../../lib/hooks";
 import type { HandlerUrlOptions, HandlerUrls, HandlerUrlTarget } from "../../lib/stack-app/common";
 import { stackAppInternalsSymbol } from "../../lib/stack-app/common";
@@ -59,6 +59,8 @@ function classifyPage(urlOptions: HandlerUrlOptions, key: keyof HandlerUrls): { 
   return classifyTarget(target);
 }
 
+type VersionChangelog = { version: number; changelog: string };
+
 type PageInfo = {
   key: keyof HandlerUrls;
   label: string;
@@ -67,11 +69,11 @@ type PageInfo = {
   version: number | null;
   isLegacyString: boolean;
   versionStatus: PageVersionStatus;
-  changelog: string | null;
+  versionChangelogs: VersionChangelog[];
 };
 
 function buildPromptText(page: PageInfo): string | null {
-  const promptData = getPagePrompt(page.key);
+  const promptData = getPagePrompt(page.key, page.version ?? undefined);
   if (!promptData) return null;
 
   const showPrompt = page.classification === "handler-component"
@@ -134,15 +136,19 @@ function CopyButton({ text, label }: { text: string; label?: string }) {
   );
 }
 
+function navigateToPage(url: string): void {
+  const resolved = new URL(url, window.location.origin);
+  if (resolved.origin === window.location.origin) {
+    window.location.href = resolved.toString();
+  } else {
+    window.open(resolved.toString(), "_blank", "noopener,noreferrer");
+  }
+}
+
 function PageDetail({ page }: { page: PageInfo }) {
-  const fullUrl = typeof window !== "undefined"
-    ? new URL(page.url, window.location.origin).toString()
-    : page.url;
   const prompt = buildPromptText(page);
   const promptData = getPagePrompt(page.key);
   const isOutdated = page.versionStatus === "outdated" || page.versionStatus === "deprecated";
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const previewRef = useRef<HTMLDivElement>(null);
 
   return (
     <div className="sdt-pg-detail">
@@ -159,19 +165,11 @@ function PageDetail({ page }: { page: PageInfo }) {
         <div className="sdt-pg-code-inline">
           <code className="sdt-pg-code">{getRedirectMethod(page.key)}</code>
           <button
-            className={`sdt-pg-copy-btn ${previewOpen ? "sdt-pg-copy-btn-ok" : ""}`}
+            className="sdt-pg-copy-btn"
             type="button"
-            onClick={() => {
-              const willOpen = !previewOpen;
-              setPreviewOpen(willOpen);
-              if (willOpen) {
-                window.setTimeout(() => {
-                  previewRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-                }, 50);
-              }
-            }}
+            onClick={() => navigateToPage(page.url)}
           >
-            {previewOpen ? "Hide preview" : "Preview"}
+            View
           </button>
         </div>
       </div>
@@ -190,23 +188,32 @@ function PageDetail({ page }: { page: PageInfo }) {
       )}
 
       {/* Changelog list */}
-      {page.changelog && (
-        <div className={`sdt-pg-section ${isOutdated ? "sdt-pg-section-warn" : ""}`}>
-          <div className="sdt-pg-section-label">{isOutdated && promptData ? `New in version ${promptData.latestVersion}` : "Changelog"}</div>
-          <ul className="sdt-pg-changelog-list">
-            {page.changelog.split(/[.\n]/).filter((s) => s.trim()).map((line, i) => (
-              <li key={i} className="sdt-pg-changelog-item">
-                <span className="sdt-pg-changelog-bullet">{"\u2728"}</span>
-                <span>{line.trim()}</span>
-              </li>
-            ))}
-          </ul>
+      {page.versionChangelogs.length > 0 && (
+        <div className="sdt-pg-section">
+          <div className="sdt-pg-section-label">{isOutdated ? "What's changed" : "Changelog"}</div>
+          {page.versionChangelogs.map((vc) => (
+            <div key={vc.version} style={{ marginBottom: page.versionChangelogs.length > 1 ? 8 : 0 }}>
+              {page.versionChangelogs.length > 1 && (
+                <div className="sdt-pg-section-label" style={{ fontSize: 11, opacity: 0.7, marginBottom: 2 }}>
+                  Version {vc.version}
+                </div>
+              )}
+              <ul className="sdt-pg-changelog-list">
+                {vc.changelog.split(/[.\n]/).filter((s) => s.trim()).map((line, i) => (
+                  <li key={i} className="sdt-pg-changelog-item">
+                    <span className="sdt-pg-changelog-bullet">{"\u2728"}</span>
+                    <span>{line.trim()}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
         </div>
       )}
 
       {/* Prompt section */}
       {prompt && (
-        <div className={`sdt-pg-section ${isOutdated ? "sdt-pg-section-warn" : ""}`}>
+        <div className="sdt-pg-section">
           <div className="sdt-pg-section-label">{isOutdated ? "Use this prompt to upgrade your component:" : "Customization prompt:"}</div>
           <pre className="sdt-pg-pre">{prompt}</pre>
           <div className="sdt-pg-section-footer">
@@ -220,19 +227,11 @@ function PageDetail({ page }: { page: PageInfo }) {
         <span className="sdt-pg-url-label">URL</span>
         <a href={page.url} target="_blank" rel="noopener noreferrer" className="sdt-pg-url">{page.url}</a>
       </div>
-
-      {previewOpen && (
-        <div className="sdt-pg-preview" ref={previewRef}>
-          <div className="sdt-pg-iframe-wrap">
-            <iframe src={fullUrl} title={page.label} className="sdt-pg-iframe" />
-          </div>
-        </div>
-      )}
     </div>
   );
 }
 
-type VersionInfo = { version: number; changelog: string | null };
+type VersionInfo = { version: number; changelogs: Record<number, string> };
 
 function useLatestPageVersions(apiBaseUrl: string): Partial<Record<string, VersionInfo>> | null {
   const [versions, setVersions] = useState<Partial<Record<string, VersionInfo>> | null>(null);
@@ -267,7 +266,7 @@ export function ComponentsTab() {
       const { classification, version, isLegacyString } = classifyPage(urlOptions, entry.key);
 
       let versionStatus: PageVersionStatus;
-      let changelog: string | null = null;
+      let versionChangelogs: VersionChangelog[] = [];
       if (isLegacyString) {
         versionStatus = "deprecated";
       } else if (classification === "custom" && version != null) {
@@ -277,7 +276,10 @@ export function ComponentsTab() {
           const latestInfo = latestVersions[entry.key];
           if (latestInfo != null && version < latestInfo.version) {
             versionStatus = "outdated";
-            changelog = latestInfo.changelog;
+            versionChangelogs = Object.entries(latestInfo.changelogs)
+              .map(([v, cl]) => ({ version: Number(v), changelog: cl }))
+              .filter((e) => e.version > version)
+              .sort((a, b) => a.version - b.version);
           } else {
             versionStatus = "current";
           }
@@ -294,7 +296,7 @@ export function ComponentsTab() {
         version,
         isLegacyString,
         versionStatus,
-        changelog,
+        versionChangelogs,
       };
     }),
     [urls, urlOptions, latestVersions]

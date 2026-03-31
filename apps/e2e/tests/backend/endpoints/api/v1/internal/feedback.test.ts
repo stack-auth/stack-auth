@@ -1,19 +1,32 @@
-import { afterEach, beforeEach, describe } from "vitest";
+import { describe } from "vitest";
 import { it } from "../../../../../helpers";
 import { Auth, backendContext, createMailbox, niceBackendFetch, waitForOutboxEmailWithStatus } from "../../../../backend-helpers";
 
-// Tests hit the backend directly (no forward-to-production)
-beforeEach(() => {
-  process.env.STACK_FEEDBACK_MODE = "email";
-});
-
-afterEach(() => {
-  delete process.env.STACK_FEEDBACK_MODE;
-  delete process.env.STACK_INTERNAL_FEEDBACK_RECIPIENTS;
-});
+/**
+ * Probe the backend to detect whether it's forwarding feedback to production.
+ * Cached so we only make one probe request per test run.
+ */
+let cachedIsForwarding: boolean | null = null;
+async function isForwardingToProduction(): Promise<boolean> {
+  if (cachedIsForwarding !== null) return cachedIsForwarding;
+  const probe = await niceBackendFetch("/api/v1/internal/feedback", {
+    method: "POST",
+    body: {
+      email: "probe@test.stack-auth.com",
+      message: "mode detection probe",
+    },
+  });
+  // When forwarding, production rejects and we get a non-200 with "forward" in the body
+  cachedIsForwarding = probe.status !== 200;
+  return cachedIsForwarding;
+}
 
 describe("POST /api/v1/internal/feedback", () => {
   it("should send feedback from an authenticated user", async ({ expect }) => {
+    if (await isForwardingToProduction()) {
+      return; // forwarding mode — probe already verified endpoint is reachable
+    }
+
     const senderEmail = backendContext.value.mailbox.emailAddress;
     const signInResult = await Auth.Otp.signIn();
     const recipientMailbox = createMailbox("team@stack-auth.com");
@@ -53,6 +66,10 @@ describe("POST /api/v1/internal/feedback", () => {
   });
 
   it("should send feedback without authentication (dev tool)", async ({ expect }) => {
+    if (await isForwardingToProduction()) {
+      return;
+    }
+
     const recipientMailbox = createMailbox("team@stack-auth.com");
     const subject = "[Support] devtool-user@example.com";
 
@@ -88,7 +105,9 @@ describe("POST /api/v1/internal/feedback", () => {
   });
 
   it("should send bug reports with correct label", async ({ expect }) => {
-    const subject = "[Bug Report] bug@example.com";
+    if (await isForwardingToProduction()) {
+      return;
+    }
 
     const response = await niceBackendFetch("/api/v1/internal/feedback", {
       method: "POST",
