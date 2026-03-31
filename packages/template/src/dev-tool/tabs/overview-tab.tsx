@@ -67,8 +67,8 @@ function UserHeroCard() {
       } else {
         setStatus({ type: 'success', message: `Signed in as ${randomEmail}` });
       }
-    } catch (e: any) {
-      setStatus({ type: 'error', message: e.message || 'Unknown error' });
+    } catch (e: unknown) {
+      setStatus({ type: 'error', message: e instanceof Error ? e.message : 'Unknown error' });
     }
     setLoading(false);
   };
@@ -103,8 +103,8 @@ function UserHeroCard() {
         setStatus({ type: 'success', message: `Signed in as ${trimmed}` });
         setEmail('');
       }
-    } catch (e: any) {
-      setStatus({ type: 'error', message: e.message || 'Unknown error' });
+    } catch (e: unknown) {
+      setStatus({ type: 'error', message: e instanceof Error ? e.message : 'Unknown error' });
     }
     setLoading(false);
   };
@@ -113,10 +113,11 @@ function UserHeroCard() {
     setLoading(true);
     setStatus(null);
     try {
-      await user!.signOut();
+      if (!user) throw new Error("User is required to sign out");
+      await user.signOut();
       setStatus({ type: 'success', message: 'Signed out' });
-    } catch (e: any) {
-      setStatus({ type: 'error', message: e.message || 'Sign out failed' });
+    } catch (e: unknown) {
+      setStatus({ type: 'error', message: e instanceof Error ? e.message : 'Sign out failed' });
     }
     setLoading(false);
   };

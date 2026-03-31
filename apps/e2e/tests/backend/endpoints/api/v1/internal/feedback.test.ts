@@ -109,6 +109,9 @@ describe("POST /api/v1/internal/feedback", () => {
       return;
     }
 
+    const recipientMailbox = createMailbox("team@stack-auth.com");
+    const subject = "[Bug Report] bug@example.com";
+
     const response = await niceBackendFetch("/api/v1/internal/feedback", {
       method: "POST",
       body: {
@@ -125,6 +128,16 @@ describe("POST /api/v1/internal/feedback", () => {
         "headers": Headers { <some fields may have been hidden> },
       }
     `);
+
+    const emails = await waitForOutboxEmailWithStatus(subject, "sent");
+    expect(emails[0]?.to).toMatchObject({
+      type: "custom-emails",
+      emails: ["team@stack-auth.com"],
+    });
+
+    const messages = await recipientMailbox.waitForMessagesWithSubject(subject);
+    expect(messages).toHaveLength(1);
+    expect(messages[0]?.subject).toBe("[Bug Report] bug@example.com");
   });
 
   it("should reject invalid payloads", async ({ expect }) => {

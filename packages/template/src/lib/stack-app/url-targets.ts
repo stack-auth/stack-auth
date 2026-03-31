@@ -3,8 +3,9 @@ import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { envVars } from "../env";
 import { DefaultHandlerUrlTarget, HandlerPageUrls, HandlerUrlOptions, HandlerUrlTarget, HandlerUrls, ResolvedHandlerUrls } from "./common";
 
+let sdkPackageName: string;
 // IF_PLATFORM next
-let sdkPackageName = "@stackframe/stack";
+sdkPackageName = "@stackframe/stack";
 // ELSE_IF_PLATFORM react
 sdkPackageName = "@stackframe/react";
 // ELSE_PLATFORM
@@ -87,18 +88,7 @@ const customPagePrompts: Record<keyof Omit<HandlerPageUrls, "handler">, CustomPa
       6. Show an "Already have an account? Sign in" link pointing to \`app.urls.signIn\`
       7. Handle loading states on all buttons/forms
     `,
-    versions: {
-      1: {
-        minSdkVersion: "3.0.0",
-        upgradePrompt: "Upgrade the custom Sign Up page to version 1. Add support for passkey sign-up when `project.config.passkeyEnabled` is true. Show a 'Sign up with Passkey' button that calls `app.signUpWithPasskey()`. Also add a divider between OAuth/passkey and credential/magic-link sections.",
-        changelog: "Added passkey authentication support and improved section dividers between auth methods.",
-      },
-      2: {
-        minSdkVersion: "3.0.0",
-        upgradePrompt: "Upgrade the custom Sign Up page to version 2. Add support for passkey sign-up when `project.config.passkeyEnabled` is true. Show a 'Sign up with Passkey' button that calls `app.signUpWithPasskey()`. Also add a divider between OAuth/passkey and credential/magic-link sections.",
-        changelog: "Added support for passkey sign-up and improved section dividers between auth methods.",
-      },
-    },
+    versions: {},
   },
   signOut: {
     title: "Sign Out",

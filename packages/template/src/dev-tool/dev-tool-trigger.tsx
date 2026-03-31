@@ -1,14 +1,149 @@
 "use client";
 
-import React from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 
 // IF_PLATFORM react-like
 
+const STORAGE_KEY = "stack-devtool-trigger-position";
+const DRAG_THRESHOLD = 5;
+
+type Position = { left: number; top: number };
+
+function getDefaultPosition(): Position {
+  if (typeof window === "undefined") return { left: 0, top: 0 };
+  return {
+    left: window.innerWidth - 76 - 16,
+    top: window.innerHeight - 36 - 16,
+  };
+}
+
+function loadPosition(): Position | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY);
+    if (raw == null) return null;
+    const parsed = JSON.parse(raw);
+    if (typeof parsed.left === "number" && typeof parsed.top === "number") {
+      return parsed as Position;
+    }
+  } catch {
+    // corrupted data
+  }
+  return null;
+}
+
+function savePosition(pos: Position) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(pos));
+  } catch {
+    // storage full or unavailable
+  }
+}
+
+function clampToViewport(pos: Position, elWidth: number, elHeight: number): Position {
+  return {
+    left: Math.max(0, Math.min(pos.left, window.innerWidth - elWidth)),
+    top: Math.max(0, Math.min(pos.top, window.innerHeight - elHeight)),
+  };
+}
+
 export function DevToolTrigger({ onClick }: { onClick: () => void }) {
+  const [position, setPosition] = useState<Position>(
+    () => loadPosition() ?? getDefaultPosition()
+  );
+  const positionRef = useRef(position);
+  positionRef.current = position;
+
+  const buttonRef = useRef<HTMLButtonElement>(null);
+  const dragState = useRef<{
+    startX: number;
+    startY: number;
+    startLeft: number;
+    startTop: number;
+    didDrag: boolean;
+  } | null>(null);
+
+  useEffect(() => {
+    const stored = loadPosition();
+    if (stored != null && buttonRef.current != null) {
+      const rect = buttonRef.current.getBoundingClientRect();
+      setPosition(clampToViewport(stored, rect.width, rect.height));
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleResize = () => {
+      if (buttonRef.current == null) return;
+      const rect = buttonRef.current.getBoundingClientRect();
+      setPosition((prev) => {
+        const clamped = clampToViewport(prev, rect.width, rect.height);
+        if (clamped.left !== prev.left || clamped.top !== prev.top) {
+          savePosition(clamped);
+          return clamped;
+        }
+        return prev;
+      });
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
+
+  const onPointerDown = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+    e.preventDefault();
+    (e.target as HTMLElement).setPointerCapture(e.pointerId);
+    const pos = positionRef.current;
+    dragState.current = {
+      startX: e.clientX,
+      startY: e.clientY,
+      startLeft: pos.left,
+      startTop: pos.top,
+      didDrag: false,
+    };
+  }, []);
+
+  const onPointerMove = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+    const ds = dragState.current;
+    if (ds == null) return;
+
+    const dx = e.clientX - ds.startX;
+    const dy = e.clientY - ds.startY;
+
+    if (!ds.didDrag && Math.abs(dx) + Math.abs(dy) < DRAG_THRESHOLD) return;
+    ds.didDrag = true;
+
+    const el = buttonRef.current;
+    if (el == null) return;
+    const rect = el.getBoundingClientRect();
+    const newPos = clampToViewport(
+      { left: ds.startLeft + dx, top: ds.startTop + dy },
+      rect.width,
+      rect.height,
+    );
+    setPosition(newPos);
+  }, []);
+
+  const onPointerUp = useCallback((e: React.PointerEvent<HTMLButtonElement>) => {
+    const ds = dragState.current;
+    dragState.current = null;
+
+    if (ds == null) return;
+    (e.target as HTMLElement).releasePointerCapture(e.pointerId);
+
+    if (ds.didDrag) {
+      savePosition(positionRef.current);
+    } else {
+      onClick();
+    }
+  }, [onClick]);
+
   return (
     <button
+      ref={buttonRef}
       className="sdt-trigger"
-      onClick={onClick}
+      style={{ left: position.left, top: position.top }}
+      onPointerDown={onPointerDown}
+      onPointerMove={onPointerMove}
+      onPointerUp={onPointerUp}
       aria-label="Toggle Stack Auth Dev Tools"
       title="Stack Auth Dev Tools"
     >

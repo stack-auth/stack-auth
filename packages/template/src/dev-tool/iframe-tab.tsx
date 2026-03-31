@@ -23,6 +23,7 @@ export function IframeTab({
 }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
+  const [iframeKey, setIframeKey] = useState(0);
 
   const handleLoad = useCallback(() => {
     setLoading(false);
@@ -37,6 +38,7 @@ export function IframeTab({
   const retry = useCallback(() => {
     setLoading(true);
     setError(false);
+    setIframeKey((k) => k + 1);
   }, []);
 
   if (error) {
@@ -71,6 +73,7 @@ export function IframeTab({
         <div className="sdt-iframe-loading">{loadingMessage}</div>
       )}
       <iframe
+        key={iframeKey}
         src={src}
         title={title}
         onLoad={handleLoad}

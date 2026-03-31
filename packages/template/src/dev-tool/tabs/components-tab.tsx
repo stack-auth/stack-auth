@@ -233,15 +233,15 @@ function PageDetail({ page }: { page: PageInfo }) {
 
 type VersionInfo = { version: number; changelogs: Record<number, string> };
 
-function useLatestPageVersions(apiBaseUrl: string): Partial<Record<string, VersionInfo>> | null {
-  const [versions, setVersions] = useState<Partial<Record<string, VersionInfo>> | null>(null);
+function useLatestPageVersions(apiBaseUrl: string): Map<string, VersionInfo> | null {
+  const [versions, setVersions] = useState<Map<string, VersionInfo> | null>(null);
 
   useEffect(() => {
     let stale = false;
 
     fetch(`${apiBaseUrl}/api/latest/internal/component-versions`)
       .then((r) => r.json())
-      .then((data) => { if (!stale) setVersions(data.versions); })
+      .then((data) => { if (!stale) setVersions(new Map(Object.entries(data.versions ?? {}))); })
       .catch(() => {});
 
     return () => {
@@ -273,7 +273,7 @@ export function ComponentsTab() {
         if (latestVersions == null) {
           versionStatus = "loading";
         } else {
-          const latestInfo = latestVersions[entry.key];
+          const latestInfo = latestVersions.get(entry.key);
           if (latestInfo != null && version < latestInfo.version) {
             versionStatus = "outdated";
             versionChangelogs = Object.entries(latestInfo.changelogs)

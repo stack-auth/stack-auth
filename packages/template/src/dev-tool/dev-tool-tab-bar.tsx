@@ -26,19 +26,27 @@ function useTabIndicator<T extends string>(
     const bar = barRef.current;
     if (!bar) return;
 
-    const btn = bar.querySelector<HTMLElement>(`[data-tab-id="${activeTab}"]`);
-    if (!btn) return;
+    function measure() {
+      const btn = bar!.querySelector<HTMLElement>(`[data-tab-id="${activeTab}"]`);
+      if (!btn) return;
 
-    // Use offset* instead of getBoundingClientRect so the measurement isn't
-    // affected by CSS transforms (e.g. the panel's scale-in animation).
-    setStyle({
-      transform: `translateX(${btn.offsetLeft}px)`,
-      width: `${btn.offsetWidth}px`,
-      height: `${btn.offsetHeight}px`,
-      opacity: 1,
-      transition: initialRef.current ? 'none' : undefined,
-    });
-    initialRef.current = false;
+      // Use offset* instead of getBoundingClientRect so the measurement isn't
+      // affected by CSS transforms (e.g. the panel's scale-in animation).
+      setStyle({
+        transform: `translateX(${btn.offsetLeft}px)`,
+        width: `${btn.offsetWidth}px`,
+        height: `${btn.offsetHeight}px`,
+        opacity: 1,
+        transition: initialRef.current ? 'none' : undefined,
+      });
+      initialRef.current = false;
+    }
+
+    measure();
+
+    const ro = new ResizeObserver(measure);
+    ro.observe(bar);
+    return () => ro.disconnect();
   }, [activeTab, barRef]);
 
   return style;

@@ -50,8 +50,6 @@ export const devToolCSS = `
   /* Trigger pill */
   .stack-devtool .sdt-trigger {
     position: fixed;
-    bottom: 16px;
-    right: 16px;
     z-index: 99999;
     display: flex;
     align-items: center;
@@ -61,10 +59,11 @@ export const devToolCSS = `
     background: var(--sdt-bg-elevated);
     border: 1px solid var(--sdt-border);
     border-radius: 20px;
-    cursor: pointer;
+    cursor: grab;
     box-shadow: var(--sdt-trigger-shadow);
-    transition: all 0.2s ease;
+    transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
     user-select: none;
+    touch-action: none;
     font-family: var(--sdt-font);
     font-size: 12px;
     font-weight: 600;
@@ -76,11 +75,10 @@ export const devToolCSS = `
     background: var(--sdt-bg-hover);
     border-color: var(--sdt-accent);
     box-shadow: var(--sdt-trigger-shadow), 0 0 0 1px var(--sdt-accent);
-    transform: translateY(-1px);
   }
 
   .stack-devtool .sdt-trigger:active {
-    transform: translateY(0);
+    cursor: grabbing;
   }
 
   .stack-devtool .sdt-trigger-logo {
@@ -2580,6 +2578,31 @@ export const devToolCSS = `
 
   .stack-devtool .sdt-ai-send-btn-active:hover {
     background: var(--sdt-accent-hover);
+  }
+
+  /* Accessible focus indicator for keyboard navigation */
+  .stack-devtool .sdt-tab:focus-visible {
+    outline: 2px solid var(--sdt-accent);
+    outline-offset: -2px;
+    border-radius: var(--sdt-radius);
+  }
+
+  /* Reduced motion: disable animations for users who prefer it */
+  @media (prefers-reduced-motion: reduce) {
+    .stack-devtool .sdt-panel-inner,
+    .stack-devtool .sdt-panel-exiting,
+    .stack-devtool .sdt-tab-content,
+    .stack-devtool .sdt-ov-pulse-dot,
+    .stack-devtool .sdt-ov-skeleton-pill,
+    .stack-devtool .sdt-support-spinner,
+    .stack-devtool .sdt-ai-thinking-dot {
+      animation: none !important;
+    }
+
+    .stack-devtool .sdt-tab-indicator,
+    .stack-devtool .sdt-tab {
+      transition: none !important;
+    }
   }
 
   /* --- Stack theme explicit overrides (take priority over system preference) --- */

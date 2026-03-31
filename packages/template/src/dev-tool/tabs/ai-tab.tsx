@@ -223,7 +223,7 @@ function useAIHeaders(app: ReturnType<typeof useStackApp>) {
   const headers = useRef<Record<string, string>>({});
 
   useEffect(() => {
-    const opts = (app as any)[stackAppInternalsSymbol]?.getConstructorOptions?.() ?? {};
+    const opts = app[stackAppInternalsSymbol].getConstructorOptions();
     const h: Record<string, string> = {
       "X-Stack-Access-Type": "client",
       "X-Stack-Project-Id": app.projectId,

@@ -1,7 +1,7 @@
 "use client";
 
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import { useStackApp } from "../../lib/hooks";
 import { resolveApiBaseUrl, useDevToolContext, type SupportPrefill } from "../dev-tool-context";
 import { DevToolTabBar, type TabDef } from "../dev-tool-tab-bar";
@@ -28,15 +28,13 @@ function FeedbackForm({ prefill }: { prefill?: SupportPrefill }) {
   const [feedbackType, setFeedbackType] = useState<"feedback" | "bug">(prefill?.feedbackType ?? "feedback");
   const [status, setStatus] = useState<SubmitStatus>("idle");
   const [errorMessage, setErrorMessage] = useState("");
-  const prefillApplied = useRef(false);
 
   // Apply prefill when it changes (e.g. navigating from share dialog)
   useEffect(() => {
-    if (prefill && !prefillApplied.current) {
+    if (prefill) {
       setFeedbackType(prefill.feedbackType);
       setMessage(prefill.message);
       setStatus("idle");
-      prefillApplied.current = true;
     }
   }, [prefill]);
 

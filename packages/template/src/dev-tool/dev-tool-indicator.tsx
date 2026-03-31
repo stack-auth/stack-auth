@@ -33,18 +33,24 @@ function useFetchInterceptor(addApiLog: (entry: ApiLogEntry) => void, addEventLo
     const originalFetch = window.fetch;
 
     const patchedFetch = async function (input: RequestInfo | URL, init?: RequestInit) {
-      // Determine if this is a Stack Auth API call by checking for the header
-      const headers = init?.headers;
-      let isStackCall = false;
-      let method = init?.method || (input instanceof Request ? input.method : 'GET');
+      // Determine if this is a Stack Auth API call by checking for the header.
+      // When input is a Request, its headers/method may carry the info even if
+      // init is absent, so we merge both sources (init takes precedence).
+      let resolvedHeaders: HeadersInit | undefined = init?.headers;
+      let method = init?.method ?? (input instanceof Request ? input.method : 'GET');
 
-      if (headers) {
-        if (headers instanceof Headers) {
-          isStackCall = headers.has('X-Stack-Project-Id');
-        } else if (Array.isArray(headers)) {
-          isStackCall = headers.some(([key]) => key === 'X-Stack-Project-Id');
+      if (!resolvedHeaders && input instanceof Request) {
+        resolvedHeaders = input.headers;
+      }
+
+      let isStackCall = false;
+      if (resolvedHeaders) {
+        if (resolvedHeaders instanceof Headers) {
+          isStackCall = resolvedHeaders.has('X-Stack-Project-Id');
+        } else if (Array.isArray(resolvedHeaders)) {
+          isStackCall = resolvedHeaders.some(([key]) => key === 'X-Stack-Project-Id');
         } else {
-          isStackCall = 'X-Stack-Project-Id' in headers;
+          isStackCall = 'X-Stack-Project-Id' in resolvedHeaders;
         }
       }
 
@@ -64,15 +70,16 @@ function useFetchInterceptor(addApiLog: (entry: ApiLogEntry) => void, addEventLo
         // keep full url
       }
 
-      const startTime = Date.now();
+      const timestamp = Date.now();
+      const startMono = performance.now();
 
       try {
         const response = await originalFetch.call(window, input, init);
 
-        const duration = Date.now() - startTime;
+        const duration = Math.round(performance.now() - startMono);
         addApiLogRef.current({
           id: nextId(),
-          timestamp: startTime,
+          timestamp,
           method: method.toUpperCase(),
           url: displayUrl,
           status: response.status,
@@ -110,10 +117,10 @@ function useFetchInterceptor(addApiLog: (entry: ApiLogEntry) => void, addEventLo
 
         return response;
       } catch (err) {
-        const duration = Date.now() - startTime;
+        const duration = Math.round(performance.now() - startMono);
         addApiLogRef.current({
           id: nextId(),
-          timestamp: startTime,
+          timestamp,
           method: method.toUpperCase(),
           url: displayUrl,
           duration,

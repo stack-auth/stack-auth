@@ -55,19 +55,32 @@ function notify() {
 
 // Expose console commands: StackDevTool.enable() / StackDevTool.disable() / StackDevTool.reset()
 if (typeof window !== 'undefined') {
+  // Cast: attaching a runtime-only debugging API to the global scope
   (window as any).StackDevTool = {
     enable() {
-      localStorage.setItem(OVERRIDE_KEY, 'true');
+      try {
+        localStorage.setItem(OVERRIDE_KEY, 'true');
+      } catch {
+        // localStorage may be unavailable (private browsing, quota exceeded)
+      }
       notify();
       console.log('[Stack DevTool] Enabled. Refresh if the panel does not appear.');
     },
     disable() {
-      localStorage.setItem(OVERRIDE_KEY, 'false');
+      try {
+        localStorage.setItem(OVERRIDE_KEY, 'false');
+      } catch {
+        // localStorage may be unavailable
+      }
       notify();
       console.log('[Stack DevTool] Disabled.');
     },
     reset() {
-      localStorage.removeItem(OVERRIDE_KEY);
+      try {
+        localStorage.removeItem(OVERRIDE_KEY);
+      } catch {
+        // localStorage may be unavailable
+      }
       notify();
       console.log('[Stack DevTool] Reset to default (visible on localhost only).');
     },
