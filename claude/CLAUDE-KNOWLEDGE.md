@@ -153,3 +153,6 @@ A: In `packages/template/src/components-page/stack-handler-client.tsx`, parse ha
 
 Q: What is the current `app.urls` contract after deprecating runtime URL mutation?
 A: `app.urls` is now static (`getUrls(...)` only) and no longer injects runtime `after_auth_return_to` / `stack_cross_domain_*` params from `window.location`. For navigation flows, examples and consumers should use `redirectToXyz()` methods instead (for example `redirectToSignIn()` / `redirectToSignOut()`), while tests for hosted flows should assert dynamic params on actual redirect methods, not on `app.urls`.
+
+Q: How should new JWT claims be rolled out without breaking old access tokens?
+A: Add the claim to token generation in `apps/backend/src/lib/tokens.tsx`, but keep the decode schema backward-compatible by adding the field as optional in `packages/stack-shared/src/schema-fields.ts` with a `// TODO next-release` to later switch it to `.defined()` after all deployments issue the new claim.
