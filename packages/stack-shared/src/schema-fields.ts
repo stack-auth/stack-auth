@@ -789,6 +789,8 @@ export const accessTokenPayloadSchema = yupObject({
   email: yupString().defined().nullable(),
   email_verified: yupBoolean().defined(),
   selected_team_id: yupString().defined().nullable(),
+  // TODO next-release: make this .defined() once all deployments generate signed_up_at_millis in access tokens
+  signed_up_at_millis: signedUpAtMillisSchema.optional(),
   is_anonymous: yupBoolean().defined(),
   is_restricted: yupBoolean().defined(),
   restricted_reason: restrictedReasonSchema.defined().nullable(),
