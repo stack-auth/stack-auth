@@ -24,11 +24,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
   Input,
   Separator,
   Table,
@@ -41,9 +36,9 @@ import {
   Typography,
   useToast
 } from "@/components/ui";
-import { DesignEditableGrid, type DesignEditableGridItem } from "@/components/design-components";
+import { DesignEditableGrid, type DesignEditableGridItem, DesignMenu, type DesignMenuActionItem } from "@/components/design-components";
 import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialogs";
-import { AtIcon, CalendarIcon, CheckIcon, DotsThreeIcon, EnvelopeIcon, GlobeIcon, HashIcon, ProhibitIcon, ShieldIcon, SquareIcon, XIcon } from "@phosphor-icons/react";
+import { AtIcon, CalendarIcon, CheckIcon, EnvelopeIcon, GlobeIcon, HashIcon, ProhibitIcon, ShieldIcon, SquareIcon, XIcon } from "@phosphor-icons/react";
 import { ServerContactChannel, ServerOAuthProvider, ServerUser } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
@@ -112,38 +107,41 @@ function UserHeader({ user }: UserHeaderProps) {
         <p>Last active {fromNow(user.lastActiveAt)}</p>
       </div>
       <div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon">
-              <DotsThreeIcon className="h-5 w-5" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={async () => {
-              const expiresInMillis = 1000 * 60 * 60 * 2;
-              const expiresAtDate = new Date(Date.now() + expiresInMillis);
-              const session = await user.createSession({ expiresInMillis });
-              const tokens = await session.getTokens();
-              setImpersonateSnippet(deindent`
-                document.cookie = 'stack-refresh-${stackAdminApp.projectId}=${tokens.refreshToken}; expires=${expiresAtDate.toUTCString()}; path=/'; 
-                window.location.reload();
-              `);
-            }}>
-              <span>Impersonate</span>
-            </DropdownMenuItem>
-            {user.isMultiFactorRequired && (
-              <DropdownMenuItem onClick={async () => {
+        <DesignMenu
+          variant="actions"
+          trigger="icon"
+          triggerLabel="User actions"
+          align="end"
+          items={[
+            {
+              id: "impersonate",
+              label: "Impersonate",
+              onClick: async () => {
+                const expiresInMillis = 1000 * 60 * 60 * 2;
+                const expiresAtDate = new Date(Date.now() + expiresInMillis);
+                const session = await user.createSession({ expiresInMillis });
+                const tokens = await session.getTokens();
+                setImpersonateSnippet(deindent`
+                  document.cookie = 'stack-refresh-${stackAdminApp.projectId}=${tokens.refreshToken}; expires=${expiresAtDate.toUTCString()}; path=/'; 
+                  window.location.reload();
+                `);
+              },
+            },
+            ...user.isMultiFactorRequired ? [{
+              id: "remove-2fa",
+              label: "Remove 2FA",
+              onClick: async () => {
                 await user.update({ totpMultiFactorSecret: null });
-              }}>
-                <span>Remove 2FA</span>
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => setIsDeleteModalOpen(true)}>
-              <Typography className="text-destructive">Delete</Typography>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              },
+            }] satisfies DesignMenuActionItem[] : [],
+            {
+              id: "delete",
+              label: "Delete",
+              itemVariant: "destructive" as const,
+              onClick: () => setIsDeleteModalOpen(true),
+            },
+          ]}
+        />
         <DeleteUserDialog user={user} open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen} redirectTo={`/projects/${stackAdminApp.projectId}/users`} />
         <ImpersonateUserDialog user={user} impersonateSnippet={impersonateSnippet} onClose={() => setImpersonateSnippet(null)} />
       </div>
