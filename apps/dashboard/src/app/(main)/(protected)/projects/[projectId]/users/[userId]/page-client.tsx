@@ -36,7 +36,7 @@ import {
   Typography,
   useToast
 } from "@/components/ui";
-import { DesignEditableGrid, type DesignEditableGridItem, DesignMenu, type DesignMenuActionItem } from "@/components/design-components";
+import { DesignCategoryTabs, DesignEditableGrid, type DesignEditableGridItem, DesignMenu, type DesignMenuActionItem } from "@/components/design-components";
 import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialogs";
 import { AtIcon, CalendarIcon, CheckIcon, EnvelopeIcon, GlobeIcon, HashIcon, ProhibitIcon, ShieldIcon, SquareIcon, XIcon } from "@phosphor-icons/react";
 import { ServerContactChannel, ServerOAuthProvider, ServerUser } from "@stackframe/stack";
@@ -1309,34 +1309,113 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
   );
 }
 
+const ACTIVITY_GRID_WEEKS = 16;
+const ACTIVITY_GRID_DAYS = 7;
+
+function ActivityPlaceholder() {
+  const cells = useMemo(() => {
+    const result: number[] = [];
+    for (let i = 0; i < ACTIVITY_GRID_WEEKS * ACTIVITY_GRID_DAYS; i++) {
+      result.push(Math.random());
+    }
+    return result;
+  }, []);
+
+  return (
+    <div className="hidden xl:flex flex-col items-end gap-1.5 opacity-30 select-none shrink-0 pt-1" aria-hidden>
+      <span className="text-[11px] font-medium text-muted-foreground tracking-wide uppercase">Activity</span>
+      <div
+        className="grid gap-[3px]"
+        style={{
+          gridTemplateColumns: `repeat(${ACTIVITY_GRID_WEEKS}, 1fr)`,
+          gridTemplateRows: `repeat(${ACTIVITY_GRID_DAYS}, 1fr)`,
+        }}
+      >
+        {cells.map((rand, i) => (
+          <div
+            key={i}
+            className={cn(
+              "w-[9px] h-[9px] rounded-[2px]",
+              rand < 0.55
+                ? "bg-foreground/[0.06]"
+                : rand < 0.75
+                  ? "bg-foreground/[0.12]"
+                  : rand < 0.9
+                    ? "bg-foreground/[0.22]"
+                    : "bg-foreground/[0.35]",
+            )}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const USER_PAGE_TABS = [
+  { id: "profile", label: "Profile" },
+  { id: "analytics", label: "Analytics" },
+  { id: "payments", label: "Payments" },
+  { id: "fraud-protection", label: "Fraud Protection" },
+] as const;
+
+type UserPageTab = typeof USER_PAGE_TABS[number]["id"];
+
+function TabPlaceholder({ label }: { label: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-2">
+      <p className="text-sm font-medium">{label}</p>
+      <p className="text-xs">Coming soon</p>
+    </div>
+  );
+}
+
 function UserPage({ user }: { user: ServerUser }) {
+  const [selectedTab, setSelectedTab] = useState<UserPageTab>("profile");
+
   return (
     <PageLayout>
       <div className="flex flex-col gap-6">
         <RestrictionBanner user={user} />
-        <UserHeader user={user} />
-        <Separator />
-        <UserDetails user={user} />
-        <Separator />
-        <ContactChannelsSection user={user} />
-        <UserTeamsSection user={user} />
-        <OAuthProvidersSection user={user} />
-        <MetadataSection
-          entityName="user"
-          docsUrl={userMetadataDocsUrl}
-          clientMetadata={user.clientMetadata}
-          clientReadOnlyMetadata={user.clientReadOnlyMetadata}
-          serverMetadata={user.serverMetadata}
-          onUpdateClientMetadata={async (value) => {
-            await user.setClientMetadata(value);
-          }}
-          onUpdateClientReadOnlyMetadata={async (value) => {
-            await user.setClientReadOnlyMetadata(value);
-          }}
-          onUpdateServerMetadata={async (value) => {
-            await user.setServerMetadata(value);
-          }}
+        <div className="flex items-start justify-between gap-6">
+          <UserHeader user={user} />
+          <ActivityPlaceholder />
+        </div>
+        <DesignCategoryTabs
+          categories={[...USER_PAGE_TABS]}
+          selectedCategory={selectedTab}
+          onSelect={(id) => setSelectedTab(id as UserPageTab)}
+          showBadge={false}
+          size="sm"
+          glassmorphic={false}
         />
+        {selectedTab === "profile" && (
+          <div className="flex flex-col gap-6">
+            <UserDetails user={user} />
+            <Separator />
+            <ContactChannelsSection user={user} />
+            <UserTeamsSection user={user} />
+            <OAuthProvidersSection user={user} />
+            <MetadataSection
+              entityName="user"
+              docsUrl={userMetadataDocsUrl}
+              clientMetadata={user.clientMetadata}
+              clientReadOnlyMetadata={user.clientReadOnlyMetadata}
+              serverMetadata={user.serverMetadata}
+              onUpdateClientMetadata={async (value) => {
+                await user.setClientMetadata(value);
+              }}
+              onUpdateClientReadOnlyMetadata={async (value) => {
+                await user.setClientReadOnlyMetadata(value);
+              }}
+              onUpdateServerMetadata={async (value) => {
+                await user.setServerMetadata(value);
+              }}
+            />
+          </div>
+        )}
+        {selectedTab === "analytics" && <TabPlaceholder label="Analytics" />}
+        {selectedTab === "payments" && <TabPlaceholder label="Payments" />}
+        {selectedTab === "fraud-protection" && <TabPlaceholder label="Fraud Protection" />}
       </div>
     </PageLayout>
   );
