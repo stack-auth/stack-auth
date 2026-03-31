@@ -51,7 +51,11 @@
   "devDependencies": {
     "@types/inquirer": "^9.0.7",
     "@types/node": "20.17.6",
+    "create-next-app": "^16.2.1",
+    "create-vite": "^9.0.3",
+    "only-allow": "^1.2.1",
     "rimraf": "^6.1.2",
+    "sv": "^0.12.8",
     "tsdown": "^0.20.3",
     "typescript": "5.9.3"
   },
