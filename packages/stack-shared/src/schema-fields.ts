@@ -789,6 +789,7 @@ export const accessTokenPayloadSchema = yupObject({
   email: yupString().defined().nullable(),
   email_verified: yupBoolean().defined(),
   selected_team_id: yupString().defined().nullable(),
+  signed_up_at: yupNumber().defined(),
   is_anonymous: yupBoolean().defined(),
   is_restricted: yupBoolean().defined(),
   restricted_reason: restrictedReasonSchema.defined().nullable(),
