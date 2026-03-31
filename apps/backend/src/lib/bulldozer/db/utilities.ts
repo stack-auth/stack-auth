@@ -3,7 +3,7 @@ import { templateIdentity } from "@stackframe/stack-shared/dist/utils/strings";
 
 const sqlTemplateLiteral = <T>(type: T) => (strings: TemplateStringsArray, ...values: { sql: string }[]) => ({ type, sql: templateIdentity(strings, ...values.map(v => v.sql)) });
 
-export type SqlStatement = { type: "statement", outputName?: string, sql: string };
+export type SqlStatement = { type: "statement", outputName?: string, sql: string, requiresSequentialExecution?: boolean };
 export const sqlStatement = sqlTemplateLiteral<"statement">("statement");
 
 export type SqlQuery<R extends void | Iterable<unknown> = void> = { type: "query", sql: string, toStatement(outputName?: string): SqlStatement };

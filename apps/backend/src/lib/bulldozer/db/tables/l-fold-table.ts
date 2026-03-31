@@ -76,6 +76,7 @@ export function declareLFoldTable<
   const getGroupStatesPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey, "states"]);
   const getGroupStatePath = (groupKey: SqlExpression<Json>, sourceRowIdentifier: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey, "states", sourceRowIdentifier]);
   const getSourceSortGroupRowsPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(sourceSortTableId, ["groups", groupKey, "rows"]);
+  const getSourceSortGroupRowPath = (groupKey: SqlExpression<Json>, rowIdentifier: SqlExpression<Json>) => getStorageEnginePath(sourceSortTableId, ["groups", groupKey, "rows", rowIdentifier]);
   const createExpandedRowIdentifier = (sourceRowIdentifier: SqlExpression<RowIdentifier>, flatIndex: SqlExpression<number>): SqlExpression<RowIdentifier> =>
     sqlExpression`(${sourceRowIdentifier} || ':' || (${flatIndex}::text))`;
   const isInitializedExpression = sqlExpression`
@@ -109,6 +110,7 @@ export function declareLFoldTable<
   sourceSortTable.registerRowChangeTrigger((fromChangesTable) => {
     const normalizedChangesTableName = `normalized_changes_${generateSecureRandomString()}`;
     const boundaryCandidatesTableName = `boundary_candidates_${generateSecureRandomString()}`;
+    const earliestBoundaryCandidatesTableName = `earliest_boundary_candidates_${generateSecureRandomString()}`;
     const touchedGroupsTableName = `touched_groups_${generateSecureRandomString()}`;
     const currentSourceRowsTableName = `current_source_rows_${generateSecureRandomString()}`;
     const affectedSourceRowsTableName = `affected_source_rows_${generateSecureRandomString()}`;
@@ -170,8 +172,27 @@ export function declareLFoldTable<
         WHERE "changes"."shouldRecompute" AND "changes"."hasNewRow"
       `.toStatement(boundaryCandidatesTableName),
       sqlQuery`
+        SELECT
+          "candidate"."groupKey" AS "groupKey",
+          "candidate"."boundarySortKey" AS "boundarySortKey",
+          "candidate"."boundaryRowIdentifier" AS "boundaryRowIdentifier"
+        FROM ${quoteSqlIdentifier(boundaryCandidatesTableName)} AS "candidate"
+        WHERE NOT EXISTS (
+          SELECT 1
+          FROM ${quoteSqlIdentifier(boundaryCandidatesTableName)} AS "other"
+          WHERE "other"."groupKey" IS NOT DISTINCT FROM "candidate"."groupKey"
+            AND (
+              ${options.fromTable.compareSortKeys(sqlExpression`"other"."boundarySortKey"`, sqlExpression`"candidate"."boundarySortKey"`)} < 0
+              OR (
+                ${options.fromTable.compareSortKeys(sqlExpression`"other"."boundarySortKey"`, sqlExpression`"candidate"."boundarySortKey"`)} = 0
+                AND "other"."boundaryRowIdentifier" < "candidate"."boundaryRowIdentifier"
+              )
+            )
+        )
+      `.toStatement(earliestBoundaryCandidatesTableName),
+      sqlQuery`
         SELECT DISTINCT "groupKey"
-        FROM ${quoteSqlIdentifier(boundaryCandidatesTableName)}
+        FROM ${quoteSqlIdentifier(earliestBoundaryCandidatesTableName)}
       `.toStatement(touchedGroupsTableName),
       sqlQuery`
         SELECT
@@ -186,7 +207,7 @@ export function declareLFoldTable<
           ON "sourceRows"."keyPathParent" = ${getSourceSortGroupRowsPath(sqlExpression`"groups"."groupKey"`)}::jsonb[]
       `.toStatement(currentSourceRowsTableName),
       sqlQuery`
-        SELECT DISTINCT
+        SELECT
           "sourceRows"."groupKey" AS "groupKey",
           "sourceRows"."rowIdentifier" AS "rowIdentifier",
           "sourceRows"."rowSortKey" AS "rowSortKey",
@@ -194,18 +215,14 @@ export function declareLFoldTable<
           "sourceRows"."prevRowIdentifier" AS "prevRowIdentifier",
           "sourceRows"."nextRowIdentifier" AS "nextRowIdentifier"
         FROM ${quoteSqlIdentifier(currentSourceRowsTableName)} AS "sourceRows"
-        WHERE EXISTS (
-          SELECT 1
-          FROM ${quoteSqlIdentifier(boundaryCandidatesTableName)} AS "boundary"
-          WHERE "boundary"."groupKey" IS NOT DISTINCT FROM "sourceRows"."groupKey"
-            AND (
-              ${options.fromTable.compareSortKeys(sqlExpression`"sourceRows"."rowSortKey"`, sqlExpression`"boundary"."boundarySortKey"`)} > 0
-              OR (
-                ${options.fromTable.compareSortKeys(sqlExpression`"sourceRows"."rowSortKey"`, sqlExpression`"boundary"."boundarySortKey"`)} = 0
-                AND "sourceRows"."rowIdentifier" >= "boundary"."boundaryRowIdentifier"
-              )
-            )
-        )
+        INNER JOIN ${quoteSqlIdentifier(earliestBoundaryCandidatesTableName)} AS "boundary"
+          ON "boundary"."groupKey" IS NOT DISTINCT FROM "sourceRows"."groupKey"
+        WHERE
+          ${options.fromTable.compareSortKeys(sqlExpression`"sourceRows"."rowSortKey"`, sqlExpression`"boundary"."boundarySortKey"`)} > 0
+          OR (
+            ${options.fromTable.compareSortKeys(sqlExpression`"sourceRows"."rowSortKey"`, sqlExpression`"boundary"."boundarySortKey"`)} = 0
+            AND "sourceRows"."rowIdentifier" >= "boundary"."boundaryRowIdentifier"
+          )
       `.toStatement(affectedSourceRowsTableName),
       sqlQuery`
         SELECT
@@ -302,18 +319,21 @@ export function declareLFoldTable<
           UNION ALL
 
           SELECT
-            "nextRows"."groupKey" AS "groupKey",
-            "nextRows"."rowIdentifier" AS "rowIdentifier",
-            "nextRows"."rowSortKey" AS "rowSortKey",
-            "nextRows"."rowData" AS "rowData",
-            "nextRows"."nextRowIdentifier" AS "nextRowIdentifier",
+            "recomputedRows"."groupKey" AS "groupKey",
+            ("nextSourceRows"."keyPath"[cardinality("nextSourceRows"."keyPath")] #>> '{}') AS "rowIdentifier",
+            "nextSourceRows"."value"->'rowSortKey' AS "rowSortKey",
+            "nextSourceRows"."value"->'rowData' AS "rowData",
+            "nextSourceRows"."value"->>'nextRowIdentifier' AS "nextRowIdentifier",
             "recomputedRows"."newState" AS "oldState",
             "reduced"."newState" AS "newState",
             "reduced"."newRowsData" AS "newRowsData"
           FROM "recomputedRows"
-          INNER JOIN ${quoteSqlIdentifier(currentSourceRowsTableName)} AS "nextRows"
-            ON "nextRows"."groupKey" IS NOT DISTINCT FROM "recomputedRows"."groupKey"
-            AND "nextRows"."rowIdentifier" = "recomputedRows"."nextRowIdentifier"
+          INNER JOIN "BulldozerStorageEngine" AS "nextSourceRows"
+            ON "recomputedRows"."nextRowIdentifier" IS NOT NULL
+            AND "nextSourceRows"."keyPath" = ${getSourceSortGroupRowPath(
+              sqlExpression`"recomputedRows"."groupKey"`,
+              sqlExpression`to_jsonb("recomputedRows"."nextRowIdentifier"::text)`,
+            )}::jsonb[]
           CROSS JOIN LATERAL (
             SELECT
               to_jsonb("reducerRows"."newState") AS "newState",
@@ -326,7 +346,7 @@ export function declareLFoldTable<
               FROM (
                 SELECT
                   "recomputedRows"."newState" AS "oldState",
-                  "nextRows"."rowData" AS "oldRowData"
+                  "nextSourceRows"."value"->'rowData' AS "oldRowData"
               ) AS "reducerInput"
             ) AS "reducerRows"
           ) AS "reduced"
@@ -485,7 +505,6 @@ export function declareLFoldTable<
     compareGroupKeys: options.fromTable.compareGroupKeys,
     compareSortKeys: options.fromTable.compareSortKeys,
     init: () => {
-      const allSourceRowsTableName = `all_source_rows_${generateSecureRandomString()}`;
       const firstSourceRowsTableName = `first_source_rows_${generateSecureRandomString()}`;
       const recomputedSourceStatesTableName = `recomputed_source_states_${generateSecureRandomString()}`;
       const newFoldRowsTableName = `new_fold_rows_${generateSecureRandomString()}`;
@@ -503,7 +522,6 @@ export function declareLFoldTable<
         sqlQuery`
           SELECT
             "groupPath"."keyPath"[cardinality("groupPath"."keyPath")] AS "groupKey",
-            ("groupPath"."keyPath"[cardinality("groupPath"."keyPath")]::text) AS "groupKeyText",
             ("sourceRows"."keyPath"[cardinality("sourceRows"."keyPath")] #>> '{}') AS "rowIdentifier",
             "sourceRows"."value"->'rowSortKey' AS "rowSortKey",
             "sourceRows"."value"->'rowData' AS "rowData",
@@ -516,24 +534,12 @@ export function declareLFoldTable<
             ON "sourceRows"."keyPathParent" = "groupRowsPath"."keyPath"
           WHERE "groupPath"."keyPathParent" = ${getStorageEnginePath(sourceSortTableId, ["groups"])}::jsonb[]
             AND "groupRowsPath"."keyPath"[cardinality("groupRowsPath"."keyPath")] = to_jsonb('rows'::text)
-        `.toStatement(allSourceRowsTableName),
-        sqlQuery`
-          SELECT
-            "sourceRows"."groupKey" AS "groupKey",
-            "sourceRows"."groupKeyText" AS "groupKeyText",
-            "sourceRows"."rowIdentifier" AS "rowIdentifier",
-            "sourceRows"."rowSortKey" AS "rowSortKey",
-            "sourceRows"."rowData" AS "rowData",
-            "sourceRows"."prevRowIdentifier" AS "prevRowIdentifier",
-            "sourceRows"."nextRowIdentifier" AS "nextRowIdentifier"
-          FROM ${quoteSqlIdentifier(allSourceRowsTableName)} AS "sourceRows"
-          WHERE "sourceRows"."prevRowIdentifier" IS NULL
+            AND "sourceRows"."value"->>'prevRowIdentifier' IS NULL
         `.toStatement(firstSourceRowsTableName),
         sqlQuery`
           WITH RECURSIVE "recomputedRows" AS (
             SELECT
               "firstRows"."groupKey" AS "groupKey",
-              "firstRows"."groupKeyText" AS "groupKeyText",
               "firstRows"."rowIdentifier" AS "rowIdentifier",
               "firstRows"."rowSortKey" AS "rowSortKey",
               "firstRows"."rowData" AS "rowData",
@@ -562,19 +568,21 @@ export function declareLFoldTable<
             UNION ALL
 
             SELECT
-              "nextRows"."groupKey" AS "groupKey",
-              "nextRows"."groupKeyText" AS "groupKeyText",
-              "nextRows"."rowIdentifier" AS "rowIdentifier",
-              "nextRows"."rowSortKey" AS "rowSortKey",
-              "nextRows"."rowData" AS "rowData",
-              "nextRows"."nextRowIdentifier" AS "nextRowIdentifier",
+              "recomputedRows"."groupKey" AS "groupKey",
+              ("nextSourceRows"."keyPath"[cardinality("nextSourceRows"."keyPath")] #>> '{}') AS "rowIdentifier",
+              "nextSourceRows"."value"->'rowSortKey' AS "rowSortKey",
+              "nextSourceRows"."value"->'rowData' AS "rowData",
+              "nextSourceRows"."value"->>'nextRowIdentifier' AS "nextRowIdentifier",
               "recomputedRows"."newState" AS "oldState",
               "reduced"."newState" AS "newState",
               "reduced"."newRowsData" AS "newRowsData"
             FROM "recomputedRows"
-            INNER JOIN ${quoteSqlIdentifier(allSourceRowsTableName)} AS "nextRows"
-              ON "nextRows"."groupKeyText" = "recomputedRows"."groupKeyText"
-              AND "nextRows"."rowIdentifier" = "recomputedRows"."nextRowIdentifier"
+            INNER JOIN "BulldozerStorageEngine" AS "nextSourceRows"
+              ON "recomputedRows"."nextRowIdentifier" IS NOT NULL
+              AND "nextSourceRows"."keyPath" = ${getSourceSortGroupRowPath(
+                sqlExpression`"recomputedRows"."groupKey"`,
+                sqlExpression`to_jsonb("recomputedRows"."nextRowIdentifier"::text)`,
+              )}::jsonb[]
             CROSS JOIN LATERAL (
               SELECT
                 to_jsonb("reducerRows"."newState") AS "newState",
@@ -587,7 +595,7 @@ export function declareLFoldTable<
                 FROM (
                   SELECT
                     "recomputedRows"."newState" AS "oldState",
-                    "nextRows"."rowData" AS "oldRowData"
+                    "nextSourceRows"."value"->'rowData' AS "oldRowData"
                 ) AS "reducerInput"
               ) AS "reducerRows"
             ) AS "reduced"
@@ -721,14 +729,40 @@ export function declareLFoldTable<
         }
     `,
     listRowsInGroup: ({ groupKey, start, end, startInclusive, endInclusive }) => groupKey ? sqlQuery`
+      WITH "orderedSourceRows" AS (
+        SELECT
+          row_number() OVER () AS "rowOrder",
+          "sourceRows"."rowidentifier" AS "rowIdentifier"
+        FROM (
+          ${sourceSortTable.listRowsInGroup({
+            groupKey,
+            start,
+            end,
+            startInclusive,
+            endInclusive,
+          })}
+        ) AS "sourceRows"
+      )
       SELECT
-        ("row"."keyPath"[cardinality("row"."keyPath")] #>> '{}') AS rowIdentifier,
-        "row"."value"->'rowSortKey' AS rowSortKey,
-        "row"."value"->'rowData' AS rowData
-      FROM "BulldozerStorageEngine" AS "row"
-      WHERE "row"."keyPathParent" = ${getGroupRowsPath(groupKey)}::jsonb[]
-        AND ${sortRangePredicate(sqlExpression`"row"."value"->'rowSortKey'`, { start, end, startInclusive, endInclusive })}
-      ORDER BY rowSortKey ASC, rowIdentifier ASC
+        ${createExpandedRowIdentifier(
+          sqlExpression`"orderedSourceRows"."rowIdentifier"`,
+          sqlExpression`"flatRow"."flatIndex"`,
+        )} AS rowIdentifier,
+        "stateRows"."value"->'rowSortKey' AS rowSortKey,
+        "flatRow"."rowData" AS rowData
+      FROM "orderedSourceRows"
+      INNER JOIN "BulldozerStorageEngine" AS "stateRows"
+        ON "stateRows"."keyPath" = ${getGroupStatePath(
+          groupKey,
+          sqlExpression`to_jsonb("orderedSourceRows"."rowIdentifier"::text)`,
+        )}::jsonb[]
+      CROSS JOIN LATERAL jsonb_array_elements(
+        CASE
+          WHEN jsonb_typeof("stateRows"."value"->'emittedRowsData') = 'array' THEN "stateRows"."value"->'emittedRowsData'
+          ELSE '[]'::jsonb
+        END
+      ) WITH ORDINALITY AS "flatRow"("rowData", "flatIndex")
+      ORDER BY "orderedSourceRows"."rowOrder" ASC, "flatRow"."flatIndex" ASC
     ` : sqlQuery`
       SELECT
         "groupPath"."keyPath"[cardinality("groupPath"."keyPath")] AS groupKey,

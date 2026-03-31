@@ -2882,7 +2882,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     ]);
   });
 
-  it.fails("known issue: sortTable bulk init should respect descending comparator", async () => {
+  test("sortTable bulk init respects descending comparator", async () => {
     const { fromTable, groupedTable, sortedTable } = createDescendingSortedTable();
     await runStatements(fromTable.init());
     await runStatements(fromTable.setRow("a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
@@ -2901,7 +2901,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     expect(alphaRows.map((row) => row.rowidentifier)).toEqual(["a3", "a2", "a1"]);
   });
 
-  it.fails("known issue: limitTable should honor source comparator for top-N", async () => {
+  test("limitTable honors source comparator for top-N", async () => {
     const { fromTable, groupedTable, sortedTable, limitedTable } = createDescendingLimitedTable();
     await runStatements(fromTable.init());
     await runStatements(fromTable.setRow("a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
@@ -2921,7 +2921,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     expect(alphaRows.map((row) => row.rowidentifier)).toEqual(["a3", "a2"]);
   });
 
-  it.fails("known issue: lFoldTable read order should match source comparator", async () => {
+  test("lFoldTable read order matches source comparator", async () => {
     const { fromTable, groupedTable, sortedTable, lFoldTable } = createDescendingLFoldTable();
     await runStatements(fromTable.init());
     await runStatements(fromTable.setRow("a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));

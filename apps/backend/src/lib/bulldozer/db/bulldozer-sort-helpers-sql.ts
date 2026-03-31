@@ -570,13 +570,17 @@ export const BULLDOZER_SORT_HELPERS_SQL = deindent`
   END;
   $$;
 
-  CREATE OR REPLACE FUNCTION pg_temp.bulldozer_sort_bulk_init_from_table(groups_path jsonb[], source_table_name text)
+  CREATE OR REPLACE FUNCTION pg_temp.bulldozer_sort_bulk_init_from_table(groups_path jsonb[], source_table_name text, compare_sort_keys_sql text)
   RETURNS text LANGUAGE plpgsql AS $$
   DECLARE
     current_group_key jsonb;
     ordered_rows jsonb[];
     root_row_identifier text;
     row_count integer;
+    is_order_compatible boolean;
+    current_index integer;
+    cmp integer;
+    current_row jsonb;
   BEGIN
     FOR current_group_key IN EXECUTE format('SELECT DISTINCT "groupKey" FROM %I', source_table_name)
     LOOP
@@ -593,22 +597,52 @@ export const BULLDOZER_SORT_HELPERS_SQL = deindent`
         CONTINUE;
       END IF;
 
-      root_row_identifier := pg_temp.bulldozer_sort_build_balanced_group(
-        groups_path,
-        current_group_key,
-        ordered_rows,
-        1,
-        row_count,
-        1
-      );
-      PERFORM pg_temp.bulldozer_sort_put_group_metadata(
-        groups_path,
-        current_group_key,
-        root_row_identifier,
-        ordered_rows[1]->>'rowIdentifier',
-        ordered_rows[row_count]->>'rowIdentifier',
-        row_count
-      );
+      is_order_compatible := TRUE;
+      FOR current_index IN 2..row_count
+      LOOP
+        cmp := pg_temp.bulldozer_sort_compare_row_keys(
+          compare_sort_keys_sql,
+          ordered_rows[current_index - 1]->'rowSortKey',
+          ordered_rows[current_index - 1]->>'rowIdentifier',
+          ordered_rows[current_index]->'rowSortKey',
+          ordered_rows[current_index]->>'rowIdentifier'
+        );
+        IF cmp > 0 THEN
+          is_order_compatible := FALSE;
+          EXIT;
+        END IF;
+      END LOOP;
+
+      IF is_order_compatible THEN
+        root_row_identifier := pg_temp.bulldozer_sort_build_balanced_group(
+          groups_path,
+          current_group_key,
+          ordered_rows,
+          1,
+          row_count,
+          1
+        );
+        PERFORM pg_temp.bulldozer_sort_put_group_metadata(
+          groups_path,
+          current_group_key,
+          root_row_identifier,
+          ordered_rows[1]->>'rowIdentifier',
+          ordered_rows[row_count]->>'rowIdentifier',
+          row_count
+        );
+      ELSE
+        FOREACH current_row IN ARRAY ordered_rows
+        LOOP
+          PERFORM pg_temp.bulldozer_sort_insert(
+            groups_path,
+            current_group_key,
+            compare_sort_keys_sql,
+            current_row->>'rowIdentifier',
+            current_row->'rowSortKey',
+            current_row->'rowData'
+          );
+        END LOOP;
+      END IF;
     END LOOP;
 
     RETURN source_table_name;

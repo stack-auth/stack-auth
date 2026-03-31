@@ -238,7 +238,8 @@ export function declareSortTable<
           INSERT INTO pg_temp.bulldozer_side_effects ("note")
           SELECT pg_temp.bulldozer_sort_bulk_init_from_table(
             ${groupsPath}::jsonb[],
-            ${quoteSqlStringLiteral(sortedRowsTableName)}::text
+            ${quoteSqlStringLiteral(sortedRowsTableName)}::text,
+            ${compareSortKeysSqlLiteral}::text
           )
         `,
       ];

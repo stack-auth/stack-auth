@@ -53,8 +53,8 @@ export function toQueryableSqlQuery(query: SqlQuery): string {
 }
 export function toExecutableSqlStatements(statements: SqlStatement[]): string {
   const requiresSortHelpers = statements.some((statement) => statement.sql.includes("pg_temp.bulldozer_sort_"));
-  const requiresSortSequentialExecutor = requiresSortHelpers;
-  if (!requiresSortSequentialExecutor) {
+  const requiresSequentialExecutor = requiresSortHelpers || statements.some((statement) => statement.requiresSequentialExecution === true);
+  if (!requiresSequentialExecutor) {
     return deindent`
       WITH __dummy_statement_1__ AS (SELECT 1),
       ${statements.map(statement => deindent`
@@ -80,7 +80,7 @@ export function toExecutableSqlStatements(statements: SqlStatement[]): string {
     `;
   }).join("\n\n");
   return deindent`
-    ${BULLDOZER_SORT_HELPERS_SQL}
+    ${requiresSortHelpers ? BULLDOZER_SORT_HELPERS_SQL : ""}
 
     ${executableStatements}
   `;

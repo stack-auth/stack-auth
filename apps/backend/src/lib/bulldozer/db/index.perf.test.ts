@@ -847,18 +847,21 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     expect(filteredDeltaRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata }))).toEqual([
       { rowIdentifier: "seed-100000:1", rowData: { team: "delta", value: 999 } },
     ]);
+    const groupedSubsetSql = `
+      SELECT *
+      FROM (${toQueryableSqlQuery(groupedByTeam.listRowsInGroup({
+        groupKey: expr(`to_jsonb('beta'::text)`),
+        start: "start",
+        end: "end",
+        startInclusive: true,
+        endInclusive: true,
+      }))}) AS "rows"
+      LIMIT ${LOAD_SUBSET_ITERATION_ROW_COUNT}
+    `;
+    // Warm once so we measure steady-state subset iteration instead of first-touch planner/cache cost.
+    await sql.unsafe(groupedSubsetSql);
     const groupedSubsetFromStart = await measureMs(`load iterate groupedByTeam subset from start (${LOAD_SUBSET_ITERATION_ROW_COUNT} rows)`, async () => {
-      return await sql.unsafe(`
-        SELECT *
-        FROM (${toQueryableSqlQuery(groupedByTeam.listRowsInGroup({
-          groupKey: expr(`to_jsonb('beta'::text)`),
-          start: "start",
-          end: "end",
-          startInclusive: true,
-          endInclusive: true,
-        }))}) AS "rows"
-        LIMIT ${LOAD_SUBSET_ITERATION_ROW_COUNT}
-      `);
+      return await sql.unsafe(groupedSubsetSql);
     });
     expect(groupedSubsetFromStart.elapsedMs).toBeLessThanOrEqual(LOAD_SUBSET_ITERATION_MAX_MS);
     expect(groupedSubsetFromStart.result).toHaveLength(LOAD_SUBSET_ITERATION_ROW_COUNT);
