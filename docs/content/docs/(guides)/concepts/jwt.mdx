@@ -93,14 +93,7 @@ Restricted user tokens (e.g., users who haven't verified their email when verifi
 - `iss` becomes `https://api.stack-auth.com/api/v1/projects-restricted-users/<project-id>`
 - `aud` becomes `<project-id>:restricted`
 - `is_restricted` is `true`
-- `restricted_reason` is `{ "type": "email_not_verified" }`
-
-Users restricted by an administrator (e.g., via [sign-up rules](/docs/concepts/sign-up-rules)) have the same structure:
-
-- `iss` becomes `https://api.stack-auth.com/api/v1/projects-restricted-users/<project-id>`
-- `aud` becomes `<project-id>:restricted`
-- `is_restricted` is `true`
-- `restricted_reason` is `{ "type": "restricted_by_administrator" }`
+- `restricted_reason` describes why the user account was restricted (e.g., `{ "type": "email_not_verified" }`)
 
 ## Working with JWTs
 
