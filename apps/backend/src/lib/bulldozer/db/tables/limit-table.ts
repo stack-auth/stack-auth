@@ -37,15 +37,12 @@ export function declareLimitTable<
   options.fromTable.registerRowChangeTrigger((fromChangesTable) => {
     const normalizedChangesTableName = `normalized_changes_${generateSecureRandomString()}`;
     const affectedGroupsTableName = `affected_groups_${generateSecureRandomString()}`;
-    const oldGroupRowsTableName = `old_group_rows_${generateSecureRandomString()}`;
-    const newGroupRowsTableName = `new_group_rows_${generateSecureRandomString()}`;
-    const groupsWithNonNullOldSortKeysTableName = `groups_with_non_null_old_sort_keys_${generateSecureRandomString()}`;
-    const groupsWithNonNullNewSortKeysTableName = `groups_with_non_null_new_sort_keys_${generateSecureRandomString()}`;
     const oldLimitedRowsTableName = `old_limited_rows_${generateSecureRandomString()}`;
     const newLimitedRowsTableName = `new_limited_rows_${generateSecureRandomString()}`;
     const limitChangesTableName = `limit_changes_${generateSecureRandomString()}`;
     return [
-      sqlQuery`
+      {
+        ...sqlQuery`
         SELECT
           "changes"."groupKey" AS "groupKey",
           "changes"."rowIdentifier" AS "rowIdentifier",
@@ -58,6 +55,8 @@ export function declareLimitTable<
         FROM ${fromChangesTable} AS "changes"
         WHERE ${isInitializedExpression}
       `.toStatement(normalizedChangesTableName),
+        requiresSequentialExecution: true,
+      },
       sqlQuery`
         SELECT DISTINCT "changes"."groupKey" AS "groupKey"
         FROM ${quoteSqlIdentifier(normalizedChangesTableName)} AS "changes"
@@ -66,146 +65,77 @@ export function declareLimitTable<
       sqlQuery`
         SELECT
           "groups"."groupKey" AS "groupKey",
-          "rows"."rowidentifier" AS "rowIdentifier",
-          "rows"."rowsortkey" AS "rowSortKey",
-          "rows"."rowdata" AS "rowData"
+          ("rows"."keyPath"[cardinality("rows"."keyPath")] #>> '{}') AS "rowIdentifier",
+          "rows"."value"->'rowSortKey' AS "rowSortKey",
+          "rows"."value"->'rowData' AS "rowData"
         FROM ${quoteSqlIdentifier(affectedGroupsTableName)} AS "groups"
-        CROSS JOIN LATERAL (
-          ${options.fromTable.listRowsInGroup({
-            groupKey: sqlExpression`"groups"."groupKey"`,
-            start: "start",
-            end: "end",
-            startInclusive: true,
-            endInclusive: true,
-          })}
-        ) AS "rows"
-      `.toStatement(oldGroupRowsTableName),
-      sqlQuery`
-        SELECT
-          "rows"."groupKey" AS "groupKey",
-          "rows"."rowIdentifier" AS "rowIdentifier",
-          "rows"."rowSortKey" AS "rowSortKey",
-          "rows"."rowData" AS "rowData"
-        FROM ${quoteSqlIdentifier(oldGroupRowsTableName)} AS "rows"
-        WHERE NOT EXISTS (
-          SELECT 1
-          FROM ${quoteSqlIdentifier(normalizedChangesTableName)} AS "changes"
-          WHERE "changes"."hasOldRow"
-            AND "changes"."groupKey" IS NOT DISTINCT FROM "rows"."groupKey"
-            AND "changes"."rowIdentifier" = "rows"."rowIdentifier"
-        )
-        UNION ALL
-        SELECT
-          "changes"."groupKey" AS "groupKey",
-          "changes"."rowIdentifier" AS "rowIdentifier",
-          "changes"."newRowSortKey" AS "rowSortKey",
-          "changes"."newRowData" AS "rowData"
-        FROM ${quoteSqlIdentifier(normalizedChangesTableName)} AS "changes"
-        WHERE "changes"."hasNewRow"
-      `.toStatement(newGroupRowsTableName),
-      sqlQuery`
-        SELECT DISTINCT "rows"."groupKey" AS "groupKey"
-        FROM ${quoteSqlIdentifier(oldGroupRowsTableName)} AS "rows"
-        WHERE "rows"."rowSortKey" IS NOT NULL
-          AND "rows"."rowSortKey" <> 'null'::jsonb
-      `.toStatement(groupsWithNonNullOldSortKeysTableName),
-      sqlQuery`
-        SELECT DISTINCT "rows"."groupKey" AS "groupKey"
-        FROM ${quoteSqlIdentifier(newGroupRowsTableName)} AS "rows"
-        WHERE "rows"."rowSortKey" IS NOT NULL
-          AND "rows"."rowSortKey" <> 'null'::jsonb
-      `.toStatement(groupsWithNonNullNewSortKeysTableName),
-      sqlQuery`
-        SELECT
-          "rows"."groupKey" AS "groupKey",
-          "rows"."rowIdentifier" AS "rowIdentifier",
-          "rows"."rowSortKey" AS "rowSortKey",
-          "rows"."rowData" AS "rowData"
-        FROM ${quoteSqlIdentifier(oldGroupRowsTableName)} AS "rows"
-        INNER JOIN ${quoteSqlIdentifier(groupsWithNonNullOldSortKeysTableName)} AS "nonNullGroups"
-          ON "nonNullGroups"."groupKey" IS NOT DISTINCT FROM "rows"."groupKey"
-        WHERE (
-          SELECT COUNT(*)
-          FROM ${quoteSqlIdentifier(oldGroupRowsTableName)} AS "betterRows"
-          WHERE "betterRows"."groupKey" IS NOT DISTINCT FROM "rows"."groupKey"
-            AND (
-              ${options.fromTable.compareSortKeys(sqlExpression`"betterRows"."rowSortKey"`, sqlExpression`"rows"."rowSortKey"`)} < 0
-              OR (
-                ${options.fromTable.compareSortKeys(sqlExpression`"betterRows"."rowSortKey"`, sqlExpression`"rows"."rowSortKey"`)} = 0
-                AND "betterRows"."rowIdentifier" < "rows"."rowIdentifier"
-              )
-            )
-        ) < ${normalizedLimit}
-        UNION ALL
-        SELECT
-          "rankedRows"."groupKey" AS "groupKey",
-          "rankedRows"."rowIdentifier" AS "rowIdentifier",
-          "rankedRows"."rowSortKey" AS "rowSortKey",
-          "rankedRows"."rowData" AS "rowData"
-        FROM (
-          SELECT
-            "rows"."groupKey" AS "groupKey",
-            "rows"."rowIdentifier" AS "rowIdentifier",
-            "rows"."rowSortKey" AS "rowSortKey",
-            "rows"."rowData" AS "rowData",
-            row_number() OVER (
-              PARTITION BY "rows"."groupKey"
-              ORDER BY "rows"."rowIdentifier" ASC
-            ) AS "rank"
-          FROM ${quoteSqlIdentifier(oldGroupRowsTableName)} AS "rows"
-          WHERE NOT EXISTS (
-            SELECT 1
-            FROM ${quoteSqlIdentifier(groupsWithNonNullOldSortKeysTableName)} AS "nonNullGroups"
-            WHERE "nonNullGroups"."groupKey" IS NOT DISTINCT FROM "rows"."groupKey"
-          )
-        ) AS "rankedRows"
-        WHERE "rankedRows"."rank" <= ${normalizedLimit}
+        INNER JOIN "BulldozerStorageEngine" AS "groupRowsPath"
+          ON "groupRowsPath"."keyPath" = ${getGroupRowsPath(sqlExpression`"groups"."groupKey"`)}::jsonb[]
+        INNER JOIN "BulldozerStorageEngine" AS "rows"
+          ON "rows"."keyPathParent" = "groupRowsPath"."keyPath"
       `.toStatement(oldLimitedRowsTableName),
       sqlQuery`
         SELECT
-          "rows"."groupKey" AS "groupKey",
+          "groups"."groupKey" AS "groupKey",
           "rows"."rowIdentifier" AS "rowIdentifier",
           "rows"."rowSortKey" AS "rowSortKey",
           "rows"."rowData" AS "rowData"
-        FROM ${quoteSqlIdentifier(newGroupRowsTableName)} AS "rows"
-        INNER JOIN ${quoteSqlIdentifier(groupsWithNonNullNewSortKeysTableName)} AS "nonNullGroups"
-          ON "nonNullGroups"."groupKey" IS NOT DISTINCT FROM "rows"."groupKey"
-        WHERE (
-          SELECT COUNT(*)
-          FROM ${quoteSqlIdentifier(newGroupRowsTableName)} AS "betterRows"
-          WHERE "betterRows"."groupKey" IS NOT DISTINCT FROM "rows"."groupKey"
-            AND (
-              ${options.fromTable.compareSortKeys(sqlExpression`"betterRows"."rowSortKey"`, sqlExpression`"rows"."rowSortKey"`)} < 0
-              OR (
-                ${options.fromTable.compareSortKeys(sqlExpression`"betterRows"."rowSortKey"`, sqlExpression`"rows"."rowSortKey"`)} = 0
-                AND "betterRows"."rowIdentifier" < "rows"."rowIdentifier"
-              )
-            )
-        ) < ${normalizedLimit}
-        UNION ALL
-        SELECT
-          "rankedRows"."groupKey" AS "groupKey",
-          "rankedRows"."rowIdentifier" AS "rowIdentifier",
-          "rankedRows"."rowSortKey" AS "rowSortKey",
-          "rankedRows"."rowData" AS "rowData"
-        FROM (
-          SELECT
-            "rows"."groupKey" AS "groupKey",
-            "rows"."rowIdentifier" AS "rowIdentifier",
-            "rows"."rowSortKey" AS "rowSortKey",
-            "rows"."rowData" AS "rowData",
-            row_number() OVER (
-              PARTITION BY "rows"."groupKey"
-              ORDER BY "rows"."rowIdentifier" ASC
-            ) AS "rank"
-          FROM ${quoteSqlIdentifier(newGroupRowsTableName)} AS "rows"
-          WHERE NOT EXISTS (
-            SELECT 1
-            FROM ${quoteSqlIdentifier(groupsWithNonNullNewSortKeysTableName)} AS "nonNullGroups"
-            WHERE "nonNullGroups"."groupKey" IS NOT DISTINCT FROM "rows"."groupKey"
+        FROM ${quoteSqlIdentifier(affectedGroupsTableName)} AS "groups"
+        CROSS JOIN LATERAL (
+          WITH "sourceRows" AS (
+            SELECT
+              "sourceRows"."rowidentifier" AS "rowidentifier",
+              "sourceRows"."rowsortkey" AS "rowsortkey",
+              "sourceRows"."rowdata" AS "rowdata"
+            FROM (
+              ${options.fromTable.listRowsInGroup({
+                groupKey: sqlExpression`"groups"."groupKey"`,
+                start: "start",
+                end: "end",
+                startInclusive: true,
+                endInclusive: true,
+              })}
+            ) AS "sourceRows"
+          ),
+          "sortKeyPresence" AS (
+            SELECT EXISTS (
+              SELECT 1
+              FROM "sourceRows"
+              WHERE "rowsortkey" IS NOT NULL
+                AND "rowsortkey" <> 'null'::jsonb
+            ) AS "hasNonNullSortKey"
           )
-        ) AS "rankedRows"
-        WHERE "rankedRows"."rank" <= ${normalizedLimit}
+          SELECT
+            "selectedRows"."rowidentifier" AS "rowIdentifier",
+            "selectedRows"."rowsortkey" AS "rowSortKey",
+            "selectedRows"."rowdata" AS "rowData"
+          FROM (
+            SELECT
+              "sourceRows"."rowidentifier" AS "rowidentifier",
+              "sourceRows"."rowsortkey" AS "rowsortkey",
+              "sourceRows"."rowdata" AS "rowdata"
+            FROM "sourceRows"
+            CROSS JOIN "sortKeyPresence"
+            WHERE "sortKeyPresence"."hasNonNullSortKey"
+            LIMIT ${normalizedLimit}
+          ) AS "selectedRows"
+          UNION ALL
+          SELECT
+            "selectedRows"."rowidentifier" AS "rowIdentifier",
+            "selectedRows"."rowsortkey" AS "rowSortKey",
+            "selectedRows"."rowdata" AS "rowData"
+          FROM (
+            SELECT
+              "sourceRows"."rowidentifier" AS "rowidentifier",
+              "sourceRows"."rowsortkey" AS "rowsortkey",
+              "sourceRows"."rowdata" AS "rowdata"
+            FROM "sourceRows"
+            CROSS JOIN "sortKeyPresence"
+            WHERE NOT "sortKeyPresence"."hasNonNullSortKey"
+            ORDER BY "sourceRows"."rowidentifier" ASC
+            LIMIT ${normalizedLimit}
+          ) AS "selectedRows"
+        ) AS "rows"
       `.toStatement(newLimitedRowsTableName),
       sqlStatement`
         INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
@@ -518,26 +448,31 @@ export function declareLimitTable<
       `
       : sqlQuery`
       SELECT
-        "sourceRows"."groupkey" AS groupKey,
-        "sourceRows"."rowidentifier" AS rowIdentifier,
-        "sourceRows"."rowsortkey" AS rowSortKey,
-        "sourceRows"."rowdata" AS rowData
-      FROM (
-        ${options.fromTable.listRowsInGroup({
-          start,
-          end,
-          startInclusive,
-          endInclusive,
-        })}
-      ) AS "sourceRows"
-      WHERE EXISTS (
-        SELECT 1
-        FROM "BulldozerStorageEngine" AS "limitedRows"
-        WHERE "limitedRows"."keyPath" = ${getGroupRowPath(
-          sqlExpression`"sourceRows"."groupkey"`,
-          sqlExpression`to_jsonb("sourceRows"."rowidentifier"::text)`,
-        )}::jsonb[]
-      )
+        "groupPath"."keyPath"[cardinality("groupPath"."keyPath")] AS groupKey,
+        ("rows"."keyPath"[cardinality("rows"."keyPath")] #>> '{}') AS rowIdentifier,
+        "rows"."value"->'rowSortKey' AS rowSortKey,
+        "rows"."value"->'rowData' AS rowData
+      FROM "BulldozerStorageEngine" AS "groupPath"
+      INNER JOIN "BulldozerStorageEngine" AS "groupRowsPath"
+        ON "groupRowsPath"."keyPathParent" = "groupPath"."keyPath"
+      INNER JOIN "BulldozerStorageEngine" AS "rows"
+        ON "rows"."keyPathParent" = "groupRowsPath"."keyPath"
+      WHERE "groupPath"."keyPathParent" = ${getStorageEnginePath(options.tableId, ["groups"])}::jsonb[]
+        AND "groupRowsPath"."keyPath"[cardinality("groupRowsPath"."keyPath")] = to_jsonb('rows'::text)
+        AND ${
+          start === "start"
+            ? sqlExpression`1 = 1`
+            : startInclusive
+              ? sqlExpression`${options.fromTable.compareSortKeys(sqlExpression`"rows"."value"->'rowSortKey'`, start)} >= 0`
+              : sqlExpression`${options.fromTable.compareSortKeys(sqlExpression`"rows"."value"->'rowSortKey'`, start)} > 0`
+        }
+        AND ${
+          end === "end"
+            ? sqlExpression`1 = 1`
+            : endInclusive
+              ? sqlExpression`${options.fromTable.compareSortKeys(sqlExpression`"rows"."value"->'rowSortKey'`, end)} <= 0`
+              : sqlExpression`${options.fromTable.compareSortKeys(sqlExpression`"rows"."value"->'rowSortKey'`, end)} < 0`
+        }
     `,
     registerRowChangeTrigger: (trigger) => {
       const id = generateSecureRandomString();

@@ -2,15 +2,15 @@ import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/
 import type { Table } from "..";
 import type { RowData, RowIdentifier, SqlExpression, SqlStatement, TableId } from "../utilities";
 import {
-    getStorageEnginePath,
-    getTablePath,
-    quoteSqlIdentifier,
-    quoteSqlStringLiteral,
-    singleNullSortKeyRangePredicate,
-    sqlExpression,
-    sqlQuery,
-    sqlStatement,
-    tableIdToDebugString,
+  getStorageEnginePath,
+  getTablePath,
+  quoteSqlIdentifier,
+  quoteSqlStringLiteral,
+  singleNullSortKeyRangePredicate,
+  sqlExpression,
+  sqlQuery,
+  sqlStatement,
+  tableIdToDebugString,
 } from "../utilities";
 
 export function declareStoredTable<RD extends RowData>(options: {
@@ -40,15 +40,8 @@ export function declareStoredTable<RD extends RowData>(options: {
       (gen_random_uuid(), ${getStorageEnginePath(options.tableId, ["metadata"])}, '{ "version": 1 }'::jsonb)
     `],
     delete: () => [sqlStatement`
-      WITH RECURSIVE "pathsToDelete" AS (
-        SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
-        UNION ALL
-        SELECT "BulldozerStorageEngine"."keyPath" AS "path"
-        FROM "BulldozerStorageEngine"
-        INNER JOIN "pathsToDelete" ON "BulldozerStorageEngine"."keyPathParent" = "pathsToDelete"."path"
-      )
       DELETE FROM "BulldozerStorageEngine"
-      WHERE "keyPath" IN (SELECT "path" FROM "pathsToDelete")
+      WHERE "keyPath" = ${getTablePath(options.tableId)}::jsonb[]
     `],
     isInitialized: () => sqlExpression`
       EXISTS (

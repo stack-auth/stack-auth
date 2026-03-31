@@ -2,14 +2,14 @@ import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/
 import type { Table } from "..";
 import type { Json, RowData, RowIdentifier, SqlExpression, SqlMapper, SqlStatement, TableId } from "../utilities";
 import {
-    getStorageEnginePath,
-    getTablePath,
-    quoteSqlIdentifier,
-    singleNullSortKeyRangePredicate,
-    sqlExpression,
-    sqlQuery,
-    sqlStatement,
-    tableIdToDebugString
+  getStorageEnginePath,
+  getTablePath,
+  quoteSqlIdentifier,
+  singleNullSortKeyRangePredicate,
+  sqlExpression,
+  sqlQuery,
+  sqlStatement,
+  tableIdToDebugString
 } from "../utilities";
 
 export function declareFlatMapTable<
@@ -116,21 +116,27 @@ export function declareFlatMapTable<
         ) WITH ORDINALITY AS "flatRow"("rowData", "flatIndex")
       `.toStatement(newFlatRowsTableName),
       sqlStatement`
+        WITH "distinctGroups" AS (
+          SELECT DISTINCT "groupKey"
+          FROM ${quoteSqlIdentifier(newFlatRowsTableName)}
+        )
         INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
         SELECT
           gen_random_uuid(),
           "insertRows"."keyPath",
           "insertRows"."value"
         FROM (
-          SELECT DISTINCT
-            ${getGroupKeyPath(sqlExpression`"groupKey"`)}::jsonb[] AS "keyPath",
+          SELECT
+            ${getGroupKeyPath(sqlExpression`"distinctGroups"."groupKey"`)}::jsonb[] AS "keyPath",
             'null'::jsonb AS "value"
-          FROM ${quoteSqlIdentifier(newFlatRowsTableName)}
-          UNION
-          SELECT DISTINCT
-            ${getGroupRowsPath(sqlExpression`"groupKey"`)}::jsonb[] AS "keyPath",
+          FROM "distinctGroups"
+
+          UNION ALL
+
+          SELECT
+            ${getGroupRowsPath(sqlExpression`"distinctGroups"."groupKey"`)}::jsonb[] AS "keyPath",
             'null'::jsonb AS "value"
-          FROM ${quoteSqlIdentifier(newFlatRowsTableName)}
+          FROM "distinctGroups"
         ) AS "insertRows"
         ON CONFLICT ("keyPath") DO NOTHING
       `,
@@ -283,22 +289,30 @@ export function declareFlatMapTable<
           ) WITH ORDINALITY AS "flatRow"("rowData", "flatIndex")
         `.toStatement(flatRowsTableName),
         sqlStatement`
+          WITH "distinctGroups" AS (
+            SELECT DISTINCT "groupKey"
+            FROM ${quoteSqlIdentifier(flatRowsTableName)}
+          )
           INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
           SELECT
             gen_random_uuid(),
             "insertRows"."keyPath",
             "insertRows"."value"
           FROM (
-            SELECT DISTINCT
-              ${getGroupKeyPath(sqlExpression`"groupKey"`)}::jsonb[] AS "keyPath",
+            SELECT
+              ${getGroupKeyPath(sqlExpression`"distinctGroups"."groupKey"`)}::jsonb[] AS "keyPath",
               'null'::jsonb AS "value"
-            FROM ${quoteSqlIdentifier(flatRowsTableName)}
-            UNION
-            SELECT DISTINCT
-              ${getGroupRowsPath(sqlExpression`"groupKey"`)}::jsonb[] AS "keyPath",
+            FROM "distinctGroups"
+
+            UNION ALL
+
+            SELECT
+              ${getGroupRowsPath(sqlExpression`"distinctGroups"."groupKey"`)}::jsonb[] AS "keyPath",
               'null'::jsonb AS "value"
-            FROM ${quoteSqlIdentifier(flatRowsTableName)}
-            UNION
+            FROM "distinctGroups"
+
+            UNION ALL
+
             SELECT
               ${getGroupRowPath(
                 sqlExpression`"groupKey"`,

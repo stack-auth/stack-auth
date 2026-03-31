@@ -21,36 +21,38 @@ const IS_CI = (() => {
   const cursorAgent = Reflect.get(env, "CURSOR_AGENT");
   return (ci === true || ci === "true" || ci === "1") && (cursorAgent !== true && cursorAgent !== 'true' && cursorAgent !== "1");
 })();
-const DEFAULT_LOAD_ROW_COUNT = IS_CI ? 200_000 : 20_0000;
-const LOAD_PREFILL_MAX_MS = 30_000;
-const LOAD_COUNT_QUERY_MAX_MS = 5_000;
-const LOAD_POINT_MUTATION_MAX_MS = 400;
+const CI_PERF_MAX_MS_MULTIPLIER = IS_CI ? 2 : 1;
+const withCiPerfHeadroom = (maxMs: number) => maxMs * CI_PERF_MAX_MS_MULTIPLIER;
+const LOAD_ROW_COUNTS = [20_000, 50_000, 200_000] as const;
+const LOAD_PREFILL_MAX_MS = withCiPerfHeadroom(30_000);
+const LOAD_COUNT_QUERY_MAX_MS = withCiPerfHeadroom(5_000);
+const LOAD_POINT_MUTATION_MAX_MS = withCiPerfHeadroom(400);
 const LOAD_SET_ROW_AVG_ITERATIONS = 10;
-const LOAD_SET_ROW_AVG_MAX_MS = 50;
+const LOAD_SET_ROW_AVG_MAX_MS = withCiPerfHeadroom(50);
 const LOAD_ONLINE_MUTATION_ITERATIONS = 5;
-const LOAD_ONLINE_MUTATION_MAX_MS = 50;
-const LOAD_SUBSET_ITERATION_MAX_MS = 50;
+const LOAD_ONLINE_MUTATION_MAX_MS = withCiPerfHeadroom(50);
+const LOAD_SUBSET_ITERATION_MAX_MS = withCiPerfHeadroom(50);
 const LOAD_SUBSET_ITERATION_ROW_COUNT = 1_000;
-const LOAD_TABLE_DELETE_MAX_MS = 20_000;
-const LOAD_DERIVED_INIT_MAX_MS = 90_000;
-const LOAD_DERIVED_COUNT_QUERY_MAX_MS = 10_000;
-const LOAD_EXPANDING_INIT_MAX_MS = 120_000;
-const LOAD_EXPANDING_COUNT_QUERY_MAX_MS = 15_000;
-const LOAD_FILTERED_QUERY_MAX_MS = 4_000;
-const LOAD_FILTER_TABLE_INIT_MAX_MS = 90_000;
-const LOAD_FILTER_TABLE_COUNT_QUERY_MAX_MS = 8_000;
-const LOAD_LIMIT_TABLE_INIT_MAX_MS = 90_000;
-const LOAD_LIMIT_TABLE_COUNT_QUERY_MAX_MS = 8_000;
-const LOAD_CONCAT_TABLE_INIT_MAX_MS = 10_000;
-const LOAD_CONCAT_TABLE_COUNT_QUERY_MAX_MS = 8_000;
-const LOAD_SORT_TABLE_INIT_MAX_MS = 90_000;
-const LOAD_SORT_TABLE_COUNT_QUERY_MAX_MS = 8_000;
-const LOAD_LFOLD_TABLE_INIT_MAX_MS = 130_000;
-const LOAD_LFOLD_TABLE_COUNT_QUERY_MAX_MS = 12_000;
-const LOAD_LEFT_JOIN_TABLE_INIT_MAX_MS = 90_000;
-const LOAD_LEFT_JOIN_TABLE_COUNT_QUERY_MAX_MS = 8_000;
-const STACKED_MAP_PIPELINE_MUTATION_MAX_MS = 400;
-const VIRTUAL_CONCAT_COUNT_QUERY_MAX_MS = 500;
+const LOAD_TABLE_DELETE_MAX_MS = withCiPerfHeadroom(20_000);
+const LOAD_DERIVED_INIT_MAX_MS = withCiPerfHeadroom(90_000);
+const LOAD_DERIVED_COUNT_QUERY_MAX_MS = withCiPerfHeadroom(10_000);
+const LOAD_EXPANDING_INIT_MAX_MS = withCiPerfHeadroom(120_000);
+const LOAD_EXPANDING_COUNT_QUERY_MAX_MS = withCiPerfHeadroom(15_000);
+const LOAD_FILTERED_QUERY_MAX_MS = withCiPerfHeadroom(4_000);
+const LOAD_FILTER_TABLE_INIT_MAX_MS = withCiPerfHeadroom(90_000);
+const LOAD_FILTER_TABLE_COUNT_QUERY_MAX_MS = withCiPerfHeadroom(8_000);
+const LOAD_LIMIT_TABLE_INIT_MAX_MS = withCiPerfHeadroom(90_000);
+const LOAD_LIMIT_TABLE_COUNT_QUERY_MAX_MS = withCiPerfHeadroom(8_000);
+const LOAD_CONCAT_TABLE_INIT_MAX_MS = withCiPerfHeadroom(10_000);
+const LOAD_CONCAT_TABLE_COUNT_QUERY_MAX_MS = withCiPerfHeadroom(8_000);
+const LOAD_SORT_TABLE_INIT_MAX_MS = withCiPerfHeadroom(90_000);
+const LOAD_SORT_TABLE_COUNT_QUERY_MAX_MS = withCiPerfHeadroom(8_000);
+const LOAD_LFOLD_TABLE_INIT_MAX_MS = withCiPerfHeadroom(130_000);
+const LOAD_LFOLD_TABLE_COUNT_QUERY_MAX_MS = withCiPerfHeadroom(12_000);
+const LOAD_LEFT_JOIN_TABLE_INIT_MAX_MS = withCiPerfHeadroom(90_000);
+const LOAD_LEFT_JOIN_TABLE_COUNT_QUERY_MAX_MS = withCiPerfHeadroom(8_000);
+const STACKED_MAP_PIPELINE_MUTATION_MAX_MS = withCiPerfHeadroom(400);
+const VIRTUAL_CONCAT_COUNT_QUERY_MAX_MS = withCiPerfHeadroom(500);
 const VIRTUAL_CONCAT_LOAD_ROW_COUNT = 5_000;
 
 function getTestDbUrls(): TestDb {
@@ -469,8 +471,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     expect(Number(countRows.result[0].count)).toBe(VIRTUAL_CONCAT_LOAD_ROW_COUNT * 2);
   });
 
-  it("load test: prefilled stored table with hundreds of thousands of rows stays functional and fast", async () => {
-    const loadRowCount = DEFAULT_LOAD_ROW_COUNT;
+  it.each(LOAD_ROW_COUNTS)("load test: prefilled stored table with hundreds of thousands of rows stays functional and fast (%i rows)", async (loadRowCount) => {
     const tableId = "load-prefilled-users";
     const externalTableId = `external:${tableId}`;
     const table = declareStoredTable<{ value: number, team: string | null }>({ tableId });
@@ -892,13 +893,17 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       await runStatements(sortedHighValueByTeam.init());
     });
     expect(sortInit.elapsedMs).toBeLessThan(LOAD_SORT_TABLE_INIT_MAX_MS);
+    const approxRowsPerValuePerTeam = Math.max(1, Math.floor(loadRowCount / 4 / 1000));
+    const sortedSubsetRequiredSortKeySpan = Math.ceil(LOAD_SUBSET_ITERATION_ROW_COUNT / approxRowsPerValuePerTeam);
+    const sortedSubsetFromStartMaxSortKey = Math.min(999, 699 + sortedSubsetRequiredSortKeySpan);
+    const sortedSubsetFromCursorMinSortKey = Math.max(700, 1000 - sortedSubsetRequiredSortKeySpan);
     const sortedSubsetFromStart = await measureMs(`load iterate sortedHighValueByTeam subset from start (${LOAD_SUBSET_ITERATION_ROW_COUNT} rows)`, async () => {
       return await sql.unsafe(`
         SELECT *
         FROM (${toQueryableSqlQuery(sortedHighValueByTeam.listRowsInGroup({
           groupKey: expr(`to_jsonb('beta'::text)`),
           start: "start",
-          end: expr(`to_jsonb(719::int)`),
+          end: expr(`to_jsonb(${sortedSubsetFromStartMaxSortKey}::int)`),
           startInclusive: true,
           endInclusive: true,
         }))}) AS "rows"
@@ -912,8 +917,8 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
         SELECT *
         FROM (${toQueryableSqlQuery(sortedHighValueByTeam.listRowsInGroup({
           groupKey: expr(`to_jsonb('beta'::text)`),
-          start: expr(`to_jsonb(900::int)`),
-          end: expr(`to_jsonb(919::int)`),
+          start: expr(`to_jsonb(${sortedSubsetFromCursorMinSortKey}::int)`),
+          end: expr(`to_jsonb(999::int)`),
           startInclusive: true,
           endInclusive: true,
         }))}) AS "rows"

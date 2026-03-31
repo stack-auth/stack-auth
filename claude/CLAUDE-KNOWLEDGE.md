@@ -171,3 +171,9 @@ A: In `packages/template/src/components-page/stack-handler-client.tsx`, parse ha
 
 Q: What is the current `app.urls` contract after deprecating runtime URL mutation?
 A: `app.urls` is now static (`getUrls(...)` only) and no longer injects runtime `after_auth_return_to` / `stack_cross_domain_*` params from `window.location`. For navigation flows, examples and consumers should use `redirectToXyz()` methods instead (for example `redirectToSignIn()` / `redirectToSignOut()`), while tests for hosted flows should assert dynamic params on actual redirect methods, not on `app.urls`.
+
+Q: What is the fastest safe way to delete a Bulldozer table subtree from `BulldozerStorageEngine`?
+A: Delete only the table root `keyPath` and rely on the existing `keyPathParent -> keyPath ON DELETE CASCADE` FK to remove descendants. This avoids recursive CTE path enumeration and significantly speeds up large deletes while preserving semantics.
+
+Q: How should `declareLimitTable.listRowsInGroup` implement the all-groups read path for performance?
+A: Read directly from the materialized limit table subtree (`groups -> rows` via `keyPathParent` equality joins) and apply range predicates on stored `rowSortKey`, instead of scanning upstream source rows and semi-joining with `EXISTS` on each row. This keeps behavior but removes an avoidable full-source scan.
