@@ -9,14 +9,6 @@ import { ForgotPassword } from "../components-page/forgot-password";
 import { PasswordReset } from "../components-page/password-reset";
 import { SignIn } from "../components-page/sign-in";
 import { SignUp } from "../components-page/sign-up";
-import { CredentialSignIn } from "../components/credential-sign-in";
-import { CredentialSignUp } from "../components/credential-sign-up";
-import { MagicLinkSignIn } from "../components/magic-link-sign-in";
-import { OAuthButton } from "../components/oauth-button";
-import { OAuthButtonGroup } from "../components/oauth-button-group";
-import { SelectedTeamSwitcher } from "../components/selected-team-switcher";
-import { TeamSwitcher } from "../components/team-switcher";
-import { UserButton } from "../components/user-button";
 
 // IF_PLATFORM react-like
 
@@ -64,8 +56,6 @@ export const COMPONENT_CATALOG: Record<string, CatalogEntry> = {
       "Keep auth flows delegated to Stack Auth instead of custom form wiring where possible.",
     ],
   },
-  CredentialSignIn: { component: CredentialSignIn },
-  CredentialSignUp: { component: CredentialSignUp },
   EmailVerification: {
     component: EmailVerification,
     promptNotes: [
@@ -79,32 +69,12 @@ export const COMPONENT_CATALOG: Record<string, CatalogEntry> = {
       "Use this on a client page and rely on Stack Auth to send the reset email.",
     ],
   },
-  MagicLinkSignIn: { component: MagicLinkSignIn },
-  OAuthButton: {
-    component: OAuthButton,
-    promptNotes: [
-      "Pass a concrete provider id like `google`, `github`, or another configured OAuth provider.",
-      "Use the existing Stack Auth app configuration instead of hardcoding OAuth URLs.",
-    ],
-  },
-  OAuthButtonGroup: {
-    component: OAuthButtonGroup,
-    promptNotes: [
-      "Render this when you want the configured OAuth providers for the current project automatically.",
-    ],
-  },
   PasswordReset: {
     component: PasswordReset,
     preview: 'none',
     promptNotes: [
       "Use this on a route that can pass the password reset code from URL search params.",
       "Do not reimplement password reset verification manually; let Stack Auth handle it.",
-    ],
-  },
-  SelectedTeamSwitcher: {
-    component: SelectedTeamSwitcher,
-    promptNotes: [
-      "Use this when your app already has a selected team context and you want to switch or clear it.",
     ],
   },
   SignIn: {
@@ -117,18 +87,6 @@ export const COMPONENT_CATALOG: Record<string, CatalogEntry> = {
     component: SignUp,
     promptNotes: [
       "Use the built-in sign-up page rather than rebuilding the flow by hand.",
-    ],
-  },
-  TeamSwitcher: {
-    component: TeamSwitcher,
-    promptNotes: [
-      "Use this where a signed-in user can switch teams or open team settings.",
-    ],
-  },
-  UserButton: {
-    component: UserButton,
-    promptNotes: [
-      "Use this inside authenticated app chrome, typically in a header or account menu area.",
     ],
   },
 };

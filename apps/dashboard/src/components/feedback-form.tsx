@@ -1,6 +1,6 @@
 import { Button } from "@/components/ui";
+import { SelectField } from "@/components/form-fields";
 import { getPublicEnvVar } from "@/lib/env";
-import { getInternalProjectHeaders } from "@/lib/internal-project-headers";
 import { CheckCircleIcon, EnvelopeIcon, GithubLogoIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { useUser } from "@stackframe/stack";
 import { emailSchema } from "@stackframe/stack-shared/dist/schema-fields";
@@ -34,6 +34,22 @@ export function FeedbackForm() {
       .max(5000)
       .label("Message")
       .meta({ type: "textarea" }),
+    feedback_type: yup.string()
+      .oneOf(["feedback", "bug"] as const)
+      .defined()
+      .label("Type")
+      .default("feedback")
+      .meta({
+        stackFormFieldRender: (props: any) => (
+          <SelectField
+            {...props}
+            options={[
+              { value: "feedback", label: "Feedback" },
+              { value: "bug", label: "Bug Report" },
+            ]}
+          />
+        ),
+      }),
   });
 
   const handleSubmit = async (values: yup.InferType<typeof domainFormSchema>) => {
@@ -41,18 +57,21 @@ export function FeedbackForm() {
     setErrorMessage('');
 
     try {
-      if (user == null) {
-        throw new Error("Please sign in again and retry sending feedback.");
+      // Auth headers are sent when available so the backend can include user
+      // context in the email, but the endpoint accepts unauthenticated requests.
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (user) {
+        const authJson = await user.getAuthJson();
+        headers["X-Stack-Access-Type"] = "client";
+        headers["X-Stack-Project-Id"] = "internal";
+        headers["X-Stack-Publishable-Client-Key"] = getPublicEnvVar("NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY") ?? "";
+        if (authJson.accessToken) {
+          headers["X-Stack-Access-Token"] = authJson.accessToken;
+        }
       }
-      const authJson = await user.getAuthJson();
       const response = await fetch(`${baseUrl}/api/v1/internal/feedback`, {
         method: "POST",
-        headers: {
-          ...getInternalProjectHeaders({
-            accessToken: authJson.accessToken,
-            contentType: "application/json",
-          }),
-        },
+        headers,
         body: JSON.stringify(values),
       });
 
@@ -139,7 +158,7 @@ export function FeedbackForm() {
             form="feedback-form"
             className="w-full"
             loading={submitting}
-            disabled={submitting || user == null}
+            disabled={submitting}
           >
             Send Feedback
           </Button>

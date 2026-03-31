@@ -2,18 +2,13 @@
 
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import React, { useCallback, useEffect, useRef, useState } from "react";
-import { useDevToolContext, type SupportPrefill } from "../dev-tool-context";
+import { useStackApp } from "../../lib/hooks";
+import { stackAppInternalsSymbol } from "../../lib/stack-app/common";
+import { resolveApiBaseUrl, useDevToolContext, type SupportPrefill } from "../dev-tool-context";
 import { DevToolTabBar, type TabDef } from "../dev-tool-tab-bar";
 import { IframeTab } from "../iframe-tab";
 
 // IF_PLATFORM react-like
-
-/**
- * Same Web3Forms endpoint & public access key used by the dashboard's
- * FeedbackForm in the Stack Companion — keeps the submission logic DRY.
- */
-const WEB3FORMS_ENDPOINT = "https://api.web3forms.com/submit";
-const WEB3FORMS_ACCESS_KEY = "4f0fc468-c066-4e45-95c1-546fd652a44a";
 
 type SupportSubTab = "feedback" | "feature-requests";
 
@@ -25,6 +20,9 @@ const SUB_TABS: TabDef<SupportSubTab>[] = [
 type SubmitStatus = "idle" | "submitting" | "success" | "error";
 
 function FeedbackForm({ prefill }: { prefill?: SupportPrefill }) {
+  const app = useStackApp();
+  const apiBaseUrl = resolveApiBaseUrl(app);
+
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [message, setMessage] = useState(prefill?.message ?? "");
@@ -43,6 +41,9 @@ function FeedbackForm({ prefill }: { prefill?: SupportPrefill }) {
     }
   }, [prefill]);
 
+  // Feedback is routed through the Stack Auth API rather than calling an external
+  // service directly from the client. This follows the same forward-to-production
+  // pattern used by the AI endpoint.
   const handleSubmit = useCallback(async (e: React.FormEvent) => {
     e.preventDefault();
     if (!email.trim() || !message.trim()) return;
@@ -51,16 +52,24 @@ function FeedbackForm({ prefill }: { prefill?: SupportPrefill }) {
     setErrorMessage("");
 
     try {
-      const response = await fetch(WEB3FORMS_ENDPOINT, {
+      const opts = (app as any)[stackAppInternalsSymbol]?.getConstructorOptions?.() ?? {};
+      const stackHeaders: Record<string, string> = {
+        "Content-Type": "application/json",
+        "Accept": "application/json",
+        "X-Stack-Access-Type": "client",
+        "X-Stack-Project-Id": app.projectId,
+      };
+      if ("publishableClientKey" in opts && opts.publishableClientKey) {
+        stackHeaders["X-Stack-Publishable-Client-Key"] = opts.publishableClientKey;
+      }
+      const response = await fetch(`${apiBaseUrl}/api/latest/internal/feedback`, {
         method: "POST",
-        headers: { "Content-Type": "application/json", Accept: "application/json" },
+        headers: stackHeaders,
         body: JSON.stringify({
           name: name.trim() || undefined,
           email: email.trim(),
           message: message.trim(),
-          type: feedbackType,
-          source: "dev-tool",
-          access_key: WEB3FORMS_ACCESS_KEY,
+          feedback_type: feedbackType,
         }),
       });
 
@@ -79,7 +88,7 @@ function FeedbackForm({ prefill }: { prefill?: SupportPrefill }) {
       setStatus("error");
       setErrorMessage(err instanceof Error ? err.message : "An unexpected error occurred");
     }
-  }, [name, email, message, feedbackType]);
+  }, [name, email, message, feedbackType, apiBaseUrl]);
 
   const resetForm = useCallback(() => {
     setStatus("idle");

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useChat, type UIMessage } from "@ai-sdk/react";
 import { convertToModelMessages, DefaultChatTransport } from "ai";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
@@ -67,10 +67,10 @@ function CopyButton({ text }: { text: string }) {
     <button
       className={`sdt-ai-copy-btn ${copied ? "sdt-ai-copy-btn-copied" : ""}`}
       onClick={() => {
-        navigator.clipboard.writeText(text).then(() => {
+        runAsynchronously(navigator.clipboard.writeText(text).then(() => {
           setCopied(true);
           setTimeout(() => setCopied(false), 1500);
-        }).catch(() => {});
+        }));
       }}
       title={copied ? "Copied!" : "Copy"}
       type="button"
@@ -314,34 +314,34 @@ export function AITab() {
   const isNearBottomRef = useRef(true);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
+  const transport = useMemo(() => new DefaultChatTransport({
+    api: `${apiBaseUrl}/api/latest/ai/query/stream`,
+    headers: () => headersRef.current,
+    prepareSendMessagesRequest: async ({ messages: uiMessages, headers }) => {
+      const modelMessages = await convertToModelMessages(uiMessages);
+      return {
+        body: {
+          systemPrompt: "command-center-ask-ai",
+          tools: ["docs"],
+          quality: "smart",
+          speed: "slow",
+          messages: modelMessages.map(m => ({
+            role: m.role,
+            content: m.content,
+          })),
+        },
+        headers,
+      };
+    },
+  }), [apiBaseUrl]);
+
   const {
     messages,
     status,
     sendMessage,
     setMessages,
     error: aiError,
-  } = useChat({
-    transport: new DefaultChatTransport({
-      api: `${apiBaseUrl}/api/latest/ai/query/stream`,
-      headers: () => headersRef.current,
-      prepareSendMessagesRequest: async ({ messages: uiMessages, headers }) => {
-        const modelMessages = await convertToModelMessages(uiMessages);
-        return {
-          body: {
-            systemPrompt: "command-center-ask-ai",
-            tools: ["docs"],
-            quality: "smart",
-            speed: "slow",
-            messages: modelMessages.map(m => ({
-              role: m.role,
-              content: m.content,
-            })),
-          },
-          headers,
-        };
-      },
-    }),
-  });
+  } = useChat({ transport });
 
   const aiLoading = status === "submitted" || status === "streaming";
 

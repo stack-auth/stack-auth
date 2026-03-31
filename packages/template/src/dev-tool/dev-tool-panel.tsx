@@ -147,6 +147,7 @@ export function DevToolPanel({ onClose }: { onClose: () => void }) {
     const pane = panelRef.current?.querySelector<HTMLElement>('.sdt-tab-pane-active');
     const iframe = pane?.querySelector<HTMLIFrameElement>('iframe');
     if (iframe) {
+      // Re-assigning iframe.src triggers a full reload of the iframe content
       iframe.src = iframe.src;
     }
   }, []);

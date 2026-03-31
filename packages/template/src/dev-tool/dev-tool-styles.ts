@@ -843,174 +843,443 @@ export const devToolCSS = `
   .stack-devtool .sdt-badge-error { background: var(--sdt-error-muted); color: var(--sdt-error); }
   .stack-devtool .sdt-badge-info { background: var(--sdt-info-muted); color: var(--sdt-info); }
 
-  /* Components tab */
-  .stack-devtool .sdt-split-pane {
+  /* ===== Components / Pages tab ===== */
+
+  .stack-devtool .sdt-pg-layout {
     display: flex;
     height: calc(100% + 32px);
     margin: -16px;
   }
 
-  .stack-devtool .sdt-split-left {
-    width: 240px;
+  /* --- Sidebar --- */
+  .stack-devtool .sdt-pg-sidebar {
+    width: 250px;
     flex-shrink: 0;
     border-right: 1px solid var(--sdt-border);
-    overflow-y: auto;
-  }
-
-  .stack-devtool .sdt-split-right {
-    flex: 1;
-    overflow-y: auto;
-    padding: 16px;
     display: flex;
     flex-direction: column;
+    overflow: hidden;
   }
 
-  .stack-devtool .sdt-component-list {
-    padding: 8px;
+  .stack-devtool .sdt-pg-sidebar-head {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 12px 14px 8px;
+    flex-shrink: 0;
   }
 
-  .stack-devtool .sdt-component-group-label {
+  .stack-devtool .sdt-pg-sidebar-title {
     font-size: 10px;
     font-weight: 700;
-    letter-spacing: 0.6px;
+    letter-spacing: 1px;
     text-transform: uppercase;
     color: var(--sdt-text-tertiary);
-    padding: 8px 10px 4px;
-    margin-top: 4px;
   }
 
-  .stack-devtool .sdt-component-group-label:first-child {
-    margin-top: 0;
+  .stack-devtool .sdt-pg-sidebar-count {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--sdt-text-tertiary);
+    background: var(--sdt-bg-active);
+    padding: 0 5px;
+    border-radius: 6px;
+    line-height: 18px;
   }
 
-
-  .stack-devtool .sdt-component-expand {
+  .stack-devtool .sdt-pg-sidebar-warn {
     margin-left: auto;
     font-size: 10px;
-    color: var(--sdt-text-tertiary);
-    user-select: none;
+    font-weight: 700;
+    color: var(--sdt-warning);
+    background: var(--sdt-warning-muted);
+    padding: 0 6px;
+    border-radius: 6px;
+    line-height: 18px;
   }
 
-  .stack-devtool .sdt-unmounted-hint {
-    font-size: 12px;
-    color: var(--sdt-text-secondary);
-    line-height: 1.5;
-    margin: 0;
+  .stack-devtool .sdt-pg-list {
+    flex: 1;
+    overflow-y: auto;
+    padding: 0 6px 6px;
   }
 
-  .stack-devtool .sdt-component-item {
+  /* --- List item --- */
+  .stack-devtool .sdt-pg-item {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 8px 10px;
-    border-radius: var(--sdt-radius-sm);
+    padding: 7px 10px;
+    border-radius: 6px;
     cursor: pointer;
-    transition: background 0.1s ease;
+    transition: background 0.12s ease;
     font-size: 13px;
     color: var(--sdt-text);
+    position: relative;
   }
 
-  .stack-devtool .sdt-component-item:hover {
+  .stack-devtool .sdt-pg-item:hover {
     background: var(--sdt-bg-hover);
   }
 
-  .stack-devtool .sdt-component-item[data-selected="true"] {
+  .stack-devtool .sdt-pg-item[data-selected="true"] {
     background: var(--sdt-accent-muted);
-    color: var(--sdt-accent-hover);
   }
 
-  .stack-devtool .sdt-component-icon {
-    width: 8px;
-    height: 8px;
+  .stack-devtool .sdt-pg-item[data-selected="true"] .sdt-pg-item-label {
+    color: var(--sdt-accent-hover);
+    font-weight: 600;
+  }
+
+  .stack-devtool .sdt-pg-item-dot {
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
-    background: var(--sdt-accent);
+    flex-shrink: 0;
+  }
+  .stack-devtool .sdt-pg-item-dot-handler { background: var(--sdt-info); }
+  .stack-devtool .sdt-pg-item-dot-custom { background: var(--sdt-success); }
+  .stack-devtool .sdt-pg-item-dot-warn {
+    background: var(--sdt-warning);
+    box-shadow: 0 0 6px rgba(234, 179, 8, 0.4);
+  }
+
+  .stack-devtool .sdt-pg-item-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* --- Badges --- */
+  .stack-devtool .sdt-pg-badge {
+    display: inline-flex;
+    align-items: center;
+    height: 20px;
+    padding: 0 7px;
+    border-radius: 10px;
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.2px;
+    flex-shrink: 0;
+    line-height: 1;
+  }
+
+  .stack-devtool .sdt-pg-badge-handler { background: var(--sdt-info-muted); color: var(--sdt-info); }
+  .stack-devtool .sdt-pg-badge-hosted { background: var(--sdt-info-muted); color: var(--sdt-info); }
+  .stack-devtool .sdt-pg-badge-custom { background: var(--sdt-success-muted); color: var(--sdt-success); }
+  .stack-devtool .sdt-pg-badge-outdated { background: var(--sdt-warning-muted); color: var(--sdt-warning); }
+
+  /* --- Empty state --- */
+  .stack-devtool .sdt-pg-empty {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    text-align: center;
+  }
+
+  .stack-devtool .sdt-pg-empty-icon {
+    color: var(--sdt-text-tertiary);
+    opacity: 0.35;
+    margin-bottom: 4px;
+  }
+
+  .stack-devtool .sdt-pg-empty-text {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--sdt-text-secondary);
+  }
+
+  .stack-devtool .sdt-pg-empty-sub {
+    font-size: 12px;
+    color: var(--sdt-text-tertiary);
+  }
+
+  /* --- Main panel --- */
+  .stack-devtool .sdt-pg-main {
+    flex: 1;
+    overflow-y: auto;
+    padding: 16px 18px;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* --- Detail view --- */
+  .stack-devtool .sdt-pg-detail {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  /* Header */
+  .stack-devtool .sdt-pg-header {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .stack-devtool .sdt-pg-header-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .stack-devtool .sdt-pg-title {
+    font-size: 15px;
+    font-weight: 700;
+    margin: 0;
+    color: var(--sdt-text);
+  }
+
+  .stack-devtool .sdt-pg-subtitle {
+    font-size: 12px;
+    color: var(--sdt-text-secondary);
+    line-height: 1.4;
+  }
+
+  .stack-devtool .sdt-pg-code-inline {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 4px;
+  }
+
+  .stack-devtool .sdt-pg-code {
+    font-family: var(--sdt-font-mono);
+    font-size: 12px;
+    color: var(--sdt-accent);
+    background: var(--sdt-bg-elevated);
+    border-radius: 6px;
+    padding: 6px 10px;
+    border: 1px solid var(--sdt-border-subtle);
+  }
+
+  .stack-devtool .sdt-pg-url-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .stack-devtool .sdt-pg-url-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--sdt-text-tertiary);
     flex-shrink: 0;
   }
 
-  .stack-devtool .sdt-component-count {
-    margin-left: auto;
+  .stack-devtool .sdt-pg-url {
+    font-family: var(--sdt-font-mono);
     font-size: 11px;
     color: var(--sdt-text-tertiary);
-    background: var(--sdt-bg-active);
-    padding: 0 6px;
-    border-radius: 8px;
+    text-decoration: none;
+    transition: color 0.12s ease;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
   }
 
-  .stack-devtool .sdt-component-detail {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    min-height: 0;
+  .stack-devtool .sdt-pg-url:hover {
+    color: var(--sdt-accent);
   }
 
-  .stack-devtool .sdt-component-detail h3 {
-    font-size: 16px;
-    font-weight: 600;
-    margin: 0 0 4px 0;
-    color: var(--sdt-text);
-  }
-
-  .stack-devtool .sdt-component-detail-sub {
-    font-size: 12px;
-    color: var(--sdt-text-secondary);
-    margin-bottom: 16px;
-  }
-
-  .stack-devtool .sdt-component-preview-label {
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: var(--sdt-text-tertiary);
-  }
-
-  .stack-devtool .sdt-component-preview-header {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    margin-bottom: 8px;
-  }
-
-  .stack-devtool .sdt-secondary-btn {
+  /* --- Copy button --- */
+  .stack-devtool .sdt-pg-copy-btn {
     height: 26px;
     padding: 0 10px;
-    border-radius: var(--sdt-radius-sm);
+    border-radius: 6px;
     border: 1px solid var(--sdt-border);
     background: var(--sdt-bg-active);
-    color: var(--sdt-text);
+    color: var(--sdt-text-secondary);
     cursor: pointer;
     font-size: 11px;
     font-weight: 600;
-    line-height: 1;
-    transition: background 0.12s ease, border-color 0.12s ease, color 0.12s ease;
+    font-family: var(--sdt-font);
+    transition: all 0.12s ease;
+    flex-shrink: 0;
+    white-space: nowrap;
   }
 
-  .stack-devtool .sdt-secondary-btn:hover {
+  .stack-devtool .sdt-pg-copy-btn:hover {
     background: var(--sdt-bg-hover);
-    border-color: var(--sdt-border-strong, var(--sdt-border));
+    color: var(--sdt-text);
+    border-color: var(--sdt-accent);
   }
 
-  .stack-devtool .sdt-component-preview-frame {
-    border: 1px solid var(--sdt-border);
-    border-radius: var(--sdt-radius);
-    background: var(--sdt-bg-subtle);
-    padding: 16px;
-    margin-bottom: 16px;
-    max-height: 280px;
-    overflow: auto;
+  .stack-devtool .sdt-pg-copy-btn-ok {
+    border-color: rgba(34, 197, 94, 0.3);
+    color: var(--sdt-success);
+    background: var(--sdt-success-muted);
   }
 
-  .stack-devtool .sdt-page-iframe-frame {
+  /* --- Update banner --- */
+  .stack-devtool .sdt-pg-update-banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 14px;
+    background: rgba(234, 179, 8, 0.08);
+    border: 1px solid rgba(234, 179, 8, 0.3);
+    border-radius: 10px;
+  }
+
+  .stack-devtool .sdt-pg-update-banner-icon {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    background: rgba(234, 179, 8, 0.2);
+    color: var(--sdt-warning);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 12px;
+    font-weight: 800;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .stack-devtool .sdt-pg-update-banner-body {
     flex: 1;
-    border: 1px solid var(--sdt-border);
-    border-radius: var(--sdt-radius);
-    overflow: hidden;
-    margin-top: 12px;
-    min-height: 0;
+    min-width: 0;
   }
 
-  .stack-devtool .sdt-page-iframe {
+  .stack-devtool .sdt-pg-update-banner-title {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--sdt-warning);
+    margin-bottom: 2px;
+  }
+
+  .stack-devtool .sdt-pg-update-banner-text {
+    font-size: 12px;
+    color: var(--sdt-text-secondary);
+    line-height: 1.5;
+  }
+
+  .stack-devtool .sdt-pg-update-banner-text strong {
+    color: var(--sdt-text);
+    font-weight: 600;
+  }
+
+  /* --- Sections (changelog, prompt) --- */
+  .stack-devtool .sdt-pg-section {
+    border: 1px solid var(--sdt-border-subtle);
+    border-radius: 10px;
+    padding: 12px 14px;
+    background: var(--sdt-bg-elevated);
+  }
+
+  .stack-devtool .sdt-pg-section-warn {
+    border-color: rgba(234, 179, 8, 0.25);
+    background: rgba(234, 179, 8, 0.03);
+  }
+
+  .stack-devtool .sdt-pg-section-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--sdt-text-tertiary);
+    margin-bottom: 8px;
+  }
+
+  .stack-devtool .sdt-pg-section-warn .sdt-pg-section-label {
+    color: var(--sdt-warning);
+  }
+
+  .stack-devtool .sdt-pg-section-footer {
+    display: flex;
+    margin-top: 8px;
+  }
+
+  /* Changelog list */
+  .stack-devtool .sdt-pg-changelog-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .stack-devtool .sdt-pg-changelog-item {
+    display: flex;
+    align-items: flex-start;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--sdt-text);
+    line-height: 1.5;
+  }
+
+  .stack-devtool .sdt-pg-changelog-bullet {
+    flex-shrink: 0;
+    font-size: 12px;
+    line-height: 1.5;
+  }
+
+  /* Pre block */
+  .stack-devtool .sdt-pg-pre {
+    font-family: var(--sdt-font-mono);
+    font-size: 11px;
+    line-height: 1.6;
+    color: var(--sdt-text);
+    background: var(--sdt-bg);
+    border-radius: 6px;
+    padding: 10px 12px;
+    margin: 0;
+    white-space: pre-wrap;
+    word-break: break-word;
+    max-height: 200px;
+    overflow-y: auto;
+    border: 1px solid var(--sdt-border-subtle);
+  }
+
+  /* --- Preview (collapsible) --- */
+  .stack-devtool .sdt-pg-preview-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--sdt-text-tertiary);
+    cursor: pointer;
+    padding: 4px 0;
+    transition: color 0.12s ease;
+    user-select: none;
+  }
+
+  .stack-devtool .sdt-pg-preview-toggle:hover {
+    color: var(--sdt-text-secondary);
+  }
+
+  .stack-devtool .sdt-pg-preview-toggle-chevron {
+    font-size: 10px;
+    transition: transform 0.15s ease;
+    display: inline-block;
+  }
+
+  .stack-devtool .sdt-pg-preview-toggle-chevron[data-open="true"] {
+    transform: rotate(90deg);
+  }
+
+  .stack-devtool .sdt-pg-preview {
+    display: flex;
+    flex-direction: column;
+    border: 1px solid var(--sdt-border-subtle);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .stack-devtool .sdt-pg-iframe-wrap {
+    height: 400px;
+  }
+
+  .stack-devtool .sdt-pg-iframe {
     width: 100%;
     height: 100%;
     border: none;

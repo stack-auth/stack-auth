@@ -1,12 +1,12 @@
 "use client";
 
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { DevToolProvider, useDevToolContext, resolveApiBaseUrl, type ApiLogEntry, type EventLogEntry } from "./dev-tool-context";
-import { DevToolTrigger } from "./dev-tool-trigger";
+import { useUser } from "../lib/hooks";
+import { DevToolProvider, useDevToolContext, type ApiLogEntry, type EventLogEntry } from "./dev-tool-context";
 import { DevToolPanel } from "./dev-tool-panel";
 import { devToolCSS } from "./dev-tool-styles";
-import { useStackApp, useUser } from "../lib/hooks";
+import { DevToolTrigger } from "./dev-tool-trigger";
 
 // IF_PLATFORM react-like
 
@@ -27,14 +27,16 @@ function useFetchInterceptor(addApiLog: (entry: ApiLogEntry) => void, addEventLo
 
   useEffect(() => {
     if (typeof window === 'undefined') return;
+    // Avoid double-patching (e.g. during HMR remounts)
+    if ((window.fetch as any).__stackDevToolPatched) return;
 
     const originalFetch = window.fetch;
 
-    window.fetch = async function patchedFetch(input: RequestInfo | URL, init?: RequestInit) {
+    const patchedFetch = async function (input: RequestInfo | URL, init?: RequestInit) {
       // Determine if this is a Stack Auth API call by checking for the header
       const headers = init?.headers;
       let isStackCall = false;
-      let method = init?.method || 'GET';
+      let method = init?.method || (input instanceof Request ? input.method : 'GET');
 
       if (headers) {
         if (headers instanceof Headers) {
@@ -128,9 +130,14 @@ function useFetchInterceptor(addApiLog: (entry: ApiLogEntry) => void, addEventLo
         throw err;
       }
     };
+    window.fetch = patchedFetch;
+    (window.fetch as any).__stackDevToolPatched = true;
 
     return () => {
-      window.fetch = originalFetch;
+      // Only restore if our patch is still the active one
+      if (window.fetch === patchedFetch) {
+        window.fetch = originalFetch;
+      }
     };
   }, []);
 }

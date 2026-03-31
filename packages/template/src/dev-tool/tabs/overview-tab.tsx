@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Suspense, useEffect, useMemo, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { useStackApp, useUser } from "../../lib/hooks";
 import { resolveApiBaseUrl } from "../dev-tool-context";
@@ -321,14 +321,8 @@ function ChangelogCard() {
     return () => abort.abort();
   }, [apiBaseUrl]);
 
-  /** Strip markdown images (they won't render well in the tiny panel) */
-  function stripImages(md: string): string {
-    return md.replace(/!\[[^\]]*\]\([^)]*\)/g, '').trim();
-  }
-
   function renderChangelogMarkdown(md: string): React.ReactNode[] {
-    const cleaned = stripImages(md);
-    const lines = cleaned.split('\n');
+    const lines = md.split('\n');
     const elements: React.ReactNode[] = [];
     let i = 0;
 
@@ -337,6 +331,16 @@ function ChangelogCard() {
 
       // Skip empty lines
       if (line.trim() === '') {
+        i++;
+        continue;
+      }
+
+      // Block-level image
+      const imgMatch = line.trim().match(/^!\[([^\]]*)\]\(([^)]+)\)$/);
+      if (imgMatch) {
+        elements.push(
+          <img key={i} src={imgMatch[2]} alt={imgMatch[1]} style={{ maxWidth: '100%', maxHeight: 200, objectFit: 'contain', borderRadius: 6, marginTop: 4, marginBottom: 4 }} />
+        );
         i++;
         continue;
       }
@@ -456,12 +460,73 @@ function ChangelogCard() {
   );
 }
 
+/**
+ * Extracts the package name and semver from the SDK version string.
+ * e.g. "js @stackframe/stack@2.7.0" → { packageName: "@stackframe/stack", semver: "2.7.0" }
+ */
+function parseSdkVersion(versionString: string): { packageName: string; semver: string } | null {
+  const match = versionString.match(/(@[\w-]+\/[\w-]+)@(\d+\.\d+\.\d+)/);
+  if (!match) return null;
+  return { packageName: match[1], semver: match[2] };
+}
+
+function compareSemver(a: string, b: string): number {
+  const pa = a.split('.').map(Number);
+  const pb = b.split('.').map(Number);
+  for (let i = 0; i < 3; i++) {
+    if (pa[i] !== pb[i]) return pa[i] - pb[i];
+  }
+  return 0;
+}
+
+type VersionCheckResult = {
+  status: "loading" | "current" | "outdated" | "error";
+  latestVersion?: string;
+};
+
+function useLatestSdkVersion(sdkVersion: string): VersionCheckResult {
+  const [result, setResult] = useState<VersionCheckResult>({ status: "loading" });
+  const parsed = useMemo(() => parseSdkVersion(sdkVersion), [sdkVersion]);
+
+  useEffect(() => {
+    if (!parsed) return;
+
+    let stale = false;
+
+    fetch(`https://registry.npmjs.org/${parsed.packageName}/latest`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (stale) return;
+        const latest = data.version;
+        if (!latest) {
+          setResult({ status: "error" });
+          return;
+        }
+        setResult({
+          status: compareSemver(parsed.semver, latest) < 0 ? "outdated" : "current",
+          latestVersion: latest,
+        });
+      })
+      .catch(() => {
+        if (!stale) setResult({ status: "error" });
+      });
+
+    return () => {
+      stale = true;
+    };
+  }, [parsed]);
+
+  return result;
+}
+
 export function OverviewTab() {
   const app = useStackApp();
   const user = useUser();
 
   const projectId = app.projectId;
   const sdkVersion = app.version;
+
+  const versionCheck = useLatestSdkVersion(sdkVersion);
 
   return (
     <div className="sdt-ov">
@@ -471,7 +536,14 @@ export function OverviewTab() {
         <div className="sdt-ov-project-rows">
           <div className="sdt-ov-project-row">
             <span className="sdt-ov-project-key">SDK</span>
-            <span className="sdt-ov-project-val">{sdkVersion || '?'}</span>
+            <span className="sdt-ov-project-val">
+              {sdkVersion || '?'}
+              {versionCheck.status === "outdated" && (
+                <span className="sdt-ov-sdk-badge" title={`Latest: ${versionCheck.latestVersion}`}>
+                  Outdated
+                </span>
+              )}
+            </span>
           </div>
           <div className="sdt-ov-project-row">
             <span className="sdt-ov-project-key">Project ID</span>

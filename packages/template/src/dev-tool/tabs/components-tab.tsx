@@ -1,18 +1,14 @@
 "use client";
 
-import React, { Suspense, useMemo, useState } from "react";
-import { TooltipProvider } from "@stackframe/stack-ui";
-import { CATALOG_NAMES, COMPONENT_CATALOG } from "../component-catalog";
-import { DevToolComponentPreviewProvider } from "../hooks/use-component-registry";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useStackApp } from "../../lib/hooks";
-import type { HandlerUrls } from "../../lib/stack-app/common";
+import type { HandlerUrlOptions, HandlerUrls, HandlerUrlTarget } from "../../lib/stack-app/common";
+import { stackAppInternalsSymbol } from "../../lib/stack-app/common";
+import { getPagePrompt } from "../../lib/stack-app/url-targets";
+import { resolveApiBaseUrl } from "../dev-tool-context";
 
 // IF_PLATFORM react-like
 
-/**
- * Pages that should appear in the "Pages" section of the left sidebar.
- * Maps HandlerUrls keys to display labels.
- */
 const PAGE_ENTRIES: { key: keyof HandlerUrls; label: string }[] = [
   { key: "signIn", label: "Sign-in" },
   { key: "signUp", label: "Sign-up" },
@@ -26,282 +22,115 @@ const PAGE_ENTRIES: { key: keyof HandlerUrls; label: string }[] = [
   { key: "error", label: "Error" },
 ];
 
-/**
- * Components that are page-level (rendered full-screen via StackHandler).
- * These are shown in the Pages section, not the Components section.
- */
-const PAGE_COMPONENT_NAMES = new Set([
-  "AccountSettings",
-  "AuthPage",
-  "EmailVerification",
-  "ForgotPassword",
-  "PasswordReset",
-  "SignIn",
-  "SignUp",
-]);
+type StructuredUrlTarget = Extract<HandlerUrlTarget, { type: string }>;
+type PageClassification = "custom" | StructuredUrlTarget["type"];
+type PageVersionStatus = "current" | "outdated" | "deprecated" | "loading";
 
-function isHostedUrl(url: string, handlerBase: string): boolean {
-  return url === handlerBase || url.startsWith(handlerBase + "/");
+const classificationLabel: Record<PageClassification, string> = {
+  "handler-component": "Handler",
+  "hosted": "Hosted",
+  "custom": "Custom",
+};
+
+const classificationBadgeClass: Record<PageClassification, string> = {
+  "handler-component": "sdt-pg-badge-handler",
+  "hosted": "sdt-pg-badge-hosted",
+  "custom": "sdt-pg-badge-custom",
+};
+
+const classificationDescription: Record<PageClassification, string> = {
+  "handler-component": "This page is rendered by a built-in Stack Auth component. You can redirect to it by calling:",
+  "hosted": "This page is hosted on Stack Auth. You can redirect to it by calling:",
+  "custom": "This page uses a custom implementation. You can redirect to it by calling:",
+};
+
+function getRedirectMethod(key: keyof HandlerUrls): string {
+  return `stackApp.redirectTo${key.charAt(0).toUpperCase()}${key.slice(1)}()`;
+}
+
+function classifyTarget(target: HandlerUrlTarget): { classification: PageClassification; version: number | null; isLegacyString: boolean } {
+  if (typeof target === "string") return { classification: "custom", version: null, isLegacyString: true };
+  if (target.type === "custom") return { classification: "custom", version: target.version, isLegacyString: false };
+  return { classification: target.type, version: null, isLegacyString: false };
+}
+
+function classifyPage(urlOptions: HandlerUrlOptions, key: keyof HandlerUrls): { classification: PageClassification; version: number | null; isLegacyString: boolean } {
+  const target = urlOptions[key] ?? urlOptions.default ?? { type: "handler-component" as const };
+  return classifyTarget(target);
 }
 
 type PageInfo = {
   key: keyof HandlerUrls;
   label: string;
   url: string;
-  hosted: boolean;
+  classification: PageClassification;
+  version: number | null;
+  isLegacyString: boolean;
+  versionStatus: PageVersionStatus;
+  changelog: string | null;
 };
 
-function sanitizeForPreview(value: unknown, seen: WeakSet<object> = new WeakSet()): unknown {
-  if (typeof value === "function") {
-    return async () => {};
-  }
-  if (value === null || value === undefined) {
-    return value;
-  }
-  if (typeof value !== "object") {
-    return value;
-  }
-  if (React.isValidElement(value)) {
-    return value;
-  }
-  if (value instanceof Date) {
-    return value;
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => sanitizeForPreview(item, seen));
-  }
-  if (seen.has(value)) {
-    return value;
-  }
-  seen.add(value);
-  const result: Record<string, unknown> = {};
-  for (const [key, entry] of Object.entries(value)) {
-    if (key === "children") {
-      continue;
-    }
-    result[key] = sanitizeForPreview(entry, seen);
-  }
-  return result;
-}
+function buildPromptText(page: PageInfo): string | null {
+  const promptData = getPagePrompt(page.key);
+  if (!promptData) return null;
 
-function sanitizeForPrompt(value: unknown, seen: WeakSet<object> = new WeakSet()): unknown {
-  if (value === null || value === undefined) {
-    return value;
-  }
-  if (typeof value === "function") {
-    return "[function]";
-  }
-  if (typeof value !== "object") {
-    return value;
-  }
-  if (React.isValidElement(value)) {
-    return "[ReactElement]";
-  }
-  if (value instanceof Date) {
-    return value.toISOString();
-  }
-  if (Array.isArray(value)) {
-    return value.map((item) => sanitizeForPrompt(item, seen));
-  }
-  if (seen.has(value)) {
-    return "[Circular]";
-  }
-  seen.add(value);
-  const result: Record<string, unknown> = {};
-  for (const [key, entry] of Object.entries(value)) {
-    if (key === "children") {
-      continue;
-    }
-    result[key] = sanitizeForPrompt(entry, seen);
-  }
-  return result;
-}
+  const showPrompt = page.classification === "handler-component"
+    || page.classification === "hosted"
+    || page.versionStatus === "outdated";
 
-function formatJsxPropValue(value: unknown): string | null {
-  if (value === undefined) {
+  if (!showPrompt) return null;
+
+  const lines: string[] = [];
+
+  if (page.versionStatus === "outdated") {
+    if (promptData.upgradePrompt) {
+      lines.push(promptData.upgradePrompt);
+    } else {
+      lines.push(`Upgrade the custom ${promptData.title} page from version ${page.version} to version ${promptData.latestVersion}.`);
+    }
+  } else if (promptData.fullPrompt) {
+    lines.push(promptData.fullPrompt);
+  } else {
     return null;
   }
-  if (value === null) {
-    return "{null}";
-  }
-  if (typeof value === "string") {
-    return JSON.stringify(value);
-  }
-  if (typeof value === "number" || typeof value === "boolean") {
-    return `{${String(value)}}`;
-  }
-  if (Array.isArray(value) || typeof value === "object") {
-    return `{${JSON.stringify(value, null, 2)}}`;
-  }
-  return null;
+
+  lines.push("");
+  lines.push("---");
+  lines.push("");
+  lines.push("Configuration details:");
+  lines.push(`- Page key: \`${page.key}\``);
+  lines.push(`- Latest version: \`${promptData.latestVersion}\``);
+  lines.push(`- Current classification: ${page.classification === "handler-component" ? "handler (built-in SDK component)" : page.classification === "hosted" ? "hosted (Stack Auth hosted domain)" : `custom (version ${page.version})`}`);
+  lines.push("");
+  lines.push("After implementing, update your StackServerApp (or StackClientApp) URL config:");
+  lines.push("```ts");
+  lines.push("urls: {");
+  lines.push(`  ${page.key}: { type: "custom", url: "<your-route-path>", version: ${promptData.latestVersion} },`);
+  lines.push("}");
+  lines.push("```");
+
+  return lines.join("\n");
 }
 
-function formatJsxSnippet(name: string, propsSnapshot: Record<string, unknown>): string {
-  const propLines = Object.entries(sanitizeForPrompt(propsSnapshot) as Record<string, unknown>)
-    .map(([key, value]) => {
-      const formatted = formatJsxPropValue(value);
-      if (formatted === null) {
-        return null;
-      }
-      return `  ${key}=${formatted}`;
-    })
-    .filter((line): line is string => line !== null);
-
-  if (propLines.length === 0) {
-    return `<${name} />`;
-  }
-
-  return [
-    `<${name}`,
-    ...propLines,
-    `/>`,
-  ].join("\n");
-}
-
-function getBuiltInPrompt(name: string, propsSnapshot: Record<string, unknown>): string {
-  const entry = COMPONENT_CATALOG[name];
-  const promptLines = [
-    `Implement the Stack Auth \`${name}\` component shown in the dev tool preview.`,
-    "",
-    "Requirements:",
-    "- Use the project's existing Stack Auth provider/setup.",
-    "- Import the component from the same Stack Auth SDK package this app already uses, for example `@stackframe/react` or `@stackframe/stack`.",
-    "- Prefer the built-in Stack Auth component instead of reimplementing the auth flow manually.",
-  ];
-
-  for (const note of entry.promptNotes ?? []) {
-    promptLines.push(`- ${note}`);
-  }
-
-  promptLines.push(
-    "",
-    "Start from this JSX usage:",
-    "```tsx",
-    `import { ${name} } from "@stackframe/react";`,
-    "",
-    formatJsxSnippet(name, propsSnapshot),
-    "```"
-  );
-
-  const sanitized = sanitizeForPrompt(propsSnapshot) as Record<string, unknown>;
-  if (Object.keys(sanitized).length > 0) {
-    promptLines.push(
-      "",
-      "Current prop snapshot from the dev tool:",
-      "```json",
-      JSON.stringify(sanitized, null, 2),
-      "```"
-    );
-  }
-
-  return promptLines.join("\n");
-}
-
-function getImplementationPrompt(name: string, propsSnapshot: Record<string, unknown>): string {
-  if (name in COMPONENT_CATALOG) {
-    return getBuiltInPrompt(name, propsSnapshot);
-  }
-  return "";
-}
-
-type PreviewErrorBoundaryState = { error: Error | null };
-
-class PreviewErrorBoundary extends React.Component<
-  { children: React.ReactNode },
-  PreviewErrorBoundaryState
-> {
-  state: PreviewErrorBoundaryState = { error: null };
-
-  static getDerivedStateFromError(error: Error): PreviewErrorBoundaryState {
-    return { error };
-  }
-
-  render() {
-    if (this.state.error) {
-      return (
-        <div className="sdt-preview-error">
-          Preview could not render this component ({this.state.error.message}). It may require auth,
-          navigation, or async data that is not available in the panel.
-        </div>
-      );
-    }
-    return this.props.children;
-  }
-}
-
-/**
- * Renders a live preview of a catalog component.
- */
-function DevToolComponentPreview({ name }: { name: string }) {
-  if (!Object.prototype.hasOwnProperty.call(COMPONENT_CATALOG, name)) {
-    return <div className="sdt-preview-unavailable">Unknown component: {name}</div>;
-  }
-  const entry = COMPONENT_CATALOG[name];
-
-  if (entry.preview === 'none') {
-    return (
-      <div className="sdt-preview-unavailable">
-        Live preview is not available for {name}.
-      </div>
-    );
-  }
-
-  const content = entry.preview
-    ? entry.preview({})
-    : React.createElement(entry.component, {});
+function CopyButton({ text, label }: { text: string; label?: string }) {
+  const [state, setState] = useState<"idle" | "copied" | "error">("idle");
 
   return (
-    <PreviewErrorBoundary>
-      <Suspense fallback={<div className="sdt-preview-loading">Loading preview…</div>}>
-        <TooltipProvider>
-          <DevToolComponentPreviewProvider>{content}</DevToolComponentPreviewProvider>
-        </TooltipProvider>
-      </Suspense>
-    </PreviewErrorBoundary>
-  );
-}
-
-function ComponentPreviewHeader(props: {
-  name: string;
-}) {
-  const [copyState, setCopyState] = useState<"idle" | "copied" | "error">("idle");
-  const prompt = getImplementationPrompt(props.name, {});
-
-  if (!prompt) return null;
-
-  return (
-    <div className="sdt-component-preview-header">
-      <div className="sdt-component-preview-label">Preview</div>
-      <button
-        className="sdt-secondary-btn"
-        type="button"
-        onClick={() => {
-          navigator.clipboard.writeText(prompt).then(() => {
-            setCopyState("copied");
-            window.setTimeout(() => setCopyState("idle"), 1500);
-          }, () => {
-            setCopyState("error");
-            window.setTimeout(() => setCopyState("idle"), 2000);
-          });
-        }}
-        title="Copy an implementation prompt for this component"
-      >
-        {copyState === "copied" ? "Copied" : copyState === "error" ? "Copy failed" : "Copy prompt"}
-      </button>
-    </div>
-  );
-}
-
-function ComponentDetail({ name }: { name: string }) {
-  return (
-    <div className="sdt-component-detail">
-      <h3>&lt;{name} /&gt;</h3>
-
-      <ComponentPreviewHeader name={name} />
-      <div className="sdt-component-preview-frame">
-        <DevToolComponentPreview name={name} />
-      </div>
-    </div>
+    <button
+      className={`sdt-pg-copy-btn ${state === "copied" ? "sdt-pg-copy-btn-ok" : ""}`}
+      type="button"
+      onClick={() => {
+        navigator.clipboard.writeText(text).then(() => {
+          setState("copied");
+          window.setTimeout(() => setState("idle"), 1500);
+        }, () => {
+          setState("error");
+          window.setTimeout(() => setState("idle"), 2000);
+        });
+      }}
+    >
+      {state === "copied" ? "\u2713 Copied" : state === "error" ? "Failed" : label ?? "Copy"}
+    </button>
   );
 }
 
@@ -309,97 +138,223 @@ function PageDetail({ page }: { page: PageInfo }) {
   const fullUrl = typeof window !== "undefined"
     ? new URL(page.url, window.location.origin).toString()
     : page.url;
+  const prompt = buildPromptText(page);
+  const promptData = getPagePrompt(page.key);
+  const isOutdated = page.versionStatus === "outdated" || page.versionStatus === "deprecated";
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const previewRef = useRef<HTMLDivElement>(null);
 
   return (
-    <div className="sdt-component-detail">
-      <h3>{page.label}</h3>
-      <div className="sdt-component-detail-sub">
-        <span className={`sdt-badge ${page.hosted ? "sdt-badge-info" : "sdt-badge-success"}`}>
-          {page.hosted ? "Hosted" : "Custom"}
-        </span>
-        <span style={{ marginLeft: 8, fontFamily: "var(--sdt-font-mono)", fontSize: 12 }}>{page.url}</span>
+    <div className="sdt-pg-detail">
+      {/* Header */}
+      <div className="sdt-pg-header">
+        <div className="sdt-pg-header-top">
+          <h3 className="sdt-pg-title">{page.label} Page</h3>
+          {isOutdated && <span className="sdt-pg-badge sdt-pg-badge-outdated">Outdated</span>}
+          <span className={`sdt-pg-badge ${classificationBadgeClass[page.classification]}`}>
+            {classificationLabel[page.classification]}
+          </span>
+        </div>
+        <div className="sdt-pg-subtitle">{classificationDescription[page.classification]}</div>
+        <div className="sdt-pg-code-inline">
+          <code className="sdt-pg-code">{getRedirectMethod(page.key)}</code>
+          <button
+            className={`sdt-pg-copy-btn ${previewOpen ? "sdt-pg-copy-btn-ok" : ""}`}
+            type="button"
+            onClick={() => {
+              const willOpen = !previewOpen;
+              setPreviewOpen(willOpen);
+              if (willOpen) {
+                window.setTimeout(() => {
+                  previewRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
+                }, 50);
+              }
+            }}
+          >
+            {previewOpen ? "Hide preview" : "Preview"}
+          </button>
+        </div>
       </div>
-      <div className="sdt-page-iframe-frame">
-        <iframe
-          src={fullUrl}
-          title={page.label}
-          className="sdt-page-iframe"
-        />
+
+      {/* Update available banner (only for outdated) */}
+      {isOutdated && promptData && (
+        <div className="sdt-pg-update-banner">
+          <div className="sdt-pg-update-banner-icon">{"!"}</div>
+          <div className="sdt-pg-update-banner-body">
+            <div className="sdt-pg-update-banner-title">Update available</div>
+            <div className="sdt-pg-update-banner-text">
+              You are currently on <strong>version {page.version}</strong>, but the newest version is <strong>version {promptData.latestVersion}</strong>.
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Changelog list */}
+      {page.changelog && (
+        <div className={`sdt-pg-section ${isOutdated ? "sdt-pg-section-warn" : ""}`}>
+          <div className="sdt-pg-section-label">{isOutdated && promptData ? `New in version ${promptData.latestVersion}` : "Changelog"}</div>
+          <ul className="sdt-pg-changelog-list">
+            {page.changelog.split(/[.\n]/).filter((s) => s.trim()).map((line, i) => (
+              <li key={i} className="sdt-pg-changelog-item">
+                <span className="sdt-pg-changelog-bullet">{"\u2728"}</span>
+                <span>{line.trim()}</span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+
+      {/* Prompt section */}
+      {prompt && (
+        <div className={`sdt-pg-section ${isOutdated ? "sdt-pg-section-warn" : ""}`}>
+          <div className="sdt-pg-section-label">{isOutdated ? "Use this prompt to upgrade your component:" : "Customization prompt:"}</div>
+          <pre className="sdt-pg-pre">{prompt}</pre>
+          <div className="sdt-pg-section-footer">
+            <CopyButton text={prompt} label="Copy prompt" />
+          </div>
+        </div>
+      )}
+
+      {/* URL row */}
+      <div className="sdt-pg-url-row">
+        <span className="sdt-pg-url-label">URL</span>
+        <a href={page.url} target="_blank" rel="noopener noreferrer" className="sdt-pg-url">{page.url}</a>
       </div>
+
+      {previewOpen && (
+        <div className="sdt-pg-preview" ref={previewRef}>
+          <div className="sdt-pg-iframe-wrap">
+            <iframe src={fullUrl} title={page.label} className="sdt-pg-iframe" />
+          </div>
+        </div>
+      )}
     </div>
   );
 }
 
-type Selection =
-  | { type: "page"; key: keyof HandlerUrls }
-  | { type: "component"; name: string };
+type VersionInfo = { version: number; changelog: string | null };
+
+function useLatestPageVersions(apiBaseUrl: string): Partial<Record<string, VersionInfo>> | null {
+  const [versions, setVersions] = useState<Partial<Record<string, VersionInfo>> | null>(null);
+
+  useEffect(() => {
+    let stale = false;
+
+    fetch(`${apiBaseUrl}/api/latest/internal/component-versions`)
+      .then((r) => r.json())
+      .then((data) => { if (!stale) setVersions(data.versions); })
+      .catch(() => {});
+
+    return () => {
+      stale = true;
+    };
+  }, [apiBaseUrl]);
+
+  return versions;
+}
 
 export function ComponentsTab() {
   const app = useStackApp();
+  const apiBaseUrl = resolveApiBaseUrl(app);
   const urls = app.urls;
-  const handlerBase = urls.handler;
-  const [selection, setSelection] = useState<Selection | null>(null);
+  const urlOptions: HandlerUrlOptions = app[stackAppInternalsSymbol].getConstructorOptions().urls ?? {};
+  const [selectedKey, setSelectedKey] = useState<keyof HandlerUrls | null>(null);
+
+  const latestVersions = useLatestPageVersions(apiBaseUrl);
 
   const pages = useMemo<PageInfo[]>(() =>
-    PAGE_ENTRIES.map((entry) => ({
-      key: entry.key,
-      label: entry.label,
-      url: urls[entry.key],
-      hosted: isHostedUrl(urls[entry.key], handlerBase),
-    })),
-    [urls, handlerBase]
+    PAGE_ENTRIES.map((entry) => {
+      const { classification, version, isLegacyString } = classifyPage(urlOptions, entry.key);
+
+      let versionStatus: PageVersionStatus;
+      let changelog: string | null = null;
+      if (isLegacyString) {
+        versionStatus = "deprecated";
+      } else if (classification === "custom" && version != null) {
+        if (latestVersions == null) {
+          versionStatus = "loading";
+        } else {
+          const latestInfo = latestVersions[entry.key];
+          if (latestInfo != null && version < latestInfo.version) {
+            versionStatus = "outdated";
+            changelog = latestInfo.changelog;
+          } else {
+            versionStatus = "current";
+          }
+        }
+      } else {
+        versionStatus = "current";
+      }
+
+      return {
+        key: entry.key,
+        label: entry.label,
+        url: urls[entry.key],
+        classification,
+        version,
+        isLegacyString,
+        versionStatus,
+        changelog,
+      };
+    }),
+    [urls, urlOptions, latestVersions]
   );
 
-  const componentNames = useMemo(
-    () => CATALOG_NAMES.filter((name) => !PAGE_COMPONENT_NAMES.has(name)),
-    []
-  );
-
-  const selectedPage = selection?.type === "page"
-    ? pages.find((p) => p.key === selection.key) ?? null
+  const selectedPage = selectedKey
+    ? pages.find((p) => p.key === selectedKey) ?? null
     : null;
 
-  return (
-    <div className="sdt-split-pane">
-      <div className="sdt-split-left">
-        <div className="sdt-component-list">
-          <div className="sdt-component-group-label">Pages</div>
-          {pages.map((page) => (
-            <div
-              key={page.key}
-              className="sdt-component-item"
-              data-selected={selection?.type === "page" && selection.key === page.key}
-              onClick={() => setSelection({ type: "page", key: page.key })}
-            >
-              <span style={{ flex: 1 }}>{page.label}</span>
-              <span className={`sdt-badge ${page.hosted ? "sdt-badge-info" : "sdt-badge-success"}`}>
-                {page.hosted ? "Hosted" : "Custom"}
-              </span>
-            </div>
-          ))}
+  const outdatedCount = pages.filter((p) => p.versionStatus === "outdated" || p.versionStatus === "deprecated").length;
 
-          <div className="sdt-component-group-label">Components</div>
-          {componentNames.map((name) => (
-            <div
-              key={name}
-              className="sdt-component-item"
-              data-selected={selection?.type === "component" && selection.name === name}
-              onClick={() => setSelection({ type: "component", name })}
-            >
-              <span>{name}</span>
-            </div>
-          ))}
+  return (
+    <div className="sdt-pg-layout">
+      <div className="sdt-pg-sidebar">
+        <div className="sdt-pg-sidebar-head">
+          <span className="sdt-pg-sidebar-title">Pages</span>
+          <span className="sdt-pg-sidebar-count">{pages.length}</span>
+          {outdatedCount > 0 && (
+            <span className="sdt-pg-sidebar-warn">{outdatedCount} outdated</span>
+          )}
+        </div>
+        <div className="sdt-pg-list">
+          {pages.map((page) => {
+            const isOutdated = page.versionStatus === "outdated" || page.versionStatus === "deprecated";
+            return (
+              <div
+                key={page.key}
+                className={`sdt-pg-item ${isOutdated ? "sdt-pg-item-warn" : ""}`}
+                data-selected={selectedKey === page.key}
+                onClick={() => setSelectedKey(page.key)}
+              >
+                <span className={`sdt-pg-item-dot ${isOutdated ? "sdt-pg-item-dot-warn" : `sdt-pg-item-dot-${page.classification === "custom" ? "custom" : "handler"}`}`} />
+                <span className="sdt-pg-item-label">{page.label}</span>
+                {isOutdated ? (
+                  <span className="sdt-pg-badge sdt-pg-badge-outdated">Outdated</span>
+                ) : (
+                  <span className={`sdt-pg-badge ${classificationBadgeClass[page.classification]}`}>
+                    {classificationLabel[page.classification]}
+                  </span>
+                )}
+              </div>
+            );
+          })}
         </div>
       </div>
-      <div className="sdt-split-right">
+      <div className="sdt-pg-main">
         {selectedPage ? (
           <PageDetail page={selectedPage} />
-        ) : selection?.type === "component" ? (
-          <ComponentDetail name={selection.name} />
         ) : (
-          <div className="sdt-empty-state">
-            <div className="sdt-empty-state-icon">{'\u2190'}</div>
-            <div>Select a page or component to view details</div>
+          <div className="sdt-pg-empty">
+            <div className="sdt-pg-empty-icon">
+              <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <rect x="3" y="3" width="7" height="7" rx="1" />
+                <rect x="14" y="3" width="7" height="7" rx="1" />
+                <rect x="3" y="14" width="7" height="7" rx="1" />
+                <rect x="14" y="14" width="7" height="7" rx="1" />
+              </svg>
+            </div>
+            <div className="sdt-pg-empty-text">Select a page to inspect</div>
+            <div className="sdt-pg-empty-sub">View configuration, preview, and upgrade prompts</div>
           </div>
         )}
       </div>
