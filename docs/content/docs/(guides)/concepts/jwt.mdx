@@ -144,35 +144,15 @@ To support restricted users (e.g., users who haven't verified their email), add 
 - The JWKS currently exposes both the latest key pair and a legacy compatibility key. Verification libraries automatically pick the correct key by matching the `kid` provided in the JWT header.
 - Tokens are always signed server-side; client SDKs never receive the private keys.
 
-## Security Considerations
-
-### Token Storage
-
-- **Never store JWTs in localStorage** for sensitive applications
-- Use secure, httpOnly cookies when possible
-- Stack Auth handles secure token storage automatically
-
-### Token Expiration
-
-- JWTs have a limited lifetime (default is 10 minutes via `STACK_ACCESS_TOKEN_EXPIRATION_TIME`)
-- Stack Auth automatically refreshes tokens before they expire
-- Always check the `exp` claim when manually handling JWTs
-
-### Signature Verification
-
-- Always verify JWT signatures using the public key
-- Never trust the contents of a JWT without verification
-- Stack Auth SDKs handle verification automatically
-
 ## Troubleshooting
 
 ### Common Issues
 
-1. **"JWT is expired"**: The token has passed its expiration time. Stack Auth will automatically refresh it.
+1. **"JWT is expired"**: The token has passed its expiration time. The default expiration time can be quite low and you shouldn't expect it to be longer than a few minutes. Stack Auth will automatically refresh it on the client, but if you send your JWT to your own backend and use it in a long-running function, it may expire during execution of the function.
 
-2. **"Invalid signature"**: The token was tampered with or signed with a different key.
+2. **"Invalid signature"**: The token was tampered with or signed with a different key. Make sure you are passing the correct Stack Auth JWT. If this is happening in production, it may be a user attempting to workaround your JWT validation — this error is expected and means your authentication is working correctly.
 
-3. **"Invalid audience"**: The token was issued for a different project or environment.
+3. **"Invalid audience"**: The token was issued for a different project or environment. Make sure you are using the correct project ID.
 
 ### Debugging JWTs
 
