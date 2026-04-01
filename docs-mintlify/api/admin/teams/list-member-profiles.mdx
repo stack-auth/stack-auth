@@ -1,0 +1,41 @@
+---
+title: "List Team Member Profiles"
+description: "List team members profiles and filter by team ID and user ID"
+api: "GET /team-member-profiles"
+---
+
+## Request
+
+<ParamField query="user_id" type="string">
+  User identifier for filtering profiles.
+</ParamField>
+
+<ParamField query="team_id" type="string">
+  Team identifier for filtering profiles.
+</ParamField>
+
+## Response
+
+<ResponseField name="200" type="object">
+  Successful response containing team member profile data.
+</ResponseField>
+
+<CodeGroup>
+```bash cURL
+# List all team member profiles
+curl -X GET "https://api.stack-auth.com/team-member-profiles" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+
+# Filter by team ID
+curl -X GET "https://api.stack-auth.com/team-member-profiles?team_id=TEAM_ID" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+
+# Filter by user ID
+curl -X GET "https://api.stack-auth.com/team-member-profiles?user_id=USER_ID" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+
+# Filter by both parameters
+curl -X GET "https://api.stack-auth.com/team-member-profiles?team_id=TEAM_ID&user_id=USER_ID" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+</CodeGroup>

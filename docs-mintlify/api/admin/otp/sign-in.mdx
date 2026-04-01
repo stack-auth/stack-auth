@@ -1,0 +1,68 @@
+---
+title: "Sign In with a Code"
+description: "Authenticate a user using an OTP or magic link verification code."
+api: "POST /api/v1/auth/otp/sign-in"
+---
+
+## Request
+
+### Headers
+
+<ParamField header="X-Stack-Project-Id" type="string">
+  The unique identifier of the project.
+</ParamField>
+
+<ParamField header="X-Stack-Publishable-Client-Key" type="string">
+  The publishable client key.
+</ParamField>
+
+### Body
+
+<ParamField body="code" type="string" required>
+  A 45-character verification code. For magic links, this is the code found in the "code" URL query parameter. For OTP, this is formed by concatenating the 6-digit code entered by the user with the nonce (received during code creation).
+</ParamField>
+
+## Response
+
+<ResponseField name="refresh_token" type="string" required>
+  Long-lived refresh token that can be used to obtain a new access token.
+</ResponseField>
+
+<ResponseField name="access_token" type="string" required>
+  Short-lived access token that can be used to authenticate the user.
+</ResponseField>
+
+<ResponseField name="is_new_user" type="boolean" required>
+  Whether the user is a new user.
+</ResponseField>
+
+<ResponseField name="user_id" type="string" required>
+  The unique identifier of the user.
+</ResponseField>
+
+<CodeGroup>
+```bash cURL
+curl -X POST "https://api.stack-auth.com/api/v1/auth/otp/sign-in" \
+  -H "Content-Type: application/json" \
+  -H "X-Stack-Project-Id: <project-id>" \
+  -H "X-Stack-Publishable-Client-Key: <client-key>" \
+  -d '{
+    "code": "u3h6gn4w24pqc8ya679inrhjwh1rybth6a7thurqhnpf2"
+  }'
+```
+
+```javascript JavaScript
+const response = await fetch("https://api.stack-auth.com/api/v1/auth/otp/sign-in", {
+  method: "POST",
+  headers: {
+    "Content-Type": "application/json",
+    "X-Stack-Project-Id": "<project-id>",
+    "X-Stack-Publishable-Client-Key": "<client-key>"
+  },
+  body: JSON.stringify({
+    code: "u3h6gn4w24pqc8ya679inrhjwh1rybth6a7thurqhnpf2"
+  })
+});
+const data = await response.json();
+```
+</CodeGroup>

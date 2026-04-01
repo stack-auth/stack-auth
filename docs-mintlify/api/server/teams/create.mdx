@@ -1,0 +1,28 @@
+---
+title: "Create Team"
+description: "Create a new team and optionally add the current user as a member"
+api: "POST /teams"
+---
+
+## Request
+
+The request body is required.
+
+<ParamField body="display_name" type="string">
+  The display name for the new team.
+</ParamField>
+
+## Response
+
+<ResponseField name="201" type="object">
+  Successful response indicating the team was created.
+</ResponseField>
+
+<CodeGroup>
+```bash cURL
+curl -X POST "https://api.stack-auth.com/teams" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"display_name": "My Team"}'
+```
+</CodeGroup>
