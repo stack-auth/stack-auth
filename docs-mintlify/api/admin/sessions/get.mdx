@@ -1,0 +1,28 @@
+---
+title: "Delete Session"
+description: "Remove a session by its identifier"
+api: "DELETE /auth/sessions/{id}"
+---
+
+## Request
+
+<ParamField path="id" type="string" required>
+  The session identifier to delete.
+</ParamField>
+
+<ParamField query="user_id" type="string">
+  User identifier, or `"me"` for the current user.
+</ParamField>
+
+## Response
+
+<ResponseField name="200" type="object">
+  Successful response indicating the session was removed.
+</ResponseField>
+
+<CodeGroup>
+```bash cURL
+curl -X DELETE "https://api.stack-auth.com/auth/sessions/SESSION_ID?user_id=me" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+</CodeGroup>

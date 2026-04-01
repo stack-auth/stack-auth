@@ -1,0 +1,17 @@
+---
+title: "Check Invitation Code"
+description: "Check if a team invitation code is valid without using it."
+api: "POST /api/v1/team-invitations/accept/check-code"
+---
+
+## Request
+
+<ParamField body="body" type="object" required>
+  The request body containing the invitation code to validate.
+</ParamField>
+
+## Response
+
+<ResponseField name="200" type="object">
+  Successful response indicating whether the invitation code is valid.
+</ResponseField>
