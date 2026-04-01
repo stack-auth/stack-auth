@@ -2,15 +2,15 @@ import { pick } from "@stackframe/stack-shared/dist/utils/objects";
 import type { Table } from "..";
 import type { Json, RowData, SqlMapper, TableId } from "../utilities";
 import {
-    getStorageEnginePath,
-    getTablePath,
-    getTablePathSegments,
-    quoteSqlJsonbLiteral,
-    sqlArray,
-    sqlExpression,
-    sqlMapper,
-    sqlStatement,
-    tableIdToDebugString
+  getStorageEnginePath,
+  getTablePath,
+  getTablePathSegments,
+  quoteSqlJsonbLiteral,
+  sqlArray,
+  sqlExpression,
+  sqlMapper,
+  sqlStatement,
+  tableIdToDebugString
 } from "../utilities";
 import { declareFlatMapTable } from "./flat-map-table";
 

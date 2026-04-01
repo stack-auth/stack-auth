@@ -2,14 +2,14 @@ import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/
 import type { Table } from "..";
 import type { Json, RowData, RowIdentifier, SqlExpression, SqlMapper, SqlStatement, TableId } from "../utilities";
 import {
-    getStorageEnginePath,
-    getTablePath,
-    quoteSqlIdentifier,
-    singleNullSortKeyRangePredicate,
-    sqlExpression,
-    sqlQuery,
-    sqlStatement,
-    tableIdToDebugString
+  getStorageEnginePath,
+  getTablePath,
+  quoteSqlIdentifier,
+  singleNullSortKeyRangePredicate,
+  sqlExpression,
+  sqlQuery,
+  sqlStatement,
+  tableIdToDebugString
 } from "../utilities";
 
 export function declareGroupByTable<
