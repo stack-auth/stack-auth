@@ -51,18 +51,19 @@ describe("POST /api/v1/internal/feedback", () => {
     `);
 
     const emails = await waitForOutboxEmailWithStatus(subject, "sent");
-    expect(emails[0]?.to).toMatchObject({
+    expect(emails).toHaveLength(1);
+    expect(emails[0].to).toMatchObject({
       type: "custom-emails",
       emails: ["team@stack-auth.com"],
     });
 
     const messages = await recipientMailbox.waitForMessagesWithSubject(subject);
     expect(messages).toHaveLength(1);
-    expect(messages[0]?.subject).toBe(subject);
-    expect(messages[0]?.body?.text).toContain("Support Tester");
-    expect(messages[0]?.body?.text).toContain(senderEmail);
-    expect(messages[0]?.body?.text).toContain(signInResult.userId);
-    expect(messages[0]?.body?.text).toContain("Authenticated feedback from the dashboard.");
+    expect(messages[0].subject).toBe(subject);
+    expect(messages[0].body?.text).toContain("Support Tester");
+    expect(messages[0].body?.text).toContain(senderEmail);
+    expect(messages[0].body?.text).toContain(signInResult.userId);
+    expect(messages[0].body?.text).toContain("Authenticated feedback from the dashboard.");
   });
 
   it("should send feedback without authentication (dev tool)", async ({ expect }) => {
@@ -92,16 +93,17 @@ describe("POST /api/v1/internal/feedback", () => {
     `);
 
     const emails = await waitForOutboxEmailWithStatus(subject, "sent");
-    expect(emails[0]?.to).toMatchObject({
+    expect(emails).toHaveLength(1);
+    expect(emails[0].to).toMatchObject({
       type: "custom-emails",
       emails: ["team@stack-auth.com"],
     });
 
     const messages = await recipientMailbox.waitForMessagesWithSubject(subject);
     expect(messages).toHaveLength(1);
-    expect(messages[0]?.body?.text).toContain("Dev Tool User");
-    expect(messages[0]?.body?.text).toContain("devtool-user@example.com");
-    expect(messages[0]?.body?.text).toContain("Unauthenticated feedback from the dev tool.");
+    expect(messages[0].body?.text).toContain("Dev Tool User");
+    expect(messages[0].body?.text).toContain("devtool-user@example.com");
+    expect(messages[0].body?.text).toContain("Unauthenticated feedback from the dev tool.");
   });
 
   it("should send bug reports with correct label", async ({ expect }) => {
@@ -130,14 +132,15 @@ describe("POST /api/v1/internal/feedback", () => {
     `);
 
     const emails = await waitForOutboxEmailWithStatus(subject, "sent");
-    expect(emails[0]?.to).toMatchObject({
+    expect(emails).toHaveLength(1);
+    expect(emails[0].to).toMatchObject({
       type: "custom-emails",
       emails: ["team@stack-auth.com"],
     });
 
     const messages = await recipientMailbox.waitForMessagesWithSubject(subject);
     expect(messages).toHaveLength(1);
-    expect(messages[0]?.subject).toBe("[Bug Report] bug@example.com");
+    expect(messages[0].subject).toBe("[Bug Report] bug@example.com");
   });
 
   it("should reject invalid payloads", async ({ expect }) => {

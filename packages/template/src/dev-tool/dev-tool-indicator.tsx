@@ -28,6 +28,7 @@ function useFetchInterceptor(addApiLog: (entry: ApiLogEntry) => void, addEventLo
   useEffect(() => {
     if (typeof window === 'undefined') return;
     // Avoid double-patching (e.g. during HMR remounts)
+    // Cast to any: adding a runtime-only property (__stackDevToolPatched) to window.fetch which isn't in DOM types
     if ((window.fetch as any).__stackDevToolPatched) return;
 
     const originalFetch = window.fetch;
