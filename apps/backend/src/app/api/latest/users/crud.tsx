@@ -1121,9 +1121,9 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
             },
             displayName: personalTeamDefaultDisplayName,
           },
-          data: {
+          data: withExternalDbSyncUpdate({
             displayName: getPersonalTeamDisplayName(data.display_name ?? null, data.primary_email ?? null),
-          },
+          }),
         });
       }
 
@@ -1269,6 +1269,13 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       await recordExternalDbSyncOAuthAccountDeletionsForUser(tx, {
         tenancyId: auth.tenancy.id,
         projectUserId: params.user_id,
+      });
+
+      await tx.projectUserRefreshToken.deleteMany({
+        where: {
+          tenancyId: auth.tenancy.id,
+          projectUserId: params.user_id,
+        },
       });
 
       await tx.projectUser.delete({

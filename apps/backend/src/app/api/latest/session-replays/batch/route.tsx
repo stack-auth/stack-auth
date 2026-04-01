@@ -199,6 +199,11 @@ export const POST = createSmartRouteHandler({
       throw e;
     }
 
+    await prisma.sessionReplay.update({
+      where: { tenancyId_id: { tenancyId, id: replayId } },
+      data: { shouldUpdateSequenceId: true },
+    });
+
     return {
       statusCode: 200,
       bodyType: "json",
