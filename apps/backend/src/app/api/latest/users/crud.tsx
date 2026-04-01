@@ -1121,9 +1121,9 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
             },
             displayName: personalTeamDefaultDisplayName,
           },
-          data: {
+          data: withExternalDbSyncUpdate({
             displayName: getPersonalTeamDisplayName(data.display_name ?? null, data.primary_email ?? null),
-          },
+          }),
         });
       }
 
