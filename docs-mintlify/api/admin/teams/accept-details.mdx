@@ -1,0 +1,24 @@
+---
+title: "Get Team Invitation Details"
+description: "Get additional information about a team invitation code"
+api: "POST /team-invitations/accept/details"
+---
+
+## Request
+
+The request body is required.
+
+## Response
+
+<ResponseField name="200" type="object">
+  Successful response containing additional information about the team invitation.
+</ResponseField>
+
+<CodeGroup>
+```bash cURL
+curl -X POST "https://api.stack-auth.com/team-invitations/accept/details" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"code": "INVITATION_CODE"}'
+```
+</CodeGroup>

@@ -1,0 +1,32 @@
+---
+title: "Send Team Invitation Code"
+description: "Send an email invitation allowing a user to join a team"
+api: "POST /team-invitations/send-code"
+---
+
+## Request
+
+The request body is required.
+
+<ParamField body="team_id" type="string" required>
+  The identifier of the team to invite the user to.
+</ParamField>
+
+<ParamField body="email" type="string" required>
+  The email address to send the invitation to. If the user does not have an account yet, they will be prompted to create one.
+</ParamField>
+
+## Response
+
+<ResponseField name="200" type="object">
+  Successful response indicating the invitation email was sent.
+</ResponseField>
+
+<CodeGroup>
+```bash cURL
+curl -X POST "https://api.stack-auth.com/team-invitations/send-code" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"team_id": "TEAM_ID", "email": "user@example.com"}'
+```
+</CodeGroup>

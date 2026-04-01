@@ -1,0 +1,78 @@
+---
+title: "Project"
+description: "Reference for the Project type representing project configuration."
+sidebarTitle: "Project"
+mode: "wide"
+---
+
+The `Project` object contains the information and configuration of a project, such as the name, description, and enabled authentication methods.
+
+Each [Stack app](/docs/concepts/stack-app) corresponds to a project. You can obtain its `Project` object by calling [`stackApp.getProject()`](/docs/sdk/objects/stack-app#stackclientappgetproject) or [`stackApp.useProject()`](/docs/sdk/objects/stack-app#stackclientappuseproject).
+
+## Table of Contents
+
+```typescript
+type Project = {
+  id: string;
+  displayName: string;
+  config: { ... };
+};
+```
+
+## Properties
+
+<ResponseField name="id" type="string">
+  The unique ID of the project.
+</ResponseField>
+
+<ResponseField name="displayName" type="string">
+  The display name of the project.
+</ResponseField>
+
+<ResponseField name="config" type="ProjectConfig">
+  Configuration settings governing authentication and user management features.
+</ResponseField>
+
+## Config
+
+<ResponseField name="config" type="ProjectConfig">
+  Project-level authentication and user-management settings.
+  <Expandable>
+    <ResponseField name="signUpEnabled" type="boolean">
+      Indicates whether sign-up is enabled for the project.
+    </ResponseField>
+
+    <ResponseField name="credentialEnabled" type="boolean">
+      Specifies whether credential-based authentication is enabled for the project.
+    </ResponseField>
+
+    <ResponseField name="magicLinkEnabled" type="boolean">
+      States whether magic-link authentication is enabled for the project.
+    </ResponseField>
+
+    <ResponseField name="clientTeamCreationEnabled" type="boolean">
+      Determines whether client-side team creation is permitted within the project.
+    </ResponseField>
+
+    <ResponseField name="clientUserDeletionEnabled" type="boolean">
+      Indicates whether client-side user deletion is enabled for the project.
+    </ResponseField>
+
+  </Expandable>
+</ResponseField>
+
+## Type Definition
+
+```typescript
+type Project = {
+  id: string;
+  displayName: string;
+  config: {
+    signUpEnabled: boolean;
+    credentialEnabled: boolean;
+    magicLinkEnabled: boolean;
+    clientTeamCreationEnabled: boolean;
+    clientUserDeletionEnabled: boolean;
+  };
+};
+```
