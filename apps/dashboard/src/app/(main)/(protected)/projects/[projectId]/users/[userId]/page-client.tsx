@@ -46,7 +46,7 @@ import { AtIcon, CalendarIcon, CheckIcon, DotsThreeIcon, EnvelopeIcon, GlobeIcon
 import { ServerContactChannel, ServerOAuthProvider, ServerUser } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
-import { CountryCodeSelect } from "@/components/country-code-select";
+import { CountryCodeInput } from "@/components/country-code-select";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { captureError, StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
@@ -436,7 +436,7 @@ function UserDetails({ user }: UserDetailsProps) {
         }} />
       </UserInfo>
       <UserInfo icon={<GlobeIcon size={16}/>} name="Sign-up country code">
-        <CountryCodeSelect
+        <CountryCodeInput
           value={user.countryCode ?? null}
           onChange={(newValue) => {
             runAsynchronouslyWithAlert(async () => {
