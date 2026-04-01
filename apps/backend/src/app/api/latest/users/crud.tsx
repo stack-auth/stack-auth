@@ -1271,6 +1271,13 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
         projectUserId: params.user_id,
       });
 
+      await tx.projectUserRefreshToken.deleteMany({
+        where: {
+          tenancyId: auth.tenancy.id,
+          projectUserId: params.user_id,
+        },
+      });
+
       await tx.projectUser.delete({
         where: {
           tenancyId_projectUserId: {

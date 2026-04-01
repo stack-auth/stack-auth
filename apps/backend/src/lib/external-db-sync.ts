@@ -1103,7 +1103,7 @@ async function ensureClickhouseSchema(
 
 // Map of target table name -> column normalizers for ClickHouse
 // 'json' columns get JSON.stringify, 'boolean' columns get normalizeClickhouseBoolean, 'bigint' columns get Number()
-const CLICKHOUSE_COLUMN_NORMALIZERS: Record<string, Record<string, 'json' | 'boolean' | 'nullable_boolean' | 'bigint'>> = {
+export const CLICKHOUSE_COLUMN_NORMALIZERS: Record<string, Record<string, 'json' | 'boolean' | 'nullable_boolean' | 'bigint'>> = {
   users: {
     client_metadata: 'json',
     client_read_only_metadata: 'json',
