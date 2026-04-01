@@ -18,7 +18,7 @@ import { TeamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
-import { encodeBase32 } from "@stackframe/stack-shared/dist/utils/bytes";
+import { decodeBase32, encodeBase32 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { scrambleDuringCompileTime } from "@stackframe/stack-shared/dist/utils/compile-time";
 import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
@@ -535,6 +535,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     this._urlOptions = resolvedOptions.urls ?? {};
     this._oauthScopesOnSignIn = resolvedOptions.oauthScopesOnSignIn ?? {};
     this._prefetchCrossDomainHandoffParamsIfNeeded();
+    if (isBrowserLike() && (resolvedOptions.tokenStore === "cookie" || resolvedOptions.tokenStore === "nextjs-cookie")) {
+      runAsynchronously(this._trustedParentDomainCache.getOrWait([window.location.hostname], "write-only"));
+    }
 
     if (extraOptions && extraOptions.uniqueIdentifier) {
       this._uniqueIdentifier = extraOptions.uniqueIdentifier;
@@ -619,6 +622,15 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   private _getCustomRefreshCookieName(domain: string): string {
     const encoded = encodeBase32(new TextEncoder().encode(domain.toLowerCase()));
     return `${this._refreshTokenCookieName}--custom-${encoded}`;
+  }
+  private _getDomainFromCustomRefreshCookieName(name: string): string | null {
+    const prefix = `${this._refreshTokenCookieName}--custom-`;
+    if (!name.startsWith(prefix)) return null;
+    try {
+      return new TextDecoder().decode(decodeBase32(name.slice(prefix.length)));
+    } catch {
+      return null;
+    }
   }
   private _formatRefreshCookieValue(refreshToken: string, updatedAt: number): string {
     return JSON.stringify({
@@ -855,7 +867,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           );
           setOrDeleteCookieClient(defaultName, refreshCookieValue, { maxAge: 60 * 60 * 24 * 365, secure });
           setOrDeleteCookieClient(this._accessTokenCookieName, accessTokenPayload, { maxAge: 60 * 60 * 24 });
-          cookieNamesToDelete.forEach((name) => deleteCookieClient(name, {}));
+          cookieNamesToDelete.forEach((name) => {
+            const domain = this._getDomainFromCustomRefreshCookieName(name);
+            deleteCookieClient(name, domain ? { domain } : {});
+          });
           this._queueCustomRefreshCookieUpdate(refreshToken, updatedAt, "browser");
           hasSucceededInWriting = true;
         } catch (e) {
@@ -912,9 +927,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
               ]);
               if (cookieNamesToDelete.length > 0) {
                 await Promise.all(
-                  cookieNamesToDelete.map((name) =>
-                    deleteCookie(name, { noOpIfServerComponent: true }),
-                  ),
+                  cookieNamesToDelete.map((name) => {
+                    const domain = this._getDomainFromCustomRefreshCookieName(name);
+                    return deleteCookie(name, { noOpIfServerComponent: true, ...(domain ? { domain } : {}) });
+                  }),
                 );
               }
               this._queueCustomRefreshCookieUpdate(refreshToken, updatedAt, "server");
