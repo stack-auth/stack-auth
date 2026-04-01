@@ -177,3 +177,6 @@ A: Delete only the table root `keyPath` and rely on the existing `keyPathParent 
 
 Q: How should `declareLimitTable.listRowsInGroup` implement the all-groups read path for performance?
 A: Read directly from the materialized limit table subtree (`groups -> rows` via `keyPathParent` equality joins) and apply range predicates on stored `rowSortKey`, instead of scanning upstream source rows and semi-joining with `EXISTS` on each row. This keeps behavior but removes an avoidable full-source scan.
+
+Q: How should user signup time be exposed in JWT claims before production rollout?
+A: Use `signed_up_at` (OIDC-style naming) in access tokens and encode it as Unix seconds in `apps/backend/src/lib/tokens.tsx` (`Math.floor(user.signed_up_at_millis / 1000)`). Since this is pre-prod, the payload schema can require `signed_up_at` directly without a backward-compat optional shim.

@@ -51,6 +51,7 @@ describe("Stack CLI", () => {
       secretServerKey: STACK_INTERNAL_PROJECT_SERVER_KEY,
       superSecretAdminKey: STACK_INTERNAL_PROJECT_ADMIN_KEY,
       tokenStore: "memory",
+      redirectMethod: "none",
     });
 
     const fakeEmail = `cli-test-${crypto.randomUUID()}@stack-generated.example.com`;

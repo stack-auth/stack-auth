@@ -21,6 +21,7 @@ jobs:
       STACK_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
       STACK_EXTERNAL_DB_SYNC_MAX_DURATION_MS: "20000"
       STACK_EXTERNAL_DB_SYNC_DIRECT: "false"
+      STACK_RUN_SETUP_WIZARD_TESTS: ${{ matrix.freestyle-mode != 'prod' && 'true' || '' }}
 
     strategy:
       matrix:
