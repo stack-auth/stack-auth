@@ -1,0 +1,50 @@
+---
+title: "Send Contact Channel Verification Code"
+description: "Sends a verification code to the specified contact channel for the given user."
+api: "POST /api/v1/contact-channels/{user_id}/{contact_channel_id}/send-verification-code"
+---
+
+## Request
+
+<ParamField header="x-stack-publishable-client-key" type="string" required>
+  The publishable client key for authentication.
+</ParamField>
+
+<ParamField header="x-stack-access-token" type="string" required>
+  The access token for the authenticated user.
+</ParamField>
+
+<ParamField header="x-stack-project-id" type="string" required>
+  The project ID.
+</ParamField>
+
+<ParamField path="user_id" type="string" required>
+  The user to send the verification code to.
+</ParamField>
+
+<ParamField path="contact_channel_id" type="string" required>
+  The contact channel to send the verification code to.
+</ParamField>
+
+## Response
+
+Returns a `200` status code on success.
+
+<ResponseField name="success" type="boolean">
+  Whether the verification code was sent successfully.
+</ResponseField>
+
+<CodeGroup>
+```bash cURL
+curl -X POST 'https://api.stack-auth.com/api/v1/contact-channels/me/cc_1234567890/send-verification-code' \
+  -H 'x-stack-publishable-client-key: YOUR_PUBLISHABLE_CLIENT_KEY' \
+  -H 'x-stack-access-token: YOUR_ACCESS_TOKEN' \
+  -H 'x-stack-project-id: YOUR_PROJECT_ID'
+```
+
+```json 200 Response
+{
+  "success": true
+}
+```
+</CodeGroup>

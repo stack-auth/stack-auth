@@ -1,0 +1,24 @@
+---
+title: "Refresh Access Token"
+description: "Obtain a new access token by utilizing a refresh token credential"
+api: "POST /auth/sessions/current/refresh"
+---
+
+## Request
+
+<ParamField header="x-stack-refresh-token" type="string" required>
+  Refresh token credential for obtaining a new access token.
+</ParamField>
+
+## Response
+
+<ResponseField name="200" type="object">
+  Successful response containing a new access token.
+</ResponseField>
+
+<CodeGroup>
+```bash cURL
+curl -X POST "https://api.stack-auth.com/auth/sessions/current/refresh" \
+  -H "x-stack-refresh-token: YOUR_REFRESH_TOKEN"
+```
+</CodeGroup>

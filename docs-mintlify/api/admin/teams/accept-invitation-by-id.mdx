@@ -1,0 +1,30 @@
+---
+title: "Accept Team Invitation by ID"
+description: "Accepts a team invitation for the specified user"
+api: "POST /team-invitations/{id}/accept"
+---
+
+## Request
+
+<ParamField path="id" type="string" required>
+  The unique identifier of the team invitation.
+</ParamField>
+
+<ParamField query="user_id" type="string" required>
+  The ID of the user accepting the invitation, or `"me"` for the authenticated user.
+</ParamField>
+
+The user must have a verified email matching the invitation's recipient email. Upon acceptance, the invitation is marked as used and the user gains membership in the team.
+
+## Response
+
+<ResponseField name="200" type="object">
+  Successful response indicating the invitation was accepted.
+</ResponseField>
+
+<CodeGroup>
+```bash cURL
+curl -X POST "https://api.stack-auth.com/team-invitations/INVITATION_ID/accept?user_id=me" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+</CodeGroup>
