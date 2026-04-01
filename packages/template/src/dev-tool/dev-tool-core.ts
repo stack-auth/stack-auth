@@ -1,10 +1,12 @@
 // IF_PLATFORM js-like
 
+import type { RequestLogEntry } from "@stackframe/stack-shared/dist/interface/client-interface";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import type { StackClientApp } from "../lib/stack-app";
 import { stackAppInternalsSymbol } from "../lib/stack-app/common";
 import type { HandlerUrlOptions, HandlerUrls, HandlerUrlTarget } from "../lib/stack-app/common";
 import { getBaseUrl } from "../lib/stack-app/apps/implementations/common";
+import { envVars } from "../lib/env";
 import { getPagePrompt } from "../lib/stack-app/url-targets";
 import { devToolCSS } from "./dev-tool-styles";
 
@@ -27,7 +29,7 @@ type ApiLogEntry = {
 type EventLogEntry = {
   id: string;
   timestamp: number;
-  type: 'sign-in' | 'sign-out' | 'sign-up' | 'token-refresh' | 'error' | 'info';
+  type: 'error' | 'info';
   message: string;
 };
 
@@ -256,83 +258,6 @@ function h<K extends keyof HTMLElementTagNameMap>(
 
 function setHtml(el: HTMLElement, html: string) {
   el.innerHTML = html;
-}
-
-// ---------------------------------------------------------------------------
-// Fetch interceptor
-// ---------------------------------------------------------------------------
-
-function installFetchInterceptor(logStore: LogStore): () => void {
-  if (typeof window === 'undefined') return () => {};
-  if ((window.fetch as any).__stackDevToolPatched) return () => {};
-
-  const originalFetch = window.fetch;
-
-  const patchedFetch = async function (input: RequestInfo | URL, init?: RequestInit) {
-    let resolvedHeaders: HeadersInit | undefined = init?.headers;
-    const method = init?.method ?? (input instanceof Request ? input.method : 'GET');
-
-    if (!resolvedHeaders && input instanceof Request) {
-      resolvedHeaders = input.headers;
-    }
-
-    let isStackCall = false;
-    if (resolvedHeaders) {
-      if (resolvedHeaders instanceof Headers) {
-        isStackCall = resolvedHeaders.has('X-Stack-Project-Id');
-      } else if (Array.isArray(resolvedHeaders)) {
-        isStackCall = resolvedHeaders.some(([key]) => key === 'X-Stack-Project-Id');
-      } else {
-        isStackCall = 'X-Stack-Project-Id' in resolvedHeaders;
-      }
-    }
-
-    if (!isStackCall) return await originalFetch.call(window, input, init);
-
-    const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
-    let displayUrl = url;
-    try {
-      const u = new URL(url);
-      u.searchParams.delete('X-Stack-Random-Nonce');
-      displayUrl = u.pathname + (u.search || '');
-    } catch {}
-
-    const timestamp = Date.now();
-    const startMono = performance.now();
-
-    try {
-      const response = await originalFetch.call(window, input, init);
-      const duration = Math.round(performance.now() - startMono);
-      logStore.addApiLog({ id: nextId(), timestamp, method: method.toUpperCase(), url: displayUrl, status: response.status, duration });
-
-      if (displayUrl.includes('/auth/')) {
-        if (displayUrl.includes('/auth/oauth/token') && response.ok) {
-          logStore.addEventLog({ id: nextId(), timestamp: Date.now(), type: 'token-refresh', message: 'Token refreshed' });
-        }
-        if (displayUrl.includes('/auth/sessions') && init?.method === 'DELETE' && response.ok) {
-          logStore.addEventLog({ id: nextId(), timestamp: Date.now(), type: 'sign-out', message: 'User signed out (session deleted)' });
-        }
-      }
-      if (!response.ok && response.status >= 400) {
-        logStore.addEventLog({ id: nextId(), timestamp: Date.now(), type: 'error', message: `API error ${response.status} on ${method.toUpperCase()} ${displayUrl}` });
-      }
-      return response;
-    } catch (err) {
-      const duration = Math.round(performance.now() - startMono);
-      logStore.addApiLog({ id: nextId(), timestamp, method: method.toUpperCase(), url: displayUrl, duration, error: err instanceof Error ? err.message : 'Network error' });
-      logStore.addEventLog({ id: nextId(), timestamp: Date.now(), type: 'error', message: `Network error on ${method.toUpperCase()} ${displayUrl}: ${err instanceof Error ? err.message : 'Unknown'}` });
-      throw err;
-    }
-  };
-
-  window.fetch = patchedFetch;
-  (window.fetch as any).__stackDevToolPatched = true;
-
-  return () => {
-    if (window.fetch === patchedFetch) {
-      window.fetch = originalFetch;
-    }
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -979,10 +904,6 @@ function createConsoleTab(app: StackClientApp<true>, logStore: LogStore, state: 
   const container = h('div', { style: { display: 'flex', flexDirection: 'column', height: '100%' } });
 
   const EVENT_TYPE_STYLES: Record<string, string> = {
-    'sign-in': 'sdt-badge-success',
-    'sign-up': 'sdt-badge-success',
-    'sign-out': 'sdt-badge-warning',
-    'token-refresh': 'sdt-badge-info',
     'error': 'sdt-badge-error',
     'info': 'sdt-badge-info',
   };
@@ -1431,19 +1352,11 @@ function createDocsTab(): HTMLElement {
 
 function createDashboardTab(app: StackClientApp<true>): HTMLElement {
   const dashboardUrl = resolveDashboardUrl(app);
-  const isDashLocal = (() => {
-    try {
-      const hostname = new URL(dashboardUrl).hostname;
-      return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
-    } catch {
-      return false;
-    }
-  })();
+  const isLocalEmulator = envVars.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR === 'true';
 
-  if (!isDashLocal) {
+  if (!isLocalEmulator) {
     const ctr = h('div', { className: 'sdt-iframe-container', style: { display: 'flex', alignItems: 'center', justifyContent: 'center' } });
     const inner = h('div', { style: { textAlign: 'center', display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'center' } });
-    inner.appendChild(h('div', { style: { fontSize: '14px', color: 'var(--sdt-text-secondary)' } }, 'Dashboard embedding is only available on localhost.'));
     inner.appendChild(h('a', { href: dashboardUrl, target: '_blank', rel: 'noopener noreferrer', className: 'sdt-iframe-error-btn', style: { textDecoration: 'none' } }, 'Open Dashboard in New Tab'));
     ctr.appendChild(inner);
     return ctr;
@@ -2068,19 +1981,26 @@ export function createDevTool(app: StackClientApp<true>): () => void {
     openPanel();
   }
 
-  const removeFetchInterceptor = installFetchInterceptor(logStore);
-
-  const keyHandler = (e: KeyboardEvent) => {
-    if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'S') {
-      e.preventDefault();
-      togglePanel();
+  const removeRequestListener = app[stackAppInternalsSymbol].addRequestListener((entry: RequestLogEntry) => {
+    const timestamp = Date.now();
+    logStore.addApiLog({
+      id: nextId(),
+      timestamp,
+      method: entry.method,
+      url: entry.path,
+      status: entry.status,
+      duration: entry.duration,
+      error: entry.error,
+    });
+    if (entry.error) {
+      logStore.addEventLog({ id: nextId(), timestamp, type: 'error', message: `Network error on ${entry.method} ${entry.path}: ${entry.error}` });
+    } else if (entry.status && entry.status >= 400) {
+      logStore.addEventLog({ id: nextId(), timestamp, type: 'error', message: `API error ${entry.status} on ${entry.method} ${entry.path}` });
     }
-  };
-  window.addEventListener('keydown', keyHandler);
+  });
 
   return () => {
-    window.removeEventListener('keydown', keyHandler);
-    removeFetchInterceptor();
+    removeRequestListener();
     if (root.parentNode) {
       root.parentNode.removeChild(root);
     }

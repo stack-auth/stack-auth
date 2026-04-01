@@ -3404,6 +3404,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       sendAnalyticsEventBatch: async (body: string, options: { keepalive: boolean }) => {
         return await this._interface.sendAnalyticsEventBatch(body, await this._getSession(), options);
       },
+      addRequestListener: (listener: any) => {
+        return this._interface.addRequestListener(listener);
+      },
       sendRequest: async (
         path: string,
         requestOptions: RequestInit,

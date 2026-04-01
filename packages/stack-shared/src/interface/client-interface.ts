@@ -33,6 +33,16 @@ import { TeamMemberProfilesCrud } from './crud/team-member-profiles';
 import { TeamPermissionsCrud } from './crud/team-permissions';
 import { TeamsCrud } from './crud/teams';
 
+export type RequestLogEntry = {
+  path: string,
+  method: string,
+  status?: number,
+  duration: number,
+  error?: string,
+};
+
+export type RequestListener = (entry: RequestLogEntry) => void;
+
 export type ClientInterfaceOptions = {
   clientVersion: string,
   // This is a function instead of a string because it might be different based on the environment (for example client vs server)
@@ -110,9 +120,17 @@ function getBotChallengeRequestFields(botChallenge: BotChallengeInput | undefine
 
 export class StackClientInterface {
   private pendingNetworkDiagnostics?: ReturnType<StackClientInterface["_runNetworkDiagnosticsInner"]>;
+  private _requestListeners = new Set<RequestListener>();
 
   constructor(public readonly options: ClientInterfaceOptions) {
     // nothing here
+  }
+
+  addRequestListener(listener: RequestListener): () => void {
+    this._requestListeners.add(listener);
+    return () => {
+      this._requestListeners.delete(listener);
+    };
   }
 
   get projectId() {
@@ -486,10 +504,15 @@ export class StackClientInterface {
       }),
     };
 
+    const startTime = performance.now();
     let rawRes;
     try {
       rawRes = await fetch(url, params);
     } catch (e) {
+      if (this._requestListeners.size > 0) {
+        const entry: RequestLogEntry = { path, method: (params.method ?? "GET").toUpperCase(), duration: Math.round(performance.now() - startTime), error: e instanceof Error ? e.message : "Network error" };
+        this._requestListeners.forEach((l) => l(entry));
+      }
       if (e instanceof TypeError) {
         // Likely to be a network error. Retry if the request is idempotent, throw network error otherwise.
         if (HTTP_METHODS[(params.method ?? "GET") as HttpMethod].idempotent) {
@@ -499,6 +522,11 @@ export class StackClientInterface {
         }
       }
       throw e;
+    }
+
+    if (this._requestListeners.size > 0) {
+      const entry: RequestLogEntry = { path, method: (params.method ?? "GET").toUpperCase(), status: rawRes.status, duration: Math.round(performance.now() - startTime) };
+      this._requestListeners.forEach((l) => l(entry));
     }
 
     const processedRes = await this._processResponse(rawRes);
