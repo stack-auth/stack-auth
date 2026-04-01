@@ -302,6 +302,33 @@ it("should omit secure-only defaults when running on http origins", async ({ exp
   expect(insecureAttrs?.get("domain")).toBeUndefined();
 });
 
+it("should roundtrip domain through custom refresh cookie name encode/decode", async ({ expect }) => {
+  const { clientApp } = await createApp();
+
+  const domains = [
+    "example.com",
+    "sub.example.com",
+    "deep.nested.example.com",
+    "EXAMPLE.COM",
+    "my-site.co.uk",
+  ];
+
+  for (const domain of domains) {
+    const cookieName = (clientApp as any)._getCustomRefreshCookieName(domain);
+    const decoded = (clientApp as any)._getDomainFromCustomRefreshCookieName(cookieName);
+    expect(decoded).toBe(domain.toLowerCase());
+  }
+});
+
+it("should return null for non-custom refresh cookie names", async ({ expect }) => {
+  const { clientApp } = await createApp();
+
+  const defaultName = getDefaultRefreshCookieName(clientApp.projectId, true);
+  expect((clientApp as any)._getDomainFromCustomRefreshCookieName(defaultName)).toBeNull();
+  expect((clientApp as any)._getDomainFromCustomRefreshCookieName("unrelated-cookie")).toBeNull();
+  expect((clientApp as any)._getDomainFromCustomRefreshCookieName("")).toBeNull();
+});
+
 it("should read the newest refresh token payload from cookie storage", async ({ expect }) => {
   const { clientApp } = await createApp();
 
