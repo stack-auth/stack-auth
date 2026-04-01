@@ -60,7 +60,11 @@ export const POST = createSmartRouteHandler({
         },
       });
 
-      if (!user?.isAnonymous) {
+      if (!user) {
+        throw new StatusError(400, "User not found for provided refresh token");
+      }
+
+      if (!user.isAnonymous) {
         throw new StatusError(400, "The provided refresh token does not belong to an anonymous user");
       }
 

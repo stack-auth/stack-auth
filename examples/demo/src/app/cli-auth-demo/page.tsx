@@ -181,6 +181,13 @@ export default function CliAuthDemoPage() {
                 isAnonymous: user.isAnonymous,
                 refreshToken: stored.refreshToken,
               });
+            } else {
+              const { userId, isAnonymous } = parseAccessTokenUserSnapshot(refreshed.access_token);
+              setCliState({
+                userId,
+                isAnonymous,
+                refreshToken: stored.refreshToken,
+              });
             }
           } else {
             saveCliState(null);
@@ -208,13 +215,12 @@ export default function CliAuthDemoPage() {
 
   const doCliAnonSignUp = useCallback(async () => {
     log('CLI: Creating anonymous user...');
-    await cliApp.getUser({ or: 'anonymous' });
-    const user = await cliApp.getUser({ includeRestricted: true });
-    const tokens = user ? await user.currentSession.getTokens() : null;
+    const anonUser = await cliApp.getUser({ or: 'anonymous' });
+    const tokens = await anonUser.currentSession.getTokens();
     const state: CliState = {
-      userId: user?.id ?? null,
-      isAnonymous: user?.isAnonymous ?? false,
-      refreshToken: tokens?.refreshToken ?? null,
+      userId: anonUser.id,
+      isAnonymous: anonUser.isAnonymous,
+      refreshToken: tokens.refreshToken ?? null,
     };
     setCliState(state);
     saveCliState(state.refreshToken);
@@ -237,7 +243,7 @@ export default function CliAuthDemoPage() {
   const doBrowserSignOut = useCallback(async () => {
     if (browserUser) {
       log('Browser: Signing out...');
-      await browserUser.signOut();
+      await browserUser.signOut({ redirectUrl: '/cli-auth-demo' });
       log('Browser: Signed out');
     }
   }, [browserUser, log]);
@@ -339,7 +345,7 @@ export default function CliAuthDemoPage() {
     return () => clearInterval(id);
   }, [phase]);
 
-  const confirmUrl = loginCode
+  const confirmUrl = loginCode && typeof window !== 'undefined'
     ? `${window.location.origin}/handler/cli-auth-confirm?login_code=${encodeURIComponent(loginCode)}`
     : null;
 

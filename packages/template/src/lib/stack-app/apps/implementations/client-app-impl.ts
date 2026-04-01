@@ -3005,7 +3005,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         },
         body: JSON.stringify({
           expires_in_millis: options.expiresInMillis,
-          ...(options.anonRefreshToken ? { anon_refresh_token: options.anonRefreshToken } : {}),
+          ...(options.anonRefreshToken != null ? { anon_refresh_token: options.anonRefreshToken } : {}),
         }),
       },
       null

@@ -855,7 +855,7 @@ Implementation:
 4. Poll for completion:
    POST /api/v1/auth/cli/poll
    Body: { polling_code: string }
-   Response on pending: { status: "pending" }
+   Response on pending: { status: "waiting" }
    Response on success: { status: "success", refresh_token: string }
    
    Poll every waitTimeMillis until success, error, or maxAttempts reached.

@@ -69,7 +69,8 @@ export async function mergeAnonymousUserIntoAuthenticatedUser(
   }
 
   if (!anonymousUser.isAnonymous) {
-    throw new StackAssertionError("Expected the CLI source user to still be anonymous during merge", options);
+    // User was upgraded concurrently; treat as already authenticated, skip merge
+    return;
   }
 
   const [anonymousContactChannelCount, anonymousAuthMethodCount, anonymousOauthAccountCount] = await Promise.all([

@@ -141,7 +141,6 @@ describe("restricted user SDK filtering", () => {
       expect(userWithAnonymousFallback!.isRestricted).toBe(true);
       expect(userWithAnonymousFallback!.isAnonymous).toBe(false);
     });
-
   });
 
   describe("server app getUser with includeRestricted option", () => {
@@ -247,7 +246,6 @@ describe("restricted user SDK filtering", () => {
         serverApp.getUser({ or: "anonymous", includeRestricted: false })
       ).rejects.toThrow("Cannot use { or: 'anonymous' } with { includeRestricted: false }");
     });
-
   });
 
   describe("transition from restricted to non-restricted", () => {

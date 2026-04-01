@@ -1,7 +1,7 @@
-import { Command } from "commander";
 import { StackClientApp } from "@stackframe/js";
-import { resolveLoginConfig, DEFAULT_PUBLISHABLE_CLIENT_KEY } from "../lib/auth.js";
-import { readConfigValue, writeConfigValue, removeConfigValue } from "../lib/config.js";
+import { Command } from "commander";
+import { DEFAULT_PUBLISHABLE_CLIENT_KEY, resolveLoginConfig } from "../lib/auth.js";
+import { readConfigValue, removeConfigValue, writeConfigValue } from "../lib/config.js";
 import { CliError } from "../lib/errors.js";
 
 export function registerLoginCommand(program: Command) {

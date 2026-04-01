@@ -1,7 +1,7 @@
 'use client';
 
-import { Typography } from "@stackframe/stack-ui";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { Typography } from "@stackframe/stack-ui";
 import { useEffect, useRef, useState } from "react";
 import { stackAppInternalsSymbol, useStackApp } from "..";
 import { MessageCard } from "../components/message-cards/message-card";
@@ -12,7 +12,7 @@ function getStackAppInternals(app: unknown) {
 }
 
 async function postCliAuthComplete(app: unknown, body: Record<string, unknown>) {
-  return getStackAppInternals(app).sendRequest("/auth/cli/complete", {
+  return await getStackAppInternals(app).sendRequest("/auth/cli/complete", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -98,25 +98,26 @@ export function CliAuthConfirmation({ fullPage = true }: { fullPage?: boolean })
       window.history.replaceState({}, "", url.toString());
 
       const checkResult = await postCliAuthComplete(app, { login_code: loginCode, mode: "check" });
-
-      let cliSessionState: string | null = null;
-      if (checkResult.ok) {
-        const checkData = await checkResult.json();
-        cliSessionState = checkData.cli_session_state ?? null;
+      if (!checkResult.ok) {
+        throw new Error(`Failed to verify login code: ${checkResult.status} ${await checkResult.text()}`);
       }
+      const checkData = await checkResult.json();
+      const cliSessionState: string | null = checkData.cli_session_state ?? null;
 
       if (cliSessionState === "anonymous") {
         const claimResult = await postCliAuthComplete(app, { login_code: loginCode, mode: "claim-anon-session" });
 
-        if (claimResult.ok) {
-          const tokens = await claimResult.json();
-          await getStackAppInternals(app).signInWithTokens({
-            accessToken: tokens.access_token,
-            refreshToken: tokens.refresh_token,
-          });
-          await app.redirectToSignUp({ replace: true });
-          return;
+        if (!claimResult.ok) {
+          throw new Error(`Failed to claim anonymous session: ${claimResult.status} ${await claimResult.text()}`);
         }
+
+        const tokens = await claimResult.json();
+        await getStackAppInternals(app).signInWithTokens({
+          accessToken: tokens.access_token,
+          refreshToken: tokens.refresh_token,
+        });
+        await app.redirectToSignUp({ replace: true });
+        return;
       }
 
       await app.redirectToSignIn({ replace: true });
