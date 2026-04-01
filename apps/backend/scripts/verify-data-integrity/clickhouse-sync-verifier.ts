@@ -9,7 +9,7 @@ import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import type { RecurseFunction } from "./recurse";
 
 // Sort key columns for each mapping (after project_id, branch_id), matching ClickHouse ORDER BY
-const SORT_KEYS: Record<string, string[]> = {
+const SORT_KEYS = {
   users: ["id"],
   contact_channels: ["id"],
   teams: ["id"],
@@ -22,7 +22,7 @@ const SORT_KEYS: Record<string, string[]> = {
   notification_preferences: ["id"],
   refresh_tokens: ["id"],
   connected_accounts: ["id"],
-};
+} satisfies Record<keyof typeof DEFAULT_DB_SYNC_MAPPINGS, string[]>;
 
 const SYNC_COLUMNS_TO_STRIP = ["sync_sequence_id", "sync_is_deleted", "sync_created_at", "tenancyId"];
 
@@ -153,9 +153,10 @@ export async function verifyClickhouseSync(options: {
       const fetchQuery = mapping.internalDbFetchQueries.clickhouse;
       if (!fetchQuery) return;
 
-      const sortKeys = SORT_KEYS[mappingName] ?? (() => {
+      if (!(mappingName in SORT_KEYS)) {
         throw new StackAssertionError(`No sort keys defined for mapping ${mappingName}`);
-      })();
+      }
+      const sortKeys = SORT_KEYS[mappingName as keyof typeof SORT_KEYS];
 
       const normalizers = CLICKHOUSE_COLUMN_NORMALIZERS[mappingName] ?? {};
 
