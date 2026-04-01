@@ -1,0 +1,258 @@
+---
+title: "ContactChannel"
+description: "Reference for ContactChannel and ServerContactChannel types for user contact information."
+sidebarTitle: "ContactChannel"
+mode: "wide"
+---
+
+import {
+  AsideSection,
+  ContentSection,
+  MethodAside,
+  MethodContent,
+  MethodLayout,
+  MethodReturns,
+} from "/snippets/sdk-type-components.jsx";
+
+`ContactChannel` represents a user's contact information, such as an email address or phone number. Some auth methods, like OTP/magic link or password, use contact channels for authentication.
+
+On this page:
+
+- [`ContactChannel`](#contactchannel)
+- [`ServerContactChannel`](#servercontactchannel)
+
+# `ContactChannel`
+
+Basic information about a contact channel, as seen by a user themselves.
+
+Usually obtained by calling [`user.listContactChannels()`](/docs/sdk/types/user#currentuserlistcontactchannels) or [`user.useContactChannels()`](/docs/sdk/types/user#currentuserusecontactchannels).
+
+## Table of Contents
+
+```typescript
+type ContactChannel = {
+  id: string;
+  value: string;
+  type: "email";
+  isPrimary: boolean;
+  isVerified: boolean;
+  usedForAuth: boolean;
+
+  sendVerificationEmail(): Promise<void>;
+  update(options): Promise<void>;
+  delete(): Promise<void>;
+};
+```
+
+## Properties
+
+<ResponseField name="id" type="string">
+  The ID of the contact channel.
+</ResponseField>
+
+<ResponseField name="value" type="string">
+  The value of the contact channel. If the type is `"email"`, this is an email
+  address.
+</ResponseField>
+
+<ResponseField name="type" type='"email"'>
+  The type of contact channel. Currently this is always `"email"`.
+</ResponseField>
+
+<ResponseField name="isPrimary" type="boolean">
+  Whether the contact channel is the user's primary contact method. If an email
+  is set to primary, it will be the value on `user.primaryEmail`.
+</ResponseField>
+
+<ResponseField name="isVerified" type="boolean">
+  Whether the contact channel is verified.
+</ResponseField>
+
+<ResponseField name="usedForAuth" type="boolean">
+  Whether the contact channel is used for authentication. If `true`, the user
+  can use this contact channel with OTP or password to sign in.
+</ResponseField>
+
+## Methods
+
+### `contactChannel.sendVerificationEmail()`
+
+<MethodLayout>
+  <MethodContent>
+    Sends a verification email to this contact channel. Once the user clicks the verification link in the email, the contact channel will be marked as verified.
+
+    <MethodReturns type="Promise<void>" />
+
+  </MethodContent>
+
+  <MethodAside>
+    <AsideSection title="Signature">
+      ```typescript
+      declare function sendVerificationEmail(): Promise<void>;
+      ```
+    </AsideSection>
+
+    <AsideSection title="Examples">
+      ```typescript
+      await contactChannel.sendVerificationEmail();
+      ```
+    </AsideSection>
+
+  </MethodAside>
+</MethodLayout>
+
+### `contactChannel.update(options)`
+
+<MethodLayout>
+  <MethodContent>
+    Updates the contact channel. After updating the value, the contact channel will be marked as unverified.
+
+    <ContentSection title="Parameters">
+      <ParamField body="options.value" type="string">
+        The new value of the contact channel.
+      </ParamField>
+
+      <ParamField body="options.type" type='"email"'>
+        The new type. Currently this is always `"email"`.
+      </ParamField>
+
+      <ParamField body="options.usedForAuth" type="boolean">
+        Whether the contact channel is used for authentication.
+      </ParamField>
+
+      <ParamField body="options.isPrimary" type="boolean">
+        Whether the contact channel is the user's primary contact channel.
+      </ParamField>
+    </ContentSection>
+
+    <MethodReturns type="Promise<void>" />
+
+  </MethodContent>
+
+  <MethodAside>
+    <AsideSection title="Signature">
+      ```typescript
+      declare function update(options: {
+        value?: string;
+        type?: "email";
+        usedForAuth?: boolean;
+        isPrimary?: boolean;
+      }): Promise<void>;
+      ```
+    </AsideSection>
+
+    <AsideSection title="Examples">
+      ```typescript
+      await contactChannel.update({
+        value: "new-email@example.com",
+        usedForAuth: true,
+      });
+      ```
+    </AsideSection>
+
+  </MethodAside>
+</MethodLayout>
+
+### `contactChannel.delete()`
+
+<MethodLayout>
+  <MethodContent>
+    Deletes the contact channel.
+
+    <MethodReturns type="Promise<void>" />
+
+  </MethodContent>
+
+  <MethodAside>
+    <AsideSection title="Signature">
+      ```typescript
+      declare function delete(): Promise<void>;
+      ```
+    </AsideSection>
+
+    <AsideSection title="Examples">
+      ```typescript
+      await contactChannel.delete();
+      ```
+    </AsideSection>
+
+  </MethodAside>
+</MethodLayout>
+
+---
+
+# `ServerContactChannel`
+
+Like `ContactChannel`, but includes additional methods and properties that require the `SECRET_SERVER_KEY`.
+
+Usually obtained by calling [`serverUser.listContactChannels()`](/docs/sdk/types/user#serveruserlistcontactchannels) or [`serverUser.useContactChannels()`](/docs/sdk/types/user#serveruserusecontactchannels).
+
+## Table of Contents
+
+```typescript
+type ServerContactChannel =
+  // Inherits all properties from ContactChannel
+  ContactChannel & {
+    update(options): Promise<void>;
+  };
+```
+
+## Methods
+
+### `serverContactChannel.update(options)`
+
+<MethodLayout>
+  <MethodContent>
+    Updates the contact channel. This method is similar to the one on `ContactChannel`, but also allows setting the `isVerified` property.
+
+    <ContentSection title="Parameters">
+      <ParamField body="options.value" type="string">
+        The new value of the contact channel.
+      </ParamField>
+
+      <ParamField body="options.type" type='"email"'>
+        The new type. Currently this is always `"email"`.
+      </ParamField>
+
+      <ParamField body="options.usedForAuth" type="boolean">
+        Whether the contact channel is used for authentication.
+      </ParamField>
+
+      <ParamField body="options.isVerified" type="boolean">
+        Whether the contact channel is verified.
+      </ParamField>
+
+      <ParamField body="options.isPrimary" type="boolean">
+        Whether the contact channel is the user's primary contact channel.
+      </ParamField>
+    </ContentSection>
+
+    <MethodReturns type="Promise<void>" />
+
+  </MethodContent>
+
+  <MethodAside>
+    <AsideSection title="Signature">
+      ```typescript
+      declare function update(options: {
+        value?: string;
+        type?: "email";
+        usedForAuth?: boolean;
+        isVerified?: boolean;
+        isPrimary?: boolean;
+      }): Promise<void>;
+      ```
+    </AsideSection>
+
+    <AsideSection title="Examples">
+      ```typescript
+      await serverContactChannel.update({
+        value: "new-email@example.com",
+        usedForAuth: true,
+        isVerified: true,
+      });
+      ```
+    </AsideSection>
+
+  </MethodAside>
+</MethodLayout>

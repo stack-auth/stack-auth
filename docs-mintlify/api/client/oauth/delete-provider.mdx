@@ -1,0 +1,44 @@
+---
+title: "Delete an OAuth Provider"
+description: "Removes an OAuth provider connection for a given user."
+api: "DELETE /api/v1/oauth-providers/{user_id}/{provider_id}"
+---
+
+## Request
+
+<ParamField header="x-stack-publishable-client-key" type="string" required>
+  The publishable client key for authentication.
+</ParamField>
+
+<ParamField header="x-stack-access-token" type="string" required>
+  The access token for the authenticated user.
+</ParamField>
+
+<ParamField header="x-stack-project-id" type="string" required>
+  The project ID.
+</ParamField>
+
+<ParamField path="user_id" type="string" required>
+  The ID of the user, or the special value `me` for the currently authenticated user.
+</ParamField>
+
+<ParamField path="provider_id" type="string" required>
+  The identifier of the OAuth provider to be removed.
+</ParamField>
+
+## Response
+
+Returns a `200` status code on success with an empty response body.
+
+<CodeGroup>
+```bash cURL
+curl -X DELETE 'https://api.stack-auth.com/api/v1/oauth-providers/me/google' \
+  -H 'x-stack-publishable-client-key: YOUR_PUBLISHABLE_CLIENT_KEY' \
+  -H 'x-stack-access-token: YOUR_ACCESS_TOKEN' \
+  -H 'x-stack-project-id: YOUR_PROJECT_ID'
+```
+
+```json 200 Response
+{}
+```
+</CodeGroup>

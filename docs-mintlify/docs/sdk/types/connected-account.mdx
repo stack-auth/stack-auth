@@ -1,0 +1,175 @@
+---
+title: "ConnectedAccount"
+description: "Reference for ConnectedAccount types for OAuth connections."
+sidebarTitle: "ConnectedAccount"
+mode: "wide"
+---
+
+import {
+  AsideSection,
+  ContentSection,
+  MethodAside,
+  MethodContent,
+  MethodLayout,
+  MethodReturns,
+} from "/snippets/sdk-type-components.jsx";
+
+`OAuthConnection` represents an OAuth connection to an external provider (like Google, GitHub, etc.) that is linked to a user. You can use connected accounts to access the user's data on those platforms, such as reading Google Drive files or sending emails via Gmail.
+
+For a guide on how to use connected accounts, see the [OAuth guide](/docs/apps/oauth).
+
+On this page:
+
+- [`Connection`](#connection)
+- [`OAuthConnection`](#oauthconnection)
+
+# `Connection`
+
+Basic information about a connected account. This is the base type that `OAuthConnection` extends.
+
+```typescript
+type Connection = {
+  id: string;
+  provider: string;
+  providerAccountId: string;
+};
+```
+
+## Properties
+
+<ResponseField name="id" type="string">
+  The provider config ID. Same as `provider` and exists for backward
+  compatibility.
+</ResponseField>
+
+<ResponseField name="provider" type="string">
+  The provider config ID (for example, `"google"` or `"github"`).
+</ResponseField>
+
+<ResponseField name="providerAccountId" type="string">
+  The account ID from the OAuth provider, such as the Google user ID.
+</ResponseField>
+
+---
+
+# `OAuthConnection`
+
+Extends `Connection` with methods to retrieve OAuth access tokens. Get it with:
+
+- [`user.getConnectedAccount({ provider, providerAccountId })`](/docs/sdk/types/user#currentusergetconnectedaccount)
+- [`user.useConnectedAccount({ provider, providerAccountId })`](/docs/sdk/types/user#currentuseruseconnectedaccount) (React hook)
+- [`user.listConnectedAccounts()`](/docs/sdk/types/user#currentuserlistconnectedaccounts)
+- [`user.useConnectedAccounts()`](/docs/sdk/types/user#currentuseruseconnectedaccounts) (React hook)
+- [`user.getOrLinkConnectedAccount(provider)`](/docs/sdk/types/user#currentusergetorlinkconnectedaccount)
+- [`user.useOrLinkConnectedAccount(provider)`](/docs/sdk/types/user#currentuseruseorlinkconnectedaccount) (React hook)
+
+```typescript
+type OAuthConnection =
+  // Inherits all properties from Connection
+  Connection & {
+    getAccessToken(options?): Promise<Result>;
+    useAccessToken(options?): Result;
+  };
+```
+
+## Methods
+
+### `oauthConnection.getAccessToken([options])`
+
+<MethodLayout>
+  <MethodContent>
+    Gets an OAuth access token for this connected account. The token can be used to call the provider's APIs on the user's behalf.
+
+    Returns a `Result` object:
+
+    - On success: `{ status: "ok", data: { accessToken: string } }`
+    - On error: `{ status: "error", error: OAuthAccessTokenNotAvailable }` if the refresh token has been revoked or expired, or if the requested scopes are not available.
+
+    <ContentSection title="Parameters">
+      <ParamField body="options.scopes" type="string[]">
+        If provided, only returns a token that has all of these scopes. If the current token does not have the required scopes, the result will be an error.
+      </ParamField>
+    </ContentSection>
+
+    <MethodReturns type="Promise<Result<{ accessToken: string }, OAuthAccessTokenNotAvailable>>" />
+
+  </MethodContent>
+
+  <MethodAside>
+    <AsideSection title="Signature">
+      ```typescript
+      declare function getAccessToken(options?: {
+        scopes?: string[];
+      }): Promise<Result<{ accessToken: string }, OAuthAccessTokenNotAvailable>>;
+      ```
+    </AsideSection>
+
+    <AsideSection title="Examples">
+      ```typescript
+      const result = await account.getAccessToken();
+      if (result.status === "ok") {
+        const { accessToken } = result.data;
+      }
+      ```
+
+      ```typescript
+      const result = await account.getAccessToken({
+        scopes: ["https://www.googleapis.com/auth/drive.readonly"],
+      });
+      ```
+    </AsideSection>
+
+  </MethodAside>
+</MethodLayout>
+
+### `oauthConnection.useAccessToken([options])`
+
+<MethodLayout>
+  <MethodContent>
+    React hook version of `getAccessToken`. Returns the access token result reactively.
+
+    <ContentSection title="Parameters">
+      <ParamField body="options.scopes" type="string[]">
+        If provided, only returns a token that has all of these scopes.
+      </ParamField>
+    </ContentSection>
+
+    <MethodReturns type='Result<{ accessToken: string }, OAuthAccessTokenNotAvailable>' />
+
+  </MethodContent>
+
+  <MethodAside>
+    <AsideSection title="Signature">
+      ```typescript
+      declare function useAccessToken(options?: {
+        scopes?: string[];
+      }): Result<{ accessToken: string }, OAuthAccessTokenNotAvailable>;
+      ```
+    </AsideSection>
+
+    <AsideSection title="Examples">
+      ```tsx
+      function MyComponent() {
+        const user = useUser({ or: "redirect" });
+        const accounts = user.useConnectedAccounts();
+        const googleAccount = accounts.find(
+          (account) => account.provider === "google",
+        );
+        const result = googleAccount?.useAccessToken();
+
+        if (result?.status === "ok") {
+          return <div>Token: {result.data.accessToken}</div>;
+        }
+
+        return <div>No Google token available</div>;
+      }
+      ```
+    </AsideSection>
+
+  </MethodAside>
+</MethodLayout>
+
+<Info>
+  For practical usage instructions, see the [OAuth implementation
+  guide](/docs/apps/oauth).
+</Info>

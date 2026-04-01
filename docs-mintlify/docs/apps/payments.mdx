@@ -1,0 +1,1157 @@
+---
+title: "Payments"
+description: "Accept payments and manage billing with Stack Auth's Stripe integration"
+icon: "credit-card"
+---
+
+Stack Auth provides a Payments app that integrates with Stripe to handle billing, subscriptions, and one-time purchases. The SDK provides methods for users and teams to create checkout URLs and manage items like credits, seats, or API quotas.
+
+## Overview
+
+The Payments app enables you to:
+
+- **Accept Payments**: Process subscriptions and one-time purchases through Stripe
+- **Manage Items**: Track billable items like credits, seats, or features
+- **Create Checkout URLs**: Generate Stripe checkout links directly from your SDK
+- **Track Products**: List products owned by users or teams
+- **View Transactions**: Monitor all payment activity in the dashboard
+
+## Quick Setup
+
+1. Enable the Payments app in your dashboard
+2. Connect Stripe in **Payments -> Settings**
+3. Create a product line in **Payments -> Product Lines**
+4. Create products and attach items in **Payments -> Products & Items**
+5. Generate a checkout URL in your app with `createCheckoutUrl(...)`
+6. Turn on test mode in **Payments -> Settings** and run test purchases
+7. Verify results in **Payments -> Transactions** and **Payments -> Customers**
+
+## How Payments Works
+
+At a high level, Payments combines your product catalog (what can be bought) with customer item balances (what each user/team currently has).
+
+The flow works as follows: Your app calls `createCheckoutUrl(customer, product)` on Stack Auth, which returns a checkout URL. Your app redirects the user to Stripe Checkout, and upon payment or subscription success, Stripe notifies Stack Auth. Stack Auth then grants the product items and your app reads the updated customer products/items.
+
+### Core Concepts
+
+- **Product**: A sellable offer (one-time or subscription)
+- **Product line**: A mutually exclusive set of products. A customer can only have one active product from the same product line at a time.
+- **Item**: A quantifiable entitlement (credits, seats, API calls, etc.)
+- **Customer**: The owner of purchases and item balances (`user`, `team`, or `custom`)
+- **Transaction**: A successful or failed billing event recorded in the dashboard
+
+### Typical Purchase Flow
+
+1. Define product lines, products, and attached items in **Payments -> Product Lines** and **Payments -> Products & Items**
+2. Create a checkout URL from your app for a specific customer
+3. User completes payment in Stripe Checkout
+4. Stack updates product ownership and item balances automatically
+5. Your app reads updated balances through `useItem()`, `getItem()`, or `listProducts()`
+
+## Enabling the Payments App
+
+To use payments in your application:
+
+1. Navigate to your Stack Auth dashboard
+2. Go to the **Apps** section
+3. Find and click on **Payments** in the app store
+4. Click the **Enable** button
+5. Follow the Stripe Connect onboarding flow to link your Stripe account
+
+<Info>
+  Stack Auth Payments is currently only available for US-based businesses. Support for other countries is coming soon.
+</Info>
+
+## Stripe Integration
+
+### Connecting Your Stripe Account
+
+Stack Auth uses Stripe Connect to securely integrate with your Stripe account:
+
+1. Open **Payments** and start Stripe setup (from the setup prompt or **Payments -> Settings**)
+2. Select your country of residence
+3. You'll be redirected to Stripe's onboarding flow
+4. Complete the required information:
+   - Business details
+   - Bank account information
+   - Identity verification
+5. Once approved, payments will be enabled for your project
+
+You can turn on **test mode** to simulate purchases without charging real money while you validate your integration.
+
+## SDK Usage
+
+The Payments functionality is available through the [`Customer`](/docs/sdk/types/customer) interface, which is automatically available on [`CurrentUser`](/docs/sdk/types/user#currentuser) and [`Team`](/docs/sdk/types/team#team) objects.
+
+### Creating Checkout URLs
+
+Generate Stripe checkout URLs to let users purchase products:
+
+<Tabs>
+  <Tab title="Next.js Client">
+    ```typescript title="app/components/purchase-button.tsx"
+    "use client";
+    import { useUser } from "@stackframe/stack";
+
+    export default function PurchaseButton({ productId }: { productId: string }) {
+      const user = useUser({ or: 'redirect' });
+
+      const handlePurchase = async () => {
+        const checkoutUrl = await user.createCheckoutUrl({
+          productId,
+          returnUrl: window.location.href, // Optional: redirect back after purchase
+        });
+
+        // Redirect to Stripe checkout
+        window.location.href = checkoutUrl;
+      };
+
+      return <button onClick={handlePurchase}>Purchase</button>;
+    }
+    ```
+  </Tab>
+  <Tab title="Next.js Server">
+    ```typescript title="app/purchase/page.tsx"
+    import { stackServerApp } from "@/stack/server";
+
+    export default async function PurchasePage() {
+      const user = await stackServerApp.getUser({ or: 'redirect' });
+
+      const checkoutUrl = await user.createCheckoutUrl({
+        productId: "prod_premium_monthly",
+      });
+
+      return (
+        <a href={checkoutUrl}>
+          Upgrade to Premium
+        </a>
+      );
+    }
+    ```
+  </Tab>
+  <Tab title="React">
+    ```typescript title="components/PurchaseButton.tsx"
+    import { useUser } from "@stackframe/react";
+
+    export default function PurchaseButton({ productId }: { productId: string }) {
+      const user = useUser({ or: 'redirect' });
+
+      const handlePurchase = async () => {
+        const checkoutUrl = await user.createCheckoutUrl({
+          productId,
+        });
+
+        window.location.href = checkoutUrl;
+      };
+
+      return <button onClick={handlePurchase}>Purchase</button>;
+    }
+    ```
+  </Tab>
+  <Tab title="Django">
+    ```python title="views.py"
+    import requests
+    from django.http import JsonResponse
+    from django.shortcuts import redirect
+
+    def create_checkout(request, product_id):
+        access_token = request.COOKIES.get('stack-access-token')
+        if not access_token:
+            return JsonResponse({'error': 'Not authenticated'}, status=401)
+
+        # Get the current user
+        user_response = requests.get(
+            'https://api.stack-auth.com/api/v1/users/me',
+            headers={
+                'x-stack-access-type': 'client',
+                'x-stack-project-id': stack_project_id,
+                'x-stack-publishable-client-key': stack_publishable_client_key,
+                'x-stack-access-token': access_token,
+            }
+        )
+
+        if user_response.status_code != 200:
+            return JsonResponse({'error': 'Not authenticated'}, status=401)
+
+        user_id = user_response.json()['id']
+
+        # Create checkout URL
+        checkout_response = requests.post(
+            'https://api.stack-auth.com/api/v1/payments/purchases/create-purchase-url',
+            headers={
+                'x-stack-access-type': 'server',
+                'x-stack-project-id': stack_project_id,
+                'x-stack-publishable-client-key': stack_publishable_client_key,
+                'x-stack-secret-server-key': stack_secret_server_key,
+            },
+            json={
+                'customer_type': 'user',
+                'customer_id': user_id,
+                'product_id': product_id,
+            }
+        )
+
+        if checkout_response.status_code != 200:
+            return JsonResponse({'error': 'Failed to create checkout'}, status=500)
+
+        return redirect(checkout_response.json()['url'])
+    ```
+  </Tab>
+  <Tab title="FastAPI">
+    ```python title="main.py"
+    import requests
+    from fastapi import Cookie, HTTPException
+    from fastapi.responses import RedirectResponse
+
+    @app.post("/checkout/{product_id}")
+    async def create_checkout(
+        product_id: str,
+        stack_access_token: str = Cookie(None, alias="stack-access-token")
+    ):
+        if not stack_access_token:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+
+        # Get the current user
+        user_response = requests.get(
+            'https://api.stack-auth.com/api/v1/users/me',
+            headers={
+                'x-stack-access-type': 'client',
+                'x-stack-project-id': stack_project_id,
+                'x-stack-publishable-client-key': stack_publishable_client_key,
+                'x-stack-access-token': stack_access_token,
+            }
+        )
+
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+
+        user_id = user_response.json()['id']
+
+        # Create checkout URL
+        checkout_response = requests.post(
+            'https://api.stack-auth.com/api/v1/payments/purchases/create-purchase-url',
+            headers={
+                'x-stack-access-type': 'server',
+                'x-stack-project-id': stack_project_id,
+                'x-stack-publishable-client-key': stack_publishable_client_key,
+                'x-stack-secret-server-key': stack_secret_server_key,
+            },
+            json={
+                'customer_type': 'user',
+                'customer_id': user_id,
+                'product_id': product_id,
+            }
+        )
+
+        if checkout_response.status_code != 200:
+            raise HTTPException(status_code=500, detail="Failed to create checkout")
+
+        return RedirectResponse(url=checkout_response.json()['url'])
+    ```
+  </Tab>
+  <Tab title="Flask">
+    ```python title="app.py"
+    import requests
+    from flask import request, jsonify, redirect
+
+    @app.route('/checkout/<product_id>', methods=['POST'])
+    def create_checkout(product_id):
+        access_token = request.cookies.get('stack-access-token')
+        if not access_token:
+            return jsonify({'error': 'Not authenticated'}), 401
+
+        # Get the current user
+        user_response = requests.get(
+            'https://api.stack-auth.com/api/v1/users/me',
+            headers={
+                'x-stack-access-type': 'client',
+                'x-stack-project-id': stack_project_id,
+                'x-stack-publishable-client-key': stack_publishable_client_key,
+                'x-stack-access-token': access_token,
+            }
+        )
+
+        if user_response.status_code != 200:
+            return jsonify({'error': 'Not authenticated'}), 401
+
+        user_id = user_response.json()['id']
+
+        # Create checkout URL
+        checkout_response = requests.post(
+            'https://api.stack-auth.com/api/v1/payments/purchases/create-purchase-url',
+            headers={
+                'x-stack-access-type': 'server',
+                'x-stack-project-id': stack_project_id,
+                'x-stack-publishable-client-key': stack_publishable_client_key,
+                'x-stack-secret-server-key': stack_secret_server_key,
+            },
+            json={
+                'customer_type': 'user',
+                'customer_id': user_id,
+                'product_id': product_id,
+            }
+        )
+
+        if checkout_response.status_code != 200:
+            return jsonify({'error': 'Failed to create checkout'}), 500
+
+        return redirect(checkout_response.json()['url'])
+    ```
+  </Tab>
+</Tabs>
+
+For team purchases:
+
+<Tabs>
+  <Tab title="Next.js Client">
+    ```typescript title="app/components/team-purchase-button.tsx"
+    "use client";
+    import { useUser } from "@stackframe/stack";
+
+    export default function TeamPurchaseButton({
+      teamId,
+      productId
+    }: {
+      teamId: string;
+      productId: string;
+    }) {
+      const user = useUser({ or: 'redirect' });
+      const team = user.useTeam(teamId);
+
+      const handlePurchase = async () => {
+        if (!team) return;
+
+        const checkoutUrl = await team.createCheckoutUrl({
+          productId,
+        });
+
+        window.location.href = checkoutUrl;
+      };
+
+      return (
+        <button onClick={handlePurchase} disabled={!team}>
+          Purchase for Team
+        </button>
+      );
+    }
+    ```
+  </Tab>
+  <Tab title="Next.js Server">
+    ```typescript title="app/teams/[teamId]/purchase/page.tsx"
+    import { stackServerApp } from "@/stack/server";
+
+    export default async function TeamPurchasePage({
+      params
+    }: {
+      params: { teamId: string };
+    }) {
+      const { teamId } = params;
+      const user = await stackServerApp.getUser({ or: 'redirect' });
+      const team = await user.getTeam(teamId);
+
+      if (!team) {
+        return <div>Team not found</div>;
+      }
+
+      const checkoutUrl = await team.createCheckoutUrl({
+        productId: "prod_team_seats",
+      });
+
+      return (
+        <a href={checkoutUrl}>
+          Purchase Additional Seats
+        </a>
+      );
+    }
+    ```
+  </Tab>
+  <Tab title="React">
+    ```typescript title="components/TeamPurchaseButton.tsx"
+    import { useUser } from "@stackframe/react";
+
+    export default function TeamPurchaseButton({
+      teamId,
+      productId
+    }: {
+      teamId: string;
+      productId: string;
+    }) {
+      const user = useUser({ or: 'redirect' });
+      const team = user.useTeam(teamId);
+
+      const handlePurchase = async () => {
+        if (!team) return;
+
+        const checkoutUrl = await team.createCheckoutUrl({
+          productId,
+        });
+
+        window.location.href = checkoutUrl;
+      };
+
+      return (
+        <button onClick={handlePurchase} disabled={!team}>
+          Purchase for Team
+        </button>
+      );
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Managing Items
+
+Items represent quantifiable resources like credits, API calls, or storage quotas. See the [`Item`](/docs/sdk/types/item) type reference for full details.
+
+#### Getting Item Quantities
+
+Retrieve the current quantity of an item for a user or team:
+
+<Tabs>
+  <Tab title="Next.js Client">
+    ```typescript title="app/components/credits-display.tsx"
+    "use client";
+    import { useUser } from "@stackframe/stack";
+    import { useEffect, useState } from "react";
+
+    export default function CreditsDisplay() {
+      const user = useUser({ or: 'redirect' });
+      const [credits, setCredits] = useState<number | null>(null);
+
+      useEffect(() => {
+        async function loadCredits() {
+          const item = await user.getItem("credits");
+          setCredits(item.nonNegativeQuantity);
+        }
+        loadCredits();
+      }, [user]);
+
+      if (credits === null) {
+        return <div>Loading...</div>;
+      }
+
+      return <div>Available Credits: {credits}</div>;
+    }
+    ```
+  </Tab>
+  <Tab title="Next.js Server">
+    ```typescript title="app/credits/page.tsx"
+    import { stackServerApp } from "@/stack/server";
+
+    export default async function CreditsPage() {
+      const user = await stackServerApp.getUser({ or: 'redirect' });
+      const credits = await user.getItem("credits");
+
+      return (
+        <div>
+          <h1>Your Credits</h1>
+          <p>Available: {credits.nonNegativeQuantity}</p>
+          <p>Balance: {credits.quantity}</p>
+        </div>
+      );
+    }
+    ```
+  </Tab>
+  <Tab title="React">
+    ```typescript title="components/CreditsDisplay.tsx"
+    import { useUser } from "@stackframe/react";
+    import { useEffect, useState } from "react";
+
+    export default function CreditsDisplay() {
+      const user = useUser({ or: 'redirect' });
+      const [credits, setCredits] = useState<number | null>(null);
+
+      useEffect(() => {
+        async function loadCredits() {
+          const item = await user.getItem("credits");
+          setCredits(item.nonNegativeQuantity);
+        }
+        loadCredits();
+      }, [user]);
+
+      if (credits === null) {
+        return <div>Loading...</div>;
+      }
+
+      return <div>Available Credits: {credits}</div>;
+    }
+    ```
+  </Tab>
+  <Tab title="Django">
+    ```python title="views.py"
+    import requests
+    from django.http import JsonResponse
+
+    def get_user_item(request, item_id):
+        access_token = request.COOKIES.get('stack-access-token')
+        if not access_token:
+            return JsonResponse({'error': 'Not authenticated'}, status=401)
+
+        # Get the current user
+        user_response = requests.get(
+            'https://api.stack-auth.com/api/v1/users/me',
+            headers={
+                'x-stack-access-type': 'client',
+                'x-stack-project-id': stack_project_id,
+                'x-stack-publishable-client-key': stack_publishable_client_key,
+                'x-stack-access-token': access_token,
+            }
+        )
+
+        if user_response.status_code != 200:
+            return JsonResponse({'error': 'Not authenticated'}, status=401)
+
+        user_id = user_response.json()['id']
+
+        # Get item quantity
+        item_response = requests.get(
+            f'https://api.stack-auth.com/api/v1/payments/items/user/{user_id}/{item_id}',
+            headers={
+                'x-stack-access-type': 'server',
+                'x-stack-project-id': stack_project_id,
+                'x-stack-publishable-client-key': stack_publishable_client_key,
+                'x-stack-secret-server-key': stack_secret_server_key,
+            }
+        )
+
+        if item_response.status_code != 200:
+            return JsonResponse({'error': 'Failed to get item'}, status=500)
+
+        item = item_response.json()
+        return JsonResponse({
+            'display_name': item['display_name'],
+            'quantity': item['quantity'],
+            'non_negative_quantity': max(0, item['quantity']),
+        })
+    ```
+  </Tab>
+  <Tab title="FastAPI">
+    ```python title="main.py"
+    import requests
+    from fastapi import Cookie, HTTPException
+
+    @app.get("/items/{item_id}")
+    async def get_user_item(
+        item_id: str,
+        stack_access_token: str = Cookie(None, alias="stack-access-token")
+    ):
+        if not stack_access_token:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+
+        # Get the current user
+        user_response = requests.get(
+            'https://api.stack-auth.com/api/v1/users/me',
+            headers={
+                'x-stack-access-type': 'client',
+                'x-stack-project-id': stack_project_id,
+                'x-stack-publishable-client-key': stack_publishable_client_key,
+                'x-stack-access-token': stack_access_token,
+            }
+        )
+
+        if user_response.status_code != 200:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+
+        user_id = user_response.json()['id']
+
+        # Get item quantity
+        item_response = requests.get(
+            f'https://api.stack-auth.com/api/v1/payments/items/user/{user_id}/{item_id}',
+            headers={
+                'x-stack-access-type': 'server',
+                'x-stack-project-id': stack_project_id,
+                'x-stack-publishable-client-key': stack_publishable_client_key,
+                'x-stack-secret-server-key': stack_secret_server_key,
+            }
+        )
+
+        if item_response.status_code != 200:
+            raise HTTPException(status_code=500, detail="Failed to get item")
+
+        item = item_response.json()
+        return {
+            'display_name': item['display_name'],
+            'quantity': item['quantity'],
+            'non_negative_quantity': max(0, item['quantity']),
+        }
+    ```
+  </Tab>
+  <Tab title="Flask">
+    ```python title="app.py"
+    import requests
+    from flask import request, jsonify
+
+    @app.route('/items/<item_id>')
+    def get_user_item(item_id):
+        access_token = request.cookies.get('stack-access-token')
+        if not access_token:
+            return jsonify({'error': 'Not authenticated'}), 401
+
+        # Get the current user
+        user_response = requests.get(
+            'https://api.stack-auth.com/api/v1/users/me',
+            headers={
+                'x-stack-access-type': 'client',
+                'x-stack-project-id': stack_project_id,
+                'x-stack-publishable-client-key': stack_publishable_client_key,
+                'x-stack-access-token': access_token,
+            }
+        )
+
+        if user_response.status_code != 200:
+            return jsonify({'error': 'Not authenticated'}), 401
+
+        user_id = user_response.json()['id']
+
+        # Get item quantity
+        item_response = requests.get(
+            f'https://api.stack-auth.com/api/v1/payments/items/user/{user_id}/{item_id}',
+            headers={
+                'x-stack-access-type': 'server',
+                'x-stack-project-id': stack_project_id,
+                'x-stack-publishable-client-key': stack_publishable_client_key,
+                'x-stack-secret-server-key': stack_secret_server_key,
+            }
+        )
+
+        if item_response.status_code != 200:
+            return jsonify({'error': 'Failed to get item'}), 500
+
+        item = item_response.json()
+        return jsonify({
+            'display_name': item['display_name'],
+            'quantity': item['quantity'],
+            'non_negative_quantity': max(0, item['quantity']),
+        })
+    ```
+  </Tab>
+</Tabs>
+
+#### Real-time Item Updates (React Hook)
+
+Use the `useItem` hook for real-time updates when quantities change:
+
+<Tabs>
+  <Tab title="Next.js">
+    ```typescript title="app/components/credits-widget.tsx"
+    "use client";
+    import { useUser } from "@stackframe/stack";
+
+    export default function CreditsWidget() {
+      const user = useUser({ or: 'redirect' });
+      // useItem provides real-time updates when quantity changes
+      const credits = user.useItem("credits");
+
+      return (
+        <div className="credits-widget">
+          <h3>Available Credits</h3>
+          <div className="credits-count">
+            {credits.nonNegativeQuantity}
+          </div>
+          <small>{credits.displayName}</small>
+        </div>
+      );
+    }
+    ```
+  </Tab>
+  <Tab title="React">
+    ```typescript title="components/CreditsWidget.tsx"
+    import { useUser } from "@stackframe/react";
+
+    export default function CreditsWidget() {
+      const user = useUser({ or: 'redirect' });
+      // useItem provides real-time updates when quantity changes
+      const credits = user.useItem("credits");
+
+      return (
+        <div className="credits-widget">
+          <h3>Available Credits</h3>
+          <div className="credits-count">
+            {credits.nonNegativeQuantity}
+          </div>
+          <small>{credits.displayName}</small>
+        </div>
+      );
+    }
+    ```
+  </Tab>
+</Tabs>
+
+#### Consuming Credits (Server-side)
+
+Use `tryDecreaseQuantity` for race-condition-safe credit consumption:
+
+<Tabs>
+  <Tab title="Next.js">
+    ```typescript title="lib/credits.ts"
+    import { stackServerApp } from "@/stack/server";
+
+    // Safe credit consumption that prevents negative balances
+    export async function consumeCredits(userId: string, amount: number) {
+      const user = await stackServerApp.getUser(userId);
+      if (!user) {
+        throw new Error("User not found");
+      }
+
+      const credits = await user.getItem("credits");
+
+      // tryDecreaseQuantity is atomic and race-condition-safe
+      const success = await credits.tryDecreaseQuantity(amount);
+
+      if (!success) {
+        throw new Error("Insufficient credits");
+      }
+
+      return { remaining: credits.quantity };
+    }
+    ```
+  </Tab>
+  <Tab title="Express">
+    ```typescript title="server.ts"
+    import { stackServerApp } from "./stack/server.js";
+
+    app.post('/api/consume-credits', async (req, res) => {
+      try {
+        const { userId, amount } = req.body;
+
+        const user = await stackServerApp.getUser(userId);
+        if (!user) {
+          return res.status(404).json({ error: 'User not found' });
+        }
+
+        const credits = await user.getItem("credits");
+
+        // tryDecreaseQuantity is atomic and race-condition-safe
+        const success = await credits.tryDecreaseQuantity(amount);
+
+        if (!success) {
+          return res.status(400).json({ error: 'Insufficient credits' });
+        }
+
+        res.json({ remaining: credits.quantity });
+      } catch (error) {
+        res.status(500).json({ error: 'Server error' });
+      }
+    });
+    ```
+  </Tab>
+  <Tab title="Node.js">
+    ```javascript title="credits.js"
+    import { stackServerApp } from "./stack/server.js";
+
+    async function consumeCredits(userId, amount) {
+      const user = await stackServerApp.getUser(userId);
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      const credits = await user.getItem("credits");
+
+      // tryDecreaseQuantity is atomic and race-condition-safe
+      const success = await credits.tryDecreaseQuantity(amount);
+
+      if (!success) {
+        throw new Error('Insufficient credits');
+      }
+
+      return { remaining: credits.quantity };
+    }
+    ```
+  </Tab>
+  <Tab title="Django">
+    ```python title="views.py"
+    import json
+    import requests
+    from django.http import JsonResponse
+
+    def consume_item(request, item_id):
+        data = json.loads(request.body)
+        user_id = data['user_id']
+        amount = data['amount']
+
+        # Decrease quantity atomically (allow_negative=false prevents overdraft)
+        update_response = requests.post(
+            f'https://api.stack-auth.com/api/v1/payments/items/user/{user_id}/{item_id}/update-quantity',
+            headers={
+                'x-stack-access-type': 'server',
+                'x-stack-project-id': stack_project_id,
+                'x-stack-publishable-client-key': stack_publishable_client_key,
+                'x-stack-secret-server-key': stack_secret_server_key,
+            },
+            params={
+                'allow_negative': 'false',  # Prevents negative balance
+            },
+            json={
+                'delta': -amount,
+            }
+        )
+
+        if update_response.status_code == 400:
+            return JsonResponse({'error': 'Insufficient balance'}, status=400)
+
+        if update_response.status_code != 200:
+            return JsonResponse({'error': 'Failed to update item'}, status=500)
+
+        return JsonResponse({'success': True})
+    ```
+  </Tab>
+  <Tab title="FastAPI">
+    ```python title="main.py"
+    import requests
+    from fastapi import HTTPException
+    from pydantic import BaseModel
+
+    class ConsumeItemRequest(BaseModel):
+        user_id: str
+        item_id: str
+        amount: int
+
+    @app.post("/consume-item")
+    async def consume_item(request: ConsumeItemRequest):
+        # Decrease quantity atomically (allow_negative=false prevents overdraft)
+        update_response = requests.post(
+            f'https://api.stack-auth.com/api/v1/payments/items/user/{request.user_id}/{request.item_id}/update-quantity',
+            headers={
+                'x-stack-access-type': 'server',
+                'x-stack-project-id': stack_project_id,
+                'x-stack-publishable-client-key': stack_publishable_client_key,
+                'x-stack-secret-server-key': stack_secret_server_key,
+            },
+            params={
+                'allow_negative': 'false',  # Prevents negative balance
+            },
+            json={
+                'delta': -request.amount,
+            }
+        )
+
+        if update_response.status_code == 400:
+            raise HTTPException(status_code=400, detail="Insufficient balance")
+
+        if update_response.status_code != 200:
+            raise HTTPException(status_code=500, detail="Failed to update item")
+
+        return {'success': True}
+    ```
+  </Tab>
+  <Tab title="Flask">
+    ```python title="app.py"
+    import requests
+    from flask import request, jsonify
+
+    @app.route('/consume-item/<item_id>', methods=['POST'])
+    def consume_item(item_id):
+        data = request.get_json()
+        user_id = data['user_id']
+        amount = data['amount']
+
+        # Decrease quantity atomically (allow_negative=false prevents overdraft)
+        update_response = requests.post(
+            f'https://api.stack-auth.com/api/v1/payments/items/user/{user_id}/{item_id}/update-quantity',
+            headers={
+                'x-stack-access-type': 'server',
+                'x-stack-project-id': stack_project_id,
+                'x-stack-publishable-client-key': stack_publishable_client_key,
+                'x-stack-secret-server-key': stack_secret_server_key,
+            },
+            params={
+                'allow_negative': 'false',  # Prevents negative balance
+            },
+            json={
+                'delta': -amount,
+            }
+        )
+
+        if update_response.status_code == 400:
+            return jsonify({'error': 'Insufficient balance'}), 400
+
+        if update_response.status_code != 200:
+            return jsonify({'error': 'Failed to update item'}), 500
+
+        return jsonify({'success': True})
+    ```
+  </Tab>
+</Tabs>
+
+<Info>
+  Use `tryDecreaseQuantity()` instead of checking the balance and then decreasing. This prevents race conditions where multiple requests could consume more credits than available.
+</Info>
+
+### Listing Products
+
+List products owned by a user or team:
+
+<Tabs>
+  <Tab title="Next.js Client">
+    ```typescript title="app/components/my-products.tsx"
+    "use client";
+    import { useUser } from "@stackframe/stack";
+
+    export default function MyProducts() {
+      const user = useUser({ or: 'redirect' });
+      const products = user.useProducts();
+
+      return (
+        <div>
+          <h2>Your Products</h2>
+          {products.length === 0 ? (
+            <p>No products purchased yet.</p>
+          ) : (
+            <ul>
+              {products.map((product) => (
+                <li key={product.id ?? product.displayName}>
+                  {product.displayName} (x{product.quantity})
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      );
+    }
+    ```
+  </Tab>
+  <Tab title="Next.js Server">
+    ```typescript title="app/products/page.tsx"
+    import { stackServerApp } from "@/stack/server";
+
+    export default async function ProductsPage() {
+      const user = await stackServerApp.getUser({ or: 'redirect' });
+      const products = await user.listProducts();
+
+      return (
+        <div>
+          <h2>Your Products</h2>
+          {products.length === 0 ? (
+            <p>No products purchased yet.</p>
+          ) : (
+            <ul>
+              {products.map((product) => (
+                <li key={product.id ?? product.displayName}>
+                  {product.displayName} (x{product.quantity})
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      );
+    }
+    ```
+  </Tab>
+  <Tab title="React">
+    ```typescript title="components/MyProducts.tsx"
+    import { useUser } from "@stackframe/react";
+
+    export default function MyProducts() {
+      const user = useUser({ or: 'redirect' });
+      const products = user.useProducts();
+
+      return (
+        <div>
+          <h2>Your Products</h2>
+          {products.length === 0 ? (
+            <p>No products purchased yet.</p>
+          ) : (
+            <ul>
+              {products.map((product) => (
+                <li key={product.id ?? product.displayName}>
+                  {product.displayName} (x{product.quantity})
+                </li>
+              ))}
+            </ul>
+          )}
+        </div>
+      );
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Granting Products (Server-side)
+
+Grant products to users programmatically without requiring payment:
+
+<Tabs>
+  <Tab title="Next.js">
+    ```typescript title="lib/products.ts"
+    import { stackServerApp } from "@/stack/server";
+
+    // Grant a product to a user (server-side only)
+    export async function grantProductToUser(userId: string, productId: string) {
+      const user = await stackServerApp.getUser(userId);
+      if (!user) {
+        throw new Error("User not found");
+      }
+
+      await user.grantProduct({
+        productId,
+        quantity: 1, // Optional, defaults to 1
+      });
+
+      return { success: true };
+    }
+
+    // Inline products mirror the REST schema, so fields stay in snake_case
+    const bonusCreditsProduct = {
+      display_name: "Bonus Credits",
+      customer_type: "user",
+      server_only: true,
+      stackable: false,
+      prices: {
+        manual: { USD: "0" },
+      },
+      included_items: {
+        credits: { quantity: 100 },
+      },
+    } as const;
+
+    // Grant a product with an inline definition (no pre-configured product needed)
+    export async function grantInlineProduct(userId: string) {
+      const user = await stackServerApp.getUser(userId);
+      if (!user) {
+        throw new Error("User not found");
+      }
+
+      await user.grantProduct({
+        product: bonusCreditsProduct,
+      });
+
+      return { success: true };
+    }
+    ```
+  </Tab>
+  <Tab title="Express">
+    ```typescript title="server.ts"
+    import { stackServerApp } from "./stack/server.js";
+
+    app.post('/api/grant-product', async (req, res) => {
+      try {
+        const { userId, productId } = req.body;
+
+        const user = await stackServerApp.getUser(userId);
+        if (!user) {
+          return res.status(404).json({ error: 'User not found' });
+        }
+
+        await user.grantProduct({
+          productId,
+          quantity: 1,
+        });
+
+        res.json({ success: true });
+      } catch (error) {
+        res.status(500).json({ error: 'Failed to grant product' });
+      }
+    });
+    ```
+  </Tab>
+  <Tab title="Node.js">
+    ```javascript title="products.js"
+    import { stackServerApp } from "./stack/server.js";
+
+    async function grantProductToUser(userId, productId) {
+      const user = await stackServerApp.getUser(userId);
+      if (!user) {
+        throw new Error('User not found');
+      }
+
+      await user.grantProduct({
+        productId,
+        quantity: 1,
+      });
+
+      return { success: true };
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Dashboard Management
+
+### Product Lines
+
+Configure product lines under **Payments -> Product Lines**:
+
+- Group products into mutually exclusive plans/tiers
+- Move products between lines as your pricing model evolves
+- Keep products outside of lines when they should be independently purchasable
+
+### Products & Items
+
+Configure products and item entitlements in **Payments -> Products & Items**:
+
+- Create products with display names and pricing
+- Configure items included with each product (e.g., 100 credits per purchase)
+- Set up one-time or recurring billing
+- Choose whether products are for users, teams, or custom customers
+
+### Customers
+
+View and manage customer item balances under **Payments -> Customers**:
+
+- Select a customer type (User, Team, or Custom)
+- View item quantities for each customer
+- Manually adjust quantities with optional expiration dates
+- Grant products directly to customers
+
+### Transactions
+
+View all payment activity under **Payments -> Transactions**:
+
+- Filter by transaction type (Purchase, Subscription Renewal, etc.)
+- Filter by customer type
+- View transaction details including amount and products
+- Refund eligible transactions
+
+#### Issuing Refunds
+
+Click the refund button in a transaction row to issue a refund. Refunds are only available for non-test mode purchases with associated prices.
+
+Refund support is centered on USD-denominated purchase entries.
+
+### Payouts
+
+View and manage payout information under **Payments -> Payouts**.
+
+### Settings
+
+Configure payment infrastructure in **Payments -> Settings**:
+
+- Connect or continue Stripe onboarding
+- Toggle test mode
+- Configure available payment methods
+- Optionally block new purchases
+
+### Payment Emails
+
+Email notifications are sent automatically when payments are processed:
+
+- **Payment Receipt**: Sent on successful payment with product details, amount, and receipt link
+- **Payment Failed**: Sent on failed payment with product name, amount, and failure reason
+
+These emails apply to both one-time purchases and subscription renewals. Customize them in the dashboard under **Emails -> Templates**.
+
+## Customer Types
+
+Stack Auth supports three types of payment customers:
+
+- **Users**: Individual user accounts in your application
+- **Teams**: Team or organization accounts
+- **Custom Customers**: External entities identified by a custom ID (useful for integrations with external systems)
+
+## Test Mode
+
+During development, you can use test mode:
+
+1. Connect Stripe for the project, then enable test mode in **Payments -> Settings**
+2. All purchases will be free and no money will be deducted
+3. Test various scenarios before going live
+
+### Test Card Numbers
+
+When in live mode with Stripe test credentials:
+
+- **Success**: `4242 4242 4242 4242`
+- **Decline**: `4000 0000 0000 0002`
+- **Insufficient Funds**: `4000 0000 0000 9995`
+
+See [Stripe's testing documentation](https://stripe.com/docs/testing) for more test scenarios.

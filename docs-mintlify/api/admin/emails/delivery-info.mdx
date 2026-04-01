@@ -1,0 +1,74 @@
+---
+title: "Get Email Delivery Info"
+description: "Returns delivery statistics and capacity information for the current tenancy."
+api: "GET /api/v1/emails/delivery-info"
+---
+
+## Request
+
+<ParamField header="x-stack-secret-server-key" type="string" required>
+  The secret server key for authentication.
+</ParamField>
+
+<ParamField header="x-stack-admin-access-token" type="string">
+  The admin access token.
+</ParamField>
+
+<ParamField header="x-stack-project-id" type="string" required>
+  The project ID.
+</ParamField>
+
+## Response
+
+<ResponseField name="delivery_stats" type="object">
+  Delivery statistics for the current tenancy.
+  <Expandable>
+    <ResponseField name="total_sent" type="number">
+      Total number of emails sent.
+    </ResponseField>
+    <ResponseField name="total_delivered" type="number">
+      Total number of emails successfully delivered.
+    </ResponseField>
+    <ResponseField name="total_failed" type="number">
+      Total number of failed email deliveries.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="capacity" type="object">
+  Capacity information for the current tenancy.
+  <Expandable>
+    <ResponseField name="limit" type="number">
+      The maximum email sending capacity.
+    </ResponseField>
+    <ResponseField name="used" type="number">
+      The number of emails sent in the current period.
+    </ResponseField>
+    <ResponseField name="remaining" type="number">
+      The remaining email capacity.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<CodeGroup>
+```bash cURL
+curl -X GET 'https://api.stack-auth.com/api/v1/emails/delivery-info' \
+  -H 'x-stack-secret-server-key: YOUR_SECRET_SERVER_KEY' \
+  -H 'x-stack-project-id: YOUR_PROJECT_ID'
+```
+
+```json 200 Response
+{
+  "delivery_stats": {
+    "total_sent": 1000,
+    "total_delivered": 980,
+    "total_failed": 20
+  },
+  "capacity": {
+    "limit": 10000,
+    "used": 1000,
+    "remaining": 9000
+  }
+}
+```
+</CodeGroup>

@@ -1,0 +1,32 @@
+---
+title: "Update Team Member Profile"
+description: "Update a team member profile"
+api: "PATCH /team-member-profiles/{team_id}/{user_id}"
+---
+
+## Request
+
+<ParamField path="team_id" type="string" required>
+  Identifier for the team.
+</ParamField>
+
+<ParamField path="user_id" type="string" required>
+  The ID of the user, or the special value `"me"` for the currently authenticated user.
+</ParamField>
+
+The request body is required and must contain the profile fields you wish to update.
+
+## Response
+
+<ResponseField name="200" type="object">
+  Successful response indicating the profile was updated.
+</ResponseField>
+
+<CodeGroup>
+```bash cURL
+curl -X PATCH "https://api.stack-auth.com/team-member-profiles/TEAM_ID/USER_ID" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"display_name": "New Display Name"}'
+```
+</CodeGroup>

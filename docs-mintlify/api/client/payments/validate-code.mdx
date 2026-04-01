@@ -1,0 +1,17 @@
+---
+title: "Validate Purchase Code"
+description: "Validates a purchase verification code and returns purchase details including available prices."
+api: "POST /api/v1/payments/purchases/validate-code"
+---
+
+## Request
+
+<ParamField body="body" type="object" required>
+  The request body containing the purchase verification code.
+</ParamField>
+
+## Response
+
+<ResponseField name="200" type="object">
+  Successful response with purchase details and available prices.
+</ResponseField>
