@@ -327,6 +327,7 @@ it("should return null for non-custom refresh cookie names", async ({ expect }) 
   expect((clientApp as any)._getDomainFromCustomRefreshCookieName(defaultName)).toBeNull();
   expect((clientApp as any)._getDomainFromCustomRefreshCookieName("unrelated-cookie")).toBeNull();
   expect((clientApp as any)._getDomainFromCustomRefreshCookieName("")).toBeNull();
+  expect((clientApp as any)._getDomainFromCustomRefreshCookieName(`stack-refresh-${clientApp.projectId}--custom-%%%`)).toBeNull();
 });
 
 it("should read the newest refresh token payload from cookie storage", async ({ expect }) => {
