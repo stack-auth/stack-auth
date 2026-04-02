@@ -60,7 +60,7 @@ function ConversationList({
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!projectId) {
+    if (!projectId || !currentUser) {
       setLoading(false);
       return;
     }
