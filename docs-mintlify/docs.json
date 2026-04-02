@@ -1,20 +1,20 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "name": "Stack Auth Documentation",
-  "theme": "aspen",
+  "theme": "mint",
   "logo": {
     "dark": "/images/logo-dark.svg",
     "light": "/images/logo-light.svg"
   },
   "favicon": "/images/favicon.ico",
   "colors": {
-    "primary": "#6346ec",
-    "light": "#6346ec",
-    "dark": "#6346ec"
+    "primary": "#6b5df7",
+    "light": "#8b7cf9",
+    "dark": "#6b5df7"
   },
   "background": {
     "color": {
-      "dark": "#121212"
+      "dark": "#09090b"
     }
   },
   "fonts": {
