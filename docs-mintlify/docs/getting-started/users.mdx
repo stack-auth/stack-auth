@@ -1,53 +1,71 @@
 ---
-title: Users
+title: User Fundamentals
 description: Access and manage user information within custom components
-sidebarTitle: Users
+sidebarTitle: User Fundamentals
 icon: "users"
 ---
 
+import { UserFieldsTable } from "/snippets/user-fields-table.jsx";
+
 # Users
 
-You will inevitably build custom components that access the user in one way or another. In this section, we will take a closer look at the functions and hooks that let you do this.
+You've set up Stack Auth. Now let's understand the most important object in your application: the **User**.
 
-## Client Component basics
+The user object represents whoever is currently interacting with your app — their identity, profile, and metadata. Almost everything you build will revolve around it: retrieving the current user, protecting pages from unauthorized access, updating profile information, signing out, and more.
 
-The `useUser()` hook returns the current user in a Client Component. By default, it will return `null` if the user is not signed in.
+## Getting the current user
 
-```tsx title="my-client-component.tsx"
-"use client";
-import { useUser } from "@stackframe/stack"
+The way you retrieve the current user depends on whether you're in a Client Component or a Server Component. Both return `null` if the user is not signed in.
 
-export function MyClientComponent() {
-  const user = useUser();
-  return <div>{user ? `Hello, ${user.displayName ?? "anon"}` : 'You are not logged in'}</div>;
-}
-```
+<Tabs>
+  <Tab title="Client Component">
+    Use the `useUser()` hook:
 
-The `useUser()` hook is simply a shorthand for `useStackApp().useUser()`. `useStackApp()` also contains other useful hooks and methods for clients, which will be described later.
+    ```tsx title="my-client-component.tsx"
+    "use client";
+    import { useUser } from "@stackframe/stack"
 
-Sometimes, you want to retrieve the user only if they're signed in, and redirect to the sign-in page otherwise. In this case, simply pass `{ or: "redirect" }`, and the function will never return `null`.
+    export function MyClientComponent() {
+      const user = useUser();
+      return <div>{user ? `Hello, ${user.displayName ?? "anon"}` : 'You are not logged in'}</div>;
+    }
+    ```
 
-```tsx
-const user = useUser({ or: "redirect" });
-return <div>{`Hello, ${user.displayName ?? "anon"}`}</div>;
-```
+    The `useUser()` hook is simply a shorthand for `useStackApp().useUser()`. `useStackApp()` also contains other useful hooks and methods for clients, which will be described later. Since it's a React hook, your component will automatically re-render when the user changes (e.g. on sign-out).
+  </Tab>
+  <Tab title="Server Component">
+    Since `useUser()` is a stateful hook, you can't use it in Server Components. Instead, import `stackServerApp` from `stack/server.ts` and call `getUser()`:
 
-## Server Component basics
+    ```tsx title="my-server-component.tsx"
+    import { stackServerApp } from "@/stack/server";
 
-Since `useUser()` is a stateful hook, you can't use it on server components. Instead, you can import `stackServerApp` from `stack/server.ts` and call `getUser()`:
+    export default async function MyServerComponent() {
+      const user = await stackServerApp.getUser();
+      return <div>{user ? `Hello, ${user.displayName ?? "anon"}` : 'You are not logged in'}</div>;
+    }
+    ```
 
-```tsx title="my-server-component.tsx"
-import { stackServerApp } from "@/stack/server";
-
-export default async function MyServerComponent() {
-  const user = await stackServerApp.getUser();  // or: stackServerApp.getUser({ or: "redirect" })
-  return <div>{user ? `Hello, ${user.displayName ?? "anon"}` : 'You are not logged in'}</div>;
-}
-```
+    Unlike `useUser()`, `getUser()` fetches the user once at request time and does not re-render on changes. You can also call `useStackApp().getUser()` on the client side to get the user in a non-component context.
+  </Tab>
+</Tabs>
 
 <Info>
   Since `useUser()` is a hook, it will re-render the component on user changes (eg. signout), while `getUser()` will only fetch the user once (on page load). You can also call `useStackApp().getUser()` on the client side to get the user in a non-component context.
 </Info>
+
+### Requiring a signed-in user
+
+Sometimes, you want to retrieve the user only if they're signed in, and redirect to the sign-in page otherwise. In this case, simply pass `{ or: "redirect" }`, and the function will never return `null`.
+
+You can also use `{ or: "throw" }` to throw an error instead — useful in API routes and server actions where a redirect doesn't make sense.
+
+In both cases, the return type is non-nullable, so you don't need to handle `null`.
+
+```tsx
+const user = useUser({ or: "redirect" });
+// user is guaranteed to be non-null here
+return <div>{`Hello, ${user.displayName ?? "anon"}`}</div>;
+```
 
 ## Protecting a page
 
@@ -116,6 +134,16 @@ Middleware can be used whenever it is easy to tell whether a page should be prot
 
 ## User data
 
+### What's on a user object?
+
+Before diving into updates, here's an overview of the most important fields available on every user:
+
+<UserFieldsTable />
+
+For the full list of fields and methods, see the [User SDK reference](../sdk/types/user).
+
+### Updating a user
+
 You can update attributes on a user object with the `user.update()` function.
 
 ```tsx title="my-client-component.tsx"
@@ -130,7 +158,52 @@ export default function MyClientComponent() {
 }
 ```
 
-You can also store custom user data in the `clientMetadata`, `serverMetadata`, or `clientReadOnlyMetadata` fields. More information [here](../concepts/custom-user-data).
+### Custom metadata
+
+Beyond built-in fields like `displayName` and `primaryEmail`, you'll often need to store your own data on a user. Stack Auth provides three metadata fields for this:
+
+- **`clientMetadata`** — Readable and writable from both the client and the server. Use this for non-sensitive user preferences like theme, locale, or UI state.
+- **`serverMetadata`** — Readable and writable only from the server. Use this for sensitive or internal data like Stripe customer IDs, internal flags, or anything users shouldn't be able to see or modify.
+- **`clientReadOnlyMetadata`** — Readable from the client, writable only from the server. Use this for data the client needs to display but shouldn't be able to change, like subscription plans or role labels.
+
+For example, storing a user's theme preference in `clientMetadata`:
+
+```tsx title="theme-toggle.tsx"
+'use client';
+import { useUser } from "@stackframe/stack";
+
+export default function ThemeToggle() {
+  const user = useUser({ or: "redirect" });
+  const currentTheme = user.clientMetadata?.theme ?? "light";
+
+  return (
+    <button onClick={async () => {
+      await user.update({
+        clientMetadata: {
+          ...user.clientMetadata,
+          theme: currentTheme === "light" ? "dark" : "light",
+        },
+      });
+    }}>
+      Switch to {currentTheme === "light" ? "dark" : "light"} mode
+    </button>
+  );
+}
+```
+
+And storing sensitive data in `serverMetadata` (server-side only):
+
+```tsx title="server-example.ts"
+const user = await stackServerApp.getUser({ or: "throw" });
+await user.update({
+  serverMetadata: {
+    ...user.serverMetadata,
+    stripeCustomerId: "cus_abc123",
+  },
+});
+```
+
+For more details, see the [Custom User Data](../concepts/custom-user-data) documentation.
 
 ## Signing out
 
@@ -227,6 +300,37 @@ Stack automatically creates a user profile on sign-up. Let's build a page that d
 After saving your code, you can see the profile page on [http://localhost:3000/profile](http://localhost:3000/profile).
 
 For more examples on how to use the `User` object, check the [the SDK documentation](../sdk/types/user).
+
+## Anonymous users
+
+Stack Auth supports anonymous users - users who can interact with your app without signing up. This is useful for features like guest checkouts, try-before-you-sign-up flows, or collecting analytics before a user creates an account.
+
+To get an anonymous user, pass `{ or: "anonymous" }` to `useUser()` or `getUser()`. If the current visitor isn't signed in, Stack will automatically create an anonymous account for them behind the scenes.
+
+```tsx title="my-client-component.tsx"
+"use client";
+import { useUser } from "@stackframe/stack";
+
+export default function MyComponent() {
+  const user = useUser({ or: "anonymous" });
+  // user is always non-null — either a real user or an anonymous one
+  return <div>Your user ID: {user.id}</div>;
+}
+```
+
+Anonymous users have an `isAnonymous` property set to `true` and are also considered restricted (`isRestricted` is `true`). You can check this to show different UI for anonymous vs. signed-in users:
+
+```tsx
+const user = useUser({ or: "anonymous" });
+if (user.isAnonymous) {
+  return <div>You're browsing as a guest. <a href="/handler/sign-up">Create an account</a> to save your progress.</div>;
+}
+return <div>Welcome back, {user.displayName}!</div>;
+```
+
+<Info>
+  When using `{ or: "anonymous" }`, the `includeRestricted` option is automatically set to `true`, since all anonymous users are restricted by definition. You cannot use `{ or: "anonymous" }` with `{ includeRestricted: false }`.
+</Info>
 
 ## Next steps
 
