@@ -1,6 +1,8 @@
+import { StackClientApp } from "@stackframe/js";
 import { encodeBase32 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { TextEncoder } from "util";
 import { vi } from "vitest";
+import { STACK_BACKEND_BASE_URL } from "../helpers";
 import { it } from "../helpers";
 import { createApp } from "./js-helpers";
 
@@ -354,4 +356,73 @@ it("should read the newest refresh token payload from cookie storage", async ({ 
   const tokens = (clientApp as any)._getTokensFromCookies(cookieMap);
   expect(tokens.refreshToken).toBe("fresh-token");
   expect(tokens.accessToken).toBe("fresh-access-token");
+});
+
+it("should eagerly create cross-subdomain cookie on construction when session exists but custom cookie is missing", async ({ expect }) => {
+  const { cookieStore } = setupBrowserCookieEnv({ protocol: "https:" });
+
+  const { clientApp, apiKey } = await createApp(
+    {
+      config: {
+        domains: [
+          { domain: "https://example.com", handlerPath: "/handler" },
+          { domain: "https://**.example.com", handlerPath: "/handler" },
+        ],
+      },
+    },
+    {
+      client: {
+        tokenStore: "cookie",
+        noAutomaticPrefetch: true,
+      },
+    },
+  );
+
+  // Sign in to get a valid session
+  const email = `${crypto.randomUUID()}@eager-cookie.test`;
+  const password = "password";
+  await clientApp.signUpWithCredential({ email, password, verificationCallbackUrl: "http://localhost:3000", noRedirect: true });
+  await clientApp.signInWithCredential({ email, password, noRedirect: true });
+
+  const defaultCookieName = getDefaultRefreshCookieName(clientApp.projectId, true);
+  const customCookieName = getCustomRefreshCookieName(clientApp.projectId, "example.com");
+
+  // Wait for the cross-subdomain cookie to be written
+  const customReady = await waitUntil(() => cookieStore.has(customCookieName), 10_000);
+  expect(customReady).toBe(true);
+
+  // Grab the refresh token before we manipulate cookies
+  const customCookieValue = cookieStore.get(customCookieName)!;
+  const parsed = JSON.parse(decodeURIComponent(customCookieValue));
+
+  // Simulate state where user was signed in before wildcard domain was added:
+  // default cookie exists with the session, but no cross-subdomain cookie
+  cookieStore.delete(customCookieName);
+  const defaultValue = encodeURIComponent(JSON.stringify({
+    refresh_token: parsed.refresh_token,
+    updated_at_millis: parsed.updated_at_millis,
+  }));
+  cookieStore.set(defaultCookieName, defaultValue);
+
+  expect(cookieStore.has(customCookieName)).toBe(false);
+  expect(cookieStore.has(defaultCookieName)).toBe(true);
+
+  // Construct a new client app (simulates page reload)
+  // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+  const reloadedApp = new StackClientApp({
+    baseUrl: STACK_BACKEND_BASE_URL,
+    projectId: clientApp.projectId,
+    publishableClientKey: apiKey.publishableClientKey,
+    tokenStore: "cookie",
+    redirectMethod: "none",
+    noAutomaticPrefetch: true,
+    extraRequestHeaders: { "x-stack-disable-artificial-development-delay": "yes" },
+  });
+
+  // The cross-subdomain cookie should be eagerly created on construction
+  const customRecreated = await waitUntil(() => cookieStore.has(customCookieName), 10_000);
+  expect(customRecreated).toBe(true);
+
+  // Clean up
+  (reloadedApp as any).dispose?.();
 });

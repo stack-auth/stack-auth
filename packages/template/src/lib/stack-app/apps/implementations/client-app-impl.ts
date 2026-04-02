@@ -537,6 +537,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     this._prefetchCrossDomainHandoffParamsIfNeeded();
     if (isBrowserLike() && (resolvedOptions.tokenStore === "cookie" || resolvedOptions.tokenStore === "nextjs-cookie")) {
       runAsynchronously(this._trustedParentDomainCache.getOrWait([window.location.hostname], "write-only"));
+      this._ensureCrossSubdomainCookieExists();
     }
 
     if (extraOptions && extraOptions.uniqueIdentifier) {
@@ -774,6 +775,26 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       accessTokenPayload,
       cookieNamesToDelete: [...cookieNames],
     };
+  }
+
+  private _ensureCrossSubdomainCookieExists() {
+    runAsynchronously(async () => {
+      const hostname = window.location.hostname;
+      const domain = await this._trustedParentDomainCache.getOrWait([hostname], "read-write");
+      if (domain.status === "error" || !domain.data) {
+        return;
+      }
+      const cookies = this._getAllBrowserCookies();
+      const customCookieName = this._getCustomRefreshCookieName(domain.data);
+      if (cookies[customCookieName]) {
+        return;
+      }
+      const { refreshToken, updatedAt } = this._extractRefreshTokenFromCookieMap(cookies);
+      if (refreshToken && updatedAt) {
+        const value = this._formatRefreshCookieValue(refreshToken, updatedAt);
+        setOrDeleteCookieClient(customCookieName, value, { maxAge: 60 * 60 * 24 * 365, domain: domain.data });
+      }
+    });
   }
   private _queueCustomRefreshCookieUpdate(refreshToken: string | null, updatedAt: number | null, context: "browser" | "server") {
     runAsynchronously(async () => {
