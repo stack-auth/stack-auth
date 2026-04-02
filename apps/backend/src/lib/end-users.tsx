@@ -174,7 +174,7 @@ export async function getEndUserInfo(): Promise<
   if (isClaimingToBeBrowser) {
     // Determine which proxy we trust based on deployment configuration.
     // These headers can only be trusted when the origin is exclusively reachable through the proxy;
-    // STACK_TRUSTED_PROXY should be set to "vercel", "cloudflare", or left empty/unset for no proxy trust.
+    // STACK_TRUSTED_PROXY should be set to "vercel", "cloudflare", "cloudrun", or left empty/unset for no proxy trust.
     const trustedProxy = getEnvVariable("STACK_TRUSTED_PROXY", "").toLowerCase().trim();
     if (trustedProxy !== "" && trustedProxy !== "vercel" && trustedProxy !== "cloudflare" && trustedProxy !== "cloudrun") {
       throw new StackAssertionError(`STACK_TRUSTED_PROXY must be "vercel", "cloudflare", "cloudrun", or empty/unset, but got: "${trustedProxy}"`);
@@ -223,6 +223,51 @@ import.meta.vitest?.describe("getBrowserEndUserInfo(...)", () => {
       maybeSpoofed: true,
       spoofedInfo: {
         ip: "203.0.113.10",
+      },
+    });
+  });
+
+  test("trusts first x-forwarded-for entry when Cloud Run proxy is configured", () => {
+    const result = getBrowserEndUserInfo(new Headers({
+      "user-agent": "Mozilla/5.0",
+      "x-forwarded-for": "198.51.100.42, 10.0.0.1",
+    }), "cloudrun");
+
+    expect(result).toEqual({
+      maybeSpoofed: false,
+      exactInfo: {
+        ip: "198.51.100.42",
+      },
+    });
+  });
+
+  test("does not expose x-forwarded-for as spoofable when Cloud Run proxy is configured", () => {
+    const result = getBrowserEndUserInfo(new Headers({
+      "user-agent": "Mozilla/5.0",
+      "x-forwarded-for": "198.51.100.42",
+      "x-real-ip": "10.0.0.1",
+    }), "cloudrun");
+
+    expect(result).toEqual({
+      maybeSpoofed: false,
+      exactInfo: {
+        ip: "198.51.100.42",
+      },
+    });
+  });
+
+  test("does not trust geo headers for Cloud Run proxy", () => {
+    const result = getBrowserEndUserInfo(new Headers({
+      "user-agent": "Mozilla/5.0",
+      "x-forwarded-for": "198.51.100.42",
+      "x-vercel-ip-country": "US",
+      "cf-ipcountry": "DE",
+    }), "cloudrun");
+
+    expect(result).toEqual({
+      maybeSpoofed: false,
+      exactInfo: {
+        ip: "198.51.100.42",
       },
     });
   });

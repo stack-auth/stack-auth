@@ -61,12 +61,17 @@ async function fetchGcpIdToken(audience: string): Promise<string> {
   return await response.text();
 }
 
+let kmsClientCache: KMSClient | undefined;
+
 async function getKmsClient() {
-  return new KMSClient({
-    region: getEnvVariable("STACK_AWS_REGION"),
-    endpoint: getEnvVariable("STACK_AWS_KMS_ENDPOINT"),
-    credentials: await getAwsCredentials(),
-  });
+  if (!kmsClientCache) {
+    kmsClientCache = new KMSClient({
+      region: getEnvVariable("STACK_AWS_REGION"),
+      endpoint: getEnvVariable("STACK_AWS_KMS_ENDPOINT"),
+      credentials: await getAwsCredentials(),
+    });
+  }
+  return kmsClientCache;
 }
 
 async function getOrCreateKekId(): Promise<string> {

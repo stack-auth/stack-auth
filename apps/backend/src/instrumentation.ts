@@ -32,6 +32,12 @@ function getDevTraceExporter() {
   return undefined;
 }
 
+let otelSdk: { shutdown(): Promise<void> } | undefined;
+
+export async function shutdownOTel() {
+  await otelSdk?.shutdown();
+}
+
 async function registerOTelProvider() {
   const instrumentations = getOTelInstrumentations();
   const devExporter = getDevTraceExporter();
@@ -44,8 +50,8 @@ async function registerOTelProvider() {
       instrumentations,
       ...devExporter ? { traceExporter: devExporter } : {},
     });
-  } else {
-    // On Cloud Run / self-hosted: use standard @opentelemetry/sdk-node
+  } else if (getNextRuntime() === "nodejs") {
+    // On Cloud Run / self-hosted: use standard @opentelemetry/sdk-node (Node.js only)
     const { NodeSDK } = await import("@opentelemetry/sdk-node");
     const otelEndpoint = getEnvVariable("OTEL_EXPORTER_OTLP_ENDPOINT", "");
     const exporter = devExporter ?? (otelEndpoint ? new OTLPTraceExporter({ url: otelEndpoint }) : undefined);
@@ -57,6 +63,7 @@ async function registerOTelProvider() {
       ...(exporter ? { traceExporter: exporter as any } : {}),
     });
     sdk.start();
+    otelSdk = sdk;
   }
 }
 
