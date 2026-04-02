@@ -1,6 +1,6 @@
 -- CreateTable
 CREATE TABLE "AiConversation" (
-    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "id" UUID NOT NULL,
     "projectUserId" UUID NOT NULL,
     "projectId" TEXT NOT NULL REFERENCES "Project"("id") ON DELETE CASCADE ON UPDATE CASCADE,
     "title" TEXT NOT NULL,
@@ -12,7 +12,7 @@ CREATE TABLE "AiConversation" (
 
 -- CreateTable
 CREATE TABLE "AiMessage" (
-    "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+    "id" UUID NOT NULL,
     "conversationId" UUID NOT NULL REFERENCES "AiConversation"("id") ON DELETE CASCADE ON UPDATE CASCADE,
     "position" INTEGER NOT NULL,
     "role" TEXT NOT NULL,

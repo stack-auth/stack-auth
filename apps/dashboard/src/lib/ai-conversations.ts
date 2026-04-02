@@ -25,7 +25,7 @@ function getBaseUrl() {
 }
 
 async function apiFetch(
-  currentUser: CurrentUser | undefined | null,
+  currentUser: CurrentUser,
   path: string,
   options: RequestInit = {},
 ): Promise<Response> {
@@ -45,7 +45,7 @@ async function apiFetch(
 }
 
 export async function listConversations(
-  currentUser: CurrentUser | undefined | null,
+  currentUser: CurrentUser,
   projectId: string,
 ): Promise<ConversationSummary[]> {
   const response = await apiFetch(currentUser, `?projectId=${encodeURIComponent(projectId)}`);
@@ -54,7 +54,7 @@ export async function listConversations(
 }
 
 export async function createConversation(
-  currentUser: CurrentUser | undefined | null,
+  currentUser: CurrentUser,
   data: { title: string, projectId: string, messages: Array<{ role: string, content: unknown }> },
 ): Promise<{ id: string, title: string }> {
   const response = await apiFetch(currentUser, "", {
@@ -65,7 +65,7 @@ export async function createConversation(
 }
 
 export async function getConversation(
-  currentUser: CurrentUser | undefined | null,
+  currentUser: CurrentUser,
   conversationId: string,
 ): Promise<ConversationDetail> {
   const response = await apiFetch(currentUser, `/${encodeURIComponent(conversationId)}`);
@@ -73,7 +73,7 @@ export async function getConversation(
 }
 
 export async function updateConversationTitle(
-  currentUser: CurrentUser | undefined | null,
+  currentUser: CurrentUser,
   conversationId: string,
   title: string,
 ): Promise<void> {
@@ -84,7 +84,7 @@ export async function updateConversationTitle(
 }
 
 export async function replaceConversationMessages(
-  currentUser: CurrentUser | undefined | null,
+  currentUser: CurrentUser,
   conversationId: string,
   messages: Array<{ role: string, content: unknown }>,
 ): Promise<void> {
@@ -95,7 +95,7 @@ export async function replaceConversationMessages(
 }
 
 export async function deleteConversation(
-  currentUser: CurrentUser | undefined | null,
+  currentUser: CurrentUser,
   conversationId: string,
 ): Promise<void> {
   await apiFetch(currentUser, `/${conversationId}`, {

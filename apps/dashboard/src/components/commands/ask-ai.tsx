@@ -201,8 +201,8 @@ const AIChatPreviewInner = memo(function AIChatPreview({
           </div>
         )}
 
-        {/* Streaming indicator - show when still loading or still revealing words */}
-        {(isStreaming || isRevealing) && displayedWordCount > 0 && (
+        {/* Streaming indicator */}
+        {isStreaming && displayedWordCount > 0 && (
           <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/50 pl-8">
             <span className="inline-flex gap-0.5">
               <span className="w-1 h-1 rounded-full bg-purple-400/60 animate-pulse" />

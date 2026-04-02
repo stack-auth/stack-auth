@@ -183,23 +183,36 @@ export function AIChatWidget() {
   const projectId = pathname.startsWith("/projects/") ? pathname.split("/")[2] : undefined;
   const [viewMode, setViewMode] = useState<ViewMode>({ view: 'chat', conversationId: null, initialMessages: [] });
   const [conversationKey, setConversationKey] = useState(0);
+  const [initialLoading, setInitialLoading] = useState(true);
+  const didLoadRef = useRef(false);
 
   useEffect(() => {
-    if (!projectId) return;
+    if (didLoadRef.current) return;
+    didLoadRef.current = true;
+
+    if (!projectId) {
+      setInitialLoading(false);
+      return;
+    }
     runAsynchronouslyWithAlert(async () => {
-      const conversations = await listConversations(currentUser, projectId);
-      if (conversations.length > 0) {
-        const conv = await getConversation(currentUser, conversations[0].id);
-        const initialMessages: UIMessage[] = conv.messages.map((msg) => ({
-          id: msg.id,
-          role: msg.role,
-          parts: msg.content as UIMessage["parts"],
-        }));
-        setViewMode({ view: 'chat', conversationId: conversations[0].id, initialMessages });
-        setConversationKey(prev => prev + 1);
+      try {
+        const conversations = await listConversations(currentUser, projectId);
+        if (conversations.length > 0) {
+          const conv = await getConversation(currentUser, conversations[0].id);
+          const initialMessages: UIMessage[] = conv.messages.map((msg) => ({
+            id: msg.id,
+            role: msg.role,
+            parts: msg.content as UIMessage["parts"],
+          }));
+          setViewMode({ view: 'chat', conversationId: conversations[0].id, initialMessages });
+          setConversationKey(prev => prev + 1);
+        }
+      } finally {
+        setInitialLoading(false);
       }
     });
-  }, [projectId, currentUser]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- only load on mount
+  }, []);
 
   const handleSelectConversation = useCallback(async (id: string) => {
     const conv = await getConversation(currentUser, id);
@@ -229,6 +242,15 @@ export function AIChatWidget() {
       return prev;
     });
   }, []);
+
+  if (initialLoading) {
+    return (
+      <div className="flex flex-col items-center justify-center h-full gap-3">
+        <SpinnerGapIcon className="h-5 w-5 text-purple-400 animate-spin" />
+        <span className="text-xs text-muted-foreground/60">Loading conversations...</span>
+      </div>
+    );
+  }
 
   if (viewMode.view === 'list') {
     return (
@@ -613,7 +635,7 @@ function AIChatWidgetInner({
         )}
 
         {/* Streaming indicator */}
-        {(isStreaming || isRevealing) && displayedWordCount > 0 && (
+        {isStreaming && displayedWordCount > 0 && (
           <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/50 pl-8">
             <span className="inline-flex gap-0.5">
               <span className="w-1 h-1 rounded-full bg-purple-400/60 animate-pulse" />
