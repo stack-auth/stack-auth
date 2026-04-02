@@ -1,0 +1,87 @@
+---
+title: Overview
+description: Welcome to Stack Auth - open-source authentication that gets you started in minutes.
+sidebarTitle: Overview
+icon: house
+---
+
+# Welcome to Stack Auth
+
+Open-source authentication that gets you started in minutes.
+
+## Quick Start (Next.js)
+
+<Steps>
+  <Step title="Install the SDK">
+    ```bash
+    npx @stackframe/stack-cli@latest init
+    ```
+  </Step>
+  <Step title="Use authentication">
+    ```tsx
+    const user = useUser({ or: "redirect" });
+    return <div>Hi, {user.displayName}</div>;
+    ```
+  </Step>
+</Steps>
+
+For other frameworks or detailed configuration, see the [full setup guide](./getting-started/setup).
+
+## Components
+
+Pre-built UI components ready to use:
+
+- [`<SignIn />`](./components/sign-in)
+- [`<SignUp />`](./components/sign-up)
+- [`<UserButton />`](./components/user-button)
+- [`<AccountSettings />`](./components/account-settings)
+- [`<SelectedTeamSwitcher />`](./components/selected-team-switcher)
+- [`<StackHandler />`](./components/stack-handler)
+
+[View all components →](./components)
+
+## Explore
+
+<Columns cols={2}>
+  <Card title="Setup & Installation" icon="play" href="./getting-started/setup">
+    Get started with Stack in 5 minutes
+  </Card>
+  <Card title="Components" icon="puzzle-piece" href="./components">
+    Pre-built React components for sign-in, user management, and more
+  </Card>
+  <Card title="SDK Reference" icon="file-lines" href="./sdk">
+    Learn how to use Stack Auth's SDK
+  </Card>
+  <Card title="REST API" icon="code" href="./rest-api/overview">
+    Explore Stack's REST APIs
+  </Card>
+</Columns>
+
+## Apps
+
+Enable powerful features through the dashboard:
+
+<Columns cols={3}>
+  <Card title="API Keys" icon="key" href="./apps/api-keys">
+    Manage API keys for your application
+  </Card>
+  <Card title="Emails" icon="envelope" href="./apps/emails">
+    Configure email templates and providers
+  </Card>
+  <Card title="Teams" icon="users" href="./apps/orgs-and-teams">
+    Organize users into teams
+  </Card>
+  <Card title="Permissions" icon="shield" href="./apps/permissions">
+    Role-based access control
+  </Card>
+  <Card title="Webhooks" icon="webhook" href="./apps/webhooks">
+    Set up event-driven webhooks
+  </Card>
+  <Card title="Analytics" icon="chart-line" href="./apps/analytics">
+    Monitor authentication analytics
+  </Card>
+</Columns>
+
+---
+
+Still have questions? Check out our [FAQ](./faq) or [join our Discord](https://discord.stack-auth.com).

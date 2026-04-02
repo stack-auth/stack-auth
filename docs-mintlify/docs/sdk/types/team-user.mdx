@@ -1,0 +1,66 @@
+---
+title: "TeamUser"
+description: "Reference for TeamUser and ServerTeamUser types representing team members."
+sidebarTitle: "TeamUser"
+mode: "wide"
+---
+
+On this page:
+
+- [TeamUser](#teamuser)
+- [ServerTeamUser](#serverteamuser)
+
+---
+
+# `TeamUser`
+
+The `TeamUser` object is used on the client side to represent a user in the context of a team, providing minimal information about the user, including their ID and team-specific profile.
+
+It is usually obtained by calling `team.useUsers()` or `team.listUsers()` on a [`Team` object](/docs/sdk/types/team#team).
+
+## Table of Contents
+
+```typescript
+type TeamUser = {
+  id: string;
+  teamProfile: TeamProfile;
+};
+```
+
+## Properties
+
+<ResponseField name="id" type="string">
+  The user's identifier.
+</ResponseField>
+
+<ResponseField name="teamProfile" type="TeamProfile">
+  Team-specific profile information.
+</ResponseField>
+
+---
+
+# `ServerTeamUser`
+
+The `ServerTeamUser` object is used on the server side to represent a user within a team. Besides the team profile, it also includes all the functionality of a [`ServerUser`](/docs/sdk/types/user#serveruser).
+
+It is usually obtained by calling `serverTeam.listUsers()` on a [`ServerTeam` object](/docs/sdk/types/team#serverteam).
+
+## Table of Contents
+
+```typescript
+type ServerTeamUser =
+  // Inherits all functionality from TeamUser
+  TeamUser &
+    // Inherits all functionality from ServerUser
+    ServerUser & {
+      teamProfile: ServerTeamProfile;
+    };
+```
+
+## Properties
+
+<ResponseField name="teamProfile" type="ServerTeamProfile">
+  Server-side team-specific profile information.
+</ResponseField>
+
+In addition to the above, `ServerTeamUser` inherits all properties and methods from [ServerUser](/docs/sdk/types/user#serveruser).

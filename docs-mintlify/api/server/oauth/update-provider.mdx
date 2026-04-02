@@ -1,0 +1,27 @@
+---
+title: "Update OAuth Provider"
+description: "Update an existing OAuth provider. Only the values provided will be updated."
+api: "PATCH /oauth-providers/{user_id}/{provider_id}"
+---
+
+## Description
+
+Updates an existing OAuth provider. Only the values provided will be updated.
+
+## Path Parameters
+
+<ParamField path="user_id" type="string" required>
+  The ID of the user, or the special value `me` for the currently authenticated user.
+</ParamField>
+
+<ParamField path="provider_id" type="string" required>
+  The identifier for the OAuth provider to modify.
+</ParamField>
+
+## Request Body
+
+A request body is required for this operation. Only the fields included in the request payload will be modified.
+
+## Response
+
+**Status Code:** `200` - Successful response

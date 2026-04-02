@@ -153,3 +153,6 @@ A: In `packages/template/src/components-page/stack-handler-client.tsx`, parse ha
 
 Q: What is the current `app.urls` contract after deprecating runtime URL mutation?
 A: `app.urls` is now static (`getUrls(...)` only) and no longer injects runtime `after_auth_return_to` / `stack_cross_domain_*` params from `window.location`. For navigation flows, examples and consumers should use `redirectToXyz()` methods instead (for example `redirectToSignIn()` / `redirectToSignOut()`), while tests for hosted flows should assert dynamic params on actual redirect methods, not on `app.urls`.
+
+Q: How should user signup time be exposed in JWT claims before production rollout?
+A: Use `signed_up_at` (OIDC-style naming) in access tokens and encode it as Unix seconds in `apps/backend/src/lib/tokens.tsx` (`Math.floor(user.signed_up_at_millis / 1000)`). Since this is pre-prod, the payload schema can require `signed_up_at` directly without a backward-compat optional shim.

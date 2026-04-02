@@ -1,0 +1,48 @@
+---
+title: "Set Password"
+description: "Set a new password for the current user."
+api: "POST /api/v1/auth/password/set"
+---
+
+## Request
+
+<ParamField header="x-stack-publishable-client-key" type="string" required>
+  The publishable client key for authentication.
+</ParamField>
+
+<ParamField header="x-stack-access-token" type="string" required>
+  The access token for the authenticated user.
+</ParamField>
+
+<ParamField header="x-stack-project-id" type="string" required>
+  The project ID.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  The new password to set for the account.
+</ParamField>
+
+## Response
+
+<ResponseField name="success" type="boolean">
+  Whether the password was set successfully.
+</ResponseField>
+
+<CodeGroup>
+```bash cURL
+curl -X POST 'https://api.stack-auth.com/api/v1/auth/password/set' \
+  -H 'Content-Type: application/json' \
+  -H 'x-stack-publishable-client-key: YOUR_PUBLISHABLE_CLIENT_KEY' \
+  -H 'x-stack-access-token: YOUR_ACCESS_TOKEN' \
+  -H 'x-stack-project-id: YOUR_PROJECT_ID' \
+  -d '{
+    "password": "newSecurePassword123"
+  }'
+```
+
+```json 200 Response
+{
+  "success": true
+}
+```
+</CodeGroup>
