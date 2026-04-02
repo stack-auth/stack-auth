@@ -9,7 +9,7 @@ import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dis
 import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { globalVar } from "@stackframe/stack-shared/dist/utils/globals";
 import { deepPlainEquals, filterUndefined, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
-import { concatStacktracesIfRejected, ignoreUnhandledRejection, wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { concatStacktracesIfRejected, ignoreUnhandledRejection, runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { throwingProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
@@ -84,7 +84,12 @@ function getPostgresPrismaClient(connectionString: string, poolLabel?: string) {
   let postgresPrismaClient = postgresPrismaClientsStore.get(connectionString);
   if (!postgresPrismaClient) {
     const schema = getSchemaFromConnectionString(connectionString);
-    const pool = new Pool({ connectionString, max: 25 });
+    const poolMax = parseInt(getEnvVariable("STACK_DATABASE_POOL_MAX", "25"));
+    const pool = new Pool({ connectionString, max: poolMax });
+    pool.on('error', (err) => {
+      // Prevent unhandled rejections from crashing the process (e.g. on Cloud Run)
+      captureError("pg-pool-error", err);
+    });
     registerPgPool(pool, poolLabel ?? connectionString); // Register pool for dev performance stats
     const adapter = new PrismaPg(pool, schema ? { schema } : undefined);
     postgresPrismaClient = {
@@ -94,6 +99,29 @@ function getPostgresPrismaClient(connectionString: string, poolLabel?: string) {
     postgresPrismaClientsStore.set(connectionString, postgresPrismaClient);
   }
   return postgresPrismaClient;
+}
+
+// Graceful shutdown for non-Vercel runtimes (Cloud Run sends SIGTERM before shutdown)
+if (!getEnvVariable("VERCEL", "")) {
+  process.on("SIGTERM", () => {
+    runAsynchronously(async () => {
+      console.log("[SIGTERM] Draining background tasks and database connections...");
+      try {
+        const { drainInFlightPromises } = await import("./utils/vercel");
+        await drainInFlightPromises(8000);
+      } catch {
+        // vercel utils may not be available in all contexts
+      }
+      for (const [, entry] of postgresPrismaClientsStore) {
+        await entry.client.$disconnect().catch(() => {});
+      }
+      for (const [, client] of prismaClientsStore.neon) {
+        await client.$disconnect().catch(() => {});
+      }
+      console.log("[SIGTERM] Shutdown complete.");
+      process.exit(0);
+    });
+  });
 }
 
 async function tcpPing(host: string, port: number, timeout = 2000) {
