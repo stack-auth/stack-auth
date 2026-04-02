@@ -214,8 +214,7 @@ const loginTemplateSource = `
           let submitted = false;
           const submitOnce = () => {
             if (submitted) return;
-            submitted = true;
-            form.submit();
+            form.requestSubmit();
           };
         
           // Render the list of stored accounts and add direct submission on click.
