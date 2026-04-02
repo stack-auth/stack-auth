@@ -1,20 +1,20 @@
 {
   "$schema": "https://mintlify.com/docs.json",
   "name": "Stack Auth Documentation",
-  "theme": "aspen",
+  "theme": "mint",
   "logo": {
     "dark": "/images/logo-dark.svg",
     "light": "/images/logo-light.svg"
   },
   "favicon": "/images/favicon.ico",
   "colors": {
-    "primary": "#6346ec",
-    "light": "#6346ec",
-    "dark": "#6346ec"
+    "primary": "#6b5df7",
+    "light": "#8b7cf9",
+    "dark": "#6b5df7"
   },
   "background": {
     "color": {
-      "dark": "#121212"
+      "dark": "#09090b"
     }
   },
   "fonts": {
@@ -93,27 +93,7 @@
               "docs/concepts/sign-up-rules",
               "docs/concepts/jwt",
               "docs/concepts/user-onboarding",
-              "docs/concepts/team-selection",
-              {
-                "group": "Auth Providers",
-                "pages": [
-                  "docs/concepts/auth-providers",
-                  "docs/concepts/auth-providers/apple",
-                  "docs/concepts/auth-providers/bitbucket",
-                  "docs/concepts/auth-providers/discord",
-                  "docs/concepts/auth-providers/facebook",
-                  "docs/concepts/auth-providers/github",
-                  "docs/concepts/auth-providers/gitlab",
-                  "docs/concepts/auth-providers/google",
-                  "docs/concepts/auth-providers/linkedin",
-                  "docs/concepts/auth-providers/microsoft",
-                  "docs/concepts/auth-providers/passkey",
-                  "docs/concepts/auth-providers/spotify",
-                  "docs/concepts/auth-providers/twitch",
-                  "docs/concepts/auth-providers/two-factor-auth",
-                  "docs/concepts/auth-providers/x-twitter"
-                ]
-              }
+              "docs/concepts/team-selection"
             ]
           },
           {
@@ -123,8 +103,27 @@
                 "group": "Authentication",
                 "icon": "lock",
                 "pages": [
-                  "docs/apps/auth-providers",
-                  "docs/apps/oauth"
+                  "docs/apps/oauth",
+                  {
+                    "group": "Auth Providers",
+                    "pages": [
+                      "docs/concepts/auth-providers",
+                      "docs/concepts/auth-providers/apple",
+                      "docs/concepts/auth-providers/bitbucket",
+                      "docs/concepts/auth-providers/discord",
+                      "docs/concepts/auth-providers/facebook",
+                      "docs/concepts/auth-providers/github",
+                      "docs/concepts/auth-providers/gitlab",
+                      "docs/concepts/auth-providers/google",
+                      "docs/concepts/auth-providers/linkedin",
+                      "docs/concepts/auth-providers/microsoft",
+                      "docs/concepts/auth-providers/passkey",
+                      "docs/concepts/auth-providers/spotify",
+                      "docs/concepts/auth-providers/twitch",
+                      "docs/concepts/auth-providers/two-factor-auth",
+                      "docs/concepts/auth-providers/x-twitter"
+                    ]
+                  }
                 ]
               },
               "docs/apps/emails",
