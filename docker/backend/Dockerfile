@@ -1,8 +1,8 @@
-# Cloud Run variant: backend only, no entrypoint script, no dashboard.
+# Backend only, no migrations or entrypoint script.
 # Connects to the same AWS services (RDS, S3, KMS) as the Vercel deployment.
 #
-# Build:  docker build -f docker/server/Dockerfile.cloudrun -t stack-backend .
-# Run:    docker run -p 8080:8080 --env-file .env stack-backend
+# Build:  docker build -f docker/backend/Dockerfile -t stack-backend .
+# Run:    docker run -p 8102:8102 --env-file .env stack-backend
 
 ARG NODE_VERSION=22.21.1
 
@@ -82,13 +82,11 @@ COPY --from=builder --chown=node:node /app/node_modules ./node_modules
 COPY --from=builder --chown=node:node /app/packages ./packages
 
 ENV NODE_ENV=production
-ENV PORT=8080
+ENV PORT=8102
 ENV HOSTNAME=0.0.0.0
 
 USER node
 
-EXPOSE 8080
+EXPOSE 8102
 
-# Migrations run as a separate Cloud Run Job, not here.
-# Cloud Run sends SIGTERM on shutdown; the app handles it via the SIGTERM handler in prisma-client.tsx.
 CMD ["node", "apps/backend/server.js"]

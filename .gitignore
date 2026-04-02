@@ -142,10 +142,3 @@ packages/stack/*
 !packages/react/package.json
 !packages/next/package.json
 !packages/stack/package.json
-
-# GCP infra — Terraform runtime files + secrets
-infra/gcp/.terraform/
-infra/gcp/.terraform.lock.hcl
-infra/gcp/terraform.tfstate
-infra/gcp/terraform.tfstate.backup
-infra/gcp/env.secret.auto.tfvars.json
