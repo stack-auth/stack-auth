@@ -1,0 +1,24 @@
+---
+title: "Get Team"
+description: "Get a team by ID"
+api: "GET /teams/{team_id}"
+---
+
+## Request
+
+<ParamField path="team_id" type="string" required>
+  The team identifier.
+</ParamField>
+
+## Response
+
+<ResponseField name="200" type="object">
+  Successful response containing the team details.
+</ResponseField>
+
+<CodeGroup>
+```bash cURL
+curl -X GET "https://api.stack-auth.com/teams/TEAM_ID" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+</CodeGroup>

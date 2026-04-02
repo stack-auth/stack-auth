@@ -1,0 +1,28 @@
+---
+title: "Update User"
+description: "Updates a user. Only the values provided will be updated."
+api: "PATCH /users/{user_id}"
+---
+
+## Request
+
+<ParamField path="user_id" type="string" required>
+  The user identifier, or `"me"` to reference the currently authenticated user.
+</ParamField>
+
+The request body is required. Only the fields included in the request will be updated.
+
+## Response
+
+<ResponseField name="200" type="object">
+  Successful response containing the updated user information.
+</ResponseField>
+
+<CodeGroup>
+```bash cURL
+curl -X PATCH "https://api.stack-auth.com/users/USER_ID" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"display_name": "Updated Name"}'
+```
+</CodeGroup>

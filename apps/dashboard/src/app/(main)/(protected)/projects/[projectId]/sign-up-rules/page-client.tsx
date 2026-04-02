@@ -1,6 +1,6 @@
 "use client";
 
-import { CountryCodeSelect } from "@/components/country-code-select";
+import { CountryCodeInput } from "@/components/country-code-select";
 import { ConditionBuilder, isConditionTreeValid } from "@/components/rule-builder";
 import {
   ActionDialog,
@@ -567,7 +567,7 @@ function TestRulesCard({
     const normalizedBotRiskScoreOverride = botRiskScoreOverride.trim();
     const normalizedFreeTrialAbuseRiskScoreOverride = freeTrialAbuseRiskScoreOverride.trim();
     if (normalizedCountryCodeOverride !== '' && !isValidCountryCode(normalizedCountryCodeOverride)) {
-      throw new Error("Country code override must be a two-letter ISO code.");
+      throw new Error("Country code override must be a 2-letter code.");
     }
     if (!validateRiskScore(normalizedBotRiskScoreOverride)) {
       throw new Error("Bot risk score override must be an integer between 0 and 100.");
@@ -729,7 +729,7 @@ function TestRulesCard({
             <Typography variant="secondary" className="text-xs uppercase tracking-wide">
               Country code override
             </Typography>
-            <CountryCodeSelect
+            <CountryCodeInput
               value={countryCodeOverride || null}
               onChange={(val) => setCountryCodeOverride(val ?? "")}
             />

@@ -1,0 +1,24 @@
+---
+title: "Check Team Invitation Code"
+description: "Check if a team invitation code is valid without using it"
+api: "POST /team-invitations/accept/check-code"
+---
+
+## Request
+
+The request body is required.
+
+## Response
+
+<ResponseField name="200" type="object">
+  Successful response indicating whether the invitation code is valid.
+</ResponseField>
+
+<CodeGroup>
+```bash cURL
+curl -X POST "https://api.stack-auth.com/team-invitations/accept/check-code" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"code": "INVITATION_CODE"}'
+```
+</CodeGroup>

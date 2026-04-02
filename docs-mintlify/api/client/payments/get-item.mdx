@@ -1,0 +1,27 @@
+---
+title: "Get Item"
+description: "Retrieve details of a specific item such as credits or quotas associated with a customer account."
+api: "GET /api/v1/payments/items/{customer_type}/{customer_id}/{item_id}"
+---
+
+## Request
+
+### Path Parameters
+
+<ParamField path="customer_type" type="string" required>
+  The classification identifying the customer category.
+</ParamField>
+
+<ParamField path="customer_id" type="string" required>
+  The unique identifier for the customer.
+</ParamField>
+
+<ParamField path="item_id" type="string" required>
+  The unique identifier of the specific item being requested.
+</ParamField>
+
+## Response
+
+<ResponseField name="200" type="object">
+  Successful response with item details including credits and quota allocations.
+</ResponseField>

@@ -1,0 +1,316 @@
+---
+title: "ApiKey"
+description: "Reference for the ApiKey type for programmatic backend access."
+sidebarTitle: "ApiKey"
+mode: "wide"
+---
+
+import {
+  AsideSection,
+  ContentSection,
+  MethodAside,
+  MethodContent,
+  MethodLayout,
+  MethodReturns,
+} from "/snippets/sdk-type-components.jsx";
+
+`ApiKey` represents an authentication token that allows programmatic access to your application's backend. API keys can be associated with individual users or teams.
+
+On this page:
+
+- [`ApiKey`](#apikey)
+- Types:
+  - [`UserApiKey`](#userapikey)
+  - [`TeamApiKey`](#teamapikey)
+
+---
+
+# `ApiKey`
+
+API keys provide a way for users to authenticate with your backend services without using their primary credentials. They can be created for individual users or for teams, allowing programmatic access to your application.
+
+API keys can be obtained through:
+
+- [`user.createApiKey()`](/docs/sdk/types/user#currentusercreateapikeyoptions)
+- [`user.listApiKeys()`](/docs/sdk/types/user#currentuserlistapikeys)
+- [`user.useApiKeys()`](/docs/sdk/types/user#currentuseruseapikeys) (React hook)
+- [`team.createApiKey()`](/docs/sdk/types/team#teamcreateapikeyoptions)
+- [`team.listApiKeys()`](/docs/sdk/types/team#teamlistapikeys)
+- [`team.useApiKeys()`](/docs/sdk/types/team#teamuseapikeys) (React hook)
+
+## Table of Contents
+
+```typescript
+type ApiKey<Type extends "user" | "team" = "user" | "team", IsFirstView extends boolean = false> = {
+  id: string;
+  description: string;
+  expiresAt?: Date;
+  manuallyRevokedAt: Date | null;
+  createdAt: Date;
+  value: IsFirstView extends true ? string : { lastFour: string };
+
+  // User or Team properties based on Type
+  ...(Type extends "user" ? {
+    type: "user";
+    userId: string;
+  } : {
+    type: "team";
+    teamId: string;
+  })
+
+  // Methods
+  isValid(): boolean;
+  whyInvalid(): "manually-revoked" | "expired" | null;
+  revoke(): Promise<void>;
+  update(options): Promise<void>;
+};
+```
+
+## Properties
+
+<ResponseField name="id" type="string">
+  The unique identifier for this API key.
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  A human-readable description of the API key's purpose.
+</ResponseField>
+
+<ResponseField name="expiresAt" type="Date">
+  The date and time when this API key will expire. If not set, the key does not
+  expire.
+</ResponseField>
+
+<ResponseField name="manuallyRevokedAt" type="Date | null">
+  The date and time when this API key was manually revoked. If `null`, the key
+  has not been revoked.
+</ResponseField>
+
+<ResponseField name="createdAt" type="Date">
+  The date and time when this API key was created.
+</ResponseField>
+
+<ResponseField name="value" type="string | { lastFour: string }">
+  The full API key string on first creation; subsequently returns `{ lastFour: string }` for security.
+</ResponseField>
+
+<ResponseField name="userId" type="string">
+  For user API keys, the ID of the user that owns this API key.
+</ResponseField>
+
+<ResponseField name="teamId" type="string">
+  For team API keys, the ID of the team that owns this API key.
+</ResponseField>
+
+## Methods
+
+### `apiKey.isValid()`
+
+<MethodLayout>
+  <MethodContent>
+    Checks if the API key is still valid, meaning it is neither expired nor revoked.
+
+    <MethodReturns type="boolean" />
+
+  </MethodContent>
+
+  <MethodAside>
+    <AsideSection title="Signature">
+      ```typescript
+      declare function isValid(): boolean;
+      ```
+    </AsideSection>
+
+    <AsideSection title="Examples">
+      ```typescript
+      if (apiKey.isValid()) {
+        console.log("API key is still valid");
+      } else {
+        console.log("API key is invalid");
+      }
+      ```
+    </AsideSection>
+
+  </MethodAside>
+</MethodLayout>
+
+### `apiKey.whyInvalid()`
+
+<MethodLayout>
+  <MethodContent>
+    Returns the reason why the API key is invalid, or `null` if it is valid.
+
+    <MethodReturns type='"manually-revoked" | "expired" | null' />
+
+  </MethodContent>
+
+  <MethodAside>
+    <AsideSection title="Signature">
+      ```typescript
+      declare function whyInvalid(): "manually-revoked" | "expired" | null;
+      ```
+    </AsideSection>
+
+    <AsideSection title="Examples">
+      ```typescript
+      const reason = apiKey.whyInvalid();
+      if (reason) {
+        console.log(`API key is invalid because it was ${reason}`);
+      } else {
+        console.log("API key is valid");
+      }
+      ```
+    </AsideSection>
+
+  </MethodAside>
+</MethodLayout>
+
+### `apiKey.revoke()`
+
+<MethodLayout>
+  <MethodContent>
+    Revokes the API key, preventing it from being used for authentication.
+
+    <MethodReturns type="Promise<void>" />
+
+  </MethodContent>
+
+  <MethodAside>
+    <AsideSection title="Signature">
+      ```typescript
+      declare function revoke(): Promise<void>;
+      ```
+    </AsideSection>
+
+    <AsideSection title="Examples">
+      ```typescript
+      await apiKey.revoke();
+      console.log("API key has been revoked");
+      ```
+    </AsideSection>
+
+  </MethodAside>
+</MethodLayout>
+
+### `apiKey.update(options)`
+
+<MethodLayout>
+  <MethodContent>
+    Updates the API key properties.
+
+    <ContentSection title="Parameters">
+      <ParamField body="options.description" type="string">
+        A new description for the API key.
+      </ParamField>
+
+      <ParamField body="options.expiresAt" type="Date | null">
+        A new expiration date, or `null` to remove the expiration.
+      </ParamField>
+
+      <ParamField body="options.revoked" type="boolean">
+        Set to `true` to revoke the API key.
+      </ParamField>
+    </ContentSection>
+
+    <MethodReturns type="Promise<void>" />
+
+  </MethodContent>
+
+  <MethodAside>
+    <AsideSection title="Signature">
+      ```typescript
+      declare function update(options: {
+        description?: string;
+        expiresAt?: Date | null;
+        revoked?: boolean;
+      }): Promise<void>;
+      ```
+    </AsideSection>
+
+    <AsideSection title="Examples">
+      ```typescript
+      await apiKey.update({
+        description: "Updated description",
+        expiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
+      });
+      ```
+    </AsideSection>
+
+  </MethodAside>
+</MethodLayout>
+
+---
+
+# Types
+
+### `UserApiKey`
+
+A type alias for an API key owned by a user.
+
+```typescript
+type UserApiKey = ApiKey<"user", false>;
+```
+
+### `UserApiKeyFirstView`
+
+A type alias for a newly created user API key, which includes the full key value instead of just the last four characters.
+
+```typescript
+type UserApiKeyFirstView = ApiKey<"user", true>;
+```
+
+### `TeamApiKey`
+
+A type alias for an API key owned by a team.
+
+```typescript
+type TeamApiKey = ApiKey<"team", false>;
+```
+
+### `TeamApiKeyFirstView`
+
+A type alias for a newly created team API key, which includes the full key value instead of just the last four characters.
+
+```typescript
+type TeamApiKeyFirstView = ApiKey<"team", true>;
+```
+
+---
+
+# Creation Options
+
+When creating an API key using [`user.createApiKey()`](/docs/sdk/types/user#currentusercreateapikeyoptions) or [`team.createApiKey()`](/docs/sdk/types/team#teamcreateapikeyoptions), you need to provide an options object.
+
+<ParamField body="description" type="string" required>
+  A human-readable description of the API key's purpose.
+</ParamField>
+
+<ParamField body="expiresAt" type="Date | null" required>
+  The date when the API key will expire. Use `null` for keys that don't expire.
+</ParamField>
+
+<ParamField body="isPublic" type="boolean">
+  Whether the API key is public. Defaults to `false`. **Secret API Keys** are
+  monitored by Stack Auth's secret scanner, which can revoke them if detected in
+  public code repositories. **Public API Keys** are designed for client-side
+  code where exposure is not a concern.
+</ParamField>
+
+```typescript
+// Get the current user
+const user = await stackApp.getUser();
+
+// Create a secret API key (default)
+const secretKey = await user.createApiKey({
+  description: "Backend integration",
+  expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000), // 90 days
+  isPublic: false,
+});
+
+// Create a public API key
+const publicKey = await user.createApiKey({
+  description: "Client-side access",
+  expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days
+  isPublic: true,
+});
+```
