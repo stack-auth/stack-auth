@@ -5,23 +5,50 @@ sidebarTitle: "TeamPermission"
 mode: "wide"
 ---
 
+import {
+  ClickableTableOfContents,
+  CollapsibleTypesSection,
+  MethodAside,
+  MethodContent,
+  MethodLayout,
+} from "/snippets/sdk-type-components.jsx";
+
+export const TeamPermissionSection = (props) => (
+  <CollapsibleTypesSection
+    badge={
+      <Badge color="green" size="sm" shape="pill">
+        teamPermission
+      </Badge>
+    }
+    {...props}
+  />
+);
+
 The `TeamPermission` object represents a permission that a user has within a team. Currently, it contains only an `id` to specify the permission.
 
 You can get `TeamPermission` objects by calling functions such as `user.getPermission(...)` or `user.listPermissions()`.
 
 ## Table of Contents
 
-```typescript
-type TeamPermission = {
-  id: string;
-};
-```
+<ClickableTableOfContents
+  title="TeamPermission Table of Contents"
+  code={`type TeamPermission = {
+  id: string; //$stack-link-to:#teampermissionid
+};`}
+/>
 
 ## Properties
 
-<ResponseField name="id" type="string">
-  The identifier of the permission.
-</ResponseField>
+<TeamPermissionSection type="teamPermission" property="id" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The identifier of the permission.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const id: string; ```
+    </MethodAside>
+  </MethodLayout>
+</TeamPermissionSection>
 
 ## Access
 
