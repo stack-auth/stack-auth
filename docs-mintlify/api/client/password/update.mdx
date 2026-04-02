@@ -1,0 +1,58 @@
+---
+title: "Update Password"
+description: "Update the password of the current user, requires the old password."
+api: "POST /api/v1/auth/password/update"
+---
+
+## Request
+
+<ParamField header="x-stack-publishable-client-key" type="string" required>
+  The publishable client key for authentication.
+</ParamField>
+
+<ParamField header="x-stack-access-token" type="string" required>
+  The access token for the authenticated user.
+</ParamField>
+
+<ParamField header="x-stack-refresh-token" type="string" required>
+  The refresh token for the current session.
+</ParamField>
+
+<ParamField header="x-stack-project-id" type="string" required>
+  The project ID.
+</ParamField>
+
+<ParamField body="old_password" type="string" required>
+  The current password of the user for verification.
+</ParamField>
+
+<ParamField body="new_password" type="string" required>
+  The new password to set for the account.
+</ParamField>
+
+## Response
+
+<ResponseField name="success" type="boolean">
+  Whether the password was updated successfully.
+</ResponseField>
+
+<CodeGroup>
+```bash cURL
+curl -X POST 'https://api.stack-auth.com/api/v1/auth/password/update' \
+  -H 'Content-Type: application/json' \
+  -H 'x-stack-publishable-client-key: YOUR_PUBLISHABLE_CLIENT_KEY' \
+  -H 'x-stack-access-token: YOUR_ACCESS_TOKEN' \
+  -H 'x-stack-refresh-token: YOUR_REFRESH_TOKEN' \
+  -H 'x-stack-project-id: YOUR_PROJECT_ID' \
+  -d '{
+    "old_password": "currentPassword123",
+    "new_password": "newSecurePassword456"
+  }'
+```
+
+```json 200 Response
+{
+  "success": true
+}
+```
+</CodeGroup>

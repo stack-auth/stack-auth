@@ -1,0 +1,17 @@
+---
+title: "Send Team Invitation Email"
+description: "Send an email to invite a user to a team. Recipients can join by clicking the email link, and new users will be guided through account creation."
+api: "POST /api/v1/team-invitations/send-code"
+---
+
+## Request
+
+<ParamField body="body" type="object" required>
+  The request body containing invitation details.
+</ParamField>
+
+## Response
+
+<ResponseField name="200" type="object">
+  Successful response indicating the invitation email has been sent.
+</ResponseField>

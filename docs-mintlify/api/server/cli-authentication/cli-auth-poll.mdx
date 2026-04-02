@@ -1,0 +1,59 @@
+---
+title: "Poll CLI Authentication Status"
+description: "Check the status of a CLI authentication session using the polling code."
+api: "POST /api/v1/auth/cli/poll"
+---
+
+## Request
+
+<ParamField header="x-stack-secret-server-key" type="string" required>
+  The secret server key for authentication.
+</ParamField>
+
+<ParamField header="x-stack-project-id" type="string" required>
+  The project ID.
+</ParamField>
+
+<ParamField body="polling_code" type="string" required>
+  The polling code returned from the CLI authentication initiation endpoint.
+</ParamField>
+
+## Response
+
+The endpoint returns one of two status codes:
+
+- **200**: The authentication session has been completed. The response includes the refresh token.
+- **201**: The authentication session is still pending. Continue polling.
+
+<ResponseField name="status" type="string">
+  The current status of the CLI authentication session (e.g., `pending`, `completed`).
+</ResponseField>
+
+<ResponseField name="refresh_token" type="string">
+  The refresh token for the authenticated session. Only present when the status is `completed`.
+</ResponseField>
+
+<CodeGroup>
+```bash cURL
+curl -X POST 'https://api.stack-auth.com/api/v1/auth/cli/poll' \
+  -H 'Content-Type: application/json' \
+  -H 'x-stack-secret-server-key: YOUR_SECRET_SERVER_KEY' \
+  -H 'x-stack-project-id: YOUR_PROJECT_ID' \
+  -d '{
+    "polling_code": "poll_abc123def456"
+  }'
+```
+
+```json 200 Response (Completed)
+{
+  "status": "completed",
+  "refresh_token": "rt_abc123def456..."
+}
+```
+
+```json 201 Response (Pending)
+{
+  "status": "pending"
+}
+```
+</CodeGroup>
