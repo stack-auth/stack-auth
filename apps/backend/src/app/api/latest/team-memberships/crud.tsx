@@ -5,7 +5,7 @@ import { PrismaTransaction } from "@/lib/types";
 import { sendTeamMembershipCreatedWebhook, sendTeamMembershipDeletedWebhook, sendTeamPermissionCreatedWebhook } from "@/lib/webhooks";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
-import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
+import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { teamMembershipsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-memberships";
 import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";

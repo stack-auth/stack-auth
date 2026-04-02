@@ -12,7 +12,7 @@ import { PrismaClientTransaction, RawQuery, getPrismaClientForSourceOfTruth, get
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { uploadAndGetUrl } from "@/s3";
 import { log } from "@/utils/telemetry";
-import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
+import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { currentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import { UsersCrud, usersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";

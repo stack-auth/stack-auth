@@ -6,7 +6,7 @@ import { generateUnsubscribeLink, getNotificationCategoryById, hasNotificationEn
 import { getTenancy, Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient, PrismaClientTransaction } from "@/prisma-client";
 import { withTraceSpan } from "@/utils/telemetry";
-import { allPromisesAndWaitUntilEach } from "@/utils/vercel";
+import { allPromisesAndWaitUntilEach } from "@/utils/background-tasks";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
 import { getEnvBoolean, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, errorToNiceString, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";

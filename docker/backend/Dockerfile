@@ -1,4 +1,5 @@
-# Backend only, no migrations or entrypoint script.
+# Backend for Cloud Run / self-hosted deployment.
+# Includes migration script for database setup.
 # Connects to the same AWS services (RDS, S3, KMS) as the Vercel deployment.
 #
 # Build:  docker build -f docker/backend/Dockerfile -t stack-backend .
@@ -13,7 +14,7 @@ WORKDIR /app
 
 RUN apt-get update && \
     apt-get upgrade -y && \
-    rm -rf /var/lib/apt/lists
+    rm -rf /var/lib/apt/lists/*
 
 ENV PNPM_HOME=/pnpm
 ENV PATH=$PNPM_HOME:$PATH
@@ -67,8 +68,8 @@ WORKDIR /app
 
 RUN apt-get update && \
     apt-get upgrade -y && \
-    apt-get install -y openssl && \
-    rm -rf /var/lib/apt/lists
+    apt-get install -y --no-install-recommends openssl && \
+    rm -rf /var/lib/apt/lists/*
 
 # Copy built backend (standalone)
 COPY --from=builder --chown=node:node /app/apps/backend/.next/standalone ./
@@ -77,7 +78,7 @@ COPY --from=builder --chown=node:node /app/apps/backend/prisma ./apps/backend/pr
 COPY --from=builder --chown=node:node /app/apps/backend/dist ./apps/backend/dist
 COPY --from=builder --chown=node:node /app/apps/backend/node_modules ./apps/backend/node_modules
 
-# Restore workspace node_modules needed by non-Next runtime scripts (e.g. migrations)
+# Restore workspace node_modules and packages needed by runtime scripts (e.g. migration script)
 COPY --from=builder --chown=node:node /app/node_modules ./node_modules
 COPY --from=builder --chown=node:node /app/packages ./packages
 

@@ -1,5 +1,5 @@
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { ignoreUnhandledRejection, runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 
 /**
  * In-flight background promises tracked for graceful shutdown on non-Vercel runtimes (e.g. Cloud Run).
@@ -18,7 +18,8 @@ function waitUntilImpl(promise: Promise<unknown>) {
   } else {
     // On Cloud Run / self-hosted: track the promise for SIGTERM drain
     inFlightPromises.add(promise);
-    runAsynchronously(promise.finally(() => inFlightPromises.delete(promise)));
+    const cleanup = promise.finally(() => inFlightPromises.delete(promise));
+    ignoreUnhandledRejection(cleanup);
   }
 }
 

@@ -3,7 +3,7 @@ import { sendTeamCreatedWebhook, sendTeamDeletedWebhook, sendTeamUpdatedWebhook 
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { uploadAndGetUrl } from "@/s3";
-import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
+import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { Prisma } from "@/generated/prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { teamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
