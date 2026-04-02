@@ -44,7 +44,7 @@ COPY .gitignore .
 COPY pnpm-workspace.yaml .
 COPY turbo.json .
 COPY configs ./configs
-RUN --mount=type=cache,id=pnpm,target=/pnpm/store STACK_SKIP_TEMPLATE_GENERATION=true pnpm install --frozen-lockfile
+RUN STACK_SKIP_TEMPLATE_GENERATION=true pnpm install --frozen-lockfile
 
 COPY --from=pruner /app/out/full/ .
 
