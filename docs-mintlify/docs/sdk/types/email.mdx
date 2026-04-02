@@ -5,6 +5,26 @@ sidebarTitle: "Email"
 mode: "wide"
 ---
 
+import {
+  AsideSection,
+  ClickableTableOfContents,
+  CollapsibleTypesSection,
+  MethodAside,
+  MethodContent,
+  MethodLayout,
+} from "/snippets/sdk-type-components.jsx";
+
+export const EmailSection = (props) => (
+  <CollapsibleTypesSection
+    badge={
+      <Badge color="green" size="sm" shape="pill">
+        sendEmailOptions
+      </Badge>
+    }
+    {...props}
+  />
+);
+
 This is a detailed reference for email-related types in Stack Auth. If you're looking for a more high-level overview, please refer to our [guide on the email system](/docs/concepts/emails).
 
 # `SendEmailOptions`
@@ -13,53 +33,97 @@ Options for sending emails via the `sendEmail` method on `StackServerApp`.
 
 ## Table of Contents
 
-```typescript
-type SendEmailOptions = {
-  userIds: string[];
-  themeId?: string | null | false;
-  subject?: string;
-  notificationCategoryName?: string;
-  html?: string;
-  templateId?: string;
-  variables?: Record<string, any>;
-};
-```
+<ClickableTableOfContents
+  title="SendEmailOptions Table of Contents"
+  code={`type SendEmailOptions = {
+  userIds: string[]; //$stack-link-to:#sendemailoptionsuserids
+  themeId?: string | null | false; //$stack-link-to:#sendemailoptionsthemeid
+  subject?: string; //$stack-link-to:#sendemailoptionssubject
+  notificationCategoryName?: string; //$stack-link-to:#sendemailoptionsnotificationcategoryname
+  html?: string; //$stack-link-to:#sendemailoptionshtml
+  templateId?: string; //$stack-link-to:#sendemailoptionstemplateid
+  variables?: Record<string, any>; //$stack-link-to:#sendemailoptionsvariables
+};`}
+/>
 
 ## Properties
 
-<ResponseField name="userIds" type="string[]" required>
-  An array of user IDs that will receive the email. All users must exist in your
-  Stack Auth project.
-</ResponseField>
+<EmailSection type="sendEmailOptions" property="userIds" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      An array of user IDs that will receive the email. All users must exist in your Stack Auth project.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const userIds: string[]; ```
+    </MethodAside>
+  </MethodLayout>
+</EmailSection>
 
-<ResponseField name="subject" type="string">
-  Optional email subject line. If you use a template, this overrides the
-  template's default subject.
-</ResponseField>
+<EmailSection type="sendEmailOptions" property="subject" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Optional email subject line. If you use a template, this overrides the template's default subject.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const subject: string | undefined; ```
+    </MethodAside>
+  </MethodLayout>
+</EmailSection>
 
-<ResponseField name="html" type="string">
-  Custom HTML content for the email. This cannot be used together with
-  `templateId` or `variables`.
-</ResponseField>
+<EmailSection type="sendEmailOptions" property="html" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Custom HTML content for the email. This cannot be used together with `templateId` or `variables`.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const html: string | undefined; ```
+    </MethodAside>
+  </MethodLayout>
+</EmailSection>
 
-<ResponseField name="templateId" type="string">
-  ID of the email template to use. This cannot be used together with `html`.
-</ResponseField>
+<EmailSection type="sendEmailOptions" property="templateId" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      ID of the email template to use. This cannot be used together with `html`.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const templateId: string | undefined; ```
+    </MethodAside>
+  </MethodLayout>
+</EmailSection>
 
-<ResponseField name="variables" type="Record<string, any>">
-  Optional variables to substitute in the template. Only used when `templateId`
-  is provided.
-</ResponseField>
+<EmailSection type="sendEmailOptions" property="variables" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Optional variables to substitute in the template. Only used when `templateId` is provided.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const variables: Record<string, any> | undefined; ```
+    </MethodAside>
+  </MethodLayout>
+</EmailSection>
 
-<ResponseField name="themeId" type="string | null | false">
-  A string ID for a custom theme, `null` for no theme, or `false` to use the
-  default theme.
-</ResponseField>
+<EmailSection type="sendEmailOptions" property="themeId" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      A string ID for a custom theme, `null` for no theme, or `false` to use the default theme.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const themeId: string | null | false | undefined; ```
+    </MethodAside>
+  </MethodLayout>
+</EmailSection>
 
-<ResponseField name="notificationCategoryName" type="string">
-  Optional notification category name for user preferences. Users can opt in or
-  out of specific categories through their account settings.
-</ResponseField>
+<EmailSection type="sendEmailOptions" property="notificationCategoryName" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Optional notification category name for user preferences. Users can opt in or out of specific categories through their account settings.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const notificationCategoryName: string | undefined; ```
+    </MethodAside>
+  </MethodLayout>
+</EmailSection>
 
 ## Usage
 
