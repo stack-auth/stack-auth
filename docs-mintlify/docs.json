@@ -119,14 +119,23 @@
           {
             "group": "Apps",
             "pages": [
-              "docs/apps/api-keys",
+              {
+                "group": "Authentication",
+                "icon": "lock",
+                "pages": [
+                  "docs/apps/auth-providers",
+                  "docs/apps/oauth"
+                ]
+              },
               "docs/apps/emails",
-              "docs/apps/oauth",
-              "docs/apps/orgs-and-teams",
-              "docs/apps/permissions",
-              "docs/apps/webhooks",
               "docs/apps/payments",
-              "docs/apps/analytics"
+              "docs/apps/analytics",
+              "docs/apps/api-keys",
+              "docs/apps/data-vault",
+              "docs/apps/launch-checklist",
+              "docs/apps/permissions",
+              "docs/apps/orgs-and-teams",
+              "docs/apps/webhooks"
             ]
           },
           {
