@@ -5,6 +5,25 @@ sidebarTitle: "TeamProfile"
 mode: "wide"
 ---
 
+import {
+  ClickableTableOfContents,
+  CollapsibleTypesSection,
+  MethodAside,
+  MethodContent,
+  MethodLayout,
+} from "/snippets/sdk-type-components.jsx";
+
+export const TeamProfileSection = (props) => (
+  <CollapsibleTypesSection
+    badge={
+      <Badge color="green" size="sm" shape="pill">
+        teamProfile
+      </Badge>
+    }
+    {...props}
+  />
+);
+
 This is a detailed reference for the `TeamProfile` and `ServerTeamProfile` objects.
 
 On this page:
@@ -18,24 +37,37 @@ The `TeamProfile` object represents the profile of a user within the context of 
 
 ## Table of Contents
 
-```typescript
-type TeamProfile = {
-  displayName: string | null;
-  profileImageUrl: string | null;
-};
-```
+<ClickableTableOfContents
+  title="TeamProfile Table of Contents"
+  code={`type TeamProfile = {
+  displayName: string | null; //$stack-link-to:#teamprofiledisplayname
+  profileImageUrl: string | null; //$stack-link-to:#teamprofileprofileimageurl
+};`}
+/>
 
 ## Properties
 
-<ResponseField name="displayName" type="string | null">
-  The display name of the user within the team context, or `null` if no display
-  name is set.
-</ResponseField>
+<TeamProfileSection type="teamProfile" property="displayName" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The display name of the user within the team context, or `null` if no display name is set.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const displayName: string | null; ```
+    </MethodAside>
+  </MethodLayout>
+</TeamProfileSection>
 
-<ResponseField name="profileImageUrl" type="string | null">
-  The profile image URL of the user within the team context, or `null` if no
-  profile image is set.
-</ResponseField>
+<TeamProfileSection type="teamProfile" property="profileImageUrl" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The profile image URL of the user within the team context, or `null` if no profile image is set.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const profileImageUrl: string | null; ```
+    </MethodAside>
+  </MethodLayout>
+</TeamProfileSection>
 
 ---
 
@@ -43,11 +75,12 @@ type TeamProfile = {
 
 The `ServerTeamProfile` object is currently the same as `TeamProfile`.
 
-```typescript
-type ServerTeamProfile =
+<ClickableTableOfContents
+  title="ServerTeamProfile Table of Contents"
+  code={`type ServerTeamProfile =
   // Inherits all functionality from TeamProfile
-  TeamProfile;
-```
+  TeamProfile; //$stack-link-to:#teamprofile`}
+/>
 
 <Note>
   These are team-specific profile attributes, distinct from general user profile
