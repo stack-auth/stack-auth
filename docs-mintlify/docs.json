@@ -93,27 +93,7 @@
               "docs/concepts/sign-up-rules",
               "docs/concepts/jwt",
               "docs/concepts/user-onboarding",
-              "docs/concepts/team-selection",
-              {
-                "group": "Auth Providers",
-                "pages": [
-                  "docs/concepts/auth-providers",
-                  "docs/concepts/auth-providers/apple",
-                  "docs/concepts/auth-providers/bitbucket",
-                  "docs/concepts/auth-providers/discord",
-                  "docs/concepts/auth-providers/facebook",
-                  "docs/concepts/auth-providers/github",
-                  "docs/concepts/auth-providers/gitlab",
-                  "docs/concepts/auth-providers/google",
-                  "docs/concepts/auth-providers/linkedin",
-                  "docs/concepts/auth-providers/microsoft",
-                  "docs/concepts/auth-providers/passkey",
-                  "docs/concepts/auth-providers/spotify",
-                  "docs/concepts/auth-providers/twitch",
-                  "docs/concepts/auth-providers/two-factor-auth",
-                  "docs/concepts/auth-providers/x-twitter"
-                ]
-              }
+              "docs/concepts/team-selection"
             ]
           },
           {
@@ -123,8 +103,27 @@
                 "group": "Authentication",
                 "icon": "lock",
                 "pages": [
-                  "docs/apps/auth-providers",
-                  "docs/apps/oauth"
+                  "docs/apps/oauth",
+                  {
+                    "group": "Auth Providers",
+                    "pages": [
+                      "docs/concepts/auth-providers",
+                      "docs/concepts/auth-providers/apple",
+                      "docs/concepts/auth-providers/bitbucket",
+                      "docs/concepts/auth-providers/discord",
+                      "docs/concepts/auth-providers/facebook",
+                      "docs/concepts/auth-providers/github",
+                      "docs/concepts/auth-providers/gitlab",
+                      "docs/concepts/auth-providers/google",
+                      "docs/concepts/auth-providers/linkedin",
+                      "docs/concepts/auth-providers/microsoft",
+                      "docs/concepts/auth-providers/passkey",
+                      "docs/concepts/auth-providers/spotify",
+                      "docs/concepts/auth-providers/twitch",
+                      "docs/concepts/auth-providers/two-factor-auth",
+                      "docs/concepts/auth-providers/x-twitter"
+                    ]
+                  }
                 ]
               },
               "docs/apps/emails",
