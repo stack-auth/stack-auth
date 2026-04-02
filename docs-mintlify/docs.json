@@ -57,32 +57,43 @@
             "group": "Getting Started",
             "pages": [
               "docs/getting-started/setup",
-              "docs/getting-started/components",
               "docs/getting-started/users",
+              "docs/getting-started/components",
               "docs/getting-started/production",
               "docs/getting-started/vite-example"
             ]
           },
           {
-            "group": "Apps",
+            "group": "Going Further",
             "pages": [
-              "docs/apps/api-keys",
-              "docs/apps/emails",
-              "docs/apps/oauth",
-              "docs/apps/orgs-and-teams",
-              "docs/apps/permissions",
-              "docs/apps/webhooks",
-              "docs/apps/payments",
-              "docs/apps/analytics"
-            ]
-          },
-          {
-            "group": "Concepts",
-            "pages": [
+              "docs/going-further/working-with-ai",
+              "docs/concepts/stack-app",
               "docs/concepts/backend-integration",
+              "docs/going-further/local-development",
+              {
+                "group": "Component Customization",
+                "pages": [
+                  "docs/customization/custom-pages",
+                  "docs/customization/custom-styles",
+                  "docs/customization/dark-mode",
+                  "docs/customization/internationalization",
+                  {
+                    "group": "Page Examples",
+                    "pages": [
+                      "docs/customization/page-examples",
+                      "docs/customization/page-examples/forgot-password",
+                      "docs/customization/page-examples/password-reset",
+                      "docs/customization/page-examples/sign-in",
+                      "docs/customization/page-examples/sign-up"
+                    ]
+                  }
+                ]
+              },
               "docs/concepts/custom-user-data",
               "docs/concepts/sign-up-rules",
               "docs/concepts/jwt",
+              "docs/concepts/user-onboarding",
+              "docs/concepts/team-selection",
               {
                 "group": "Auth Providers",
                 "pages": [
@@ -102,39 +113,45 @@
                   "docs/concepts/auth-providers/two-factor-auth",
                   "docs/concepts/auth-providers/x-twitter"
                 ]
-              },
-              "docs/concepts/stack-app",
-              "docs/concepts/team-selection",
-              "docs/concepts/user-onboarding"
+              }
             ]
           },
           {
-            "group": "Customization",
+            "group": "Apps",
             "pages": [
-              "docs/customization/custom-pages",
-              "docs/customization/custom-styles",
-              "docs/customization/dark-mode",
-              "docs/customization/internationalization",
               {
-                "group": "Page Examples",
+                "group": "Authentication",
+                "icon": "lock",
                 "pages": [
-                  "docs/customization/page-examples",
-                  "docs/customization/page-examples/forgot-password",
-                  "docs/customization/page-examples/password-reset",
-                  "docs/customization/page-examples/sign-in",
-                  "docs/customization/page-examples/sign-up"
+                  "docs/apps/auth-providers",
+                  "docs/apps/oauth"
                 ]
-              }
+              },
+              "docs/apps/emails",
+              "docs/apps/payments",
+              "docs/apps/analytics",
+              "docs/apps/api-keys",
+              "docs/apps/data-vault",
+              "docs/apps/launch-checklist",
+              "docs/apps/permissions",
+              "docs/apps/orgs-and-teams",
+              "docs/apps/webhooks"
+            ]
+          },
+          {
+            "group": "Integrations",
+            "pages": [
+              "docs/others/supabase",
+              "docs/others/convex",
+              "docs/others/mcp-setup"
             ]
           },
           {
             "group": "Other",
             "pages": [
-              "docs/others/cli-authentication",
               "docs/others/self-host",
-              "docs/others/supabase",
-              "docs/others/convex",
-              "docs/others/mcp-setup"
+              "docs/others/cli-authentication",
+              "docs/going-further/showcase"
             ]
           }
         ]
