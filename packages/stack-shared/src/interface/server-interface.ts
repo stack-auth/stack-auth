@@ -296,15 +296,26 @@ export class StackServerInterface extends StackClientInterface {
     return result.items;
   }
 
-  async listServerUsers(options: {
-    cursor?: string,
-    limit?: number,
-    orderBy?: 'signedUpAt',
-    desc?: boolean,
-    query?: string,
-    includeRestricted?: boolean,
-    includeAnonymous?: boolean,
-  }): Promise<UsersCrud['Server']['List']> {
+  async listServerUsers(options: (
+    & {
+      cursor?: string,
+      limit?: number,
+      orderBy?: 'signedUpAt',
+      desc?: boolean,
+      query?: string,
+      includeRestricted?: boolean,
+    }
+    & (
+      {
+        includeAnonymous?: boolean,
+        onlyAnonymous?: false,
+      }
+      | {
+        includeAnonymous: true,
+        onlyAnonymous: true,
+      }
+    )
+  )): Promise<UsersCrud['Server']['List']> {
     const searchParams = new URLSearchParams(filterUndefined({
       cursor: options.cursor,
       limit: options.limit?.toString(),
@@ -322,6 +333,9 @@ export class StackServerInterface extends StackClientInterface {
       } : {},
       ...options.includeAnonymous ? {
         include_anonymous: 'true',
+      } : {},
+      ...options.onlyAnonymous ? {
+        only_anonymous: 'true',
       } : {},
     }));
     const response = await this.sendServerRequest("/users?" + searchParams.toString(), {}, null);
