@@ -20,8 +20,8 @@ import { isPromise } from "util/types";
 import { runMigrationNeeded } from "./auto-migrations";
 import { registerPgPool } from "./lib/dev-perf-stats";
 import { Tenancy } from "./lib/tenancies";
-import { ensurePolyfilled } from "./polyfills";
 import { drainInFlightPromises } from "./utils/background-tasks";
+import { ensurePolyfilled } from "./polyfills";
 
 // just ensure we're polyfilled because this file relies on envvars being expanded
 ensurePolyfilled();
@@ -85,13 +85,9 @@ function getPostgresPrismaClient(connectionString: string, poolLabel?: string) {
   let postgresPrismaClient = postgresPrismaClientsStore.get(connectionString);
   if (!postgresPrismaClient) {
     const schema = getSchemaFromConnectionString(connectionString);
-    const poolMaxRaw = parseInt(getEnvVariable("STACK_DATABASE_POOL_MAX", "25"), 10);
-    const poolMax = Number.isFinite(poolMaxRaw) && poolMaxRaw > 0 ? poolMaxRaw : 25;
-    const pool = new Pool({ connectionString, max: poolMax });
-    pool.on('error', (err) => {
-      // Prevent unhandled rejections from crashing the process (e.g. on Cloud Run)
-      captureError("pg-pool-error", err);
-    });
+    const pool = new Pool({ connectionString, max: 25 });
+    // pg Pool emits 'error' on idle clients (e.g. TCP reset); unhandled = process crash
+    pool.on('error', (err) => captureError("pg-pool-error", err));
     registerPgPool(pool, poolLabel ?? connectionString); // Register pool for dev performance stats
     const adapter = new PrismaPg(pool, schema ? { schema } : undefined);
     postgresPrismaClient = {
@@ -103,17 +99,13 @@ function getPostgresPrismaClient(connectionString: string, poolLabel?: string) {
   return postgresPrismaClient;
 }
 
-// Graceful shutdown for non-Vercel runtimes (Cloud Run sends SIGTERM before shutdown)
+// Cloud Run sends SIGTERM before shutdown; drain background tasks and close DB connections.
 if (!getEnvVariable("VERCEL", "") && !globalVar.__stack_prisma_sigterm_registered) {
   globalVar.__stack_prisma_sigterm_registered = true;
   process.on("SIGTERM", () => {
-    // Keep the event loop alive so Node doesn't exit before the drain completes.
-    // 10s timeout > 8s drain timeout to ensure we have enough time.
     const keepAlive = setTimeout(() => {}, 10_000);
-
     runAsynchronously(async () => {
       try {
-        console.log("[SIGTERM] Draining background tasks and database connections...");
         await drainInFlightPromises(8000);
         for (const [, entry] of postgresPrismaClientsStore) {
           await entry.client.$disconnect();
@@ -121,7 +113,6 @@ if (!getEnvVariable("VERCEL", "") && !globalVar.__stack_prisma_sigterm_registere
         for (const [, client] of prismaClientsStore.neon) {
           await client.$disconnect();
         }
-        console.log("[SIGTERM] Completed draining background tasks and database connections.");
       } finally {
         clearTimeout(keepAlive);
       }

@@ -1,10 +1,7 @@
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { ignoreUnhandledRejection, runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 
-/**
- * In-flight background promises tracked for graceful shutdown on non-Vercel runtimes (e.g. Cloud Run).
- * On SIGTERM, we drain these before exiting. See SIGTERM handler in prisma-client.tsx.
- */
+// Tracked for SIGTERM drain on non-Vercel runtimes (e.g. Cloud Run).
 const inFlightPromises = new Set<Promise<unknown>>();
 
 const isVercel = !!getEnvVariable("VERCEL", "");

@@ -4,6 +4,8 @@ import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { STACK_BACKEND_BASE_URL, it } from "../helpers";
 import { scaffoldProject } from "./js-helpers";
 
+// When STACK_TEST_SDK_FALLBACK is set, omit explicit baseUrl so the SDK resolves
+// from NEXT_PUBLIC_STACK_API_URL and exercises its fallback logic
 const sdkBaseUrl = process.env.STACK_TEST_SDK_FALLBACK ? undefined : STACK_BACKEND_BASE_URL;
 
 it("StackServerApp can inherit configuration from StackClientApp", async ({ expect }) => {
