@@ -52,7 +52,7 @@ export type ManagedEmailProviderListItem = {
   nameServerRecords: string[],
 };
 
-import type { ListSessionReplayChunksOptions, ListSessionReplayChunksResult, ListSessionReplaysOptions, ListSessionReplaysResult, SessionReplayAllEventsResult } from "../../session-replays";
+import type { AdminSessionReplay, ListSessionReplayChunksOptions, ListSessionReplayChunksResult, ListSessionReplaysOptions, ListSessionReplaysResult, SessionReplayAllEventsResult } from "../../session-replays";
 export type { AdminSessionReplay, AdminSessionReplayChunk, ListSessionReplaysOptions, ListSessionReplaysResult, ListSessionReplayChunksOptions, ListSessionReplayChunksResult, SessionReplayAllEventsResult } from "../../session-replays";
 
 
@@ -147,6 +147,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse>,
 
     listSessionReplays(options?: ListSessionReplaysOptions): Promise<ListSessionReplaysResult>,
+    getSessionReplay(sessionReplayId: string): Promise<AdminSessionReplay>,
     listSessionReplayChunks(sessionReplayId: string, options?: ListSessionReplayChunksOptions): Promise<ListSessionReplayChunksResult>,
     getSessionReplayChunkEvents(sessionReplayId: string, chunkId: string): Promise<AdminGetSessionReplayChunkEventsResponse>,
     getSessionReplayEvents(sessionReplayId: string, options?: { offset?: number, limit?: number }): Promise<SessionReplayAllEventsResult>,
