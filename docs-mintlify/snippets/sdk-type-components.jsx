@@ -62,6 +62,7 @@ export const CollapsibleTypesSection = ({
   property,
   signature,
   defaultOpen = false,
+  deprecated = false,
   badge,
   children,
 }) => {
@@ -97,12 +98,15 @@ export const CollapsibleTypesSection = ({
       id={id}
       open={isOpen}
       onToggle={(event) => setIsOpen(event.currentTarget.open)}
-      className="not-prose my-4 scroll-mt-24 overflow-hidden rounded-2xl border border-zinc-950/10 bg-white dark:border-white/10 dark:bg-zinc-950"
+      className={`not-prose my-4 scroll-mt-24 overflow-hidden rounded-2xl border bg-white dark:bg-zinc-950 ${deprecated ? "border-orange-400/40 dark:border-orange-500/30" : "border-zinc-950/10 dark:border-white/10"}`}
     >
       <summary className="cursor-pointer list-none px-4 py-4 [&::-webkit-details-marker]:hidden">
         <div className="flex items-center gap-3">
-          <code className="text-[15px] font-medium text-zinc-950 dark:text-white">{fullLabel}</code>
+          <code className={`text-[15px] font-medium ${deprecated ? "text-zinc-500 line-through decoration-zinc-400/60 dark:text-zinc-400 dark:decoration-zinc-500/60" : "text-zinc-950 dark:text-white"}`}>{fullLabel}</code>
           <span className="ml-auto flex items-center gap-2">
+            {deprecated ? (
+              <Badge color="orange" size="sm" shape="pill">deprecated</Badge>
+            ) : null}
             {badge ?? null}
             <span
               aria-hidden="true"
