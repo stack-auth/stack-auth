@@ -1,0 +1,39 @@
+---
+title: "Update Item Quantity"
+description: "Modify item quantities for customers, supporting both increases and decreases with configurable constraints."
+api: "POST /payments/items/{customer_type}/{customer_id}/{item_id}/update-quantity"
+---
+
+## Request
+
+### Path Parameters
+
+<ParamField path="customer_type" type="string" required>
+  The type of customer.
+</ParamField>
+
+<ParamField path="customer_id" type="string" required>
+  The ID of the customer.
+</ParamField>
+
+<ParamField path="item_id" type="string" required>
+  The ID of the item to update.
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="allow_negative" type="boolean">
+  Whether to allow the quantity to go negative.
+</ParamField>
+
+### Body Parameters
+
+<ParamField body="body" type="object" required>
+  Request body required.
+</ParamField>
+
+## Response
+
+<ResponseField name="200" type="object">
+  Successful response.
+</ResponseField>

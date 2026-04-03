@@ -1,0 +1,37 @@
+---
+title: "<SignIn />"
+description: Renders a sign-in component with customizable options.
+---
+
+Renders a sign-in component with customizable options.
+
+For more information, please refer to the [custom pages guide](../customization/custom-pages).
+
+## Props
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `fullPage` | `boolean` | `false` | If true, renders the component in full-page mode. |
+| `automaticRedirect` | `boolean` | `false` | If true, redirect to `afterSignIn`/`afterSignUp` URL when user is already signed in without showing the "You are signed in" message. |
+| `extraInfo` | `React.ReactNode` | `undefined` | Additional content to be displayed on the sign-in page. |
+| `firstTab` | `'magic-link' \| 'password'` | `undefined` | Determines which tab is initially active. |
+
+## Example
+
+```tsx
+import { SignIn } from '@stackframe/stack';
+
+export default function Page() {
+  return (
+    <div>
+      <h1>Sign In</h1>
+      <SignIn
+        fullPage={true}
+        automaticRedirect={true}
+        firstTab='password'
+        extraInfo={<>When signing in, you agree to our <a href="/terms">Terms</a></>}
+      />
+    </div>
+  );
+}
+```

@@ -1,0 +1,48 @@
+---
+title: "Reset Password"
+description: "Reset password with a verification code."
+api: "POST /api/v1/auth/password/reset"
+---
+
+## Request
+
+<ParamField header="x-stack-publishable-client-key" type="string" required>
+  The publishable client key for authentication.
+</ParamField>
+
+<ParamField header="x-stack-project-id" type="string" required>
+  The project ID.
+</ParamField>
+
+<ParamField body="code" type="string" required>
+  The password reset code sent to the user's email.
+</ParamField>
+
+<ParamField body="password" type="string" required>
+  The new password to set for the account.
+</ParamField>
+
+## Response
+
+<ResponseField name="success" type="boolean">
+  Whether the password reset was successful.
+</ResponseField>
+
+<CodeGroup>
+```bash cURL
+curl -X POST 'https://api.stack-auth.com/api/v1/auth/password/reset' \
+  -H 'Content-Type: application/json' \
+  -H 'x-stack-publishable-client-key: YOUR_PUBLISHABLE_CLIENT_KEY' \
+  -H 'x-stack-project-id: YOUR_PROJECT_ID' \
+  -d '{
+    "code": "RESET_CODE_HERE",
+    "password": "newSecurePassword123"
+  }'
+```
+
+```json 200 Response
+{
+  "success": true
+}
+```
+</CodeGroup>

@@ -1,0 +1,42 @@
+---
+title: "<AccountSettings />"
+description: A user interface for managing account settings, with support for full-page rendering and extensible sidebar items.
+---
+
+A user interface for managing account settings, with support for full-page rendering and extensible sidebar items.
+
+## Props
+
+| Property | Type | Default | Description |
+|----------|------|---------|-------------|
+| `fullPage` | `boolean` | `false` | If true, renders the component in full-page mode. |
+| `extraItems` | `Array` | - | Additional items to be added to the sidebar. See below for item properties. |
+
+### extraItems Properties
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `title` | `string` | The title of the item. |
+| `content` | `React.ReactNode` | The content to be rendered for the item. |
+| `subpath` | `string` | The subpath for the item's route. |
+| `icon` | `React.ReactNode` | The icon component for the item. (optional) |
+
+## Example
+
+```tsx
+import { AccountSettings } from '@stackframe/stack';
+
+export default function MyAccountPage() {
+  return (
+    <AccountSettings
+      fullPage={true}
+      extraItems={[{
+        title: 'Custom Section',
+        icon: <SettingsIcon />,
+        content: <CustomContent />,
+        subpath: '/custom',
+      }]}
+    />
+  );
+}
+```

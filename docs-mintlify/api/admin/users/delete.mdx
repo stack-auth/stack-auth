@@ -1,0 +1,24 @@
+---
+title: "Delete User"
+description: "Delete a user by ID. Use with caution."
+api: "DELETE /users/{user_id}"
+---
+
+## Request
+
+<ParamField path="user_id" type="string" required>
+  The ID of the user, or the special value `"me"` for the currently authenticated user.
+</ParamField>
+
+## Response
+
+<ResponseField name="200" type="object">
+  Successful response indicating the user was deleted.
+</ResponseField>
+
+<CodeGroup>
+```bash cURL
+curl -X DELETE "https://api.stack-auth.com/users/USER_ID" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+</CodeGroup>

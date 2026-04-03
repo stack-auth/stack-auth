@@ -1,0 +1,43 @@
+---
+title: "Delete a Contact Channel"
+description: "Removes a contact channel associated with a specified user."
+api: "DELETE /api/v1/contact-channels/{user_id}/{contact_channel_id}"
+---
+
+## Request
+
+<ParamField header="x-stack-secret-server-key" type="string" required>
+  The secret server key for authentication.
+</ParamField>
+
+<ParamField header="x-stack-admin-access-token" type="string">
+  The admin access token.
+</ParamField>
+
+<ParamField header="x-stack-project-id" type="string" required>
+  The project ID.
+</ParamField>
+
+<ParamField path="user_id" type="string" required>
+  The user that the contact channel belongs to, or `me` for the currently authenticated user.
+</ParamField>
+
+<ParamField path="contact_channel_id" type="string" required>
+  The target contact channel to delete.
+</ParamField>
+
+## Response
+
+Returns a `200` status code on success with an empty response body.
+
+<CodeGroup>
+```bash cURL
+curl -X DELETE 'https://api.stack-auth.com/api/v1/contact-channels/usr_1234567890/cc_1234567890' \
+  -H 'x-stack-secret-server-key: YOUR_SECRET_SERVER_KEY' \
+  -H 'x-stack-project-id: YOUR_PROJECT_ID'
+```
+
+```json 200 Response
+{}
+```
+</CodeGroup>
