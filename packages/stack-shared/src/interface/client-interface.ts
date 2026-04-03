@@ -181,7 +181,7 @@ export class StackClientInterface {
         } catch (probeError) {
           if (probeError instanceof KnownError) throw probeError;
           // Still down — reduce probe frequency
-          this._currentProbeRate *= 0.5;
+          this._currentProbeRate = Math.max(this._currentProbeRate * 0.5, 0.01);
         }
       }
       return await cb(apiUrls[activeIndex], { maxAttempts: 1, skipDiagnostics: false });

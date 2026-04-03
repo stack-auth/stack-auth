@@ -91,7 +91,7 @@ jobs:
       - name: Start stack-backend on fallback port (8110)
         uses: JarvusInnovations/background-action@v1.0.7
         with:
-          run: pnpm -C apps/backend run with-env:test next start --port 8110 --log-order=stream &
+          run: pnpm -C apps/backend run with-env:test next start --port 8110 &
           wait-on: |
             http://localhost:8110
           tail: true

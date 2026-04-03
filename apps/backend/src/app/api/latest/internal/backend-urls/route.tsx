@@ -47,9 +47,17 @@ let cachedEntries: ReturnType<typeof parseAndValidateConfig> | undefined;
 function getCachedConfig() {
   if (!cachedEntries) {
     const rawEnv = getEnvVariable("STACK_BACKEND_URLS_CONFIG", "");
-    cachedEntries = rawEnv
-      ? parseAndValidateConfig(JSON.parse(rawEnv))
-      : [{ probability: 1, urls: getDefaultApiUrls(getEnvVariable("NEXT_PUBLIC_STACK_API_URL")) }];
+    if (rawEnv) {
+      let parsed;
+      try {
+        parsed = JSON.parse(rawEnv);
+      } catch (e) {
+        throw new StackAssertionError(`STACK_BACKEND_URLS_CONFIG is not valid JSON: ${e}`);
+      }
+      cachedEntries = parseAndValidateConfig(parsed);
+    } else {
+      cachedEntries = [{ probability: 1, urls: getDefaultApiUrls(getEnvVariable("NEXT_PUBLIC_STACK_API_URL")) }];
+    }
   }
   return cachedEntries;
 }

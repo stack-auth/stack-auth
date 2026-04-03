@@ -18,7 +18,6 @@ import net from "node:net";
 import { Pool } from "pg";
 import { isPromise } from "util/types";
 import { runMigrationNeeded } from "./auto-migrations";
-import { shutdownOTel } from "./instrumentation";
 import { registerPgPool } from "./lib/dev-perf-stats";
 import { Tenancy } from "./lib/tenancies";
 import { ensurePolyfilled } from "./polyfills";
@@ -116,7 +115,6 @@ if (!getEnvVariable("VERCEL", "") && !globalVar.__stack_prisma_sigterm_registere
       try {
         console.log("[SIGTERM] Draining background tasks and database connections...");
         await drainInFlightPromises(8000);
-        await shutdownOTel();
         for (const [, entry] of postgresPrismaClientsStore) {
           await entry.client.$disconnect();
         }
@@ -126,6 +124,7 @@ if (!getEnvVariable("VERCEL", "") && !globalVar.__stack_prisma_sigterm_registere
         console.log("[SIGTERM] Completed draining background tasks and database connections.");
       } finally {
         clearTimeout(keepAlive);
+        process.exit(0);
       }
     });
   });
