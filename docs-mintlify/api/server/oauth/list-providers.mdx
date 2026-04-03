@@ -1,0 +1,21 @@
+---
+title: "List OAuth Providers"
+description: "Retrieve a list of all OAuth providers for a user."
+api: "GET /oauth-providers"
+---
+
+## Description
+
+Retrieve a list of all OAuth providers for a user.
+
+## Query Parameters
+
+<ParamField query="user_id" type="string" required>
+  Identifier for the user whose OAuth providers are being retrieved.
+</ParamField>
+
+## Response
+
+**Status Code:** `200` - Successful response
+
+Returns the list of OAuth providers associated with the specified user.

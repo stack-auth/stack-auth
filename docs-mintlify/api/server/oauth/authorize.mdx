@@ -1,0 +1,77 @@
+---
+title: "OAuth Authorize"
+description: "Initiate the OAuth authorization flow for user authentication or provider linking."
+api: "GET /auth/oauth/authorize/{provider_id}"
+---
+
+## Description
+
+Initiates the OAuth authorization flow for user authentication or provider linking. This endpoint manages two key workflows: authenticating users through OAuth providers and linking existing accounts to OAuth providers.
+
+## Path Parameters
+
+<ParamField path="provider_id" type="string" required>
+  OAuth provider identifier.
+</ParamField>
+
+## Query Parameters
+
+<ParamField query="type" type="string">
+  The type of OAuth flow.
+</ParamField>
+
+<ParamField query="token" type="string">
+  Authentication token.
+</ParamField>
+
+<ParamField query="provider_scope" type="string">
+  Provider-specific scope.
+</ParamField>
+
+<ParamField query="error_redirect_uri" type="string">
+  URI to redirect to on error.
+</ParamField>
+
+<ParamField query="after_callback_redirect_url" type="string">
+  Target URL after OAuth callback.
+</ParamField>
+
+<ParamField query="client_id" type="string">
+  OAuth client identifier.
+</ParamField>
+
+<ParamField query="client_secret" type="string">
+  OAuth client secret.
+</ParamField>
+
+<ParamField query="redirect_uri" type="string">
+  Redirect URI for OAuth flow.
+</ParamField>
+
+<ParamField query="scope" type="string">
+  OAuth scopes requested.
+</ParamField>
+
+<ParamField query="state" type="string">
+  State parameter for security.
+</ParamField>
+
+<ParamField query="grant_type" type="string">
+  The grant type for the OAuth flow.
+</ParamField>
+
+<ParamField query="code_challenge" type="string">
+  PKCE code challenge.
+</ParamField>
+
+<ParamField query="code_challenge_method" type="string">
+  PKCE challenge method.
+</ParamField>
+
+<ParamField query="response_type" type="string">
+  The response type for the OAuth flow.
+</ParamField>
+
+## Response
+
+**Status Code:** `302` - Redirect to OAuth provider authorization page

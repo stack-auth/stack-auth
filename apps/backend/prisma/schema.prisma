@@ -69,10 +69,10 @@ model Tenancy {
   branchId String
 
   // If organizationId is NULL, hasNoOrganization must be TRUE. If organizationId is not NULL, hasNoOrganization must be NULL.
-  organizationId    String?       @db.Uuid
-  hasNoOrganization BooleanTrue?
-  emailOutboxes     EmailOutbox[]
-  sessionReplays SessionReplay[]
+  organizationId      String?              @db.Uuid
+  hasNoOrganization   BooleanTrue?
+  emailOutboxes       EmailOutbox[]
+  sessionReplays      SessionReplay[]
   sessionReplayChunks SessionReplayChunk[]
   managedEmailDomains ManagedEmailDomain[]
 
@@ -94,24 +94,24 @@ enum ManagedEmailDomainStatus {
 model ManagedEmailDomain {
   id String @id @default(uuid()) @db.Uuid
 
-  tenancyId String @db.Uuid
-  tenancy Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  tenancyId String  @db.Uuid
+  tenancy   Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
 
   projectId String
-  branchId String
+  branchId  String
 
-  subdomain String
-  senderLocalPart String
-  resendDomainId String @unique
+  subdomain         String
+  senderLocalPart   String
+  resendDomainId    String @unique
   nameServerRecords Json
 
-  status ManagedEmailDomainStatus @default(PENDING_VERIFICATION)
+  status            ManagedEmailDomainStatus @default(PENDING_VERIFICATION)
   providerStatusRaw String?
-  isActive Boolean @default(true)
-  lastError String?
-  verifiedAt DateTime?
-  appliedAt DateTime?
-  lastWebhookAt DateTime?
+  isActive          Boolean                  @default(true)
+  lastError         String?
+  verifiedAt        DateTime?
+  appliedAt         DateTime?
+  lastWebhookAt     DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -367,18 +367,18 @@ model SessionReplay {
   chunks SessionReplayChunk[]
 
   @@id([tenancyId, id])
-  @@map("SessionReplay")
   @@index([tenancyId, projectUserId, startedAt])
   @@index([tenancyId, lastEventAt])
   // index by updatedAt instead of lastEventAt because event timing can be spoofed
   @@index([tenancyId, refreshTokenId, updatedAt])
+  @@map("SessionReplay")
 }
 
 model SessionReplayChunk {
   id String @id @default(uuid()) @db.Uuid
 
-  tenancyId        String @db.Uuid
-  sessionReplayId  String @db.Uuid @map("sessionReplayId")
+  tenancyId       String @db.Uuid
+  sessionReplayId String @map("sessionReplayId") @db.Uuid
 
   // Unique per uploaded batch for a given session id.
   batchId String @db.Uuid
@@ -402,8 +402,8 @@ model SessionReplayChunk {
   tenancy       Tenancy       @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
 
   @@unique([tenancyId, sessionReplayId, batchId])
-  @@map("SessionReplayChunk")
   @@index([tenancyId, sessionReplayId, createdAt])
+  @@map("SessionReplayChunk")
 }
 
 enum ContactChannelType {
@@ -631,6 +631,9 @@ model ProjectUserAuthorizationCode {
 
   newUser                  Boolean
   afterCallbackRedirectUrl String?
+  /// Refresh token ID that should be granted when this authorization code is exchanged.
+  /// NULL means no specific refresh token is preselected, so the token endpoint follows normal issuance/reuse logic.
+  grantedRefreshTokenId    String? @db.Uuid
 
   @@id([tenancyId, authorizationCode])
 }

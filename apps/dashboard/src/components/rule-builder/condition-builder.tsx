@@ -9,7 +9,7 @@ import {
   type RuleNode,
 } from "@/lib/cel-visual-parser";
 import { MinusIcon, PlusIcon, TrashIcon, WarningCircleIcon } from "@phosphor-icons/react";
-import { CountryCodeSelect } from "@/components/country-code-select";
+import { CountryCodeInput } from "@/components/country-code-select";
 import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
 import { validateCountryCode } from "@stackframe/stack-shared/dist/utils/country-codes";
 import { type ConditionField, type ConditionOperator, conditionFields, fieldMetadata, getOperatorsForField, isNumericField, validateNumericFieldValue } from "@stackframe/stack-shared/dist/utils/cel-fields";
@@ -212,10 +212,9 @@ function ConditionRow({
           <div className="space-y-2">
             {countryCodeListValues.map((countryCode, index) => (
               <div key={`${condition.id}-${index}`} className="flex items-center gap-2">
-                <CountryCodeSelect
+                <CountryCodeInput
                   value={countryCode || null}
                   onChange={(val) => handleCountryCodeListItemChange(index, val ?? "")}
-                  allowClear={false}
                   className={cn(
                     "h-8 text-sm flex-1",
                     countryCodeError !== null && "border-destructive ring-1 ring-destructive/30",
@@ -261,10 +260,9 @@ function ConditionRow({
             )}
           />
         ) : isCountryCodeField ? (
-          <CountryCodeSelect
+          <CountryCodeInput
             value={typeof condition.value === 'string' && condition.value ? condition.value : null}
             onChange={(val) => handleValueChange(val ?? "")}
-            allowClear={false}
             className={cn(
               "h-8 text-sm w-full",
               countryCodeError !== null && "border-destructive ring-1 ring-destructive/30",
@@ -330,8 +328,8 @@ function ConditionRow({
           <>
             <p className="text-[10px] text-muted-foreground">
               {isCountryCodeListOperator
-                ? "Add one or more ISO country codes"
-                : "Single ISO country code only, e.g. US"}
+                ? "Add one or more 2-letter country codes"
+                : "2-letter country code, e.g. US"}
             </p>
             {countryCodeError !== null && (
               <p className="text-[10px] text-destructive">

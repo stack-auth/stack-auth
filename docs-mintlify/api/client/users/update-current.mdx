@@ -1,0 +1,17 @@
+---
+title: "Update Current User"
+description: "Updates the currently authenticated user. Only the values provided will be updated."
+api: "PATCH /api/v1/users/me"
+---
+
+## Request
+
+<ParamField body="body" type="object" required>
+  The request body containing the user fields to update. Only include the properties you want to change.
+</ParamField>
+
+## Response
+
+<ResponseField name="200" type="object">
+  Successful response with the updated user information.
+</ResponseField>
