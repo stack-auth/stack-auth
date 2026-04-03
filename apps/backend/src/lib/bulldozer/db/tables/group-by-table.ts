@@ -72,6 +72,16 @@ export function declareGroupByTable<
           ) AS "mapped"
         ) AS "newGroup" ON ("changes"."newRowData" IS NOT NULL AND jsonb_typeof("changes"."newRowData") = 'object')
         WHERE ${isInitializedExpression}
+          AND (
+            NOT (
+              "changes"."oldRowData" IS NOT NULL
+              AND jsonb_typeof("changes"."oldRowData") = 'object'
+              AND "changes"."newRowData" IS NOT NULL
+              AND jsonb_typeof("changes"."newRowData") = 'object'
+            )
+            OR "changes"."oldRowData" IS DISTINCT FROM "changes"."newRowData"
+            OR "oldGroup"."groupKey" IS DISTINCT FROM "newGroup"."groupKey"
+          )
       `.toStatement(mappedChangesTableName),
       sqlStatement`
         INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")

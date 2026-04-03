@@ -12,14 +12,15 @@ type GetResult<Payload extends PrismaRuntime.OperationPayload, Args, OperationNa
 type ReplaceNever<T, R> = [T] extends [never] ? R : T;
 
 type AllPrismaModelNames = Prisma.TypeMap["meta"]["modelProps"];
+type ModelOperations<T extends AllPrismaModelNames> = Prisma.TypeMap["model"][Capitalize<T>]["operations"];
 type WhereUnique<T extends AllPrismaModelNames> = Prisma.TypeMap["model"][Capitalize<T>]["operations"]["findUniqueOrThrow"]["args"]["where"];
 type WhereMany<T extends AllPrismaModelNames> = Prisma.TypeMap["model"][Capitalize<T>]["operations"]["findMany"]["args"]["where"];
 type Where<T extends AllPrismaModelNames> = { [K in keyof WhereMany<T> as (K extends keyof WhereUnique<T> ? K : never)]: WhereMany<T>[K] };
 type Include<T extends AllPrismaModelNames> = (Prisma.TypeMap["model"][Capitalize<T>]["operations"]["findMany"]["args"] & { include?: unknown })["include"];
 type BaseFields<T extends AllPrismaModelNames> = Where<T> & Partial<PCreate<T>>;
 type PRead<T extends AllPrismaModelNames, W extends Where<T>, I extends Include<T>> = GetResult<Prisma.TypeMap["model"][Capitalize<T>]["payload"], { where: W, include: I }, "findUniqueOrThrow">;
-type PUpdate<T extends AllPrismaModelNames> = Prisma.TypeMap["model"][Capitalize<T>]["operations"]["update"]["args"]["data"];
-type PCreate<T extends AllPrismaModelNames> = Prisma.TypeMap["model"][Capitalize<T>]["operations"]["create"]["args"]["data"];
+type PUpdate<T extends AllPrismaModelNames> = ModelOperations<T> extends { update: { args: { data: infer D } } } ? D : never;
+type PCreate<T extends AllPrismaModelNames> = ModelOperations<T> extends { create: { args: { data: infer D } } } ? D : never;
 type PEitherWrite<T extends AllPrismaModelNames> = (PCreate<T> | PUpdate<T>) & Partial<ReplaceNever<PCreate<T> & PUpdate<T>, unknown>>;
 
 type CRead<T extends CrudTypeOf<any>> = T extends { Admin: { Read: infer R } } ? R : never;
@@ -141,13 +142,18 @@ export function createPrismaCrudHandlers<
       };
     }),
     onCreate: wrapper(false, async (data, context) => {
-      const prisma = await (globalPrismaClient[prismaModelName].create as any)({
+      const prismaModel = globalPrismaClient[prismaModelName];
+      const createMethod = Reflect.get(prismaModel, "create");
+      if (typeof createMethod !== "function") {
+        throw new Error(`Prisma model ${prismaModelName} does not support create()`);
+      }
+      const prisma = await Reflect.apply(createMethod, prismaModel, [{
         include: await options.include(context),
         data: {
           ...await options.baseFields(context),
           ...await crudToPrisma(data, { ...context, type: 'create' }),
         },
-      });
+      }]);
       // TODO pass the same transaction to onCreate as the one that creates the user row
       // we should probably do this with all functions and pass a transaction around in the context
       await options.onCreate?.(prisma, context);

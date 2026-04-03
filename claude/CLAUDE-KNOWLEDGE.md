@@ -180,3 +180,9 @@ A: Read directly from the materialized limit table subtree (`groups -> rows` via
 
 Q: How should user signup time be exposed in JWT claims before production rollout?
 A: Use `signed_up_at` (OIDC-style naming) in access tokens and encode it as Unix seconds in `apps/backend/src/lib/tokens.tsx` (`Math.floor(user.signed_up_at_millis / 1000)`). Since this is pre-prod, the payload schema can require `signed_up_at` directly without a backward-compat optional shim.
+
+Q: Why did adding `signed_up_at` to the access token payload break backend typecheck?
+A: `AccessTokenPayload` currently does not include `signed_up_at`. In `apps/backend/src/lib/tokens.tsx`, `payload` is typed as `Omit<AccessTokenPayload, "iss" | "aud" | "iat">`, so extra fields fail with `TS2353`. Until the schema/type is updated consistently, keep `signed_up_at` out of the payload object.
+
+Q: How should Bulldozer Studio mutation endpoints be hardened?
+A: In `apps/backend/scripts/run-bulldozer-studio.ts`, enforce loopback-only requests, require a per-instance mutation token header (for all POST routes), bound request body size before buffering/JSON parse, and ensure raw writes use the same advisory transaction lock as other table mutations. For raw upsert correctness, insert missing parent key paths before upserting the leaf node.

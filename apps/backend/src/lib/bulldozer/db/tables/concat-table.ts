@@ -25,9 +25,22 @@ export function declareConcatTable<
   tableId: TableId,
   tables: Table<GK, any, RD>[],
 }): Table<GK, null, RD> {
-  const firstTable = options.tables[0] ?? (() => {
+  const tables = [...options.tables];
+  const firstTable = tables[0] ?? (() => {
     throw new StackAssertionError("declareConcatTable requires at least one input table", { tableId: options.tableId });
   })();
+  const referenceCompareGroupKeysSql = firstTable.compareGroupKeys(sqlExpression`$1`, sqlExpression`$2`).sql;
+  const referenceCompareSortKeysSql = firstTable.compareSortKeys(sqlExpression`$1`, sqlExpression`$2`).sql;
+  for (const table of tables) {
+    const compareGroupKeysSql = table.compareGroupKeys(sqlExpression`$1`, sqlExpression`$2`).sql;
+    const compareSortKeysSql = table.compareSortKeys(sqlExpression`$1`, sqlExpression`$2`).sql;
+    if (compareGroupKeysSql !== referenceCompareGroupKeysSql || compareSortKeysSql !== referenceCompareSortKeysSql) {
+      throw new StackAssertionError("declareConcatTable requires comparator-compatible input tables", {
+        tableId: options.tableId,
+        tableDebugId: tableIdToDebugString(table.tableId),
+      });
+    }
+  }
   const triggers = new Map<string, (changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => SqlStatement[]>();
   const rawExpression = <T>(sql: string): SqlExpression<T> => ({ type: "expression", sql });
   const isInitializedExpression = sqlExpression`
@@ -40,7 +53,7 @@ export function declareConcatTable<
     `${quoteSqlStringLiteral(`${tableIndex}:`).sql} || ${rowIdentifierSql}`;
   const getInputInitializedSql = (table: Table<GK, any, RD>) => table.isInitialized().sql;
   const getUnionedListGroupsSql = (queryOptions: Parameters<typeof firstTable.listGroups>[0]) => {
-    return options.tables
+    return tables
       .map((table) => deindent`
         SELECT "sourceGroups"."groupkey" AS "groupKey"
         FROM (${table.listGroups(queryOptions).sql}) AS "sourceGroups"
@@ -49,7 +62,7 @@ export function declareConcatTable<
       .join("\nUNION ALL\n");
   };
   const getUnionedListRowsSql = (queryOptions: Parameters<typeof firstTable.listRowsInGroup>[0] & { allGroups: boolean }) => {
-    return options.tables.map((table, tableIndex) => {
+    return tables.map((table, tableIndex) => {
       if (queryOptions.allGroups) {
         return deindent`
           SELECT
@@ -86,7 +99,7 @@ export function declareConcatTable<
     }).join("\nUNION ALL\n");
   };
 
-  options.tables.forEach((table, tableIndex) => {
+  tables.forEach((table, tableIndex) => {
     table.registerRowChangeTrigger((changesTable) => {
       const concatChangesTableName = `concat_changes_${generateSecureRandomString()}`;
       return [
@@ -109,11 +122,11 @@ export function declareConcatTable<
 
   return {
     tableId: options.tableId,
-    inputTables: options.tables,
+    inputTables: tables,
     debugArgs: {
       operator: "concat",
       tableId: tableIdToDebugString(options.tableId),
-      inputTableIds: options.tables.map((table) => tableIdToDebugString(table.tableId)),
+      inputTableIds: tables.map((table) => tableIdToDebugString(table.tableId)),
     },
     listGroups: ({ start, end, startInclusive, endInclusive }) => sqlQuery`
       SELECT DISTINCT "concatGroups"."groupKey" AS groupKey

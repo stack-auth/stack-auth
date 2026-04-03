@@ -5,6 +5,7 @@ import ELK from "elkjs/lib/elk.bundled.js";
 import http from "node:http";
 import { exampleFungibleLedgerSchema } from "../src/lib/bulldozer/db/example-schema";
 import { toExecutableSqlStatements, toQueryableSqlQuery } from "../src/lib/bulldozer/db/index";
+import { quoteSqlJsonbLiteral } from "../src/lib/bulldozer/db/utilities";
 import { globalPrismaClient, retryTransaction } from "../src/prisma-client";
 
 type JsonPrimitive = string | number | boolean | null;
@@ -37,8 +38,12 @@ type StudioTableRecord = {
 };
 
 const STUDIO_PORT = Number(`${getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81")}39`);
+const STUDIO_HOST = "127.0.0.1";
 const BULLDOZER_LOCK_ID = 7857391;
 const STUDIO_INSTANCE_ID = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+const STUDIO_AUTH_TOKEN = getEnvVariable("STACK_BULLDOZER_STUDIO_AUTH_TOKEN", STUDIO_INSTANCE_ID);
+const STUDIO_AUTH_HEADER = "x-stack-bulldozer-studio-token";
+const MAX_REQUEST_BODY_BYTES = 1024 * 1024;
 const GRAPH_NODE_WIDTH = 260;
 const GRAPH_NODE_HEIGHT = 126;
 const GRAPH_LEVEL_GAP_Y = 230;
@@ -82,23 +87,34 @@ function requireStringArray(value: unknown, errorMessage: string): string[] {
   return value;
 }
 
-function quoteSqlStringLiteral(input: string): string {
-  return `'${input.replaceAll("'", "''")}'`;
-}
-function quoteSqlIdentifier(input: string): string {
-  if (input.match(/^[a-zA-Z_][a-zA-Z0-9_]*$/) == null) {
-    throw new StackAssertionError("Invalid SQL identifier for Bulldozer Studio query.", { input });
+function isJsonValue(value: unknown): value is JsonValue {
+  if (
+    value === null
+    || typeof value === "string"
+    || typeof value === "number"
+    || typeof value === "boolean"
+  ) {
+    return true;
   }
-  return `"${input}"`;
+  if (Array.isArray(value)) {
+    return value.every((item) => isJsonValue(item));
+  }
+  if (isRecord(value)) {
+    return Object.values(value).every((item) => isJsonValue(item));
+  }
+  return false;
 }
 
-function quoteSqlJsonbLiteral(input: unknown): string {
-  return `${quoteSqlStringLiteral(JSON.stringify(input))}::jsonb`;
+function requireJsonValue(value: unknown, errorMessage: string): JsonValue {
+  if (!isJsonValue(value)) {
+    throw new StackAssertionError(errorMessage);
+  }
+  return value;
 }
 
 function keyPathSqlLiteral(pathSegments: string[]): string {
   if (pathSegments.length === 0) return "ARRAY[]::jsonb[]";
-  return `ARRAY[${pathSegments.map((segment) => quoteSqlJsonbLiteral(segment)).join(", ")}]::jsonb[]`;
+  return `ARRAY[${pathSegments.map((segment) => quoteSqlJsonbLiteral(segment).sql).join(", ")}]::jsonb[]`;
 }
 
 function splitSqlStatements(sqlScript: string): string[] {
@@ -453,11 +469,20 @@ async function getRawNode(pathSegments: string[]): Promise<{
 
 async function readRequestBody(request: http.IncomingMessage): Promise<string> {
   const chunks: Buffer[] = [];
+  let totalBytes = 0;
   for await (const chunk of request) {
+    const chunkBuffer = Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk);
+    totalBytes += chunkBuffer.byteLength;
+    if (totalBytes > MAX_REQUEST_BODY_BYTES) {
+      throw new StackAssertionError("Request body exceeds maximum size.", {
+        maxRequestBodyBytes: MAX_REQUEST_BODY_BYTES,
+        receivedBytes: totalBytes,
+      });
+    }
     if (Buffer.isBuffer(chunk)) {
-      chunks.push(chunk);
+      chunks.push(chunkBuffer);
     } else if (typeof chunk === "string") {
-      chunks.push(Buffer.from(chunk));
+      chunks.push(chunkBuffer);
     }
   }
   return Buffer.concat(chunks).toString("utf8");
@@ -479,6 +504,33 @@ function sendHtml(response: http.ServerResponse, html: string): void {
   response.statusCode = 200;
   response.setHeader("Content-Type", "text/html; charset=utf-8");
   response.end(html);
+}
+
+function isLoopbackAddress(remoteAddress: string | undefined): boolean {
+  if (remoteAddress == null) return false;
+  return remoteAddress === "127.0.0.1"
+    || remoteAddress === "::1"
+    || remoteAddress === "::ffff:127.0.0.1";
+}
+
+function requireAuthorizedMutationRequest(request: http.IncomingMessage, requestUrl: URL): void {
+  const authHeader = request.headers[STUDIO_AUTH_HEADER];
+  const token = typeof authHeader === "string" ? authHeader : null;
+  if (token !== STUDIO_AUTH_TOKEN) {
+    throw new StackAssertionError("Invalid or missing studio mutation token.");
+  }
+
+  const allowedOrigins = new Set([
+    `http://localhost:${STUDIO_PORT}`,
+    `http://127.0.0.1:${STUDIO_PORT}`,
+  ]);
+  const originHeader = request.headers.origin;
+  if (typeof originHeader === "string" && !allowedOrigins.has(originHeader)) {
+    throw new StackAssertionError("Mutation origin is not allowed.", {
+      origin: originHeader,
+      path: requestUrl.pathname,
+    });
+  }
 }
 
 function getStudioPageHtml(): string {
@@ -920,6 +972,7 @@ function getStudioPageHtml(): string {
     const LEVEL_GAP_Y = ${GRAPH_LEVEL_GAP_Y};
     const COLUMN_GAP_X = ${GRAPH_COLUMN_GAP_X};
     const SCENE_MARGIN = ${GRAPH_SCENE_MARGIN};
+    const STUDIO_AUTH_TOKEN = ${JSON.stringify(STUDIO_AUTH_TOKEN)};
     const THEME_STORAGE_KEY = "bulldozer-studio-theme";
     const NODE_POSITIONS_STORAGE_KEY = "bulldozer-studio-node-positions-v1";
     const VERSION_POLL_INTERVAL_MS = 1200;
@@ -1049,7 +1102,14 @@ function getStudioPageHtml(): string {
     }
 
     async function fetchJson(path, init) {
-      const response = await fetch(path, init);
+      const normalizedInit = init ? { ...init } : {};
+      const method = typeof normalizedInit.method === "string" ? normalizedInit.method.toUpperCase() : "GET";
+      const headers = new Headers(normalizedInit.headers || {});
+      if (method !== "GET") {
+        headers.set("${STUDIO_AUTH_HEADER}", STUDIO_AUTH_TOKEN);
+      }
+      normalizedInit.headers = headers;
+      const response = await fetch(path, normalizedInit);
       let body;
       try {
         body = await response.json();
@@ -1642,7 +1702,7 @@ function getStudioPageHtml(): string {
       info.className = "detail-section";
       const kv = document.createElement("div");
       kv.className = "kv";
-      const appendInfoRow = (label: string, value: string, isMonospace = false) => {
+      const appendInfoRow = (label, value, isMonospace = false) => {
         const keyCell = document.createElement("div");
         keyCell.className = "kv-key";
         keyCell.textContent = label;
@@ -2054,9 +2114,18 @@ function getStudioPageHtml(): string {
 }
 
 async function handleRequest(request: http.IncomingMessage, response: http.ServerResponse): Promise<void> {
+  if (!isLoopbackAddress(request.socket.remoteAddress)) {
+    throw new StackAssertionError("Bulldozer Studio only accepts loopback requests.", {
+      remoteAddress: request.socket.remoteAddress,
+    });
+  }
+
   const requestUrl = new URL(request.url ?? "/", `http://${request.headers.host ?? "localhost"}`);
   const pathname = requestUrl.pathname;
   const method = request.method ?? "GET";
+  if (method === "POST") {
+    requireAuthorizedMutationRequest(request, requestUrl);
+  }
 
   if (method === "GET" && pathname === "/") {
     sendHtml(response, getStudioPageHtml());
@@ -2109,10 +2178,13 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
       }
       const body = requireRecord(await readJsonBody(request), "set-row body must be an object.");
       const rowIdentifier = requireString(Reflect.get(body, "rowIdentifier"), "rowIdentifier must be a string.");
-      const rowData = requireRecord(Reflect.get(body, "rowData"), "rowData must be a JSON object.");
+      const rowData = requireJsonValue(Reflect.get(body, "rowData"), "rowData must be valid JSON.");
+      if (!isRecord(rowData)) {
+        throw new StackAssertionError("rowData must be a JSON object.");
+      }
       await executeStatements(record.table.setRow(
         rowIdentifier,
-        { type: "expression", sql: quoteSqlJsonbLiteral(rowData) },
+        { type: "expression", sql: quoteSqlJsonbLiteral(rowData).sql },
       ));
       sendJson(response, 200, { ok: true });
       return;
@@ -2143,11 +2215,27 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
   if (method === "POST" && pathname === "/api/raw/upsert") {
     const body = requireRecord(await readJsonBody(request), "raw upsert body must be an object.");
     const pathSegments = requireStringArray(Reflect.get(body, "pathSegments"), "pathSegments must be a string[]");
-    const value = Reflect.get(body, "value") ?? null;
+    const value = requireJsonValue(Reflect.get(body, "value") ?? null, "value must be valid JSON.");
+    const keyPathSql = keyPathSqlLiteral(pathSegments);
     await retryTransaction(globalPrismaClient, async (tx) => {
+      await tx.$executeRawUnsafe(`SET LOCAL jit = off`);
+      await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${BULLDOZER_LOCK_ID})`);
+      await tx.$executeRawUnsafe(`
+        WITH "targetPath" AS (
+          SELECT ${keyPathSql} AS "path"
+        )
+        INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
+        SELECT
+          gen_random_uuid(),
+          "targetPath"."path"[1:"prefixes"."prefixLength"] AS "keyPath",
+          'null'::jsonb AS "value"
+        FROM "targetPath"
+        CROSS JOIN LATERAL generate_series(0, GREATEST(cardinality("targetPath"."path") - 1, 0)) AS "prefixes"("prefixLength")
+        ON CONFLICT ("keyPath") DO NOTHING
+      `);
       await tx.$executeRawUnsafe(`
         INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
-        VALUES (gen_random_uuid(), ${keyPathSqlLiteral(pathSegments)}, ${quoteSqlJsonbLiteral(value)})
+        VALUES (gen_random_uuid(), ${keyPathSql}, ${quoteSqlJsonbLiteral(value).sql})
         ON CONFLICT ("keyPath") DO UPDATE
         SET "value" = EXCLUDED."value"
       `);
@@ -2166,6 +2254,8 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
       throw new StackAssertionError("Deleting reserved root paths is not allowed.");
     }
     await retryTransaction(globalPrismaClient, async (tx) => {
+      await tx.$executeRawUnsafe(`SET LOCAL jit = off`);
+      await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${BULLDOZER_LOCK_ID})`);
       await tx.$executeRawUnsafe(`
         DELETE FROM "BulldozerStorageEngine"
         WHERE "keyPath" = ${keyPathSqlLiteral(pathSegments)}
@@ -2190,8 +2280,8 @@ async function main(): Promise<void> {
     );
   });
 
-  server.listen(STUDIO_PORT, () => {
-    console.log(`Bulldozer Studio running on http://localhost:${STUDIO_PORT}`);
+  server.listen(STUDIO_PORT, STUDIO_HOST, () => {
+    console.log(`Bulldozer Studio running on http://${STUDIO_HOST}:${STUDIO_PORT}`);
   });
 
   const shutdown = async () => {
