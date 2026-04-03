@@ -351,15 +351,20 @@ function UserTableBody(props: {
   const { resetCache } = props.cursorPaginationCache;
 
   const baseOptions = useMemo(
-    () => ({
-      limit: query.pageSize,
-      orderBy: "signedUpAt" as const,
-      desc: query.signedUpOrder === "desc",
-      query: query.search,
-      includeRestricted: query.includeRestricted,
-      includeAnonymous: query.includeAnonymous,
-    }),
-    [query.pageSize, query.search, query.includeRestricted, query.includeAnonymous, query.signedUpOrder],
+    (): NonNullable<Parameters<typeof stackAdminApp.listUsers>[0]> => {
+      const common = {
+        limit: query.pageSize,
+        orderBy: "signedUpAt" as const,
+        desc: query.signedUpOrder === "desc",
+        query: query.search,
+        includeRestricted: query.includeRestricted,
+      };
+      if (query.onlyAnonymous) {
+        return { ...common, includeAnonymous: true, onlyAnonymous: true };
+      }
+      return { ...common, includeAnonymous: query.includeAnonymous };
+    },
+    [query.pageSize, query.search, query.includeRestricted, query.includeAnonymous, query.onlyAnonymous, query.signedUpOrder, stackAdminApp],
   );
 
   const rawUsers = stackAdminApp.useUsers({
@@ -390,13 +395,9 @@ function UserTableBody(props: {
     () => createUserColumns(setQuery, query.signedUpOrder === "desc"),
     [setQuery, query.signedUpOrder],
   );
-  const displayedUsers = useMemo(
-    () => (query.onlyAnonymous ? users.filter((user) => user.isAnonymous) : users),
-    [users, query.onlyAnonymous],
-  );
 
   const table = useReactTable({
-    data: displayedUsers,
+    data: users,
     columns,
     getCoreRowModel: getCoreRowModel(),
   });
