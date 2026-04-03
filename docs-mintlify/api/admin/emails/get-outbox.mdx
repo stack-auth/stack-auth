@@ -1,0 +1,78 @@
+---
+title: "Get Email Outbox Entry"
+description: "Retrieves a single email from the outbox by ID."
+api: "GET /api/v1/emails/outbox/{id}"
+---
+
+## Request
+
+<ParamField header="x-stack-secret-server-key" type="string" required>
+  The secret server key for authentication.
+</ParamField>
+
+<ParamField header="x-stack-admin-access-token" type="string">
+  The admin access token.
+</ParamField>
+
+<ParamField header="x-stack-project-id" type="string" required>
+  The project ID.
+</ParamField>
+
+<ParamField path="id" type="string" required>
+  The identifier of the outbox email entry.
+</ParamField>
+
+## Response
+
+<ResponseField name="id" type="string">
+  The unique identifier of the outbox email.
+</ResponseField>
+
+<ResponseField name="status" type="string">
+  The current status of the email.
+</ResponseField>
+
+<ResponseField name="simple_status" type="string">
+  A simplified status representation.
+</ResponseField>
+
+<ResponseField name="subject" type="string">
+  The email subject line.
+</ResponseField>
+
+<ResponseField name="recipient" type="string">
+  The email recipient.
+</ResponseField>
+
+<ResponseField name="body" type="string">
+  The email body content.
+</ResponseField>
+
+<ResponseField name="created_at" type="string">
+  ISO 8601 timestamp of when the email was created.
+</ResponseField>
+
+<ResponseField name="updated_at" type="string">
+  ISO 8601 timestamp of when the email was last updated.
+</ResponseField>
+
+<CodeGroup>
+```bash cURL
+curl -X GET 'https://api.stack-auth.com/api/v1/emails/outbox/email_1234567890' \
+  -H 'x-stack-secret-server-key: YOUR_SECRET_SERVER_KEY' \
+  -H 'x-stack-project-id: YOUR_PROJECT_ID'
+```
+
+```json 200 Response
+{
+  "id": "email_1234567890",
+  "status": "queued",
+  "simple_status": "pending",
+  "subject": "Verify your email",
+  "recipient": "user@example.com",
+  "body": "<html>...</html>",
+  "created_at": "2024-01-01T00:00:00Z",
+  "updated_at": "2024-01-01T00:00:00Z"
+}
+```
+</CodeGroup>

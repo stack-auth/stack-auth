@@ -1,0 +1,42 @@
+---
+title: "team_membership.deleted"
+description: "This event is triggered when a user is removed from a team."
+---
+
+## Event Type
+
+`team_membership.deleted`
+
+## Description
+
+This event is triggered when a user is removed from a team.
+
+## Payload
+
+<ResponseField name="type" type="string">
+  The event type. Always `"team_membership.deleted"`.
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  The team membership object that was deleted.
+  <Expandable>
+    <ResponseField name="team_id" type="string">
+      The unique identifier of the team.
+    </ResponseField>
+    <ResponseField name="user_id" type="string">
+      The unique identifier of the user removed from the team.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<CodeGroup>
+```json Example Payload
+{
+  "type": "team_membership.deleted",
+  "data": {
+    "team_id": "team-id-123",
+    "user_id": "user-id-456"
+  }
+}
+```
+</CodeGroup>

@@ -54,6 +54,7 @@ type QueryState = {
   search?: string,
   includeRestricted: boolean,
   includeAnonymous: boolean,
+  onlyAnonymous: boolean,
   page: number,
   pageSize: number,
   cursor?: string,
@@ -114,6 +115,7 @@ const COLUMN_LAYOUT: ColumnLayoutMap = {
 const DEFAULT_QUERY_STATE: QueryState = {
   includeRestricted: true,
   includeAnonymous: false,
+  onlyAnonymous: false,
   page: 1,
   pageSize: DEFAULT_PAGE_SIZE,
   signedUpOrder: "desc",
@@ -155,6 +157,10 @@ const querySchema = yup.object({
     .boolean()
     .transform((_, originalValue) => (originalValue === "true" ? true : undefined))
     .optional(),
+  onlyAnonymous: yup
+    .boolean()
+    .transform((_, originalValue) => (originalValue === "true" ? true : undefined))
+    .optional(),
   page: yup
     .number()
     .transform(numberTransform)
@@ -180,7 +186,7 @@ const querySchema = yup.object({
 const columnHelper = createColumnHelper<ExtendedServerUser>();
 
 export function UserTable(props?: {
-  onFilterChange?: (filters: { search?: string, includeRestricted: boolean, includeAnonymous: boolean }) => void,
+  onFilterChange?: (filters: { search?: string, includeRestricted: boolean, includeAnonymous: boolean, onlyAnonymous: boolean }) => void,
 }) {
   const { query, setQuery } = useUserTableQueryState();
   const [searchInput, setSearchInput] = useState(query.search ?? "");
@@ -209,7 +215,7 @@ export function UserTable(props?: {
 
   useEffect(() => {
     cursorPaginationCache.resetCache();
-  }, [cursorPaginationCache, query.search, query.includeRestricted, query.includeAnonymous, query.pageSize, query.signedUpOrder]);
+  }, [cursorPaginationCache, query.search, query.includeRestricted, query.includeAnonymous, query.onlyAnonymous, query.pageSize, query.signedUpOrder]);
 
   useEffect(() => {
     if (query.page > 1 && !query.cursor) {
@@ -224,8 +230,9 @@ export function UserTable(props?: {
       search: query.search,
       includeRestricted: query.includeRestricted,
       includeAnonymous: query.includeAnonymous,
+      onlyAnonymous: query.onlyAnonymous,
     });
-  }, [query.search, query.includeRestricted, query.includeAnonymous, onFilterChange]);
+  }, [query.search, query.includeRestricted, query.includeAnonymous, query.onlyAnonymous, onFilterChange]);
 
   return (
     <section className="space-y-2">
@@ -233,13 +240,19 @@ export function UserTable(props?: {
         searchValue={searchInput}
         onSearchChange={setSearchInput}
         includeRestricted={query.includeRestricted}
-        onIncludeRestrictedChange={(value) =>
-          setQuery((prev) => ({ ...prev, includeRestricted: value, page: 1, cursor: undefined }))
-        }
         includeAnonymous={query.includeAnonymous}
-        onIncludeAnonymousChange={(value) =>
-          setQuery((prev) => ({ ...prev, includeAnonymous: value, page: 1, cursor: undefined }))
-        }
+        onlyAnonymous={query.onlyAnonymous}
+        onFilterModeChange={(value) => {
+          if (value === "anonymous-only") {
+            setQuery((prev) => ({ ...prev, includeRestricted: true, includeAnonymous: true, onlyAnonymous: true, page: 1, cursor: undefined }));
+          } else if (value === "anonymous") {
+            setQuery((prev) => ({ ...prev, includeRestricted: true, includeAnonymous: true, onlyAnonymous: false, page: 1, cursor: undefined }));
+          } else if (value === "restricted") {
+            setQuery((prev) => ({ ...prev, includeRestricted: true, includeAnonymous: false, onlyAnonymous: false, page: 1, cursor: undefined }));
+          } else {
+            setQuery((prev) => ({ ...prev, includeRestricted: false, includeAnonymous: false, onlyAnonymous: false, page: 1, cursor: undefined }));
+          }
+        }}
       />
       <div className="overflow-clip rounded-xl border border-border bg-card">
         <Suspense fallback={<UserTableSkeleton pageSize={query.pageSize} />}>
@@ -258,30 +271,25 @@ function UserTableHeader(props: {
   searchValue: string,
   onSearchChange: (value: string) => void,
   includeRestricted: boolean,
-  onIncludeRestrictedChange: (value: boolean) => void,
   includeAnonymous: boolean,
-  onIncludeAnonymousChange: (value: boolean) => void,
+  onlyAnonymous: boolean,
+  onFilterModeChange: (value: "standard" | "restricted" | "anonymous" | "anonymous-only") => void,
 }) {
-  const { searchValue, onSearchChange, includeRestricted, onIncludeRestrictedChange, includeAnonymous, onIncludeAnonymousChange } = props;
+  const {
+    searchValue,
+    onSearchChange,
+    includeRestricted,
+    includeAnonymous,
+    onlyAnonymous,
+    onFilterModeChange,
+  } = props;
 
   // Determine the current filter state
   // "standard" = only fully onboarded users
   // "restricted" = include restricted users
   // "anonymous" = include anonymous users (which also includes restricted)
-  const filterValue = includeAnonymous ? "anonymous" : includeRestricted ? "restricted" : "standard";
-
-  const handleFilterChange = (value: string) => {
-    if (value === "anonymous") {
-      onIncludeAnonymousChange(true);
-      onIncludeRestrictedChange(true); // anonymous also includes restricted
-    } else if (value === "restricted") {
-      onIncludeAnonymousChange(false);
-      onIncludeRestrictedChange(true);
-    } else {
-      onIncludeAnonymousChange(false);
-      onIncludeRestrictedChange(false);
-    }
-  };
+  // "anonymous-only" = include only anonymous users
+  const filterValue = onlyAnonymous ? "anonymous-only" : includeAnonymous ? "anonymous" : includeRestricted ? "restricted" : "standard";
 
   return (
     <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
@@ -309,15 +317,22 @@ function UserTableHeader(props: {
         <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
           <Select
             value={filterValue}
-            onValueChange={handleFilterChange}
+            onValueChange={(value) => {
+              if (value === "standard" || value === "restricted" || value === "anonymous" || value === "anonymous-only") {
+                onFilterModeChange(value);
+                return;
+              }
+              throw new Error(`Unexpected user filter mode: ${value}`);
+            }}
           >
-            <SelectTrigger className="w-[210px]" aria-label="User list filter">
+            <SelectTrigger className="w-[240px]" aria-label="User list filter">
               <SelectValue placeholder="Signups" />
             </SelectTrigger>
             <SelectContent align="start">
               <SelectItem value="standard">Exclude restricted users</SelectItem>
               <SelectItem value="restricted">Signups</SelectItem>
               <SelectItem value="anonymous">Signups & anonymous users</SelectItem>
+              <SelectItem value="anonymous-only">Only anonymous users</SelectItem>
             </SelectContent>
           </Select>
         </div>
@@ -336,15 +351,20 @@ function UserTableBody(props: {
   const { resetCache } = props.cursorPaginationCache;
 
   const baseOptions = useMemo(
-    () => ({
-      limit: query.pageSize,
-      orderBy: "signedUpAt" as const,
-      desc: query.signedUpOrder === "desc",
-      query: query.search,
-      includeRestricted: query.includeRestricted,
-      includeAnonymous: query.includeAnonymous,
-    }),
-    [query.pageSize, query.search, query.includeRestricted, query.includeAnonymous, query.signedUpOrder],
+    (): NonNullable<Parameters<typeof stackAdminApp.listUsers>[0]> => {
+      const common = {
+        limit: query.pageSize,
+        orderBy: "signedUpAt" as const,
+        desc: query.signedUpOrder === "desc",
+        query: query.search,
+        includeRestricted: query.includeRestricted,
+      };
+      if (query.onlyAnonymous) {
+        return { ...common, includeAnonymous: true, onlyAnonymous: true };
+      }
+      return { ...common, includeAnonymous: query.includeAnonymous };
+    },
+    [query.pageSize, query.search, query.includeRestricted, query.includeAnonymous, query.onlyAnonymous, query.signedUpOrder, stackAdminApp],
   );
 
   const rawUsers = stackAdminApp.useUsers({
@@ -400,7 +420,7 @@ function UserTableBody(props: {
               variant="outline"
               onClick={() => {
                 resetCache();
-                setQuery({ search: undefined, includeRestricted: true, includeAnonymous: false, page: 1, cursor: undefined });
+                setQuery({ search: undefined, includeRestricted: true, includeAnonymous: false, onlyAnonymous: false, page: 1, cursor: undefined });
               }}
             >
               Reset filters
@@ -688,7 +708,8 @@ function normalizeDateValue(value: Date | string | null | undefined) {
 
 function sanitizeQueryState(state: Partial<QueryState>): QueryState {
   const search = state.search?.trim() ? state.search.trim() : undefined;
-  const includeAnonymous = Boolean(state.includeAnonymous);
+  const onlyAnonymous = Boolean(state.onlyAnonymous);
+  const includeAnonymous = onlyAnonymous || Boolean(state.includeAnonymous);
   // Default to including restricted users; also enforce that anonymous implies restricted
   const includeRestricted = includeAnonymous || (state.includeRestricted ?? true);
   const candidatePageSize = state.pageSize ?? DEFAULT_PAGE_SIZE;
@@ -697,7 +718,7 @@ function sanitizeQueryState(state: Partial<QueryState>): QueryState {
   const page = Number.isFinite(candidatePage) ? Math.max(1, Math.floor(candidatePage)) : 1;
   const cursor = page > 1 && state.cursor ? state.cursor : undefined;
   const signedUpOrder = state.signedUpOrder === "asc" ? "asc" : "desc";
-  return { search, includeRestricted, includeAnonymous, page, pageSize, cursor, signedUpOrder };
+  return { search, includeRestricted, includeAnonymous, onlyAnonymous, page, pageSize, cursor, signedUpOrder };
 }
 
 function serializeQueryState(state: QueryState) {
@@ -711,6 +732,9 @@ function serializeQueryState(state: QueryState) {
   }
   if (state.includeAnonymous) {
     params.set("includeAnonymous", "true");
+  }
+  if (state.onlyAnonymous) {
+    params.set("onlyAnonymous", "true");
   }
   if (state.page > 1) {
     params.set("page", String(state.page));
