@@ -157,7 +157,7 @@ jobs:
       # Backend API tests use direct HTTP calls that don't go through fallback.
       # Exclude cross-domain-auth which hardcodes the primary URL.
       - name: Run SDK fallback tests
-        run: pnpm -w run pre && cd apps/e2e && npx vitest run tests/js/ --exclude '**/cross-domain-auth*' --exclude '**/oauth.test*' --exclude '**/email-template-existing-project*'
+        run: pnpm -w run pre && cd apps/e2e && npx vitest run tests/js/ --exclude '**/{cross-domain-auth,oauth,email-template-existing-project}*'
 
       - name: Print Docker Compose logs
         if: always()
