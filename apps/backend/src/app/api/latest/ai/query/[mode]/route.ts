@@ -132,7 +132,7 @@ export const POST = createSmartRouteHandler({
       return {
         statusCode: 200,
         bodyType: "json" as const,
-        body: { content: contentBlocks },
+        body: { content: contentBlocks, finalText: result.text },
       };
     }
   },

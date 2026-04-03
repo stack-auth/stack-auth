@@ -139,6 +139,8 @@ A: Update affected inline snapshots in `apps/e2e/tests/backend/endpoints/api/v1/
 Q: How should `createOrUpdateProjectWithLegacyConfig` handle `onboardingStatus` for forward-compat checks?
 A: Only write `onboardingStatus` when the `Project.onboardingStatus` column exists (for example by checking `information_schema.columns` in-transaction) so current code can still run against older schemas where that column is absent.
 
+Q: How does the Stack Auth docs MCP relate to the ask-chat API and doc tools?
+A: The public MCP (`/api/internal/mcp` on the docs site) exposes only `ask_stack_auth`, which POSTs to `/api/latest/ai/query/generate` with `tools: ["docs"]` and `systemPrompt: "docs-ask-ai"`. The backend no longer loads doc tools via MCP; `createDocsTools()` calls the docs app `POST /api/internal/docs-tools` with typed actions (same behavior as before). Optional `STACK_INTERNAL_DOCS_TOOLS_SECRET` gates the internal route; `STACK_DOCS_INTERNAL_BASE_URL` overrides the docs origin for the backend.
 Q: Where is the private sign-up risk engine generated entrypoint in backend now?
 A: The generator script writes `apps/backend/src/private/implementation.generated.ts` (not `src/generated/private-sign-up-risk-engine.ts`), and backend runtime imports should target `@/private/implementation.generated`.
 
