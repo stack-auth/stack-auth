@@ -1,5 +1,7 @@
 export * from './lib/stack-app';
 export { getConvexProvidersConfig } from "./integrations/convex";
+export type { StackConfig } from "@stackframe/stack-shared/config";
+export { defineStackConfig } from "@stackframe/stack-shared/config";
 
 // IF_PLATFORM react-like
 export type { AnalyticsOptions, AnalyticsReplayOptions } from "./lib/stack-app/apps/implementations/session-replay";

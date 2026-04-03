@@ -1,10 +1,11 @@
-import fs from "fs/promises";
-import path from "path";
-import { createJiti } from "jiti";
+import { globalPrismaClient } from "@/prisma-client";
+import { renderConfigFileContent } from "@stackframe/stack-shared/dist/config-rendering";
 import { isValidConfig } from "@stackframe/stack-shared/dist/config/format";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { globalPrismaClient } from "@/prisma-client";
+import fs from "fs/promises";
+import { createJiti } from "jiti";
+import path from "path";
 
 export const LOCAL_EMULATOR_ADMIN_USER_ID = "63abbc96-5329-454a-ba56-e0460173c6c1";
 export const LOCAL_EMULATOR_OWNER_TEAM_ID = "5a0c858b-d9e9-49d4-9943-8ce385d86428";
@@ -66,6 +67,6 @@ export async function readConfigFromFile(filePath: string): Promise<Record<strin
 export async function writeConfigToFile(filePath: string, config: Record<string, unknown>): Promise<void> {
   const dir = path.dirname(filePath);
   await fs.mkdir(dir, { recursive: true });
-  const content = `export const config = ${JSON.stringify(config, null, 2)};\n`;
+  const content = renderConfigFileContent(config);
   await fs.writeFile(filePath, content, "utf-8");
 }

@@ -9,6 +9,14 @@ import { it, niceFetch, STACK_BACKEND_BASE_URL, STACK_INTERNAL_PROJECT_CLIENT_KE
 
 const CLI_BIN = path.resolve("packages/stack-cli/dist/index.js");
 
+function extractConfigObjectString(content: string): string {
+  const configMatch = content.match(/export const config:\s*StackConfig\s*=\s*(.+);\s*$/s);
+  if (!configMatch) {
+    throw new Error(`Could not extract config object from file:\n${content}`);
+  }
+  return configMatch[1];
+}
+
 function runCli(
   args: string[],
   envOverrides?: Record<string, string>,
@@ -307,13 +315,14 @@ describe("Stack CLI", () => {
   it("config pull writes a .ts file", async ({ expect }) => {
     configTsPath = path.join(tmpDir, "config.ts");
     const { stdout, exitCode } = await runCli(
-      ["config", "pull", "--config-file", configTsPath],
+      ["config", "pull", "--config-file", configTsPath, "--overwrite"],
       { STACK_PROJECT_ID: createdProjectId },
     );
     expect(exitCode).toBe(0);
     expect(stdout).toContain("Config written to");
     const content = fs.readFileSync(configTsPath, "utf-8");
-    expect(content).toContain("export const config");
+    expect(content).toContain('import type { StackConfig } from "@stackframe/js";');
+    expect(content).toContain("export const config: StackConfig");
   });
 
   it("config push succeeds", async ({ expect }) => {
@@ -347,6 +356,19 @@ describe("Stack CLI", () => {
     expect(stderr).toContain("plain `config` object");
   });
 
+  it("config pull rejects overwriting an existing file without --overwrite", async ({ expect }) => {
+    const existingConfigPath = path.join(tmpDir, "existing-config.ts");
+    fs.writeFileSync(existingConfigPath, "existing\n");
+
+    const { stderr, exitCode } = await runCli(
+      ["config", "pull", "--config-file", existingConfigPath],
+      { STACK_PROJECT_ID: createdProjectId },
+    );
+
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("Re-run with --overwrite");
+  });
+
   // --- init command tests ---
 
   // TODO: Re-enable these create-mode tests once init mode handling is finalized.
@@ -362,12 +384,16 @@ describe("Stack CLI", () => {
     expect(stdout).toContain("Config file written to");
 
     const content = fs.readFileSync(path.join(initDir, "stack.config.ts"), "utf-8");
-    expect(content).toContain("export const config");
-    const configMatch = content.match(/export const config = (.+);/s);
-    expect(configMatch).toBeTruthy();
-    const parsed = JSON.parse(configMatch![1]);
-    expect(parsed.apps.installed.authentication).toEqual({ enabled: true });
-    expect(parsed.apps.installed.teams).toEqual({ enabled: true });
+    expect(content).toContain('import type { StackConfig } from "@stackframe/js";');
+    expect(content).toContain("export const config: StackConfig");
+    expect(JSON.parse(extractConfigObjectString(content))).toMatchObject({
+      apps: {
+        installed: {
+          authentication: { enabled: true },
+          teams: { enabled: true },
+        },
+      },
+    });
   });
 
   it.skip("init create with single app", async ({ expect }) => {
@@ -381,9 +407,14 @@ describe("Stack CLI", () => {
     expect(stdout).toContain("Config file written to");
 
     const content = fs.readFileSync(path.join(initDir, "stack.config.ts"), "utf-8");
-    const configMatch = content.match(/export const config = (.+);/s);
-    const parsed = JSON.parse(configMatch![1]);
-    expect(Object.keys(parsed.apps.installed)).toEqual(["authentication"]);
+    expect(JSON.parse(extractConfigObjectString(content))).toMatchObject({
+      apps: {
+        installed: {
+          authentication: { enabled: true },
+        },
+      },
+    });
+    expect(content).not.toContain('"teams"');
   });
 
   it("init link-config with valid path", async ({ expect }) => {
