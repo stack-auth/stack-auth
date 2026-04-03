@@ -183,7 +183,7 @@ function NavItem({
   );
 
   const buttonClasses = cn(
-    "group flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-medium transition-all duration-150 hover:transition-none",
+    "group flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-semibold transition-all duration-150 hover:transition-none",
     isHighlighted
       ? "bg-white/70 text-foreground shadow-sm ring-1 ring-white/60 dark:bg-transparent dark:bg-gradient-to-r dark:from-blue-500/[0.15] dark:to-blue-500/[0.08] dark:shadow-[0_0_12px_rgba(59,130,246,0.15)] dark:ring-blue-500/20"
       : inactiveClasses,
@@ -271,7 +271,7 @@ function NavItem({
         >
           <span className="flex min-w-0 flex-1 items-center gap-3">
             <IconComponent className={iconClasses} />
-            <span className="truncate text-sm font-semibold">{item.name}</span>
+            <span className="truncate text-sm">{item.name}</span>
           </span>
           <CaretDownIcon weight="bold" className={caretClasses} />
         </Button>
@@ -525,9 +525,9 @@ function SidebarContent({
               asChild
               variant="ghost"
               size="sm"
-              className="mt-2 w-full justify-start gap-1.5 rounded-lg bg-transparent px-1.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/75 transition-colors duration-150 hover:bg-transparent hover:text-foreground hover:transition-none focus-visible:ring-border"
+              className="mt-2 w-full justify-center gap-1.5 rounded-lg bg-transparent px-1.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/75 transition-colors duration-150 hover:bg-transparent hover:text-foreground hover:transition-none focus-visible:ring-border"
             >
-              <Link href={`/projects/${projectId}/apps`} onClick={onNavigate}>
+              <Link href={`/projects/${projectId}/apps`} onClick={onNavigate} className="justify-center">
                 <PlusIcon className="h-3.5 w-3.5" />
                 <span>Install apps</span>
               </Link>
