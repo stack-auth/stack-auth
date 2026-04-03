@@ -1,57 +1,42 @@
 import { renderEmailWithTemplate } from "@/lib/email-rendering";
-import { createOpenAI } from "@ai-sdk/openai";
 import { emptyEmailTheme } from "@stackframe/stack-shared/dist/helpers/emails";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
-import { generateText } from "ai";
 
 const MOCK_API_KEY_SENTINEL = "mock-openrouter-api-key";
 const AI_REQUEST_TIMEOUT_MS = 120_000;
 const MAX_REWRITE_ATTEMPTS = 3;
 
-const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY", MOCK_API_KEY_SENTINEL);
-const isMockMode = apiKey === MOCK_API_KEY_SENTINEL;
-const openai = isMockMode ? null : createOpenAI({
-  apiKey,
-  baseURL: "https://openrouter.ai/api/v1",
-});
-
-const TEMPLATE_REWRITE_SYSTEM_PROMPT = deindent`
-  You rewrite email template TSX source into standalone draft TSX.
-
-  Requirements:
-  1) Keep exactly one exported EmailTemplate component.
-  2) Remove variables schema declarations and preview variable assignments.
-     - Remove exports like variablesSchema regardless of symbol name. For example, you may see export const profileSchema = ... which should be removed too.
-     - Remove EmailTemplate.PreviewVariables assignment.
-  3) Make EmailTemplate standalone:
-     - It must not rely on a variables prop from outside.
-     - Define "const variables = { ... }" inside EmailTemplate with sensible placeholder values based on the schema/types present in source.
-     - It should be the only exported function in the file.
-  4) Preserve subject/notification/category and existing JSX structure as much as possible.
-  5) Fix imports after removal.
-  6) Return only raw TSX source, without markdown code fences.
-`;
+function isMockMode() {
+  const key = getEnvVariable("STACK_OPENROUTER_API_KEY", MOCK_API_KEY_SENTINEL);
+  return key === MOCK_API_KEY_SENTINEL || key === "FORWARD_TO_PRODUCTION";
+}
 
 async function rewriteTemplateSourceWithCurrentAIPlumbing(templateTsxSource: string): Promise<Result<string, string>> {
-  if (!openai) {
-    return Result.error("OpenAI client not initialized - STACK_OPENROUTER_API_KEY may be missing");
-  }
-
-  // Keep consistent with other AI routes.
-  const modelName = getEnvVariable("STACK_AI_MODEL");
+  const backendUrl = getEnvVariable("NEXT_PUBLIC_STACK_API_URL");
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), AI_REQUEST_TIMEOUT_MS);
   try {
-    const response = await generateText({
-      model: openai(modelName),
-      system: TEMPLATE_REWRITE_SYSTEM_PROMPT,
-      messages: [{ role: "user", content: templateTsxSource }],
-      abortSignal: controller.signal,
+    const response = await fetch(`${backendUrl}/api/latest/ai/query/generate`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        quality: "smart",
+        speed: "slow",
+        tools: [],
+        systemPrompt: "rewrite-template-source",
+        messages: [{ role: "user", content: templateTsxSource }],
+        projectId: null,
+      }),
+      signal: controller.signal,
     });
-    return Result.ok(stripCodeFences(response.text));
+    if (!response.ok) {
+      return Result.error(`AI endpoint returned ${response.status}: ${await response.text()}`);
+    }
+    const json = await response.json() as { content: Array<{ type: string, text?: string }> };
+    const text = json.content.filter((b) => b.type === "text").map((b) => b.text ?? "").join("");
+    return Result.ok(stripCodeFences(text));
   } catch (error) {
     return Result.error(error instanceof Error ? error.message : String(error));
   } finally {
@@ -131,7 +116,7 @@ function stripCodeFences(text: string): string {
 }
 
 export async function rewriteTemplateSourceWithAI(templateTsxSource: string): Promise<Result<string, string>> {
-  if (isMockMode) {
+  if (isMockMode()) {
     const mockRewrittenSource = rewriteTemplateSourceInMockMode(templateTsxSource);
     const mockRenderResult = await renderEmailWithTemplate(mockRewrittenSource, emptyEmailTheme, {
       previewMode: true,
@@ -145,7 +130,6 @@ export async function rewriteTemplateSourceWithAI(templateTsxSource: string): Pr
 
   let lastError = "Unknown rewrite failure";
   for (let attempt = 0; attempt < MAX_REWRITE_ATTEMPTS; attempt++) {
-    // TODO: Switch this adapter to unified AI endpoint once PR #1240 is merged.
     const rewriteResult = await rewriteTemplateSourceWithCurrentAIPlumbing(templateTsxSource);
     if (rewriteResult.status === "error") {
       lastError = rewriteResult.error;
@@ -165,7 +149,7 @@ export async function rewriteTemplateSourceWithAI(templateTsxSource: string): Pr
   captureError("email-template-rewrite-failed-after-retries", new StackAssertionError(
     "Template rewrite failed after all retries",
     {
-      isMockMode,
+      isMockMode: isMockMode(),
       maxRewriteAttempts: MAX_REWRITE_ATTEMPTS,
       lastError,
     },

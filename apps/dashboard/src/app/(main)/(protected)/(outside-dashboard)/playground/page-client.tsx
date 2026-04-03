@@ -2,25 +2,12 @@
 
 import { CodeBlock } from "@/components/code-block";
 import {
-  CursorBlastEffect,
-  DesignAlert,
-  DesignAnalyticsCard,
-  DesignAnalyticsCardHeader,
-  DesignBadge,
-  type DesignBadgeColor,
-  type DesignBadgeContentMode,
-  DesignButton,
-  DesignCard,
-  DesignCategoryTabs,
-  DesignChartLegend,
   DesignDataTable,
   DesignEditableGrid,
   type DesignEditableGridItem,
   type DesignEditableGridSize,
-  DesignInput,
   DesignListItemRow,
   DesignMenu,
-  DesignPillToggle,
   DesignSelectorDropdown,
   DesignUserList,
 } from "@/components/design-components";
@@ -41,6 +28,21 @@ import {
   Tag,
   Trash,
 } from "@phosphor-icons/react";
+import {
+  CursorBlastEffect,
+  DesignAlert,
+  DesignAnalyticsCard,
+  DesignAnalyticsCardHeader,
+  DesignBadge,
+  type DesignBadgeColor,
+  type DesignBadgeContentMode,
+  DesignButton,
+  DesignCard,
+  DesignCategoryTabs,
+  DesignChartLegend,
+  DesignInput,
+  DesignPillToggle,
+} from "@stackframe/dashboard-ui-components";
 import { ColumnDef } from "@tanstack/react-table";
 import { useMemo, useRef, useState } from "react";
 

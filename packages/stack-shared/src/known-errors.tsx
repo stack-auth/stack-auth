@@ -752,6 +752,29 @@ const SignUpRejected = createKnownErrorConstructor(
   (json: any) => [json.message] as const,
 );
 
+const BotChallengeRequired = createKnownErrorConstructor(
+  KnownError,
+  "BOT_CHALLENGE_REQUIRED",
+  () => [
+    409,
+    "An additional bot challenge is required before sign-up can continue.",
+  ] as const,
+  () => [] as const,
+);
+
+const BotChallengeFailed = createKnownErrorConstructor(
+  KnownError,
+  "BOT_CHALLENGE_FAILED",
+  (message: string) => [
+    400,
+    message,
+    {
+      message,
+    },
+  ] as const,
+  (json: any) => [json.message] as const,
+);
+
 const PasswordAuthenticationNotEnabled = createKnownErrorConstructor(
   KnownError,
   "PASSWORD_AUTHENTICATION_NOT_ENABLED",
@@ -1879,6 +1902,8 @@ export const KnownErrors = {
   BranchDoesNotExist,
   SignUpNotEnabled,
   SignUpRejected,
+  BotChallengeRequired,
+  BotChallengeFailed,
   PasswordAuthenticationNotEnabled,
   PasskeyAuthenticationNotEnabled,
   AnonymousAccountsNotEnabled,

@@ -12,6 +12,8 @@ type AssistantChatProps = {
   historyAdapter: ThreadHistoryAdapter,
   toolComponents: React.ReactNode,
   useOffWhiteLightMode?: boolean,
+  composerPlaceholder?: string,
+  hideMessageActions?: boolean,
 }
 
 export default function AssistantChat({
@@ -19,6 +21,8 @@ export default function AssistantChat({
   historyAdapter,
   toolComponents,
   useOffWhiteLightMode = false,
+  composerPlaceholder,
+  hideMessageActions = false,
 }: AssistantChatProps) {
   const runtime = useLocalRuntime(
     chatAdapter,
@@ -29,7 +33,7 @@ export default function AssistantChat({
     <AssistantRuntimeProvider runtime={runtime}>
       <div className="flex flex-col h-full w-full overflow-hidden border-l border-border/10 dark:border-foreground/[0.06]">
         <TooltipProvider delayDuration={300}>
-          <Thread useOffWhiteLightMode={useOffWhiteLightMode} />
+          <Thread useOffWhiteLightMode={useOffWhiteLightMode} composerPlaceholder={composerPlaceholder} hideMessageActions={hideMessageActions} />
         </TooltipProvider>
         {toolComponents}
       </div>

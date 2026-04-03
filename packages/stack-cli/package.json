@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-cli",
-  "version": "2.8.73",
+  "version": "2.8.80",
   "repository": "https://github.com/stack-auth/stack-auth",
   "description": "The CLI for Stack Auth. https://stack-auth.com",
   "main": "dist/index.js",
@@ -26,7 +26,10 @@
   "author": "",
   "license": "MIT",
   "dependencies": {
+    "@anthropic-ai/claude-agent-sdk": "^0.2.73",
+    "@inquirer/prompts": "^7.0.0",
     "@stackframe/js": "workspace:*",
+    "@stackframe/stack-shared": "workspace:*",
     "commander": "^13.1.0",
     "jiti": "^2.4.2"
   },

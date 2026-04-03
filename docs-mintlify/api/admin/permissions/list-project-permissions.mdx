@@ -1,0 +1,27 @@
+---
+title: "List Project Permissions"
+description: "Query and filter project permissions. The combination of (user_id, permission_id) together uniquely identifies a permission."
+api: "GET /project-permissions"
+---
+
+## Request
+
+### Query Parameters
+
+<ParamField query="user_id" type="string">
+  Filter with the user ID. If set, only the permissions this user has will be returned. Client request must set `user_id=me`.
+</ParamField>
+
+<ParamField query="permission_id" type="string">
+  Filter with the permission ID. If set, only the permissions with this specific ID will be returned.
+</ParamField>
+
+<ParamField query="recursive" type="boolean">
+  Whether to list permissions recursively. If set to `false`, only the permissions the users directly have will be listed. If set to `true`, all the direct and indirect permissions will be listed.
+</ParamField>
+
+## Response
+
+<ResponseField name="200" type="object">
+  Successful response containing a list of project permissions.
+</ResponseField>

@@ -44,7 +44,7 @@ type UserListItem = {
   display_name?: string | null,
   primary_email?: string | null,
   last_active_at_millis?: number | null,
-  signed_up_at_millis?: number | null,
+  signed_up_at_millis: number,
 }
 
 const tooltipSurfaceClass = "rounded-xl bg-white dark:bg-background shadow-[0_10px_24px_rgba(15,23,42,0.14)] dark:shadow-lg ring-1 ring-slate-900/10 dark:ring-foreground/[0.12]";

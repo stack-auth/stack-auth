@@ -7,54 +7,58 @@ import {
   ThreadPrimitive,
 } from "@assistant-ui/react";
 import { ArrowClockwiseIcon, ArrowDownIcon, CaretLeftIcon, CaretRightIcon, CheckIcon, CopyIcon, PaperPlaneRightIcon, PencilSimpleIcon, WarningCircle } from "@phosphor-icons/react";
-import type { FC } from "react";
+import { createContext, useContext, type FC } from "react";
+
+const HideMessageActionsContext = createContext(false);
 
 import { MarkdownText } from "@/components/assistant-ui/markdown-text";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { Button } from "@/components/ui";
 
-export const Thread: FC<{ useOffWhiteLightMode?: boolean }> = ({ useOffWhiteLightMode = false }) => {
+export const Thread: FC<{ useOffWhiteLightMode?: boolean, composerPlaceholder?: string, hideMessageActions?: boolean }> = ({ useOffWhiteLightMode = false, composerPlaceholder, hideMessageActions = false }) => {
   return (
-    <ThreadPrimitive.Root
-      className={cn(
+    <HideMessageActionsContext.Provider value={hideMessageActions}>
+      <ThreadPrimitive.Root
+        className={cn(
         "box-border flex h-0 flex-grow flex-col overflow-hidden",
         useOffWhiteLightMode ? "bg-slate-50/90 dark:bg-background" : "bg-background",
       )}
-      style={{
-        ["--thread-max-width" as string]: "100%",
-      }}
-    >
-      <ThreadPrimitive.Viewport
-        className={cn(
+        style={{
+          ["--thread-max-width" as string]: "100%",
+        }}
+      >
+        <ThreadPrimitive.Viewport
+          className={cn(
           "flex h-full flex-col items-center overflow-y-auto scroll-smooth px-3",
           useOffWhiteLightMode ? "bg-slate-50/90 dark:bg-inherit" : "bg-inherit",
         )}
-      >
-        <ThreadWelcome />
+        >
+          <ThreadWelcome />
 
-        <ThreadPrimitive.Messages
-          components={{
-            UserMessage: UserMessage,
-            EditComposer: EditComposer,
-            AssistantMessage: AssistantMessage,
-          }}
-        />
+          <ThreadPrimitive.Messages
+            components={{
+              UserMessage: UserMessage,
+              EditComposer: EditComposer,
+              AssistantMessage: AssistantMessage,
+            }}
+          />
 
-        <ThreadPrimitive.If empty={false}>
-          <div className="min-h-6 flex-grow" />
-        </ThreadPrimitive.If>
+          <ThreadPrimitive.If empty={false}>
+            <div className="min-h-6 flex-grow" />
+          </ThreadPrimitive.If>
 
-        <div className={cn(
+          <div className={cn(
           "sticky bottom-0 mt-2 flex w-full max-w-[var(--thread-max-width)] flex-col items-center justify-end bg-gradient-to-t to-transparent pt-6 pb-3",
           useOffWhiteLightMode
             ? "from-slate-50/90 via-slate-50/90 dark:from-background dark:via-background"
             : "from-background via-background",
         )}>
-          <ThreadScrollToBottom />
-          <Composer />
-        </div>
-      </ThreadPrimitive.Viewport>
-    </ThreadPrimitive.Root>
+            <ThreadScrollToBottom />
+            <Composer placeholder={composerPlaceholder} />
+          </div>
+        </ThreadPrimitive.Viewport>
+      </ThreadPrimitive.Root>
+    </HideMessageActionsContext.Provider>
   );
 };
 
@@ -119,13 +123,13 @@ const ThreadWelcomeSuggestions: FC = () => {
   );
 };
 
-const Composer: FC = () => {
+const Composer: FC<{ placeholder?: string }> = ({ placeholder }) => {
   return (
     <ComposerPrimitive.Root className="group/composer relative flex w-full flex-col rounded-2xl border border-border/20 dark:border-foreground/[0.08] bg-white dark:bg-background/90 backdrop-blur-xl shadow-sm dark:shadow-lg ring-1 ring-foreground/[0.04] transition-all duration-150 hover:transition-none focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/30">
       <ComposerPrimitive.Input
         rows={1}
         autoFocus
-        placeholder="Describe the email design you want..."
+        placeholder={placeholder ?? "Describe what you want..."}
         className="placeholder:text-muted-foreground/60 max-h-32 w-full resize-none border-none bg-transparent px-4 py-3 text-sm outline-none focus:ring-0 disabled:cursor-not-allowed leading-relaxed"
       />
       <div className="flex items-center justify-end px-3 pb-2.5">
@@ -180,6 +184,8 @@ const UserMessage: FC = () => {
 };
 
 const UserActionBar: FC = () => {
+  const hidden = useContext(HideMessageActionsContext);
+  if (hidden) return null;
   return (
     <ActionBarPrimitive.Root
       hideWhenRunning
@@ -268,6 +274,11 @@ const MessageError: FC = () => {
 };
 
 const AssistantActionBar: FC = () => {
+  const hidden = useContext(HideMessageActionsContext);
+  if (hidden) {
+    return null;
+  }
+
   return (
     <ActionBarPrimitive.Root
       hideWhenRunning
@@ -276,7 +287,7 @@ const AssistantActionBar: FC = () => {
       className="text-muted-foreground flex gap-0.5 -ml-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150 data-[floating]:bg-background/95 data-[floating]:backdrop-blur-sm data-[floating]:absolute data-[floating]:rounded-lg data-[floating]:ring-1 data-[floating]:ring-foreground/[0.06] data-[floating]:p-1 data-[floating]:shadow-md"
     >
       <ActionBarPrimitive.Copy asChild>
-        <TooltipIconButton tooltip="Copy" className="h-7 w-7 rounded-md hover:bg-foreground/[0.05]">
+        <TooltipIconButton tooltip="Copy" className="h-7 w-7 rounded-md !text-muted-foreground hover:bg-foreground/[0.05] hover:!text-foreground">
           <MessagePrimitive.If copied>
             <CheckIcon size={14} className="text-green-500" />
           </MessagePrimitive.If>
@@ -286,7 +297,7 @@ const AssistantActionBar: FC = () => {
         </TooltipIconButton>
       </ActionBarPrimitive.Copy>
       <ActionBarPrimitive.Reload asChild>
-        <TooltipIconButton tooltip="Regenerate" className="h-7 w-7 rounded-md hover:bg-foreground/[0.05]">
+        <TooltipIconButton tooltip="Regenerate" className="h-7 w-7 rounded-md !text-muted-foreground hover:bg-foreground/[0.05] hover:!text-foreground">
           <ArrowClockwiseIcon size={14} />
         </TooltipIconButton>
       </ActionBarPrimitive.Reload>

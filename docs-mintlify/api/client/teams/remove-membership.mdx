@@ -1,0 +1,23 @@
+---
+title: "Remove Team Membership"
+description: "Remove a user from a team."
+api: "DELETE /api/v1/team-memberships/{team_id}/{user_id}"
+---
+
+## Request
+
+### Path Parameters
+
+<ParamField path="team_id" type="string" required>
+  The identifier for the team.
+</ParamField>
+
+<ParamField path="user_id" type="string" required>
+  The identifier for the user to remove from the team.
+</ParamField>
+
+## Response
+
+<ResponseField name="200" type="object">
+  Successful response indicating the user has been removed from the team.
+</ResponseField>

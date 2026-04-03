@@ -26,6 +26,7 @@ model Project {
   description      String  @default("")
   isProductionMode Boolean
   ownerTeamId      String? @db.Uuid
+  onboardingStatus String  @default("completed")
 
   logoUrl             String?
   logoFullUrl         String?
@@ -68,10 +69,10 @@ model Tenancy {
   branchId String
 
   // If organizationId is NULL, hasNoOrganization must be TRUE. If organizationId is not NULL, hasNoOrganization must be NULL.
-  organizationId    String?       @db.Uuid
-  hasNoOrganization BooleanTrue?
-  emailOutboxes     EmailOutbox[]
-  sessionReplays SessionReplay[]
+  organizationId      String?              @db.Uuid
+  hasNoOrganization   BooleanTrue?
+  emailOutboxes       EmailOutbox[]
+  sessionReplays      SessionReplay[]
   sessionReplayChunks SessionReplayChunk[]
   managedEmailDomains ManagedEmailDomain[]
 
@@ -93,24 +94,24 @@ enum ManagedEmailDomainStatus {
 model ManagedEmailDomain {
   id String @id @default(uuid()) @db.Uuid
 
-  tenancyId String @db.Uuid
-  tenancy Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  tenancyId String  @db.Uuid
+  tenancy   Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
 
   projectId String
-  branchId String
+  branchId  String
 
-  subdomain String
-  senderLocalPart String
-  resendDomainId String @unique
+  subdomain         String
+  senderLocalPart   String
+  resendDomainId    String @unique
   nameServerRecords Json
 
-  status ManagedEmailDomainStatus @default(PENDING_VERIFICATION)
+  status            ManagedEmailDomainStatus @default(PENDING_VERIFICATION)
   providerStatusRaw String?
-  isActive Boolean @default(true)
-  lastError String?
-  verifiedAt DateTime?
-  appliedAt DateTime?
-  lastWebhookAt DateTime?
+  isActive          Boolean                  @default(true)
+  lastError         String?
+  verifiedAt        DateTime?
+  appliedAt         DateTime?
+  lastWebhookAt     DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -267,11 +268,23 @@ model ProjectUser {
   requiresTotpMfa        Boolean @default(false)
   totpSecret             Bytes?
   isAnonymous            Boolean @default(false)
+  signUpCountryCode      String?
 
   // Admin restriction fields - can be set by signup rules or manually by admins
   restrictedByAdmin               Boolean @default(false)
   restrictedByAdminReason         String? // Publicly viewable reason (shown to user)
   restrictedByAdminPrivateDetails String? // Private details (server access only)
+
+  // Sign-up metadata
+  signedUpAt                      DateTime @default(now())
+  signUpIp                        String?
+  signUpIpTrusted                 Boolean?
+  signUpEmailNormalized           String?
+  signUpEmailBase                 String?
+
+  // Sign-up risk scores (0-100, set at sign-up time)
+  signUpRiskScoreBot              Int @default(0) @db.SmallInt
+  signUpRiskScoreFreeTrialAbuse   Int @default(0) @db.SmallInt
 
   projectUserOAuthAccounts ProjectUserOAuthAccount[]
   teamMembers              TeamMember[]
@@ -297,6 +310,9 @@ model ProjectUser {
   @@index([tenancyId, displayName(sort: Desc)], name: "ProjectUser_displayName_desc")
   @@index([tenancyId, createdAt(sort: Asc)], name: "ProjectUser_createdAt_asc")
   @@index([tenancyId, createdAt(sort: Desc)], name: "ProjectUser_createdAt_desc")
+  @@index([tenancyId, isAnonymous, signedUpAt(sort: Asc)], name: "ProjectUser_signedUpAt_asc")
+  @@index([tenancyId, isAnonymous, signUpIp, signedUpAt], name: "ProjectUser_signUpIp_recent_idx")
+  @@index([tenancyId, isAnonymous, signUpEmailBase, signedUpAt], name: "ProjectUser_signUpEmailBase_recent_idx")
   @@index([tenancyId, sequenceId], name: "ProjectUser_tenancyId_sequenceId_idx")
   @@index([shouldUpdateSequenceId, tenancyId], name: "ProjectUser_shouldUpdateSequenceId_idx")
 }
@@ -351,18 +367,18 @@ model SessionReplay {
   chunks SessionReplayChunk[]
 
   @@id([tenancyId, id])
-  @@map("SessionReplay")
   @@index([tenancyId, projectUserId, startedAt])
   @@index([tenancyId, lastEventAt])
   // index by updatedAt instead of lastEventAt because event timing can be spoofed
   @@index([tenancyId, refreshTokenId, updatedAt])
+  @@map("SessionReplay")
 }
 
 model SessionReplayChunk {
   id String @id @default(uuid()) @db.Uuid
 
-  tenancyId        String @db.Uuid
-  sessionReplayId  String @db.Uuid @map("sessionReplayId")
+  tenancyId       String @db.Uuid
+  sessionReplayId String @map("sessionReplayId") @db.Uuid
 
   // Unique per uploaded batch for a given session id.
   batchId String @db.Uuid
@@ -386,8 +402,8 @@ model SessionReplayChunk {
   tenancy       Tenancy       @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
 
   @@unique([tenancyId, sessionReplayId, batchId])
-  @@map("SessionReplayChunk")
   @@index([tenancyId, sessionReplayId, createdAt])
+  @@map("SessionReplayChunk")
 }
 
 enum ContactChannelType {
@@ -615,6 +631,9 @@ model ProjectUserAuthorizationCode {
 
   newUser                  Boolean
   afterCallbackRedirectUrl String?
+  /// Refresh token ID that should be granted when this authorization code is exchanged.
+  /// NULL means no specific refresh token is preselected, so the token endpoint follows normal issuance/reuse logic.
+  grantedRefreshTokenId    String? @db.Uuid
 
   @@id([tenancyId, authorizationCode])
 }

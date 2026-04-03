@@ -1,7 +1,7 @@
 "use client";
 
-import { DesignButton } from "@/components/design-components/button";
-import { DesignCard } from "@/components/design-components/card";
+import { DesignButton } from "@/components/design-components";
+import { DesignCard } from "@/components/design-components";
 import { SimpleTooltip, Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { Gauge } from "@phosphor-icons/react";

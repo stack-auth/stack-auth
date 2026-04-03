@@ -6,32 +6,6 @@ import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { constructRedirectUrl } from "../utils/url";
 import { consumeVerifierAndStateCookie, saveVerifierAndState } from "./cookie";
-
-export async function signInWithOAuth(
-  iface: StackClientInterface,
-  options: {
-    provider: string,
-    redirectUrl: string,
-    errorRedirectUrl: string,
-    providerScope?: string,
-  },
-  session: InternalSession,
-) {
-  const { codeChallenge, state } = await saveVerifierAndState();
-  const location = await iface.getOAuthUrl({
-    provider: options.provider,
-    redirectUrl: constructRedirectUrl(options.redirectUrl, "redirectUrl"),
-    errorRedirectUrl: constructRedirectUrl(options.errorRedirectUrl, "errorRedirectUrl"),
-    codeChallenge,
-    state,
-    type: "authenticate",
-    providerScope: options.providerScope,
-    session,
-  });
-  window.location.assign(location);
-  await neverResolve();
-}
-
 export async function addNewOAuthProviderOrScope(
   iface: StackClientInterface,
   options: {
@@ -81,7 +55,7 @@ function consumeOAuthCallbackQueryParams() {
     // Maybe the website uses another OAuth library?
     console.warn(deindent`
       Stack found an outer OAuth callback state in the query parameters, but not in cookies.
-      
+
       This could have multiple reasons:
         - The cookie expired, because the OAuth flow took too long.
         - The user's browser deleted the cookie, either manually or because of a very strict cookie policy.

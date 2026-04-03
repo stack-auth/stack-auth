@@ -31,17 +31,20 @@ import { suspend, suspendIfSsr, use } from "@stackframe/stack-shared/dist/utils/
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { Store, storeLock } from "@stackframe/stack-shared/dist/utils/stores";
 import { deindent, mergeScopeStrings } from "@stackframe/stack-shared/dist/utils/strings";
-import { getRelativePart, isRelative } from "@stackframe/stack-shared/dist/utils/urls";
+import { BotChallengeExecutionFailedError, BotChallengeUserCancelledError, withBotChallengeFlow } from "@stackframe/stack-shared/dist/utils/turnstile-flow";
+import type { TurnstileAction } from "@stackframe/stack-shared/dist/utils/turnstile";
+import { isRelative } from "@stackframe/stack-shared/dist/utils/urls";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as cookie from "cookie";
 import * as NextNavigationUnscrambled from "next/navigation"; // import the entire module to get around some static compiler warnings emitted by Next.js in some cases | THIS_LINE_PLATFORM next
 import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import type * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
-import { addNewOAuthProviderOrScope, callOAuthCallback, signInWithOAuth } from "../../../auth";
-import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, isSecure as isSecureCookieContext, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
+import { addNewOAuthProviderOrScope, callOAuthCallback } from "../../../auth";
+import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, isSecure as isSecureCookieContext, saveVerifierAndState, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
+import { envVars } from "../../../env";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud } from "../../api-keys";
-import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
+import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrlOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, ResolvedHandlerUrls, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
 import { DeprecatedOAuthConnection, OAuthConnection } from "../../connected-accounts";
 import { ContactChannel, ContactChannelCreateOptions, ContactChannelUpdateOptions, contactChannelCreateOptionsToCrud, contactChannelUpdateOptionsToCrud } from "../../contact-channels";
 import { Customer, CustomerBilling, CustomerDefaultPaymentMethod, CustomerInvoiceStatus, CustomerInvoicesList, CustomerInvoicesListOptions, CustomerInvoicesRequestOptions, CustomerPaymentMethodSetupIntent, CustomerProductsList, CustomerProductsListOptions, CustomerProductsRequestOptions, Item } from "../../customers";
@@ -49,11 +52,14 @@ import { NotificationCategory } from "../../notification-categories";
 import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
 import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, Team, TeamCreateOptions, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
+import { isHostedHandlerUrlForProject, resolveHandlerUrls } from "../../url-targets";
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getAnalyticsBaseUrl, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveConstructorOptions } from "./common";
 import { EventTracker } from "./event-tracker";
+import { crossDomainAuthQueryParams, getCrossDomainHandoffParamsFromCurrentUrl, planRedirectToHandler } from "./redirect-page-urls";
+import type { CrossDomainHandoffParams } from "./redirect-page-urls";
 import { AnalyticsOptions, SessionRecorder, analyticsOptionsFromJson, analyticsOptionsToJson } from "./session-replay";
 
 // IF_PLATFORM react-like
@@ -70,9 +76,7 @@ isReactServer = sc.isReactServer;
 const NextNavigation = scrambleDuringCompileTime(NextNavigationUnscrambled);
 // END_PLATFORM
 
-// hack to make sure process is defined in non-node environments
-const process = (globalThis as any).process ?? { env: {} }; // THIS_LINE_PLATFORM js react
-
+const prefetchedCrossDomainHandoffTtlMs = 55 * 60 * 1000;
 
 const allClientApps = new Map<string, [checkString: string | undefined, app: StackClientApp<any, any>]>();
 
@@ -94,7 +98,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   protected _interface: StackClientInterface;
   protected readonly _tokenStoreInit: TokenStoreInit<HasTokenStore>;
   protected readonly _redirectMethod: RedirectMethod | undefined;
-  protected readonly _urlOptions: Partial<HandlerUrls>;
+  protected readonly _urlOptions: HandlerUrlOptions;
   protected readonly _oauthScopesOnSignIn: Partial<OAuthScopesOnSignIn>;
 
   private readonly _analyticsOptions: AnalyticsOptions | undefined;
@@ -373,6 +377,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   );
 
   private _anonymousSignUpInProgress: Promise<{ accessToken: string, refreshToken: string }> | null = null;
+  private _prefetchedCrossDomainHandoffParams: CrossDomainHandoffParams | null = null;
+  private _prefetchedCrossDomainHandoffParamsFetchedAt = 0;
+  private _isPrefetchingCrossDomainHandoffParams = false;
 
   protected async _createCookieHelper(overrideTokenStoreInit?: TokenStoreInit): Promise<CookieHelper> {
     const tokenStoreInit = overrideTokenStoreInit === undefined ? this._tokenStoreInit : overrideTokenStoreInit;
@@ -523,10 +530,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
 
     this._tokenStoreInit = resolvedOptions.tokenStore;
-    this._redirectMethod = resolvedOptions.redirectMethod || "none";
+    this._redirectMethod = resolvedOptions.redirectMethod || (isBrowserLike() ? "window" : "none");
     this._redirectMethod = resolvedOptions.redirectMethod || "nextjs"; // THIS_LINE_PLATFORM next
     this._urlOptions = resolvedOptions.urls ?? {};
     this._oauthScopesOnSignIn = resolvedOptions.oauthScopesOnSignIn ?? {};
+    this._prefetchCrossDomainHandoffParamsIfNeeded();
 
     if (extraOptions && extraOptions.uniqueIdentifier) {
       this._uniqueIdentifier = extraOptions.uniqueIdentifier;
@@ -550,8 +558,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       this._sessionRecorder.start();
     }
 
-    // for now we only track events for internal project
-    if (isBrowserLike() && this.projectId === "internal") {
+    if (isBrowserLike()) {
       this._eventTracker = new EventTracker({
         projectId: this.projectId,
         getAccessToken: getAnalyticsAccessToken,
@@ -1034,6 +1041,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
     const tokenStore = this._getOrCreateTokenStore(await this._createCookieHelper());
     tokenStore.set(tokens);
+
+    // Pre-fetch the current user for the new session so the cache is already
+    // populated when useUser() re-renders, avoiding a stale-cache render cycle.
+    const newSession = this._getSessionFromTokenStore(tokenStore);
+    this._currentUserCache.getOrWait([newSession], "write-only").catch(() => {});
   }
 
   protected _hasPersistentTokenStore(overrideTokenStoreInit?: TokenStoreInit): this is StackClientApp<true, ProjectId> {
@@ -2128,14 +2140,223 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return clientVersion;
   }
 
+  private _botChallengeSiteKeysWarned = false;
+  private _getBotChallengeSiteKeys(): { visibleSiteKey: string, invisibleSiteKey: string } | null {
+    if (!isBrowserLike()) return null;
+
+    const visibleSiteKey = envVars.NEXT_PUBLIC_STACK_BOT_CHALLENGE_SITE_KEY;
+    if (!visibleSiteKey) {
+      if (!this._botChallengeSiteKeysWarned) {
+        this._botChallengeSiteKeysWarned = true;
+        console.warn("[stack-auth] NEXT_PUBLIC_STACK_BOT_CHALLENGE_SITE_KEY is not set — bot challenge fraud protection is disabled. Set the env variable to enable it.");
+      }
+      return null;
+    }
+
+    const invisibleSiteKey = envVars.NEXT_PUBLIC_STACK_BOT_CHALLENGE_INVISIBLE_SITE_KEY ?? visibleSiteKey;
+
+    return { visibleSiteKey, invisibleSiteKey };
+  }
+
+  private _getBotChallengeFlowFailure(error: unknown): { type: "cancelled" | "failed", knownError: KnownErrors["BotChallengeFailed"] } | null {
+    if (error instanceof BotChallengeUserCancelledError) {
+      return {
+        type: "cancelled",
+        knownError: new KnownErrors.BotChallengeFailed("Bot challenge cancelled by user"),
+      };
+    }
+    if (error instanceof BotChallengeExecutionFailedError) {
+      return {
+        type: "failed",
+        knownError: new KnownErrors.BotChallengeFailed(error.message),
+      };
+    }
+    return null;
+  }
+
+  private _normalizeBotChallengeResult<T, E>(result: Result<T, E | KnownErrors["BotChallengeRequired"] | KnownErrors["BotChallengeFailed"]>): Result<T, E | KnownErrors["BotChallengeFailed"]> {
+    if (result.status === "ok") {
+      return result;
+    }
+
+    if (KnownErrors.BotChallengeRequired.isInstance(result.error)) {
+      captureError("bot-challenge-unexpected-after-flow", result.error);
+      return Result.error(new KnownErrors.BotChallengeFailed("Unexpected bot challenge after flow completion"));
+    }
+
+    return Result.error(result.error);
+  }
+
+  private _toInterfaceBotChallengeInput(challenge: { token?: string, phase?: "invisible" | "visible", unavailable?: true }) {
+    if (challenge.unavailable) {
+      return {
+        phase: "visible" as const,
+      };
+    }
+
+    return {
+      token: challenge.token,
+      phase: challenge.phase,
+    };
+  }
+
+  private async _executeResultWithBotChallengeFlow<T, E>(options: {
+    action: TurnstileAction,
+    execute: (challenge: { token?: string, phase?: "invisible" | "visible", unavailable?: true }) => Promise<Result<T, E | KnownErrors["BotChallengeRequired"] | KnownErrors["BotChallengeFailed"]>>,
+  }): Promise<Result<T, E | KnownErrors["BotChallengeFailed"]>> {
+    const siteKeys = this._getBotChallengeSiteKeys();
+    let result: Result<T, E | KnownErrors["BotChallengeRequired"] | KnownErrors["BotChallengeFailed"]>;
+
+    try {
+      if (siteKeys) {
+        result = await withBotChallengeFlow({
+          ...siteKeys,
+          action: options.action,
+          execute: options.execute,
+          isChallengeRequired: (flowResult) => {
+            return flowResult.status === "error" && KnownErrors.BotChallengeRequired.isInstance(flowResult.error);
+          },
+        });
+      } else {
+        result = await options.execute({});
+      }
+    } catch (e) {
+      const flowFailure = this._getBotChallengeFlowFailure(e);
+      if (flowFailure) {
+        return Result.error(flowFailure.knownError);
+      }
+      throw e;
+    }
+
+    return this._normalizeBotChallengeResult(result);
+  }
+
   protected async _isTrusted(url: string): Promise<boolean> {
     // TODO: At some point, we should use the project's trusted domains for this instead of just requiring the URL to be relative
     // (note that when we do this, that should be on-top of the relativity check, not replacing it)
-    return isRelative(url) || (typeof window !== "undefined" && window.location.origin === new URL(url).origin);
+    if (isRelative(url)) {
+      return true;
+    }
+    if (typeof window !== "undefined" && window.location.origin === new URL(url).origin) {
+      return true;
+    }
+    return isHostedHandlerUrlForProject({ url, projectId: this.projectId });
   }
 
-  get urls(): Readonly<HandlerUrls> {
-    return getUrls(this._urlOptions);
+  get urls(): Readonly<ResolvedHandlerUrls> {
+    return getUrls(this._urlOptions, { projectId: this.projectId });
+  }
+
+  protected _prefetchCrossDomainHandoffParamsIfNeeded() {
+    const canWriteOauthVerifierCookie = this._tokenStoreInit === "cookie" || this._tokenStoreInit === "nextjs-cookie";
+    if (
+      !isBrowserLike()
+      || !canWriteOauthVerifierCookie
+      || this._isPrefetchingCrossDomainHandoffParams
+      || this._getFreshPrefetchedCrossDomainHandoffParams() != null
+    ) {
+      return;
+    }
+    this._isPrefetchingCrossDomainHandoffParams = true;
+    runAsynchronously(async () => {
+      try {
+        if (!isBrowserLike()) {
+          return;
+        }
+        const { state, codeChallenge } = await saveVerifierAndState();
+        this._prefetchedCrossDomainHandoffParams = { state, codeChallenge };
+        this._prefetchedCrossDomainHandoffParamsFetchedAt = performance.now();
+      } finally {
+        this._isPrefetchingCrossDomainHandoffParams = false;
+      }
+    });
+  }
+
+  protected _getCrossDomainHandoffParamsForUrlsGetter(currentUrl: URL): CrossDomainHandoffParams | null {
+    const fromQuery = getCrossDomainHandoffParamsFromCurrentUrl(currentUrl);
+    if (fromQuery != null) {
+      return fromQuery;
+    }
+
+    const prefetched = this._getFreshPrefetchedCrossDomainHandoffParams();
+    if (prefetched != null) {
+      return prefetched;
+    }
+
+    this._prefetchCrossDomainHandoffParamsIfNeeded();
+    return null;
+  }
+
+  protected async _getCrossDomainHandoffParamsForRedirect(currentUrl: URL): Promise<CrossDomainHandoffParams> {
+    const fromQuery = getCrossDomainHandoffParamsFromCurrentUrl(currentUrl);
+    if (fromQuery != null) {
+      return fromQuery;
+    }
+    const prefetched = this._getFreshPrefetchedCrossDomainHandoffParams();
+    if (prefetched != null) {
+      return prefetched;
+    }
+    const { state, codeChallenge } = await saveVerifierAndState();
+    this._prefetchedCrossDomainHandoffParams = { state, codeChallenge };
+    this._prefetchedCrossDomainHandoffParamsFetchedAt = performance.now();
+    return { state, codeChallenge };
+  }
+
+  protected _getLocalOAuthCallbackHandlerUrl(): string {
+    return resolveHandlerUrls({
+      urls: {
+        ...this._urlOptions,
+        default: { type: "handler-component" },
+        oauthCallback: { type: "handler-component" },
+      },
+      projectId: this.projectId,
+    }).oauthCallback;
+  }
+
+  protected async _createCrossDomainAuthRedirectUrl(options: {
+    redirectUri: string,
+    state: string,
+    codeChallenge: string,
+    afterCallbackRedirectUrl: string,
+  }): Promise<string> {
+    const session = await this._getSession();
+    const response = await this._interface.sendClientRequest(
+      "/auth/oauth/cross-domain/authorize",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          redirect_uri: options.redirectUri,
+          state: options.state,
+          code_challenge: options.codeChallenge,
+          code_challenge_method: "S256",
+          after_callback_redirect_url: options.afterCallbackRedirectUrl,
+        }),
+      },
+      session,
+    );
+    if (!response.ok) {
+      throw new StackAssertionError(`Cross-domain authorization endpoint failed: ${response.status} ${await response.text()}`);
+    }
+    const result = await response.json();
+    if (!("redirect_url" in result) || typeof result.redirect_url !== "string") {
+      throw new StackAssertionError("Cross-domain authorization endpoint returned an invalid payload", { result });
+    }
+    return result.redirect_url;
+  }
+
+  protected _getFreshPrefetchedCrossDomainHandoffParams(): CrossDomainHandoffParams | null {
+    if (this._prefetchedCrossDomainHandoffParams == null) {
+      return null;
+    }
+    if (performance.now() - this._prefetchedCrossDomainHandoffParamsFetchedAt > prefetchedCrossDomainHandoffTtlMs) {
+      this._prefetchedCrossDomainHandoffParams = null;
+      this._prefetchedCrossDomainHandoffParamsFetchedAt = 0;
+      return null;
+    }
+    return this._prefetchedCrossDomainHandoffParams;
   }
 
   protected async _getCurrentUrl() {
@@ -2189,37 +2410,36 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
 
   protected async _redirectToHandler(handlerName: keyof HandlerUrls, options?: RedirectToOptions) {
-    let url = this.urls[handlerName];
-    if (!url) {
+    const rawUrls = getUrls(this._urlOptions, { projectId: this.projectId });
+    const rawHandlerUrl = rawUrls[handlerName];
+    if (!rawHandlerUrl) {
       throw new Error(`No URL for handler name ${handlerName}`);
     }
 
-    if (!options?.noRedirectBack) {
-      if (handlerName === "afterSignIn" || handlerName === "afterSignUp") {
-        if (isReactServer || typeof window === "undefined") {
-          // TODO implement this
-        } else {
-          const queryParams = new URLSearchParams(window.location.search);
-          url = queryParams.get("after_auth_return_to") || url;
-        }
-      } else if (handlerName === "signIn" || handlerName === "signUp" || handlerName === "onboarding") {
-        // For signIn, signUp, and onboarding, preserve the return URL so user can be redirected back after completing the flow
-        if (isReactServer || typeof window === "undefined") {
-          // TODO implement this
-        } else {
-          const currentUrl = new URL(window.location.href);
-          const nextUrl = new URL(url, currentUrl);
-          if (currentUrl.searchParams.has("after_auth_return_to")) {
-            nextUrl.searchParams.set("after_auth_return_to", currentUrl.searchParams.get("after_auth_return_to")!);
-          } else if (currentUrl.protocol === nextUrl.protocol && currentUrl.host === nextUrl.host) {
-            nextUrl.searchParams.set("after_auth_return_to", getRelativePart(currentUrl));
-          }
-          url = getRelativePart(nextUrl);
-        }
-      }
+    const currentUrl = isReactServer || typeof window === "undefined"
+      ? null
+      : new URL(window.location.href);
+    const plan = await planRedirectToHandler({
+      handlerName,
+      rawHandlerUrl,
+      noRedirectBack: options?.noRedirectBack === true,
+      currentUrl,
+      localOAuthCallbackUrl: this._getLocalOAuthCallbackHandlerUrl(),
+      getCrossDomainHandoffParams: async (href) => await this._getCrossDomainHandoffParamsForRedirect(href),
+    });
+
+    if (plan.type === "cross-domain-authorize") {
+      const crossDomainRedirectUrl = await this._createCrossDomainAuthRedirectUrl({
+        redirectUri: plan.redirectUri,
+        state: plan.state,
+        codeChallenge: plan.codeChallenge,
+        afterCallbackRedirectUrl: plan.afterCallbackRedirectUrl,
+      });
+      await this._redirectTo({ url: crossDomainRedirectUrl, ...options });
+      return;
     }
 
-    await this._redirectIfTrusted(url, options);
+    await this._redirectIfTrusted(plan.url, options);
   }
 
   async redirectToSignIn(options?: RedirectToOptions) { return await this._redirectToHandler("signIn", options); }
@@ -2244,8 +2464,16 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return await this._interface.sendForgotPasswordEmail(email, options?.callbackUrl ?? constructRedirectUrl(this.urls.passwordReset, "callbackUrl"));
   }
 
-  async sendMagicLinkEmail(email: string, options?: { callbackUrl?: string }): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"]>> {
-    return await this._interface.sendMagicLinkEmail(email, options?.callbackUrl ?? constructRedirectUrl(this.urls.magicLinkCallback, "callbackUrl"));
+  async sendMagicLinkEmail(email: string, options?: {
+    callbackUrl?: string,
+  }): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"] | KnownErrors["BotChallengeFailed"]>> {
+    const callbackUrl = options?.callbackUrl ?? constructRedirectUrl(this.urls.magicLinkCallback, "callbackUrl");
+    return await this._executeResultWithBotChallengeFlow({
+      action: "send_magic_link_email",
+      execute: async (challenge) => {
+        return await this._interface.sendMagicLinkEmail(email, callbackUrl, this._toInterfaceBotChallengeInput(challenge));
+      },
+    });
   }
 
   async resetPassword(options: { password: string, code: string }): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>> {
@@ -2504,23 +2732,66 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return res;
   }
 
-  async signInWithOAuth(provider: ProviderType, options?: { returnTo?: string }) {
+  async signInWithOAuth(provider: ProviderType, options?: {
+    returnTo?: string,
+  }) {
     if (typeof window === "undefined") {
       throw new Error("signInWithOAuth can currently only be called in a browser environment");
     }
 
     this._ensurePersistentTokenStore();
     const session = await this._getSession();
-    await signInWithOAuth(
-      this._interface,
-      {
+    const currentUrl = new URL(window.location.href);
+    const afterCallbackRedirectUrl = currentUrl.searchParams.has("after_auth_return_to")
+      ? currentUrl.toString()
+      : undefined;
+    const siteKeys = this._getBotChallengeSiteKeys();
+    const { codeChallenge, state } = await saveVerifierAndState();
+
+    const executeOAuth = async (challenge: { token?: string, phase?: "invisible" | "visible", unavailable?: true }) => {
+      return await this._interface.authorizeOAuth({
         provider,
-        redirectUrl: options?.returnTo ?? this.urls.oauthCallback,
-        errorRedirectUrl: this.urls.error,
+        redirectUrl: constructRedirectUrl(options?.returnTo ?? this.urls.oauthCallback, "redirectUrl"),
+        errorRedirectUrl: constructRedirectUrl(this.urls.error, "errorRedirectUrl"),
+        afterCallbackRedirectUrl,
+        type: "authenticate",
         providerScope: this._oauthScopesOnSignIn[provider]?.join(" "),
-      },
-      session,
-    );
+        codeChallenge,
+        state,
+        botChallenge: this._toInterfaceBotChallengeInput(challenge),
+        session,
+      });
+    };
+
+    let authorizeResult;
+    try {
+      if (siteKeys) {
+        authorizeResult = await withBotChallengeFlow({
+          ...siteKeys,
+          action: "oauth_authenticate",
+          execute: executeOAuth,
+          isChallengeRequired: (result) => {
+            return result.status === "error" && KnownErrors.BotChallengeRequired.isInstance(result.error);
+          },
+        });
+      } else {
+        // Server safe: just call execute with no bot challenge params
+        authorizeResult = await executeOAuth({});
+      }
+    } catch (e) {
+      const flowFailure = this._getBotChallengeFlowFailure(e);
+      if (flowFailure?.type === "cancelled") {
+        return;
+      }
+      if (flowFailure?.type === "failed") {
+        throw flowFailure.knownError;
+      }
+      throw e;
+    }
+
+    const location = Result.orThrow(authorizeResult);
+    window.location.assign(location);
+    await neverResolve();
   }
 
   /**
@@ -2589,7 +2860,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     noRedirect?: boolean,
     noVerificationCallback?: boolean,
     verificationCallbackUrl?: string,
-  }): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors['PasswordRequirementsNotMet']>> {
+  }): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors['PasswordRequirementsNotMet'] | KnownErrors["BotChallengeFailed"]>> {
     if (options.noVerificationCallback && options.verificationCallbackUrl) {
       throw new StackAssertionError("verificationCallbackUrl is not allowed when noVerificationCallback is true");
     }
@@ -2597,28 +2868,42 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     const session = await this._getSession();
     const emailVerificationRedirectUrl = options.noVerificationCallback ? undefined : options.verificationCallbackUrl ?? constructRedirectUrl(this.urls.emailVerification, "verificationCallbackUrl");
 
-    let result = await this._interface.signUpWithCredential(
-      options.email,
-      options.password,
-      emailVerificationRedirectUrl,
-      session
-    );
-
-    // If the redirect URL is not whitelisted and we didn't explicitly opt out of verification,
-    // retry with undefined (no email verification) and log a warning
-    if (result.status === 'error' &&
-      result.error instanceof KnownErrors.RedirectUrlNotWhitelisted &&
-      !options.noVerificationCallback &&
-      emailVerificationRedirectUrl !== undefined) {
-      console.error("Warning: The verification callback URL is not trusted. Proceeding with signup without email verification. Please add your domain to the trusted domains list in your Stack Auth dashboard.", { url: emailVerificationRedirectUrl });
-
-      result = await this._interface.signUpWithCredential(
+    const executeSignUp = async (challenge: { token?: string, phase?: "invisible" | "visible", unavailable?: true }) => {
+      let result = await this._interface.signUpWithCredential(
         options.email,
         options.password,
-        undefined, // No email verification
-        session
+        emailVerificationRedirectUrl,
+        session,
+        this._toInterfaceBotChallengeInput(challenge),
       );
-    }
+
+      // If the auto-constructed redirect URL is not whitelisted, gracefully fall back
+      // to signing up without email verification rather than failing.
+      // If the user explicitly provided a verificationCallbackUrl, propagate the error.
+      if (result.status === 'error' &&
+        result.error instanceof KnownErrors.RedirectUrlNotWhitelisted &&
+        emailVerificationRedirectUrl !== undefined) {
+        if (!options.verificationCallbackUrl) {
+          captureError("signup-verification-url-not-whitelisted", new StackAssertionError("The auto-constructed verification callback URL is not whitelisted; proceeding without email verification", { emailVerificationRedirectUrl }));
+
+          result = await this._interface.signUpWithCredential(
+            options.email,
+            options.password,
+            undefined, // No email verification
+            session,
+            this._toInterfaceBotChallengeInput(challenge),
+          );
+        }
+      }
+
+      return result;
+    };
+
+    let result;
+    result = await this._executeResultWithBotChallengeFlow({
+      action: "sign_up_with_credential",
+      execute: executeSignUp,
+    });
 
     if (result.status === 'ok') {
       await this._signInToAccountWithTokens(result.data);
@@ -2860,10 +3145,17 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       throw new Error("callOAuthCallback can currently only be called in a browser environment");
     }
     this._ensurePersistentTokenStore();
+    let oauthCallbackRedirectUri = this.urls.oauthCallback;
+    const currentUrl = new URL(window.location.href);
+    if (currentUrl.searchParams.get(crossDomainAuthQueryParams.marker) === "1") {
+      currentUrl.searchParams.delete("code");
+      currentUrl.searchParams.delete("state");
+      oauthCallbackRedirectUri = currentUrl.toString();
+    }
     let result;
     try {
       result = await this._catchMfaRequiredError(async () => {
-        return await callOAuthCallback(this._interface, this.urls.oauthCallback);
+        return await callOAuthCallback(this._interface, oauthCallbackRedirectUri);
       });
     } catch (e) {
       if (KnownErrors.InvalidTotpCode.isInstance(e)) {
@@ -3121,6 +3413,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
       refreshOwnedProjects: async () => {
         await this._refreshOwnedProjects(await this._getSession());
+      },
+      signInWithTokens: async (tokens: { accessToken: string, refreshToken: string }) => {
+        await this._signInToAccountWithTokens(tokens);
       },
     };
   };

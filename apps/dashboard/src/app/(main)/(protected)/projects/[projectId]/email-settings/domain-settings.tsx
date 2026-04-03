@@ -2,7 +2,7 @@
 
 import { FormDialog } from "@/components/form-dialog";
 import { InputField } from "@/components/form-fields";
-import { DesignCard } from "@/components/design-components/card";
+import { DesignCard } from "@/components/design-components";
 import { useUpdateConfig } from "@/lib/config-update";
 import { getPublicEnvVar } from "@/lib/env";
 import { cn } from "@/lib/utils";
@@ -12,10 +12,10 @@ import { strictEmailSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { ArrowsClockwise, Envelope, GearSix, GlobeSimple, PaperPlaneTilt } from "@phosphor-icons/react";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { DesignAlert } from "@/components/design-components/alert";
-import { DesignButton } from "@/components/design-components/button";
-import { DesignInput } from "@/components/design-components/input";
-import { DesignSelectorDropdown } from "@/components/design-components/select";
+import { DesignAlert } from "@/components/design-components";
+import { DesignButton } from "@/components/design-components";
+import { DesignInput } from "@/components/design-components";
+import { DesignSelectorDropdown } from "@/components/design-components";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Label, Typography, useToast } from "@/components/ui";
 import { SimpleTooltip } from "@/components/ui/simple-tooltip";

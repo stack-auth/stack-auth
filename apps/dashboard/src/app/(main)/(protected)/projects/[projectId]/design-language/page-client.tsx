@@ -8,15 +8,17 @@ import {
   DesignCard,
   DesignCardTint,
   DesignCategoryTabs,
+  DesignInput,
+  DesignPillToggle,
+} from "@stackframe/dashboard-ui-components";
+import {
   DesignDataTable,
   DesignEditableGrid,
   type DesignEditableGridItem,
-  DesignInput,
   DesignListItemRow,
   DesignMenu,
-  DesignPillToggle,
   DesignSelectorDropdown,
-  DesignUserList
+  DesignUserList,
 } from "@/components/design-components";
 import { Link } from "@/components/link";
 import {

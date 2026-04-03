@@ -1,8 +1,8 @@
 "use client";
 
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
-import { DesignBadge } from "@/components/design-components/badge";
-import { DesignCard } from "@/components/design-components/card";
+import { DesignBadge } from "@/components/design-components";
+import { DesignCard } from "@/components/design-components";
 import { ActionDialog, Spinner, Switch } from "@/components/ui";
 import { useUpdateConfig } from "@/lib/config-update";
 import { ShieldCheck } from "@phosphor-icons/react";

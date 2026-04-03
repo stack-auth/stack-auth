@@ -17,9 +17,10 @@ import {
   toast,
   Typography,
 } from "@/components/ui";
+import { SubpageHeader } from "@/components/design-components/subpage-header";
 import { useUpdateConfig } from "@/lib/config-update";
 import { cn } from "@/lib/utils";
-import { ArrowLeftIcon, ClockIcon, HardDriveIcon, PackageIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TrashIcon } from "@phosphor-icons/react";
+import { ClockIcon, HardDriveIcon, PackageIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TrashIcon } from "@phosphor-icons/react";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { useState } from "react";
@@ -270,37 +271,28 @@ function EditProductForm({ productId, existingProduct }: { productId: string, ex
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-border/40">
-        <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleCancel}
-            className="gap-2"
-          >
-            <ArrowLeftIcon className="h-4 w-4" />
-            Back
-          </Button>
-          <Typography type="h3" className="font-semibold">Edit Product</Typography>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={handleCancel}>
-            Cancel
-          </Button>
-          <SimpleTooltip
-            tooltip={!canSave ? "Fill in required fields and add at least one price" : undefined}
-            disabled={canSave}
-          >
-            <Button
-              onClick={handleSave}
-              disabled={!canSave || isSaving}
-            >
-              {isSaving ? "Saving..." : "Save Changes"}
+      <SubpageHeader
+        title="Edit Product"
+        onBack={handleCancel}
+        actions={
+          <>
+            <Button variant="outline" onClick={handleCancel}>
+              Cancel
             </Button>
-          </SimpleTooltip>
-        </div>
-      </div>
+            <SimpleTooltip
+              tooltip={!canSave ? "Fill in required fields and add at least one price" : undefined}
+              disabled={canSave}
+            >
+              <Button
+                onClick={handleSave}
+                disabled={!canSave || isSaving}
+              >
+                {isSaving ? "Saving..." : "Save Changes"}
+              </Button>
+            </SimpleTooltip>
+          </>
+        }
+      />
 
       {/* Main content - form on left, preview on right */}
       <div className="flex-1 flex overflow-hidden">
