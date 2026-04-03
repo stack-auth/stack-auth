@@ -48,11 +48,9 @@
       },
       {
         "tab": "Documentation",
-        "groups": [
-          {
-            "group": "Overview",
-            "pages": ["docs/overview", "docs/faq"]
-          },
+        "pages": [
+          "docs/overview",
+          "docs/faq",
           {
             "group": "Getting Started",
             "pages": [
@@ -157,11 +155,8 @@
       },
       {
         "tab": "SDK Reference",
-        "groups": [
-          {
-            "group": "Overview",
-            "pages": ["docs/sdk/overview"]
-          },
+        "pages": [
+          "docs/sdk/overview",
           {
             "group": "Objects",
             "pages": ["docs/sdk/objects/stack-app"]
@@ -191,11 +186,8 @@
       },
       {
         "tab": "Components",
-        "groups": [
-          {
-            "group": "Overview",
-            "pages": ["docs/components/overview"]
-          },
+        "pages": [
+          "docs/components/overview",
           {
             "group": "Authentication",
             "pages": [
