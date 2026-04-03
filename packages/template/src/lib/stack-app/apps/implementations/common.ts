@@ -123,10 +123,28 @@ export function getBaseUrl(userSpecifiedBaseUrl: string | { browser: string, ser
   return replaceStackPortPrefix(url.endsWith('/') ? url.slice(0, -1) : url);
 }
 export const defaultBaseUrl = "https://api.stack-auth.com";
+export const defaultFallbackBaseUrl = "https://api2.stack-auth.com";
 export const defaultAnalyticsBaseUrl = "https://r.stack-auth.com";
 
 export function getAnalyticsBaseUrl(regularBaseUrl: string): string {
   return regularBaseUrl === defaultBaseUrl ? defaultAnalyticsBaseUrl : regularBaseUrl;
+}
+
+export function getFallbackBaseUrl(primaryBaseUrl: string, userSpecifiedFallbackUrl?: string | { browser: string, server: string }): string | undefined {
+  const resolved = userSpecifiedFallbackUrl == null
+    ? (isBrowserLike()
+      ? (envVars.NEXT_PUBLIC_STACK_FALLBACK_API_URL_BROWSER || envVars.STACK_FALLBACK_API_URL_BROWSER)
+      : (envVars.NEXT_PUBLIC_STACK_FALLBACK_API_URL_SERVER || envVars.STACK_FALLBACK_API_URL_SERVER))
+      || envVars.NEXT_PUBLIC_STACK_FALLBACK_API_URL
+      || envVars.STACK_FALLBACK_API_URL
+    : typeof userSpecifiedFallbackUrl === "string"
+      ? userSpecifiedFallbackUrl
+      : userSpecifiedFallbackUrl[isBrowserLike() ? "browser" : "server"];
+
+  if (resolved) {
+    return replaceStackPortPrefix(resolved.endsWith('/') ? resolved.slice(0, -1) : resolved);
+  }
+  return primaryBaseUrl === defaultBaseUrl ? defaultFallbackBaseUrl : undefined;
 }
 
 export type TokenObject = {

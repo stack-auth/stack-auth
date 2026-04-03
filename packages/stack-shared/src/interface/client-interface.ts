@@ -38,6 +38,13 @@ export type ClientInterfaceOptions = {
   // This is a function instead of a string because it might be different based on the environment (for example client vs server)
   getBaseUrl: () => string,
   getAnalyticsBaseUrl?: () => string,
+  getFallbackBaseUrl?: () => string | undefined,
+  /**
+   * When a fallback succeeds and becomes the active server, this is the initial probability
+   * (0–1) that any given request will probe the primary to check if it's back.
+   * Halves on each failed probe, resets on success. Default: 0.3 (30%).
+   */
+  primaryProbeRate?: number,
   extraRequestHeaders: Record<string, string>,
   projectId: string,
   prepareRequest?: () => Promise<void>,
@@ -111,8 +118,15 @@ function getBotChallengeRequestFields(botChallenge: BotChallengeInput | undefine
 export class StackClientInterface {
   private pendingNetworkDiagnostics?: ReturnType<StackClientInterface["_runNetworkDiagnosticsInner"]>;
 
+  /** The URL we've sticky-switched to after a successful fallback, or null if using primary. */
+  private _activeFallbackUrl: string | null = null;
+  private readonly _initialProbeRate: number;
+  /** Current probability of probing primary while in fallback mode. Halves on each failed probe. */
+  private _currentProbeRate: number;
+
   constructor(public readonly options: ClientInterfaceOptions) {
-    // nothing here
+    this._initialProbeRate = options.primaryProbeRate ?? 0.3;
+    this._currentProbeRate = this._initialProbeRate;
   }
 
   get projectId() {
@@ -121,6 +135,87 @@ export class StackClientInterface {
 
   getApiUrl() {
     return this.options.getBaseUrl() + "/api/v1";
+  }
+
+  getFallbackApiUrl(): string | undefined {
+    const fallbackBase = this.options.getFallbackBaseUrl?.();
+    return fallbackBase ? fallbackBase + "/api/v1" : undefined;
+  }
+
+  /**
+   * Routes requests through primary or fallback URL with sticky failover.
+   *
+   * No fallback configured → standard 5-retry behavior on primary.
+   *
+   * Fallback configured, normal mode (primary healthy):
+   *   Alternates primary → fallback for 2 cycles (4 total attempts).
+   *   If fallback succeeds, enters sticky fallback mode.
+   *   Only the final attempt runs network diagnostics on failure.
+   *
+   * Sticky fallback mode (primary previously failed):
+   *   - Requests go directly to the remembered fallback URL.
+   *   - With `_currentProbeRate` probability, probe primary first:
+   *     - Probe succeeds → exit sticky mode, reset probe rate, return result.
+   *     - Probe fails → halve `_currentProbeRate`, use fallback.
+   */
+  protected async _withFallback<T>(cb: (apiUrl: string, retryOptions: { maxAttempts: number, skipDiagnostics: boolean }) => Promise<T>): Promise<T> {
+    const fallbackApiUrl = this.getFallbackApiUrl();
+    if (!fallbackApiUrl) {
+      return await cb(this.getApiUrl(), { maxAttempts: 5, skipDiagnostics: false });
+    }
+
+    const primaryApiUrl = this.getApiUrl();
+
+    // Sticky fallback mode: primary previously failed, route to fallback.
+    // We don't re-try primary here (unless the probe fires) because sticky mode
+    // exists precisely to avoid hammering a down primary on every request.
+    if (this._activeFallbackUrl) {
+      // Probabilistically probe primary to see if it's back
+      if (Math.random() < this._currentProbeRate) {
+        try {
+          const result = await cb(primaryApiUrl, { maxAttempts: 1, skipDiagnostics: true });
+          // Primary is back — exit sticky mode
+          this._activeFallbackUrl = null;
+          this._currentProbeRate = this._initialProbeRate;
+          return result;
+        } catch (probeError) {
+          if (probeError instanceof KnownError) throw probeError;
+          // Still down — reduce probe frequency
+          this._currentProbeRate *= 0.5;
+        }
+      }
+      return await cb(this._activeFallbackUrl!, { maxAttempts: 1, skipDiagnostics: false });
+    }
+
+    // Normal mode: alternate primary → fallback for 2 cycles.
+    const maxCycles = 2;
+    let lastError: Error | undefined;
+
+    for (let cycle = 0; cycle < maxCycles; cycle++) {
+      // Try primary
+      try {
+        return await cb(primaryApiUrl, { maxAttempts: 1, skipDiagnostics: true });
+      } catch (primaryError) {
+        if (primaryError instanceof KnownError) throw primaryError;
+        lastError = primaryError instanceof Error ? primaryError : new Error(String(primaryError));
+      }
+
+      // Try fallback
+      try {
+        const result = await cb(fallbackApiUrl, { maxAttempts: 1, skipDiagnostics: true });
+        // Fallback succeeded — enter sticky mode
+        this._activeFallbackUrl = fallbackApiUrl;
+        this._currentProbeRate = this._initialProbeRate;
+        return result;
+      } catch (fallbackError) {
+        if (fallbackError instanceof KnownError) throw fallbackError;
+        lastError = fallbackError instanceof Error ? fallbackError : new Error(String(fallbackError));
+      }
+    }
+
+    // All cycles exhausted — throw the last error.
+    // The caller's _networkRetry will handle diagnostics if skipDiagnostics is false.
+    throw lastError!;
   }
 
   getAnalyticsApiUrl() {
@@ -194,10 +289,15 @@ export class StackClientInterface {
     `, { cause: cause });
   }
 
-  protected async _networkRetry<T>(cb: () => Promise<Result<T, any>>, session?: InternalSession | null, requestType?: "client" | "server" | "admin"): Promise<T> {
+  protected async _networkRetry<T>(
+    cb: () => Promise<Result<T, any>>,
+    session?: InternalSession | null,
+    requestType?: "client" | "server" | "admin",
+    options?: { maxAttempts?: number, skipDiagnostics?: boolean },
+  ): Promise<T> {
     const retriedResult = await Result.retry(
       cb,
-      5,
+      options?.maxAttempts ?? 5,
       { exponentialDelayBase: 1000 },
     );
 
@@ -206,13 +306,21 @@ export class StackClientInterface {
       if (globalVar.navigator && globalVar.navigator.onLine === false) {
         throw new Error("You are offline. Please check your internet connection and try again. (window.navigator.onLine is false)", { cause: retriedResult.error });
       }
+      if (options?.skipDiagnostics) {
+        throw retriedResult.error;
+      }
       throw await this._createNetworkError(retriedResult.error, session, requestType);
     }
     return retriedResult.data;
   }
 
-  protected async _networkRetryException<T>(cb: () => Promise<T>, session?: InternalSession | null, requestType?: "client" | "server" | "admin"): Promise<T> {
-    return await this._networkRetry(async () => await Result.fromThrowingAsync(cb), session, requestType);
+  protected async _networkRetryException<T>(
+    cb: () => Promise<T>,
+    session?: InternalSession | null,
+    requestType?: "client" | "server" | "admin",
+    options?: { maxAttempts?: number, skipDiagnostics?: boolean },
+  ): Promise<T> {
+    return await this._networkRetry(async () => await Result.fromThrowingAsync(cb), session, requestType, options);
   }
 
   public async fetchNewAccessToken(refreshToken: RefreshToken) {
@@ -222,7 +330,13 @@ export class StackClientInterface {
     }
 
     const clientSecret = this.options.publishableClientKey ?? publishableClientKeyNotNecessarySentinel;
-    const tokenEndpoint = this.getApiUrl() + '/auth/oauth/token';
+    return await this._withFallback(async (apiUrl, retryOptions) => {
+      return await this._fetchNewAccessTokenInner(refreshToken, clientSecret, apiUrl, retryOptions);
+    });
+  }
+
+  private async _fetchNewAccessTokenInner(refreshToken: RefreshToken, clientSecret: string, apiUrl: string, retryOptions?: { maxAttempts?: number, skipDiagnostics?: boolean }) {
+    const tokenEndpoint = apiUrl + '/auth/oauth/token';
     const as = {
       issuer: this.options.getBaseUrl(),
       algorithm: 'oauth2',
@@ -262,7 +376,7 @@ export class StackClientInterface {
       }
 
       return response.data;
-    });
+    }, undefined, undefined, retryOptions);
     if (!response) return null;
 
     let result: oauth.TokenEndpointResponse;
@@ -284,7 +398,6 @@ export class StackClientInterface {
     }
 
     return AccessToken.createIfValid(result.access_token) ?? throwErr("Access token in fetchNewAccessToken is invalid, looks like the backend is returning an invalid token!", { result });
-
   }
 
   public async sendClientRequest(
@@ -298,11 +411,22 @@ export class StackClientInterface {
       refreshToken: null,
     });
 
-    return await this._networkRetry(
-      () => this.sendClientRequestInner(path, requestOptions, session!, requestType, apiUrlOverride),
-      session,
-      requestType,
-    );
+    if (apiUrlOverride) {
+      return await this._networkRetry(
+        () => this.sendClientRequestInner(path, requestOptions, session!, requestType, apiUrlOverride),
+        session,
+        requestType,
+      );
+    }
+
+    return await this._withFallback(async (apiUrl, retryOptions) => {
+      return await this._networkRetry(
+        () => this.sendClientRequestInner(path, requestOptions, session!, requestType, apiUrl),
+        session,
+        requestType,
+        retryOptions,
+      );
+    });
   }
 
   public createSession(options: Omit<ConstructorParameters<typeof InternalSession>[0], "refreshAccessTokenCallback">): InternalSession {
@@ -1232,8 +1356,20 @@ export class StackClientInterface {
       // TODO fix
       throw new Error("Admin session token is currently not supported for OAuth");
     }
+
     const clientSecret = this.options.publishableClientKey ?? publishableClientKeyNotNecessarySentinel;
-    const tokenEndpoint = this.getApiUrl() + '/auth/oauth/token';
+    return await this._withFallback(async (apiUrl) => {
+      return await this._callOAuthCallbackInner(options, clientSecret, apiUrl);
+    });
+  }
+
+  private async _callOAuthCallbackInner(options: {
+    oauthParams: URLSearchParams,
+    redirectUri: string,
+    codeVerifier: string,
+    state: string,
+  }, clientSecret: string, apiUrl: string): Promise<{ newUser: boolean, afterCallbackRedirectUrl?: string, accessToken: string, refreshToken: string }> {
+    const tokenEndpoint = apiUrl + '/auth/oauth/token';
     const as = {
       issuer: this.options.getBaseUrl(),
       algorithm: 'oauth2',

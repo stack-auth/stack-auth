@@ -35,7 +35,7 @@ import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, 
 import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
-import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, resolveConstructorOptions } from "./common";
+import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getFallbackBaseUrl, resolveConstructorOptions } from "./common";
 
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
@@ -416,6 +416,8 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       ...extraOptions,
       interface: extraOptions?.interface ?? new StackServerInterface({
         getBaseUrl: () => getBaseUrl(resolvedOptions.baseUrl),
+        getFallbackBaseUrl: () => getFallbackBaseUrl(getBaseUrl(resolvedOptions.baseUrl), resolvedOptions.fallbackBaseUrl),
+        primaryProbeRate: resolvedOptions.primaryProbeRate,
         projectId: resolvedOptions.projectId ?? getDefaultProjectId(),
         extraRequestHeaders: resolvedOptions.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
         clientVersion,
