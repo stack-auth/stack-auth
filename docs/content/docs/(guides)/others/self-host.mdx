@@ -1,6 +1,6 @@
 ---
 title: Self-host
-lastModified: "2026-01-10"
+lastModified: "2026-03-20"
 ---
 
 <Info type="danger">
@@ -121,3 +121,23 @@ To manage your dashboard configs with this account, manually go into the databas
 Go back to the dashboard, refresh the page, and you should see the "Stack Dashboard" project. We recommend disabling new user sign-ups to your internal project to avoid unauthorized account and project creations.
 
 Now, create a new project for your app and follow the [normal setup process](../getting-started/setup.mdx). Add `NEXT_PUBLIC_STACK_API_URL=https://your-backend-url.com` to your app's environment variables so that it connects to your API backend instead of the default Stack Auth API backend (https://api.stack-auth.com).
+
+## Bot protection (Turnstile)
+
+Stack Auth uses Cloudflare Turnstile to protect sign-up flows from bots. By default, self-hosted instances use Cloudflare's development test keys, which always pass without showing a challenge.
+
+For production, configure your own Turnstile keys from the [Cloudflare Dashboard](https://dash.cloudflare.com/?to=/:account/turnstile):
+
+| Environment Variable | Description |
+|---------------------|-------------|
+| `NEXT_PUBLIC_STACK_BOT_CHALLENGE_SITE_KEY` | Turnstile site key for visible challenges. |
+| `NEXT_PUBLIC_STACK_BOT_CHALLENGE_INVISIBLE_SITE_KEY` | Turnstile site key for invisible challenges. |
+| `STACK_TURNSTILE_SECRET_KEY` | Turnstile secret key for server-side verification. |
+
+Optional settings:
+
+| Environment Variable | Description |
+|---------------------|-------------|
+| `STACK_DISABLE_BOT_CHALLENGE` | Set to `true` to disable Turnstile entirely. |
+| `STACK_ALLOW_SIGN_UP_ON_VISIBLE_BOT_CHALLENGE_FAILURE` | Set to `true` to allow sign-ups even when the visible challenge fails (not recommended for production). |
+| `STACK_TRUSTED_PROXY` | Set to `vercel` or `cloudflare` to trust the respective reverse proxy for reading client IP addresses. Required for accurate IP-based fraud detection when running behind a proxy. |
