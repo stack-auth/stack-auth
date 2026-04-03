@@ -124,7 +124,6 @@ if (!getEnvVariable("VERCEL", "") && !globalVar.__stack_prisma_sigterm_registere
         console.log("[SIGTERM] Completed draining background tasks and database connections.");
       } finally {
         clearTimeout(keepAlive);
-        process.exit(0);
       }
     });
   });

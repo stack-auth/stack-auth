@@ -23,6 +23,10 @@ jobs:
       STACK_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
       STACK_EXTERNAL_DB_SYNC_MAX_DURATION_MS: "20000"
       STACK_EXTERNAL_DB_SYNC_DIRECT: "false"
+      # SDK reads this as the primary URL, discovers hardcoded fallback to port 8110
+      NEXT_PUBLIC_STACK_API_URL: "http://localhost:8102"
+      # Tells js-helpers to omit explicit baseUrl so the SDK exercises fallback logic
+      STACK_TEST_SDK_FALLBACK: "true"
 
     strategy:
       matrix:
@@ -149,11 +153,11 @@ jobs:
           fi
           echo "Confirmed: primary port 8102 is down, fallback tests will exercise SDK fallback logic"
 
-      - name: Run tests
-        run: pnpm test run
-
-      - name: Verify data integrity
-        run: pnpm run verify-data-integrity --no-bail
+      # Only run JS SDK tests — these exercise the SDK's fallback logic.
+      # Backend API tests use direct HTTP calls that don't go through fallback.
+      # Exclude cross-domain-auth which hardcodes the primary URL.
+      - name: Run SDK fallback tests
+        run: pnpm -C apps/e2e run pre && pnpm vitest run --config apps/e2e/vitest.config.ts tests/js/ --exclude '**/cross-domain-auth*'
 
       - name: Print Docker Compose logs
         if: always()

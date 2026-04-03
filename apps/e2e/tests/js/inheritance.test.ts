@@ -4,11 +4,13 @@ import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { STACK_BACKEND_BASE_URL, it } from "../helpers";
 import { scaffoldProject } from "./js-helpers";
 
+const sdkBaseUrl = process.env.STACK_TEST_SDK_FALLBACK ? undefined : STACK_BACKEND_BASE_URL;
+
 it("StackServerApp can inherit configuration from StackClientApp", async ({ expect }) => {
   const { project, adminUser } = await scaffoldProject();
   const adminApp = new StackAdminApp({
     projectId: project.id,
-    baseUrl: STACK_BACKEND_BASE_URL,
+    baseUrl: sdkBaseUrl,
     projectOwnerSession: adminUser._internalSession,
     tokenStore: "memory",
     redirectMethod: "none",
@@ -23,7 +25,7 @@ it("StackServerApp can inherit configuration from StackClientApp", async ({ expe
   });
 
   const clientApp = new StackClientApp({
-    baseUrl: STACK_BACKEND_BASE_URL,
+    baseUrl: sdkBaseUrl,
     projectId: project.id,
     publishableClientKey: key.publishableClientKey,
     tokenStore: "memory",
@@ -51,7 +53,7 @@ it("StackAdminApp can inherit configuration from StackServerApp", async ({ expec
   const { project, adminUser } = await scaffoldProject();
   const adminApp = new StackAdminApp({
     projectId: project.id,
-    baseUrl: STACK_BACKEND_BASE_URL,
+    baseUrl: sdkBaseUrl,
     projectOwnerSession: adminUser._internalSession,
     tokenStore: "memory",
     redirectMethod: "none",
@@ -66,7 +68,7 @@ it("StackAdminApp can inherit configuration from StackServerApp", async ({ expec
   });
 
   const clientApp = new StackClientApp({
-    baseUrl: STACK_BACKEND_BASE_URL,
+    baseUrl: sdkBaseUrl,
     projectId: project.id,
     publishableClientKey: key.publishableClientKey,
     tokenStore: "memory",
