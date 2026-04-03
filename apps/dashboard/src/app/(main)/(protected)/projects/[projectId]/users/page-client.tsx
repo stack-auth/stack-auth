@@ -92,7 +92,9 @@ export default function PageClient() {
           </Alert>
         )}
 
-        <UserTable key={refreshKey} onFilterChange={setExportOptions} />
+        <div data-walkthrough="users-table">
+          <UserTable key={refreshKey} onFilterChange={setExportOptions} />
+        </div>
       </PageLayout>
     </AppEnabledGuard>
   );
