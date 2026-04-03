@@ -2983,7 +2983,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
    * @param options.expiresInMillis Optional duration in milliseconds before the auth attempt expires (default: 2 hours)
    * @param options.maxAttempts Optional maximum number of polling attempts (default: Infinity)
    * @param options.waitTimeMillis Optional time to wait between polling attempts (default: 2 seconds)
-   * @param options.promptLink Optional function to call with the login URL to prompt the user to open the browser
+   * @param options.promptLink Optional function to call with the login URL and code to prompt the user to open the browser
+   * @param options.anonRefreshToken Optional anonymous refresh token from the CLI's token store to associate with this login attempt
    * @returns Result containing either the refresh token or an error
    */
   async promptCliLogin(options: {
@@ -2991,7 +2992,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     expiresInMillis?: number,
     maxAttempts?: number,
     waitTimeMillis?: number,
-    promptLink?: (url: string) => void,
+    promptLink?: (url: string, loginCode: string) => void,
+    anonRefreshToken?: string,
   }): Promise<Result<string, KnownErrors["CliAuthError"] | KnownErrors["CliAuthExpiredError"] | KnownErrors["CliAuthUsedError"]>> {
     // Step 1: Initiate the CLI auth process
     const response = await this._interface.sendClientRequest(
@@ -3003,6 +3005,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         },
         body: JSON.stringify({
           expires_in_millis: options.expiresInMillis,
+          ...(options.anonRefreshToken != null ? { anon_refresh_token: options.anonRefreshToken } : {}),
         }),
       },
       null
@@ -3016,14 +3019,14 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     const pollingCode = initResult.polling_code;
     const loginCode = initResult.login_code;
 
-    // Step 2: Open the browser for the user to authenticate
+    // Step 2: Open the browser for the user to authenticate and display the verification code
     const url = `${options.appUrl}/handler/cli-auth-confirm?login_code=${encodeURIComponent(loginCode)}`;
     if (options.promptLink) {
-      options.promptLink(url);
+      options.promptLink(url, loginCode);
     } else {
+      console.log(`Your verification code: ${loginCode}`);
       console.log(`Please visit the following URL to authenticate:\n${url}`);
     }
-
 
     // Step 3: Poll for the token
     let attempts = 0;
