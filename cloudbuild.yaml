@@ -1,0 +1,24 @@
+steps:
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -t
+      - gcr.io/stack-auth-gcp-actual/github.com/stack-auth/stack-auth:$COMMIT_SHA
+      - -f
+      - docker/backend/Dockerfile
+      - .
+  - name: gcr.io/cloud-builders/docker
+    args:
+      - push
+      - gcr.io/stack-auth-gcp-actual/github.com/stack-auth/stack-auth:$COMMIT_SHA
+  - name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    args:
+      - gcloud
+      - run
+      - deploy
+      - stack-backend-staging
+      - --image=gcr.io/stack-auth-gcp-actual/github.com/stack-auth/stack-auth:$COMMIT_SHA
+      - --region=us-east4
+options:
+  logging: CLOUD_LOGGING_ONLY
+  machineType: E2_HIGHCPU_32
