@@ -283,8 +283,8 @@ model ProjectUser {
   signUpEmailBase                 String?
 
   // Sign-up risk scores (0-100, set at sign-up time)
-  signUpRiskScoreBot              Int @default(0) @db.SmallInt
-  signUpRiskScoreFreeTrialAbuse   Int @default(0) @db.SmallInt
+  signUpRiskScoreBot            Int @default(0) @db.SmallInt
+  signUpRiskScoreFreeTrialAbuse Int @default(0) @db.SmallInt
 
   projectUserOAuthAccounts ProjectUserOAuthAccount[]
   teamMembers              TeamMember[]
@@ -1245,6 +1245,16 @@ model OutgoingRequest {
   // is created in a custom migration (not expressible in Prisma schema)
   @@index([startedFulfillingAt, createdAt])
   @@index([startedFulfillingAt, deduplicationKey])
+}
+
+model BulldozerStorageEngine {
+  id            String                 @id @default(uuid()) @db.Uuid
+  keyPath       Json[]
+  keyPathParent Unsupported("jsonb[]")
+  value         Json
+
+  @@unique([keyPath], map: "BulldozerStorageEngine_keyPath_key")
+  @@index([keyPathParent], map: "BulldozerStorageEngine_keyPathParent_idx")
 }
 
 model DeletedRow {

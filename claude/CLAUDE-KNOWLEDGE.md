@@ -79,6 +79,9 @@ A: Run lint from `apps/dashboard` directly (for example `pnpm lint -- "src/app/(
 Q: How should unsubscribe-link e2e tests avoid breakage from email theme/layout changes?
 A: In `apps/e2e/tests/backend/endpoints/api/v1/unsubscribe-link.test.ts`, avoid snapshotting the entire rendered HTML for transactional emails; assert stable behavior instead (email content present and `/api/v1/emails/unsubscribe-link` absent) so cosmetic wrapper/style changes do not fail the test.
 
+Q: Why is the JIT disabled for Bulldozer DB mutations with only a few rows?
+A: PostgreSQL JIT can dominate runtime for Bulldozer's giant single-statement CTE transactions. In a `group -> map -> map -> group` mutation with only 31 SQL statements and ~8 source rows, `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON, VERBOSE)` showed ~1.4ms planning, ~1598.9ms execution, and ~1597.5ms of JIT time (`Optimization` ~836ms, `Emission` ~740ms) while the actual plan nodes were sub-millisecond. Disabling JIT locally for Bulldozer transactions with `SET LOCAL jit = off;` in `toExecutableSqlTransaction()` dropped the same query to ~0.63ms execution and brought the stacked fuzz case from ~41s to ~0.34s.
+
 Q: How do cross-domain auth handoffs avoid creating extra refresh-token sessions?
 A: The cross-domain authorize route must carry the current `refreshTokenId` through authorization-code exchange and OAuth token issuance must reuse that ID. Keep `afterCallbackRedirectUrl` URL-only and persist refresh-token linkage in `ProjectUserAuthorizationCode.grantedRefreshTokenId`; then return that as `user.refreshTokenId` in `getAuthorizationCode` so token issuance can reuse the same refresh-token row with ownership checks.
 
@@ -142,6 +145,21 @@ A: Only write `onboardingStatus` when the `Project.onboardingStatus` column exis
 Q: Where is the private sign-up risk engine generated entrypoint in backend now?
 A: The generator script writes `apps/backend/src/private/implementation.generated.ts` (not `src/generated/private-sign-up-risk-engine.ts`), and backend runtime imports should target `@/private/implementation.generated`.
 
+Q: When do Bulldozer transactions need sequential temp-table execution instead of the default giant CTE executor?
+A: Most Bulldozer operators should keep using the original giant-CTE executor because it is faster and matches existing semantics. `declareSortTable` is the exception for its bulk-init path: it needs real temp tables so a transaction-local PL/pgSQL helper can read intermediate sorted rows by table name. The safe split is to keep the CTE executor by default and switch to sequential execution only when a statement uses `pg_temp.bulldozer_sort_bulk_init_from_table`. Also, plain side-effecting `SELECT pg_temp.helper(...)` CTEs are not reliable unless they are wrapped in a data-modifying statement such as `INSERT INTO pg_temp.bulldozer_side_effects ...`.
+
+Q: Why can initializing a Bulldozer operator with an internal child table fail with `BulldozerStorageEngine_keyPathParent_fkey`?
+A: Internal child table paths add an extra `"table"` segment (for example `.../table/external:parent/table/internal:child`). The parent operator must insert the intermediate `.../table` keyPath before running the child table `init()`. Without that node, inserting the child root path violates the storage engine parent foreign key.
+
+Q: Why can a multi-input operator like `declareLeftJoinTable` read stale upstream rows inside trigger execution?
+A: Bulldozer executes most statement batches as one giant CTE transaction for speed. Within that single statement snapshot, downstream reads of `BulldozerStorageEngine` may not see upstream writes from earlier CTEs unless data is passed explicitly. For left-join trigger correctness (especially when one input depends on the other), force sequential execution for those statements (for example with a sentinel checked in `toExecutableSqlStatements`) or derive new input state directly from change tables instead of re-reading storage.
+
+Q: How can `declareLeftJoinTable` avoid accidental scans over unrelated `BulldozerStorageEngine` rows?
+A: Avoid all-groups `listRowsInGroup` scans in `init()`. First list left-table groups, then fetch left/right rows per group via `CROSS JOIN LATERAL listRowsInGroup({ groupKey })`. For all-groups read paths, traverse from table-local group nodes using `keyPathParent = <groupsPath>` equality joins (`groupPath -> groupRowsPath -> rows`) instead of prefix-slice predicates like `keyPathParent[1:cardinality(...)] = ...`.
+
+Q: What query shape should Bulldozer use to list all rows without scaling with entire `BulldozerStorageEngine` size?
+A: For table-scoped all-groups reads, use equality-join traversal rooted at that table's groups path: `groupPath (keyPathParent = groupsPath) -> groupRowsPath (keyPathParent = groupPath.keyPath and leaf = 'rows') -> rows (keyPathParent = groupRowsPath.keyPath)`. Avoid prefix slicing on `keyPathParent` (`[1:cardinality(...)] = ...`), which can force broad scans over unrelated tables.
+
 Q: Why did EventTracker throw `Reflect.get called on non-object` in JS cookie tests?
 A: Partial browser mocks can expose `window` without a real `history` object. Calling `Reflect.get(historyObject, "pushState")` throws before type checks. Use normal guarded access (`Object.getOwnPropertyDescriptor(window, "history")?.value`) plus type guards for `pushState`/`replaceState`, and patch/restore methods directly without `Reflect`.
 
@@ -154,5 +172,17 @@ A: In `packages/template/src/components-page/stack-handler-client.tsx`, parse ha
 Q: What is the current `app.urls` contract after deprecating runtime URL mutation?
 A: `app.urls` is now static (`getUrls(...)` only) and no longer injects runtime `after_auth_return_to` / `stack_cross_domain_*` params from `window.location`. For navigation flows, examples and consumers should use `redirectToXyz()` methods instead (for example `redirectToSignIn()` / `redirectToSignOut()`), while tests for hosted flows should assert dynamic params on actual redirect methods, not on `app.urls`.
 
+Q: What is the fastest safe way to delete a Bulldozer table subtree from `BulldozerStorageEngine`?
+A: Delete only the table root `keyPath` and rely on the existing `keyPathParent -> keyPath ON DELETE CASCADE` FK to remove descendants. This avoids recursive CTE path enumeration and significantly speeds up large deletes while preserving semantics.
+
+Q: How should `declareLimitTable.listRowsInGroup` implement the all-groups read path for performance?
+A: Read directly from the materialized limit table subtree (`groups -> rows` via `keyPathParent` equality joins) and apply range predicates on stored `rowSortKey`, instead of scanning upstream source rows and semi-joining with `EXISTS` on each row. This keeps behavior but removes an avoidable full-source scan.
+
 Q: How should user signup time be exposed in JWT claims before production rollout?
 A: Use `signed_up_at` (OIDC-style naming) in access tokens and encode it as Unix seconds in `apps/backend/src/lib/tokens.tsx` (`Math.floor(user.signed_up_at_millis / 1000)`). Since this is pre-prod, the payload schema can require `signed_up_at` directly without a backward-compat optional shim.
+
+Q: Why did adding `signed_up_at` to the access token payload break backend typecheck?
+A: `AccessTokenPayload` currently does not include `signed_up_at`. In `apps/backend/src/lib/tokens.tsx`, `payload` is typed as `Omit<AccessTokenPayload, "iss" | "aud" | "iat">`, so extra fields fail with `TS2353`. Until the schema/type is updated consistently, keep `signed_up_at` out of the payload object.
+
+Q: How should Bulldozer Studio mutation endpoints be hardened?
+A: In `apps/backend/scripts/run-bulldozer-studio.ts`, enforce loopback-only requests, require a per-instance mutation token header (for all POST routes), bound request body size before buffering/JSON parse, and ensure raw writes use the same advisory transaction lock as other table mutations. For raw upsert correctness, insert missing parent key paths before upserting the leaf node.
