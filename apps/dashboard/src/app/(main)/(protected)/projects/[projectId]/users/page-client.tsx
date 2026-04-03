@@ -45,7 +45,8 @@ export default function PageClient() {
     search?: string,
     includeRestricted: boolean,
     includeAnonymous: boolean,
-  }>({ includeRestricted: false, includeAnonymous: false });
+    onlyAnonymous: boolean,
+  }>({ includeRestricted: false, includeAnonymous: false, onlyAnonymous: false });
   const [refreshKey, setRefreshKey] = useState(0);
 
   const handleRefresh = async () => {

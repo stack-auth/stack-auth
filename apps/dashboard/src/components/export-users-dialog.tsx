@@ -37,6 +37,7 @@ type ExportField = {
 type ExportOptions = {
   search?: string,
   includeAnonymous: boolean,
+  onlyAnonymous?: boolean,
 };
 
 const DEFAULT_FIELDS: ExportField[] = [
@@ -273,7 +274,7 @@ async function fetchAllUsers(
       limit,
       cursor,
       query: options?.search,
-      includeAnonymous: options?.includeAnonymous ?? true,
+      includeAnonymous: options?.onlyAnonymous ? true : (options?.includeAnonymous ?? true),
       orderBy: "signedUpAt",
       desc: true,
     });
@@ -282,7 +283,7 @@ async function fetchAllUsers(
     cursor = batch.nextCursor ?? undefined;
   } while (cursor);
 
-  return allUsers;
+  return options?.onlyAnonymous ? allUsers.filter((user) => user.isAnonymous) : allUsers;
 }
 
 function transformUserData(
