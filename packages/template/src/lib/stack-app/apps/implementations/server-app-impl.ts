@@ -58,7 +58,14 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     query?: string,
     includeRestricted?: boolean,
     includeAnonymous?: boolean,
-  ], UsersCrud['Server']['List']>(async ([cursor, limit, orderBy, desc, query, includeRestricted, includeAnonymous]) => {
+    onlyAnonymous?: boolean,
+  ], UsersCrud['Server']['List']>(async ([cursor, limit, orderBy, desc, query, includeRestricted, includeAnonymous, onlyAnonymous]) => {
+    if (onlyAnonymous && !includeAnonymous) {
+      throw new StackAssertionError("onlyAnonymous=true requires includeAnonymous=true");
+    }
+    if (onlyAnonymous) {
+      return await this._interface.listServerUsers({ cursor, limit, orderBy, desc, query, includeRestricted, includeAnonymous: true, onlyAnonymous: true });
+    }
     return await this._interface.listServerUsers({ cursor, limit, orderBy, desc, query, includeRestricted, includeAnonymous });
   });
   private readonly _serverUserCache = createCache<string[], UsersCrud['Server']['Read'] | null>(async ([userId]) => {
@@ -1346,7 +1353,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   // END_PLATFORM
 
   async listUsers(options?: ServerListUsersOptions): Promise<ServerUser[] & { nextCursor: string | null }> {
-    const crud = Result.orThrow(await this._serverUsersCache.getOrWait([options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query, options?.includeRestricted, options?.includeAnonymous], "write-only"));
+    const crud = Result.orThrow(await this._serverUsersCache.getOrWait([options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query, options?.includeRestricted, options?.includeAnonymous, options?.onlyAnonymous], "write-only"));
     const result: any = crud.items.map((j) => this._serverUserFromCrud(j));
     result.nextCursor = crud.pagination?.next_cursor ?? null;
     return result as any;
@@ -1354,7 +1361,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   // IF_PLATFORM react-like
   useUsers(options?: ServerListUsersOptions): ServerUser[] & { nextCursor: string | null } {
-    const crud = useAsyncCache(this._serverUsersCache, [options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query, options?.includeRestricted, options?.includeAnonymous] as const, "serverApp.useUsers()");
+    const crud = useAsyncCache(this._serverUsersCache, [options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query, options?.includeRestricted, options?.includeAnonymous, options?.onlyAnonymous] as const, "serverApp.useUsers()");
     const result: any = crud.items.map((j) => this._serverUserFromCrud(j));
     result.nextCursor = crud.pagination?.next_cursor ?? null;
     return result as any;
