@@ -6,60 +6,25 @@ full: true
 This is a detailed reference for the `TeamProfile` and `ServerTeamProfile` objects.
 
 On this page:
-- [TeamProfile](#teamprofile)
-- [ServerTeamProfile](#serverteamprofile)
-
-# `TeamProfile`
-
-The `TeamProfile` object represents the profile of a user within the context of a team. It includes the user's profile information specific to the team and can be accessed through the `teamUser.teamProfile` property on a `TeamUser` object.
-
-### Table of Contents
-
-<ClickableTableOfContents title="TeamProfile Table of Contents" code={`type TeamProfile = {
-    displayName: string | null;  //$stack-link-to:#teamprofiledisplayname
-    profileImageUrl: string | null;  //$stack-link-to:#teamprofileprofileimageurl
-};`} />
+- [TeamMemberProfile](#teammemberprofile)
+- [ServerTeamMemberProfile](#serverteammemberprofile)
 
 ---
 
-<CollapsibleTypesSection type="teamProfile" property="displayName" defaultOpen={false}>
-  <MethodLayout>
-    <MethodContent>
-      The display name of the user within the team context as a `string` or `null` if no display name is set.
-    </MethodContent>
-    <MethodAside title="Type Definition">
+# `TeamMemberProfile`
 
-      ```typescript
-      declare const displayName: string | null;
-      ```
-    </MethodAside>
-  </MethodLayout>
-</CollapsibleTypesSection>
+The `TeamMemberProfile` object represents the profile of a user within the context of a team. It includes the user's profile information specific to that team.
 
-<CollapsibleTypesSection type="teamProfile" property="profileImageUrl" defaultOpen={false}>
-  <MethodLayout>
-    <MethodContent>
-      The profile image URL of the user within the team context as a `string`, or `null` if no profile image is set.
-    </MethodContent>
-    <MethodAside title="Type Definition">
+You can access team profiles through:
+- `teamUser.teamProfile` on a [`TeamUser`](./team-user.mdx) object
+- `user.getTeamProfile(team)` / `user.useTeamProfile(team)` on a [`CurrentUser`](./user.mdx) object
 
-      ```typescript
-      declare const profileImageUrl: string | null;
-      ```
-    </MethodAside>
-  </MethodLayout>
-</CollapsibleTypesSection>
+<TypeFromJson typeName="TeamMemberProfile" />
 
 ---
 
-# `ServerTeamProfile`
+# `ServerTeamMemberProfile`
 
-The `ServerTeamProfile` object is currently the same as `TeamProfile`.
+Like `TeamMemberProfile`, but for server-side contexts with the `SECRET_SERVER_KEY`.
 
-### Table of Contents
-
-<ClickableTableOfContents code={`type ServerTeamProfile =
-    // Inherits all functionality from TeamProfile
-    & TeamProfile; //$stack-link-to:#teamprofile`} />
-
----
+<TypeFromJson typeName="ServerTeamMemberProfile" parentTypes={["TeamMemberProfile"]} />

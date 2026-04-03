@@ -284,6 +284,7 @@ export function PlatformCodeblock({
 
   // ALL useState HOOKS MUST BE AT THE TOP
   const [selectedPlatform, setSelectedPlatform] = useState(getInitialPlatform);
+  const [pendingPlatform, setPendingPlatform] = useState<string | null>(null);
   const [selectedFrameworks, setSelectedFrameworks] = useState<{ [platform: string]: string }>(() => {
     // Initialize with defaults from config to ensure SSR/client hydration match
     const initial: { [platform: string]: string } = {};
@@ -370,9 +371,10 @@ export function PlatformCodeblock({
     return Math.abs(hash).toString(36).slice(0, 9);
   }, [documentPath, exampleNames]);
 
-  // Get current framework options for selected platform
-  const currentFrameworks = Object.keys(platforms[selectedPlatform] ?? {});
-  const currentFramework = selectedFrameworks[selectedPlatform] || currentFrameworks[0];
+  // Get current framework options for selected (or pending) platform
+  const activePlatform = pendingPlatform || selectedPlatform;
+  const currentFrameworks = Object.keys(platforms[activePlatform] ?? {});
+  const currentFramework = selectedFrameworks[activePlatform] || currentFrameworks[0];
 
   // Helper functions for variants (supports dynamic variant names like 'server'/'client' or 'html'/'script')
   const getVariantKeys = (platform: string, framework: string): string[] => {
@@ -494,6 +496,7 @@ export function PlatformCodeblock({
       if (!target.closest(`[data-dropdown-id="${componentId}"]`)) {
         setIsDropdownOpen(false);
         setDropdownView('platform');
+        setPendingPlatform(null); // Clear pending selection
       }
     };
 
@@ -505,12 +508,23 @@ export function PlatformCodeblock({
 
 
   const handlePlatformSelect = (platform: string) => {
-    broadcastPlatformChange(platform);
+    // Store pending platform but don't apply it yet
+    setPendingPlatform(platform);
     setDropdownView('framework');
   };
 
   const handleFrameworkSelect = (framework: string) => {
-    broadcastFrameworkChange(selectedPlatform, framework);
+    // Use pending platform if available, otherwise current platform
+    const platformToUse = pendingPlatform || selectedPlatform;
+
+    // Now apply the platform change
+    setSelectedPlatform(platformToUse);
+    setPendingPlatform(null);
+
+    // Broadcast both platform and framework changes
+    broadcastPlatformChange(platformToUse);
+    broadcastFrameworkChange(platformToUse, framework);
+
     setIsDropdownOpen(false);
     setDropdownView('platform');
   };
@@ -520,6 +534,9 @@ export function PlatformCodeblock({
       const next = !prev;
       if (next) {
         setDropdownView('platform');
+      } else {
+        // Closing dropdown - clear pending platform if any
+        setPendingPlatform(null);
       }
       return next;
     });
@@ -641,7 +658,9 @@ export function PlatformCodeblock({
           )
         }
         beforeCodeContent={
-          hasVariants(selectedPlatform, currentFramework) ? (
+          // Use selectedPlatform (not pending) to determine if variants should show
+          // This ensures variant buttons don't disappear during platform selection
+          hasVariants(selectedPlatform, selectedFrameworks[selectedPlatform] || Object.keys(platforms[selectedPlatform] ?? {})[0]) ? (
             <div className="mb-3 flex">
               <div className="inline-flex items-center gap-1 rounded-full border border-fd-border/60 bg-fd-muted/20 p-1">
                 {getVariantKeys(selectedPlatform, currentFramework).map((variant) => {

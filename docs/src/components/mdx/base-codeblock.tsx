@@ -1,8 +1,8 @@
 'use client';
 
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
-import { Check, Copy } from 'lucide-react';
-import { useEffect, useState, type ReactNode } from 'react';
+import { Check, ChevronDown, Copy } from 'lucide-react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { codeToHtml } from 'shiki';
 import { cn } from '../../lib/cn';
 
@@ -50,6 +50,35 @@ export function BaseCodeblock({
   const [highlightedCode, setHighlightedCode] = useState<string>('');
   const [isClient, setIsClient] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [canScrollDown, setCanScrollDown] = useState(false);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Check if there's more content to scroll
+  const checkScrollability = useCallback(() => {
+    const container = scrollContainerRef.current;
+    if (container) {
+      const hasMoreContent = container.scrollHeight > container.clientHeight;
+      const isNearBottom = container.scrollTop + container.clientHeight >= container.scrollHeight - 20;
+      setCanScrollDown(hasMoreContent && !isNearBottom);
+    }
+  }, []);
+
+  // Set up scroll listener
+  useEffect(() => {
+    const container = scrollContainerRef.current;
+    if (container) {
+      checkScrollability();
+      container.addEventListener('scroll', checkScrollability);
+      // Also check on resize
+      const resizeObserver = new ResizeObserver(checkScrollability);
+      resizeObserver.observe(container);
+
+      return () => {
+        container.removeEventListener('scroll', checkScrollability);
+        resizeObserver.disconnect();
+      };
+    }
+  }, [checkScrollability, highlightedCode]);
 
   const handleCopy = async () => {
     try {
@@ -179,7 +208,10 @@ export function BaseCodeblock({
             {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
           </button>
 
-          <div className="rounded-lg overflow-auto max-h-[500px] relative">
+          <div
+            ref={scrollContainerRef}
+            className="rounded-lg overflow-auto max-h-[500px] relative"
+          >
             <div
               ref={codeContainerRef}
               className="[&_*]:!bg-transparent [&_pre]:!bg-transparent [&_code]:!bg-transparent [&_pre]:!p-0 [&_pre]:!m-0"
@@ -187,6 +219,21 @@ export function BaseCodeblock({
             />
             {children}
           </div>
+
+          {/* Scroll indicator with fade gradient - positioned outside scroll container */}
+          {canScrollDown && (
+            <div className="absolute bottom-4 left-4 right-4 pointer-events-none transition-opacity duration-200">
+              {/* Fade gradient */}
+              <div className="h-12 bg-gradient-to-t from-fd-background dark:from-[#0A0A0A] to-transparent rounded-b-lg" />
+
+              {/* Scroll indicator */}
+              <div className="absolute bottom-0 left-1/2 -translate-x-1/2 flex items-center gap-1 text-xs text-fd-muted-foreground">
+                <ChevronDown className="w-3 h-3 animate-bounce" />
+                <span className="text-[10px] uppercase tracking-wider font-medium">Scroll</span>
+                <ChevronDown className="w-3 h-3 animate-bounce" />
+              </div>
+            </div>
+          )}
         </div>
       </div>
     </div>

@@ -31,5 +31,6 @@ next-env.d.ts
 /content/api/
 /content/dashboard/
 /public/openapi/
+/public/sdk-docs/
 /openapi/
 

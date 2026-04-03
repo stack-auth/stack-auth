@@ -122,22 +122,30 @@ function ClickableCodeblock({
               const topPosition = linePosition.top; // No extra padding needed now
               const height = linePosition.height;
 
+              const isSafeAnchor = area.anchor.startsWith('#') && /^#[a-z0-9-]+$/i.test(area.anchor);
+              if (!isSafeAnchor) return null;
+
               return (
                 <div
                   key={index}
-                  className="absolute left-0 right-0 pointer-events-auto hover:bg-fd-primary/20 rounded cursor-pointer"
+                  role="link"
+                  tabIndex={0}
+                  className="absolute left-0 right-0 pointer-events-auto hover:bg-fd-primary/20 rounded cursor-pointer select-none"
                   style={{
                     top: `${topPosition}px`,
                     height: `${height}px`,
                   }}
-                  title={`Line ${area.lineNumber + 1}: ${area.anchor} (pos: ${topPosition}px, height: ${height}px)`}
-                >
-                  <a
-                    href={area.anchor}
-                    className="block w-full h-full no-underline"
-                    aria-label={`Navigate to ${area.anchor}`}
-                  />
-                </div>
+                  aria-label={`Navigate to ${area.anchor}`}
+                  onClick={() => {
+                    window.location.hash = area.anchor;
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' || e.key === ' ') {
+                      e.preventDefault();
+                      window.location.hash = area.anchor;
+                    }
+                  }}
+                />
               );
             })}
           </div>

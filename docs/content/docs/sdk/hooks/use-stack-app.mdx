@@ -4,7 +4,7 @@ title: useStackApp
 
 The `useStackApp` hook returns a `StackClientApp` object from the one that you provided in the [`StackProvider` component](../../components/stack-provider.mdx). If you want to learn more about the `StackClientApp` object, check out the [StackApp](../objects/stack-app.mdx) documentation.
 
-Example:
+## Usage Example
 
 ```jsx
 import { useStackApp } from "@stackframe/stack";
@@ -14,3 +14,7 @@ function MyComponent() {
   return <div>Sign In URL: {stackApp.urls.signIn}</div>;
 }
 ```
+
+## API Reference
+
+<HookFromJson hookName="useStackApp" />

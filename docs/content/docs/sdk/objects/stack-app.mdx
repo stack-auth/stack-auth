@@ -34,8 +34,23 @@ Most commonly you get an instance of `StackClientApp` by calling [`useStackApp()
     signInWithOAuth(provider): void;  //$stack-link-to:#stackclientappsigninwithoauthprovider
     signInWithCredential([options]): Promise<...>;  //$stack-link-to:#stackclientappsigninwithcredentialoptions
     signUpWithCredential([options]): Promise<...>;  //$stack-link-to:#stackclientappsignupwithcredentialoptions
+    signInWithMagicLink(code[, options]): Promise<void>;  //$stack-link-to:#stackclientappsigninwithmagiclinkcode
+    signInWithPasskey(): Promise<void>;  //$stack-link-to:#stackclientappsigninwithpasskey
+    signInWithMfa(totp, code[, options]): Promise<void>;  //$stack-link-to:#stackclientappsigninwithmfa
+    signOut([options]): Promise<void>;  //$stack-link-to:#stackclientappsignout
+
     sendForgotPasswordEmail(email): Promise<...>;  //$stack-link-to:#stackclientappsendforgotpasswordemailemail
     sendMagicLinkEmail(email): Promise<...>;  //$stack-link-to:#stackclientappsendmagiclinkemailemail
+    resetPassword(options): Promise<void>;  //$stack-link-to:#stackclientappresetpassword
+    verifyPasswordResetCode(code): Promise<void>;  //$stack-link-to:#stackclientappverifypasswordresetcode
+    verifyEmail(code): Promise<void>;  //$stack-link-to:#stackclientappverifyemail
+
+    acceptTeamInvitation(code): Promise<void>;  //$stack-link-to:#stackclientappacceptteaminvitation
+    verifyTeamInvitationCode(code): Promise<void>;  //$stack-link-to:#stackclientappverifyteaminvitationcode
+    getTeamInvitationDetails(code): Promise<...>;  //$stack-link-to:#stackclientappgetteaminvitationdetails
+
+    getAccessToken(): Promise<string | null>;  //$stack-link-to:#stackclientappgetaccesstoken
+    getAuthHeaders(): Promise<{ "x-stack-auth": string }>;  //$stack-link-to:#stackclientappgetauthheaders
   };`} />
 
 ## Constructor
@@ -498,6 +513,443 @@ const result = await stackClientApp.sendMagicLinkEmail("test@example.com");
   </MethodLayout>
 </CollapsibleMethodSection>
 
+<CollapsibleMethodSection method="signInWithMagicLink" signature="code, [options]" appType="StackClientApp" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+
+Completes sign-in using a magic link code from the email.
+
+**Parameters:**
+- `code` (string) - The code from the magic link URL
+- `options?` (object)
+  - `noRedirect?` (boolean) - If true, don't redirect after sign-in
+
+**Returns:** `Promise<void>`
+
+    </MethodContent>
+    <MethodAside>
+
+<AsideSection title="Signature">
+
+```typescript
+declare function signInWithMagicLink(
+  code: string,
+  options?: { noRedirect?: boolean }
+): Promise<void>;
+```
+</AsideSection>
+<AsideSection title="Examples">
+
+```typescript
+// In the magic link callback page
+const code = new URLSearchParams(window.location.search).get("code");
+if (code) {
+  await stackClientApp.signInWithMagicLink(code);
+}
+```
+</AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleMethodSection>
+
+<CollapsibleMethodSection method="signInWithPasskey" appType="StackClientApp" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+
+Initiates passwordless sign-in using a passkey (WebAuthn). This opens a browser prompt for biometric or security key authentication.
+
+**Note:** This method is only available in browser environments that support WebAuthn.
+
+**Parameters:** None
+
+**Returns:** `Promise<void>`
+
+    </MethodContent>
+    <MethodAside>
+
+<AsideSection title="Signature">
+
+```typescript
+declare function signInWithPasskey(): Promise<void>;
+```
+</AsideSection>
+<AsideSection title="Examples">
+
+```typescript
+try {
+  await stackClientApp.signInWithPasskey();
+  // User is now signed in
+} catch (error) {
+  console.error("Passkey sign-in failed:", error);
+}
+```
+</AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleMethodSection>
+
+<CollapsibleMethodSection method="signInWithMfa" signature="totp, code, [options]" appType="StackClientApp" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+
+Completes sign-in when MFA is required. Called after receiving a `MultiFactorAuthenticationRequired` error from another sign-in method.
+
+**Parameters:**
+- `totp` (string) - The 6-digit TOTP code from the authenticator app
+- `code` (string) - The attempt code from the MFA error or sessionStorage
+- `options?` (object)
+  - `noRedirect?` (boolean) - If true, don't redirect after sign-in
+
+**Returns:** `Promise<void>`
+
+    </MethodContent>
+    <MethodAside>
+
+<AsideSection title="Signature">
+
+```typescript
+declare function signInWithMfa(
+  totp: string,
+  code: string,
+  options?: { noRedirect?: boolean }
+): Promise<void>;
+```
+</AsideSection>
+<AsideSection title="Examples">
+
+```typescript
+// After sign-in returns MFA required error
+await stackClientApp.signInWithMfa(
+  "123456", // TOTP code from authenticator
+  attemptCode // From the MFA error response
+);
+```
+</AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleMethodSection>
+
+<CollapsibleMethodSection method="signOut" signature="[options]" appType="StackClientApp" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+
+Signs out the current user by invalidating their session and clearing stored tokens.
+
+**Parameters:**
+- `options?` (object)
+  - `redirectUrl?` (string) - Where to redirect after sign out. Defaults to the `afterSignOut` URL.
+
+**Returns:** `Promise<void>`
+
+    </MethodContent>
+    <MethodAside>
+
+<AsideSection title="Signature">
+
+```typescript
+declare function signOut(options?: { 
+  redirectUrl?: string 
+}): Promise<void>;
+```
+</AsideSection>
+<AsideSection title="Examples">
+
+```typescript
+await stackClientApp.signOut();
+// or with custom redirect
+await stackClientApp.signOut({ redirectUrl: "/goodbye" });
+```
+</AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleMethodSection>
+
+<CollapsibleMethodSection method="resetPassword" signature="options" appType="StackClientApp" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+
+Resets the user's password using a code from the password reset email.
+
+**Parameters:**
+- `options` (object)
+  - `code` (string) - The code from the password reset email
+  - `password` (string) - The new password
+
+**Returns:** `Promise<void>`
+
+    </MethodContent>
+    <MethodAside>
+
+<AsideSection title="Signature">
+
+```typescript
+declare function resetPassword(options: {
+  code: string;
+  password: string;
+}): Promise<void>;
+```
+</AsideSection>
+<AsideSection title="Examples">
+
+```typescript
+const code = new URLSearchParams(window.location.search).get("code");
+await stackClientApp.resetPassword({
+  code,
+  password: "newSecurePassword123!",
+});
+```
+</AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleMethodSection>
+
+<CollapsibleMethodSection method="verifyPasswordResetCode" signature="code" appType="StackClientApp" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+
+Verifies a password reset code is valid before showing the reset form. Call this before showing the password input to avoid user frustration.
+
+**Parameters:**
+- `code` (string) - The code from the password reset email
+
+**Returns:** `Promise<void>`
+
+    </MethodContent>
+    <MethodAside>
+
+<AsideSection title="Signature">
+
+```typescript
+declare function verifyPasswordResetCode(code: string): Promise<void>;
+```
+</AsideSection>
+<AsideSection title="Examples">
+
+```typescript
+const code = new URLSearchParams(window.location.search).get("code");
+try {
+  await stackClientApp.verifyPasswordResetCode(code);
+  // Code is valid, show password reset form
+} catch (error) {
+  // Code is invalid or expired
+}
+```
+</AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleMethodSection>
+
+<CollapsibleMethodSection method="verifyEmail" signature="code" appType="StackClientApp" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+
+Verifies a user's email using the code from the verification email.
+
+**Parameters:**
+- `code` (string) - The verification code from the email
+
+**Returns:** `Promise<void>`
+
+    </MethodContent>
+    <MethodAside>
+
+<AsideSection title="Signature">
+
+```typescript
+declare function verifyEmail(code: string): Promise<void>;
+```
+</AsideSection>
+<AsideSection title="Examples">
+
+```typescript
+const code = new URLSearchParams(window.location.search).get("code");
+if (code) {
+  await stackClientApp.verifyEmail(code);
+  console.log("Email verified successfully");
+}
+```
+</AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleMethodSection>
+
+<CollapsibleMethodSection method="acceptTeamInvitation" signature="code" appType="StackClientApp" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+
+Accepts a team invitation using the code from the invitation email. The user must be signed in to accept an invitation.
+
+**Parameters:**
+- `code` (string) - The invitation code from the email
+
+**Returns:** `Promise<void>`
+
+    </MethodContent>
+    <MethodAside>
+
+<AsideSection title="Signature">
+
+```typescript
+declare function acceptTeamInvitation(code: string): Promise<void>;
+```
+</AsideSection>
+<AsideSection title="Examples">
+
+```typescript
+const code = new URLSearchParams(window.location.search).get("code");
+if (code) {
+  await stackClientApp.acceptTeamInvitation(code);
+  console.log("Joined team successfully");
+}
+```
+</AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleMethodSection>
+
+<CollapsibleMethodSection method="verifyTeamInvitationCode" signature="code" appType="StackClientApp" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+
+Verifies a team invitation code is valid before accepting. Useful for showing invitation details before the user confirms.
+
+**Parameters:**
+- `code` (string) - The invitation code from the email
+
+**Returns:** `Promise<void>`
+
+    </MethodContent>
+    <MethodAside>
+
+<AsideSection title="Signature">
+
+```typescript
+declare function verifyTeamInvitationCode(code: string): Promise<void>;
+```
+</AsideSection>
+<AsideSection title="Examples">
+
+```typescript
+const code = new URLSearchParams(window.location.search).get("code");
+try {
+  await stackClientApp.verifyTeamInvitationCode(code);
+  // Code is valid, show confirmation dialog
+} catch (error) {
+  // Code is invalid or expired
+}
+```
+</AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleMethodSection>
+
+<CollapsibleMethodSection method="getTeamInvitationDetails" signature="code" appType="StackClientApp" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+
+Gets details about a team invitation, such as the team name.
+
+**Parameters:**
+- `code` (string) - The invitation code from the email
+
+**Returns:** `Promise<{ teamDisplayName: string }>`
+
+    </MethodContent>
+    <MethodAside>
+
+<AsideSection title="Signature">
+
+```typescript
+declare function getTeamInvitationDetails(
+  code: string
+): Promise<{ teamDisplayName: string }>;
+```
+</AsideSection>
+<AsideSection title="Examples">
+
+```typescript
+const code = new URLSearchParams(window.location.search).get("code");
+const details = await stackClientApp.getTeamInvitationDetails(code);
+console.log(`You've been invited to join ${details.teamDisplayName}`);
+```
+</AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleMethodSection>
+
+<CollapsibleMethodSection method="getAccessToken" appType="StackClientApp" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+
+Gets the current access token, refreshing it if needed.
+
+**Parameters:** None
+
+**Returns:** `Promise<string | null>` - The access token, or `null` if not authenticated
+
+    </MethodContent>
+    <MethodAside>
+
+<AsideSection title="Signature">
+
+```typescript
+declare function getAccessToken(): Promise<string | null>;
+```
+</AsideSection>
+<AsideSection title="Examples">
+
+```typescript
+const token = await stackClientApp.getAccessToken();
+if (token) {
+  // Use token for API calls
+}
+```
+</AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleMethodSection>
+
+<CollapsibleMethodSection method="getAuthHeaders" appType="StackClientApp" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+
+Gets authentication headers for cross-origin requests. Use this when making requests to a different domain where cookies can't be sent.
+
+**Parameters:** None
+
+**Returns:** `Promise<{ "x-stack-auth": string }>` - Headers object with JSON-encoded tokens
+
+    </MethodContent>
+    <MethodAside>
+
+<AsideSection title="Signature">
+
+```typescript
+declare function getAuthHeaders(): Promise<{ "x-stack-auth": string }>;
+```
+</AsideSection>
+<AsideSection title="Examples">
+
+```typescript
+// Client-side
+const headers = await stackClientApp.getAuthHeaders();
+const response = await fetch("https://api.example.com/data", {
+  headers: {
+    ...headers,
+    "Content-Type": "application/json",
+  },
+});
+
+// Server-side (to read the tokens)
+const user = await stackServerApp.getUser({ 
+  tokenStore: request 
+});
+```
+</AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleMethodSection>
+
 ---
 
 # StackServerApp
@@ -525,7 +977,6 @@ exposing [`SECRET_SERVER_KEY`](../../rest-api/overview.mdx) on the client.
       // NEXT_LINE_PLATFORM react-like
       ⤷ useUsers([options]): ServerUser[]; //$stack-link-to:#stackserverappuseusersoptions
       createUser([options]): Promise<ServerUser>; //$stack-link-to:#stackserverappcreateuseroptions
-      sendEmail(options): Promise<Result<void, KnownErrors>>; //$stack-link-to:#stackserverappsendemailoptions
 
       getTeam(id): Promise<ServerTeam | null>; //$stack-link-to:#stackserverappgetteamid
       // NEXT_LINE_PLATFORM react-like
@@ -534,6 +985,11 @@ exposing [`SECRET_SERVER_KEY`](../../rest-api/overview.mdx) on the client.
       // NEXT_LINE_PLATFORM react-like
       ⤷ useTeams(): ServerTeam[]; //$stack-link-to:#stackserverappuseteams
       createTeam([options]): Promise<ServerTeam>; //$stack-link-to:#stackserverappcreateteamoptions
+
+      sendEmail(options): Promise<Result<void, KnownErrors>>; //$stack-link-to:#stackserverappsendemailoptions
+      getEmailDeliveryStats(): Promise<EmailDeliveryInfo>; //$stack-link-to:#stackserverappgetemaildeliverystats
+      grantProduct(options): Promise<void>; //$stack-link-to:#stackserverappgrantproduct
+      getDataVaultStore(id): DataVaultStore; //$stack-link-to:#stackserverappgetdatavaultstore
     }`} />
 
 ## Constructor
@@ -980,6 +1436,232 @@ const team = await stackServerApp.createTeam({
   displayName: "New Team",
   profileImageUrl: "https://example.com/profile.jpg",
 });
+```
+</AsideSection>
+  </MethodAside>
+</MethodLayout>
+</CollapsibleMethodSection>
+
+## Email & Notifications
+
+<CollapsibleMethodSection method="sendEmail" signature="[options]" appType="StackServerApp" defaultOpen={false}>
+
+<MethodLayout>
+  <MethodContent>
+
+    Send custom emails to users. You can send either custom HTML emails or use predefined templates with variables.
+
+    **Parameters:**
+    - `options` ([SendEmailOptions](../types/email#sendemailoptions)) - Email configuration and content
+
+    **Returns:** `Promise<Result<void, KnownErrors>>`
+
+    The method returns a `Result` object that can contain specific error types:
+
+    - `RequiresCustomEmailServer` - No custom email server configured
+    - `SchemaError` - Invalid email data provided  
+    - `UserIdDoesNotExist` - One or more user IDs don't exist
+
+  </MethodContent>
+  <MethodAside>
+
+<AsideSection title="Signature">
+
+```typescript
+declare function sendEmail(options: SendEmailOptions): Promise<Result<void, KnownErrors>>;
+```
+</AsideSection>
+<AsideSection title="Examples">
+
+<Tabs defaultValue="html-email">
+  <TabsList>
+    <TabsTrigger value="html-email">Send HTML Email</TabsTrigger>
+    <TabsTrigger value="template-email">Send Template Email</TabsTrigger>
+  </TabsList>
+  <TabsContent value="html-email">
+```typescript
+const result = await stackServerApp.sendEmail({
+  userIds: ['user-1', 'user-2'],
+  subject: 'Welcome to our platform!',
+  html: '<h1>Welcome!</h1><p>Thanks for joining us.</p>',
+});
+
+if (result.status === 'error') {
+  console.error('Failed to send email:', result.error);
+}
+```
+  </TabsContent>
+  <TabsContent value="template-email">
+```typescript
+const result = await stackServerApp.sendEmail({
+  userIds: ['user-1'],
+  templateId: 'welcome-template',
+  variables: {
+    userName: 'John Doe',
+    activationUrl: 'https://app.com/activate/token123',
+  },
+});
+
+if (result.status === 'error') {
+  console.error('Failed to send email:', result.error);
+}
+```
+  </TabsContent>
+</Tabs>
+
+</AsideSection>
+
+  </MethodAside>
+</MethodLayout>
+</CollapsibleMethodSection>
+
+<CollapsibleMethodSection method="getEmailDeliveryStats" appType="StackServerApp" defaultOpen={false}>
+<MethodLayout>
+  <MethodContent>
+
+Gets email delivery statistics for the project.
+
+**Parameters:** None
+
+**Returns:** `Promise<EmailDeliveryInfo>`
+
+```typescript
+type EmailDeliveryInfo = {
+  delivered: number;   // Emails successfully delivered
+  bounced: number;     // Emails that bounced
+  complained: number;  // Emails marked as spam
+  total: number;       // Total emails sent
+};
+```
+
+  </MethodContent>
+  <MethodAside>
+
+<AsideSection title="Signature">
+
+```typescript
+declare function getEmailDeliveryStats(): Promise<EmailDeliveryInfo>;
+```
+</AsideSection>
+<AsideSection title="Examples">
+
+```typescript
+const stats = await stackServerApp.getEmailDeliveryStats();
+console.log(`Delivered: ${stats.delivered}/${stats.total}`);
+console.log(`Bounce rate: ${(stats.bounced / stats.total * 100).toFixed(1)}%`);
+```
+</AsideSection>
+  </MethodAside>
+</MethodLayout>
+</CollapsibleMethodSection>
+
+## Payments & Products
+
+<CollapsibleMethodSection method="grantProduct" signature="options" appType="StackServerApp" defaultOpen={false}>
+<MethodLayout>
+  <MethodContent>
+
+Grants a product to a customer (user, team, or custom customer ID) without going through checkout.
+
+**Parameters:**
+- `options` (object)
+  - Customer identification (one of):
+    - `userId` (string) - Grant to a user
+    - `teamId` (string) - Grant to a team
+    - `customCustomerId` (string) - Grant to a custom customer
+  - Product identification (one of):
+    - `productId` (string) - Existing product ID
+    - `product` (object) - Inline product definition
+  - `quantity?` (number) - Quantity to grant (default: 1)
+
+**Returns:** `Promise<void>`
+
+  </MethodContent>
+  <MethodAside>
+
+<AsideSection title="Signature">
+
+```typescript
+declare function grantProduct(options: {
+  userId?: string;
+  teamId?: string;
+  customCustomerId?: string;
+  productId?: string;
+  product?: { name: string; description?: string; /* ... */ };
+  quantity?: number;
+}): Promise<void>;
+```
+</AsideSection>
+<AsideSection title="Examples">
+
+```typescript
+// Grant premium access to a user
+await stackServerApp.grantProduct({
+  userId: "user_123",
+  productId: "prod_premium",
+  quantity: 1,
+});
+
+// Grant credits to a team
+await stackServerApp.grantProduct({
+  teamId: "team_456",
+  productId: "prod_credits",
+  quantity: 100,
+});
+```
+</AsideSection>
+  </MethodAside>
+</MethodLayout>
+</CollapsibleMethodSection>
+
+## Data Vault
+
+<CollapsibleMethodSection method="getDataVaultStore" signature="id" appType="StackServerApp" defaultOpen={false}>
+<MethodLayout>
+  <MethodContent>
+
+Gets a Data Vault store for storing sensitive key-value data server-side. Each store is isolated and identified by its ID.
+
+**Parameters:**
+- `id` (string) - The data vault store ID
+
+**Returns:** `DataVaultStore` - An object with methods to manage key-value pairs
+
+```typescript
+type DataVaultStore = {
+  id: string;
+  get(key: string): Promise<string | null>;
+  set(key: string, value: string): Promise<void>;
+  delete(key: string): Promise<void>;
+  list(): Promise<string[]>;
+};
+```
+
+  </MethodContent>
+  <MethodAside>
+
+<AsideSection title="Signature">
+
+```typescript
+declare function getDataVaultStore(id: string): DataVaultStore;
+```
+</AsideSection>
+<AsideSection title="Examples">
+
+```typescript
+const vault = stackServerApp.getDataVaultStore("user-secrets");
+
+// Store a value
+await vault.set("api-key-user123", "sk_live_abc123");
+
+// Retrieve a value
+const apiKey = await vault.get("api-key-user123");
+
+// List all keys
+const keys = await vault.list();
+
+// Delete a value
+await vault.delete("api-key-user123");
 ```
 </AsideSection>
   </MethodAside>

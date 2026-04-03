@@ -5,6 +5,12 @@
   font-size: 0.875rem !important;
 }
 
+/* Ensure scroll container is scrollable */
+.clickable-code-container [class*="overflow-auto"] {
+  -webkit-overflow-scrolling: touch;
+  scroll-behavior: smooth;
+}
+
 .clickable-code-container pre,
 .clickable-code-container code {
   font-family: inherit !important;
