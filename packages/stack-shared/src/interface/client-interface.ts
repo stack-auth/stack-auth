@@ -123,15 +123,15 @@ function getBotChallengeRequestFields(botChallenge: BotChallengeInput | undefine
 export class StackClientInterface {
   private pendingNetworkDiagnostics?: ReturnType<StackClientInterface["_runNetworkDiagnosticsInner"]>;
 
-  /** The URL index we've sticky-switched to after a successful fallback, or null if using primary. */
-  private _activeUrlIndex: number | null = null;
+  /**
+   * Fallback state. When null, we're in normal mode (primary first).
+   * When set, we skip straight to `stickyIndex` and only probe primary occasionally.
+   */
+  private _sticky: { index: number, probeRate: number } | null = null;
   private readonly _initialProbeRate: number;
-  /** Current probability of probing primary while in fallback mode. Halves on each failed probe. */
-  private _currentProbeRate: number;
 
   constructor(public readonly options: ClientInterfaceOptions) {
     this._initialProbeRate = options.probeRate ?? 0.3;
-    this._currentProbeRate = this._initialProbeRate;
   }
 
   get projectId() {
@@ -147,68 +147,102 @@ export class StackClientInterface {
   }
 
   /**
-   * Routes requests through an ordered list of URLs with sticky failover.
+   * Routes a request through an ordered URL list with automatic failover.
    *
-   * Single URL (no fallbacks) → standard 5-retry behavior.
+   * The URL list is [primary, ...fallbacks]. The logic has two modes:
    *
-   * Multiple URLs, normal mode (primary healthy):
-   *   Iterates through all URLs in order for up to 2 full passes.
-   *   If a non-primary URL succeeds, enters sticky mode at that index.
+   * **Normal mode** (`_sticky` is null) — try each URL in order. If a
+   * non-primary URL succeeds, enter sticky mode on that index.
    *
-   * Sticky mode (primary previously failed):
-   *   - Requests go directly to the remembered URL index.
-   *   - With `_currentProbeRate` probability, probe primary first:
-   *     - Probe succeeds → exit sticky mode, reset probe rate, return result.
-   *     - Probe fails → halve `_currentProbeRate`, use sticky URL.
+   * **Sticky mode** — a previous request already failed over. We remember
+   * which URL worked and go there directly. Occasionally (controlled by a
+   * decaying probe rate) we probe the primary to see if it recovered:
+   *   - Probe succeeds → exit sticky mode, use result.
+   *   - Probe fails → halve probe rate, use sticky URL.
+   *   - Sticky URL fails → exit sticky mode, do a full iteration.
+   *
+   * In both modes, a full iteration tries every URL once per pass for 2
+   * passes before giving up. KnownErrors are never retried (they're
+   * application-level, not network-level).
+   *
+   * Single-URL lists skip all of this and use 5-retry behavior directly.
    */
   protected async _withFallback<T>(cb: (apiUrl: string, retryOptions: { maxAttempts: number, skipDiagnostics: boolean }) => Promise<T>): Promise<T> {
     const apiUrls = this.getApiUrls();
+
+    // Single URL — no fallback, just retry normally.
     if (apiUrls.length <= 1) {
       return await cb(apiUrls[0], { maxAttempts: 5, skipDiagnostics: false });
     }
 
-    // Sticky mode: a previous request succeeded on a non-primary URL.
-    const activeIndex = this._activeUrlIndex;
-    if (activeIndex !== null && activeIndex > 0) {
-      // Probabilistically probe primary to see if it's back
-      if (Math.random() < this._currentProbeRate) {
-        try {
-          const result = await cb(apiUrls[0], { maxAttempts: 1, skipDiagnostics: true });
-          // Primary is back — exit sticky mode
-          this._activeUrlIndex = null;
-          this._currentProbeRate = this._initialProbeRate;
-          return result;
-        } catch (probeError) {
-          if (probeError instanceof KnownError) throw probeError;
-          // Still down — reduce probe frequency
-          this._currentProbeRate = Math.max(this._currentProbeRate * 0.5, 0.01);
-        }
-      }
-      return await cb(apiUrls[activeIndex], { maxAttempts: 1, skipDiagnostics: false });
+    // If we're in sticky mode, try the remembered URL (with an optional primary probe first).
+    if (this._sticky) {
+      const result = await this._tryStickyUrl(apiUrls, cb);
+      if (result !== undefined) return result;
+      // Sticky URL failed — _sticky was cleared, fall through to full iteration.
     }
 
-    // Normal mode: iterate through all URLs in order, up to 2 full passes.
-    const maxPasses = 2;
+    // Full iteration: try every URL in order, 2 passes.
+    return await this._iterateUrls(apiUrls, cb);
+  }
+
+  /**
+   * Attempts the sticky URL, optionally probing primary first.
+   * Returns the result on success, or `undefined` if we should fall through to full iteration.
+   */
+  private async _tryStickyUrl<T>(
+    apiUrls: string[],
+    cb: (apiUrl: string, retryOptions: { maxAttempts: number, skipDiagnostics: boolean }) => Promise<T>,
+  ): Promise<T | undefined> {
+    const sticky = this._sticky!;
+
+    // Probabilistically probe primary to check if it's back.
+    if (Math.random() < sticky.probeRate) {
+      try {
+        const result = await cb(apiUrls[0], { maxAttempts: 1, skipDiagnostics: true });
+        this._sticky = null;
+        return result;
+      } catch (e) {
+        if (e instanceof KnownError) throw e;
+        sticky.probeRate = Math.max(sticky.probeRate * 0.5, 0.01);
+      }
+    }
+
+    // Try the sticky URL itself.
+    try {
+      return await cb(apiUrls[sticky.index], { maxAttempts: 1, skipDiagnostics: true });
+    } catch (e) {
+      if (e instanceof KnownError) throw e;
+      this._sticky = null;
+      return undefined;
+    }
+  }
+
+  /**
+   * Tries every URL in order for up to 2 passes.
+   * If a non-primary URL (index > 0) succeeds, enters sticky mode on it.
+   */
+  private async _iterateUrls<T>(
+    apiUrls: string[],
+    cb: (apiUrl: string, retryOptions: { maxAttempts: number, skipDiagnostics: boolean }) => Promise<T>,
+  ): Promise<T> {
     let lastError: Error | undefined;
 
-    for (let pass = 0; pass < maxPasses; pass++) {
+    for (let pass = 0; pass < 2; pass++) {
       for (let i = 0; i < apiUrls.length; i++) {
         try {
           const result = await cb(apiUrls[i], { maxAttempts: 1, skipDiagnostics: true });
           if (i > 0) {
-            // A fallback succeeded — enter sticky mode
-            this._activeUrlIndex = i;
-            this._currentProbeRate = this._initialProbeRate;
+            this._sticky = { index: i, probeRate: this._initialProbeRate };
           }
           return result;
-        } catch (error) {
-          if (error instanceof KnownError) throw error;
-          lastError = error instanceof Error ? error : new Error(String(error));
+        } catch (e) {
+          if (e instanceof KnownError) throw e;
+          lastError = e instanceof Error ? e : new Error(String(e));
         }
       }
     }
 
-    // All passes exhausted — throw the last error.
     throw lastError!;
   }
 

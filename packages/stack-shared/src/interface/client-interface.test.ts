@@ -348,338 +348,267 @@ describe("StackClientInterface bot challenge compatibility", () => {
 });
 
 describe("_withFallback", () => {
-  it("uses primary URL when no fallback is configured", async () => {
-    const urls: string[] = [];
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      urls.push(input.toString());
-      return createJsonResponse({ display_name: "test" });
-    });
-    vi.stubGlobal("fetch", fetchMock);
+  // ---------------------------------------------------------------------------
+  // Helpers — reduce boilerplate across tests
+  // ---------------------------------------------------------------------------
 
-    const iface = createClientInterface();
-    const session = iface.createSession({ refreshToken: null, accessToken: null });
-    await iface.sendClientRequest("/users/me", { method: "GET" }, session);
+  /** Builds a list of N URL bases: ["https://url-0.test", "https://url-1.test", ...] */
+  function urlList(n: number): string[] {
+    return Array.from({ length: n }, (_, i) => `https://url-${i}.test`);
+  }
 
-    expect(urls.every(u => u.startsWith("https://api.example.com/api/v1"))).toBe(true);
-  });
+  /** Returns the index of the URL base that `fullUrl` starts with, or -1. */
+  function urlIndex(urls: string[], fullUrl: string): number {
+    return urls.findIndex(base => fullUrl.startsWith(base));
+  }
 
-  it("uses primary URL when it is healthy", async () => {
-    const urls: string[] = [];
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      urls.push(input.toString());
-      return createJsonResponse({ display_name: "test" });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const iface = createClientInterface({ apiUrls: ["https://api.example.com", "https://fallback.example.com"] });
-    const session = iface.createSession({ refreshToken: null, accessToken: null });
-    await iface.sendClientRequest("/users/me", { method: "GET" }, session);
-
-    expect(urls.every(u => u.startsWith("https://api.example.com"))).toBe(true);
-  });
-
-  it("falls back on network error", async () => {
-    const urls: string[] = [];
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+  /** Records every fetch URL and calls `handler` to decide the outcome. */
+  function mockFetch(handler: (url: string) => "ok" | "fail") {
+    const log: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
       const url = input.toString();
-      urls.push(url);
-      if (url.startsWith("https://api.example.com")) {
-        throw new TypeError("Failed to fetch");
-      }
+      log.push(url);
+      if (handler(url) === "fail") throw new TypeError("Failed to fetch");
       return createJsonResponse({ display_name: "test" });
-    });
-    vi.stubGlobal("fetch", fetchMock);
+    }));
+    return log;
+  }
 
-    const iface = createClientInterface({ apiUrls: ["https://api.example.com", "https://fallback.example.com"] });
+  function sendRequest(iface: StackClientInterface) {
     const session = iface.createSession({ refreshToken: null, accessToken: null });
-    await iface.sendClientRequest("/users/me", { method: "GET" }, session);
+    return iface.sendClientRequest("/users/me", { method: "GET" }, session);
+  }
 
-    expect(urls.some(u => u.startsWith("https://fallback.example.com"))).toBe(true);
-  });
-
-  it("makes only 1 request to primary before falling back", async () => {
-    let primaryHits = 0;
-    let fallbackHits = 0;
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = input.toString();
-      if (url.startsWith("https://api.example.com")) {
-        primaryHits++;
-        throw new TypeError("Failed to fetch");
-      }
-      fallbackHits++;
-      return createJsonResponse({ display_name: "test" });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const iface = createClientInterface({ apiUrls: ["https://api.example.com", "https://fallback.example.com"] });
-    const session = iface.createSession({ refreshToken: null, accessToken: null });
-    await iface.sendClientRequest("/users/me", { method: "GET" }, session);
-
-    expect(primaryHits).toBe(1);
-    expect(fallbackHits).toBe(1);
-  });
-
-  it("does not fall back on KnownError", async () => {
-    const urls: string[] = [];
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      urls.push(input.toString());
-      return createKnownErrorResponse(new KnownErrors.UserNotFound());
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const iface = createClientInterface({ apiUrls: ["https://api.example.com", "https://fallback.example.com"] });
-    const session = iface.createSession({ refreshToken: null, accessToken: null });
-    await expect(iface.sendClientRequest("/users/me", { method: "GET" }, session)).rejects.toThrow();
-
-    expect(urls.every(u => u.startsWith("https://api.example.com"))).toBe(true);
-  });
-
-  it("enters sticky fallback mode after first failover", async () => {
-    const iface = createClientInterface({
-      apiUrls: ["https://api.example.com", "https://fallback.example.com"],
-      probeRate: 0,
-    });
-
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = input.toString();
-      if (url.startsWith("https://api.example.com")) {
-        throw new TypeError("Failed to fetch");
-      }
-      return createJsonResponse({ display_name: "test" });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const session = iface.createSession({ refreshToken: null, accessToken: null });
-    await iface.sendClientRequest("/users/me", { method: "GET" }, session);
-
-    // Second request should go directly to fallback (probeRate=0, no probing)
-    const urls: string[] = [];
-    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
-      urls.push(input.toString());
-      return createJsonResponse({ display_name: "test" });
-    });
-
-    await iface.sendClientRequest("/users/me", { method: "GET" }, session);
-
-    expect(urls.every(u => u.startsWith("https://fallback.example.com"))).toBe(true);
-  });
-
-  it("exits sticky mode when primary probe succeeds", async () => {
-    const iface = createClientInterface({
-      apiUrls: ["https://api.example.com", "https://fallback.example.com"],
-      probeRate: 1,
-    });
-
-    let primaryDown = true;
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = input.toString();
-      if (url.startsWith("https://api.example.com") && primaryDown) {
-        throw new TypeError("Failed to fetch");
-      }
-      return createJsonResponse({ display_name: "test" });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const session = iface.createSession({ refreshToken: null, accessToken: null });
-
-    // Enter sticky mode
-    await iface.sendClientRequest("/users/me", { method: "GET" }, session);
-
-    // Primary recovers
-    primaryDown = false;
-
-    // Probe succeeds (probeRate=1), exits sticky mode
-    await iface.sendClientRequest("/users/me", { method: "GET" }, session);
-
-    // Third request should hit primary directly
-    const urls: string[] = [];
-    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
-      urls.push(input.toString());
-      return createJsonResponse({ display_name: "test" });
-    });
-    await iface.sendClientRequest("/users/me", { method: "GET" }, session);
-
-    expect(urls[0]).toContain("api.example.com");
-  });
-
-  it("halves probe rate on failed probe", async () => {
-    const iface = createClientInterface({
-      apiUrls: ["https://api.example.com", "https://fallback.example.com"],
-      probeRate: 1,
-    });
-
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = input.toString();
-      if (url.startsWith("https://api.example.com")) {
-        throw new TypeError("Failed to fetch");
-      }
-      return createJsonResponse({ display_name: "test" });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const session = iface.createSession({ refreshToken: null, accessToken: null });
-
-    // Enter sticky mode
-    await iface.sendClientRequest("/users/me", { method: "GET" }, session);
-
-    // Failed probe: rate 1 → 0.5
-    await iface.sendClientRequest("/users/me", { method: "GET" }, session);
-
-    // Failed probe: rate 0.5 → 0.25
-    const randomMock = vi.spyOn(Math, "random").mockReturnValue(0.4);
-    await iface.sendClientRequest("/users/me", { method: "GET" }, session);
-
-    // rate is 0.25, random=0.3 >= 0.25 → should NOT probe
-    let primaryHits = 0;
-    randomMock.mockReturnValue(0.3);
-    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
-      if (input.toString().startsWith("https://api.example.com")) primaryHits++;
-      return createJsonResponse({ display_name: "test" });
-    });
-    await iface.sendClientRequest("/users/me", { method: "GET" }, session);
-
-    expect(primaryHits).toBe(0);
-  });
-
-  it("bypasses fallback when apiUrlOverride is provided", async () => {
-    const urls: string[] = [];
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      urls.push(input.toString());
-      return createJsonResponse({ display_name: "test" });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const iface = createClientInterface({ apiUrls: ["https://api.example.com", "https://fallback.example.com"] });
-    const session = iface.createSession({ refreshToken: null, accessToken: null });
-    await iface.sendClientRequest("/users/me", { method: "GET" }, session, "client", "https://override.example.com/api/v1");
-
-    expect(urls.every(u => u.startsWith("https://override.example.com"))).toBe(true);
-  });
-
-  it("throws when all URLs fail", async () => {
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      throw new TypeError("Failed to fetch");
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const iface = createClientInterface({ apiUrls: ["https://api.example.com", "https://fallback.example.com"] });
-    const session = iface.createSession({ refreshToken: null, accessToken: null });
-
-    await expect(iface.sendClientRequest("/users/me", { method: "GET" }, session)).rejects.toThrow();
-  });
-
-  it("iterates through all URLs for 2 passes before giving up", async () => {
-    const urls: string[] = [];
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      urls.push(input.toString());
-      throw new TypeError("Failed to fetch");
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const iface = createClientInterface({ apiUrls: ["https://api.example.com", "https://fallback.example.com"] });
-    const session = iface.createSession({ refreshToken: null, accessToken: null });
-
-    await expect(iface.sendClientRequest("/users/me", { method: "GET" }, session)).rejects.toThrow();
-
-    // 2 passes × 2 URLs = 4 attempts total
-    const primaryHits = urls.filter(u => u.startsWith("https://api.example.com")).length;
-    const fallbackHits = urls.filter(u => u.startsWith("https://fallback.example.com")).length;
-    expect(primaryHits).toBe(2);
-    expect(fallbackHits).toBe(2);
-  });
-
-  it("iterates through 3 URLs in correct order", async () => {
-    const urls: string[] = [];
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = input.toString();
-      urls.push(url);
-      if (url.startsWith("https://api.example.com") || url.startsWith("https://fallback1.example.com")) {
-        throw new TypeError("Failed to fetch");
-      }
-      return createJsonResponse({ display_name: "test" });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const iface = createClientInterface({
-      apiUrls: ["https://api.example.com", "https://fallback1.example.com", "https://fallback2.example.com"],
-    });
-    const session = iface.createSession({ refreshToken: null, accessToken: null });
-    await iface.sendClientRequest("/users/me", { method: "GET" }, session);
-
-    // Should try: primary → fallback1 → fallback2 (succeeds)
-    expect(urls[0]).toContain("api.example.com");
-    expect(urls[1]).toContain("fallback1.example.com");
-    expect(urls[2]).toContain("fallback2.example.com");
-  });
-
-  it("enters sticky mode on URL index 2 with 3 URLs", async () => {
-    const iface = createClientInterface({
-      apiUrls: ["https://api.example.com", "https://fallback1.example.com", "https://fallback2.example.com"],
-      probeRate: 0,
-    });
-
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = input.toString();
-      if (url.startsWith("https://api.example.com") || url.startsWith("https://fallback1.example.com")) {
-        throw new TypeError("Failed to fetch");
-      }
-      return createJsonResponse({ display_name: "test" });
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const session = iface.createSession({ refreshToken: null, accessToken: null });
-    await iface.sendClientRequest("/users/me", { method: "GET" }, session);
-
-    // Second request should go directly to fallback2 (probeRate=0)
-    const urls: string[] = [];
-    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
-      urls.push(input.toString());
-      return createJsonResponse({ display_name: "test" });
-    });
-
-    await iface.sendClientRequest("/users/me", { method: "GET" }, session);
-
-    expect(urls.length).toBe(1);
-    expect(urls[0]).toContain("fallback2.example.com");
-  });
-
-  it("with 3 URLs, 2 passes = 6 total attempts when all fail", async () => {
-    const urls: string[] = [];
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      urls.push(input.toString());
-      throw new TypeError("Failed to fetch");
-    });
-    vi.stubGlobal("fetch", fetchMock);
-
-    const iface = createClientInterface({
-      apiUrls: ["https://api.example.com", "https://fallback1.example.com", "https://fallback2.example.com"],
-    });
-    const session = iface.createSession({ refreshToken: null, accessToken: null });
-
-    await expect(iface.sendClientRequest("/users/me", { method: "GET" }, session)).rejects.toThrow();
-
-    // 2 passes × 3 URLs = 6 attempts
-    expect(urls.length).toBe(6);
-    expect(urls.filter(u => u.startsWith("https://api.example.com")).length).toBe(2);
-    expect(urls.filter(u => u.startsWith("https://fallback1.example.com")).length).toBe(2);
-    expect(urls.filter(u => u.startsWith("https://fallback2.example.com")).length).toBe(2);
-  });
+  // ---------------------------------------------------------------------------
+  // Single URL — no fallback
+  // ---------------------------------------------------------------------------
 
   it("single URL uses standard 5-retry behavior", async () => {
     let attempts = 0;
-    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+    vi.stubGlobal("fetch", vi.fn(async () => {
       attempts++;
-      if (attempts < 3) {
-        throw new TypeError("Failed to fetch");
-      }
+      if (attempts < 3) throw new TypeError("Failed to fetch");
       return createJsonResponse({ display_name: "test" });
-    });
-    vi.stubGlobal("fetch", fetchMock);
+    }));
 
-    const iface = createClientInterface({ apiUrls: ["https://api.example.com"] });
-    const session = iface.createSession({ refreshToken: null, accessToken: null });
-    await iface.sendClientRequest("/users/me", { method: "GET" }, session);
-
+    const iface = createClientInterface({ apiUrls: urlList(1) });
+    await sendRequest(iface);
     expect(attempts).toBe(3);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Normal mode — iterating through URLs in order
+  // ---------------------------------------------------------------------------
+
+  it("uses primary when it is healthy", async () => {
+    const urls = urlList(3);
+    const log = mockFetch(() => "ok");
+
+    const iface = createClientInterface({ apiUrls: urls });
+    await sendRequest(iface);
+
+    expect(log.every(u => urlIndex(urls, u) === 0)).toBe(true);
+  });
+
+  it("tries URLs in order and succeeds on first working one", async () => {
+    const urls = urlList(4);
+    // url-0 and url-1 are down, url-2 is up
+    const log = mockFetch((u) => urlIndex(urls, u) < 2 ? "fail" : "ok");
+
+    const iface = createClientInterface({ apiUrls: urls });
+    await sendRequest(iface);
+
+    expect(urlIndex(urls, log[0])).toBe(0);
+    expect(urlIndex(urls, log[1])).toBe(1);
+    expect(urlIndex(urls, log[2])).toBe(2);
+    expect(log.length).toBe(3);
+  });
+
+  it("does not fall back on KnownError", async () => {
+    const urls = urlList(3);
+    const log: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      log.push(input.toString());
+      return createKnownErrorResponse(new KnownErrors.UserNotFound());
+    }));
+
+    const iface = createClientInterface({ apiUrls: urls });
+    await expect(sendRequest(iface)).rejects.toThrow();
+    expect(log.every(u => urlIndex(urls, u) === 0)).toBe(true);
+  });
+
+  it("makes 2 passes × N URLs attempts before throwing", async () => {
+    for (const n of [2, 3, 5]) {
+      const urls = urlList(n);
+      const log = mockFetch(() => "fail");
+
+      const iface = createClientInterface({ apiUrls: urls });
+      await expect(sendRequest(iface)).rejects.toThrow();
+
+      expect(log.length).toBe(2 * n);
+      for (let i = 0; i < n; i++) {
+        expect(log.filter(u => urlIndex(urls, u) === i).length).toBe(2);
+      }
+    }
+  });
+
+  it("bypasses fallback when apiUrlOverride is provided", async () => {
+    const log: string[] = [];
+    vi.stubGlobal("fetch", vi.fn(async (input: RequestInfo | URL) => {
+      log.push(input.toString());
+      return createJsonResponse({ display_name: "test" });
+    }));
+
+    const iface = createClientInterface({ apiUrls: urlList(3) });
+    const session = iface.createSession({ refreshToken: null, accessToken: null });
+    await iface.sendClientRequest("/users/me", { method: "GET" }, session, "client", "https://override.test/api/v1");
+
+    expect(log.every(u => u.startsWith("https://override.test"))).toBe(true);
+  });
+
+  // ---------------------------------------------------------------------------
+  // Sticky mode — remembering the working fallback
+  // ---------------------------------------------------------------------------
+
+  it("enters sticky mode: subsequent requests skip straight to the working fallback", async () => {
+    const urls = urlList(4);
+    const iface = createClientInterface({ apiUrls: urls, probeRate: 0 });
+
+    // url-0,1,2 down → sticky on url-3
+    mockFetch((u) => urlIndex(urls, u) === 3 ? "ok" : "fail");
+    await sendRequest(iface);
+
+    // Next request goes directly to url-3 (probeRate=0 means no probe)
+    const log = mockFetch(() => "ok");
+    await sendRequest(iface);
+
+    expect(log.length).toBe(1);
+    expect(urlIndex(urls, log[0])).toBe(3);
+  });
+
+  it("probes primary and exits sticky mode when probe succeeds", async () => {
+    const urls = urlList(3);
+    const iface = createClientInterface({ apiUrls: urls, probeRate: 1 });
+
+    // url-0 down → sticky on url-1
+    mockFetch((u) => urlIndex(urls, u) === 0 ? "fail" : "ok");
+    await sendRequest(iface);
+
+    // url-0 recovers. probeRate=1 → always probes → probe succeeds → exits sticky
+    const log = mockFetch(() => "ok");
+    await sendRequest(iface);
+    expect(urlIndex(urls, log[0])).toBe(0);
+
+    // Next request should go to url-0 directly (no longer sticky)
+    const log2 = mockFetch(() => "ok");
+    await sendRequest(iface);
+    expect(log2.length).toBe(1);
+    expect(urlIndex(urls, log2[0])).toBe(0);
+  });
+
+  it("halves probe rate on each failed probe", async () => {
+    const urls = urlList(2);
+    const iface = createClientInterface({ apiUrls: urls, probeRate: 1 });
+
+    // Enter sticky on url-1, url-0 stays permanently down
+    mockFetch((u) => urlIndex(urls, u) === 0 ? "fail" : "ok");
+    await sendRequest(iface);
+
+    // probeRate=1 → probes url-0, fails → rate becomes 0.5
+    mockFetch((u) => urlIndex(urls, u) === 0 ? "fail" : "ok");
+    await sendRequest(iface);
+
+    // probeRate=0.5 → probes (random < 0.5), fails → rate becomes 0.25
+    const randomMock = vi.spyOn(Math, "random").mockReturnValue(0.4);
+    mockFetch((u) => urlIndex(urls, u) === 0 ? "fail" : "ok");
+    await sendRequest(iface);
+
+    // rate=0.25, random=0.3 ≥ 0.25 → should NOT probe primary
+    randomMock.mockReturnValue(0.3);
+    const log = mockFetch(() => "ok");
+    await sendRequest(iface);
+
+    expect(log.length).toBe(1);
+    expect(urlIndex(urls, log[0])).toBe(1);
+
+    randomMock.mockRestore();
+  });
+
+  // ---------------------------------------------------------------------------
+  // Sticky URL goes down — falls through to full iteration
+  // ---------------------------------------------------------------------------
+
+  it("falls through to full iteration when sticky URL also goes down", async () => {
+    const urls = urlList(3);
+    const iface = createClientInterface({ apiUrls: urls, probeRate: 0 });
+
+    // url-0,1 down → sticky on url-2
+    mockFetch((u) => urlIndex(urls, u) === 2 ? "ok" : "fail");
+    await sendRequest(iface);
+
+    // Now url-2 also down, url-1 recovers
+    const log = mockFetch((u) => urlIndex(urls, u) === 1 ? "ok" : "fail");
+    await sendRequest(iface);
+
+    // Should have tried sticky url-2 (failed), then iterated 0→1 (found url-1)
+    expect(log.some(u => urlIndex(urls, u) === 2)).toBe(true);
+    expect(log.some(u => urlIndex(urls, u) === 1)).toBe(true);
+  });
+
+  it("re-enters sticky on the new working URL after fallthrough", async () => {
+    const urls = urlList(4);
+    const iface = createClientInterface({ apiUrls: urls, probeRate: 0 });
+
+    // sticky on url-3
+    mockFetch((u) => urlIndex(urls, u) === 3 ? "ok" : "fail");
+    await sendRequest(iface);
+
+    // url-3 dies, url-2 recovers → should re-sticky on url-2
+    mockFetch((u) => urlIndex(urls, u) === 2 ? "ok" : "fail");
+    await sendRequest(iface);
+
+    // Next request goes directly to url-2
+    const log = mockFetch(() => "ok");
+    await sendRequest(iface);
+
+    expect(log.length).toBe(1);
+    expect(urlIndex(urls, log[0])).toBe(2);
+  });
+
+  it("throws when sticky URL fails and all URLs fail in iteration", async () => {
+    const urls = urlList(3);
+    const iface = createClientInterface({ apiUrls: urls, probeRate: 0 });
+
+    // sticky on url-1
+    mockFetch((u) => urlIndex(urls, u) === 1 ? "ok" : "fail");
+    await sendRequest(iface);
+
+    // Everything is now down
+    const log = mockFetch(() => "fail");
+    await expect(sendRequest(iface)).rejects.toThrow();
+
+    // sticky attempt (1) + 2 passes × 3 URLs (6) = 7
+    expect(log.length).toBe(7);
+  });
+
+  it("does not probe primary when sticky URL fails (probe only before sticky attempt)", async () => {
+    const urls = urlList(3);
+    const iface = createClientInterface({ apiUrls: urls, probeRate: 1 });
+
+    // sticky on url-2, url-0 stays down
+    mockFetch((u) => urlIndex(urls, u) === 2 ? "ok" : "fail");
+    await sendRequest(iface);
+
+    // url-0 still down, url-2 also dies, url-1 is the only one up
+    // probeRate=1 → probes url-0 first (fails), then tries sticky url-2 (fails),
+    // then full iteration finds url-1
+    const log = mockFetch((u) => urlIndex(urls, u) === 1 ? "ok" : "fail");
+    await sendRequest(iface);
+
+    const hitOrder = log.map(u => urlIndex(urls, u));
+    // probe url-0, sticky url-2, then iteration: 0, 1 (succeeds)
+    expect(hitOrder[0]).toBe(0);  // probe
+    expect(hitOrder[1]).toBe(2);  // sticky attempt
+    expect(hitOrder).toContain(1);  // found during iteration
   });
 });
