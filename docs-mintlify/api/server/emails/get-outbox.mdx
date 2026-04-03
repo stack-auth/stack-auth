@@ -1,0 +1,31 @@
+---
+title: "Get Email Outbox Entry"
+description: "Retrieve a single email from the outbox by ID."
+api: "GET /emails/outbox/{id}"
+---
+
+## Description
+
+Retrieve a single email from the outbox by ID.
+
+## Path Parameters
+
+<ParamField path="id" type="string" required>
+  The unique identifier for the outbox email entry.
+</ParamField>
+
+## Query Parameters
+
+<ParamField query="status" type="string">
+  Filter or retrieve status information.
+</ParamField>
+
+<ParamField query="simple_status" type="string">
+  Simplified status field.
+</ParamField>
+
+## Response
+
+**Status Code:** `200` - Successful response
+
+Returns the email object from the outbox matching the provided ID.

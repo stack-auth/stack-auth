@@ -1,0 +1,19 @@
+---
+title: "Delete Project Permission Definition"
+description: "Delete a project permission definition (the equivalent of deleting a permission on the Stack dashboard)."
+api: "DELETE /project-permission-definitions/{permission_id}"
+---
+
+## Request
+
+### Path Parameters
+
+<ParamField path="permission_id" type="string" required>
+  The permission ID used to uniquely identify a permission. Can either be a custom permission with lowercase letters, numbers, `:`, and `_` characters, or one of the system permissions: `$update_team`, `$delete_team`, `$read_members`, `$remove_members`, `$invite_members`, `$manage_api_keys`.
+</ParamField>
+
+## Response
+
+<ResponseField name="200" type="object">
+  Successful response.
+</ResponseField>

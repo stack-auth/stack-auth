@@ -2,12 +2,13 @@
 
 import { Button } from '@/components/ui';
 import { getPublicEnvVar } from '@/lib/env';
+import { getInternalProjectHeaders } from '@/lib/internal-project-headers';
 import { cn } from '@/lib/utils';
 import { CaretUpIcon, CircleNotchIcon, LightbulbIcon, PaperPlaneTiltIcon, PlusIcon, XIcon } from '@phosphor-icons/react';
 import { useUser } from '@stackframe/stack';
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { htmlToText } from '@stackframe/stack-shared/dist/utils/html';
-import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
+import { runAsynchronously, runAsynchronouslyWithAlert } from '@stackframe/stack-shared/dist/utils/promises';
 import { useCallback, useEffect, useState } from 'react';
 
 type FeatureRequestBoardProps = {
@@ -48,7 +49,7 @@ type CreateFeatureRequestResponse = {
 };
 
 export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
-  const user = useUser({ or: 'redirect', projectIdMustMatch: "internal" });
+  const user = useUser();
 
   // Base URL for API requests
   const baseUrl = getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL') || '';
@@ -69,15 +70,17 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
 
   // Fetch existing feature requests from secure backend
   const fetchFeatureRequests = useCallback(async () => {
+    if (user == null) {
+      setIsLoadingRequests(false);
+      return;
+    }
+
     try {
       const authJson = await user.getAuthJson();
       const response = await fetch(`${baseUrl}/api/v1/internal/feature-requests`, {
-        headers: {
-          'X-Stack-Project-Id': 'internal',
-          'X-Stack-Access-Type': 'client',
-          'X-Stack-Access-Token': authJson.accessToken || '',
-          'X-Stack-Publishable-Client-Key': getPublicEnvVar('NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY') || '',
-        },
+        headers: getInternalProjectHeaders({
+          accessToken: authJson.accessToken,
+        }),
       });
 
       if (response.ok) {
@@ -107,8 +110,7 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
 
   useEffect(() => {
     runAsynchronously(fetchFeatureRequests());
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [fetchFeatureRequests]);
 
   // Handle refresh button click
   const handleRefreshRequests = () => {
@@ -118,6 +120,9 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
 
   // Handle upvote
   const handleUpvote = async (postId: string) => {
+    if (user == null) {
+      throw new Error("Please sign in again and retry upvoting.");
+    }
     const wasUpvoted = userUpvotes.has(postId);
     if (wasUpvoted) return;  // sadly Featurebase doesn't currently support unvoting via the API...
 
@@ -142,50 +147,31 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
       const authJson = await user.getAuthJson();
       const response = await fetch(`${baseUrl}/api/v1/internal/feature-requests/${postId}/upvote`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Stack-Project-Id': 'internal',
-          'X-Stack-Access-Type': 'client',
-          'X-Stack-Access-Token': authJson.accessToken || '',
-          'X-Stack-Publishable-Client-Key': getPublicEnvVar('NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY') || '',
-        },
+        headers: getInternalProjectHeaders({
+          accessToken: authJson.accessToken,
+          contentType: 'application/json',
+        }),
         body: JSON.stringify({}),
       });
 
       if (response.ok) {
-        // Refresh the list to get updated upvote counts from server
         runAsynchronously(fetchFeatureRequests());
-      } else {
-        console.error('Failed to upvote feature request');
-        // Revert optimistic updates on failure
-        setUserUpvotes(prev => {
-          const newSet = new Set(prev);
-          newSet.add(postId);
-          return newSet;
-        });
-        setExistingRequests(prev => prev.map(request =>
-          request.id === postId
-            ? {
-              ...request,
-              upvotes: request.upvotes + 1
-            }
-            : request
-        ));
+        return;
       }
+
+      throw new StackAssertionError('Failed to upvote feature request', {
+        status: response.status,
+        responseText: await response.text(),
+      });
     } catch (error) {
-      console.error('Error upvoting feature request:', error);
-      // Revert optimistic updates on failure
       setUserUpvotes(prev => {
         const newSet = new Set(prev);
-        newSet.add(postId);
+        newSet.delete(postId);
         return newSet;
       });
       setExistingRequests(prev => prev.map(request =>
         request.id === postId
-          ? {
-            ...request,
-            upvotes: request.upvotes + 1
-          }
+          ? { ...request, upvotes: request.upvotes - 1 }
           : request
       ));
 
@@ -195,6 +181,10 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
 
   // Submit feature request via secure backend
   const submitFeatureRequest = async () => {
+    if (user == null) {
+      setSubmitStatus('error');
+      return;
+    }
     if (!featureTitle.trim()) return;
 
     setIsSubmitting(true);
@@ -212,13 +202,10 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
       const authJson = await user.getAuthJson();
       const response = await fetch(`${baseUrl}/api/v1/internal/feature-requests`, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Stack-Project-Id': 'internal',
-          'X-Stack-Access-Type': 'client',
-          'X-Stack-Access-Token': authJson.accessToken || '',
-          'X-Stack-Publishable-Client-Key': getPublicEnvVar('NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY') || '',
-        },
+        headers: getInternalProjectHeaders({
+          accessToken: authJson.accessToken,
+          contentType: 'application/json',
+        }),
         body: JSON.stringify(requestBody)
       });
 
@@ -305,7 +292,7 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
               onChange={(e) => setFeatureTitle(e.target.value)}
               placeholder="Brief description of your feature request..."
               className="w-full px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-              disabled={isSubmitting}
+              disabled={isSubmitting || user == null}
             />
           </div>
 
@@ -321,14 +308,14 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
               placeholder="Provide more details about your feature request..."
               rows={3}
               className="w-full px-3 py-2 text-sm bg-background border border-input rounded-md focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent resize-none"
-              disabled={isSubmitting}
+              disabled={isSubmitting || user == null}
             />
           </div>
 
           {/* Submit Button */}
           <Button
             onClick={submitFeatureRequest}
-            disabled={!featureTitle.trim() || isSubmitting}
+            disabled={!featureTitle.trim() || isSubmitting || user == null}
             className="w-full"
             size="sm"
           >
@@ -357,6 +344,7 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
           variant="outline"
           className="w-full mb-4 min-h-[36px] flex-shrink-0 animate-in fade-in-0 duration-200"
           size="sm"
+          disabled={user == null}
         >
           <PlusIcon className="h-4 w-4 mr-2 flex-shrink-0" />
           <span className="flex-1">Submit New Feature Request</span>
@@ -371,7 +359,7 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
             variant="ghost"
             size="sm"
             onClick={handleRefreshRequests}
-            disabled={isLoadingRequests}
+            disabled={isLoadingRequests || user == null}
             className="text-xs h-7 px-2"
           >
             {isLoadingRequests ? 'Loading...' : 'Refresh'}
@@ -424,9 +412,10 @@ export function FeatureRequestBoard({}: FeatureRequestBoardProps) {
                     <Button
                       variant={userUpvotes.has(request.id) ? "default" : "outline"}
                       size="sm"
-                      onClick={async (e) => {
+                      disabled={user == null}
+                      onClick={(e) => {
                         e.stopPropagation();
-                        await handleUpvote(request.id);
+                        runAsynchronouslyWithAlert(handleUpvote(request.id));
                       }}
                       className="h-6 w-6 p-0 rounded-md"
                     >

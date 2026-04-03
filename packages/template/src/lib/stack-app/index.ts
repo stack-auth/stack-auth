@@ -9,7 +9,7 @@ export type {
   StackClientAppConstructorOptions,
   StackClientAppJson,
   StackServerAppConstructor,
-  StackServerAppConstructorOptions,
+  StackServerAppConstructorOptions
 } from "./apps";
 
 export type {
@@ -37,8 +37,8 @@ export type {
   GetCurrentUserOptions,
   /** @deprecated Use GetCurrentUserOptions instead */
   GetCurrentUserOptions as GetUserOptions,
-  HandlerUrls,
-  OAuthScopesOnSignIn
+  HandlerUrlOptions,
+  HandlerUrls, OAuthScopesOnSignIn, ResolvedHandlerUrls
 } from "./common";
 
 export type {
@@ -101,13 +101,10 @@ export type {
 } from "./projects";
 
 export type {
-  EditableTeamMemberProfile,
-  ServerListUsersOptions,
+  EditableTeamMemberProfile, ReceivedTeamInvitation,
+  SentTeamInvitation, ServerListUsersOptions,
   ServerTeam,
-  ServerTeamCreateOptions,
-  ReceivedTeamInvitation,
-  SentTeamInvitation,
-  ServerTeamMemberProfile,
+  ServerTeamCreateOptions, ServerTeamMemberProfile,
   ServerTeamUpdateOptions,
   ServerTeamUser,
   Team,
