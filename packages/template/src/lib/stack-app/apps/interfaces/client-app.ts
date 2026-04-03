@@ -10,13 +10,6 @@ import { AnalyticsOptions } from "../implementations/session-replay";
 
 export type StackClientAppConstructorOptions<HasTokenStore extends boolean, ProjectId extends string> = {
   baseUrl?: string | { browser: string, server: string },
-  fallbackBaseUrl?: string | { browser: string, server: string },
-  /**
-   * When the SDK falls back to the fallback URL, this is the initial probability (0–1) that
-   * a request will probe the primary to check if it's back. Halves on each failed probe,
-   * resets on success. Default: 0.3 (30%).
-   */
-  primaryProbeRate?: number,
   extraRequestHeaders?: Record<string, string>,
   projectId?: ProjectId,
   publishableClientKey?: string,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useStackApp, useUser } from "@stackframe/stack";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -62,7 +63,7 @@ export function FallbackTestClient() {
   }, [app, user, addLog]);
 
   useEffect(() => {
-    void runTests();
+    runAsynchronously(runTests());
   }, []);  // eslint-disable-line react-hooks/exhaustive-deps
 
   return (

@@ -10,8 +10,6 @@ import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist
 import { globalVar } from "@stackframe/stack-shared/dist/utils/globals";
 import { deepPlainEquals, filterUndefined, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
 import { concatStacktracesIfRejected, ignoreUnhandledRejection, runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
-import { drainInFlightPromises } from "./utils/background-tasks";
-import { shutdownOTel } from "./instrumentation";
 import { throwingProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
@@ -20,9 +18,11 @@ import net from "node:net";
 import { Pool } from "pg";
 import { isPromise } from "util/types";
 import { runMigrationNeeded } from "./auto-migrations";
+import { shutdownOTel } from "./instrumentation";
 import { registerPgPool } from "./lib/dev-perf-stats";
 import { Tenancy } from "./lib/tenancies";
 import { ensurePolyfilled } from "./polyfills";
+import { drainInFlightPromises } from "./utils/background-tasks";
 
 // just ensure we're polyfilled because this file relies on envvars being expanded
 ensurePolyfilled();
@@ -108,17 +108,25 @@ function getPostgresPrismaClient(connectionString: string, poolLabel?: string) {
 if (!getEnvVariable("VERCEL", "") && !globalVar.__stack_prisma_sigterm_registered) {
   globalVar.__stack_prisma_sigterm_registered = true;
   process.on("SIGTERM", () => {
+    // Keep the event loop alive so Node doesn't exit before the drain completes.
+    // 10s timeout > 8s drain timeout to ensure we have enough time.
+    const keepAlive = setTimeout(() => {}, 10_000);
+
     runAsynchronously(async () => {
-      console.log("[SIGTERM] Draining background tasks and database connections...");
-      await drainInFlightPromises(8000);
-      await shutdownOTel();
-      for (const [, entry] of postgresPrismaClientsStore) {
-        await entry.client.$disconnect();
+      try {
+        console.log("[SIGTERM] Draining background tasks and database connections...");
+        await drainInFlightPromises(8000);
+        await shutdownOTel();
+        for (const [, entry] of postgresPrismaClientsStore) {
+          await entry.client.$disconnect();
+        }
+        for (const [, client] of prismaClientsStore.neon) {
+          await client.$disconnect();
+        }
+        console.log("[SIGTERM] Completed draining background tasks and database connections.");
+      } finally {
+        clearTimeout(keepAlive);
       }
-      for (const [, client] of prismaClientsStore.neon) {
-        await client.$disconnect();
-      }
-      console.log("[SIGTERM] Completed draining background tasks and database connections.");
     });
   });
 }

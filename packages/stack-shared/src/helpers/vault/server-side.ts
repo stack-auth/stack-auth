@@ -31,11 +31,15 @@ async function getAwsCredentials() {
   if (gcpWifRoleArn) {
     const { fromWebToken } = await import("@aws-sdk/credential-provider-web-identity");
     const audience = getEnvVariable("STACK_AWS_GCP_WIF_AUDIENCE", "sts.amazonaws.com");
-    return fromWebToken({
-      roleArn: gcpWifRoleArn,
-      roleSessionName: "stack-backend-cloudrun",
-      webIdentityToken: await fetchGcpIdToken(audience),
-    });
+    // Return a provider that fetches a fresh GCP ID token on each invocation.
+    // GCP metadata tokens expire after ~1h, so we can't bake a single token into the closure.
+    return async () => {
+      return await fromWebToken({
+        roleArn: gcpWifRoleArn,
+        roleSessionName: "stack-backend-cloudrun",
+        webIdentityToken: await fetchGcpIdToken(audience),
+      })();
+    };
   }
 
   // 3. Static credentials: fallback for self-hosted / local development

@@ -1,5 +1,4 @@
-# Backend for Cloud Run / self-hosted deployment.
-# Includes migration script for database setup.
+# Backend for Cloud Run / self-hosted deployment (fallback backend server).
 # Connects to the same AWS services (RDS, S3, KMS) as the Vercel deployment.
 #
 # Build:  docker build -f docker/backend/Dockerfile -t stack-backend .
@@ -57,9 +56,6 @@ ENV NEXT_CONFIG_OUTPUT=standalone
 # Build backend only
 RUN pnpm turbo run docker-build --filter=@stackframe/backend...
 
-# Build the migration script
-RUN cd apps/backend && pnpm build-self-host-migration-script
-
 
 # Final image
 FROM node:${NODE_VERSION}-slim
@@ -71,16 +67,13 @@ RUN apt-get update && \
     apt-get install -y --no-install-recommends openssl && \
     rm -rf /var/lib/apt/lists/*
 
-# Copy built backend (standalone)
+# Copy Next.js standalone output — this includes a traced, minimal copy of
+# node_modules/ and packages/ (only the files the server actually imports).
 COPY --from=builder --chown=node:node /app/apps/backend/.next/standalone ./
 COPY --from=builder --chown=node:node /app/apps/backend/.next/static ./apps/backend/.next/static
-COPY --from=builder --chown=node:node /app/apps/backend/prisma ./apps/backend/prisma
-COPY --from=builder --chown=node:node /app/apps/backend/dist ./apps/backend/dist
-COPY --from=builder --chown=node:node /app/apps/backend/node_modules ./apps/backend/node_modules
 
-# Restore workspace node_modules and packages needed by runtime scripts (e.g. migration script)
-COPY --from=builder --chown=node:node /app/node_modules ./node_modules
-COPY --from=builder --chown=node:node /app/packages ./packages
+# Prisma schema (needed at runtime by Prisma client)
+COPY --from=builder --chown=node:node /app/apps/backend/prisma ./apps/backend/prisma
 
 ENV NODE_ENV=production
 ENV PORT=8102

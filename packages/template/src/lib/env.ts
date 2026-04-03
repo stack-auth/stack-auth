@@ -59,24 +59,6 @@ export const envVars = {
   get NEXT_PUBLIC_STACK_URL() {
     return (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_STACK_URL : undefined) ?? undefined;
   },
-  get NEXT_PUBLIC_STACK_FALLBACK_API_URL_BROWSER() {
-    return (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_STACK_FALLBACK_API_URL_BROWSER : undefined) ?? undefined;
-  },
-  get STACK_FALLBACK_API_URL_BROWSER() {
-    return (typeof process !== "undefined" ? process.env.STACK_FALLBACK_API_URL_BROWSER : undefined) ?? undefined;
-  },
-  get NEXT_PUBLIC_STACK_FALLBACK_API_URL_SERVER() {
-    return (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_STACK_FALLBACK_API_URL_SERVER : undefined) ?? undefined;
-  },
-  get STACK_FALLBACK_API_URL_SERVER() {
-    return (typeof process !== "undefined" ? process.env.STACK_FALLBACK_API_URL_SERVER : undefined) ?? undefined;
-  },
-  get NEXT_PUBLIC_STACK_FALLBACK_API_URL() {
-    return (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_STACK_FALLBACK_API_URL : undefined) ?? undefined;
-  },
-  get STACK_FALLBACK_API_URL() {
-    return (typeof process !== "undefined" ? process.env.STACK_FALLBACK_API_URL : undefined) ?? undefined;
-  },
   get NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX() {
     return (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_STACK_HOSTED_HANDLER_DOMAIN_SUFFIX : undefined) ?? undefined;
   },

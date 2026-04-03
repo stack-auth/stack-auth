@@ -6,14 +6,15 @@ import { StackClientInterface } from "./client-interface";
 
 function createClientInterface(options?: {
   baseUrl?: string,
-  fallbackBaseUrl?: string,
-  primaryProbeRate?: number,
+  apiUrls?: string[],
+  probeRate?: number,
 }) {
+  const apiUrls = options?.apiUrls ?? [options?.baseUrl ?? "https://api.example.com"];
   return new StackClientInterface({
     clientVersion: "test",
-    getBaseUrl: () => options?.baseUrl ?? "https://api.example.com",
-    getFallbackBaseUrl: options?.fallbackBaseUrl ? () => options.fallbackBaseUrl : undefined,
-    primaryProbeRate: options?.primaryProbeRate,
+    getBaseUrl: () => apiUrls[0],
+    getApiUrls: () => apiUrls,
+    probeRate: options?.probeRate,
     extraRequestHeaders: {},
     projectId: "project-id",
     publishableClientKey: "publishable-client-key",
@@ -370,7 +371,7 @@ describe("_withFallback", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const iface = createClientInterface({ fallbackBaseUrl: "https://fallback.example.com" });
+    const iface = createClientInterface({ apiUrls: ["https://api.example.com", "https://fallback.example.com"] });
     const session = iface.createSession({ refreshToken: null, accessToken: null });
     await iface.sendClientRequest("/users/me", { method: "GET" }, session);
 
@@ -389,7 +390,7 @@ describe("_withFallback", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const iface = createClientInterface({ fallbackBaseUrl: "https://fallback.example.com" });
+    const iface = createClientInterface({ apiUrls: ["https://api.example.com", "https://fallback.example.com"] });
     const session = iface.createSession({ refreshToken: null, accessToken: null });
     await iface.sendClientRequest("/users/me", { method: "GET" }, session);
 
@@ -410,7 +411,7 @@ describe("_withFallback", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const iface = createClientInterface({ fallbackBaseUrl: "https://fallback.example.com" });
+    const iface = createClientInterface({ apiUrls: ["https://api.example.com", "https://fallback.example.com"] });
     const session = iface.createSession({ refreshToken: null, accessToken: null });
     await iface.sendClientRequest("/users/me", { method: "GET" }, session);
 
@@ -426,7 +427,7 @@ describe("_withFallback", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const iface = createClientInterface({ fallbackBaseUrl: "https://fallback.example.com" });
+    const iface = createClientInterface({ apiUrls: ["https://api.example.com", "https://fallback.example.com"] });
     const session = iface.createSession({ refreshToken: null, accessToken: null });
     await expect(iface.sendClientRequest("/users/me", { method: "GET" }, session)).rejects.toThrow();
 
@@ -435,8 +436,8 @@ describe("_withFallback", () => {
 
   it("enters sticky fallback mode after first failover", async () => {
     const iface = createClientInterface({
-      fallbackBaseUrl: "https://fallback.example.com",
-      primaryProbeRate: 0,
+      apiUrls: ["https://api.example.com", "https://fallback.example.com"],
+      probeRate: 0,
     });
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
@@ -465,8 +466,8 @@ describe("_withFallback", () => {
 
   it("exits sticky mode when primary probe succeeds", async () => {
     const iface = createClientInterface({
-      fallbackBaseUrl: "https://fallback.example.com",
-      primaryProbeRate: 1,
+      apiUrls: ["https://api.example.com", "https://fallback.example.com"],
+      probeRate: 1,
     });
 
     let primaryDown = true;
@@ -503,8 +504,8 @@ describe("_withFallback", () => {
 
   it("halves probe rate on failed probe", async () => {
     const iface = createClientInterface({
-      fallbackBaseUrl: "https://fallback.example.com",
-      primaryProbeRate: 1,
+      apiUrls: ["https://api.example.com", "https://fallback.example.com"],
+      probeRate: 1,
     });
 
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
@@ -548,26 +549,26 @@ describe("_withFallback", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const iface = createClientInterface({ fallbackBaseUrl: "https://fallback.example.com" });
+    const iface = createClientInterface({ apiUrls: ["https://api.example.com", "https://fallback.example.com"] });
     const session = iface.createSession({ refreshToken: null, accessToken: null });
     await iface.sendClientRequest("/users/me", { method: "GET" }, session, "client", "https://override.example.com/api/v1");
 
     expect(urls.every(u => u.startsWith("https://override.example.com"))).toBe(true);
   });
 
-  it("throws fallback error when both primary and fallback fail", async () => {
+  it("throws when all URLs fail", async () => {
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       throw new TypeError("Failed to fetch");
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const iface = createClientInterface({ fallbackBaseUrl: "https://fallback.example.com" });
+    const iface = createClientInterface({ apiUrls: ["https://api.example.com", "https://fallback.example.com"] });
     const session = iface.createSession({ refreshToken: null, accessToken: null });
 
     await expect(iface.sendClientRequest("/users/me", { method: "GET" }, session)).rejects.toThrow();
   });
 
-  it("alternates primary and fallback for 2 cycles before giving up", async () => {
+  it("iterates through all URLs for 2 passes before giving up", async () => {
     const urls: string[] = [];
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       urls.push(input.toString());
@@ -575,15 +576,110 @@ describe("_withFallback", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    const iface = createClientInterface({ fallbackBaseUrl: "https://fallback.example.com" });
+    const iface = createClientInterface({ apiUrls: ["https://api.example.com", "https://fallback.example.com"] });
     const session = iface.createSession({ refreshToken: null, accessToken: null });
 
     await expect(iface.sendClientRequest("/users/me", { method: "GET" }, session)).rejects.toThrow();
 
-    // 2 cycles × 2 URLs = 4 attempts total (primary, fallback, primary, fallback)
+    // 2 passes × 2 URLs = 4 attempts total
     const primaryHits = urls.filter(u => u.startsWith("https://api.example.com")).length;
     const fallbackHits = urls.filter(u => u.startsWith("https://fallback.example.com")).length;
     expect(primaryHits).toBe(2);
     expect(fallbackHits).toBe(2);
+  });
+
+  it("iterates through 3 URLs in correct order", async () => {
+    const urls: string[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input.toString();
+      urls.push(url);
+      if (url.startsWith("https://api.example.com") || url.startsWith("https://fallback1.example.com")) {
+        throw new TypeError("Failed to fetch");
+      }
+      return createJsonResponse({ display_name: "test" });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const iface = createClientInterface({
+      apiUrls: ["https://api.example.com", "https://fallback1.example.com", "https://fallback2.example.com"],
+    });
+    const session = iface.createSession({ refreshToken: null, accessToken: null });
+    await iface.sendClientRequest("/users/me", { method: "GET" }, session);
+
+    // Should try: primary → fallback1 → fallback2 (succeeds)
+    expect(urls[0]).toContain("api.example.com");
+    expect(urls[1]).toContain("fallback1.example.com");
+    expect(urls[2]).toContain("fallback2.example.com");
+  });
+
+  it("enters sticky mode on URL index 2 with 3 URLs", async () => {
+    const iface = createClientInterface({
+      apiUrls: ["https://api.example.com", "https://fallback1.example.com", "https://fallback2.example.com"],
+      probeRate: 0,
+    });
+
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = input.toString();
+      if (url.startsWith("https://api.example.com") || url.startsWith("https://fallback1.example.com")) {
+        throw new TypeError("Failed to fetch");
+      }
+      return createJsonResponse({ display_name: "test" });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const session = iface.createSession({ refreshToken: null, accessToken: null });
+    await iface.sendClientRequest("/users/me", { method: "GET" }, session);
+
+    // Second request should go directly to fallback2 (probeRate=0)
+    const urls: string[] = [];
+    fetchMock.mockImplementation(async (input: RequestInfo | URL) => {
+      urls.push(input.toString());
+      return createJsonResponse({ display_name: "test" });
+    });
+
+    await iface.sendClientRequest("/users/me", { method: "GET" }, session);
+
+    expect(urls.length).toBe(1);
+    expect(urls[0]).toContain("fallback2.example.com");
+  });
+
+  it("with 3 URLs, 2 passes = 6 total attempts when all fail", async () => {
+    const urls: string[] = [];
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      urls.push(input.toString());
+      throw new TypeError("Failed to fetch");
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const iface = createClientInterface({
+      apiUrls: ["https://api.example.com", "https://fallback1.example.com", "https://fallback2.example.com"],
+    });
+    const session = iface.createSession({ refreshToken: null, accessToken: null });
+
+    await expect(iface.sendClientRequest("/users/me", { method: "GET" }, session)).rejects.toThrow();
+
+    // 2 passes × 3 URLs = 6 attempts
+    expect(urls.length).toBe(6);
+    expect(urls.filter(u => u.startsWith("https://api.example.com")).length).toBe(2);
+    expect(urls.filter(u => u.startsWith("https://fallback1.example.com")).length).toBe(2);
+    expect(urls.filter(u => u.startsWith("https://fallback2.example.com")).length).toBe(2);
+  });
+
+  it("single URL uses standard 5-retry behavior", async () => {
+    let attempts = 0;
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      attempts++;
+      if (attempts < 3) {
+        throw new TypeError("Failed to fetch");
+      }
+      return createJsonResponse({ display_name: "test" });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const iface = createClientInterface({ apiUrls: ["https://api.example.com"] });
+    const session = iface.createSession({ refreshToken: null, accessToken: null });
+    await iface.sendClientRequest("/users/me", { method: "GET" }, session);
+
+    expect(attempts).toBe(3);
   });
 });

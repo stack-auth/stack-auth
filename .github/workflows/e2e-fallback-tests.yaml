@@ -65,14 +65,6 @@ jobs:
           cp examples/supabase/.env.development examples/supabase/.env.test.local
           cp examples/convex/.env.development examples/convex/.env.test.local
 
-      - name: Configure fallback backend URL
-        run: |
-          echo "NEXT_PUBLIC_STACK_FALLBACK_API_URL=http://localhost:8110" >> apps/backend/.env.test.local
-          echo "NEXT_PUBLIC_STACK_FALLBACK_API_URL=http://localhost:8110" >> apps/dashboard/.env.test.local
-          echo "NEXT_PUBLIC_STACK_FALLBACK_API_URL=http://localhost:8110" >> apps/e2e/.env.test.local
-          echo "NEXT_PUBLIC_STACK_FALLBACK_API_URL=http://localhost:8110" >> examples/demo/.env.test.local
-          echo "STACK_BACKEND_BASE_URL=http://localhost:8110" >> apps/e2e/.env.test.local
-
       - name: Build
         run: pnpm build
 

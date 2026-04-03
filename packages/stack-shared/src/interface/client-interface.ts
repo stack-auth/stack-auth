@@ -38,13 +38,18 @@ export type ClientInterfaceOptions = {
   // This is a function instead of a string because it might be different based on the environment (for example client vs server)
   getBaseUrl: () => string,
   getAnalyticsBaseUrl?: () => string,
-  getFallbackBaseUrl?: () => string | undefined,
+  /**
+   * Ordered list of base URLs for request routing with fallback.
+   * Index 0 = primary, index 1..N = fallbacks in priority order.
+   * A single-element array means no fallback occurs.
+   */
+  getApiUrls: () => string[],
   /**
    * When a fallback succeeds and becomes the active server, this is the initial probability
    * (0–1) that any given request will probe the primary to check if it's back.
    * Halves on each failed probe, resets on success. Default: 0.3 (30%).
    */
-  primaryProbeRate?: number,
+  probeRate?: number,
   extraRequestHeaders: Record<string, string>,
   projectId: string,
   prepareRequest?: () => Promise<void>,
@@ -118,14 +123,14 @@ function getBotChallengeRequestFields(botChallenge: BotChallengeInput | undefine
 export class StackClientInterface {
   private pendingNetworkDiagnostics?: ReturnType<StackClientInterface["_runNetworkDiagnosticsInner"]>;
 
-  /** The URL we've sticky-switched to after a successful fallback, or null if using primary. */
-  private _activeFallbackUrl: string | null = null;
+  /** The URL index we've sticky-switched to after a successful fallback, or null if using primary. */
+  private _activeUrlIndex: number | null = null;
   private readonly _initialProbeRate: number;
   /** Current probability of probing primary while in fallback mode. Halves on each failed probe. */
   private _currentProbeRate: number;
 
   constructor(public readonly options: ClientInterfaceOptions) {
-    this._initialProbeRate = options.primaryProbeRate ?? 0.3;
+    this._initialProbeRate = options.probeRate ?? 0.3;
     this._currentProbeRate = this._initialProbeRate;
   }
 
@@ -137,45 +142,40 @@ export class StackClientInterface {
     return this.options.getBaseUrl() + "/api/v1";
   }
 
-  getFallbackApiUrl(): string | undefined {
-    const fallbackBase = this.options.getFallbackBaseUrl?.();
-    return fallbackBase ? fallbackBase + "/api/v1" : undefined;
+  getApiUrls(): string[] {
+    return this.options.getApiUrls().map(u => u + "/api/v1");
   }
 
   /**
-   * Routes requests through primary or fallback URL with sticky failover.
+   * Routes requests through an ordered list of URLs with sticky failover.
    *
-   * No fallback configured → standard 5-retry behavior on primary.
+   * Single URL (no fallbacks) → standard 5-retry behavior.
    *
-   * Fallback configured, normal mode (primary healthy):
-   *   Alternates primary → fallback for 2 cycles (4 total attempts).
-   *   If fallback succeeds, enters sticky fallback mode.
-   *   Only the final attempt runs network diagnostics on failure.
+   * Multiple URLs, normal mode (primary healthy):
+   *   Iterates through all URLs in order for up to 2 full passes.
+   *   If a non-primary URL succeeds, enters sticky mode at that index.
    *
-   * Sticky fallback mode (primary previously failed):
-   *   - Requests go directly to the remembered fallback URL.
+   * Sticky mode (primary previously failed):
+   *   - Requests go directly to the remembered URL index.
    *   - With `_currentProbeRate` probability, probe primary first:
    *     - Probe succeeds → exit sticky mode, reset probe rate, return result.
-   *     - Probe fails → halve `_currentProbeRate`, use fallback.
+   *     - Probe fails → halve `_currentProbeRate`, use sticky URL.
    */
   protected async _withFallback<T>(cb: (apiUrl: string, retryOptions: { maxAttempts: number, skipDiagnostics: boolean }) => Promise<T>): Promise<T> {
-    const fallbackApiUrl = this.getFallbackApiUrl();
-    if (!fallbackApiUrl) {
-      return await cb(this.getApiUrl(), { maxAttempts: 5, skipDiagnostics: false });
+    const apiUrls = this.getApiUrls();
+    if (apiUrls.length <= 1) {
+      return await cb(apiUrls[0], { maxAttempts: 5, skipDiagnostics: false });
     }
 
-    const primaryApiUrl = this.getApiUrl();
-
-    // Sticky fallback mode: primary previously failed, route to fallback.
-    // We don't re-try primary here (unless the probe fires) because sticky mode
-    // exists precisely to avoid hammering a down primary on every request.
-    if (this._activeFallbackUrl) {
+    // Sticky mode: a previous request succeeded on a non-primary URL.
+    const activeIndex = this._activeUrlIndex;
+    if (activeIndex !== null && activeIndex > 0) {
       // Probabilistically probe primary to see if it's back
       if (Math.random() < this._currentProbeRate) {
         try {
-          const result = await cb(primaryApiUrl, { maxAttempts: 1, skipDiagnostics: true });
+          const result = await cb(apiUrls[0], { maxAttempts: 1, skipDiagnostics: true });
           // Primary is back — exit sticky mode
-          this._activeFallbackUrl = null;
+          this._activeUrlIndex = null;
           this._currentProbeRate = this._initialProbeRate;
           return result;
         } catch (probeError) {
@@ -184,37 +184,31 @@ export class StackClientInterface {
           this._currentProbeRate *= 0.5;
         }
       }
-      return await cb(this._activeFallbackUrl!, { maxAttempts: 1, skipDiagnostics: false });
+      return await cb(apiUrls[activeIndex], { maxAttempts: 1, skipDiagnostics: false });
     }
 
-    // Normal mode: alternate primary → fallback for 2 cycles.
-    const maxCycles = 2;
+    // Normal mode: iterate through all URLs in order, up to 2 full passes.
+    const maxPasses = 2;
     let lastError: Error | undefined;
 
-    for (let cycle = 0; cycle < maxCycles; cycle++) {
-      // Try primary
-      try {
-        return await cb(primaryApiUrl, { maxAttempts: 1, skipDiagnostics: true });
-      } catch (primaryError) {
-        if (primaryError instanceof KnownError) throw primaryError;
-        lastError = primaryError instanceof Error ? primaryError : new Error(String(primaryError));
-      }
-
-      // Try fallback
-      try {
-        const result = await cb(fallbackApiUrl, { maxAttempts: 1, skipDiagnostics: true });
-        // Fallback succeeded — enter sticky mode
-        this._activeFallbackUrl = fallbackApiUrl;
-        this._currentProbeRate = this._initialProbeRate;
-        return result;
-      } catch (fallbackError) {
-        if (fallbackError instanceof KnownError) throw fallbackError;
-        lastError = fallbackError instanceof Error ? fallbackError : new Error(String(fallbackError));
+    for (let pass = 0; pass < maxPasses; pass++) {
+      for (let i = 0; i < apiUrls.length; i++) {
+        try {
+          const result = await cb(apiUrls[i], { maxAttempts: 1, skipDiagnostics: true });
+          if (i > 0) {
+            // A fallback succeeded — enter sticky mode
+            this._activeUrlIndex = i;
+            this._currentProbeRate = this._initialProbeRate;
+          }
+          return result;
+        } catch (error) {
+          if (error instanceof KnownError) throw error;
+          lastError = error instanceof Error ? error : new Error(String(error));
+        }
       }
     }
 
-    // All cycles exhausted — throw the last error.
-    // The caller's _networkRetry will handle diagnostics if skipDiagnostics is false.
+    // All passes exhausted — throw the last error.
     throw lastError!;
   }
 

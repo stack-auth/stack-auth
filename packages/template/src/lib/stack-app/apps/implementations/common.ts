@@ -1,13 +1,15 @@
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
 import { AsyncCache } from "@stackframe/stack-shared/dist/utils/caches";
 import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError, concatStacktraces, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { getGlobal } from "@stackframe/stack-shared/dist/utils/globals";
+import { StackAssertionError, captureError, concatStacktraces, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { createGlobal, getGlobal } from "@stackframe/stack-shared/dist/utils/globals";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { filterUndefined, omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { ReactPromise } from "@stackframe/stack-shared/dist/utils/promises";
 import { suspendIfSsr, use } from "@stackframe/stack-shared/dist/utils/react";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { Store } from "@stackframe/stack-shared/dist/utils/stores";
+import { getDefaultApiUrls, getHardcodedFallbackUrls } from "@stackframe/stack-shared/dist/utils/urls";
 import React, { useCallback } from "react"; // THIS_LINE_PLATFORM react-like
 import { envVars } from "../../../env";
 import { HandlerUrlOptions, ResolvedHandlerUrls, stackAppInternalsSymbol } from "../../common";
@@ -123,28 +125,47 @@ export function getBaseUrl(userSpecifiedBaseUrl: string | { browser: string, ser
   return replaceStackPortPrefix(url.endsWith('/') ? url.slice(0, -1) : url);
 }
 export const defaultBaseUrl = "https://api.stack-auth.com";
-export const defaultFallbackBaseUrl = "https://api2.stack-auth.com";
 export const defaultAnalyticsBaseUrl = "https://r.stack-auth.com";
 
 export function getAnalyticsBaseUrl(regularBaseUrl: string): string {
   return regularBaseUrl === defaultBaseUrl ? defaultAnalyticsBaseUrl : regularBaseUrl;
 }
 
-export function getFallbackBaseUrl(primaryBaseUrl: string, userSpecifiedFallbackUrl?: string | { browser: string, server: string }): string | undefined {
-  const resolved = userSpecifiedFallbackUrl == null
-    ? (isBrowserLike()
-      ? (envVars.NEXT_PUBLIC_STACK_FALLBACK_API_URL_BROWSER || envVars.STACK_FALLBACK_API_URL_BROWSER)
-      : (envVars.NEXT_PUBLIC_STACK_FALLBACK_API_URL_SERVER || envVars.STACK_FALLBACK_API_URL_SERVER))
-      || envVars.NEXT_PUBLIC_STACK_FALLBACK_API_URL
-      || envVars.STACK_FALLBACK_API_URL
-    : typeof userSpecifiedFallbackUrl === "string"
-      ? userSpecifiedFallbackUrl
-      : userSpecifiedFallbackUrl[isBrowserLike() ? "browser" : "server"];
 
-  if (resolved) {
-    return replaceStackPortPrefix(resolved.endsWith('/') ? resolved.slice(0, -1) : resolved);
-  }
-  return primaryBaseUrl === defaultBaseUrl ? defaultFallbackBaseUrl : undefined;
+function fetchBackendUrlsInBackground(primaryBaseUrl: string): void {
+  createGlobal('__stack-fetch-backend-urls-started', () => {
+    runAsynchronously(async () => {
+      try {
+        const res = await fetch(`${primaryBaseUrl}/api/v1/internal/backend-urls`);
+        if (!res.ok) {
+          return;
+        }
+        const data = await res.json();
+        if (!Array.isArray(data.urls) || !data.urls.every((u: unknown) => typeof u === 'string')) {
+          return;
+        }
+        createGlobal('__stack-fetched-backend-urls', () => data.urls as string[]);
+      } catch (e) {
+        captureError('fetch-backend-urls-in-background', e);
+      }
+    });
+    return true;
+  });
+}
+
+export function resolveApiUrls(userExplicitBaseUrl: string | { browser: string, server: string } | undefined): () => string[] {
+  return () => {
+    if (userExplicitBaseUrl != null) {
+      return [getBaseUrl(userExplicitBaseUrl)];
+    }
+    const primary = getBaseUrl(undefined);
+    const fallbacks = getHardcodedFallbackUrls(primary);
+    if (fallbacks.length > 0) {
+      fetchBackendUrlsInBackground(primary);
+      return getGlobal('__stack-fetched-backend-urls') ?? getDefaultApiUrls(primary);
+    }
+    return [primary];
+  };
 }
 
 export type TokenObject = {
