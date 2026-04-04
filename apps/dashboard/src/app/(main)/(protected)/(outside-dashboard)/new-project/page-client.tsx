@@ -1,10 +1,11 @@
 'use client';
 
 import { AppIcon } from "@/components/app-square";
+import { StripeWordmark } from "@/components/stripe-wordmark";
 import { DesignAlert } from "@/components/design-components/alert";
 import { DesignBadge } from "@/components/design-components/badge";
 import { DesignButton } from "@/components/design-components/button";
-import { DesignCard } from "@/components/design-components/card";
+import { DesignCard, DesignPillToggle } from "@/components/design-components";
 import { DesignInput } from "@/components/design-components/input";
 import { DesignSelectorDropdown } from "@/components/design-components/select";
 import { useRouter } from "@/components/router";
@@ -26,11 +27,6 @@ import {
   DialogHeader,
   DialogTitle,
   Label,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
   Spinner,
   Switch,
   Tooltip,
@@ -44,16 +40,13 @@ import { useUpdateConfig } from "@/lib/config-update";
 import { getPublicEnvVar } from "@/lib/env";
 import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
 import {
-  ArrowLeftIcon,
   ArrowsClockwiseIcon,
   ChartBarIcon,
   CheckCircleIcon,
-  LightningIcon,
   LinkBreakIcon,
   PlusCircleIcon,
-  ShieldIcon,
-  StripeLogoIcon,
-  WalletIcon,
+  ShieldCheckIcon,
+  SparkleIcon,
   WarningCircleIcon,
   WebhooksLogoIcon
 } from "@phosphor-icons/react";
@@ -207,12 +200,13 @@ function deriveInitialSignInMethods(project: AdminOwnedProject, status: ProjectO
     methods.add("credential");
     methods.add("magicLink");
     methods.add("google");
+    methods.add("github");
   }
 
   return methods;
 }
 
-function deriveInitialApps(config: ReturnType<AdminOwnedProject["useConfig"]>): Set<AppId> {
+function deriveInitialApps(config: ReturnType<AdminOwnedProject["useConfig"]>, status: ProjectOnboardingStatus): Set<AppId> {
   const enabledApps = new Set<AppId>();
 
   for (const appId of ALL_APP_IDS) {
@@ -221,7 +215,13 @@ function deriveInitialApps(config: ReturnType<AdminOwnedProject["useConfig"]>): 
     }
   }
 
-  if (enabledApps.size === 0) {
+  const isInEarlyOnboardingStep = (
+    status === "config_choice"
+    || status === "apps_selection"
+    || status === "auth_setup"
+  );
+
+  if (enabledApps.size === 0 || (isInEarlyOnboardingStep && enabledApps.size <= REQUIRED_APP_IDS.length)) {
     for (const primaryAppId of PRIMARY_APP_IDS) {
       enabledApps.add(primaryAppId);
     }
@@ -238,66 +238,119 @@ function getStepIndex(steps: TimelineStep[], stepId: ProjectOnboardingStatus) {
   return steps.findIndex((step) => step.id === stepId);
 }
 
-function OnboardingTimeline(props: {
+function OnboardingPage(props: {
+  stepKey: string,
+  title: string,
+  subtitle?: string,
   steps: TimelineStep[],
   currentStep: ProjectOnboardingStatus,
   onStepClick?: (step: ProjectOnboardingStatus) => void,
   disabled?: boolean,
+  primaryAction: React.ReactNode,
+  secondaryAction?: React.ReactNode,
+  wide?: boolean,
+  actionsLayout?: "stacked" | "inline",
+  children: React.ReactNode,
 }) {
-  const currentIndex = props.steps.findIndex((step) => step.id === props.currentStep);
+  const currentIndex = props.steps.findIndex((s) => s.id === props.currentStep);
 
   return (
-    <div className="w-full overflow-x-auto pb-1">
-      <div className="flex min-w-max items-center justify-center gap-2">
-        {props.steps.map((step, index) => {
-          const isComplete = index < currentIndex;
-          const isCurrent = index === currentIndex;
-          const isClickable = isComplete && !props.disabled && props.onStepClick != null;
-          const circleClassName = isComplete
-            ? "bg-green-500 text-white"
-            : isCurrent
-              ? "bg-blue-600 text-white"
-              : "bg-muted text-muted-foreground";
+    <div className="flex w-full flex-grow flex-col items-center justify-center px-4 pb-16 pt-8">
+      <div
+        key={props.stepKey}
+        className={cn(
+          "flex w-full flex-col items-center gap-8",
+          props.wide ? "max-w-5xl" : "max-w-[560px]",
+        )}
+      >
+        <div className="onboarding-cascade space-y-2 text-center" style={{ "--cascade-i": 0 } as React.CSSProperties}>
+          <Typography className="text-3xl font-semibold tracking-tight">
+            {props.title}
+          </Typography>
+          {props.subtitle != null && (
+            <Typography variant="secondary" className="mx-auto max-w-md text-sm leading-relaxed">
+              {props.subtitle}
+            </Typography>
+          )}
+        </div>
 
-          return (
-            <div className="flex items-center gap-2" key={step.id}>
-              {isClickable ? (
-                <button
-                  type="button"
-                  className="flex items-center gap-2 rounded-full border bg-background px-3 py-1.5 transition-colors duration-150 hover:transition-none hover:border-foreground/25 hover:bg-foreground/[0.03]"
-                  onClick={() => props.onStepClick?.(step.id)}
-                >
-                  <div
-                    className={cn(
-                      "flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold",
-                      circleClassName
-                    )}
-                  >
-                    <CheckCircleIcon className="h-4 w-4" />
-                  </div>
-                  <span className={cn("text-sm", isCurrent ? "font-semibold text-foreground" : "text-muted-foreground")}>{step.label}</span>
-                </button>
-              ) : (
-                <div className="flex items-center gap-2 rounded-full border bg-background px-3 py-1.5">
-                  <div
-                    className={cn(
-                      "flex h-6 w-6 items-center justify-center rounded-full text-xs font-semibold",
-                      circleClassName
-                    )}
-                  >
-                    {isComplete ? <CheckCircleIcon className="h-4 w-4" /> : index + 1}
-                  </div>
-                  <span className={cn("text-sm", isCurrent ? "font-semibold text-foreground" : "text-muted-foreground")}>{step.label}</span>
+        <div className="onboarding-cascade w-full" style={{ "--cascade-i": 1 } as React.CSSProperties}>
+          {props.children}
+        </div>
+
+        <div className="onboarding-cascade" style={{ "--cascade-i": 2 } as React.CSSProperties}>
+          {props.actionsLayout === "inline" ? (
+            <div className="flex items-center gap-3">
+              {props.primaryAction}
+              {props.secondaryAction != null && props.secondaryAction}
+            </div>
+          ) : (
+            <div className="flex w-full max-w-[280px] flex-col items-center gap-3">
+              {props.primaryAction}
+              {props.secondaryAction != null && (
+                <div className="flex justify-center">
+                  {props.secondaryAction}
                 </div>
               )}
-              {index < props.steps.length - 1 && <div className="h-px w-8 bg-border" />}
             </div>
-          );
-        })}
+          )}
+        </div>
       </div>
+
+      <div className="onboarding-cascade fixed bottom-6 left-0 right-0 z-50 flex justify-center" style={{ "--cascade-i": 3 } as React.CSSProperties}>
+        <div className="flex items-center gap-[5px]">
+          {props.steps.map((step, index) => {
+            const isComplete = index < currentIndex;
+            const isCurrent = index === currentIndex;
+            const isClickable = isComplete && !props.disabled && props.onStepClick != null;
+            return (
+              <button
+                key={step.id}
+                type="button"
+                disabled={!isClickable}
+                onClick={() => { if (isClickable) props.onStepClick?.(step.id); }}
+                className={cn(
+                  "rounded-full transition-all duration-300",
+                  isCurrent
+                    ? "h-[6px] w-5 bg-foreground"
+                    : isComplete
+                      ? "h-[6px] w-[6px] cursor-pointer bg-foreground/40 hover:bg-foreground/60"
+                      : "h-[6px] w-[6px] cursor-default bg-foreground/20",
+                )}
+                title={step.label}
+              />
+            );
+          })}
+        </div>
+      </div>
+
+      <style>{`
+        @keyframes onboarding-cascade-in {
+          0% {
+            opacity: 0;
+            transform: translateY(18px);
+          }
+          100% {
+            opacity: 1;
+            transform: translateY(0);
+          }
+        }
+        .onboarding-cascade {
+          opacity: 0;
+          animation: onboarding-cascade-in 500ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+          animation-delay: calc(var(--cascade-i, 0) * 80ms + 60ms);
+        }
+        @media (prefers-reduced-motion: reduce) {
+          .onboarding-cascade {
+            animation: none;
+            opacity: 1;
+          }
+        }
+      `}</style>
     </div>
   );
 }
+
 
 function appStageBadgeColor(stage: (typeof ALL_APPS)[AppId]["stage"]) {
   if (stage === "alpha") {
@@ -305,16 +358,6 @@ function appStageBadgeColor(stage: (typeof ALL_APPS)[AppId]["stage"]) {
   }
   if (stage === "beta") {
     return "blue";
-  }
-  return null;
-}
-
-function appStageLabel(stage: (typeof ALL_APPS)[AppId]["stage"]) {
-  if (stage === "alpha") {
-    return "Alpha";
-  }
-  if (stage === "beta") {
-    return "Beta";
   }
   return null;
 }
@@ -329,94 +372,49 @@ function OnboardingAppCard(props: {
 }) {
   const app = ALL_APPS[props.appId];
   const stageBadgeColor = appStageBadgeColor(app.stage);
-  const stageLabel = appStageLabel(app.stage);
 
   return (
     <Tooltip delayDuration={0}>
       <TooltipTrigger asChild>
         <button
           type="button"
-          onClick={props.onToggle}
+          onClick={props.required ? undefined : props.onToggle}
           disabled={props.disabled}
           className={cn(
-            "group relative w-full overflow-hidden rounded-2xl border transition-[transform,background-color,border-color,box-shadow] duration-150 hover:transition-none",
-            props.primary ? "min-h-[136px] px-4 py-4" : "min-h-[108px] px-3 py-3",
-            props.selected
-              ? "border-blue-500/45 bg-blue-500/[0.05] shadow-[0_8px_24px_rgba(59,130,246,0.08)]"
-              : "border-border bg-background/80 hover:border-foreground/20 hover:bg-foreground/[0.03]",
-            "active:scale-[0.99]",
+            "group flex flex-col items-center gap-1.5 rounded-xl p-1 transition-opacity duration-150 hover:transition-none",
+            props.primary ? "w-[100px]" : "w-[90px]",
+            props.required ? "cursor-default opacity-100" : props.selected ? "opacity-100" : "opacity-70 hover:opacity-100",
+            props.disabled && "pointer-events-none opacity-40",
+            !props.required && "active:scale-[0.97]",
           )}
         >
-          <div className="absolute inset-0 bg-gradient-to-br from-transparent via-transparent to-blue-500/[0.03] opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-hover:transition-none" />
-          {props.selected && (
-            <div className="absolute right-3 top-3 z-10 flex h-6 w-6 items-center justify-center rounded-full bg-green-500 text-white shadow-sm">
-              <CheckCircleIcon className="h-4 w-4" weight="fill" />
-            </div>
-          )}
-          {props.primary ? (
-            <div className="relative flex h-full flex-col items-center justify-center gap-3 text-center">
-              <div className="flex w-full items-center justify-center">
-                <div className="scale-[0.72] rounded-2xl">
-                  <AppIcon appId={props.appId} enabled={props.selected} />
-                </div>
+          <div className="relative">
+            <AppIcon appId={props.appId} enabled={props.selected} className={props.primary ? "w-20 h-20" : "w-16 h-16"} />
+            {props.selected && (
+              <div className="absolute -right-1 -top-1 z-10 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-white shadow-sm">
+                <CheckCircleIcon className="h-4 w-4" weight="fill" />
               </div>
-
-              <div className="w-full space-y-2">
-                <div className="flex items-center justify-center gap-2">
-                  <Typography className="text-base font-semibold leading-tight">
-                    {app.displayName}
-                  </Typography>
-                </div>
-                <div className="flex min-h-6 items-center justify-center gap-2">
-                  {props.required && (
-                    <DesignBadge label="Required" color="green" size="sm" />
-                  )}
-                  {!props.required && stageBadgeColor && stageLabel && (
-                    <DesignBadge
-                      label={stageLabel}
-                      color={stageBadgeColor}
-                      size="sm"
-                    />
-                  )}
-                </div>
-              </div>
-            </div>
-          ) : (
-            <div className="relative flex h-full flex-col items-center justify-center gap-2 text-center">
-              <div className="shrink-0 scale-[0.56]">
-                <AppIcon appId={props.appId} enabled={props.selected} />
-              </div>
-              <div className="min-w-0 space-y-1">
-                <div className="flex items-center justify-center gap-1.5">
-                  <Typography className="truncate text-[11px] font-medium leading-tight">
-                    {app.displayName}
-                  </Typography>
-                </div>
-                <div className="flex min-h-5 items-center justify-center gap-1.5">
-                  {props.required && (
-                    <DesignBadge label="Required" color="green" size="sm" />
-                  )}
-                  {!props.required && stageBadgeColor && stageLabel && (
-                    <DesignBadge
-                      label={stageLabel}
-                      color={stageBadgeColor}
-                      size="sm"
-                    />
-                  )}
-                </div>
-              </div>
-            </div>
-          )}
+            )}
+          </div>
+          <Typography className={cn(
+            "text-center leading-tight",
+            props.primary ? "text-sm font-semibold" : "text-[11px] font-medium",
+          )}>
+            {app.displayName}
+          </Typography>
         </button>
       </TooltipTrigger>
       <TooltipContent
         side="top"
-        className="z-50 max-w-xs rounded-2xl border border-white/[0.08] bg-background/95 p-4 backdrop-blur-xl"
+        className="z-50 max-w-[240px] rounded-xl border-0 bg-white p-3 shadow-lg ring-1 ring-black/[0.06] dark:bg-background dark:ring-white/[0.06]"
       >
-        <div className="space-y-2">
+        <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <Typography className="text-sm font-semibold">{app.displayName}</Typography>
-            {stageBadgeColor && (
+            <Typography className="text-sm font-semibold text-foreground">{app.displayName}</Typography>
+            {props.required && (
+              <DesignBadge label="Required" color="orange" size="sm" />
+            )}
+            {!props.required && stageBadgeColor != null && (
               <DesignBadge
                 label={app.stage === "alpha" ? "Alpha" : "Beta"}
                 color={stageBadgeColor}
@@ -424,7 +422,7 @@ function OnboardingAppCard(props: {
               />
             )}
           </div>
-          <Typography variant="secondary" className="text-xs leading-relaxed">
+          <Typography className="text-xs leading-relaxed text-muted-foreground">
             {app.subtitle}
           </Typography>
         </div>
@@ -454,27 +452,19 @@ function OnboardingEmailThemePreview(props: {
 
 function ModeNotImplementedCard(props: { onBack: () => void }) {
   return (
-    <DesignCard
-      className="w-full"
-      title="Link Existing Config"
-      subtitle="This feature has not been implemented yet."
-      icon={LinkBreakIcon}
-      gradient="default"
-      glassmorphic
-      contentClassName="flex min-h-[420px] flex-col justify-between gap-6"
-    >
+    <div className="mx-auto flex min-h-[260px] w-full max-w-2xl flex-col items-center justify-center gap-6 text-center">
       <DesignAlert
         variant="warning"
         title="Not available yet"
-        description="Linking an existing config into the onboarding flow is on the roadmap. You can go back and continue with Create New."
+        description="Linking an existing config into onboarding is not available yet."
         glassmorphic
       />
-      <div className="mt-6 flex justify-end">
-        <DesignButton variant="outline" className="rounded-xl" onClick={props.onBack}>
+      <div className="flex justify-center">
+        <DesignButton variant="outline" className="rounded-full px-8" onClick={props.onBack}>
           Go Back
         </DesignButton>
       </div>
-    </DesignCard>
+    </div>
   );
 }
 
@@ -493,17 +483,17 @@ function ProjectOnboardingWizard(props: {
   const setProjectOnboardingStatus = setStatus;
   const finishProjectOnboarding = onComplete;
   const [saving, setSaving] = useState(false);
-  const [selectedApps, setSelectedApps] = useState<Set<AppId>>(() => deriveInitialApps(completeConfig));
+  const [selectedApps, setSelectedApps] = useState<Set<AppId>>(() => deriveInitialApps(completeConfig, status));
   const [signInMethods, setSignInMethods] = useState<Set<SignInMethod>>(() => deriveInitialSignInMethods(project, status));
   const [trustedDomain, setTrustedDomain] = useState("");
   const [domainHandlerPath, setDomainHandlerPath] = useState("/handler");
   const [managedSubdomain, setManagedSubdomain] = useState("");
   const [managedSenderLocalPart, setManagedSenderLocalPart] = useState("");
   const [managedDomainSetupStatus, setManagedDomainSetupStatus] = useState<string | null>(null);
-  const [requiredAppsNotice, setRequiredAppsNotice] = useState<string | null>(null);
   const [selectedEmailThemeId, setSelectedEmailThemeId] = useState(completeConfig.emails.selectedThemeId);
   const [selectedPaymentsCountry, setSelectedPaymentsCountry] = useState("US");
   const [selectedConfigChoice, setSelectedConfigChoice] = useState<"create-new" | "link-existing">("create-new");
+  const [authSetupMobileTab, setAuthSetupMobileTab] = useState<"methods" | "preview">("methods");
   const previousProjectId = useRef<string | null>(null);
 
   const runWithSaving = useCallback(async (fn: () => Promise<void>) => {
@@ -521,7 +511,7 @@ function ProjectOnboardingWizard(props: {
     }
     previousProjectId.current = project.id;
 
-    setSelectedApps(deriveInitialApps(completeConfig));
+    setSelectedApps(deriveInitialApps(completeConfig, status));
     setSignInMethods(deriveInitialSignInMethods(project, status));
 
     const trustedDomains = Object.values(completeConfig.domains.trustedDomains)
@@ -545,8 +535,8 @@ function ProjectOnboardingWizard(props: {
     setManagedSenderLocalPart(serverConfig.managedSenderLocalPart ?? "");
     setSelectedEmailThemeId(completeConfig.emails.selectedThemeId);
     setManagedDomainSetupStatus(null);
-    setRequiredAppsNotice(null);
     setSelectedConfigChoice("create-new");
+    setAuthSetupMobileTab("methods");
   }, [completeConfig, project, project.id, status]);
 
   const emailThemes = project.app.useEmailThemes();
@@ -609,14 +599,10 @@ function ProjectOnboardingWizard(props: {
     setSelectedApps((previous) => {
       const next = new Set(previous);
       if (REQUIRED_APP_IDS.includes(appId)) {
-        if (next.has(appId)) {
-          setRequiredAppsNotice(`${ALL_APPS[appId].displayName} is required during onboarding and can't be turned off.`);
-        }
         next.add(appId);
         return next;
       }
 
-      setRequiredAppsNotice(null);
       if (next.has(appId)) {
         next.delete(appId);
       } else {
@@ -635,22 +621,34 @@ function ProjectOnboardingWizard(props: {
 
   if (props.status === "config_choice" && props.mode === "link-existing") {
     return (
-      <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col min-h-0 space-y-5 px-4 py-6 md:px-8">
-        <OnboardingTimeline
-          steps={timelineSteps}
-          currentStep="config_choice"
-          onStepClick={handleTimelineStepClick}
-          disabled={saving}
-        />
-        <div className="flex min-h-0 flex-1 flex-col">
-          <ModeNotImplementedCard
-            onBack={() => {
+      <OnboardingPage
+        stepKey="config-choice-link-existing"
+        title="Link an existing config"
+        subtitle="This option is coming soon."
+        steps={timelineSteps}
+        currentStep="config_choice"
+        onStepClick={handleTimelineStepClick}
+        disabled={saving}
+        primaryAction={
+          <DesignButton
+            variant="outline"
+            className="w-full rounded-full"
+            onClick={() => {
               props.setMode(null);
               setSelectedConfigChoice("create-new");
             }}
-          />
-        </div>
-      </div>
+          >
+            Go Back
+          </DesignButton>
+        }
+      >
+        <ModeNotImplementedCard
+          onBack={() => {
+            props.setMode(null);
+            setSelectedConfigChoice("create-new");
+          }}
+        />
+      </OnboardingPage>
     );
   }
 
@@ -659,104 +657,88 @@ function ProjectOnboardingWizard(props: {
     const linkExistingSelected = selectedConfigChoice === "link-existing";
 
     return (
-      <div className="mx-auto flex w-full max-w-7xl flex-1 flex-col min-h-0 space-y-5 px-4 py-6 md:px-8">
-        <OnboardingTimeline
-          steps={timelineSteps}
-          currentStep="config_choice"
-          onStepClick={handleTimelineStepClick}
-          disabled={saving}
-        />
-        <DesignCard
-          className="flex min-h-0 flex-1 flex-col w-full"
-          title="Choose How You Want To Start"
-          subtitle="Create a fresh Stack Auth config, or link an existing config file."
-          icon={LightningIcon}
-          gradient="blue"
-          glassmorphic
-          contentClassName="flex min-h-[calc(100vh-220px)] flex-1 flex-col gap-6"
-          actions={
-            <DesignButton
-              className="rounded-xl"
-              loading={saving}
-              onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
-                if (selectedConfigChoice === "create-new") {
-                  await props.setStatus("apps_selection");
-                } else {
-                  props.setMode("link-existing");
-                }
-              }))}
-            >
-              Next
-            </DesignButton>
-          }
-        >
-          <div className="grid min-h-[280px] flex-1 gap-4 md:grid-cols-2">
-            <button
-              type="button"
-              className={cn(
-                "group relative flex min-h-[260px] flex-col items-center justify-center gap-4 rounded-3xl border p-6 text-center transition-colors duration-150 hover:transition-none",
-                createNewSelected
-                  ? "border-blue-500/45 bg-blue-500/[0.06] shadow-[0_8px_24px_rgba(59,130,246,0.08)]"
-                  : "border-black/[0.08] bg-background/70 hover:bg-foreground/[0.03] dark:border-white/[0.08]",
-              )}
-              onClick={() => setSelectedConfigChoice("create-new")}
-              disabled={saving}
-            >
-              {createNewSelected && (
-                <div className="absolute right-4 top-4 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-green-500 text-white shadow-sm">
-                  <CheckCircleIcon className="h-4 w-4" weight="fill" />
-                </div>
-              )}
-              <div className="flex flex-col items-center gap-4 text-center">
-                <div
-                  className={cn(
-                    "w-fit rounded-xl p-2",
-                    createNewSelected ? "bg-blue-500/10 text-blue-600" : "bg-foreground/[0.05] text-muted-foreground",
-                  )}
-                >
-                  <LightningIcon className="h-6 w-6" />
-                </div>
-                <div className="space-y-2">
-                  <Typography type="h3">Create New</Typography>
-                  <Typography variant="secondary">Start from curated defaults and configure apps step-by-step.</Typography>
-                </div>
+      <OnboardingPage
+        stepKey="config-choice"
+        title="Choose how you want to start"
+        subtitle="Start fresh or link an existing config."
+        steps={timelineSteps}
+        currentStep="config_choice"
+        onStepClick={handleTimelineStepClick}
+        disabled={saving}
+        primaryAction={
+          <DesignButton
+            className="w-full rounded-full"
+            loading={saving}
+            onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
+              if (selectedConfigChoice === "create-new") {
+                await props.setStatus("apps_selection");
+              } else {
+                props.setMode("link-existing");
+              }
+            }))}
+          >
+            Continue
+          </DesignButton>
+        }
+      >
+        <div className="grid gap-4 sm:grid-cols-2">
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => setSelectedConfigChoice("create-new")}
+            className={cn(
+              "relative flex flex-col items-center gap-6 rounded-2xl p-10 text-center transition-[box-shadow,background-color] duration-150 hover:transition-none",
+              createNewSelected
+                ? "bg-white ring-2 ring-blue-500/50 shadow-md dark:bg-blue-500/[0.08] dark:ring-blue-500/50 dark:shadow-none"
+                : "bg-white/50 ring-1 ring-black/[0.06] hover:ring-black/[0.10] dark:bg-background/60 dark:backdrop-blur-xl dark:ring-white/[0.06] dark:hover:ring-white/[0.10]",
+            )}
+          >
+            {createNewSelected && (
+              <div className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-white">
+                <CheckCircleIcon className="h-4 w-4" weight="fill" />
               </div>
-            </button>
+            )}
+            <div className={cn(
+              "rounded-xl p-4",
+              createNewSelected ? "bg-blue-500/15 text-blue-500" : "bg-foreground/[0.06] text-muted-foreground",
+            )}>
+              <SparkleIcon className="h-7 w-7" />
+            </div>
+            <div className="space-y-1.5">
+              <Typography className="text-base font-semibold">Create New</Typography>
+              <Typography variant="secondary" className="text-sm leading-relaxed">Start from curated defaults.</Typography>
+            </div>
+          </button>
 
-            <button
-              type="button"
-              className={cn(
-                "group relative flex min-h-[260px] flex-col items-center justify-center gap-4 rounded-3xl border p-6 text-center transition-colors duration-150 hover:transition-none",
-                linkExistingSelected
-                  ? "border-blue-500/45 bg-blue-500/[0.06] shadow-[0_8px_24px_rgba(59,130,246,0.08)]"
-                  : "border-black/[0.08] bg-background/70 hover:bg-foreground/[0.03] dark:border-white/[0.08]",
-              )}
-              onClick={() => setSelectedConfigChoice("link-existing")}
-              disabled={saving}
-            >
-              {linkExistingSelected && (
-                <div className="absolute right-4 top-4 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-green-500 text-white shadow-sm">
-                  <CheckCircleIcon className="h-4 w-4" weight="fill" />
-                </div>
-              )}
-              <div className="flex flex-col items-center gap-4 text-center">
-                <div
-                  className={cn(
-                    "w-fit rounded-xl p-2",
-                    linkExistingSelected ? "bg-blue-500/10 text-blue-600" : "bg-foreground/[0.05] text-muted-foreground",
-                  )}
-                >
-                  <LinkBreakIcon className="h-6 w-6" />
-                </div>
-                <div className="space-y-2">
-                  <Typography type="h3">Link Existing Config</Typography>
-                  <Typography variant="secondary">Bring an existing config into this project.</Typography>
-                </div>
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => setSelectedConfigChoice("link-existing")}
+            className={cn(
+              "relative flex flex-col items-center gap-6 rounded-2xl p-10 text-center transition-[box-shadow,background-color] duration-150 hover:transition-none",
+              linkExistingSelected
+                ? "bg-white ring-2 ring-blue-500/50 shadow-md dark:bg-blue-500/[0.08] dark:ring-blue-500/50 dark:shadow-none"
+                : "bg-white/50 ring-1 ring-black/[0.06] hover:ring-black/[0.10] dark:bg-background/60 dark:backdrop-blur-xl dark:ring-white/[0.06] dark:hover:ring-white/[0.10]",
+            )}
+          >
+            {linkExistingSelected && (
+              <div className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-white">
+                <CheckCircleIcon className="h-4 w-4" weight="fill" />
               </div>
-            </button>
-          </div>
-        </DesignCard>
-      </div>
+            )}
+            <div className={cn(
+              "rounded-xl p-4",
+              linkExistingSelected ? "bg-blue-500/15 text-blue-500" : "bg-foreground/[0.06] text-muted-foreground",
+            )}>
+              <LinkBreakIcon className="h-7 w-7" />
+            </div>
+            <div className="space-y-1.5">
+              <Typography className="text-base font-semibold">Link Existing Config</Typography>
+              <Typography variant="secondary" className="text-sm leading-relaxed">Bring an existing config into this project.</Typography>
+            </div>
+          </button>
+        </div>
+      </OnboardingPage>
     );
   }
 
@@ -764,99 +746,103 @@ function ProjectOnboardingWizard(props: {
     const orderedIds = orderedAppIds();
     const primaryAppIds = orderedIds.filter((appId) => PRIMARY_APP_IDS.includes(appId));
     const secondaryAppIds = orderedIds.filter((appId) => !PRIMARY_APP_IDS.includes(appId));
+    const moreAppsSplitIndex = secondaryAppIds.length >= 10 ? Math.floor(secondaryAppIds.length / 2) : secondaryAppIds.length;
+    const moreAppsFirstRow = secondaryAppIds.slice(0, moreAppsSplitIndex);
+    const moreAppsSecondRow = secondaryAppIds.slice(moreAppsSplitIndex);
 
     return (
-      <div className="mx-auto w-full max-w-7xl space-y-5 px-4 py-6 md:px-8">
-        <OnboardingTimeline
-          steps={timelineSteps}
-          currentStep="apps_selection"
-          onStepClick={handleTimelineStepClick}
-          disabled={saving}
-        />
-        <DesignCard
-          className="w-full"
-          title="Select Apps"
-          subtitle="Authentication, Emails, Payments, and Analytics are selected by default. Authentication and Emails are required."
-          icon={LightningIcon}
-          gradient="cyan"
-          glassmorphic
-          contentClassName="space-y-6"
-          actions={
-            <DesignButton
-              className="rounded-xl"
-              loading={saving}
-              onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
-                const appConfigUpdateEntries = new Map(
-                  ALL_APP_IDS.map((appId) => [
-                    `apps.installed.${appId}.enabled`,
-                    selectedApps.has(appId),
-                  ])
-                );
+      <OnboardingPage
+        stepKey="apps-selection"
+        title="Select apps"
+        subtitle="Choose the apps to include in this project."
+        steps={timelineSteps}
+        currentStep="apps_selection"
+        onStepClick={handleTimelineStepClick}
+        disabled={saving}
+        wide
+        primaryAction={
+          <DesignButton
+            className="w-full rounded-full"
+            loading={saving}
+            onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
+              const appConfigUpdateEntries = new Map(
+                ALL_APP_IDS.map((appId) => [
+                  `apps.installed.${appId}.enabled`,
+                  selectedApps.has(appId),
+                ])
+              );
 
-                const configUpdated = await updateConfig({
-                  adminApp: props.project.app,
-                  configUpdate: Object.fromEntries(appConfigUpdateEntries),
-                  pushable: true,
-                });
-                if (!configUpdated) {
-                  return;
-                }
-                await props.setStatus("auth_setup");
-              }))}
-            >
-              Next
-            </DesignButton>
-          }
-        >
-          <TooltipProvider delayDuration={0}>
-            <div className="space-y-6">
-              {requiredAppsNotice && (
-                <DesignAlert
-                  variant="info"
-                  title="Required app"
-                  description={requiredAppsNotice}
-                  glassmorphic
-                />
-              )}
-
-              <div className="mx-auto max-w-2xl space-y-2 text-center">
-                <Typography className="text-xl font-semibold tracking-tight text-foreground sm:text-2xl">
-                  Select apps
-                </Typography>
-                <Typography variant="secondary" className="text-sm">
-                  Start with the core Stack Auth apps now. You can enable or disable the rest later.
-                </Typography>
+              const configUpdated = await updateConfig({
+                adminApp: props.project.app,
+                configUpdate: Object.fromEntries(appConfigUpdateEntries),
+                pushable: true,
+              });
+              if (!configUpdated) {
+                return;
+              }
+              await props.setStatus("auth_setup");
+            }))}
+          >
+            Continue
+          </DesignButton>
+        }
+      >
+        <TooltipProvider delayDuration={0}>
+          <div className="space-y-6">
+            <div className="space-y-3">
+              <Typography className="text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                Core apps
+              </Typography>
+              <div className="flex flex-wrap items-start justify-center gap-x-2 gap-y-2">
+                {primaryAppIds.map((appId) => (
+                  <OnboardingAppCard
+                    key={appId}
+                    appId={appId}
+                    selected={selectedApps.has(appId)}
+                    required={REQUIRED_APP_IDS.includes(appId)}
+                    primary
+                    disabled={saving}
+                    onToggle={() => toggleApp(appId)}
+                  />
+                ))}
               </div>
+            </div>
 
-              <div className="mx-auto w-full max-w-5xl space-y-4">
-                <div className="flex items-center justify-center">
-                  <DesignBadge label="Core apps" color="blue" size="sm" />
+            <div className="space-y-3">
+              <Typography className="text-center text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                More apps
+              </Typography>
+              {secondaryAppIds.length >= 10 ? (
+                <div className="flex flex-col items-stretch gap-y-3">
+                  <div className="flex flex-wrap items-start justify-center gap-x-1 gap-y-1">
+                    {moreAppsFirstRow.map((appId) => (
+                      <OnboardingAppCard
+                        key={appId}
+                        appId={appId}
+                        selected={selectedApps.has(appId)}
+                        required={REQUIRED_APP_IDS.includes(appId)}
+                        primary={false}
+                        disabled={saving}
+                        onToggle={() => toggleApp(appId)}
+                      />
+                    ))}
+                  </div>
+                  <div className="flex flex-wrap items-start justify-center gap-x-1 gap-y-1">
+                    {moreAppsSecondRow.map((appId) => (
+                      <OnboardingAppCard
+                        key={appId}
+                        appId={appId}
+                        selected={selectedApps.has(appId)}
+                        required={REQUIRED_APP_IDS.includes(appId)}
+                        primary={false}
+                        disabled={saving}
+                        onToggle={() => toggleApp(appId)}
+                      />
+                    ))}
+                  </div>
                 </div>
-                <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-                  {primaryAppIds.map((appId) => (
-                    <OnboardingAppCard
-                      key={appId}
-                      appId={appId}
-                      selected={selectedApps.has(appId)}
-                      required={REQUIRED_APP_IDS.includes(appId)}
-                      primary
-                      disabled={saving}
-                      onToggle={() => toggleApp(appId)}
-                    />
-                  ))}
-                </div>
-              </div>
-
-              <div className="space-y-4">
-                <div className="flex items-center gap-3">
-                  <Typography className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                    More apps
-                  </Typography>
-                </div>
-                <div
-                  className="grid gap-3"
-                  style={{ gridTemplateColumns: "repeat(auto-fill, minmax(150px, 1fr))" }}
-                >
+              ) : (
+                <div className="flex flex-wrap items-start justify-center gap-x-1 gap-y-1">
                   {secondaryAppIds.map((appId) => (
                     <OnboardingAppCard
                       key={appId}
@@ -869,112 +855,121 @@ function ProjectOnboardingWizard(props: {
                     />
                   ))}
                 </div>
-              </div>
-
-              <Typography variant="secondary" className="text-xs">
-                Core apps are ready by default, and required apps stay enabled through onboarding.
-              </Typography>
+              )}
             </div>
-          </TooltipProvider>
-        </DesignCard>
-      </div>
+          </div>
+        </TooltipProvider>
+      </OnboardingPage>
     );
   }
 
   if (props.status === "auth_setup") {
     return (
-      <div className="mx-auto w-full max-w-7xl space-y-5 px-4 py-6 md:px-8">
-        <OnboardingTimeline
-          steps={timelineSteps}
-          currentStep="auth_setup"
-          onStepClick={handleTimelineStepClick}
-          disabled={saving}
-        />
+      <OnboardingPage
+        stepKey="auth-setup"
+        title="Configure authentication"
+        subtitle="Choose which sign-in methods to enable."
+        steps={timelineSteps}
+        currentStep="auth_setup"
+        onStepClick={handleTimelineStepClick}
+        disabled={saving}
+        wide
+        primaryAction={
+          <DesignButton
+            className="w-full rounded-full"
+            loading={saving}
+            onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
+              if (signInMethods.size === 0) {
+                throw new Error("Select at least one sign-in method before continuing.");
+              }
+
+              const authMethodsUpdated = await updateConfig({
+                adminApp: props.project.app,
+                configUpdate: {
+                  "auth.password.allowSignIn": signInMethods.has("credential"),
+                  "auth.otp.allowSignIn": signInMethods.has("magicLink"),
+                  "auth.passkey.allowSignIn": signInMethods.has("passkey"),
+                },
+                pushable: true,
+              });
+
+              if (!authMethodsUpdated) {
+                return;
+              }
+
+              const providersUpdated = await updateConfig({
+                adminApp: props.project.app,
+                configUpdate: {
+                  "auth.oauth.providers.google": signInMethods.has("google") ? {
+                    type: "google",
+                    isShared: true,
+                    allowSignIn: true,
+                    allowConnectedAccounts: true,
+                  } : null,
+                  "auth.oauth.providers.github": signInMethods.has("github") ? {
+                    type: "github",
+                    isShared: true,
+                    allowSignIn: true,
+                    allowConnectedAccounts: true,
+                  } : null,
+                  "auth.oauth.providers.microsoft": signInMethods.has("microsoft") ? {
+                    type: "microsoft",
+                    isShared: true,
+                    allowSignIn: true,
+                    allowConnectedAccounts: true,
+                  } : null,
+                },
+                pushable: false,
+              });
+
+              if (!providersUpdated) {
+                return;
+              }
+
+              await props.setStatus("email_theme_setup");
+            }))}
+          >
+            Continue
+          </DesignButton>
+        }
+      >
         <DesignCard
-          className="w-full"
-          title="Configure Authentication"
-          subtitle="Choose sign-in methods and preview your sign-in page."
-          icon={CheckCircleIcon}
-          gradient="blue"
-          glassmorphic
-          contentClassName="flex min-h-[520px] flex-col gap-6"
-          actions={
-            <DesignButton
-              className="rounded-xl"
-              loading={saving}
-              onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
-                if (signInMethods.size === 0) {
-                  throw new Error("Select at least one sign-in method before continuing.");
-                }
-
-                const authMethodsUpdated = await updateConfig({
-                  adminApp: props.project.app,
-                  configUpdate: {
-                    "auth.password.allowSignIn": signInMethods.has("credential"),
-                    "auth.otp.allowSignIn": signInMethods.has("magicLink"),
-                    "auth.passkey.allowSignIn": signInMethods.has("passkey"),
-                  },
-                  pushable: true,
-                });
-
-                if (!authMethodsUpdated) {
-                  return;
-                }
-
-                const providersUpdated = await updateConfig({
-                  adminApp: props.project.app,
-                  configUpdate: {
-                    "auth.oauth.providers.google": signInMethods.has("google") ? {
-                      type: "google",
-                      isShared: true,
-                      allowSignIn: true,
-                      allowConnectedAccounts: true,
-                    } : null,
-                    "auth.oauth.providers.github": signInMethods.has("github") ? {
-                      type: "github",
-                      isShared: true,
-                      allowSignIn: true,
-                      allowConnectedAccounts: true,
-                    } : null,
-                    "auth.oauth.providers.microsoft": signInMethods.has("microsoft") ? {
-                      type: "microsoft",
-                      isShared: true,
-                      allowSignIn: true,
-                      allowConnectedAccounts: true,
-                    } : null,
-                  },
-                  pushable: false,
-                });
-
-                if (!providersUpdated) {
-                  return;
-                }
-
-                await props.setStatus("email_theme_setup");
-              }))}
-            >
-              Next
-            </DesignButton>
-          }
+          glassmorphic={false}
+          contentClassName="p-0 overflow-hidden"
+          className="border-0 bg-white/90 ring-1 ring-black/[0.06] dark:bg-white/[0.06] dark:ring-white/[0.10]"
         >
-          <div className="grid flex-1 overflow-hidden rounded-2xl border border-black/[0.08] bg-background/70 dark:border-white/[0.08] xl:grid-cols-[minmax(0,2fr)_minmax(0,3fr)]">
-            <div className="flex items-center justify-center px-6 py-8">
-              <div className="w-full max-w-[280px] space-y-5">
-                <div className="space-y-2">
-                  <Typography type="h3">Sign-in methods</Typography>
-                  <Typography variant="secondary" className="text-sm">
-                    More sign-in methods are available on the dashboard later.
-                  </Typography>
-                </div>
-
-                <div className="rounded-2xl border border-black/[0.08] bg-background/80 dark:border-white/[0.08]">
+          <div className="flex justify-center border-b border-black/[0.12] px-4 py-3 dark:border-white/[0.06] md:hidden">
+            <DesignPillToggle
+              options={[
+                { id: "methods", label: "Sign-in methods" },
+                { id: "preview", label: "Preview" },
+              ]}
+              selected={authSetupMobileTab}
+              onSelect={(id) => { setAuthSetupMobileTab(id === "preview" ? "preview" : "methods"); }}
+              size="sm"
+              gradient="default"
+              className="flex w-full max-w-md justify-center"
+            />
+          </div>
+          <div className="grid md:grid-cols-[minmax(260px,2fr)_minmax(0,3fr)]">
+            <div
+              className={cn(
+                "flex flex-col justify-center border-b border-black/[0.12] dark:border-white/[0.06] md:border-b-0 md:border-r",
+                authSetupMobileTab !== "methods" && "max-md:hidden",
+              )}
+            >
+              <div className="p-4 md:p-6">
+                <Typography className="mb-3 text-sm font-medium text-muted-foreground md:mb-4">
+                  Sign-in methods
+                </Typography>
+                <div className="overflow-hidden rounded-xl bg-white/90 ring-1 ring-black/[0.06] dark:bg-foreground/[0.04] dark:ring-white/[0.06]">
                   {SIGN_IN_METHODS.map((method, index) => {
                     const checked = signInMethods.has(method.id);
                     return (
                       <label
                         key={method.id}
                         className={cn(
-                          "flex items-center justify-between gap-4 px-4 py-3",
+                          "flex cursor-pointer items-center justify-between gap-3 px-3 py-2.5 md:gap-4 md:px-4 md:py-3",
                           index !== SIGN_IN_METHODS.length - 1 && "border-b border-black/[0.06] dark:border-white/[0.06]",
                         )}
                       >
@@ -990,21 +985,26 @@ function ProjectOnboardingWizard(props: {
               </div>
             </div>
 
-            <div className="hidden items-center justify-center bg-zinc-300 px-2 py-8 dark:bg-zinc-800 md:flex lg:px-4">
-              <div className="flex w-full max-w-[1480px] items-center justify-center">
-                <BrowserFrame url="your-website.com/signin" className="w-full">
-                  <div className="flex min-h-[420px] items-center justify-center px-6 py-8">
-                    <div className="pointer-events-none relative flex w-full items-center justify-center" inert>
-                      <div className="absolute inset-0 z-10 bg-transparent" />
+            <div
+              className={cn(
+                "flex items-center justify-center bg-foreground/[0.02] px-3 py-3 md:px-4 md:py-4 lg:px-6",
+                authSetupMobileTab !== "preview" && "max-md:hidden",
+              )}
+            >
+              <BrowserFrame url="your-website.com/signin" className="w-full">
+                <div className="flex min-h-[180px] items-center justify-center px-4 py-3 sm:min-h-[220px] md:min-h-[260px] md:px-5 md:py-4 lg:min-h-[300px]">
+                  <div className="pointer-events-none relative flex w-full items-center justify-center" inert>
+                    <div className="absolute inset-0 z-10 bg-transparent" />
+                    <div className="auth-preview-host-theme flex w-full justify-center">
                       <AuthPage type="sign-in" mockProject={authPreviewProject} />
                     </div>
                   </div>
-                </BrowserFrame>
-              </div>
+                </div>
+              </BrowserFrame>
             </div>
           </div>
         </DesignCard>
-      </div>
+      </OnboardingPage>
     );
   }
 
@@ -1018,221 +1018,199 @@ function ProjectOnboardingWizard(props: {
 
   if (props.status === "email_theme_setup") {
     return (
-      <div className="mx-auto w-full max-w-7xl space-y-5 px-4 py-6 md:px-8">
-        <OnboardingTimeline
-          steps={timelineSteps}
-          currentStep="email_theme_setup"
-          onStepClick={handleTimelineStepClick}
-          disabled={saving}
-        />
-        <DesignCard
-          className="w-full"
-          title="Select Email Theme"
-          subtitle="Choose from existing themes. You can continue without changing the default theme."
-          icon={CheckCircleIcon}
-          gradient="purple"
-          glassmorphic
-          contentClassName="flex min-h-[520px] flex-col gap-6"
-          actions={
-            <DesignButton
-              className="rounded-xl"
-              loading={saving}
-              onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
-                if (selectedEmailThemeId !== completeConfig.emails.selectedThemeId) {
-                  const configUpdated = await updateConfig({
-                    adminApp: props.project.app,
-                    configUpdate: {
-                      "emails.selectedThemeId": selectedEmailThemeId,
-                    },
-                    pushable: true,
-                  });
-                  if (!configUpdated) {
-                    return;
-                  }
+      <OnboardingPage
+        stepKey="email-theme-setup"
+        title="Select an email theme"
+        subtitle="Pick a theme for your transactional emails, or keep the default."
+        steps={timelineSteps}
+        currentStep="email_theme_setup"
+        onStepClick={handleTimelineStepClick}
+        disabled={saving}
+        wide
+        primaryAction={
+          <DesignButton
+            className="w-full rounded-full"
+            loading={saving}
+            onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
+              if (selectedEmailThemeId !== completeConfig.emails.selectedThemeId) {
+                const configUpdated = await updateConfig({
+                  adminApp: props.project.app,
+                  configUpdate: {
+                    "emails.selectedThemeId": selectedEmailThemeId,
+                  },
+                  pushable: true,
+                });
+                if (!configUpdated) {
+                  return;
                 }
+              }
 
-                if (includePayments) {
-                  await props.setStatus("payments_setup");
-                } else {
-                  await props.setStatus("completed");
-                    props.onComplete();
-                }
-              }))}
-            >
-              {includePayments ? "Next" : "Finish"}
-            </DesignButton>
-          }
-        >
-          <div className="flex-1 space-y-4">
-            {emailThemes.length === 0 && (
-              <DesignAlert
-                variant="warning"
-                title="No themes found"
-                description="Theme selection is temporarily unavailable. You can still continue."
-                glassmorphic
-              />
-            )}
-
-            <div className="grid gap-4 lg:grid-cols-3">
-              {emailThemes.map((theme) => {
-                const isSelected = selectedEmailThemeId === theme.id;
-                return (
-                  <button
-                    key={theme.id}
-                    type="button"
-                    onClick={() => setSelectedEmailThemeId(theme.id)}
+              if (includePayments) {
+                await props.setStatus("payments_setup");
+              } else {
+                await props.setStatus("completed");
+                props.onComplete();
+              }
+            }))}
+          >
+            {includePayments ? "Continue" : "Finish"}
+          </DesignButton>
+        }
+      >
+        <div className="space-y-4">
+          {emailThemes.length === 0 && (
+            <DesignAlert
+              variant="warning"
+              title="No themes found"
+              description="Theme selection is temporarily unavailable. You can still continue."
+              glassmorphic
+            />
+          )}
+          <div className="grid gap-4 sm:grid-cols-3">
+            {emailThemes.map((theme) => {
+              const isSelected = selectedEmailThemeId === theme.id;
+              return (
+                <button
+                  key={theme.id}
+                  type="button"
+                  onClick={() => setSelectedEmailThemeId(theme.id)}
+                  className={cn(
+                    "relative flex flex-col overflow-hidden rounded-2xl text-left transition-[box-shadow,background-color] duration-150 hover:transition-none",
+                    isSelected
+                      ? cn(
+                          "bg-blue-500/[0.06] dark:bg-blue-500/[0.04] ring-1 ring-blue-500/40",
+                          "shadow-[0_12px_40px_-8px_rgba(59,130,246,0.45),0_0_1px_rgba(59,130,246,0.2)]",
+                          "dark:shadow-[0_14px_48px_-10px_rgba(96,165,250,0.38),0_0_1px_rgba(96,165,250,0.25)]",
+                        )
+                      : cn(
+                          "bg-white/60 dark:bg-background/40 dark:backdrop-blur-xl",
+                          "ring-1 ring-black/[0.05] hover:ring-black/[0.09] dark:ring-white/[0.05] dark:hover:ring-white/[0.09]",
+                        ),
+                  )}
+                >
+                  <div
                     className={cn(
-                      "group relative overflow-hidden rounded-3xl border text-left transition-[border-color,background-color,box-shadow] duration-150 hover:transition-none",
-                      isSelected
-                        ? "border-blue-500/45 bg-blue-500/[0.06] shadow-[0_8px_24px_rgba(59,130,246,0.08)]"
-                        : "border-border bg-background/70 hover:border-foreground/20 hover:bg-foreground/[0.03]",
+                      "aspect-[4/3] overflow-hidden border-b border-black/[0.06] dark:border-white/[0.06] bg-background transition-opacity duration-150",
+                      !isSelected && "opacity-[0.65]",
                     )}
                   >
+                    <div style={{ transform: "scale(0.5)", transformOrigin: "top left", width: "200%", height: "200%" }}>
+                      <OnboardingEmailThemePreview adminApp={props.project.app} themeId={theme.id} />
+                    </div>
+                  </div>
+                  <div className="flex items-center justify-between gap-2 p-3">
+                    <Typography
+                      className={cn(
+                        "min-w-0 flex-1 text-sm font-medium transition-colors duration-150",
+                        isSelected ? "text-foreground" : "text-muted-foreground",
+                      )}
+                    >
+                      {theme.displayName}
+                    </Typography>
                     {isSelected && (
-                      <div className="absolute right-4 top-4 z-10 flex h-7 w-7 items-center justify-center rounded-full bg-green-500 text-white shadow-sm">
+                      <div className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-emerald-600 text-white shadow-sm">
                         <CheckCircleIcon className="h-4 w-4" weight="fill" />
                       </div>
                     )}
-                    <div className="aspect-[4/3] overflow-hidden border-b border-border bg-background">
-                      <div style={{ transform: "scale(0.5)", transformOrigin: "top left", width: "200%", height: "200%" }}>
-                        <OnboardingEmailThemePreview adminApp={props.project.app} themeId={theme.id} />
-                      </div>
-                    </div>
-                    <div className="flex items-center justify-between gap-3 p-4">
-                      <Typography type="h4">{theme.displayName}</Typography>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+                  </div>
+                </button>
+              );
+            })}
           </div>
-        </DesignCard>
-      </div>
+        </div>
+      </OnboardingPage>
     );
   }
 
   if (props.status === "payments_setup") {
     return (
-      <div className="mx-auto w-full max-w-6xl space-y-5 px-4 py-6 md:px-8">
-        <OnboardingTimeline
-          steps={timelineSteps}
-          currentStep="payments_setup"
-          onStepClick={handleTimelineStepClick}
-          disabled={saving}
-        />
-        <DesignCard
-          className="w-full"
-          title="Payments Onboarding"
-          subtitle="Use the same Stripe setup flow as the Payments app. Payments is currently supported in the United States only."
-          icon={StripeLogoIcon}
-          gradient="orange"
-          glassmorphic
-          contentClassName="flex min-h-[420px] flex-col gap-6"
-          actions={
-            <div className="flex flex-wrap items-center justify-end gap-2">
-              {selectedPaymentsCountry !== "US" && (
-                <DesignButton
-                  className="rounded-xl"
-                  variant="outline"
-                  onClick={() => setSelectedPaymentsCountry("US")}
-                >
-                  <ArrowLeftIcon className="mr-2 h-4 w-4" />
-                  Back
-                </DesignButton>
-              )}
-              <DesignButton
-                className="rounded-xl"
-                variant="outline"
-                loading={saving}
-                onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
-                  await finalizeOnboarding();
-                }))}
-              >
-                Do This Later
-              </DesignButton>
-              {selectedPaymentsCountry === "US" && (
-                <DesignButton
-                  className="rounded-xl"
-                  loading={saving}
-                  onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
-                    const setup = await props.project.app.setupPayments();
-                    const redirectUrl = new URL(setup.url);
-                    if (redirectUrl.protocol !== "https:") {
-                      throw new Error("Payments setup redirect URL must use HTTPS.");
-                    }
-                    window.location.href = redirectUrl.toString();
-                  }))}
-                >
-                  Continue Onboarding
-                </DesignButton>
-              )}
-            </div>
-          }
-        >
-          <div className="flex-1 space-y-6">
-            <div className="mx-auto max-w-sm">
-              <div className="rounded-3xl border border-border bg-background/70 p-8 text-center">
-                <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-full bg-primary/10 text-primary">
-                  <WalletIcon className="h-6 w-6" />
+      <OnboardingPage
+        stepKey="payments-setup"
+        title="Set up payments"
+        subtitle="Connect Stripe to start accepting payments from your users."
+        steps={timelineSteps}
+        currentStep="payments_setup"
+        onStepClick={handleTimelineStepClick}
+        disabled={saving}
+        actionsLayout="inline"
+        primaryAction={
+          <DesignButton
+            className="rounded-full px-6"
+            loading={saving}
+            onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
+              await finalizeOnboarding();
+            }))}
+          >
+            Do Later
+          </DesignButton>
+        }
+        secondaryAction={selectedPaymentsCountry === "US" ? (
+          <DesignButton
+            className="rounded-full px-6"
+            variant="outline"
+            loading={saving}
+            onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
+              const setup = await props.project.app.setupPayments();
+              const redirectUrl = new URL(setup.url);
+              if (redirectUrl.protocol !== "https:") {
+                throw new Error("Payments setup redirect URL must use HTTPS.");
+              }
+              window.location.href = redirectUrl.toString();
+            }))}
+          >
+            Connect Stripe
+          </DesignButton>
+        ) : undefined}
+      >
+        <div className="mx-auto w-full max-w-sm">
+          <DesignCard
+            glassmorphic={false}
+            className="border-0 bg-white/90 ring-1 ring-black/[0.06] dark:bg-white/[0.06] dark:ring-white/[0.10]"
+            contentClassName="!p-6 md:!p-7"
+          >
+            <div className="flex flex-col items-center gap-6 md:gap-7">
+              <Typography type="h2" className="text-center tracking-tight text-balance">
+                Built-in Billing
+              </Typography>
+
+              <div className="flex w-full flex-col gap-3 rounded-xl bg-foreground/[0.03] px-5 py-4 text-sm text-muted-foreground">
+                <div className="flex items-center gap-2.5">
+                  <WebhooksLogoIcon className="h-3.5 w-3.5 shrink-0 text-foreground/50" />
+                  <span>No webhooks or syncing required</span>
                 </div>
-                <Typography type="h3" className="mb-4">Setup Payments</Typography>
-                <Typography type="p" variant="secondary" className="mt-2">
-                  Let your users pay seamlessly and securely.
-                </Typography>
-                <ul className="mt-6 grid gap-3 text-left text-sm text-muted-foreground">
-                  <li className="flex items-center gap-2">
-                    <WebhooksLogoIcon className="h-4 w-4 text-primary" />
-                    <span>No webhooks or syncing</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <ArrowsClockwiseIcon className="h-4 w-4 text-primary" />
-                    <span>One-time and recurring</span>
-                  </li>
-                  <li className="flex items-center gap-2">
-                    <ChartBarIcon className="h-4 w-4 text-primary" />
-                    <span>Usage-based billing</span>
-                  </li>
-                </ul>
-                <div className="mt-8 space-y-3 text-left">
-                  <Label htmlFor="payments-country">Country of residence</Label>
-                  <Select value={selectedPaymentsCountry} onValueChange={setSelectedPaymentsCountry}>
-                    <SelectTrigger id="payments-country" className="w-full">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {PAYMENT_COUNTRY_OPTIONS.map((country) => (
-                        <SelectItem key={country.value} value={country.value}>
-                          {country.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                <div className="flex items-center gap-2.5">
+                  <ArrowsClockwiseIcon className="h-3.5 w-3.5 shrink-0 text-foreground/50" />
+                  <span>One-time and recurring payments</span>
                 </div>
-                <div className="mt-4 flex items-center justify-center gap-2 text-xs text-muted-foreground">
-                  <ShieldIcon className="h-3.5 w-3.5" />
-                  <span>Powered by Stripe</span>
+                <div className="flex items-center gap-2.5">
+                  <ChartBarIcon className="h-3.5 w-3.5 shrink-0 text-foreground/50" />
+                  <span>Usage-based billing support</span>
                 </div>
               </div>
-            </div>
 
-            {selectedPaymentsCountry === "US" ? (
-              <DesignAlert
-                variant="info"
-                title="Payments is available in your country!"
-                description="You will be redirected to Stripe, our partner for payment processing, to connect your bank account. Or, you can do this later and stay in test transactions for now."
-                glassmorphic
-              />
-            ) : (
-              <DesignAlert
-                variant="warning"
-                title="Payments is not available in your country yet"
-                description="Stack Auth Payments is currently only available in the United States."
-                glassmorphic
-              />
-            )}
-          </div>
-        </DesignCard>
-      </div>
+              <div className="w-full space-y-2.5">
+                <Typography className="text-xs font-medium text-muted-foreground">Country of residence</Typography>
+                <DesignSelectorDropdown
+                  value={selectedPaymentsCountry}
+                  onValueChange={setSelectedPaymentsCountry}
+                  options={PAYMENT_COUNTRY_OPTIONS.map((c) => ({ value: c.value, label: c.label }))}
+                  size="md"
+                />
+                <div className="flex flex-wrap items-center justify-center gap-x-1.5 gap-y-1 text-center text-xs text-muted-foreground">
+                  <ShieldCheckIcon className="h-3.5 w-3.5 shrink-0 text-muted-foreground" aria-hidden />
+                  <span>Powered by</span>
+                  <StripeWordmark className="h-3 w-auto shrink-0 translate-y-px text-[#635BFF] dark:text-[#8b87ff]" />
+                </div>
+                {selectedPaymentsCountry !== "US" && (
+                  <Typography className="text-center text-xs text-amber-600 dark:text-amber-400">
+                    Payments is currently only available in the United States.
+                  </Typography>
+                )}
+              </div>
+            </div>
+          </DesignCard>
+        </div>
+      </OnboardingPage>
     );
   }
 
@@ -1595,23 +1573,38 @@ export default function PageClient() {
         </Dialog>
 
         <Dialog open={isCreateTeamOpen} onOpenChange={setIsCreateTeamOpen}>
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Create Team</DialogTitle>
-              <DialogDescription>This team will be available immediately for project ownership.</DialogDescription>
+          <DialogContent
+            className="overflow-hidden border-0 bg-white/90 p-0 shadow-2xl backdrop-blur-xl ring-1 ring-black/[0.06] dark:bg-background/75 dark:ring-white/[0.08] sm:max-w-[640px] sm:rounded-3xl"
+            overlayProps={{ className: "bg-black/70 backdrop-blur-[2px]" }}
+            noCloseButton
+          >
+            <DialogHeader className="px-6 pb-0 pt-6 text-left">
+              <div className="flex items-center gap-3">
+                <div className="rounded-2xl bg-blue-500/10 p-2.5 text-blue-600 dark:bg-blue-500/15 dark:text-blue-400">
+                  <PlusCircleIcon className="h-5 w-5" />
+                </div>
+                <div className="space-y-1">
+                  <DialogTitle className="text-xl font-semibold tracking-tight">Create Team</DialogTitle>
+                </div>
+              </div>
+              <DialogDescription>
+                This team will be available immediately for project ownership.
+              </DialogDescription>
             </DialogHeader>
 
-            <div className="space-y-2">
-              <Label htmlFor="new-team-name">Team name</Label>
-              <DesignInput
-                id="new-team-name"
-                value={newTeamName}
-                onChange={(event) => setNewTeamName(event.target.value)}
-                placeholder="Acme Team"
-              />
+            <div className="space-y-5 px-6 py-6">
+              <div className="space-y-2">
+                <Label htmlFor="new-team-name">Team name</Label>
+                <DesignInput
+                  id="new-team-name"
+                  value={newTeamName}
+                  onChange={(event) => setNewTeamName(event.target.value)}
+                  placeholder="Acme Team"
+                />
+              </div>
             </div>
 
-            <DialogFooter>
+            <DialogFooter className="px-6 pb-6 pt-0 sm:justify-end sm:space-x-2">
               <DesignButton variant="outline" className="rounded-xl" onClick={() => setIsCreateTeamOpen(false)} disabled={creatingTeam}>
                 Cancel
               </DesignButton>
