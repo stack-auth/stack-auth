@@ -13,7 +13,7 @@ import { useUser } from "@stackframe/stack";
 import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type ElementType } from "react";
 import { PageLayout } from "../page-layout";
 import { useAdminApp, useProjectId } from "../use-admin-app";
 import { GlobeSectionWithData } from "./globe-section-with-data";
@@ -487,7 +487,7 @@ type EmailItem = { id: string, subject: string, status: string };
 
 const emailStatusConfig = new Map<string, {
   label: string,
-  icon: React.ElementType,
+  icon: ElementType,
   bg: string,
   text: string,
   dot: string,
@@ -647,10 +647,10 @@ function EmailBreakdownCard({
   clickRate: number,
 }) {
   const items = [
-    { label: 'Delivered', count: deliverabilityStatus.delivered, color: '#10b981' },
-    { label: 'Bounced', count: deliverabilityStatus.bounced, color: '#ef4444' },
-    { label: 'In Progress', count: deliverabilityStatus.in_progress, color: '#06b6d4' },
-    { label: 'Error', count: deliverabilityStatus.error, color: '#f59e0b' },
+    { label: 'Delivered', count: deliverabilityStatus.delivered ?? 0, color: '#10b981' },
+    { label: 'Bounced', count: deliverabilityStatus.bounced ?? 0, color: '#ef4444' },
+    { label: 'In Progress', count: deliverabilityStatus.in_progress ?? 0, color: '#06b6d4' },
+    { label: 'Error', count: deliverabilityStatus.error ?? 0, color: '#f59e0b' },
   ];
   const total = items.reduce((s, i) => s + i.count, 0);
 

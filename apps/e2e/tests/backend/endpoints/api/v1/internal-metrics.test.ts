@@ -1,7 +1,7 @@
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { expect } from "vitest";
 import { NiceResponse, it } from "../../../../helpers";
-import { Auth, InternalApiKey, Project, backendContext, createMailbox, niceBackendFetch } from "../../../backend-helpers";
+import { Auth, InternalApiKey, Project, Team, backendContext, createMailbox, niceBackendFetch } from "../../../backend-helpers";
 
 type MetricsUser = {
   is_anonymous: boolean,
@@ -352,6 +352,7 @@ it("should return correct auth_overview breakdown including teams", async ({ exp
       magic_link_enabled: true,
     }
   });
+  await Team.create();
 
   await InternalApiKey.createAndSetProjectKeys();
 
@@ -377,4 +378,5 @@ it("should return correct auth_overview breakdown including teams", async ({ exp
   // verified + unverified should match non-anonymous total
   const nonAnonFromOverview = authOverview.verified_users + authOverview.unverified_users;
   expect(nonAnonFromOverview).toBeGreaterThanOrEqual(1);
+  expect(authOverview.total_teams).toBeGreaterThanOrEqual(1);
 });

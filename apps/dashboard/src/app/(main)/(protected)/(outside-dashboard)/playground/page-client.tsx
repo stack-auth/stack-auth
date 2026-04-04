@@ -11,6 +11,7 @@ import {
   DesignSelectorDropdown,
   DesignUserList,
 } from "@/components/design-components";
+import { DesignAnalyticsCard, DesignAnalyticsCardHeader, DesignChartLegend } from "@/components/design-components/analytics-card";
 import { DataTableColumnHeader, SearchToolbarItem, Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import {
@@ -31,15 +32,12 @@ import {
 import {
   CursorBlastEffect,
   DesignAlert,
-  DesignAnalyticsCard,
-  DesignAnalyticsCardHeader,
   DesignBadge,
   type DesignBadgeColor,
   type DesignBadgeContentMode,
   DesignButton,
   DesignCard,
   DesignCategoryTabs,
-  DesignChartLegend,
   DesignInput,
   DesignPillToggle,
 } from "@stackframe/dashboard-ui-components";
@@ -1785,7 +1783,7 @@ export default function PageClient() {
         ? `\n  <DesignAnalyticsCardHeader label="Daily Active Users" />`
         : "";
       const legendSnippet = analyticsCardShowLegend
-        ? `\n  <DesignChartLegend\n    items={[\n      { key: "new", label: "New", color: "hsl(152, 38%, 52%)" },\n      { key: "retained", label: "Retained", color: "hsl(221, 42%, 55%)" },\n    ]}\n  />`
+        ? `\n  <DesignChartLegend\n    items={[\n      { key: "new", label: "New", color: "hsl(152, 38%, 52%)" },\n      { key: "retained", label: "Retained", color: "hsl(221, 42%, 55%)" },\n      { key: "reactivated", label: "Reactivated", color: "hsl(36, 55%, 58%)" },\n    ]}\n  />`
         : "";
       return `<DesignAnalyticsCard
   gradient="${analyticsCardGradient}"

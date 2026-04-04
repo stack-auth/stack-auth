@@ -892,6 +892,7 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
         select: { projectUserId: true },
       });
 
+      let userId: string;
       if (!existing) {
         const created = await usersCrudHandlers.adminCreate({
           tenancy,
@@ -910,12 +911,15 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
             profile_image_url: null,
           },
         });
-        await prisma.projectUser.updateMany({
-          where: { tenancyId: tenancy.id, projectUserId: created.id },
-          data: { createdAt },
-        });
-        userEmailToId.set(email, created.id);
+        userId = created.id;
+      } else {
+        userId = existing.projectUserId;
       }
+      await prisma.projectUser.updateMany({
+        where: { tenancyId: tenancy.id, projectUserId: userId },
+        data: { createdAt },
+      });
+      userEmailToId.set(email, userId);
 
       bulkIndex++;
     }

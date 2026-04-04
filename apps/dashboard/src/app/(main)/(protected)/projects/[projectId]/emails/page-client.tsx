@@ -93,6 +93,11 @@ export default function PageClient() {
 }
 
 function EmulatorModeCard() {
+  const inbucketWebUrl = getPublicEnvVar("NEXT_PUBLIC_STACK_INBUCKET_WEB_URL");
+  const inbucketMonitorUrl = inbucketWebUrl == null
+    ? null
+    : `${inbucketWebUrl.replace(/\/$/, "")}/monitor`;
+
   return (
     <DesignAnalyticsCard gradient="purple" chart={{ type: "none", tooltipType: "none", highlightMode: "none" }}>
       <div className="p-5">
@@ -107,8 +112,13 @@ function EmulatorModeCard() {
             variant='secondary'
             size="sm"
             className="h-8 px-3 text-xs gap-1.5 flex-shrink-0"
+            disabled={inbucketMonitorUrl == null}
+            title={inbucketMonitorUrl == null ? "Set NEXT_PUBLIC_STACK_INBUCKET_WEB_URL to open Inbucket" : undefined}
             onClick={() => {
-              window.open(getPublicEnvVar('NEXT_PUBLIC_STACK_INBUCKET_WEB_URL') + '/monitor', '_blank');
+              if (inbucketMonitorUrl == null) {
+                throwErr("NEXT_PUBLIC_STACK_INBUCKET_WEB_URL must be configured to open Inbucket monitor.");
+              }
+              window.open(inbucketMonitorUrl, "_blank", "noopener,noreferrer");
             }}
           >
             <ArrowSquareOut className="h-3.5 w-3.5" />

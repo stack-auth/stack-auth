@@ -265,10 +265,13 @@ export default function PageClient() {
   // Split drafts into active (not sent) and history (sent)
   const { activeDrafts, historyDrafts } = useMemo(() => {
     const active: typeof drafts = [];
-    const history: typeof drafts = [];
+    const history: Array<(typeof drafts)[number] & { sentAt: Date }> = [];
     for (const draft of drafts) {
-      if (draft.sentAt) {
-        history.push(draft);
+      if (draft.sentAt != null) {
+        history.push({
+          ...draft,
+          sentAt: draft.sentAt,
+        });
       } else {
         active.push(draft);
       }
@@ -379,17 +382,12 @@ export default function PageClient() {
               </div>
               <div className="flex flex-col gap-2">
                 {historyDrafts.map((draft) => (
-                  <Button
+                  <HistoryDraftCard
                     key={draft.id}
-                    variant="ghost"
-                    className="justify-between px-3 py-2 h-auto rounded-lg border border-transparent hover:border-border text-xs"
-                    onClick={() => handleOpenHistoryDraft(draft.id)}
-                  >
-                    <span className="truncate text-left">
-                      {draft.displayName}
-                    </span>
-                    <ClockCounterClockwise className="h-3.5 w-3.5 text-muted-foreground" />
-                  </Button>
+                    draft={draft}
+                    onOpen={() => handleOpenHistoryDraft(draft.id)}
+                    onDelete={() => runAsynchronouslyWithAlert(() => handleDeleteDraft(draft.id))}
+                  />
                 ))}
               </div>
             </div>

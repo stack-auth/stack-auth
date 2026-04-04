@@ -442,7 +442,7 @@ async function loadMonthlyActiveUsers(tenancy: Tenancy, includeAnonymous: boolea
     const result = await clickhouseClient.query({
       query: `
         SELECT
-          uniqExact(assumeNotNull(user_id)) AS mau
+          assumeNotNull(user_id) AS user_id
         FROM analytics_internal.events
         WHERE event_type = '$token-refresh'
           AND project_id = {projectId:String}
@@ -451,6 +451,7 @@ async function loadMonthlyActiveUsers(tenancy: Tenancy, includeAnonymous: boolea
           AND event_at >= {since:DateTime}
           AND event_at < {untilExclusive:DateTime}
           AND ({includeAnonymous:UInt8} = 1 OR JSONExtract(toJSONString(data), 'is_anonymous', 'UInt8') = 0)
+        GROUP BY user_id
       `,
       query_params: {
         projectId: tenancy.project.id,
@@ -461,8 +462,15 @@ async function loadMonthlyActiveUsers(tenancy: Tenancy, includeAnonymous: boolea
       },
       format: "JSONEachRow",
     });
-    const rows: { mau: number }[] = await result.json();
-    return Number(rows[0]?.mau ?? 0);
+    const rows: { user_id: string }[] = await result.json();
+    const uniqueUserIds = new Set<string>();
+    for (const row of rows) {
+      const normalizedUserId = normalizeUuidFromEvent(row.user_id);
+      if (normalizedUserId != null) {
+        uniqueUserIds.add(normalizedUserId);
+      }
+    }
+    return uniqueUserIds.size;
   } catch (error) {
     captureError("internal-metrics-load-monthly-active-users-failed", new StackAssertionError(
       "Failed to load monthly active users for internal metrics.",
