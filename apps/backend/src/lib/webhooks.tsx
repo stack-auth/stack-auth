@@ -9,6 +9,7 @@ import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { Svix } from "svix";
 import * as yup from "yup";
+import { isPreviewModeEnabled } from "@/lib/preview-mode";
 
 export function getSvixClient() {
   return new Svix(
@@ -22,6 +23,10 @@ async function sendWebhooks(options: {
   projectId: string,
   data: any,
 }) {
+  if (isPreviewModeEnabled()) {
+    return;
+  }
+
   const svix = getSvixClient();
 
   try {
