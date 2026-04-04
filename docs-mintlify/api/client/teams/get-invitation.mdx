@@ -1,0 +1,25 @@
+---
+title: "Delete a Team Invitation"
+description: "Delete a team invitation by its ID."
+api: "DELETE /api/v1/team-invitations/{id}"
+---
+
+## Request
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  The invitation identifier to be removed.
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="team_id" type="string">
+  The team identifier. Required unless `user_id` is supplied.
+</ParamField>
+
+## Response
+
+<ResponseField name="200" type="object">
+  Successful response indicating the invitation was deleted.
+</ResponseField>
