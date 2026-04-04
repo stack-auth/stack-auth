@@ -1,6 +1,5 @@
 "use client";
 
-import { DesignCard } from "@/components/design-components";
 import { FormDialog } from "@/components/form-dialog";
 import { InputField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";
@@ -9,11 +8,26 @@ import { cn } from "@/lib/utils";
 import { ArrowLeft, CaretDown, ClockCounterClockwise, Copy, DotsThreeVertical, FileCode, FileText, PaperPlaneTilt, Pencil, Plus, WarningCircle } from "@phosphor-icons/react";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
-import { useMemo, useState } from "react";
+import { useMemo, useState, type ElementType } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
+import { DesignAnalyticsCard } from "@/components/design-components";
+
+// Section header with icon following design guide
+function SectionHeader({ icon: Icon, title }: { icon: ElementType, title: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
+        <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+      </div>
+      <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
+        {title}
+      </span>
+    </div>
+  );
+}
 
 // Draft item card component
 function DraftCard({
@@ -251,10 +265,13 @@ export default function PageClient() {
   // Split drafts into active (not sent) and history (sent)
   const { activeDrafts, historyDrafts } = useMemo(() => {
     const active: typeof drafts = [];
-    const history: typeof drafts = [];
+    const history: Array<(typeof drafts)[number] & { sentAt: Date }> = [];
     for (const draft of drafts) {
-      if (draft.sentAt) {
-        history.push(draft);
+      if (draft.sentAt != null) {
+        history.push({
+          ...draft,
+          sentAt: draft.sentAt,
+        });
       } else {
         active.push(draft);
       }
@@ -290,16 +307,14 @@ export default function PageClient() {
           />
         }
       >
-        {/* Active Drafts Section */}
-        <DesignCard
-          gradient="default"
-          glassmorphic
-          contentClassName="p-0"
-        >
-          <div className="p-5 flex items-center justify-between gap-4">
-            <div className="flex items-center gap-2">
-              <div className="p-1.5 rounded-lg bg-foreground/[0.06] dark:bg-foreground/[0.04]">
-                <FileText className="h-3.5 w-3.5 text-foreground/70 dark:text-muted-foreground" />
+        <DesignAnalyticsCard gradient="slate" className="overflow-hidden" chart={{ type: "none", tooltipType: "none", highlightMode: "none" }}>
+          <div className="p-5">
+            <div className="flex items-start justify-between gap-4">
+              <div className="flex-1 min-w-0">
+                <SectionHeader icon={FileText} title="Drafts" />
+                <Typography variant="secondary" className="text-sm mt-1">
+                  Compose and manage your email drafts
+                </Typography>
               </div>
               <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
                 Active Drafts
@@ -353,40 +368,30 @@ export default function PageClient() {
               />
             </div>
           )}
-        </DesignCard>
+        </DesignAnalyticsCard>
 
-        {/* Draft History Section (only show if there are sent drafts) */}
+        {/* Draft History */}
         {historyDrafts.length > 0 && (
-          <DesignCard
-            gradient="default"
-            glassmorphic
-            contentClassName="p-0"
-            className="mt-6"
-          >
-            <div className="p-5 flex items-center justify-between gap-4">
-              <div className="flex items-center gap-2">
-                <div className="p-1.5 rounded-lg bg-foreground/[0.06] dark:bg-foreground/[0.04]">
-                  <ClockCounterClockwise className="h-3.5 w-3.5 text-foreground/70 dark:text-muted-foreground" />
-                </div>
-                <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
-                  Draft History
-                </span>
+          <DesignAnalyticsCard chart={{ type: "none", tooltipType: "none", highlightMode: "none" }}>
+            <div className="p-4">
+              <div className="flex items-center justify-between mb-3">
+                <SectionHeader icon={ClockCounterClockwise} title="History" />
+                <Typography variant="secondary" className="text-xs">
+                  {historyDrafts.length} sent {historyDrafts.length === 1 ? "draft" : "drafts"}
+                </Typography>
               </div>
-              <div className="text-xs text-muted-foreground tabular-nums">
-                {historyDrafts.length} sent
+              <div className="flex flex-col gap-2">
+                {historyDrafts.map((draft) => (
+                  <HistoryDraftCard
+                    key={draft.id}
+                    draft={draft}
+                    onOpen={() => handleOpenHistoryDraft(draft.id)}
+                    onDelete={() => runAsynchronouslyWithAlert(() => handleDeleteDraft(draft.id))}
+                  />
+                ))}
               </div>
             </div>
-            <div className="p-4 space-y-2">
-              {historyDrafts.map((draft) => (
-                <HistoryDraftCard
-                  key={draft.id}
-                  draft={draft as typeof draft & { sentAt: Date }}
-                  onOpen={() => handleOpenHistoryDraft(draft.id)}
-                  onDelete={() => runAsynchronouslyWithAlert(() => handleDeleteDraft(draft.id))}
-                />
-              ))}
-            </div>
-          </DesignCard>
+          </DesignAnalyticsCard>
         )}
 
         {/* Shared SMTP Warning Dialog */}
