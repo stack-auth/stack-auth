@@ -1,0 +1,46 @@
+---
+title: "team.deleted"
+description: "This event is triggered when a team is deleted."
+---
+
+## Event Type
+
+`team.deleted`
+
+## Description
+
+This event is triggered when a team is deleted.
+
+## Payload
+
+<ResponseField name="type" type="string">
+  The event type. Always `"team.deleted"`.
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  The team object that was deleted.
+  <Expandable>
+    <ResponseField name="id" type="string">
+      The unique identifier for the team.
+    </ResponseField>
+    <ResponseField name="display_name" type="string">
+      The display name of the team.
+    </ResponseField>
+    <ResponseField name="created_at_millis" type="integer">
+      The timestamp when the team was created, in milliseconds since epoch.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<CodeGroup>
+```json Example Payload
+{
+  "type": "team.deleted",
+  "data": {
+    "id": "team-id-123",
+    "display_name": "My Team",
+    "created_at_millis": 1700000000000
+  }
+}
+```
+</CodeGroup>

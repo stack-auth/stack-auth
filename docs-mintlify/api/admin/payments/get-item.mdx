@@ -1,0 +1,27 @@
+---
+title: "Get Item"
+description: "Retrieve information about a specific item (credits, quotas, etc.) for a customer."
+api: "GET /payments/items/{customer_type}/{customer_id}/{item_id}"
+---
+
+## Request
+
+### Path Parameters
+
+<ParamField path="customer_type" type="string" required>
+  The type of customer.
+</ParamField>
+
+<ParamField path="customer_id" type="string" required>
+  The ID of the customer.
+</ParamField>
+
+<ParamField path="item_id" type="string" required>
+  The ID of the item to retrieve.
+</ParamField>
+
+## Response
+
+<ResponseField name="200" type="object">
+  Successful response containing item details for the specified customer.
+</ResponseField>

@@ -366,6 +366,38 @@ describe("access token refresh on user property changes", () => {
     });
   });
 
+  describe("signed_up_at claim", () => {
+    it("should include signed_up_at and keep it stable across token refreshes", async ({ expect }) => {
+      const { clientApp } = await createApp({
+        config: {
+          credentialEnabled: true,
+        },
+      });
+
+      await clientApp.signUpWithCredential({
+        email: "test@example.com",
+        password: "password123",
+        verificationCallbackUrl: "http://localhost:3000",
+      });
+
+      const user = await clientApp.getUser({ or: "throw" });
+      const initialToken = await user.getAccessToken();
+      expect(initialToken).toBeDefined();
+
+      const initialPayload = decodeAccessToken(initialToken!);
+      const signedUpAtSeconds = Math.floor(user.signedUpAt.getTime() / 1000);
+      expect(initialPayload.signed_up_at).toBe(signedUpAtSeconds);
+
+      await user.setDisplayName("Updated display name");
+
+      const refreshedToken = await user.getAccessToken();
+      expect(refreshedToken).toBeDefined();
+
+      const refreshedPayload = decodeAccessToken(refreshedToken!);
+      expect(refreshedPayload.signed_up_at).toBe(signedUpAtSeconds);
+    });
+  });
+
   describe("getAccessToken reflects current state", () => {
     it("should always return a token reflecting the current user state", async ({ expect }) => {
       const { clientApp, serverApp } = await createApp({

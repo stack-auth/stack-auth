@@ -1,0 +1,81 @@
+---
+title: "Send Email"
+description: "Send email to multiple users. The content field accepts HTML content, template-based configuration with variables, or a pre-existing draft identifier."
+api: "POST /api/v1/emails/send-email"
+---
+
+## Request
+
+<ParamField header="x-stack-secret-server-key" type="string" required>
+  The secret server key for authentication.
+</ParamField>
+
+<ParamField header="x-stack-admin-access-token" type="string">
+  The admin access token.
+</ParamField>
+
+<ParamField header="x-stack-project-id" type="string" required>
+  The project ID.
+</ParamField>
+
+<ParamField body="recipients" type="array" required>
+  List of recipient user IDs or email addresses.
+</ParamField>
+
+<ParamField body="subject" type="string" required>
+  The email subject line.
+</ParamField>
+
+<ParamField body="content" type="object" required>
+  The email content. Accepts one of three formats:
+  - **HTML:** `{ "html": "<html>...</html>" }`
+  - **Template:** `{ "template_id": "string", "variables": {} }`
+  - **Draft:** `{ "draft_id": "string" }`
+</ParamField>
+
+## Response
+
+Returns a `200` status code on success.
+
+<ResponseField name="success" type="boolean">
+  Whether the email was sent successfully.
+</ResponseField>
+
+<CodeGroup>
+```bash cURL (HTML content)
+curl -X POST 'https://api.stack-auth.com/api/v1/emails/send-email' \
+  -H 'Content-Type: application/json' \
+  -H 'x-stack-secret-server-key: YOUR_SECRET_SERVER_KEY' \
+  -H 'x-stack-project-id: YOUR_PROJECT_ID' \
+  -d '{
+    "recipients": ["usr_1234567890"],
+    "subject": "Welcome!",
+    "content": {
+      "html": "<h1>Welcome to our platform</h1>"
+    }
+  }'
+```
+
+```bash cURL (Template)
+curl -X POST 'https://api.stack-auth.com/api/v1/emails/send-email' \
+  -H 'Content-Type: application/json' \
+  -H 'x-stack-secret-server-key: YOUR_SECRET_SERVER_KEY' \
+  -H 'x-stack-project-id: YOUR_PROJECT_ID' \
+  -d '{
+    "recipients": ["usr_1234567890"],
+    "subject": "Welcome!",
+    "content": {
+      "template_id": "welcome-email",
+      "variables": {
+        "name": "John"
+      }
+    }
+  }'
+```
+
+```json 200 Response
+{
+  "success": true
+}
+```
+</CodeGroup>

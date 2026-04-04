@@ -43,6 +43,18 @@ it("is not allowed to list all current projects without signing in", async ({ ex
   `);
 });
 
+it("is not allowed to list internal projects from a non-internal project context", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Auth.fastSignUp();
+  const response = await niceBackendFetch("/api/v1/internal/projects", { accessType: "admin" });
+  expect(response.status).toBe(401);
+  expect(response.headers.get("x-stack-known-error")).toBe("EXPECTED_INTERNAL_PROJECT");
+  expect(response.body).toMatchObject({
+    code: "EXPECTED_INTERNAL_PROJECT",
+    error: "The project ID is expected to be internal.",
+  });
+});
+
 it("lists all current projects (empty list)", async ({ expect }) => {
   await Auth.fastSignUp();
   const response = await niceBackendFetch("/api/v1/internal/projects", { accessType: "client" });
