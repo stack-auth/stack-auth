@@ -15,19 +15,7 @@ const bodySchema: z.ZodType<DocsToolAction> = z.discriminatedUnion("action", [
   z.object({ action: z.literal("fetch"), id: z.string() }),
 ]);
 
-function validateInternalSecret(req: NextRequest): boolean {
-  const secret = process.env.STACK_INTERNAL_DOCS_TOOLS_SECRET;
-  if (secret == null || secret === "") {
-    return true;
-  }
-  return req.headers.get("x-stack-internal-docs-tools-secret") === secret;
-}
-
 export async function POST(req: NextRequest) {
-  if (!validateInternalSecret(req)) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   let json: unknown;
   try {
     json = await req.json();

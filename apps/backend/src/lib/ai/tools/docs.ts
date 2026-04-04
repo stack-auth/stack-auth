@@ -22,15 +22,10 @@ function getDocsToolsBaseUrl(): string {
 
 async function postDocsToolAction(action: Record<string, unknown>): Promise<string> {
   const base = getDocsToolsBaseUrl();
-  const secret = getEnvVariable("STACK_INTERNAL_DOCS_TOOLS_SECRET", "");
-  const headers = new Headers({ "Content-Type": "application/json" });
-  if (secret !== "") {
-    headers.set("x-stack-internal-docs-tools-secret", secret);
-  }
 
   const res = await fetch(`${base}/api/internal/docs-tools`, {
     method: "POST",
-    headers,
+    headers: { "Content-Type": "application/json" },
     body: JSON.stringify(action),
   });
 
