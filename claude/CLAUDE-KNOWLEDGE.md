@@ -153,3 +153,9 @@ A: In `packages/template/src/components-page/stack-handler-client.tsx`, parse ha
 
 Q: What is the current `app.urls` contract after deprecating runtime URL mutation?
 A: `app.urls` is now static (`getUrls(...)` only) and no longer injects runtime `after_auth_return_to` / `stack_cross_domain_*` params from `window.location`. For navigation flows, examples and consumers should use `redirectToXyz()` methods instead (for example `redirectToSignIn()` / `redirectToSignOut()`), while tests for hosted flows should assert dynamic params on actual redirect methods, not on `app.urls`.
+
+Q: How should the dashboard onboarding pages get a calmer "Linear-like" transition without changing flow logic?
+A: In `apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client.tsx`, use a shared animated stage wrapper keyed by onboarding status plus a centered hero/surface pattern for each step. A ~420ms fade-and-drop animation (`opacity` + small negative `translateY`) makes step changes feel deliberate without being sluggish.
+
+Q: How can onboarding CTA buttons stay visible without leaving bottom-of-page actions on every step?
+A: In `apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client.tsx`, move step actions into a shared sticky top header right below the timeline (`OnboardingStickyTop`) and keep the page body focused on the step content. This removes duplicated footer CTAs and prevents scrolling just to reach `Continue` or `Do This Later`.
