@@ -1,0 +1,24 @@
+---
+title: "Delete Team"
+description: "Delete a team by ID"
+api: "DELETE /teams/{team_id}"
+---
+
+## Request
+
+<ParamField path="team_id" type="string" required>
+  Identifier for the team to be removed.
+</ParamField>
+
+## Response
+
+<ResponseField name="200" type="object">
+  Successful response indicating the team was deleted.
+</ResponseField>
+
+<CodeGroup>
+```bash cURL
+curl -X DELETE "https://api.stack-auth.com/teams/TEAM_ID" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+</CodeGroup>

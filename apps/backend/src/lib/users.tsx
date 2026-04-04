@@ -2,8 +2,10 @@ import { usersCrudHandlers } from "@/app/api/latest/users/crud";
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, sqlQuoteIdent } from "@/prisma-client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import { normalizeCountryCode, validCountryCodeSet } from "@stackframe/stack-shared/dist/schema-fields";
+import { isValidCountryCode, normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
 import { SignUpAuthMethod } from "@stackframe/stack-shared/dist/utils/auth-methods";
+import { getEnvBoolean, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
+import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { KeyIntersect } from "@stackframe/stack-shared/dist/utils/types";
 import { createSignUpRuleContext } from "./cel-evaluator";
 import { BestEffortEndUserRequestContext, getBestEffortEndUserRequestContext } from "./end-users";
@@ -11,8 +13,6 @@ import { calculateSignUpRiskAssessment } from "./risk-scores";
 import { evaluateSignUpRules } from "./sign-up-rules";
 import { Tenancy } from "./tenancies";
 import { SignUpTurnstileAssessment } from "./turnstile";
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
-import { getEnvBoolean, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 
 /**
  * Options for sign-up rule evaluation context.
@@ -75,7 +75,7 @@ export function getDerivedSignUpCountryCode(requestCountryCode: string | null, e
     if (match) {
       const tag = match[1];
       const normalized = normalizeCountryCode(tag);
-      if (validCountryCodeSet.has(normalized)) {
+      if (isValidCountryCode(normalized)) {
         return normalized;
       }
     }
@@ -83,7 +83,7 @@ export function getDerivedSignUpCountryCode(requestCountryCode: string | null, e
 
   if (requestCountryCode !== null) {
     const normalized = normalizeCountryCode(requestCountryCode);
-    if (validCountryCodeSet.has(normalized)) {
+    if (isValidCountryCode(normalized)) {
       return normalized;
     }
   }
@@ -92,9 +92,13 @@ export function getDerivedSignUpCountryCode(requestCountryCode: string | null, e
 
 import.meta.vitest?.test("getDerivedSignUpCountryCode", ({ expect }) => {
   expect(getDerivedSignUpCountryCode(" us ", null)).toBe("US");
+  expect(getDerivedSignUpCountryCode("de", null)).toBe("DE");
+  expect(getDerivedSignUpCountryCode("US", null)).toBe("US");
   expect(getDerivedSignUpCountryCode("usa", null)).toBeNull();
   expect(getDerivedSignUpCountryCode("1", null)).toBeNull();
+  expect(getDerivedSignUpCountryCode(null, null)).toBeNull();
 
+  // email tag derivation in dev/test environments
   expect(getDerivedSignUpCountryCode(null, "test+us@example.com")).toBe("US");
   expect(getDerivedSignUpCountryCode(null, "test+de@example.com")).toBe("DE");
   expect(getDerivedSignUpCountryCode(null, "test+US@example.com")).toBe("US");
@@ -103,6 +107,7 @@ import.meta.vitest?.test("getDerivedSignUpCountryCode", ({ expect }) => {
   expect(getDerivedSignUpCountryCode(null, "test@example.com")).toBeNull();
   expect(getDerivedSignUpCountryCode(null, "noplustag@example.com")).toBeNull();
 
+  // email tag takes precedence over requestCountryCode
   expect(getDerivedSignUpCountryCode("de", "test+us@example.com")).toBe("US");
   expect(getDerivedSignUpCountryCode("de", "test@example.com")).toBe("DE");
 });
@@ -191,9 +196,7 @@ export async function createOrUpgradeAnonymousUserWithRules(
   const requestIpTrusted = signUpRuleOptions.ipTrusted ?? endUserRequestContext?.ipTrusted ?? null;
   // EndUserLocation.countryCode is string | undefined; coerce to string | null for downstream consumers
   const requestCountryCode = signUpRuleOptions.countryCode ?? endUserRequestContext?.location?.countryCode ?? null;
-  const countryCode = signUpRuleOptions.countryCode !== null
-    ? signUpRuleOptions.countryCode
-    : getDerivedSignUpCountryCode(requestCountryCode, email);
+  const countryCode = getDerivedSignUpCountryCode(requestCountryCode, email);
   const countryCodeToPersist = currentUser?.is_anonymous && currentUser.country_code != null
     ? currentUser.country_code
     : countryCode;

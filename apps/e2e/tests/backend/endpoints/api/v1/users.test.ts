@@ -992,6 +992,18 @@ describe("with server access", () => {
         `);
   });
 
+  it("should require include_anonymous=true when only_anonymous=true", async ({ expect }) => {
+    await Project.createAndSwitch();
+    await Auth.fastSignUp();
+
+    const response = await niceBackendFetch("/api/v1/users?only_anonymous=true", {
+      accessType: "server",
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toBe("only_anonymous=true requires include_anonymous=true");
+  });
+
   it("lists users with pagination", async ({ expect }) => {
     await Project.createAndSwitch();
     for (let i = 0; i < 5; i++) {

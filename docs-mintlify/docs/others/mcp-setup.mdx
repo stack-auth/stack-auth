@@ -1,0 +1,216 @@
+---
+title: MCP Setup
+description: Set up Stack Auth's Model Context Protocol (MCP) server for intelligent code assistance in your development environment.
+---
+
+Set up Stack Auth's Model Context Protocol (MCP) server to get intelligent code assistance in your development environment.
+
+<Tabs>
+  <Tab title="Cursor">
+    Configure Stack Auth MCP in Cursor IDE for enhanced code assistance.
+
+    ### Manual Installation
+
+    Add the following to your `mcp.json` file:
+
+    ```json title="mcp.json"
+    {
+      "mcpServers": {
+        "stack-auth": {
+          "url": "https://mcp.stack-auth.com/"
+        }
+      }
+    }
+    ```
+  </Tab>
+
+  <Tab title="VS Code">
+    Configure Stack Auth MCP in VS Code for enhanced code assistance.
+
+    ### Manual Installation
+
+    Open a terminal and run the following command:
+
+    ```sh title="Terminal"
+    code --add-mcp '{"type":"http","name":"stack-auth","url":"https://mcp.stack-auth.com/"}'
+    ```
+
+    Then, from inside VS Code, open the `.vscode/mcp.json` file and click "Start server".
+  </Tab>
+
+  <Tab title="Claude Code">
+    Open a terminal and run the following command:
+
+    ```sh title="Terminal"
+    claude mcp add --transport http stack-auth https://mcp.stack-auth.com/
+    ```
+
+    From within Claude Code, you can use the `/mcp` command to get more information about the server.
+  </Tab>
+
+  <Tab title="Claude Desktop">
+    Open Claude Desktop and navigate to **Settings > Connectors > Add Custom Connector**.
+
+    Enter the name as `stack-auth` and the remote MCP server URL as `https://mcp.stack-auth.com/`.
+  </Tab>
+
+  <Tab title="Windsurf">
+    Copy the following JSON to your Windsurf MCP config file:
+
+    ```json title="mcp.json"
+    {
+      "mcpServers": {
+        "stack-auth": {
+          "serverUrl": "https://mcp.stack-auth.com/"
+        }
+      }
+    }
+    ```
+  </Tab>
+
+  <Tab title="ChatGPT">
+    <Info>
+    In Team, Enterprise, and Edu workspaces, only workspace owners and admins have permission to set this.
+    </Info>
+
+    Navigate to **Settings > Connectors** and add a custom connector with the server URL: `https://mcp.stack-auth.com`
+
+    After this, it should be visible in Composer > Deep Research Tool.
+
+    <Info>
+    Connectors can only be used with **Deep Research**.
+    </Info>
+  </Tab>
+
+  <Tab title="Gemini CLI">
+    Add the following JSON to your Gemini CLI configuration file (`~/.gemini/settings.json`):
+
+    ```json title="settings.json"
+    {
+      "mcpServers": {
+        "stack-auth": {
+          "httpUrl": "https://mcp.stack-auth.com/",
+          "headers": {
+            "Accept": "application/json, text/event-stream"
+          }
+        }
+      }
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## Markdown Template
+
+If you want to include instructions for all clients in your project's README.md file, feel free to copy the following markdown:
+
+````markdown
+<details name="mcp-install-instructions">
+  <summary>Cursor</summary>
+
+  #### Installation Link
+  [![Add to Cursor](https://cursor.com/deeplink/mcp-install-dark.svg)](cursor://anysphere.cursor-deeplink/mcp/install?name=stack-auth&config=eyJ1cmwiOiJodHRwczovL21jcC5zdGFjay1hdXRoLmNvbS8ifQ==)
+
+  #### Manual Installation
+  Add the following to your `mcp.json` file:
+
+  ```json
+  {
+  "mcpServers": {
+    "stack-auth": {
+      "url": "https://mcp.stack-auth.com/"
+    }
+  }
+  }
+  ```
+</details>
+
+<details name="mcp-install-instructions">
+  <summary>VSCode</summary>
+
+  #### Installation Link
+  [![Install in VS Code](https://img.shields.io/badge/VS_Code-Install_Server-0098FF?style=for-the-badge&logo=visual-studio-code&logoColor=white)](https://insiders.vscode.dev/redirect?url=vscode:mcp/install?%7B%22type%22%3A%22http%22%2C%22name%22%3A%22stack-auth%22%2C%22url%22%3A%22https%3A%2F%2Fmcp.stack-auth.com%2F%22%7D)
+
+  #### Manual Installation
+  Open a terminal and run the following command:
+
+  ```
+  code --add-mcp '{"type":"http","name":"stack-auth","url":"https://mcp.stack-auth.com/"}'
+  ```
+
+  Then, from inside VS Code, open the .vscode/mcp.json file and click "Start server".
+</details>
+
+<details name="mcp-install-instructions">
+  <summary>Claude Code</summary>
+
+  Open a terminal and run the following command:
+  ```
+  claude mcp add --transport http stack-auth https://mcp.stack-auth.com/
+  ```
+  From within Claude Code, you can use the `/mcp` command to get more information about the server.
+</details>
+
+<details name="mcp-install-instructions">
+  <summary>Claude Desktop</summary>
+
+  Open Claude Desktop and navigate to Settings > Connectors > Add Custom Connector.
+
+  Enter the name as `stack-auth` and the remote MCP server URL as `https://mcp.stack-auth.com/`.
+</details>
+
+<details name="mcp-install-instructions">
+  <summary>Windsurf</summary>
+
+  Copy the following JSON to your Windsurf MCP config file:
+  ```json
+  {
+  "mcpServers": {
+    "stack-auth": {
+      "serverUrl": "https://mcp.stack-auth.com/"
+    }
+  }
+  }
+  ```
+</details>
+
+<details name="mcp-install-instructions">
+  <summary>ChatGPT</summary>
+
+  *Note: In Team, Enterprise, and Edu workspaces, only workspace owners and admins have permission*
+
+  - Navigate to **Settings > Connectors**
+  - Add a custom connector with the server URL: `https://mcp.stack-auth.com/`
+  - It should then be visible in the Composer > Deep research tool
+  - You may need to add the server as a source
+
+  *Connectors can only be used with **Deep Research***
+</details>
+
+<details name="mcp-install-instructions">
+  <summary>Gemini CLI</summary>
+
+  Add the following JSON to your Gemini CLI configuration file (`~/.gemini/settings.json`):
+  ```json
+  {
+  "mcpServers": {
+    "stack-auth": {
+      "httpUrl": "https://mcp.stack-auth.com/",
+      "headers": {
+        "Accept": "application/json, text/event-stream"
+      }
+    }
+  }
+  }
+  ```
+</details>
+````
+
+## Features
+
+The Stack Auth MCP server provides:
+
+- **Authentication Flow Assistance**: Get help implementing sign-in, sign-up, and user management
+- **API Documentation**: Access Stack Auth API documentation and examples
+- **Code Generation**: Generate boilerplate code for common authentication patterns
+- **Best Practices**: Receive guidance on security best practices and implementation patterns
