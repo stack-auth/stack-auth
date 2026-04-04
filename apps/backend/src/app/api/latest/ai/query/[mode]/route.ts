@@ -33,15 +33,6 @@ export const POST = createSmartRouteHandler({
     const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY");
 
 
-    if (apiKey === "FORWARD_TO_PRODUCTION") {
-      const prodResponse = await forwardToProduction(mode, body);
-      return {
-        statusCode: prodResponse.status,
-        bodyType: "response" as const,
-        body: prodResponse,
-      };
-    }
-
     const isAuthenticated = fullReq.auth != null;
     const { quality, speed, systemPrompt: systemPromptId, tools: toolNames, messages, projectId } = body;
 
@@ -58,6 +49,16 @@ export const POST = createSmartRouteHandler({
       if (!managedProjectIds.includes(projectId)) {
         throw new StatusError(StatusError.Forbidden, "You do not have access to this project");
       }
+    }
+
+    if (apiKey === "FORWARD_TO_PRODUCTION") {
+      // Strip projectId before forwarding — production infers it from the API key
+      const prodResponse = await forwardToProduction(mode, { quality, speed, systemPrompt: systemPromptId, tools: toolNames, messages });
+      return {
+        statusCode: prodResponse.status,
+        bodyType: "response" as const,
+        body: prodResponse,
+      };
     }
 
     const model = selectModel(quality, speed, isAuthenticated);

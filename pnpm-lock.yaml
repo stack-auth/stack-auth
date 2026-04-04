@@ -1701,6 +1701,9 @@ importers:
 
   packages/react:
     dependencies:
+      '@ai-sdk/react':
+        specifier: ^3.0.72
+        version: 3.0.143(react@19.2.1)(zod@4.1.12)
       '@hookform/resolvers':
         specifier: ^5.2.2
         version: 5.2.2(react-hook-form@7.70.0(react@19.2.1))
@@ -1728,6 +1731,9 @@ importers:
       '@types/react':
         specifier: ^18.2.0
         version: 18.3.12
+      ai:
+        specifier: ^6.0.0
+        version: 6.0.141(zod@4.1.12)
       browser-image-compression:
         specifier: ^2.0.2
         version: 2.0.2
@@ -1834,6 +1840,9 @@ importers:
 
   packages/stack:
     dependencies:
+      '@ai-sdk/react':
+        specifier: ^3.0.72
+        version: 3.0.143(react@19.2.1)(zod@4.1.12)
       '@hookform/resolvers':
         specifier: ^5.2.2
         version: 5.2.2(react-hook-form@7.70.0(react@19.2.1))
@@ -1864,6 +1873,9 @@ importers:
       '@types/react':
         specifier: ^18.2.0
         version: 18.3.12
+      ai:
+        specifier: ^6.0.0
+        version: 6.0.141(zod@4.1.12)
       browser-image-compression:
         specifier: ^2.0.2
         version: 2.0.2
@@ -2283,6 +2295,9 @@ importers:
 
   packages/template:
     dependencies:
+      '@ai-sdk/react':
+        specifier: ^3.0.72
+        version: 3.0.143(react@19.2.1)(zod@4.1.12)
       '@hookform/resolvers':
         specifier: ^5.2.2
         version: 5.2.2(react-hook-form@7.70.0(react@19.2.1))
@@ -2313,6 +2328,9 @@ importers:
       '@types/react':
         specifier: ^18.2.0
         version: 18.3.12
+      ai:
+        specifier: ^6.0.0
+        version: 6.0.141(zod@4.1.12)
       browser-image-compression:
         specifier: ^2.0.2
         version: 2.0.2
@@ -2435,6 +2453,12 @@ packages:
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
+  '@ai-sdk/gateway@3.0.83':
+    resolution: {integrity: sha512-LvlWujbSdEkTBXBLFtF7GS6riXdHhH0O+DpDrCaNQvXeHmSF2jKsOg7JWXiCgygAHM5cWFAO3JYmZp83DjiuBQ==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
   '@ai-sdk/mcp@1.0.21':
     resolution: {integrity: sha512-dRX2X6GDadZNpiylNnw0HP7zJC8ggVOOJV/JtxuF6CgtP8CKnc7a/wEzpUw1m/4AGdD3mTDhKnKFwC4y10a8FQ==}
     engines: {node: '>=18'}
@@ -2465,6 +2489,12 @@ packages:
     peerDependencies:
       zod: ^3.25.76 || ^4.1.8
 
+  '@ai-sdk/provider-utils@4.0.21':
+    resolution: {integrity: sha512-MtFUYI1/8mgDvRmaBDjbLJPFFrMG777AvSgyIFQtZHIMzm88R/12vYBBpnk7pfiWLFE1DSZzY4WDYzGbKAcmiw==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
   '@ai-sdk/provider@1.1.3':
     resolution: {integrity: sha512-qZMxYJ0qqX/RfnuIaab+zp8UAeJn/ygXXAffR5I4N0n1IrvA6qBsjc8hXLmBiMV2zoXlifkacF7sEFnYnjBcqg==}
     engines: {node: '>=18'}
@@ -2472,6 +2502,12 @@ packages:
   '@ai-sdk/provider@3.0.8':
     resolution: {integrity: sha512-oGMAgGoQdBXbZqNG0Ze56CHjDZ1IDYOwGYxYjO5KLSlz5HiNQ9udIXsPZ61VWaHGZ5XW/jyjmr6t2xz2jGVwbQ==}
     engines: {node: '>=18'}
+
+  '@ai-sdk/react@3.0.143':
+    resolution: {integrity: sha512-yYXrrscpF3MiCycGizgw1rukbhXBnoYpisC9vt12UU4i0tkyBMBCtBrsqLTJFrItax6ZR9TjTcGdNTqKqJhyow==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      react: ^18 || ~19.0.1 || ~19.1.2 || ^19.2.1
 
   '@ai-sdk/react@3.0.83':
     resolution: {integrity: sha512-UsHr+/N0pqGY90BwPFFpWXhY5eVYjNgcWCvSeDMRrzfPvtcd2yqHXlwR7/bveRryVB4NmJ2z6sjyLyOgOHRQdw==}
@@ -10006,6 +10042,12 @@ packages:
     resolution: {integrity: sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ==}
     engines: {node: '>= 14'}
 
+  ai@6.0.141:
+    resolution: {integrity: sha512-+GomGQWaId3xN0wcugUW/H7xMMaFkID2PiS7K/Wugj45G3efv0BXhQ3psRZoQVoRbOpdNoUqcK/KTB+FR4h6qg==}
+    engines: {node: '>=18'}
+    peerDependencies:
+      zod: ^3.25.76 || ^4.1.8
+
   ai@6.0.81:
     resolution: {integrity: sha512-F9EEhjl2dn1VGS5tbU64ldLbqRemV9X1WHghVblpJlPCWuyYj1xpPQsj+G0TRs/SyAGnbpG1yYpl9mkwfr1H8w==}
     engines: {node: '>=18'}
@@ -17278,6 +17320,20 @@ snapshots:
       '@vercel/oidc': 3.1.0
       zod: 4.1.12
 
+  '@ai-sdk/gateway@3.0.83(zod@3.25.76)':
+    dependencies:
+      '@ai-sdk/provider': 3.0.8
+      '@ai-sdk/provider-utils': 4.0.21(zod@3.25.76)
+      '@vercel/oidc': 3.1.0
+      zod: 3.25.76
+
+  '@ai-sdk/gateway@3.0.83(zod@4.1.12)':
+    dependencies:
+      '@ai-sdk/provider': 3.0.8
+      '@ai-sdk/provider-utils': 4.0.21(zod@4.1.12)
+      '@vercel/oidc': 3.1.0
+      zod: 4.1.12
+
   '@ai-sdk/mcp@1.0.21(zod@3.25.76)':
     dependencies:
       '@ai-sdk/provider': 3.0.8
@@ -17319,6 +17375,20 @@ snapshots:
       eventsource-parser: 3.0.6
       zod: 3.25.76
 
+  '@ai-sdk/provider-utils@4.0.21(zod@3.25.76)':
+    dependencies:
+      '@ai-sdk/provider': 3.0.8
+      '@standard-schema/spec': 1.1.0
+      eventsource-parser: 3.0.6
+      zod: 3.25.76
+
+  '@ai-sdk/provider-utils@4.0.21(zod@4.1.12)':
+    dependencies:
+      '@ai-sdk/provider': 3.0.8
+      '@standard-schema/spec': 1.1.0
+      eventsource-parser: 3.0.6
+      zod: 4.1.12
+
   '@ai-sdk/provider@1.1.3':
     dependencies:
       json-schema: 0.4.0
@@ -17327,22 +17397,32 @@ snapshots:
     dependencies:
       json-schema: 0.4.0
 
+  '@ai-sdk/react@3.0.143(react@19.2.1)(zod@4.1.12)':
+    dependencies:
+      '@ai-sdk/provider-utils': 4.0.21(zod@4.1.12)
+      ai: 6.0.141(zod@4.1.12)
+      react: 19.2.1
+      swr: 2.3.4(react@19.2.1)
+      throttleit: 2.1.0
+    transitivePeerDependencies:
+      - zod
+
+  '@ai-sdk/react@3.0.143(react@19.2.3)(zod@3.25.76)':
+    dependencies:
+      '@ai-sdk/provider-utils': 4.0.21(zod@3.25.76)
+      ai: 6.0.141(zod@3.25.76)
+      react: 19.2.3
+      swr: 2.3.4(react@19.2.3)
+      throttleit: 2.1.0
+    transitivePeerDependencies:
+      - zod
+
   '@ai-sdk/react@3.0.83(react@18.3.1)(zod@3.25.76)':
     dependencies:
       '@ai-sdk/provider-utils': 4.0.14(zod@3.25.76)
       ai: 6.0.81(zod@3.25.76)
       react: 18.3.1
       swr: 2.3.4(react@18.3.1)
-      throttleit: 2.1.0
-    transitivePeerDependencies:
-      - zod
-
-  '@ai-sdk/react@3.0.83(react@19.2.3)(zod@3.25.76)':
-    dependencies:
-      '@ai-sdk/provider-utils': 4.0.14(zod@3.25.76)
-      ai: 6.0.81(zod@3.25.76)
-      react: 19.2.3
-      swr: 2.3.4(react@19.2.3)
       throttleit: 2.1.0
     transitivePeerDependencies:
       - zod
@@ -17400,7 +17480,7 @@ snapshots:
 
   '@assistant-ui/react-ai-sdk@0.10.14(@assistant-ui/react@0.10.24(@types/react-dom@18.3.1)(@types/react@18.3.12)(immer@9.0.21)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(use-sync-external-store@1.6.0(react@19.2.3)))(@types/react-dom@18.3.1)(@types/react@18.3.12)(immer@9.0.21)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(use-sync-external-store@1.6.0(react@19.2.3))':
     dependencies:
-      '@ai-sdk/react': 3.0.83(react@19.2.3)(zod@3.25.76)
+      '@ai-sdk/react': 3.0.143(react@19.2.3)(zod@3.25.76)
       '@ai-sdk/ui-utils': 1.2.11(zod@3.25.76)
       '@assistant-ui/react': 0.10.24(@types/react-dom@18.3.1)(@types/react@18.3.12)(immer@9.0.21)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(use-sync-external-store@1.6.0(react@19.2.3))
       '@assistant-ui/react-edge': 0.2.12(@assistant-ui/react@0.10.24(@types/react-dom@18.3.1)(@types/react@18.3.12)(immer@9.0.21)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(use-sync-external-store@1.6.0(react@19.2.3)))(@types/react-dom@18.3.1)(@types/react@18.3.12)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
@@ -27088,6 +27168,22 @@ snapshots:
 
   agent-base@7.1.4: {}
 
+  ai@6.0.141(zod@3.25.76):
+    dependencies:
+      '@ai-sdk/gateway': 3.0.83(zod@3.25.76)
+      '@ai-sdk/provider': 3.0.8
+      '@ai-sdk/provider-utils': 4.0.21(zod@3.25.76)
+      '@opentelemetry/api': 1.9.0
+      zod: 3.25.76
+
+  ai@6.0.141(zod@4.1.12):
+    dependencies:
+      '@ai-sdk/gateway': 3.0.83(zod@4.1.12)
+      '@ai-sdk/provider': 3.0.8
+      '@ai-sdk/provider-utils': 4.0.21(zod@4.1.12)
+      '@opentelemetry/api': 1.9.0
+      zod: 4.1.12
+
   ai@6.0.81(zod@3.25.76):
     dependencies:
       '@ai-sdk/gateway': 3.0.41(zod@3.25.76)
@@ -34909,6 +35005,12 @@ snapshots:
       dequal: 2.0.3
       react: 18.3.1
       use-sync-external-store: 1.6.0(react@18.3.1)
+
+  swr@2.3.4(react@19.2.1):
+    dependencies:
+      dequal: 2.0.3
+      react: 19.2.1
+      use-sync-external-store: 1.6.0(react@19.2.1)
 
   swr@2.3.4(react@19.2.3):
     dependencies:

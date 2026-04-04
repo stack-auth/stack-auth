@@ -85,6 +85,11 @@ export type TokenStoreInit<HasTokenStore extends boolean = boolean> =
   : HasTokenStore extends false ? null
   : TokenStoreInit<true> | TokenStoreInit<false>;
 
+/**
+ * @deprecated Plain string URLs are deprecated. Use `{ type: "custom", url: "...", version: 0 }` instead.
+ */
+type DeprecatedStringUrl = string;
+
 export type HandlerPageUrls = Record<
   | "handler"
   | "signIn"
@@ -100,7 +105,7 @@ export type HandlerPageUrls = Record<
   | "mfa"
   | "error"
   | "onboarding",
-  string | { type: "custom", url: string, version: number } | { type: "hosted" | "handler-component" }
+  DeprecatedStringUrl | { type: "custom", url: string, version: number } | { type: "hosted" | "handler-component" }
 >;
 export type HandlerRedirectUrls = Record<
   | "afterSignIn"
