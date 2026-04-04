@@ -342,7 +342,7 @@ describe("Stack CLI", () => {
       { STACK_PROJECT_ID: createdProjectId },
     );
     expect(exitCode).toBe(1);
-    expect(stderr).toContain(".js or .ts");
+    expect(stderr).toContain(".ts extension");
   });
 
   it("config push rejects array config export", async ({ expect }) => {

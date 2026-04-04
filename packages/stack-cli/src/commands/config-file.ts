@@ -4,7 +4,7 @@ import * as fs from "fs";
 import { resolveAuth } from "../lib/auth.js";
 import { getAdminProject } from "../lib/app.js";
 import { CliError } from "../lib/errors.js";
-import { renderConfigFileContent } from "@stackframe/stack-shared/dist/config-rendering";
+import { detectImportPackageFromDir, renderConfigFileContent } from "@stackframe/stack-shared/dist/config-rendering";
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   if (value === null || typeof value !== "object" || Array.isArray(value)) {
@@ -22,7 +22,7 @@ export function registerConfigCommand(program: Command) {
   config
     .command("pull")
     .description("Pull branch config to a local file")
-    .requiredOption("--config-file <path>", "Path to write config file (.js or .ts)")
+    .requiredOption("--config-file <path>", "Path to write config file (.ts)")
     .option("--overwrite", "Overwrite an existing config file")
     .action(async (opts) => {
       const flags = program.opts();
@@ -33,15 +33,19 @@ export function registerConfigCommand(program: Command) {
       const filePath = path.resolve(opts.configFile);
       const ext = path.extname(filePath);
 
-      if (ext !== ".js" && ext !== ".ts") {
-        throw new CliError("Config file must have a .js or .ts extension.");
+      if (ext !== ".ts") {
+        throw new CliError("Config file must have a .ts extension. Typed config files require TypeScript.");
       }
 
       if (fs.existsSync(filePath) && !opts.overwrite) {
-        throw new CliError(`Config file already exists: ${filePath}. Re-run with --overwrite to replace it.`);
+        throw new CliError(`Config file already exists at ${filePath}. Stage or back up your changes, then re-run with --overwrite.`);
       }
 
-      const content = renderConfigFileContent(configOverride);
+      const importPackage = detectImportPackageFromDir(path.dirname(filePath));
+      if (!importPackage) {
+        throw new CliError("No Stack Auth package found in your project's dependencies. Run this from your project directory, or install a Stack Auth SDK first (e.g. npm install @stackframe/stack).");
+      }
+      const content = renderConfigFileContent(configOverride, importPackage);
 
       fs.writeFileSync(filePath, content);
       console.log(`Config written to ${filePath}`);
@@ -73,7 +77,8 @@ export function registerConfigCommand(program: Command) {
 
       const config = configModule.config;
       if (!isPlainObject(config)) {
-        throw new CliError('Config file must export a plain `config` object. Example: import type { StackConfig } from "@stackframe/js"; export const config: StackConfig = { ... };');
+        const examplePkg = detectImportPackageFromDir(path.dirname(filePath)) ?? "@stackframe/js";
+        throw new CliError(`Config file must export a plain \`config\` object. Example: import type { StackConfig } from "${examplePkg}"; export const config: StackConfig = { ... };`);
       }
 
       await project.replaceConfigOverride("branch", config);

@@ -1,5 +1,5 @@
 import { globalPrismaClient } from "@/prisma-client";
-import { renderConfigFileContent } from "@stackframe/stack-shared/dist/config-rendering";
+import { detectImportPackageFromDir, renderConfigFileContent } from "@stackframe/stack-shared/dist/config-rendering";
 import { isValidConfig } from "@stackframe/stack-shared/dist/config/format";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -67,6 +67,7 @@ export async function readConfigFromFile(filePath: string): Promise<Record<strin
 export async function writeConfigToFile(filePath: string, config: Record<string, unknown>): Promise<void> {
   const dir = path.dirname(filePath);
   await fs.mkdir(dir, { recursive: true });
-  const content = renderConfigFileContent(config);
+  const importPackage = detectImportPackageFromDir(dir);
+  const content = renderConfigFileContent(config, importPackage);
   await fs.writeFile(filePath, content, "utf-8");
 }

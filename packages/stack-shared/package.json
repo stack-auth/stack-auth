@@ -12,7 +12,6 @@
   },
   "files": [
     "README.md",
-    "src/config-authoring.ts",
     "dist",
     "CHANGELOG.md",
     "LICENSE"
