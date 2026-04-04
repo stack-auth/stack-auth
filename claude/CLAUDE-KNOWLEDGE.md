@@ -139,6 +139,8 @@ A: Update affected inline snapshots in `apps/e2e/tests/backend/endpoints/api/v1/
 Q: How should `createOrUpdateProjectWithLegacyConfig` handle `onboardingStatus` for forward-compat checks?
 A: Only write `onboardingStatus` when the `Project.onboardingStatus` column exists (for example by checking `information_schema.columns` in-transaction) so current code can still run against older schemas where that column is absent.
 
+Q: What caused the March 19, 2026 QEMU local emulator deps startup regression?
+A: The QEMU runtime path regressed when it switched from mounting `docker/local-emulator/base.env` into the runtime ISO to mounting the generated hidden file `docker/local-emulator/.env.development` instead. In testing, the `.env.development` QEMU path left cold boot stuck with only PostgreSQL healthy, while restoring the runtime ISO back to `base.env` brought deps startup back to about 12-13 seconds. The env payloads were effectively the same, so the likely issue was the QEMU runtime bundle/path handling for `.env.development`, not the actual env values.
 Q: Where is the private sign-up risk engine generated entrypoint in backend now?
 A: The generator script writes `apps/backend/src/private/implementation.generated.ts` (not `src/generated/private-sign-up-risk-engine.ts`), and backend runtime imports should target `@/private/implementation.generated`.
 
@@ -159,3 +161,5 @@ A: In `apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project
 
 Q: How can onboarding CTA buttons stay visible without leaving bottom-of-page actions on every step?
 A: In `apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client.tsx`, move step actions into a shared sticky top header right below the timeline (`OnboardingStickyTop`) and keep the page body focused on the step content. This removes duplicated footer CTAs and prevents scrolling just to reach `Continue` or `Do This Later`.
+Q: How should user signup time be exposed in JWT claims before production rollout?
+A: Use `signed_up_at` (OIDC-style naming) in access tokens and encode it as Unix seconds in `apps/backend/src/lib/tokens.tsx` (`Math.floor(user.signed_up_at_millis / 1000)`). Since this is pre-prod, the payload schema can require `signed_up_at` directly without a backward-compat optional shim.

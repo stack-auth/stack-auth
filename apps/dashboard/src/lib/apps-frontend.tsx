@@ -70,19 +70,17 @@ export function testItemPath(projectId: string, appFrontend: AppFrontend, item: 
 export const ALL_APPS_FRONTEND = {
   authentication: {
     icon: FingerprintSimpleIcon,
-    href: "users",
+    href: "auth-methods",
     navigationItems: [
-      { displayName: "Users", href: ".", getBreadcrumbItems: getUserBreadcrumbItems },
-      { displayName: "Auth Methods", href: "../auth-methods" },
+      { displayName: "Auth Methods", href: "." },
       { displayName: "Sign-up Rules", href: "../sign-up-rules" },
-      { displayName: "Trusted Domains", href: "../domains" },
     ],
     screenshots: getScreenshots('auth', 6),
     storeDescription: (
       <>
         <p>Authentication centralizes everything you need to operate your Stack Auth user directory.</p>
-        <p>Browse and create users, tune sign-up behavior, and configure auth methods without leaving the dashboard.</p>
-        <p>When it is time to harden production, manage trusted domains and other guardrails in the same place.</p>
+        <p>Tune sign-up behavior and configure auth methods without leaving the dashboard.</p>
+        <p>When it is time to harden production, you can pair these controls with project-level guardrails.</p>
       </>
     ),
   },
@@ -367,28 +365,6 @@ async function getEmailTemplatesBreadcrumbItems(stackAdminApp: StackAdminApp<fal
     {
       item: template.displayName,
       href: `./${encodeURIComponent(template.id)}`,
-    },
-  ];
-}
-
-async function getUserBreadcrumbItems(stackAdminApp: StackAdminApp<false>, relativePart: string) {
-  const baseCrumbs = [{ item: "Users", href: "." }];
-  const match = relativePart.match(/^\/([^/]+)(?:\/.*)?$/);
-  if (!match) {
-    return baseCrumbs;
-  }
-
-  const userId = decodeURIComponent(match[1]);
-  const user = await stackAdminApp.getUser(userId);
-  if (!user) {
-    return baseCrumbs;
-  }
-
-  return [
-    ...baseCrumbs,
-    {
-      item: user.displayName ?? user.primaryEmail ?? user.id,
-      href: `./${encodeURIComponent(user.id)}`,
     },
   ];
 }

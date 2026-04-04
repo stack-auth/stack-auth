@@ -1,0 +1,26 @@
+---
+title: "Create Session"
+description: "Create a new session for a given user. This will return a refresh token that can be used to impersonate the user."
+api: "POST /auth/sessions"
+---
+
+## Request
+
+<ParamField body="user_id" type="string" required>
+  The identifier of the user to create a session for.
+</ParamField>
+
+## Response
+
+<ResponseField name="200" type="object">
+  A successful request returns session credentials for user impersonation purposes, including a refresh token.
+</ResponseField>
+
+<CodeGroup>
+```bash cURL
+curl -X POST "https://api.stack-auth.com/auth/sessions" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"user_id": "USER_ID"}'
+```
+</CodeGroup>

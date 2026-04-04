@@ -1,0 +1,33 @@
+---
+title: "Grant Team Permission to User"
+description: "Grant a team permission to a user (the team permission must be created first on the Stack dashboard)."
+api: "POST /team-permissions/{team_id}/{user_id}/{permission_id}"
+---
+
+## Request
+
+### Path Parameters
+
+<ParamField path="team_id" type="string" required>
+  The identifier for the team.
+</ParamField>
+
+<ParamField path="user_id" type="string" required>
+  The ID of the user, or the special value `me` for the currently authenticated user.
+</ParamField>
+
+<ParamField path="permission_id" type="string" required>
+  The permission ID used to uniquely identify a permission. Can either be a custom permission with lowercase letters, numbers, `:`, and `_` characters, or one of the system permissions: `$update_team`, `$delete_team`, `$read_members`, `$remove_members`, `$invite_members`, `$manage_api_keys`.
+</ParamField>
+
+### Body Parameters
+
+<ParamField body="body" type="object" required>
+  Request body required.
+</ParamField>
+
+## Response
+
+<ResponseField name="201" type="object">
+  Successful response. The team permission was granted.
+</ResponseField>
