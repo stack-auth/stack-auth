@@ -24,25 +24,9 @@ export default function LayoutClient({ children }: { children: React.ReactNode }
           password: "LocalEmulatorPassword",
         });
       } else if (isPreview) {
-        let creds: string | null = null;
-        try {
-          creds = localStorage.getItem("stack-preview-credentials");
-        } catch {
-          // localStorage may be blocked in cross-origin iframes
-        }
-        if (!creds) {
-          const id = generateUuid();
-          creds = JSON.stringify({
-            email: `preview-${id}@preview.stack-auth.com`,
-            password: `PreviewPass-${id}`,
-          });
-          try {
-            localStorage.setItem("stack-preview-credentials", creds);
-          } catch {
-            // localStorage may be blocked in cross-origin iframes
-          }
-        }
-        const { email, password } = JSON.parse(creds);
+        const id = generateUuid();
+        const email = `preview-${id}@preview.stack-auth.com`;
+        const password = `PreviewPass-${id}`;
         const signInResult = await app.signInWithCredential({ email, password, noRedirect: true });
         if (signInResult.status === "error") {
           await app.signUpWithCredential({ email, password, noRedirect: true });
