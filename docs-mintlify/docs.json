@@ -52,7 +52,6 @@
             "pages": [
               "docs/getting-started/setup",
               "docs/getting-started/users",
-              "docs/getting-started/components",
               "docs/getting-started/production",
               "docs/getting-started/vite-example"
             ]
@@ -60,7 +59,6 @@
           {
             "group": "Going Further",
             "pages": [
-              "docs/going-further/working-with-ai",
               "docs/concepts/stack-app",
               "docs/concepts/backend-integration",
               "docs/going-further/local-development",
@@ -71,23 +69,9 @@
                   "docs/customization/custom-styles",
                   "docs/customization/dark-mode",
                   "docs/customization/internationalization",
-                  {
-                    "group": "Page Examples",
-                    "pages": [
-                      "docs/customization/page-examples",
-                      "docs/customization/page-examples/forgot-password",
-                      "docs/customization/page-examples/password-reset",
-                      "docs/customization/page-examples/sign-in",
-                      "docs/customization/page-examples/sign-up"
-                    ]
-                  }
+                  "docs/customization/page-examples"
                 ]
-              },
-              "docs/concepts/custom-user-data",
-              "docs/concepts/sign-up-rules",
-              "docs/concepts/jwt",
-              "docs/concepts/user-onboarding",
-              "docs/concepts/team-selection"
+              }
             ]
           },
           {
@@ -101,6 +85,7 @@
                   {
                     "group": "Auth Providers",
                     "pages": [
+                      "docs/apps/auth-providers",
                       "docs/concepts/auth-providers",
                       "docs/concepts/auth-providers/apple",
                       "docs/concepts/auth-providers/bitbucket",
@@ -117,18 +102,31 @@
                       "docs/concepts/auth-providers/two-factor-auth",
                       "docs/concepts/auth-providers/x-twitter"
                     ]
-                  }
+                  },
+                  "docs/concepts/sign-up-rules",
+                  "docs/others/cli-authentication"
                 ]
               },
-              "docs/apps/emails",
-              "docs/apps/payments",
-              "docs/apps/analytics",
-              "docs/apps/api-keys",
-              "docs/apps/data-vault",
-              "docs/apps/launch-checklist",
+              "docs/concepts/user-onboarding",
+              {
+                "group": "Teams",
+                "icon": "users",
+                "pages": [
+                  "docs/apps/orgs-and-teams",
+                  "docs/concepts/orgs-and-teams",
+                  "docs/concepts/team-selection"
+                ]
+              },
               "docs/apps/permissions",
-              "docs/apps/orgs-and-teams",
-              "docs/apps/webhooks"
+              "docs/apps/api-keys",
+              "docs/apps/payments",
+              "docs/apps/emails",
+              "docs/concepts/emails",
+              "docs/apps/data-vault",
+              "docs/apps/webhooks",
+              "docs/apps/launch-checklist",
+              "docs/going-further/working-with-ai",
+              "docs/apps/analytics"
             ]
           },
           {
@@ -136,7 +134,7 @@
             "pages": [
               "docs/others/supabase",
               "docs/others/convex",
-              "docs/others/mcp-setup"
+              "docs/others/vercel"
             ]
           },
           {
@@ -144,6 +142,15 @@
             "pages": [
               "docs/others/self-host",
               "docs/others/cli-authentication",
+              "docs/others/mcp-setup",
+              {
+                "group": "Tutorials",
+                "pages": [
+                  "docs/others/tutorials/build-a-saas-with-stack-auth",
+                  "docs/others/tutorials/build-a-team-based-app",
+                  "docs/others/tutorials/ship-production-ready-auth"
+                ]
+              },
               "docs/going-further/showcase"
             ]
           }
@@ -594,10 +601,5 @@
       "robots": "noindex"
     }
   },
-  "redirects": [
-    {
-      "source": "/docs/overview",
-      "destination": "/"
-    }
-  ]
+  "redirects": []
 }
