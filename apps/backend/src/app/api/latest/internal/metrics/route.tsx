@@ -1,25 +1,35 @@
 import { Prisma } from "@/generated/prisma/client";
+import { EmailOutboxSimpleStatus } from "@/generated/prisma/enums";
 import { getClickhouseAdminClient } from "@/lib/clickhouse";
+import { ClickHouseError } from "@clickhouse/client";
+import { ActivitySplit, buildSplitFromDailyEntitySets, createEmptySplitSeries } from "@/lib/metrics-activity-split";
 import { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, sqlQuoteIdent } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
+import {
+  type MetricsDataPoint,
+  MetricsAnalyticsOverviewSchema,
+  MetricsAuthOverviewSchema,
+  MetricsDataPointsSchema as DataPointsSchema,
+  MetricsEmailOverviewSchema,
+  MetricsLoginMethodEntrySchema,
+  MetricsPaymentsOverviewSchema,
+  MetricsRecentUserSchema,
+} from "@stackframe/stack-shared/dist/interface/admin-metrics";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
-import { adaptSchema, adminAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import yup from 'yup';
+import { adaptSchema, adminAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { userFullInclude, userPrismaToCrud, usersCrudHandlers } from "../../users/crud";
 
-type DataPoints = yup.InferType<typeof DataPointsSchema>;
+type DataPoints = MetricsDataPoint[];
 
 const MAX_USERS_FOR_COUNTRY_SAMPLE = 10_000;
-
-const DataPointsSchema = yupArray(yupObject({
-  date: yupString().defined(),
-  activity: yupNumber().defined(),
-}).defined()).defined();
+const METRICS_WINDOW_DAYS = 30;
+const METRICS_WINDOW_MS = METRICS_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+const ONE_DAY_MS = 24 * 60 * 60 * 1000;
 
 function formatClickhouseDateTimeParam(date: Date): string {
   // ClickHouse DateTime params are passed as "YYYY-MM-DDTHH:MM:SS" (no timezone); treat them as UTC.
@@ -115,8 +125,8 @@ async function loadTotalUsers(tenancy: Tenancy, now: Date, includeAnonymous: boo
 async function loadDailyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymous: boolean = false) {
   const todayUtc = new Date(now);
   todayUtc.setUTCHours(0, 0, 0, 0);
-  const since = new Date(todayUtc.getTime() - 30 * 24 * 60 * 60 * 1000);
-  const untilExclusive = new Date(todayUtc.getTime() + 24 * 60 * 60 * 1000);
+  const since = new Date(todayUtc.getTime() - METRICS_WINDOW_MS);
+  const untilExclusive = new Date(todayUtc.getTime() + ONE_DAY_MS);
 
   const clickhouseClient = getClickhouseAdminClient();
   const result = await clickhouseClient.query({
@@ -154,8 +164,8 @@ async function loadDailyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymou
   }
 
   const out: DataPoints = [];
-  for (let i = 0; i <= 30; i += 1) {
-    const day = new Date(since.getTime() + i * 24 * 60 * 60 * 1000);
+  for (let i = 0; i <= METRICS_WINDOW_DAYS; i += 1) {
+    const day = new Date(since.getTime() + i * ONE_DAY_MS);
     const dayKey = day.toISOString().split('T')[0];
     out.push({
       date: dayKey,
@@ -165,81 +175,11 @@ async function loadDailyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymou
   return out;
 }
 
-type ActivitySplit = {
-  total: DataPoints,
-  new: DataPoints,
-  retained: DataPoints,
-  reactivated: DataPoints,
-};
-
-function createEmptySplitSeries(days: string[]): ActivitySplit {
-  const emptySeries = days.map((date) => ({ date, activity: 0 }));
-  return {
-    total: emptySeries.map((item) => ({ ...item })),
-    new: emptySeries.map((item) => ({ ...item })),
-    retained: emptySeries.map((item) => ({ ...item })),
-    reactivated: emptySeries.map((item) => ({ ...item })),
-  };
-}
-
-function buildSplitFromDailyEntitySets(options: {
-  orderedDays: string[],
-  entityIdsByDay: Map<string, Set<string>>,
-  createdDayByEntityId?: Map<string, string>,
-}): ActivitySplit {
-  const { orderedDays, entityIdsByDay, createdDayByEntityId } = options;
-  const split = createEmptySplitSeries(orderedDays);
-  const windowStart = orderedDays[0];
-  const previouslySeen = new Set<string>();
-  let previousDaySet = new Set<string>();
-
-  for (let i = 0; i < orderedDays.length; i += 1) {
-    const day = orderedDays[i];
-    const currentDaySet = entityIdsByDay.get(day) ?? new Set<string>();
-    let newCount = 0;
-    let retainedCount = 0;
-    let reactivatedCount = 0;
-
-    for (const entityId of currentDaySet) {
-      const createdDay = createdDayByEntityId?.get(entityId);
-      if (createdDay === day) {
-        newCount += 1;
-      } else if (previousDaySet.has(entityId)) {
-        retainedCount += 1;
-      } else if (previouslySeen.has(entityId)) {
-        reactivatedCount += 1;
-      } else if (createdDay != null && createdDay >= windowStart) {
-        // Created within the window on a different day, but not active on the
-        // immediately previous day — treat as new (gap-day case).
-        newCount += 1;
-      } else {
-        // Either created before the window started, or createdDay is unknown.
-        // Either way, we cannot legitimately bucket this as "new" — count as
-        // reactivated to avoid inflating new-user metrics for pre-existing
-        // entities first seen inside the window.
-        reactivatedCount += 1;
-      }
-    }
-
-    split.total[i].activity = currentDaySet.size;
-    split.new[i].activity = newCount;
-    split.retained[i].activity = retainedCount;
-    split.reactivated[i].activity = reactivatedCount;
-
-    for (const entityId of currentDaySet) {
-      previouslySeen.add(entityId);
-    }
-    previousDaySet = currentDaySet;
-  }
-
-  return split;
-}
-
 async function loadDailyActiveUsersSplit(tenancy: Tenancy, now: Date, includeAnonymous: boolean): Promise<ActivitySplit> {
   const todayUtc = new Date(now);
   todayUtc.setUTCHours(0, 0, 0, 0);
-  const since = new Date(todayUtc.getTime() - 30 * 24 * 60 * 60 * 1000);
-  const untilExclusive = new Date(todayUtc.getTime() + 24 * 60 * 60 * 1000);
+  const since = new Date(todayUtc.getTime() - METRICS_WINDOW_MS);
+  const untilExclusive = new Date(todayUtc.getTime() + ONE_DAY_MS);
   const clickhouseClient = getClickhouseAdminClient();
   const schema = await getPrismaSchemaForTenancy(tenancy);
   const prisma = await getPrismaClientForTenancy(tenancy);
@@ -290,8 +230,8 @@ async function loadDailyActiveUsersSplit(tenancy: Tenancy, now: Date, includeAno
 
   const orderedDays: string[] = [];
   const idsByDay = new Map<string, Set<string>>();
-  for (let i = 0; i <= 30; i += 1) {
-    const date = new Date(since.getTime() + i * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  for (let i = 0; i <= METRICS_WINDOW_DAYS; i += 1) {
+    const date = new Date(since.getTime() + i * ONE_DAY_MS).toISOString().split('T')[0];
     orderedDays.push(date);
     idsByDay.set(date, new Set<string>());
   }
@@ -317,8 +257,8 @@ async function loadDailyActiveUsersSplit(tenancy: Tenancy, now: Date, includeAno
 async function loadDailyActiveTeamsSplit(tenancy: Tenancy, now: Date): Promise<ActivitySplit> {
   const todayUtc = new Date(now);
   todayUtc.setUTCHours(0, 0, 0, 0);
-  const since = new Date(todayUtc.getTime() - 30 * 24 * 60 * 60 * 1000);
-  const untilExclusive = new Date(todayUtc.getTime() + 24 * 60 * 60 * 1000);
+  const since = new Date(todayUtc.getTime() - METRICS_WINDOW_MS);
+  const untilExclusive = new Date(todayUtc.getTime() + ONE_DAY_MS);
   const clickhouseClient = getClickhouseAdminClient();
   const schema = await getPrismaSchemaForTenancy(tenancy);
   const prisma = await getPrismaClientForTenancy(tenancy);
@@ -366,8 +306,8 @@ async function loadDailyActiveTeamsSplit(tenancy: Tenancy, now: Date): Promise<A
 
   const orderedDays: string[] = [];
   const idsByDay = new Map<string, Set<string>>();
-  for (let i = 0; i <= 30; i += 1) {
-    const date = new Date(since.getTime() + i * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  for (let i = 0; i <= METRICS_WINDOW_DAYS; i += 1) {
+    const date = new Date(since.getTime() + i * ONE_DAY_MS).toISOString().split('T')[0];
     orderedDays.push(date);
     idsByDay.set(date, new Set<string>());
   }
@@ -438,8 +378,8 @@ async function loadMonthlyActiveUsers(tenancy: Tenancy, includeAnonymous: boolea
   const todayUtc = new Date(now);
   todayUtc.setUTCHours(0, 0, 0, 0);
   // 30-day rolling window for MAU
-  const since = new Date(todayUtc.getTime() - 30 * 24 * 60 * 60 * 1000);
-  const untilExclusive = new Date(todayUtc.getTime() + 24 * 60 * 60 * 1000);
+  const since = new Date(todayUtc.getTime() - METRICS_WINDOW_MS);
+  const untilExclusive = new Date(todayUtc.getTime() + ONE_DAY_MS);
 
   const clickhouseClient = getClickhouseAdminClient();
   try {
@@ -476,6 +416,12 @@ async function loadMonthlyActiveUsers(tenancy: Tenancy, includeAnonymous: boolea
     }
     return uniqueUserIds.size;
   } catch (error) {
+    // Only swallow real ClickHouse errors (e.g. project hasn't enabled
+    // analytics yet, transient query failure). Anything else is a programming
+    // bug and should propagate to the smart route handler.
+    if (!(error instanceof ClickHouseError)) {
+      throw error;
+    }
     captureError("internal-metrics-load-monthly-active-users-failed", new StackAssertionError(
       "Failed to load monthly active users for internal metrics.",
       {
@@ -494,7 +440,7 @@ async function loadDailyRevenue(tenancy: Tenancy, now: Date): Promise<Array<{ da
   const prisma = await getPrismaClientForTenancy(tenancy);
   const todayUtc = new Date(now);
   todayUtc.setUTCHours(0, 0, 0, 0);
-  const since = new Date(todayUtc.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const since = new Date(todayUtc.getTime() - METRICS_WINDOW_MS);
 
   const rows = await prisma.$replica().$queryRaw<{ day: string, new_cents: bigint }[]>`
     SELECT
@@ -515,8 +461,8 @@ async function loadDailyRevenue(tenancy: Tenancy, now: Date): Promise<Array<{ da
   }
 
   const dailyRevenue: Array<{ date: string, new_cents: number, refund_cents: number }> = [];
-  for (let i = 0; i <= 30; i++) {
-    const day = new Date(since.getTime() + i * 24 * 60 * 60 * 1000);
+  for (let i = 0; i <= METRICS_WINDOW_DAYS; i++) {
+    const day = new Date(since.getTime() + i * ONE_DAY_MS);
     const key = day.toISOString().split('T')[0];
     dailyRevenue.push({ date: key, new_cents: revenueByDay.get(key) ?? 0, refund_cents: 0 });
   }
@@ -529,7 +475,7 @@ async function loadPaymentsOverview(tenancy: Tenancy) {
   const prisma = await getPrismaClientForTenancy(tenancy);
 
   const now = new Date();
-  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const thirtyDaysAgo = new Date(now.getTime() - METRICS_WINDOW_MS);
 
   const [
     subscriptionsByStatus,
@@ -607,8 +553,8 @@ async function loadPaymentsOverview(tenancy: Tenancy) {
     recentByDay.set(row.day, Number(row.cnt));
   }
   const dailySubscriptions: DataPoints = [];
-  for (let i = 0; i <= 30; i++) {
-    const day = new Date(thirtyDaysAgo.getTime() + i * 24 * 60 * 60 * 1000);
+  for (let i = 0; i <= METRICS_WINDOW_DAYS; i++) {
+    const day = new Date(thirtyDaysAgo.getTime() + i * ONE_DAY_MS);
     const key = day.toISOString().split('T')[0];
     dailySubscriptions.push({ date: key, activity: recentByDay.get(key) ?? 0 });
   }
@@ -639,7 +585,7 @@ async function loadEmailOverview(tenancy: Tenancy) {
   const schema = await getPrismaSchemaForTenancy(tenancy);
   const prisma = await getPrismaClientForTenancy(tenancy);
   const now = new Date();
-  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const thirtyDaysAgo = new Date(now.getTime() - METRICS_WINDOW_MS);
 
   const [
     counts,
@@ -720,8 +666,8 @@ async function loadEmailOverview(tenancy: Tenancy) {
     emailByDay.set(row.day, (emailByDay.get(row.day) ?? 0) + Number(row.cnt));
   }
   const dailyEmails: DataPoints = [];
-  for (let i = 0; i <= 30; i++) {
-    const day = new Date(thirtyDaysAgo.getTime() + i * 24 * 60 * 60 * 1000);
+  for (let i = 0; i <= METRICS_WINDOW_DAYS; i++) {
+    const day = new Date(thirtyDaysAgo.getTime() + i * ONE_DAY_MS);
     const key = day.toISOString().split('T')[0];
     dailyEmails.push({ date: key, activity: emailByDay.get(key) ?? 0 });
   }
@@ -735,17 +681,37 @@ async function loadEmailOverview(tenancy: Tenancy) {
   // Build per-day per-status breakdown for stacked bar chart
   type DayStatusCounts = { date: string, ok: number, error: number, in_progress: number };
   const dayStatusMap = new Map<string, { ok: number, error: number, in_progress: number }>();
-  for (let i = 0; i <= 30; i++) {
-    const key = new Date(thirtyDaysAgo.getTime() + i * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+  for (let i = 0; i <= METRICS_WINDOW_DAYS; i++) {
+    const key = new Date(thirtyDaysAgo.getTime() + i * ONE_DAY_MS).toISOString().split('T')[0];
     dayStatusMap.set(key, { ok: 0, error: 0, in_progress: 0 });
   }
   for (const row of emailsByDayAndStatus) {
     const entry = dayStatusMap.get(row.day);
-    if (entry != null) {
-      const count = Number(row.cnt);
-      if (row.status === 'OK') entry.ok += count;
-      else if (row.status === 'ERROR') entry.error += count;
-      else entry.in_progress += count;
+    if (entry == null) continue;
+    const count = Number(row.cnt);
+    // Exhaustive switch over EmailOutboxSimpleStatus — adding a new enum
+    // value will fail typecheck here so we can't silently miscount.
+    const status = row.status as EmailOutboxSimpleStatus;
+    switch (status) {
+      case 'OK': {
+        entry.ok += count;
+        break;
+      }
+      case 'ERROR': {
+        entry.error += count;
+        break;
+      }
+      case 'IN_PROGRESS': {
+        entry.in_progress += count;
+        break;
+      }
+      default: {
+        const _exhaustiveCheck: never = status;
+        captureError("internal-metrics-unknown-email-simple-status", new StackAssertionError(
+          `Unknown EmailOutboxSimpleStatus value: ${String(_exhaustiveCheck)}`,
+          { status: _exhaustiveCheck },
+        ));
+      }
     }
   }
   const dailyEmailsByStatus: DayStatusCounts[] = [...dayStatusMap.entries()].map(([date, counts]) => ({
@@ -779,16 +745,76 @@ async function loadEmailOverview(tenancy: Tenancy) {
 
 // ── Web Analytics Aggregates ─────────────────────────────────────────────────
 
+type SessionReplayAggregates = {
+  total: number,
+  recent: number,
+  avgSessionSeconds: number,
+  totalRevenueCents: number,
+};
+
+async function loadSessionReplayAggregates(tenancy: Tenancy, since: Date): Promise<SessionReplayAggregates> {
+  const schema = await getPrismaSchemaForTenancy(tenancy);
+  const prisma = await getPrismaClientForTenancy(tenancy);
+  const result = await prisma.$replica().$queryRaw<[{
+    total: number,
+    recent: number,
+    avg_ms: number | null,
+    total_revenue_cents: bigint,
+  }]>`
+    SELECT
+      (SELECT COUNT(*)::int
+        FROM ${sqlQuoteIdent(schema)}."SessionReplay"
+        WHERE "tenancyId" = ${tenancy.id}::UUID) AS total,
+      (SELECT COUNT(*)::int
+        FROM ${sqlQuoteIdent(schema)}."SessionReplay"
+        WHERE "tenancyId" = ${tenancy.id}::UUID
+          AND "startedAt" >= ${since}) AS recent,
+      (SELECT AVG(GREATEST(0, EXTRACT(EPOCH FROM ("lastEventAt" - "startedAt")) * 1000))
+        FROM ${sqlQuoteIdent(schema)}."SessionReplay"
+        WHERE "tenancyId" = ${tenancy.id}::UUID
+          AND "startedAt" >= ${since}) AS avg_ms,
+      (SELECT COALESCE(SUM("amountTotal"), 0)::bigint
+        FROM ${sqlQuoteIdent(schema)}."SubscriptionInvoice"
+        WHERE "tenancyId" = ${tenancy.id}::UUID
+          AND "amountTotal" IS NOT NULL) AS total_revenue_cents
+  `;
+
+  const row = result[0];
+  const avgSessionSeconds = Number(((Number(row.avg_ms ?? 0)) / 1000).toFixed(1));
+  return {
+    total: Number(row.total),
+    recent: Number(row.recent),
+    avgSessionSeconds,
+    totalRevenueCents: Number(row.total_revenue_cents),
+  };
+}
+
 async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymous: boolean) {
   const todayUtc = new Date(now);
   todayUtc.setUTCHours(0, 0, 0, 0);
-  const since = new Date(todayUtc.getTime() - 30 * 24 * 60 * 60 * 1000);
-  const untilExclusive = new Date(todayUtc.getTime() + 24 * 60 * 60 * 1000);
+  const since = new Date(todayUtc.getTime() - METRICS_WINDOW_MS);
+  const untilExclusive = new Date(todayUtc.getTime() + ONE_DAY_MS);
 
   const clickhouseClient = getClickhouseAdminClient();
 
+  // Session replay aggregates come from Postgres and have nothing to do with
+  // ClickHouse availability. Run them in parallel with the ClickHouse queries
+  // but keep them outside the ClickHouse-only try/catch so a postgres failure
+  // never gets misattributed to "analytics not enabled".
+  const replayPromise = loadSessionReplayAggregates(tenancy, since);
+
+  let clickhouseAggregates: {
+    dailyPageViews: DataPoints,
+    dailyClicks: DataPoints,
+    dailyVisitors: DataPoints,
+    visitors: number,
+    onlineLive: number,
+    topReferrers: { referrer: string, visitors: number }[],
+    topRegion: { country_code: string | null, region_code: string | null, count: number } | null,
+  } | null = null;
+
   try {
-    const [dailyEventResult, totalVisitorResult, referrerResult, topRegionResult, onlineResult, replayResult] = await Promise.all([
+    const [dailyEventResult, totalVisitorResult, referrerResult, topRegionResult, onlineResult] = await Promise.all([
       // Combined daily aggregates: page-view count, click count, and unique
       // visitors per day — one scan over the page-view/click event types.
       clickhouseClient.query({
@@ -910,43 +936,6 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
         },
         format: "JSONEachRow",
       }),
-      // session replay aggregates from Postgres
-      (async () => {
-        const schema = await getPrismaSchemaForTenancy(tenancy);
-        const prisma = await getPrismaClientForTenancy(tenancy);
-        const result = await prisma.$replica().$queryRaw<[{
-          total: number,
-          recent: number,
-          avg_ms: number | null,
-          total_revenue_cents: bigint,
-        }]>`
-          SELECT
-            (SELECT COUNT(*)::int
-              FROM ${sqlQuoteIdent(schema)}."SessionReplay"
-              WHERE "tenancyId" = ${tenancy.id}::UUID) AS total,
-            (SELECT COUNT(*)::int
-              FROM ${sqlQuoteIdent(schema)}."SessionReplay"
-              WHERE "tenancyId" = ${tenancy.id}::UUID
-                AND "startedAt" >= ${since}) AS recent,
-            (SELECT AVG(GREATEST(0, EXTRACT(EPOCH FROM ("lastEventAt" - "startedAt")) * 1000))
-              FROM ${sqlQuoteIdent(schema)}."SessionReplay"
-              WHERE "tenancyId" = ${tenancy.id}::UUID
-                AND "startedAt" >= ${since}) AS avg_ms,
-            (SELECT COALESCE(SUM("amountTotal"), 0)::bigint
-              FROM ${sqlQuoteIdent(schema)}."SubscriptionInvoice"
-              WHERE "tenancyId" = ${tenancy.id}::UUID
-                AND "amountTotal" IS NOT NULL) AS total_revenue_cents
-        `;
-
-        const row = result[0];
-        const avgSessionSeconds = Number(((Number(row.avg_ms ?? 0)) / 1000).toFixed(1));
-        return {
-          total: Number(row.total),
-          recent: Number(row.recent),
-          avgSessionSeconds,
-          totalRevenueCents: Number(row.total_revenue_cents),
-        };
-      })(),
     ]);
 
     const dailyEventRows: { day: string, pv: number, cl: number, visitors: number }[] = await dailyEventResult.json();
@@ -965,8 +954,8 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
     const dailyPageViews: DataPoints = [];
     const dailyClicks: DataPoints = [];
     const dailyVisitors: DataPoints = [];
-    for (let i = 0; i <= 30; i++) {
-      const day = new Date(since.getTime() + i * 24 * 60 * 60 * 1000);
+    for (let i = 0; i <= METRICS_WINDOW_DAYS; i++) {
+      const day = new Date(since.getTime() + i * ONE_DAY_MS);
       const key = day.toISOString().split('T')[0];
       dailyPageViews.push({ date: key, activity: pvByDay.get(key) ?? 0 });
       dailyClicks.push({ date: key, activity: clByDay.get(key) ?? 0 });
@@ -977,60 +966,82 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
     const topRegionRows: { country_code: string | null, region_code: string | null, cnt: number }[] = await topRegionResult.json();
     const onlineRows: { online: number }[] = await onlineResult.json();
 
-    // daily_revenue is intentionally not populated here — it is owned by
-    // payments_overview (real invoice data) and stitched into analytics_overview
-    // by the response builder so the dashboard can keep reading it from a single
-    // location.
-    return {
-      daily_page_views: dailyPageViews,
-      daily_clicks: dailyClicks,
-      daily_visitors: dailyVisitors,
-      daily_revenue: [] as Array<{ date: string, new_cents: number, refund_cents: number }>,
-      total_revenue_cents: replayResult.totalRevenueCents,
-      total_replays: replayResult.total,
-      recent_replays: replayResult.recent,
+    clickhouseAggregates = {
+      dailyPageViews,
+      dailyClicks,
+      dailyVisitors,
       visitors,
-      avg_session_seconds: replayResult.avgSessionSeconds,
-      online_live: Number(onlineRows[0]?.online ?? 0),
-      revenue_per_visitor: visitors > 0
-        ? Number(((replayResult.totalRevenueCents / 100) / visitors).toFixed(2))
-        : 0,
-      top_referrers: referrers.map((row) => ({
+      onlineLive: Number(onlineRows[0]?.online ?? 0),
+      topReferrers: referrers.map((row) => ({
         referrer: row.referrer ?? '(direct)',
         visitors: Number(row.cnt),
       })),
-      top_region: topRegionRows[0] ? {
+      topRegion: topRegionRows[0] ? {
         country_code: topRegionRows[0].country_code,
         region_code: topRegionRows[0].region_code,
         count: Number(topRegionRows[0].cnt),
       } : null,
     };
   } catch (error) {
-    captureError("internal-metrics-analytics-overview-fallback", new StackAssertionError(
-      "Falling back to empty analytics overview due to query failure.",
+    // Only swallow real ClickHouse errors — that's the "analytics not enabled
+    // for this project" path. Anything else is a real bug and should propagate.
+    if (!(error instanceof ClickHouseError)) {
+      throw error;
+    }
+    captureError("internal-metrics-analytics-overview-clickhouse-fallback", new StackAssertionError(
+      "Falling back to empty analytics overview due to ClickHouse query failure.",
       {
         cause: error,
         projectId: tenancy.project.id,
         branchId: tenancy.branchId,
       },
     ));
-    // Analytics may not be enabled for all projects
+    // Leave clickhouseAggregates as null — handled in the response builder below.
+  }
+
+  // Postgres-backed session replay query has its own error surface — let it
+  // propagate naturally so we don't conflate it with "clickhouse missing".
+  const replayResult = await replayPromise;
+
+  // daily_revenue is intentionally not populated here — it is owned by
+  // payments_overview (real invoice data) and stitched into analytics_overview
+  // by the response builder so the dashboard can keep reading it from a single
+  // location.
+  if (clickhouseAggregates == null) {
     return {
       daily_page_views: [] as DataPoints,
       daily_clicks: [] as DataPoints,
       daily_visitors: [] as DataPoints,
       daily_revenue: [] as Array<{ date: string, new_cents: number, refund_cents: number }>,
-      total_revenue_cents: 0,
-      total_replays: 0,
-      recent_replays: 0,
+      total_revenue_cents: replayResult.totalRevenueCents,
+      total_replays: replayResult.total,
+      recent_replays: replayResult.recent,
       visitors: 0,
-      avg_session_seconds: 0,
+      avg_session_seconds: replayResult.avgSessionSeconds,
       online_live: 0,
       revenue_per_visitor: 0,
       top_referrers: [],
       top_region: null,
     };
   }
+
+  return {
+    daily_page_views: clickhouseAggregates.dailyPageViews,
+    daily_clicks: clickhouseAggregates.dailyClicks,
+    daily_visitors: clickhouseAggregates.dailyVisitors,
+    daily_revenue: [] as Array<{ date: string, new_cents: number, refund_cents: number }>,
+    total_revenue_cents: replayResult.totalRevenueCents,
+    total_replays: replayResult.total,
+    recent_replays: replayResult.recent,
+    visitors: clickhouseAggregates.visitors,
+    avg_session_seconds: replayResult.avgSessionSeconds,
+    online_live: clickhouseAggregates.onlineLive,
+    revenue_per_visitor: clickhouseAggregates.visitors > 0
+      ? Number(((replayResult.totalRevenueCents / 100) / clickhouseAggregates.visitors).toFixed(2))
+      : 0,
+    top_referrers: clickhouseAggregates.topReferrers,
+    top_region: clickhouseAggregates.topRegion,
+  };
 }
 
 // ── Development-mode fallback data for ClickHouse-dependent metrics ──────────
@@ -1054,10 +1065,10 @@ function generateDevDauSplit(now: Date, totalUsers: number): ActivitySplit {
   const rand = seededPrng(12345);
   const todayUtc = new Date(now);
   todayUtc.setUTCHours(0, 0, 0, 0);
-  const since = new Date(todayUtc.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const since = new Date(todayUtc.getTime() - METRICS_WINDOW_MS);
   const days: string[] = [];
-  for (let i = 0; i <= 30; i++) {
-    days.push(new Date(since.getTime() + i * 24 * 60 * 60 * 1000).toISOString().split('T')[0]);
+  for (let i = 0; i <= METRICS_WINDOW_DAYS; i++) {
+    days.push(new Date(since.getTime() + i * ONE_DAY_MS).toISOString().split('T')[0]);
   }
 
   const base = Math.max(2, Math.floor(totalUsers * 0.15));
@@ -1089,14 +1100,14 @@ function generateDevAnalyticsOverview(now: Date, totalUsers: number) {
   const rand = seededPrng(67890);
   const todayUtc = new Date(now);
   todayUtc.setUTCHours(0, 0, 0, 0);
-  const since = new Date(todayUtc.getTime() - 30 * 24 * 60 * 60 * 1000);
+  const since = new Date(todayUtc.getTime() - METRICS_WINDOW_MS);
 
   const dailyPageViews: DataPoints = [];
   const dailyClicks: DataPoints = [];
   const dailyRevenue: Array<{ date: string, new_cents: number, refund_cents: number }> = [];
   const dailyVisitors: DataPoints = [];
-  for (let i = 0; i <= 30; i++) {
-    const day = new Date(since.getTime() + i * 24 * 60 * 60 * 1000);
+  for (let i = 0; i <= METRICS_WINDOW_DAYS; i++) {
+    const day = new Date(since.getTime() + i * ONE_DAY_MS);
     const key = day.toISOString().split('T')[0];
     const dayOfWeek = day.getDay();
     const weekendFactor = (dayOfWeek === 0 || dayOfWeek === 6) ? 0.55 : 1.0;
@@ -1251,16 +1262,18 @@ export const GET = createSmartRouteHandler({
       total_users: yupNumber().integer().defined(),
       daily_users: DataPointsSchema,
       daily_active_users: DataPointsSchema,
-      // TODO: Narrow down the types further
-      users_by_country: yupMixed().defined(),
-      recently_registered: yupMixed().defined(),
-      recently_active: yupMixed().defined(),
-      login_methods: yupMixed().defined(),
-      // Extended cross-product aggregates
-      auth_overview: yupMixed().defined(),
-      payments_overview: yupMixed().defined(),
-      email_overview: yupMixed().defined(),
-      analytics_overview: yupMixed().defined(),
+      users_by_country: yupRecord(yupString().defined(), yupNumber().defined()).defined(),
+      // recently_registered/active are CRUD User objects passed through from
+      // usersCrudHandlers. Validated against MetricsRecentUserSchema, which
+      // covers the fields the dashboard reads — extra fields from
+      // UsersCrud["Admin"]["Read"] flow through.
+      recently_registered: yupArray(MetricsRecentUserSchema).defined(),
+      recently_active: yupArray(MetricsRecentUserSchema).defined(),
+      login_methods: yupArray(MetricsLoginMethodEntrySchema).defined(),
+      auth_overview: MetricsAuthOverviewSchema,
+      payments_overview: MetricsPaymentsOverviewSchema,
+      email_overview: MetricsEmailOverviewSchema,
+      analytics_overview: MetricsAnalyticsOverviewSchema,
     }).defined(),
   }),
   handler: async (req) => {
@@ -1306,11 +1319,16 @@ export const GET = createSmartRouteHandler({
 
     const totalUsers = authOverview.total_users_filtered;
 
-    // In dev, ClickHouse may have no events — fill in realistic fallback data
+    // In dev, ClickHouse may have no events — fill in realistic fallback data.
+    // This is strictly a developer-experience nicety for `pnpm dev`; tests must
+    // exercise the real (deterministic) data path, and production always uses
+    // real data. The synthetic data is day-of-week-dependent, so enabling it in
+    // tests causes snapshots to drift over time.
+    const isDevFallbackActive = getNodeEnvironment() === 'development';
     const dauSplitIsEmpty = authOverview.daily_active_users_split.total.every(
       (d: { activity: number }) => d.activity === 0
     );
-    const finalAuthOverview = dauSplitIsEmpty && getNodeEnvironment() !== 'production'
+    const finalAuthOverview = dauSplitIsEmpty && isDevFallbackActive
       ? {
         ...authOverview,
         daily_active_users_split: generateDevDauSplit(now, totalUsers),
@@ -1319,15 +1337,15 @@ export const GET = createSmartRouteHandler({
       }
       : authOverview;
 
-    const referrersEmpty = (analyticsOverview.top_referrers as { referrer: string, visitors: number }[]).length === 0;
-    const baseAnalyticsOverview = referrersEmpty && getNodeEnvironment() !== 'production'
+    const referrersEmpty = analyticsOverview.top_referrers.length === 0;
+    const baseAnalyticsOverview = referrersEmpty && isDevFallbackActive
       ? (generateDevAnalyticsOverview(now, totalUsers) ?? analyticsOverview)
       : analyticsOverview;
     // Stitch real daily revenue (from paid invoices) into analytics_overview so
     // the dashboard can keep reading it from a single location. Preserve dev
-    // fallback synthetic data when no real revenue exists outside production.
+    // fallback synthetic data when no real revenue exists in dev mode.
     const hasRealRevenue = dailyRevenue.some((row) => row.new_cents > 0);
-    const finalAnalyticsOverview = hasRealRevenue || getNodeEnvironment() === 'production'
+    const finalAnalyticsOverview = hasRealRevenue || !isDevFallbackActive
       ? { ...baseAnalyticsOverview, daily_revenue: dailyRevenue }
       : baseAnalyticsOverview;
 

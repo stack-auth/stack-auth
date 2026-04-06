@@ -23,8 +23,44 @@ import { DayInterval } from '@stackframe/stack-shared/dist/utils/dates';
 import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { typedEntries, typedFromEntries } from '@stackframe/stack-shared/dist/utils/objects';
 import { generateUuid } from '@stackframe/stack-shared/dist/utils/uuids';
+import { createHash } from 'node:crypto';
 
 const DUMMY_PROJECT_ID = '6fbbf22e-f4b2-4c6e-95a1-beab6fa41063';
+
+/**
+ * Derive a stable v4-shaped UUID from an arbitrary namespaced string. Same
+ * input always produces the same output, so seed re-runs upsert into existing
+ * rows instead of creating duplicates.
+ */
+function deterministicUuid(namespace: string): string {
+  const hex = createHash('sha256').update(namespace).digest('hex');
+  // Format as a UUID and force the v4 nibble + variant bits so the value
+  // satisfies our `isUuid` check elsewhere in the codebase.
+  const a = hex.slice(0, 8);
+  const b = hex.slice(8, 12);
+  const c = '4' + hex.slice(13, 16);
+  const d = ((parseInt(hex.slice(16, 17), 16) & 0x3) | 0x8).toString(16) + hex.slice(17, 20);
+  const e = hex.slice(20, 32);
+  return `${a}-${b}-${c}-${d}-${e}`;
+}
+
+/** Mulberry32 — small, fast, deterministic PRNG. */
+function deterministicPrng(seed: number): () => number {
+  let s = seed >>> 0;
+  return () => {
+    s = (s + 0x6D2B79F5) >>> 0;
+    let t = s;
+    t = Math.imul(t ^ (t >>> 15), t | 1);
+    t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** Convert a string into a deterministic 32-bit seed for `deterministicPrng`. */
+function seedFromString(input: string): number {
+  const hex = createHash('sha256').update(input).digest('hex').slice(0, 8);
+  return parseInt(hex, 16) >>> 0;
+}
 const EXPLORATORY_TEAM_DISPLAY_NAME = 'Exploratory Research and Insight Partnership With Very Long Collaborative Name For Testing';
 
 export async function seed() {
@@ -2213,9 +2249,14 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
     { countryCode: 'CH', regionCode: 'ZH', cityName: 'Zurich', latitude: 47.3769, longitude: 8.5417, tzIdentifier: 'Europe/Zurich' },
   ];
 
-  const now = new Date();
-  const twoMonthsAgo = new Date(now);
+  // Anchor time on midnight today so the seeded window is also stable across
+  // runs done within the same day. (Across days the dates legitimately move
+  // forward by one day each, which is the desired behavior.)
+  const todayUtc = new Date();
+  todayUtc.setUTCHours(0, 0, 0, 0);
+  const twoMonthsAgo = new Date(todayUtc);
   twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2);
+  const windowMs = todayUtc.getTime() - twoMonthsAgo.getTime();
 
   const userEmails = Array.from(userEmailToId.keys());
 
@@ -2225,26 +2266,26 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
     const userId = userEmailToId.get(email);
     if (!userId) continue;
 
-    // Create 15-25 session events per user over the past 2 months
-    const eventCount = 15 + Math.floor(Math.random() * 11);
+    // Per-user seeded PRNG so the event count, timestamps, locations and IPs
+    // are deterministic across re-runs of the seed. This pairs with the
+    // deterministic ipInfoId / eventId below so upserts hit the same rows.
+    const userRand = deterministicPrng(seedFromString(`session-events:${tenancyId}:${userId}`));
+
+    const eventCount = 15 + Math.floor(userRand() * 11); // 15-25 events
 
     for (let i = 0; i < eventCount; i++) {
-      // Random timestamp within the past 2 months
-      const randomTime = new Date(
-        twoMonthsAgo.getTime() + Math.random() * (now.getTime() - twoMonthsAgo.getTime())
-      );
+      const randomTime = new Date(twoMonthsAgo.getTime() + userRand() * windowMs);
+      const location = locations[Math.floor(userRand() * locations.length)];
 
-      // Pick a random location
-      const location = locations[Math.floor(Math.random() * locations.length)];
+      // Session id is derived from the user and event index — stable across runs.
+      const sessionId = `session-${userId.substring(0, 8)}-${i.toString().padStart(3, '0')}`;
+      const ipAddress = `${10 + Math.floor(userRand() * 200)}.${Math.floor(userRand() * 256)}.${Math.floor(userRand() * 256)}.${Math.floor(userRand() * 256)}`;
 
-      // Generate a session ID (simulating a refresh token ID)
-      const sessionId = `session-${userId.substring(0, 8)}-${i.toString().padStart(3, '0')}-${randomTime.getTime().toString(36)}`;
+      // Stable IDs derived from tenancy + user + event index so re-running
+      // the seed upserts into existing rows instead of duplicating them.
+      const ipInfoId = deterministicUuid(`event-ip-info:${tenancyId}:${userId}:${i}`);
+      const eventId = deterministicUuid(`event:${tenancyId}:${userId}:${i}`);
 
-      // Generate a unique IP address for this session
-      const ipAddress = `${10 + Math.floor(Math.random() * 200)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}.${Math.floor(Math.random() * 256)}`;
-
-      // Create EventIpInfo entry with a proper UUID
-      const ipInfoId = generateUuid();  // TODO: This should be a deterministic UUID so we don't keep recreating the session info
       await globalPrismaClient.eventIpInfo.upsert({
         where: { id: ipInfoId },
         update: {
@@ -2271,8 +2312,6 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
         },
       });
 
-      // Create the Event entry with a proper UUID
-      const eventId = generateUuid();
       await globalPrismaClient.event.upsert({
         where: { id: eventId },
         update: {
@@ -2331,49 +2370,53 @@ async function seedDummySessionReplays(options: SessionReplaySeedOptions) {
     targetSessionReplayCount = 250,
   } = options;
 
-  const existingCount = await prisma.sessionReplay.count({
-    where: {
-      tenancyId,
-    },
-  });
-
-  if (existingCount >= targetSessionReplayCount) {
-    console.log(`Dummy project already has ${existingCount} session replays, skipping seeding`);
-    return;
-  }
-
-  const toCreate = targetSessionReplayCount - existingCount;
   const userIds = Array.from(userEmailToId.values());
   if (userIds.length === 0) {
     throw new Error('Cannot seed session replays: no dummy project users exist');
   }
 
-  const now = new Date();
-  const twoWeeksAgo = new Date(now);
+  // Anchor on midnight today so the seeded window is stable across re-runs
+  // within the same day.
+  const todayUtc = new Date();
+  todayUtc.setUTCHours(0, 0, 0, 0);
+  const twoWeeksAgo = new Date(todayUtc);
   twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
+  const windowMs = todayUtc.getTime() - twoWeeksAgo.getTime();
+
+  // Single seeded PRNG keyed off tenancy so the whole replay set is
+  // deterministic across re-runs and identical IDs upsert in place.
+  const rand = deterministicPrng(seedFromString(`session-replays:${tenancyId}`));
 
   const seeds: Prisma.SessionReplayCreateManyInput[] = [];
-  for (let i = 0; i < toCreate; i++) {
-    const startedAt = new Date(
-      twoWeeksAgo.getTime() + Math.random() * (now.getTime() - twoWeeksAgo.getTime()),
-    );
-    const durationMs = 10_000 + Math.floor(Math.random() * (20 * 60 * 1000)); // 10s..20m
+  for (let i = 0; i < targetSessionReplayCount; i++) {
+    const startedAt = new Date(twoWeeksAgo.getTime() + rand() * windowMs);
+    const durationMs = 10_000 + Math.floor(rand() * (20 * 60 * 1000)); // 10s..20m
     const lastEventAt = new Date(startedAt.getTime() + durationMs);
-    const projectUserId = userIds[Math.floor(Math.random() * userIds.length)]!;
+    const projectUserId = userIds[Math.floor(rand() * userIds.length)]!;
 
     seeds.push({
       tenancyId,
-      refreshTokenId: generateUuid(),
+      refreshTokenId: deterministicUuid(`session-replay-refresh-token:${tenancyId}:${i}`),
       projectUserId,
-      id: generateUuid(),
+      id: deterministicUuid(`session-replay:${tenancyId}:${i}`),
       startedAt,
       lastEventAt,
     });
   }
 
+  // Use createMany with skipDuplicates so re-running the seed updates timestamps
+  // by upserting per-id. Prisma createMany doesn't support upsert, so we fall
+  // back to deleting the deterministic id range first then bulk-inserting.
+  const seedIds = seeds.map((s) => s.id!);
+  await prisma.sessionReplay.deleteMany({
+    where: {
+      tenancyId,
+      id: { in: seedIds },
+    },
+  });
   await prisma.sessionReplay.createMany({
     data: seeds,
   });
 
-  console.log(`Seeded ${toCreate} session replays`);
+  console.log(`Seeded ${targetSessionReplayCount} session replays`);
 }

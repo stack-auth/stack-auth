@@ -6,7 +6,12 @@ import { Link } from "@/components/link";
 import { useRouter } from "@/components/router";
 import { cn, Typography } from "@/components/ui";
 import { ALL_APPS_FRONTEND, type AppId, getAppPath } from "@/lib/apps-frontend";
-import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
+import {
+  type MetricsEmailOverview,
+  type MetricsRecentEmail,
+  type MetricsTopReferrer,
+  useMetricsOrThrow,
+} from "@/lib/stack-app-internals";
 import { CompassIcon, EnvelopeIcon, EnvelopeOpenIcon, GlobeIcon, SquaresFourIcon, WarningCircleIcon, XCircleIcon } from "@phosphor-icons/react";
 import useResizeObserver from '@react-hook/resize-observer';
 import { useUser } from "@stackframe/stack";
@@ -78,20 +83,6 @@ function calculatePeriodDelta(currentValue: number, previousValue: number): numb
     return currentValue === 0 ? 0 : undefined;
   }
   return Number((((currentValue - previousValue) / previousValue) * 100).toFixed(1));
-}
-
-function useMetricsOrThrow(adminApp: object, includeAnonymous: boolean) {
-  const internals = Reflect.get(adminApp, stackAppInternalsSymbol);
-  if (typeof internals !== "object" || internals == null || !("useMetrics" in internals)) {
-    throw new Error("Admin app internals are unavailable: missing useMetrics");
-  }
-
-  const useMetrics = internals.useMetrics;
-  if (typeof useMetrics !== "function") {
-    throw new Error("Admin app internals are unavailable: useMetrics is not callable");
-  }
-
-  return useMetrics(includeAnonymous);
 }
 
 function SetupAppPrompt({
@@ -175,30 +166,63 @@ function HeroInChartPill({
   value,
   delta,
   color,
-  isHovered,
-  onMouseEnter,
-  onMouseLeave,
+  isSelected,
+  controlsId,
+  tabId,
+  onActivate,
+  onHoverPreview,
+  onHoverEnd,
+  onArrowNavigate,
 }: {
   label: string,
   value: string,
   delta?: number,
   color: string,
-  isHovered: boolean,
-  onMouseEnter: () => void,
-  onMouseLeave?: () => void,
+  isSelected: boolean,
+  controlsId: string,
+  tabId: string,
+  onActivate: () => void,
+  onHoverPreview: () => void,
+  onHoverEnd: () => void,
+  onArrowNavigate: (direction: 'next' | 'prev' | 'first' | 'last') => void,
 }) {
   return (
     <button
       type="button"
-      onMouseEnter={onMouseEnter}
-      onMouseLeave={onMouseLeave}
-      onFocus={onMouseEnter}
-      onBlur={onMouseLeave}
-      onClick={onMouseEnter}
-      aria-pressed={isHovered}
+      role="tab"
+      id={tabId}
+      aria-selected={isSelected}
+      aria-controls={controlsId}
+      tabIndex={isSelected ? 0 : -1}
+      onMouseEnter={onHoverPreview}
+      onMouseLeave={onHoverEnd}
+      onFocus={onActivate}
+      onClick={onActivate}
+      onKeyDown={(event) => {
+        const isNext = event.key === 'ArrowRight' || event.key === 'ArrowDown';
+        const isPrev = event.key === 'ArrowLeft' || event.key === 'ArrowUp';
+        const isActivate = event.key === ' ' || event.key === 'Enter';
+        if (isNext) {
+          event.preventDefault();
+          onArrowNavigate('next');
+        } else if (isPrev) {
+          event.preventDefault();
+          onArrowNavigate('prev');
+        } else if (event.key === 'Home') {
+          event.preventDefault();
+          onArrowNavigate('first');
+        } else if (event.key === 'End') {
+          event.preventDefault();
+          onArrowNavigate('last');
+        } else if (isActivate) {
+          event.preventDefault();
+          onActivate();
+        }
+      }}
       className={cn(
-        "group/pill flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-colors hover:transition-none cursor-default select-none flex-1",
-        isHovered
+        "group/pill flex items-center gap-3 px-3.5 py-2.5 rounded-xl transition-colors hover:transition-none select-none flex-1",
+        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-foreground/[0.18]",
+        isSelected
           ? "bg-foreground/[0.06] ring-1 ring-foreground/[0.09]"
           : "hover:bg-foreground/[0.03]"
       )}
@@ -207,7 +231,7 @@ function HeroInChartPill({
       <span
         className={cn(
           "h-2 w-2 rounded-full shrink-0 transition-transform",
-          isHovered ? "scale-125" : ""
+          isSelected ? "scale-125" : ""
         )}
         style={{ backgroundColor: color }}
       />
@@ -273,15 +297,30 @@ function HeroAnalyticsWidget({
   projectId: string,
   compact?: boolean,
 }) {
-  const [chartMode, setChartMode] = useState<HeroChartMode>('default');
-  const [fadingOut, setFadingOut] = useState(false);
+  // selectedMode is the user's "sticky" choice, set by click/keyboard.
+  // previewMode reflects an in-flight hover preview; while a hover is active,
+  // the chart shows previewMode, otherwise it falls back to selectedMode.
+  const [selectedMode, setSelectedMode] = useState<HeroChartMode>('default');
+  const [previewMode, setPreviewMode] = useState<HeroChartMode | null>(null);
   const [displayMode, setDisplayMode] = useState<HeroChartMode>('default');
+  const [fadingOut, setFadingOut] = useState(false);
   const [fadingIn, setFadingIn] = useState(false);
   const fadeTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const fadeInRaf1Ref = useRef<number | null>(null);
   const fadeInRaf2Ref = useRef<number | null>(null);
   const FADE_OUT_MS = 140;
 
+  // Stable IDs so tab/tabpanel ARIA wiring is correct.
+  const tablistInstanceId = useRef(`hero-chart-tablist-${Math.random().toString(36).slice(2, 8)}`);
+  const tabpanelId = `${tablistInstanceId.current}-panel`;
+  const dauTabId = `${tablistInstanceId.current}-tab-dau`;
+  const visitorsTabId = `${tablistInstanceId.current}-tab-visitors`;
+  const revenueTabId = `${tablistInstanceId.current}-tab-revenue`;
+
+  const activeMode: HeroChartMode = previewMode ?? selectedMode;
+
+  // Switch the actual rendered chart with a fade transition. Idempotent: if
+  // the target mode is already displayed we noop.
   const switchToMode = (mode: HeroChartMode) => {
     if (mode === displayMode) return;
     if (fadeTimerRef.current != null) {
@@ -304,6 +343,13 @@ function HeroAnalyticsWidget({
     }, FADE_OUT_MS);
   };
 
+  // Whenever the active mode changes, drive the rendered displayMode to match.
+  useEffect(() => {
+    switchToMode(activeMode);
+    // switchToMode is intentionally not in deps — it's a stable ref-driven function.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeMode]);
+
   useEffect(() => {
     return () => {
       if (fadeTimerRef.current != null) {
@@ -318,14 +364,46 @@ function HeroAnalyticsWidget({
     };
   }, []);
 
-  const handlePillMouseEnter = (mode: 'dau' | 'visitors' | 'revenue') => {
-    setChartMode(mode);
-    switchToMode(mode);
+  // Hover preview: show the mode the cursor is over without changing the
+  // sticky selection. Mouse-leaving the pills row clears the preview and the
+  // chart snaps back to the user's clicked/keyboard-selected mode.
+  const handleHoverPreview = (mode: 'dau' | 'visitors' | 'revenue') => {
+    setPreviewMode(mode);
   };
 
-  const handlePillMouseLeave = () => {
-    setChartMode('default');
-    switchToMode('default');
+  const handleHoverEnd = () => {
+    setPreviewMode(null);
+  };
+
+  // Click / Enter / Space / focus → sticky select.
+  const handleSelect = (mode: HeroChartMode) => {
+    setSelectedMode(mode);
+    setPreviewMode(null);
+  };
+
+  const PILL_MODE_ORDER = ['dau', 'visitors', 'revenue'] as const;
+  const handleArrowNavigate = (current: 'dau' | 'visitors' | 'revenue', direction: 'next' | 'prev' | 'first' | 'last') => {
+    const idx = PILL_MODE_ORDER.indexOf(current);
+    let nextIdx: number;
+    switch (direction) {
+      case 'next': {
+        nextIdx = (idx + 1) % PILL_MODE_ORDER.length;
+        break;
+      }
+      case 'prev': {
+        nextIdx = (idx - 1 + PILL_MODE_ORDER.length) % PILL_MODE_ORDER.length;
+        break;
+      }
+      case 'first': {
+        nextIdx = 0;
+        break;
+      }
+      case 'last': {
+        nextIdx = PILL_MODE_ORDER.length - 1;
+        break;
+      }
+    }
+    handleSelect(PILL_MODE_ORDER[nextIdx]);
   };
 
   const dauColor = "hsl(152, 38%, 52%)";
@@ -367,17 +445,29 @@ function HeroAnalyticsWidget({
             "flex-1 min-h-0 flex flex-col",
             compact ? "px-4 pt-2 pb-2" : "px-4 pt-3 pb-3",
           )}
-          onMouseLeave={handlePillMouseLeave}
+          onMouseLeave={handleHoverEnd}
         >
-          {/* In-card pills row */}
-          <div className="flex items-stretch mb-2 -mx-1">
+          {/* In-card pills row — `tablist` semantics so screen readers
+              understand this is a tab strip controlling the chart panel
+              below it. */}
+          <div
+            role="tablist"
+            aria-label="Hero analytics chart"
+            aria-orientation="horizontal"
+            className="flex items-stretch mb-2 -mx-1"
+          >
             <HeroInChartPill
               label={dauLabel}
               value={dauTotal}
               delta={dauDelta}
               color={dauColor}
-              isHovered={chartMode === 'dau'}
-              onMouseEnter={() => handlePillMouseEnter('dau')}
+              isSelected={activeMode === 'dau'}
+              tabId={dauTabId}
+              controlsId={tabpanelId}
+              onActivate={() => handleSelect('dau')}
+              onHoverPreview={() => handleHoverPreview('dau')}
+              onHoverEnd={handleHoverEnd}
+              onArrowNavigate={(direction) => handleArrowNavigate('dau', direction)}
             />
             <div className="w-px bg-foreground/[0.07] shrink-0 my-1.5 mx-1" />
             <HeroInChartPill
@@ -385,8 +475,13 @@ function HeroAnalyticsWidget({
               value={visitorsTotal}
               delta={visitorsDelta}
               color={visitorsColor}
-              isHovered={chartMode === 'visitors'}
-              onMouseEnter={() => handlePillMouseEnter('visitors')}
+              isSelected={activeMode === 'visitors'}
+              tabId={visitorsTabId}
+              controlsId={tabpanelId}
+              onActivate={() => handleSelect('visitors')}
+              onHoverPreview={() => handleHoverPreview('visitors')}
+              onHoverEnd={handleHoverEnd}
+              onArrowNavigate={(direction) => handleArrowNavigate('visitors', direction)}
             />
             <div className="w-px bg-foreground/[0.07] shrink-0 my-1.5 mx-1" />
             <HeroInChartPill
@@ -394,13 +489,28 @@ function HeroAnalyticsWidget({
               value={revenueTotal}
               delta={revenueDelta}
               color={revenueColor}
-              isHovered={chartMode === 'revenue'}
-              onMouseEnter={() => handlePillMouseEnter('revenue')}
+              isSelected={activeMode === 'revenue'}
+              tabId={revenueTabId}
+              controlsId={tabpanelId}
+              onActivate={() => handleSelect('revenue')}
+              onHoverPreview={() => handleHoverPreview('revenue')}
+              onHoverEnd={handleHoverEnd}
+              onArrowNavigate={(direction) => handleArrowNavigate('revenue', direction)}
             />
           </div>
 
           {/* Chart area with fade transition */}
-          <div className="flex-1 min-h-0 relative" style={{ minHeight: chartViewportHeight }}>
+          <div
+            id={tabpanelId}
+            role="tabpanel"
+            aria-labelledby={
+              activeMode === 'dau' ? dauTabId :
+                activeMode === 'visitors' ? visitorsTabId :
+                  activeMode === 'revenue' ? revenueTabId : undefined
+            }
+            className="flex-1 min-h-0 relative"
+            style={{ minHeight: chartViewportHeight }}
+          >
             <div
               className={cn(
                 "h-full flex flex-col",
@@ -483,7 +593,7 @@ function HeroAnalyticsWidget({
 
 // ── Email list row ────────────────────────────────────────────────────────────
 
-type EmailItem = { id: string, subject: string, status: string };
+type EmailItem = MetricsRecentEmail;
 
 const emailStatusConfig = new Map<string, {
   label: string,
@@ -549,7 +659,7 @@ function TabbedEmailsCard({
   compact = false,
 }: {
   stackedChartData: EmailStackedDataPoint[],
-  recentEmails: Array<{ id: string, subject: string, status: string }>,
+  recentEmails: MetricsRecentEmail[],
   timeRange: TimeRange,
   customDateRange?: CustomDateRange | null,
   compact?: boolean,
@@ -642,15 +752,15 @@ function EmailBreakdownCard({
   bounceRate,
   clickRate,
 }: {
-  deliverabilityStatus: Partial<Record<'delivered' | 'bounced' | 'in_progress' | 'error', number>>,
+  deliverabilityStatus: MetricsEmailOverview['deliverability_status'],
   bounceRate: number,
   clickRate: number,
 }) {
   const items = [
-    { label: 'Delivered', count: deliverabilityStatus.delivered ?? 0, color: '#10b981' },
-    { label: 'Bounced', count: deliverabilityStatus.bounced ?? 0, color: '#ef4444' },
-    { label: 'In Progress', count: deliverabilityStatus.in_progress ?? 0, color: '#06b6d4' },
-    { label: 'Error', count: deliverabilityStatus.error ?? 0, color: '#f59e0b' },
+    { label: 'Delivered', count: deliverabilityStatus.delivered, color: '#10b981' },
+    { label: 'Bounced', count: deliverabilityStatus.bounced, color: '#ef4444' },
+    { label: 'In Progress', count: deliverabilityStatus.in_progress, color: '#06b6d4' },
+    { label: 'Error', count: deliverabilityStatus.error, color: '#f59e0b' },
   ];
   const total = items.reduce((s, i) => s + i.count, 0);
 
@@ -715,7 +825,7 @@ function ReferrersWithAnalyticsCard({
   analyticsEnabled,
   projectId,
 }: {
-  topReferrers: Array<{ referrer: string, visitors: number }>,
+  topReferrers: MetricsTopReferrer[],
   analyticsEnabled: boolean,
   projectId: string,
 }) {
@@ -898,32 +1008,25 @@ function MetricsContent({
   const analyticsEnabled = installedApps.includes("analytics");
   const paymentsEnabled = installedApps.includes("payments");
 
-  const auth = data.auth_overview ?? {};
-  const payments = data.payments_overview ?? {};
-  const email = data.email_overview ?? {};
-  const analytics = data.analytics_overview ?? {};
+  const auth = data.auth_overview;
+  const payments = data.payments_overview;
+  const email = data.email_overview;
+  const analytics = data.analytics_overview;
 
-  const recentEmails = (email.recent_emails ?? []) as Array<{ id: string, subject: string, status: string }>;
-  const topReferrers = (analytics.top_referrers ?? []) as Array<{ referrer: string, visitors: number }>;
+  const recentEmails = email.recent_emails;
+  const topReferrers = analytics.top_referrers;
 
   // ── DAU split stacked data for sign-ups chart ─────────────────────────────
-  const dauSplit = (auth.daily_active_users_split ?? {}) as {
-    new?: DataPoint[],
-    retained?: DataPoint[],
-    reactivated?: DataPoint[],
-  };
+  const dauSplit = auth.daily_active_users_split;
   const dauStackedData = useMemo<StackedDataPoint[]>(() => {
-    const newPoints = dauSplit.new ?? [];
-    const retainedPoints = dauSplit.retained ?? [];
-    const reactivatedPoints = dauSplit.reactivated ?? [];
     const dateSet = new Set([
-      ...newPoints.map(d => d.date),
-      ...retainedPoints.map(d => d.date),
-      ...reactivatedPoints.map(d => d.date),
+      ...dauSplit.new.map(d => d.date),
+      ...dauSplit.retained.map(d => d.date),
+      ...dauSplit.reactivated.map(d => d.date),
     ]);
-    const newMap = new Map(newPoints.map(d => [d.date, d.activity]));
-    const retainedMap = new Map(retainedPoints.map(d => [d.date, d.activity]));
-    const reactivatedMap = new Map(reactivatedPoints.map(d => [d.date, d.activity]));
+    const newMap = new Map(dauSplit.new.map(d => [d.date, d.activity]));
+    const retainedMap = new Map(dauSplit.retained.map(d => [d.date, d.activity]));
+    const reactivatedMap = new Map(dauSplit.reactivated.map(d => [d.date, d.activity]));
     return [...dateSet].sort().map(date => ({
       date,
       new: newMap.get(date) ?? 0,
@@ -932,7 +1035,7 @@ function MetricsContent({
     }));
   }, [dauSplit.new, dauSplit.retained, dauSplit.reactivated]);
   const signUpsStackedData = useMemo<StackedDataPoint[]>(
-    () => (data.daily_users ?? []).map((point: DataPoint) => ({
+    () => data.daily_users.map((point) => ({
       date: point.date,
       new: point.activity,
       retained: 0,
@@ -950,15 +1053,15 @@ function MetricsContent({
   );
 
   // ── Email stacked data (ok/error/in_progress per day) ────────────────────
-  const emailStackedData = useMemo<EmailStackedDataPoint[]>(() => {
-    return (email.daily_emails_by_status ?? []) as EmailStackedDataPoint[];
-  }, [email.daily_emails_by_status]);
+  const emailStackedData = useMemo<EmailStackedDataPoint[]>(
+    () => email.daily_emails_by_status,
+    [email.daily_emails_by_status],
+  );
 
   // ── Composed chart data (visitors bars + revenue line) ───────────────────
   const allComposedData = useMemo<ComposedDataPoint[]>(() => {
-    const analyticsObj = data.analytics_overview ?? {};
-    const dailyRev = (analyticsObj.daily_revenue ?? []) as Array<{ date: string, new_cents: number, refund_cents: number }>;
-    const dailyVis = (analyticsObj.daily_visitors ?? []) as DataPoint[];
+    const dailyRev = analytics.daily_revenue;
+    const dailyVis = analytics.daily_visitors;
 
     const visitorMap = new Map(dailyVis.map(d => [d.date, d.activity]));
     const revenueMap = new Map(dailyRev.map(d => [d.date, d]));
@@ -978,22 +1081,17 @@ function MetricsContent({
     })).sort((a, b) => stringCompare(a.date, b.date));
 
     return points;
-  }, [data.analytics_overview, dauStackedData, dauTotalsByDate, analyticsEnabled, paymentsEnabled]);
+  }, [analytics.daily_revenue, analytics.daily_visitors, dauStackedData, dauTotalsByDate, analyticsEnabled, paymentsEnabled]);
   const composedData = useMemo<ComposedDataPoint[]>(
     () => filterStackedDatapointsByTimeRange(allComposedData, timeRange, customDateRange),
     [allComposedData, timeRange, customDateRange],
   );
 
   const topCountries = useMemo<Array<{ country_code: string, count: number }>>(() => {
-    const rawCountryCounts = data.users_by_country;
-    if (typeof rawCountryCounts !== "object" || rawCountryCounts == null) {
-      return [];
-    }
-
     const countries: Array<{ country_code: string, count: number }> = [];
-    for (const [countryCode, count] of Object.entries(rawCountryCounts)) {
-      if (typeof countryCode !== "string" || countryCode.length === 0) continue;
-      if (typeof count !== "number" || !Number.isFinite(count) || count <= 0) continue;
+    for (const [countryCode, count] of Object.entries(data.users_by_country)) {
+      if (countryCode.length === 0) continue;
+      if (!Number.isFinite(count) || count <= 0) continue;
       countries.push({ country_code: countryCode.toUpperCase(), count });
     }
 
@@ -1006,8 +1104,7 @@ function MetricsContent({
     if (!analyticsEnabled) {
       return [];
     }
-    const analyticsObj = data.analytics_overview ?? {};
-    const dailyPv = (analyticsObj.daily_page_views ?? []) as DataPoint[];
+    const dailyPv = analytics.daily_page_views;
 
     const pvMap = new Map(dailyPv.map(d => [d.date, d.activity]));
     const allDates = new Set(dailyPv.map(d => d.date));
@@ -1019,31 +1116,28 @@ function MetricsContent({
     })).sort((a, b) => stringCompare(a.date, b.date));
 
     return filterStackedDatapointsByTimeRange(points, timeRange, customDateRange);
-  }, [data.analytics_overview, timeRange, customDateRange, topCountries, analyticsEnabled]);
+  }, [analytics.daily_page_views, timeRange, customDateRange, topCountries, analyticsEnabled]);
 
   // ── Revenue hover chart data (new_cents + refund_cents) ───────────────────
   const revenueHoverData = useMemo<RevenueHoverDataPoint[]>(() => {
     if (!paymentsEnabled) {
       return [];
     }
-    const analyticsObj = data.analytics_overview ?? {};
-    const dailyRev = (analyticsObj.daily_revenue ?? []) as Array<{ date: string, new_cents: number, refund_cents: number }>;
 
-    const points = dailyRev.map(d => ({
+    const points = analytics.daily_revenue.map(d => ({
       date: d.date,
       new_cents: d.new_cents,
       refund_cents: d.refund_cents,
     })).sort((a, b) => stringCompare(a.date, b.date));
 
     return filterStackedDatapointsByTimeRange(points, timeRange, customDateRange);
-  }, [data.analytics_overview, timeRange, customDateRange, paymentsEnabled]);
+  }, [analytics.daily_revenue, timeRange, customDateRange, paymentsEnabled]);
 
   // ── Hero outer stats: MAUs, Total Emails sent, Session time ───────────────
   const heroOuterStats = useMemo<AnalyticsStatPill[]>(() => {
-    const analyticsObj = data.analytics_overview ?? {};
-    const totalUsers = data.total_users ?? 0;
-    const mau = Math.min((auth.mau ?? 0) as number, totalUsers);
-    const totalEmailsSent = (email.emails_sent ?? 0) as number;
+    const totalUsers = data.total_users;
+    const mau = Math.min(auth.mau, totalUsers);
+    const totalEmailsSent = email.emails_sent;
     return [
       {
         label: "Monthly active users",
@@ -1055,10 +1149,10 @@ function MetricsContent({
       },
       {
         label: "Avg. Session time",
-        value: analyticsEnabled ? formatSeconds(analyticsObj.avg_session_seconds ?? 0) : "—",
+        value: analyticsEnabled ? formatSeconds(analytics.avg_session_seconds) : "—",
       },
     ];
-  }, [auth.mau, email.emails_sent, data.analytics_overview, data.total_users, analyticsEnabled]);
+  }, [auth.mau, email.emails_sent, analytics.avg_session_seconds, data.total_users, analyticsEnabled]);
 
   // ── In-chart pill values: Visitors and Revenue ────────────────────────────
   const inChartPillValues = useMemo(() => {
@@ -1141,7 +1235,7 @@ function MetricsContent({
     return [
       {
         label: "Total Users",
-        value: formatCompact(data.total_users ?? 0),
+        value: formatCompact(data.total_users),
       },
       ...heroOuterStats,
     ];
@@ -1181,7 +1275,7 @@ function MetricsContent({
                 </span>
               </div>
               <div className="text-4xl font-bold tracking-tight text-foreground pl-0.5">
-                {(data.total_users ?? 0).toLocaleString()}
+                {data.total_users.toLocaleString()}
               </div>
             </div>
           </div>
@@ -1226,12 +1320,12 @@ function MetricsContent({
         <div className="min-h-[340px] lg:min-h-0 lg:h-full">
           <TabbedMetricsCard
             config={dailySignUpsConfig}
-            chartData={data.daily_users ?? []}
+            chartData={data.daily_users}
             stackedChartData={signUpsStackedData}
             stackedLegendItems={[
               { key: "new", label: "Sign-Ups", color: "hsl(152, 38%, 52%)" },
             ]}
-            listData={data.recently_registered ?? []}
+            listData={data.recently_registered}
             listTitle="Recent Sign-Ups"
             projectId={projectId}
             router={router}
@@ -1257,15 +1351,15 @@ function MetricsContent({
          ────────────────────────────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
         <DonutChartDisplay
-          datapoints={(data.login_methods ?? []) as { method: string, count: number }[]}
+          datapoints={data.login_methods}
           compact
           height={180}
           gradientColor="blue"
         />
         <EmailBreakdownCard
-          deliverabilityStatus={email.deliverability_status ?? {}}
-          bounceRate={email.bounce_rate ?? 0}
-          clickRate={email.click_rate ?? 0}
+          deliverabilityStatus={email.deliverability_status}
+          bounceRate={email.bounce_rate}
+          clickRate={email.click_rate}
         />
         <ReferrersWithAnalyticsCard
           topReferrers={topReferrers}
