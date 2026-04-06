@@ -188,6 +188,7 @@ function buildSplitFromDailyEntitySets(options: {
 }): ActivitySplit {
   const { orderedDays, entityIdsByDay, createdDayByEntityId } = options;
   const split = createEmptySplitSeries(orderedDays);
+  const windowStart = orderedDays[0];
   const previouslySeen = new Set<string>();
   let previousDaySet = new Set<string>();
 
@@ -206,8 +207,16 @@ function buildSplitFromDailyEntitySets(options: {
         retainedCount += 1;
       } else if (previouslySeen.has(entityId)) {
         reactivatedCount += 1;
-      } else {
+      } else if (createdDay != null && createdDay >= windowStart) {
+        // Created within the window on a different day, but not active on the
+        // immediately previous day — treat as new (gap-day case).
         newCount += 1;
+      } else {
+        // Either created before the window started, or createdDay is unknown.
+        // Either way, we cannot legitimately bucket this as "new" — count as
+        // reactivated to avoid inflating new-user metrics for pre-existing
+        // entities first seen inside the window.
+        reactivatedCount += 1;
       }
     }
 
@@ -485,8 +494,43 @@ async function loadMonthlyActiveUsers(tenancy: Tenancy, includeAnonymous: boolea
 }
 
 
+async function loadDailyRevenue(tenancy: Tenancy, now: Date): Promise<Array<{ date: string, new_cents: number, refund_cents: number }>> {
+  const prisma = await getPrismaClientForTenancy(tenancy);
+  const todayUtc = new Date(now);
+  todayUtc.setUTCHours(0, 0, 0, 0);
+  const since = new Date(todayUtc.getTime() - 30 * 24 * 60 * 60 * 1000);
+
+  const paidInvoicesInRange = await prisma.subscriptionInvoice.findMany({
+    where: {
+      tenancyId: tenancy.id,
+      amountTotal: { not: null },
+      status: { in: ['paid', 'succeeded'] },
+      createdAt: { gte: since },
+    },
+    select: { createdAt: true, amountTotal: true },
+  });
+
+  const revenueByDay = new Map<string, number>();
+  for (const invoice of paidInvoicesInRange) {
+    const key = invoice.createdAt.toISOString().split('T')[0];
+    revenueByDay.set(key, (revenueByDay.get(key) ?? 0) + (invoice.amountTotal ?? 0));
+  }
+
+  const dailyRevenue: Array<{ date: string, new_cents: number, refund_cents: number }> = [];
+  for (let i = 0; i <= 30; i++) {
+    const day = new Date(since.getTime() + i * 24 * 60 * 60 * 1000);
+    const key = day.toISOString().split('T')[0];
+    dailyRevenue.push({ date: key, new_cents: revenueByDay.get(key) ?? 0, refund_cents: 0 });
+  }
+
+  return dailyRevenue;
+}
+
 async function loadPaymentsOverview(tenancy: Tenancy) {
   const prisma = await getPrismaClientForTenancy(tenancy);
+
+  const now = new Date();
+  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
   const [
     subscriptionsByStatus,
@@ -496,6 +540,7 @@ async function loadPaymentsOverview(tenancy: Tenancy) {
     invoiceRevenue,
     totalSubscriptionInvoices,
     successfulSubscriptionInvoices,
+    paidInvoicesLast30Days,
   ] = await Promise.all([
     prisma.subscription.groupBy({
       by: ['status'],
@@ -511,7 +556,7 @@ async function loadPaymentsOverview(tenancy: Tenancy) {
     prisma.subscription.findMany({
       where: {
         tenancyId: tenancy.id,
-        createdAt: { gte: new Date(Date.now() - 30 * 24 * 60 * 60 * 1000) },
+        createdAt: { gte: thirtyDaysAgo },
       },
       orderBy: { createdAt: 'desc' },
       select: { createdAt: true, status: true, customerType: true, productId: true },
@@ -526,6 +571,16 @@ async function loadPaymentsOverview(tenancy: Tenancy) {
     prisma.subscriptionInvoice.count({
       where: { tenancyId: tenancy.id, status: { in: ['paid', 'succeeded'] } },
     }),
+    // Trailing-30-day revenue used as the MRR proxy.
+    prisma.subscriptionInvoice.aggregate({
+      where: {
+        tenancyId: tenancy.id,
+        amountTotal: { not: null },
+        status: { in: ['paid', 'succeeded'] },
+        createdAt: { gte: thirtyDaysAgo },
+      },
+      _sum: { amountTotal: true },
+    }),
   ]);
 
   const subsByStatusMap = new Map<string, number>();
@@ -535,8 +590,6 @@ async function loadPaymentsOverview(tenancy: Tenancy) {
   const subsByStatus = Object.fromEntries(subsByStatusMap);
 
   // Daily subscription signups for the last 30 days
-  const now = new Date();
-  const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
   const recentByDay = new Map<string, number>();
   for (const sub of recentSubscriptions) {
     if (sub.createdAt >= thirtyDaysAgo) {
@@ -551,7 +604,10 @@ async function loadPaymentsOverview(tenancy: Tenancy) {
     dailySubscriptions.push({ date: key, activity: recentByDay.get(key) ?? 0 });
   }
 
-  const estimatedMrrCents = activeSubscriptionCount * 10_000;
+  // MRR proxy: trailing-30-day paid invoice revenue. This is an approximation
+  // (it conflates one-time and recurring revenue and ignores billing cadence)
+  // but it is derived from real data instead of a hardcoded per-subscription rate.
+  const mrrCents = paidInvoicesLast30Days._sum.amountTotal ?? 0;
   const totalOrders = totalOneTimePurchases + totalSubscriptionInvoices;
   const checkoutConversionRate = totalOrders > 0
     ? Number((((successfulSubscriptionInvoices + totalOneTimePurchases) / totalOrders) * 100).toFixed(2))
@@ -563,7 +619,7 @@ async function loadPaymentsOverview(tenancy: Tenancy) {
     total_one_time_purchases: totalOneTimePurchases,
     daily_subscriptions: dailySubscriptions,
     revenue_cents: invoiceRevenue._sum.amountTotal ?? 0,
-    mrr_cents: estimatedMrrCents,
+    mrr_cents: mrrCents,
     total_orders: totalOrders,
     checkout_conversion_rate: checkoutConversionRate,
   };
@@ -948,15 +1004,15 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
     const topRegionRows: { country_code: string | null, region_code: string | null, cnt: number }[] = await topRegionResult.json();
     const onlineRows: { online: number }[] = await onlineResult.json();
 
+    // daily_revenue is intentionally not populated here — it is owned by
+    // payments_overview (real invoice data) and stitched into analytics_overview
+    // by the response builder so the dashboard can keep reading it from a single
+    // location.
     return {
       daily_page_views: dailyPageViews,
       daily_clicks: dailyClicks,
       daily_visitors: dailyVisitors,
-      daily_revenue: dailyPageViews.map((p) => ({
-        date: p.date,
-        new_cents: 0,
-        refund_cents: 0,
-      })),
+      daily_revenue: [] as Array<{ date: string, new_cents: number, refund_cents: number }>,
       total_revenue_cents: replayResult.totalRevenueCents,
       total_replays: replayResult.total,
       recent_replays: replayResult.recent,
@@ -1139,14 +1195,8 @@ function generateDevAnalyticsOverview(now: Date, totalUsers: number) {
 async function loadAuthOverview(tenancy: Tenancy, includeAnonymous: boolean, now: Date) {
   const prisma = await getPrismaClientForTenancy(tenancy);
 
-  const [totalUsers, verifiedUsers, verifiedNonAnonymousUsers, anonymousUsers, totalTeams] = await Promise.all([
+  const [totalUsers, verifiedNonAnonymousUsers, anonymousUsers, totalTeams] = await Promise.all([
     prisma.projectUser.count({ where: { tenancyId: tenancy.id } }),
-    prisma.projectUser.count({
-      where: {
-        tenancyId: tenancy.id,
-        contactChannels: { some: { type: 'EMAIL', isVerified: true } },
-      },
-    }),
     prisma.projectUser.count({
       where: {
         tenancyId: tenancy.id,
@@ -1166,8 +1216,11 @@ async function loadAuthOverview(tenancy: Tenancy, includeAnonymous: boolean, now
     loadMonthlyActiveUsers(tenancy, includeAnonymous),
   ]);
 
+  // verified_users / unverified_users always count non-anonymous users only,
+  // so they never overlap with anonymous_users (which is its own bucket).
+  // Adding all three always equals totalUsers, regardless of includeAnonymous.
   return {
-    verified_users: includeAnonymous ? verifiedUsers : verifiedNonAnonymousUsers,
+    verified_users: verifiedNonAnonymousUsers,
     unverified_users: nonAnonymousTotal - verifiedNonAnonymousUsers,
     anonymous_users: anonymousUsers,
     total_teams: totalTeams,
@@ -1230,6 +1283,7 @@ export const GET = createSmartRouteHandler({
       paymentsOverview,
       emailOverview,
       analyticsOverview,
+      dailyRevenue,
     ] = await Promise.all([
       prisma.projectUser.count({
         where: { tenancyId: req.auth.tenancy.id, ...(includeAnonymous ? {} : { isAnonymous: false }) },
@@ -1255,6 +1309,7 @@ export const GET = createSmartRouteHandler({
       loadPaymentsOverview(req.auth.tenancy),
       loadEmailOverview(req.auth.tenancy),
       loadAnalyticsOverview(req.auth.tenancy, now, includeAnonymous),
+      loadDailyRevenue(req.auth.tenancy, now),
     ] as const);
 
     // In dev, ClickHouse may have no events — fill in realistic fallback data
@@ -1271,9 +1326,16 @@ export const GET = createSmartRouteHandler({
       : authOverview;
 
     const referrersEmpty = (analyticsOverview.top_referrers as { referrer: string, visitors: number }[]).length === 0;
-    const finalAnalyticsOverview = referrersEmpty && getNodeEnvironment() !== 'production'
+    const baseAnalyticsOverview = referrersEmpty && getNodeEnvironment() !== 'production'
       ? (generateDevAnalyticsOverview(now, totalUsers) ?? analyticsOverview)
       : analyticsOverview;
+    // Stitch real daily revenue (from paid invoices) into analytics_overview so
+    // the dashboard can keep reading it from a single location. Preserve dev
+    // fallback synthetic data when no real revenue exists outside production.
+    const hasRealRevenue = dailyRevenue.some((row) => row.new_cents > 0);
+    const finalAnalyticsOverview = hasRealRevenue || getNodeEnvironment() === 'production'
+      ? { ...baseAnalyticsOverview, daily_revenue: dailyRevenue }
+      : baseAnalyticsOverview;
 
     return {
       statusCode: 200,

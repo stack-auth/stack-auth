@@ -168,17 +168,20 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
   // - Canvas width 350: Hide globe
   // - Canvas width 355: zoom = 360
   // - Canvas width 500: zoom = 309
-  // Formula: zoom = 484 - 0.35 * width (for width >= 355)
+  // - Canvas width >= 500: zoom stays at 309 so the globe keeps a constant
+  //   visual fill ratio on widescreens instead of growing without bound and
+  //   overflowing the canvas.
   const canvasWidth = globeContainerSize?.width ?? 0;
   const GLOBE_MIN_WIDTH = 350;
 
   const shouldShowGlobe = canvasWidth >= GLOBE_MIN_WIDTH;
 
   // Calculate zoom based on width
-  // For widths >= 355, use linear formula: zoom = 484 - 0.35 * width
+  // For widths >= 355, use linear formula clamped to a minimum distance.
   // For widths between 350-355, use 360 (same as at 355px)
+  const MIN_CAMERA_DISTANCE = 309; // matches the value at width = 500
   const cameraDistance = canvasWidth >= 355
-    ? 484 - 0.35 * canvasWidth
+    ? Math.max(MIN_CAMERA_DISTANCE, 484 - 0.35 * canvasWidth)
     : 360; // For 350-355 range, use 360
 
   // Calculate border size using exact same formula structure as cameraDistance
@@ -349,7 +352,7 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
   }, []);
 
   return (
-    <div className='relative w-full aspect-square'>
+    <div className='relative aspect-square w-full mx-auto'>
       <div inert className='absolute inset-0 pointer-events-none'>
         <GlobeLoading
           devReason="not ready"

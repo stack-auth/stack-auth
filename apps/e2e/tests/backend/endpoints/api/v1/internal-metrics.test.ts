@@ -1,3 +1,4 @@
+import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { expect } from "vitest";
 import { NiceResponse, it } from "../../../../helpers";
@@ -32,11 +33,11 @@ async function ensureAnonymousUsersAreStillExcluded(metricsResponse: NiceRespons
     const currentRecentlyActiveIds = (response.body.recently_active as Array<{ id: string }>).map((user) => user.id);
     if (
       response.body.total_users === baselineTotalUsers &&
-      JSON.stringify(response.body.users_by_country) === JSON.stringify(baselineUsersByCountry) &&
+      deepPlainEquals(response.body.users_by_country, baselineUsersByCountry) &&
       noAnonymousInRecentlyRegistered &&
       noAnonymousInRecentlyActive &&
-      JSON.stringify(currentRecentlyRegisteredIds) === JSON.stringify(baselineRecentlyRegisteredIds) &&
-      JSON.stringify(currentRecentlyActiveIds) === JSON.stringify(baselineRecentlyActiveIds)
+      deepPlainEquals(currentRecentlyRegisteredIds, baselineRecentlyRegisteredIds) &&
+      deepPlainEquals(currentRecentlyActiveIds, baselineRecentlyActiveIds)
     ) {
       return;
     }
@@ -179,7 +180,7 @@ it("should exclude anonymous users from metrics", async ({ expect }) => {
   let result!: NiceResponse;
   for (let i = 0; i < 5; i++) {
     result = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
-    if (JSON.stringify(result.body) === JSON.stringify(beforeMetrics.body)) {
+    if (deepPlainEquals(result.body, beforeMetrics.body)) {
       break;
     }
     await wait(2_000);

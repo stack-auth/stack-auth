@@ -642,7 +642,7 @@ function EmailBreakdownCard({
   bounceRate,
   clickRate,
 }: {
-  deliverabilityStatus: Record<string, number>,
+  deliverabilityStatus: Partial<Record<'delivered' | 'bounced' | 'in_progress' | 'error', number>>,
   bounceRate: number,
   clickRate: number,
 }) {
