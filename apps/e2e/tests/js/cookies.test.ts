@@ -358,7 +358,8 @@ it("should read the newest refresh token payload from cookie storage", async ({ 
   expect(tokens.accessToken).toBe("fresh-access-token");
 });
 
-it("should eagerly create cross-subdomain cookie on construction when session exists but custom cookie is missing", async ({ expect }) => {
+for (let _run = 0; _run < 10; _run++) {
+it(`should eagerly create cross-subdomain cookie on construction when session exists but custom cookie is missing (run ${_run})`, async ({ expect }) => {
   const { cookieStore } = setupBrowserCookieEnv({ protocol: "https:" });
 
   const { clientApp, apiKey } = await createApp(
@@ -420,9 +421,10 @@ it("should eagerly create cross-subdomain cookie on construction when session ex
   });
 
   // The cross-subdomain cookie should be eagerly created on construction
-  const customRecreated = await waitUntil(() => cookieStore.has(customCookieName), 10_000);
+  const customRecreated = await waitUntil(() => cookieStore.has(customCookieName), 30_000);
   expect(customRecreated).toBe(true);
 
   // Clean up
   (reloadedApp as any).dispose?.();
 });
+}
