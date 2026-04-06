@@ -502,6 +502,13 @@ export async function seed() {
     } else {
       console.log('Ensured emulator user is a member of emulator team');
     }
+
+    await grantTeamPermission(internalPrisma, {
+      tenancy: internalTenancy,
+      teamId: LOCAL_EMULATOR_OWNER_TEAM_ID,
+      userId: LOCAL_EMULATOR_ADMIN_USER_ID,
+      permissionId: "team_admin",
+    });
   }
 
   console.log('Seeding complete!');
