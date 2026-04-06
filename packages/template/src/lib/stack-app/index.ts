@@ -34,7 +34,6 @@ export {
   stackAppInternalsSymbol
 } from "./common";
 export {
-  getLatestPageVersions,
   getPagePrompt,
 } from "./url-targets";
 export type {

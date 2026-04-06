@@ -1,5 +1,6 @@
 import { WebAuthnError, startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { KnownErrors, StackClientInterface } from "@stackframe/stack-shared";
+import type { RequestListener } from "@stackframe/stack-shared/dist/interface/client-interface";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import type { CustomerInvoicesListResponse } from "@stackframe/stack-shared/dist/interface/crud/invoices";
@@ -3441,7 +3442,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       sendAnalyticsEventBatch: async (body: string, options: { keepalive: boolean }) => {
         return await this._interface.sendAnalyticsEventBatch(body, await this._getSession(), options);
       },
-      addRequestListener: (listener: any) => {
+      addRequestListener: (listener: RequestListener) => {
         return this._interface.addRequestListener(listener);
       },
       sendRequest: async (
