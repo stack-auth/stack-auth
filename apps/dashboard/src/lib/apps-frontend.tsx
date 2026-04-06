@@ -1,5 +1,5 @@
 import { Link } from "@/components/link";
-import { ChartLineIcon, ClipboardTextIcon, CreditCardIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, RocketIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
+import { ChartLineIcon, ClipboardTextIcon, CreditCardIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { StackAdminApp } from "@stackframe/stack";
 import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@stackframe/stack-shared/dist/utils/urls";
@@ -33,34 +33,55 @@ export type AppFrontend = {
   icon: React.FunctionComponent<React.SVGProps<SVGSVGElement>>,
   logo?: React.FunctionComponent<{}>,
   href: string,
-  matchPath?: (relativePart: string) => boolean,
-  getBreadcrumbItems?: (stackAdminApp: StackAdminApp<false>, relativePart: string) => Promise<BreadcrumbDefinition | null | undefined>,
-  navigationItems: AppNavigationItem[],
   screenshots: (string | StaticImageData)[],
   storeDescription: JSX.Element,
-};
+} & (
+  | {
+    navigationItems: AppNavigationItem[],
+    matchPath?: (relativePart: string) => boolean,
+    getBreadcrumbItems?: (stackAdminApp: StackAdminApp<false>, relativePart: string) => Promise<BreadcrumbDefinition | null | undefined>,
+  }
+  | {
+    parentAppId: AppId,
+  }
+)
+
+export type NavigableAppFrontend = Extract<AppFrontend, { navigationItems: AppNavigationItem[] }>;
+export type SubAppFrontend = Extract<AppFrontend, { parentAppId: AppId }>;
+
+export function hasNavigationItems(appFrontend: AppFrontend): appFrontend is NavigableAppFrontend {
+  return "navigationItems" in appFrontend;
+}
+
+export function isSubApp(appFrontend: AppFrontend): appFrontend is SubAppFrontend {
+  return "parentAppId" in appFrontend;
+}
 
 export function getAppPath(projectId: string, appFrontend: AppFrontend) {
   const url = new URL(appFrontend.href, `${DUMMY_ORIGIN}/projects/${projectId}/`);
   return getRelativePart(url);
 }
 
-export function getItemPath(projectId: string, appFrontend: AppFrontend, item: AppFrontend["navigationItems"][number]) {
+export function getItemPath(projectId: string, appFrontend: NavigableAppFrontend, item: AppNavigationItem) {
   const url = new URL(item.href, new URL(appFrontend.href, `${DUMMY_ORIGIN}/projects/${projectId}/`) + "/");
   return getRelativePart(url);
 }
 
 export function testAppPath(projectId: string, appFrontend: AppFrontend, fullUrl: URL) {
-  if (appFrontend.matchPath) return appFrontend.matchPath(getRelativePart(fullUrl));
+  if ("matchPath" in appFrontend && appFrontend.matchPath) {
+    return appFrontend.matchPath(getRelativePart(fullUrl));
+  }
 
-  for (const item of appFrontend.navigationItems) {
-    if (testItemPath(projectId, appFrontend, item, fullUrl)) return true;
+  if (hasNavigationItems(appFrontend)) {
+    for (const item of appFrontend.navigationItems) {
+      if (testItemPath(projectId, appFrontend, item, fullUrl)) return true;
+    }
   }
   const url = new URL(appFrontend.href, `${DUMMY_ORIGIN}/projects/${projectId}/`);
   return isChildUrl(url, fullUrl);
 }
 
-export function testItemPath(projectId: string, appFrontend: AppFrontend, item: AppFrontend["navigationItems"][number], fullUrl: URL) {
+export function testItemPath(projectId: string, appFrontend: NavigableAppFrontend, item: AppNavigationItem, fullUrl: URL) {
   if (item.matchPath) return item.matchPath(getRelativePart(fullUrl));
 
   const url = new URL(getItemPath(projectId, appFrontend, item), fullUrl);
@@ -83,6 +104,16 @@ export const ALL_APPS_FRONTEND = {
         <p>When it is time to harden production, you can pair these controls with project-level guardrails.</p>
       </>
     ),
+  },
+  "fraud-protection": {
+    icon: ShieldCheckIcon,
+    href: "sign-up-rules",
+    parentAppId: "authentication",
+    screenshots: [],
+    storeDescription: <>
+      <p>Fraud Protection helps you protect your project from fraud and abuse.</p>
+      <p>Configure sign-up rules and use our built-in fraud protection features to detect bots, free trial abuse, and other fraudulent activity.</p>
+    </>,
   },
   onboarding: {
     icon: ClipboardTextIcon,
