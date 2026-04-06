@@ -17,12 +17,6 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS "ProjectUser_signUpIp_recent_idx"
 CREATE INDEX CONCURRENTLY IF NOT EXISTS "ProjectUser_signUpEmailBase_recent_idx"
   ON "ProjectUser"("tenancyId", "isAnonymous", "signUpEmailBase", "signedUpAt");
 
--- SPLIT_STATEMENT_SENTINEL
--- SINGLE_STATEMENT_SENTINEL
--- RUN_OUTSIDE_TRANSACTION_SENTINEL
-CREATE INDEX CONCURRENTLY IF NOT EXISTS "ProjectUser_signUpEmailNormalized_recent_idx"
-  ON "ProjectUser"("tenancyId", "isAnonymous", "signUpEmailNormalized", "signedUpAt");
-
 -- Validate the risk score bounds once every row has the new columns.
 -- SPLIT_STATEMENT_SENTINEL
 -- SINGLE_STATEMENT_SENTINEL
