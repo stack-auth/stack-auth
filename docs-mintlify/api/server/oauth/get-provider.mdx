@@ -1,0 +1,25 @@
+---
+title: "Get OAuth Provider"
+description: "Retrieve a specific OAuth provider by the user ID and the OAuth provider ID."
+api: "GET /oauth-providers/{user_id}/{provider_id}"
+---
+
+## Description
+
+Retrieves a specific OAuth provider by the user ID and the OAuth provider ID.
+
+## Path Parameters
+
+<ParamField path="user_id" type="string" required>
+  The ID of the user, or the special value `me` for the currently authenticated user.
+</ParamField>
+
+<ParamField path="provider_id" type="string" required>
+  The OAuth provider identifier to retrieve.
+</ParamField>
+
+## Response
+
+**Status Code:** `200` - Successful response
+
+Returns the OAuth provider details for the specified user and provider combination.

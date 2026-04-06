@@ -1,4 +1,4 @@
-import { recordExternalDbSyncDeletion } from "@/lib/external-db-sync";
+import { recordExternalDbSyncDeletion, withExternalDbSyncUpdate } from "@/lib/external-db-sync";
 import { ensureUserExists } from "@/lib/request-checks";
 import { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
@@ -310,10 +310,10 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
             id: params.provider_id,
           },
         },
-        data: {
+        data: withExternalDbSyncUpdate({
           email: data.email,
           providerAccountId: data.account_id,
-        },
+        }),
       });
 
       const providerType = resolveProviderType(auth.tenancy, existingOAuthAccount.configOAuthProviderId)

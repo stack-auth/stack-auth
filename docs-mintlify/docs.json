@@ -1,0 +1,603 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "name": "Stack Auth Documentation",
+  "theme": "mint",
+  "logo": {
+    "dark": "/images/logo-dark.svg",
+    "light": "/images/logo-light.svg"
+  },
+  "favicon": "/images/favicon.ico",
+  "colors": {
+    "primary": "#6b5df7",
+    "light": "#8b7cf9",
+    "dark": "#6b5df7"
+  },
+  "background": {
+    "color": {
+      "dark": "#09090b"
+    }
+  },
+  "fonts": {
+    "heading": {
+      "family": "Geist",
+      "weight": 500
+    },
+    "body": {
+      "family": "Geist",
+      "weight": 400
+    }
+  },
+  "navbar": {
+    "links": [
+      {
+        "type": "github",
+        "href": "https://github.com/stack-auth/stack"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Dashboard",
+      "href": "https://app.stack-auth.com"
+    }
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "pages": [
+          "index",
+          "docs/faq",
+          {
+            "group": "Getting Started",
+            "pages": [
+              "docs/getting-started/setup",
+              "docs/getting-started/users",
+              "docs/getting-started/components",
+              "docs/getting-started/production",
+              "docs/getting-started/vite-example"
+            ]
+          },
+          {
+            "group": "Going Further",
+            "pages": [
+              "docs/going-further/working-with-ai",
+              "docs/concepts/stack-app",
+              "docs/concepts/backend-integration",
+              "docs/going-further/local-development",
+              {
+                "group": "Component Customization",
+                "pages": [
+                  "docs/customization/custom-pages",
+                  "docs/customization/custom-styles",
+                  "docs/customization/dark-mode",
+                  "docs/customization/internationalization",
+                  {
+                    "group": "Page Examples",
+                    "pages": [
+                      "docs/customization/page-examples",
+                      "docs/customization/page-examples/forgot-password",
+                      "docs/customization/page-examples/password-reset",
+                      "docs/customization/page-examples/sign-in",
+                      "docs/customization/page-examples/sign-up"
+                    ]
+                  }
+                ]
+              },
+              "docs/concepts/custom-user-data",
+              "docs/concepts/sign-up-rules",
+              "docs/concepts/jwt",
+              "docs/concepts/user-onboarding",
+              "docs/concepts/team-selection"
+            ]
+          },
+          {
+            "group": "Apps",
+            "pages": [
+              {
+                "group": "Authentication",
+                "icon": "lock",
+                "pages": [
+                  "docs/apps/oauth",
+                  {
+                    "group": "Auth Providers",
+                    "pages": [
+                      "docs/concepts/auth-providers",
+                      "docs/concepts/auth-providers/apple",
+                      "docs/concepts/auth-providers/bitbucket",
+                      "docs/concepts/auth-providers/discord",
+                      "docs/concepts/auth-providers/facebook",
+                      "docs/concepts/auth-providers/github",
+                      "docs/concepts/auth-providers/gitlab",
+                      "docs/concepts/auth-providers/google",
+                      "docs/concepts/auth-providers/linkedin",
+                      "docs/concepts/auth-providers/microsoft",
+                      "docs/concepts/auth-providers/passkey",
+                      "docs/concepts/auth-providers/spotify",
+                      "docs/concepts/auth-providers/twitch",
+                      "docs/concepts/auth-providers/two-factor-auth",
+                      "docs/concepts/auth-providers/x-twitter"
+                    ]
+                  }
+                ]
+              },
+              "docs/apps/emails",
+              "docs/apps/payments",
+              "docs/apps/analytics",
+              "docs/apps/api-keys",
+              "docs/apps/data-vault",
+              "docs/apps/launch-checklist",
+              "docs/apps/permissions",
+              "docs/apps/orgs-and-teams",
+              "docs/apps/webhooks"
+            ]
+          },
+          {
+            "group": "Integrations",
+            "pages": [
+              "docs/others/supabase",
+              "docs/others/convex",
+              "docs/others/mcp-setup"
+            ]
+          },
+          {
+            "group": "Other",
+            "pages": [
+              "docs/others/self-host",
+              "docs/others/cli-authentication",
+              "docs/going-further/showcase"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "SDK Reference",
+        "pages": [
+          "docs/sdk/overview",
+          {
+            "group": "Objects",
+            "pages": ["docs/sdk/objects/stack-app"]
+          },
+          {
+            "group": "Types",
+            "pages": [
+              "docs/sdk/types/user",
+              "docs/sdk/types/team",
+              "docs/sdk/types/team-user",
+              "docs/sdk/types/team-permission",
+              "docs/sdk/types/team-profile",
+              "docs/sdk/types/contact-channel",
+              "docs/sdk/types/email",
+              "docs/sdk/types/api-key",
+              "docs/sdk/types/project",
+              "docs/sdk/types/connected-account",
+              "docs/sdk/types/item",
+              "docs/sdk/types/customer"
+            ]
+          },
+          {
+            "group": "Hooks",
+            "pages": ["docs/sdk/hooks/use-stack-app", "docs/sdk/hooks/use-user"]
+          }
+        ]
+      },
+      {
+        "tab": "Components",
+        "pages": [
+          "docs/components/overview",
+          {
+            "group": "Authentication",
+            "pages": [
+              "docs/components/sign-in",
+              "docs/components/sign-up",
+              "docs/components/credential-sign-in",
+              "docs/components/credential-sign-up",
+              "docs/components/magic-link-sign-in",
+              "docs/components/forgot-password",
+              "docs/components/password-reset"
+            ]
+          },
+          {
+            "group": "OAuth",
+            "pages": [
+              "docs/components/oauth-button",
+              "docs/components/oauth-button-group"
+            ]
+          },
+          {
+            "group": "User Interface",
+            "pages": [
+              "docs/components/user-button",
+              "docs/components/account-settings",
+              "docs/components/selected-team-switcher"
+            ]
+          },
+          {
+            "group": "Layout & Providers",
+            "pages": [
+              "docs/components/stack-provider",
+              "docs/components/stack-handler",
+              "docs/components/stack-theme"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "REST API",
+        "pages": [
+          "docs/rest-api/overview",
+          {
+            "group": "Client API",
+            "pages": [
+              {
+                "group": "Anonymous",
+                "expanded": false,
+                "pages": ["api/client/anonymous/sign-up"]
+              },
+              {
+                "group": "API Keys",
+                "expanded": false,
+                "pages": [
+                  "api/client/api-keys/list-user-api-keys",
+                  "api/client/api-keys/create-user-api-key",
+                  "api/client/api-keys/check-user-api-key",
+                  "api/client/api-keys/get-user-api-key",
+                  "api/client/api-keys/update-user-api-key"
+                ]
+              },
+              {
+                "group": "Contact Channels",
+                "expanded": false,
+                "pages": [
+                  "api/client/contact-channels/list",
+                  "api/client/contact-channels/create",
+                  "api/client/contact-channels/verify",
+                  "api/client/contact-channels/verify-check-code",
+                  "api/client/contact-channels/get",
+                  "api/client/contact-channels/update",
+                  "api/client/contact-channels/delete",
+                  "api/client/contact-channels/send-verification-code"
+                ]
+              },
+              {
+                "group": "Emails",
+                "expanded": false,
+                "pages": [
+                  "api/client/emails/notification-preference",
+                  "api/client/emails/notification-category"
+                ]
+              },
+              {
+                "group": "OAuth",
+                "expanded": false,
+                "pages": [
+                  "api/client/oauth/list-providers",
+                  "api/client/oauth/authorize",
+                  "api/client/oauth/token",
+                  "api/client/oauth/get-provider",
+                  "api/client/oauth/update-provider",
+                  "api/client/oauth/delete-provider"
+                ]
+              },
+              {
+                "group": "OTP",
+                "expanded": false,
+                "pages": [
+                  "api/client/otp/mfa-sign-in",
+                  "api/client/otp/send-sign-in-code",
+                  "api/client/otp/sign-in",
+                  "api/client/otp/check-code"
+                ]
+              },
+              {
+                "group": "Password",
+                "expanded": false,
+                "pages": [
+                  "api/client/password/reset",
+                  "api/client/password/reset-check-code",
+                  "api/client/password/send-reset-code",
+                  "api/client/password/set",
+                  "api/client/password/sign-in",
+                  "api/client/password/sign-up",
+                  "api/client/password/update"
+                ]
+              },
+              {
+                "group": "Payments",
+                "expanded": false,
+                "pages": [
+                  "api/client/payments/create-purchase-url",
+                  "api/client/payments/purchase-session",
+                  "api/client/payments/validate-code",
+                  "api/client/payments/get-item",
+                  "api/client/payments/update-quantity"
+                ]
+              },
+              {
+                "group": "Permissions",
+                "expanded": false,
+                "pages": [
+                  "api/client/permissions/list-project-permissions",
+                  "api/client/permissions/list-team-permissions"
+                ]
+              },
+              {
+                "group": "Projects",
+                "expanded": false,
+                "pages": ["api/client/projects/current-project"]
+              },
+              {
+                "group": "Sessions",
+                "expanded": false,
+                "pages": [
+                  "api/client/sessions/current",
+                  "api/client/sessions/refresh"
+                ]
+              },
+              {
+                "group": "Teams",
+                "expanded": false,
+                "pages": [
+                  "api/client/teams/list",
+                  "api/client/teams/create",
+                  "api/client/teams/get",
+                  "api/client/teams/update",
+                  "api/client/teams/delete",
+                  "api/client/teams/list-invitations",
+                  "api/client/teams/send-invitation-code",
+                  "api/client/teams/get-invitation",
+                  "api/client/teams/accept-invitation-by-id",
+                  "api/client/teams/accept-invitation",
+                  "api/client/teams/accept-check-code",
+                  "api/client/teams/accept-details",
+                  "api/client/teams/list-member-profiles",
+                  "api/client/teams/get-member-profile",
+                  "api/client/teams/update-member-profile",
+                  "api/client/teams/add-membership",
+                  "api/client/teams/remove-membership"
+                ]
+              },
+              {
+                "group": "Users",
+                "expanded": false,
+                "pages": [
+                  "api/client/users/get-current",
+                  "api/client/users/update-current",
+                  "api/client/users/delete-current"
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Server API",
+            "pages": [
+              {
+                "group": "Anonymous",
+                "expanded": false,
+                "pages": ["api/server/anonymous/sign-up"]
+              },
+              {
+                "group": "API Keys",
+                "expanded": false,
+                "pages": [
+                  "api/server/api-keys/list-team-api-keys",
+                  "api/server/api-keys/create-team-api-key",
+                  "api/server/api-keys/check-team-api-key",
+                  "api/server/api-keys/get-team-api-key",
+                  "api/server/api-keys/update-team-api-key",
+                  "api/server/api-keys/list-user-api-keys",
+                  "api/server/api-keys/create-user-api-key",
+                  "api/server/api-keys/check-user-api-key",
+                  "api/server/api-keys/get-user-api-key",
+                  "api/server/api-keys/update-user-api-key"
+                ]
+              },
+              {
+                "group": "CLI Authentication",
+                "expanded": false,
+                "pages": [
+                  "api/server/cli-authentication/cli-auth",
+                  "api/server/cli-authentication/cli-auth-complete",
+                  "api/server/cli-authentication/cli-auth-poll"
+                ]
+              },
+              {
+                "group": "Contact Channels",
+                "expanded": false,
+                "pages": [
+                  "api/server/contact-channels/list",
+                  "api/server/contact-channels/create",
+                  "api/server/contact-channels/verify",
+                  "api/server/contact-channels/verify-check-code",
+                  "api/server/contact-channels/get",
+                  "api/server/contact-channels/update",
+                  "api/server/contact-channels/delete",
+                  "api/server/contact-channels/send-verification-code"
+                ]
+              },
+              {
+                "group": "Emails",
+                "expanded": false,
+                "pages": [
+                  "api/server/emails/capacity-boost",
+                  "api/server/emails/delivery-info",
+                  "api/server/emails/list-outbox",
+                  "api/server/emails/get-outbox",
+                  "api/server/emails/update-outbox",
+                  "api/server/emails/render-email",
+                  "api/server/emails/send-email",
+                  "api/server/emails/notification-preference",
+                  "api/server/emails/notification-category"
+                ]
+              },
+              {
+                "group": "OAuth",
+                "expanded": false,
+                "pages": [
+                  "api/server/oauth/list-providers",
+                  "api/server/oauth/create-provider",
+                  "api/server/oauth/authorize",
+                  "api/server/oauth/token",
+                  "api/server/oauth/get-provider",
+                  "api/server/oauth/update-provider",
+                  "api/server/oauth/delete-provider"
+                ]
+              },
+              {
+                "group": "OTP",
+                "expanded": false,
+                "pages": [
+                  "api/server/otp/mfa-sign-in",
+                  "api/server/otp/send-sign-in-code",
+                  "api/server/otp/sign-in",
+                  "api/server/otp/check-code"
+                ]
+              },
+              {
+                "group": "Password",
+                "expanded": false,
+                "pages": [
+                  "api/server/password/reset",
+                  "api/server/password/reset-check-code",
+                  "api/server/password/send-reset-code",
+                  "api/server/password/set",
+                  "api/server/password/sign-in",
+                  "api/server/password/sign-up",
+                  "api/server/password/update"
+                ]
+              },
+              {
+                "group": "Payments",
+                "expanded": false,
+                "pages": [
+                  "api/server/payments/create-purchase-url",
+                  "api/server/payments/purchase-session",
+                  "api/server/payments/validate-code",
+                  "api/server/payments/get-item",
+                  "api/server/payments/update-quantity"
+                ]
+              },
+              {
+                "group": "Permissions",
+                "expanded": false,
+                "pages": [
+                  "api/server/permissions/list-project-permission-definitions",
+                  "api/server/permissions/create-project-permission-definition",
+                  "api/server/permissions/delete-project-permission-definition",
+                  "api/server/permissions/update-project-permission-definition",
+                  "api/server/permissions/list-project-permissions",
+                  "api/server/permissions/assign-project-permission",
+                  "api/server/permissions/remove-project-permission",
+                  "api/server/permissions/list-team-permission-definitions",
+                  "api/server/permissions/create-team-permission-definition",
+                  "api/server/permissions/delete-team-permission-definition",
+                  "api/server/permissions/update-team-permission-definition",
+                  "api/server/permissions/list-team-permissions",
+                  "api/server/permissions/assign-team-permission",
+                  "api/server/permissions/remove-team-permission"
+                ]
+              },
+              {
+                "group": "Projects",
+                "expanded": false,
+                "pages": ["api/server/projects/current-project"]
+              },
+              {
+                "group": "Sessions",
+                "expanded": false,
+                "pages": [
+                  "api/server/sessions/list",
+                  "api/server/sessions/create",
+                  "api/server/sessions/current",
+                  "api/server/sessions/refresh",
+                  "api/server/sessions/get"
+                ]
+              },
+              {
+                "group": "Teams",
+                "expanded": false,
+                "pages": [
+                  "api/server/teams/list",
+                  "api/server/teams/create",
+                  "api/server/teams/get",
+                  "api/server/teams/update",
+                  "api/server/teams/delete",
+                  "api/server/teams/list-invitations",
+                  "api/server/teams/send-invitation-code",
+                  "api/server/teams/get-invitation",
+                  "api/server/teams/accept-invitation-by-id",
+                  "api/server/teams/accept-invitation",
+                  "api/server/teams/accept-check-code",
+                  "api/server/teams/accept-details",
+                  "api/server/teams/list-member-profiles",
+                  "api/server/teams/get-member-profile",
+                  "api/server/teams/update-member-profile",
+                  "api/server/teams/add-membership",
+                  "api/server/teams/remove-membership"
+                ]
+              },
+              {
+                "group": "Users",
+                "expanded": false,
+                "pages": [
+                  "api/server/users/list",
+                  "api/server/users/create",
+                  "api/server/users/get-current",
+                  "api/server/users/update-current",
+                  "api/server/users/delete-current",
+                  "api/server/users/get",
+                  "api/server/users/update",
+                  "api/server/users/delete"
+                ]
+              }
+            ]
+          },
+          {
+            "group": "Webhooks",
+            "pages": [
+              {
+                "group": "Teams",
+                "expanded": false,
+                "pages": [
+                  "api/webhooks/teams/team-created",
+                  "api/webhooks/teams/team-deleted",
+                  "api/webhooks/teams/team-updated",
+                  "api/webhooks/teams/team-membership-created",
+                  "api/webhooks/teams/team-membership-deleted",
+                  "api/webhooks/teams/team-permission-created",
+                  "api/webhooks/teams/team-permission-deleted"
+                ]
+              },
+              {
+                "group": "Users",
+                "expanded": false,
+                "pages": [
+                  "api/webhooks/users/user-created",
+                  "api/webhooks/users/user-deleted",
+                  "api/webhooks/users/user-updated"
+                ]
+              }
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "footer": {
+    "socials": {
+      "x": "https://x.com/stack_auth",
+      "github": "https://github.com/stack-auth/stack",
+      "discord": "https://discord.stack-auth.com"
+    }
+  },
+  "seo": {
+    "metatags": {
+      "robots": "noindex"
+    }
+  },
+  "redirects": [
+    {
+      "source": "/docs/overview",
+      "destination": "/"
+    }
+  ]
+}

@@ -4,11 +4,9 @@ import { UserAvatar, useStackApp, useUser } from '@stackframe/stack';
 import { Button, buttonVariants, Card, CardContent, CardFooter, CardHeader, Typography } from '@stackframe/stack-ui';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 
 export default function PageClient() {
   const user = useUser({ includeRestricted: true });
-  const router = useRouter();
   const app = useStackApp();
 
   const authButtons = (
@@ -17,31 +15,9 @@ export default function PageClient() {
       <Typography type='h3'>Welcome to the Stack demo app!</Typography>
       <Typography>Try signing in/up with the buttons below!</Typography>
       <Typography>Also feel free to check out the things on the top right corner.</Typography>
-      <Card className='max-w-xl w-full text-left'>
-        <CardHeader>
-          <Typography type='h4'>Fraud protection</Typography>
-        </CardHeader>
-        <CardContent className='space-y-2'>
-          <Typography>
-            Turnstile fraud protection is handled transparently by the SDK and hosted pages.
-          </Typography>
-          <Typography className='text-sm'>
-            Coverage: password sign-up, magic links, OAuth, and hosted auth
-          </Typography>
-        </CardContent>
-        <CardFooter>
-          <div className='flex gap-2'>
-            <Button onClick={() => router.push(app.urls.signUp)}>Open hosted sign-up</Button>
-            <Button variant='secondary' onClick={() => router.push(app.urls.signIn)}>Open hosted sign-in</Button>
-            <Button variant='secondary' onClick={() => router.push('/turnstile-signup')}>
-              Open auth lab
-            </Button>
-          </div>
-        </CardFooter>
-      </Card>
       <div className='flex gap-2'>
-        <Button onClick={() => router.push(app.urls.signIn)}>Sign In</Button>
-        <Button onClick={() => router.push(app.urls.signUp)}>Sign Up</Button>
+        <Button onClick={async () => await app.redirectToSignIn()}>Sign In</Button>
+        <Button onClick={async () => await app.redirectToSignUp()}>Sign Up</Button>
       </div>
     </div>
   );
@@ -94,9 +70,9 @@ export default function PageClient() {
                 <Link href="https://app.stack-auth.com" className={buttonVariants()}>
                   Visit Stack Auth
                 </Link>
-                <Link href={app.urls.signOut} className={buttonVariants({ variant: 'destructive' })}>
+                <Button variant='destructive' onClick={async () => await app.redirectToSignOut()}>
                   Sign Out
-                </Link>
+                </Button>
               </div>
             </CardFooter>
           </Card>

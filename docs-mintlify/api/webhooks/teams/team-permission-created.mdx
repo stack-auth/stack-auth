@@ -1,0 +1,46 @@
+---
+title: "team_permission.created"
+description: "This event is triggered when a team permission is created."
+---
+
+## Event Type
+
+`team_permission.created`
+
+## Description
+
+This event is triggered when a team permission is created.
+
+## Payload
+
+<ResponseField name="type" type="string">
+  The event type. Always `"team_permission.created"`.
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  The team permission object that was created.
+  <Expandable>
+    <ResponseField name="id" type="string">
+      The unique identifier of the permission.
+    </ResponseField>
+    <ResponseField name="team_id" type="string">
+      The unique identifier of the team.
+    </ResponseField>
+    <ResponseField name="user_id" type="string">
+      The unique identifier of the user who received the permission.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<CodeGroup>
+```json Example Payload
+{
+  "type": "team_permission.created",
+  "data": {
+    "id": "permission-id-789",
+    "team_id": "team-id-123",
+    "user_id": "user-id-456"
+  }
+}
+```
+</CodeGroup>

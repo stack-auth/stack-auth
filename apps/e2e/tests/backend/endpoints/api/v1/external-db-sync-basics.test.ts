@@ -21,7 +21,7 @@ import {
   waitForSyncedEmailOutboxByStatus,
   waitForSyncedRefreshToken,
   waitForSyncedRefreshTokenDeletion,
-  waitForSyncedSessionReplay,
+
   waitForSyncedTeam,
   waitForSyncedTeamDeletion,
   waitForSyncedTeamInvitation,
@@ -948,7 +948,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
     let response;
     while (performance.now() - start < timeoutMs) {
       response = await runQueryForCurrentProject({
-        query: "SELECT team_id, user_id, permission_id FROM team_permissions WHERE permission_id = {perm:String}",
+        query: "SELECT team_id, user_id, id FROM team_permissions WHERE id = {perm:String}",
         params: { perm: '$read_members' },
       });
       expect(response.status).toBe(200);
@@ -959,7 +959,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
     }
 
     expect(response!.body.result.length).toBe(1);
-    expect(response!.body.result[0].permission_id).toBe('$read_members');
+    expect(response!.body.result[0].id).toBe('$read_members');
   }, TEST_TIMEOUT);
 
   /**
@@ -1038,7 +1038,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
     let response;
     while (performance.now() - start < timeoutMs) {
       response = await runQueryForCurrentProject({
-        query: "SELECT user_id, permission_id FROM project_permissions WHERE permission_id = {perm:String}",
+        query: "SELECT user_id, id FROM project_permissions WHERE id = {perm:String}",
         params: { perm: 'ch_test_perm' },
       });
       expect(response.status).toBe(200);
@@ -1049,7 +1049,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
     }
 
     expect(response!.body.result.length).toBe(1);
-    expect(response!.body.result[0].permission_id).toBe('ch_test_perm');
+    expect(response!.body.result[0].id).toBe('ch_test_perm');
   }, TEST_TIMEOUT);
 
   /**
@@ -1419,7 +1419,7 @@ describe.sequential('External DB Sync - Basic Tests', () => {
 
     expect(response!.body.result.length).toBeGreaterThanOrEqual(1);
     const row = response!.body.result[0];
-    expect(row.created_with).toBe('PROGRAMMATIC_CALL');
+    expect(row.created_with).toBe('programmatic-call');
   }, TEST_TIMEOUT);
 
   /**
@@ -1485,175 +1485,6 @@ describe.sequential('External DB Sync - Basic Tests', () => {
     expect(row.finished_sending_at).not.toBeNull();
     expect(row.sent_at).not.toBeNull();
     expect(row.send_retries).toBe(0);
-  }, TEST_TIMEOUT);
-
-  /**
-   * What it does:
-   * - Creates a project with analytics, signs in a user, uploads a session replay batch,
-   *   and verifies the session replay row is synced to ClickHouse.
-   */
-  test('SessionReplay sync (ClickHouse)', async ({ expect }) => {
-    await Project.createAndSwitch({
-      config: {
-        magic_link_enabled: true,
-      },
-    });
-    await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
-    await Auth.Otp.signIn();
-
-    const now = Date.now();
-    const browserSessionId = randomUUID();
-    const batchId = randomUUID();
-
-    const uploadRes = await niceBackendFetch("/api/v1/session-replays/batch", {
-      method: "POST",
-      accessType: "client",
-      body: {
-        browser_session_id: browserSessionId,
-        session_replay_segment_id: randomUUID(),
-        batch_id: batchId,
-        started_at_ms: now,
-        sent_at_ms: now + 500,
-        events: [
-          { timestamp: now + 100, type: 2 },
-          { timestamp: now + 200, type: 3 },
-        ],
-      },
-    });
-    expect(uploadRes.status).toBe(200);
-    expect(uploadRes.body.deduped).toBe(false);
-    const replayId = uploadRes.body.session_replay_id;
-
-    const secondUploadRes = await niceBackendFetch("/api/v1/session-replays/batch", {
-      method: "POST",
-      accessType: "client",
-      body: {
-        browser_session_id: browserSessionId,
-        session_replay_segment_id: randomUUID(),
-        batch_id: randomUUID(),
-        started_at_ms: now + 1_000,
-        sent_at_ms: now + 1_500,
-        events: [
-          { timestamp: now + 1_100, type: 2 },
-        ],
-      },
-    });
-    expect(secondUploadRes.status).toBe(200);
-    expect(secondUploadRes.body.session_replay_id).toBe(replayId);
-
-    await InternalApiKey.createAndSetProjectKeys();
-
-    // Poll ClickHouse until the session_replays row appears
-    const timeoutMs = 180_000;
-    const intervalMs = 2_000;
-    const start = performance.now();
-
-    let response;
-    while (performance.now() - start < timeoutMs) {
-      response = await runQueryForCurrentProject({
-        query: "SELECT id, user_id, refresh_token_id, started_at, last_event_at, chunk_count FROM session_replays LIMIT 10",
-      });
-      expect(response.status).toBe(200);
-      const syncedRow = response.body.result.find((resultRow: Record<string, unknown>) => resultRow.id === replayId);
-      if (syncedRow && Number(syncedRow.chunk_count) === 2) {
-        break;
-      }
-      await wait(intervalMs);
-    }
-
-    const row = response!.body.result.find((resultRow: Record<string, unknown>) => resultRow.id === replayId);
-    expect(row).toBeDefined();
-    if (!row) {
-      throw new Error("Expected synced ClickHouse session replay row to be present.");
-    }
-    expect(row.id).toBe(replayId);
-    expect(row.user_id).toBeDefined();
-    expect(row.refresh_token_id).toBeDefined();
-    expect(row.started_at).toBeDefined();
-    expect(row.last_event_at).toBeDefined();
-    expect(Number(row.chunk_count)).toBe(2);
-  }, TEST_TIMEOUT);
-
-  /**
-   * What it does:
-   * - Creates a project with an external Postgres DB, signs in a user,
-   *   uploads a session replay batch, and verifies the row is synced to external Postgres.
-   */
-  test('SessionReplay sync (Postgres)', async () => {
-    const dbName = 'session_replay_pg_test';
-    const connectionString = await dbManager.createDatabase(dbName);
-
-    await createProjectWithExternalDb({
-      main: {
-        type: 'postgres',
-        connectionString,
-      }
-    }, {
-      display_name: 'Session Replay Sync Test',
-      config: {
-        magic_link_enabled: true,
-      },
-    });
-    await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
-    await Auth.Otp.signIn();
-
-    const now = Date.now();
-    const browserSessionId = randomUUID();
-    const batchId = randomUUID();
-
-    const uploadRes = await niceBackendFetch("/api/v1/session-replays/batch", {
-      method: "POST",
-      accessType: "client",
-      body: {
-        browser_session_id: browserSessionId,
-        session_replay_segment_id: randomUUID(),
-        batch_id: batchId,
-        started_at_ms: now,
-        sent_at_ms: now + 500,
-        events: [
-          { timestamp: now + 100, type: 2 },
-          { timestamp: now + 200, type: 3 },
-        ],
-      },
-    });
-    expect(uploadRes.status).toBe(200);
-    const replayId = uploadRes.body.session_replay_id;
-
-    const client = dbManager.getClient(dbName);
-
-    // Wait for the session replay row to appear in external DB
-    const secondUploadRes = await niceBackendFetch("/api/v1/session-replays/batch", {
-      method: "POST",
-      accessType: "client",
-      body: {
-        browser_session_id: browserSessionId,
-        session_replay_segment_id: randomUUID(),
-        batch_id: randomUUID(),
-        started_at_ms: now + 1_000,
-        sent_at_ms: now + 1_500,
-        events: [
-          { timestamp: now + 1_100, type: 2 },
-        ],
-      },
-    });
-    expect(secondUploadRes.status).toBe(200);
-    expect(secondUploadRes.body.session_replay_id).toBe(replayId);
-
-    await waitForSyncedSessionReplay(client, replayId, 2);
-
-    // Verify the synced row has expected columns
-    const res = await client.query(`SELECT * FROM "session_replays" WHERE "id" = $1`, [replayId]);
-    expect(res.rows.length).toBe(1);
-    const row = res.rows[0];
-    expect(row.user_id).toBeDefined();
-    expect(row.refresh_token_id).toBeDefined();
-    expect(row.created_at).toBeInstanceOf(Date);
-    expect(row.started_at).toBeInstanceOf(Date);
-    expect(row.last_event_at).toBeInstanceOf(Date);
-    expect(row).toMatchObject({
-      id: replayId,
-      chunk_count: "2",
-    });
   }, TEST_TIMEOUT);
 
   /**
@@ -1874,17 +1705,15 @@ describe.sequential('External DB Sync - Basic Tests', () => {
     let response;
     while (performance.now() - start < timeoutMs) {
       response = await runQueryForCurrentProject({
-        query: "SELECT id, user_id, provider, provider_account_id, email FROM connected_accounts WHERE id = {account_id:UUID}",
-        params: { account_id: accountId },
+        query: "SELECT user_id, provider, provider_account_id FROM connected_accounts WHERE provider_account_id = {account_id:String} AND user_id = {user_id:UUID}",
+        params: { account_id: "ch-test-account-12345", user_id: userId },
       });
       expect(response.status).toBe(200);
       if (response.body.result.length === 1) {
         expect(response.body.result[0]).toMatchObject({
-          id: accountId,
           user_id: userId,
           provider: "spotify",
           provider_account_id: "ch-test-account-12345",
-          email: "chuser@example.com",
         });
         return;
       }

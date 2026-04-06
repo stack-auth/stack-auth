@@ -529,7 +529,6 @@ it("has limited grants", async ({ expect }) => {
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.notification_preferences TO limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.project_permissions TO limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.refresh_tokens TO limited_user" },
-          { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.session_replays TO limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.team_invitations TO limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.team_member_profiles TO limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.team_permissions TO limited_user" },
@@ -602,10 +601,6 @@ it("can see only some tables", async ({ expect }) => {
           },
           {
             "database": "default",
-            "name": "session_replays",
-          },
-          {
-            "database": "default",
             "name": "team_invitations",
           },
           {
@@ -648,7 +643,6 @@ it("SHOW TABLES should have the correct tables", async ({ expect }) => {
           { "name": "notification_preferences" },
           { "name": "project_permissions" },
           { "name": "refresh_tokens" },
-          { "name": "session_replays" },
           { "name": "team_invitations" },
           { "name": "team_member_profiles" },
           { "name": "team_permissions" },
@@ -1141,7 +1135,6 @@ it("shows grants", async ({ expect }) => {
           { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.notification_preferences TO limited_user" },
           { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.project_permissions TO limited_user" },
           { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.refresh_tokens TO limited_user" },
-          { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.session_replays TO limited_user" },
           { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.team_invitations TO limited_user" },
           { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.team_member_profiles TO limited_user" },
           { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.team_permissions TO limited_user" },
@@ -1591,6 +1584,103 @@ it("does not allow input() function", async ({ expect }) => {
           Error during execution of this query.
           
           As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant CREATE TEMPORARY TABLE ON *.*. 
+        \`,
+      },
+      "headers": Headers {
+        "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("returns a safe error for illegal type of argument (code 43)", async ({ expect }) => {
+  const response = await runQuery({
+    query: "SELECT arrayJoin(123)",
+  });
+
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "ANALYTICS_QUERY_ERROR",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 43 Argument for function arrayJoin must be Array or Map: In scope SELECT arrayJoin(123). 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 43 Argument for function arrayJoin must be Array or Map: In scope SELECT arrayJoin(123). 
+        \`,
+      },
+      "headers": Headers {
+        "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("does not leak column names from restricted tables via illegal type of argument (code 43)", async ({ expect }) => {
+  // ClickHouse resolves identifiers and checks types before checking permissions,
+  // so a code 43 error referencing a restricted table column could leak its name/type
+  const response = await runQuery({
+    query: "SELECT arrayJoin(query) FROM system.query_log",
+  });
+
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "ANALYTICS_QUERY_ERROR",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 43 Argument for function arrayJoin must be Array or Map: In scope SELECT arrayJoin(query) FROM system.query_log. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 43 Argument for function arrayJoin must be Array or Map: In scope SELECT arrayJoin(query) FROM system.query_log. 
+        \`,
+      },
+      "headers": Headers {
+        "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("does not leak column names from restricted tables via unknown identifier (code 47)", async ({ expect }) => {
+  // ClickHouse resolves identifiers before checking permissions, and suggests
+  // real column names ("Maybe you meant: ..."), so code 47 must be unsafe
+  const response = await runQuery({
+    query: "SELECT qurey FROM system.query_log",
+  });
+
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "ANALYTICS_QUERY_ERROR",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 47 Unknown expression identifier \\\`qurey\\\` in scope SELECT qurey FROM system.query_log. Maybe you meant: ['query']. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 47 Unknown expression identifier \\\`qurey\\\` in scope SELECT qurey FROM system.query_log. Maybe you meant: ['query']. 
         \`,
       },
       "headers": Headers {

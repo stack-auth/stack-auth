@@ -8,12 +8,11 @@ import { getPrismaClientForTenancy, globalPrismaClient, PrismaClientTransaction 
 import { withTraceSpan } from "@/utils/telemetry";
 import { allPromisesAndWaitUntilEach } from "@/utils/vercel";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
-import { getEnvBoolean, getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
+import { getEnvBoolean, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, errorToNiceString, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { Json } from "@stackframe/stack-shared/dist/utils/json";
 import { filterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
 import { randomUUID } from "node:crypto";
 import { checkEmailWithEmailable, type EmailableCheckResult } from "./emailable";
 import { lowLevelSendEmailDirectWithoutRetries } from "./emails-low-level";
@@ -66,14 +65,10 @@ async function verifyEmailDeliverability(
 ): Promise<EmailableCheckResult> {
   // Skip deliverability check if requested or using non-shared email config
   if (shouldSkipDeliverabilityCheck || emailConfigType !== "shared") {
-    return { status: "ok", emailableScore: null };
+    return { status: "deliverable", emailableScore: null };
   }
 
   const result = await checkEmailWithEmailable(email);
-  // Email queue should not block on emailable failures — treat errors as deliverable
-  if (result.status === "error") {
-    return { status: "ok", emailableScore: null };
-  }
   return result;
 }
 
@@ -247,7 +242,8 @@ async function claimEmailsForRendering(workerId: string): Promise<EmailOutbox[]>
     UPDATE "EmailOutbox" AS e
     SET
       "renderedByWorkerId" = ${workerId}::uuid,
-      "startedRenderingAt" = NOW()
+      "startedRenderingAt" = NOW(),
+      "shouldUpdateSequenceId" = TRUE
     FROM selected
     WHERE e."tenancyId" = selected."tenancyId" AND e."id" = selected."id"
     RETURNING e.*;
@@ -536,7 +532,8 @@ async function claimEmailsForSending(tx: PrismaClientTransaction, tenancyId: str
       FOR UPDATE SKIP LOCKED
     )
     UPDATE "EmailOutbox" AS e
-    SET "startedSendingAt" = NOW()
+    SET "startedSendingAt" = NOW(),
+        "shouldUpdateSequenceId" = TRUE
     FROM selected
     WHERE e."tenancyId" = selected."tenancyId" AND e."id" = selected."id"
     RETURNING e.*;

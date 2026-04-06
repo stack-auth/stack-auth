@@ -1,0 +1,28 @@
+---
+title: "Update Team"
+description: "Update a team"
+api: "PATCH /teams/{team_id}"
+---
+
+## Request
+
+<ParamField path="team_id" type="string" required>
+  The unique identifier for the team to be updated.
+</ParamField>
+
+The request body must contain the team fields you wish to update.
+
+## Response
+
+<ResponseField name="200" type="object">
+  Successful response indicating the team has been updated.
+</ResponseField>
+
+<CodeGroup>
+```bash cURL
+curl -X PATCH "https://api.stack-auth.com/teams/TEAM_ID" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN" \
+  -H "Content-Type: application/json" \
+  -d '{"display_name": "Updated Team Name"}'
+```
+</CodeGroup>

@@ -332,9 +332,9 @@ export async function updatePermissionDefinition(
       tenancyId: options.tenancy.id,
       permissionId: options.oldId,
     },
-    data: {
+    data: withExternalDbSyncUpdate({
       permissionId: newId,
-    },
+    }),
   });
 
   await sourceOfTruthTx.projectUserDirectPermission.updateMany({
@@ -342,9 +342,9 @@ export async function updatePermissionDefinition(
       tenancyId: options.tenancy.id,
       permissionId: options.oldId,
     },
-    data: {
+    data: withExternalDbSyncUpdate({
       permissionId: newId,
-    },
+    }),
   });
 
   return {

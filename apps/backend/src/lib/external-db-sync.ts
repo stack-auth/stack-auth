@@ -298,6 +298,7 @@ export async function recordExternalDbSyncDeletion(
         TRUE
       FROM "TeamMemberDirectPermission"
       WHERE "id" = ${target.permissionDbId}::uuid
+        AND "tenancyId" = ${target.tenancyId}::uuid
       FOR UPDATE
     `);
 
@@ -335,6 +336,7 @@ export async function recordExternalDbSyncDeletion(
         TRUE
       FROM "ProjectUserDirectPermission"
       WHERE "id" = ${target.permissionDbId}::uuid
+        AND "tenancyId" = ${target.tenancyId}::uuid
       FOR UPDATE
     `);
 
@@ -477,7 +479,8 @@ export async function recordExternalDbSyncDeletion(
       FROM "VerificationCode"
       JOIN "Tenancy" ON "Tenancy"."projectId" = "VerificationCode"."projectId"
         AND "Tenancy"."branchId" = "VerificationCode"."branchId"
-      WHERE "VerificationCode"."projectId" = ${target.verificationCodeProjectId}
+      WHERE "Tenancy"."id" = ${target.tenancyId}::uuid
+        AND "VerificationCode"."projectId" = ${target.verificationCodeProjectId}
         AND "VerificationCode"."branchId" = ${target.verificationCodeBranchId}
         AND "VerificationCode"."id" = ${target.verificationCodeId}::uuid
         AND "VerificationCode"."type" = 'TEAM_INVITATION'

@@ -664,7 +664,7 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
     },
   },
   "team_member_profiles": {
-    sourceTables: { "TeamMember": "TeamMember", "ProjectUser": "ProjectUser" },
+    sourceTables: { "TeamMember": "TeamMember" },
     targetTable: "team_member_profiles",
     targetTableSchemas: {
       postgres: `
@@ -673,7 +673,6 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
           "user_id" uuid NOT NULL,
           "display_name" text,
           "profile_image_url" text,
-          "user" jsonb NOT NULL DEFAULT '{}'::jsonb,
           "created_at" timestamp without time zone NOT NULL,
           PRIMARY KEY ("team_id", "user_id")
         );
@@ -694,7 +693,6 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
           user_id UUID,
           display_name Nullable(String),
           profile_image_url Nullable(String),
-          user JSON,
           created_at DateTime64(3, 'UTC'),
           sync_sequence_id Int64,
           sync_is_deleted UInt8,
@@ -716,46 +714,12 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
             "TeamMember"."projectUserId" AS "user_id",
             "TeamMember"."displayName" AS "display_name",
             "TeamMember"."profileImageUrl" AS "profile_image_url",
-            jsonb_build_object(
-              'id', "ProjectUser"."projectUserId",
-              'display_name', "ProjectUser"."displayName",
-              'primary_email', (
-                SELECT "ContactChannel"."value"
-                FROM "ContactChannel"
-                WHERE "ContactChannel"."projectUserId" = "ProjectUser"."projectUserId"
-                  AND "ContactChannel"."tenancyId" = "ProjectUser"."tenancyId"
-                  AND "ContactChannel"."type" = 'EMAIL'
-                  AND "ContactChannel"."isPrimary" = 'TRUE'
-                LIMIT 1
-              ),
-              'primary_email_verified', COALESCE(
-                (
-                  SELECT "ContactChannel"."isVerified"
-                  FROM "ContactChannel"
-                  WHERE "ContactChannel"."projectUserId" = "ProjectUser"."projectUserId"
-                    AND "ContactChannel"."tenancyId" = "ProjectUser"."tenancyId"
-                    AND "ContactChannel"."type" = 'EMAIL'
-                    AND "ContactChannel"."isPrimary" = 'TRUE'
-                  LIMIT 1
-                ),
-                false
-              ),
-              'profile_image_url', "ProjectUser"."profileImageUrl",
-              'signed_up_at_millis', EXTRACT(EPOCH FROM "ProjectUser"."createdAt") * 1000,
-              'client_metadata', COALESCE("ProjectUser"."clientMetadata", '{}'::jsonb),
-              'client_read_only_metadata', COALESCE("ProjectUser"."clientReadOnlyMetadata", '{}'::jsonb),
-              'server_metadata', COALESCE("ProjectUser"."serverMetadata", '{}'::jsonb),
-              'is_anonymous', "ProjectUser"."isAnonymous",
-              'last_active_at_millis', CASE WHEN "ProjectUser"."lastActiveAt" IS NOT NULL THEN EXTRACT(EPOCH FROM "ProjectUser"."lastActiveAt") * 1000 ELSE NULL END
-            ) AS "user",
             "TeamMember"."createdAt" AS "created_at",
             "TeamMember"."sequenceId" AS "sync_sequence_id",
             "TeamMember"."tenancyId" AS "tenancyId",
             false AS "sync_is_deleted"
           FROM "TeamMember"
           JOIN "Tenancy" ON "Tenancy"."id" = "TeamMember"."tenancyId"
-          JOIN "ProjectUser" ON "ProjectUser"."projectUserId" = "TeamMember"."projectUserId"
-            AND "ProjectUser"."tenancyId" = "TeamMember"."tenancyId"
           WHERE "TeamMember"."tenancyId" = $1::uuid
 
           UNION ALL
@@ -767,7 +731,6 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
             ("DeletedRow"."primaryKey"->>'projectUserId')::uuid AS "user_id",
             NULL::text AS "display_name",
             NULL::text AS "profile_image_url",
-            '{}'::jsonb AS "user",
             "DeletedRow"."deletedAt"::timestamp without time zone AS "created_at",
             "DeletedRow"."sequenceId" AS "sync_sequence_id",
             "DeletedRow"."tenancyId" AS "tenancyId",
@@ -792,45 +755,11 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
           "TeamMember"."projectUserId" AS "user_id",
           "TeamMember"."displayName" AS "display_name",
           "TeamMember"."profileImageUrl" AS "profile_image_url",
-          jsonb_build_object(
-            'id', "ProjectUser"."projectUserId",
-            'display_name', "ProjectUser"."displayName",
-            'primary_email', (
-              SELECT "ContactChannel"."value"
-              FROM "ContactChannel"
-              WHERE "ContactChannel"."projectUserId" = "ProjectUser"."projectUserId"
-                AND "ContactChannel"."tenancyId" = "ProjectUser"."tenancyId"
-                AND "ContactChannel"."type" = 'EMAIL'
-                AND "ContactChannel"."isPrimary" = 'TRUE'
-              LIMIT 1
-            ),
-            'primary_email_verified', COALESCE(
-              (
-                SELECT "ContactChannel"."isVerified"
-                FROM "ContactChannel"
-                WHERE "ContactChannel"."projectUserId" = "ProjectUser"."projectUserId"
-                  AND "ContactChannel"."tenancyId" = "ProjectUser"."tenancyId"
-                  AND "ContactChannel"."type" = 'EMAIL'
-                  AND "ContactChannel"."isPrimary" = 'TRUE'
-                LIMIT 1
-              ),
-              false
-            ),
-            'profile_image_url', "ProjectUser"."profileImageUrl",
-            'signed_up_at_millis', EXTRACT(EPOCH FROM "ProjectUser"."createdAt") * 1000,
-            'client_metadata', COALESCE("ProjectUser"."clientMetadata", '{}'::jsonb),
-            'client_read_only_metadata', COALESCE("ProjectUser"."clientReadOnlyMetadata", '{}'::jsonb),
-            'server_metadata', COALESCE("ProjectUser"."serverMetadata", '{}'::jsonb),
-            'is_anonymous', "ProjectUser"."isAnonymous",
-            'last_active_at_millis', CASE WHEN "ProjectUser"."lastActiveAt" IS NOT NULL THEN EXTRACT(EPOCH FROM "ProjectUser"."createdAt") * 1000 ELSE NULL END
-          ) AS "user",
           "TeamMember"."createdAt" AS "created_at",
           "TeamMember"."sequenceId" AS "sequence_id",
           "TeamMember"."tenancyId",
           false AS "is_deleted"
         FROM "TeamMember"
-        JOIN "ProjectUser" ON "ProjectUser"."projectUserId" = "TeamMember"."projectUserId"
-          AND "ProjectUser"."tenancyId" = "TeamMember"."tenancyId"
         WHERE "TeamMember"."tenancyId" = $1::uuid
 
         UNION ALL
@@ -840,7 +769,6 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
           ("DeletedRow"."primaryKey"->>'projectUserId')::uuid AS "user_id",
           NULL::text AS "display_name",
           NULL::text AS "profile_image_url",
-          '{}'::jsonb AS "user",
           "DeletedRow"."deletedAt"::timestamp without time zone AS "created_at",
           "DeletedRow"."sequenceId" AS "sequence_id",
           "DeletedRow"."tenancyId",
@@ -863,11 +791,10 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
             $2::uuid AS "user_id",
             $3::text AS "display_name",
             $4::text AS "profile_image_url",
-            $5::jsonb AS "user",
-            $6::timestamp without time zone AS "created_at",
-            $7::bigint AS "sequence_id",
-            $8::boolean AS "is_deleted",
-            $9::text AS "mapping_name"
+            $5::timestamp without time zone AS "created_at",
+            $6::bigint AS "sequence_id",
+            $7::boolean AS "is_deleted",
+            $8::text AS "mapping_name"
         ),
         deleted AS (
           DELETE FROM "team_member_profiles" tm
@@ -881,7 +808,6 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
             "user_id",
             "display_name",
             "profile_image_url",
-            "user",
             "created_at"
           )
           SELECT
@@ -889,14 +815,12 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
             p."user_id",
             p."display_name",
             p."profile_image_url",
-            p."user",
             p."created_at"
           FROM params p
           WHERE p."is_deleted" = false
           ON CONFLICT ("team_id", "user_id") DO UPDATE SET
             "display_name" = EXCLUDED."display_name",
             "profile_image_url" = EXCLUDED."profile_image_url",
-            "user" = EXCLUDED."user",
             "created_at" = EXCLUDED."created_at"
           RETURNING 1
         )
@@ -935,7 +859,7 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
           branch_id String,
           team_id UUID,
           user_id UUID,
-          permission_id String,
+          id String,
           created_at DateTime64(3, 'UTC'),
           sync_sequence_id Int64,
           sync_is_deleted UInt8,
@@ -943,7 +867,7 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
         )
         ENGINE ReplacingMergeTree(sync_sequence_id)
         PARTITION BY toYYYYMM(created_at)
-        ORDER BY (project_id, branch_id, team_id, user_id, permission_id);
+        ORDER BY (project_id, branch_id, team_id, user_id, id);
       `.trim(),
     },
     internalDbFetchQueries: {
@@ -955,7 +879,7 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
             "Tenancy"."branchId" AS "branch_id",
             "TeamMemberDirectPermission"."teamId" AS "team_id",
             "TeamMemberDirectPermission"."projectUserId" AS "user_id",
-            "TeamMemberDirectPermission"."permissionId" AS "permission_id",
+            "TeamMemberDirectPermission"."permissionId" AS "id",
             "TeamMemberDirectPermission"."createdAt" AS "created_at",
             "TeamMemberDirectPermission"."sequenceId" AS "sync_sequence_id",
             "TeamMemberDirectPermission"."tenancyId" AS "tenancyId",
@@ -971,7 +895,7 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
             "Tenancy"."branchId" AS "branch_id",
             ("DeletedRow"."primaryKey"->>'teamId')::uuid AS "team_id",
             ("DeletedRow"."primaryKey"->>'projectUserId')::uuid AS "user_id",
-            "DeletedRow"."primaryKey"->>'permissionId' AS "permission_id",
+            "DeletedRow"."primaryKey"->>'permissionId' AS "id",
             "DeletedRow"."deletedAt"::timestamp without time zone AS "created_at",
             "DeletedRow"."sequenceId" AS "sync_sequence_id",
             "DeletedRow"."tenancyId" AS "tenancyId",
@@ -1007,7 +931,7 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
         SELECT
           ("DeletedRow"."primaryKey"->>'teamId')::uuid AS "team_id",
           ("DeletedRow"."primaryKey"->>'projectUserId')::uuid AS "user_id",
-          "DeletedRow"."primaryKey"->>'permissionId' AS "permission_id",
+          "DeletedRow"."primaryKey"->>'permissionId' AS "id",
           "DeletedRow"."deletedAt"::timestamp without time zone AS "created_at",
           "DeletedRow"."sequenceId" AS "sequence_id",
           "DeletedRow"."tenancyId",
@@ -1314,18 +1238,17 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
           email_programmatic_call_template_id Nullable(String),
           theme_id Nullable(String),
           is_high_priority UInt8,
-          rendered_is_transactional Nullable(UInt8),
-          rendered_subject Nullable(String),
-          rendered_notification_category_id Nullable(String),
+          is_transactional Nullable(UInt8),
+          subject Nullable(String),
+          notification_category_id Nullable(String),
           started_rendering_at Nullable(DateTime64(3, 'UTC')),
-          finished_rendering_at Nullable(DateTime64(3, 'UTC')),
+          rendered_at Nullable(DateTime64(3, 'UTC')),
           render_error Nullable(String),
           scheduled_at DateTime64(3, 'UTC'),
           created_at DateTime64(3, 'UTC'),
+          updated_at DateTime64(3, 'UTC'),
           started_sending_at Nullable(DateTime64(3, 'UTC')),
-          finished_sending_at Nullable(DateTime64(3, 'UTC')),
           server_error Nullable(String),
-          sent_at Nullable(DateTime64(3, 'UTC')),
           delivered_at Nullable(DateTime64(3, 'UTC')),
           opened_at Nullable(DateTime64(3, 'UTC')),
           clicked_at Nullable(DateTime64(3, 'UTC')),
@@ -1353,25 +1276,24 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
           "Tenancy"."projectId" AS "project_id",
           "Tenancy"."branchId" AS "branch_id",
           "EmailOutbox"."id" AS "id",
-          "EmailOutbox"."status"::text AS "status",
-          "EmailOutbox"."simpleStatus"::text AS "simple_status",
-          "EmailOutbox"."createdWith"::text AS "created_with",
+          LOWER(REPLACE("EmailOutbox"."status"::text, '_', '-')) AS "status",
+          LOWER(REPLACE("EmailOutbox"."simpleStatus"::text, '_', '-')) AS "simple_status",
+          CASE WHEN "EmailOutbox"."createdWith"::text = 'DRAFT' THEN 'draft' ELSE 'programmatic-call' END AS "created_with",
           "EmailOutbox"."emailDraftId" AS "email_draft_id",
           "EmailOutbox"."emailProgrammaticCallTemplateId" AS "email_programmatic_call_template_id",
           "EmailOutbox"."themeId" AS "theme_id",
           "EmailOutbox"."isHighPriority" AS "is_high_priority",
-          "EmailOutbox"."renderedIsTransactional" AS "rendered_is_transactional",
-          "EmailOutbox"."renderedSubject" AS "rendered_subject",
-          "EmailOutbox"."renderedNotificationCategoryId" AS "rendered_notification_category_id",
+          "EmailOutbox"."renderedIsTransactional" AS "is_transactional",
+          "EmailOutbox"."renderedSubject" AS "subject",
+          "EmailOutbox"."renderedNotificationCategoryId" AS "notification_category_id",
           "EmailOutbox"."startedRenderingAt" AS "started_rendering_at",
-          "EmailOutbox"."finishedRenderingAt" AS "finished_rendering_at",
+          "EmailOutbox"."finishedRenderingAt" AS "rendered_at",
           "EmailOutbox"."renderErrorExternalMessage" AS "render_error",
           "EmailOutbox"."scheduledAt" AS "scheduled_at",
           "EmailOutbox"."createdAt" AS "created_at",
+          "EmailOutbox"."updatedAt" AS "updated_at",
           "EmailOutbox"."startedSendingAt" AS "started_sending_at",
-          "EmailOutbox"."finishedSendingAt" AS "finished_sending_at",
           "EmailOutbox"."sendServerErrorExternalMessage" AS "server_error",
-          "EmailOutbox"."sentAt" AS "sent_at",
           "EmailOutbox"."deliveredAt" AS "delivered_at",
           "EmailOutbox"."openedAt" AS "opened_at",
           "EmailOutbox"."clickedAt" AS "clicked_at",
@@ -1380,7 +1302,7 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
           "EmailOutbox"."bouncedAt" AS "bounced_at",
           "EmailOutbox"."deliveryDelayedAt" AS "delivery_delayed_at",
           "EmailOutbox"."canHaveDeliveryInfo" AS "can_have_delivery_info",
-          "EmailOutbox"."skippedReason"::text AS "skipped_reason",
+          LOWER(REPLACE("EmailOutbox"."skippedReason"::text, '_', '-')) AS "skipped_reason",
           "EmailOutbox"."skippedDetails" AS "skipped_details",
           "EmailOutbox"."sendRetries" AS "send_retries",
           "EmailOutbox"."isPaused" AS "is_paused",
@@ -1598,160 +1520,6 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
       `.trim(),
     },
   },
-  "session_replays": {
-    sourceTables: { "SessionReplay": "SessionReplay" },
-    targetTable: "session_replays",
-    targetTableSchemas: {
-      postgres: `
-        CREATE TABLE IF NOT EXISTS "session_replays" (
-          "id" uuid PRIMARY KEY NOT NULL,
-          "user_id" uuid NOT NULL,
-          "refresh_token_id" text NOT NULL,
-          "started_at" timestamp without time zone NOT NULL,
-          "last_event_at" timestamp without time zone NOT NULL,
-          "created_at" timestamp without time zone NOT NULL,
-          "chunk_count" bigint NOT NULL DEFAULT 0
-        );
-        REVOKE ALL ON "session_replays" FROM PUBLIC;
-        GRANT SELECT ON "session_replays" TO PUBLIC;
-
-        CREATE TABLE IF NOT EXISTS "_stack_sync_metadata" (
-          "mapping_name" text PRIMARY KEY NOT NULL,
-          "last_synced_sequence_id" bigint NOT NULL DEFAULT -1,
-          "updated_at" timestamp without time zone NOT NULL DEFAULT now()
-        );
-      `.trim(),
-      clickhouse: `
-        CREATE TABLE IF NOT EXISTS analytics_internal.session_replays (
-          project_id String,
-          branch_id String,
-          id UUID,
-          user_id UUID,
-          refresh_token_id String,
-          started_at DateTime64(3, 'UTC'),
-          last_event_at DateTime64(3, 'UTC'),
-          created_at DateTime64(3, 'UTC'),
-          chunk_count UInt64,
-          sync_sequence_id Int64,
-          sync_is_deleted UInt8,
-          sync_created_at DateTime64(3, 'UTC') DEFAULT now64(3)
-        )
-        ENGINE ReplacingMergeTree(sync_sequence_id)
-        PARTITION BY toYYYYMM(started_at)
-        ORDER BY (project_id, branch_id, id);
-      `.trim(),
-    },
-    internalDbFetchQueries: {
-      clickhouse: `
-        SELECT
-          "Tenancy"."projectId" AS "project_id",
-          "Tenancy"."branchId" AS "branch_id",
-          "SessionReplay"."id" AS "id",
-          "SessionReplay"."projectUserId" AS "user_id",
-          "SessionReplay"."refreshTokenId" AS "refresh_token_id",
-          "SessionReplay"."startedAt" AS "started_at",
-          "SessionReplay"."lastEventAt" AS "last_event_at",
-          "SessionReplay"."createdAt" AS "created_at",
-          (
-            SELECT COUNT(*)
-            FROM "SessionReplayChunk"
-            WHERE "SessionReplayChunk"."tenancyId" = "SessionReplay"."tenancyId"
-              AND "SessionReplayChunk"."sessionReplayId" = "SessionReplay"."id"
-          ) AS "chunk_count",
-          "SessionReplay"."sequenceId" AS "sync_sequence_id",
-          "SessionReplay"."tenancyId" AS "tenancyId",
-          false AS "sync_is_deleted"
-        FROM "SessionReplay"
-        JOIN "Tenancy" ON "Tenancy"."id" = "SessionReplay"."tenancyId"
-        WHERE "SessionReplay"."tenancyId" = $1::uuid
-          AND "SessionReplay"."sequenceId" IS NOT NULL
-          AND "SessionReplay"."sequenceId" > $2::bigint
-        ORDER BY "SessionReplay"."sequenceId" ASC
-        LIMIT 1000
-      `.trim(),
-    },
-    internalDbFetchQuery: `
-      SELECT
-        "SessionReplay"."id" AS "id",
-        "SessionReplay"."projectUserId" AS "user_id",
-        "SessionReplay"."refreshTokenId" AS "refresh_token_id",
-        "SessionReplay"."startedAt" AS "started_at",
-        "SessionReplay"."lastEventAt" AS "last_event_at",
-        "SessionReplay"."createdAt" AS "created_at",
-        (
-          SELECT COUNT(*)
-          FROM "SessionReplayChunk"
-          WHERE "SessionReplayChunk"."tenancyId" = "SessionReplay"."tenancyId"
-            AND "SessionReplayChunk"."sessionReplayId" = "SessionReplay"."id"
-        ) AS "chunk_count",
-        "SessionReplay"."sequenceId" AS "sequence_id",
-        "SessionReplay"."tenancyId",
-        false AS "is_deleted"
-      FROM "SessionReplay"
-      WHERE "SessionReplay"."tenancyId" = $1::uuid
-        AND "SessionReplay"."sequenceId" IS NOT NULL
-        AND "SessionReplay"."sequenceId" > $2::bigint
-      ORDER BY "SessionReplay"."sequenceId" ASC
-      LIMIT 1000
-    `.trim(),
-    externalDbUpdateQueries: {
-      postgres: `
-        WITH params AS (
-          SELECT
-            $1::uuid AS "id",
-            $2::uuid AS "user_id",
-            $3::text AS "refresh_token_id",
-            $4::timestamp without time zone AS "started_at",
-            $5::timestamp without time zone AS "last_event_at",
-            $6::timestamp without time zone AS "created_at",
-            $7::bigint AS "chunk_count",
-            $8::bigint AS "sequence_id",
-            $9::boolean AS "is_deleted",
-            $10::text AS "mapping_name"
-        ),
-        deleted AS (
-          DELETE FROM "session_replays" sr
-          USING params p
-          WHERE p."is_deleted" = true AND sr."id" = p."id"
-          RETURNING 1
-        ),
-        upserted AS (
-          INSERT INTO "session_replays" (
-            "id",
-            "user_id",
-            "refresh_token_id",
-            "started_at",
-            "last_event_at",
-            "created_at",
-            "chunk_count"
-          )
-          SELECT
-            p."id",
-            p."user_id",
-            p."refresh_token_id",
-            p."started_at",
-            p."last_event_at",
-            p."created_at",
-            p."chunk_count"
-          FROM params p
-          WHERE p."is_deleted" = false
-          ON CONFLICT ("id") DO UPDATE SET
-            "user_id" = EXCLUDED."user_id",
-            "refresh_token_id" = EXCLUDED."refresh_token_id",
-            "started_at" = EXCLUDED."started_at",
-            "last_event_at" = EXCLUDED."last_event_at",
-            "created_at" = EXCLUDED."created_at",
-            "chunk_count" = EXCLUDED."chunk_count"
-          RETURNING 1
-        )
-        INSERT INTO "_stack_sync_metadata" ("mapping_name", "last_synced_sequence_id", "updated_at")
-        SELECT p."mapping_name", p."sequence_id", now() FROM params p
-        ON CONFLICT ("mapping_name") DO UPDATE SET
-          "last_synced_sequence_id" = GREATEST("_stack_sync_metadata"."last_synced_sequence_id", EXCLUDED."last_synced_sequence_id"),
-          "updated_at" = now();
-      `.trim(),
-    },
-  },
   "project_permissions": {
     sourceTables: { "ProjectUserDirectPermission": "ProjectUserDirectPermission" },
     targetTable: "project_permissions",
@@ -1777,7 +1545,7 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
           project_id String,
           branch_id String,
           user_id UUID,
-          permission_id String,
+          id String,
           created_at DateTime64(3, 'UTC'),
           sync_sequence_id Int64,
           sync_is_deleted UInt8,
@@ -1785,7 +1553,7 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
         )
         ENGINE ReplacingMergeTree(sync_sequence_id)
         PARTITION BY toYYYYMM(created_at)
-        ORDER BY (project_id, branch_id, user_id, permission_id);
+        ORDER BY (project_id, branch_id, user_id, id);
       `.trim(),
     },
     internalDbFetchQueries: {
@@ -1796,7 +1564,7 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
             "Tenancy"."projectId" AS "project_id",
             "Tenancy"."branchId" AS "branch_id",
             "ProjectUserDirectPermission"."projectUserId" AS "user_id",
-            "ProjectUserDirectPermission"."permissionId" AS "permission_id",
+            "ProjectUserDirectPermission"."permissionId" AS "id",
             "ProjectUserDirectPermission"."createdAt" AS "created_at",
             "ProjectUserDirectPermission"."sequenceId" AS "sync_sequence_id",
             "ProjectUserDirectPermission"."tenancyId" AS "tenancyId",
@@ -1811,7 +1579,7 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
             "Tenancy"."projectId" AS "project_id",
             "Tenancy"."branchId" AS "branch_id",
             ("DeletedRow"."primaryKey"->>'projectUserId')::uuid AS "user_id",
-            "DeletedRow"."primaryKey"->>'permissionId' AS "permission_id",
+            "DeletedRow"."primaryKey"->>'permissionId' AS "id",
             "DeletedRow"."deletedAt"::timestamp without time zone AS "created_at",
             "DeletedRow"."sequenceId" AS "sync_sequence_id",
             "DeletedRow"."tenancyId" AS "tenancyId",
@@ -1845,7 +1613,7 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
 
         SELECT
           ("DeletedRow"."primaryKey"->>'projectUserId')::uuid AS "user_id",
-          "DeletedRow"."primaryKey"->>'permissionId' AS "permission_id",
+          "DeletedRow"."primaryKey"->>'permissionId' AS "id",
           "DeletedRow"."deletedAt"::timestamp without time zone AS "created_at",
           "DeletedRow"."sequenceId" AS "sequence_id",
           "DeletedRow"."tenancyId",
@@ -1925,7 +1693,6 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
         CREATE TABLE IF NOT EXISTS analytics_internal.notification_preferences (
           project_id String,
           branch_id String,
-          id UUID,
           user_id UUID,
           notification_category_id String,
           enabled UInt8,
@@ -1934,7 +1701,7 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
           sync_created_at DateTime64(3, 'UTC') DEFAULT now64(3)
         )
         ENGINE ReplacingMergeTree(sync_sequence_id)
-        ORDER BY (project_id, branch_id, id);
+        ORDER BY (project_id, branch_id, user_id, notification_category_id);
       `.trim(),
     },
     internalDbFetchQueries: {
@@ -1944,7 +1711,6 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
           SELECT
             "Tenancy"."projectId" AS "project_id",
             "Tenancy"."branchId" AS "branch_id",
-            "UserNotificationPreference"."id" AS "id",
             "UserNotificationPreference"."projectUserId" AS "user_id",
             "UserNotificationPreference"."notificationCategoryId" AS "notification_category_id",
             "UserNotificationPreference"."enabled" AS "enabled",
@@ -1960,7 +1726,6 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
           SELECT
             "Tenancy"."projectId" AS "project_id",
             "Tenancy"."branchId" AS "branch_id",
-            ("DeletedRow"."primaryKey"->>'id')::uuid AS "id",
             ("DeletedRow"."data"->>'projectUserId')::uuid AS "user_id",
             ("DeletedRow"."data"->>'notificationCategoryId')::uuid AS "notification_category_id",
             ("DeletedRow"."data"->>'enabled')::boolean AS "enabled",
@@ -2273,11 +2038,9 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
         CREATE TABLE IF NOT EXISTS analytics_internal.connected_accounts (
           project_id String,
           branch_id String,
-          id UUID,
           user_id UUID,
           provider String,
           provider_account_id String,
-          email Nullable(String),
           created_at DateTime64(3, 'UTC'),
           sync_sequence_id Int64,
           sync_is_deleted UInt8,
@@ -2285,7 +2048,7 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
         )
         ENGINE ReplacingMergeTree(sync_sequence_id)
         PARTITION BY toYYYYMM(created_at)
-        ORDER BY (project_id, branch_id, id);
+        ORDER BY (project_id, branch_id, user_id, provider, provider_account_id);
 
         CREATE TABLE IF NOT EXISTS analytics_internal._stack_sync_metadata (
           tenancy_id UUID,
@@ -2304,11 +2067,9 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
           SELECT
             "Tenancy"."projectId" AS "project_id",
             "Tenancy"."branchId" AS "branch_id",
-            "ProjectUserOAuthAccount"."id" AS "id",
             "ProjectUserOAuthAccount"."projectUserId" AS "user_id",
             "ProjectUserOAuthAccount"."configOAuthProviderId" AS "provider",
             "ProjectUserOAuthAccount"."providerAccountId" AS "provider_account_id",
-            "ProjectUserOAuthAccount"."email" AS "email",
             "ProjectUserOAuthAccount"."createdAt" AS "created_at",
             "ProjectUserOAuthAccount"."sequenceId" AS "sync_sequence_id",
             "ProjectUserOAuthAccount"."tenancyId" AS "tenancyId",
@@ -2323,11 +2084,9 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
           SELECT
             "Tenancy"."projectId" AS "project_id",
             "Tenancy"."branchId" AS "branch_id",
-            ("DeletedRow"."primaryKey"->>'id')::uuid AS "id",
             ("DeletedRow"."data"->>'projectUserId')::uuid AS "user_id",
-            NULL::text AS "provider",
-            NULL::text AS "provider_account_id",
-            NULL::text AS "email",
+            "DeletedRow"."data"->>'configOAuthProviderId' AS "provider",
+            "DeletedRow"."data"->>'providerAccountId' AS "provider_account_id",
             "DeletedRow"."deletedAt"::timestamp without time zone AS "created_at",
             "DeletedRow"."sequenceId" AS "sync_sequence_id",
             "DeletedRow"."tenancyId" AS "tenancyId",
