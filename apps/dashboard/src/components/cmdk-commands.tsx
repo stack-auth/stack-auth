@@ -7,7 +7,7 @@ import { ALL_APPS_FRONTEND, getAppPath, getItemPath, hasNavigationItems, isSubAp
 import { getUninstalledAppIds } from "@/lib/apps-utils";
 import { classifyClickHouseSqlVsPrompt } from "@/lib/classify-query";
 import { cn } from "@/lib/utils";
-import { CheckIcon, CubeIcon, DownloadSimpleIcon, GearIcon, GlobeIcon, InfoIcon, KeyIcon, LayoutIcon, LightningIcon, PlayIcon, ShieldCheckIcon, SparkleIcon } from "@phosphor-icons/react";
+import { ChartBarIcon, CheckIcon, CubeIcon, DownloadSimpleIcon, EnvelopeSimpleIcon, GearIcon, GlobeIcon, HardDriveIcon, InfoIcon, KeyIcon, LayoutIcon, LightningIcon, Palette, PlayIcon, PlusIcon, ShieldCheckIcon, SparkleIcon, UsersIcon } from "@phosphor-icons/react";
 import { ALL_APPS, ALL_APP_TAGS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import Image from "next/image";
@@ -263,6 +263,84 @@ export type CmdKCommand = {
   highlightColor?: string,
 };
 
+type ProjectShortcutDefinition = {
+  id: string,
+  icon: React.FunctionComponent<React.SVGProps<SVGSVGElement>>,
+  label: string,
+  description: string,
+  href: string,
+  keywords: string[],
+  requiredApps?: AppId[],
+};
+
+const PROJECT_SHORTCUTS: ProjectShortcutDefinition[] = [
+  {
+    id: "navigation/users",
+    icon: UsersIcon,
+    label: "Users",
+    description: "Navigation",
+    href: "/users",
+    keywords: ["users", "user", "people", "members", "accounts"],
+  },
+  {
+    id: "navigation/dashboards",
+    icon: ChartBarIcon,
+    label: "Dashboards",
+    description: "Navigation",
+    href: "/dashboards",
+    keywords: ["dashboards", "dashboard", "charts", "insights", "metrics"],
+  },
+  {
+    id: "settings/trusted-domains",
+    icon: GlobeIcon,
+    label: "Trusted Domains",
+    description: "Settings",
+    href: "/domains",
+    keywords: ["domains", "trusted domains", "custom domain", "handler", "allowlist"],
+    requiredApps: ["authentication"],
+  },
+  {
+    id: "emails/themes",
+    icon: Palette,
+    label: "Email Themes",
+    description: "Emails",
+    href: "/email-themes",
+    keywords: ["email themes", "themes", "branding", "style", "templates"],
+    requiredApps: ["emails"],
+  },
+  {
+    id: "emails/outbox",
+    icon: EnvelopeSimpleIcon,
+    label: "Email Outbox",
+    description: "Emails",
+    href: "/email-outbox",
+    keywords: ["email outbox", "outbox", "delivery", "queue", "scheduled emails"],
+    requiredApps: ["emails"],
+  },
+  {
+    id: "data-vault/stores",
+    icon: HardDriveIcon,
+    label: "Data Vault Stores",
+    description: "Data Vault",
+    href: "/data-vault/stores",
+    keywords: ["data vault", "stores", "vault", "secrets", "encrypted storage"],
+    requiredApps: ["data-vault"],
+  },
+  {
+    id: "payments/new-product",
+    icon: PlusIcon,
+    label: "Create Product",
+    description: "Payments",
+    href: "/payments/products/new",
+    keywords: ["create product", "new product", "payments", "pricing", "catalog"],
+    requiredApps: ["payments"],
+  },
+];
+
+function toCommandIdSegment(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
 // Factory to create app preview components that show navigation items
 function createAppPreview(appId: AppId, projectId: string, appFrontend: NavigableAppFrontend): React.ComponentType<CmdKPreviewProps> {
   // Pre-compute these outside the component since they're static per appId
@@ -329,6 +407,21 @@ export function useCmdKCommands({
 }): CmdKCommand[] {
   return useMemo(() => {
     const commands: CmdKCommand[] = [];
+    const pushUniqueNavigateCommand = (command: CmdKCommand) => {
+      if (command.onAction.type !== "navigate") {
+        commands.push(command);
+        return;
+      }
+
+      const href = command.onAction.href;
+      const alreadyExists = commands.some((existingCommand) =>
+        existingCommand.onAction.type === "navigate" &&
+        existingCommand.onAction.href === href
+      );
+      if (!alreadyExists) {
+        commands.push(command);
+      }
+    };
     const queryClassification = classifyClickHouseSqlVsPrompt(query, { readonlyOnly: true });
     const shouldPrioritizeRunQuery = queryClassification.kind === "sql";
 
@@ -342,6 +435,24 @@ export function useCmdKCommands({
       onAction: { type: "navigate", href: `/projects/${projectId}` },
       preview: null,
     });
+
+    // Core navigation and power-tool shortcuts
+    for (const shortcut of PROJECT_SHORTCUTS) {
+      if (shortcut.requiredApps != null && !shortcut.requiredApps.every((appId) => enabledApps.includes(appId))) {
+        continue;
+      }
+
+      const IconComponent = shortcut.icon;
+      pushUniqueNavigateCommand({
+        id: shortcut.id,
+        icon: <IconComponent className="h-3.5 w-3.5 text-muted-foreground" />,
+        label: shortcut.label,
+        description: shortcut.description,
+        keywords: shortcut.keywords,
+        onAction: { type: "navigate", href: `/projects/${projectId}${shortcut.href}` },
+        preview: null,
+      });
+    }
 
     // Installed apps - with preview for navigation items
     for (const appId of enabledApps) {
@@ -364,6 +475,8 @@ export function useCmdKCommands({
             app.displayName.toLowerCase(),
             app.subtitle.toLowerCase(),
             appId,
+            appFrontend.href.toLowerCase(),
+            appFrontend.href.toLowerCase().replace(/-/g, " "),
             ...app.tags,
             "installed",
             "app",
@@ -386,6 +499,8 @@ export function useCmdKCommands({
           app.displayName.toLowerCase(),
           app.subtitle.toLowerCase(),
           appId,
+          appFrontend.href.toLowerCase(),
+          appFrontend.href.toLowerCase().replace(/-/g, " "),
           ...app.tags,
           "installed",
           "app",
@@ -395,6 +510,28 @@ export function useCmdKCommands({
         preview: hasNestedNavigation ? getOrCreateAppPreview(appId, projectId) : null,
         highlightColor: "app",
       });
+
+      // Flatten app pages so they're directly searchable without nesting
+      for (const navItem of appFrontend.navigationItems) {
+        const itemPath = getItemPath(projectId, appFrontend, navItem);
+        pushUniqueNavigateCommand({
+          id: `apps/${appId}/page/${toCommandIdSegment(navItem.displayName)}`,
+          icon: <IconComponent className="h-3.5 w-3.5 text-muted-foreground" />,
+          label: `${app.displayName}: ${navItem.displayName}`,
+          description: `Page in ${app.displayName}`,
+          keywords: [
+            app.displayName.toLowerCase(),
+            navItem.displayName.toLowerCase(),
+            `${app.displayName.toLowerCase()} ${navItem.displayName.toLowerCase()}`,
+            appId,
+            "page",
+            "navigate",
+          ],
+          onAction: { type: "navigate", href: itemPath },
+          preview: null,
+          highlightColor: "app",
+        });
+      }
     }
 
     // Available (uninstalled) apps
