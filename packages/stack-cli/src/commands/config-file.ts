@@ -42,9 +42,6 @@ export function registerConfigCommand(program: Command) {
       }
 
       const importPackage = detectImportPackageFromDir(path.dirname(filePath));
-      if (!importPackage) {
-        throw new CliError("No Stack Auth package found in your project's dependencies. Run this from your project directory, or install a Stack Auth SDK first (e.g. npm install @stackframe/stack).");
-      }
       const content = renderConfigFileContent(configOverride, importPackage);
 
       fs.writeFileSync(filePath, content);

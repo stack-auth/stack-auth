@@ -367,7 +367,7 @@ describe("Stack CLI", () => {
     );
 
     expect(exitCode).toBe(1);
-    expect(stderr).toContain("Re-run with --overwrite");
+    expect(stderr).toContain("re-run with --overwrite");
   });
 
   // --- init command tests ---
