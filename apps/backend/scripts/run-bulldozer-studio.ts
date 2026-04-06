@@ -520,16 +520,30 @@ function requireAuthorizedMutationRequest(request: http.IncomingMessage, request
     throw new StackAssertionError("Invalid or missing studio mutation token.");
   }
 
-  const allowedOrigins = new Set([
-    `http://localhost:${STUDIO_PORT}`,
-    `http://127.0.0.1:${STUDIO_PORT}`,
-  ]);
   const originHeader = request.headers.origin;
-  if (typeof originHeader === "string" && !allowedOrigins.has(originHeader)) {
-    throw new StackAssertionError("Mutation origin is not allowed.", {
-      origin: originHeader,
-      path: requestUrl.pathname,
-    });
+  if (typeof originHeader === "string") {
+    let originUrl: URL;
+    try {
+      originUrl = new URL(originHeader);
+    } catch {
+      throw new StackAssertionError("Mutation origin is not allowed.", {
+        origin: originHeader,
+        path: requestUrl.pathname,
+      });
+    }
+
+    const portMatches = originUrl.port === String(STUDIO_PORT);
+    const hostname = originUrl.hostname.toLowerCase();
+    const hostnameAllowed = hostname === "localhost"
+      || hostname === "127.0.0.1"
+      || hostname === "::1"
+      || hostname.endsWith(".localhost");
+    if (!portMatches || !hostnameAllowed) {
+      throw new StackAssertionError("Mutation origin is not allowed.", {
+        origin: originHeader,
+        path: requestUrl.pathname,
+      });
+    }
   }
 }
 

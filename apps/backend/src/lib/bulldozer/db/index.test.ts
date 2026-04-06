@@ -382,7 +382,8 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       tableId: "left-join-users-rules",
       leftTable: groupedFromTable,
       rightTable: groupedJoinTable,
-      on: predicate(`(("rightRowData"->>'threshold')::int) <= (("leftRowData"->>'value')::int)`),
+      leftJoinKey: mapper(`(("rowData"->>'value')::int) AS "joinKey"`),
+      rightJoinKey: mapper(`(("rowData"->>'threshold')::int) AS "joinKey"`),
     });
     return { fromTable, joinTable, groupedFromTable, groupedJoinTable, leftJoinedTable };
   }
@@ -2742,9 +2743,10 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":5}'::jsonb`)));
     await runStatements(fromTable.setRow("u2", expr(`'{"team":"alpha","value":1}'::jsonb`)));
     await runStatements(fromTable.setRow("u3", expr(`'{"team":"beta","value":2}'::jsonb`)));
-    await runStatements(joinTable.setRow("r1", expr(`'{"team":"alpha","threshold":2,"label":"silver"}'::jsonb`)));
-    await runStatements(joinTable.setRow("r2", expr(`'{"team":"alpha","threshold":4,"label":"gold"}'::jsonb`)));
-    await runStatements(joinTable.setRow("r3", expr(`'{"team":"beta","threshold":3,"label":"vip"}'::jsonb`)));
+    await runStatements(fromTable.setRow("u4", expr(`'{"team":"alpha","value":7}'::jsonb`)));
+    await runStatements(joinTable.setRow("r1", expr(`'{"team":"alpha","threshold":1,"label":"silver"}'::jsonb`)));
+    await runStatements(joinTable.setRow("r2", expr(`'{"team":"alpha","threshold":5,"label":"gold"}'::jsonb`)));
+    await runStatements(joinTable.setRow("r3", expr(`'{"team":"beta","threshold":2,"label":"vip"}'::jsonb`)));
     await runStatements(groupedFromTable.init());
     await runStatements(groupedJoinTable.init());
     await runStatements(leftJoinedTable.init());
@@ -2767,23 +2769,23 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(alphaRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata })).sort((a, b) => stringCompare(a.rowIdentifier, b.rowIdentifier))).toEqual([
       {
-        rowIdentifier: `["u1", "r1"]`,
-        rowData: {
-          leftRowData: { team: "alpha", value: 5 },
-          rightRowData: { team: "alpha", threshold: 2, label: "silver" },
-        },
-      },
-      {
         rowIdentifier: `["u1", "r2"]`,
         rowData: {
           leftRowData: { team: "alpha", value: 5 },
-          rightRowData: { team: "alpha", threshold: 4, label: "gold" },
+          rightRowData: { team: "alpha", threshold: 5, label: "gold" },
         },
       },
       {
-        rowIdentifier: `["u2", null]`,
+        rowIdentifier: `["u2", "r1"]`,
         rowData: {
           leftRowData: { team: "alpha", value: 1 },
+          rightRowData: { team: "alpha", threshold: 1, label: "silver" },
+        },
+      },
+      {
+        rowIdentifier: `["u4", null]`,
+        rowData: {
+          leftRowData: { team: "alpha", value: 7 },
           rightRowData: null,
         },
       },
@@ -2798,10 +2800,67 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(betaRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata }))).toEqual([
       {
-        rowIdentifier: `["u3", null]`,
+        rowIdentifier: `["u3", "r3"]`,
         rowData: {
           leftRowData: { team: "beta", value: 2 },
-          rightRowData: null,
+          rightRowData: { team: "beta", threshold: 2, label: "vip" },
+        },
+      },
+    ]);
+  });
+
+  test("leftJoinTable matches null join keys with IS NOT DISTINCT FROM semantics", async () => {
+    const fromTable = declareStoredTable<{ value: number | null, team: string | null }>({ tableId: "left-join-null-users" });
+    const joinTable = declareStoredTable<{ threshold: number | null, team: string | null, label: string }>({ tableId: "left-join-null-rules" });
+    const groupedFromTable = declareGroupByTable({
+      tableId: "left-join-null-users-by-team",
+      fromTable,
+      groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+    });
+    const groupedJoinTable = declareGroupByTable({
+      tableId: "left-join-null-rules-by-team",
+      fromTable: joinTable,
+      groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+    });
+    const leftJoinedTable = declareLeftJoinTable({
+      tableId: "left-join-null-users-rules",
+      leftTable: groupedFromTable,
+      rightTable: groupedJoinTable,
+      leftJoinKey: mapper(`"rowData"->'value' AS "joinKey"`),
+      rightJoinKey: mapper(`"rowData"->'threshold' AS "joinKey"`),
+    });
+
+    await runStatements(fromTable.init());
+    await runStatements(joinTable.init());
+    await runStatements(groupedFromTable.init());
+    await runStatements(groupedJoinTable.init());
+    await runStatements(leftJoinedTable.init());
+    await runStatements(fromTable.setRow("u-null", expr(`'{"team":"alpha","value":null}'::jsonb`)));
+    await runStatements(fromTable.setRow("u-num", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(joinTable.setRow("r-null", expr(`'{"team":"alpha","threshold":null,"label":"null-match"}'::jsonb`)));
+    await runStatements(joinTable.setRow("r-num", expr(`'{"team":"alpha","threshold":3,"label":"num-match"}'::jsonb`)));
+
+    const alphaRows = await readRows(leftJoinedTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+
+    expect(alphaRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata }))).toEqual([
+      {
+        rowIdentifier: `["u-null", "r-null"]`,
+        rowData: {
+          leftRowData: { team: "alpha", value: null },
+          rightRowData: { team: "alpha", threshold: null, label: "null-match" },
+        },
+      },
+      {
+        rowIdentifier: `["u-num", "r-num"]`,
+        rowData: {
+          leftRowData: { team: "alpha", value: 3 },
+          rightRowData: { team: "alpha", threshold: 3, label: "num-match" },
         },
       },
     ]);
@@ -2864,8 +2923,8 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
     await runStatements(fromTable.setRow("u2", expr(`'{"team":"alpha","value":5}'::jsonb`)));
     await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":5}'::jsonb`)));
-    await runStatements(joinTable.setRow("r2", expr(`'{"team":"alpha","threshold":1,"label":"rule-2"}'::jsonb`)));
-    await runStatements(joinTable.setRow("r1", expr(`'{"team":"alpha","threshold":1,"label":"rule-1"}'::jsonb`)));
+    await runStatements(joinTable.setRow("r2", expr(`'{"team":"alpha","threshold":5,"label":"rule-2"}'::jsonb`)));
+    await runStatements(joinTable.setRow("r1", expr(`'{"team":"alpha","threshold":5,"label":"rule-1"}'::jsonb`)));
 
     const alphaRows = await readRows(leftJoinedTable.listRowsInGroup({
       groupKey: expr(`to_jsonb('alpha'::text)`),

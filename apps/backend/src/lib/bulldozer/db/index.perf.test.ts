@@ -616,7 +616,8 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       tableId: "load-prefilled-users-left-join-top-team-rows",
       leftTable: limitedByTeam,
       rightTable: leftJoinRulesByTeam,
-      on: { type: "predicate", sql: `(("rightRowData"->>'threshold')::int) <= (("leftRowData"->>'value')::int)` },
+      leftJoinKey: { type: "mapper", sql: `(("rowData"->>'value')::int) AS "joinKey"` },
+      rightJoinKey: { type: "mapper", sql: `(("rowData"->>'threshold')::int) AS "joinKey"` },
     });
     const expandedByTeam = declareFlatMapTable({
       tableId: "load-prefilled-users-expanded",
@@ -897,33 +898,37 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     const sortedSubsetRequiredSortKeySpan = Math.ceil(LOAD_SUBSET_ITERATION_ROW_COUNT / approxRowsPerValuePerTeam);
     const sortedSubsetFromStartMaxSortKey = Math.min(999, 699 + sortedSubsetRequiredSortKeySpan);
     const sortedSubsetFromCursorMinSortKey = Math.max(700, 1000 - sortedSubsetRequiredSortKeySpan);
+    const sortedSubsetFromStartSql = `
+      SELECT *
+      FROM (${toQueryableSqlQuery(sortedHighValueByTeam.listRowsInGroup({
+        groupKey: expr(`to_jsonb('beta'::text)`),
+        start: "start",
+        end: expr(`to_jsonb(${sortedSubsetFromStartMaxSortKey}::int)`),
+        startInclusive: true,
+        endInclusive: true,
+      }))}) AS "rows"
+      LIMIT ${LOAD_SUBSET_ITERATION_ROW_COUNT}
+    `;
+    await sql.unsafe(sortedSubsetFromStartSql);
     const sortedSubsetFromStart = await measureMs(`load iterate sortedHighValueByTeam subset from start (${LOAD_SUBSET_ITERATION_ROW_COUNT} rows)`, async () => {
-      return await sql.unsafe(`
-        SELECT *
-        FROM (${toQueryableSqlQuery(sortedHighValueByTeam.listRowsInGroup({
-          groupKey: expr(`to_jsonb('beta'::text)`),
-          start: "start",
-          end: expr(`to_jsonb(${sortedSubsetFromStartMaxSortKey}::int)`),
-          startInclusive: true,
-          endInclusive: true,
-        }))}) AS "rows"
-        LIMIT ${LOAD_SUBSET_ITERATION_ROW_COUNT}
-      `);
+      return await sql.unsafe(sortedSubsetFromStartSql);
     });
     expect(sortedSubsetFromStart.elapsedMs).toBeLessThanOrEqual(LOAD_SUBSET_ITERATION_MAX_MS);
     expect(sortedSubsetFromStart.result).toHaveLength(LOAD_SUBSET_ITERATION_ROW_COUNT);
+    const sortedSubsetFromSortKeySql = `
+      SELECT *
+      FROM (${toQueryableSqlQuery(sortedHighValueByTeam.listRowsInGroup({
+        groupKey: expr(`to_jsonb('beta'::text)`),
+        start: expr(`to_jsonb(${sortedSubsetFromCursorMinSortKey}::int)`),
+        end: expr(`to_jsonb(999::int)`),
+        startInclusive: true,
+        endInclusive: true,
+      }))}) AS "rows"
+      LIMIT ${LOAD_SUBSET_ITERATION_ROW_COUNT}
+    `;
+    await sql.unsafe(sortedSubsetFromSortKeySql);
     const sortedSubsetFromSortKey = await measureMs(`load iterate sortedHighValueByTeam subset from sort-key cursor (${LOAD_SUBSET_ITERATION_ROW_COUNT} rows)`, async () => {
-      return await sql.unsafe(`
-        SELECT *
-        FROM (${toQueryableSqlQuery(sortedHighValueByTeam.listRowsInGroup({
-          groupKey: expr(`to_jsonb('beta'::text)`),
-          start: expr(`to_jsonb(${sortedSubsetFromCursorMinSortKey}::int)`),
-          end: expr(`to_jsonb(999::int)`),
-          startInclusive: true,
-          endInclusive: true,
-        }))}) AS "rows"
-        LIMIT ${LOAD_SUBSET_ITERATION_ROW_COUNT}
-      `);
+      return await sql.unsafe(sortedSubsetFromSortKeySql);
     });
     expect(sortedSubsetFromSortKey.elapsedMs).toBeLessThanOrEqual(LOAD_SUBSET_ITERATION_MAX_MS);
     expect(sortedSubsetFromSortKey.result).toHaveLength(LOAD_SUBSET_ITERATION_ROW_COUNT);

@@ -1,6 +1,6 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import type { Table } from "..";
-import type { Json, RowData, RowIdentifier, SqlExpression, SqlPredicate, SqlStatement, TableId } from "../utilities";
+import type { Json, RowData, RowIdentifier, SqlExpression, SqlMapper, SqlStatement, TableId } from "../utilities";
 import {
   getStorageEnginePath,
   getTablePath,
@@ -14,15 +14,18 @@ import {
 
 export function declareLeftJoinTable<
   GK extends Json,
+  JK extends Json,
   OldRD extends RowData,
   NewRD extends RowData,
 >(options: {
   tableId: TableId,
   leftTable: Table<GK, any, OldRD>,
   rightTable: Table<GK, any, NewRD>,
-  on: SqlPredicate<{ leftRowIdentifier: RowIdentifier, leftRowData: OldRD, rightRowIdentifier: RowIdentifier | null, rightRowData: NewRD | null }>,
+  leftJoinKey: SqlMapper<{ rowIdentifier: RowIdentifier, rowData: OldRD }, { joinKey: JK }>,
+  rightJoinKey: SqlMapper<{ rowIdentifier: RowIdentifier, rowData: NewRD }, { joinKey: JK }>,
 }): Table<GK, null, { leftRowData: OldRD, rightRowData: NewRD | null }> {
   const triggers = new Map<string, (changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => SqlStatement[]>();
+  const rawExpression = <T>(sql: string): SqlExpression<T> => ({ type: "expression", sql });
   const groupsPath = getStorageEnginePath(options.tableId, ["groups"]);
   const getGroupKeyPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey]);
   const getGroupRowsPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey, "rows"]);
@@ -70,19 +73,74 @@ export function declareLeftJoinTable<
       FROM ${quoteSqlIdentifier(optionsForStatement.leftRowsTableName)} AS "leftRows"
       LEFT JOIN ${quoteSqlIdentifier(optionsForStatement.rightRowsTableName)} AS "rightRows"
         ON "rightRows"."groupKey" IS NOT DISTINCT FROM "leftRows"."groupKey"
-        AND (
-          SELECT ${options.on}
-          FROM (
-            SELECT
-              "leftRows"."leftRowIdentifier" AS "leftRowIdentifier",
-              "leftRows"."leftRowData" AS "leftRowData",
-              "rightRows"."rightRowIdentifier" AS "rightRowIdentifier",
-              "rightRows"."rightRowData" AS "rightRowData"
-          ) AS "joinPredicateInput"
-        )
+        AND "rightRows"."rightJoinKey" IS NOT DISTINCT FROM "leftRows"."leftJoinKey"
     ) AS "joinedRows"
     ORDER BY "joinedRows"."groupKey", "joinedRows"."rowIdentifier"
   `.toStatement(optionsForStatement.outputTableName);
+  const createLeftRowsStatement = (optionsForRows: {
+    groupsTableName: string,
+    groupKeySql: string,
+    outputTableName: string,
+  }): SqlStatement => sqlQuery`
+    SELECT
+      ${rawExpression<GK>(optionsForRows.groupKeySql)} AS "groupKey",
+      "rows"."rowidentifier" AS "leftRowIdentifier",
+      "rows"."rowdata" AS "leftRowData",
+      "mapped"."joinKey" AS "leftJoinKey"
+    FROM ${quoteSqlIdentifier(optionsForRows.groupsTableName)} AS "groups"
+    CROSS JOIN LATERAL (
+      ${options.leftTable.listRowsInGroup({
+        groupKey: rawExpression<GK>(optionsForRows.groupKeySql),
+        start: "start",
+        end: "end",
+        startInclusive: true,
+        endInclusive: true,
+      })}
+    ) AS "rows"
+    LEFT JOIN LATERAL (
+      SELECT "mapped"."joinKey"
+      FROM (
+        SELECT ${options.leftJoinKey}
+        FROM (
+          SELECT
+            "rows"."rowidentifier" AS "rowIdentifier",
+            "rows"."rowdata" AS "rowData"
+        ) AS "joinKeyInput"
+      ) AS "mapped"
+    ) AS "mapped" ON true
+  `.toStatement(optionsForRows.outputTableName);
+  const createRightRowsStatement = (optionsForRows: {
+    groupsTableName: string,
+    groupKeySql: string,
+    outputTableName: string,
+  }): SqlStatement => sqlQuery`
+    SELECT
+      ${rawExpression<GK>(optionsForRows.groupKeySql)} AS "groupKey",
+      "rows"."rowidentifier" AS "rightRowIdentifier",
+      "rows"."rowdata" AS "rightRowData",
+      "mapped"."joinKey" AS "rightJoinKey"
+    FROM ${quoteSqlIdentifier(optionsForRows.groupsTableName)} AS "groups"
+    CROSS JOIN LATERAL (
+      ${options.rightTable.listRowsInGroup({
+        groupKey: rawExpression<GK>(optionsForRows.groupKeySql),
+        start: "start",
+        end: "end",
+        startInclusive: true,
+        endInclusive: true,
+      })}
+    ) AS "rows"
+    LEFT JOIN LATERAL (
+      SELECT "mapped"."joinKey"
+      FROM (
+        SELECT ${options.rightJoinKey}
+        FROM (
+          SELECT
+            "rows"."rowidentifier" AS "rowIdentifier",
+            "rows"."rowdata" AS "rowData"
+        ) AS "joinKeyInput"
+      ) AS "mapped"
+    ) AS "mapped" ON true
+  `.toStatement(optionsForRows.outputTableName);
 
   const registerInputTrigger = <InputRD extends RowData>(optionsForTrigger: {
     inputTable: Table<GK, any, InputRD>,
@@ -125,43 +183,22 @@ export function declareLeftJoinTable<
           INNER JOIN "BulldozerStorageEngine" AS "rows"
             ON "rows"."keyPathParent" = ${getGroupRowsPath(sqlExpression`"groups"."groupKey"`)}::jsonb[]
         `.toStatement(oldLeftJoinRowsTableName),
-        sqlQuery`
-          SELECT
-            "groups"."groupKey" AS "groupKey",
-            "rows"."rowidentifier" AS "leftRowIdentifier",
-            "rows"."rowdata" AS "leftRowData"
-          FROM ${quoteSqlIdentifier(affectedGroupsTableName)} AS "groups"
-          CROSS JOIN LATERAL (
-            ${options.leftTable.listRowsInGroup({
-              groupKey: sqlExpression`"groups"."groupKey"`,
-              start: "start",
-              end: "end",
-              startInclusive: true,
-              endInclusive: true,
-            })}
-          ) AS "rows"
-        `.toStatement(oldLeftRowsTableName),
-        sqlQuery`
-          SELECT
-            "groups"."groupKey" AS "groupKey",
-            "rows"."rowidentifier" AS "rightRowIdentifier",
-            "rows"."rowdata" AS "rightRowData"
-          FROM ${quoteSqlIdentifier(affectedGroupsTableName)} AS "groups"
-          CROSS JOIN LATERAL (
-            ${options.rightTable.listRowsInGroup({
-              groupKey: sqlExpression`"groups"."groupKey"`,
-              start: "start",
-              end: "end",
-              startInclusive: true,
-              endInclusive: true,
-            })}
-          ) AS "rows"
-        `.toStatement(oldRightRowsTableName),
+        createLeftRowsStatement({
+          groupsTableName: affectedGroupsTableName,
+          groupKeySql: `"groups"."groupKey"`,
+          outputTableName: oldLeftRowsTableName,
+        }),
+        createRightRowsStatement({
+          groupsTableName: affectedGroupsTableName,
+          groupKeySql: `"groups"."groupKey"`,
+          outputTableName: oldRightRowsTableName,
+        }),
         optionsForTrigger.changedSide === "left" ? sqlQuery`
           SELECT
             "rows"."groupKey" AS "groupKey",
             "rows"."leftRowIdentifier" AS "leftRowIdentifier",
-            "rows"."leftRowData" AS "leftRowData"
+            "rows"."leftRowData" AS "leftRowData",
+            "rows"."leftJoinKey" AS "leftJoinKey"
           FROM ${quoteSqlIdentifier(oldLeftRowsTableName)} AS "rows"
           WHERE NOT EXISTS (
             SELECT 1
@@ -174,21 +211,35 @@ export function declareLeftJoinTable<
           SELECT
             "changes"."groupKey" AS "groupKey",
             "changes"."rowIdentifier" AS "leftRowIdentifier",
-            "changes"."newRowData" AS "leftRowData"
+            "changes"."newRowData" AS "leftRowData",
+            "mapped"."joinKey" AS "leftJoinKey"
           FROM ${quoteSqlIdentifier(normalizedChangesTableName)} AS "changes"
+          LEFT JOIN LATERAL (
+            SELECT "mapped"."joinKey"
+            FROM (
+              SELECT ${options.leftJoinKey}
+              FROM (
+                SELECT
+                  "changes"."rowIdentifier" AS "rowIdentifier",
+                  "changes"."newRowData" AS "rowData"
+              ) AS "joinKeyInput"
+            ) AS "mapped"
+          ) AS "mapped" ON true
           WHERE "changes"."hasNewRow"
         `.toStatement(newLeftRowsTableName) : sqlQuery`
           SELECT
             "rows"."groupKey" AS "groupKey",
             "rows"."leftRowIdentifier" AS "leftRowIdentifier",
-            "rows"."leftRowData" AS "leftRowData"
+            "rows"."leftRowData" AS "leftRowData",
+            "rows"."leftJoinKey" AS "leftJoinKey"
           FROM ${quoteSqlIdentifier(oldLeftRowsTableName)} AS "rows"
         `.toStatement(newLeftRowsTableName),
         optionsForTrigger.changedSide === "right" ? sqlQuery`
           SELECT
             "rows"."groupKey" AS "groupKey",
             "rows"."rightRowIdentifier" AS "rightRowIdentifier",
-            "rows"."rightRowData" AS "rightRowData"
+            "rows"."rightRowData" AS "rightRowData",
+            "rows"."rightJoinKey" AS "rightJoinKey"
           FROM ${quoteSqlIdentifier(oldRightRowsTableName)} AS "rows"
           WHERE NOT EXISTS (
             SELECT 1
@@ -201,14 +252,27 @@ export function declareLeftJoinTable<
           SELECT
             "changes"."groupKey" AS "groupKey",
             "changes"."rowIdentifier" AS "rightRowIdentifier",
-            "changes"."newRowData" AS "rightRowData"
+            "changes"."newRowData" AS "rightRowData",
+            "mapped"."joinKey" AS "rightJoinKey"
           FROM ${quoteSqlIdentifier(normalizedChangesTableName)} AS "changes"
+          LEFT JOIN LATERAL (
+            SELECT "mapped"."joinKey"
+            FROM (
+              SELECT ${options.rightJoinKey}
+              FROM (
+                SELECT
+                  "changes"."rowIdentifier" AS "rowIdentifier",
+                  "changes"."newRowData" AS "rowData"
+              ) AS "joinKeyInput"
+            ) AS "mapped"
+          ) AS "mapped" ON true
           WHERE "changes"."hasNewRow"
         `.toStatement(newRightRowsTableName) : sqlQuery`
           SELECT
             "rows"."groupKey" AS "groupKey",
             "rows"."rightRowIdentifier" AS "rightRowIdentifier",
-            "rows"."rightRowData" AS "rightRowData"
+            "rows"."rightRowData" AS "rightRowData",
+            "rows"."rightJoinKey" AS "rightJoinKey"
           FROM ${quoteSqlIdentifier(oldRightRowsTableName)} AS "rows"
         `.toStatement(newRightRowsTableName),
         createJoinedRowsStatement({
@@ -302,7 +366,8 @@ export function declareLeftJoinTable<
       tableId: tableIdToDebugString(options.tableId),
       leftTableId: tableIdToDebugString(options.leftTable.tableId),
       rightTableId: tableIdToDebugString(options.rightTable.tableId),
-      onSql: options.on.sql,
+      leftJoinKeySql: options.leftJoinKey.sql,
+      rightJoinKeySql: options.rightJoinKey.sql,
     },
     compareGroupKeys: options.leftTable.compareGroupKeys,
     compareSortKeys: () => sqlExpression`0`,
@@ -327,38 +392,16 @@ export function declareLeftJoinTable<
           startInclusive: true,
           endInclusive: true,
         }).toStatement(leftGroupsTableName),
-        sqlQuery`
-          SELECT
-            "groups"."groupkey" AS "groupKey",
-            "rows"."rowidentifier" AS "leftRowIdentifier",
-            "rows"."rowdata" AS "leftRowData"
-          FROM ${quoteSqlIdentifier(leftGroupsTableName)} AS "groups"
-          CROSS JOIN LATERAL (
-            ${options.leftTable.listRowsInGroup({
-              groupKey: sqlExpression`"groups"."groupkey"`,
-              start: "start",
-              end: "end",
-              startInclusive: true,
-              endInclusive: true,
-            })}
-          ) AS "rows"
-        `.toStatement(leftRowsTableName),
-        sqlQuery`
-          SELECT
-            "groups"."groupkey" AS "groupKey",
-            "rows"."rowidentifier" AS "rightRowIdentifier",
-            "rows"."rowdata" AS "rightRowData"
-          FROM ${quoteSqlIdentifier(leftGroupsTableName)} AS "groups"
-          CROSS JOIN LATERAL (
-            ${options.rightTable.listRowsInGroup({
-              groupKey: sqlExpression`"groups"."groupkey"`,
-              start: "start",
-              end: "end",
-              startInclusive: true,
-              endInclusive: true,
-            })}
-          ) AS "rows"
-        `.toStatement(rightRowsTableName),
+        createLeftRowsStatement({
+          groupsTableName: leftGroupsTableName,
+          groupKeySql: `"groups"."groupkey"`,
+          outputTableName: leftRowsTableName,
+        }),
+        createRightRowsStatement({
+          groupsTableName: leftGroupsTableName,
+          groupKeySql: `"groups"."groupkey"`,
+          outputTableName: rightRowsTableName,
+        }),
         createJoinedRowsStatement({
           leftRowsTableName,
           rightRowsTableName,

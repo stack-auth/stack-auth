@@ -306,7 +306,8 @@ function leftJoinGroups<
 >(
   fromGroups: GroupedRows<FromRow>,
   joinGroups: GroupedRows<JoinRow>,
-  predicateFn: (fromRow: FromRow, joinRow: JoinRow) => boolean,
+  leftJoinKeyFn: (fromRow: FromRow) => unknown,
+  rightJoinKeyFn: (joinRow: JoinRow) => unknown,
 ): GroupedRows<Record<string, unknown>> {
   const joined: GroupedRows<Record<string, unknown>> = new Map();
   for (const [groupKey, fromGroup] of fromGroups) {
@@ -317,7 +318,8 @@ function leftJoinGroups<
       ? []
       : [...joinGroup.rows.entries()].sort((a, b) => stringCompare(a[0], b[0]));
     for (const [leftRowIdentifier, leftRowData] of sortedFromRows) {
-      const matches = sortedJoinRows.filter((joinEntry) => predicateFn(leftRowData, joinEntry[1]));
+      const leftJoinKey = JSON.stringify(leftJoinKeyFn(leftRowData));
+      const matches = sortedJoinRows.filter((joinEntry) => JSON.stringify(rightJoinKeyFn(joinEntry[1])) === leftJoinKey);
       if (matches.length === 0) {
         rows.set(leftJoinRowIdentifier(leftRowIdentifier, null), {
           leftRowData: { ...leftRowData },
@@ -1456,7 +1458,8 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
         tableId: `left-join-fuzz-result-${seed}`,
         leftTable: groupedFromTable,
         rightTable: groupedJoinTable,
-        on: { type: "predicate", sql: `(("rightRowData"->>'threshold')::int) <= (("leftRowData"->>'value')::int)` },
+        leftJoinKey: { type: "mapper", sql: `(("rowData"->>'value')::int) AS "joinKey"` },
+        rightJoinKey: { type: "mapper", sql: `(("rowData"->>'threshold')::int) AS "joinKey"` },
       });
 
       await runStatements(fromTable.init());
@@ -1523,11 +1526,8 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
           const expectedLeftJoined = leftJoinGroups(
             expectedGroupedFrom,
             expectedGroupedJoin,
-            (fromRow, joinRow) => {
-              const fromValue = Number(Reflect.get(fromRow, "value"));
-              const joinThreshold = Number(Reflect.get(joinRow, "threshold"));
-              return joinThreshold <= fromValue;
-            },
+            (fromRow) => Number(Reflect.get(fromRow, "value")),
+            (joinRow) => Number(Reflect.get(joinRow, "threshold")),
           );
           await assertTableMatches(leftJoinedTable, expectedLeftJoined);
         }

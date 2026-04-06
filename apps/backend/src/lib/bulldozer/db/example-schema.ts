@@ -118,17 +118,23 @@ export const exampleFungibleLedgerSchema = (() => {
     fromTable: accountEntriesWithCounterparty,
     limit: { type: "expression", sql: "3" },
   });
-  // For each counterparty row, join to sampled peer rows (same counterparty+asset)
-  // while excluding the exact same source row. This demonstrates a practical
-  // left-join pattern for reference matching/anomaly-style lookups.
+  // For each counterparty row, join to sampled rows by a computed equality key
+  // (counterparty + asset). This demonstrates join-key-based reference matching.
   const accountCounterpartyJoinedSample = declareLeftJoinTable({
     tableId: "bulldozer-example-ledger-account-counterparty-joined-sample",
     leftTable: accountEntriesWithCounterparty,
     rightTable: accountCounterpartySample,
-    on: predicate(`
-      "leftRowIdentifier" IS DISTINCT FROM "rightRowIdentifier"
-      AND ("leftRowData"->'counterparty') IS NOT DISTINCT FROM ("rightRowData"->'counterparty')
-      AND ("leftRowData"->'asset') IS NOT DISTINCT FROM ("rightRowData"->'asset')
+    leftJoinKey: mapper(`
+      jsonb_build_object(
+        'counterparty', "rowData"->'counterparty',
+        'asset', "rowData"->'asset'
+      ) AS "joinKey"
+    `),
+    rightJoinKey: mapper(`
+      jsonb_build_object(
+        'counterparty', "rowData"->'counterparty',
+        'asset', "rowData"->'asset'
+      ) AS "joinKey"
     `),
   });
   const accountEntriesRunningExposure = declareLFoldTable({
