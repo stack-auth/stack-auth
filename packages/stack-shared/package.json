@@ -24,6 +24,13 @@
       },
       "default": "./dist/esm/index.js"
     },
+    "./config": {
+      "types": "./dist/config-authoring.d.ts",
+      "require": {
+        "default": "./dist/config-authoring.js"
+      },
+      "default": "./dist/esm/config-authoring.js"
+    },
     "./dist/*": {
       "types": "./dist/*.d.ts",
       "require": {
