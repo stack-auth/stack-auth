@@ -102,5 +102,55 @@ pnpm start:dashboard`,
         filename: 'Terminal'
       }
     ] as CodeExample[],
+
+    'emulator-install': [
+      {
+        language: 'Shell',
+        framework: 'npm',
+        code: `npx @stackframe/stack-cli emulator pull`,
+        highlightLanguage: 'bash',
+        filename: 'Terminal'
+      }
+    ] as CodeExample[],
+
+    'emulator-start': [
+      {
+        language: 'Shell',
+        framework: 'npm',
+        code: `npx @stackframe/stack-cli emulator start`,
+        highlightLanguage: 'bash',
+        filename: 'Terminal'
+      }
+    ] as CodeExample[],
+
+    'emulator-stop': [
+      {
+        language: 'Shell',
+        framework: 'npm',
+        code: `npx @stackframe/stack-cli emulator stop`,
+        highlightLanguage: 'bash',
+        filename: 'Terminal'
+      }
+    ] as CodeExample[],
+
+    'emulator-reset': [
+      {
+        language: 'Shell',
+        framework: 'npm',
+        code: `npx @stackframe/stack-cli emulator reset`,
+        highlightLanguage: 'bash',
+        filename: 'Terminal'
+      }
+    ] as CodeExample[],
+
+    'emulator-status': [
+      {
+        language: 'Shell',
+        framework: 'npm',
+        code: `npx @stackframe/stack-cli emulator status`,
+        highlightLanguage: 'bash',
+        filename: 'Terminal'
+      }
+    ] as CodeExample[],
   }
 };

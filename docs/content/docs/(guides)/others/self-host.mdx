@@ -1,6 +1,6 @@
 ---
 title: Self-host
-lastModified: "2026-03-10"
+lastModified: "2026-04-06"
 ---
 
 <Info type="danger">
@@ -78,13 +78,105 @@ You can also open Prisma Studio to see the database interface and edit data dire
 
 <PlatformCodeblock document="others/self-host" examples={["prisma-studio"]} hidePlatformSelector />
 
+## QEMU Local Emulator
+
+The QEMU local emulator packages the entire Stack Auth backend into a single virtual machine image. It bundles PostgreSQL, Redis, ClickHouse, MinIO, Inbucket, Svix, QStash, and the Stack Auth dashboard and backend—everything you need for local development without setting up individual services.
+
+### Prerequisites
+
+Before using the emulator, make sure you have:
+
+- **QEMU** installed on your system (for running the virtual machine)
+- **GitHub CLI** (`gh`) installed and authenticated (for downloading emulator images)
+
+On macOS, install with Homebrew:
+
+```bash
+brew install qemu gh
+```
+
+On Linux (Debian/Ubuntu):
+
+```bash
+sudo apt install qemu-system gh
+```
+
+### Getting Started
+
+Pull the latest emulator image and start it:
+
+<PlatformCodeblock document="others/self-host" examples={["emulator-install"]} hidePlatformSelector />
+
+<PlatformCodeblock document="others/self-host" examples={["emulator-start"]} hidePlatformSelector />
+
+The emulator automatically downloads the latest image if none exists locally. On first start, it may take a minute to boot. Subsequent starts are faster due to snapshot caching.
+
+### Emulator Commands
+
+The Stack CLI provides commands to manage the emulator:
+
+| Command | Description |
+|---------|-------------|
+| `emulator pull` | Download the latest emulator image |
+| `emulator start` | Start the emulator (auto-pulls if needed) |
+| `emulator stop` | Stop the emulator (preserves data) |
+| `emulator reset` | Wipe all data and reset to a fresh state |
+| `emulator status` | Show emulator and service health |
+| `emulator list-releases` | List available emulator releases |
+
+### Bundled Services
+
+The emulator runs these services inside the virtual machine:
+
+| Service | Host Port | Description |
+|---------|-----------|-------------|
+| Dashboard | 26700 | Stack Auth dashboard UI |
+| Backend | 26701 | Stack Auth API server |
+| MinIO | 26702 | S3-compatible storage |
+| Inbucket | 26703 | Email testing interface |
+
+PostgreSQL, Redis, ClickHouse, Svix, and QStash run internally and are not exposed to the host.
+
+### Using the Emulator with Your App
+
+Once the emulator is running, configure your app to connect to the local backend:
+
+```
+NEXT_PUBLIC_STACK_API_URL=http://localhost:26701
+```
+
+Open the dashboard at [http://localhost:26700](http://localhost:26700) to create projects and manage users. Check Inbucket at [http://localhost:26703](http://localhost:26703) to view test emails.
+
+### Hardware Acceleration
+
+The emulator uses hardware acceleration when available:
+- **macOS**: Uses HVF (Hypervisor.framework) for native architecture
+- **Linux**: Uses KVM when available
+- **Cross-architecture**: Falls back to software emulation (slower)
+
+For best performance, run the emulator on your native architecture (arm64 on Apple Silicon, amd64 on Intel/AMD).
+
+### Managing Emulator Data
+
+To stop the emulator while preserving your data:
+
+<PlatformCodeblock document="others/self-host" examples={["emulator-stop"]} hidePlatformSelector />
+
+To check the status of the emulator and its services:
+
+<PlatformCodeblock document="others/self-host" examples={["emulator-status"]} hidePlatformSelector />
+
+To wipe all data and start fresh:
+
+<PlatformCodeblock document="others/self-host" examples={["emulator-reset"]} hidePlatformSelector />
+
 ## Local Emulator Mode
 
-**Local emulator mode** lets you map projects to local config files during development, instead of creating them through the dashboard.
+**Local emulator mode** lets you map projects to local config files during development, instead of creating them through the dashboard. This is automatically enabled when using the QEMU emulator.
 
 ### Enabling Local Emulator Mode
 
-Set this environment variable in both your backend and dashboard `.env` files:
+If you're running the QEMU emulator, local emulator mode is enabled by default. For manual setups, set this environment variable in both your backend and dashboard `.env` files:
 
 ```
 NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR=true
