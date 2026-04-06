@@ -1,0 +1,19 @@
+---
+title: "Get a Team"
+description: "Get a team that the current user is a member of."
+api: "GET /api/v1/teams/{team_id}"
+---
+
+## Request
+
+### Path Parameters
+
+<ParamField path="team_id" type="string" required>
+  The identifier for the team resource.
+</ParamField>
+
+## Response
+
+<ResponseField name="200" type="object">
+  Successful response with the team data.
+</ResponseField>

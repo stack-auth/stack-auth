@@ -11,6 +11,7 @@ it("StackServerApp can inherit configuration from StackClientApp", async ({ expe
     baseUrl: STACK_BACKEND_BASE_URL,
     projectOwnerSession: adminUser._internalSession,
     tokenStore: "memory",
+    redirectMethod: "none",
   });
 
   const key = await adminApp.createInternalApiKey({
@@ -26,6 +27,7 @@ it("StackServerApp can inherit configuration from StackClientApp", async ({ expe
     projectId: project.id,
     publishableClientKey: key.publishableClientKey,
     tokenStore: "memory",
+    redirectMethod: "none",
   });
 
   const serverApp = new StackServerApp({
@@ -52,6 +54,7 @@ it("StackAdminApp can inherit configuration from StackServerApp", async ({ expec
     baseUrl: STACK_BACKEND_BASE_URL,
     projectOwnerSession: adminUser._internalSession,
     tokenStore: "memory",
+    redirectMethod: "none",
   });
 
   const key = await adminApp.createInternalApiKey({
@@ -67,6 +70,7 @@ it("StackAdminApp can inherit configuration from StackServerApp", async ({ expec
     projectId: project.id,
     publishableClientKey: key.publishableClientKey,
     tokenStore: "memory",
+    redirectMethod: "none",
   });
 
   const serverApp = new StackServerApp({

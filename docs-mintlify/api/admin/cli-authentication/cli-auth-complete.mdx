@@ -1,0 +1,43 @@
+---
+title: "Complete CLI Authentication"
+description: "Set the refresh token for a CLI authentication session using the login code."
+api: "POST /api/v1/auth/cli/complete"
+---
+
+## Request
+
+<ParamField header="x-stack-secret-server-key" type="string" required>
+  The secret server key for authentication.
+</ParamField>
+
+<ParamField header="x-stack-admin-access-token" type="string">
+  The admin access token.
+</ParamField>
+
+<ParamField header="x-stack-project-id" type="string" required>
+  The project ID.
+</ParamField>
+
+<ParamField body="login_code" type="string" required>
+  The login code that was presented to the user during the CLI authentication initiation.
+</ParamField>
+
+## Response
+
+A successful response indicates that the CLI authentication session has been completed and the refresh token has been set.
+
+<CodeGroup>
+```bash cURL
+curl -X POST 'https://api.stack-auth.com/api/v1/auth/cli/complete' \
+  -H 'Content-Type: application/json' \
+  -H 'x-stack-secret-server-key: YOUR_SECRET_SERVER_KEY' \
+  -H 'x-stack-project-id: YOUR_PROJECT_ID' \
+  -d '{
+    "login_code": "ABCD-1234"
+  }'
+```
+
+```json 200 Response
+{}
+```
+</CodeGroup>

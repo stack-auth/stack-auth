@@ -8,10 +8,54 @@ export const preMigration = async (sql: Sql) => {
   const regularUserId = randomUUID();
   const anonUserId = randomUUID();
 
-  await sql`INSERT INTO "Project" ("id", "createdAt", "updatedAt", "displayName", "description", "isProductionMode") VALUES (${projectId}, NOW(), NOW(), 'Test', '', false)`;
-  await sql`INSERT INTO "Tenancy" ("id", "createdAt", "updatedAt", "projectId", "branchId", "hasNoOrganization") VALUES (${tenancyId}::uuid, NOW(), NOW(), ${projectId}, 'main', 'TRUE'::"BooleanTrue")`;
-  await sql`INSERT INTO "ProjectUser" ("projectUserId", "tenancyId", "mirroredProjectId", "mirroredBranchId", "createdAt", "updatedAt", "lastActiveAt") VALUES (${regularUserId}::uuid, ${tenancyId}::uuid, ${projectId}, 'main', NOW(), NOW(), NOW())`;
-  await sql`INSERT INTO "ProjectUser" ("projectUserId", "tenancyId", "mirroredProjectId", "mirroredBranchId", "createdAt", "updatedAt", "lastActiveAt", "isAnonymous") VALUES (${anonUserId}::uuid, ${tenancyId}::uuid, ${projectId}, 'main', NOW(), NOW(), NOW(), true)`;
+  await sql`
+    INSERT INTO "Project" ("id", "createdAt", "updatedAt", "displayName", "description", "isProductionMode")
+    VALUES (${projectId}, NOW(), NOW(), 'Test', '', false)
+  `;
+  await sql`
+    INSERT INTO "Tenancy" ("id", "createdAt", "updatedAt", "projectId", "branchId", "hasNoOrganization")
+    VALUES (${tenancyId}::uuid, NOW(), NOW(), ${projectId}, 'main', 'TRUE'::"BooleanTrue")
+  `;
+  await sql`
+    INSERT INTO "ProjectUser" (
+      "projectUserId",
+      "tenancyId",
+      "mirroredProjectId",
+      "mirroredBranchId",
+      "createdAt",
+      "updatedAt",
+      "lastActiveAt"
+    ) VALUES (
+      ${regularUserId}::uuid,
+      ${tenancyId}::uuid,
+      ${projectId},
+      'main',
+      NOW(),
+      NOW(),
+      NOW()
+    )
+  `;
+  await sql`
+    INSERT INTO "ProjectUser" (
+      "projectUserId",
+      "tenancyId",
+      "mirroredProjectId",
+      "mirroredBranchId",
+      "createdAt",
+      "updatedAt",
+      "lastActiveAt",
+      "isAnonymous"
+    ) VALUES (
+      ${anonUserId}::uuid,
+      ${tenancyId}::uuid,
+      ${projectId},
+      'main',
+      NOW(),
+      NOW(),
+      NOW(),
+      true
+    )
+  `;
 
   return { regularUserId, anonUserId };
 };

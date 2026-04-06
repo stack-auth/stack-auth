@@ -1,0 +1,49 @@
+---
+title: "Initiate CLI Authentication"
+description: "Create a new CLI authentication session and return polling and login codes."
+api: "POST /api/v1/auth/cli"
+---
+
+## Request
+
+<ParamField header="x-stack-secret-server-key" type="string" required>
+  The secret server key for authentication.
+</ParamField>
+
+<ParamField header="x-stack-admin-access-token" type="string">
+  The admin access token.
+</ParamField>
+
+<ParamField header="x-stack-project-id" type="string" required>
+  The project ID.
+</ParamField>
+
+## Response
+
+<ResponseField name="polling_code" type="string">
+  The code used to poll for the authentication status. This should be used with the poll endpoint.
+</ResponseField>
+
+<ResponseField name="login_code" type="string">
+  The code presented to the user for completing authentication in a browser.
+</ResponseField>
+
+<ResponseField name="expires_at" type="string">
+  ISO 8601 timestamp of when the authentication session expires.
+</ResponseField>
+
+<CodeGroup>
+```bash cURL
+curl -X POST 'https://api.stack-auth.com/api/v1/auth/cli' \
+  -H 'x-stack-secret-server-key: YOUR_SECRET_SERVER_KEY' \
+  -H 'x-stack-project-id: YOUR_PROJECT_ID'
+```
+
+```json 200 Response
+{
+  "polling_code": "poll_abc123def456",
+  "login_code": "ABCD-1234",
+  "expires_at": "2024-01-01T00:15:00Z"
+}
+```
+</CodeGroup>

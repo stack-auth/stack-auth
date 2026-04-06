@@ -1,0 +1,76 @@
+---
+title: "OAuth Token Exchange"
+description: "Exchange an authorization code or refresh token for an access token."
+api: "POST /api/v1/auth/oauth/token"
+---
+
+## Request
+
+<ParamField header="x-stack-publishable-client-key" type="string" required>
+  The publishable client key for authentication.
+</ParamField>
+
+<ParamField header="x-stack-project-id" type="string" required>
+  The project ID.
+</ParamField>
+
+<ParamField body="grant_type" type="string" required>
+  The type of grant being exchanged (e.g., `authorization_code` or `refresh_token`).
+</ParamField>
+
+<ParamField body="code" type="string">
+  The authorization code to exchange. Required when `grant_type` is `authorization_code`.
+</ParamField>
+
+<ParamField body="redirect_uri" type="string">
+  The redirect URI that was used during the authorization request.
+</ParamField>
+
+<ParamField body="refresh_token" type="string">
+  The refresh token to exchange. Required when `grant_type` is `refresh_token`.
+</ParamField>
+
+<ParamField body="code_verifier" type="string">
+  The PKCE code verifier, if PKCE was used during authorization.
+</ParamField>
+
+## Response
+
+<ResponseField name="access_token" type="string">
+  The access token for the authenticated user.
+</ResponseField>
+
+<ResponseField name="refresh_token" type="string">
+  The refresh token for obtaining new access tokens.
+</ResponseField>
+
+<ResponseField name="token_type" type="string">
+  The type of token (e.g., `bearer`).
+</ResponseField>
+
+<ResponseField name="expires_in" type="number">
+  The number of seconds until the access token expires.
+</ResponseField>
+
+<CodeGroup>
+```bash cURL
+curl -X POST 'https://api.stack-auth.com/api/v1/auth/oauth/token' \
+  -H 'Content-Type: application/json' \
+  -H 'x-stack-publishable-client-key: YOUR_PUBLISHABLE_CLIENT_KEY' \
+  -H 'x-stack-project-id: YOUR_PROJECT_ID' \
+  -d '{
+    "grant_type": "authorization_code",
+    "code": "AUTH_CODE_HERE",
+    "redirect_uri": "https://example.com/callback"
+  }'
+```
+
+```json 200 Response
+{
+  "access_token": "eyJhbGciOiJSUzI1NiIsInR5cCI6IkpXVCJ9...",
+  "refresh_token": "abc123def456...",
+  "token_type": "bearer",
+  "expires_in": 3600
+}
+```
+</CodeGroup>
