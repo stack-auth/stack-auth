@@ -9,7 +9,6 @@ const isVercel = !!getEnvVariable("VERCEL", "");
 function waitUntilImpl(promise: Promise<unknown>) {
   if (isVercel) {
     // On Vercel, use the native waitUntil to keep the function alive
-    // eslint-disable-next-line no-restricted-imports, @typescript-eslint/no-require-imports
     const { waitUntil } = require("@vercel/functions") as typeof import("@vercel/functions");
     waitUntil(promise);
   } else {
