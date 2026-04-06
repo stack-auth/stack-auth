@@ -158,3 +158,6 @@ A: `app.urls` is now static (`getUrls(...)` only) and no longer injects runtime 
 
 Q: How should user signup time be exposed in JWT claims before production rollout?
 A: Use `signed_up_at` (OIDC-style naming) in access tokens and encode it as Unix seconds in `apps/backend/src/lib/tokens.tsx` (`Math.floor(user.signed_up_at_millis / 1000)`). Since this is pre-prod, the payload schema can require `signed_up_at` directly without a backward-compat optional shim.
+
+Q: Where should new globally searchable Cmd+K destinations be added in the dashboard?
+A: Add project-level shortcuts to `PROJECT_SHORTCUTS` in `apps/dashboard/src/components/cmdk-commands.tsx` (optionally gated with `requiredApps`), and for app subpages rely on the flattened `appFrontend.navigationItems` command generation in the same file so pages are directly searchable without nested preview navigation.
