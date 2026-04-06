@@ -3,6 +3,7 @@ packages:
   - apps/*
   - examples/*
   - docs
+  - docs-mintlify
   - sdks/*
   - sdks/implementations/*
 
