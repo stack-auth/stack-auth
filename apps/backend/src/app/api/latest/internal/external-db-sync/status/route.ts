@@ -87,7 +87,15 @@ const globalSchema = yupObject({
   sequencer: yupObject({
     project_users: sequenceStatsSchema.defined(),
     contact_channels: sequenceStatsSchema.defined(),
+    teams: sequenceStatsSchema.defined(),
+    team_members: sequenceStatsSchema.defined(),
+    team_permissions: sequenceStatsSchema.defined(),
+    team_invitations: sequenceStatsSchema.defined(),
     email_outboxes: sequenceStatsSchema.defined(),
+    project_permissions: sequenceStatsSchema.defined(),
+    notification_preferences: sequenceStatsSchema.defined(),
+    refresh_tokens: sequenceStatsSchema.defined(),
+    connected_accounts: sequenceStatsSchema.defined(),
     deleted_rows: sequenceStatsSchema.shape({
       by_table: yupArray(deletedRowByTableSchema).defined(),
     }).defined(),
@@ -120,7 +128,15 @@ const responseSchema = yupObject({
     sequencer: yupObject({
       project_users: sequenceStatsSchema.defined(),
       contact_channels: sequenceStatsSchema.defined(),
+      teams: sequenceStatsSchema.defined(),
+      team_members: sequenceStatsSchema.defined(),
+      team_permissions: sequenceStatsSchema.defined(),
+      team_invitations: sequenceStatsSchema.defined(),
       email_outboxes: sequenceStatsSchema.defined(),
+      project_permissions: sequenceStatsSchema.defined(),
+      notification_preferences: sequenceStatsSchema.defined(),
+      refresh_tokens: sequenceStatsSchema.defined(),
+      connected_accounts: sequenceStatsSchema.defined(),
       deleted_rows: sequenceStatsSchema.shape({
         by_table: yupArray(deletedRowByTableSchema).defined(),
       }).defined(),
@@ -310,6 +326,52 @@ async function fetchInternalStats(tenancyId: string | null) {
     ${tenancyWhere}
   `).at(0) ?? throwErr("Contact channel stats query returned no rows.");
 
+  const teamStatsRow = (await globalPrismaClient.$queryRaw<SequenceStatsRow[]>`
+    SELECT
+      COUNT(*)::bigint AS "total",
+      COUNT(*) FILTER (WHERE "shouldUpdateSequenceId" = TRUE OR "sequenceId" IS NULL)::bigint AS "pending",
+      COUNT(*) FILTER (WHERE "sequenceId" IS NULL)::bigint AS "null_sequence_id",
+      MIN("sequenceId") AS "min_sequence_id",
+      MAX("sequenceId") AS "max_sequence_id"
+    FROM "Team"
+    ${tenancyWhere}
+  `).at(0) ?? throwErr("Team stats query returned no rows.");
+
+  const teamMemberStatsRow = (await globalPrismaClient.$queryRaw<SequenceStatsRow[]>`
+    SELECT
+      COUNT(*)::bigint AS "total",
+      COUNT(*) FILTER (WHERE "shouldUpdateSequenceId" = TRUE OR "sequenceId" IS NULL)::bigint AS "pending",
+      COUNT(*) FILTER (WHERE "sequenceId" IS NULL)::bigint AS "null_sequence_id",
+      MIN("sequenceId") AS "min_sequence_id",
+      MAX("sequenceId") AS "max_sequence_id"
+    FROM "TeamMember"
+    ${tenancyWhere}
+  `).at(0) ?? throwErr("Team member stats query returned no rows.");
+
+  const teamPermissionStatsRow = (await globalPrismaClient.$queryRaw<SequenceStatsRow[]>`
+    SELECT
+      COUNT(*)::bigint AS "total",
+      COUNT(*) FILTER (WHERE "shouldUpdateSequenceId" = TRUE OR "sequenceId" IS NULL)::bigint AS "pending",
+      COUNT(*) FILTER (WHERE "sequenceId" IS NULL)::bigint AS "null_sequence_id",
+      MIN("sequenceId") AS "min_sequence_id",
+      MAX("sequenceId") AS "max_sequence_id"
+    FROM "TeamMemberDirectPermission"
+    ${tenancyWhere}
+  `).at(0) ?? throwErr("Team permission stats query returned no rows.");
+
+  const teamInvitationStatsRow = (await globalPrismaClient.$queryRaw<SequenceStatsRow[]>`
+    SELECT
+      COUNT(*)::bigint AS "total",
+      COUNT(*) FILTER (WHERE "shouldUpdateSequenceId" = TRUE OR "sequenceId" IS NULL)::bigint AS "pending",
+      COUNT(*) FILTER (WHERE "sequenceId" IS NULL)::bigint AS "null_sequence_id",
+      MIN("sequenceId") AS "min_sequence_id",
+      MAX("sequenceId") AS "max_sequence_id"
+    FROM "VerificationCode"
+    ${tenancyId
+      ? Prisma.sql`JOIN "Tenancy" ON "Tenancy"."projectId" = "VerificationCode"."projectId" AND "Tenancy"."branchId" = "VerificationCode"."branchId" WHERE "type" = 'TEAM_INVITATION' AND "Tenancy"."id" = ${tenancyId}::uuid`
+      : Prisma.sql`WHERE "type" = 'TEAM_INVITATION'`}
+  `).at(0) ?? throwErr("Team invitation stats query returned no rows.");
+
   const emailOutboxStatsRow = (await globalPrismaClient.$queryRaw<SequenceStatsRow[]>`
     SELECT
       COUNT(*)::bigint AS "total",
@@ -320,6 +382,50 @@ async function fetchInternalStats(tenancyId: string | null) {
     FROM "EmailOutbox"
     ${tenancyWhere}
   `).at(0) ?? throwErr("Email outbox stats query returned no rows.");
+
+  const projectPermissionStatsRow = (await globalPrismaClient.$queryRaw<SequenceStatsRow[]>`
+    SELECT
+      COUNT(*)::bigint AS "total",
+      COUNT(*) FILTER (WHERE "shouldUpdateSequenceId" = TRUE OR "sequenceId" IS NULL)::bigint AS "pending",
+      COUNT(*) FILTER (WHERE "sequenceId" IS NULL)::bigint AS "null_sequence_id",
+      MIN("sequenceId") AS "min_sequence_id",
+      MAX("sequenceId") AS "max_sequence_id"
+    FROM "ProjectUserDirectPermission"
+    ${tenancyWhere}
+  `).at(0) ?? throwErr("Project permission stats query returned no rows.");
+
+  const notificationPreferenceStatsRow = (await globalPrismaClient.$queryRaw<SequenceStatsRow[]>`
+    SELECT
+      COUNT(*)::bigint AS "total",
+      COUNT(*) FILTER (WHERE "shouldUpdateSequenceId" = TRUE OR "sequenceId" IS NULL)::bigint AS "pending",
+      COUNT(*) FILTER (WHERE "sequenceId" IS NULL)::bigint AS "null_sequence_id",
+      MIN("sequenceId") AS "min_sequence_id",
+      MAX("sequenceId") AS "max_sequence_id"
+    FROM "UserNotificationPreference"
+    ${tenancyWhere}
+  `).at(0) ?? throwErr("Notification preference stats query returned no rows.");
+
+  const refreshTokenStatsRow = (await globalPrismaClient.$queryRaw<SequenceStatsRow[]>`
+    SELECT
+      COUNT(*)::bigint AS "total",
+      COUNT(*) FILTER (WHERE "shouldUpdateSequenceId" = TRUE OR "sequenceId" IS NULL)::bigint AS "pending",
+      COUNT(*) FILTER (WHERE "sequenceId" IS NULL)::bigint AS "null_sequence_id",
+      MIN("sequenceId") AS "min_sequence_id",
+      MAX("sequenceId") AS "max_sequence_id"
+    FROM "ProjectUserRefreshToken"
+    ${tenancyWhere}
+  `).at(0) ?? throwErr("Refresh token stats query returned no rows.");
+
+  const connectedAccountStatsRow = (await globalPrismaClient.$queryRaw<SequenceStatsRow[]>`
+    SELECT
+      COUNT(*)::bigint AS "total",
+      COUNT(*) FILTER (WHERE "shouldUpdateSequenceId" = TRUE OR "sequenceId" IS NULL)::bigint AS "pending",
+      COUNT(*) FILTER (WHERE "sequenceId" IS NULL)::bigint AS "null_sequence_id",
+      MIN("sequenceId") AS "min_sequence_id",
+      MAX("sequenceId") AS "max_sequence_id"
+    FROM "ProjectUserOAuthAccount"
+    ${tenancyWhere}
+  `).at(0) ?? throwErr("Connected account stats query returned no rows.");
 
   const deletedRowStatsRow = (await globalPrismaClient.$queryRaw<SequenceStatsRow[]>`
     SELECT
@@ -367,7 +473,15 @@ async function fetchInternalStats(tenancyId: string | null) {
 
   const projectUsersStats = formatSequenceStats(projectUserStatsRow);
   const contactChannelStats = formatSequenceStats(contactChannelStatsRow);
+  const teamStats = formatSequenceStats(teamStatsRow);
+  const teamMemberStats = formatSequenceStats(teamMemberStatsRow);
+  const teamPermissionStats = formatSequenceStats(teamPermissionStatsRow);
+  const teamInvitationStats = formatSequenceStats(teamInvitationStatsRow);
   const emailOutboxStats = formatSequenceStats(emailOutboxStatsRow);
+  const projectPermissionStats = formatSequenceStats(projectPermissionStatsRow);
+  const notificationPreferenceStats = formatSequenceStats(notificationPreferenceStatsRow);
+  const refreshTokenStats = formatSequenceStats(refreshTokenStatsRow);
+  const connectedAccountStats = formatSequenceStats(connectedAccountStatsRow);
   const deletedRowStats = formatSequenceStats(deletedRowStatsRow);
 
   const deletedRowsByTable = deletedRowsByTableRows.map((row) => ({
@@ -380,7 +494,15 @@ async function fetchInternalStats(tenancyId: string | null) {
   return {
     projectUsersStats,
     contactChannelStats,
+    teamStats,
+    teamMemberStats,
+    teamPermissionStats,
+    teamInvitationStats,
     emailOutboxStats,
+    projectPermissionStats,
+    notificationPreferenceStats,
+    refreshTokenStats,
+    connectedAccountStats,
     deletedRowStats,
     deletedRowsByTable,
     outgoingStatsRow,
@@ -1026,7 +1148,15 @@ export const GET = createSmartRouteHandler({
             sequencer: {
               project_users: globalStats.projectUsersStats,
               contact_channels: globalStats.contactChannelStats,
+              teams: globalStats.teamStats,
+              team_members: globalStats.teamMemberStats,
+              team_permissions: globalStats.teamPermissionStats,
+              team_invitations: globalStats.teamInvitationStats,
               email_outboxes: globalStats.emailOutboxStats,
+              project_permissions: globalStats.projectPermissionStats,
+              notification_preferences: globalStats.notificationPreferenceStats,
+              refresh_tokens: globalStats.refreshTokenStats,
+              connected_accounts: globalStats.connectedAccountStats,
               deleted_rows: {
                 ...globalStats.deletedRowStats,
                 by_table: globalStats.deletedRowsByTable,
@@ -1045,7 +1175,15 @@ export const GET = createSmartRouteHandler({
           sequencer: {
             project_users: currentStats.projectUsersStats,
             contact_channels: currentStats.contactChannelStats,
+            teams: currentStats.teamStats,
+            team_members: currentStats.teamMemberStats,
+            team_permissions: currentStats.teamPermissionStats,
+            team_invitations: currentStats.teamInvitationStats,
             email_outboxes: currentStats.emailOutboxStats,
+            project_permissions: currentStats.projectPermissionStats,
+            notification_preferences: currentStats.notificationPreferenceStats,
+            refresh_tokens: currentStats.refreshTokenStats,
+            connected_accounts: currentStats.connectedAccountStats,
             deleted_rows: {
               ...currentStats.deletedRowStats,
               by_table: currentStats.deletedRowsByTable,

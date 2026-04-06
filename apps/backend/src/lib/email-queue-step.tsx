@@ -242,7 +242,8 @@ async function claimEmailsForRendering(workerId: string): Promise<EmailOutbox[]>
     UPDATE "EmailOutbox" AS e
     SET
       "renderedByWorkerId" = ${workerId}::uuid,
-      "startedRenderingAt" = NOW()
+      "startedRenderingAt" = NOW(),
+      "shouldUpdateSequenceId" = TRUE
     FROM selected
     WHERE e."tenancyId" = selected."tenancyId" AND e."id" = selected."id"
     RETURNING e.*;
@@ -531,7 +532,8 @@ async function claimEmailsForSending(tx: PrismaClientTransaction, tenancyId: str
       FOR UPDATE SKIP LOCKED
     )
     UPDATE "EmailOutbox" AS e
-    SET "startedSendingAt" = NOW()
+    SET "startedSendingAt" = NOW(),
+        "shouldUpdateSequenceId" = TRUE
     FROM selected
     WHERE e."tenancyId" = selected."tenancyId" AND e."id" = selected."id"
     RETURNING e.*;
