@@ -43,13 +43,9 @@
   "navigation": {
     "tabs": [
       {
-        "tab": "Home",
-        "pages": ["index"]
-      },
-      {
         "tab": "Documentation",
         "pages": [
-          "docs/overview",
+          "index",
           "docs/faq",
           {
             "group": "Getting Started",
@@ -597,5 +593,11 @@
     "metatags": {
       "robots": "noindex"
     }
-  }
+  },
+  "redirects": [
+    {
+      "source": "/docs/overview",
+      "destination": "/"
+    }
+  ]
 }

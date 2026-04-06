@@ -77,7 +77,7 @@ describe("local emulator config", () => {
     await writeConfigToFile(absoluteFilePath, { auth: { allowLocalhost: true } });
 
     await expect(fs.readFile(mountedFilePath, "utf-8")).resolves.toBe(
-      `export const config = {\n  "auth": {\n    "allowLocalhost": true\n  }\n};\n`
+      `import type { StackConfig } from "@stackframe/js";\n\nexport const config: StackConfig = {\n  "auth": {\n    "allowLocalhost": true\n  }\n};\n`
     );
   });
 
