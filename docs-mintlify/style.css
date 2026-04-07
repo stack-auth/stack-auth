@@ -1,8 +1,17 @@
-ul#sidebar-group > li > button > img {
+ul#sidebar-group > li > a > div:first-child {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+ul#sidebar-group > li > button > img,
+ul#sidebar-group > li > a > div:first-child > img {
   /* AppIcon-like shell */
   border: 1px solid transparent !important;
-  border-radius: 30% !important;
+  border-radius: 26% !important;
   padding: 2px;
+  display: block;
   box-sizing: content-box;
   background:
     linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%) padding-box,
