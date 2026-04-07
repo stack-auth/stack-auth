@@ -159,7 +159,6 @@ export async function buildDashboardMessages(
 
   const availableRoutes = enabledAppIds ? buildAvailableRoutes(enabledAppIds) : "";
 
-
   const contextMessages: Array<{ role: string, content: string }> = [];
 
   if (currentSource != null && currentSource.length > 0) {
