@@ -1,10 +1,11 @@
+import { ALLOWED_MODEL_IDS } from "@/lib/ai/models";
 import { handleApiRequest } from "@/route-handlers/smart-route-handler";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { NextRequest } from "next/server";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api";
-const OPENROUTER_MODEL = "anthropic/claude-sonnet-4.6";
+const OPENROUTER_DEFAULT_MODEL = "anthropic/claude-sonnet-4.6";
 
 function sanitizeBody(raw: ArrayBuffer): Uint8Array {
   const text = new TextDecoder().decode(raw);
@@ -19,7 +20,9 @@ function sanitizeBody(raw: ArrayBuffer): Uint8Array {
     throw new StatusError(400, "Request body must be a JSON object");
   }
 
-  parsed.model = OPENROUTER_MODEL;
+  if (!parsed.model || !ALLOWED_MODEL_IDS.has(parsed.model)) {
+    parsed.model = OPENROUTER_DEFAULT_MODEL;
+  }
 
   // OpenRouter limits metadata.user_id to 128 characters
   if (parsed.metadata?.user_id && parsed.metadata.user_id.length > 128) {
