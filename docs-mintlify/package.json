@@ -3,7 +3,6 @@
   "version": "0.0.0",
   "private": true,
   "scripts": {
-    "build": "mint build",
     "dev": "mint dev --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}04 --no-open",
     "typecheck": "mint validate",
     "lint": "mint validate && mint broken-links",
