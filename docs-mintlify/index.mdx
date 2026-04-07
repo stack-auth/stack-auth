@@ -1,6 +1,7 @@
 ---
 title: "Welcome"
 description: "Stack Auth documentation for setup, components, SDK usage, and REST APIs."
+sidebarTitle: "Overview"
 ---
 
 <div className="not-prose relative left-1/2 right-1/2 -mx-[50vw] w-screen overflow-hidden bg-[#121212]">
@@ -23,13 +24,13 @@ description: "Stack Auth documentation for setup, components, SDK usage, and RES
       </p>
       <div className="mt-8 flex flex-wrap gap-3">
         <a
-          href="/docs/getting-started/setup"
+          href="/guides/getting-started/setup"
           className="inline-flex items-center justify-center rounded-lg bg-[#6346ec] px-5 py-3 text-sm font-semibold text-white no-underline transition hover:bg-[#6346ec]/90"
         >
           Start setup
         </a>
         <a
-          href="/docs/overview"
+          href="/guides/getting-started/setup"
           className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-5 py-3 text-sm font-semibold text-slate-200 no-underline transition hover:border-[#6346ec] hover:text-white"
         >
           Browse docs
@@ -49,20 +50,20 @@ description: "Stack Auth documentation for setup, components, SDK usage, and RES
 
   <Steps className="mt-8">
     <Step title="Set up Stack Auth">
-      Follow the [setup guide](/docs/getting-started/setup) to initialize Stack Auth in your app.
+      Follow the [setup guide](/guides/getting-started/setup) to initialize Stack Auth in your app.
 
       ```bash
       npx @stackframe/stack-cli@latest init
       ```
     </Step>
     <Step title="Add auth UI">
-      Use the [Components overview](/docs/components/overview) to choose prebuilt interfaces like [`<SignIn />`](/docs/components/sign-in) and [`<SignUp />`](/docs/components/sign-up).
+      Use the [setup guide](/guides/getting-started/setup) to configure prebuilt auth interfaces and handlers.
     </Step>
     <Step title="Read user data in code">
-      Reach for the [SDK overview](/docs/sdk/overview) when you need hooks, objects, and typed access to users, teams, and sessions.
+      Reach for the [SDK overview](/sdk/overview) when you need hooks, objects, and typed access to users, teams, and sessions.
     </Step>
     <Step title="Go lower-level when needed">
-      Use the [REST API overview](/docs/rest-api/overview) for backend integrations, custom clients, and non-Next.js environments.
+      Use the [REST API overview](/api/overview) for backend integrations, custom clients, and non-Next.js environments.
     </Step>
 
   </Steps>
@@ -77,16 +78,16 @@ description: "Stack Auth documentation for setup, components, SDK usage, and RES
   </div>
 
   <CardGroup cols={2}>
-    <Card title="Getting Started" icon="rocket" href="/docs/getting-started/setup" cta="Open guide">
+    <Card title="Getting Started" icon="rocket" href="/guides/getting-started/setup" cta="Open guide">
       Installation, environment setup, and the first authentication flow.
     </Card>
-    <Card title="Components" icon="puzzle-piece" href="/docs/components/overview" cta="View components">
-      Prebuilt React and Next.js UI for sign-in, sign-up, account settings, and team switching.
+    <Card title="Setup Guide" icon="puzzle-piece" href="/guides/getting-started/setup" cta="View setup">
+      Configure prebuilt React and Next.js auth UI, providers, and handlers.
     </Card>
-    <Card title="SDK Reference" icon="book" href="/docs/sdk/overview" cta="Browse SDK">
+    <Card title="SDK Reference" icon="book" href="/sdk/overview" cta="Browse SDK">
       Hooks, objects, and types for working with users, teams, projects, and sessions.
     </Card>
-    <Card title="REST API" icon="code" href="/docs/rest-api/overview" cta="See endpoints">
+    <Card title="REST API" icon="code" href="/api/overview" cta="See endpoints">
       HTTP APIs for client, server, admin, and webhook integrations in any stack.
     </Card>
   </CardGroup>
@@ -101,22 +102,22 @@ description: "Stack Auth documentation for setup, components, SDK usage, and RES
   </div>
 
   <CardGroup cols={3}>
-    <Card title="API Keys" icon="key" href="/docs/apps/api-keys" cta="Manage keys">
+    <Card title="API Keys" icon="key" href="/guides/apps/api-keys/overview" cta="Manage keys">
       Set up publishable, secret, user, and team API keys.
     </Card>
-    <Card title="Permissions" icon="shield" href="/docs/apps/permissions" cta="Configure access">
+    <Card title="Permissions" icon="shield" href="/guides/apps/rbac/overview" cta="Configure access">
       Define roles and permission models for projects and teams.
     </Card>
-    <Card title="Webhooks" icon="webhook" href="/docs/apps/webhooks" cta="Add webhooks">
+    <Card title="Webhooks" icon="webhook" href="/guides/apps/webhooks/overview" cta="Add webhooks">
       Trigger downstream systems from auth, user, and team events.
     </Card>
-    <Card title="Backend Integration" icon="server" href="/docs/concepts/backend-integration" cta="Learn more">
+    <Card title="Backend Integration" icon="server" href="/guides/going-further/backend-integration" cta="Learn more">
       Understand how Stack Auth fits into your server architecture.
     </Card>
-    <Card title="MCP Setup" icon="terminal" href="/docs/others/mcp-setup" cta="Set up MCP">
+    <Card title="MCP Setup" icon="terminal" href="/guides/other/mcp-setup" cta="Set up MCP">
       Connect Stack Auth docs and workflows to AI-enabled development tools.
     </Card>
-    <Card title="FAQ" icon="circle-question" href="/docs/faq" cta="Read FAQ">
+    <Card title="FAQ" icon="circle-question" href="/guides/faq" cta="Read FAQ">
       Check answers to common setup, integration, and product questions.
     </Card>
   </CardGroup>

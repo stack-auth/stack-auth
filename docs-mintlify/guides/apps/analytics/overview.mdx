@@ -1,0 +1,112 @@
+---
+title: "Analytics"
+description: "Explore events, session replays, and SQL queries in your project's analytics dataset"
+icon: "/images/app-icons/analytics.svg"
+---
+
+The Analytics app gives you direct access to your project's analytics dataset in Stack Auth. You can inspect raw event tables, run ClickHouse SQL queries, and watch session replays to debug real user behavior.
+
+## Overview
+
+Analytics is organized into three areas in the dashboard:
+
+- **Tables**: Browse event rows with sorting, search, and incremental loading
+- **Queries**: Run and save reusable ClickHouse SQL queries
+- **Replays**: Watch session replays and filter by user, team, duration, activity window, and click count
+
+## How Analytics Works
+
+Stack records analytics events and replay chunks, then exposes them through the Analytics app for read-only querying and investigation.
+
+User activity in your app flows into Stack event ingestion, which stores data in ClickHouse. This data powers the Tables view, the SQL query runner, and the Session replay UI.
+
+### What Gets Tracked
+
+Stack collects both client-side and server-side analytics events:
+
+- **Client-side events**: browser interaction events like `$page-view` and `$click`
+- **Server-side events**: currently `$token-refresh` and `$sign-up-rule-trigger`
+
+## Enabling the Analytics App
+
+To use analytics in your project:
+
+1. Open your Stack Auth dashboard
+2. Go to **Apps**
+3. Open **Analytics**
+4. Click **Enable**
+
+## Quick Start
+
+1. Enable Analytics in your Stack Auth dashboard (**Apps -> Analytics**)
+2. Initialize Stack Auth on your frontend with `StackClientApp`/`StackProvider`
+3. Sign in with a real user session
+4. Open the app and navigate/click around
+5. Check **Analytics -> Tables** to confirm events are arriving
+
+After setup, Stack automatically captures client-side `$page-view` and `$click` events.
+
+If you want replay recordings, also enable `analytics.replays.enabled` in your client app config.
+
+## Tables
+
+The **Tables** screen is the fastest way to inspect recent analytics records.
+
+- Currently shows the `events` table
+- Built-in ordering and client-side search
+- Relative/absolute timestamp display toggle
+- Row detail dialog for inspecting full JSON payloads
+
+Use this view when you need to quickly answer "what just happened?" without writing SQL.
+
+## Queries
+
+The **Queries** screen is a ClickHouse SQL workspace for deeper analysis.
+
+- Run read-only SQL queries with a timeout budget
+- Query the users and analytics tables
+- Save reusable queries into folders
+- Re-run saved queries with one click
+- Edit and overwrite saved query definitions
+
+## Session Replays
+
+The **Replays** screen helps you move from "an event happened" to "what the user actually saw."
+
+- Filter sessions by user, team, duration, recency, and click count
+- Play back multi-tab sessions
+- Control playback speed
+- Optionally skip inactive ranges
+- Jump across click/page-view timeline markers
+
+Use replays when metrics alone are not enough to explain user behavior.
+
+### Enabling Replay Recording in the SDK
+
+Session replay recording is disabled by default. To enable it, pass `analytics.replays.enabled: true` when creating your client app.
+
+```ts
+import { StackClientApp } from "@stackframe/stack";
+
+export const stackClientApp = new StackClientApp({
+  projectId: process.env.NEXT_PUBLIC_STACK_PROJECT_ID!,
+  publishableClientKey: process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY!,
+  tokenStore: "nextjs-cookie",
+  analytics: {
+    replays: {
+      enabled: true,
+      // Optional. Defaults to true.
+      maskAllInputs: true,
+    },
+  },
+});
+```
+
+`maskAllInputs` defaults to `true`, so form fields are masked unless you explicitly disable it.
+
+## Best Practices
+
+1. **Use Tables for quick incident triage**: the Tables UI is the fastest way to inspect recent `events` rows without writing SQL.
+2. **Use Queries for repeatable analysis**: save important SQL in folders, and scope queries with filters/`LIMIT` so they stay within result and timeout limits.
+3. **Use Replays for behavioral debugging**: start from an event pattern, then inspect matching session replays to understand what users actually did.
+4. **Keep replay privacy defaults on**: leave `maskAllInputs` enabled unless you have a specific reason and a data-handling policy for unmasked inputs.

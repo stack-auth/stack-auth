@@ -1,7 +1,7 @@
 ---
-title: Teams
-description: Manage teams and team members  
-icon: UsersRound
+title: "Teams"
+description: "Manage teams and team members"
+sidebarTitle: "Overview"
 ---
 
 Teams provide a structured way to group users and manage their permissions. Users can belong to multiple teams simultaneously, allowing them to represent departments, B2B customers, or projects.
@@ -10,9 +10,9 @@ The server can perform all operations on a team, but the client can only carry o
 
 ## Concepts
 
-### Team permissions 
+### Team permissions
 
-If you attempt to perform an action without the necessary team permissions, the function will throw an error. Always check if the user has the required permission before performing any action. Learn more about permissions [here](./permissions.mdx).
+If you attempt to perform an action without the necessary team permissions, the function will throw an error. Always check if the user has the required permission before performing any action. Learn more about permissions [here](../rbac/overview).
 
 Here is an example of how to check if a user has a specific permission on the client
 
@@ -37,18 +37,14 @@ if (!hasPermission) {
 
 A user can have a different profile for each team they belong to (Note this is different to the user's personal profile). This profile contains information like `displayName` and `profileImageUrl`. The team profile can be left empty and it will automatically take the user's personal profile information.
 
-The team profile is visible to all the other users in the team that have the `$read_members` permission. 
+The team profile is visible to all the other users in the team that have the `$read_members` permission.
 
 ## Retrieving a user's teams
 
 You can list all teams a user belongs to using the `listTeams` or `useTeams` functions or fetch a specific team with `getTeam` or `useTeam`. These functions work on both clients and servers.
 
-<Tabs defaultValue="client">
-  <TabsList>
-    <TabsTrigger value="client">Client Component</TabsTrigger>
-    <TabsTrigger value="server">Server Component</TabsTrigger>
-  </TabsList>
-  <TabsContent value="client">
+<Tabs>
+  <Tab title="Client Component">
     ```tsx
     const user = useUser({ or: 'redirect' });
     const allTeams = user.useTeams();
@@ -65,8 +61,8 @@ You can list all teams a user belongs to using the `listTeams` or `useTeams` fun
       </div>
     );
     ```
-  </TabsContent>
-  <TabsContent value="server">
+  </Tab>
+  <Tab title="Server Component">
     ```tsx
     const user = await stackServerApp.getUser({ or: 'redirect' });
     const allTeams = await user.listTeams();
@@ -82,7 +78,7 @@ You can list all teams a user belongs to using the `listTeams` or `useTeams` fun
         {someTeam ? someTeam.displayName : 'Not a member of this team'}
       </div>
     ```
-  </TabsContent>
+  </Tab>
 </Tabs>
 
 ## Creating a team
@@ -141,12 +137,8 @@ You can list all users in a team with the `listUsers` function or the `useUsers`
 
 On the client, the current user must have the `$read_members` permission in the team to perform this action.
 
-<Tabs defaultValue="client">
-  <TabsList>
-    <TabsTrigger value="client">Client Component</TabsTrigger>
-    <TabsTrigger value="server">Server Component</TabsTrigger>
-  </TabsList>
-  <TabsContent value="client">
+<Tabs>
+  <Tab title="Client Component">
     ```tsx
     // ... retrieve the team and ensure user has the necessary permissions
 
@@ -160,13 +152,13 @@ On the client, the current user must have the `$read_members` permission in the 
       </div>
     );
     ```
-  </TabsContent>
-  <TabsContent value="server">
+  </Tab>
+  <Tab title="Server Component">
     ```tsx
     // ... retrieve the team
 
     const users = await team.listUsers();
-    
+
     return (
       <div>
         {users.map(user => (
@@ -175,28 +167,24 @@ On the client, the current user must have the `$read_members` permission in the 
       </div>
     );
     ```
-  </TabsContent>
+  </Tab>
 </Tabs>
 
 ## Get current user's team profile
 
 You can get the current user's team profile with the `getTeamProfile` or `useTeamProfile` function on the `User` object. This function returns the team profile for the team with the given ID.
 
-<Tabs defaultValue="client">
-  <TabsList>
-    <TabsTrigger value="client">Client Component</TabsTrigger>
-    <TabsTrigger value="server">Server Component</TabsTrigger>
-  </TabsList>
-  <TabsContent value="client">
+<Tabs>
+  <Tab title="Client Component">
     ```tsx
     const teamProfile = user.useTeamProfile(team);
     ```
-  </TabsContent>
-  <TabsContent value="server">
+  </Tab>
+  <Tab title="Server Component">
     ```tsx
     const teamProfile = await user.getTeamProfile(team);
     ```
-  </TabsContent>
+  </Tab>
 </Tabs>
 
 ## Invite a user to a team
