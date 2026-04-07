@@ -1,6 +1,7 @@
 ---
 title: "Welcome"
 description: "Stack Auth documentation for setup, components, SDK usage, and REST APIs."
+sidebarTitle: "Overview"
 ---
 
 <div className="not-prose relative w-full overflow-hidden rounded-xl bg-[#121212]">
@@ -23,13 +24,13 @@ description: "Stack Auth documentation for setup, components, SDK usage, and RES
       </p>
       <div className="mt-8 flex flex-wrap gap-3">
         <a
-          href="/docs/getting-started/setup"
+          href="/guides/getting-started/setup"
           className="inline-flex items-center justify-center rounded-lg bg-[#6346ec] px-5 py-3 text-sm font-semibold text-white no-underline transition hover:bg-[#6346ec]/90"
         >
           Start setup
         </a>
         <a
-          href="/docs/overview"
+          href="/guides/getting-started/setup"
           className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-5 py-3 text-sm font-semibold text-slate-200 no-underline transition hover:border-[#6346ec] hover:text-white"
         >
           Browse docs
@@ -49,20 +50,20 @@ description: "Stack Auth documentation for setup, components, SDK usage, and RES
 
   <Steps className="mt-8">
     <Step title="Set up Stack Auth">
-      Follow the [setup guide](/docs/getting-started/setup) to initialize Stack Auth in your app.
+      Follow the [setup guide](/guides/getting-started/setup) to initialize Stack Auth in your app.
 
       ```bash
       npx @stackframe/stack-cli@latest init
       ```
     </Step>
     <Step title="Add auth UI">
-      Use the [Components overview](/docs/components/overview) to choose prebuilt interfaces like [`<SignIn />`](/docs/components/sign-in) and [`<SignUp />`](/docs/components/sign-up).
+      Use the [setup guide](/guides/getting-started/setup) to configure prebuilt auth interfaces and handlers.
     </Step>
     <Step title="Read user data in code">
-      Reach for the [SDK overview](/docs/sdk/overview) when you need hooks, objects, and typed access to users, teams, and sessions.
+      Reach for the [SDK overview](/sdk/overview) when you need hooks, objects, and typed access to users, teams, and sessions.
     </Step>
     <Step title="Go lower-level when needed">
-      Use the [REST API overview](/docs/rest-api/overview) for backend integrations, custom clients, and non-Next.js environments.
+      Use the [REST API overview](/api/overview) for backend integrations, custom clients, and non-Next.js environments.
     </Step>
 
   </Steps>
