@@ -14,13 +14,13 @@ const SORT_KEYS = {
   contact_channels: ["id"],
   teams: ["id"],
   team_member_profiles: ["team_id", "user_id"],
-  team_permissions: ["team_id", "user_id", "permission_id"],
+  team_permissions: ["team_id", "user_id", "id"],
   team_invitations: ["id"],
   email_outboxes: ["id"],
   project_permissions: ["user_id", "permission_id"],
   notification_preferences: ["id"],
   refresh_tokens: ["id"],
-  connected_accounts: ["id"],
+  connected_accounts: ["user_id", "provider", "provider_account_id"],
 } satisfies Record<keyof typeof DEFAULT_DB_SYNC_MAPPINGS, string[]>;
 
 const SYNC_COLUMNS_TO_STRIP = ["sync_sequence_id", "sync_is_deleted", "sync_created_at", "tenancyId"];
