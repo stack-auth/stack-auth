@@ -1,0 +1,57 @@
+---
+title: Vercel
+description: Deploy your Stack Auth project on Vercel with the dashboard integration flow.
+---
+
+This guide mirrors the Vercel integration flow in the Stack Auth dashboard app.
+
+## What this integration covers
+
+- Generate Stack Auth keys for your project
+- Add the required environment variables in Vercel
+- Redeploy and verify the auth flow
+
+## Setup
+
+<Steps>
+  <Step title="Open your Vercel project">
+    In the Vercel dashboard, open the project you want to connect to Stack Auth.
+
+    [Open Vercel dashboard](https://vercel.com/dashboard)
+  </Step>
+
+  <Step title="Generate keys from Stack Auth">
+    In your Stack dashboard, open the **Vercel Integration** app and generate keys for your project.
+
+    This produces a project ID plus API keys that you can paste into Vercel.
+  </Step>
+
+  <Step title="Add environment variables in Vercel">
+    In Vercel, go to **Project -> Settings -> Environment Variables** and add:
+
+    - `NEXT_PUBLIC_STACK_PROJECT_ID`
+    - `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY`
+    - `STACK_SECRET_SERVER_KEY`
+
+    Add `NEXT_PUBLIC_STACK_API_URL` only if you are not using the default hosted Stack API.
+  </Step>
+
+  <Step title="Redeploy">
+    Trigger a new deployment so Vercel picks up the new environment variables.
+
+    If you use both preview and production environments, make sure both are updated.
+  </Step>
+
+  <Step title="Verify the integration">
+    Open your deployed app and test authentication.
+
+    A quick check is to visit `/handler/signup` and confirm the sign-up flow loads correctly.
+  </Step>
+</Steps>
+
+## Notes
+
+- Keys are sensitive. Store server keys only in server-side environment variables.
+- If authentication fails after setup, confirm variable names are exact and redeploy again.
+
+For additional Vercel details, see [Vercel environment variable docs](https://vercel.com/docs/environment-variables).
