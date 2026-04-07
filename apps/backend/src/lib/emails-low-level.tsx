@@ -18,6 +18,13 @@ export function isSecureEmailPort(port: number | string) {
   return parsedPort === 465 || parsedPort === 2465;
 }
 
+function is4yzSMTPResponseCode(code: number | undefined) {
+  if (typeof code !== 'number') {
+    return false;
+  }
+  return code >= 400 && code < 500;
+}
+
 export type LowLevelEmailConfig = {
   host: string,
   port: number,
@@ -166,6 +173,16 @@ async function _lowLevelSendEmailWithoutRetries(options: LowLevelSendEmailOption
               errorType: 'SOCKET_CLOSED',
               canRetry: false,
               message: 'Connection to email server was lost unexpectedly. This could be due to incorrect email server port configuration or a temporary network issue. Please verify your configuration and try again.',
+            } as const);
+          }
+          // 4yz error codes are considered temporary errors in SMTP, so they should be retried anyway
+          // This is fallback logic for a code we don't explicitly capture but should still be retryable and we have the code
+          if (is4yzSMTPResponseCode(responseCode)) {
+            return Result.error({
+              rawError: error,
+              errorType: 'TRANSIENT_NEGATIVE_COMPLETION_REPLY',
+              canRetry: true,
+              message: 'The email server returned a temporary error. Please try again later.' + getServerResponse(error),
             } as const);
           }
         }
