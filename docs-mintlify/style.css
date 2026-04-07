@@ -9,7 +9,7 @@ ul#sidebar-group > li > button > img,
 ul#sidebar-group > li > a > div:first-child > img {
   /* AppIcon-like shell */
   border: 1px solid transparent !important;
-  border-radius: 26% !important;
+  border-radius: 30% !important;
   padding: 2px;
   display: block;
   box-sizing: content-box;
