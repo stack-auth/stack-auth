@@ -17,7 +17,6 @@ const SORT_KEYS = {
   team_permissions: ["team_id", "user_id", "permission_id"],
   team_invitations: ["id"],
   email_outboxes: ["id"],
-  session_replays: ["id"],
   project_permissions: ["user_id", "permission_id"],
   notification_preferences: ["id"],
   refresh_tokens: ["id"],
