@@ -1,0 +1,69 @@
+---
+title: "SDK Overview"
+description: "The SDK reference for Stack Auth's Next.js SDK."
+sidebarTitle: "Overview"
+---
+
+This is the SDK reference for Stack Auth's Next.js SDK.
+
+<Info>
+For setup instructions and how to use the SDK, see [Setup & Installation](/guides/getting-started/setup). If you are using a framework or programming language other than Next.js, you can use [our REST API](/api/overview).
+</Info>
+
+## General
+
+| Type | Description |
+|------|-------------|
+| [StackClientApp](/sdk/objects/stack-app#stackclientapp) | Client-level permissions for frontend code |
+| [StackServerApp](/sdk/objects/stack-app#stackserverapp) | Server-level permissions with full access |
+| [Project](/sdk/types/project#project) | Project configuration and settings |
+
+## Users & User Data
+
+| Type | Description |
+|------|-------------|
+| [CurrentUser](/sdk/types/user#currentuser) | Client-side authenticated user |
+| [ServerUser](/sdk/types/user#serveruser) | Server-side user with full access |
+| [CurrentServerUser](/sdk/types/user#currentserveruser) | Current user with server permissions |
+| [ContactChannel](/sdk/types/contact-channel#contactchannel) | User contact information (email, phone) |
+| [ServerContactChannel](/sdk/types/contact-channel#servercontactchannel) | Server-side contact channel with extended control |
+
+## Teams
+
+| Type | Description |
+|------|-------------|
+| [Team](/sdk/types/team#team) | Team management and configuration |
+| [ServerTeam](/sdk/types/team#serverteam) | Server-side team with full access |
+| [TeamPermission](/sdk/types/team-permission#teampermission) | Team-level permissions |
+| [ServerTeamPermission](/sdk/types/team-permission#serverteampermission) | Server-side team permissions |
+| [TeamUser](/sdk/types/team-user#teamuser) | Team membership representation |
+| [ServerTeamUser](/sdk/types/team-user#serverteamuser) | Server-side team user |
+| [TeamProfile](/sdk/types/team-profile#teamprofile) | Team-specific user profiles |
+| [ServerTeamProfile](/sdk/types/team-profile#serverteamprofile) | Server-side team profiles |
+
+## Email
+
+| Type | Description |
+|------|-------------|
+| [SendEmailOptions](/sdk/types/email#sendemailoptions) | Email sending configuration |
+
+## Payments & Items
+
+| Type | Description |
+|------|-------------|
+| [Customer](/sdk/types/customer#customer) | Customer billing interface |
+| [Item](/sdk/types/item#item) | Client-side resource management |
+| [ServerItem](/sdk/types/item#serveritem) | Server-side resource management with quantity operations |
+
+## Hooks
+
+| Hook | Description |
+|------|-------------|
+| [useStackApp](/sdk/hooks/use-stack-app) | React hook to access the StackClientApp instance |
+| [useUser](/sdk/hooks/use-user) | React hook to access the current user |
+
+## API Keys
+
+| Type | Description |
+|------|-------------|
+| [ApiKey](/sdk/types/api-key) | API key management for programmatic access |
