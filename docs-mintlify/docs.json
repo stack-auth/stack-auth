@@ -46,32 +46,22 @@
         "tab": "Documentation",
         "pages": [
           "index",
-          "docs/faq",
+          "guides/faq",
           {
             "group": "Getting Started",
             "pages": [
-              "docs/getting-started/setup",
-              "docs/getting-started/users",
-              "docs/getting-started/production",
-              "docs/getting-started/vite-example"
+              "guides/getting-started/setup",
+              "guides/getting-started/user-fundamentals",
+              "guides/getting-started/ai-integration"
             ]
           },
           {
             "group": "Going Further",
             "pages": [
-              "docs/concepts/stack-app",
-              "docs/concepts/backend-integration",
-              "docs/going-further/local-development",
-              {
-                "group": "Component Customization",
-                "pages": [
-                  "docs/customization/custom-pages",
-                  "docs/customization/custom-styles",
-                  "docs/customization/dark-mode",
-                  "docs/customization/internationalization",
-                  "docs/customization/page-examples"
-                ]
-              }
+              "guides/going-further/stack-app",
+              "guides/going-further/backend-integration",
+              "guides/going-further/local-development",
+              "guides/going-further/user-metadata"
             ]
           },
           {
@@ -81,77 +71,75 @@
                 "group": "Authentication",
                 "icon": "lock",
                 "pages": [
-                  "docs/apps/oauth",
+                  "guides/apps/authentication/overview",
+                  "guides/apps/authentication/user-onboarding",
+                  "guides/apps/authentication/connected-accounts",
+                  "guides/apps/authentication/jwts",
+                  "guides/apps/authentication/sign-up-rules",
+                  "guides/apps/authentication/cli-authentication",
                   {
-                    "group": "Auth Providers",
+                    "group": "All Auth Providers",
+                    "root": "guides/apps/authentication/auth-providers",
                     "pages": [
-                      "docs/apps/auth-providers",
-                      "docs/concepts/auth-providers",
-                      "docs/concepts/auth-providers/apple",
-                      "docs/concepts/auth-providers/bitbucket",
-                      "docs/concepts/auth-providers/discord",
-                      "docs/concepts/auth-providers/facebook",
-                      "docs/concepts/auth-providers/github",
-                      "docs/concepts/auth-providers/gitlab",
-                      "docs/concepts/auth-providers/google",
-                      "docs/concepts/auth-providers/linkedin",
-                      "docs/concepts/auth-providers/microsoft",
-                      "docs/concepts/auth-providers/passkey",
-                      "docs/concepts/auth-providers/spotify",
-                      "docs/concepts/auth-providers/twitch",
-                      "docs/concepts/auth-providers/two-factor-auth",
-                      "docs/concepts/auth-providers/x-twitter"
+                      "guides/apps/authentication/auth-providers/apple",
+                      "guides/apps/authentication/auth-providers/bitbucket",
+                      "guides/apps/authentication/auth-providers/discord",
+                      "guides/apps/authentication/auth-providers/facebook",
+                      "guides/apps/authentication/auth-providers/github",
+                      "guides/apps/authentication/auth-providers/gitlab",
+                      "guides/apps/authentication/auth-providers/google",
+                      "guides/apps/authentication/auth-providers/linkedin",
+                      "guides/apps/authentication/auth-providers/microsoft",
+                      "guides/apps/authentication/auth-providers/passkey",
+                      "guides/apps/authentication/auth-providers/spotify",
+                      "guides/apps/authentication/auth-providers/twitch",
+                      "guides/apps/authentication/auth-providers/two-factor-auth",
+                      "guides/apps/authentication/auth-providers/x-twitter"
                     ]
-                  },
-                  "docs/concepts/sign-up-rules",
-                  "docs/others/cli-authentication"
+                  }
                 ]
               },
-              "docs/concepts/user-onboarding",
               {
                 "group": "Teams",
                 "icon": "users",
                 "pages": [
-                  "docs/apps/orgs-and-teams",
-                  "docs/concepts/orgs-and-teams",
-                  "docs/concepts/team-selection"
+                  "guides/apps/teams/overview",
+                  "guides/apps/teams/team-selection"
                 ]
               },
-              "docs/apps/permissions",
-              "docs/apps/api-keys",
-              "docs/apps/payments",
-              "docs/apps/emails",
-              "docs/concepts/emails",
-              "docs/apps/data-vault",
-              "docs/apps/webhooks",
-              "docs/apps/launch-checklist",
-              "docs/going-further/working-with-ai",
-              "docs/apps/analytics"
+              "guides/apps/fraud-protection/overview",
+              "guides/apps/rbac/overview",
+              "guides/apps/api-keys/overview",
+              "guides/apps/payments/overview",
+              "guides/apps/emails/overview",
+              "guides/apps/data-vault/overview",
+              "guides/apps/webhooks/overview",
+              "guides/apps/launch-checklist/overview",
+              "guides/apps/analytics/overview"
             ]
           },
           {
             "group": "Integrations",
             "pages": [
-              "docs/others/supabase",
-              "docs/others/convex",
-              "docs/others/vercel"
+              "guides/integrations/supabase/overview",
+              "guides/integrations/convex/overview",
+              "guides/integrations/vercel/overview"
             ]
           },
           {
             "group": "Other",
             "pages": [
-              "docs/others/self-host",
-              "docs/others/cli-authentication",
-              "docs/others/mcp-setup",
+              "guides/other/self-host",
+              "guides/other/mcp-setup",
               {
                 "group": "Tutorials",
                 "pages": [
-                  "docs/others/tutorials/build-a-saas-with-stack-auth",
-                  "docs/others/tutorials/build-a-team-based-app",
-                  "docs/others/tutorials/ship-production-ready-auth"
+                  "guides/other/tutorials/build-a-saas-with-stack-auth",
+                  "guides/other/tutorials/build-a-team-based-app",
+                  "guides/other/tutorials/ship-production-ready-auth"
                 ]
               },
-              "docs/going-further/showcase"
+              "guides/other/showcase"
             ]
           }
         ]
@@ -159,79 +147,38 @@
       {
         "tab": "SDK Reference",
         "pages": [
-          "docs/sdk/overview",
+          "sdk/overview",
           {
             "group": "Objects",
-            "pages": ["docs/sdk/objects/stack-app"]
+            "pages": ["sdk/objects/stack-app"]
           },
           {
             "group": "Types",
             "pages": [
-              "docs/sdk/types/user",
-              "docs/sdk/types/team",
-              "docs/sdk/types/team-user",
-              "docs/sdk/types/team-permission",
-              "docs/sdk/types/team-profile",
-              "docs/sdk/types/contact-channel",
-              "docs/sdk/types/email",
-              "docs/sdk/types/api-key",
-              "docs/sdk/types/project",
-              "docs/sdk/types/connected-account",
-              "docs/sdk/types/item",
-              "docs/sdk/types/customer"
+              "sdk/types/user",
+              "sdk/types/team",
+              "sdk/types/team-user",
+              "sdk/types/team-permission",
+              "sdk/types/team-profile",
+              "sdk/types/contact-channel",
+              "sdk/types/email",
+              "sdk/types/api-key",
+              "sdk/types/project",
+              "sdk/types/connected-account",
+              "sdk/types/item",
+              "sdk/types/customer"
             ]
           },
           {
             "group": "Hooks",
-            "pages": ["docs/sdk/hooks/use-stack-app", "docs/sdk/hooks/use-user"]
-          }
-        ]
-      },
-      {
-        "tab": "Components",
-        "pages": [
-          "docs/components/overview",
-          {
-            "group": "Authentication",
-            "pages": [
-              "docs/components/sign-in",
-              "docs/components/sign-up",
-              "docs/components/credential-sign-in",
-              "docs/components/credential-sign-up",
-              "docs/components/magic-link-sign-in",
-              "docs/components/forgot-password",
-              "docs/components/password-reset"
-            ]
-          },
-          {
-            "group": "OAuth",
-            "pages": [
-              "docs/components/oauth-button",
-              "docs/components/oauth-button-group"
-            ]
-          },
-          {
-            "group": "User Interface",
-            "pages": [
-              "docs/components/user-button",
-              "docs/components/account-settings",
-              "docs/components/selected-team-switcher"
-            ]
-          },
-          {
-            "group": "Layout & Providers",
-            "pages": [
-              "docs/components/stack-provider",
-              "docs/components/stack-handler",
-              "docs/components/stack-theme"
-            ]
+            "pages": ["sdk/hooks/use-stack-app", "sdk/hooks/use-user"]
           }
         ]
       },
       {
         "tab": "REST API",
         "pages": [
-          "docs/rest-api/overview",
+          "api/overview",
           {
             "group": "Client API",
             "pages": [
