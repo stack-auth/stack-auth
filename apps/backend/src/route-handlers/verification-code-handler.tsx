@@ -1,3 +1,4 @@
+import { recordExternalDbSyncDeletion } from "@/lib/external-db-sync";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { getSoleTenancyFromProjectBranch, getTenancy, Tenancy } from "@/lib/tenancies";
 import { globalPrismaClient } from "@/prisma-client";
@@ -272,16 +273,27 @@ export function createVerificationCodeHandler<
 
       return codes.map(code => createCodeObjectFromPrismaCode(code));
     },
-    async revokeCode(options) {
-      const { project, branchId } = parseProjectBranchCombo(options);
+    async revokeCode(revokeOptions) {
+      const { project, branchId } = parseProjectBranchCombo(revokeOptions);
       const tenancy = await getSoleTenancyFromProjectBranch(project.id, branchId);
+
+      // Record deletion for external DB sync if this is a TEAM_INVITATION code
+      if (options.type === 'TEAM_INVITATION') {
+        await recordExternalDbSyncDeletion(globalPrismaClient, {
+          tableName: "VerificationCode_TEAM_INVITATION",
+          tenancyId: tenancy.id,
+          verificationCodeProjectId: project.id,
+          verificationCodeBranchId: branchId,
+          verificationCodeId: revokeOptions.id,
+        });
+      }
 
       await globalPrismaClient.verificationCode.delete({
         where: {
           projectId_branchId_id: {
             projectId: project.id,
             branchId,
-            id: options.id,
+            id: revokeOptions.id,
           },
         },
       });

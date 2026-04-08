@@ -80,6 +80,15 @@ type ExternalDbSyncStatus = {
     sequencer: {
       project_users: SequenceStats,
       contact_channels: SequenceStats,
+      teams: SequenceStats,
+      team_members: SequenceStats,
+      team_permissions: SequenceStats,
+      team_invitations: SequenceStats,
+      email_outboxes: SequenceStats,
+      project_permissions: SequenceStats,
+      notification_preferences: SequenceStats,
+      refresh_tokens: SequenceStats,
+      connected_accounts: SequenceStats,
       deleted_rows: DeletedRowStats,
     },
     poller: PollerStats,
@@ -95,6 +104,15 @@ type ExternalDbSyncStatus = {
   sequencer: {
     project_users: SequenceStats,
     contact_channels: SequenceStats,
+    teams: SequenceStats,
+    team_members: SequenceStats,
+    team_permissions: SequenceStats,
+    team_invitations: SequenceStats,
+    email_outboxes: SequenceStats,
+    project_permissions: SequenceStats,
+    notification_preferences: SequenceStats,
+    refresh_tokens: SequenceStats,
+    connected_accounts: SequenceStats,
     deleted_rows: DeletedRowStats,
   },
   poller: PollerStats,
@@ -400,6 +418,15 @@ export default function PageClient() {
     const sequencerPending = sumBigIntStrings([
       summarySource.sequencer.project_users.pending,
       summarySource.sequencer.contact_channels.pending,
+      summarySource.sequencer.teams.pending,
+      summarySource.sequencer.team_members.pending,
+      summarySource.sequencer.team_permissions.pending,
+      summarySource.sequencer.team_invitations.pending,
+      summarySource.sequencer.email_outboxes.pending,
+      summarySource.sequencer.project_permissions.pending,
+      summarySource.sequencer.notification_preferences.pending,
+      summarySource.sequencer.refresh_tokens.pending,
+      summarySource.sequencer.connected_accounts.pending,
       summarySource.sequencer.deleted_rows.pending,
     ]);
     const mappingPending = sumBigIntStrings(
@@ -518,7 +545,7 @@ export default function PageClient() {
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2 text-xs text-muted-foreground">
-            <div>ProjectUser + ContactChannel + DeletedRow rows waiting for sequence IDs.</div>
+            <div>All synced table rows waiting for sequence IDs.</div>
             <div className="flex items-center justify-between">
               <span>Throughput</span>
               <span>{loadingState ? "—" : formatThroughput(throughputStats?.sequencer ?? null)}</span>
@@ -578,30 +605,29 @@ export default function PageClient() {
                 </TableRow>
               </TableHeader>
               <TableBody>
-                <TableRow>
-                  <TableCell className="font-medium">ProjectUser</TableCell>
-                  <TableCell><DataValue value={status?.sequencer.project_users.total} loading={loadingState} /></TableCell>
-                  <TableCell><DataValue value={status?.sequencer.project_users.pending} loading={loadingState} /></TableCell>
-                  <TableCell><DataValue value={status?.sequencer.project_users.null_sequence_id} loading={loadingState} /></TableCell>
-                  <TableCell><DataValue value={status?.sequencer.project_users.min_sequence_id} loading={loadingState} /></TableCell>
-                  <TableCell><DataValue value={status?.sequencer.project_users.max_sequence_id} loading={loadingState} /></TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="font-medium">ContactChannel</TableCell>
-                  <TableCell><DataValue value={status?.sequencer.contact_channels.total} loading={loadingState} /></TableCell>
-                  <TableCell><DataValue value={status?.sequencer.contact_channels.pending} loading={loadingState} /></TableCell>
-                  <TableCell><DataValue value={status?.sequencer.contact_channels.null_sequence_id} loading={loadingState} /></TableCell>
-                  <TableCell><DataValue value={status?.sequencer.contact_channels.min_sequence_id} loading={loadingState} /></TableCell>
-                  <TableCell><DataValue value={status?.sequencer.contact_channels.max_sequence_id} loading={loadingState} /></TableCell>
-                </TableRow>
-                <TableRow>
-                  <TableCell className="font-medium">DeletedRow</TableCell>
-                  <TableCell><DataValue value={status?.sequencer.deleted_rows.total} loading={loadingState} /></TableCell>
-                  <TableCell><DataValue value={status?.sequencer.deleted_rows.pending} loading={loadingState} /></TableCell>
-                  <TableCell><DataValue value={status?.sequencer.deleted_rows.null_sequence_id} loading={loadingState} /></TableCell>
-                  <TableCell><DataValue value={status?.sequencer.deleted_rows.min_sequence_id} loading={loadingState} /></TableCell>
-                  <TableCell><DataValue value={status?.sequencer.deleted_rows.max_sequence_id} loading={loadingState} /></TableCell>
-                </TableRow>
+                {([
+                  ["ProjectUser", status?.sequencer.project_users],
+                  ["ContactChannel", status?.sequencer.contact_channels],
+                  ["Team", status?.sequencer.teams],
+                  ["TeamMember", status?.sequencer.team_members],
+                  ["TeamPermission", status?.sequencer.team_permissions],
+                  ["TeamInvitation", status?.sequencer.team_invitations],
+                  ["EmailOutbox", status?.sequencer.email_outboxes],
+                  ["ProjectPermission", status?.sequencer.project_permissions],
+                  ["NotificationPref", status?.sequencer.notification_preferences],
+                  ["RefreshToken", status?.sequencer.refresh_tokens],
+                  ["ConnectedAccount", status?.sequencer.connected_accounts],
+                  ["DeletedRow", status?.sequencer.deleted_rows],
+                ] as const).map(([name, stats]) => (
+                  <TableRow key={name}>
+                    <TableCell className="font-medium">{name}</TableCell>
+                    <TableCell><DataValue value={stats?.total} loading={loadingState} /></TableCell>
+                    <TableCell><DataValue value={stats?.pending} loading={loadingState} /></TableCell>
+                    <TableCell><DataValue value={stats?.null_sequence_id} loading={loadingState} /></TableCell>
+                    <TableCell><DataValue value={stats?.min_sequence_id} loading={loadingState} /></TableCell>
+                    <TableCell><DataValue value={stats?.max_sequence_id} loading={loadingState} /></TableCell>
+                  </TableRow>
+                ))}
               </TableBody>
             </Table>
 
