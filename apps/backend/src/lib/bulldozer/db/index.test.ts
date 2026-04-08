@@ -2685,16 +2685,32 @@ describe.sequential("declareStoredTable (real postgres)", () => {
   });
 
   test("concatTable allows input tables with different sort comparators", async () => {
-    const {
+    const fromTableAsc = declareStoredTable<{ value: number, team: string }>({ tableId: "users-concat-sort-asc" });
+    const groupedTableAsc = declareGroupByTable({
+      tableId: "users-concat-sort-asc-by-team",
       fromTable: fromTableAsc,
-      groupedTable: groupedTableAsc,
-      sortedTable: sortedTableAsc,
-    } = createSortedTable();
-    const {
+      groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+    });
+    const sortedTableAsc = declareSortTable({
+      tableId: "users-concat-sort-asc-sorted",
+      fromTable: groupedTableAsc,
+      getSortKey: mapper(`(("rowData"->>'value')::int) AS "newSortKey"`),
+      compareSortKeys: (a, b) => expr(`(((${a.sql}) #>> '{}')::int) - (((${b.sql}) #>> '{}')::int)`),
+    });
+
+    const fromTableDesc = declareStoredTable<{ value: number, team: string }>({ tableId: "users-concat-sort-desc" });
+    const groupedTableDesc = declareGroupByTable({
+      tableId: "users-concat-sort-desc-by-team",
       fromTable: fromTableDesc,
-      groupedTable: groupedTableDesc,
-      sortedTable: sortedTableDesc,
-    } = createDescendingSortedTable();
+      groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+    });
+    const sortedTableDesc = declareSortTable({
+      tableId: "users-concat-sort-desc-sorted",
+      fromTable: groupedTableDesc,
+      getSortKey: mapper(`(("rowData"->>'value')::int) AS "newSortKey"`),
+      compareSortKeys: (a, b) => expr(`(((${b.sql}) #>> '{}')::int) - (((${a.sql}) #>> '{}')::int)`),
+    });
+
     const concatenatedTable = declareConcatTable({
       tableId: "users-by-team-concat-sort-mismatch",
       tables: [sortedTableAsc, sortedTableDesc],
