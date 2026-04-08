@@ -59,7 +59,7 @@ API keys can be obtained through:
   id: string; //$stack-link-to:#apikeyid
   description: string; //$stack-link-to:#apikeydescription
   expiresAt?: Date; //$stack-link-to:#apikeyexpiresat
-  manuallyRevokedAt: Date | null; //$stack-link-to:#apikeymanuallyrevokedat
+  manuallyRevokedAt?: Date | null; //$stack-link-to:#apikeymanuallyrevokedat
   createdAt: Date; //$stack-link-to:#apikeycreatedat
   value: string | { lastFour: string }; //$stack-link-to:#apikeyvalue
   type: "user" | "team"; //$stack-link-to:#apikeytype
@@ -111,10 +111,10 @@ API keys can be obtained through:
 <ApiKeySection type="apiKey" property="manuallyRevokedAt" defaultOpen={false}>
   <MethodLayout>
     <MethodContent>
-      The date and time when this API key was manually revoked. If `null`, the key has not been revoked.
+      The date and time when this API key was manually revoked. If `null`, the key has not been revoked. May be `undefined` if the information is not available.
     </MethodContent>
     <MethodAside title="Type Definition">
-      ```typescript declare const manuallyRevokedAt: Date | null; ```
+      ```typescript declare const manuallyRevokedAt: Date | null | undefined; ```
     </MethodAside>
   </MethodLayout>
 </ApiKeySection>
