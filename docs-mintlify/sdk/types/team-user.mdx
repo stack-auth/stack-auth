@@ -54,7 +54,7 @@ It is usually obtained by calling `team.useUsers()` or `team.listUsers()` on a [
   title="TeamUser Table of Contents"
   code={`type TeamUser = {
   id: string; //$stack-link-to:#teamuserid
-  teamProfile: TeamProfile; //$stack-link-to:#teamuserteamprofile
+  teamProfile: TeamMemberProfile; //$stack-link-to:#teamuserteamprofile
 };`}
 />
 
@@ -77,7 +77,7 @@ It is usually obtained by calling `team.useUsers()` or `team.listUsers()` on a [
       Team-specific profile information.
     </MethodContent>
     <MethodAside title="Type Definition">
-      ```typescript declare const teamProfile: TeamProfile; ```
+      ```typescript declare const teamProfile: TeamMemberProfile; ```
     </MethodAside>
   </MethodLayout>
 </TeamUserSection>
@@ -100,7 +100,7 @@ It is usually obtained by calling `serverTeam.listUsers()` on a [`ServerTeam` ob
   // Inherits all functionality from ServerUser
   & ServerUser; //$stack-link-to:/docs/sdk/types/user#serveruser
   & {
-    teamProfile: ServerTeamProfile; //$stack-link-to:#serverteamuserteamprofile
+    teamProfile: ServerTeamMemberProfile; //$stack-link-to:#serverteamuserteamprofile
 };`}
 />
 
@@ -112,7 +112,7 @@ It is usually obtained by calling `serverTeam.listUsers()` on a [`ServerTeam` ob
       Server-side team-specific profile information.
     </MethodContent>
     <MethodAside title="Type Definition">
-      ```typescript declare const teamProfile: ServerTeamProfile; ```
+      ```typescript declare const teamProfile: ServerTeamMemberProfile; ```
     </MethodAside>
   </MethodLayout>
 </ServerTeamUserSection>
