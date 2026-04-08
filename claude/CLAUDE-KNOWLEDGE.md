@@ -163,3 +163,6 @@ A: Use `signed_up_at` (OIDC-style naming) in access tokens and encode it as Unix
 
 Q: Where should new globally searchable Cmd+K destinations be added in the dashboard?
 A: Add project-level shortcuts to `PROJECT_SHORTCUTS` in `apps/dashboard/src/components/cmdk-commands.tsx` (optionally gated with `requiredApps`), and for app subpages rely on the flattened `appFrontend.navigationItems` command generation in the same file so pages are directly searchable without nested preview navigation.
+
+Q: Which port suffixes are assigned to the two local docs sites?
+A: `docs` (old docs app) uses suffix `26`, and `docs-mintlify` uses suffix `04`. Keep these in sync across `docs/package.json`, `docs-mintlify/package.json`, `apps/dev-launchpad/public/index.html`, and `apps/dashboard/.env.development` (`NEXT_PUBLIC_STACK_DOCS_BASE_URL` points to old docs on `26`).
