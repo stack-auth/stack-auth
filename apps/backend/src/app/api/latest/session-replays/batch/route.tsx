@@ -120,10 +120,12 @@ export const POST = createSmartRouteHandler({
         refreshTokenId,
         startedAt: new Date(firstMs),
         lastEventAt: new Date(newLastEventAtMs),
+        shouldUpdateSequenceId: true,
       },
       update: {
         startedAt: new Date(newStartedAtMs),
         lastEventAt: new Date(newLastEventAtMs),
+        shouldUpdateSequenceId: true,
       },
     });
 
@@ -196,6 +198,11 @@ export const POST = createSmartRouteHandler({
       }
       throw e;
     }
+
+    await prisma.sessionReplay.update({
+      where: { tenancyId_id: { tenancyId, id: replayId } },
+      data: { shouldUpdateSequenceId: true },
+    });
 
     return {
       statusCode: 200,
