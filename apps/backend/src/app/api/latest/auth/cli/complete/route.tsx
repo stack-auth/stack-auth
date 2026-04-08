@@ -1,18 +1,43 @@
+import { Prisma } from "@/generated/prisma/client";
 import { generateAccessTokenFromRefreshTokenIfValid } from "@/lib/tokens";
-import { mergeAnonymousUserIntoAuthenticatedUser } from "@/lib/user-merge";
-import { globalPrismaClient, getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
+import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
 type CliSessionState = "anonymous" | "none";
 
+type CliAuthAttemptRow = {
+  id: string,
+  tenancyId: string,
+  refreshToken: string | null,
+  anonRefreshToken: string | null,
+  expiresAt: Date,
+  usedAt: Date | null,
+};
+
+type RefreshTokenRow = {
+  id: string,
+  tenancyId: string,
+  projectUserId: string,
+  refreshToken: string,
+  expiresAt: Date | null,
+};
+
 async function getPendingCliAuthAttempt(tenancyId: string, loginCode: string) {
-  const cliAuth = await globalPrismaClient.cliAuthAttempt.findUnique({
-    where: {
-      loginCode,
-    },
-  });
+  const rows = await globalPrismaClient.$queryRaw<CliAuthAttemptRow[]>(Prisma.sql`
+    SELECT
+      "id",
+      "tenancyId",
+      "refreshToken",
+      "anonRefreshToken",
+      "expiresAt",
+      "usedAt"
+    FROM "CliAuthAttempt"
+    WHERE "loginCode" = ${loginCode}
+    LIMIT 1
+  `);
+  const cliAuth = rows[0];
 
   if (!cliAuth) {
     throw new StatusError(400, "Invalid login code or the code has expired");
@@ -30,11 +55,18 @@ async function getPendingCliAuthAttempt(tenancyId: string, loginCode: string) {
 }
 
 async function getRefreshTokenSession(tenancyId: string, refreshToken: string) {
-  const refreshTokenObj = await globalPrismaClient.projectUserRefreshToken.findUnique({
-    where: {
-      refreshToken,
-    },
-  });
+  const rows = await globalPrismaClient.$queryRaw<RefreshTokenRow[]>(Prisma.sql`
+    SELECT
+      "id",
+      "tenancyId",
+      "projectUserId",
+      "refreshToken",
+      "expiresAt"
+    FROM "ProjectUserRefreshToken"
+    WHERE "refreshToken" = ${refreshToken}
+    LIMIT 1
+  `);
+  const refreshTokenObj = rows[0];
 
   if (!refreshTokenObj) {
     return null;
@@ -61,18 +93,14 @@ async function getCliAnonymousSession(tenancyId: string, anonRefreshToken: strin
     return null;
   }
 
-  const user = await globalPrismaClient.projectUser.findUnique({
-    where: {
-      tenancyId_projectUserId: {
-        tenancyId,
-        projectUserId: refreshTokenObj.projectUserId,
-      },
-    },
-    select: {
-      projectUserId: true,
-      isAnonymous: true,
-    },
-  });
+  const userRows = await globalPrismaClient.$queryRaw<{ projectUserId: string, isAnonymous: boolean }[]>(Prisma.sql`
+    SELECT "projectUserId", "isAnonymous"
+    FROM "ProjectUser"
+    WHERE "tenancyId" = ${tenancyId}::UUID
+      AND "projectUserId" = ${refreshTokenObj.projectUserId}::UUID
+    LIMIT 1
+  `);
+  const user = userRows[0];
 
   if (!user?.isAnonymous) {
     return null;
@@ -112,11 +140,10 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth: { tenancy }, body: { login_code, mode, refresh_token } }) {
-    const prisma = await getPrismaClientForTenancy(tenancy);
     const cliAuth = await getPendingCliAuthAttempt(tenancy.id, login_code);
-    const cliAnonymousSession = await getCliAnonymousSession(tenancy.id, cliAuth.anonRefreshToken);
 
     if (mode === "check") {
+      const cliAnonymousSession = await getCliAnonymousSession(tenancy.id, cliAuth.anonRefreshToken);
       const cliSessionState: CliSessionState = cliAnonymousSession ? "anonymous" : "none";
 
       return {
@@ -129,6 +156,7 @@ export const POST = createSmartRouteHandler({
     }
 
     if (mode === "claim-anon-session") {
+      const cliAnonymousSession = await getCliAnonymousSession(tenancy.id, cliAuth.anonRefreshToken);
       if (!cliAnonymousSession) {
         throw new StatusError(400, "No anonymous session associated with this code");
       }
@@ -161,47 +189,28 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(400, "Invalid refresh token");
     }
 
-    await retryTransaction(prisma, async (tx) => {
-      // Re-verify the CLI auth attempt is still pending inside the transaction
-      // to prevent race conditions with concurrent complete requests
-      const freshCliAuth = await tx.cliAuthAttempt.findFirst({
-        where: {
-          tenancyId: tenancy.id,
-          id: cliAuth.id,
-          refreshToken: null,
-          usedAt: null,
-          expiresAt: { gt: new Date() },
-        },
-      });
+    // Atomically claim the pending CLI auth attempt. Any anonymous session
+    // attached to this attempt is intentionally ignored — we do NOT merge
+    // the anonymous user into the authenticated user (that was a security risk).
+    // The anonymous user is left untouched and will simply be orphaned from
+    // this CLI flow.
+    const claimed = await globalPrismaClient.$queryRaw<{ id: string }[]>(Prisma.sql`
+      UPDATE "CliAuthAttempt"
+      SET
+        "refreshToken" = ${refresh_token},
+        "anonRefreshToken" = NULL,
+        "updatedAt" = NOW()
+      WHERE "tenancyId" = ${tenancy.id}::UUID
+        AND "id" = ${cliAuth.id}::UUID
+        AND "refreshToken" IS NULL
+        AND "usedAt" IS NULL
+        AND "expiresAt" > NOW()
+      RETURNING "id"
+    `);
 
-      if (!freshCliAuth) {
-        throw new StatusError(400, "Invalid login code or the code has expired");
-      }
-
-      if (
-        cliAnonymousSession
-        && cliAnonymousSession.userId !== browserRefreshTokenSession.projectUserId
-      ) {
-        await mergeAnonymousUserIntoAuthenticatedUser(tx, {
-          tenancy,
-          anonymousUserId: cliAnonymousSession.userId,
-          authenticatedUserId: browserRefreshTokenSession.projectUserId,
-        });
-      }
-
-      await tx.cliAuthAttempt.update({
-        where: {
-          tenancyId_id: {
-            tenancyId: tenancy.id,
-            id: freshCliAuth.id,
-          },
-        },
-        data: {
-          refreshToken: refresh_token,
-          anonRefreshToken: null,
-        },
-      });
-    });
+    if (claimed.length === 0) {
+      throw new StatusError(400, "Invalid login code or the code has expired");
+    }
 
     return {
       statusCode: 200,

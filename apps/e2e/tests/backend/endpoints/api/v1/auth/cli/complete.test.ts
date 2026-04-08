@@ -123,7 +123,7 @@ it("should return anonymous CLI session details when the CLI started from an ano
   expect(claimResponse.body.refresh_token).toBe(cliAnonymousUser.refreshToken);
 });
 
-it("should merge the CLI anonymous user into the authenticated browser user before completing", async ({ expect }) => {
+it("should ignore the CLI anonymous user and continue with the authenticated browser user when completing", async ({ expect }) => {
   const cliAnonymousUser = await Auth.Anonymous.signUp();
   const { teamId } = await Team.create();
   await Team.addMember(teamId, cliAnonymousUser.userId);
@@ -162,19 +162,22 @@ it("should merge the CLI anonymous user into the authenticated browser user befo
   expect(pollResponse.status).toBe(201);
   expect(pollResponse.body.refresh_token).toBe(authenticatedBrowserUser.refreshToken);
 
+  // The anonymous user's team membership must NOT be transferred to the authenticated user
+  // (merging was a security risk), and the anonymous user must still exist untouched.
   const teamUsersResponse = await niceBackendFetch(`/api/v1/users?team_id=${teamId}&include_anonymous=true`, {
     method: "GET",
     accessType: "server",
   });
   const teamUserIds = teamUsersResponse.body.items.map((user: { id: string }) => user.id);
-  expect(teamUserIds).toContain(authenticatedBrowserUser.userId);
-  expect(teamUserIds).not.toContain(cliAnonymousUser.userId);
+  expect(teamUserIds).not.toContain(authenticatedBrowserUser.userId);
+  expect(teamUserIds).toContain(cliAnonymousUser.userId);
 
-  const deletedAnonymousUserResponse = await niceBackendFetch(`/api/v1/users/${cliAnonymousUser.userId}?include_anonymous=true`, {
+  const anonymousUserResponse = await niceBackendFetch(`/api/v1/users/${cliAnonymousUser.userId}?include_anonymous=true`, {
     method: "GET",
     accessType: "server",
   });
-  expect(deletedAnonymousUserResponse.status).toBe(404);
+  expect(anonymousUserResponse.status).toBe(200);
+  expect(anonymousUserResponse.body.is_anonymous).toBe(true);
 });
 
 it("should keep the same user when the browser upgrades the CLI anonymous session in place", async ({ expect }) => {
@@ -392,89 +395,7 @@ it("should reject check/claim/complete on an expired code", async ({ expect }) =
   expect(completeResponse.status).toBe(400);
 });
 
-it("should transfer team membership and permissions from CLI anonymous user during merge", async ({ expect }) => {
-  const cliAnonymousUser = await Auth.Anonymous.signUp();
-  const { teamId } = await Team.create();
-  await Team.addMember(teamId, cliAnonymousUser.userId);
-  await Team.addPermission(teamId, cliAnonymousUser.userId, "$read_members");
-
-  const createResponse = await niceBackendFetch("/api/latest/auth/cli", {
-    method: "POST",
-    accessType: "server",
-    body: {
-      anon_refresh_token: cliAnonymousUser.refreshToken,
-    },
-  });
-
-  const authenticatedUser = await Auth.fastSignUp();
-  const completeResponse = await niceBackendFetch("/api/latest/auth/cli/complete", {
-    method: "POST",
-    accessType: "server",
-    body: {
-      login_code: createResponse.body.login_code,
-      mode: "complete",
-      refresh_token: authenticatedUser.refreshToken,
-    },
-  });
-  expect(completeResponse.status).toBe(200);
-
-  const teamUsersResponse = await niceBackendFetch(`/api/v1/users?team_id=${teamId}&include_anonymous=true`, {
-    method: "GET",
-    accessType: "server",
-  });
-  const teamUserIds = teamUsersResponse.body.items.map((u: { id: string }) => u.id);
-  expect(teamUserIds).toContain(authenticatedUser.userId);
-  expect(teamUserIds).not.toContain(cliAnonymousUser.userId);
-
-  const deletedAnonResponse = await niceBackendFetch(`/api/v1/users/${cliAnonymousUser.userId}?include_anonymous=true`, {
-    method: "GET",
-    accessType: "server",
-  });
-  expect(deletedAnonResponse.status).toBe(404);
-});
-
-it("should preserve metadata from CLI anonymous user during merge when authenticated user has none", async ({ expect }) => {
-  const cliAnonymousUser = await Auth.Anonymous.signUp();
-  await niceBackendFetch(`/api/v1/users/${cliAnonymousUser.userId}`, {
-    method: "PATCH",
-    accessType: "server",
-    body: {
-      client_metadata: { cli_preference: "dark_mode" },
-      server_metadata: { cli_data: "some_value" },
-    },
-  });
-
-  const createResponse = await niceBackendFetch("/api/latest/auth/cli", {
-    method: "POST",
-    accessType: "server",
-    body: {
-      anon_refresh_token: cliAnonymousUser.refreshToken,
-    },
-  });
-
-  const authenticatedUser = await Auth.fastSignUp();
-
-  const completeResponse = await niceBackendFetch("/api/latest/auth/cli/complete", {
-    method: "POST",
-    accessType: "server",
-    body: {
-      login_code: createResponse.body.login_code,
-      mode: "complete",
-      refresh_token: authenticatedUser.refreshToken,
-    },
-  });
-  expect(completeResponse.status).toBe(200);
-
-  const userResponse = await niceBackendFetch(`/api/v1/users/${authenticatedUser.userId}`, {
-    method: "GET",
-    accessType: "server",
-  });
-  expect(userResponse.status).toBe(200);
-  expect(userResponse.body.client_metadata).toEqual({ cli_preference: "dark_mode" });
-  expect(userResponse.body.server_metadata).toEqual({ cli_data: "some_value" });
-});
-
-it("should not overwrite authenticated user metadata with anonymous user metadata during merge", async ({ expect }) => {
+it("should not modify the authenticated user metadata when completing with a CLI anon session", async ({ expect }) => {
   const cliAnonymousUser = await Auth.Anonymous.signUp();
   await niceBackendFetch(`/api/v1/users/${cliAnonymousUser.userId}`, {
     method: "PATCH",
@@ -521,45 +442,18 @@ it("should not overwrite authenticated user metadata with anonymous user metadat
   expect(userResponse.status).toBe(200);
   expect(userResponse.body.client_metadata).toEqual({ from_auth: true });
   expect(userResponse.body.server_metadata).toEqual({ auth_data: "new" });
-});
 
-it("should handle merge when both users are members of the same team", async ({ expect }) => {
-  const cliAnonymousUser = await Auth.Anonymous.signUp();
-  const { teamId } = await Team.create();
-  await Team.addMember(teamId, cliAnonymousUser.userId);
-
-  const createResponse = await niceBackendFetch("/api/latest/auth/cli", {
-    method: "POST",
-    accessType: "server",
-    body: {
-      anon_refresh_token: cliAnonymousUser.refreshToken,
-    },
-  });
-
-  const authenticatedUser = await Auth.fastSignUp();
-  await Team.addMember(teamId, authenticatedUser.userId);
-
-  const completeResponse = await niceBackendFetch("/api/latest/auth/cli/complete", {
-    method: "POST",
-    accessType: "server",
-    body: {
-      login_code: createResponse.body.login_code,
-      mode: "complete",
-      refresh_token: authenticatedUser.refreshToken,
-    },
-  });
-  expect(completeResponse.status).toBe(200);
-
-  const teamUsersResponse = await niceBackendFetch(`/api/v1/users?team_id=${teamId}&include_anonymous=true`, {
+  // The anonymous user's metadata must remain on the anonymous user, never copied over.
+  const anonResponse = await niceBackendFetch(`/api/v1/users/${cliAnonymousUser.userId}?include_anonymous=true`, {
     method: "GET",
     accessType: "server",
   });
-  const teamUserIds = teamUsersResponse.body.items.map((u: { id: string }) => u.id);
-  expect(teamUserIds).toContain(authenticatedUser.userId);
-  expect(teamUserIds).not.toContain(cliAnonymousUser.userId);
+  expect(anonResponse.status).toBe(200);
+  expect(anonResponse.body.client_metadata).toEqual({ from_anon: true });
+  expect(anonResponse.body.server_metadata).toEqual({ anon_data: "old" });
 });
 
-it("should skip merge when CLI has no anon session and complete directly", async ({ expect }) => {
+it("should complete directly when CLI has no anon session", async ({ expect }) => {
   const createResponse = await niceBackendFetch("/api/latest/auth/cli", {
     method: "POST",
     accessType: "server",
