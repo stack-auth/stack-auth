@@ -1,3 +1,4 @@
+import { withExternalDbSyncUpdate } from "@/lib/external-db-sync";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { VerificationCodeType } from "@/generated/prisma/client";
@@ -51,15 +52,15 @@ export async function GET(request: NextRequest) {
         notificationCategoryId: notification_category_id,
       },
     },
-    update: {
+    update: withExternalDbSyncUpdate({
       enabled: false,
-    },
-    create: {
+    }),
+    create: withExternalDbSyncUpdate({
       tenancyId: tenancy.id,
       projectUserId: user_id,
       notificationCategoryId: notification_category_id,
       enabled: false,
-    },
+    }),
   });
 
   return new Response('<p>Successfully unsubscribed from notification group</p>', {
