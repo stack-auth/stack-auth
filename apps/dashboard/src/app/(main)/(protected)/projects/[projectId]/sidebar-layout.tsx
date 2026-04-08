@@ -18,7 +18,8 @@ import {
   TooltipTrigger,
   Typography,
 } from "@/components/ui";
-import { ALL_APPS_FRONTEND, DUMMY_ORIGIN, getAppPath, getItemPath, testAppPath, testItemPath } from "@/lib/apps-frontend";
+import { ALL_APPS_FRONTEND, DUMMY_ORIGIN, getAppPath, getItemPath, hasNavigationItems, testAppPath, testItemPath, type NavigableAppFrontend } from "@/lib/apps-frontend";
+import { getEnabledAppIds, getEnabledNavigableAppIds } from "@/lib/apps-utils";
 import { useUpdateConfig } from "@/lib/config-update";
 import { cn } from "@/lib/utils";
 import {
@@ -37,7 +38,6 @@ import {
 import { TooltipPortal } from "@radix-ui/react-tooltip";
 import { UserButton } from "@stackframe/stack";
 import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { usePathname } from "next/navigation";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { WalkthroughProvider } from "@/components/walkthrough/walkthrough-provider";
@@ -382,10 +382,14 @@ function AppNavItem({
 
   // Memoize the item object to prevent NavItem re-renders
   const navItemData = useMemo(() => {
-    const items = appFrontend.navigationItems.map((navItem) => ({
+    if (!hasNavigationItems(appFrontend)) {
+      return null;
+    }
+    const navigableFrontend: NavigableAppFrontend = appFrontend;
+    const items = navigableFrontend.navigationItems.map((navItem) => ({
       name: navItem.displayName,
-      href: getItemPath(projectId, appFrontend, navItem),
-      match: (fullUrl: URL) => testItemPath(projectId, appFrontend, navItem, fullUrl),
+      href: getItemPath(projectId, navigableFrontend, navItem),
+      match: (fullUrl: URL) => testItemPath(projectId, navigableFrontend, navItem, fullUrl),
     }));
     return {
       name: app.displayName,
@@ -396,6 +400,10 @@ function AppNavItem({
       firstItemHref: items[0]?.href,
     };
   }, [app.displayName, appId, appFrontend, projectId]);
+
+  if (navItemData == null) {
+    return null;
+  }
 
   return (
     <NavItem
@@ -427,9 +435,7 @@ function SidebarContent({
 
   // Memoize enabledApps to prevent recalculation on every render
   const enabledApps = useMemo(() =>
-    typedEntries(config.apps.installed)
-      .filter(([appId, appConfig]) => appConfig?.enabled && appId in ALL_APPS)
-      .map(([appId]) => appId as AppId),
+    getEnabledNavigableAppIds(config.apps.installed),
     [config.apps.installed]
   );
 
@@ -609,9 +615,7 @@ function SpotlightSearchWrapper({ projectId }: { projectId: string }) {
   const updateConfig = useUpdateConfig();
 
   const enabledApps = useMemo(() =>
-    typedEntries(config.apps.installed)
-      .filter(([appId, appConfig]) => appConfig?.enabled && appId in ALL_APPS)
-      .map(([appId]) => appId as AppId),
+    getEnabledAppIds(config.apps.installed),
     [config.apps.installed]
   );
 

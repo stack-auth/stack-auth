@@ -8,7 +8,7 @@ import { getPublicEnvVar } from "@/lib/env";
 import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
 import { GearIcon } from "@phosphor-icons/react";
 import { AdminOwnedProject, Team, useStackApp, useUser } from "@stackframe/stack";
-import { projectOnboardingStatusValues, strictEmailSchema, type ProjectOnboardingStatus, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
+import { projectOnboardingStatusValues, strictEmailSchema, yupObject, type ProjectOnboardingStatus } from "@stackframe/stack-shared/dist/schema-fields";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
 import { runAsynchronously, runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { useQueryState } from "@stackframe/stack-shared/dist/utils/react";

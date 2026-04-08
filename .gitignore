@@ -24,6 +24,7 @@ vite.config.ts.timestamp-*
 .eslintcache
 .env.local
 .env.*.local
+docker/local-emulator/.env.development
 scratch/
 
 npm-debug.log*
@@ -51,6 +52,7 @@ dist
 .docusaurus
 .cache-loader
 **.tsbuildinfo
+implementation.generated.ts
 
 .xata*
 
