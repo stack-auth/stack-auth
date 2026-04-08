@@ -1,0 +1,28 @@
+---
+title: "Remove User from Team"
+description: "Remove a user from a team"
+api: "DELETE /team-memberships/{team_id}/{user_id}"
+---
+
+## Request
+
+<ParamField path="team_id" type="string" required>
+  The identifier for the team.
+</ParamField>
+
+<ParamField path="user_id" type="string" required>
+  The ID of the user, or the special value `"me"` for the currently authenticated user.
+</ParamField>
+
+## Response
+
+<ResponseField name="200" type="object">
+  Successful response indicating the user was removed from the team.
+</ResponseField>
+
+<CodeGroup>
+```bash cURL
+curl -X DELETE "https://api.stack-auth.com/team-memberships/TEAM_ID/USER_ID" \
+  -H "Authorization: Bearer YOUR_ACCESS_TOKEN"
+```
+</CodeGroup>

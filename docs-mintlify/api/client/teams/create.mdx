@@ -1,0 +1,17 @@
+---
+title: "Create a Team"
+description: "Create a new team and optionally add the current user as a member."
+api: "POST /api/v1/teams"
+---
+
+## Request
+
+<ParamField body="body" type="object" required>
+  The request body containing team creation details.
+</ParamField>
+
+## Response
+
+<ResponseField name="201" type="object">
+  Successful response with the created team details.
+</ResponseField>

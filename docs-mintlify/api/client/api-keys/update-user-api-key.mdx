@@ -1,0 +1,82 @@
+---
+title: "Update User API Key"
+description: "Update an existing user API key by applying only the values included in the request payload."
+api: "PATCH /api/v1/user-api-keys/{api_key_id}"
+---
+
+## Request
+
+<ParamField header="x-stack-publishable-client-key" type="string" required>
+  The publishable client key for authentication.
+</ParamField>
+
+<ParamField header="x-stack-access-token" type="string" required>
+  The access token for the authenticated user.
+</ParamField>
+
+<ParamField header="x-stack-project-id" type="string" required>
+  The project ID.
+</ParamField>
+
+<ParamField path="api_key_id" type="string" required>
+  The unique identifier of the user API key to update.
+</ParamField>
+
+<ParamField body="description" type="string">
+  A new description for the API key.
+</ParamField>
+
+<ParamField body="revoked" type="boolean">
+  Set to `true` to revoke the API key.
+</ParamField>
+
+## Response
+
+<ResponseField name="id" type="string">
+  The unique identifier of the API key.
+</ResponseField>
+
+<ResponseField name="description" type="string">
+  The description of the API key.
+</ResponseField>
+
+<ResponseField name="user_id" type="string">
+  The identifier of the user this API key belongs to.
+</ResponseField>
+
+<ResponseField name="expires_at" type="string">
+  ISO 8601 timestamp of when the API key expires, or `null` if it does not expire.
+</ResponseField>
+
+<ResponseField name="manually_revoked_at" type="string">
+  ISO 8601 timestamp of when the API key was manually revoked, or `null` if it has not been revoked.
+</ResponseField>
+
+<ResponseField name="created_at" type="string">
+  ISO 8601 timestamp of when the API key was created.
+</ResponseField>
+
+<CodeGroup>
+```bash cURL
+curl -X PATCH 'https://api.stack-auth.com/api/v1/user-api-keys/uak_1234567890' \
+  -H 'Content-Type: application/json' \
+  -H 'x-stack-publishable-client-key: YOUR_PUBLISHABLE_CLIENT_KEY' \
+  -H 'x-stack-access-token: YOUR_ACCESS_TOKEN' \
+  -H 'x-stack-project-id: YOUR_PROJECT_ID' \
+  -d '{
+    "description": "Updated API key description",
+    "revoked": false
+  }'
+```
+
+```json 200 Response
+{
+  "id": "uak_1234567890",
+  "description": "Updated API key description",
+  "user_id": "usr_1234567890",
+  "expires_at": "2025-12-31T23:59:59Z",
+  "manually_revoked_at": null,
+  "created_at": "2024-01-01T00:00:00Z"
+}
+```
+</CodeGroup>

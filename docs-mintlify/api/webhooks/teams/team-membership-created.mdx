@@ -1,0 +1,42 @@
+---
+title: "team_membership.created"
+description: "This event is triggered when a user is added to a team."
+---
+
+## Event Type
+
+`team_membership.created`
+
+## Description
+
+This event is triggered when a user is added to a team.
+
+## Payload
+
+<ResponseField name="type" type="string">
+  The event type. Always `"team_membership.created"`.
+</ResponseField>
+
+<ResponseField name="data" type="object">
+  The team membership object that was created.
+  <Expandable>
+    <ResponseField name="team_id" type="string">
+      The unique identifier of the team.
+    </ResponseField>
+    <ResponseField name="user_id" type="string">
+      The unique identifier of the user added to the team.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<CodeGroup>
+```json Example Payload
+{
+  "type": "team_membership.created",
+  "data": {
+    "team_id": "team-id-123",
+    "user_id": "user-id-456"
+  }
+}
+```
+</CodeGroup>

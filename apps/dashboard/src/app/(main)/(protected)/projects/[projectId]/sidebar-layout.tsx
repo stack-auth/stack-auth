@@ -18,7 +18,8 @@ import {
   TooltipTrigger,
   Typography,
 } from "@/components/ui";
-import { ALL_APPS_FRONTEND, DUMMY_ORIGIN, getAppPath, getItemPath, testAppPath, testItemPath } from "@/lib/apps-frontend";
+import { ALL_APPS_FRONTEND, DUMMY_ORIGIN, getAppPath, getItemPath, hasNavigationItems, testAppPath, testItemPath, type NavigableAppFrontend } from "@/lib/apps-frontend";
+import { getEnabledAppIds, getEnabledNavigableAppIds } from "@/lib/apps-utils";
 import { useUpdateConfig } from "@/lib/config-update";
 import { cn } from "@/lib/utils";
 import {
@@ -28,15 +29,15 @@ import {
   CubeIcon,
   GearIcon,
   GlobeIcon,
-  KeyIcon,
   ListIcon,
+  PlusIcon,
   SidebarIcon,
+  UsersIcon,
   type Icon as PhosphorIcon,
 } from "@phosphor-icons/react";
 import { TooltipPortal } from "@radix-ui/react-tooltip";
 import { UserButton } from "@stackframe/stack";
 import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { usePathname } from "next/navigation";
 import { useCallback, useMemo, useRef, useState } from "react";
 import { useAdminApp, useProjectId } from "./use-admin-app";
@@ -50,7 +51,7 @@ type Item = {
 };
 
 type AppSection = {
-  appId: AppId,
+  appId?: AppId,
   name: string,
   icon: React.FunctionComponent<React.SVGProps<SVGSVGElement>>,
   items: {
@@ -77,18 +78,6 @@ const bottomItems: BottomItem[] = [
     icon: CubeIcon,
     regex: /^\/projects\/[^\/]+\/apps(\/.*)?$/,
   },
-  {
-    name: 'Project Keys',
-    href: '/project-keys',
-    icon: KeyIcon,
-    regex: /^\/projects\/[^\/]+\/project-keys(\/.*)?$/,
-  },
-  {
-    name: 'Project Settings',
-    href: '/project-settings',
-    icon: GearIcon,
-    regex: /^\/projects\/[^\/]+\/project-settings$/,
-  },
 ];
 
 // Overview item (always at top)
@@ -100,12 +89,43 @@ const overviewItem: Item = {
   type: 'item'
 };
 
+const usersItem: Item = {
+  name: "Users",
+  href: "/users",
+  regex: /^\/projects\/[^\/]+\/users(\/.*)?$/,
+  icon: UsersIcon,
+  type: "item",
+};
+
 const dashboardsItem: Item = {
   name: "Dashboards",
   href: "/dashboards",
   regex: /^\/projects\/[^\/]+\/dashboards(\/.*)?$/,
   icon: ChartBarIcon,
   type: 'item',
+};
+
+const projectSettingsItem: AppSection = {
+  name: "Project Settings",
+  icon: GearIcon,
+  firstItemHref: "/project-settings",
+  items: [
+    {
+      name: "General",
+      href: "/project-settings",
+      match: (fullUrl: URL) => /^\/projects\/[^\/]+\/project-settings(\/.*)?$/.test(fullUrl.pathname),
+    },
+    {
+      name: "Project Keys",
+      href: "/project-keys",
+      match: (fullUrl: URL) => /^\/projects\/[^\/]+\/project-keys(\/.*)?$/.test(fullUrl.pathname),
+    },
+    {
+      name: "Trusted Domains",
+      href: "/domains",
+      match: (fullUrl: URL) => /^\/projects\/[^\/]+\/domains(\/.*)?$/.test(fullUrl.pathname),
+    },
+  ],
 };
 
 function NavItem({
@@ -163,7 +183,7 @@ function NavItem({
   );
 
   const buttonClasses = cn(
-    "group flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-medium transition-all duration-150 hover:transition-none",
+    "group flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-semibold transition-all duration-150 hover:transition-none",
     isHighlighted
       ? "bg-white/70 text-foreground shadow-sm ring-1 ring-white/60 dark:bg-transparent dark:bg-gradient-to-r dark:from-blue-500/[0.15] dark:to-blue-500/[0.08] dark:shadow-[0_0_12px_rgba(59,130,246,0.15)] dark:ring-blue-500/20"
       : inactiveClasses,
@@ -251,7 +271,7 @@ function NavItem({
         >
           <span className="flex min-w-0 flex-1 items-center gap-3">
             <IconComponent className={iconClasses} />
-            <span className="truncate text-sm font-semibold">{item.name}</span>
+            <span className="truncate text-sm">{item.name}</span>
           </span>
           <CaretDownIcon weight="bold" className={caretClasses} />
         </Button>
@@ -361,10 +381,14 @@ function AppNavItem({
 
   // Memoize the item object to prevent NavItem re-renders
   const navItemData = useMemo(() => {
-    const items = appFrontend.navigationItems.map((navItem) => ({
+    if (!hasNavigationItems(appFrontend)) {
+      return null;
+    }
+    const navigableFrontend: NavigableAppFrontend = appFrontend;
+    const items = navigableFrontend.navigationItems.map((navItem) => ({
       name: navItem.displayName,
-      href: getItemPath(projectId, appFrontend, navItem),
-      match: (fullUrl: URL) => testItemPath(projectId, appFrontend, navItem, fullUrl),
+      href: getItemPath(projectId, navigableFrontend, navItem),
+      match: (fullUrl: URL) => testItemPath(projectId, navigableFrontend, navItem, fullUrl),
     }));
     return {
       name: app.displayName,
@@ -375,6 +399,10 @@ function AppNavItem({
       firstItemHref: items[0]?.href,
     };
   }, [app.displayName, appId, appFrontend, projectId]);
+
+  if (navItemData == null) {
+    return null;
+  }
 
   return (
     <NavItem
@@ -406,9 +434,7 @@ function SidebarContent({
 
   // Memoize enabledApps to prevent recalculation on every render
   const enabledApps = useMemo(() =>
-    typedEntries(config.apps.installed)
-      .filter(([appId, appConfig]) => appConfig?.enabled && appId in ALL_APPS)
-      .map(([appId]) => appId as AppId),
+    getEnabledNavigableAppIds(config.apps.installed),
     [config.apps.installed]
   );
 
@@ -428,6 +454,17 @@ function SidebarContent({
   }, [enabledApps, pathname, projectId]);
 
   const [expandedSections, setExpandedSections] = useState<Set<AppId>>(() => getDefaultExpandedSections());
+  const [isProjectSettingsExpanded, setIsProjectSettingsExpanded] = useState(() =>
+    /^\/projects\/[^\/]+\/(project-settings|project-keys|domains)(\/.*)?$/.test(pathname)
+  );
+  const projectSettingsSection = useMemo<AppSection>(() => ({
+    ...projectSettingsItem,
+    firstItemHref: `/projects/${projectId}${projectSettingsItem.firstItemHref ?? "/project-settings"}`,
+    items: projectSettingsItem.items.map((item) => ({
+      ...item,
+      href: `/projects/${projectId}${item.href}`,
+    })),
+  }), [projectId]);
 
   const toggleSection = useCallback((appId: AppId) => {
     setExpandedSections(prev => {
@@ -450,11 +487,17 @@ function SidebarContent({
           WebkitMaskImage: 'linear-gradient(to bottom, transparent 0%, black 24px, black calc(100% - 24px), transparent 100%)',
         }}
       >
-        <div className="space-y-3">
+        <div className="space-y-2">
           <NavItem
             item={overviewItem}
             onClick={onNavigate}
             href={`/projects/${projectId}${overviewItem.href}`}
+            isCollapsed={isCollapsed}
+          />
+          <NavItem
+            item={usersItem}
+            onClick={onNavigate}
+            href={`/projects/${projectId}${usersItem.href}`}
             isCollapsed={isCollapsed}
           />
           <NavItem
@@ -483,6 +526,19 @@ function SidebarContent({
               onClick={onNavigate}
             />
           ))}
+          {!isCollapsed && (
+            <Button
+              asChild
+              variant="ghost"
+              size="sm"
+              className="mt-2 w-full justify-center gap-1.5 rounded-lg bg-transparent px-1.5 py-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-muted-foreground/75 transition-colors duration-150 hover:bg-transparent hover:text-foreground hover:transition-none focus-visible:ring-border"
+            >
+              <Link href={`/projects/${projectId}/apps`} onClick={onNavigate} className="justify-center">
+                <PlusIcon className="h-3.5 w-3.5" />
+                <span>Install apps</span>
+              </Link>
+            </Button>
+          )}
         </div>
 
         <div className="flex-grow" />
@@ -505,6 +561,13 @@ function SidebarContent({
               isCollapsed={isCollapsed}
             />
           ))}
+          <NavItem
+            item={projectSettingsSection}
+            onClick={onNavigate}
+            isExpanded={isProjectSettingsExpanded}
+            onToggle={() => setIsProjectSettingsExpanded((prev) => !prev)}
+            isCollapsed={isCollapsed}
+          />
         </div>
 
         {/* User button and collapse toggle */}
@@ -551,9 +614,7 @@ function SpotlightSearchWrapper({ projectId }: { projectId: string }) {
   const updateConfig = useUpdateConfig();
 
   const enabledApps = useMemo(() =>
-    typedEntries(config.apps.installed)
-      .filter(([appId, appConfig]) => appConfig?.enabled && appId in ALL_APPS)
-      .map(([appId]) => appId as AppId),
+    getEnabledAppIds(config.apps.installed),
     [config.apps.installed]
   );
 

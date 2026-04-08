@@ -1,0 +1,25 @@
+---
+title: "Accept Team Invitation by ID"
+description: "Accept a team invitation by its ID. The authenticated user must have a verified email address that matches the invitation's intended recipient."
+api: "POST /api/v1/team-invitations/{id}/accept"
+---
+
+## Request
+
+### Path Parameters
+
+<ParamField path="id" type="string" required>
+  The invitation identifier.
+</ParamField>
+
+### Query Parameters
+
+<ParamField query="user_id" type="string">
+  User identifier, or `me` for the current authenticated user.
+</ParamField>
+
+## Response
+
+<ResponseField name="200" type="object">
+  Successful response indicating the invitation has been accepted and the user is now a team member.
+</ResponseField>

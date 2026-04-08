@@ -1,0 +1,43 @@
+---
+title: "Check Reset Password Code"
+description: "Check if a reset password code is valid without using it."
+api: "POST /api/v1/auth/password/reset/check-code"
+---
+
+## Request
+
+<ParamField header="x-stack-publishable-client-key" type="string" required>
+  The publishable client key for authentication.
+</ParamField>
+
+<ParamField header="x-stack-project-id" type="string" required>
+  The project ID.
+</ParamField>
+
+<ParamField body="code" type="string" required>
+  The password reset code to validate.
+</ParamField>
+
+## Response
+
+<ResponseField name="is_valid" type="boolean">
+  Whether the provided reset password code is valid.
+</ResponseField>
+
+<CodeGroup>
+```bash cURL
+curl -X POST 'https://api.stack-auth.com/api/v1/auth/password/reset/check-code' \
+  -H 'Content-Type: application/json' \
+  -H 'x-stack-publishable-client-key: YOUR_PUBLISHABLE_CLIENT_KEY' \
+  -H 'x-stack-project-id: YOUR_PROJECT_ID' \
+  -d '{
+    "code": "RESET_CODE_HERE"
+  }'
+```
+
+```json 200 Response
+{
+  "is_valid": true
+}
+```
+</CodeGroup>
