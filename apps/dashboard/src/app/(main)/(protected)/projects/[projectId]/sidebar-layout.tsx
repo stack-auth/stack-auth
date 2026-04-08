@@ -40,6 +40,7 @@ import { UserButton } from "@stackframe/stack";
 import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { usePathname } from "next/navigation";
 import { useCallback, useMemo, useRef, useState } from "react";
+import { WalkthroughProvider } from "@/components/walkthrough/walkthrough-provider";
 import { useAdminApp, useProjectId } from "./use-admin-app";
 
 type Item = {
@@ -643,95 +644,96 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
   }, []);
 
   return (
-    <TooltipProvider>
-      <div className="mx-auto w-full flex flex-col min-h-screen dark:bg-background dark:shadow-2xl dark:border-x dark:border-border/5">
-        {/* Header - Glassmorphic with vertical blur gradient (light) / Floating card (dark) */}
-        <div className="sticky top-0 z-20 relative dark:top-3 dark:mx-3 dark:mb-3 dark:mt-3 dark:rounded-2xl">
-          {/* Vertical blur layer behind header - light mode only */}
-          <div
-            className="absolute inset-0 h-[calc(100%+0.75rem)] pointer-events-none dark:hidden"
-            style={{
-              backdropFilter: 'blur(16px)',
-              WebkitBackdropFilter: 'blur(16px)',
-              maskImage: 'linear-gradient(to bottom, black 50%, transparent 100%)',
-              WebkitMaskImage: 'linear-gradient(to bottom, black 50%, transparent 100%)',
-            }}
-          />
-          <div className="relative flex h-14 items-center justify-between px-5 dark:bg-foreground/5 dark:px-4 dark:border dark:border-foreground/5 dark:backdrop-blur-2xl dark:shadow-sm dark:rounded-2xl">
-            {/* Left section: Logo + Menu + Project Switcher */}
-            <div className="flex grow-1 items-center gap-2">
-              {/* Mobile: Menu button */}
-              <Sheet onOpenChange={(open) => setSidebarOpen(open)} open={sidebarOpen}>
-                <SheetTitle className="hidden">
-                  Sidebar Menu
-                </SheetTitle>
-                <SheetTrigger asChild>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="lg:hidden h-9 w-9 p-0 text-muted-foreground hover:text-foreground"
+    <WalkthroughProvider>
+      <TooltipProvider>
+        <div className="mx-auto w-full flex flex-col min-h-screen dark:bg-background dark:shadow-2xl dark:border-x dark:border-border/5">
+          {/* Header - Glassmorphic with vertical blur gradient (light) / Floating card (dark) */}
+          <div className="sticky top-0 z-20 relative dark:top-3 dark:mx-3 dark:mb-3 dark:mt-3 dark:rounded-2xl">
+            {/* Vertical blur layer behind header - light mode only */}
+            <div
+              className="absolute inset-0 h-[calc(100%+0.75rem)] pointer-events-none dark:hidden"
+              style={{
+                backdropFilter: 'blur(16px)',
+                WebkitBackdropFilter: 'blur(16px)',
+                maskImage: 'linear-gradient(to bottom, black 50%, transparent 100%)',
+                WebkitMaskImage: 'linear-gradient(to bottom, black 50%, transparent 100%)',
+              }}
+            />
+            <div className="relative flex h-14 items-center justify-between px-5 dark:bg-foreground/5 dark:px-4 dark:border dark:border-foreground/5 dark:backdrop-blur-2xl dark:shadow-sm dark:rounded-2xl">
+              {/* Left section: Logo + Menu + Project Switcher */}
+              <div className="flex grow-1 items-center gap-2">
+                {/* Mobile: Menu button */}
+                <Sheet onOpenChange={(open) => setSidebarOpen(open)} open={sidebarOpen}>
+                  <SheetTitle className="hidden">
+                    Sidebar Menu
+                  </SheetTitle>
+                  <SheetTrigger asChild>
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="lg:hidden h-9 w-9 p-0 text-muted-foreground hover:text-foreground"
+                    >
+                      <ListIcon className="h-4 w-4" />
+                    </Button>
+                  </SheetTrigger>
+                  <SheetContent
+                    aria-describedby={undefined}
+                    side='left'
+                    className="w-[248px] bg-white/90 dark:bg-foreground/5 border-black/[0.06] dark:border-foreground/5 p-0 backdrop-blur-sm shadow-md"
+                    hasCloseButton={false}
                   >
-                    <ListIcon className="h-4 w-4" />
-                  </Button>
-                </SheetTrigger>
-                <SheetContent
-                  aria-describedby={undefined}
-                  side='left'
-                  className="w-[248px] bg-white/90 dark:bg-foreground/5 border-black/[0.06] dark:border-foreground/5 p-0 backdrop-blur-sm shadow-md"
-                  hasCloseButton={false}
-                >
-                  <SidebarContent projectId={projectId} onNavigate={() => setSidebarOpen(false)} />
-                </SheetContent>
-              </Sheet>
+                    <SidebarContent projectId={projectId} onNavigate={() => setSidebarOpen(false)} />
+                  </SheetContent>
+                </Sheet>
 
-              {/* Desktop: Logo + Breadcrumb + Project Switcher */}
-              <div className="hidden lg:flex items-center gap-2">
-                <Logo height={24} href="/" />
-                <CaretRightIcon className="h-4 w-4 text-muted-foreground/50" />
-                <ProjectSwitcher currentProjectId={projectId} />
+                {/* Desktop: Logo + Breadcrumb + Project Switcher */}
+                <div className="hidden lg:flex items-center gap-2">
+                  <Logo height={24} href="/" />
+                  <CaretRightIcon className="h-4 w-4 text-muted-foreground/50" />
+                  <ProjectSwitcher currentProjectId={projectId} />
+                </div>
+
+                {/* Mobile: Logo */}
+                <div className="lg:hidden">
+                  <Logo full height={24} href="/projects" />
+                </div>
               </div>
 
-              {/* Mobile: Logo */}
-              <div className="lg:hidden">
-                <Logo full height={24} href="/projects" />
+              {/* Middle section: Control Center */}
+              <div className="grow-1">
+                <CmdKTrigger />
               </div>
-            </div>
 
-            {/* Middle section: Control Center */}
-            <div className="grow-1">
-              <CmdKTrigger />
-            </div>
-
-            {/* Right section: Search, Theme toggle and User button */}
-            <div className="flex grow-1 gap-2 items-center">
-              <ThemeToggle />
-              <UserButton />
+              {/* Right section: Search, Theme toggle and User button */}
+              <div className="flex grow-1 gap-2 items-center">
+                <ThemeToggle />
+                <UserButton />
+              </div>
             </div>
           </div>
-        </div>
 
-        {/* Spotlight Search */}
-        <SpotlightSearchWrapper projectId={projectId} />
+          {/* Spotlight Search */}
+          <SpotlightSearchWrapper projectId={projectId} />
 
-        {/* Body Layout (Left Sidebar + Content + Right Companion) */}
-        <div className="relative flex flex-1 items-start w-full">
-          {/* Left Sidebar - Sticky */}
-          <aside
-            className={cn(
+          {/* Body Layout (Left Sidebar + Content + Right Companion) */}
+          <div className="relative flex flex-1 items-start w-full">
+            {/* Left Sidebar - Sticky */}
+            <aside
+              className={cn(
               "sticky top-14 h-[calc(100vh-3.5rem)] hidden flex-col lg:flex z-[10] transition-[width] duration-200 ease-in-out dark:top-20 dark:h-[calc(100vh-6rem)] dark:ml-3 dark:bg-foreground/5 dark:border dark:border-foreground/5 dark:backdrop-blur-2xl dark:rounded-2xl dark:shadow-sm",
               isCollapsed ? "w-[64px]" : "w-[248px]"
             )}
-          >
-            <SidebarContent
-              projectId={projectId}
-              isCollapsed={isCollapsed}
-              onToggleCollapse={toggleCollapsed}
-            />
-          </aside>
+            >
+              <SidebarContent
+                projectId={projectId}
+                isCollapsed={isCollapsed}
+                onToggleCollapse={toggleCollapsed}
+              />
+            </aside>
 
-          {/* Main Content Area */}
-          <main className="flex-1 min-w-0 pt-1 pb-3 px-3 lg:pl-0 has-[[data-full-bleed]]:h-[calc(100vh-3.5rem)] dark:py-0 dark:px-2 dark:pb-3 dark:h-[calc(100vh-6rem)]">
-            <div className={cn(
+            {/* Main Content Area */}
+            <main className="flex-1 min-w-0 pt-1 pb-3 px-3 lg:pl-0 has-[[data-full-bleed]]:h-[calc(100vh-3.5rem)] dark:py-0 dark:px-2 dark:pb-3 dark:h-[calc(100vh-6rem)]">
+              <div className={cn(
               "relative flex flex-col overflow-visible dark:h-full dark:overflow-auto has-[[data-full-bleed]]:h-full has-[[data-full-bleed]]:overflow-auto",
               // Light mode card styling
               "min-h-[calc(100vh-4.5rem)] bg-white/80 backdrop-blur-xl shadow-[0_4px_24px_rgba(0,0,0,0.06),0_1px_4px_rgba(0,0,0,0.04)] rounded-2xl border border-black/[0.06] lg:pr-20",
@@ -740,16 +742,17 @@ export default function SidebarLayout(props: { children?: React.ReactNode }) {
               // Full-bleed pages (email editors etc.): remove card styling in light mode too (keep lg:pr-20 for companion space)
               "has-[[data-full-bleed]]:min-h-0 has-[[data-full-bleed]]:bg-transparent has-[[data-full-bleed]]:backdrop-blur-none has-[[data-full-bleed]]:shadow-none has-[[data-full-bleed]]:rounded-none has-[[data-full-bleed]]:border-0",
             )}>
-              {props.children}
-            </div>
-          </main>
+                {props.children}
+              </div>
+            </main>
 
-          {/* Stack Companion - overlay with reserved content gutter */}
-          <div className="pointer-events-none absolute top-0 right-2 bottom-0 z-30 hidden lg:block">
-            <StackCompanion className="pointer-events-auto" glassBg={isCustomDashboardPage} />
+            {/* Stack Companion - overlay with reserved content gutter */}
+            <div className="pointer-events-none absolute top-0 right-2 bottom-0 z-30 hidden lg:block">
+              <StackCompanion className="pointer-events-auto" glassBg={isCustomDashboardPage} />
+            </div>
           </div>
         </div>
-      </div>
-    </TooltipProvider>
+      </TooltipProvider>
+    </WalkthroughProvider>
   );
 }
