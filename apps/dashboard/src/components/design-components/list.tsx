@@ -51,11 +51,6 @@ function ListItemButtons({ buttons }: { buttons: DesignListItemButton[] }) {
     <div
       className="relative flex items-center gap-2"
       onClick={(e) => e.stopPropagation()}
-      onKeyDownCapture={(e) => {
-        if (e.key === "Enter" || e.key === " ") {
-          e.stopPropagation();
-        }
-      }}
     >
       {buttons.map((button) => {
         const display = button.display ?? "text";
@@ -123,6 +118,7 @@ export function DesignListItemRow({
     tabIndex: 0,
     onClick,
     onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.currentTarget !== e.target) return;
       if (e.key === "Enter" || e.key === " ") {
         e.preventDefault();
         onClick();
