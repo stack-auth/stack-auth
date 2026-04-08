@@ -63,7 +63,7 @@ Usually obtained by calling [`user.listContactChannels()`](/sdk/types/user#curre
   isVerified: boolean; //$stack-link-to:#contactchannelisverified
   usedForAuth: boolean; //$stack-link-to:#contactchannelusedforauth
 
-  sendVerificationEmail(): Promise<void>; //$stack-link-to:#contactchannelsendverificationemail
+  sendVerificationEmail([options]): Promise<void>; //$stack-link-to:#contactchannelsendverificationemail
   update(options): Promise<void>; //$stack-link-to:#contactchannelupdate
   delete(): Promise<void>; //$stack-link-to:#contactchanneldelete
 };`}
@@ -139,10 +139,16 @@ Usually obtained by calling [`user.listContactChannels()`](/sdk/types/user#curre
 
 ## Methods
 
-<ContactChannelSection type="contactChannel" property="sendVerificationEmail" defaultOpen={false}>
+<ContactChannelSection type="contactChannel" property="sendVerificationEmail" signature="[options]" defaultOpen={false}>
   <MethodLayout>
     <MethodContent>
       Sends a verification email to this contact channel. Once the user clicks the verification link in the email, the contact channel will be marked as verified.
+
+      <ContentSection title="Parameters">
+        <ParamField body="options.callbackUrl" type="string">
+          The URL to redirect to after the user clicks the verification link.
+        </ParamField>
+      </ContentSection>
 
       <MethodReturns type="Promise<void>" />
     </MethodContent>
@@ -150,7 +156,9 @@ Usually obtained by calling [`user.listContactChannels()`](/sdk/types/user#curre
     <MethodAside>
       <AsideSection title="Signature">
         ```typescript
-        declare function sendVerificationEmail(): Promise<void>;
+        declare function sendVerificationEmail(options?: {
+          callbackUrl?: string;
+        }): Promise<void>;
         ```
       </AsideSection>
 
@@ -174,10 +182,6 @@ Usually obtained by calling [`user.listContactChannels()`](/sdk/types/user#curre
           The new value of the contact channel.
         </ParamField>
 
-        <ParamField body="options.type" type='"email"'>
-          The new type. Currently this is always `"email"`.
-        </ParamField>
-
         <ParamField body="options.usedForAuth" type="boolean">
           Whether the contact channel is used for authentication.
         </ParamField>
@@ -195,7 +199,6 @@ Usually obtained by calling [`user.listContactChannels()`](/sdk/types/user#curre
         ```typescript
         declare function update(options: {
           value?: string;
-          type?: "email";
           usedForAuth?: boolean;
           isPrimary?: boolean;
         }): Promise<void>;
@@ -272,10 +275,6 @@ Usually obtained by calling [`serverUser.listContactChannels()`](/sdk/types/user
           The new value of the contact channel.
         </ParamField>
 
-        <ParamField body="options.type" type='"email"'>
-          The new type. Currently this is always `"email"`.
-        </ParamField>
-
         <ParamField body="options.usedForAuth" type="boolean">
           Whether the contact channel is used for authentication.
         </ParamField>
@@ -297,7 +296,6 @@ Usually obtained by calling [`serverUser.listContactChannels()`](/sdk/types/user
         ```typescript
         declare function update(options: {
           value?: string;
-          type?: "email";
           usedForAuth?: boolean;
           isVerified?: boolean;
           isPrimary?: boolean;

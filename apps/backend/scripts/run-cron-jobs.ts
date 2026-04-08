@@ -30,8 +30,7 @@ async function main() {
         if (runResult.status === "error") {
           captureError("run-cron-jobs", runResult.error);
         }
-        // Vercel only guarantees minute-granularity for cron jobs, so we randomize the interval
-        await wait(Math.random() * 120_000);
+        await wait(1000);
       }
     });
   }

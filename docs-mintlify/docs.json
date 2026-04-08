@@ -31,7 +31,7 @@
     "links": [
       {
         "type": "github",
-        "href": "https://github.com/stack-auth/stack"
+        "href": "https://github.com/stack-auth/stack-auth"
       }
     ],
     "primary": {
@@ -69,7 +69,7 @@
             "pages": [
               {
                 "group": "Authentication",
-                "icon": "lock",
+                "icon": "/images/app-icons/authentication.svg",
                 "pages": [
                   "guides/apps/authentication/overview",
                   "guides/apps/authentication/user-onboarding",
@@ -99,9 +99,12 @@
                   }
                 ]
               },
+              "guides/apps/emails/overview",
+              "guides/apps/payments/overview",
+              "guides/apps/analytics/overview",
               {
                 "group": "Teams",
-                "icon": "users",
+                "icon": "/images/app-icons/teams.svg",
                 "pages": [
                   "guides/apps/teams/overview",
                   "guides/apps/teams/team-selection"
@@ -110,12 +113,9 @@
               "guides/apps/fraud-protection/overview",
               "guides/apps/rbac/overview",
               "guides/apps/api-keys/overview",
-              "guides/apps/payments/overview",
-              "guides/apps/emails/overview",
               "guides/apps/data-vault/overview",
               "guides/apps/webhooks/overview",
-              "guides/apps/launch-checklist/overview",
-              "guides/apps/analytics/overview"
+              "guides/apps/launch-checklist/overview"
             ]
           },
           {

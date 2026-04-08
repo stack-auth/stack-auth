@@ -9,6 +9,7 @@ import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import fs from "fs";
 
 import { createApiHelpers, loadOutputData, type OutputData } from "./api";
+import { verifyClickhouseSync } from "./clickhouse-sync-verifier";
 import { createPaymentsVerifier } from "./payments-verifier";
 import { createRecurse } from "./recurse";
 import { verifyStripePayoutIntegrity } from "./stripe-payout-integrity";
@@ -78,6 +79,7 @@ async function main() {
   const shouldSkipNeon = flags.includes("--skip-neon");
   const recentFirst = flags.includes("--recent-first");
   const noBail = flags.includes("--no-bail");
+  const shouldSkipClickhouse = flags.includes("--skip-clickhouse");
   const maxUsersPerProjectFlag = flags.find(f => f.startsWith("--max-users-per-project="));
   const maxUsersPerProject = maxUsersPerProjectFlag
     ? parseInt(maxUsersPerProjectFlag.split("=")[1], 10)
@@ -154,6 +156,13 @@ async function main() {
     console.warn("Using mock Stripe server (STACK_STRIPE_SECRET_KEY=sk_test_mockstripekey); skipping Stripe payout integrity checks.");
   }
 
+  const clickhouseAvailable = getEnvVariable("STACK_CLICKHOUSE_URL", "") !== "";
+  if (shouldSkipClickhouse) {
+    console.log(`Will skip ClickHouse sync verification.`);
+  } else if (!clickhouseAvailable) {
+    console.log(`STACK_CLICKHOUSE_URL not set; skipping ClickHouse sync verification.`);
+  }
+
   if (maxUsersPerProject !== Infinity) {
     console.log(`Will check at most ${maxUsersPerProject} users per project.`);
   }
@@ -214,6 +223,17 @@ async function main() {
           tenancy,
           stripeAccountId,
           expectStatusCode,
+        });
+      }
+
+      if (!shouldSkipClickhouse && clickhouseAvailable && tenancy) {
+        await recurse("[clickhouse sync]", async (recurse) => {
+          await verifyClickhouseSync({
+            tenancy,
+            projectId,
+            branchId: DEFAULT_BRANCH_ID,
+            recurse,
+          });
         });
       }
 

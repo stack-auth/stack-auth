@@ -1,6 +1,6 @@
 ---
-title: "TeamProfile"
-description: "Reference for TeamProfile and ServerTeamProfile types for team-specific user profiles."
+title: "TeamMemberProfile"
+description: "Reference for TeamMemberProfile and ServerTeamMemberProfile types for team-specific user profiles."
 sidebarTitle: "TeamProfile"
 mode: "wide"
 ---
@@ -17,37 +17,37 @@ export const TeamProfileSection = (props) => (
   <CollapsibleTypesSection
     badge={
       <Badge color="green" size="sm" shape="pill">
-        teamProfile
+        teamMemberProfile
       </Badge>
     }
     {...props}
   />
 );
 
-This is a detailed reference for the `TeamProfile` and `ServerTeamProfile` objects.
+This is a detailed reference for the `TeamMemberProfile` and `ServerTeamMemberProfile` objects.
 
 On this page:
 
-- [TeamProfile](#teamprofile)
-- [ServerTeamProfile](#serverteamprofile)
+- [TeamMemberProfile](#teammemberprofile)
+- [ServerTeamMemberProfile](#serverteammemberprofile)
 
-# `TeamProfile`
+# `TeamMemberProfile`
 
-The `TeamProfile` object represents the profile of a user within the context of a team. It includes the user's profile information specific to the team and can be accessed through the `teamUser.teamProfile` property on a `TeamUser` object.
+The `TeamMemberProfile` object represents the profile of a user within the context of a team. It includes the user's profile information specific to the team and can be accessed through the `teamUser.teamProfile` property on a `TeamUser` object.
 
 ## Table of Contents
 
 <ClickableTableOfContents
-  title="TeamProfile Table of Contents"
-  code={`type TeamProfile = {
-  displayName: string | null; //$stack-link-to:#teamprofiledisplayname
-  profileImageUrl: string | null; //$stack-link-to:#teamprofileprofileimageurl
+  title="TeamMemberProfile Table of Contents"
+  code={`type TeamMemberProfile = {
+  displayName: string | null; //$stack-link-to:#teammemberprofiledisplayname
+  profileImageUrl: string | null; //$stack-link-to:#teammemberprofileprofileimageurl
 };`}
 />
 
 ## Properties
 
-<TeamProfileSection type="teamProfile" property="displayName" defaultOpen={false}>
+<TeamProfileSection type="teamMemberProfile" property="displayName" defaultOpen={false}>
   <MethodLayout>
     <MethodContent>
       The display name of the user within the team context, or `null` if no display name is set.
@@ -58,7 +58,7 @@ The `TeamProfile` object represents the profile of a user within the context of 
   </MethodLayout>
 </TeamProfileSection>
 
-<TeamProfileSection type="teamProfile" property="profileImageUrl" defaultOpen={false}>
+<TeamProfileSection type="teamMemberProfile" property="profileImageUrl" defaultOpen={false}>
   <MethodLayout>
     <MethodContent>
       The profile image URL of the user within the team context, or `null` if no profile image is set.
@@ -71,15 +71,15 @@ The `TeamProfile` object represents the profile of a user within the context of 
 
 ---
 
-# `ServerTeamProfile`
+# `ServerTeamMemberProfile`
 
-The `ServerTeamProfile` object is currently the same as `TeamProfile`.
+The `ServerTeamMemberProfile` object is currently the same as `TeamMemberProfile`.
 
 <ClickableTableOfContents
-  title="ServerTeamProfile Table of Contents"
-  code={`type ServerTeamProfile =
-  // Inherits all functionality from TeamProfile
-  TeamProfile; //$stack-link-to:#teamprofile`}
+  title="ServerTeamMemberProfile Table of Contents"
+  code={`type ServerTeamMemberProfile =
+  // Inherits all functionality from TeamMemberProfile
+  TeamMemberProfile; //$stack-link-to:#teammemberprofile`}
 />
 
 <Note>
