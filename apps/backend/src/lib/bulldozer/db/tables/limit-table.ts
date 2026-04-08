@@ -33,8 +33,7 @@ export function declareLimitTable<
   `;
 
   // TODO: Currently, we recompute the entire limit table when a particular group changes. In the future, we should use an ordered tree to do this incrementally
-
-  options.fromTable.registerRowChangeTrigger((fromChangesTable) => {
+  const createFromTableTriggerStatements = (fromChangesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => {
     const normalizedChangesTableName = `normalized_changes_${generateSecureRandomString()}`;
     const affectedGroupsTableName = `affected_groups_${generateSecureRandomString()}`;
     const oldLimitedRowsTableName = `old_limited_rows_${generateSecureRandomString()}`;
@@ -207,7 +206,18 @@ export function declareLimitTable<
       `.toStatement(limitChangesTableName),
       ...[...triggers.values()].flatMap((trigger) => trigger(quoteSqlIdentifier(limitChangesTableName))),
     ];
-  });
+  };
+  let fromTableTriggerRegistration: null | { deregister: () => void } = null;
+  const ensureFromTableTriggerRegistration = () => {
+    if (fromTableTriggerRegistration != null) return;
+    fromTableTriggerRegistration = options.fromTable.registerRowChangeTrigger((fromChangesTable) => {
+      return createFromTableTriggerStatements(fromChangesTable);
+    });
+  };
+  const deregisterFromTableTrigger = () => {
+    fromTableTriggerRegistration?.deregister();
+    fromTableTriggerRegistration = null;
+  };
 
   return {
     tableId: options.tableId,
@@ -221,6 +231,7 @@ export function declareLimitTable<
     compareGroupKeys: options.fromTable.compareGroupKeys,
     compareSortKeys: options.fromTable.compareSortKeys,
     init: () => {
+      ensureFromTableTriggerRegistration();
       const fromGroupsTableName = `from_groups_${generateSecureRandomString()}`;
       const limitedRowsTableName = `limited_rows_${generateSecureRandomString()}`;
       return [
@@ -332,17 +343,20 @@ export function declareLimitTable<
         `,
       ];
     },
-    delete: () => [sqlStatement`
-      WITH RECURSIVE "pathsToDelete" AS (
-        SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
-        UNION ALL
-        SELECT "BulldozerStorageEngine"."keyPath" AS "path"
-        FROM "BulldozerStorageEngine"
-        INNER JOIN "pathsToDelete" ON "BulldozerStorageEngine"."keyPathParent" = "pathsToDelete"."path"
-      )
-      DELETE FROM "BulldozerStorageEngine"
-      WHERE "keyPath" IN (SELECT "path" FROM "pathsToDelete")
-    `],
+    delete: () => {
+      deregisterFromTableTrigger();
+      return [sqlStatement`
+        WITH RECURSIVE "pathsToDelete" AS (
+          SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
+          UNION ALL
+          SELECT "BulldozerStorageEngine"."keyPath" AS "path"
+          FROM "BulldozerStorageEngine"
+          INNER JOIN "pathsToDelete" ON "BulldozerStorageEngine"."keyPathParent" = "pathsToDelete"."path"
+        )
+        DELETE FROM "BulldozerStorageEngine"
+        WHERE "keyPath" IN (SELECT "path" FROM "pathsToDelete")
+      `];
+    },
     isInitialized: () => isInitializedExpression,
     listGroups: ({ start, end, startInclusive, endInclusive }) => sqlQuery`
       SELECT "groupPath"."keyPath"[cardinality("groupPath"."keyPath")] AS groupKey

@@ -15,7 +15,11 @@ export type Table<GK extends Json, SK extends Json, RD extends RowData> = {
 
   // Query groups and rows
   listGroups(options: { start: SqlExpression<GK> | "start", end: SqlExpression<GK> | "end", startInclusive: boolean, endInclusive: boolean }): SqlQuery<Iterable<{ groupKey: GK }>>,
-  listRowsInGroup(options: { groupKey?: SqlExpression<GK>, start: SqlExpression<SK> | "start", end: SqlExpression<SK> | "end", startInclusive: boolean, endInclusive: boolean }): SqlQuery<Iterable<{ rowIdentifier: RowIdentifier, rowSortKey: SK, rowData: RD }>>,
+  /**
+   * Rows queried across all groups may include `groupKey`; rows queried for a specific `groupKey`
+   * may omit it.
+   */
+  listRowsInGroup(options: { groupKey?: SqlExpression<GK>, start: SqlExpression<SK> | "start", end: SqlExpression<SK> | "end", startInclusive: boolean, endInclusive: boolean }): SqlQuery<Iterable<{ groupKey?: GK, rowIdentifier: RowIdentifier, rowSortKey: SK, rowData: RD }>>,
 
   // Sorting and grouping
   compareGroupKeys(a: SqlExpression<GK>, b: SqlExpression<GK>): SqlExpression<number>,

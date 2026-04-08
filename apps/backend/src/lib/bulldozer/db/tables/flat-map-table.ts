@@ -33,8 +33,7 @@ export function declareFlatMapTable<
       WHERE "keyPath" = ${getStorageEnginePath(options.tableId, ["metadata"])}::jsonb[]
     )
   `;
-
-  options.fromTable.registerRowChangeTrigger((fromChangesTable) => {
+  const createFromTableTriggerStatements = (fromChangesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => {
     const mappedChangesTableName = `mapped_changes_${generateSecureRandomString()}`;
     const oldFlatRowsTableName = `old_flat_rows_${generateSecureRandomString()}`;
     const newFlatRowsTableName = `new_flat_rows_${generateSecureRandomString()}`;
@@ -204,7 +203,18 @@ export function declareFlatMapTable<
       `.toStatement(flatMapChangesTableName),
       ...[...triggers.values()].flatMap((trigger) => trigger(quoteSqlIdentifier(flatMapChangesTableName))),
     ];
-  });
+  };
+  let fromTableTriggerRegistration: null | { deregister: () => void } = null;
+  const ensureFromTableTriggerRegistration = () => {
+    if (fromTableTriggerRegistration != null) return;
+    fromTableTriggerRegistration = options.fromTable.registerRowChangeTrigger((fromChangesTable) => {
+      return createFromTableTriggerStatements(fromChangesTable);
+    });
+  };
+  const deregisterFromTableTrigger = () => {
+    fromTableTriggerRegistration?.deregister();
+    fromTableTriggerRegistration = null;
+  };
 
   return {
     tableId: options.tableId,
@@ -218,6 +228,7 @@ export function declareFlatMapTable<
     compareGroupKeys: options.fromTable.compareGroupKeys,
     compareSortKeys: (a, b) => sqlExpression` 0 `,
     init: () => {
+      ensureFromTableTriggerRegistration();
       const fromGroupsTableName = `from_groups_${generateSecureRandomString()}`;
       const fromRowsTableName = `from_rows_${generateSecureRandomString()}`;
       const mappedRowsTableName = `mapped_rows_${generateSecureRandomString()}`;
@@ -324,17 +335,20 @@ export function declareFlatMapTable<
         `,
       ];
     },
-    delete: () => [sqlStatement`
-      WITH RECURSIVE "pathsToDelete" AS (
-        SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
-        UNION ALL
-        SELECT "BulldozerStorageEngine"."keyPath" AS "path"
-        FROM "BulldozerStorageEngine"
-        INNER JOIN "pathsToDelete" ON "BulldozerStorageEngine"."keyPathParent" = "pathsToDelete"."path"
-      )
-      DELETE FROM "BulldozerStorageEngine"
-      WHERE "keyPath" IN (SELECT "path" FROM "pathsToDelete")
-    `],
+    delete: () => {
+      deregisterFromTableTrigger();
+      return [sqlStatement`
+        WITH RECURSIVE "pathsToDelete" AS (
+          SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
+          UNION ALL
+          SELECT "BulldozerStorageEngine"."keyPath" AS "path"
+          FROM "BulldozerStorageEngine"
+          INNER JOIN "pathsToDelete" ON "BulldozerStorageEngine"."keyPathParent" = "pathsToDelete"."path"
+        )
+        DELETE FROM "BulldozerStorageEngine"
+        WHERE "keyPath" IN (SELECT "path" FROM "pathsToDelete")
+      `];
+    },
     isInitialized: () => isInitializedExpression,
     listGroups: ({ start, end, startInclusive, endInclusive }) => sqlQuery`
       SELECT "groupPath"."keyPath"[cardinality("groupPath"."keyPath")] AS groupKey

@@ -107,7 +107,7 @@ export function declareLFoldTable<
     }
   `;
 
-  sourceSortTable.registerRowChangeTrigger((fromChangesTable) => {
+  const createSourceSortTriggerStatements = (fromChangesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => {
     const normalizedChangesTableName = `normalized_changes_${generateSecureRandomString()}`;
     const boundaryCandidatesTableName = `boundary_candidates_${generateSecureRandomString()}`;
     const earliestBoundaryCandidatesTableName = `earliest_boundary_candidates_${generateSecureRandomString()}`;
@@ -490,7 +490,18 @@ export function declareLFoldTable<
       `.toStatement(lfoldChangesTableName),
       ...[...triggers.values()].flatMap((trigger) => trigger(quoteSqlIdentifier(lfoldChangesTableName))),
     ];
-  });
+  };
+  let sourceSortTriggerRegistration: null | { deregister: () => void } = null;
+  const ensureSourceSortTriggerRegistration = () => {
+    if (sourceSortTriggerRegistration != null) return;
+    sourceSortTriggerRegistration = sourceSortTable.registerRowChangeTrigger((fromChangesTable) => {
+      return createSourceSortTriggerStatements(fromChangesTable);
+    });
+  };
+  const deregisterSourceSortTrigger = () => {
+    sourceSortTriggerRegistration?.deregister();
+    sourceSortTriggerRegistration = null;
+  };
 
   return {
     tableId: options.tableId,
@@ -505,6 +516,7 @@ export function declareLFoldTable<
     compareGroupKeys: options.fromTable.compareGroupKeys,
     compareSortKeys: options.fromTable.compareSortKeys,
     init: () => {
+      ensureSourceSortTriggerRegistration();
       const firstSourceRowsTableName = `first_source_rows_${generateSecureRandomString()}`;
       const recomputedSourceStatesTableName = `recomputed_source_states_${generateSecureRandomString()}`;
       const newFoldRowsTableName = `new_fold_rows_${generateSecureRandomString()}`;
@@ -689,17 +701,20 @@ export function declareLFoldTable<
         `,
       ];
     },
-    delete: () => [sqlStatement`
-      WITH RECURSIVE "pathsToDelete" AS (
-        SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
-        UNION ALL
-        SELECT "BulldozerStorageEngine"."keyPath" AS "path"
-        FROM "BulldozerStorageEngine"
-        INNER JOIN "pathsToDelete" ON "BulldozerStorageEngine"."keyPathParent" = "pathsToDelete"."path"
-      )
-      DELETE FROM "BulldozerStorageEngine"
-      WHERE "keyPath" IN (SELECT "path" FROM "pathsToDelete")
-    `],
+    delete: () => {
+      deregisterSourceSortTrigger();
+      return [sqlStatement`
+        WITH RECURSIVE "pathsToDelete" AS (
+          SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
+          UNION ALL
+          SELECT "BulldozerStorageEngine"."keyPath" AS "path"
+          FROM "BulldozerStorageEngine"
+          INNER JOIN "pathsToDelete" ON "BulldozerStorageEngine"."keyPathParent" = "pathsToDelete"."path"
+        )
+        DELETE FROM "BulldozerStorageEngine"
+        WHERE "keyPath" IN (SELECT "path" FROM "pathsToDelete")
+      `];
+    },
     isInitialized: () => isInitializedExpression,
     listGroups: ({ start, end, startInclusive, endInclusive }) => sqlQuery`
       SELECT "groupPath"."keyPath"[cardinality("groupPath"."keyPath")] AS groupKey

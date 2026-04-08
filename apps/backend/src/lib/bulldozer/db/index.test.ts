@@ -659,6 +659,43 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       `,
     ]);
   }
+  type TriggerLifecycleStats = {
+    registerCalls: number,
+    deregisterCalls: number,
+    activeRegistrations: number,
+  };
+  function instrumentTriggerLifecycle<
+    T extends {
+      registerRowChangeTrigger(
+        trigger: (changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => SqlStatement[]
+      ): { deregister: () => void },
+    },
+  >(table: T): { table: T, getStats: () => TriggerLifecycleStats } {
+    const stats: TriggerLifecycleStats = {
+      registerCalls: 0,
+      deregisterCalls: 0,
+      activeRegistrations: 0,
+    };
+    const instrumentedTable: T = {
+      ...table,
+      registerRowChangeTrigger: (trigger) => {
+        stats.registerCalls += 1;
+        stats.activeRegistrations += 1;
+        const registration = table.registerRowChangeTrigger(trigger);
+        return {
+          deregister: () => {
+            stats.deregisterCalls += 1;
+            stats.activeRegistrations -= 1;
+            registration.deregister();
+          },
+        };
+      },
+    };
+    return {
+      table: instrumentedTable,
+      getStats: () => ({ ...stats }),
+    };
+  }
 
   test("init/isInitialized/delete lifecycle", async () => {
     const table = declareStoredTable<{ value: number }>({ tableId: "users" });
@@ -667,6 +704,216 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     expect(await readBoolean(table.isInitialized())).toBe(true);
     await runStatements(table.delete());
     expect(await readBoolean(table.isInitialized())).toBe(false);
+  });
+
+  test("groupBy registers upstream trigger in init and deregisters in delete", () => {
+    const fromTable = declareStoredTable<{ value: number, team: string }>({ tableId: "users-groupby-lifecycle" });
+    const fromTableInstrumentation = instrumentTriggerLifecycle(fromTable);
+    const groupedTable = declareGroupByTable({
+      tableId: "users-groupby-lifecycle-by-team",
+      fromTable: fromTableInstrumentation.table,
+      groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+    });
+
+    expect(fromTableInstrumentation.getStats()).toEqual({ registerCalls: 0, deregisterCalls: 0, activeRegistrations: 0 });
+    groupedTable.init();
+    expect(fromTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
+    groupedTable.init();
+    expect(fromTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
+    groupedTable.delete();
+    expect(fromTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 1, activeRegistrations: 0 });
+    groupedTable.delete();
+    expect(fromTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 1, activeRegistrations: 0 });
+    groupedTable.init();
+    expect(fromTableInstrumentation.getStats()).toEqual({ registerCalls: 2, deregisterCalls: 1, activeRegistrations: 1 });
+    groupedTable.delete();
+    expect(fromTableInstrumentation.getStats()).toEqual({ registerCalls: 2, deregisterCalls: 2, activeRegistrations: 0 });
+  });
+
+  test("flatMap registers upstream trigger in init and deregisters in delete", () => {
+    const fromTable = declareStoredTable<{ value: number, team: string }>({ tableId: "users-flatmap-lifecycle" });
+    const groupedTable = declareGroupByTable({
+      tableId: "users-flatmap-lifecycle-by-team",
+      fromTable,
+      groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+    });
+    const groupedTableInstrumentation = instrumentTriggerLifecycle(groupedTable);
+    const flatMappedTable = declareFlatMapTable({
+      tableId: "users-flatmap-lifecycle-expanded",
+      fromTable: groupedTableInstrumentation.table,
+      mapper: mapper(`jsonb_build_array("rowData") AS "rows"`),
+    });
+
+    expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 0, deregisterCalls: 0, activeRegistrations: 0 });
+    flatMappedTable.init();
+    expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
+    flatMappedTable.delete();
+    expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 1, activeRegistrations: 0 });
+    flatMappedTable.init();
+    expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 2, deregisterCalls: 1, activeRegistrations: 1 });
+    flatMappedTable.delete();
+    expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 2, deregisterCalls: 2, activeRegistrations: 0 });
+  });
+
+  test("sort registers upstream trigger in init and deregisters in delete", () => {
+    const fromTable = declareStoredTable<{ value: number, team: string }>({ tableId: "users-sort-lifecycle" });
+    const groupedTable = declareGroupByTable({
+      tableId: "users-sort-lifecycle-by-team",
+      fromTable,
+      groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+    });
+    const groupedTableInstrumentation = instrumentTriggerLifecycle(groupedTable);
+    const sortedTable = declareSortTable({
+      tableId: "users-sort-lifecycle-sorted",
+      fromTable: groupedTableInstrumentation.table,
+      getSortKey: mapper(`(("rowData"->>'value')::int) AS "newSortKey"`),
+      compareSortKeys: (a, b) => expr(`(((${a.sql}) #>> '{}')::int) - (((${b.sql}) #>> '{}')::int)`),
+    });
+
+    expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 0, deregisterCalls: 0, activeRegistrations: 0 });
+    sortedTable.init();
+    expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
+    sortedTable.delete();
+    expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 1, activeRegistrations: 0 });
+    sortedTable.init();
+    expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 2, deregisterCalls: 1, activeRegistrations: 1 });
+    sortedTable.delete();
+    expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 2, deregisterCalls: 2, activeRegistrations: 0 });
+  });
+
+  test("limit registers upstream trigger in init and deregisters in delete", () => {
+    const fromTable = declareStoredTable<{ value: number, team: string }>({ tableId: "users-limit-lifecycle" });
+    const groupedTable = declareGroupByTable({
+      tableId: "users-limit-lifecycle-by-team",
+      fromTable,
+      groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+    });
+    const groupedTableInstrumentation = instrumentTriggerLifecycle(groupedTable);
+    const limitedTable = declareLimitTable({
+      tableId: "users-limit-lifecycle-limited",
+      fromTable: groupedTableInstrumentation.table,
+      limit: expr(`2`),
+    });
+
+    expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 0, deregisterCalls: 0, activeRegistrations: 0 });
+    limitedTable.init();
+    expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
+    limitedTable.delete();
+    expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 1, activeRegistrations: 0 });
+    limitedTable.init();
+    expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 2, deregisterCalls: 1, activeRegistrations: 1 });
+    limitedTable.delete();
+    expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 2, deregisterCalls: 2, activeRegistrations: 0 });
+  });
+
+  test("concat registers all upstream triggers in init and deregisters in delete", () => {
+    const fromTableA = declareStoredTable<{ value: number, team: string }>({ tableId: "users-concat-lifecycle-a" });
+    const fromTableB = declareStoredTable<{ value: number, team: string }>({ tableId: "users-concat-lifecycle-b" });
+    const groupedTableA = declareGroupByTable({
+      tableId: "users-concat-lifecycle-a-by-team",
+      fromTable: fromTableA,
+      groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+    });
+    const groupedTableB = declareGroupByTable({
+      tableId: "users-concat-lifecycle-b-by-team",
+      fromTable: fromTableB,
+      groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+    });
+    const groupedTableAInstrumentation = instrumentTriggerLifecycle(groupedTableA);
+    const groupedTableBInstrumentation = instrumentTriggerLifecycle(groupedTableB);
+    const concatenatedTable = declareConcatTable({
+      tableId: "users-concat-lifecycle",
+      tables: [groupedTableAInstrumentation.table, groupedTableBInstrumentation.table],
+    });
+
+    expect(groupedTableAInstrumentation.getStats()).toEqual({ registerCalls: 0, deregisterCalls: 0, activeRegistrations: 0 });
+    expect(groupedTableBInstrumentation.getStats()).toEqual({ registerCalls: 0, deregisterCalls: 0, activeRegistrations: 0 });
+    concatenatedTable.init();
+    expect(groupedTableAInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
+    expect(groupedTableBInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
+    concatenatedTable.delete();
+    expect(groupedTableAInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 1, activeRegistrations: 0 });
+    expect(groupedTableBInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 1, activeRegistrations: 0 });
+    concatenatedTable.init();
+    expect(groupedTableAInstrumentation.getStats()).toEqual({ registerCalls: 2, deregisterCalls: 1, activeRegistrations: 1 });
+    expect(groupedTableBInstrumentation.getStats()).toEqual({ registerCalls: 2, deregisterCalls: 1, activeRegistrations: 1 });
+    concatenatedTable.delete();
+    expect(groupedTableAInstrumentation.getStats()).toEqual({ registerCalls: 2, deregisterCalls: 2, activeRegistrations: 0 });
+    expect(groupedTableBInstrumentation.getStats()).toEqual({ registerCalls: 2, deregisterCalls: 2, activeRegistrations: 0 });
+  });
+
+  test("lfold registers upstream trigger in init and deregisters in delete", () => {
+    const fromTable = declareStoredTable<{ value: number, team: string }>({ tableId: "users-lfold-lifecycle" });
+    const groupedTable = declareGroupByTable({
+      tableId: "users-lfold-lifecycle-by-team",
+      fromTable,
+      groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+    });
+    const sortedTable = declareSortTable({
+      tableId: "users-lfold-lifecycle-sorted",
+      fromTable: groupedTable,
+      getSortKey: mapper(`(("rowData"->>'value')::int) AS "newSortKey"`),
+      compareSortKeys: (a, b) => expr(`(((${a.sql}) #>> '{}')::int) - (((${b.sql}) #>> '{}')::int)`),
+    });
+    const sortedTableInstrumentation = instrumentTriggerLifecycle(sortedTable);
+    const lFoldTable = declareLFoldTable({
+      tableId: "users-lfold-lifecycle-folded",
+      fromTable: sortedTableInstrumentation.table,
+      initialState: expr(`'0'::jsonb`),
+      reducer: mapper(`
+        "oldState" AS "newState",
+        jsonb_build_array("oldRowData") AS "newRowsData"
+      `),
+    });
+
+    expect(sortedTableInstrumentation.getStats()).toEqual({ registerCalls: 0, deregisterCalls: 0, activeRegistrations: 0 });
+    lFoldTable.init();
+    expect(sortedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
+    lFoldTable.delete();
+    expect(sortedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 1, activeRegistrations: 0 });
+    lFoldTable.init();
+    expect(sortedTableInstrumentation.getStats()).toEqual({ registerCalls: 2, deregisterCalls: 1, activeRegistrations: 1 });
+    lFoldTable.delete();
+    expect(sortedTableInstrumentation.getStats()).toEqual({ registerCalls: 2, deregisterCalls: 2, activeRegistrations: 0 });
+  });
+
+  test("leftJoin registers all upstream triggers in init and deregisters in delete", () => {
+    const fromTable = declareStoredTable<{ value: number, team: string | null }>({ tableId: "users-left-join-lifecycle" });
+    const joinTable = declareStoredTable<{ team: string | null, threshold: number, label: string }>({ tableId: "rules-left-join-lifecycle" });
+    const groupedFromTable = declareGroupByTable({
+      tableId: "users-left-join-lifecycle-by-team",
+      fromTable,
+      groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+    });
+    const groupedJoinTable = declareGroupByTable({
+      tableId: "rules-left-join-lifecycle-by-team",
+      fromTable: joinTable,
+      groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+    });
+    const groupedFromTableInstrumentation = instrumentTriggerLifecycle(groupedFromTable);
+    const groupedJoinTableInstrumentation = instrumentTriggerLifecycle(groupedJoinTable);
+    const leftJoinedTable = declareLeftJoinTable({
+      tableId: "users-rules-left-join-lifecycle",
+      leftTable: groupedFromTableInstrumentation.table,
+      rightTable: groupedJoinTableInstrumentation.table,
+      leftJoinKey: mapper(`(("rowData"->>'value')::int) AS "joinKey"`),
+      rightJoinKey: mapper(`(("rowData"->>'threshold')::int) AS "joinKey"`),
+    });
+
+    expect(groupedFromTableInstrumentation.getStats()).toEqual({ registerCalls: 0, deregisterCalls: 0, activeRegistrations: 0 });
+    expect(groupedJoinTableInstrumentation.getStats()).toEqual({ registerCalls: 0, deregisterCalls: 0, activeRegistrations: 0 });
+    leftJoinedTable.init();
+    expect(groupedFromTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
+    expect(groupedJoinTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
+    leftJoinedTable.delete();
+    expect(groupedFromTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 1, activeRegistrations: 0 });
+    expect(groupedJoinTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 1, activeRegistrations: 0 });
+    leftJoinedTable.init();
+    expect(groupedFromTableInstrumentation.getStats()).toEqual({ registerCalls: 2, deregisterCalls: 1, activeRegistrations: 1 });
+    expect(groupedJoinTableInstrumentation.getStats()).toEqual({ registerCalls: 2, deregisterCalls: 1, activeRegistrations: 1 });
+    leftJoinedTable.delete();
+    expect(groupedFromTableInstrumentation.getStats()).toEqual({ registerCalls: 2, deregisterCalls: 2, activeRegistrations: 0 });
+    expect(groupedJoinTableInstrumentation.getStats()).toEqual({ registerCalls: 2, deregisterCalls: 2, activeRegistrations: 0 });
   });
 
   test("trigger emits insert change row", async () => {
@@ -809,6 +1056,31 @@ describe.sequential("declareStoredTable (real postgres)", () => {
         rowData: { label: "second", value: 2 },
       },
     ]);
+  });
+
+  test("storedTable all-groups rows include groupKey and respect non-null group filters", async () => {
+    const table = declareStoredTable<{ value: number }>({ tableId: "users" });
+    await runStatements(table.init());
+    await runStatements(table.setRow("a", expr(`'{"value":1}'::jsonb`)));
+
+    const allGroupsRows = await readRows(table.listRowsInGroup({
+      start: expr("'null'::jsonb"),
+      end: expr("'null'::jsonb"),
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(allGroupsRows).toHaveLength(1);
+    expect(allGroupsRows[0].groupkey).toBe(null);
+    expect(allGroupsRows[0].rowidentifier).toBe("a");
+
+    const nonNullGroupRows = await readRows(table.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: expr("'null'::jsonb"),
+      end: expr("'null'::jsonb"),
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(nonNullGroupRows).toEqual([]);
   });
 
   test("table contents snapshot after init + upserts", async () => {
@@ -2410,6 +2682,45 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       endInclusive: true,
     }));
     expect(rowsAfterInputDelete.map((row) => row.rowidentifier)).toEqual(["0:a1"]);
+  });
+
+  test("concatTable allows input tables with different sort comparators", async () => {
+    const {
+      fromTable: fromTableAsc,
+      groupedTable: groupedTableAsc,
+      sortedTable: sortedTableAsc,
+    } = createSortedTable();
+    const {
+      fromTable: fromTableDesc,
+      groupedTable: groupedTableDesc,
+      sortedTable: sortedTableDesc,
+    } = createDescendingSortedTable();
+    const concatenatedTable = declareConcatTable({
+      tableId: "users-by-team-concat-sort-mismatch",
+      tables: [sortedTableAsc, sortedTableDesc],
+    });
+
+    await runStatements(fromTableAsc.init());
+    await runStatements(groupedTableAsc.init());
+    await runStatements(sortedTableAsc.init());
+    await runStatements(fromTableDesc.init());
+    await runStatements(groupedTableDesc.init());
+    await runStatements(sortedTableDesc.init());
+
+    await runStatements(fromTableAsc.setRow("a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTableDesc.setRow("b1", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+
+    await runStatements(concatenatedTable.init());
+    expect(await readBoolean(concatenatedTable.isInitialized())).toBe(true);
+
+    const alphaRows = await readRows(concatenatedTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(alphaRows.map((row) => row.rowidentifier).sort(stringCompare)).toEqual(["0:a1", "1:b1"]);
   });
 
   test("sortTable init backfills rows in computed sort order and stores metadata", async () => {

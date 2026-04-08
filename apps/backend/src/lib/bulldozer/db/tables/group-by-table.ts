@@ -33,8 +33,7 @@ export function declareGroupByTable<
       WHERE "keyPath" = ${getStorageEnginePath(options.tableId, ["metadata"])}::jsonb[]
     )
   `;
-
-  options.fromTable.registerRowChangeTrigger((fromChangesTable) => {
+  const createFromTableTriggerStatements = (fromChangesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => {
     const mappedChangesTableName = `mapped_changes_${generateSecureRandomString()}`;
     const groupedChangesTableName = `grouped_changes_${generateSecureRandomString()}`;
 
@@ -184,7 +183,18 @@ export function declareGroupByTable<
       `.toStatement(groupedChangesTableName),
       ...[...triggers.values()].flatMap((trigger) => trigger(quoteSqlIdentifier(groupedChangesTableName))),
     ];
-  });
+  };
+  let fromTableTriggerRegistration: null | { deregister: () => void } = null;
+  const ensureFromTableTriggerRegistration = () => {
+    if (fromTableTriggerRegistration != null) return;
+    fromTableTriggerRegistration = options.fromTable.registerRowChangeTrigger((fromChangesTable) => {
+      return createFromTableTriggerStatements(fromChangesTable);
+    });
+  };
+  const deregisterFromTableTrigger = () => {
+    fromTableTriggerRegistration?.deregister();
+    fromTableTriggerRegistration = null;
+  };
 
   return {
     tableId: options.tableId,
@@ -198,6 +208,7 @@ export function declareGroupByTable<
     compareGroupKeys,
     compareSortKeys: (a, b) => sqlExpression` 0 `,
     init: () => {
+      ensureFromTableTriggerRegistration();
       const fromTableAllRowsTableName = `from_table_all_rows_${generateSecureRandomString()}`;
       const fromTableRowsWithGroupKeyTableName = `from_table_rows_with_group_key_${generateSecureRandomString()}`;
 
@@ -262,17 +273,20 @@ export function declareGroupByTable<
         `,
       ];
     },
-    delete: () => [sqlStatement`
-      WITH RECURSIVE "pathsToDelete" AS (
-        SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
-        UNION ALL
-        SELECT "BulldozerStorageEngine"."keyPath" AS "path"
-        FROM "BulldozerStorageEngine"
-        INNER JOIN "pathsToDelete" ON "BulldozerStorageEngine"."keyPathParent" = "pathsToDelete"."path"
-      )
-      DELETE FROM "BulldozerStorageEngine"
-      WHERE "keyPath" IN (SELECT "path" FROM "pathsToDelete")
-    `],
+    delete: () => {
+      deregisterFromTableTrigger();
+      return [sqlStatement`
+        WITH RECURSIVE "pathsToDelete" AS (
+          SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
+          UNION ALL
+          SELECT "BulldozerStorageEngine"."keyPath" AS "path"
+          FROM "BulldozerStorageEngine"
+          INNER JOIN "pathsToDelete" ON "BulldozerStorageEngine"."keyPathParent" = "pathsToDelete"."path"
+        )
+        DELETE FROM "BulldozerStorageEngine"
+        WHERE "keyPath" IN (SELECT "path" FROM "pathsToDelete")
+      `];
+    },
     isInitialized: () => sqlExpression`
       EXISTS (
         SELECT 1 FROM "BulldozerStorageEngine"

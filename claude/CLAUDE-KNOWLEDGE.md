@@ -189,3 +189,15 @@ A: In `apps/backend/scripts/run-bulldozer-studio.ts`, enforce loopback-only requ
 
 Q: What is the new `declareLeftJoinTable` API contract and why was it changed?
 A: `declareLeftJoinTable` now takes `leftJoinKey` and `rightJoinKey` SQL mappers (each producing a `joinKey`) instead of an arbitrary `on` predicate. Join rows are matched when `leftJoinKey IS NOT DISTINCT FROM rightJoinKey` within the same group. This removes custom non-equality predicates, enables planner-friendly equality joins, and keeps null-key matching explicit (`IS NOT DISTINCT FROM`).
+
+Q: What does `listRowsInGroup` return regarding `groupKey` and what pitfall was fixed?
+A: In Bulldozer, all-groups row queries can include `groupKey`, while specific-group queries may omit it. A bug in `declareStoredTable.listRowsInGroup` ignored the provided `groupKey` and did not expose `groupKey` for all-groups reads. It now returns `'null'::jsonb AS groupKey` for all-groups reads and correctly filters specific-group reads to only the null group (`groupKey IS NOT DISTINCT FROM 'null'::jsonb`).
+
+Q: How should Bulldozer materialized operators manage upstream trigger registrations across init/delete?
+A: Register upstream row-change triggers lazily in `init()` (via an idempotent `ensure...Registration` helper), store deregistration handles, and call those `deregister()` functions in `delete()`. This avoids leaked/no-op trigger callbacks after table teardown while still allowing re-initialization to re-register subscriptions.
+
+Q: How can we test trigger registration lifecycle behavior without depending on database row changes?
+A: In `apps/backend/src/lib/bulldozer/db/index.test.ts`, wrap input tables with an instrumentation helper that intercepts `registerRowChangeTrigger`, counts `register`/`deregister` calls, and tracks active registrations. Then assert `init()` registers exactly once per input, repeated `init()` is idempotent, `delete()` deregisters, and re-`init()` re-registers.
+
+Q: Why can `declareConcatTable` ignore input sort comparator differences?
+A: `declareConcatTable` always emits `rowSortKey = null` and uses `compareSortKeys: () => 0` itself, so input sort-order semantics are not part of concat output behavior. It should only enforce group-key comparator compatibility, not sort comparator compatibility.

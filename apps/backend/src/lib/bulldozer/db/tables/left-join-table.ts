@@ -146,7 +146,7 @@ export function declareLeftJoinTable<
     inputTable: Table<GK, any, InputRD>,
     changedSide: "left" | "right",
   }) => {
-    optionsForTrigger.inputTable.registerRowChangeTrigger((inputChangesTable) => {
+    return optionsForTrigger.inputTable.registerRowChangeTrigger((inputChangesTable) => {
       const normalizedChangesTableName = `normalized_changes_${generateSecureRandomString()}`;
       const affectedGroupsTableName = `affected_groups_${generateSecureRandomString()}`;
       const oldLeftJoinRowsTableName = `old_left_join_rows_${generateSecureRandomString()}`;
@@ -348,15 +348,26 @@ export function declareLeftJoinTable<
       ];
     });
   };
-
-  registerInputTrigger({
-    inputTable: options.leftTable,
-    changedSide: "left",
-  });
-  registerInputTrigger({
-    inputTable: options.rightTable,
-    changedSide: "right",
-  });
+  let inputTriggerRegistrations: Array<{ deregister: () => void }> = [];
+  const ensureInputTriggerRegistrations = () => {
+    if (inputTriggerRegistrations.length > 0) return;
+    inputTriggerRegistrations = [
+      registerInputTrigger({
+        inputTable: options.leftTable,
+        changedSide: "left",
+      }),
+      registerInputTrigger({
+        inputTable: options.rightTable,
+        changedSide: "right",
+      }),
+    ];
+  };
+  const deregisterInputTriggers = () => {
+    for (const registration of inputTriggerRegistrations) {
+      registration.deregister();
+    }
+    inputTriggerRegistrations = [];
+  };
 
   return {
     tableId: options.tableId,
@@ -372,6 +383,7 @@ export function declareLeftJoinTable<
     compareGroupKeys: options.leftTable.compareGroupKeys,
     compareSortKeys: () => sqlExpression`0`,
     init: () => {
+      ensureInputTriggerRegistrations();
       const leftGroupsTableName = `left_groups_${generateSecureRandomString()}`;
       const leftRowsTableName = `left_rows_${generateSecureRandomString()}`;
       const rightRowsTableName = `right_rows_${generateSecureRandomString()}`;
@@ -435,17 +447,20 @@ export function declareLeftJoinTable<
         `,
       ];
     },
-    delete: () => [sqlStatement`
-      WITH RECURSIVE "pathsToDelete" AS (
-        SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
-        UNION ALL
-        SELECT "BulldozerStorageEngine"."keyPath" AS "path"
-        FROM "BulldozerStorageEngine"
-        INNER JOIN "pathsToDelete" ON "BulldozerStorageEngine"."keyPathParent" = "pathsToDelete"."path"
-      )
-      DELETE FROM "BulldozerStorageEngine"
-      WHERE "keyPath" IN (SELECT "path" FROM "pathsToDelete")
-    `],
+    delete: () => {
+      deregisterInputTriggers();
+      return [sqlStatement`
+        WITH RECURSIVE "pathsToDelete" AS (
+          SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
+          UNION ALL
+          SELECT "BulldozerStorageEngine"."keyPath" AS "path"
+          FROM "BulldozerStorageEngine"
+          INNER JOIN "pathsToDelete" ON "BulldozerStorageEngine"."keyPathParent" = "pathsToDelete"."path"
+        )
+        DELETE FROM "BulldozerStorageEngine"
+        WHERE "keyPath" IN (SELECT "path" FROM "pathsToDelete")
+      `];
+    },
     isInitialized: () => isInitializedExpression,
     listGroups: ({ start, end, startInclusive, endInclusive }) => sqlQuery`
       SELECT "groupPath"."keyPath"[cardinality("groupPath"."keyPath")] AS groupKey

@@ -30,12 +30,10 @@ export function declareConcatTable<
     throw new StackAssertionError("declareConcatTable requires at least one input table", { tableId: options.tableId });
   })();
   const referenceCompareGroupKeysSql = firstTable.compareGroupKeys(sqlExpression`$1`, sqlExpression`$2`).sql;
-  const referenceCompareSortKeysSql = firstTable.compareSortKeys(sqlExpression`$1`, sqlExpression`$2`).sql;
   for (const table of tables) {
     const compareGroupKeysSql = table.compareGroupKeys(sqlExpression`$1`, sqlExpression`$2`).sql;
-    const compareSortKeysSql = table.compareSortKeys(sqlExpression`$1`, sqlExpression`$2`).sql;
-    if (compareGroupKeysSql !== referenceCompareGroupKeysSql || compareSortKeysSql !== referenceCompareSortKeysSql) {
-      throw new StackAssertionError("declareConcatTable requires comparator-compatible input tables", {
+    if (compareGroupKeysSql !== referenceCompareGroupKeysSql) {
+      throw new StackAssertionError("declareConcatTable requires group-comparator-compatible input tables", {
         tableId: options.tableId,
         tableDebugId: tableIdToDebugString(table.tableId),
       });
@@ -98,27 +96,43 @@ export function declareConcatTable<
       `;
     }).join("\nUNION ALL\n");
   };
-
-  tables.forEach((table, tableIndex) => {
-    table.registerRowChangeTrigger((changesTable) => {
-      const concatChangesTableName = `concat_changes_${generateSecureRandomString()}`;
-      return [
-        sqlQuery`
-          SELECT
-            "changes"."groupKey" AS "groupKey",
-            ${rawExpression<RowIdentifier>(createConcatenatedRowIdentifierSql(tableIndex, `"changes"."rowIdentifier"`))} AS "rowIdentifier",
-            'null'::jsonb AS "oldRowSortKey",
-            'null'::jsonb AS "newRowSortKey",
-            "changes"."oldRowData" AS "oldRowData",
-            "changes"."newRowData" AS "newRowData"
-          FROM ${changesTable} AS "changes"
-          WHERE ${isInitializedExpression}
-            AND ${rawExpression<boolean>(getInputInitializedSql(table))}
-        `.toStatement(concatChangesTableName),
-        ...[...triggers.values()].flatMap((trigger) => trigger(quoteSqlIdentifier(concatChangesTableName))),
-      ];
+  const createInputTriggerStatements = (
+    table: Table<GK, any, RD>,
+    tableIndex: number,
+    changesTable: SqlExpression<{ __brand: "$SQL_Table" }>,
+  ) => {
+    const concatChangesTableName = `concat_changes_${generateSecureRandomString()}`;
+    return [
+      sqlQuery`
+        SELECT
+          "changes"."groupKey" AS "groupKey",
+          ${rawExpression<RowIdentifier>(createConcatenatedRowIdentifierSql(tableIndex, `"changes"."rowIdentifier"`))} AS "rowIdentifier",
+          'null'::jsonb AS "oldRowSortKey",
+          'null'::jsonb AS "newRowSortKey",
+          "changes"."oldRowData" AS "oldRowData",
+          "changes"."newRowData" AS "newRowData"
+        FROM ${changesTable} AS "changes"
+        WHERE ${isInitializedExpression}
+          AND ${rawExpression<boolean>(getInputInitializedSql(table))}
+      `.toStatement(concatChangesTableName),
+      ...[...triggers.values()].flatMap((trigger) => trigger(quoteSqlIdentifier(concatChangesTableName))),
+    ];
+  };
+  let inputTriggerRegistrations: Array<{ deregister: () => void }> = [];
+  const ensureInputTriggerRegistrations = () => {
+    if (inputTriggerRegistrations.length > 0) return;
+    inputTriggerRegistrations = tables.map((table, tableIndex) => {
+      return table.registerRowChangeTrigger((changesTable) => {
+        return createInputTriggerStatements(table, tableIndex, changesTable);
+      });
     });
-  });
+  };
+  const deregisterInputTriggers = () => {
+    for (const registration of inputTriggerRegistrations) {
+      registration.deregister();
+    }
+    inputTriggerRegistrations = [];
+  };
 
   return {
     tableId: options.tableId,
@@ -166,25 +180,31 @@ export function declareConcatTable<
     `,
     compareGroupKeys: firstTable.compareGroupKeys,
     compareSortKeys: () => sqlExpression`0`,
-    init: () => [sqlStatement`
-      INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
-      VALUES
-      (gen_random_uuid(), ${getTablePath(options.tableId)}, 'null'::jsonb),
-      (gen_random_uuid(), ${sqlArray([...getTablePathSegments(options.tableId), quoteSqlJsonbLiteral("table")])}::jsonb[], 'null'::jsonb),
-      (gen_random_uuid(), ${getStorageEnginePath(options.tableId, [])}::jsonb[], 'null'::jsonb),
-      (gen_random_uuid(), ${getStorageEnginePath(options.tableId, ["metadata"])}::jsonb[], '{ "version": 1 }'::jsonb)
-    `],
-    delete: () => [sqlStatement`
-      WITH RECURSIVE "pathsToDelete" AS (
-        SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
-        UNION ALL
-        SELECT "BulldozerStorageEngine"."keyPath" AS "path"
-        FROM "BulldozerStorageEngine"
-        INNER JOIN "pathsToDelete" ON "BulldozerStorageEngine"."keyPathParent" = "pathsToDelete"."path"
-      )
-      DELETE FROM "BulldozerStorageEngine"
-      WHERE "keyPath" IN (SELECT "path" FROM "pathsToDelete")
-    `],
+    init: () => {
+      ensureInputTriggerRegistrations();
+      return [sqlStatement`
+        INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
+        VALUES
+        (gen_random_uuid(), ${getTablePath(options.tableId)}, 'null'::jsonb),
+        (gen_random_uuid(), ${sqlArray([...getTablePathSegments(options.tableId), quoteSqlJsonbLiteral("table")])}::jsonb[], 'null'::jsonb),
+        (gen_random_uuid(), ${getStorageEnginePath(options.tableId, [])}::jsonb[], 'null'::jsonb),
+        (gen_random_uuid(), ${getStorageEnginePath(options.tableId, ["metadata"])}::jsonb[], '{ "version": 1 }'::jsonb)
+      `];
+    },
+    delete: () => {
+      deregisterInputTriggers();
+      return [sqlStatement`
+        WITH RECURSIVE "pathsToDelete" AS (
+          SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
+          UNION ALL
+          SELECT "BulldozerStorageEngine"."keyPath" AS "path"
+          FROM "BulldozerStorageEngine"
+          INNER JOIN "pathsToDelete" ON "BulldozerStorageEngine"."keyPathParent" = "pathsToDelete"."path"
+        )
+        DELETE FROM "BulldozerStorageEngine"
+        WHERE "keyPath" IN (SELECT "path" FROM "pathsToDelete")
+      `];
+    },
     isInitialized: () => isInitializedExpression,
     registerRowChangeTrigger: (trigger) => {
       const id = generateSecureRandomString();

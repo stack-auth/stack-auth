@@ -53,13 +53,23 @@ export function declareStoredTable<RD extends RowData>(options: {
       SELECT 'null'::jsonb AS groupKey
       WHERE ${singleNullSortKeyRangePredicate({ start, end, startInclusive, endInclusive })}
     `,
-    listRowsInGroup: ({ groupKey, start, end, startInclusive, endInclusive }) => sqlQuery`
+    listRowsInGroup: ({ groupKey, start, end, startInclusive, endInclusive }) => groupKey == null ? sqlQuery`
+      SELECT
+        'null'::jsonb AS groupKey,
+        ("keyPath"[cardinality("keyPath")] #>> '{}') AS rowIdentifier,
+        'null'::jsonb AS rowSortKey,
+        "value"->'rowData' AS rowData
+      FROM "BulldozerStorageEngine"
+      WHERE "keyPathParent" = ${getStorageEnginePath(options.tableId, ["rows"])}::jsonb[]
+        AND ${singleNullSortKeyRangePredicate({ start, end, startInclusive, endInclusive })}
+    ` : sqlQuery`
       SELECT
         ("keyPath"[cardinality("keyPath")] #>> '{}') AS rowIdentifier,
         'null'::jsonb AS rowSortKey,
         "value"->'rowData' AS rowData
       FROM "BulldozerStorageEngine"
       WHERE "keyPathParent" = ${getStorageEnginePath(options.tableId, ["rows"])}::jsonb[]
+        AND ${groupKey} IS NOT DISTINCT FROM 'null'::jsonb
         AND ${singleNullSortKeyRangePredicate({ start, end, startInclusive, endInclusive })}
     `,
     registerRowChangeTrigger: (trigger) => {
