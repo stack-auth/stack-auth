@@ -430,7 +430,7 @@ NEVER call stackServerApp.getServerUser().
 
 When the user asks about "the user", "user data", or "current user", they mean an end-user of their project.
 Use the admin API pattern instead:
-- stackServerApp.listUsers() to list/search users (show a user picker or table)
+- stackServerApp.listUsers({ includeAnonymous: true, query?: string }) to list/search users (show a user picker or table; always include includeAnonymous: true)
 - stackServerApp.getUser(userId) to fetch a specific user by ID
 
 Example — user management dashboard:
