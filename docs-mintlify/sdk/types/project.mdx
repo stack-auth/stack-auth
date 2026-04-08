@@ -36,6 +36,18 @@ Each [Stack app](/guides/going-further/stack-app) corresponds to a project. You 
   id: string; //$stack-link-to:#projectid
   displayName: string; //$stack-link-to:#projectdisplayname
   config: ProjectConfig; //$stack-link-to:#projectconfig
+};
+
+type ProjectConfig = {
+  signUpEnabled: boolean; //$stack-link-to:#projectconfigsignupenabled
+  credentialEnabled: boolean; //$stack-link-to:#projectconfigcredentialenabled
+  magicLinkEnabled: boolean; //$stack-link-to:#projectconfigmagiclinkenabled
+  passkeyEnabled: boolean; //$stack-link-to:#projectconfigpasskeyenabled
+  clientTeamCreationEnabled: boolean; //$stack-link-to:#projectconfigclientteamcreationenabled
+  clientUserDeletionEnabled: boolean; //$stack-link-to:#projectconfigclientuserdeletionenabled
+  oauthProviders: OAuthProviderConfig[]; //$stack-link-to:#projectconfigoauthproviders
+  allowUserApiKeys: boolean; //$stack-link-to:#projectconfigallowuserapikeys
+  allowTeamApiKeys: boolean; //$stack-link-to:#projectconfigallowteamapikeys
 };`}
 />
 
@@ -69,23 +81,39 @@ Each [Stack app](/guides/going-further/stack-app) corresponds to a project. You 
       Configuration settings governing authentication and user management features.
 
       <ParamField body="config.signUpEnabled" type="boolean">
-        Indicates whether sign-up is enabled for the project.
+        Whether sign-up is enabled for the project.
       </ParamField>
 
       <ParamField body="config.credentialEnabled" type="boolean">
-        Specifies whether credential-based authentication is enabled for the project.
+        Whether credential-based (email/password) authentication is enabled.
       </ParamField>
 
       <ParamField body="config.magicLinkEnabled" type="boolean">
-        States whether magic-link authentication is enabled for the project.
+        Whether magic-link authentication is enabled.
+      </ParamField>
+
+      <ParamField body="config.passkeyEnabled" type="boolean">
+        Whether passkey authentication is enabled.
       </ParamField>
 
       <ParamField body="config.clientTeamCreationEnabled" type="boolean">
-        Determines whether client-side team creation is permitted within the project.
+        Whether client-side team creation is permitted.
       </ParamField>
 
       <ParamField body="config.clientUserDeletionEnabled" type="boolean">
-        Indicates whether client-side user deletion is enabled for the project.
+        Whether client-side user deletion is enabled.
+      </ParamField>
+
+      <ParamField body="config.oauthProviders" type="OAuthProviderConfig[]">
+        The list of OAuth providers configured for the project. Each provider has an `id: string`.
+      </ParamField>
+
+      <ParamField body="config.allowUserApiKeys" type="boolean">
+        Whether user-level API key creation is allowed.
+      </ParamField>
+
+      <ParamField body="config.allowTeamApiKeys" type="boolean">
+        Whether team-level API key creation is allowed.
       </ParamField>
     </MethodContent>
 
@@ -95,8 +123,16 @@ Each [Stack app](/guides/going-further/stack-app) corresponds to a project. You 
         signUpEnabled: boolean;
         credentialEnabled: boolean;
         magicLinkEnabled: boolean;
+        passkeyEnabled: boolean;
         clientTeamCreationEnabled: boolean;
         clientUserDeletionEnabled: boolean;
+        oauthProviders: OAuthProviderConfig[];
+        allowUserApiKeys: boolean;
+        allowTeamApiKeys: boolean;
+      };
+
+      type OAuthProviderConfig = {
+        id: string;
       };
       ```
     </MethodAside>
