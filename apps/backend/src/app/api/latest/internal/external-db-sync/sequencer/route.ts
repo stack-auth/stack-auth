@@ -110,7 +110,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
       didUpdate = true;
     }
 
-    const teamTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
+    const teamTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string, teamId: string }[]>`
       WITH rows_to_update AS (
         SELECT "tenancyId", "teamId"
         FROM "Team"
@@ -126,9 +126,9 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         FROM rows_to_update r
         WHERE t."tenancyId" = r."tenancyId"
           AND t."teamId"    = r."teamId"
-        RETURNING t."tenancyId"
+        RETURNING t."tenancyId", t."teamId"
       )
-      SELECT DISTINCT "tenancyId" FROM updated_rows
+      SELECT DISTINCT "tenancyId", "teamId" FROM updated_rows
     `;
 
     span.setAttribute("stack.external-db-sync.team-tenants", teamTenants.length);
@@ -143,7 +143,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         UPDATE "VerificationCode"
         SET "shouldUpdateSequenceId" = TRUE
         FROM (
-          SELECT DISTINCT "Tenancy"."projectId", "Tenancy"."branchId"
+          SELECT DISTINCT "Tenancy"."projectId", "Tenancy"."branchId", "Team"."teamId"
           FROM "Team"
           JOIN "Tenancy" ON "Tenancy"."id" = "Team"."tenancyId"
           WHERE "Team"."tenancyId" IN (${Prisma.join(teamTenants.map(t => t.tenancyId))})
@@ -153,6 +153,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         WHERE "VerificationCode"."projectId" = changed_teams."projectId"
           AND "VerificationCode"."branchId" = changed_teams."branchId"
           AND "VerificationCode"."type" = 'TEAM_INVITATION'
+          AND "VerificationCode"."data"->>'team_id' = changed_teams."teamId"
           AND "VerificationCode"."shouldUpdateSequenceId" = FALSE
       `;
     }
@@ -271,34 +272,6 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
 
     if (emailOutboxTenants.length > 0) {
       await enqueueExternalDbSyncBatch(emailOutboxTenants.map(t => t.tenancyId));
-      didUpdate = true;
-    }
-
-    const sessionReplayTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
-      WITH rows_to_update AS (
-        SELECT "tenancyId", "id"
-        FROM "SessionReplay"
-        WHERE "shouldUpdateSequenceId" = TRUE
-        ORDER BY "tenancyId"
-        LIMIT ${batchSize}
-        FOR UPDATE SKIP LOCKED
-      ),
-      updated_rows AS (
-        UPDATE "SessionReplay" sr
-        SET "sequenceId" = nextval('global_seq_id'),
-            "shouldUpdateSequenceId" = FALSE
-        FROM rows_to_update r
-        WHERE sr."tenancyId" = r."tenancyId"
-          AND sr."id"        = r."id"
-        RETURNING sr."tenancyId"
-      )
-      SELECT DISTINCT "tenancyId" FROM updated_rows
-    `;
-
-    span.setAttribute("stack.external-db-sync.session-replay-tenants", sessionReplayTenants.length);
-
-    if (sessionReplayTenants.length > 0) {
-      await enqueueExternalDbSyncBatch(sessionReplayTenants.map(t => t.tenancyId));
       didUpdate = true;
     }
 
@@ -442,7 +415,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
 
     span.setAttribute("stack.external-db-sync.did-update", didUpdate);
     if (didUpdate) {
-      console.log(`[Sequencer] Backfilled sequence IDs: USR=${projectUserTenants.length}, CC=${contactChannelTenants.length}, TM=${teamTenants.length}, TMB=${teamMemberTenants.length}, TP=${teamPermissionTenants.length}, TI=${teamInvitationTenants.length}, EO=${emailOutboxTenants.length}, SR=${sessionReplayTenants.length}, PP=${projectPermissionTenants.length}, NP=${notificationPreferenceTenants.length}, RT=${refreshTokenTenants.length}, CA=${oauthAccountTenants.length}, DR=${deletedRowTenants.length}`);
+      console.log(`[Sequencer] Backfilled sequence IDs: USR=${projectUserTenants.length}, CC=${contactChannelTenants.length}, TM=${teamTenants.length}, TMB=${teamMemberTenants.length}, TP=${teamPermissionTenants.length}, TI=${teamInvitationTenants.length}, EO=${emailOutboxTenants.length}, PP=${projectPermissionTenants.length}, NP=${notificationPreferenceTenants.length}, RT=${refreshTokenTenants.length}, CA=${oauthAccountTenants.length}, DR=${deletedRowTenants.length}`);
     }
 
     return didUpdate;

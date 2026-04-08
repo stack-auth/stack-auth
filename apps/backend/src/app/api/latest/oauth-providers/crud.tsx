@@ -253,9 +253,9 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
               id: params.provider_id,
             },
           },
-          data: {
+          data: withExternalDbSyncUpdate({
             allowSignIn: data.allow_sign_in,
-          },
+          }),
         });
 
         if (data.allow_sign_in) {
@@ -297,9 +297,9 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
               id: params.provider_id,
             },
           },
-          data: {
+          data: withExternalDbSyncUpdate({
             allowConnectedAccounts: data.allow_connected_accounts,
-          },
+          }),
         });
       }
 

@@ -250,12 +250,21 @@ function maxBigIntString(values: Array<string | null | undefined>): string | nul
 }
 
 function buildMappingInternalStats(
-  projectUsersStats: SequenceStats,
-  emailOutboxStats: SequenceStats,
+  stats: {
+    projectUsersStats: SequenceStats,
+    contactChannelStats: SequenceStats,
+    teamStats: SequenceStats,
+    teamMemberStats: SequenceStats,
+    teamPermissionStats: SequenceStats,
+    teamInvitationStats: SequenceStats,
+    emailOutboxStats: SequenceStats,
+    projectPermissionStats: SequenceStats,
+    notificationPreferenceStats: SequenceStats,
+    refreshTokenStats: SequenceStats,
+    connectedAccountStats: SequenceStats,
+  },
   deletedRowsByTable: DeletedRowSummary[],
 ) {
-  const deletedProjectUserStats = deletedRowsByTable.find((row) => row.table_name === "ProjectUser") ?? null;
-
   const mappingInternalStats = new Map<string, {
     mapping_id: string,
     internal_min_sequence_id: string | null,
@@ -263,32 +272,29 @@ function buildMappingInternalStats(
     internal_pending_count: string,
   }>();
 
-  const usersMappingMin = minBigIntString([
-    projectUsersStats.min_sequence_id,
-    deletedProjectUserStats?.min_sequence_id,
-  ]);
-  const usersMappingMax = maxBigIntString([
-    projectUsersStats.max_sequence_id,
-    deletedProjectUserStats?.max_sequence_id,
-  ]);
-  const usersMappingPending = addBigIntStrings(
-    projectUsersStats.pending,
-    deletedProjectUserStats?.pending,
-  );
+  function addMapping(mappingId: string, primaryStats: SequenceStats, deletedRowTableName: string | null) {
+    const deletedStats = deletedRowTableName
+      ? deletedRowsByTable.find((row) => row.table_name === deletedRowTableName) ?? null
+      : null;
+    mappingInternalStats.set(mappingId, {
+      mapping_id: mappingId,
+      internal_min_sequence_id: minBigIntString([primaryStats.min_sequence_id, deletedStats?.min_sequence_id]),
+      internal_max_sequence_id: maxBigIntString([primaryStats.max_sequence_id, deletedStats?.max_sequence_id]),
+      internal_pending_count: addBigIntStrings(primaryStats.pending, deletedStats?.pending),
+    });
+  }
 
-  mappingInternalStats.set("users", {
-    mapping_id: "users",
-    internal_min_sequence_id: usersMappingMin,
-    internal_max_sequence_id: usersMappingMax,
-    internal_pending_count: usersMappingPending,
-  });
-
-  mappingInternalStats.set("email_outboxes", {
-    mapping_id: "email_outboxes",
-    internal_min_sequence_id: emailOutboxStats.min_sequence_id,
-    internal_max_sequence_id: emailOutboxStats.max_sequence_id,
-    internal_pending_count: emailOutboxStats.pending,
-  });
+  addMapping("users", stats.projectUsersStats, "ProjectUser");
+  addMapping("contact_channels", stats.contactChannelStats, "ContactChannel");
+  addMapping("teams", stats.teamStats, "Team");
+  addMapping("team_member_profiles", stats.teamMemberStats, "TeamMember");
+  addMapping("team_permissions", stats.teamPermissionStats, "TeamMemberDirectPermission");
+  addMapping("team_invitations", stats.teamInvitationStats, "VerificationCode_TEAM_INVITATION");
+  addMapping("email_outboxes", stats.emailOutboxStats, "EmailOutbox");
+  addMapping("project_permissions", stats.projectPermissionStats, "ProjectUserDirectPermission");
+  addMapping("notification_preferences", stats.notificationPreferenceStats, "UserNotificationPreference");
+  addMapping("refresh_tokens", stats.refreshTokenStats, "ProjectUserRefreshToken");
+  addMapping("connected_accounts", stats.connectedAccountStats, "ProjectUserOAuthAccount");
 
   const mappings = Array.from(mappingInternalStats.values());
   const mappingStatuses = mappings.map((mapping) => ({
@@ -489,7 +495,19 @@ async function fetchInternalStats(tenancyId: string | null) {
     ...formatSequenceStats(row),
   }));
 
-  const { mappings, mappingStatuses } = buildMappingInternalStats(projectUsersStats, emailOutboxStats, deletedRowsByTable);
+  const { mappings, mappingStatuses } = buildMappingInternalStats({
+    projectUsersStats,
+    contactChannelStats,
+    teamStats,
+    teamMemberStats,
+    teamPermissionStats,
+    teamInvitationStats,
+    emailOutboxStats,
+    projectPermissionStats,
+    notificationPreferenceStats,
+    refreshTokenStats,
+    connectedAccountStats,
+  }, deletedRowsByTable);
 
   return {
     projectUsersStats,

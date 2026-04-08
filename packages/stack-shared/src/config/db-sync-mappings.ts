@@ -1272,28 +1272,124 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
     },
     internalDbFetchQueries: {
       clickhouse: `
+        SELECT *
+        FROM (
+          SELECT
+            "Tenancy"."projectId" AS "project_id",
+            "Tenancy"."branchId" AS "branch_id",
+            "EmailOutbox"."id" AS "id",
+            LOWER(REPLACE("EmailOutbox"."status"::text, '_', '-')) AS "status",
+            LOWER(REPLACE("EmailOutbox"."simpleStatus"::text, '_', '-')) AS "simple_status",
+            CASE WHEN "EmailOutbox"."createdWith"::text = 'DRAFT' THEN 'draft' ELSE 'programmatic-call' END AS "created_with",
+            "EmailOutbox"."emailDraftId" AS "email_draft_id",
+            "EmailOutbox"."emailProgrammaticCallTemplateId" AS "email_programmatic_call_template_id",
+            "EmailOutbox"."themeId" AS "theme_id",
+            "EmailOutbox"."isHighPriority" AS "is_high_priority",
+            "EmailOutbox"."renderedIsTransactional" AS "is_transactional",
+            "EmailOutbox"."renderedSubject" AS "subject",
+            "EmailOutbox"."renderedNotificationCategoryId" AS "notification_category_id",
+            "EmailOutbox"."startedRenderingAt" AS "started_rendering_at",
+            "EmailOutbox"."finishedRenderingAt" AS "rendered_at",
+            "EmailOutbox"."renderErrorExternalMessage" AS "render_error",
+            "EmailOutbox"."scheduledAt" AS "scheduled_at",
+            "EmailOutbox"."createdAt" AS "created_at",
+            "EmailOutbox"."updatedAt" AS "updated_at",
+            "EmailOutbox"."startedSendingAt" AS "started_sending_at",
+            "EmailOutbox"."sendServerErrorExternalMessage" AS "server_error",
+            "EmailOutbox"."deliveredAt" AS "delivered_at",
+            "EmailOutbox"."openedAt" AS "opened_at",
+            "EmailOutbox"."clickedAt" AS "clicked_at",
+            "EmailOutbox"."unsubscribedAt" AS "unsubscribed_at",
+            "EmailOutbox"."markedAsSpamAt" AS "marked_as_spam_at",
+            "EmailOutbox"."bouncedAt" AS "bounced_at",
+            "EmailOutbox"."deliveryDelayedAt" AS "delivery_delayed_at",
+            "EmailOutbox"."canHaveDeliveryInfo" AS "can_have_delivery_info",
+            LOWER(REPLACE("EmailOutbox"."skippedReason"::text, '_', '-')) AS "skipped_reason",
+            "EmailOutbox"."skippedDetails" AS "skipped_details",
+            "EmailOutbox"."sendRetries" AS "send_retries",
+            "EmailOutbox"."isPaused" AS "is_paused",
+            "EmailOutbox"."sequenceId" AS "sync_sequence_id",
+            "EmailOutbox"."tenancyId" AS "tenancyId",
+            false AS "sync_is_deleted"
+          FROM "EmailOutbox"
+          JOIN "Tenancy" ON "Tenancy"."id" = "EmailOutbox"."tenancyId"
+          WHERE "EmailOutbox"."tenancyId" = $1::uuid
+
+          UNION ALL
+
+          SELECT
+            "Tenancy"."projectId" AS "project_id",
+            "Tenancy"."branchId" AS "branch_id",
+            ("DeletedRow"."primaryKey"->>'id')::uuid AS "id",
+            ''::text AS "status",
+            ''::text AS "simple_status",
+            ''::text AS "created_with",
+            NULL::text AS "email_draft_id",
+            NULL::text AS "email_programmatic_call_template_id",
+            NULL::text AS "theme_id",
+            false AS "is_high_priority",
+            NULL::boolean AS "is_transactional",
+            NULL::text AS "subject",
+            NULL::text AS "notification_category_id",
+            NULL::timestamp without time zone AS "started_rendering_at",
+            NULL::timestamp without time zone AS "rendered_at",
+            NULL::text AS "render_error",
+            "DeletedRow"."deletedAt"::timestamp without time zone AS "scheduled_at",
+            "DeletedRow"."deletedAt"::timestamp without time zone AS "created_at",
+            "DeletedRow"."deletedAt"::timestamp without time zone AS "updated_at",
+            NULL::timestamp without time zone AS "started_sending_at",
+            NULL::text AS "server_error",
+            NULL::timestamp without time zone AS "delivered_at",
+            NULL::timestamp without time zone AS "opened_at",
+            NULL::timestamp without time zone AS "clicked_at",
+            NULL::timestamp without time zone AS "unsubscribed_at",
+            NULL::timestamp without time zone AS "marked_as_spam_at",
+            NULL::timestamp without time zone AS "bounced_at",
+            NULL::timestamp without time zone AS "delivery_delayed_at",
+            NULL::boolean AS "can_have_delivery_info",
+            NULL::text AS "skipped_reason",
+            NULL::jsonb AS "skipped_details",
+            0 AS "send_retries",
+            false AS "is_paused",
+            "DeletedRow"."sequenceId" AS "sync_sequence_id",
+            "DeletedRow"."tenancyId" AS "tenancyId",
+            true AS "sync_is_deleted"
+          FROM "DeletedRow"
+          JOIN "Tenancy" ON "Tenancy"."id" = "DeletedRow"."tenancyId"
+          WHERE
+            "DeletedRow"."tenancyId" = $1::uuid
+            AND "DeletedRow"."tableName" = 'EmailOutbox'
+        ) AS "_src"
+        WHERE "sync_sequence_id" IS NOT NULL
+          AND "sync_sequence_id" > $2::bigint
+        ORDER BY "sync_sequence_id" ASC
+        LIMIT 1000
+      `.trim(),
+    },
+    internalDbFetchQuery: `
+      SELECT *
+      FROM (
         SELECT
-          "Tenancy"."projectId" AS "project_id",
-          "Tenancy"."branchId" AS "branch_id",
           "EmailOutbox"."id" AS "id",
-          LOWER(REPLACE("EmailOutbox"."status"::text, '_', '-')) AS "status",
-          LOWER(REPLACE("EmailOutbox"."simpleStatus"::text, '_', '-')) AS "simple_status",
-          CASE WHEN "EmailOutbox"."createdWith"::text = 'DRAFT' THEN 'draft' ELSE 'programmatic-call' END AS "created_with",
+          "EmailOutbox"."status"::text AS "status",
+          "EmailOutbox"."simpleStatus"::text AS "simple_status",
+          "EmailOutbox"."createdWith"::text AS "created_with",
           "EmailOutbox"."emailDraftId" AS "email_draft_id",
           "EmailOutbox"."emailProgrammaticCallTemplateId" AS "email_programmatic_call_template_id",
           "EmailOutbox"."themeId" AS "theme_id",
           "EmailOutbox"."isHighPriority" AS "is_high_priority",
-          "EmailOutbox"."renderedIsTransactional" AS "is_transactional",
-          "EmailOutbox"."renderedSubject" AS "subject",
-          "EmailOutbox"."renderedNotificationCategoryId" AS "notification_category_id",
+          "EmailOutbox"."renderedIsTransactional" AS "rendered_is_transactional",
+          "EmailOutbox"."renderedSubject" AS "rendered_subject",
+          "EmailOutbox"."renderedNotificationCategoryId" AS "rendered_notification_category_id",
           "EmailOutbox"."startedRenderingAt" AS "started_rendering_at",
-          "EmailOutbox"."finishedRenderingAt" AS "rendered_at",
+          "EmailOutbox"."finishedRenderingAt" AS "finished_rendering_at",
           "EmailOutbox"."renderErrorExternalMessage" AS "render_error",
           "EmailOutbox"."scheduledAt" AS "scheduled_at",
           "EmailOutbox"."createdAt" AS "created_at",
-          "EmailOutbox"."updatedAt" AS "updated_at",
           "EmailOutbox"."startedSendingAt" AS "started_sending_at",
+          "EmailOutbox"."finishedSendingAt" AS "finished_sending_at",
           "EmailOutbox"."sendServerErrorExternalMessage" AS "server_error",
+          "EmailOutbox"."sentAt" AS "sent_at",
           "EmailOutbox"."deliveredAt" AS "delivered_at",
           "EmailOutbox"."openedAt" AS "opened_at",
           "EmailOutbox"."clickedAt" AS "clicked_at",
@@ -1302,64 +1398,62 @@ export const DEFAULT_DB_SYNC_MAPPINGS = {
           "EmailOutbox"."bouncedAt" AS "bounced_at",
           "EmailOutbox"."deliveryDelayedAt" AS "delivery_delayed_at",
           "EmailOutbox"."canHaveDeliveryInfo" AS "can_have_delivery_info",
-          LOWER(REPLACE("EmailOutbox"."skippedReason"::text, '_', '-')) AS "skipped_reason",
+          "EmailOutbox"."skippedReason"::text AS "skipped_reason",
           "EmailOutbox"."skippedDetails" AS "skipped_details",
           "EmailOutbox"."sendRetries" AS "send_retries",
           "EmailOutbox"."isPaused" AS "is_paused",
-          "EmailOutbox"."sequenceId" AS "sync_sequence_id",
-          "EmailOutbox"."tenancyId" AS "tenancyId",
-          false AS "sync_is_deleted"
+          "EmailOutbox"."sequenceId" AS "sequence_id",
+          "EmailOutbox"."tenancyId",
+          false AS "is_deleted"
         FROM "EmailOutbox"
-        JOIN "Tenancy" ON "Tenancy"."id" = "EmailOutbox"."tenancyId"
         WHERE "EmailOutbox"."tenancyId" = $1::uuid
-          AND "EmailOutbox"."sequenceId" IS NOT NULL
-          AND "EmailOutbox"."sequenceId" > $2::bigint
-        ORDER BY "EmailOutbox"."sequenceId" ASC
-        LIMIT 1000
-      `.trim(),
-    },
-    internalDbFetchQuery: `
-      SELECT
-        "EmailOutbox"."id" AS "id",
-        "EmailOutbox"."status"::text AS "status",
-        "EmailOutbox"."simpleStatus"::text AS "simple_status",
-        "EmailOutbox"."createdWith"::text AS "created_with",
-        "EmailOutbox"."emailDraftId" AS "email_draft_id",
-        "EmailOutbox"."emailProgrammaticCallTemplateId" AS "email_programmatic_call_template_id",
-        "EmailOutbox"."themeId" AS "theme_id",
-        "EmailOutbox"."isHighPriority" AS "is_high_priority",
-        "EmailOutbox"."renderedIsTransactional" AS "rendered_is_transactional",
-        "EmailOutbox"."renderedSubject" AS "rendered_subject",
-        "EmailOutbox"."renderedNotificationCategoryId" AS "rendered_notification_category_id",
-        "EmailOutbox"."startedRenderingAt" AS "started_rendering_at",
-        "EmailOutbox"."finishedRenderingAt" AS "finished_rendering_at",
-        "EmailOutbox"."renderErrorExternalMessage" AS "render_error",
-        "EmailOutbox"."scheduledAt" AS "scheduled_at",
-        "EmailOutbox"."createdAt" AS "created_at",
-        "EmailOutbox"."startedSendingAt" AS "started_sending_at",
-        "EmailOutbox"."finishedSendingAt" AS "finished_sending_at",
-        "EmailOutbox"."sendServerErrorExternalMessage" AS "server_error",
-        "EmailOutbox"."sentAt" AS "sent_at",
-        "EmailOutbox"."deliveredAt" AS "delivered_at",
-        "EmailOutbox"."openedAt" AS "opened_at",
-        "EmailOutbox"."clickedAt" AS "clicked_at",
-        "EmailOutbox"."unsubscribedAt" AS "unsubscribed_at",
-        "EmailOutbox"."markedAsSpamAt" AS "marked_as_spam_at",
-        "EmailOutbox"."bouncedAt" AS "bounced_at",
-        "EmailOutbox"."deliveryDelayedAt" AS "delivery_delayed_at",
-        "EmailOutbox"."canHaveDeliveryInfo" AS "can_have_delivery_info",
-        "EmailOutbox"."skippedReason"::text AS "skipped_reason",
-        "EmailOutbox"."skippedDetails" AS "skipped_details",
-        "EmailOutbox"."sendRetries" AS "send_retries",
-        "EmailOutbox"."isPaused" AS "is_paused",
-        "EmailOutbox"."sequenceId" AS "sequence_id",
-        "EmailOutbox"."tenancyId",
-        false AS "is_deleted"
-      FROM "EmailOutbox"
-      WHERE "EmailOutbox"."tenancyId" = $1::uuid
-        AND "EmailOutbox"."sequenceId" IS NOT NULL
-        AND "EmailOutbox"."sequenceId" > $2::bigint
-      ORDER BY "EmailOutbox"."sequenceId" ASC
+
+        UNION ALL
+
+        SELECT
+          ("DeletedRow"."primaryKey"->>'id')::uuid AS "id",
+          ''::text AS "status",
+          ''::text AS "simple_status",
+          ''::text AS "created_with",
+          NULL::text AS "email_draft_id",
+          NULL::text AS "email_programmatic_call_template_id",
+          NULL::text AS "theme_id",
+          false AS "is_high_priority",
+          NULL::boolean AS "rendered_is_transactional",
+          NULL::text AS "rendered_subject",
+          NULL::text AS "rendered_notification_category_id",
+          NULL::timestamp without time zone AS "started_rendering_at",
+          NULL::timestamp without time zone AS "finished_rendering_at",
+          NULL::text AS "render_error",
+          "DeletedRow"."deletedAt"::timestamp without time zone AS "scheduled_at",
+          "DeletedRow"."deletedAt"::timestamp without time zone AS "created_at",
+          NULL::timestamp without time zone AS "started_sending_at",
+          NULL::timestamp without time zone AS "finished_sending_at",
+          NULL::text AS "server_error",
+          NULL::timestamp without time zone AS "sent_at",
+          NULL::timestamp without time zone AS "delivered_at",
+          NULL::timestamp without time zone AS "opened_at",
+          NULL::timestamp without time zone AS "clicked_at",
+          NULL::timestamp without time zone AS "unsubscribed_at",
+          NULL::timestamp without time zone AS "marked_as_spam_at",
+          NULL::timestamp without time zone AS "bounced_at",
+          NULL::timestamp without time zone AS "delivery_delayed_at",
+          NULL::boolean AS "can_have_delivery_info",
+          NULL::text AS "skipped_reason",
+          NULL::jsonb AS "skipped_details",
+          0 AS "send_retries",
+          false AS "is_paused",
+          "DeletedRow"."sequenceId" AS "sequence_id",
+          "DeletedRow"."tenancyId",
+          true AS "is_deleted"
+        FROM "DeletedRow"
+        WHERE
+          "DeletedRow"."tenancyId" = $1::uuid
+          AND "DeletedRow"."tableName" = 'EmailOutbox'
+      ) AS "_src"
+      WHERE "sequence_id" IS NOT NULL
+        AND "sequence_id" > $2::bigint
+      ORDER BY "sequence_id" ASC
       LIMIT 1000
     `.trim(),
     externalDbUpdateQueries: {

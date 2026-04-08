@@ -1146,10 +1146,6 @@ export const CLICKHOUSE_COLUMN_NORMALIZERS: Record<string, Record<string, 'json'
     is_paused: 'boolean',
     sync_is_deleted: 'boolean',
   },
-  session_replays: {
-    chunk_count: 'bigint',
-    sync_is_deleted: 'boolean',
-  },
   project_permissions: {
     sync_is_deleted: 'boolean',
   },
