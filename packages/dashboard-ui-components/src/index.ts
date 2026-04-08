@@ -53,3 +53,5 @@ export type { DesignProgressBarProps } from "./components/progress-bar";
 
 export { DesignEmptyState } from "./components/empty-state";
 export type { DesignEmptyStateProps } from "./components/empty-state";
+
+export * from "./components/analytics-chart";

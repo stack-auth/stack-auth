@@ -1,4 +1,4 @@
-import { cn } from "@/components/ui";
+import { cn } from "@stackframe/stack-ui";
 import {
   ArrowDownIcon,
   ArrowUpIcon,

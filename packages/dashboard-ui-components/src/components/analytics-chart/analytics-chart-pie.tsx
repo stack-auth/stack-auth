@@ -1,6 +1,6 @@
-import { type ChartConfig, ChartContainer } from "@/components/ui/chart";
 import { MagnifyingGlassMinusIcon } from "@phosphor-icons/react";
-import { cn } from "@/components/ui";
+import { cn } from "@stackframe/stack-ui";
+import { type DesignChartConfig, DesignChartContainer } from "../chart-container";
 import { type CSSProperties, type Ref, useMemo } from "react";
 import { Cell, Pie, PieChart } from "recharts";
 import { TrendPill } from "./default-analytics-chart-tooltip";
@@ -135,8 +135,8 @@ export function AnalyticsChartPie({
     ],
   );
 
-  const chartConfig = useMemo<ChartConfig>(() => {
-    const config: ChartConfig = {};
+  const chartConfig = useMemo<DesignChartConfig>(() => {
+    const config: DesignChartConfig = {};
     canonicalSeries.forEach((s, sIdx) => {
       config[s.key] = {
         label: s.label,
@@ -193,7 +193,7 @@ export function AnalyticsChartPie({
       <div className="flex min-h-[260px] flex-col items-center gap-6 sm:min-h-[320px] sm:flex-row sm:items-center sm:justify-center sm:gap-10">
         <div className="flex shrink-0 flex-col items-center gap-3">
           <div className="relative">
-            <ChartContainer config={chartConfig} className={containerClassName}>
+            <DesignChartContainer config={chartConfig} className={containerClassName}>
               <PieChart
                 role="img"
                 aria-label={strings.pieAriaLabel({
@@ -260,7 +260,7 @@ export function AnalyticsChartPie({
                   </Pie>
                 )}
               </PieChart>
-            </ChartContainer>
+            </DesignChartContainer>
 
             <div className="pointer-events-none absolute inset-0 flex flex-col items-center justify-center text-center">
               <span className="block max-w-[68px] truncate font-mono text-[9px] uppercase tracking-wider text-muted-foreground">

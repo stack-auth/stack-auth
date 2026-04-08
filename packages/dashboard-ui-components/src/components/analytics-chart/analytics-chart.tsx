@@ -1,11 +1,11 @@
 "use client";
 
-import { DesignButton } from "@/components/design-components";
-import { cn } from "@/components/ui";
+import { cn } from "@stackframe/stack-ui";
+import { DesignButton } from "../button";
 import {
-  type ChartConfig,
-  ChartContainer,
-} from "@/components/ui/chart";
+  type DesignChartConfig,
+  DesignChartContainer,
+} from "../chart-container";
 import {
   CartesianGrid,
   ComposedChart,
@@ -472,10 +472,10 @@ export function AnalyticsChart({
     compareInProgressLocalIdx,
   ]);
 
-  const chartConfig = useMemo<ChartConfig>(() => {
+  const chartConfig = useMemo<DesignChartConfig>(() => {
     const primaryLabel = primaryLayer?.label ?? "";
     const compareLabel = compareLayer?.label ?? "";
-    const config: ChartConfig = {};
+    const config: DesignChartConfig = {};
     if (primaryLayer) {
       config[primaryLayer.id] = { label: primaryLabel, color: primaryColor };
       if (primaryHasInProgress) {
@@ -711,7 +711,7 @@ export function AnalyticsChart({
       role="img"
       aria-label={`${chartAriaLabel} over the visible ${data.length}-day range. Use arrow keys to move the cursor, Enter to pin, Escape to release. Click and drag to select a range.`}
     >
-      <ChartContainer
+      <DesignChartContainer
         config={chartConfig}
         className="aspect-auto h-[260px] w-full sm:h-[320px]"
       >
@@ -824,7 +824,7 @@ export function AnalyticsChart({
               : null,
           })}
         </ComposedChart>
-      </ChartContainer>
+      </DesignChartContainer>
 
       {activeIndex != null && activePoint && !brushing && (
         <div
@@ -961,7 +961,6 @@ export function AnalyticsChart({
                     aria-hidden="true"
                   />
                   <input
-                    // eslint-disable-next-line jsx-a11y/no-autofocus
                     autoFocus
                     type="text"
                     value={draft}

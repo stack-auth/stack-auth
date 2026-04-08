@@ -318,7 +318,7 @@ it("should return cross-product aggregates in the metrics response", async ({ ex
   expect(typeof authOverview.unverified_users).toBe('number');
   expect(typeof authOverview.anonymous_users).toBe('number');
   expect(typeof authOverview.total_teams).toBe('number');
-  // MAU field introduced for hero widget
+  // MAU field introduced for analytics chart widget
   expect(typeof authOverview.mau).toBe('number');
 
   // Payments overview shape

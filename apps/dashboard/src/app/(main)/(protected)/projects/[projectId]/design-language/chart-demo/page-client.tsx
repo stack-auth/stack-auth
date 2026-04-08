@@ -13,7 +13,7 @@ import {
   pointValue,
   type AnalyticsChartState,
   type Annotation,
-} from "./analytics-chart";
+} from "@stackframe/dashboard-ui-components";
 import {
   AnalyticsChartEventsPanel,
   type AnalyticsChartLabEvent,
@@ -166,8 +166,6 @@ export default function PageClient() {
               onReset={resetLabState}
               dataLength={SERIES.length}
             />
-            {/* Card + title row + chart composed inline. Consumers wrap
-                AnalyticsChart in their own card as they see fit. */}
             <DesignAnalyticsCard
               gradient="blue"
               chart={{ type: "none", tooltipType: "none", highlightMode: "none" }}

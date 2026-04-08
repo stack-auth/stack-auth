@@ -21,11 +21,9 @@ import {
   formatValue,
   TrendPill,
   type FormatKind,
-} from "../analytics-chart";
+} from "@stackframe/dashboard-ui-components";
 import { TABLE_ROWS, type TableRow } from "./fixtures";
 
-// Re-export TrendPill from the demo barrel so demo files never reach into
-// analytics-chart/ directly for this primitive.
 export { TrendPill };
 
 export function SectionHeading({
@@ -59,10 +57,6 @@ export function SectionHeading({
   );
 }
 
-/** Unified sparkline. Replaces the former MiniSparkline (wide + area) and
- * RowSparkline (tight + line-only) via a single prop-driven SVG. Uses one
- * `<polyline>` with CSS custom properties + Tailwind arbitrary variants so
- * light/dark colors resolve without duplicating DOM. */
 export function Sparkline({
   values,
   width = 90,
@@ -101,14 +95,9 @@ export function Sparkline({
     .join(" ");
   const viewBox = `0 0 ${width} ${height}`;
   const style = { "--s-l": stroke, "--s-d": strokeDark } as CSSProperties;
-  // For the area variant we need a closed path. Building it manually from
-  // the points string keeps the single-polyline pattern for the line and
-  // adds an explicit `<path>` underneath for the gradient fill.
   const areaPath = showArea
     ? `M${points.split(" ").join(" L")} L${(padding + iw).toFixed(1)},${(padding + ih).toFixed(1)} L${padding.toFixed(1)},${(padding + ih).toFixed(1)} Z`
     : null;
-  // useId gives a stable unique id across SSR/CSR without the collision risk
-  // of Math.random. The colon React uses gets escaped for CSS selectors.
   const gradientId = `spark-${useId().replace(/:/g, "")}`;
 
   return (
@@ -216,9 +205,6 @@ export function KpiBlock({
 }
 
 export function FormatterPanel() {
-  // Each row supplies its own input value because the variants interpret
-  // numbers differently (currency wants cents, duration wants seconds / ms,
-  // percent wants a fraction, datetime wants a timestamp).
   const rows: { sample: number, kind: FormatKind, hint: string }[] = [
     { sample: 48_271, kind: { type: "numeric", decimals: 0 }, hint: "Locale grouping (en-US)" },
     { sample: 48_271, kind: { type: "numeric", decimals: 2 }, hint: "Locale grouping · 2 decimals" },

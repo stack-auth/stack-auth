@@ -88,7 +88,7 @@ A: In `apps/e2e/tests/backend/endpoints/api/v1/unsubscribe-link.test.ts`, avoid 
 Q: How can overview Recharts on the dashboard dim non-hovered data while keeping the active day emphasized?
 A: In `apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/line-chart.tsx`, track `hoveredIndex` from Recharts' `activeTooltipIndex` via chart `onMouseMove`/`onMouseLeave`, then use that index to lower non-hovered `Cell` opacity for bar charts and reduce line/area `strokeOpacity`/`fillOpacity` while relying on `activeDot` plus a stronger tooltip cursor to keep the hovered point visually focused.
 
-Q: How do you add a hover-to-swap chart interaction to the hero analytics widget with fade transitions?
+Q: How do you add a hover-to-swap chart interaction to the analytics chart widget with fade transitions?
 A: In `metrics-page.tsx`, maintain `chartMode` (the hover intent) and `displayMode` (the chart currently rendered) as separate states. On pill mouse-enter, set chartMode immediately, then use a 120ms timer to set displayMode and clear a `fadingOut` flag. Fade is achieved via CSS opacity transitions on the chart container. The pill component uses `onMouseEnter`/`onMouseLeave` rather than `onClick` so hovering is enough to swap. Clear the timer ref when a new mode is requested to avoid flicker during rapid transitions.
 
 Q: How do you add a MAU (monthly active users) metric sourced from ClickHouse to the backend metrics endpoint?
@@ -112,8 +112,8 @@ A: Normalize picker dates to local midnight and pass `disabled={{ after: latestS
 Q: How should overview dashboard rows handle fixed chart heights across breakpoints?
 A: In `apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/metrics-page.tsx`, only apply fixed row heights like `h-[340px]` at the desktop layout breakpoint (`lg:`). When a two-column chart row collapses to one column, wrap each card in a `min-h-[340px]` container so stacked charts keep a usable height instead of being squeezed into the old shared row height.
 
-Q: How do we add Daily Active Users into the hero analytics chart modes while keeping the lower card focused on sign-ups?
-A: In `metrics-page.tsx`, keep DAU split data as `StackedDataPoint[]`, pass a time-filtered version to `HeroAnalyticsWidget` as the first in-card mode, and aggregate DAU totals into the shared `composedData` points as a `dau` field so `ComposedAnalyticsChart` can render a third line. Then remove `stackedChartData` from the lower `TabbedMetricsCard` so that card displays plain Daily Sign-Ups behavior while DAU remains in the hero.
+Q: How do we add Daily Active Users into the analytics chart modes while keeping the lower card focused on sign-ups?
+A: In `metrics-page.tsx`, keep DAU split data as `StackedDataPoint[]`, pass a time-filtered version to `AnalyticsChartWidget` as the first in-card mode, and aggregate DAU totals into the shared `composedData` points as a `dau` field so `ComposedAnalyticsChart` can render a third line. Then remove `stackedChartData` from the lower `TabbedMetricsCard` so that card displays plain Daily Sign-Ups behavior while DAU remains in the analytics chart widget.
 
 Q: Why can tuple corner radii on Recharts `Cell` fail TypeScript checks even though they work at runtime?
 A: In dashboard charts, `Cell` props are typed broadly from SVG attributes (`radius` as `string | number`), but Recharts bar rectangles accept tuple radii like `[4, 4, 0, 0]`. For stacked bars that need per-cell top-corner rounding, keep tuple `radius` on `Cell` and document it with `@ts-expect-error` at the specific line.

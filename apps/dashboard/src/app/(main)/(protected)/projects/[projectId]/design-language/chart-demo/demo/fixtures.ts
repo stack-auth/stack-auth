@@ -7,7 +7,7 @@ import {
   type AnalyticsChartState,
   type Annotation,
   type Point,
-} from "../analytics-chart";
+} from "@stackframe/dashboard-ui-components";
 
 const DAY_COUNT = 30;
 
@@ -17,7 +17,7 @@ export const SERIES: Point[] = Array.from({ length: DAY_COUNT }, (_, i) => {
   const wave = Math.sin(i * 0.48) * 78 + Math.cos(i * 0.21) * 34;
   const prev = base + (i * 9) + Math.sin(i * 0.52 + 1.4) * 62;
   return {
-    ts: Date.UTC(2026, 2, 7 + i), // Mar 7, 2026 → ~Apr 5
+    ts: Date.UTC(2026, 2, 7 + i),
     values: {
       signups: Math.max(0, Math.round(base + trend + wave)),
       previous: Math.max(0, Math.round(prev)),
@@ -42,8 +42,6 @@ export function allocateByWeight(total: number, weights: number[]): number[] {
   const floors = raw.map((r) => Math.floor(r));
   const base = floors.reduce((a, b) => a + b, 0);
   const remainder = total - base;
-  // Distribute the remainder one unit at a time to the segments with the
-  // largest fractional parts — Hamilton's method for apportioning seats.
   const order = raw
     .map((r, idx) => ({ idx, frac: r - Math.floor(r) }))
     .sort((a, b) => b.frac - a.frac);
@@ -76,9 +74,6 @@ export const ANNOTATIONS: Annotation[] = [
   { index: 24, label: "Exp", description: "A/B test launched — signup copy" },
 ];
 
-/** Demo-specific initial state: the same layer union the reusable chart
- * ships with, but pre-wired with the sign-ups breakdown matrix and an
- * in-progress marker on "today" (the last day of the demo window). */
 function wireDemoLayer(layer: AnalyticsChartLayer): AnalyticsChartLayer {
   if (layer.kind === "primary") {
     return {

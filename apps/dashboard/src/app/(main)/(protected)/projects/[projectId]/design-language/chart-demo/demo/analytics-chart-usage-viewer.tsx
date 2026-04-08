@@ -14,7 +14,7 @@ import type {
   Annotation,
   FormatKind,
   Point,
-} from "../analytics-chart";
+} from "@stackframe/dashboard-ui-components";
 
 function formatFormatKindLiteral(kind: FormatKind): string {
   const fields: string[] = [`type: "${kind.type}"`];
