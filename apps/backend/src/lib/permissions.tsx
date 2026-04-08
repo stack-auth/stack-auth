@@ -7,6 +7,7 @@ import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
 import { getOrUndefined, has, typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { overrideEnvironmentConfigOverride } from "./config";
+import { recordExternalDbSyncDeletion, withExternalDbSyncUpdate } from "./external-db-sync";
 import { Tenancy } from "./tenancies";
 import { PrismaTransaction } from "./types";
 
@@ -122,13 +123,13 @@ export async function grantTeamPermission(
         permissionId: options.permissionId,
       },
     },
-    create: {
+    create: withExternalDbSyncUpdate({
       tenancyId: options.tenancy.id,
       projectUserId: options.userId,
       teamId: options.teamId,
       permissionId: options.permissionId,
-    },
-    update: {},
+    }),
+    update: withExternalDbSyncUpdate({}),
   });
 
   return {
@@ -147,6 +148,24 @@ export async function revokeTeamPermission(
     permissionId: string,
   }
 ) {
+  const permissionRecord = await tx.teamMemberDirectPermission.findUniqueOrThrow({
+    where: {
+      tenancyId_projectUserId_teamId_permissionId: {
+        tenancyId: options.tenancy.id,
+        projectUserId: options.userId,
+        teamId: options.teamId,
+        permissionId: options.permissionId,
+      },
+    },
+    select: { id: true },
+  });
+
+  await recordExternalDbSyncDeletion(tx, {
+    tableName: "TeamMemberDirectPermission",
+    tenancyId: options.tenancy.id,
+    permissionDbId: permissionRecord.id,
+  });
+
   await tx.teamMemberDirectPermission.delete({
     where: {
       tenancyId_projectUserId_teamId_permissionId: {
@@ -313,9 +332,9 @@ export async function updatePermissionDefinition(
       tenancyId: options.tenancy.id,
       permissionId: options.oldId,
     },
-    data: {
+    data: withExternalDbSyncUpdate({
       permissionId: newId,
-    },
+    }),
   });
 
   await sourceOfTruthTx.projectUserDirectPermission.updateMany({
@@ -323,9 +342,9 @@ export async function updatePermissionDefinition(
       tenancyId: options.tenancy.id,
       permissionId: options.oldId,
     },
-    data: {
+    data: withExternalDbSyncUpdate({
       permissionId: newId,
-    },
+    }),
   });
 
   return {
@@ -419,6 +438,20 @@ export async function deletePermissionDefinition(
       },
     });
   } else {
+    const projectPermissions = await sourceOfTruthTx.projectUserDirectPermission.findMany({
+      where: {
+        tenancyId: options.tenancy.id,
+        permissionId: options.permissionId,
+      },
+      select: { id: true },
+    });
+    for (const perm of projectPermissions) {
+      await recordExternalDbSyncDeletion(sourceOfTruthTx, {
+        tableName: "ProjectUserDirectPermission",
+        tenancyId: options.tenancy.id,
+        permissionDbId: perm.id,
+      });
+    }
     await sourceOfTruthTx.projectUserDirectPermission.deleteMany({
       where: {
         tenancyId: options.tenancy.id,
@@ -452,12 +485,12 @@ export async function grantProjectPermission(
         permissionId: options.permissionId,
       },
     },
-    create: {
+    create: withExternalDbSyncUpdate({
       permissionId: options.permissionId,
       projectUserId: options.userId,
       tenancyId: options.tenancy.id,
-    },
-    update: {},
+    }),
+    update: withExternalDbSyncUpdate({}),
   });
 
   return {
@@ -474,6 +507,23 @@ export async function revokeProjectPermission(
     permissionId: string,
   }
 ) {
+  const permissionRecord = await tx.projectUserDirectPermission.findUniqueOrThrow({
+    where: {
+      tenancyId_projectUserId_permissionId: {
+        tenancyId: options.tenancy.id,
+        projectUserId: options.userId,
+        permissionId: options.permissionId,
+      },
+    },
+    select: { id: true },
+  });
+
+  await recordExternalDbSyncDeletion(tx, {
+    tableName: "ProjectUserDirectPermission",
+    tenancyId: options.tenancy.id,
+    permissionDbId: permissionRecord.id,
+  });
+
   await tx.projectUserDirectPermission.delete({
     where: {
       tenancyId_projectUserId_permissionId: {
