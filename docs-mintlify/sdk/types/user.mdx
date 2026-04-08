@@ -1,0 +1,2820 @@
+---
+title: "User"
+description: "Reference for CurrentUser, ServerUser, and CurrentServerUser types."
+sidebarTitle: "User"
+mode: "wide"
+---
+
+import {
+  AsideSection,
+  ClickableTableOfContents,
+  CollapsibleTypesSection,
+  ContentSection,
+  MethodAside,
+  MethodContent,
+  MethodLayout,
+  MethodReturns,
+} from "/snippets/sdk-type-components.jsx";
+
+export const CurrentUserSection = (props) => (
+  <CollapsibleTypesSection
+    badge={
+      <Badge color="green" size="sm" shape="pill">
+        currentUser
+      </Badge>
+    }
+    {...props}
+  />
+);
+
+export const ServerUserSection = (props) => (
+  <CollapsibleTypesSection
+    badge={
+      <Badge color="blue" size="sm" shape="pill">
+        serverUser
+      </Badge>
+    }
+    {...props}
+  />
+);
+
+This is a detailed reference for the `User` object. If you're looking for a more high-level overview, please refer to our guide on users [here](/guides/getting-started/user-fundamentals).
+
+On this page:
+
+- [CurrentUser](#currentuser)
+- [ServerUser](#serveruser)
+- [CurrentServerUser](#currentserveruser)
+
+# `CurrentUser`
+
+Use `useUser()` to get `CurrentUser` (client). Use `stackServerApp.getUser()` to get `CurrentServerUser` (server).
+
+## Table of Contents
+
+<ClickableTableOfContents
+  title="CurrentUser Table of Contents"
+  code={`type CurrentUser = {
+  id: string; //$stack-link-to:#currentuserid
+  displayName: string | null; //$stack-link-to:#currentuserdisplayname
+  primaryEmail: string | null; //$stack-link-to:#currentuserprimaryemail
+  primaryEmailVerified: boolean; //$stack-link-to:#currentuserprimaryemailverified
+  profileImageUrl: string | null; //$stack-link-to:#currentuserprofileimageurl
+  signedUpAt: Date; //$stack-link-to:#currentusersignedupat
+  hasPassword: boolean; //$stack-link-to:#currentuserhaspassword
+  clientMetadata: Json; //$stack-link-to:#currentuserclientmetadata
+  clientReadOnlyMetadata: Json; //$stack-link-to:#currentuserclientreadonlymetadata
+  selectedTeam: Team | null; //$stack-link-to:#currentuserselectedteam
+  currentSession: { ... }; //$stack-link-to:#currentusercurrentsession
+  otpAuthEnabled: boolean; //$stack-link-to:#currentuserotpauthenabled
+  passkeyAuthEnabled: boolean; //$stack-link-to:#currentuserpasskeyauthenabled
+  isMultiFactorRequired: boolean; //$stack-link-to:#currentuserismultifactorrequired
+  isAnonymous: boolean; //$stack-link-to:#currentuserisanonymous
+  isRestricted: boolean; //$stack-link-to:#currentuserisrestricted
+  restrictedReason: { ... } | null; //$stack-link-to:#currentuserrestrictedreason
+
+  update(data): Promise<void>; //$stack-link-to:#currentuserupdate
+  setDisplayName(displayName): Promise<void>; //$stack-link-to:#currentusersetdisplayname
+  setClientMetadata(metadata): Promise<void>; //$stack-link-to:#currentusersetclientmetadata
+  updatePassword(data): Promise<void>; //$stack-link-to:#currentuserupdatepassword
+  setPassword(options): Promise<void>; //$stack-link-to:#currentusersetpassword
+  delete(): Promise<void>; //$stack-link-to:#currentuserdelete
+  toClientJson(): CurrentUserCrud["Client"]["Read"]; //$stack-link-to:#currentusertoclientjson
+
+  getAuthHeaders(): Promise<Record<string, string>>; //$stack-link-to:#currentusergetauthheaders
+  useAuthHeaders(): Record<string, string>; //$stack-link-to:#currentuseruseauthheaders
+  getAccessToken(): Promise<string | null>; //$stack-link-to:#currentusergetaccesstoken
+  useAccessToken(): string | null; //$stack-link-to:#currentuseruseaccesstoken
+  getRefreshToken(): Promise<string | null>; //$stack-link-to:#currentusergetrefreshtoken
+  useRefreshToken(): string | null; //$stack-link-to:#currentuseruserefreshtoken
+  signOut([options]): Promise<void>; //$stack-link-to:#currentusersignout
+
+  getTeam(id): Promise<Team | null>; //$stack-link-to:#currentusergetteam
+  useTeam(id): Team | null; //$stack-link-to:#currentuseruseteam
+  listTeams(): Promise<Team[]>; //$stack-link-to:#currentuserlistteams
+  useTeams(): Team[]; //$stack-link-to:#currentuseruseteams
+  setSelectedTeam(team): Promise<void>; //$stack-link-to:#currentusersetselectedteam
+  createTeam(data): Promise<Team>; //$stack-link-to:#currentusercreateteam
+  leaveTeam(team): Promise<void>; //$stack-link-to:#currentuserleaveteam
+  getTeamProfile(team): Promise<EditableTeamMemberProfile>; //$stack-link-to:#currentusergetteamprofile
+  useTeamProfile(team): EditableTeamMemberProfile; //$stack-link-to:#currentuseruseteamprofile
+  listTeamInvitations(): Promise<ReceivedTeamInvitation[]>; //$stack-link-to:#currentuserlistteaminvitations
+  useTeamInvitations(): ReceivedTeamInvitation[]; //$stack-link-to:#currentuseruseteaminvitations
+
+  hasPermission(scope, permissionId): Promise<boolean>; //$stack-link-to:#currentuserhaspermission
+  getPermission(scope, permissionId[, options]): Promise<TeamPermission | null>; //$stack-link-to:#currentusergetpermission
+  usePermission(scope, permissionId[, options]): TeamPermission | null; //$stack-link-to:#currentuserusepermission
+  listPermissions(scope[, options]): Promise<TeamPermission[]>; //$stack-link-to:#currentuserlistpermissions
+  usePermissions(scope[, options]): TeamPermission[]; //$stack-link-to:#currentuserusepermissions
+
+  listContactChannels(): Promise<ContactChannel[]>; //$stack-link-to:#currentuserlistcontactchannels
+  useContactChannels(): ContactChannel[]; //$stack-link-to:#currentuserusecontactchannels
+  createContactChannel(data): Promise<ContactChannel>; //$stack-link-to:#currentusercreatecontactchannel
+  listNotificationCategories(): Promise<NotificationCategory[]>; //$stack-link-to:#currentuserlistnotificationcategories
+  useNotificationCategories(): NotificationCategory[]; //$stack-link-to:#currentuserusenotificationcategories
+
+  listConnectedAccounts(): Promise<OAuthConnection[]>; //$stack-link-to:#currentuserlistconnectedaccounts
+  useConnectedAccounts(): OAuthConnection[]; //$stack-link-to:#currentuseruseconnectedaccounts
+  linkConnectedAccount(provider[, options]): Promise<void>; //$stack-link-to:#currentuserlinkconnectedaccount
+  getOrLinkConnectedAccount(provider[, options]): Promise<OAuthConnection>; //$stack-link-to:#currentusergetorlinkconnectedaccount
+  useOrLinkConnectedAccount(provider[, options]): OAuthConnection; //$stack-link-to:#currentuseruseorlinkconnectedaccount
+  getOAuthProvider(id): Promise<OAuthProvider | null>; //$stack-link-to:#currentusergetoauthprovider
+  useOAuthProvider(id): OAuthProvider | null; //$stack-link-to:#currentuseruseoauthprovider
+  listOAuthProviders(): Promise<OAuthProvider[]>; //$stack-link-to:#currentuserlistoauthproviders
+  useOAuthProviders(): OAuthProvider[]; //$stack-link-to:#currentuseruseoauthproviders
+
+  registerPasskey([options]): Promise<Result<...>>; //$stack-link-to:#currentuserregisterpasskey
+  getActiveSessions(): Promise<ActiveSession[]>; //$stack-link-to:#currentusergetactivesessions
+  revokeSession(sessionId): Promise<void>; //$stack-link-to:#currentuserrevokesession
+
+  createApiKey(options): Promise<UserApiKeyFirstView>; //$stack-link-to:#currentusercreateapikey
+  listApiKeys(): Promise<UserApiKey[]>; //$stack-link-to:#currentuserlistapikeys
+  useApiKeys(): UserApiKey[]; //$stack-link-to:#currentuseruseapikeys
+
+  createCheckoutUrl(options): Promise<string>; //$stack-link-to:#currentusercreatecheckouturl
+  createPaymentMethodSetupIntent(): Promise<...>; //$stack-link-to:#currentusercreatepaymentmethodsetupintent
+  setDefaultPaymentMethodFromSetupIntent(id): Promise<...>; //$stack-link-to:#currentusersetdefaultpaymentmethodfromsetupintent
+  switchSubscription(options): Promise<void>; //$stack-link-to:#currentuserswitchsubscription
+  getBilling(): Promise<CustomerBilling>; //$stack-link-to:#currentusergetbilling
+  useBilling(): CustomerBilling; //$stack-link-to:#currentuserusebilling
+  getItem(itemId): Promise<Item>; //$stack-link-to:#currentusergetitem
+  useItem(itemId): Item; //$stack-link-to:#currentuseruseitem
+  listProducts([options]): Promise<CustomerProductsList>; //$stack-link-to:#currentuserlistproducts
+  useProducts([options]): CustomerProductsList; //$stack-link-to:#currentuseruseproducts
+  listInvoices([options]): Promise<CustomerInvoicesList>; //$stack-link-to:#currentuserlistinvoices
+  useInvoices([options]): CustomerInvoicesList; //$stack-link-to:#currentuseruseinvoices
+
+  // Deprecated
+  emailAuthEnabled: boolean; //$stack-link-to:#currentuseremailauthenabled
+  oauthProviders: readonly { id: string }[]; //$stack-link-to:#currentuseroauthproviders
+  sendVerificationEmail(): Promise<void>; //$stack-link-to:#currentusersendverificationemail
+  getAuthJson(): Promise<{ ... }>; //$stack-link-to:#currentusergetauthjson
+  useAuthJson(): { ... }; //$stack-link-to:#currentuseruseauthjson
+  getConnectedAccount(account): Promise<OAuthConnection | null>; //$stack-link-to:#currentusergetconnectedaccount
+  useConnectedAccount(account): OAuthConnection | null; //$stack-link-to:#currentuseruseconnectedaccount
+};`}
+/>
+
+## Properties
+
+<CurrentUserSection type="currentUser" property="id" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The user ID. This is the unique identifier of the user.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const id: string; ```
+    </MethodAside>
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection
+  type="currentUser"
+  property="displayName"
+  defaultOpen={false}
+>
+  <MethodLayout>
+    <MethodContent>
+      The display name of the user, or `null` if not set. The user can modify
+      this value.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const displayName: string | null; ```
+    </MethodAside>
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection
+  type="currentUser"
+  property="primaryEmail"
+  defaultOpen={false}
+>
+  <MethodLayout>
+    <MethodContent>
+      The primary email of the user. Note that this is not necessarily unique.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const primaryEmail: string | null; ```
+    </MethodAside>
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection
+  type="currentUser"
+  property="primaryEmailVerified"
+  defaultOpen={false}
+>
+  <MethodLayout>
+    <MethodContent>
+      Whether the primary email of the user is verified.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const primaryEmailVerified: boolean; ```
+    </MethodAside>
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection
+  type="currentUser"
+  property="profileImageUrl"
+  defaultOpen={false}
+>
+  <MethodLayout>
+    <MethodContent>
+      The profile image URL of the user, or `null` if no profile image is set.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const profileImageUrl: string | null; ```
+    </MethodAside>
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection
+  type="currentUser"
+  property="signedUpAt"
+  defaultOpen={false}
+>
+  <MethodLayout>
+    <MethodContent>The date and time when the user signed up.</MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const signedUpAt: Date; ```
+    </MethodAside>
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection
+  type="currentUser"
+  property="hasPassword"
+  defaultOpen={false}
+>
+  <MethodLayout>
+    <MethodContent>Whether the user has a password set.</MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const hasPassword: boolean; ```
+    </MethodAside>
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection
+  type="currentUser"
+  property="clientMetadata"
+  defaultOpen={false}
+>
+  <MethodLayout>
+    <MethodContent>
+      Client-visible custom metadata. This should not contain sensitive or
+      server-only information.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const clientMetadata: Json; ```
+    </MethodAside>
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection
+  type="currentUser"
+  property="clientReadOnlyMetadata"
+  defaultOpen={false}
+>
+  <MethodLayout>
+    <MethodContent>
+      Read-only metadata visible on the client side. It can only be modified on
+      the server side.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const clientReadOnlyMetadata: Json; ```
+    </MethodAside>
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection
+  type="currentUser"
+  property="selectedTeam"
+  defaultOpen={false}
+>
+  <MethodLayout>
+    <MethodContent>
+      The currently selected team for the user, or `null` if no team is
+      selected.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const selectedTeam: Team | null; ```
+    </MethodAside>
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection
+  type="currentUser"
+  property="currentSession"
+  defaultOpen={false}
+>
+  <MethodLayout>
+    <MethodContent>
+      The current session object, which provides access to authentication tokens.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript
+      declare const currentSession: {
+        getTokens(): Promise<{ accessToken: string | null; refreshToken: string | null }>;
+        useTokens(): { accessToken: string | null; refreshToken: string | null };
+      };
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection
+  type="currentUser"
+  property="otpAuthEnabled"
+  defaultOpen={false}
+>
+  <MethodLayout>
+    <MethodContent>
+      Whether OTP (one-time password) authentication is enabled for this user.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const otpAuthEnabled: boolean; ```
+    </MethodAside>
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection
+  type="currentUser"
+  property="passkeyAuthEnabled"
+  defaultOpen={false}
+>
+  <MethodLayout>
+    <MethodContent>
+      Whether passkey authentication is enabled for this user.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const passkeyAuthEnabled: boolean; ```
+    </MethodAside>
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection
+  type="currentUser"
+  property="isMultiFactorRequired"
+  defaultOpen={false}
+>
+  <MethodLayout>
+    <MethodContent>
+      Whether multi-factor authentication is required for this user.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const isMultiFactorRequired: boolean; ```
+    </MethodAside>
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection
+  type="currentUser"
+  property="isAnonymous"
+  defaultOpen={false}
+>
+  <MethodLayout>
+    <MethodContent>
+      Whether this is an anonymous user (signed in without credentials).
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const isAnonymous: boolean; ```
+    </MethodAside>
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection
+  type="currentUser"
+  property="isRestricted"
+  defaultOpen={false}
+>
+  <MethodLayout>
+    <MethodContent>
+      Whether the user is restricted from performing certain actions.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const isRestricted: boolean; ```
+    </MethodAside>
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection
+  type="currentUser"
+  property="restrictedReason"
+  defaultOpen={false}
+>
+  <MethodLayout>
+    <MethodContent>
+      The reason why the user is restricted, or `null` if the user is not restricted.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript
+      declare const restrictedReason: {
+        type: "anonymous" | "email_not_verified" | "restricted_by_administrator";
+      } | null;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CurrentUserSection>
+
+## Profile Management
+
+<CurrentUserSection type="currentUser" property="update" signature="data" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Updates multiple fields of the user at once.
+
+      <ContentSection title="Parameters">
+        <ParamField body="data" type="object" required>
+          The fields to update on the user.
+          <Expandable>
+            <ParamField body="displayName" type="string | null">
+              The new display name for the user.
+            </ParamField>
+
+            <ParamField body="clientMetadata" type="ReadonlyJson">
+              Custom metadata visible to the client.
+            </ParamField>
+
+            <ParamField body="selectedTeamId" type="string | null">
+              The ID of the team to set as selected, or `null` to clear selection.
+            </ParamField>
+
+            <ParamField body="profileImageUrl" type="string | null">
+              The URL of the user's new profile image, or `null` to remove it.
+            </ParamField>
+
+            <ParamField body="totpMultiFactorSecret" type="Uint8Array | null">
+              The TOTP multi-factor authentication secret, or `null` to disable.
+            </ParamField>
+
+            <ParamField body="otpAuthEnabled" type="boolean">
+              Whether to enable OTP authentication.
+            </ParamField>
+
+            <ParamField body="passkeyAuthEnabled" type="boolean">
+              Whether to enable passkey authentication.
+            </ParamField>
+
+            <ParamField body="primaryEmail" type="string | null">
+              The new primary email address.
+            </ParamField>
+          </Expandable>
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<void>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function update(data: {
+          displayName?: string | null;
+          clientMetadata?: ReadonlyJson;
+          selectedTeamId?: string | null;
+          profileImageUrl?: string | null;
+          totpMultiFactorSecret?: Uint8Array | null;
+          otpAuthEnabled?: boolean;
+          passkeyAuthEnabled?: boolean;
+          primaryEmail?: string | null;
+        }): Promise<void>;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        await user.update({
+          displayName: "New Display Name",
+          clientMetadata: {
+            address: "123 Main St",
+          },
+        });
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="setDisplayName" signature="displayName" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Sets the display name of the user.
+
+      <ContentSection title="Parameters">
+        <ParamField body="displayName" type="string | null" required>
+          The new display name, or `null` to clear it.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<void>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function setDisplayName(displayName: string | null): Promise<void>;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        await user.setDisplayName("John Doe");
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="setClientMetadata" signature="metadata" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Sets the client metadata for the user.
+
+      <ContentSection title="Parameters">
+        <ParamField body="metadata" type="Json" required>
+          The new client metadata value.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<void>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function setClientMetadata(metadata: any): Promise<void>;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        await user.setClientMetadata({ theme: "dark", locale: "en" });
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="updatePassword" signature="data" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Changes password with old and new password validation.
+
+      <ContentSection title="Parameters">
+        <ParamField body="data" type="object" required>
+          Password change inputs.
+          <Expandable>
+            <ParamField body="oldPassword" type="string" required>
+              The user's current password.
+            </ParamField>
+
+            <ParamField body="newPassword" type="string" required>
+              The new password to set.
+            </ParamField>
+          </Expandable>
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<void>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function updatePassword(data: {
+          oldPassword: string;
+          newPassword: string;
+        }): Promise<void>;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        await user.updatePassword({
+          oldPassword: "old-password",
+          newPassword: "new-password",
+        });
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="setPassword" signature="options" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Sets a password for the user without requiring the current password.
+
+      <ContentSection title="Parameters">
+        <ParamField body="options.password" type="string" required>
+          The new password to set.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<void>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function setPassword(options: {
+          password: string;
+        }): Promise<void>;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        await user.setPassword({ password: "new-secure-password" });
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="toClientJson" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Converts the user object to the format expected by the Stack Auth API. Useful for serializing user data in API responses or caching.
+
+      <MethodReturns type='CurrentUserCrud["Client"]["Read"]' />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function toClientJson(): CurrentUserCrud["Client"]["Read"];
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        const user = useUser();
+        const json = user.toClientJson();
+        localStorage.setItem("cachedUser", JSON.stringify(json));
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+## Authentication
+
+<CurrentUserSection type="currentUser" property="getAuthHeaders" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Returns headers for cross-origin authenticated requests.
+
+      <MethodReturns type="Promise<Record<string, string>>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function getAuthHeaders(): Promise<Record<string, string>>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="useAuthHeaders" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      React hook that returns authentication headers for cross-origin requests.
+
+      <MethodReturns type='Record<string, string>' />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function useAuthHeaders(): Record<string, string>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="getAccessToken" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Returns the current access token, or `null` if the user is not signed in. The access token is a short-lived JWT that is automatically refreshed when it expires.
+
+      <MethodReturns type="Promise<string | null>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function getAccessToken(): Promise<string | null>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="useAccessToken" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      React hook that returns the current access token, or `null` if not signed in.
+
+      <MethodReturns type="string | null" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function useAccessToken(): string | null;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="getRefreshToken" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Returns the current refresh token, or `null` if the user is not signed in. The refresh token is a long-lived token used to obtain new access tokens.
+
+      <MethodReturns type="Promise<string | null>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function getRefreshToken(): Promise<string | null>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="useRefreshToken" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      React hook that returns the current refresh token, or `null` if not signed in.
+
+      <MethodReturns type="string | null" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function useRefreshToken(): string | null;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="signOut" signature="[options]" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Signs out the user with an optional redirect URL.
+
+      <ContentSection title="Parameters">
+        <ParamField body="options.redirectUrl" type="string">
+          URL to redirect to after sign-out.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<void>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function signOut(options?: {
+          redirectUrl?: string;
+        }): Promise<void>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="delete" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Permanently deletes the user account. Requires client-side deletion to be enabled in the project settings.
+
+      <MethodReturns type="Promise<void>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function delete(): Promise<void>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+## Team Management
+
+<CurrentUserSection type="currentUser" property="getTeam" signature="id" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Gets the team with the specified ID.
+
+      <ContentSection title="Parameters">
+        <ParamField body="id" type="string" required>
+          The ID of the team to get.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<Team | null>">
+        The team object, or `null` if the team is not found or the user is not a member.
+      </MethodReturns>
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function getTeam(id: string): Promise<Team | null>;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        const team = await user.getTeam("teamId");
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="useTeam" signature="id" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      React hook version of `getTeam`.
+
+      <ContentSection title="Parameters">
+        <ParamField body="id" type="string" required>
+          The ID of the team to get.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Team | null" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function useTeam(id: string): Team | null;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="listTeams" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Lists all the teams the user is a member of.
+
+      <MethodReturns type="Promise<Team[]>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function listTeams(): Promise<Team[]>;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        const teams = await user.listTeams();
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="useTeams" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      React hook version of `listTeams`.
+
+      <MethodReturns type="Team[]" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function useTeams(): Team[];
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="setSelectedTeam" signature="team" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Sets the currently selected team for the user.
+
+      <ContentSection title="Parameters">
+        <ParamField body="team" type="Team | null" required>
+          The team to set as selected, or `null` to clear selection.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<void>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function setSelectedTeam(team: Team | null): Promise<void>;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        const team = await user.getTeam("team_id_123");
+        await user.setSelectedTeam(team);
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="createTeam" signature="data" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Creates a new team for the user. The user will be added to the team and given creator permissions.
+
+      <ContentSection title="Parameters">
+        <ParamField body="data" type="object" required>
+          Team creation options.
+          <Expandable>
+            <ParamField body="displayName" type="string">
+              The display name for the team.
+            </ParamField>
+
+            <ParamField body="profileImageUrl" type="string | null">
+              The URL of the team's profile image.
+            </ParamField>
+          </Expandable>
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<Team>" />
+
+      <Info>
+      If client-side team creation is disabled in the Stack dashboard, this will throw an error.
+      </Info>
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function createTeam(data: {
+          displayName?: string;
+          profileImageUrl?: string | null;
+        }): Promise<Team>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="leaveTeam" signature="team" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Removes the user from the specified team.
+
+      <ContentSection title="Parameters">
+        <ParamField body="team" type="Team" required>
+          The team to leave.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<void>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function leaveTeam(team: Team): Promise<void>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="getTeamProfile" signature="team" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Retrieves the user's profile within a specific team.
+
+      <ContentSection title="Parameters">
+        <ParamField body="team" type="Team" required>
+          The team to get the profile for.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<EditableTeamMemberProfile>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function getTeamProfile(team: Team): Promise<EditableTeamMemberProfile>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="useTeamProfile" signature="team" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      React hook version of `getTeamProfile`.
+
+      <ContentSection title="Parameters">
+        <ParamField body="team" type="Team" required>
+          The team to get the profile for.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="EditableTeamMemberProfile" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function useTeamProfile(team: Team): EditableTeamMemberProfile;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="listTeamInvitations" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Lists all pending team invitations sent to any of the current user's verified email addresses.
+
+      <MethodReturns type="Promise<ReceivedTeamInvitation[]>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function listTeamInvitations(): Promise<ReceivedTeamInvitation[]>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="useTeamInvitations" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      React hook version of `listTeamInvitations`. Automatically re-renders when invitations change.
+
+      <MethodReturns type="ReceivedTeamInvitation[]" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function useTeamInvitations(): ReceivedTeamInvitation[];
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+## Permissions
+
+<CurrentUserSection type="currentUser" property="hasPermission" signature="scope, permissionId" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Checks if the user has a specific permission within a team.
+
+      <ContentSection title="Parameters">
+        <ParamField body="scope" type="Team" required>
+          The team scope.
+        </ParamField>
+
+        <ParamField body="permissionId" type="string" required>
+          The permission identifier.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<boolean>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function hasPermission(scope: Team, permissionId: string): Promise<boolean>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="getPermission" signature="scope, permissionId, [options]" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Retrieves a specific permission with optional recursive lookup.
+
+      <ContentSection title="Parameters">
+        <ParamField body="scope" type="Team" required>
+          The team scope.
+        </ParamField>
+
+        <ParamField body="permissionId" type="string" required>
+          The permission identifier.
+        </ParamField>
+
+        <ParamField body="options.recursive" type="boolean">
+          Whether to look up permissions recursively.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<TeamPermission | null>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function getPermission(
+          scope: Team,
+          permissionId: string,
+          options?: { recursive?: boolean },
+        ): Promise<TeamPermission | null>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="usePermission" signature="scope, permissionId, [options]" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      React hook version of `getPermission`.
+
+      <ContentSection title="Parameters">
+        <ParamField body="scope" type="Team" required>
+          The team scope.
+        </ParamField>
+
+        <ParamField body="permissionId" type="string" required>
+          The permission identifier.
+        </ParamField>
+
+        <ParamField body="options.recursive" type="boolean">
+          Whether to look up permissions recursively.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="TeamPermission | null" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function usePermission(
+          scope: Team,
+          permissionId: string,
+          options?: { recursive?: boolean },
+        ): TeamPermission | null;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="listPermissions" signature="scope, [options]" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Lists all permissions for a team.
+
+      <ContentSection title="Parameters">
+        <ParamField body="scope" type="Team" required>
+          The team scope.
+        </ParamField>
+
+        <ParamField body="options.recursive" type="boolean">
+          Whether to list permissions recursively.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<TeamPermission[]>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function listPermissions(
+          scope: Team,
+          options?: { recursive?: boolean },
+        ): Promise<TeamPermission[]>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="usePermissions" signature="scope, [options]" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      React hook version of `listPermissions`.
+
+      <ContentSection title="Parameters">
+        <ParamField body="scope" type="Team" required>
+          The team scope.
+        </ParamField>
+
+        <ParamField body="options.recursive" type="boolean">
+          Whether to list permissions recursively.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="TeamPermission[]" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function usePermissions(
+          scope: Team,
+          options?: { recursive?: boolean },
+        ): TeamPermission[];
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+## Contact Channels
+
+<CurrentUserSection type="currentUser" property="listContactChannels" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Lists the user's contact channels.
+
+      <MethodReturns type="Promise<ContactChannel[]>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function listContactChannels(): Promise<ContactChannel[]>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="useContactChannels" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      React hook version of `listContactChannels`.
+
+      <MethodReturns type="ContactChannel[]" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function useContactChannels(): ContactChannel[];
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="createContactChannel" signature="data" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Creates a new contact channel for the user.
+
+      <ContentSection title="Parameters">
+        <ParamField body="data" type="object" required>
+          Contact channel creation options.
+          <Expandable>
+            <ParamField body="value" type="string" required>
+              The value of the contact channel (e.g., email address).
+            </ParamField>
+
+            <ParamField body="type" type='"email"' required>
+              The type of contact channel. Currently always `"email"`.
+            </ParamField>
+
+            <ParamField body="usedForAuth" type="boolean" required>
+              Whether this contact channel can be used for authentication.
+            </ParamField>
+
+            <ParamField body="isPrimary" type="boolean">
+              Whether this should be set as the user's primary contact channel.
+            </ParamField>
+          </Expandable>
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<ContactChannel>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function createContactChannel(data: {
+          value: string;
+          type: "email";
+          usedForAuth: boolean;
+          isPrimary?: boolean;
+        }): Promise<ContactChannel>;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        const channel = await user.createContactChannel({
+          type: "email",
+          value: "backup@example.com",
+          usedForAuth: true,
+        });
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="listNotificationCategories" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Lists all notification categories.
+
+      <MethodReturns type="Promise<NotificationCategory[]>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function listNotificationCategories(): Promise<NotificationCategory[]>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="useNotificationCategories" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      React hook to get all notification categories.
+
+      <MethodReturns type="NotificationCategory[]" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function useNotificationCategories(): NotificationCategory[];
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+## OAuth Connections
+
+<CurrentUserSection type="currentUser" property="listConnectedAccounts" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Lists all connected accounts.
+
+      <MethodReturns type="Promise<OAuthConnection[]>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function listConnectedAccounts(): Promise<OAuthConnection[]>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="useConnectedAccounts" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      React hook version of `listConnectedAccounts`.
+
+      <MethodReturns type="OAuthConnection[]" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function useConnectedAccounts(): OAuthConnection[];
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="linkConnectedAccount" signature="provider, [options]" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Initiates an OAuth flow to link a new account.
+
+      <ContentSection title="Parameters">
+        <ParamField body="provider" type="string" required>
+          The OAuth provider.
+        </ParamField>
+
+        <ParamField body="options.scopes" type="string[]">
+          Requested scopes.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<void>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function linkConnectedAccount(
+          provider: string,
+          options?: { scopes?: string[] },
+        ): Promise<void>;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        await user.linkConnectedAccount("google", {
+          scopes: ["email", "profile"],
+        });
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="getOrLinkConnectedAccount" signature="provider, [options]" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Gets an existing connected account or redirects to link if it is missing or has insufficient scopes.
+
+      <ContentSection title="Parameters">
+        <ParamField body="provider" type="string" required>
+          The OAuth provider.
+        </ParamField>
+
+        <ParamField body="options.scopes" type="string[]">
+          Requested scopes.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<OAuthConnection>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function getOrLinkConnectedAccount(
+          provider: string,
+          options?: { scopes?: string[] },
+        ): Promise<OAuthConnection>;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        const googleConnection = await user.getOrLinkConnectedAccount("google", {
+          scopes: ["email", "profile"],
+        });
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="useOrLinkConnectedAccount" signature="provider, [options]" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      React hook version of `getOrLinkConnectedAccount`.
+
+      <ContentSection title="Parameters">
+        <ParamField body="provider" type="string" required>
+          The OAuth provider.
+        </ParamField>
+
+        <ParamField body="options.scopes" type="string[]">
+          Requested scopes.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="OAuthConnection" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function useOrLinkConnectedAccount(
+          provider: string,
+          options?: { scopes?: string[] },
+        ): OAuthConnection;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="getOAuthProvider" signature="id" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Gets a specific OAuth provider by ID.
+
+      <ContentSection title="Parameters">
+        <ParamField body="id" type="string" required>
+          The OAuth provider ID.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<OAuthProvider | null>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function getOAuthProvider(id: string): Promise<OAuthProvider | null>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="useOAuthProvider" signature="id" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      React hook to get a specific OAuth provider by ID.
+
+      <ContentSection title="Parameters">
+        <ParamField body="id" type="string" required>
+          The OAuth provider ID.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="OAuthProvider | null" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function useOAuthProvider(id: string): OAuthProvider | null;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="listOAuthProviders" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Lists all OAuth providers connected to the user.
+
+      <MethodReturns type="Promise<OAuthProvider[]>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function listOAuthProviders(): Promise<OAuthProvider[]>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="useOAuthProviders" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      React hook to get all OAuth providers connected to the user.
+
+      <MethodReturns type="OAuthProvider[]" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function useOAuthProviders(): OAuthProvider[];
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+## Passkeys & Sessions
+
+<CurrentUserSection type="currentUser" property="registerPasskey" signature="[options]" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Registers a passkey for the user for passwordless authentication.
+
+      <ContentSection title="Parameters">
+        <ParamField body="options.hostname" type="string">
+          The hostname to associate with the passkey.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<Result<undefined, KnownErrors>>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function registerPasskey(options?: {
+          hostname?: string;
+        }): Promise<Result<undefined, KnownErrors["PasskeyRegistrationFailed"] | KnownErrors["PasskeyWebAuthnError"]>>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="getActiveSessions" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Gets all active sessions for the user.
+
+      <MethodReturns type="Promise<ActiveSession[]>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function getActiveSessions(): Promise<ActiveSession[]>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="revokeSession" signature="sessionId" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Revokes a specific session for the user.
+
+      <ContentSection title="Parameters">
+        <ParamField body="sessionId" type="string" required>
+          The ID of the session to revoke.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<void>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function revokeSession(sessionId: string): Promise<void>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+## API Keys
+
+<CurrentUserSection type="currentUser" property="createApiKey" signature="options" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Creates a new API key.
+
+      <ContentSection title="Parameters">
+        <ParamField body="options" type="object" required>
+          API key creation options.
+          <Expandable>
+            <ParamField body="description" type="string" required>
+              Purpose explanation for the key.
+            </ParamField>
+
+            <ParamField body="expiresAt" type="Date | null" required>
+              Expiration date, or `null` for no expiration.
+            </ParamField>
+
+            <ParamField body="isPublic" type="boolean">
+              Defaults to `false`. Secret keys are scanned for exposure.
+            </ParamField>
+          </Expandable>
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<UserApiKeyFirstView>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function createApiKey(options: {
+          description: string;
+          expiresAt: Date | null;
+          isPublic?: boolean;
+        }): Promise<UserApiKeyFirstView>;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        const apiKey = await user.createApiKey({
+          description: "CI token",
+          expiresAt: null,
+        });
+        console.log(apiKey);
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="listApiKeys" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Lists the user's API keys.
+
+      <MethodReturns type="Promise<UserApiKey[]>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function listApiKeys(): Promise<UserApiKey[]>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="useApiKeys" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      React hook version of `listApiKeys`.
+
+      <MethodReturns type="UserApiKey[]" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function useApiKeys(): UserApiKey[];
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+## Billing & Payments
+
+<CurrentUserSection type="currentUser" property="createCheckoutUrl" signature="options" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Generates a Stripe checkout URL for purchasing a product.
+
+      <ContentSection title="Parameters">
+        <ParamField body="options.productId" type="string">
+          The ID of the product to purchase.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<string>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function createCheckoutUrl(options: {
+          productId: string;
+        }): Promise<string>;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        const checkoutUrl = await user.createCheckoutUrl({
+          productId: "prod_premium_monthly",
+        });
+        window.location.href = checkoutUrl;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="getItem" signature="itemId" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Retrieves item details such as credits or subscriptions.
+
+      <ContentSection title="Parameters">
+        <ParamField body="itemId" type="string">
+          The ID of the item to retrieve.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<Item>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function getItem(itemId: string): Promise<Item>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="useItem" signature="itemId" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      React hook version of `getItem`.
+
+      <ContentSection title="Parameters">
+        <ParamField body="itemId" type="string">
+          The ID of the item to retrieve.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Item" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function useItem(itemId: string): Item;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="createPaymentMethodSetupIntent" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Creates a Stripe setup intent for adding a payment method.
+
+      <MethodReturns type="Promise<CustomerPaymentMethodSetupIntent>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function createPaymentMethodSetupIntent(): Promise<CustomerPaymentMethodSetupIntent>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="setDefaultPaymentMethodFromSetupIntent" signature="setupIntentId" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Sets the default payment method from a completed setup intent.
+
+      <ContentSection title="Parameters">
+        <ParamField body="setupIntentId" type="string" required>
+          The ID of the completed setup intent.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<CustomerDefaultPaymentMethod>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function setDefaultPaymentMethodFromSetupIntent(
+          setupIntentId: string,
+        ): Promise<CustomerDefaultPaymentMethod>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="switchSubscription" signature="options" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Switches a subscription from one product to another.
+
+      <ContentSection title="Parameters">
+        <ParamField body="options" type="object" required>
+          Subscription switch options.
+          <Expandable>
+            <ParamField body="fromProductId" type="string" required>
+              The product ID to switch from.
+            </ParamField>
+
+            <ParamField body="toProductId" type="string" required>
+              The product ID to switch to.
+            </ParamField>
+
+            <ParamField body="priceId" type="string">
+              A specific price ID to use.
+            </ParamField>
+
+            <ParamField body="quantity" type="number">
+              The quantity for the new subscription.
+            </ParamField>
+          </Expandable>
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<void>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function switchSubscription(options: {
+          fromProductId: string;
+          toProductId: string;
+          priceId?: string;
+          quantity?: number;
+        }): Promise<void>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="getBilling" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Returns the billing information for the user.
+
+      <MethodReturns type="Promise<CustomerBilling>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function getBilling(): Promise<CustomerBilling>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="useBilling" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      React hook that returns the billing information.
+
+      <MethodReturns type="CustomerBilling" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function useBilling(): CustomerBilling;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="listProducts" signature="[options]" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Returns all products available to the user.
+
+      <MethodReturns type="Promise<CustomerProductsList>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function listProducts(options?: CustomerProductsListOptions): Promise<CustomerProductsList>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="useProducts" signature="[options]" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      React hook that returns all products.
+
+      <MethodReturns type="CustomerProductsList" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function useProducts(options?: CustomerProductsListOptions): CustomerProductsList;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="listInvoices" signature="[options]" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Returns all invoices for the user.
+
+      <MethodReturns type="Promise<CustomerInvoicesList>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function listInvoices(options?: CustomerInvoicesListOptions): Promise<CustomerInvoicesList>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="useInvoices" signature="[options]" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      React hook that returns all invoices.
+
+      <MethodReturns type="CustomerInvoicesList" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function useInvoices(options?: CustomerInvoicesListOptions): CustomerInvoicesList;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+## Deprecated
+
+<CurrentUserSection type="currentUser" property="emailAuthEnabled" deprecated defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Whether email-based authentication is enabled for this user.
+
+      <Warning>**Deprecated:** Use contact channel's `usedForAuth` instead.</Warning>
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const emailAuthEnabled: boolean; ```
+    </MethodAside>
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="oauthProviders" deprecated defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The OAuth providers connected to this user account.
+
+      <Warning>**Deprecated:** Use `getConnectedAccount()` instead.</Warning>
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const oauthProviders: readonly { id: string }[]; ```
+    </MethodAside>
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="sendVerificationEmail" deprecated defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Sends a verification email to the user's primary email address.
+
+      <Warning>**Deprecated:** Use contact channel's `sendVerificationEmail` instead.</Warning>
+
+      <MethodReturns type="Promise<void>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function sendVerificationEmail(): Promise<void>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="getAuthJson" deprecated defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Returns a JSON object with `accessToken` for non-HTTP protocols.
+
+      <Warning>**Deprecated:** Use `getAccessToken()` and `getRefreshToken()` instead.</Warning>
+
+      <MethodReturns type="Promise<{ accessToken: string | null }>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function getAuthJson(): Promise<{ accessToken: string | null }>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="useAuthJson" deprecated defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      React hook that returns the auth JSON.
+
+      <Warning>**Deprecated:** Use `useAccessToken()` and `useRefreshToken()` instead.</Warning>
+
+      <MethodReturns type="{ accessToken: string | null, refreshToken: string | null }" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function useAuthJson(): { accessToken: string | null; refreshToken: string | null };
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="getConnectedAccount" signature="account" deprecated defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Retrieves a specific connected account.
+
+      <Warning>**Deprecated:** Use `getOrLinkConnectedAccount` for redirect behavior, or `getConnectedAccount(\{ provider, providerAccountId \})` for existence check.</Warning>
+
+      <ContentSection title="Parameters">
+        <ParamField body="account" type="object" required>
+          Connected account identifier.
+          <Expandable>
+            <ParamField body="provider" type="string" required>
+              The provider identifier.
+            </ParamField>
+
+            <ParamField body="providerAccountId" type="string" required>
+              The provider account identifier.
+            </ParamField>
+          </Expandable>
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<OAuthConnection | null>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function getConnectedAccount(account: {
+          provider: string;
+          providerAccountId: string;
+        }): Promise<OAuthConnection | null>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="useConnectedAccount" signature="account" deprecated defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      React hook version of `getConnectedAccount`.
+
+      <Warning>**Deprecated:** Use `useOrLinkConnectedAccount` for redirect behavior, or `useConnectedAccount(\{ provider, providerAccountId \})` for existence check.</Warning>
+
+      <ContentSection title="Parameters">
+        <ParamField body="account" type="object" required>
+          Connected account identifier.
+          <Expandable>
+            <ParamField body="provider" type="string" required>
+              The provider identifier.
+            </ParamField>
+
+            <ParamField body="providerAccountId" type="string" required>
+              The provider account identifier.
+            </ParamField>
+          </Expandable>
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="OAuthConnection | null" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function useConnectedAccount(account: {
+          provider: string;
+          providerAccountId: string;
+        }): OAuthConnection | null;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+---
+
+# `ServerUser`
+
+Accessible via `stackServerApp.getUser()` on the server. `ServerUser` inherits most `CurrentUser` functionality minus session-dependent methods like `getAuthJson()` and `signOut()`.
+
+## Table of Contents
+
+<ClickableTableOfContents
+  title="ServerUser Table of Contents"
+  code={`type ServerUser =
+  // Inherits most functionality from CurrentUser
+  & Omit<CurrentUser, "getAuthJson" | "signOut">; //$stack-link-to:#currentuser
+  & {
+    lastActiveAt: Date; //$stack-link-to:#serveruserlastactiveat
+    serverMetadata: Json; //$stack-link-to:#serveruserservermetadata
+    restrictedByAdmin: boolean; //$stack-link-to:#serveruserrestrictedbyadmin
+    restrictedByAdminReason: string | null; //$stack-link-to:#serveruserrestrictedbyadminreason
+    restrictedByAdminPrivateDetails: string | null; //$stack-link-to:#serveruserrestrictedbyadminprivatedetails
+    countryCode: string | null; //$stack-link-to:#serverusercountrycode
+    riskScores: { signUp: { bot: number; freeTrialAbuse: number } }; //$stack-link-to:#serveruserriskscores
+
+    update(data): Promise<void>; //$stack-link-to:#serveruserupdate
+    setPrimaryEmail(email[, options]): Promise<void>; //$stack-link-to:#serverusersetprimaryemail
+    setServerMetadata(metadata): Promise<void>; //$stack-link-to:#serverusersetservermetadata
+    setClientReadOnlyMetadata(metadata): Promise<void>; //$stack-link-to:#serverusersetclientreadonlymetadata
+    grantPermission(scope, permissionId): Promise<void>; //$stack-link-to:#serverusergrantpermission
+    revokePermission(scope, permissionId): Promise<void>; //$stack-link-to:#serveruserrevokepermission
+    listContactChannels(): Promise<ServerContactChannel[]>; //$stack-link-to:#serveruserlistcontactchannels
+    createSession([options]): Promise<{ getTokens(): ... }>; //$stack-link-to:#serverusercreatesession
+    grantProduct(product): Promise<void>; //$stack-link-to:#serverusergrantproduct
+};`}
+/>
+
+## Additional Properties
+
+<ServerUserSection
+  type="serverUser"
+  property="lastActiveAt"
+  defaultOpen={false}
+>
+  <MethodLayout>
+    <MethodContent>Last user activity timestamp.</MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const lastActiveAt: Date; ```
+    </MethodAside>
+  </MethodLayout>
+</ServerUserSection>
+
+<ServerUserSection
+  type="serverUser"
+  property="serverMetadata"
+  defaultOpen={false}
+>
+  <MethodLayout>
+    <MethodContent>Server-only accessible metadata.</MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const serverMetadata: Json; ```
+    </MethodAside>
+  </MethodLayout>
+</ServerUserSection>
+
+<ServerUserSection
+  type="serverUser"
+  property="restrictedByAdmin"
+  defaultOpen={false}
+>
+  <MethodLayout>
+    <MethodContent>Whether the user has been restricted by an administrator.</MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const restrictedByAdmin: boolean; ```
+    </MethodAside>
+  </MethodLayout>
+</ServerUserSection>
+
+<ServerUserSection
+  type="serverUser"
+  property="restrictedByAdminReason"
+  defaultOpen={false}
+>
+  <MethodLayout>
+    <MethodContent>The public reason why the user was restricted by an admin, or `null` if not restricted.</MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const restrictedByAdminReason: string | null; ```
+    </MethodAside>
+  </MethodLayout>
+</ServerUserSection>
+
+<ServerUserSection
+  type="serverUser"
+  property="restrictedByAdminPrivateDetails"
+  defaultOpen={false}
+>
+  <MethodLayout>
+    <MethodContent>Private details about the admin restriction (only visible server-side), or `null` if not restricted.</MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const restrictedByAdminPrivateDetails: string | null; ```
+    </MethodAside>
+  </MethodLayout>
+</ServerUserSection>
+
+<ServerUserSection
+  type="serverUser"
+  property="countryCode"
+  defaultOpen={false}
+>
+  <MethodLayout>
+    <MethodContent>The country code of the user based on their IP address, or `null` if unknown.</MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const countryCode: string | null; ```
+    </MethodAside>
+  </MethodLayout>
+</ServerUserSection>
+
+<ServerUserSection
+  type="serverUser"
+  property="riskScores"
+  defaultOpen={false}
+>
+  <MethodLayout>
+    <MethodContent>Risk scores computed during sign-up, useful for fraud detection.</MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript
+      declare const riskScores: {
+        readonly signUp: {
+          readonly bot: number;
+          readonly freeTrialAbuse: number;
+        };
+      };
+      ```
+    </MethodAside>
+  </MethodLayout>
+</ServerUserSection>
+
+## Additional Methods
+
+<ServerUserSection type="serverUser" property="update" signature="data" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Extended update supporting server-only fields.
+
+      <ContentSection title="Parameters">
+        <ParamField body="data" type="ServerUserUpdateOptions" required>
+          The fields to update on the user.
+          <Expandable>
+            <ParamField body="displayName" type="string | null">
+              Display name.
+            </ParamField>
+
+            <ParamField body="primaryEmail" type="string | null">
+              Set the primary email.
+            </ParamField>
+
+            <ParamField body="primaryEmailVerified" type="boolean">
+              Set email verification status.
+            </ParamField>
+
+            <ParamField body="primaryEmailAuthEnabled" type="boolean">
+              Enable or disable email auth.
+            </ParamField>
+
+            <ParamField body="password" type="string">
+              Set a new password.
+            </ParamField>
+
+            <ParamField body="clientMetadata" type="Json">
+              Client metadata.
+            </ParamField>
+
+            <ParamField body="clientReadOnlyMetadata" type="Json">
+              Client read-only metadata.
+            </ParamField>
+
+            <ParamField body="serverMetadata" type="Json">
+              Server-only metadata.
+            </ParamField>
+
+            <ParamField body="selectedTeamId" type="string | null">
+              Selected team ID.
+            </ParamField>
+
+            <ParamField body="profileImageUrl" type="string | null">
+              Profile image URL.
+            </ParamField>
+
+            <ParamField body="totpMultiFactorSecret" type="Uint8Array | null">
+              TOTP multi-factor authentication secret.
+            </ParamField>
+
+            <ParamField body="otpAuthEnabled" type="boolean">
+              Whether OTP authentication is enabled.
+            </ParamField>
+
+            <ParamField body="passkeyAuthEnabled" type="boolean">
+              Whether passkey authentication is enabled.
+            </ParamField>
+          </Expandable>
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<void>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function update(data: ServerUserUpdateOptions): Promise<void>;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        await serverUser.update({
+          primaryEmail: "new@example.com",
+          primaryEmailVerified: true,
+        });
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</ServerUserSection>
+
+<ServerUserSection type="serverUser" property="setPrimaryEmail" signature="email, [options]" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Sets the primary email for the user (server-side only).
+
+      <ContentSection title="Parameters">
+        <ParamField body="email" type="string | null" required>
+          The new primary email, or `null` to clear it.
+        </ParamField>
+
+        <ParamField body="options.verified" type="boolean">
+          Whether to mark the email as verified.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<void>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function setPrimaryEmail(
+          email: string | null,
+          options?: { verified?: boolean },
+        ): Promise<void>;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        await serverUser.setPrimaryEmail("new@example.com", { verified: true });
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</ServerUserSection>
+
+<ServerUserSection type="serverUser" property="setServerMetadata" signature="metadata" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Sets the server metadata for the user.
+
+      <ContentSection title="Parameters">
+        <ParamField body="metadata" type="Json" required>
+          The new server metadata value.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<void>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function setServerMetadata(metadata: any): Promise<void>;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        await serverUser.setServerMetadata({ plan: "premium", internalId: "abc123" });
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</ServerUserSection>
+
+<ServerUserSection type="serverUser" property="setClientReadOnlyMetadata" signature="metadata" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Sets the client read-only metadata that clients can read but not write.
+
+      <ContentSection title="Parameters">
+        <ParamField body="metadata" type="Json" required>
+          The new client read-only metadata value.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<void>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function setClientReadOnlyMetadata(metadata: any): Promise<void>;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        await serverUser.setClientReadOnlyMetadata({ role: "editor", tier: "pro" });
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</ServerUserSection>
+
+<ServerUserSection type="serverUser" property="grantPermission" signature="scope, permissionId" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Server-side permission assignment.
+
+      <ContentSection title="Parameters">
+        <ParamField body="scope" type="Team" required>
+          The team scope.
+        </ParamField>
+
+        <ParamField body="permissionId" type="string" required>
+          The permission to grant.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<void>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function grantPermission(scope: Team, permissionId: string): Promise<void>;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        const team = await serverUser.getTeam("team_id_123");
+        if (team) {
+          await serverUser.grantPermission(team, "my_permission_id");
+        }
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</ServerUserSection>
+
+<ServerUserSection type="serverUser" property="revokePermission" signature="scope, permissionId" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Server-side permission removal.
+
+      <ContentSection title="Parameters">
+        <ParamField body="scope" type="Team" required>
+          The team scope.
+        </ParamField>
+
+        <ParamField body="permissionId" type="string" required>
+          The permission to revoke.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<void>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function revokePermission(scope: Team, permissionId: string): Promise<void>;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        const team = await serverUser.getTeam("team_id_123");
+        if (team) {
+          await serverUser.revokePermission(team, "my_permission_id");
+        }
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</ServerUserSection>
+
+<ServerUserSection type="serverUser" property="listContactChannels" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Returns server-specific contact channel details as `ServerContactChannel[]`.
+
+      <MethodReturns type="Promise<ServerContactChannel[]>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function listContactChannels(): Promise<ServerContactChannel[]>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</ServerUserSection>
+
+<ServerUserSection type="serverUser" property="createSession" signature="[options]" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Creates a new session for the user. Can be used for impersonation.
+
+      <ContentSection title="Parameters">
+        <ParamField body="options.expiresInMillis" type="number">
+          How long the session should last, in milliseconds.
+        </ParamField>
+
+        <ParamField body="options.isImpersonation" type="boolean">
+          Whether this is an impersonation session.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<{ getTokens(): Promise<{ accessToken: string | null; refreshToken: string | null }> }>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function createSession(options?: {
+          expiresInMillis?: number;
+          isImpersonation?: boolean;
+        }): Promise<{
+          getTokens(): Promise<{
+            accessToken: string | null;
+            refreshToken: string | null;
+          }>;
+        }>;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        const session = await serverUser.createSession({
+          expiresInMillis: 60 * 60 * 1000,
+        });
+        const tokens = await session.getTokens();
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</ServerUserSection>
+
+<ServerUserSection type="serverUser" property="grantProduct" signature="product" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Grants a product to the user.
+
+      <ContentSection title="Parameters">
+        <ParamField body="product" type="object" required>
+          The product to grant. Either a `productId` or an inline product definition.
+          <Expandable>
+            <ParamField body="productId" type="string">
+              The ID of an existing product to grant.
+            </ParamField>
+
+            <ParamField body="quantity" type="number">
+              The quantity to grant.
+            </ParamField>
+          </Expandable>
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<void>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function grantProduct(
+          product: { productId: string; quantity?: number } | { product: InlineProduct; quantity?: number },
+        ): Promise<void>;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        await serverUser.grantProduct({
+          productId: "prod_premium",
+          quantity: 1,
+        });
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</ServerUserSection>
+
+---
+
+# `CurrentServerUser`
+
+Combines all properties and methods from both `CurrentUser` and `ServerUser`, providing complete user access on the server side.
+
+## Table of Contents
+
+<ClickableTableOfContents
+  title="CurrentServerUser Table of Contents"
+  code={`type CurrentServerUser =
+  & CurrentUser; //$stack-link-to:#currentuser
+  & ServerUser; //$stack-link-to:#serveruser`}
+/>
+
+<Note>
+  React hook variants prefixed with `use` are available in React-like platforms
+  and return unwrapped data rather than promises.
+</Note>
