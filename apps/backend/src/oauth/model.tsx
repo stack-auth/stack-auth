@@ -1,6 +1,7 @@
 import { createMfaRequiredError } from "@/app/api/latest/auth/mfa/sign-in/verification-code-handler";
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
 import { Prisma } from "@/generated/prisma/client";
+import { withExternalDbSyncUpdate } from "@/lib/external-db-sync";
 import { checkApiKeySet } from "@/lib/internal-api-keys";
 import { isAcceptedNativeAppUrl, validateRedirectUrl } from "@/lib/redirect-urls";
 import { getSoleTenancyFromProjectBranch, getTenancy } from "@/lib/tenancies";
@@ -178,10 +179,10 @@ export class OAuthModel implements AuthorizationCodeModel {
             id: user.refreshTokenId,
           },
         },
-        update: {
+        update: withExternalDbSyncUpdate({
           refreshToken: token.refreshToken,
           expiresAt: token.refreshTokenExpiresAt,
-        },
+        }),
         create: {
           refreshToken: token.refreshToken,
           tenancyId: tenancy.id,

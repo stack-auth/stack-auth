@@ -1,3 +1,4 @@
+import { recordExternalDbSyncDeletion } from "@/lib/external-db-sync";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { Prisma } from "@/generated/prisma/client";
@@ -32,6 +33,13 @@ export const DELETE = createSmartRouteHandler({
 
     try {
       const prisma = await getPrismaClientForTenancy(tenancy);
+
+      await recordExternalDbSyncDeletion(globalPrismaClient, {
+        tableName: "ProjectUserRefreshToken",
+        tenancyId: tenancy.id,
+        refreshTokenId,
+      });
+
       const result = await globalPrismaClient.projectUserRefreshToken.deleteMany({
         where: {
           tenancyId: tenancy.id,
