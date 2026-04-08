@@ -4,6 +4,22 @@ description: "Stack Auth documentation for setup, components, SDK usage, and RES
 sidebarTitle: "Overview"
 ---
 
+export const SectionLink = ({ href, children }) => (
+  <a href={href} className="text-base font-semibold text-slate-900 no-underline hover:text-[#6b5df7] dark:text-white dark:hover:text-[#8b7cf9]">{children}</a>
+);
+
+export const ChipLink = ({ href, children }) => (
+  <a href={href} className="inline-flex rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 no-underline transition hover:bg-[#6b5df7]/10 hover:text-[#6b5df7] dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-[#6b5df7]/20 dark:hover:text-[#8b7cf9]">{children}</a>
+);
+
+export const CardTitle = ({ href, children }) => (
+  <a href={href} className="mb-1 block text-sm font-semibold text-slate-900 no-underline hover:text-[#6b5df7] dark:text-white dark:hover:text-[#8b7cf9]">{children}</a>
+);
+
+export const CardChip = ({ href, children }) => (
+  <a href={href} className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500 no-underline transition hover:bg-[#6b5df7]/10 hover:text-[#6b5df7] dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-[#6b5df7]/20 dark:hover:text-[#8b7cf9]">{children}</a>
+);
+
 <div className="not-prose relative w-full overflow-hidden rounded-xl bg-[#121212]">
   <img
     src="/images/hero-illustration-full.svg"
@@ -83,37 +99,36 @@ sidebarTitle: "Overview"
     {/* Getting Started */}
     <div className="relative mb-10">
       <div className="absolute -left-[2.55rem] top-0.5 h-4 w-4 rounded-full border-2 border-[#6b5df7] bg-[#6b5df7]" />
-      <a href="/guides/getting-started/setup" className="text-base font-semibold text-slate-900 no-underline hover:text-[#6b5df7] dark:text-white dark:hover:text-[#8b7cf9]">Getting Started</a>
+      <SectionLink href="/guides/getting-started/setup">Getting Started</SectionLink>
       <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">First-time setup, install the SDK, get auth running in minutes.</p>
       <div className="mt-3 flex flex-wrap gap-2">
-        <a href="/guides/getting-started/setup" className="inline-flex rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 no-underline transition hover:bg-[#6b5df7]/10 hover:text-[#6b5df7] dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-[#6b5df7]/20 dark:hover:text-[#8b7cf9]">Setup</a>
-        <a href="/guides/getting-started/user-fundamentals" className="inline-flex rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 no-underline transition hover:bg-[#6b5df7]/10 hover:text-[#6b5df7] dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-[#6b5df7]/20 dark:hover:text-[#8b7cf9]">Users</a>
-        <a href="/guides/getting-started/ai-integration" className="inline-flex rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 no-underline transition hover:bg-[#6b5df7]/10 hover:text-[#6b5df7] dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-[#6b5df7]/20 dark:hover:text-[#8b7cf9]">AI Integration</a>
-        <a href="/guides/apps/launch-checklist/overview" className="inline-flex rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 no-underline transition hover:bg-[#6b5df7]/10 hover:text-[#6b5df7] dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-[#6b5df7]/20 dark:hover:text-[#8b7cf9]">Production</a>
+        <ChipLink href="/guides/getting-started/setup">Setup</ChipLink>
+        <ChipLink href="/guides/getting-started/user-fundamentals">Users</ChipLink>
+        <ChipLink href="/guides/getting-started/ai-integration">AI Integration</ChipLink>
+        <ChipLink href="/guides/apps/launch-checklist/overview">Production</ChipLink>
       </div>
     </div>
 
     {/* Components */}
     <div className="relative mb-10">
       <div className="absolute -left-[2.55rem] top-0.5 h-4 w-4 rounded-full border-2 border-[#6b5df7] bg-[#6b5df7]" />
-      <a href="/sdk/overview" className="text-base font-semibold text-slate-900 no-underline hover:text-[#6b5df7] dark:text-white dark:hover:text-[#8b7cf9]">Components</a>
+      <SectionLink href="/sdk/overview">Components</SectionLink>
       <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Drop-in UI for sign-in, sign-up, account settings, and team switching.</p>
       <div className="mt-3 flex flex-wrap gap-2">
-        <a href="/guides/apps/authentication/overview" className="inline-flex rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 no-underline transition hover:bg-[#6b5df7]/10 hover:text-[#6b5df7] dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-[#6b5df7]/20 dark:hover:text-[#8b7cf9]">SignIn / SignUp</a>
-        <a href="/sdk/hooks/use-user" className="inline-flex rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 no-underline transition hover:bg-[#6b5df7]/10 hover:text-[#6b5df7] dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-[#6b5df7]/20 dark:hover:text-[#8b7cf9]">UserButton</a>
-        <a href="/sdk/objects/stack-app" className="inline-flex rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 no-underline transition hover:bg-[#6b5df7]/10 hover:text-[#6b5df7] dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-[#6b5df7]/20 dark:hover:text-[#8b7cf9]">StackProvider</a>
+        <ChipLink href="/guides/apps/authentication/overview">SignIn / SignUp</ChipLink>
+        <ChipLink href="/sdk/hooks/use-user">UserButton</ChipLink>
       </div>
     </div>
 
     {/* SDK Reference */}
     <div className="relative mb-4">
       <div className="absolute -left-[2.55rem] top-0.5 h-4 w-4 rounded-full border-2 border-[#6b5df7] bg-[#6b5df7]" />
-      <a href="/sdk/overview" className="text-base font-semibold text-slate-900 no-underline hover:text-[#6b5df7] dark:text-white dark:hover:text-[#8b7cf9]">SDK Reference</a>
+      <SectionLink href="/sdk/overview">SDK Reference</SectionLink>
       <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Hooks, types, and objects for reading and writing user data in code.</p>
       <div className="mt-3 flex flex-wrap gap-2">
-        <a href="/sdk/hooks/use-user" className="inline-flex rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 no-underline transition hover:bg-[#6b5df7]/10 hover:text-[#6b5df7] dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-[#6b5df7]/20 dark:hover:text-[#8b7cf9]">useUser</a>
-        <a href="/sdk/types/user" className="inline-flex rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 no-underline transition hover:bg-[#6b5df7]/10 hover:text-[#6b5df7] dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-[#6b5df7]/20 dark:hover:text-[#8b7cf9]">Types</a>
-        <a href="/sdk/objects/stack-app" className="inline-flex rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 no-underline transition hover:bg-[#6b5df7]/10 hover:text-[#6b5df7] dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-[#6b5df7]/20 dark:hover:text-[#8b7cf9]">StackApp</a>
+        <ChipLink href="/sdk/hooks/use-user">useUser</ChipLink>
+        <ChipLink href="/sdk/types/user">Types</ChipLink>
+        <ChipLink href="/sdk/objects/stack-app">StackApp</ChipLink>
       </div>
     </div>
   </div>
@@ -128,30 +143,29 @@ sidebarTitle: "Overview"
   {/* Branching cards */}
   <div className="ml-4 grid grid-cols-1 gap-3 pl-8 sm:grid-cols-3">
     <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-700">
-      <a href="/guides/going-further/stack-app" className="mb-1 block text-sm font-semibold text-slate-900 no-underline hover:text-[#6b5df7] dark:text-white dark:hover:text-[#8b7cf9]">Going Further</a>
+      <CardTitle href="/guides/going-further/stack-app">Going Further</CardTitle>
       <p className="text-xs text-slate-500 dark:text-slate-400">Stack App configuration, backend integration, local development, metadata.</p>
       <div className="mt-2 flex flex-wrap gap-1.5">
-        <a href="/guides/going-further/stack-app" className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500 no-underline transition hover:bg-[#6b5df7]/10 hover:text-[#6b5df7] dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-[#6b5df7]/20 dark:hover:text-[#8b7cf9]">Stack App</a>
-        <a href="/guides/going-further/local-development" className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500 no-underline transition hover:bg-[#6b5df7]/10 hover:text-[#6b5df7] dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-[#6b5df7]/20 dark:hover:text-[#8b7cf9]">Local dev</a>
-        <a href="/guides/going-further/backend-integration" className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500 no-underline transition hover:bg-[#6b5df7]/10 hover:text-[#6b5df7] dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-[#6b5df7]/20 dark:hover:text-[#8b7cf9]">Backend</a>
+        <CardChip href="/guides/going-further/stack-app">Stack App</CardChip>
+        <CardChip href="/guides/going-further/local-development">Local dev</CardChip>
+        <CardChip href="/guides/going-further/backend-integration">Backend</CardChip>
       </div>
     </div>
     <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-700">
-      <a href="/guides/apps/authentication/overview" className="mb-1 block text-sm font-semibold text-slate-900 no-underline hover:text-[#6b5df7] dark:text-white dark:hover:text-[#8b7cf9]">Apps</a>
+      <CardTitle href="/guides/apps/authentication/overview">Apps</CardTitle>
       <p className="text-xs text-slate-500 dark:text-slate-400">Authentication, emails, payments, webhooks, API keys.</p>
       <div className="mt-2 flex flex-wrap gap-1.5">
-        <a href="/guides/apps/authentication/overview" className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500 no-underline transition hover:bg-[#6b5df7]/10 hover:text-[#6b5df7] dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-[#6b5df7]/20 dark:hover:text-[#8b7cf9]">Auth</a>
-        <a href="/guides/apps/emails/overview" className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500 no-underline transition hover:bg-[#6b5df7]/10 hover:text-[#6b5df7] dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-[#6b5df7]/20 dark:hover:text-[#8b7cf9]">Emails</a>
-        <a href="/guides/apps/payments/overview" className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500 no-underline transition hover:bg-[#6b5df7]/10 hover:text-[#6b5df7] dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-[#6b5df7]/20 dark:hover:text-[#8b7cf9]">Payments</a>
+        <CardChip href="/guides/apps/authentication/overview">Auth</CardChip>
+        <CardChip href="/guides/apps/emails/overview">Emails</CardChip>
+        <CardChip href="/guides/apps/payments/overview">Payments</CardChip>
       </div>
     </div>
     <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-700">
-      <a href="/api/overview" className="mb-1 block text-sm font-semibold text-slate-900 no-underline hover:text-[#6b5df7] dark:text-white dark:hover:text-[#8b7cf9]">REST API</a>
+      <CardTitle href="/api/overview">REST API</CardTitle>
       <p className="text-xs text-slate-500 dark:text-slate-400">HTTP endpoints for any backend or language.</p>
       <div className="mt-2 flex flex-wrap gap-1.5">
-        <a href="/api/overview" className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500 no-underline transition hover:bg-[#6b5df7]/10 hover:text-[#6b5df7] dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-[#6b5df7]/20 dark:hover:text-[#8b7cf9]">Client API</a>
-        <a href="/api/overview" className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500 no-underline transition hover:bg-[#6b5df7]/10 hover:text-[#6b5df7] dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-[#6b5df7]/20 dark:hover:text-[#8b7cf9]">Server API</a>
-        <a href="/guides/apps/webhooks/overview" className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500 no-underline transition hover:bg-[#6b5df7]/10 hover:text-[#6b5df7] dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-[#6b5df7]/20 dark:hover:text-[#8b7cf9]">Webhooks</a>
+        <CardChip href="/api/overview">REST API</CardChip>
+        <CardChip href="/guides/apps/webhooks/overview">Webhooks</CardChip>
       </div>
     </div>
   </div>
