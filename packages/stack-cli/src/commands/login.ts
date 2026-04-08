@@ -7,7 +7,9 @@ import { CliError } from "../lib/errors.js";
 export function registerLoginCommand(program: Command) {
   program
     .command("login")
-    .description("Log in to Stack Auth via browser")
+    .description(
+      "Log in to Stack Auth via browser. To attach this login to an existing anonymous session, set STACK_CLI_ANON_REFRESH_TOKEN (env var) or the same key in the CLI credentials file before running; login does not write that value.",
+    )
     .action(async () => {
       const flags = program.opts();
       const config = resolveLoginConfig(flags);
@@ -20,7 +22,8 @@ export function registerLoginCommand(program: Command) {
         noAutomaticPrefetch: true,
       });
 
-      const anonRefreshToken = readConfigValue("STACK_CLI_ANON_REFRESH_TOKEN");
+      const anonRefreshToken =
+        process.env.STACK_CLI_ANON_REFRESH_TOKEN ?? readConfigValue("STACK_CLI_ANON_REFRESH_TOKEN");
 
       console.log("Waiting for browser authentication...");
 

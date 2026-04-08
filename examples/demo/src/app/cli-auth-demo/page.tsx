@@ -1,5 +1,24 @@
 'use client';
 
+/**
+ * =============================================================================
+ * INTERNAL DEV/QA HARNESS — NOT AN SDK EXAMPLE
+ * =============================================================================
+ * This page is a manual test harness for the CLI auth flow, not a reference
+ * implementation. Do NOT copy patterns from this file into a real app:
+ *
+ *  - It reaches into `app[stackAppInternalsSymbol]`, which is private SDK surface.
+ *  - It stores the CLI refresh token in sessionStorage for debugging only;
+ *    real CLIs should use OS-specific secure storage (e.g. a credentials file
+ *    with 0600 perms, or the system keychain).
+ *  - It bypasses `StackClientApp.promptCliLogin()` and talks to raw endpoints;
+ *    real integrations should use the SDK.
+ *  - Polling has no retry/backoff — fine for a debug page, bad for prod.
+ *
+ * For a real CLI login integration, see `packages/stack-cli/src/commands/login.ts`.
+ * =============================================================================
+ */
+
 import { StackClientApp, useStackApp, useUser, stackAppInternalsSymbol } from '@stackframe/stack';
 import { runAsynchronouslyWithAlert } from '@stackframe/stack-shared/dist/utils/promises';
 import { Button, Card, CardContent, CardHeader, Typography } from '@stackframe/stack-ui';
@@ -42,17 +61,29 @@ async function refreshCliAppSession(cliApp: StackClientApp, refreshToken: string
 }
 
 function parseAccessTokenUserSnapshot(accessToken: string): { userId: string | null; isAnonymous: boolean } {
-  const payload = JSON.parse(atob(accessToken.split('.')[1]));
-  return {
-    userId: payload.userId ?? payload.sub ?? null,
-    isAnonymous: payload.iss?.includes(':anon') ?? false,
-  };
+  try {
+    const parts = accessToken.split('.');
+    if (parts.length < 2) return { userId: null, isAnonymous: false };
+    // JWTs use base64url, not plain base64 — convert before atob.
+    const b64 = parts[1].replace(/-/g, '+').replace(/_/g, '/');
+    const padded = b64 + '='.repeat((4 - (b64.length % 4)) % 4);
+    const payload = JSON.parse(atob(padded));
+    return {
+      userId: payload.userId ?? payload.sub ?? null,
+      isAnonymous: payload.iss?.includes(':anon') ?? false,
+    };
+  } catch {
+    return { userId: null, isAnonymous: false };
+  }
 }
 
+// NOTE: sessionStorage is used so the refresh token does not persist across
+// tab restarts. This is still XSS-readable — ONLY acceptable because this is
+// a dev harness. Do NOT copy this pattern into real apps.
 function loadCliState(): { refreshToken: string } | null {
   if (typeof window === 'undefined') return null;
   try {
-    const stored = localStorage.getItem(CLI_STORAGE_KEY);
+    const stored = sessionStorage.getItem(CLI_STORAGE_KEY);
     return stored ? JSON.parse(stored) as { refreshToken: string } : null;
   } catch {
     return null;
@@ -62,9 +93,9 @@ function loadCliState(): { refreshToken: string } | null {
 function saveCliState(refreshToken: string | null) {
   if (typeof window === 'undefined') return;
   if (refreshToken) {
-    localStorage.setItem(CLI_STORAGE_KEY, JSON.stringify({ refreshToken }));
+    sessionStorage.setItem(CLI_STORAGE_KEY, JSON.stringify({ refreshToken }));
   } else {
-    localStorage.removeItem(CLI_STORAGE_KEY);
+    sessionStorage.removeItem(CLI_STORAGE_KEY);
   }
 }
 

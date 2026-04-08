@@ -3,16 +3,12 @@
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { Typography } from "@stackframe/stack-ui";
 import { useEffect, useRef, useState } from "react";
-import { stackAppInternalsSymbol, useStackApp } from "..";
+import { type StackClientApp, stackAppInternalsSymbol, useStackApp } from "..";
 import { MessageCard } from "../components/message-cards/message-card";
 import { useTranslation } from "../lib/translations";
 
-function getStackAppInternals(app: unknown) {
-  return (app as any)[stackAppInternalsSymbol];
-}
-
-async function postCliAuthComplete(app: unknown, body: Record<string, unknown>) {
-  return await getStackAppInternals(app).sendRequest("/auth/cli/complete", {
+async function postCliAuthComplete(app: StackClientApp, body: Record<string, unknown>) {
+  return await app[stackAppInternalsSymbol].sendRequest("/auth/cli/complete", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
@@ -25,9 +21,15 @@ async function ensureCliCompleteOk(result: Response) {
   }
 }
 
-async function completeCliAuthWithRefreshToken(app: unknown, loginCode: string, refreshToken: string) {
+async function completeCliAuthWithRefreshToken(app: StackClientApp, loginCode: string, refreshToken: string) {
   const result = await postCliAuthComplete(app, { login_code: loginCode, refresh_token: refreshToken });
   await ensureCliCompleteOk(result);
+}
+
+function markUrlConfirmed() {
+  const url = new URL(window.location.href);
+  url.searchParams.set("confirmed", "true");
+  window.history.replaceState({}, "", url.toString());
 }
 
 export function CliAuthConfirmation({ fullPage = true }: { fullPage?: boolean }) {
@@ -93,10 +95,6 @@ export function CliAuthConfirmation({ fullPage = true }: { fullPage?: boolean })
         return;
       }
 
-      const url = new URL(window.location.href);
-      url.searchParams.set("confirmed", "true");
-      window.history.replaceState({}, "", url.toString());
-
       const checkResult = await postCliAuthComplete(app, { login_code: loginCode, mode: "check" });
       if (!checkResult.ok) {
         throw new Error(`Failed to verify login code: ${checkResult.status} ${await checkResult.text()}`);
@@ -112,14 +110,20 @@ export function CliAuthConfirmation({ fullPage = true }: { fullPage?: boolean })
         }
 
         const tokens = await claimResult.json();
-        await getStackAppInternals(app).signInWithTokens({
+        await app[stackAppInternalsSymbol].signInWithTokens({
           accessToken: tokens.access_token,
           refreshToken: tokens.refresh_token,
         });
+        // Only mark the URL as confirmed once the anon session is actually
+        // bound to the browser; otherwise a failure above would leave a stale
+        // confirmed=true in the URL and the auto-complete effect would later
+        // bind the CLI to whichever user happens to be signed in.
+        markUrlConfirmed();
         await app.redirectToSignUp({ replace: true });
         return;
       }
 
+      markUrlConfirmed();
       await app.redirectToSignIn({ replace: true });
     } catch (err) {
       setError(err as Error);

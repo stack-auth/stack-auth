@@ -115,6 +115,8 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
       getConstructorOptions(): StackClientAppConstructorOptions<HasTokenStore, ProjectId> & { inheritsFrom?: undefined },
       sendSessionReplayBatch(body: string, options: { keepalive: boolean }): Promise<Result<Response, Error>>,
       sendAnalyticsEventBatch(body: string, options: { keepalive: boolean }): Promise<Result<Response, Error>>,
+      sendRequest(path: string, requestOptions: RequestInit, requestType?: "client" | "server" | "admin"): Promise<Response>,
+      signInWithTokens(tokens: { accessToken: string, refreshToken: string }): Promise<void>,
     },
   }
   & AsyncStoreProperty<"project", [], Project, false>
