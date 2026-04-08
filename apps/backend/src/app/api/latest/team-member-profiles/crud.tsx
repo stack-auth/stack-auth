@@ -1,4 +1,5 @@
 import { Prisma } from "@/generated/prisma/client";
+import { withExternalDbSyncUpdate } from "@/lib/external-db-sync";
 import { ensureTeamExists, ensureTeamMembershipExists, ensureUserExists, ensureUserTeamPermissionExists } from "@/lib/request-checks";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
@@ -146,10 +147,10 @@ export const teamMemberProfilesCrudHandlers = createLazyProxy(() => createCrudHa
             teamId: params.team_id,
           },
         },
-        data: {
+        data: withExternalDbSyncUpdate({
           displayName: data.display_name,
           profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "team-member-profile-images")
-        },
+        }),
         include: fullInclude,
       });
 
