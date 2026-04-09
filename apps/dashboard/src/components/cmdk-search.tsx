@@ -600,6 +600,8 @@ export function CmdKSearch({
     setSelectedIndex(index);
   }, []);
 
+  const handleClose = useCallback(() => setOpen(false), []);
+
   // Track pending focus action to handle click-then-focus timing
   const pendingFocusRef = useRef(false);
 
@@ -825,6 +827,7 @@ export function CmdKSearch({
                     onBlur: handleBackFromPreview,
                     registerNestedCommands: registerNestedCommandsDepth0,
                     navigateToNested: navigateToNestedDepth1,
+                    onClose: handleClose,
                     depth: 0,
                     pathname,
                   })}
@@ -913,6 +916,7 @@ export function CmdKSearch({
                             onBlur: handlePreviewBlur,
                             registerNestedCommands: registerNestedCommandsDepth0,
                             navigateToNested: navigateToNestedDepth1,
+                            onClose: handleClose,
                             depth: 0,
                             pathname,
                           })}
@@ -932,6 +936,7 @@ export function CmdKSearch({
                           onBlur: handlePreviewBlur,
                           registerNestedCommands: registerNestedCommandsDepth0,
                           navigateToNested: navigateToNestedDepth1,
+                          onClose: handleClose,
                           depth: 0,
                           pathname,
                         })}
@@ -1011,6 +1016,7 @@ export function CmdKTrigger() {
   return (
     <div className="hidden sm:block">
       <button
+        data-walkthrough-nav="cmdk-trigger"
         onClick={() => window.dispatchEvent(new CustomEvent("spotlight-toggle"))}
         className={cn(
           "group relative flex items-center gap-3 h-9 px-4 min-w-[240px]",

@@ -1,8 +1,8 @@
 "use client";
 
-import { DesignBadge } from "@/components/design-components/badge";
-import { DesignCard } from "@/components/design-components/card";
-import { DesignDataTable } from "@/components/design-components/table";
+import { DesignBadge } from "@/components/design-components";
+import { DesignCard } from "@/components/design-components";
+import { DesignDataTable } from "@/components/design-components";
 import { useRouter } from "@/components/router";
 import { Spinner, Typography } from "@/components/ui";
 import { Envelope } from "@phosphor-icons/react";

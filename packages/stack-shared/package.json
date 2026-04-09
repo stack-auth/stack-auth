@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-shared",
-  "version": "2.8.73",
+  "version": "2.8.80",
   "repository": "https://github.com/stack-auth/stack-auth",
   "scripts": {
     "build": "rimraf dist && tsdown",
@@ -23,6 +23,13 @@
         "default": "./dist/index.js"
       },
       "default": "./dist/esm/index.js"
+    },
+    "./config": {
+      "types": "./dist/config-authoring.d.ts",
+      "require": {
+        "default": "./dist/config-authoring.js"
+      },
+      "default": "./dist/esm/config-authoring.js"
     },
     "./dist/*": {
       "types": "./dist/*.d.ts",

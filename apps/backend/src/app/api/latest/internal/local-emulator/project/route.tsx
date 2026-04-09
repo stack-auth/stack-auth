@@ -5,6 +5,7 @@ import {
   LOCAL_EMULATOR_OWNER_TEAM_ID,
   isLocalEmulatorEnabled,
   readConfigFromFile,
+  resolveEmulatorPath,
   writeConfigToFile,
 } from "@/lib/local-emulator";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
@@ -194,11 +195,12 @@ export const POST = createSmartRouteHandler({
     }
 
     const absoluteFilePath = path.resolve(req.body.absolute_file_path);
+    const resolvedFilePath = resolveEmulatorPath(absoluteFilePath);
 
     // Validate file exists before creating a project
     let fileExists: boolean;
     try {
-      await fs.access(absoluteFilePath);
+      await fs.access(resolvedFilePath);
       fileExists = true;
     } catch {
       fileExists = false;
@@ -208,7 +210,7 @@ export const POST = createSmartRouteHandler({
     }
 
     // If the file is empty, write a default config
-    const fileContent = await fs.readFile(absoluteFilePath, "utf-8");
+    const fileContent = await fs.readFile(resolvedFilePath, "utf-8");
     if (fileContent.trim() === "") {
       await writeConfigToFile(absoluteFilePath, {});
     }

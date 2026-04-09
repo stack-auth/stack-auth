@@ -1,5 +1,6 @@
 "use client";
 
+import { CountryCodeInput } from "@/components/country-code-select";
 import { ConditionBuilder, isConditionTreeValid } from "@/components/rule-builder";
 import {
   ActionDialog,
@@ -20,6 +21,9 @@ import {
   SelectTrigger,
   SelectValue,
   Switch,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
   Typography,
 } from "@/components/ui";
 import {
@@ -38,6 +42,7 @@ import { ArrowsDownUpIcon, CheckIcon, PencilSimpleIcon, PlusIcon, TrashIcon, XIc
 import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
 import type { SignUpRule, SignUpRuleAction } from "@stackframe/stack-shared/dist/interface/crud/sign-up-rules";
+import { isValidCountryCode, normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { standardProviders } from "@stackframe/stack-shared/dist/utils/oauth";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
@@ -48,11 +53,13 @@ import { Area, AreaChart, ResponsiveContainer, YAxis } from "recharts";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
+import { validateRiskScore } from "@/lib/risk-score-utils";
 
 // Analytics types
 type RuleAnalytics = {
   ruleId: string,
-  totalCount: number,
+  countInTimespan: number,
+  allTimeCount: number,
   hourlyCounts: { hour: string, count: number }[],
 };
 
@@ -85,8 +92,14 @@ type SignUpRulesTestResult = {
   context: {
     email: string,
     email_domain: string,
+    country_code: string,
     auth_method: 'password' | 'otp' | 'oauth' | 'passkey',
     oauth_provider: string,
+    turnstile_result: 'ok' | 'invalid' | 'error',
+    risk_scores: {
+      bot: number,
+      free_trial_abuse: number,
+    },
   },
   evaluations: SignUpRulesTestEvaluation[],
   outcome: {
@@ -111,11 +124,15 @@ type ConfigWithSignUpRules = CompleteConfig & {
 // Compact sparkline component for rule analytics (inline next to buttons)
 function RuleSparkline({
   data,
-  totalCount,
+  countInTimespan,
+  allTimeCount,
+  timespanHours,
   isLoading,
 }: {
   data: { hour: string, count: number }[],
-  totalCount: number,
+  countInTimespan: number,
+  allTimeCount: number,
+  timespanHours: number,
   isLoading: boolean,
 }) {
   // Show skeleton while loading
@@ -132,26 +149,37 @@ function RuleSparkline({
   const chartData = data.length >= 2 ? data : [{ hour: '0', count: 0 }, { hour: '1', count: 0 }];
   // Calculate max for Y domain - use at least 1 to avoid divide-by-zero
   const maxCount = Math.max(1, ...chartData.map(d => d.count));
+  const timespanLabel = `Last ${timespanHours}h`;
 
   return (
-    <div className="flex items-center gap-1" title="past 48h">
-      <ResponsiveContainer width={40} height={16}>
-        <AreaChart data={chartData} margin={{ top: 2, right: 0, bottom: 2, left: 0 }}>
-          <YAxis hide domain={[0, maxCount]} />
-          <Area
-            type="monotone"
-            dataKey="count"
-            stroke="currentColor"
-            strokeWidth={1}
-            fill="currentColor"
-            fillOpacity={0.15}
-            className="text-muted-foreground"
-            isAnimationActive={false}
-          />
-        </AreaChart>
-      </ResponsiveContainer>
-      <span className="text-[10px] text-muted-foreground tabular-nums">{totalCount}</span>
-    </div>
+    <Tooltip delayDuration={0}>
+      <TooltipTrigger asChild>
+        <div className="flex items-center gap-1 cursor-help">
+          <ResponsiveContainer width={40} height={16}>
+            <AreaChart data={chartData} margin={{ top: 2, right: 0, bottom: 2, left: 0 }}>
+              <YAxis hide domain={[0, maxCount]} />
+              <Area
+                type="monotone"
+                dataKey="count"
+                stroke="currentColor"
+                strokeWidth={1}
+                fill="currentColor"
+                fillOpacity={0.15}
+                className="text-muted-foreground"
+                isAnimationActive={false}
+              />
+            </AreaChart>
+          </ResponsiveContainer>
+          <span className="text-[10px] text-muted-foreground tabular-nums">{countInTimespan}</span>
+        </div>
+      </TooltipTrigger>
+      <TooltipContent side="top" className="text-[11px]">
+        <div className="space-y-0.5">
+          <div>{timespanLabel}: {countInTimespan.toLocaleString()}</div>
+          <div>All-time: {allTimeCount.toLocaleString()}</div>
+        </div>
+      </TooltipContent>
+    </Tooltip>
   );
 }
 
@@ -310,6 +338,7 @@ function RuleEditor({
 function SortableRuleRow({
   entry,
   analytics,
+  analyticsTimespanHours,
   isAnalyticsLoading,
   isEditing,
   onEdit,
@@ -320,6 +349,7 @@ function SortableRuleRow({
 }: {
   entry: SignUpRuleEntry,
   analytics?: RuleAnalytics,
+  analyticsTimespanHours: number,
   isAnalyticsLoading: boolean,
   isEditing: boolean,
   onEdit: () => void,
@@ -350,7 +380,7 @@ function SortableRuleRow({
     'restrict': 'Restrict',
     'log': 'Log',
   };
-  const actionLabel = actionLabels[actionType] ?? actionType;
+  const actionLabel = actionLabels[actionType];
 
   const conditionSummary = entry.rule.condition || '(no condition)';
   const isEnabled = entry.rule.enabled !== false;
@@ -435,7 +465,9 @@ function SortableRuleRow({
         <div className="hidden sm:flex items-center mr-1">
           <RuleSparkline
             data={analytics?.hourlyCounts ?? []}
-            totalCount={analytics?.totalCount ?? 0}
+            countInTimespan={analytics?.countInTimespan ?? 0}
+            allTimeCount={analytics?.allTimeCount ?? 0}
+            timespanHours={analyticsTimespanHours}
             isLoading={isAnalyticsLoading}
           />
         </div>
@@ -513,6 +545,8 @@ function DefaultActionCard({
   );
 }
 
+const DEFAULT_TURNSTILE_OVERRIDE = "__default__";
+
 function TestRulesCard({
   stackAdminApp,
 }: {
@@ -521,17 +555,54 @@ function TestRulesCard({
   const [email, setEmail] = useState('');
   const [authMethod, setAuthMethod] = useState<SignUpRulesTestResult['context']['auth_method']>('password');
   const [oauthProvider, setOauthProvider] = useState('');
+  const [countryCodeOverride, setCountryCodeOverride] = useState('');
+  const [turnstileResultOverride, setTurnstileResultOverride] = useState<'ok' | 'invalid' | 'error' | typeof DEFAULT_TURNSTILE_OVERRIDE>(DEFAULT_TURNSTILE_OVERRIDE);
+  const [botRiskScoreOverride, setBotRiskScoreOverride] = useState('');
+  const [freeTrialAbuseRiskScoreOverride, setFreeTrialAbuseRiskScoreOverride] = useState('');
   const [result, setResult] = useState<SignUpRulesTestResult | null>(null);
 
   const [runTest, isRunning] = useAsyncCallback(async () => {
+    setResult(null);
+    const normalizedCountryCodeOverride = normalizeCountryCode(countryCodeOverride);
+    const normalizedBotRiskScoreOverride = botRiskScoreOverride.trim();
+    const normalizedFreeTrialAbuseRiskScoreOverride = freeTrialAbuseRiskScoreOverride.trim();
+    if (normalizedCountryCodeOverride !== '' && !isValidCountryCode(normalizedCountryCodeOverride)) {
+      throw new Error("Country code override must be a 2-letter code.");
+    }
+    if (!validateRiskScore(normalizedBotRiskScoreOverride)) {
+      throw new Error("Bot risk score override must be an integer between 0 and 100.");
+    }
+    if (!validateRiskScore(normalizedFreeTrialAbuseRiskScoreOverride)) {
+      throw new Error("Free trial abuse risk score override must be an integer between 0 and 100.");
+    }
+    if ((normalizedBotRiskScoreOverride === '') !== (normalizedFreeTrialAbuseRiskScoreOverride === '')) {
+      throw new Error("Bot risk score and free trial abuse risk score overrides must both be provided or both be left blank.");
+    }
+
     const response = await (stackAdminApp as any)[stackAppInternalsSymbol].sendRequest(
       '/internal/sign-up-rules-test',
       {
         method: 'POST',
         body: JSON.stringify({
-          email: email || undefined,
+          email: email === '' ? null : email,
           auth_method: authMethod,
-          oauth_provider: authMethod === 'oauth' ? (oauthProvider || undefined) : undefined,
+          oauth_provider: authMethod === 'oauth'
+            ? (oauthProvider === '' ? null : oauthProvider)
+            : null,
+          country_code: normalizedCountryCodeOverride === '' ? null : normalizedCountryCodeOverride,
+          ...(turnstileResultOverride === DEFAULT_TURNSTILE_OVERRIDE
+            ? {}
+            : {
+              turnstile_result: turnstileResultOverride,
+            }),
+          ...(normalizedBotRiskScoreOverride === ''
+            ? {}
+            : {
+              risk_scores: {
+                bot: Number(normalizedBotRiskScoreOverride),
+                free_trial_abuse: Number(normalizedFreeTrialAbuseRiskScoreOverride),
+              },
+            }),
         }),
         headers: {
           'Content-Type': 'application/json',
@@ -546,7 +617,7 @@ function TestRulesCard({
 
     const data = await response.json();
     setResult(data);
-  }, [authMethod, email, oauthProvider, stackAdminApp]);
+  }, [authMethod, botRiskScoreOverride, countryCodeOverride, email, freeTrialAbuseRiskScoreOverride, oauthProvider, stackAdminApp, turnstileResultOverride]);
 
   const handleAuthMethodChange = (value: string) => {
     if (value === 'password' || value === 'otp' || value === 'oauth' || value === 'passkey') {
@@ -653,6 +724,60 @@ function TestRulesCard({
           </datalist>
         </div>
 
+        <div className="grid gap-3 md:grid-cols-4">
+          <div className="space-y-1.5">
+            <Typography variant="secondary" className="text-xs uppercase tracking-wide">
+              Country code override
+            </Typography>
+            <CountryCodeInput
+              value={countryCodeOverride || null}
+              onChange={(val) => setCountryCodeOverride(val ?? "")}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Typography variant="secondary" className="text-xs uppercase tracking-wide">
+              Bot score override
+            </Typography>
+            <Input
+              value={botRiskScoreOverride}
+              onChange={(e) => setBotRiskScoreOverride(e.target.value)}
+              placeholder="0-100"
+              inputMode="numeric"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Typography variant="secondary" className="text-xs uppercase tracking-wide">
+              Free trial abuse override
+            </Typography>
+            <Input
+              value={freeTrialAbuseRiskScoreOverride}
+              onChange={(e) => setFreeTrialAbuseRiskScoreOverride(e.target.value)}
+              placeholder="0-100"
+              inputMode="numeric"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Typography variant="secondary" className="text-xs uppercase tracking-wide">
+              Turnstile override
+            </Typography>
+            <Select value={turnstileResultOverride} onValueChange={(value) => {
+              if (value === DEFAULT_TURNSTILE_OVERRIDE || value === "ok" || value === "invalid" || value === "error") {
+                setTurnstileResultOverride(value);
+              }
+            }}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={DEFAULT_TURNSTILE_OVERRIDE}>Default (use real result)</SelectItem>
+                <SelectItem value="ok">OK</SelectItem>
+                <SelectItem value="invalid">Invalid</SelectItem>
+                <SelectItem value="error">Error</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+
         <div className="flex items-center gap-2">
           <Button
             size="sm"
@@ -663,6 +788,9 @@ function TestRulesCard({
           </Button>
           <Typography variant="secondary" className="text-xs">
             Simulate a sign-up request to preview which rules trigger.
+          </Typography>
+          <Typography variant="secondary" className="text-xs">
+            Leave overrides blank to derive country code and risk scores on the server from request geolocation and signup context.
           </Typography>
         </div>
       </div>
@@ -802,7 +930,19 @@ function TestRulesCard({
                 Email domain: {result.context.email_domain || "(empty)"}
               </Typography>
               <Typography variant="secondary" className="text-xs">
+                Country code: {result.context.country_code || "(empty)"}
+              </Typography>
+              <Typography variant="secondary" className="text-xs">
                 OAuth provider: {result.context.oauth_provider || "(empty)"}
+              </Typography>
+              <Typography variant="secondary" className="text-xs">
+                Turnstile result: {result.context.turnstile_result}
+              </Typography>
+              <Typography variant="secondary" className="text-xs">
+                Risk score (bot): {result.context.risk_scores.bot}
+              </Typography>
+              <Typography variant="secondary" className="text-xs">
+                Risk score (free trial abuse): {result.context.risk_scores.free_trial_abuse}
               </Typography>
             </div>
           </>
@@ -874,6 +1014,7 @@ function DeleteRuleDialog({
 function useSignUpRulesAnalytics() {
   const stackAdminApp = useAdminApp();
   const [analytics, setAnalytics] = useState<Map<string, RuleAnalytics>>(new Map());
+  const [timespanHours, setTimespanHours] = useState(48);
   const [isLoading, setIsLoading] = useState(true);
 
   React.useEffect(() => {
@@ -893,12 +1034,14 @@ function useSignUpRulesAnalytics() {
       }
 
       const data = await response.json();
+      setTimespanHours(data.analytics_hours);
 
       const analyticsMap = new Map<string, RuleAnalytics>();
       for (const trigger of data.rule_triggers ?? []) {
         analyticsMap.set(trigger.rule_id, {
           ruleId: trigger.rule_id,
-          totalCount: trigger.total_count,
+          countInTimespan: trigger.total_count,
+          allTimeCount: trigger.all_time_count,
           hourlyCounts: trigger.hourly_counts ?? [],
         });
       }
@@ -914,7 +1057,7 @@ function useSignUpRulesAnalytics() {
     };
   }, [stackAdminApp]);
 
-  return { analytics, isLoading };
+  return { analytics, timespanHours, isLoading };
 }
 
 export default function PageClient() {
@@ -930,7 +1073,11 @@ export default function PageClient() {
   const [ruleToDelete, setRuleToDelete] = useState<SignUpRuleEntry | null>(null);
 
   // Fetch analytics data
-  const { analytics: ruleAnalytics, isLoading: isAnalyticsLoading } = useSignUpRulesAnalytics();
+  const {
+    analytics: ruleAnalytics,
+    timespanHours: analyticsTimespanHours,
+    isLoading: isAnalyticsLoading,
+  } = useSignUpRulesAnalytics();
 
   // Type assertion needed because schema changes take effect at build time
   const configWithRules = config as ConfigWithSignUpRules;
@@ -1152,6 +1299,7 @@ export default function PageClient() {
                         key={entry.id}
                         entry={entry}
                         analytics={ruleAnalytics.get(entry.id)}
+                        analyticsTimespanHours={analyticsTimespanHours}
                         isAnalyticsLoading={isAnalyticsLoading}
                         isEditing={editingRuleId === entry.id}
                         onEdit={() => {
@@ -1189,6 +1337,7 @@ export default function PageClient() {
                     key={entry.id}
                     entry={entry}
                     analytics={ruleAnalytics.get(entry.id)}
+                    analyticsTimespanHours={analyticsTimespanHours}
                     isAnalyticsLoading={isAnalyticsLoading}
                     isEditing={editingRuleId === entry.id}
                     onEdit={() => {

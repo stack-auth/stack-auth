@@ -9,10 +9,9 @@ import { suspendIfSsr, use } from "@stackframe/stack-shared/dist/utils/react";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { Store } from "@stackframe/stack-shared/dist/utils/stores";
 import React, { useCallback } from "react"; // THIS_LINE_PLATFORM react-like
-import { HandlerUrls, stackAppInternalsSymbol } from "../../common";
-
-// hack to make sure process is defined in non-node environments
-const process = (globalThis as any).process ?? { env: {} }; // THIS_LINE_PLATFORM js react
+import { envVars } from "../../../env";
+import { HandlerUrlOptions, ResolvedHandlerUrls, stackAppInternalsSymbol } from "../../common";
+import { resolveHandlerUrls } from "../../url-targets";
 
 export const clientVersion = "STACK_COMPILE_TIME_CLIENT_PACKAGE_VERSION_SENTINEL";
 if (clientVersion.startsWith("STACK_COMPILE_TIME")) {
@@ -21,7 +20,7 @@ if (clientVersion.startsWith("STACK_COMPILE_TIME")) {
 
 const replaceStackPortPrefix = <T extends string | undefined>(input: T): T => {
   if (!input) return input;
-  const prefix = process.env.NEXT_PUBLIC_STACK_PORT_PREFIX;
+  const prefix = envVars.NEXT_PUBLIC_STACK_PORT_PREFIX;
   return prefix ? input.replace(/\$\{NEXT_PUBLIC_STACK_PORT_PREFIX:-81\}/g, prefix) as T : input;
 };
 
@@ -54,31 +53,11 @@ export function resolveConstructorOptions<T extends { inheritsFrom?: AppLike }>(
   };
 }
 
-export function getUrls(partial: Partial<HandlerUrls>): HandlerUrls {
-  const handler = partial.handler ?? "/handler";
-  const home = partial.home ?? "/";
-  const afterSignIn = partial.afterSignIn ?? home;
-  return {
-    handler,
-    signIn: `${handler}/sign-in`,
-    afterSignIn: home,
-    signUp: `${handler}/sign-up`,
-    afterSignUp: afterSignIn,
-    signOut: `${handler}/sign-out`,
-    afterSignOut: home,
-    emailVerification: `${handler}/email-verification`,
-    passwordReset: `${handler}/password-reset`,
-    forgotPassword: `${handler}/forgot-password`,
-    oauthCallback: `${handler}/oauth-callback`,
-    magicLinkCallback: `${handler}/magic-link-callback`,
-    home: home,
-    accountSettings: `${handler}/account-settings`,
-    error: `${handler}/error`,
-    teamInvitation: `${handler}/team-invitation`,
-    mfa: `${handler}/mfa`,
-    onboarding: `${handler}/onboarding`,
-    ...filterUndefined(partial),
-  };
+export function getUrls(partial: HandlerUrlOptions, options: { projectId: string }): ResolvedHandlerUrls {
+  return resolveHandlerUrls({
+    urls: partial,
+    projectId: options.projectId,
+  });
 }
 
 export const localEmulatorBaseUrl = "http://localhost:9999";
@@ -88,7 +67,7 @@ export const LOCAL_EMULATOR_INTERNAL_SECRET_SERVER_KEY = "local-emulator-secret-
 export const LOCAL_EMULATOR_INTERNAL_SUPER_SECRET_ADMIN_KEY = "local-emulator-super-secret-admin-key";
 
 export function getLocalEmulatorConfigFilePath(explicitOption?: string): string | undefined {
-  return explicitOption || process.env.NEXT_PUBLIC_STACK_LOCAL_EMULATOR_CONFIG_FILE_PATH || undefined;
+  return explicitOption || envVars.NEXT_PUBLIC_STACK_LOCAL_EMULATOR_CONFIG_FILE_PATH || undefined;
 }
 
 export function fetchEmulatorProjectCredentials(emulatorConfigFilePath: string): Promise<{
@@ -117,31 +96,31 @@ export function fetchEmulatorProjectCredentials(emulatorConfigFilePath: string):
 
 export function getDefaultProjectId(options?: { isEmulator?: boolean }) {
   if (options?.isEmulator) {
-    return process.env.NEXT_PUBLIC_STACK_PROJECT_ID || process.env.STACK_PROJECT_ID || "internal";
+    return envVars.NEXT_PUBLIC_STACK_PROJECT_ID || envVars.STACK_PROJECT_ID || "internal";
   }
-  return process.env.NEXT_PUBLIC_STACK_PROJECT_ID || process.env.STACK_PROJECT_ID || throwErr(new Error("Welcome to Stack Auth! It seems that you haven't provided a project ID. Please create a project on the Stack dashboard at https://app.stack-auth.com and put it in the NEXT_PUBLIC_STACK_PROJECT_ID environment variable."));
+  return envVars.NEXT_PUBLIC_STACK_PROJECT_ID || envVars.STACK_PROJECT_ID || throwErr(new Error("Welcome to Stack Auth! It seems that you haven't provided a project ID. Please create a project on the Stack dashboard at https://app.stack-auth.com and put it in the NEXT_PUBLIC_STACK_PROJECT_ID environment variable."));
 }
 
 export function getDefaultPublishableClientKey() {
-  return process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY || process.env.STACK_PUBLISHABLE_CLIENT_KEY;
+  return envVars.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY || envVars.STACK_PUBLISHABLE_CLIENT_KEY;
 }
 
 export function getDefaultSecretServerKey(options?: { isEmulator?: boolean }) {
   if (options?.isEmulator) {
-    return process.env.STACK_SECRET_SERVER_KEY || LOCAL_EMULATOR_INTERNAL_SECRET_SERVER_KEY;
+    return envVars.STACK_SECRET_SERVER_KEY || LOCAL_EMULATOR_INTERNAL_SECRET_SERVER_KEY;
   }
-  return process.env.STACK_SECRET_SERVER_KEY || throwErr(new Error("No secret server key provided. Please copy your key from the Stack dashboard and put it in the STACK_SECRET_SERVER_KEY environment variable."));
+  return envVars.STACK_SECRET_SERVER_KEY || throwErr(new Error("No secret server key provided. Please copy your key from the Stack dashboard and put it in the STACK_SECRET_SERVER_KEY environment variable."));
 }
 
 export function getDefaultSuperSecretAdminKey(options?: { isEmulator?: boolean }) {
   if (options?.isEmulator) {
-    return process.env.STACK_SUPER_SECRET_ADMIN_KEY || LOCAL_EMULATOR_INTERNAL_SUPER_SECRET_ADMIN_KEY;
+    return envVars.STACK_SUPER_SECRET_ADMIN_KEY || LOCAL_EMULATOR_INTERNAL_SUPER_SECRET_ADMIN_KEY;
   }
-  return process.env.STACK_SUPER_SECRET_ADMIN_KEY || throwErr(new Error("No super secret admin key provided. Please copy your key from the Stack dashboard and put it in the STACK_SUPER_SECRET_ADMIN_KEY environment variable."));
+  return envVars.STACK_SUPER_SECRET_ADMIN_KEY || throwErr(new Error("No super secret admin key provided. Please copy your key from the Stack dashboard and put it in the STACK_SUPER_SECRET_ADMIN_KEY environment variable."));
 }
 
 export function getDefaultExtraRequestHeaders() {
-  return JSON.parse(process.env.NEXT_PUBLIC_STACK_EXTRA_REQUEST_HEADERS || process.env.STACK_EXTRA_REQUEST_HEADERS || '{}');
+  return JSON.parse(envVars.NEXT_PUBLIC_STACK_EXTRA_REQUEST_HEADERS || envVars.STACK_EXTRA_REQUEST_HEADERS || '{}');
 }
 
 /**
@@ -177,11 +156,11 @@ export function getBaseUrl(userSpecifiedBaseUrl: string | { browser: string, ser
   } else {
     // note: NEXT_PUBLIC_BROWSER_STACK_API_URL was renamed to NEXT_PUBLIC_STACK_API_URL_BROWSER, and NEXT_PUBLIC_STACK_URL to NEXT_PUBLIC_STACK_API_URL
     if (isBrowserLike()) {
-      url = process.env.NEXT_PUBLIC_BROWSER_STACK_API_URL || process.env.NEXT_PUBLIC_STACK_API_URL_BROWSER || process.env.STACK_API_URL_BROWSER;
+      url = envVars.NEXT_PUBLIC_BROWSER_STACK_API_URL || envVars.NEXT_PUBLIC_STACK_API_URL_BROWSER || envVars.STACK_API_URL_BROWSER;
     } else {
-      url = process.env.NEXT_PUBLIC_SERVER_STACK_API_URL || process.env.NEXT_PUBLIC_STACK_API_URL_SERVER || process.env.STACK_API_URL_SERVER;
+      url = envVars.NEXT_PUBLIC_SERVER_STACK_API_URL || envVars.NEXT_PUBLIC_STACK_API_URL_SERVER || envVars.STACK_API_URL_SERVER;
     }
-    url = url || process.env.NEXT_PUBLIC_STACK_API_URL || process.env.STACK_API_URL || process.env.NEXT_PUBLIC_STACK_URL || (options?.isEmulator ? localEmulatorBaseUrl : defaultBaseUrl);
+    url = url || envVars.NEXT_PUBLIC_STACK_API_URL || envVars.STACK_API_URL || envVars.NEXT_PUBLIC_STACK_URL || (options?.isEmulator ? localEmulatorBaseUrl : defaultBaseUrl);
   }
 
   return replaceStackPortPrefix(url.endsWith('/') ? url.slice(0, -1) : url);

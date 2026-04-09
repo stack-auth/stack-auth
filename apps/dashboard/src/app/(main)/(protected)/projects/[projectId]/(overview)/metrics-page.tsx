@@ -500,7 +500,7 @@ function MetricsContent({
       >
         {/* Left Column: Globe - Hidden on mobile */}
         {showGlobe && shouldShowGlobeSection && (
-          <div className="hidden lg:flex lg:col-span-5 h-full min-h-[300px] relative">
+          <div data-walkthrough="overview-globe" className="hidden lg:flex lg:col-span-5 h-full min-h-[300px] relative">
             {/* Globe takes full space */}
             <div className="absolute inset-0 flex items-start justify-center">
               <GlobeSectionWithData includeAnonymous={includeAnonymous} />
@@ -548,6 +548,7 @@ function MetricsContent({
           {/* Charts Grid */}
           {chartWidgets.length > 0 && (
             <div
+              data-walkthrough="overview-metrics"
               ref={chartsGridRef}
               className={cn(
                 "flex-1 grid gap-4",

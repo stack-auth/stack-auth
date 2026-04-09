@@ -1,6 +1,6 @@
 "use client";
 
-import { DesignCard } from "@/components/design-components/card";
+import { DesignCard } from "@/components/design-components";
 import { FormDialog } from "@/components/form-dialog";
 import { InputField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";

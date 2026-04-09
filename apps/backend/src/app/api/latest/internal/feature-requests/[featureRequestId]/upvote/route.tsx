@@ -1,10 +1,7 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { getOrCreateFeaturebaseUserFromAuth, requireFeaturebaseApiKey } from "@/lib/featurebase";
 import { adaptSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { getOrCreateFeaturebaseUser } from "@stackframe/stack-shared/dist/utils/featurebase";
-
-const STACK_FEATUREBASE_API_KEY = getEnvVariable("STACK_FEATUREBASE_API_KEY", "");
 
 // POST /api/latest/internal/feature-requests/[featureRequestId]/upvote
 export const POST = createSmartRouteHandler({
@@ -36,23 +33,14 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth, params }) => {
-    if (!STACK_FEATUREBASE_API_KEY) {
-      throw new StackAssertionError("STACK_FEATUREBASE_API_KEY environment variable is not set");
-    }
-
-    // Get or create Featurebase user for consistent email handling
-    const featurebaseUser = await getOrCreateFeaturebaseUser({
-      id: auth.user.id,
-      primaryEmail: auth.user.primary_email,
-      displayName: auth.user.display_name,
-      profileImageUrl: auth.user.profile_image_url,
-    });
+    const featurebaseApiKey = requireFeaturebaseApiKey();
+    const featurebaseUser = await getOrCreateFeaturebaseUserFromAuth(auth.user);
 
     const response = await fetch('https://do.featurebase.app/v2/posts/upvoters', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-API-Key': STACK_FEATUREBASE_API_KEY,
+        'X-API-Key': featurebaseApiKey,
       },
       body: JSON.stringify({
         id: params.featureRequestId,

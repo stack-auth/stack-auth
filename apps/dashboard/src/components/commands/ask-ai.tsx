@@ -1,9 +1,13 @@
 import { cn } from "@/components/ui";
 import { useDebouncedAction } from "@/hooks/use-debounced-action";
-import { ArrowSquareOutIcon, CaretDownIcon, CheckIcon, CopyIcon, DatabaseIcon, PaperPlaneTiltIcon, SparkleIcon, SpinnerGapIcon, UserIcon } from "@phosphor-icons/react";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { buildStackAuthHeaders } from "@/lib/api-headers";
+import { getPublicEnvVar } from "@/lib/env";
 import { useChat, type UIMessage } from "@ai-sdk/react";
-import { DefaultChatTransport } from "ai";
+import { ArrowSquareOutIcon, CaretDownIcon, CheckIcon, CopyIcon, DatabaseIcon, PaperPlaneTiltIcon, SparkleIcon, SpinnerGapIcon, UserIcon } from "@phosphor-icons/react";
+import { useUser } from "@stackframe/stack";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { convertToModelMessages, DefaultChatTransport } from "ai";
 import { usePathname } from "next/navigation";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
@@ -533,12 +537,12 @@ const AIChatPreviewInner = memo(function AIChatPreview({
   const followUpInputRef = useRef<HTMLInputElement>(null);
   const lastMessageCountRef = useRef(0);
   const isNearBottomRef = useRef(true);
-
-  // Extract projectId from URL path (e.g., /projects/abc123/...)
+  const currentUser = useUser();
   const pathname = usePathname();
-  const projectId = pathname.startsWith("/projects/") ? pathname.split("/")[2] : null;
+  const projectId = pathname.startsWith("/projects/") ? pathname.split("/")[2] : undefined;
 
   const trimmedQuery = query.trim();
+  const backendBaseUrl = getPublicEnvVar("NEXT_PUBLIC_BROWSER_STACK_API_URL") ?? getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_BROWSER_STACK_API_URL is not set");
 
   const {
     messages,
@@ -547,8 +551,25 @@ const AIChatPreviewInner = memo(function AIChatPreview({
     error: aiError,
   } = useChat({
     transport: new DefaultChatTransport({
-      api: "/api/ai-search",
-      body: { projectId },
+      api: `${backendBaseUrl}/api/latest/ai/query/stream`,
+      headers: () => buildStackAuthHeaders(currentUser),
+      prepareSendMessagesRequest: async ({ messages: uiMessages, headers }) => {
+        const modelMessages = await convertToModelMessages(uiMessages);
+        return {
+          body: {
+            systemPrompt: "command-center-ask-ai",
+            tools: ["docs", "sql-query"],
+            quality: "smart",
+            speed: "slow",
+            projectId,
+            messages: modelMessages.map(m => ({
+              role: m.role,
+              content: m.content,
+            })),
+          },
+          headers,
+        };
+      },
     }),
   });
 

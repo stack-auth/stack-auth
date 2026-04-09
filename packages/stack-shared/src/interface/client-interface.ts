@@ -47,6 +47,67 @@ export type ClientInterfaceOptions = {
   projectOwnerSession: InternalSession | (() => Promise<string | null>),
 });
 
+type BotChallengeInput = {
+  token?: string,
+  phase?: "invisible" | "visible",
+  unavailable?: true,
+};
+
+const botChallengeKnownErrors = [
+  KnownErrors.BotChallengeRequired,
+  KnownErrors.BotChallengeFailed,
+] as const;
+
+function isBotChallengeKnownError(error: unknown): error is KnownErrors["BotChallengeRequired"] | KnownErrors["BotChallengeFailed"] {
+  return KnownErrors.BotChallengeRequired.isInstance(error) || KnownErrors.BotChallengeFailed.isInstance(error);
+}
+
+function getBotChallengeRequestFields(botChallenge: BotChallengeInput | undefined, context: string) {
+  if (botChallenge?.unavailable) {
+    if (botChallenge.token != null || botChallenge.phase != null) {
+      throw new StackAssertionError(`${context} bot challenge unavailability cannot be combined with a token or phase.`);
+    }
+
+    return {
+      bot_challenge_unavailable: "true" as const,
+    };
+  }
+
+  const challengeToken = botChallenge?.token?.trim() || undefined;
+  if (botChallenge?.phase === "visible") {
+    if (challengeToken == null) {
+      // Backward-compatible fallback for older callers; prefer `unavailable: true`.
+      return {
+        bot_challenge_unavailable: "true",
+      };
+    }
+
+    return {
+      bot_challenge_token: challengeToken,
+      bot_challenge_phase: "visible" as const,
+    };
+  }
+
+  if (challengeToken == null) {
+    if (botChallenge?.phase != null) {
+      throw new StackAssertionError(`${context} bot challenge phase options require a token.`);
+    }
+
+    return {};
+  }
+
+  if (botChallenge?.phase == null) {
+    return {
+      bot_challenge_token: challengeToken,
+    };
+  }
+
+  return {
+    bot_challenge_token: challengeToken,
+    bot_challenge_phase: "invisible" as const,
+  };
+}
+
 export class StackClientInterface {
   private pendingNetworkDiagnostics?: ReturnType<StackClientInterface["_runNetworkDiagnosticsInner"]>;
 
@@ -604,7 +665,8 @@ export class StackClientInterface {
   async sendMagicLinkEmail(
     email: string,
     callbackUrl: string,
-  ): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"]>> {
+    botChallenge?: BotChallengeInput,
+  ): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"] | KnownErrors["BotChallengeRequired"] | KnownErrors["BotChallengeFailed"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       "/auth/otp/send-sign-in-code",
       {
@@ -615,10 +677,11 @@ export class StackClientInterface {
         body: JSON.stringify({
           email,
           callback_url: callbackUrl,
+          ...getBotChallengeRequestFields(botChallenge, "Magic link sign-in"),
         }),
       },
       null,
-      [KnownErrors.RedirectUrlNotWhitelisted]
+      [KnownErrors.RedirectUrlNotWhitelisted, ...botChallengeKnownErrors]
     );
 
     if (res.status === "error") {
@@ -920,7 +983,8 @@ export class StackClientInterface {
     password: string,
     emailVerificationRedirectUrl: string | undefined,
     session: InternalSession,
-  ): Promise<Result<{ accessToken: string, refreshToken: string }, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"]>> {
+    botChallenge?: BotChallengeInput,
+  ): Promise<Result<{ accessToken: string, refreshToken: string }, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"] | KnownErrors["BotChallengeRequired"] | KnownErrors["BotChallengeFailed"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       "/auth/password/sign-up",
       {
@@ -932,10 +996,11 @@ export class StackClientInterface {
           email,
           password,
           verification_callback_url: emailVerificationRedirectUrl,
+          ...getBotChallengeRequestFields(botChallenge, "Credential sign-up"),
         }),
       },
       session,
-      [KnownErrors.UserWithEmailAlreadyExists, KnownErrors.PasswordRequirementsNotMet]
+      [KnownErrors.UserWithEmailAlreadyExists, KnownErrors.PasswordRequirementsNotMet, ...botChallengeKnownErrors]
     );
 
     if (res.status === "error") {
@@ -1063,6 +1128,7 @@ export class StackClientInterface {
       state: string,
       type: "authenticate" | "link",
       providerScope?: string,
+      botChallenge?: BotChallengeInput,
       session: InternalSession,
     }
   ): Promise<string> {
@@ -1105,8 +1171,69 @@ export class StackClientInterface {
     if (options.providerScope) {
       url.searchParams.set("provider_scope", options.providerScope);
     }
+    for (const [key, value] of Object.entries(getBotChallengeRequestFields(options.botChallenge, `OAuth ${options.type}`))) {
+      url.searchParams.set(key, value);
+    }
 
     return url.toString();
+  }
+
+  async authorizeOAuth(options: {
+    provider: string,
+    redirectUrl: string,
+    errorRedirectUrl: string,
+    afterCallbackRedirectUrl?: string,
+    codeChallenge: string,
+    state: string,
+    type: "authenticate" | "link",
+    providerScope?: string,
+    botChallenge?: BotChallengeInput,
+    session: InternalSession,
+  }): Promise<Result<string, KnownErrors["BotChallengeRequired"] | KnownErrors["BotChallengeFailed"]>> {
+    if (typeof window === "undefined") {
+      throw new StackAssertionError("authorizeOAuth can currently only be called in a browser environment");
+    }
+
+    await this.options.prepareRequest?.();
+
+    const url = new URL(await this.getOAuthUrl(options));
+    url.searchParams.set("stack_response_mode", "json");
+
+    let rawRes;
+    try {
+      rawRes = await fetch(url, {
+        method: "GET",
+      });
+    } catch (error) {
+      if (error instanceof TypeError) {
+        throw await this._createNetworkError(error, options.session, "client");
+      }
+      throw error;
+    }
+
+    const processedResponse = await this._processResponse(rawRes);
+    if (processedResponse.status === "error") {
+      if (isBotChallengeKnownError(processedResponse.error)) {
+        return Result.error(processedResponse.error);
+      }
+      throw processedResponse.error;
+    }
+
+    if (processedResponse.data.status !== 200) {
+      throw new StackAssertionError(`OAuth authorize returned an unexpected status: ${processedResponse.data.status}`);
+    }
+
+    const body = await processedResponse.data.json();
+    if (body == null || typeof body !== "object" || Array.isArray(body)) {
+      throw new StackAssertionError("OAuth authorize response body must be an object", { body });
+    }
+
+    const location = body.location;
+    if (typeof location !== "string") {
+      throw new StackAssertionError("OAuth authorize response is missing a redirect location", { body });
+    }
+
+    return Result.ok(location);
   }
 
   async callOAuthCallback(options: {

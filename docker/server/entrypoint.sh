@@ -73,13 +73,16 @@ fi
 
 # ============= ENV VARS =============
 
-# Create a working directory for our processed files
-# This is necessary because we need to replace the env vars in all files and we might want to run the seed script multiple times with different env vars.
-WORK_DIR="/tmp/processed"
+# Create a working directory for our processed files.
+# Keep this off /tmp so local-emulator config sharing can bind-mount /tmp
+# without pushing the whole runtime copy step onto the host filesystem.
+WORK_DIR="${STACK_RUNTIME_WORK_DIR:-/var/tmp/stack-runtime}"
 mkdir -p "$WORK_DIR"
 
-echo "Copying files to working directory..."
-cp -vr /app/. "$WORK_DIR"/.
+if [ "$WORK_DIR" != "/app" ]; then
+  echo "Copying files to working directory..."
+  cp -r /app/. "$WORK_DIR"/.
+fi
 
 # Find all files in the apps directory that contain a STACK_ENV_VAR_SENTINEL and extract the unique sentinel strings.
 echo "Finding unhandled sentinels..."

@@ -18,7 +18,7 @@ import { globalPrismaClient, rawQuery } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, migrateConfigOverride, projectConfigSchema } from "@stackframe/stack-shared/dist/config/schema";
 import { adaptSchema, adminAuthTypeSchema, branchConfigSourceSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import * as yup from "yup";
 type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
 
@@ -194,7 +194,7 @@ async function warnOnValidationFailure(
       captureError("config-override-validation-warning", `Config override validation warning for project ${options.projectId} (this may not be a logic error, but rather a client/implementation issue — e.g. dot notation into non-existent record entries): ${validationResult.error}`);
     }
   } catch (e) {
-    captureError("config-override-validation-check-failed", e);
+    captureError("config-override-validation-check-failed", new StackAssertionError("Config override validation check failed. This may be really bad! Make sure to check the error and the config.", { cause: e, options }));
   }
 }
 

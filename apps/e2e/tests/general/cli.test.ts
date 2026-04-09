@@ -8,6 +8,15 @@ import { describe, beforeAll, afterAll } from "vitest";
 import { it, niceFetch, STACK_BACKEND_BASE_URL, STACK_INTERNAL_PROJECT_CLIENT_KEY, STACK_INTERNAL_PROJECT_SERVER_KEY, STACK_INTERNAL_PROJECT_ADMIN_KEY } from "../helpers";
 
 const CLI_BIN = path.resolve("packages/stack-cli/dist/index.js");
+const CLI_SRC_BIN = path.resolve("packages/stack-cli/src/index.ts");
+
+function extractConfigObjectString(content: string): string {
+  const configMatch = content.match(/export const config:\s*StackConfig\s*=\s*(.+);\s*$/s);
+  if (!configMatch) {
+    throw new Error(`Could not extract config object from file:\n${content}`);
+  }
+  return configMatch[1];
+}
 
 function runCli(
   args: string[],
@@ -51,6 +60,7 @@ describe("Stack CLI", () => {
       secretServerKey: STACK_INTERNAL_PROJECT_SERVER_KEY,
       superSecretAdminKey: STACK_INTERNAL_PROJECT_ADMIN_KEY,
       tokenStore: "memory",
+      redirectMethod: "none",
     });
 
     const fakeEmail = `cli-test-${crypto.randomUUID()}@stack-generated.example.com`;
@@ -306,13 +316,14 @@ describe("Stack CLI", () => {
   it("config pull writes a .ts file", async ({ expect }) => {
     configTsPath = path.join(tmpDir, "config.ts");
     const { stdout, exitCode } = await runCli(
-      ["config", "pull", "--config-file", configTsPath],
+      ["config", "pull", "--config-file", configTsPath, "--overwrite"],
       { STACK_PROJECT_ID: createdProjectId },
     );
     expect(exitCode).toBe(0);
     expect(stdout).toContain("Config written to");
     const content = fs.readFileSync(configTsPath, "utf-8");
-    expect(content).toContain("export const config");
+    expect(content).toContain('import type { StackConfig } from "@stackframe/js";');
+    expect(content).toContain("export const config: StackConfig");
   });
 
   it("config push succeeds", async ({ expect }) => {
@@ -332,7 +343,7 @@ describe("Stack CLI", () => {
       { STACK_PROJECT_ID: createdProjectId },
     );
     expect(exitCode).toBe(1);
-    expect(stderr).toContain(".js or .ts");
+    expect(stderr).toContain(".ts extension");
   });
 
   it("config push rejects array config export", async ({ expect }) => {
@@ -344,5 +355,213 @@ describe("Stack CLI", () => {
     );
     expect(exitCode).toBe(1);
     expect(stderr).toContain("plain `config` object");
+  });
+
+  it("config pull rejects overwriting an existing file without --overwrite", async ({ expect }) => {
+    const existingConfigPath = path.join(tmpDir, "existing-config.ts");
+    fs.writeFileSync(existingConfigPath, "existing\n");
+
+    const { stderr, exitCode } = await runCli(
+      ["config", "pull", "--config-file", existingConfigPath],
+      { STACK_PROJECT_ID: createdProjectId },
+    );
+
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("re-run with --overwrite");
+  });
+
+  // --- init command tests ---
+
+  // TODO: Re-enable these create-mode tests once init mode handling is finalized.
+  // We keep these skipped (instead of todo) so the test logic remains visible and easy to re-enable.
+  it.skip("init create writes stack.config.ts with selected apps", async ({ expect }) => {
+    const initDir = path.join(tmpDir, "init-create");
+    fs.mkdirSync(initDir, { recursive: true });
+
+    const { stdout, exitCode } = await runCli([
+      "init", "--mode", "create", "--apps", "authentication,teams", "--output-dir", initDir,
+    ]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Config file written to");
+
+    const content = fs.readFileSync(path.join(initDir, "stack.config.ts"), "utf-8");
+    expect(content).toContain('import type { StackConfig } from "@stackframe/js";');
+    expect(content).toContain("export const config: StackConfig");
+    expect(JSON.parse(extractConfigObjectString(content))).toMatchObject({
+      apps: {
+        installed: {
+          authentication: { enabled: true },
+          teams: { enabled: true },
+        },
+      },
+    });
+  });
+
+  it.skip("init create with single app", async ({ expect }) => {
+    const initDir = path.join(tmpDir, "init-create-single");
+    fs.mkdirSync(initDir, { recursive: true });
+
+    const { stdout, exitCode } = await runCli([
+      "init", "--mode", "create", "--apps", "authentication", "--output-dir", initDir,
+    ]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Config file written to");
+
+    const content = fs.readFileSync(path.join(initDir, "stack.config.ts"), "utf-8");
+    expect(JSON.parse(extractConfigObjectString(content))).toMatchObject({
+      apps: {
+        installed: {
+          authentication: { enabled: true },
+        },
+      },
+    });
+    expect(content).not.toContain('"teams"');
+  });
+
+  it("init link-config with valid path", async ({ expect }) => {
+    // Create a dummy config file to link to
+    const dummyConfig = path.join(tmpDir, "dummy-stack.config.ts");
+    fs.writeFileSync(dummyConfig, "export const config = {};\n");
+
+    const { stdout, exitCode } = await runCli([
+      "init", "--mode", "link-config", "--config-file", dummyConfig,
+    ]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Linked to config file");
+    expect(stdout).toContain(dummyConfig);
+  });
+
+  it("init link-config with invalid path fails", async ({ expect }) => {
+    const { stderr, exitCode } = await runCli([
+      "init", "--mode", "link-config", "--config-file", "/nonexistent/stack.config.ts",
+    ]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("File not found");
+  });
+
+  it("init link-cloud creates .env with API keys", async ({ expect }) => {
+    expect(createdProjectId).toBeDefined();
+
+    const initDir = path.join(tmpDir, "init-cloud");
+    fs.mkdirSync(initDir, { recursive: true });
+
+    const { stdout, exitCode } = await runCli([
+      "init", "--mode", "link-cloud", "--select-project-id", createdProjectId, "--output-dir", initDir,
+    ]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Created .env with Stack Auth keys");
+
+    const envContent = fs.readFileSync(path.join(initDir, ".env"), "utf-8");
+    expect(envContent).toContain("# Stack Auth");
+    expect(envContent).toContain(`NEXT_PUBLIC_STACK_PROJECT_ID=${createdProjectId}`);
+    expect(envContent).toContain("NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=");
+    expect(envContent).toContain("STACK_SECRET_SERVER_KEY=");
+  });
+
+  it("init link-cloud appends to existing .env", async ({ expect }) => {
+    expect(createdProjectId).toBeDefined();
+
+    const initDir = path.join(tmpDir, "init-cloud-append");
+    fs.mkdirSync(initDir, { recursive: true });
+    fs.writeFileSync(path.join(initDir, ".env"), "EXISTING_VAR=hello\n");
+
+    const { stdout, exitCode } = await runCli([
+      "init", "--mode", "link-cloud", "--select-project-id", createdProjectId, "--output-dir", initDir,
+    ]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("Appended Stack Auth keys to .env");
+
+    const envContent = fs.readFileSync(path.join(initDir, ".env"), "utf-8");
+    expect(envContent).toContain("EXISTING_VAR=hello");
+    expect(envContent).toContain("# Stack Auth");
+    expect(envContent).toContain(`NEXT_PUBLIC_STACK_PROJECT_ID=${createdProjectId}`);
+  });
+
+  it("init link-cloud fails with invalid project ID", async ({ expect }) => {
+    const { stderr, exitCode } = await runCli([
+      "init", "--mode", "link-cloud", "--select-project-id", "nonexistent-project-id",
+    ]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("not found");
+  });
+
+  it.skip("init outputs setup instructions", async ({ expect }) => {
+    const initDir = path.join(tmpDir, "init-instructions");
+    fs.mkdirSync(initDir, { recursive: true });
+
+    const { stdout, exitCode } = await runCli([
+      "init", "--mode", "create", "--apps", "authentication", "--output-dir", initDir,
+    ]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("STACK AUTH SETUP INSTRUCTIONS");
+  });
+});
+
+// Emulator CLI tests — no backend required, just validates help/arg parsing
+describe("Stack CLI — Emulator", () => {
+  function runCliBare(
+    args: string[],
+  ): Promise<{ stdout: string, stderr: string, exitCode: number | null }> {
+    return new Promise((resolve) => {
+      execFile("node", [CLI_BIN, ...args], {
+        env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", CI: "1" },
+        timeout: 15_000,
+      }, (error, stdout, stderr) => {
+        resolve({
+          stdout: stdout.toString(),
+          stderr: stderr.toString(),
+          exitCode: error ? (error as any).code ?? 1 : 0,
+        });
+      });
+    });
+  }
+
+  function runCliBareFromSource(
+    args: string[],
+  ): Promise<{ stdout: string, stderr: string, exitCode: number | null }> {
+    return new Promise((resolve) => {
+      execFile("node", ["--import", "tsx", CLI_SRC_BIN, ...args], {
+        env: { PATH: process.env.PATH ?? "", HOME: process.env.HOME ?? "", CI: "1" },
+        timeout: 15_000,
+      }, (error, stdout, stderr) => {
+        resolve({
+          stdout: stdout.toString(),
+          stderr: stderr.toString(),
+          exitCode: error ? (error as any).code ?? 1 : 0,
+        });
+      });
+    });
+  }
+
+  it("emulator help shows subcommands", async ({ expect }) => {
+    const { stdout, exitCode } = await runCliBare(["emulator", "--help"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("pull");
+    expect(stdout).toContain("start");
+    expect(stdout).toContain("stop");
+    expect(stdout).toContain("reset");
+    expect(stdout).toContain("status");
+    expect(stdout).toContain("list-releases");
+  });
+
+  it("emulator pull help shows options", async ({ expect }) => {
+    const { stdout, exitCode } = await runCliBare(["emulator", "pull", "--help"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("--arch");
+    expect(stdout).toContain("--branch");
+    expect(stdout).toContain("--tag");
+    expect(stdout).toContain("--repo");
+  });
+
+  it("emulator pull rejects invalid arch values", async ({ expect }) => {
+    const { stderr, exitCode } = await runCliBareFromSource(["emulator", "pull", "--arch", "sparc"]);
+    expect(exitCode).toBe(1);
+    expect(stderr).toContain("Invalid architecture: sparc. Expected arm64 or amd64.");
+  });
+
+  it("emulator list-releases help shows repo option", async ({ expect }) => {
+    const { stdout, exitCode } = await runCliBare(["emulator", "list-releases", "--help"]);
+    expect(exitCode).toBe(0);
+    expect(stdout).toContain("--repo");
   });
 });

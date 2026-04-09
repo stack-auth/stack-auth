@@ -1,9 +1,9 @@
 "use client";
 
-import { DesignBadge } from "@/components/design-components/badge";
-import { DesignCard } from "@/components/design-components/card";
-import { DesignPillToggle } from "@/components/design-components/pill-toggle";
-import { DesignDataTable } from "@/components/design-components/table";
+import { DesignBadge } from "@/components/design-components";
+import { DesignCard } from "@/components/design-components";
+import { DesignPillToggle } from "@/components/design-components";
+import { DesignDataTable } from "@/components/design-components";
 import { useRouter } from "@/components/router";
 import { Spinner, Typography } from "@/components/ui";
 import { Envelope } from "@phosphor-icons/react";
@@ -134,7 +134,7 @@ export default function PageClient() {
         title="Sent"
         description="View email logs and domain reputation"
       >
-        <div className="flex gap-6">
+        <div data-walkthrough="emails-sent" className="flex gap-6">
           {/* Left side: Email Log with toggle inside card */}
           <div className="flex-1 flex flex-col gap-4">
             <DesignCard

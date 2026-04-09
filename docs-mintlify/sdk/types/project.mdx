@@ -1,0 +1,140 @@
+---
+title: "Project"
+description: "Reference for the Project type representing project configuration."
+sidebarTitle: "Project"
+mode: "wide"
+---
+
+import {
+  ClickableTableOfContents,
+  CollapsibleTypesSection,
+  MethodAside,
+  MethodContent,
+  MethodLayout,
+} from "/snippets/sdk-type-components.jsx";
+
+export const ProjectSection = (props) => (
+  <CollapsibleTypesSection
+    badge={
+      <Badge color="green" size="sm" shape="pill">
+        project
+      </Badge>
+    }
+    {...props}
+  />
+);
+
+The `Project` object contains the information and configuration of a project, such as the name, description, and enabled authentication methods.
+
+Each [Stack app](/guides/going-further/stack-app) corresponds to a project. You can obtain its `Project` object by calling [`stackApp.getProject()`](/sdk/objects/stack-app#stackclientappgetproject) or [`stackApp.useProject()`](/sdk/objects/stack-app#stackclientappuseproject).
+
+## Table of Contents
+
+<ClickableTableOfContents
+  title="Project Table of Contents"
+  code={`type Project = {
+  id: string; //$stack-link-to:#projectid
+  displayName: string; //$stack-link-to:#projectdisplayname
+  config: ProjectConfig; //$stack-link-to:#projectconfig
+};
+
+type ProjectConfig = {
+  signUpEnabled: boolean; //$stack-link-to:#projectconfigsignupenabled
+  credentialEnabled: boolean; //$stack-link-to:#projectconfigcredentialenabled
+  magicLinkEnabled: boolean; //$stack-link-to:#projectconfigmagiclinkenabled
+  passkeyEnabled: boolean; //$stack-link-to:#projectconfigpasskeyenabled
+  clientTeamCreationEnabled: boolean; //$stack-link-to:#projectconfigclientteamcreationenabled
+  clientUserDeletionEnabled: boolean; //$stack-link-to:#projectconfigclientuserdeletionenabled
+  oauthProviders: OAuthProviderConfig[]; //$stack-link-to:#projectconfigoauthproviders
+  allowUserApiKeys: boolean; //$stack-link-to:#projectconfigallowuserapikeys
+  allowTeamApiKeys: boolean; //$stack-link-to:#projectconfigallowteamapikeys
+};`}
+/>
+
+## Properties
+
+<ProjectSection type="project" property="id" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The unique ID of the project.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const id: string; ```
+    </MethodAside>
+  </MethodLayout>
+</ProjectSection>
+
+<ProjectSection type="project" property="displayName" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The display name of the project.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const displayName: string; ```
+    </MethodAside>
+  </MethodLayout>
+</ProjectSection>
+
+<ProjectSection type="project" property="config" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Configuration settings governing authentication and user management features.
+
+      <ParamField body="config.signUpEnabled" type="boolean">
+        Whether sign-up is enabled for the project.
+      </ParamField>
+
+      <ParamField body="config.credentialEnabled" type="boolean">
+        Whether credential-based (email/password) authentication is enabled.
+      </ParamField>
+
+      <ParamField body="config.magicLinkEnabled" type="boolean">
+        Whether magic-link authentication is enabled.
+      </ParamField>
+
+      <ParamField body="config.passkeyEnabled" type="boolean">
+        Whether passkey authentication is enabled.
+      </ParamField>
+
+      <ParamField body="config.clientTeamCreationEnabled" type="boolean">
+        Whether client-side team creation is permitted.
+      </ParamField>
+
+      <ParamField body="config.clientUserDeletionEnabled" type="boolean">
+        Whether client-side user deletion is enabled.
+      </ParamField>
+
+      <ParamField body="config.oauthProviders" type="OAuthProviderConfig[]">
+        The list of OAuth providers configured for the project. Each provider has an `id: string`.
+      </ParamField>
+
+      <ParamField body="config.allowUserApiKeys" type="boolean">
+        Whether user-level API key creation is allowed.
+      </ParamField>
+
+      <ParamField body="config.allowTeamApiKeys" type="boolean">
+        Whether team-level API key creation is allowed.
+      </ParamField>
+    </MethodContent>
+
+    <MethodAside title="Type Definition">
+      ```typescript
+      declare const config: {
+        signUpEnabled: boolean;
+        credentialEnabled: boolean;
+        magicLinkEnabled: boolean;
+        passkeyEnabled: boolean;
+        clientTeamCreationEnabled: boolean;
+        clientUserDeletionEnabled: boolean;
+        oauthProviders: OAuthProviderConfig[];
+        allowUserApiKeys: boolean;
+        allowTeamApiKeys: boolean;
+      };
+
+      type OAuthProviderConfig = {
+        id: string;
+      };
+      ```
+    </MethodAside>
+  </MethodLayout>
+</ProjectSection>

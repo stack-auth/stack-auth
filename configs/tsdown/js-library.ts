@@ -75,19 +75,7 @@ export default function createJsLibraryTsupConfig(_options: { barrelFiles?: stri
             external: true,
           };
         },
-      },
-      {
-        name: 'stackframe: write esm package.json',
-        generateBundle(options) {
-          if (options.dir?.endsWith('/esm') || options.dir === 'dist/esm') {
-            this.emitFile({
-              type: 'asset',
-              fileName: 'package.json',
-              source: JSON.stringify({ type: 'module' }) + '\n',
-            });
-          }
-        },
-      },
+      }
     ],
   });
 }

@@ -7,7 +7,8 @@ import { notFound, redirect, RedirectType, usePathname, useSearchParams } from '
 import { useMemo } from 'react';
 import { SignIn, SignUp, StackServerApp } from "..";
 import { useStackApp } from "../lib/hooks";
-import { HandlerUrls, StackClientApp } from "../lib/stack-app";
+import { HandlerUrls, StackClientApp, stackAppInternalsSymbol } from "../lib/stack-app";
+import { isLocalHandlerUrlTarget, resolveUnknownHandlerPathFallbackUrl } from "../lib/stack-app/url-targets";
 import { AccountSettings } from "./account-settings";
 import { CliAuthConfirmation } from "./cli-auth-confirm";
 import { EmailVerification } from "./email-verification";
@@ -64,6 +65,8 @@ const availablePaths = {
   onboarding: 'onboarding',
 } as const;
 
+const placeholderOrigin = "http://example.com";
+
 const pathAliases = {
   // also includes the uppercase and non-dashed versions
   ...Object.fromEntries(Object.entries(availablePaths).map(([key, value]) => [value, value])),
@@ -84,10 +87,11 @@ function renderComponent(props: {
   fullPage: boolean,
   componentProps?: BaseHandlerProps['componentProps'],
   redirectIfNotHandler?: (name: keyof HandlerUrls) => void,
+  getDefaultUnknownPathUrl?: (path: string) => string | null,
   onNotFound: () => any,
   app: StackClientApp<any> | StackServerApp<any>,
 }) {
-  const { path, searchParams, fullPage, componentProps, redirectIfNotHandler, onNotFound, app } = props;
+  const { path, searchParams, fullPage, componentProps, redirectIfNotHandler, getDefaultUnknownPathUrl, onNotFound, app } = props;
 
   switch (path) {
     case availablePaths.signIn: {
@@ -202,6 +206,14 @@ function renderComponent(props: {
           return { redirect: redirectUrl };
         }
       }
+      const defaultUnknownPathUrl = getDefaultUnknownPathUrl?.(path);
+      if (defaultUnknownPathUrl != null) {
+        const defaultUnknownPathUrlObject = new URL(defaultUnknownPathUrl, "http://example.com");
+        for (const [key, value] of Object.entries(searchParams)) {
+          defaultUnknownPathUrlObject.searchParams.set(key, value);
+        }
+        return { redirect: toAbsoluteOrRelativeRedirectTarget(defaultUnknownPathUrlObject) };
+      }
       return onNotFound();
     }
   }
@@ -221,7 +233,7 @@ export function StackHandlerClient(props: BaseHandlerProps & Partial<RouteProps>
   const searchParamsSource = new URLSearchParams(window.location.search);
   END_PLATFORM */
 
-  const { path, searchParams } = useMemo(() => {
+  const { path, searchParams, handlerPath } = useMemo(() => {
     const handlerPath = new URL(stackApp.urls.handler, 'http://example.com').pathname;
     const relativePath = currentLocation.startsWith(handlerPath)
       ? currentLocation.slice(handlerPath.length).replace(/^\/+/, '')
@@ -229,27 +241,43 @@ export function StackHandlerClient(props: BaseHandlerProps & Partial<RouteProps>
 
     return {
       path: relativePath,
-      searchParams: Object.fromEntries(searchParamsSource.entries())
+      searchParams: Object.fromEntries(searchParamsSource.entries()),
+      handlerPath,
     };
   }, [currentLocation, searchParamsSource, stackApp.urls.handler]);
 
+  const getDefaultUnknownPathUrl = (unknownPath: string): string | null => {
+    return resolveUnknownHandlerPathFallbackUrl({
+      defaultTarget: stackApp[stackAppInternalsSymbol].getConstructorOptions().urls?.default,
+      projectId: stackApp.projectId,
+      unknownPath,
+    });
+  };
+
   const redirectIfNotHandler = (name: keyof HandlerUrls) => {
     const url = stackApp.urls[name];
-    const handlerUrl = stackApp.urls.handler;
-
-    if (url !== handlerUrl && url.startsWith(handlerUrl + "/")) {
+    const isCrossDomainLocalOauthCallback = name === "oauthCallback" && searchParams.stack_cross_domain_auth === "1";
+    if (isCrossDomainLocalOauthCallback) {
+      return;
+    }
+    const isLocalHandlerTarget = isLocalHandlerUrlTarget({
+      targetUrl: url,
+      handlerPath,
+      currentOrigin: typeof window === "undefined" ? undefined : window.location.origin,
+    });
+    if (isLocalHandlerTarget) {
       return;
     }
 
-    const urlObj = new URL(url, 'http://example.com');
+    const urlObj = new URL(url, placeholderOrigin);
     for (const [key, value] of Object.entries(searchParams)) {
       urlObj.searchParams.set(key, value);
     }
 
     // IF_PLATFORM next
-    redirect(getRelativePart(urlObj), RedirectType.replace);
+    redirect(toAbsoluteOrRelativeRedirectTarget(urlObj), RedirectType.replace);
     /* ELSE_IF_PLATFORM react
-    window.location.href = getRelativePart(urlObj);
+    window.location.href = toAbsoluteOrRelativeRedirectTarget(urlObj);
     END_PLATFORM */
   };
 
@@ -259,6 +287,7 @@ export function StackHandlerClient(props: BaseHandlerProps & Partial<RouteProps>
     fullPage: props.fullPage,
     componentProps: props.componentProps,
     redirectIfNotHandler,
+    getDefaultUnknownPathUrl,
     onNotFound: () =>
       // IF_PLATFORM next
       notFound()
@@ -293,4 +322,8 @@ export function StackHandlerClient(props: BaseHandlerProps & Partial<RouteProps>
 // filter undefined values in object. if object itself is undefined, return undefined
 function filterUndefinedINU<T extends {}>(value: T | undefined): FilterUndefined<T> | undefined {
   return value === undefined ? value : filterUndefined(value);
+}
+
+function toAbsoluteOrRelativeRedirectTarget(url: URL): string {
+  return url.origin === "http://example.com" ? getRelativePart(url) : url.toString();
 }

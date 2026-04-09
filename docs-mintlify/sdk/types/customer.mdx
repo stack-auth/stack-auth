@@ -1,0 +1,787 @@
+---
+title: "Customer"
+description: "Reference for the Customer interface providing payment and item management capabilities."
+sidebarTitle: "Customer"
+mode: "wide"
+---
+
+import {
+  AsideSection,
+  ClickableTableOfContents,
+  CollapsibleTypesSection,
+  ContentSection,
+  MethodAside,
+  MethodContent,
+  MethodLayout,
+  MethodReturns,
+} from "/snippets/sdk-type-components.jsx";
+
+export const CustomerSection = (props) => (
+  <CollapsibleTypesSection
+    badge={
+      <Badge color="green" size="sm" shape="pill">
+        customer
+      </Badge>
+    }
+    {...props}
+  />
+);
+
+The `Customer` interface provides payment and item management functionality that is shared between users and teams. Both [`CurrentUser`](/sdk/types/user#currentuser) and [`Team`](/sdk/types/team#team) types extend this interface, allowing them to create checkout URLs and manage items.
+
+This interface is automatically available on:
+
+- [`CurrentUser`](/sdk/types/user#currentuser) objects
+- [`Team`](/sdk/types/team#team) objects
+- [`ServerUser`](/sdk/types/user#serveruser) objects (with additional server-side capabilities)
+- [`ServerTeam`](/sdk/types/team#serverteam) objects (with additional server-side capabilities)
+
+## Table of Contents
+
+<ClickableTableOfContents
+  title="Customer Table of Contents"
+  code={`interface Customer {
+  readonly id: string; //$stack-link-to:#customerid
+
+  // Checkout
+  createCheckoutUrl(options): Promise<string>; //$stack-link-to:#customercreatecheckouturl
+
+  // Payment Methods
+  createPaymentMethodSetupIntent(): Promise<CustomerPaymentMethodSetupIntent>; //$stack-link-to:#customercreatepaymentmethodsetupintent
+  setDefaultPaymentMethodFromSetupIntent(setupIntentId): Promise<CustomerDefaultPaymentMethod>; //$stack-link-to:#customersetdefaultpaymentmethodfromsetupintent
+
+  // Subscriptions
+  switchSubscription(options): Promise<void>; //$stack-link-to:#customerswitchsubscription
+
+  // Billing
+  getBilling(): Promise<CustomerBilling>; //$stack-link-to:#customergetbilling
+  useBilling(): CustomerBilling; //$stack-link-to:#customerusebilling
+
+  // Items
+  getItem(itemId): Promise<Item>; //$stack-link-to:#customergetitem
+  useItem(itemId): Item; //$stack-link-to:#customeruseitem
+
+  // Products
+  listProducts([options]): Promise<CustomerProductsList>; //$stack-link-to:#customerlistproducts
+  useProducts([options]): CustomerProductsList; //$stack-link-to:#customeruseproducts
+
+  // Invoices
+  listInvoices([options]): Promise<CustomerInvoicesList>; //$stack-link-to:#customerlistinvoices
+  useInvoices([options]): CustomerInvoicesList; //$stack-link-to:#customeruseinvoices
+};`}
+/>
+
+## Properties
+
+<CustomerSection type="customer" property="id" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Unique identifier - the user ID for individual accounts or team ID for organizations.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const id: string; ```
+    </MethodAside>
+  </MethodLayout>
+</CustomerSection>
+
+## Methods
+
+<CustomerSection type="customer" property="createCheckoutUrl" signature="options" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Creates a secure checkout URL for purchasing a product. This method integrates with Stripe to generate a payment link that handles the entire purchase flow.
+
+      <ContentSection title="Parameters">
+        <ParamField body="options.productId" type="string" required>
+          The ID of the product to purchase, as configured in your Stack Auth project settings.
+        </ParamField>
+
+        <ParamField body="options.returnUrl" type="string">
+          The URL to redirect the user to after they complete (or cancel) the checkout. If not provided, the user is redirected to the current page.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<string>">
+        A secure URL that redirects to the Stripe checkout page.
+      </MethodReturns>
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function createCheckoutUrl(options: {
+          productId: string;
+          returnUrl?: string;
+        }): Promise<string>;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        const user = useUser({ or: "redirect" });
+
+        const handleUpgrade = async () => {
+          const checkoutUrl = await user.createCheckoutUrl({
+            productId: "prod_premium_monthly",
+            returnUrl: "https://myapp.com/billing",
+          });
+          window.location.href = checkoutUrl;
+        };
+        ```
+
+        ```typescript
+        const team = await user.getTeam("team_123");
+
+        const purchaseSeats = async () => {
+          const checkoutUrl = await team.createCheckoutUrl({
+            productId: "prod_additional_seats",
+          });
+          window.open(checkoutUrl, "_blank");
+        };
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CustomerSection>
+
+<CustomerSection type="customer" property="createPaymentMethodSetupIntent" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Creates a Stripe SetupIntent for adding a new payment method. The returned `clientSecret` and `stripeAccountId` can be used with Stripe.js to collect payment details.
+
+      <MethodReturns type="Promise<CustomerPaymentMethodSetupIntent>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function createPaymentMethodSetupIntent(): Promise<{
+          clientSecret: string;
+          stripeAccountId: string;
+        }>;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        const setupIntent = await user.createPaymentMethodSetupIntent();
+        // Use setupIntent.clientSecret with Stripe.js
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CustomerSection>
+
+<CustomerSection type="customer" property="setDefaultPaymentMethodFromSetupIntent" signature="setupIntentId" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Sets the default payment method from a completed SetupIntent. Call this after the user has successfully added a payment method through Stripe.js.
+
+      <ContentSection title="Parameters">
+        <ParamField body="setupIntentId" type="string" required>
+          The ID of the completed SetupIntent.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<CustomerDefaultPaymentMethod>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function setDefaultPaymentMethodFromSetupIntent(
+          setupIntentId: string
+        ): Promise<CustomerDefaultPaymentMethod>;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        const paymentMethod = await user.setDefaultPaymentMethodFromSetupIntent(
+          "seti_1abc123"
+        );
+        console.log(`Set default card ending in ${paymentMethod?.last4}`);
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CustomerSection>
+
+<CustomerSection type="customer" property="switchSubscription" signature="options" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Switches an existing subscription from one product to another. Useful for upgrading or downgrading plans.
+
+      <ContentSection title="Parameters">
+        <ParamField body="options.fromProductId" type="string" required>
+          The product ID of the current subscription to switch from.
+        </ParamField>
+
+        <ParamField body="options.toProductId" type="string" required>
+          The product ID to switch to.
+        </ParamField>
+
+        <ParamField body="options.priceId" type="string">
+          The specific price ID to use for the new product.
+        </ParamField>
+
+        <ParamField body="options.quantity" type="number">
+          The quantity for the new subscription.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<void>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function switchSubscription(options: {
+          fromProductId: string;
+          toProductId: string;
+          priceId?: string;
+          quantity?: number;
+        }): Promise<void>;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        await user.switchSubscription({
+          fromProductId: "prod_basic_monthly",
+          toProductId: "prod_premium_monthly",
+        });
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CustomerSection>
+
+<CustomerSection type="customer" property="getBilling" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Retrieves the customer's billing information, including whether they have a Stripe customer record and their default payment method.
+
+      <MethodReturns type="Promise<CustomerBilling>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function getBilling(): Promise<CustomerBilling>;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        const billing = await user.getBilling();
+        if (billing.defaultPaymentMethod) {
+          console.log(`Card ending in ${billing.defaultPaymentMethod.last4}`);
+        }
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CustomerSection>
+
+<CustomerSection type="customer" property="useBilling" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      React hook version of `getBilling`. Returns the customer's billing information reactively.
+
+      <MethodReturns type="CustomerBilling" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function useBilling(): CustomerBilling;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```tsx
+        function BillingInfo() {
+          const user = useUser({ or: "redirect" });
+          const billing = user.useBilling();
+
+          return (
+            <div>
+              {billing.defaultPaymentMethod
+                ? `Card ending in ${billing.defaultPaymentMethod.last4}`
+                : "No payment method on file"}
+            </div>
+          );
+        }
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CustomerSection>
+
+<CustomerSection type="customer" property="getItem" signature="itemId" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Retrieves information about a specific item associated with this customer.
+
+      <ContentSection title="Parameters">
+        <ParamField body="itemId" type="string" required>
+          The ID of the item to retrieve.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<Item>">
+        An [`Item`](/sdk/types/item#item) object containing the display name, current quantity, and other details.
+      </MethodReturns>
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function getItem(itemId: string): Promise<Item>;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        const credits = await user.getItem("credits");
+        console.log(`Available credits: ${credits.nonNegativeQuantity}`);
+        console.log(`Actual balance: ${credits.quantity}`);
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CustomerSection>
+
+<CustomerSection type="customer" property="useItem" signature="itemId" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      React hook version of `getItem`. Provides real-time updates when the item quantity changes.
+
+      <ContentSection title="Parameters">
+        <ParamField body="itemId" type="string" required>
+          The ID of the item to retrieve.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Item" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function useItem(itemId: string): Item;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```tsx
+        function CreditsWidget() {
+          const user = useUser({ or: "redirect" });
+          const credits = user.useItem("credits");
+
+          return (
+            <div className="credits-widget">
+              <h3>Available Credits</h3>
+              <div className="credits-count">
+                {credits.nonNegativeQuantity}
+              </div>
+              <small>{credits.displayName}</small>
+            </div>
+          );
+        }
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CustomerSection>
+
+<CustomerSection type="customer" property="listProducts" signature="[options]" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Lists the products owned by this customer, including subscription status and quantities.
+
+      <ContentSection title="Parameters">
+        <ParamField body="options.cursor" type="string">
+          Pagination cursor from a previous response's `nextCursor`.
+        </ParamField>
+
+        <ParamField body="options.limit" type="number">
+          Maximum number of products to return.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<CustomerProductsList>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function listProducts(options?: {
+          cursor?: string;
+          limit?: number;
+        }): Promise<CustomerProductsList>;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        const products = await user.listProducts();
+        for (const product of products) {
+          console.log(`${product.displayName}: ${product.quantity}`);
+        }
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CustomerSection>
+
+<CustomerSection type="customer" property="useProducts" signature="[options]" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      React hook version of `listProducts`. Returns the customer's products reactively.
+
+      <ContentSection title="Parameters">
+        <ParamField body="options.cursor" type="string">
+          Pagination cursor from a previous response's `nextCursor`.
+        </ParamField>
+
+        <ParamField body="options.limit" type="number">
+          Maximum number of products to return.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="CustomerProductsList" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function useProducts(options?: {
+          cursor?: string;
+          limit?: number;
+        }): CustomerProductsList;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CustomerSection>
+
+<CustomerSection type="customer" property="listInvoices" signature="[options]" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Lists the invoices for this customer.
+
+      <ContentSection title="Parameters">
+        <ParamField body="options.cursor" type="string">
+          Pagination cursor from a previous response's `nextCursor`.
+        </ParamField>
+
+        <ParamField body="options.limit" type="number">
+          Maximum number of invoices to return.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<CustomerInvoicesList>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function listInvoices(options?: {
+          cursor?: string;
+          limit?: number;
+        }): Promise<CustomerInvoicesList>;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        const invoices = await user.listInvoices();
+        for (const invoice of invoices) {
+          console.log(`${invoice.status}: $${invoice.amountTotal / 100}`);
+        }
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CustomerSection>
+
+<CustomerSection type="customer" property="useInvoices" signature="[options]" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      React hook version of `listInvoices`. Returns the customer's invoices reactively.
+
+      <ContentSection title="Parameters">
+        <ParamField body="options.cursor" type="string">
+          Pagination cursor from a previous response's `nextCursor`.
+        </ParamField>
+
+        <ParamField body="options.limit" type="number">
+          Maximum number of invoices to return.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="CustomerInvoicesList" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function useInvoices(options?: {
+          cursor?: string;
+          limit?: number;
+        }): CustomerInvoicesList;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CustomerSection>
+
+---
+
+# Related Types
+
+These types are returned by the methods above. You'll encounter them when working with billing, products, and invoices.
+
+## `CustomerBilling`
+
+Returned by [`getBilling()`](#customergetbilling) / [`useBilling()`](#customerusebilling).
+
+<CustomerSection type="customer" property="hasCustomer" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Whether the customer has a Stripe customer record.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const hasCustomer: boolean; ```
+    </MethodAside>
+  </MethodLayout>
+</CustomerSection>
+
+<CustomerSection type="customer" property="defaultPaymentMethod" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The customer's default payment method, or `null` if none is set.
+
+      When present, contains `id`, `brand`, `last4`, `exp_month`, and `exp_year`.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript
+      declare const defaultPaymentMethod: {
+        id: string;
+        brand: string | null;
+        last4: string | null;
+        exp_month: number | null;
+        exp_year: number | null;
+      } | null;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CustomerSection>
+
+## `CustomerProduct`
+
+Returned by [`listProducts()`](#customerlistproducts) / [`useProducts()`](#customeruseproducts). The return value is an array of `CustomerProduct` with a `nextCursor: string | null` property for pagination.
+
+<CustomerSection type="customer" property="id" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The product ID, or `null` for inline products.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const id: string | null; ```
+    </MethodAside>
+  </MethodLayout>
+</CustomerSection>
+
+<CustomerSection type="customer" property="displayName" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The human-readable name of the product.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const displayName: string; ```
+    </MethodAside>
+  </MethodLayout>
+</CustomerSection>
+
+<CustomerSection type="customer" property="quantity" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      How many of this product the customer owns.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const quantity: number; ```
+    </MethodAside>
+  </MethodLayout>
+</CustomerSection>
+
+<CustomerSection type="customer" property="type" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Whether this is a one-time purchase or a recurring subscription.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const type: "one_time" | "subscription"; ```
+    </MethodAside>
+  </MethodLayout>
+</CustomerSection>
+
+<CustomerSection type="customer" property="subscription" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Subscription details, or `null` for one-time purchases. Includes the subscription ID, current period end date, and cancellation status.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript
+      declare const subscription: null | {
+        subscriptionId: string | null;
+        currentPeriodEnd: Date | null;
+        cancelAtPeriodEnd: boolean;
+        isCancelable: boolean;
+      };
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CustomerSection>
+
+<CustomerSection type="customer" property="customerType" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The type of customer that owns this product.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const customerType: "user" | "team" | "custom"; ```
+    </MethodAside>
+  </MethodLayout>
+</CustomerSection>
+
+<CustomerSection type="customer" property="isServerOnly" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Whether this product can only be granted server-side.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const isServerOnly: boolean; ```
+    </MethodAside>
+  </MethodLayout>
+</CustomerSection>
+
+<CustomerSection type="customer" property="stackable" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Whether multiple quantities of this product can be stacked.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const stackable: boolean; ```
+    </MethodAside>
+  </MethodLayout>
+</CustomerSection>
+
+<CustomerSection type="customer" property="switchOptions" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Available products to switch this subscription to. Only present for subscription products.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript
+      declare const switchOptions: Array<{
+        productId: string;
+        displayName: string;
+        prices: InlineProduct["prices"];
+      }> | undefined;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CustomerSection>
+
+## `CustomerInvoice`
+
+Returned by [`listInvoices()`](#customerlistinvoices) / [`useInvoices()`](#customeruseinvoices). The return value is an array of `CustomerInvoice` with a `nextCursor: string | null` property for pagination.
+
+<CustomerSection type="customer" property="createdAt" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      When the invoice was created.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const createdAt: Date; ```
+    </MethodAside>
+  </MethodLayout>
+</CustomerSection>
+
+<CustomerSection type="customer" property="status" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The invoice status.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const status: "draft" | "open" | "paid" | "uncollectible" | "void" | null; ```
+    </MethodAside>
+  </MethodLayout>
+</CustomerSection>
+
+<CustomerSection type="customer" property="amountTotal" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The total amount of the invoice in the smallest currency unit (e.g. cents).
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const amountTotal: number; ```
+    </MethodAside>
+  </MethodLayout>
+</CustomerSection>
+
+<CustomerSection type="customer" property="hostedInvoiceUrl" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      A URL to the hosted invoice page on Stripe, or `null` if not available.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const hostedInvoiceUrl: string | null; ```
+    </MethodAside>
+  </MethodLayout>
+</CustomerSection>
+
+---
+
+## Payment Workflow
+
+<Steps>
+  <Step title="Create checkout URL">
+    Call `createCheckoutUrl()` with the desired product ID.
+  </Step>
+  <Step title="Redirect to Stripe">Direct the user to the returned URL.</Step>
+  <Step title="User completes payment">
+    Stripe handles the payment process on their hosted page.
+  </Step>
+  <Step title="Webhook processing">
+    Stack Auth receives webhook notifications from Stripe.
+  </Step>
+  <Step title="Item allocation">
+    Purchased items are automatically added to the customer's account.
+  </Step>
+  <Step title="User returns">
+    The user is redirected back to your application.
+  </Step>
+</Steps>
+
+## Usage Notes
+
+- **Purchases**: When a user completes a purchase, associated items are automatically added
+- **Subscriptions**: Recurring subscriptions automatically replenish items at the specified intervals
+- **Manual allocation**: Server-side code can manually adjust item quantities using [`ServerItem`](/sdk/types/item#serveritem) methods
+- **Race conditions**: Use [`tryDecreaseQuantity()`](/sdk/types/item#serveritemtrydecreasequantity) for atomic, race-condition-free item consumption
