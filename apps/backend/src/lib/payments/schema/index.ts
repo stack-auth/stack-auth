@@ -36,6 +36,7 @@ export function createPaymentsSchema() {
     ...seedStoredTablesArray,
     ...events._allEventTables,
     ...txnTables._allTransactionTables,
+    ...entryTables._allCompactedTransactionEntriesTables,
   ] as const;
 
   return {

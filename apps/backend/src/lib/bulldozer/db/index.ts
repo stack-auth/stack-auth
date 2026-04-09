@@ -39,6 +39,7 @@ export type Table<GK extends Json, SK extends Json, RD extends RowData> = {
   registerRowChangeTrigger(trigger: (changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => SqlStatement[]): { deregister: () => void },
 };
 
+export { declareCompactTable } from "./tables/compact-table";
 export { declareConcatTable } from "./tables/concat-table";
 export { declareFilterTable } from "./tables/filter-table";
 export { declareFlatMapTable } from "./tables/flat-map-table";
