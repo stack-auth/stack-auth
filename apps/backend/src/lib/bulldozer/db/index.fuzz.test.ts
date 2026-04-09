@@ -1,7 +1,7 @@
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
-import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLeftJoinTable, declareLFoldTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
+import { declareCompactTable, declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLeftJoinTable, declareLFoldTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
 
 type TestDb = { full: string, base: string };
 
@@ -1802,6 +1802,123 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
             endInclusive: true,
           }));
           expect(groups).toEqual([]);
+        }
+      }
+    }
+  }, 120_000);
+
+  test("fuzz: compact table stays consistent under random entry/boundary mutations", async () => {
+    const entryIds = ["e1", "e2", "e3", "e4", "e5", "e6"] as const;
+    const boundaryIds = ["b1", "b2", "b3"] as const;
+    const items = ["coins", "gems", "tokens"] as const;
+
+    for (const seed of [2001]) {
+      const rng = createRng(seed);
+      const sourceEntries = new Map<string, { itemId: string, quantity: number, t: number }>();
+      const sourceBoundaries = new Map<string, { t: number }>();
+
+      const entriesTable = declareStoredTable<{ itemId: string, quantity: number, t: number }>({
+        tableId: `compact-fuzz-entries-${seed}`,
+      });
+      const boundariesTable = declareStoredTable<{ t: number }>({
+        tableId: `compact-fuzz-boundaries-${seed}`,
+      });
+      const entriesSorted = declareSortTable({
+        tableId: `compact-fuzz-entries-sorted-${seed}`,
+        fromTable: entriesTable,
+        getSortKey: { type: "mapper", sql: `(("rowData"->>'t')::numeric) AS "newSortKey"` },
+        compareSortKeys: (a, b) => ({ type: "expression", sql: `(((${a.sql}) #>> '{}')::numeric > ((${b.sql}) #>> '{}')::numeric)::int - (((${a.sql}) #>> '{}')::numeric < ((${b.sql}) #>> '{}')::numeric)::int` }),
+      });
+      const boundariesSorted = declareSortTable({
+        tableId: `compact-fuzz-boundaries-sorted-${seed}`,
+        fromTable: boundariesTable,
+        getSortKey: { type: "mapper", sql: `(("rowData"->>'t')::numeric) AS "newSortKey"` },
+        compareSortKeys: (a, b) => ({ type: "expression", sql: `(((${a.sql}) #>> '{}')::numeric > ((${b.sql}) #>> '{}')::numeric)::int - (((${a.sql}) #>> '{}')::numeric < ((${b.sql}) #>> '{}')::numeric)::int` }),
+      });
+      const compacted = declareCompactTable({
+        tableId: `compact-fuzz-compacted-${seed}`,
+        toBeCompactedTable: entriesSorted,
+        boundaryTable: boundariesSorted,
+        orderingKey: "t",
+        compactKey: "quantity",
+        partitionKey: "itemId",
+      });
+
+      await runStatements(entriesTable.init());
+      await runStatements(boundariesTable.init());
+      await runStatements(entriesSorted.init());
+      await runStatements(boundariesSorted.init());
+      await runStatements(compacted.init());
+
+      function computeExpectedCompaction(): Map<string, { itemId: string, quantity: number, t: number }> {
+        const entryList = [...sourceEntries.values()].sort((a, b) => a.t - b.t);
+        const boundaryTimes = [...sourceBoundaries.values()].map((b) => b.t).sort((a, b) => a - b);
+
+        const result = new Map<string, { itemId: string, quantity: number, t: number }>();
+        let accumulator = new Map<string, { itemId: string, quantity: number, t: number }>();
+        let boundaryIdx = 0;
+        let outputIdx = 0;
+
+        for (const entry of entryList) {
+          while (boundaryIdx < boundaryTimes.length && boundaryTimes[boundaryIdx] <= entry.t) {
+            for (const acc of accumulator.values()) {
+              result.set(`compacted-${outputIdx}`, acc);
+              outputIdx++;
+            }
+            accumulator = new Map();
+            boundaryIdx++;
+          }
+          const existing = accumulator.get(entry.itemId);
+          if (existing != null) {
+            existing.quantity += entry.quantity;
+          } else {
+            accumulator.set(entry.itemId, { ...entry });
+          }
+        }
+        for (const acc of accumulator.values()) {
+          result.set(`compacted-${outputIdx}`, acc);
+          outputIdx++;
+        }
+        return result;
+      }
+
+      for (let step = 0; step < 40; step++) {
+        const roll = rng();
+        if (roll < 0.50) {
+          const id = choose(rng, entryIds);
+          const data = { itemId: choose(rng, items), quantity: Math.floor(rng() * 50) + 1, t: Math.floor(rng() * 100) };
+          sourceEntries.set(id, data);
+          await runStatements(entriesTable.setRow(id, { type: "expression", sql: jsonbLiteral(data) }));
+        } else if (roll < 0.70) {
+          const id = choose(rng, entryIds);
+          sourceEntries.delete(id);
+          await runStatements(entriesTable.deleteRow(id));
+        } else if (roll < 0.90) {
+          const id = choose(rng, boundaryIds);
+          const data = { t: Math.floor(rng() * 100) };
+          sourceBoundaries.set(id, data);
+          await runStatements(boundariesTable.setRow(id, { type: "expression", sql: jsonbLiteral(data) }));
+        } else {
+          const id = choose(rng, boundaryIds);
+          sourceBoundaries.delete(id);
+          await runStatements(boundariesTable.deleteRow(id));
+        }
+
+        if (step % 5 === 0 || step === 39) {
+          const expected = computeExpectedCompaction();
+          const actual = await readRows(compacted.listRowsInGroup({
+            start: "start",
+            end: "end",
+            startInclusive: true,
+            endInclusive: true,
+          }));
+          const actualSorted = actual
+            .map((r: any) => ({ itemId: r.rowdata.itemId, quantity: r.rowdata.quantity, t: r.rowdata.t }))
+            .sort((a: any, b: any) => a.t - b.t || stringCompare(a.itemId, b.itemId));
+          const expectedSorted = [...expected.values()]
+            .sort((a, b) => a.t - b.t || stringCompare(a.itemId, b.itemId));
+
+          expect(actualSorted).toEqual(expectedSorted);
         }
       }
     }

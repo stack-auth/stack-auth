@@ -1,7 +1,7 @@
 import { stringCompare, templateIdentity } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, test } from "vitest";
-import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLeftJoinTable, declareLFoldTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
+import { declareCompactTable, declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLeftJoinTable, declareLFoldTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
 
 type TestDb = { full: string, base: string };
 
@@ -3810,6 +3810,297 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(groupsA.map((row) => row.groupkey)).toEqual(["alpha"]);
     expect(groupsB.map((row) => row.groupkey)).toEqual(["alpha"]);
+  });
+
+  // ============================================================
+  // CompactTable tests
+  // ============================================================
+
+  function createCompactTableSetup() {
+    const entries = declareStoredTable<{ itemId: string, quantity: number, t: number }>({
+      tableId: "compact-test-entries",
+    });
+    const boundaries = declareStoredTable<{ t: number }>({
+      tableId: "compact-test-boundaries",
+    });
+    const entriesSorted = declareSortTable({
+      tableId: "compact-test-entries-sorted",
+      fromTable: entries,
+      getSortKey: mapper(`(("rowData"->>'t')::numeric) AS "newSortKey"`),
+      compareSortKeys: (a, b) => ({ type: "expression", sql: `(((${a.sql}) #>> '{}')::numeric > ((${b.sql}) #>> '{}')::numeric)::int - (((${a.sql}) #>> '{}')::numeric < ((${b.sql}) #>> '{}')::numeric)::int` }),
+    });
+    const boundariesSorted = declareSortTable({
+      tableId: "compact-test-boundaries-sorted",
+      fromTable: boundaries,
+      getSortKey: mapper(`(("rowData"->>'t')::numeric) AS "newSortKey"`),
+      compareSortKeys: (a, b) => ({ type: "expression", sql: `(((${a.sql}) #>> '{}')::numeric > ((${b.sql}) #>> '{}')::numeric)::int - (((${a.sql}) #>> '{}')::numeric < ((${b.sql}) #>> '{}')::numeric)::int` }),
+    });
+    const compacted = declareCompactTable({
+      tableId: "compact-test-compacted",
+      toBeCompactedTable: entriesSorted,
+      boundaryTable: boundariesSorted,
+      orderingKey: "t",
+      compactKey: "quantity",
+      partitionKey: "itemId",
+    });
+    return { entries, boundaries, entriesSorted, boundariesSorted, compacted };
+  }
+
+  test("compactTable merges consecutive entries in a single window", async () => {
+    const { entries, boundaries, entriesSorted, boundariesSorted, compacted } = createCompactTableSetup();
+    await runStatements(entries.init());
+    await runStatements(boundaries.init());
+    await runStatements(entriesSorted.init());
+    await runStatements(boundariesSorted.init());
+    await runStatements(compacted.init());
+
+    await runStatements(entries.setRow("e1", expr(`'{"itemId":"a","quantity":10,"t":1}'::jsonb`)));
+    await runStatements(entries.setRow("e2", expr(`'{"itemId":"a","quantity":5,"t":2}'::jsonb`)));
+
+    const rows = await readRows(compacted.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].rowdata.itemId).toBe("a");
+    expect(rows[0].rowdata.quantity).toBe(15);
+    expect(rows[0].rowdata.t).toBe(1);
+  });
+
+  test("compactTable splits windows at boundaries", async () => {
+    const { entries, boundaries, entriesSorted, boundariesSorted, compacted } = createCompactTableSetup();
+    await runStatements(entries.init());
+    await runStatements(boundaries.init());
+    await runStatements(entriesSorted.init());
+    await runStatements(boundariesSorted.init());
+    await runStatements(compacted.init());
+
+    await runStatements(entries.setRow("e1", expr(`'{"itemId":"a","quantity":10,"t":1}'::jsonb`)));
+    await runStatements(entries.setRow("e2", expr(`'{"itemId":"a","quantity":5,"t":2}'::jsonb`)));
+    await runStatements(boundaries.setRow("b1", expr(`'{"t":3}'::jsonb`)));
+    await runStatements(entries.setRow("e3", expr(`'{"itemId":"a","quantity":20,"t":4}'::jsonb`)));
+
+    const rows = (await readRows(compacted.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true })))
+      .map((r: any) => ({ itemId: r.rowdata.itemId, quantity: r.rowdata.quantity, t: r.rowdata.t }))
+      .sort((a: any, b: any) => a.t - b.t);
+
+    expect(rows).toEqual([
+      { itemId: "a", quantity: 15, t: 1 },
+      { itemId: "a", quantity: 20, t: 4 },
+    ]);
+  });
+
+  test("compactTable handles multiple partitions in same window", async () => {
+    const { entries, boundaries, entriesSorted, boundariesSorted, compacted } = createCompactTableSetup();
+    await runStatements(entries.init());
+    await runStatements(boundaries.init());
+    await runStatements(entriesSorted.init());
+    await runStatements(boundariesSorted.init());
+    await runStatements(compacted.init());
+
+    await runStatements(entries.setRow("e1", expr(`'{"itemId":"a","quantity":10,"t":1}'::jsonb`)));
+    await runStatements(entries.setRow("e2", expr(`'{"itemId":"b","quantity":5,"t":2}'::jsonb`)));
+    await runStatements(entries.setRow("e3", expr(`'{"itemId":"a","quantity":3,"t":3}'::jsonb`)));
+    await runStatements(entries.setRow("e4", expr(`'{"itemId":"b","quantity":7,"t":4}'::jsonb`)));
+    await runStatements(boundaries.setRow("b1", expr(`'{"t":5}'::jsonb`)));
+    await runStatements(entries.setRow("e5", expr(`'{"itemId":"b","quantity":2,"t":6}'::jsonb`)));
+
+    const rows = (await readRows(compacted.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true })))
+      .map((r: any) => ({ itemId: r.rowdata.itemId, quantity: r.rowdata.quantity, t: r.rowdata.t }))
+      .sort((a: any, b: any) => a.t - b.t);
+
+    expect(rows).toEqual([
+      { itemId: "a", quantity: 13, t: 1 },
+      { itemId: "b", quantity: 12, t: 2 },
+      { itemId: "b", quantity: 2, t: 6 },
+    ]);
+  });
+
+  test("compactTable single entry passes through as compacted row", async () => {
+    const { entries, boundaries, entriesSorted, boundariesSorted, compacted } = createCompactTableSetup();
+    await runStatements(entries.init());
+    await runStatements(boundaries.init());
+    await runStatements(entriesSorted.init());
+    await runStatements(boundariesSorted.init());
+    await runStatements(compacted.init());
+
+    await runStatements(entries.setRow("e1", expr(`'{"itemId":"x","quantity":42,"t":1}'::jsonb`)));
+
+    const rows = await readRows(compacted.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].rowdata).toEqual({ itemId: "x", quantity: 42, t: 1 });
+  });
+
+  test("compactTable empty inputs produce empty output", async () => {
+    const { entries, boundaries, entriesSorted, boundariesSorted, compacted } = createCompactTableSetup();
+    await runStatements(entries.init());
+    await runStatements(boundaries.init());
+    await runStatements(entriesSorted.init());
+    await runStatements(boundariesSorted.init());
+    await runStatements(compacted.init());
+
+    const rows = await readRows(compacted.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    expect(rows).toHaveLength(0);
+  });
+
+  test("compactTable recomputes when entry is added", async () => {
+    const { entries, boundaries, entriesSorted, boundariesSorted, compacted } = createCompactTableSetup();
+    await runStatements(entries.init());
+    await runStatements(boundaries.init());
+    await runStatements(entriesSorted.init());
+    await runStatements(boundariesSorted.init());
+    await runStatements(compacted.init());
+
+    await runStatements(entries.setRow("e1", expr(`'{"itemId":"a","quantity":10,"t":1}'::jsonb`)));
+    let rows = await readRows(compacted.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].rowdata.quantity).toBe(10);
+
+    await runStatements(entries.setRow("e2", expr(`'{"itemId":"a","quantity":5,"t":2}'::jsonb`)));
+    rows = await readRows(compacted.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].rowdata.quantity).toBe(15);
+  });
+
+  test("compactTable recomputes when boundary is added splitting a window", async () => {
+    const { entries, boundaries, entriesSorted, boundariesSorted, compacted } = createCompactTableSetup();
+    await runStatements(entries.init());
+    await runStatements(boundaries.init());
+    await runStatements(entriesSorted.init());
+    await runStatements(boundariesSorted.init());
+    await runStatements(compacted.init());
+
+    await runStatements(entries.setRow("e1", expr(`'{"itemId":"a","quantity":10,"t":1}'::jsonb`)));
+    await runStatements(entries.setRow("e2", expr(`'{"itemId":"a","quantity":5,"t":3}'::jsonb`)));
+
+    let rows = await readRows(compacted.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].rowdata.quantity).toBe(15);
+
+    await runStatements(boundaries.setRow("b1", expr(`'{"t":2}'::jsonb`)));
+
+    rows = (await readRows(compacted.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true })))
+      .sort((a: any, b: any) => a.rowdata.t - b.rowdata.t);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].rowdata.quantity).toBe(10);
+    expect(rows[1].rowdata.quantity).toBe(5);
+  });
+
+  test("compactTable recomputes when entry is deleted", async () => {
+    const { entries, boundaries, entriesSorted, boundariesSorted, compacted } = createCompactTableSetup();
+    await runStatements(entries.init());
+    await runStatements(boundaries.init());
+    await runStatements(entriesSorted.init());
+    await runStatements(boundariesSorted.init());
+    await runStatements(compacted.init());
+
+    await runStatements(entries.setRow("e1", expr(`'{"itemId":"a","quantity":10,"t":1}'::jsonb`)));
+    await runStatements(entries.setRow("e2", expr(`'{"itemId":"a","quantity":5,"t":2}'::jsonb`)));
+    await runStatements(entries.setRow("e3", expr(`'{"itemId":"a","quantity":20,"t":3}'::jsonb`)));
+
+    let rows = await readRows(compacted.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].rowdata.quantity).toBe(35);
+
+    await runStatements(entries.deleteRow("e2"));
+
+    rows = await readRows(compacted.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].rowdata.quantity).toBe(30);
+  });
+
+  test("compactTable does not pass through boundary rows", async () => {
+    const { entries, boundaries, entriesSorted, boundariesSorted, compacted } = createCompactTableSetup();
+    await runStatements(entries.init());
+    await runStatements(boundaries.init());
+    await runStatements(entriesSorted.init());
+    await runStatements(boundariesSorted.init());
+    await runStatements(compacted.init());
+
+    await runStatements(boundaries.setRow("b1", expr(`'{"t":5}'::jsonb`)));
+    await runStatements(boundaries.setRow("b2", expr(`'{"t":10}'::jsonb`)));
+
+    const rows = await readRows(compacted.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    expect(rows).toHaveLength(0);
+  });
+
+  test("compactTable recomputes when boundary is deleted (merges previously-split windows)", async () => {
+    const { entries, boundaries, entriesSorted, boundariesSorted, compacted } = createCompactTableSetup();
+    await runStatements(entries.init());
+    await runStatements(boundaries.init());
+    await runStatements(entriesSorted.init());
+    await runStatements(boundariesSorted.init());
+    await runStatements(compacted.init());
+
+    await runStatements(entries.setRow("e1", expr(`'{"itemId":"a","quantity":10,"t":1}'::jsonb`)));
+    await runStatements(entries.setRow("e2", expr(`'{"itemId":"a","quantity":5,"t":3}'::jsonb`)));
+    await runStatements(boundaries.setRow("b1", expr(`'{"t":2}'::jsonb`)));
+
+    // With boundary at t=2: two windows → two compacted rows
+    let rows = (await readRows(compacted.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true })))
+      .sort((a: any, b: any) => a.rowdata.t - b.rowdata.t);
+    expect(rows).toHaveLength(2);
+    expect(rows[0].rowdata).toEqual({ itemId: "a", quantity: 10, t: 1 });
+    expect(rows[1].rowdata).toEqual({ itemId: "a", quantity: 5, t: 3 });
+
+    // Delete boundary → windows merge back into one
+    await runStatements(boundaries.deleteRow("b1"));
+
+    rows = await readRows(compacted.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].rowdata).toEqual({ itemId: "a", quantity: 15, t: 1 });
+  });
+
+  test("compactTable with multiple boundaries produces multiple compacted rows per partition", async () => {
+    const { entries, boundaries, entriesSorted, boundariesSorted, compacted } = createCompactTableSetup();
+    await runStatements(entries.init());
+    await runStatements(boundaries.init());
+    await runStatements(entriesSorted.init());
+    await runStatements(boundariesSorted.init());
+    await runStatements(compacted.init());
+
+    // Window 1 (t < 10): entries at t=1,2,3
+    await runStatements(entries.setRow("e1", expr(`'{"itemId":"a","quantity":10,"t":1}'::jsonb`)));
+    await runStatements(entries.setRow("e2", expr(`'{"itemId":"a","quantity":5,"t":2}'::jsonb`)));
+    await runStatements(entries.setRow("e3", expr(`'{"itemId":"b","quantity":7,"t":3}'::jsonb`)));
+    // Boundary at t=10
+    await runStatements(boundaries.setRow("b1", expr(`'{"t":10}'::jsonb`)));
+    // Window 2 (10 <= t < 20): entries at t=11,12
+    await runStatements(entries.setRow("e4", expr(`'{"itemId":"a","quantity":20,"t":11}'::jsonb`)));
+    await runStatements(entries.setRow("e5", expr(`'{"itemId":"a","quantity":3,"t":12}'::jsonb`)));
+    // Boundary at t=20
+    await runStatements(boundaries.setRow("b2", expr(`'{"t":20}'::jsonb`)));
+    // Window 3 (t >= 20): entries at t=21,22
+    await runStatements(entries.setRow("e6", expr(`'{"itemId":"a","quantity":100,"t":21}'::jsonb`)));
+    await runStatements(entries.setRow("e7", expr(`'{"itemId":"b","quantity":50,"t":22}'::jsonb`)));
+
+    const rows = (await readRows(compacted.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true })))
+      .map((r: any) => ({ itemId: r.rowdata.itemId, quantity: r.rowdata.quantity, t: r.rowdata.t }))
+      .sort((a: any, b: any) => a.t - b.t || stringCompare(a.itemId, b.itemId));
+
+    expect(rows).toEqual([
+      // Window 1: a(10+5)=15, b(7)=7
+      { itemId: "a", quantity: 15, t: 1 },
+      { itemId: "b", quantity: 7, t: 3 },
+      // Window 2: a(20+3)=23
+      { itemId: "a", quantity: 23, t: 11 },
+      // Window 3: a(100)=100, b(50)=50
+      { itemId: "a", quantity: 100, t: 21 },
+      { itemId: "b", quantity: 50, t: 22 },
+    ]);
+  });
+
+  test("compactTable preserves first row's data for non-compactKey fields", async () => {
+    const { entries, boundaries, entriesSorted, boundariesSorted, compacted } = createCompactTableSetup();
+    await runStatements(entries.init());
+    await runStatements(boundaries.init());
+    await runStatements(entriesSorted.init());
+    await runStatements(boundariesSorted.init());
+    await runStatements(compacted.init());
+
+    await runStatements(entries.setRow("e1", expr(`'{"itemId":"a","quantity":10,"t":1}'::jsonb`)));
+    await runStatements(entries.setRow("e2", expr(`'{"itemId":"a","quantity":5,"t":2}'::jsonb`)));
+
+    const rows = await readRows(compacted.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    expect(rows[0].rowdata.t).toBe(1);
+    expect(rows[0].rowdata.itemId).toBe("a");
   });
 
   test("toExecutableSqlTransaction handles empty statements", async () => {

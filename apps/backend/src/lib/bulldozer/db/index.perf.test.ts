@@ -1,7 +1,7 @@
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLeftJoinTable, declareLFoldTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
+import { declareCompactTable, declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLeftJoinTable, declareLFoldTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
 
 type TestDb = { full: string, base: string };
 type SqlExpression<T> = { type: "expression", sql: string };
@@ -54,6 +54,8 @@ const LOAD_LEFT_JOIN_TABLE_COUNT_QUERY_MAX_MS = withCiPerfHeadroom(8_000);
 const STACKED_MAP_PIPELINE_MUTATION_MAX_MS = withCiPerfHeadroom(400);
 const VIRTUAL_CONCAT_COUNT_QUERY_MAX_MS = withCiPerfHeadroom(500);
 const VIRTUAL_CONCAT_LOAD_ROW_COUNT = 5_000;
+const LOAD_COMPACT_TABLE_INIT_MAX_MS = withCiPerfHeadroom(90_000);
+const LOAD_COMPACT_TABLE_COUNT_QUERY_MAX_MS = withCiPerfHeadroom(8_000);
 
 function getTestDbUrls(): TestDb {
   const env = Reflect.get(import.meta, "env");
@@ -1031,6 +1033,48 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
         },
       },
     ]);
+    // CompactTable perf: use filteredHighValue as entries, limitedByTeam as boundaries
+    // Both are grouped by team and already init'd. We need sorted versions.
+    const compactEntriesSorted = declareSortTable({
+      tableId: "load-prefilled-compact-entries-sorted",
+      fromTable: filteredHighValue,
+      getSortKey: { type: "mapper", sql: `(("rowData"->>'value')::numeric) AS "newSortKey"` },
+      compareSortKeys: (a, b) => expr(`(((${a.sql}) #>> '{}')::int) - (((${b.sql}) #>> '{}')::int)`),
+    });
+    const compactBoundariesSorted = declareSortTable({
+      tableId: "load-prefilled-compact-boundaries-sorted",
+      fromTable: limitedByTeam,
+      getSortKey: { type: "mapper", sql: `(("rowData"->>'value')::numeric) AS "newSortKey"` },
+      compareSortKeys: (a, b) => expr(`(((${a.sql}) #>> '{}')::int) - (((${b.sql}) #>> '{}')::int)`),
+    });
+    await runStatements(compactEntriesSorted.init());
+    await runStatements(compactBoundariesSorted.init());
+    const compactedByTeam = declareCompactTable({
+      tableId: "load-prefilled-compacted-by-team",
+      toBeCompactedTable: compactEntriesSorted,
+      boundaryTable: compactBoundariesSorted,
+      orderingKey: "value",
+      compactKey: "value",
+      partitionKey: "team",
+    });
+    const compactInit = await measureMs("load init compactedByTeam", async () => {
+      await runStatements(compactedByTeam.init());
+    });
+    expect(compactInit.elapsedMs).toBeLessThan(LOAD_COMPACT_TABLE_INIT_MAX_MS);
+    const compactedCountOnly = await measureMs("load count compactedByTeam table only", async () => {
+      return await sql.unsafe(`
+        SELECT COUNT(*)::int AS "count"
+        FROM (${toQueryableSqlQuery(compactedByTeam.listRowsInGroup({
+          start: "start",
+          end: "end",
+          startInclusive: true,
+          endInclusive: true,
+        }))}) AS "rows"
+      `);
+    });
+    expect(compactedCountOnly.elapsedMs).toBeLessThan(LOAD_COMPACT_TABLE_COUNT_QUERY_MAX_MS);
+    expect(Number(compactedCountOnly.result[0].count)).toBeGreaterThan(0);
+
     const bulkDelete = await measureMs("load full table delete", async () => {
       await runStatements(table.delete());
     });

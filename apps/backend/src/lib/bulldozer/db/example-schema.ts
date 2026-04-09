@@ -1,4 +1,4 @@
-import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLeftJoinTable, declareLFoldTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable } from "./index";
+import { declareCompactTable, declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLeftJoinTable, declareLFoldTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable } from "./index";
 
 const mapper = (sql: string) => ({ type: "mapper" as const, sql });
 const predicate = (sql: string) => ({ type: "predicate" as const, sql });
@@ -216,6 +216,40 @@ export const exampleFungibleLedgerSchema = (() => {
     `),
   });
 
+  // Compact table example: merge consecutive account debit entries between
+  // credit entries (boundaries) by summing amounts per asset (partition).
+  // Both inputs MUST be pre-sorted ascending by the orderingKey field.
+  const accountDebits = declareFilterTable({
+    tableId: "bulldozer-example-ledger-account-debits",
+    fromTable: entriesByAccount,
+    filter: predicate(`"rowData"->>'side' = 'debit'`),
+  });
+  const accountDebitsSorted = declareSortTable({
+    tableId: "bulldozer-example-ledger-account-debits-sorted",
+    fromTable: accountDebits,
+    getSortKey: mapper(`(("rowData"->>'blockNumber')::numeric) AS "newSortKey"`),
+    compareSortKeys: (a, b) => ({ type: "expression", sql: `(((${a.sql}) #>> '{}')::numeric > ((${b.sql}) #>> '{}')::numeric)::int - (((${a.sql}) #>> '{}')::numeric < ((${b.sql}) #>> '{}')::numeric)::int` }),
+  });
+  const accountCredits = declareFilterTable({
+    tableId: "bulldozer-example-ledger-account-credits",
+    fromTable: entriesByAccount,
+    filter: predicate(`"rowData"->>'side' = 'credit'`),
+  });
+  const accountCreditsSorted = declareSortTable({
+    tableId: "bulldozer-example-ledger-account-credits-sorted",
+    fromTable: accountCredits,
+    getSortKey: mapper(`(("rowData"->>'blockNumber')::numeric) AS "newSortKey"`),
+    compareSortKeys: (a, b) => ({ type: "expression", sql: `(((${a.sql}) #>> '{}')::numeric > ((${b.sql}) #>> '{}')::numeric)::int - (((${a.sql}) #>> '{}')::numeric < ((${b.sql}) #>> '{}')::numeric)::int` }),
+  });
+  const compactedDebits = declareCompactTable({
+    tableId: "bulldozer-example-ledger-compacted-debits",
+    toBeCompactedTable: accountDebitsSorted,
+    boundaryTable: accountCreditsSorted,
+    orderingKey: "blockNumber",
+    compactKey: "amount",
+    partitionKey: "asset",
+  });
+
   return {
     ledgerEntries,
     entriesByAccount,
@@ -233,5 +267,6 @@ export const exampleFungibleLedgerSchema = (() => {
     accountPriorityEntries,
     highValueEntriesByAssetAccountTop,
     assetEntriesNormalized,
+    compactedDebits,
   };
 })();

@@ -9,6 +9,15 @@
  * Compactability: an item-quantity-change entry is compactable if
  * expiresWhen is null (it never expires, so no item-quantity-expire
  * will ever reference it).
+ *
+ * Trade-off: compaction loses granular historical state within windows.
+ * If ic1(t=1,+10) and ic2(t=2,+5) compact to c_ic(t=1,+15), querying
+ * at t=1 returns +15 instead of the correct +10. This is acceptable if:
+ *   (a) getItemQuantity at current time is always correct (it is, since
+ *       window totals are preserved), and
+ *   (b) transactions are never backdated (effectiveAtMillis <= now), so
+ *       all entries in a window exist by the time anyone queries.
+ * Point-in-time historical queries within a compaction window are inaccurate.
  */
 
 import {
