@@ -6,6 +6,7 @@ import http from "node:http";
 import { exampleFungibleLedgerSchema } from "../src/lib/bulldozer/db/example-schema";
 import { toExecutableSqlStatements, toQueryableSqlQuery } from "../src/lib/bulldozer/db/index";
 import { quoteSqlJsonbLiteral } from "../src/lib/bulldozer/db/utilities";
+import { createPaymentsSchema } from "../src/lib/payments/schema/index";
 import { globalPrismaClient, retryTransaction } from "../src/prisma-client";
 
 type JsonPrimitive = string | number | boolean | null;
@@ -235,14 +236,34 @@ function createTableRegistry(schema: Record<string, unknown>): {
 } {
   const tables: StudioTableRecord[] = [];
   const idByTable = new Map<StudioTable, string>();
+  const seen = new Set<StudioTable>();
 
-  for (const [name, value] of Object.entries(schema)) {
-    if (!isStudioTable(value)) continue;
-    const id = name;
-    const record: StudioTableRecord = { id, name, table: value };
+  function addTable(name: string, value: unknown) {
+    if (!isStudioTable(value)) return;
+    if (seen.has(value)) return;
+    seen.add(value);
+    const record: StudioTableRecord = { id: name, name, table: value };
     tables.push(record);
-    idByTable.set(value, id);
+    idByTable.set(value, name);
   }
+
+  function walk(obj: Record<string, unknown>, prefix: string) {
+    for (const [key, value] of Object.entries(obj)) {
+      if (isStudioTable(value)) {
+        addTable(key, value);
+      } else if (Array.isArray(value)) {
+        for (const item of value) {
+          if (isStudioTable(item)) {
+            const tableId = typeof item.tableId === "string" ? item.tableId : `${prefix}${key}`;
+            addTable(tableId, item);
+          }
+        }
+      } else if (isRecord(value) && !seen.has(value as any)) {
+        walk(value as Record<string, unknown>, `${prefix}${key}.`);
+      }
+    }
+  }
+  walk(schema, "");
 
   if (tables.length === 0) {
     throw new StackAssertionError("No studio-compatible tables found in schema object.");
@@ -252,8 +273,22 @@ function createTableRegistry(schema: Record<string, unknown>): {
   return { tables, tableById, idByTable };
 }
 
-const schemaObject: Record<string, unknown> = exampleFungibleLedgerSchema;
-const registry = createTableRegistry(schemaObject);
+const AVAILABLE_SCHEMAS: Record<string, () => Record<string, unknown>> = {
+  "example": () => exampleFungibleLedgerSchema,
+  "payments": () => createPaymentsSchema(),
+};
+let currentSchemaName = getEnvVariable("STACK_BULLDOZER_STUDIO_SCHEMA", "example");
+let registry = createTableRegistry(
+  (AVAILABLE_SCHEMAS[currentSchemaName] ?? AVAILABLE_SCHEMAS["example"])()
+);
+function switchSchema(name: string): void {
+  const factory = AVAILABLE_SCHEMAS[name];
+  if (!factory) {
+    throw new StackAssertionError(`Unknown schema "${name}". Available: ${Object.keys(AVAILABLE_SCHEMAS).join(", ")}`);
+  }
+  currentSchemaName = name;
+  registry = createTableRegistry(factory());
+}
 
 async function executeStatements(statements: SqlStatement[]): Promise<void> {
   const sqlScript = toExecutableSqlStatements(statements);
@@ -949,6 +984,7 @@ function getStudioPageHtml(): string {
         <div class="title">Bulldozer Studio</div>
         <button id="modeTablesBtn" class="btn active">🧩 Tables</button>
         <button id="modeRawBtn" class="btn">🗂️ Raw</button>
+        <select id="schemaSelect" class="btn" title="Switch schema" style="appearance:auto;padding:2px 6px;font-size:12px;"></select>
         <button id="refreshBtn" class="btn icon" title="Refresh">🔄</button>
         <button id="fitBtn" class="btn icon" title="Fit graph">🧭</button>
         <button id="themeBtn" class="btn icon" title="Toggle theme">🌙</button>
@@ -1057,9 +1093,22 @@ function getStudioPageHtml(): string {
     const errorCloseBtn = document.getElementById("errorCloseBtn");
     const modeTablesBtn = document.getElementById("modeTablesBtn");
     const modeRawBtn = document.getElementById("modeRawBtn");
+    const schemaSelect = document.getElementById("schemaSelect");
     const refreshBtn = document.getElementById("refreshBtn");
     const fitBtn = document.getElementById("fitBtn");
     const themeBtn = document.getElementById("themeBtn");
+
+    async function loadSchemaList() {
+      const data = await fetchJson("/api/schemas");
+      schemaSelect.innerHTML = "";
+      for (const name of data.available) {
+        const opt = document.createElement("option");
+        opt.value = name;
+        opt.textContent = name;
+        if (name === data.current) opt.selected = true;
+        schemaSelect.appendChild(opt);
+      }
+    }
 
     function setStatus(text) {
       state.status = text;
@@ -1505,7 +1554,7 @@ function getStudioPageHtml(): string {
       for (const table of tables) {
         const operatorClass = (() => {
           const normalized = String(table.operator || "unknown").toLowerCase();
-          if (normalized === "stored" || normalized === "map" || normalized === "flatmap" || normalized === "groupby" || normalized === "filter" || normalized === "limit" || normalized === "concat" || normalized === "sort" || normalized === "lfold" || normalized === "leftjoin") {
+          if (normalized === "stored" || normalized === "map" || normalized === "flatmap" || normalized === "groupby" || normalized === "filter" || normalized === "limit" || normalized === "concat" || normalized === "sort" || normalized === "lfold" || normalized === "leftjoin" || normalized === "compact") {
             return normalized;
           }
           return "derived";
@@ -2099,6 +2148,19 @@ function getStudioPageHtml(): string {
       setMode("raw");
       await loadRawNode(state.rawPath.length === 0 ? [] : state.rawPath);
     });
+    schemaSelect.onchange = () => runUiAction("switch schema", async () => {
+      setStatus("switching schema...");
+      state.selectedTableId = null;
+      state.selectedTableDetails = null;
+      await fetchJson("/api/switch-schema", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: schemaSelect.value }),
+      });
+      await loadSchema();
+      renderDetails();
+      setStatus("ready");
+    });
     refreshBtn.onclick = () => runUiAction("refresh", async () => {
       await loadSchema();
     });
@@ -2119,6 +2181,7 @@ function getStudioPageHtml(): string {
     setTheme(initialTheme, { persist: false });
     monitorServerVersion();
     runUiAction("initial load", async () => {
+      await loadSchemaList();
       await loadSchema();
       renderDetails();
     });
@@ -2151,10 +2214,31 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
     return;
   }
 
+  if (method === "GET" && pathname === "/api/schemas") {
+    sendJson(response, 200, {
+      available: Object.keys(AVAILABLE_SCHEMAS),
+      current: currentSchemaName,
+    });
+    return;
+  }
+
+  if (method === "POST" && pathname === "/api/switch-schema") {
+    const body = await readRequestBody(request);
+    const parsed = JSON.parse(body);
+    const name = parsed?.name;
+    if (typeof name !== "string" || !AVAILABLE_SCHEMAS[name]) {
+      sendJson(response, 400, { error: `Unknown schema "${name}". Available: ${Object.keys(AVAILABLE_SCHEMAS).join(", ")}` });
+      return;
+    }
+    switchSchema(name);
+    sendJson(response, 200, { ok: true, current: currentSchemaName });
+    return;
+  }
+
   if (method === "GET" && pathname === "/api/schema") {
     const tables = await Promise.all(registry.tables.map((table) => getTableSnapshot(table)));
     const layout = await computeStudioLayout(tables);
-    sendJson(response, 200, { tables, layout });
+    sendJson(response, 200, { tables, layout, currentSchema: currentSchemaName });
     return;
   }
 

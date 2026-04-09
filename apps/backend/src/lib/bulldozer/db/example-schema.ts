@@ -267,6 +267,10 @@ export const exampleFungibleLedgerSchema = (() => {
     accountPriorityEntries,
     highValueEntriesByAssetAccountTop,
     assetEntriesNormalized,
+    accountDebits,
+    accountDebitsSorted,
+    accountCredits,
+    accountCreditsSorted,
     compactedDebits,
   };
 })();
