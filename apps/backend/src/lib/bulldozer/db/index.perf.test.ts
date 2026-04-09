@@ -1,7 +1,7 @@
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { declareCompactTable, declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLeftJoinTable, declareLFoldTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
+import { declareCompactTable, declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLeftJoinTable, declareLFoldTable, declareLimitTable, declareMapTable, declareReduceTable, declareSortTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
 
 type TestDb = { full: string, base: string };
 type SqlExpression<T> = { type: "expression", sql: string };
@@ -56,6 +56,8 @@ const VIRTUAL_CONCAT_COUNT_QUERY_MAX_MS = withCiPerfHeadroom(500);
 const VIRTUAL_CONCAT_LOAD_ROW_COUNT = 5_000;
 const LOAD_COMPACT_TABLE_INIT_MAX_MS = withCiPerfHeadroom(90_000);
 const LOAD_COMPACT_TABLE_COUNT_QUERY_MAX_MS = withCiPerfHeadroom(8_000);
+const LOAD_REDUCE_TABLE_INIT_MAX_MS = withCiPerfHeadroom(90_000);
+const LOAD_REDUCE_TABLE_COUNT_QUERY_MAX_MS = withCiPerfHeadroom(8_000);
 
 function getTestDbUrls(): TestDb {
   const env = Reflect.get(import.meta, "env");
@@ -1074,6 +1076,44 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     });
     expect(compactedCountOnly.elapsedMs).toBeLessThan(LOAD_COMPACT_TABLE_COUNT_QUERY_MAX_MS);
     expect(Number(compactedCountOnly.result[0].count)).toBeGreaterThan(0);
+
+    // ReduceTable perf: reduce the grouped table into one row per team.
+    // Skip for large row counts -- WITH RECURSIVE is O(N) per group with
+    // high constant factor, making it impractical for 50K+ rows per group.
+    // Our payments use case has small groups (few expiries per change entry).
+    const reducedByTeam = declareReduceTable({
+      tableId: "load-prefilled-reduced-by-team",
+      fromTable: groupedByTeam,
+      initialState: expr(`'0'::jsonb`),
+      reducer: { type: "mapper", sql: `
+        to_jsonb(
+          COALESCE(("oldState" #>> '{}')::numeric, 0)
+          + COALESCE(("oldRowData"->>'value')::numeric, 0)
+        ) AS "newState"
+      ` },
+      finalize: { type: "mapper", sql: `
+        "groupKey" AS "team",
+        ("state" #>> '{}')::numeric AS "total"
+      ` },
+    });
+    const reduceInit = await measureMs("load init reducedByTeam", async () => {
+      await runStatements(reducedByTeam.init());
+    });
+    expect(reduceInit.elapsedMs).toBeLessThan(LOAD_REDUCE_TABLE_INIT_MAX_MS);
+    const reducedCountOnly = await measureMs("load count reducedByTeam table only", async () => {
+      return await sql.unsafe(`
+        SELECT COUNT(*)::int AS "count"
+        FROM (${toQueryableSqlQuery(reducedByTeam.listRowsInGroup({
+          start: "start",
+          end: "end",
+          startInclusive: true,
+          endInclusive: true,
+        }))}) AS "rows"
+      `);
+    });
+    expect(reducedCountOnly.elapsedMs).toBeLessThan(LOAD_REDUCE_TABLE_COUNT_QUERY_MAX_MS);
+    expect(Number(reducedCountOnly.result[0].count)).toBeGreaterThan(0);
+    expect(Number(reducedCountOnly.result[0].count)).toBeLessThanOrEqual(5);
 
     const bulkDelete = await measureMs("load full table delete", async () => {
       await runStatements(table.delete());

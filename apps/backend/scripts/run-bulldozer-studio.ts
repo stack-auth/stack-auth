@@ -1670,7 +1670,7 @@ function getStudioPageHtml(): string {
         }
         const operatorClass = (() => {
           const normalized = String(table.operator || "unknown").toLowerCase();
-          if (normalized === "stored" || normalized === "map" || normalized === "flatmap" || normalized === "groupby" || normalized === "filter" || normalized === "limit" || normalized === "concat" || normalized === "sort" || normalized === "lfold" || normalized === "leftjoin" || normalized === "compact") {
+          if (normalized === "stored" || normalized === "map" || normalized === "flatmap" || normalized === "groupby" || normalized === "filter" || normalized === "limit" || normalized === "concat" || normalized === "sort" || normalized === "lfold" || normalized === "leftjoin" || normalized === "compact" || normalized === "reduce") {
             return normalized;
           }
           return "derived";

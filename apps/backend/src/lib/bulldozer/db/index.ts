@@ -48,6 +48,7 @@ export { declareLFoldTable } from "./tables/l-fold-table";
 export { declareLeftJoinTable } from "./tables/left-join-table";
 export { declareLimitTable } from "./tables/limit-table";
 export { declareMapTable } from "./tables/map-table";
+export { declareReduceTable } from "./tables/reduce-table";
 export { declareSortTable } from "./tables/sort-table";
 export { declareStoredTable } from "./tables/stored-table";
 

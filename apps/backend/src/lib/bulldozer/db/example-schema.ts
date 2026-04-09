@@ -1,4 +1,4 @@
-import { declareCompactTable, declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLeftJoinTable, declareLFoldTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable } from "./index";
+import { declareCompactTable, declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLeftJoinTable, declareLFoldTable, declareLimitTable, declareMapTable, declareReduceTable, declareSortTable, declareStoredTable } from "./index";
 
 const mapper = (sql: string) => ({ type: "mapper" as const, sql });
 const predicate = (sql: string) => ({ type: "predicate" as const, sql });
@@ -272,5 +272,32 @@ export const exampleFungibleLedgerSchema = (() => {
     accountCredits,
     accountCreditsSorted,
     compactedDebits,
+
+    // Reduce table example: collapse each account's entries into a single
+    // summary row with total credits and total debits. The grouping by
+    // account is consumed -- output is ungrouped.
+    accountSummary: declareReduceTable({
+      tableId: "bulldozer-example-ledger-account-summary",
+      fromTable: entriesByAccount,
+      initialState: { type: "expression", sql: "jsonb_build_object('totalCredits', to_jsonb(0::numeric), 'totalDebits', to_jsonb(0::numeric))" },
+      reducer: mapper(`
+        jsonb_build_object(
+          'totalCredits', to_jsonb(
+            COALESCE(("oldState"->>'totalCredits')::numeric, 0)
+            + CASE WHEN "oldRowData"->>'side' = 'credit' THEN COALESCE(("oldRowData"->>'amount')::numeric, 0) ELSE 0 END
+          ),
+          'totalDebits', to_jsonb(
+            COALESCE(("oldState"->>'totalDebits')::numeric, 0)
+            + CASE WHEN "oldRowData"->>'side' = 'debit' THEN COALESCE(("oldRowData"->>'amount')::numeric, 0) ELSE 0 END
+          )
+        ) AS "newState"
+      `),
+      finalize: mapper(`
+        "groupKey" AS "accountId",
+        ("state"->>'totalCredits')::numeric AS "totalCredits",
+        ("state"->>'totalDebits')::numeric AS "totalDebits",
+        (COALESCE(("state"->>'totalCredits')::numeric, 0) - COALESCE(("state"->>'totalDebits')::numeric, 0)) AS "netBalance"
+      `),
+    }),
   };
 })();

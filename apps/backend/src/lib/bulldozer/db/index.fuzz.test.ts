@@ -1,7 +1,7 @@
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
-import { declareCompactTable, declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLeftJoinTable, declareLFoldTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
+import { declareCompactTable, declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLeftJoinTable, declareLFoldTable, declareLimitTable, declareMapTable, declareReduceTable, declareSortTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
 
 type TestDb = { full: string, base: string };
 
@@ -1919,6 +1919,111 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
             .sort((a, b) => a.t - b.t || stringCompare(a.itemId, b.itemId));
 
           expect(actualSorted).toEqual(expectedSorted);
+        }
+      }
+    }
+  }, 120_000);
+
+  test("fuzz: reduce table stays consistent under random mutations, deletes, and re-inits", async () => {
+    const identifiers = ["r1", "r2", "r3", "r4", "r5", "r6", "r7"] as const;
+    const teams = ["alpha", "beta", "gamma", null] as const;
+
+    for (const seed of [3001]) {
+      const rng = createRng(seed);
+      const sourceRows = new Map<string, SourceRow>();
+      let reduceInitialized = true;
+
+      const fromTable = declareStoredTable<{ value: number, team: string | null }>({ tableId: `reduce-fuzz-source-${seed}` });
+      const groupedTable = declareGroupByTable({
+        tableId: `reduce-fuzz-grouped-${seed}`,
+        fromTable,
+        groupBy: { type: "mapper", sql: `"rowData"->'team' AS "groupKey"` },
+      });
+      const reducedTable = declareReduceTable({
+        tableId: `reduce-fuzz-reduced-${seed}`,
+        fromTable: groupedTable,
+        initialState: { type: "expression", sql: "'0'::jsonb" },
+        reducer: { type: "mapper", sql: `
+          to_jsonb(
+            COALESCE(("oldState" #>> '{}')::numeric, 0)
+            + COALESCE(("oldRowData"->>'value')::numeric, 0)
+          ) AS "newState"
+        ` },
+        finalize: { type: "mapper", sql: `
+          "groupKey" AS "team",
+          ("state" #>> '{}')::numeric AS "total"
+        ` },
+      });
+
+      await runStatements(fromTable.init());
+      await runStatements(groupedTable.init());
+      await runStatements(reducedTable.init());
+
+      function computeExpectedReduced(): Map<string, { team: string | null, total: number }> {
+        const groups = new Map<string, { team: string | null, total: number }>();
+        for (const row of sourceRows.values()) {
+          const key = JSON.stringify(row.team);
+          const existing = groups.get(key);
+          if (existing != null) {
+            existing.total += row.value;
+          } else {
+            groups.set(key, { team: row.team, total: row.value });
+          }
+        }
+        return groups;
+      }
+
+      for (let step = 0; step < 50; step++) {
+        const roll = rng();
+        if (roll < 0.55) {
+          const rowIdentifier = choose(rng, identifiers);
+          const rowData: SourceRow = {
+            team: choose(rng, teams),
+            value: Math.floor(rng() * 50) - 10,
+          };
+          sourceRows.set(rowIdentifier, rowData);
+          await runStatements(fromTable.setRow(rowIdentifier, { type: "expression", sql: jsonbLiteral(rowData) }));
+        } else if (roll < 0.80) {
+          const rowIdentifier = choose(rng, identifiers);
+          sourceRows.delete(rowIdentifier);
+          await runStatements(fromTable.deleteRow(rowIdentifier));
+        } else if (roll < 0.90) {
+          if (reduceInitialized) {
+            await runStatements(reducedTable.delete());
+            reduceInitialized = false;
+          }
+        } else {
+          if (!reduceInitialized) {
+            await runStatements(reducedTable.init());
+            reduceInitialized = true;
+          }
+        }
+
+        if (step % 5 === 0 || step === 49) {
+          if (reduceInitialized) {
+            const expected = computeExpectedReduced();
+            const actual = await readRows(reducedTable.listRowsInGroup({
+              start: "start",
+              end: "end",
+              startInclusive: true,
+              endInclusive: true,
+            }));
+            const actualSorted = actual
+              .map((r: any) => ({ team: r.rowdata.team, total: r.rowdata.total }))
+              .sort((a: any, b: any) => stringCompare(String(a.team), String(b.team)));
+            const expectedSorted = [...expected.values()]
+              .sort((a, b) => stringCompare(String(a.team), String(b.team)));
+
+            expect(actualSorted).toEqual(expectedSorted);
+          } else {
+            expect(await readBoolean(reducedTable.isInitialized())).toBe(false);
+            expect(await readRows(reducedTable.listGroups({
+              start: "start",
+              end: "end",
+              startInclusive: true,
+              endInclusive: true,
+            }))).toEqual([]);
+          }
         }
       }
     }

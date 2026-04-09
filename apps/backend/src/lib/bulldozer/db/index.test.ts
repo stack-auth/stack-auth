@@ -1,7 +1,7 @@
 import { stringCompare, templateIdentity } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, test } from "vitest";
-import { declareCompactTable, declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLeftJoinTable, declareLFoldTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
+import { declareCompactTable, declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLeftJoinTable, declareLFoldTable, declareLimitTable, declareMapTable, declareReduceTable, declareSortTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
 
 type TestDb = { full: string, base: string };
 
@@ -4103,8 +4103,436 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     expect(rows[0].rowdata.itemId).toBe("a");
   });
 
+  // ============================================================
+  // ReduceTable tests
+  // ============================================================
+
+  // Helper: sum reducer (sums "value" field into state number)
+  function createSumReduceSetup() {
+    const source = declareStoredTable<{ team: string, value: number }>({
+      tableId: "reduce-test-source",
+    });
+    const grouped = declareGroupByTable({
+      tableId: "reduce-test-grouped",
+      fromTable: source,
+      groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+    });
+    const reduced = declareReduceTable({
+      tableId: "reduce-test-sum",
+      fromTable: grouped,
+      initialState: expr(`'0'::jsonb`),
+      reducer: mapper(`
+        to_jsonb(
+          COALESCE(("oldState" #>> '{}')::numeric, 0)
+          + COALESCE(("oldRowData"->>'value')::numeric, 0)
+        ) AS "newState"
+      `),
+      finalize: mapper(`
+        "groupKey" AS "team",
+        ("state" #>> '{}')::numeric AS "total"
+      `),
+    });
+    return { source, grouped, reduced };
+  }
+
+  // Helper: array-accumulating reducer (appends to jsonb array)
+  function createArrayReduceSetup() {
+    const source = declareStoredTable<{ category: string, label: string, t: number }>({
+      tableId: "reduce-test-arr-source",
+    });
+    const grouped = declareGroupByTable({
+      tableId: "reduce-test-arr-grouped",
+      fromTable: source,
+      groupBy: mapper(`"rowData"->'category' AS "groupKey"`),
+    });
+    const sorted = declareSortTable({
+      tableId: "reduce-test-arr-sorted",
+      fromTable: grouped,
+      getSortKey: mapper(`(("rowData"->>'t')::numeric) AS "newSortKey"`),
+      compareSortKeys: (a, b) => ({ type: "expression", sql: `(((${a.sql}) #>> '{}')::numeric > ((${b.sql}) #>> '{}')::numeric)::int - (((${a.sql}) #>> '{}')::numeric < ((${b.sql}) #>> '{}')::numeric)::int` }),
+    });
+    const reduced = declareReduceTable({
+      tableId: "reduce-test-arr",
+      fromTable: sorted,
+      initialState: expr(`'[]'::jsonb`),
+      reducer: mapper(`
+        ("oldState" || jsonb_build_array("oldRowData"->'label')) AS "newState"
+      `),
+      finalize: mapper(`
+        "groupKey" AS "category",
+        "state" AS "labels"
+      `),
+    });
+    return { source, grouped, sorted, reduced };
+  }
+
+  test("reduceTable produces one row per group with summed values", async () => {
+    const { source, grouped, reduced } = createSumReduceSetup();
+    await runStatements(source.init());
+    await runStatements(grouped.init());
+    await runStatements(reduced.init());
+
+    await runStatements(source.setRow("u1", expr(`'{"team":"alpha","value":10}'::jsonb`)));
+    await runStatements(source.setRow("u2", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+    await runStatements(source.setRow("u3", expr(`'{"team":"beta","value":7}'::jsonb`)));
+
+    const rows = (await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true })))
+      .map((r: any) => r.rowdata)
+      .sort((a: any, b: any) => stringCompare(a.team, b.team));
+
+    expect(rows).toEqual([
+      { team: "alpha", total: 15 },
+      { team: "beta", total: 7 },
+    ]);
+  });
+
+  test("reduceTable preserves input group key", async () => {
+    const { source, grouped, reduced } = createSumReduceSetup();
+    await runStatements(source.init());
+    await runStatements(grouped.init());
+    await runStatements(reduced.init());
+
+    await runStatements(source.setRow("u1", expr(`'{"team":"alpha","value":10}'::jsonb`)));
+    await runStatements(source.setRow("u2", expr(`'{"team":"beta","value":7}'::jsonb`)));
+
+    const groups = (await readRows(reduced.listGroups({ start: "start", end: "end", startInclusive: true, endInclusive: true })))
+      .map((r: any) => r.groupkey)
+      .sort((a: string, b: string) => stringCompare(a, b));
+    expect(groups).toHaveLength(2);
+    expect(groups[0]).toBe("alpha");
+    expect(groups[1]).toBe("beta");
+  });
+
+  test("reduceTable finalize embeds groupKey as row attributes", async () => {
+    const { source, grouped, reduced } = createSumReduceSetup();
+    await runStatements(source.init());
+    await runStatements(grouped.init());
+    await runStatements(reduced.init());
+
+    await runStatements(source.setRow("u1", expr(`'{"team":"alpha","value":10}'::jsonb`)));
+
+    const rows = await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    expect(rows[0].rowdata.team).toBe("alpha");
+  });
+
+  test("reduceTable with array-accumulating reducer preserves sort order", async () => {
+    const { source, grouped, sorted, reduced } = createArrayReduceSetup();
+    await runStatements(source.init());
+    await runStatements(grouped.init());
+    await runStatements(sorted.init());
+    await runStatements(reduced.init());
+
+    await runStatements(source.setRow("a3", expr(`'{"category":"fruits","label":"cherry","t":3}'::jsonb`)));
+    await runStatements(source.setRow("a1", expr(`'{"category":"fruits","label":"apple","t":1}'::jsonb`)));
+    await runStatements(source.setRow("a2", expr(`'{"category":"fruits","label":"banana","t":2}'::jsonb`)));
+
+    const rows = await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].rowdata.category).toBe("fruits");
+    expect(rows[0].rowdata.labels).toEqual(["apple", "banana", "cherry"]);
+  });
+
+  test("reduceTable on ungrouped input folds all rows into one output", async () => {
+    const source = declareStoredTable<{ value: number }>({
+      tableId: "reduce-test-ungrouped-source",
+    });
+    const reduced = declareReduceTable({
+      tableId: "reduce-test-ungrouped",
+      fromTable: source,
+      initialState: expr(`'0'::jsonb`),
+      reducer: mapper(`
+        to_jsonb(
+          COALESCE(("oldState" #>> '{}')::numeric, 0)
+          + COALESCE(("oldRowData"->>'value')::numeric, 0)
+        ) AS "newState"
+      `),
+      finalize: mapper(`
+        ("state" #>> '{}')::numeric AS "total"
+      `),
+    });
+    await runStatements(source.init());
+    await runStatements(reduced.init());
+
+    await runStatements(source.setRow("r1", expr(`'{"value":10}'::jsonb`)));
+    await runStatements(source.setRow("r2", expr(`'{"value":5}'::jsonb`)));
+    await runStatements(source.setRow("r3", expr(`'{"value":3}'::jsonb`)));
+
+    const rows = await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].rowdata.total).toBe(18);
+  });
+
+  test("reduceTable empty input produces no output", async () => {
+    const { source, grouped, reduced } = createSumReduceSetup();
+    await runStatements(source.init());
+    await runStatements(grouped.init());
+    await runStatements(reduced.init());
+
+    const rows = await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    expect(rows).toHaveLength(0);
+  });
+
+  test("reduceTable recomputes when row is added", async () => {
+    const { source, grouped, reduced } = createSumReduceSetup();
+    await runStatements(source.init());
+    await runStatements(grouped.init());
+    await runStatements(reduced.init());
+
+    await runStatements(source.setRow("u1", expr(`'{"team":"alpha","value":10}'::jsonb`)));
+    let rows = await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].rowdata.total).toBe(10);
+
+    await runStatements(source.setRow("u2", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+    rows = await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    expect(rows).toHaveLength(1);
+    expect(rows[0].rowdata.total).toBe(15);
+  });
+
+  test("reduceTable recomputes when row is updated", async () => {
+    const { source, grouped, reduced } = createSumReduceSetup();
+    await runStatements(source.init());
+    await runStatements(grouped.init());
+    await runStatements(reduced.init());
+
+    await runStatements(source.setRow("u1", expr(`'{"team":"alpha","value":10}'::jsonb`)));
+    await runStatements(source.setRow("u2", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+
+    let rows = await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    expect(rows[0].rowdata.total).toBe(15);
+
+    await runStatements(source.setRow("u2", expr(`'{"team":"alpha","value":20}'::jsonb`)));
+    rows = await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    expect(rows[0].rowdata.total).toBe(30);
+  });
+
+  test("reduceTable recomputes when row is deleted", async () => {
+    const { source, grouped, reduced } = createSumReduceSetup();
+    await runStatements(source.init());
+    await runStatements(grouped.init());
+    await runStatements(reduced.init());
+
+    await runStatements(source.setRow("u1", expr(`'{"team":"alpha","value":10}'::jsonb`)));
+    await runStatements(source.setRow("u2", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+    await runStatements(source.setRow("u3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+
+    let rows = await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    expect(rows[0].rowdata.total).toBe(18);
+
+    await runStatements(source.deleteRow("u2"));
+    rows = await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    expect(rows[0].rowdata.total).toBe(13);
+  });
+
+  test("reduceTable removes output when group becomes empty", async () => {
+    const { source, grouped, reduced } = createSumReduceSetup();
+    await runStatements(source.init());
+    await runStatements(grouped.init());
+    await runStatements(reduced.init());
+
+    await runStatements(source.setRow("u1", expr(`'{"team":"alpha","value":10}'::jsonb`)));
+    let rows = await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    expect(rows).toHaveLength(1);
+
+    await runStatements(source.deleteRow("u1"));
+    rows = await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    expect(rows).toHaveLength(0);
+  });
+
+  test("reduceTable passes through single-row groups as grouped output", async () => {
+    const { source, grouped, reduced } = createSumReduceSetup();
+    await runStatements(source.init());
+    await runStatements(grouped.init());
+    await runStatements(reduced.init());
+
+    await runStatements(source.setRow("u1", expr(`'{"team":"alpha","value":42}'::jsonb`)));
+    await runStatements(source.setRow("u2", expr(`'{"team":"beta","value":7}'::jsonb`)));
+    await runStatements(source.setRow("u3", expr(`'{"team":"gamma","value":99}'::jsonb`)));
+
+    const rows = (await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true })))
+      .map((r: any) => r.rowdata)
+      .sort((a: any, b: any) => stringCompare(a.team, b.team));
+
+    expect(rows).toEqual([
+      { team: "alpha", total: 42 },
+      { team: "beta", total: 7 },
+      { team: "gamma", total: 99 },
+    ]);
+
+    const groups = await readRows(reduced.listGroups({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    expect(groups).toHaveLength(3);
+    expect(groups[0].groupkey).toBe("alpha");
+  });
+
+  test("reduceTable handles row moving between groups", async () => {
+    const { source, grouped, reduced } = createSumReduceSetup();
+    await runStatements(source.init());
+    await runStatements(grouped.init());
+    await runStatements(reduced.init());
+
+    await runStatements(source.setRow("u1", expr(`'{"team":"alpha","value":10}'::jsonb`)));
+    await runStatements(source.setRow("u2", expr(`'{"team":"beta","value":7}'::jsonb`)));
+
+    let rows = (await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true })))
+      .map((r: any) => r.rowdata)
+      .sort((a: any, b: any) => stringCompare(a.team, b.team));
+    expect(rows).toEqual([
+      { team: "alpha", total: 10 },
+      { team: "beta", total: 7 },
+    ]);
+
+    await runStatements(source.setRow("u1", expr(`'{"team":"beta","value":10}'::jsonb`)));
+
+    rows = (await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true })))
+      .map((r: any) => r.rowdata)
+      .sort((a: any, b: any) => stringCompare(a.team, b.team));
+    expect(rows).toEqual([
+      { team: "beta", total: 17 },
+    ]);
+  });
+
   test("toExecutableSqlTransaction handles empty statements", async () => {
     await runStatements([]);
+  });
+
+  test("reduceTable handles null group key", async () => {
+    const source = declareStoredTable<{ team: string | null, value: number }>({
+      tableId: "reduce-test-null-gk-source",
+    });
+    const grouped = declareGroupByTable({
+      tableId: "reduce-test-null-gk-grouped",
+      fromTable: source,
+      groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+    });
+    const reduced = declareReduceTable({
+      tableId: "reduce-test-null-gk",
+      fromTable: grouped,
+      initialState: expr(`'0'::jsonb`),
+      reducer: mapper(`
+        to_jsonb(
+          COALESCE(("oldState" #>> '{}')::numeric, 0)
+          + COALESCE(("oldRowData"->>'value')::numeric, 0)
+        ) AS "newState"
+      `),
+      finalize: mapper(`
+        "groupKey" AS "team",
+        ("state" #>> '{}')::numeric AS "total"
+      `),
+    });
+    await runStatements(source.init());
+    await runStatements(grouped.init());
+    await runStatements(reduced.init());
+
+    await runStatements(source.setRow("u1", expr(`'{"team":null,"value":10}'::jsonb`)));
+    await runStatements(source.setRow("u2", expr(`'{"team":null,"value":5}'::jsonb`)));
+    await runStatements(source.setRow("u3", expr(`'{"team":"alpha","value":7}'::jsonb`)));
+
+    const rows = (await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true })))
+      .map((r: any) => r.rowdata)
+      .sort((a: any, b: any) => stringCompare(String(a.team), String(b.team)));
+
+    expect(rows).toHaveLength(2);
+    expect(rows[0]).toEqual({ team: "alpha", total: 7 });
+    expect(rows[1]).toEqual({ team: null, total: 15 });
+  });
+
+  test("reduceTable handles complex object group key", async () => {
+    const source = declareStoredTable<{ tenancyId: string, customerId: string, value: number }>({
+      tableId: "reduce-test-complex-gk-source",
+    });
+    const grouped = declareGroupByTable({
+      tableId: "reduce-test-complex-gk-grouped",
+      fromTable: source,
+      groupBy: mapper(`
+        jsonb_build_object(
+          'tenancyId', "rowData"->'tenancyId',
+          'customerId', "rowData"->'customerId'
+        ) AS "groupKey"
+      `),
+    });
+    const reduced = declareReduceTable({
+      tableId: "reduce-test-complex-gk",
+      fromTable: grouped,
+      initialState: expr(`'0'::jsonb`),
+      reducer: mapper(`
+        to_jsonb(
+          COALESCE(("oldState" #>> '{}')::numeric, 0)
+          + COALESCE(("oldRowData"->>'value')::numeric, 0)
+        ) AS "newState"
+      `),
+      finalize: mapper(`
+        "groupKey"->'tenancyId' AS "tenancyId",
+        "groupKey"->'customerId' AS "customerId",
+        ("state" #>> '{}')::numeric AS "total"
+      `),
+    });
+    await runStatements(source.init());
+    await runStatements(grouped.init());
+    await runStatements(reduced.init());
+
+    await runStatements(source.setRow("r1", expr(`'{"tenancyId":"t1","customerId":"u1","value":10}'::jsonb`)));
+    await runStatements(source.setRow("r2", expr(`'{"tenancyId":"t1","customerId":"u1","value":5}'::jsonb`)));
+    await runStatements(source.setRow("r3", expr(`'{"tenancyId":"t1","customerId":"u2","value":7}'::jsonb`)));
+    await runStatements(source.setRow("r4", expr(`'{"tenancyId":"t2","customerId":"u1","value":20}'::jsonb`)));
+    await runStatements(source.setRow("r5", expr(`'{"tenancyId":"t2","customerId":"u1","value":3}'::jsonb`)));
+
+    const rows = (await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true })))
+      .map((r: any) => r.rowdata)
+      .sort((a: any, b: any) => stringCompare(`${a.tenancyId}:${a.customerId}`, `${b.tenancyId}:${b.customerId}`));
+
+    expect(rows).toEqual([
+      { tenancyId: "t1", customerId: "u1", total: 15 },
+      { tenancyId: "t1", customerId: "u2", total: 7 },
+      { tenancyId: "t2", customerId: "u1", total: 23 },
+    ]);
+
+    // Move r3 from (t1,u2) to (t1,u1) and r5 from (t2,u1) to (t1,u2)
+    await runStatements(source.setRow("r3", expr(`'{"tenancyId":"t1","customerId":"u1","value":7}'::jsonb`)));
+    await runStatements(source.setRow("r5", expr(`'{"tenancyId":"t1","customerId":"u2","value":3}'::jsonb`)));
+
+    const rowsAfterMoves = (await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true })))
+      .map((r: any) => r.rowdata)
+      .sort((a: any, b: any) => stringCompare(`${a.tenancyId}:${a.customerId}`, `${b.tenancyId}:${b.customerId}`));
+
+    expect(rowsAfterMoves).toEqual([
+      { tenancyId: "t1", customerId: "u1", total: 22 },
+      { tenancyId: "t1", customerId: "u2", total: 3 },
+      { tenancyId: "t2", customerId: "u1", total: 20 },
+    ]);
+  });
+
+  test("reduceTable delete + re-init backfills from current source state", async () => {
+    const { source, grouped, reduced } = createSumReduceSetup();
+    await runStatements(source.init());
+    await runStatements(grouped.init());
+    await runStatements(reduced.init());
+
+    await runStatements(source.setRow("u1", expr(`'{"team":"alpha","value":10}'::jsonb`)));
+    await runStatements(source.setRow("u2", expr(`'{"team":"beta","value":7}'::jsonb`)));
+
+    let rows = (await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true })))
+      .map((r: any) => r.rowdata)
+      .sort((a: any, b: any) => stringCompare(a.team, b.team));
+    expect(rows).toEqual([
+      { team: "alpha", total: 10 },
+      { team: "beta", total: 7 },
+    ]);
+
+    await runStatements(reduced.delete());
+
+    await runStatements(source.setRow("u3", expr(`'{"team":"alpha","value":20}'::jsonb`)));
+    await runStatements(source.deleteRow("u2"));
+
+    expect(await readBoolean(reduced.isInitialized())).toBe(false);
+
+    await runStatements(reduced.init());
+
+    rows = (await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true })))
+      .map((r: any) => r.rowdata)
+      .sort((a: any, b: any) => stringCompare(a.team, b.team));
+    expect(rows).toEqual([
+      { team: "alpha", total: 30 },
+    ]);
   });
 
   test("toQueryableSqlQuery returns executable SQL", async () => {
