@@ -39,6 +39,14 @@ export function createPaymentsSchema() {
     ...entryTables._allCompactedTransactionEntriesTables,
   ] as const;
 
+  /** Category metadata for Bulldozer Studio visualization */
+  const _categories: Record<string, { label: string, color: string, tables: readonly unknown[] }> = {
+    "phase-1-stored": { label: "Phase 1: Stored Tables", color: "rgba(99,102,241,0.10)", tables: seedStoredTablesArray },
+    "phase-1-events": { label: "Phase 1: Events", color: "rgba(34,197,94,0.10)", tables: events._allEventTables },
+    "phase-1-txns": { label: "Phase 1: Transactions", color: "rgba(234,179,8,0.10)", tables: txnTables._allTransactionTables },
+    "phase-2": { label: "Phase 2: Compacted Entries", color: "rgba(249,115,22,0.10)", tables: entryTables._allCompactedTransactionEntriesTables },
+  };
+
   return {
     ...seedEventsStoredTables,
     ...events,
@@ -48,6 +56,7 @@ export function createPaymentsSchema() {
     ...changeTables,
     ...itemQuantitiesTables,
     _allTables,
+    _categories,
   };
 }
 

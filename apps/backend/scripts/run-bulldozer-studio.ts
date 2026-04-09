@@ -229,10 +229,13 @@ function tableIdToString(tableId: unknown): string {
   return JSON.stringify(tableId);
 }
 
+type CategoryRecord = { id: string, label: string, color: string, tableIds: string[] };
+
 function createTableRegistry(schema: Record<string, unknown>): {
   tables: StudioTableRecord[],
   tableById: Map<string, StudioTableRecord>,
   idByTable: Map<StudioTable, string>,
+  categories: CategoryRecord[],
 } {
   const tables: StudioTableRecord[] = [];
   const idByTable = new Map<StudioTable, string>();
@@ -249,6 +252,7 @@ function createTableRegistry(schema: Record<string, unknown>): {
 
   function walk(obj: Record<string, unknown>, prefix: string) {
     for (const [key, value] of Object.entries(obj)) {
+      if (key === "_categories") continue;
       if (isStudioTable(value)) {
         addTable(key, value);
       } else if (Array.isArray(value)) {
@@ -269,8 +273,26 @@ function createTableRegistry(schema: Record<string, unknown>): {
     throw new StackAssertionError("No studio-compatible tables found in schema object.");
   }
 
+  const categories: CategoryRecord[] = [];
+  const rawCategories = schema._categories;
+  if (isRecord(rawCategories)) {
+    for (const [catId, catValue] of Object.entries(rawCategories)) {
+      if (!isRecord(catValue)) continue;
+      const label = typeof catValue.label === "string" ? catValue.label : catId;
+      const color = typeof catValue.color === "string" ? catValue.color : "rgba(128,128,128,0.08)";
+      const catTables = Array.isArray(catValue.tables) ? catValue.tables : [];
+      const tableIds = catTables
+        .filter((t): t is StudioTable => isStudioTable(t))
+        .map((t) => idByTable.get(t))
+        .filter((id): id is string => id != null);
+      if (tableIds.length > 0) {
+        categories.push({ id: catId, label, color, tableIds });
+      }
+    }
+  }
+
   const tableById = new Map(tables.map((table) => [table.id, table]));
-  return { tables, tableById, idByTable };
+  return { tables, tableById, idByTable, categories };
 }
 
 const AVAILABLE_SCHEMAS: Record<string, () => Record<string, unknown>> = {
@@ -985,6 +1007,7 @@ function getStudioPageHtml(): string {
         <button id="modeTablesBtn" class="btn active">🧩 Tables</button>
         <button id="modeRawBtn" class="btn">🗂️ Raw</button>
         <select id="schemaSelect" class="btn" title="Switch schema" style="appearance:auto;padding:2px 6px;font-size:12px;"></select>
+        <button id="toggleIntermediatesBtn" class="btn" title="Show/hide map, filter, flatmap tables" style="font-size:11px;">👁 Intermediates</button>
         <button id="refreshBtn" class="btn icon" title="Refresh">🔄</button>
         <button id="fitBtn" class="btn icon" title="Fit graph">🧭</button>
         <button id="themeBtn" class="btn icon" title="Toggle theme">🌙</button>
@@ -1050,6 +1073,8 @@ function getStudioPageHtml(): string {
       window.localStorage.setItem(NODE_POSITIONS_STORAGE_KEY, JSON.stringify(state.manualNodePositions));
     }
 
+    const INTERMEDIATE_OPERATORS = new Set(["map", "filter", "flatmap"]);
+
     const state = {
       mode: "table",
       schema: null,
@@ -1061,6 +1086,7 @@ function getStudioPageHtml(): string {
       theme: "dark",
       serverVersion: null,
       graphLayout: null,
+      showIntermediates: true,
       viewport: {
         x: 24,
         y: 24,
@@ -1094,6 +1120,7 @@ function getStudioPageHtml(): string {
     const modeTablesBtn = document.getElementById("modeTablesBtn");
     const modeRawBtn = document.getElementById("modeRawBtn");
     const schemaSelect = document.getElementById("schemaSelect");
+    const toggleIntermediatesBtn = document.getElementById("toggleIntermediatesBtn");
     const refreshBtn = document.getElementById("refreshBtn");
     const fitBtn = document.getElementById("fitBtn");
     const themeBtn = document.getElementById("themeBtn");
@@ -1383,15 +1410,48 @@ function getStudioPageHtml(): string {
       graphNodes.style.width = state.graphLayout.sceneWidth + "px";
       graphNodes.style.height = state.graphLayout.sceneHeight + "px";
     }
+    function getVisibleTableIds() {
+      const ids = new Set();
+      for (const node of graphNodes.querySelectorAll(".node")) {
+        const tid = node.getAttribute("data-table-id");
+        if (tid && node.style.display !== "none") ids.add(tid);
+      }
+      return ids;
+    }
+
     function buildGraphEdges(tables, positions, depthById) {
+      const visibleIds = getVisibleTableIds();
+      const tableMap = new Map(tables.map((t) => [t.id, t]));
+
+      function resolveVisibleAncestors(tableId, visited) {
+        if (visited.has(tableId)) return [];
+        visited.add(tableId);
+        if (visibleIds.has(tableId)) return [tableId];
+        const table = tableMap.get(tableId);
+        if (!table) return [];
+        const deps = Array.isArray(table.dependencies) ? table.dependencies : [];
+        const results = [];
+        for (const depId of deps) {
+          results.push(...resolveVisibleAncestors(depId, visited));
+        }
+        return results;
+      }
+
       const edges = [];
       const outgoingByNode = new Map();
       const incomingByNode = new Map();
       for (const table of tables) {
+        if (!visibleIds.has(table.id)) continue;
         const to = positions.get(table.id);
         if (!to) continue;
         const dependencies = Array.isArray(table.dependencies) ? table.dependencies : [];
-        for (const dependencyId of dependencies) {
+        const resolvedDeps = new Set();
+        for (const depId of dependencies) {
+          for (const resolved of resolveVisibleAncestors(depId, new Set([table.id]))) {
+            resolvedDeps.add(resolved);
+          }
+        }
+        for (const dependencyId of resolvedDeps) {
           const from = positions.get(dependencyId);
           if (!from) continue;
           const edge = {
@@ -1545,6 +1605,58 @@ function getStudioPageHtml(): string {
       updateSceneTransform();
     }
 
+    function renderCategoryBoxes() {
+      const existing = graphNodes.querySelectorAll(".category-box");
+      for (const el of existing) el.remove();
+      if (!state.schema || !Array.isArray(state.schema.categories) || !state.graphLayout) return;
+      const positions = state.graphLayout.positions;
+      for (const category of state.schema.categories) {
+        const tableIds = category.tableIds || [];
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        let found = 0;
+        for (const tid of tableIds) {
+          const pos = positions.get(tid);
+          if (!pos) continue;
+          const node = graphNodes.querySelector('[data-table-id="' + tid.replaceAll('"', '\\\\"') + '"]');
+          if (node && node.style.display === "none") continue;
+          found++;
+          minX = Math.min(minX, pos.x);
+          minY = Math.min(minY, pos.y);
+          maxX = Math.max(maxX, pos.x + NODE_WIDTH);
+          maxY = Math.max(maxY, pos.y + NODE_HEIGHT);
+        }
+        if (found === 0) continue;
+        const pad = 24;
+        const box = document.createElement("div");
+        box.className = "category-box";
+        box.style.position = "absolute";
+        box.style.left = (minX - pad) + "px";
+        box.style.top = (minY - pad) + "px";
+        box.style.width = (maxX - minX + pad * 2) + "px";
+        box.style.height = (maxY - minY + pad * 2) + "px";
+        box.style.background = category.color || "rgba(128,128,128,0.08)";
+        box.style.borderRadius = "14px";
+        box.style.pointerEvents = "none";
+        box.style.zIndex = "0";
+        box.style.overflow = "hidden";
+        const label = document.createElement("div");
+        label.textContent = category.label || "";
+        label.style.position = "absolute";
+        label.style.top = "50%";
+        label.style.left = "50%";
+        label.style.transform = "translate(-50%, -50%)";
+        label.style.fontSize = "36px";
+        label.style.fontWeight = "800";
+        label.style.opacity = "0.18";
+        label.style.whiteSpace = "nowrap";
+        label.style.letterSpacing = "1px";
+        label.style.userSelect = "none";
+        label.style.textAlign = "center";
+        box.appendChild(label);
+        graphNodes.insertBefore(box, graphNodes.firstChild);
+      }
+    }
+
     function renderGraph() {
       graphNodes.innerHTML = "";
       graphEdges.innerHTML = "";
@@ -1552,6 +1664,10 @@ function getStudioPageHtml(): string {
 
       const tables = state.schema.tables;
       for (const table of tables) {
+        const opNormalized = String(table.operator || "").toLowerCase();
+        if (!state.showIntermediates && INTERMEDIATE_OPERATORS.has(opNormalized)) {
+          continue;
+        }
         const operatorClass = (() => {
           const normalized = String(table.operator || "unknown").toLowerCase();
           if (normalized === "stored" || normalized === "map" || normalized === "flatmap" || normalized === "groupby" || normalized === "filter" || normalized === "limit" || normalized === "concat" || normalized === "sort" || normalized === "lfold" || normalized === "leftjoin" || normalized === "compact") {
@@ -1644,6 +1760,7 @@ function getStudioPageHtml(): string {
       }
 
       relayoutGraph();
+      renderCategoryBoxes();
     }
 
     function getRawInputDefault() {
@@ -2148,6 +2265,11 @@ function getStudioPageHtml(): string {
       setMode("raw");
       await loadRawNode(state.rawPath.length === 0 ? [] : state.rawPath);
     });
+    toggleIntermediatesBtn.onclick = () => {
+      state.showIntermediates = !state.showIntermediates;
+      toggleIntermediatesBtn.textContent = state.showIntermediates ? "👁 Intermediates" : "👁‍🗨 Intermediates";
+      renderGraph();
+    };
     schemaSelect.onchange = () => runUiAction("switch schema", async () => {
       setStatus("switching schema...");
       state.selectedTableId = null;
@@ -2238,7 +2360,7 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
   if (method === "GET" && pathname === "/api/schema") {
     const tables = await Promise.all(registry.tables.map((table) => getTableSnapshot(table)));
     const layout = await computeStudioLayout(tables);
-    sendJson(response, 200, { tables, layout, currentSchema: currentSchemaName });
+    sendJson(response, 200, { tables, layout, currentSchema: currentSchemaName, categories: registry.categories });
     return;
   }
 
