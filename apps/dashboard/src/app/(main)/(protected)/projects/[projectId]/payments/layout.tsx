@@ -7,6 +7,7 @@ import { StripeConnectProvider } from "@/components/payments/stripe-connect-prov
 import { ActionDialog, Button, Card, CardContent, Typography } from "@/components/ui";
 import { useUpdateConfig } from "@/lib/config-update";
 import { cn } from "@/lib/utils";
+import { getPublicEnvVar } from "@/lib/env";
 import { ArrowRightIcon, ArrowsClockwiseIcon, ChartBarIcon, FlaskIcon, ShieldIcon, WalletIcon, WarningIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { ConnectNotificationBanner } from "@stripe/react-connect-js";
@@ -235,16 +236,18 @@ function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       )}
-      <div className={cn(bannerHasItems && "p-4", "flex justify-center")}>
-        <div style={{ maxWidth: 1250, width: '100%' }}>
-          <ConnectNotificationBanner
-            onNotificationsChange={({ total }) => setBannerHasItems(total > 0)}
-            collectionOptions={{
-              fields: "eventually_due",
-            }}
-          />
+      {getPublicEnvVar("NEXT_PUBLIC_STACK_IS_PREVIEW") !== "true" && (
+        <div className={cn(bannerHasItems && "p-4", "flex justify-center")}>
+          <div style={{ maxWidth: 1250, width: '100%' }}>
+            <ConnectNotificationBanner
+              onNotificationsChange={({ total }) => setBannerHasItems(total > 0)}
+              collectionOptions={{
+                fields: "eventually_due",
+              }}
+            />
+          </div>
         </div>
-      </div>
+      )}
       {children}
     </StripeConnectProvider>
   );
