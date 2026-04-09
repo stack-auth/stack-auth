@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "mint dev --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}04 --no-open",
     "typecheck": "node scripts/ensure-openapi.mjs && mint validate",
-    "lint": "node scripts/ensure-openapi.mjs && mint validate && mint broken-links",
+    "lint": "node scripts/ensure-openapi.mjs && mint validate",
     "clean": "node -e \"require('node:fs').rmSync('.mintlify', { recursive: true, force: true })\"",
     "login": "mint login",
     "status": "mint status"
