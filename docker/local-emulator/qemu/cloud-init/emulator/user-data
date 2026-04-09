@@ -43,6 +43,11 @@ write_files:
 
       gzip -dc /mnt/stack-bundle/img.tgz | docker load
 
+      # Copy build env file for pre-baking migrations
+      if [ -f /mnt/stack-bundle/build.env ]; then
+        cp /mnt/stack-bundle/build.env /etc/stack-build.env
+      fi
+
   - path: /usr/local/bin/render-stack-env
     permissions: '0755'
     content: |
@@ -71,25 +76,33 @@ write_files:
         cat /mnt/stack-runtime/runtime.env
 
         # Computed vars — depend on port prefix or deps host
+        # Host-side ports (for browser URLs — browser runs on host, not in VM)
+        HP_BACKEND="$STACK_EMULATOR_BACKEND_HOST_PORT"
+        HP_DASHBOARD="$STACK_EMULATOR_DASHBOARD_HOST_PORT"
+        HP_MINIO="$STACK_EMULATOR_MINIO_HOST_PORT"
+        HP_INBUCKET="$STACK_EMULATOR_INBUCKET_HOST_PORT"
+
         cat <<COMPUTED
+      STACK_SKIP_MIGRATIONS=true
+      STACK_SKIP_SEED_SCRIPT=true
       NEXT_PUBLIC_STACK_PORT_PREFIX=${P}
       STACK_RUNTIME_WORK_DIR=/app
       STACK_LOCAL_EMULATOR_HOST_MOUNT_ROOT=/host
-      NEXT_PUBLIC_STACK_API_URL=http://localhost:${P}02
-      NEXT_PUBLIC_STACK_DASHBOARD_URL=http://localhost:${P}01
-      NEXT_PUBLIC_BROWSER_STACK_API_URL=http://localhost:${P}02
-      NEXT_PUBLIC_BROWSER_STACK_DASHBOARD_URL=http://localhost:${P}01
+      NEXT_PUBLIC_STACK_API_URL=http://localhost:${HP_BACKEND}
+      NEXT_PUBLIC_STACK_DASHBOARD_URL=http://localhost:${HP_DASHBOARD}
+      NEXT_PUBLIC_BROWSER_STACK_API_URL=http://localhost:${HP_BACKEND}
+      NEXT_PUBLIC_BROWSER_STACK_DASHBOARD_URL=http://localhost:${HP_DASHBOARD}
       NEXT_PUBLIC_SERVER_STACK_API_URL=http://127.0.0.1:${P}02
       NEXT_PUBLIC_SERVER_STACK_DASHBOARD_URL=http://127.0.0.1:${P}01
-      NEXT_PUBLIC_STACK_SVIX_SERVER_URL=http://localhost:${P}13
+      NEXT_PUBLIC_STACK_SVIX_SERVER_URL=http://localhost:${HP_BACKEND}
       STACK_DATABASE_CONNECTION_STRING=postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@${DEPS_HOST}:5432/stackframe
       STACK_EMAIL_HOST=${DEPS_HOST}
       STACK_SVIX_SERVER_URL=http://${DEPS_HOST}:8071
       STACK_S3_ENDPOINT=http://${DEPS_HOST}:9090
-      STACK_S3_PUBLIC_ENDPOINT=http://localhost:${P}21/stack-storage
+      STACK_S3_PUBLIC_ENDPOINT=http://localhost:${HP_MINIO}/stack-storage
       STACK_QSTASH_URL=http://${DEPS_HOST}:8080
       STACK_CLICKHOUSE_URL=http://${DEPS_HOST}:8123
-      STACK_EMAIL_MONITOR_VERIFICATION_CALLBACK_URL=http://localhost:${P}01/handler/email-verification
+      STACK_EMAIL_MONITOR_VERIFICATION_CALLBACK_URL=http://localhost:${HP_DASHBOARD}/handler/email-verification
       STACK_EMAIL_MONITOR_INBUCKET_API_URL=http://${DEPS_HOST}:9001
       STACK_OAUTH_MOCK_URL=http://${HOST_SERVICES_HOST}:${P}14
       BACKEND_PORT=${P}02
@@ -145,6 +158,164 @@ write_files:
       until curl -sf http://127.0.0.1:9090/minio/health/live >/dev/null 2>&1; do sleep 1; done
       until [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/ 2>/dev/null || true)" = "401" ]; do sleep 1; done
 
+  - path: /usr/local/bin/run-build-migrations
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      # Start infrastructure services (deps-only mode)
+      docker run --rm --name stack-build-init \
+        --network host \
+        -e STACK_DEPS_ONLY=true \
+        -v stack-postgres-data:/data/postgres \
+        -v stack-redis-data:/data/redis \
+        -v stack-clickhouse-data:/data/clickhouse \
+        -v stack-minio-data:/data/minio \
+        -v stack-inbucket-data:/data/inbucket \
+        -d stack-local-emulator
+
+      # Wait for all services to be healthy
+      /usr/local/bin/wait-for-deps
+
+      # Wait for init-services.sh to finish (MinIO buckets, ClickHouse DB)
+      timeout=120
+      elapsed=0
+      while [ "$elapsed" -lt "$timeout" ]; do
+        if docker exec stack-build-init test -f /var/run/stack-local-init-services.done 2>/dev/null; then
+          break
+        fi
+        sleep 1
+        elapsed=$((elapsed + 1))
+      done
+
+      # Run migrations and seed inside the running container
+      docker exec \
+        --env-file /etc/stack-build.env \
+        -e USE_INLINE_ENV_VARS=true \
+        -e NEXT_PUBLIC_STACK_API_URL=http://localhost:8102 \
+        -e NEXT_PUBLIC_STACK_DASHBOARD_URL=http://localhost:8101 \
+        -e NEXT_PUBLIC_BROWSER_STACK_API_URL=http://localhost:8102 \
+        -e NEXT_PUBLIC_BROWSER_STACK_DASHBOARD_URL=http://localhost:8101 \
+        -e NEXT_PUBLIC_SERVER_STACK_API_URL=http://127.0.0.1:8102 \
+        -e NEXT_PUBLIC_SERVER_STACK_DASHBOARD_URL=http://127.0.0.1:8101 \
+        -e NEXT_PUBLIC_STACK_SVIX_SERVER_URL=http://localhost:8071 \
+        -e NEXT_PUBLIC_STACK_PORT_PREFIX=81 \
+        -e STACK_CLICKHOUSE_DATABASE=analytics \
+        stack-build-init \
+        sh -c 'cd /app/apps/backend && node dist/db-migrations.mjs migrate && node dist/db-migrations.mjs seed'
+
+      # Stop infrastructure
+      docker stop stack-build-init || true
+
+  - path: /usr/local/bin/slim-docker-image
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      # Build slim image: swap to the standalone-traced node_modules and
+      # reconstruct pnpm root symlinks. The standalone trace (from Next.js)
+      # includes only packages actually imported at runtime, so this is
+      # self-maintaining as new packages are added.
+      docker build -t stack-local-emulator-slim - <<'DOCKERFILE'
+      FROM stack-local-emulator
+      RUN rm -rf /app/node_modules /app/apps/backend/dist && \
+          mv /app/node_modules.standalone /app/node_modules && \
+          for entry in /app/node_modules/.pnpm/node_modules/*; do \
+            name="$(basename "$entry")"; \
+            [ "$name" = ".bin" ] && continue; \
+            ln -sf ".pnpm/node_modules/$name" "/app/node_modules/$name" 2>/dev/null || true; \
+          done
+      DOCKERFILE
+
+      # Smoke test: start the slim image and verify the backend health endpoint
+      # works (including DB connectivity). Fail the build if it doesn't.
+      echo "Running smoke test on slim image..."
+      docker run --rm --name smoke-test \
+        --network host \
+        --env-file /etc/stack-build.env \
+        -e STACK_SKIP_MIGRATIONS=true \
+        -e STACK_SKIP_SEED_SCRIPT=true \
+        -e USE_INLINE_ENV_VARS=true \
+        -e STACK_RUNTIME_WORK_DIR=/app \
+        -e NEXT_PUBLIC_STACK_API_URL=http://localhost:8102 \
+        -e NEXT_PUBLIC_STACK_DASHBOARD_URL=http://localhost:8101 \
+        -e NEXT_PUBLIC_BROWSER_STACK_API_URL=http://localhost:8102 \
+        -e NEXT_PUBLIC_BROWSER_STACK_DASHBOARD_URL=http://localhost:8101 \
+        -e NEXT_PUBLIC_SERVER_STACK_API_URL=http://127.0.0.1:8102 \
+        -e NEXT_PUBLIC_SERVER_STACK_DASHBOARD_URL=http://127.0.0.1:8101 \
+        -e NEXT_PUBLIC_STACK_SVIX_SERVER_URL=http://localhost:8071 \
+        -e NEXT_PUBLIC_STACK_PORT_PREFIX=81 \
+        -e STACK_CLICKHOUSE_DATABASE=analytics \
+        -e BACKEND_PORT=8102 \
+        -e DASHBOARD_PORT=8101 \
+        -v stack-postgres-data:/data/postgres \
+        -v stack-redis-data:/data/redis \
+        -v stack-clickhouse-data:/data/clickhouse \
+        -v stack-minio-data:/data/minio \
+        -v stack-inbucket-data:/data/inbucket \
+        -d stack-local-emulator-slim
+
+      smoke_timeout=120
+      smoke_elapsed=0
+      smoke_passed=false
+      while [ "$smoke_elapsed" -lt "$smoke_timeout" ]; do
+        code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://127.0.0.1:8102/health?db=1 2>/dev/null || true)
+        if [ "$code" = "200" ]; then
+          smoke_passed=true
+          break
+        fi
+        sleep 2
+        smoke_elapsed=$((smoke_elapsed + 2))
+      done
+
+      docker stop smoke-test 2>/dev/null || true
+      sleep 2
+
+      if [ "$smoke_passed" = "false" ]; then
+        echo "SMOKE TEST FAILED: backend /health?db=1 did not return 200" >&2
+        exit 1
+      fi
+      echo "Smoke test passed!"
+
+      # Flatten to a single layer so deleted files are truly gone
+      docker create --name flatten stack-local-emulator-slim /bin/true
+      docker export flatten | docker import \
+        --change 'WORKDIR /app' \
+        --change 'ENTRYPOINT ["/entrypoint.sh"]' \
+        --change 'EXPOSE 5432 6379 2500 9001 1100 8071 8123 9009 9090 8080 8101 8102' \
+        --change 'ENV DEBIAN_FRONTEND=noninteractive' \
+        - stack-local-emulator:final
+
+      # Save the final image and volume data, nuke ALL Docker storage
+      # (images, build cache, overlay2 layers), then reload. This is the
+      # only reliable way to reclaim space — the build cache holds refs
+      # to old layers, preventing docker image prune from freeing them.
+      docker rm flatten
+      docker save stack-local-emulator:final -o /var/tmp/final-image.tar
+      # Copy volume data out of Docker's storage
+      cp -a /var/lib/docker/volumes /var/tmp/volumes-backup
+      systemctl stop docker containerd
+      rm -rf /var/lib/docker /var/lib/containerd
+      systemctl start docker containerd
+      until docker info >/dev/null 2>&1; do sleep 1; done
+      # Restore image and volumes
+      docker load -i /var/tmp/final-image.tar
+      docker tag stack-local-emulator:final stack-local-emulator
+      docker rmi stack-local-emulator:final || true
+      rm -f /var/tmp/final-image.tar
+      systemctl stop docker
+      cp -a /var/tmp/volumes-backup/* /var/lib/docker/volumes/
+      rm -rf /var/tmp/volumes-backup
+      systemctl start docker
+
+      # Zero free space so qcow2 compression is effective
+      dd if=/dev/zero of=/zero.fill bs=1M 2>/dev/null || true
+      rm -f /zero.fill
+      sync
+      fstrim -av 2>/dev/null || true
+
   - path: /etc/systemd/system/stack.service
     content: |
       [Unit]
@@ -168,18 +339,11 @@ runcmd:
   - bash /usr/local/bin/install-emulator-containers
   - systemctl daemon-reload
   - systemctl enable stack.service
-  - docker run --rm --name stack-build-init
-      --network host
-      -e STACK_DEPS_ONLY=true
-      -v stack-postgres-data:/data/postgres
-      -v stack-redis-data:/data/redis
-      -v stack-clickhouse-data:/data/clickhouse
-      -v stack-minio-data:/data/minio
-      -v stack-inbucket-data:/data/inbucket
-      -d stack-local-emulator
-  - bash /usr/local/bin/wait-for-deps
-  - docker stop stack-build-init || true
-  - echo "STACK_CLOUD_INIT_DONE" > /dev/console 2>/dev/null || true
-  - echo "STACK_CLOUD_INIT_DONE" > /dev/ttyAMA0 2>/dev/null || true
-  - echo "STACK_CLOUD_INIT_DONE" > /dev/ttyS0 2>/dev/null || true
+  # Chain build steps with && so a failure (e.g. smoke test) prevents
+  # STACK_CLOUD_INIT_DONE from being emitted, which fails the build.
+  - bash /usr/local/bin/run-build-migrations &&
+    bash /usr/local/bin/slim-docker-image &&
+    for dev in /dev/console /dev/ttyAMA0 /dev/ttyS0; do
+      echo "STACK_CLOUD_INIT_DONE" > "$dev" 2>/dev/null || true;
+    done
   - shutdown -P now

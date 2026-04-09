@@ -209,6 +209,7 @@ build_one() {
 
   mkdir -p "$bundle_dir"
   cp "$bundle_tgz" "$bundle_dir/img.tgz"
+  cp "$BUILD_ENV_FILE" "$bundle_dir/build.env"
   make_iso_from_dir "$bundle_iso" "STACKBUNDLE" "$bundle_dir"
 
   : > "$serial_log"
@@ -219,7 +220,7 @@ build_one() {
     -boot order=c \
     -m "$RAM" \
     -smp "$CPUS" \
-    -drive "file=$tmp_img,format=qcow2,if=virtio" \
+    -drive "file=$tmp_img,format=qcow2,if=virtio,discard=on,detect-zeroes=unmap" \
     -drive "file=$seed_iso,format=raw,if=virtio,readonly=on" \
     -drive "file=$bundle_iso,format=raw,if=virtio,readonly=on" \
     -netdev user,id=net0 \
@@ -266,18 +267,20 @@ build_one() {
     kill -9 "$pid" 2>/dev/null || true
   fi
 
-  cp "$tmp_img" "$final_img"
   cp "$serial_log" "$IMAGE_DIR/provision-emulator-${arch}.log"
-  rm -rf "$tmp_dir"
 
   log "Compressing final image (this may take several minutes)..."
-  qemu-img convert -p -O qcow2 -c "$final_img" "$final_img.tmp"
-  mv "$final_img.tmp" "$final_img"
+  qemu-img convert -p -O qcow2 -c "$tmp_img" "$final_img"
+  rm -rf "$tmp_dir"
 
   local size
   size="$(du -h "$final_img" | cut -f1)"
   log "━━━ Emulator image ready: $final_img (${size}) ━━━"
 }
+
+log "Generating emulator build env file..."
+node "$REPO_ROOT/docker/local-emulator/generate-env-development.mjs"
+BUILD_ENV_FILE="$REPO_ROOT/docker/local-emulator/.env.development"
 
 for arch in "${TARGET_ARCHS[@]}"; do
   local_base="$IMAGE_DIR/debian-${DEBIAN_VERSION}-base-${arch}.qcow2"
