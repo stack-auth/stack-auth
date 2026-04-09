@@ -1,15 +1,10 @@
 // IF_PLATFORM js-like
 
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import type { StackClientApp } from "../lib/stack-app";
+import { isLocalhost } from "@stackframe/stack-shared/dist/utils/urls";
+import { createDevTool } from "./dev-tool-core";
 
 const OVERRIDE_KEY = '__stack-dev-tool-override';
-
-function isLocalhost(): boolean {
-  if (typeof window === 'undefined') return false;
-  const hostname = window.location.hostname;
-  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
-}
 
 function getOverride(): boolean | null {
   try {
@@ -23,7 +18,8 @@ function getOverride(): boolean | null {
 function shouldShow(): boolean {
   const override = getOverride();
   if (override !== null) return override;
-  return isLocalhost();
+  if (typeof window === 'undefined') return false;
+  return isLocalhost(window.location.href);
 }
 
 let activeCleanup: (() => void) | null = null;
@@ -38,10 +34,7 @@ function tryMount() {
   if (!shouldShow() || !activeApp || typeof window === 'undefined') return;
 
   const app = activeApp;
-  runAsynchronously(import('./dev-tool-core').then((mod) => {
-    if (!shouldShow() || activeApp !== app) return;
-    activeCleanup = mod.createDevTool(app);
-  }));
+  activeCleanup = createDevTool(app);
 }
 
 /**

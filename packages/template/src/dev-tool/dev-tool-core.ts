@@ -2,6 +2,7 @@
 
 import type { RequestLogEntry } from "@stackframe/stack-shared/dist/interface/client-interface";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { isLocalhost } from "@stackframe/stack-shared/dist/utils/urls";
 import type { StackClientApp } from "../lib/stack-app";
 import { stackAppInternalsSymbol } from "../lib/stack-app/common";
 import type { HandlerUrlOptions, HandlerUrls, HandlerUrlTarget } from "../lib/stack-app/common";
@@ -165,12 +166,6 @@ function getGlobalLogStore(): LogStore {
 let _idCounter = 0;
 function nextId() {
   return `sdt-${++_idCounter}-${Date.now()}`;
-}
-
-function isLocalhost() {
-  if (typeof window === 'undefined') return false;
-  const hostname = window.location.hostname;
-  return hostname === 'localhost' || hostname === '127.0.0.1' || hostname === '[::1]';
 }
 
 function resolveApiBaseUrl(app: StackClientApp<true>): string {
@@ -553,7 +548,7 @@ function createOverviewTab(app: StackClientApp<true>): HTMLElement {
   }
 
   async function doQuickSignIn() {
-    if (!isLocalhost()) {
+    if (!isLocalhost(window.location.href)) {
       showToast('Quick sign-in is only available on localhost', 'error');
       return;
     }
@@ -583,7 +578,7 @@ function createOverviewTab(app: StackClientApp<true>): HTMLElement {
 
   async function doSignInAs(targetEmail: string) {
     if (!targetEmail.trim()) return;
-    if (!isLocalhost()) {
+    if (!isLocalhost(window.location.href)) {
       showToast('Quick sign-in is only available on localhost', 'error');
       return;
     }

@@ -1,16 +1,7 @@
-import { getCustomPagePrompts, type CustomPagePrompt } from "@stackframe/stack-shared/dist/interface/page-component-versions";
+import { getCustomPagePrompts, type CustomPagePrompt } from "@stackframe/stack-shared/dist/interface/handler-urls";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { envVars } from "../env";
 import { DefaultHandlerUrlTarget, HandlerPageUrls, HandlerUrlOptions, HandlerUrlTarget, HandlerUrls, ResolvedHandlerUrls } from "./common";
-
-let sdkPackageName: string;
-// IF_PLATFORM next
-sdkPackageName = "@stackframe/stack";
-// ELSE_IF_PLATFORM react
-sdkPackageName = "@stackframe/react";
-// ELSE_PLATFORM
-sdkPackageName = "@stackframe/js";
-// END_PLATFORM
 
 const defaultHostedHandlerDomainSuffix = ".built-with-stack-auth.com";
 const hostedHandlerProjectIdPlaceholder = "{projectId}";
@@ -18,7 +9,7 @@ const hostedHandlerPathPlaceholder = "{hostedPath}";
 const localUrlPlaceholderOrigin = "http://example.com";
 const schemePrefixRegex = /^[a-zA-Z][a-zA-Z\d+\-.]*:/;
 
-const customPagePrompts: Record<keyof Omit<HandlerPageUrls, "handler">, CustomPagePrompt> = getCustomPagePrompts(sdkPackageName);
+const customPagePrompts: Record<keyof Omit<HandlerPageUrls, "handler">, CustomPagePrompt> = getCustomPagePrompts();
 
 const replaceStackPortPrefix = <T extends string | undefined>(input: T): T => {
   if (!input) return input;
