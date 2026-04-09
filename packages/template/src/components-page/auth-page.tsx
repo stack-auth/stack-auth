@@ -2,7 +2,7 @@
 
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
 import { Skeleton, Tabs, TabsContent, TabsList, TabsTrigger, Typography, cn } from '@stackframe/stack-ui';
-import { Suspense, useEffect } from 'react';
+import { Suspense } from 'react';
 import { useStackApp, useUser } from '..';
 import { CredentialSignIn } from '../components/credential-sign-in';
 import { CredentialSignUp } from '../components/credential-sign-up';
@@ -63,19 +63,21 @@ function Fallback(props: Props) {
 
 function Inner(props: Props) {
   const stackApp = useStackApp();
-  const user = useUser();
+  const user = useUser({ includeRestricted: true });
   const projectFromHook = stackApp.useProject();
   const project = props.mockProject || projectFromHook;
   const { t } = useTranslation();
 
-  useEffect(() => {
-    if (props.automaticRedirect && user && !props.mockProject) {
-      runAsynchronously(props.type === 'sign-in'
-        ? stackApp.redirectToAfterSignIn({ replace: true })
-        : stackApp.redirectToAfterSignUp({ replace: true })
-      );
-    }
-  }, [user, props.mockProject, stackApp, props.automaticRedirect]);
+  if (props.automaticRedirect && user && !props.mockProject) {
+    runAsynchronously(
+      user.isRestricted
+        ? stackApp.redirectToOnboarding({ replace: true })
+        : props.type === 'sign-in'
+          ? stackApp.redirectToAfterSignIn({ replace: true })
+          : stackApp.redirectToAfterSignUp({ replace: true })
+    );
+    return null;
+  }
 
   if (user && !props.mockProject && !props.automaticRedirect) {
     return <PredefinedMessageCard type='signedIn' fullPage={props.fullPage} />;
