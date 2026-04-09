@@ -97,7 +97,7 @@ No markdown, no explanation — just the JSON.`;
     }
 
     const selected = parsed.selectedFiles.filter((f) => availableFiles.includes(f));
-    console.log("[selectRelevantFiles] selected:", selected);
+
     return selected;
   } catch (e) {
     console.log("[selectRelevantFiles] failed, returning all files:", e);
@@ -158,7 +158,6 @@ export async function buildDashboardMessages(
   const typeDefinitions = loadSelectedTypeDefinitions(selectedFiles);
 
   const availableRoutes = enabledAppIds ? buildAvailableRoutes(enabledAppIds) : "";
-  console.log("[buildDashboardMessages] enabledAppIds:", enabledAppIds?.length, "availableRoutes:", availableRoutes.slice(0, 200));
 
   const contextMessages: Array<{ role: string, content: string }> = [];
 

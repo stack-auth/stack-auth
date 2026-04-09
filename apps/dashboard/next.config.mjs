@@ -113,10 +113,10 @@ const nextConfig = {
             key: "X-Content-Type-Options",
             value: "nosniff",
           },
-          {
+          ...process.env.NEXT_PUBLIC_STACK_IS_PREVIEW === "true" ? [] : [{
             key: "X-Frame-Options",
             value: "SAMEORIGIN",
-          },
+          }],
           {
             key: "Content-Security-Policy",
             // Note: *.localhost requires Chrome 117+ and may not work in Firefox

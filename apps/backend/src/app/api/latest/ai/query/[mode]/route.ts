@@ -1,4 +1,3 @@
-import { forwardToProduction } from "@/lib/ai/forward";
 import { selectModel } from "@/lib/ai/models";
 import { getFullSystemPrompt } from "@/lib/ai/prompts";
 import { requestBodySchema } from "@/lib/ai/schema";
@@ -7,7 +6,6 @@ import { listManagedProjectIds } from "@/lib/projects";
 import { SmartResponse } from "@/route-handlers/smart-response";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Json } from "@stackframe/stack-shared/dist/utils/json";
 import { generateText, ModelMessage, stepCountIs, streamText } from "ai";
@@ -30,9 +28,6 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(StatusError.BadRequest, `Invalid tool names in request.`);
     }
 
-    const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY");
-
-
     const isAuthenticated = fullReq.auth != null;
     const { quality, speed, systemPrompt: systemPromptId, tools: toolNames, messages, projectId } = body;
 
@@ -49,16 +44,6 @@ export const POST = createSmartRouteHandler({
       if (!managedProjectIds.includes(projectId)) {
         throw new StatusError(StatusError.Forbidden, "You do not have access to this project");
       }
-    }
-
-    if (apiKey === "FORWARD_TO_PRODUCTION") {
-      // Strip projectId before forwarding — production infers it from the API key
-      const prodResponse = await forwardToProduction(mode, { quality, speed, systemPrompt: systemPromptId, tools: toolNames, messages });
-      return {
-        statusCode: prodResponse.status,
-        bodyType: "response" as const,
-        body: prodResponse,
-      };
     }
 
     const model = selectModel(quality, speed, isAuthenticated);

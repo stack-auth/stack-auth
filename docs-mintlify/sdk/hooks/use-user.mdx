@@ -1,0 +1,32 @@
+---
+title: "useUser"
+description: "React hook to access the current authenticated user."
+sidebarTitle: "useUser"
+icon: "react"
+mode: "wide"
+---
+
+This standalone React hook is an alias for `useStackApp().useUser()`. It only exists for convenience; it does not have any additional functionality.
+
+For more information, please refer to the [documentation for `stackClientApp.useUser()`](/sdk/objects/stack-app#stackclientappuseuseroptions).
+
+## Usage
+
+```jsx
+import { useUser } from "@stackframe/stack";
+
+function MyComponent() {
+  const user = useUser();
+
+  if (!user) {
+    return <div>Not signed in</div>;
+  }
+
+  return <div>Hello, {user.displayName}</div>;
+}
+```
+
+## Related
+
+- [StackApp object reference](/sdk/objects/stack-app)
+- [User type reference](/sdk/types/user)
