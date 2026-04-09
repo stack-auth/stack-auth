@@ -5,19 +5,21 @@ import { z } from "zod";
 
 export function createSqlQueryTool(auth: SmartRequestAuth | null, targetProjectId?: string | null) {
   if (auth == null) {
-    // Return null or throw - analytics queries require authentication
     return null;
   }
 
   const projectId = targetProjectId ?? auth.tenancy.project.id;
   const branchId = targetProjectId ? "main" : auth.tenancy.branchId;
 
+  // Max rows returned to the model (backstop if LIMIT is missing).
+  const MAX_ROWS_FOR_AI = 50;
+
   return tool({
-    description: "Run a ClickHouse SQL query against the project's analytics database. Only SELECT queries are allowed. Project filtering is automatic.",
+    description: "Run a read-only ClickHouse SQL query against the project's analytics database for INSPECTION. Only SELECT queries are allowed. Project filtering is automatic. Results are capped at 50 rows for your context — always include a LIMIT clause and prefer aggregates (count, sum, min, max, avg, quantile, GROUP BY) over SELECT *.",
     inputSchema: z.object({
       query: z
         .string()
-        .describe("The ClickHouse SQL query to execute. Only SELECT queries are allowed. Always include LIMIT clause."),
+        .describe("The ClickHouse SQL query to execute. Only SELECT queries are allowed. Always include a LIMIT clause (≤20 for row samples)."),
     }),
     execute: async ({ query }: { query: string }) => {
       const client = getClickhouseExternalClient();
@@ -37,10 +39,17 @@ export function createSqlQueryTool(auth: SmartRequestAuth | null, targetProjectI
       })
         .then(async (resultSet) => {
           const rows = await resultSet.json<Record<string, unknown>[]>();
+          const truncated = rows.length > MAX_ROWS_FOR_AI;
+          const returnedRows = truncated ? rows.slice(0, MAX_ROWS_FOR_AI) : rows;
           return {
             success: true as const,
-            rowCount: rows.length,
-            result: rows,
+            rowCount: returnedRows.length,
+            totalRows: rows.length,
+            truncated,
+            ...(truncated
+              ? { truncationNote: `Only the first ${MAX_ROWS_FOR_AI} of ${rows.length} rows are shown. Add LIMIT or aggregate to see the rest.` }
+              : {}),
+            result: returnedRows,
           };
         })
         .catch((error: unknown) => ({

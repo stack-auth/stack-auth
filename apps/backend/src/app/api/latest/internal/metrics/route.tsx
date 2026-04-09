@@ -2,7 +2,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { EmailOutboxSimpleStatus } from "@/generated/prisma/enums";
 import { getClickhouseAdminClient } from "@/lib/clickhouse";
 import { ClickHouseError } from "@clickhouse/client";
-import { ActivitySplit, buildSplitFromDailyEntitySets, createEmptySplitSeries } from "@/lib/metrics-activity-split";
+import { ActivitySplit, buildSplitFromDailyEntitySets } from "@/lib/metrics-activity-split";
 import { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, sqlQuoteIdent } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -18,7 +18,6 @@ import {
   MetricsPaymentsOverviewSchema,
   MetricsRecentUserSchema,
 } from "@stackframe/stack-shared/dist/interface/admin-metrics";
-import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -1044,136 +1043,6 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
   };
 }
 
-// ── Development-mode fallback data for ClickHouse-dependent metrics ──────────
-// In development, ClickHouse often has no event data (no $token-refresh,
-// $page-view, etc.), so charts appear empty. These functions generate
-// realistic-looking synthetic data so the dashboard is usable in dev.
-
-function seededPrng(seed: number) {
-  let s = seed;
-  return () => {
-    s = (s * 1664525 + 1013904223) & 0xffffffff;
-    return (s >>> 0) / 0xffffffff;
-  };
-}
-
-function generateDevDauSplit(now: Date, totalUsers: number): ActivitySplit {
-  if (getNodeEnvironment() === 'production') {
-    return createEmptySplitSeries([]);
-  }
-
-  const rand = seededPrng(12345);
-  const todayUtc = new Date(now);
-  todayUtc.setUTCHours(0, 0, 0, 0);
-  const since = new Date(todayUtc.getTime() - METRICS_WINDOW_MS);
-  const days: string[] = [];
-  for (let i = 0; i <= METRICS_WINDOW_DAYS; i++) {
-    days.push(new Date(since.getTime() + i * ONE_DAY_MS).toISOString().split('T')[0]);
-  }
-
-  const base = Math.max(2, Math.floor(totalUsers * 0.15));
-  const split = createEmptySplitSeries(days);
-
-  for (let i = 0; i < days.length; i++) {
-    const dayOfWeek = new Date(days[i]).getDay();
-    const weekendFactor = (dayOfWeek === 0 || dayOfWeek === 6) ? 0.6 : 1.0;
-    const trendFactor = 0.7 + (i / days.length) * 0.6;
-    const noise = 0.7 + rand() * 0.6;
-
-    const total = Math.max(1, Math.round(base * weekendFactor * trendFactor * noise));
-    const newPct = 0.15 + rand() * 0.2;
-    const reactivatedPct = 0.05 + rand() * 0.15;
-    const retainedPct = 1 - newPct - reactivatedPct;
-
-    split.new[i].activity = Math.max(0, Math.round(total * newPct));
-    split.reactivated[i].activity = Math.max(0, Math.round(total * reactivatedPct));
-    split.retained[i].activity = Math.max(0, Math.round(total * retainedPct));
-    split.total[i].activity = split.new[i].activity + split.reactivated[i].activity + split.retained[i].activity;
-  }
-
-  return split;
-}
-
-function generateDevAnalyticsOverview(now: Date, totalUsers: number) {
-  if (getNodeEnvironment() === 'production') return null;
-
-  const rand = seededPrng(67890);
-  const todayUtc = new Date(now);
-  todayUtc.setUTCHours(0, 0, 0, 0);
-  const since = new Date(todayUtc.getTime() - METRICS_WINDOW_MS);
-
-  const dailyPageViews: DataPoints = [];
-  const dailyClicks: DataPoints = [];
-  const dailyRevenue: Array<{ date: string, new_cents: number, refund_cents: number }> = [];
-  const dailyVisitors: DataPoints = [];
-  for (let i = 0; i <= METRICS_WINDOW_DAYS; i++) {
-    const day = new Date(since.getTime() + i * ONE_DAY_MS);
-    const key = day.toISOString().split('T')[0];
-    const dayOfWeek = day.getDay();
-    const weekendFactor = (dayOfWeek === 0 || dayOfWeek === 6) ? 0.55 : 1.0;
-    const trendFactor = 0.8 + (i / 30) * 0.4;
-    const pvNoise = 0.6 + rand() * 0.8;
-    const clNoise = 0.5 + rand() * 1.0;
-
-    const pv = Math.max(3, Math.round(totalUsers * 2.5 * weekendFactor * trendFactor * pvNoise));
-    const cl = Math.max(1, Math.round(pv * 0.3 * clNoise));
-    dailyPageViews.push({ date: key, activity: pv });
-    dailyClicks.push({ date: key, activity: cl });
-
-    const baseRevenue = Math.round(300 + totalUsers * 8 * weekendFactor * trendFactor * (0.7 + rand() * 0.6));
-    const refundRate = 0.15 + rand() * 0.25;
-    const refundCents = Math.round(baseRevenue * refundRate);
-    dailyRevenue.push({ date: key, new_cents: baseRevenue, refund_cents: refundCents });
-
-    const vis = Math.max(5, Math.round(pv * (0.4 + rand() * 0.2)));
-    dailyVisitors.push({ date: key, activity: vis });
-  }
-
-  const visitors = Math.max(totalUsers, Math.round(totalUsers * 1.8 + rand() * totalUsers * 0.5));
-  const avgSessionSeconds = 180 + Math.round(rand() * 440);
-  const onlineLive = Math.max(1, Math.round(totalUsers * 0.05 + rand() * 3));
-  const totalRevenueCents = dailyRevenue.reduce((sum, d) => sum + d.new_cents, 0);
-  const revenuePerVisitor = visitors > 0 ? Number(((totalRevenueCents / 100) / visitors).toFixed(2)) : 0;
-  const bounceRate = Number((55 + rand() * 30).toFixed(1));
-  const conversionRate = Number((0.2 + rand() * 0.8).toFixed(2));
-
-  return {
-    daily_page_views: dailyPageViews,
-    daily_clicks: dailyClicks,
-    daily_revenue: dailyRevenue,
-    daily_visitors: dailyVisitors,
-    total_replays: Math.round(visitors * 0.3),
-    recent_replays: Math.round(visitors * 0.1),
-    visitors,
-    total_revenue_cents: totalRevenueCents,
-    avg_session_seconds: avgSessionSeconds,
-    online_live: onlineLive,
-    revenue_per_visitor: revenuePerVisitor,
-    bounce_rate: bounceRate,
-    conversion_rate: conversionRate,
-    deltas: {
-      visitors: Number((-15 + rand() * 30).toFixed(1)),
-      revenue: Number((-25 + rand() * 50).toFixed(1)),
-      conversion_rate: Number((-20 + rand() * 40).toFixed(1)),
-      revenue_per_visitor: Number((-20 + rand() * 40).toFixed(1)),
-      bounce_rate: Number((-10 + rand() * 20).toFixed(1)),
-      session_time: Number((-15 + rand() * 30).toFixed(1)),
-    },
-    top_referrers: [
-      { referrer: 'google.com', visitors: Math.round(visitors * 0.32 + rand() * 10) },
-      { referrer: 'github.com', visitors: Math.round(visitors * 0.18 + rand() * 8) },
-      { referrer: 'twitter.com', visitors: Math.round(visitors * 0.12 + rand() * 5) },
-      { referrer: 'producthunt.com', visitors: Math.round(visitors * 0.08 + rand() * 4) },
-      { referrer: '(direct)', visitors: Math.round(visitors * 0.06 + rand() * 3) },
-    ],
-    top_region: {
-      country_code: 'US',
-      region_code: 'CA',
-      count: Math.round(visitors * 0.25),
-    },
-  };
-}
-
 // ── Auth Extra Aggregates ────────────────────────────────────────────────────
 
 async function loadAuthOverview(tenancy: Tenancy, includeAnonymous: boolean, now: Date) {
@@ -1319,35 +1188,9 @@ export const GET = createSmartRouteHandler({
 
     const totalUsers = authOverview.total_users_filtered;
 
-    // In dev, ClickHouse may have no events — fill in realistic fallback data.
-    // This is strictly a developer-experience nicety for `pnpm dev`; tests must
-    // exercise the real (deterministic) data path, and production always uses
-    // real data. The synthetic data is day-of-week-dependent, so enabling it in
-    // tests causes snapshots to drift over time.
-    const isDevFallbackActive = getNodeEnvironment() === 'development';
-    const dauSplitIsEmpty = authOverview.daily_active_users_split.total.every(
-      (d: { activity: number }) => d.activity === 0
-    );
-    const finalAuthOverview = dauSplitIsEmpty && isDevFallbackActive
-      ? {
-        ...authOverview,
-        daily_active_users_split: generateDevDauSplit(now, totalUsers),
-        // Fallback MAU is ~30% of total users in dev
-        mau: authOverview.mau === 0 ? Math.max(1, Math.round(totalUsers * 0.3)) : authOverview.mau,
-      }
-      : authOverview;
-
-    const referrersEmpty = analyticsOverview.top_referrers.length === 0;
-    const baseAnalyticsOverview = referrersEmpty && isDevFallbackActive
-      ? (generateDevAnalyticsOverview(now, totalUsers) ?? analyticsOverview)
-      : analyticsOverview;
     // Stitch real daily revenue (from paid invoices) into analytics_overview so
-    // the dashboard can keep reading it from a single location. Preserve dev
-    // fallback synthetic data when no real revenue exists in dev mode.
-    const hasRealRevenue = dailyRevenue.some((row) => row.new_cents > 0);
-    const finalAnalyticsOverview = hasRealRevenue || !isDevFallbackActive
-      ? { ...baseAnalyticsOverview, daily_revenue: dailyRevenue }
-      : baseAnalyticsOverview;
+    // the dashboard can read it from a single location.
+    const finalAnalyticsOverview = { ...analyticsOverview, daily_revenue: dailyRevenue };
 
     return {
       statusCode: 200,
@@ -1360,7 +1203,7 @@ export const GET = createSmartRouteHandler({
         recently_registered: recentlyRegistered,
         recently_active: recentlyActive,
         login_methods: loginMethods,
-        auth_overview: finalAuthOverview,
+        auth_overview: authOverview,
         payments_overview: paymentsOverview,
         email_overview: emailOverview,
         analytics_overview: finalAnalyticsOverview,

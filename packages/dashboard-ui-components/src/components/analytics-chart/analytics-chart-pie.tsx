@@ -6,11 +6,12 @@ import { Cell, Pie, PieChart } from "recharts";
 import { TrendPill } from "./default-analytics-chart-tooltip";
 import { formatDelta } from "./format";
 import type { AnalyticsChartStrings } from "./strings";
-import type {
-  AnalyticsChartPieProps,
-  AnalyticsChartSeries,
-  FormatKind,
-  Point,
+import {
+  cssIdent,
+  type AnalyticsChartPieProps,
+  type AnalyticsChartSeries,
+  type FormatKind,
+  type Point,
 } from "./types";
 
 type SegmentColors = {
@@ -138,14 +139,14 @@ export function AnalyticsChartPie({
   const chartConfig = useMemo<DesignChartConfig>(() => {
     const config: DesignChartConfig = {};
     canonicalSeries.forEach((s, sIdx) => {
-      config[s.key] = {
+      config[cssIdent(s.key)] = {
         label: s.label,
         theme: {
           light: segmentColors.primary.light[sIdx],
           dark: segmentColors.primary.dark[sIdx],
         },
       };
-      config[`compare-${s.key}`] = {
+      config[`compare-${cssIdent(s.key)}`] = {
         label: s.label,
         theme: {
           light: segmentColors.compare.light[sIdx],
@@ -167,8 +168,8 @@ export function AnalyticsChartPie({
   const startLabel = fmtValue(fullData[visibleStart]!.ts, xFormatKind);
   const endLabel = fmtValue(fullData[visibleEnd]!.ts, xFormatKind);
 
-  const outerData = legendRows.map((r) => ({ name: r.key, value: r.value, fill: r.fill }));
-  const innerData = legendRows.map((r) => ({ name: r.key, value: r.prevValue, fill: r.fillCompare }));
+  const outerData = legendRows.map((r) => ({ name: cssIdent(r.key), hoverKey: r.key, value: r.value, fill: r.fill }));
+  const innerData = legendRows.map((r) => ({ name: cssIdent(r.key), hoverKey: r.key, value: r.prevValue, fill: r.fillCompare }));
   const activeIdx = hoverKey ? legendRows.findIndex((r) => r.key === hoverKey) : -1;
 
   return (
@@ -223,7 +224,7 @@ export function AnalyticsChartPie({
                           key={`outer-${d.name}`}
                           fill={`var(--color-${d.name})`}
                           opacity={inactive ? 0.22 : 1}
-                          onMouseEnter={() => setHoverKey(d.name)}
+                          onMouseEnter={() => setHoverKey(d.hoverKey)}
                           onMouseLeave={() => setHoverKey(null)}
                         />
                       );
@@ -252,7 +253,7 @@ export function AnalyticsChartPie({
                           key={`inner-${d.name}`}
                           fill={`var(--color-compare-${d.name})`}
                           opacity={inactive ? 0.22 : 0.95}
-                          onMouseEnter={() => setHoverKey(d.name)}
+                          onMouseEnter={() => setHoverKey(d.hoverKey)}
                           onMouseLeave={() => setHoverKey(null)}
                         />
                       );

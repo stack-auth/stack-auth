@@ -18,7 +18,7 @@ import { useUser } from "@stackframe/stack";
 import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState, type ElementType } from "react";
+import { Suspense, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ElementType } from "react";
 import { PageLayout } from "../page-layout";
 import { useAdminApp, useProjectId } from "../use-admin-app";
 import { GlobeSectionWithData } from "./globe-section-with-data";
@@ -299,11 +299,11 @@ function AnalyticsChartWidget({
   const fadeInRaf2Ref = useRef<number | null>(null);
   const FADE_OUT_MS = 140;
 
-  const tablistInstanceId = useRef(`analytics-chart-tablist-${Math.random().toString(36).slice(2, 8)}`);
-  const tabpanelId = `${tablistInstanceId.current}-panel`;
-  const dauTabId = `${tablistInstanceId.current}-tab-dau`;
-  const visitorsTabId = `${tablistInstanceId.current}-tab-visitors`;
-  const revenueTabId = `${tablistInstanceId.current}-tab-revenue`;
+  const tablistInstanceId = useId();
+  const tabpanelId = `${tablistInstanceId}-panel`;
+  const dauTabId = `${tablistInstanceId}-tab-dau`;
+  const visitorsTabId = `${tablistInstanceId}-tab-visitors`;
+  const revenueTabId = `${tablistInstanceId}-tab-revenue`;
 
   const activeMode: AnalyticsChartMode = previewMode ?? selectedMode;
 

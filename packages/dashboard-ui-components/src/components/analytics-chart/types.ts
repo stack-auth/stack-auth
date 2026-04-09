@@ -10,6 +10,17 @@ export function pointValue(p: Point, id: string): number {
   return typeof v === "number" && Number.isFinite(v) ? v : 0;
 }
 
+/** Sanitize a string into a valid CSS `<ident>` token.
+ *  Replaces characters not allowed in CSS identifiers (like `$`, spaces,
+ *  slashes, dots) with underscores. Used to build safe `var(--color-xxx)`
+ *  custom property names from arbitrary segment keys. */
+export function cssIdent(raw: string): string {
+  // Replace everything that isn't a letter, digit, hyphen, or underscore.
+  // Prefix with `_` if the result starts with a digit (not valid as ident start).
+  const cleaned = raw.replace(/[^a-zA-Z0-9_-]/g, "_");
+  return /^\d/.test(cleaned) ? `_${cleaned}` : cleaned;
+}
+
 export type Annotation = {
   index: number,
   label: string,

@@ -8,11 +8,12 @@ import type { ReactNode } from 'react';
 import { PrismLight as SyntaxHighlighter } from 'react-syntax-highlighter';
 import bash from 'react-syntax-highlighter/dist/esm/languages/prism/bash';
 import python from 'react-syntax-highlighter/dist/esm/languages/prism/python';
+import sql from 'react-syntax-highlighter/dist/esm/languages/prism/sql';
 import tsx from 'react-syntax-highlighter/dist/esm/languages/prism/tsx';
 import typescript from 'react-syntax-highlighter/dist/esm/languages/prism/typescript';
 import { dark, prism } from 'react-syntax-highlighter/dist/esm/styles/prism';
 
-Object.entries({ tsx, bash, typescript, python }).forEach(([key, value]) => {
+Object.entries({ tsx, bash, typescript, python, sql }).forEach(([key, value]) => {
   SyntaxHighlighter.registerLanguage(key, value);
 });
 

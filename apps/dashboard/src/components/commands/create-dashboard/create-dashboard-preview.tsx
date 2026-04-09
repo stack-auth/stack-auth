@@ -78,7 +78,7 @@ const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
 
     try {
       const userMessages: Array<{ role: string, content: string }> = [{ role: "user", content: prompt }];
-      const { toolCall } = await generateDashboardCode(backendBaseUrl, currentUser, userMessages, { enabledAppIds, abortSignal: controller.signal });
+      const { toolCall } = await generateDashboardCode(backendBaseUrl, currentUser, userMessages, { enabledAppIds, abortSignal: controller.signal, projectId });
 
       if (controller.signal.aborted) return;
 

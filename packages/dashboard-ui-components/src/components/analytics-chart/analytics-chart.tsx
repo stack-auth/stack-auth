@@ -67,7 +67,7 @@ import type {
   FormatKind,
   Point,
 } from "./types";
-import { pointValue } from "./types";
+import { cssIdent, pointValue } from "./types";
 import type { AnalyticsChartStrings } from "./strings";
 
 /** Mirrors Recharts' internal `Margin` shape (not exported from their typings). */
@@ -78,8 +78,307 @@ export type Margin = {
   left?: number,
 };
 
+/**
+ * Props for {@link AnalyticsChart}.
+ *
+ * ## HOW TO REFERENCE THIS COMPONENT
+ *
+ * **In the custom dashboard sandbox** (AI-generated dashboard code): every
+ * export lives on the global `DashboardUI` object. Use
+ * `DashboardUI.AnalyticsChart`, `DashboardUI.ANALYTICS_CHART_DEFAULT_STATE`,
+ * `DashboardUI.pointValue`, etc. **Never** use bare identifiers like
+ * `<AnalyticsChart />` inside the sandbox — there is no module system and
+ * nothing is destructured into scope. Types (`AnalyticsChartState`,
+ * `Point`, …) don't exist at runtime anyway, so just drop the type
+ * annotations in sandbox code.
+ *
+ * **In a regular TypeScript app** (anywhere importing `@stackframe/dashboard-ui-components`
+ * directly): `import { AnalyticsChart, ANALYTICS_CHART_DEFAULT_STATE } from
+ * "@stackframe/dashboard-ui-components"` and use the bare name. Drop the
+ * `DashboardUI.` prefix from the examples below when doing so.
+ *
+ * ## Data shape in 30 seconds
+ *
+ * - `data` is `Point[]`. Each `Point` is `{ ts: number, values: Record<string, number> }`.
+ *   `ts` is a Unix millisecond timestamp; `values` is keyed by **layer id**.
+ * - `state` is fully controlled. Start from
+ *   `DashboardUI.ANALYTICS_CHART_DEFAULT_STATE` (which ships with a
+ *   `"primary"` + `"compare"` + `"annotations"` layer set) and override
+ *   what you need. Do **not** hand-build the layer array from scratch.
+ * - For a breakdown (e.g. signups by region), add `segments` (a `number[][]`
+ *   with one row per `data` point) and `segmentSeries` (the category labels)
+ *   to the primary layer. Rows of `segments` should sum to the point's layer
+ *   value. Same for the compare layer if you want a compared breakdown.
+ *
+ * ## **SCALE YOUR DATA BEFORE PUTTING IT ON A POINT** (critical)
+ *
+ * The chart renders every visible layer on a **single shared y-axis**. If
+ * two layers are on different orders of magnitude (e.g. revenue in cents
+ * `1_200_000` and sign-ups `450`), the smaller series collapses to a flat
+ * line at the bottom and the chart looks broken. You **must** normalize
+ * both metrics into the same range before building `data`. Rules of thumb:
+ *
+ * - **Cents → dollars / units**: divide money amounts by 100 (or 1000 for
+ *   large currencies). Use a `valueFormatter` to render the original unit
+ *   in tooltips so the UX still reads as "$12,543".
+ * - **Counts vs rates**: if one layer is a count (e.g. requests) and the
+ *   other is a ratio (e.g. error rate 0.02), multiply the ratio by the
+ *   count's scale (or by `max(counts)`) so both sit in the same band.
+ * - **Very different counts** (e.g. page views `120_000` vs sign-ups `430`):
+ *   either divide the large metric (`views / 100`) or promote the small
+ *   one to a rate (`signups / views * 1000`). Note the transformation in
+ *   the layer `label` ("Sign-ups per 1k views") so it's honest.
+ * - **Pick the target range from the layer with the most natural scale**
+ *   — usually the metric the user actually cares about — and normalize
+ *   everything else into it. Don't normalize by fighting Recharts with
+ *   `yDomain` hacks; do it in the data.
+ *
+ * If the two metrics truly can't share an axis (e.g. latency ms vs error
+ * count), render them as **two separate `AnalyticsChart` instances** stacked
+ * in the layout instead of jamming them into one chart.
+ *
+ * ## Example 1 — simplest possible: one area layer, no compare
+ *
+ * ```jsx
+ * // Sandbox dashboard code — everything prefixed with DashboardUI.*
+ * function Dashboard() {
+ *   const data = [
+ *     { ts: Date.UTC(2026, 2, 1), values: { primary: 420 } },
+ *     { ts: Date.UTC(2026, 2, 2), values: { primary: 512 } },
+ *     { ts: Date.UTC(2026, 2, 3), values: { primary: 604 } },
+ *     // ...one row per time bucket
+ *   ];
+ *
+ *   // Start from defaults, hide the compare layer so it's a single series.
+ *   const [state, setState] = React.useState({
+ *     ...DashboardUI.ANALYTICS_CHART_DEFAULT_STATE,
+ *     layers: DashboardUI.ANALYTICS_CHART_DEFAULT_STATE.layers.map((l) =>
+ *       l.kind === "compare" ? { ...l, visible: false } : l,
+ *     ),
+ *   });
+ *
+ *   return (
+ *     <DashboardUI.DesignChartCard title="Sign-ups" description="Last 30 days">
+ *       <DashboardUI.AnalyticsChart
+ *         data={data}
+ *         state={state}
+ *         onChange={setState}
+ *       />
+ *     </DashboardUI.DesignChartCard>
+ *   );
+ * }
+ * ```
+ *
+ * ## Example 2 — current vs previous period (compare)
+ *
+ * Each point carries both layer values under their layer ids. The default
+ * state's `"primary"` and `"compare"` layers are already visible, so no
+ * state customization is needed.
+ *
+ * ```jsx
+ * function Dashboard() {
+ *   const data = rows.map((r) => ({
+ *     ts: r.bucketTs,
+ *     values: {
+ *       primary: r.signupsThisPeriod,   // keyed by layer id "primary"
+ *       compare: r.signupsLastPeriod,   // keyed by layer id "compare"
+ *     },
+ *   }));
+ *
+ *   const [state, setState] = React.useState(
+ *     DashboardUI.ANALYTICS_CHART_DEFAULT_STATE,
+ *   );
+ *
+ *   return (
+ *     <DashboardUI.AnalyticsChart
+ *       data={data}
+ *       state={state}
+ *       onChange={setState}
+ *     />
+ *   );
+ * }
+ * ```
+ *
+ * ## Example 3 — stacked bar with region breakdown (segmented)
+ *
+ * ```jsx
+ * function Dashboard() {
+ *   const regions = [
+ *     { key: "us", label: "United States" },
+ *     { key: "eu", label: "European Union" },
+ *     { key: "asia", label: "Asia-Pacific" },
+ *   ];
+ *
+ *   // Row index matches `data` index; column index matches `regions`.
+ *   // Each row MUST sum to data[i].values.primary.
+ *   const segments = [
+ *     [210, 140,  70],  // day 0 → total 420
+ *     [250, 170,  92],  // day 1 → total 512
+ *     [300, 200, 104],  // day 2 → total 604
+ *   ];
+ *
+ *   const data = [
+ *     { ts: Date.UTC(2026, 2, 1), values: { primary: 420 } },
+ *     { ts: Date.UTC(2026, 2, 2), values: { primary: 512 } },
+ *     { ts: Date.UTC(2026, 2, 3), values: { primary: 604 } },
+ *   ];
+ *
+ *   const [state, setState] = React.useState({
+ *     ...DashboardUI.ANALYTICS_CHART_DEFAULT_STATE,
+ *     layers: DashboardUI.ANALYTICS_CHART_DEFAULT_STATE.layers.map((l) => {
+ *       if (l.kind === "primary") {
+ *         return {
+ *           ...l,
+ *           type: "bar",        // switch from area → stacked bars
+ *           segmented: true,
+ *           segments,
+ *           segmentSeries: regions,
+ *         };
+ *       }
+ *       if (l.kind === "compare") {
+ *         return { ...l, visible: false };
+ *       }
+ *       return l;
+ *     }),
+ *   });
+ *
+ *   return (
+ *     <DashboardUI.AnalyticsChart
+ *       data={data}
+ *       state={state}
+ *       onChange={setState}
+ *     />
+ *   );
+ * }
+ * ```
+ *
+ * ## Example 4 — mixing display types (e.g. revenue bars + signups area)
+ *
+ * Use two layers. The "primary" layer holds one metric; reuse the "compare"
+ * layer slot for the second metric by overriding its `id`, `label`, and
+ * `type`. Then key both values in each `Point`.
+ *
+ * **IMPORTANT**: the two metrics share a single y-axis, so scale them into
+ * the same range before putting them on the point. A common trick is to
+ * pass a `valueFormatter` that reports each layer's number with its own
+ * unit so tooltips still read correctly.
+ *
+ * ```jsx
+ * function Dashboard() {
+ *   // Sign-ups are already in range; revenue cents would dwarf them, so
+ *   // we normalize revenue (cents → dollars) onto the same scale.
+ *   const data = rows.map((r) => ({
+ *     ts: r.bucketTs,
+ *     values: {
+ *       revenue: r.revenueCents / 100,
+ *       signups: r.signups,
+ *     },
+ *   }));
+ *
+ *   const [state, setState] = React.useState({
+ *     ...DashboardUI.ANALYTICS_CHART_DEFAULT_STATE,
+ *     layers: DashboardUI.ANALYTICS_CHART_DEFAULT_STATE.layers.map((l) => {
+ *       if (l.kind === "primary") {
+ *         return { ...l, id: "revenue", label: "Revenue", type: "bar" };
+ *       }
+ *       if (l.kind === "compare") {
+ *         return {
+ *           ...l,
+ *           id: "signups",
+ *           label: "Sign-ups",
+ *           type: "area",
+ *           visible: true,
+ *         };
+ *       }
+ *       return l;
+ *     }),
+ *   });
+ *
+ *   // Per-layer formatter: `kind` lets you branch per-axis vs per-layer
+ *   // using the layer id passed in via the tooltip context. For most
+ *   // cases formatting by raw value is enough.
+ *   const valueFormatter = (value, kind) => {
+ *     if (kind.type === "currency") return `$${value.toFixed(0)}`;
+ *     return value.toLocaleString();
+ *   };
+ *
+ *   return (
+ *     <DashboardUI.AnalyticsChart
+ *       data={data}
+ *       state={state}
+ *       onChange={setState}
+ *       valueFormatter={valueFormatter}
+ *     />
+ *   );
+ * }
+ * ```
+ *
+ * ## Example 5 — segmented sign-ups stacked with a revenue line (mix + segment)
+ *
+ * Combines Example 3 and Example 4: primary layer is revenue as a line
+ * (un-segmented), compare layer is sign-ups as a stacked bar (segmented
+ * by region). Remember: row sums of the compare segments must equal
+ * `point.values.signups`, and both metrics share one y-axis.
+ *
+ * ```jsx
+ * function Dashboard() {
+ *   const regions = [
+ *     { key: "us", label: "United States" },
+ *     { key: "eu", label: "European Union" },
+ *     { key: "asia", label: "Asia-Pacific" },
+ *   ];
+ *
+ *   // Normalize revenue to the same order of magnitude as sign-ups.
+ *   const data = rows.map((r) => ({
+ *     ts: r.bucketTs,
+ *     values: {
+ *       revenue: r.revenueCents / 100,
+ *       signups: r.signupsTotal,
+ *     },
+ *   }));
+ *
+ *   // Row index matches `data` index. Each row sums to signupsTotal.
+ *   const signupSegments = rows.map((r) => [
+ *     r.signupsUs,
+ *     r.signupsEu,
+ *     r.signupsAsia,
+ *   ]);
+ *
+ *   const [state, setState] = React.useState({
+ *     ...DashboardUI.ANALYTICS_CHART_DEFAULT_STATE,
+ *     layers: DashboardUI.ANALYTICS_CHART_DEFAULT_STATE.layers.map((l) => {
+ *       if (l.kind === "primary") {
+ *         return { ...l, id: "revenue", label: "Revenue", type: "line" };
+ *       }
+ *       if (l.kind === "compare") {
+ *         return {
+ *           ...l,
+ *           id: "signups",
+ *           label: "Sign-ups",
+ *           type: "bar",
+ *           visible: true,
+ *           segmented: true,
+ *           segments: signupSegments,
+ *           segmentSeries: regions,
+ *         };
+ *       }
+ *       return l;
+ *     }),
+ *   });
+ *
+ *   return (
+ *     <DashboardUI.AnalyticsChart
+ *       data={data}
+ *       state={state}
+ *       onChange={setState}
+ *     />
+ *   );
+ * }
+ * ```
+ */
 export type AnalyticsChartProps = {
-  /** Time-series points — each point carries `values` keyed by layer id. */
+  /** Time-series points — each point carries `values` keyed by layer id.
+   * See {@link AnalyticsChartProps} for full data-shape examples. */
   data: Point[],
   /** Annotations. Fully prop-driven; the consumer owns the array. */
   annotations?: Annotation[],
@@ -390,11 +689,11 @@ export function AnalyticsChart({
   const compareSolidKey = `${compareKey}_solid`;
   const compareDashedKey = `${compareKey}_dashed`;
   const primarySegKey = useCallback(
-    (segKey: string) => `${primaryKey}_seg_${segKey}`,
+    (segKey: string) => `${primaryKey}_seg_${cssIdent(segKey)}`,
     [primaryKey],
   );
   const compareSegKey = useCallback(
-    (segKey: string) => `${compareKey}_seg_${segKey}`,
+    (segKey: string) => `${compareKey}_seg_${cssIdent(segKey)}`,
     [compareKey],
   );
 
@@ -948,7 +1247,7 @@ export function AnalyticsChart({
                     const mid = Math.round((lo + hi) / 2);
                     onAnnotationCreate?.({
                       index: visibleStart + mid,
-                      label: label.length > 5 ? label.slice(0, 5) : label,
+                      label,
                       description: label,
                     });
                     setCommittedRange(null);
