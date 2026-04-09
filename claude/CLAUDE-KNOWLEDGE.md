@@ -184,3 +184,6 @@ A: `docs` (old docs app) uses suffix `26`, and `docs-mintlify` uses suffix `04`.
 
 Q: Why did the dashboard Vercel integration throw "Expected publishableClientKey" during key generation?
 A: In `apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/vercel/page-client.tsx`, the code always asserted `newKey.publishableClientKey` even when `project.requirePublishableClientKey` was false. Fix by only asserting/passing `publishableClientKey` when that project config flag is true.
+
+Q: Why can restricted users appear logged out on auth handler pages even with a valid session?
+A: `useUser()` filters out restricted users by default. In `packages/template/src/components-page/auth-page.tsx`, use `useUser({ includeRestricted: true })` and explicitly redirect restricted users to onboarding when `automaticRedirect` is enabled.
