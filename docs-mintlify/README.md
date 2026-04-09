@@ -7,13 +7,16 @@ How to run the Mintlify docs preview locally from this repository.
 - Node.js `>=20.17.0`
 - `pnpm`
 - Repository dependencies installed (`pnpm install` from repo root)
-- OpenAPI specs in `openapi/` (generated). From the repo root run:
+- OpenAPI specs in `openapi/` are **committed to git**. Hosted Mintlify cannot run monorepo codegen on deploy, so these files must be present in the repo for production docs.
+
+  When you change API route OpenAPI metadata, regenerate and **commit** the four specs from the repo root:
 
   ```bash
   pnpm run --filter @stackframe/backend codegen-docs
+  git add docs-mintlify/openapi/
   ```
 
-  That writes `client.json`, `server.json`, `admin.json`, and `webhooks.json` into `docs-mintlify/openapi/` (and into `docs/openapi/` for the legacy docs app). The `openapi/` directory is gitignored here; CI and local `mint validate` expect these files to exist after codegen.
+  That writes `client.json`, `server.json`, `admin.json`, and `webhooks.json` into `docs-mintlify/openapi/` (and into `docs/openapi/` for the legacy Fumadocs app). CI fails if `pnpm codegen` produces different output than what is committed (see root lint-and-build workflow).
 
 ## Run locally
 
