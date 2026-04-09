@@ -146,8 +146,10 @@ function createAuthPagePrompt(type: AuthPagePromptType): CustomPagePrompt {
     title,
     minSdkVersion: "0.0.1",
     structure: deindent`
-      - If user is already signed in (ie. \`await stackApp.getUser() !== null\`):
-        - Notify the user that they're already signed in${isSignIn ? " and call \\`await stackApp.redirectToHome()\\`." : "."}
+      - If user is already signed in, regardless of whether restricted or not (ie. \`await stackApp.getUser({ includeRestricted: true }) !== null\`):
+        - If user is restricted, \`await stackApp.redirectToOnboarding({ replace: true })\`
+        - Otherwise, \`await stackApp.redirectToAfterSign${isSignIn ? "In" : "Up"}({ replace: true })\`
+        - While the redirect is happening, you may display a loading indicator, or a note that the user is being redirected. If necessary, or if preferable, you can also render a message card that shows a link to \`await stackApp.redirectToHome()\` and a sign out button.
       - If user is not signed in:
         ${isSignIn
           ? "- If sign-ups are enabled (\\`project = await stackApp.getProject(); project.config.signUpEnabled\\`), show a link to the sign-up page."
@@ -173,12 +175,28 @@ function createAuthPagePrompt(type: AuthPagePromptType): CustomPagePrompt {
     reactExample: deindent`
       export default function Custom${isSignIn ? "SignIn" : "SignUp"}Page() {
         const stackApp = useStackApp();
-        const user = useUser();
+        const user = useUser({ includeRestricted: true });
         const project = stackApp.useProject();
         const [otpState, setOtpState] = useState<null | { nonce: string }>(null);
 
-        if (user) {
-          return <Typography>You are already signed in.</Typography>;
+        useEffect(() => {
+          if (user) {
+            if (user.isRestricted) {
+              void stackApp.redirectToOnboarding();
+            } else {
+              void stackApp.redirectToAfterSign${isSignIn ? "In" : "Up"}();
+            }
+          }
+        }, [user]);
+
+        if (user && !user.isRestricted) {
+          return (
+            <div>
+              <Typography>You are already signed in.</Typography>
+              <Button onClick={async () => await stackApp.redirectToSignOut()}>Sign out</Button>
+              <Button onClick={async () => await stackApp.redirectToHome()}>Go home</Button>
+            </div>
+          );
         }
 
         ${isSignIn ? "" : `
