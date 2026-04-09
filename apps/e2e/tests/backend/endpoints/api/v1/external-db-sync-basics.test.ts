@@ -1175,6 +1175,64 @@ describe.sequential('External DB Sync - Basic Tests', () => {
 
   /**
    * What it does:
+   * - Creates a team, sends an invitation, then updates the team name.
+   * - This exercises the cascade in the sequencer that marks TEAM_INVITATION
+   *   VerificationCode rows for re-sync when a team changes.
+   * - Reproduces: "operator does not exist: text = uuid" (PG error 42883)
+   */
+  test('Cascade: Team update re-syncs invitation display name (Postgres)', async () => {
+    const dbName = 'team_invite_cascade_test';
+    const connectionString = await dbManager.createDatabase(dbName);
+
+    await createProjectWithExternalDb({
+      main: {
+        type: 'postgres',
+        connectionString,
+      }
+    }, { display_name: 'Invite Cascade Project' });
+
+    const client = dbManager.getClient(dbName);
+
+    const createTeamResponse = await niceBackendFetch('/api/v1/teams', {
+      accessType: 'admin',
+      method: 'POST',
+      body: { display_name: 'Original Team Name' },
+    });
+    expect(createTeamResponse.status).toBe(201);
+    const teamId = createTeamResponse.body.id;
+
+    // Send a team invitation and wait for it to sync
+    await niceBackendFetch('/api/v1/team-invitations/send-code', {
+      accessType: 'admin',
+      method: 'POST',
+      body: { team_id: teamId, email: 'cascade-test@example.com', callback_url: 'http://localhost:12345/callback' },
+    });
+
+    await waitForSyncedTeamInvitation(client, 'cascade-test@example.com');
+
+    const res1 = await client.query(`SELECT * FROM "team_invitations" WHERE "recipient_email" = $1`, ['cascade-test@example.com']);
+    expect(res1.rows.length).toBe(1);
+    expect(res1.rows[0].team_display_name).toBe('Original Team Name');
+
+    // Update the team name — this triggers the cascade that re-marks the invitation
+    await niceBackendFetch(`/api/v1/teams/${teamId}`, {
+      accessType: 'admin',
+      method: 'PATCH',
+      body: { display_name: 'Updated Team Name' },
+    });
+
+    // Wait for the invitation to reflect the updated team name
+    await waitForCondition(async () => {
+      const res = await client.query(`SELECT * FROM "team_invitations" WHERE "recipient_email" = $1`, ['cascade-test@example.com']);
+      return res.rows.length === 1 && res.rows[0].team_display_name === 'Updated Team Name';
+    }, { description: 'invitation team_display_name to update' });
+
+    const res2 = await client.query(`SELECT * FROM "team_invitations" WHERE "recipient_email" = $1`, ['cascade-test@example.com']);
+    expect(res2.rows[0].team_display_name).toBe('Updated Team Name');
+  }, TEST_TIMEOUT);
+
+  /**
+   * What it does:
    * - Sends a team invitation, queries ClickHouse analytics API to verify.
    */
   test('TeamInvitation sync (ClickHouse)', async ({ expect }) => {
