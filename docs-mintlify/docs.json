@@ -198,7 +198,7 @@
             "openapi": {
               "source": "openapi/admin.json",
               "directory": "api/admin",
-              "hidden": true
+              "hidden": "true"
             }
           },
           {
