@@ -1,0 +1,1023 @@
+---
+title: "StackApp"
+description: "Reference documentation for StackClientApp and StackServerApp objects."
+sidebarTitle: "StackApp"
+mode: "wide"
+---
+
+import {
+  AsideSection,
+  ContentSection,
+  MethodAside,
+  MethodContent,
+  MethodLayout,
+  MethodReturns,
+} from "/snippets/sdk-type-components.jsx";
+
+This is a detailed reference for the `StackApp` object. If you're looking for a more high-level overview, please read the [respective page in the Concepts section](/guides/going-further/stack-app).
+
+## Overview
+
+- [StackClientApp](#stackclientapp) - Client-level permissions for frontend code
+- [StackServerApp](#stackserverapp) - Server-level permissions with full access
+
+---
+
+# StackClientApp
+
+A `StackApp` with client-level permissions. It contains most of the useful methods and hooks for your client-side code.
+
+Most commonly you get an instance of `StackClientApp` by calling [`useStackApp()`](/sdk/hooks/use-stack-app) in a Client Component.
+
+## Table of Contents
+
+```typescript
+type StackClientApp = {
+  new(options): StackClientApp;
+
+  getUser([options]): Promise<User>;
+  useUser([options]): User;
+  getProject(): Promise<Project>;
+  useProject(): Project;
+
+  signInWithOAuth(provider): void;
+  signInWithCredential([options]): Promise<...>;
+  signUpWithCredential([options]): Promise<...>;
+  sendForgotPasswordEmail(email): Promise<...>;
+  sendMagicLinkEmail(email): Promise<...>;
+};
+```
+
+## Constructor
+
+Creates a new `StackClientApp` instance.
+
+Because each app creates a new connection to Stack Auth's backend, you should re-use existing instances wherever possible.
+
+<Info>
+This object is not usually constructed directly. More commonly, you would construct a [`StackServerApp`](#stackserverapp) instead, pass it into your app setup (see the [setup guide](/guides/getting-started/setup)), and then use the `useStackApp()` hook to obtain a `StackClientApp`.
+
+The [setup wizard](/guides/getting-started/setup) does these steps for you, so you don't need to worry about it unless you are manually setting up Stack Auth.
+
+If you're building a client-only app and don't have a `SECRET_SERVER_KEY`, you can construct a `StackClientApp` directly.
+
+</Info>
+
+<MethodLayout>
+  <MethodContent>
+    <ContentSection title="Parameters">
+      <ParamField body="tokenStore" type='"nextjs-cookie" | "cookie" | { accessToken, refreshToken } | Request' required>
+        Token storage configuration.
+      </ParamField>
+
+      <ParamField body="baseUrl" type="string">
+        Base URL for the Stack Auth API.
+      </ParamField>
+
+      <ParamField body="projectId" type="string">
+        Project ID. Defaults to the `NEXT_PUBLIC_STACK_PROJECT_ID` environment variable.
+      </ParamField>
+
+      <ParamField body="publishableClientKey" type="string">
+        Publishable client key. Defaults to the `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY` environment variable.
+      </ParamField>
+
+      <ParamField body="urls" type="object">
+        Redirect URL configuration.
+      </ParamField>
+
+      <ParamField body="noAutomaticPrefetch" type="boolean">
+        Disable automatic prefetching.
+      </ParamField>
+    </ContentSection>
+
+  </MethodContent>
+
+  <MethodAside>
+    <AsideSection title="Signature">
+      ```typescript
+      declare class StackClientApp {
+        constructor(options: {
+          tokenStore: "nextjs-cookie" | "cookie" | {
+            accessToken: string;
+            refreshToken: string;
+          } | Request;
+          baseUrl?: string;
+          projectId?: string;
+          publishableClientKey?: string;
+          urls?: object;
+          noAutomaticPrefetch?: boolean;
+        });
+      }
+      ```
+    </AsideSection>
+
+    <AsideSection title="Examples">
+      ```typescript
+      const stackClientApp = new StackClientApp({
+        tokenStore: "nextjs-cookie",
+        baseUrl: "https://api.stack-auth.com",
+        projectId: "123",
+        publishableClientKey: "123",
+        urls: {
+          home: "/",
+        },
+      });
+      ```
+
+      ```typescript
+      "use client";
+
+      function MyReactComponent() {
+        const stackClientApp = useStackApp();
+      }
+      ```
+    </AsideSection>
+
+  </MethodAside>
+</MethodLayout>
+
+## User Management
+
+### `stackClientApp.getUser([options])`
+
+<MethodLayout>
+  <MethodContent>
+    Gets the current user.
+
+    <ContentSection title="Parameters">
+      <ParamField body="options.or" type='"return-null" | "redirect" | "throw"'>
+        What to do if the user is not found.
+      </ParamField>
+    </ContentSection>
+
+    <MethodReturns type="Promise<CurrentUser | null>" />
+
+  </MethodContent>
+
+  <MethodAside>
+    <AsideSection title="Signature">
+      ```typescript
+      declare function getUser(options?: {
+        or?: "return-null" | "redirect" | "throw";
+      }): Promise<CurrentUser | null>;
+      ```
+    </AsideSection>
+
+    <AsideSection title="Examples">
+      ```typescript
+      const userOrNull = await stackClientApp.getUser();
+      console.log(userOrNull);
+
+      const user = await stackClientApp.getUser({ or: "redirect" });
+      console.log(user);
+      ```
+    </AsideSection>
+
+  </MethodAside>
+</MethodLayout>
+
+### `stackClientApp.useUser([options])`
+
+<MethodLayout>
+  <MethodContent>
+    React hook version of `getUser()`. Equivalent to the [`useUser()`](/sdk/hooks/use-user) standalone hook, which is an alias for `useStackApp().useUser()`.
+
+    <ContentSection title="Parameters">
+      <ParamField body="options.or" type='"return-null" | "redirect" | "throw"'>
+        What to do if the user is not found.
+      </ParamField>
+    </ContentSection>
+
+    <MethodReturns type="CurrentUser | null" />
+
+  </MethodContent>
+
+  <MethodAside>
+    <AsideSection title="Signature">
+      ```typescript
+      declare function useUser(options?: {
+        or?: "return-null" | "redirect" | "throw";
+      }): CurrentUser | null;
+      ```
+    </AsideSection>
+
+    <AsideSection title="Examples">
+      ```jsx
+      "use client";
+
+      function MyReactComponent() {
+        const user = useUser();
+        return user ? <div>Hello, {user.name}</div> : <div>Not signed in</div>;
+      }
+      ```
+
+      ```tsx
+      "use client";
+
+      function MyProtectedComponent() {
+        useUser({ or: "redirect" });
+        return <div>You can only see this if you are authenticated</div>;
+      }
+      ```
+    </AsideSection>
+
+  </MethodAside>
+</MethodLayout>
+
+### `stackClientApp.getProject()`
+
+<MethodLayout>
+  <MethodContent>
+    Gets the current project.
+
+    <MethodReturns type="Promise<Project>" />
+
+  </MethodContent>
+
+  <MethodAside>
+    <AsideSection title="Signature">
+      ```typescript
+      declare function getProject(): Promise<Project>;
+      ```
+    </AsideSection>
+
+    <AsideSection title="Examples">
+      ```typescript
+      const project = await stackClientApp.getProject();
+      ```
+    </AsideSection>
+
+  </MethodAside>
+</MethodLayout>
+
+### `stackClientApp.useProject()`
+
+<MethodLayout>
+  <MethodContent>
+    React hook version of `getProject()`.
+
+    <MethodReturns type="Project" />
+
+  </MethodContent>
+
+  <MethodAside>
+    <AsideSection title="Signature">
+      ```typescript
+      declare function useProject(): Project;
+      ```
+    </AsideSection>
+
+    <AsideSection title="Examples">
+      ```typescript
+      function MyReactComponent() {
+        const project = useProject();
+      }
+      ```
+    </AsideSection>
+
+  </MethodAside>
+</MethodLayout>
+
+## Authentication
+
+### `stackClientApp.signInWithOAuth(provider)`
+
+<MethodLayout>
+  <MethodContent>
+    Initiates the OAuth sign-in process with the specified provider.
+
+    <ContentSection title="Parameters">
+      <ParamField body="provider" type="string">
+        The OAuth provider type.
+      </ParamField>
+    </ContentSection>
+
+    <MethodReturns type="Promise<void>" />
+
+  </MethodContent>
+
+  <MethodAside>
+    <AsideSection title="Signature">
+      ```typescript
+      declare function signInWithOAuth(provider: string): Promise<void>;
+      ```
+    </AsideSection>
+
+    <AsideSection title="Examples">
+      ```typescript
+      await stackClientApp.signInWithOAuth("google");
+      ```
+    </AsideSection>
+
+  </MethodAside>
+</MethodLayout>
+
+### `stackClientApp.signInWithCredential([options])`
+
+<MethodLayout>
+  <MethodContent>
+    Sign in using email and password credentials.
+
+    <ContentSection title="Parameters">
+      <ParamField body="options.email" type="string">
+        User's email.
+      </ParamField>
+
+      <ParamField body="options.password" type="string">
+        User's password.
+      </ParamField>
+
+      <ParamField body="options.noRedirect" type="boolean">
+        Whether to skip redirect after sign-in.
+      </ParamField>
+    </ContentSection>
+
+    <MethodReturns type='Promise<Result<undefined, KnownErrors["EmailPasswordMismatch"]>>' />
+
+  </MethodContent>
+
+  <MethodAside>
+    <AsideSection title="Signature">
+      ```typescript
+      declare function signInWithCredential(options?: {
+        email?: string;
+        password?: string;
+        noRedirect?: boolean;
+      }): Promise<Result<undefined, KnownErrors["EmailPasswordMismatch"]>>;
+      ```
+    </AsideSection>
+
+    <AsideSection title="Examples">
+      ```typescript
+      const result = await stackClientApp.signInWithCredential({
+        email: "test@example.com",
+        password: "password",
+      });
+
+      if (result.status === "error") {
+        console.error("Sign in failed", result.error.message);
+      }
+      ```
+    </AsideSection>
+
+  </MethodAside>
+</MethodLayout>
+
+### `stackClientApp.signUpWithCredential([options])`
+
+<MethodLayout>
+  <MethodContent>
+    Sign up using email and password credentials.
+
+    <ContentSection title="Parameters">
+      <ParamField body="options.email" type="string">
+        User's email.
+      </ParamField>
+
+      <ParamField body="options.password" type="string">
+        User's password.
+      </ParamField>
+
+      <ParamField body="options.noRedirect" type="boolean">
+        Whether to skip redirect after sign-up.
+      </ParamField>
+    </ContentSection>
+
+    <MethodReturns type='Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"]>>' />
+
+  </MethodContent>
+
+  <MethodAside>
+    <AsideSection title="Signature">
+      ```typescript
+      declare function signUpWithCredential(options?: {
+        email?: string;
+        password?: string;
+        noRedirect?: boolean;
+      }): Promise<Result<
+        undefined,
+        KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"]
+      >>;
+      ```
+    </AsideSection>
+
+    <AsideSection title="Examples">
+      ```typescript
+      const result = await stackClientApp.signUpWithCredential({
+        email: "test@example.com",
+        password: "password",
+      });
+
+      if (result.status === "error") {
+        console.error("Sign up failed", result.error.message);
+      }
+      ```
+    </AsideSection>
+
+  </MethodAside>
+</MethodLayout>
+
+### `stackClientApp.sendForgotPasswordEmail(email)`
+
+<MethodLayout>
+  <MethodContent>
+    Send a forgot-password email to an email address.
+
+    <ContentSection title="Parameters">
+      <ParamField body="email" type="string">
+        The email to send the forgot-password email to.
+      </ParamField>
+    </ContentSection>
+
+    <MethodReturns type='Promise<Result<undefined, KnownErrors["UserNotFound"]>>' />
+
+  </MethodContent>
+
+  <MethodAside>
+    <AsideSection title="Signature">
+      ```typescript
+      declare function sendForgotPasswordEmail(
+        email: string,
+      ): Promise<Result<undefined, KnownErrors["UserNotFound"]>>;
+      ```
+    </AsideSection>
+
+    <AsideSection title="Examples">
+      ```typescript
+      const result = await stackClientApp.sendForgotPasswordEmail("test@example.com");
+
+      if (result.status === "success") {
+        console.log("Forgot password email sent");
+      } else {
+        console.error("Failed to send forgot password email", result.error.message);
+      }
+      ```
+    </AsideSection>
+
+  </MethodAside>
+</MethodLayout>
+
+### `stackClientApp.sendMagicLinkEmail(email)`
+
+<MethodLayout>
+  <MethodContent>
+    Send a magic-link or OTP sign-in email to an email address.
+
+    <ContentSection title="Parameters">
+      <ParamField body="email" type="string">
+        The email to send the magic link to.
+      </ParamField>
+    </ContentSection>
+
+    <MethodReturns type='Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"]>>' />
+
+  </MethodContent>
+
+  <MethodAside>
+    <AsideSection title="Signature">
+      ```typescript
+      declare function sendMagicLinkEmail(
+        email: string,
+      ): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"]>>;
+      ```
+    </AsideSection>
+
+    <AsideSection title="Examples">
+      ```typescript
+      const result = await stackClientApp.sendMagicLinkEmail("test@example.com");
+      ```
+    </AsideSection>
+
+  </MethodAside>
+</MethodLayout>
+
+---
+
+# StackServerApp
+
+Like `StackClientApp`, but with [server permissions](/guides/going-further/stack-app#client-vs-server). Has full read and write access to all users.
+
+<Warning>
+  Since this functionality should only be available in environments you trust
+  (ie. your own server), it requires a `SECRET_SERVER_KEY`. In some cases, you
+  may want to use a `StackServerApp` on the client; an example for this is an
+  internal dashboard that only your own employees have access to. We generally
+  recommend against doing this unless you are aware of and protected against the
+  (potentially severe) security implications of exposing `SECRET_SERVER_KEY` on
+  the client.
+</Warning>
+
+## Table of Contents
+
+```typescript
+type StackServerApp =
+  // Inherits all functionality from StackClientApp
+  & StackClientApp
+  & {
+    new(options): StackServerApp;
+
+    getUser([id][, options]): Promise<ServerUser | null>;
+    useUser([id][, options]): ServerUser;
+    listUsers([options]): Promise<ServerUser[]>;
+    useUsers([options]): ServerUser[];
+    createUser([options]): Promise<ServerUser>;
+    sendEmail(options): Promise<Result<void, KnownErrors>>;
+
+    getTeam(id): Promise<ServerTeam | null>;
+    useTeam(id): ServerTeam;
+    listTeams(): Promise<ServerTeam[]>;
+    useTeams(): ServerTeam[];
+    createTeam([options]): Promise<ServerTeam>;
+  }
+```
+
+## Constructor
+
+Creates a new `StackServerApp` instance.
+
+<MethodLayout>
+  <MethodContent>
+    <ContentSection title="Parameters">
+      <ParamField body="tokenStore" type='"nextjs-cookie" | "cookie" | { accessToken, refreshToken } | Request' required>
+        Token storage configuration.
+      </ParamField>
+
+      <ParamField body="baseUrl" type="string">
+        Base URL for the Stack Auth API.
+      </ParamField>
+
+      <ParamField body="projectId" type="string">
+        Project ID.
+      </ParamField>
+
+      <ParamField body="publishableClientKey" type="string">
+        Publishable client key.
+      </ParamField>
+
+      <ParamField body="secretServerKey" type="string">
+        Secret server key. Defaults to the `SECRET_SERVER_KEY` environment variable.
+      </ParamField>
+
+      <ParamField body="urls" type="object">
+        Redirect URL configuration.
+      </ParamField>
+
+      <ParamField body="noAutomaticPrefetch" type="boolean">
+        Disable automatic prefetching.
+      </ParamField>
+    </ContentSection>
+
+  </MethodContent>
+
+  <MethodAside>
+    <AsideSection title="Signature">
+      ```typescript
+      declare class StackServerApp {
+        constructor(options: {
+          tokenStore: "nextjs-cookie" | "cookie" | {
+            accessToken: string;
+            refreshToken: string;
+          } | Request;
+          baseUrl?: string;
+          projectId?: string;
+          publishableClientKey?: string;
+          secretServerKey?: string;
+          urls?: object;
+          noAutomaticPrefetch?: boolean;
+        });
+      }
+      ```
+    </AsideSection>
+
+    <AsideSection title="Examples">
+      ```typescript
+      const stackServerApp = new StackServerApp({
+        tokenStore: "nextjs-cookie",
+        urls: {
+          signIn: "/my-custom-sign-in-page",
+        },
+      });
+      ```
+    </AsideSection>
+
+  </MethodAside>
+</MethodLayout>
+
+## User Operations
+
+### `stackServerApp.getUser([id], [options])`
+
+<MethodLayout>
+  <MethodContent>
+    Enhanced version of `StackClientApp.getUser()` with server permissions.
+
+    **Overloads:**
+
+    1. `getUser(id: string): Promise<ServerUser | null>` to get a user by ID.
+    2. `getUser(options?: { or?: "return-null" | "redirect" | "throw" }): Promise<CurrentServerUser | null>` to get the current user.
+
+  </MethodContent>
+
+  <MethodAside>
+    <AsideSection title="Signature">
+      ```typescript
+      declare function getUser(id: string): Promise<ServerUser | null>;
+      declare function getUser(options?: {
+        or?: "return-null" | "redirect" | "throw";
+      }): Promise<CurrentServerUser | null>;
+      ```
+    </AsideSection>
+
+    <AsideSection title="Examples">
+      ```typescript
+      const currentUser = await stackServerApp.getUser();
+      console.log(currentUser);
+
+      const serverUser = await stackServerApp.getUser(
+        "12345678-1234-1234-1234-123456789abc",
+      );
+      console.log(serverUser);
+      ```
+    </AsideSection>
+
+  </MethodAside>
+</MethodLayout>
+
+### `stackServerApp.useUser([id], [options])`
+
+<MethodLayout>
+  <MethodContent>
+    Functionally equivalent to [`getUser()`](#stackserverappgetuserid-options), but as a React hook.
+
+    <Info>
+    This should be used on the server-side only.
+    </Info>
+
+  </MethodContent>
+
+  <MethodAside>
+    <AsideSection title="Signature">
+      ```typescript
+      declare function useUser(
+        idOrOptions?: string | { or?: "return-null" | "redirect" | "throw" },
+        options?: { or?: "return-null" | "redirect" | "throw" },
+      ): ServerUser | CurrentServerUser | null;
+      ```
+    </AsideSection>
+  </MethodAside>
+</MethodLayout>
+
+### `stackServerApp.listUsers([options])`
+
+<MethodLayout>
+  <MethodContent>
+    Lists all users on the project.
+
+    <ContentSection title="Parameters">
+      <ParamField body="options.cursor" type="string">
+        The cursor to start the result set from.
+      </ParamField>
+
+      <ParamField body="options.limit" type="number">
+        Maximum number of items to return. If omitted, all users are returned.
+      </ParamField>
+
+      <ParamField body="options.orderBy" type='"signedUpAt"'>
+        The field to sort results by.
+      </ParamField>
+
+      <ParamField body="options.desc" type="boolean">
+        Whether to sort in descending order. Defaults to `false`.
+      </ParamField>
+
+      <ParamField body="options.query" type="string">
+        Free-text search on the user's display name and emails.
+      </ParamField>
+    </ContentSection>
+
+    <MethodReturns type="Promise<ServerUser[] & { nextCursor: string | null }>" />
+
+  </MethodContent>
+
+  <MethodAside>
+    <AsideSection title="Signature">
+      ```typescript
+      declare function listUsers(options?: {
+        cursor?: string;
+        limit?: number;
+        orderBy?: "signedUpAt";
+        desc?: boolean;
+        query?: string;
+      }): Promise<ServerUser[] & { nextCursor: string | null }>;
+      ```
+    </AsideSection>
+
+    <AsideSection title="Examples">
+      ```typescript
+      const users = await stackServerApp.listUsers({ limit: 20 });
+      console.log(users);
+
+      if (users.nextCursor) {
+        const nextPageUsers = await stackServerApp.listUsers({
+          cursor: users.nextCursor,
+          limit: 20,
+        });
+        console.log(nextPageUsers);
+      }
+      ```
+    </AsideSection>
+
+  </MethodAside>
+</MethodLayout>
+
+### `stackServerApp.useUsers([options])`
+
+<MethodLayout>
+  <MethodContent>
+    Functionally equivalent to [`listUsers()`](#stackserverapplistusersoptions), but as a React hook.
+
+    <Info>This should be used on the server-side only.</Info>
+
+  </MethodContent>
+
+  <MethodAside>
+    <AsideSection title="Signature">
+      ```typescript
+      declare function useUsers(options?: {
+        cursor?: string;
+        limit?: number;
+        orderBy?: "signedUpAt";
+        desc?: boolean;
+        query?: string;
+      }): ServerUser[];
+      ```
+    </AsideSection>
+  </MethodAside>
+</MethodLayout>
+
+### `stackServerApp.createUser([options])`
+
+<MethodLayout>
+  <MethodContent>
+    Creates a new user from the server.
+
+    <ContentSection title="Parameters">
+      <ParamField body="options.primaryEmail" type="string">
+        User's primary email.
+      </ParamField>
+
+      <ParamField body="options.primaryEmailVerified" type="boolean">
+        Whether the email is verified.
+      </ParamField>
+
+      <ParamField body="options.primaryEmailAuthEnabled" type="boolean">
+        Whether email auth is enabled.
+      </ParamField>
+
+      <ParamField body="options.password" type="string">
+        User's password.
+      </ParamField>
+
+      <ParamField body="options.otpAuthEnabled" type="boolean">
+        Enable OTP or magic-link auth.
+      </ParamField>
+
+      <ParamField body="options.displayName" type="string">
+        User's display name.
+      </ParamField>
+    </ContentSection>
+
+    <MethodReturns type="Promise<ServerUser>" />
+
+  </MethodContent>
+
+  <MethodAside>
+    <AsideSection title="Signature">
+      ```typescript
+      declare function createUser(options?: {
+        primaryEmail?: string;
+        primaryEmailVerified?: boolean;
+        primaryEmailAuthEnabled?: boolean;
+        password?: string;
+        otpAuthEnabled?: boolean;
+        displayName?: string;
+      }): Promise<ServerUser>;
+      ```
+    </AsideSection>
+
+    <AsideSection title="Examples">
+      ```typescript
+      const passwordUser = await stackServerApp.createUser({
+        primaryEmail: "test@example.com",
+        primaryEmailAuthEnabled: true,
+        password: "password123",
+      });
+
+      const magicLinkUser = await stackServerApp.createUser({
+        primaryEmail: "test@example.com",
+        primaryEmailVerified: true,
+        primaryEmailAuthEnabled: true,
+        otpAuthEnabled: true,
+      });
+      ```
+    </AsideSection>
+
+  </MethodAside>
+</MethodLayout>
+
+### `stackServerApp.sendEmail(options)`
+
+<MethodLayout>
+  <MethodContent>
+    Send custom emails to users. You can send either custom HTML emails or use predefined templates with variables.
+
+    <ContentSection title="Parameters">
+      <ParamField body="options" type="SendEmailOptions">
+        Email configuration and content.
+      </ParamField>
+    </ContentSection>
+
+    <MethodReturns type="Promise<Result<void, KnownErrors>>">
+      The method returns a `Result` that can include `RequiresCustomEmailServer`, `SchemaError`, and `UserIdDoesNotExist`.
+    </MethodReturns>
+
+  </MethodContent>
+
+  <MethodAside>
+    <AsideSection title="Signature">
+      ```typescript
+      declare function sendEmail(
+        options: SendEmailOptions,
+      ): Promise<Result<void, KnownErrors>>;
+      ```
+    </AsideSection>
+
+    <AsideSection title="Examples">
+      ```typescript
+      const htmlResult = await stackServerApp.sendEmail({
+        userIds: ["user-1", "user-2"],
+        subject: "Welcome to our platform!",
+        html: "<h1>Welcome!</h1><p>Thanks for joining us.</p>",
+      });
+
+      if (htmlResult.status === "error") {
+        console.error("Failed to send email:", htmlResult.error);
+      }
+      ```
+
+      ```typescript
+      const templateResult = await stackServerApp.sendEmail({
+        userIds: ["user-1"],
+        templateId: "welcome-template",
+        variables: {
+          userName: "John Doe",
+          activationUrl: "https://app.com/activate/token123",
+        },
+      });
+      ```
+    </AsideSection>
+
+  </MethodAside>
+</MethodLayout>
+
+## Team Management
+
+### `stackServerApp.getTeam(id)`
+
+<MethodLayout>
+  <MethodContent>
+    Get a team by its ID.
+
+    <ContentSection title="Parameters">
+      <ParamField body="id" type="string">
+        Team ID.
+      </ParamField>
+    </ContentSection>
+
+    <MethodReturns type="Promise<ServerTeam | null>" />
+
+  </MethodContent>
+
+  <MethodAside>
+    <AsideSection title="Signature">
+      ```typescript
+      declare function getTeam(id: string): Promise<ServerTeam | null>;
+      ```
+    </AsideSection>
+
+    <AsideSection title="Examples">
+      ```typescript
+      const team = await stackServerApp.getTeam("team_id_123");
+      ```
+    </AsideSection>
+
+  </MethodAside>
+</MethodLayout>
+
+### `stackServerApp.useTeam(id)`
+
+<MethodLayout>
+  <MethodContent>
+    Functionally equivalent to [`getTeam(id)`](#stackserverappgetteamid), but as a React hook.
+
+    <Info>This should be used on the server-side only.</Info>
+
+  </MethodContent>
+
+  <MethodAside>
+    <AsideSection title="Signature">
+      ```typescript
+      declare function useTeam(id: string): ServerTeam;
+      ```
+    </AsideSection>
+  </MethodAside>
+</MethodLayout>
+
+### `stackServerApp.listTeams()`
+
+<MethodLayout>
+  <MethodContent>
+    Lists all teams on the current project.
+
+    <MethodReturns type="Promise<ServerTeam[]>" />
+
+  </MethodContent>
+
+  <MethodAside>
+    <AsideSection title="Signature">
+      ```typescript
+      declare function listTeams(): Promise<ServerTeam[]>;
+      ```
+    </AsideSection>
+
+    <AsideSection title="Examples">
+      ```typescript
+      const teams = await stackServerApp.listTeams();
+      console.log(teams);
+      ```
+    </AsideSection>
+
+  </MethodAside>
+</MethodLayout>
+
+### `stackServerApp.useTeams()`
+
+<MethodLayout>
+  <MethodContent>
+    Functionally equivalent to [`listTeams()`](#stackserverapplistteams), but as a React hook.
+
+    <Info>This should be used on the server-side only.</Info>
+
+  </MethodContent>
+
+  <MethodAside>
+    <AsideSection title="Signature">
+      ```typescript
+      declare function useTeams(): ServerTeam[];
+      ```
+    </AsideSection>
+  </MethodAside>
+</MethodLayout>
+
+### `stackServerApp.createTeam([options])`
+
+<MethodLayout>
+  <MethodContent>
+    Creates a team without adding a user to it.
+
+    <ContentSection title="Parameters">
+      <ParamField body="options.displayName" type="string">
+        Team display name.
+      </ParamField>
+
+      <ParamField body="options.profileImageUrl" type="string | null">
+        Team profile image URL.
+      </ParamField>
+    </ContentSection>
+
+    <MethodReturns type="Promise<ServerTeam>" />
+
+  </MethodContent>
+
+  <MethodAside>
+    <AsideSection title="Signature">
+      ```typescript
+      declare function createTeam(options?: {
+        displayName?: string;
+        profileImageUrl?: string | null;
+      }): Promise<ServerTeam>;
+      ```
+    </AsideSection>
+
+    <AsideSection title="Examples">
+      ```typescript
+      const team = await stackServerApp.createTeam({
+        displayName: "New Team",
+        profileImageUrl: "https://example.com/profile.jpg",
+      });
+      ```
+    </AsideSection>
+
+  </MethodAside>
+</MethodLayout>
