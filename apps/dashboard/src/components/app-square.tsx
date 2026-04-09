@@ -1,6 +1,8 @@
 import { useAdminApp, useProjectId } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
+import { useRouter } from "@/components/router";
 import { Button, cn, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui";
-import { ALL_APPS_FRONTEND, AppFrontend, getAppPath } from "@/lib/apps-frontend";
+import { ALL_APPS_FRONTEND, AppFrontend, getAppPath, isSubApp } from "@/lib/apps-frontend";
+import { isAppEnabled } from "@/lib/apps-utils";
 import { useUpdateConfig } from "@/lib/config-update";
 import { CheckIcon, DotsThreeVerticalIcon } from "@phosphor-icons/react";
 import { ALL_APPS, AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
@@ -57,9 +59,20 @@ export function AppSquare({
   const project = adminApp.useProject();
   const config = project.useConfig();
   const updateConfig = useUpdateConfig();
+  const router = useRouter();
 
-  const isEnabled = config.apps.installed[appId]?.enabled ?? false;
+  const isEnabled = isAppEnabled(config.apps.installed, appId);
   const appDetailsPath = `/projects/${projectId}/apps/${appId}`;
+  const appFrontend = ALL_APPS_FRONTEND[appId];
+  const parentAppId = isSubApp(appFrontend) ? appFrontend.parentAppId : null;
+  const parentApp = parentAppId == null ? null : ALL_APPS[parentAppId];
+  const parentAppFrontend = parentAppId == null ? null : ALL_APPS_FRONTEND[parentAppId];
+  const parentAppEnabled = parentAppId == null ? false : isAppEnabled(config.apps.installed, parentAppId);
+  const parentDestinationPath = parentAppId == null || parentAppFrontend == null
+    ? null
+    : parentAppEnabled
+      ? getAppPath(projectId, appFrontend)
+      : `/projects/${projectId}/apps/${parentAppId}`;
 
   const handleToggleEnabled = async () => {
     // Show warning modal for alpha/beta apps when enabling
@@ -138,9 +151,15 @@ export function AppSquare({
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="min-w-[120px]">
-              <DropdownMenuItem onClick={handleToggleEnabled} className="cursor-pointer">
-                {isEnabled ? 'Disable' : 'Enable'}
-              </DropdownMenuItem>
+              {parentDestinationPath == null ? (
+                <DropdownMenuItem onClick={handleToggleEnabled} className="cursor-pointer">
+                  {isEnabled ? 'Disable' : 'Enable'}
+                </DropdownMenuItem>
+              ) : (
+                <DropdownMenuItem onClick={() => router.push(parentDestinationPath)} className="cursor-pointer">
+                  Go to {parentApp?.displayName ?? "parent app"}
+                </DropdownMenuItem>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </div>
@@ -199,9 +218,19 @@ export function AppListItem({
   const project = adminApp.useProject();
   const config = project.useConfig();
 
-  const isEnabled = config.apps.installed[appId]?.enabled ?? false;
+  const isEnabled = isAppEnabled(config.apps.installed, appId);
   const appPath = getAppPath(project.id, appFrontend);
   const appDetailsPath = `/projects/${project.id}/apps/${appId}`;
+  const router = useRouter();
+  const parentAppId = isSubApp(appFrontend) ? appFrontend.parentAppId : null;
+  const parentApp = parentAppId == null ? null : ALL_APPS[parentAppId];
+  const parentAppFrontend = parentAppId == null ? null : ALL_APPS_FRONTEND[parentAppId];
+  const parentAppEnabled = parentAppId == null ? false : isAppEnabled(config.apps.installed, parentAppId);
+  const parentDestinationPath = parentAppId == null || parentAppFrontend == null
+    ? null
+    : parentAppEnabled
+      ? appPath
+      : `/projects/${project.id}/apps/${parentAppId}`;
 
   const handleEnable = async (e: React.MouseEvent) => {
     e.preventDefault();
@@ -220,7 +249,7 @@ export function AppListItem({
 
   return (
     <Link
-      href={isEnabled ? appPath : appDetailsPath}
+      href={parentDestinationPath ?? (isEnabled ? appPath : appDetailsPath)}
       className={cn(
         "flex items-center gap-3 p-3 rounded-lg transition-all",
         "hover:bg-gray-50 dark:hover:bg-gray-800/50",
@@ -258,6 +287,19 @@ export function AppListItem({
         <div className="flex items-center gap-2">
           {isEnabled ? (
             <CheckIcon className="w-4 h-4 text-green-500" />
+          ) : parentDestinationPath != null ? (
+            <Button
+              onClick={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+                router.push(parentDestinationPath);
+              }}
+              variant="plain"
+              size="plain"
+              className="px-3 py-1 text-xs font-medium bg-muted text-foreground rounded-md hover:bg-muted/80 transition-colors"
+            >
+              Go to {parentApp?.displayName ?? "parent"}
+            </Button>
           ) : (
             <Button
               onClick={handleEnable}

@@ -1,12 +1,13 @@
 "use client";
 
 import { AppIcon } from "@/components/app-square";
+import { Link } from "@/components/link";
 import { Badge, Button, ScrollArea } from "@/components/ui";
-import { ALL_APPS_FRONTEND, getAppPath, getItemPath } from "@/lib/apps-frontend";
+import { ALL_APPS_FRONTEND, getAppPath, getItemPath, hasNavigationItems, isSubApp, type NavigableAppFrontend } from "@/lib/apps-frontend";
 import { getUninstalledAppIds } from "@/lib/apps-utils";
 import { classifyClickHouseSqlVsPrompt } from "@/lib/classify-query";
 import { cn } from "@/lib/utils";
-import { CheckIcon, CubeIcon, DownloadSimpleIcon, GearIcon, GlobeIcon, InfoIcon, KeyIcon, LayoutIcon, LightningIcon, PlayIcon, ShieldCheckIcon, SparkleIcon } from "@phosphor-icons/react";
+import { ChartBarIcon, CheckIcon, CubeIcon, DownloadSimpleIcon, EnvelopeSimpleIcon, GearIcon, GlobeIcon, HardDriveIcon, InfoIcon, KeyIcon, LayoutIcon, LightningIcon, Palette, PlayIcon, PlusIcon, ShieldCheckIcon, SparkleIcon, UsersIcon } from "@phosphor-icons/react";
 import { ALL_APPS, ALL_APP_TAGS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import Image from "next/image";
@@ -37,15 +38,19 @@ export type CmdKPreviewProps = {
 // Available App Preview Component - shows app store page in preview panel
 const AvailableAppPreview = memo(function AvailableAppPreview({
   appId,
-  projectId,
   onEnable,
+  goToParentHref,
+  onClose,
 }: {
   appId: AppId,
-  projectId: string,
-  onEnable: () => Promise<void>,
+  onEnable?: () => Promise<void>,
+  goToParentHref?: string,
+  onClose?: () => void,
 }) {
   const app = ALL_APPS[appId];
   const appFrontend = ALL_APPS_FRONTEND[appId];
+  const parentAppId = isSubApp(appFrontend) ? appFrontend.parentAppId : null;
+  const parentApp = parentAppId == null ? null : ALL_APPS[parentAppId];
 
   const features = [
     { icon: ShieldCheckIcon, label: "Secure" },
@@ -119,18 +124,38 @@ const AvailableAppPreview = memo(function AvailableAppPreview({
 
           {/* Enable Button */}
           <div className="flex items-center gap-3">
-            <Button
-              onClick={() => runAsynchronouslyWithAlert(onEnable())}
-              size="sm"
-              className="flex-1 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white font-medium"
-            >
-              Enable App
-            </Button>
+            {parentApp == null ? (
+              <Button
+                onClick={() => {
+                  if (onEnable == null) return;
+                  runAsynchronouslyWithAlert(onEnable());
+                }}
+                size="sm"
+                className="flex-1 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white font-medium"
+              >
+                Enable App
+              </Button>
+            ) : (
+              <Button
+                asChild
+                size="sm"
+                className="flex-1 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white font-medium"
+              >
+                <Link href={goToParentHref ?? "#"} onClick={onClose}>
+                  Go to {parentApp.displayName}
+                </Link>
+              </Button>
+            )}
             <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
               <InfoIcon className="w-3 h-3" />
               <span>Free</span>
             </div>
           </div>
+          {parentApp != null && (
+            <p className="text-[11px] text-muted-foreground">
+              This app is part of the {parentApp.displayName} app.
+            </p>
+          )}
 
           {/* Stage Warning */}
           {app.stage !== "stable" && (
@@ -188,20 +213,29 @@ const AvailableAppPreview = memo(function AvailableAppPreview({
 });
 
 // Factory to create available app preview components
-function createAvailableAppPreview(appId: AppId, projectId: string, onEnable: () => Promise<void>): React.ComponentType<CmdKPreviewProps> {
-  return function AvailableAppPreviewWrapper() {
-    return <AvailableAppPreview appId={appId} projectId={projectId} onEnable={onEnable} />;
+function createAvailableAppPreview(
+  appId: AppId,
+  onEnable?: () => Promise<void>,
+  goToParentHref?: string
+): React.ComponentType<CmdKPreviewProps> {
+  return function AvailableAppPreviewWrapper({ onClose }: CmdKPreviewProps) {
+    return <AvailableAppPreview appId={appId} onEnable={onEnable} goToParentHref={goToParentHref} onClose={onClose} />;
   };
 }
 
 // Cache for available app preview components
 const availableAppPreviewCache = new Map<string, React.ComponentType<CmdKPreviewProps>>();
 
-function getOrCreateAvailableAppPreview(appId: AppId, projectId: string, onEnable: () => Promise<void>): React.ComponentType<CmdKPreviewProps> {
-  const cacheKey = `${appId}:${projectId}`;
+function getOrCreateAvailableAppPreview(
+  appId: AppId,
+  projectId: string,
+  onEnable?: () => Promise<void>,
+  goToParentHref?: string
+): React.ComponentType<CmdKPreviewProps> {
+  const cacheKey = `${appId}:${projectId}:${goToParentHref ?? "enable"}:${onEnable == null ? "readonly" : "enable"}`;
   let preview = availableAppPreviewCache.get(cacheKey);
   if (!preview) {
-    preview = createAvailableAppPreview(appId, projectId, onEnable);
+    preview = createAvailableAppPreview(appId, onEnable, goToParentHref);
     availableAppPreviewCache.set(cacheKey, preview);
   }
   return preview;
@@ -229,11 +263,88 @@ export type CmdKCommand = {
   highlightColor?: string,
 };
 
+type ProjectShortcutDefinition = {
+  id: string,
+  icon: React.FunctionComponent<React.SVGProps<SVGSVGElement>>,
+  label: string,
+  description: string,
+  href: string,
+  keywords: string[],
+  requiredApps?: AppId[],
+};
+
+const PROJECT_SHORTCUTS: ProjectShortcutDefinition[] = [
+  {
+    id: "navigation/users",
+    icon: UsersIcon,
+    label: "Users",
+    description: "Navigation",
+    href: "/users",
+    keywords: ["users", "user", "people", "members", "accounts"],
+  },
+  {
+    id: "navigation/dashboards",
+    icon: ChartBarIcon,
+    label: "Dashboards",
+    description: "Navigation",
+    href: "/dashboards",
+    keywords: ["dashboards", "dashboard", "charts", "insights", "metrics"],
+  },
+  {
+    id: "settings/trusted-domains",
+    icon: GlobeIcon,
+    label: "Trusted Domains",
+    description: "Settings",
+    href: "/domains",
+    keywords: ["domains", "trusted domains", "custom domain", "handler", "allowlist"],
+    requiredApps: ["authentication"],
+  },
+  {
+    id: "emails/themes",
+    icon: Palette,
+    label: "Email Themes",
+    description: "Emails",
+    href: "/email-themes",
+    keywords: ["email themes", "themes", "branding", "style", "templates"],
+    requiredApps: ["emails"],
+  },
+  {
+    id: "emails/outbox",
+    icon: EnvelopeSimpleIcon,
+    label: "Email Outbox",
+    description: "Emails",
+    href: "/email-outbox",
+    keywords: ["email outbox", "outbox", "delivery", "queue", "scheduled emails"],
+    requiredApps: ["emails"],
+  },
+  {
+    id: "data-vault/stores",
+    icon: HardDriveIcon,
+    label: "Data Vault Stores",
+    description: "Data Vault",
+    href: "/data-vault/stores",
+    keywords: ["data vault", "stores", "vault", "secrets", "encrypted storage"],
+    requiredApps: ["data-vault"],
+  },
+  {
+    id: "payments/new-product",
+    icon: PlusIcon,
+    label: "Create Product",
+    description: "Payments",
+    href: "/payments/products/new",
+    keywords: ["create product", "new product", "payments", "pricing", "catalog"],
+    requiredApps: ["payments"],
+  },
+];
+
+function toCommandIdSegment(value: string): string {
+  return value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
 // Factory to create app preview components that show navigation items
-function createAppPreview(appId: AppId, projectId: string): React.ComponentType<CmdKPreviewProps> {
+function createAppPreview(appId: AppId, projectId: string, appFrontend: NavigableAppFrontend): React.ComponentType<CmdKPreviewProps> {
   // Pre-compute these outside the component since they're static per appId
   const app = ALL_APPS[appId];
-  const appFrontend = ALL_APPS_FRONTEND[appId];
 
   // Pre-compute nested commands since they're static
   const IconComponent = appFrontend.icon;
@@ -273,7 +384,11 @@ function getOrCreateAppPreview(appId: AppId, projectId: string): React.Component
   const cacheKey = `${appId}:${projectId}`;
   let preview = appPreviewCache.get(cacheKey);
   if (!preview) {
-    preview = createAppPreview(appId, projectId);
+    const appFrontend = ALL_APPS_FRONTEND[appId];
+    if (!hasNavigationItems(appFrontend)) {
+      throw new Error(`App ${appId} has no navigation items`);
+    }
+    preview = createAppPreview(appId, projectId, appFrontend);
     appPreviewCache.set(cacheKey, preview);
   }
   return preview;
@@ -292,6 +407,21 @@ export function useCmdKCommands({
 }): CmdKCommand[] {
   return useMemo(() => {
     const commands: CmdKCommand[] = [];
+    const pushUniqueNavigateCommand = (command: CmdKCommand) => {
+      if (command.onAction.type !== "navigate") {
+        commands.push(command);
+        return;
+      }
+
+      const href = command.onAction.href;
+      const alreadyExists = commands.some((existingCommand) =>
+        existingCommand.onAction.type === "navigate" &&
+        existingCommand.onAction.href === href
+      );
+      if (!alreadyExists) {
+        commands.push(command);
+      }
+    };
     const queryClassification = classifyClickHouseSqlVsPrompt(query, { readonlyOnly: true });
     const shouldPrioritizeRunQuery = queryClassification.kind === "sql";
 
@@ -306,6 +436,24 @@ export function useCmdKCommands({
       preview: null,
     });
 
+    // Core navigation and power-tool shortcuts
+    for (const shortcut of PROJECT_SHORTCUTS) {
+      if (shortcut.requiredApps != null && !shortcut.requiredApps.every((appId) => enabledApps.includes(appId))) {
+        continue;
+      }
+
+      const IconComponent = shortcut.icon;
+      pushUniqueNavigateCommand({
+        id: shortcut.id,
+        icon: <IconComponent className="h-3.5 w-3.5 text-muted-foreground" />,
+        label: shortcut.label,
+        description: shortcut.description,
+        keywords: shortcut.keywords,
+        onAction: { type: "navigate", href: `/projects/${projectId}${shortcut.href}` },
+        preview: null,
+      });
+    }
+
     // Installed apps - with preview for navigation items
     for (const appId of enabledApps) {
       const app = ALL_APPS[appId];
@@ -313,21 +461,77 @@ export function useCmdKCommands({
       // Some enabled apps might not have navigation metadata yet
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       if (!app || !appFrontend) continue;
+      const parentAppId = isSubApp(appFrontend) ? appFrontend.parentAppId : null;
+      const parentApp = parentAppId == null ? null : ALL_APPS[parentAppId];
 
       const IconComponent = appFrontend.icon;
-      const hasNavigationItems = appFrontend.navigationItems.length > 0;
+      if (!hasNavigationItems(appFrontend)) {
+        commands.push({
+          id: `apps/${appId}`,
+          icon: <IconComponent className="h-3.5 w-3.5 stroke-emerald-600 dark:stroke-emerald-400" />,
+          label: app.displayName,
+          description: parentApp == null ? "Installed app" : `Part of ${parentApp.displayName}`,
+          keywords: [
+            app.displayName.toLowerCase(),
+            app.subtitle.toLowerCase(),
+            appId,
+            appFrontend.href.toLowerCase(),
+            appFrontend.href.toLowerCase().replace(/-/g, " "),
+            ...app.tags,
+            "installed",
+            "app",
+            ...(parentApp == null ? [] : [parentApp.displayName.toLowerCase(), "sub-app"]),
+          ],
+          onAction: { type: "navigate", href: getAppPath(projectId, appFrontend) },
+          preview: null,
+          highlightColor: "app",
+        });
+        continue;
+      }
 
-      // Add the app itself as a command
+      const hasNestedNavigation = appFrontend.navigationItems.length > 0;
       commands.push({
         id: `apps/${appId}`,
         icon: <IconComponent className="h-3.5 w-3.5 stroke-emerald-600 dark:stroke-emerald-400" />,
         label: app.displayName,
-        description: "Installed app",
-        keywords: [app.displayName.toLowerCase(), ...app.tags, "installed", "app"],
+        description: parentApp == null ? "Installed app" : `Part of ${parentApp.displayName}`,
+        keywords: [
+          app.displayName.toLowerCase(),
+          app.subtitle.toLowerCase(),
+          appId,
+          appFrontend.href.toLowerCase(),
+          appFrontend.href.toLowerCase().replace(/-/g, " "),
+          ...app.tags,
+          "installed",
+          "app",
+          ...(parentApp == null ? [] : [parentApp.displayName.toLowerCase(), "sub-app"]),
+        ],
         onAction: { type: "navigate", href: getAppPath(projectId, appFrontend) },
-        preview: hasNavigationItems ? getOrCreateAppPreview(appId, projectId) : null,
+        preview: hasNestedNavigation ? getOrCreateAppPreview(appId, projectId) : null,
         highlightColor: "app",
       });
+
+      // Flatten app pages so they're directly searchable without nesting
+      for (const navItem of appFrontend.navigationItems) {
+        const itemPath = getItemPath(projectId, appFrontend, navItem);
+        pushUniqueNavigateCommand({
+          id: `apps/${appId}/page/${toCommandIdSegment(navItem.displayName)}`,
+          icon: <IconComponent className="h-3.5 w-3.5 text-muted-foreground" />,
+          label: `${app.displayName}: ${navItem.displayName}`,
+          description: `Page in ${app.displayName}`,
+          keywords: [
+            app.displayName.toLowerCase(),
+            navItem.displayName.toLowerCase(),
+            `${app.displayName.toLowerCase()} ${navItem.displayName.toLowerCase()}`,
+            appId,
+            "page",
+            "navigate",
+          ],
+          onAction: { type: "navigate", href: itemPath },
+          preview: null,
+          highlightColor: "app",
+        });
+      }
     }
 
     // Available (uninstalled) apps
@@ -338,6 +542,15 @@ export function useCmdKCommands({
       // Some apps might not have frontend metadata yet
       // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
       if (!app || !appFrontend) continue;
+      const parentAppId = isSubApp(appFrontend) ? appFrontend.parentAppId : null;
+      const parentApp = parentAppId == null ? null : ALL_APPS[parentAppId];
+      const parentAppFrontend = parentAppId == null ? null : ALL_APPS_FRONTEND[parentAppId];
+      const isParentEnabled = parentAppId == null ? false : enabledApps.includes(parentAppId);
+      const parentDestination = parentAppId == null || parentAppFrontend == null
+        ? null
+        : isParentEnabled
+          ? getAppPath(projectId, appFrontend)
+          : `/projects/${projectId}/apps/${parentAppId}`;
 
       const IconComponent = appFrontend.icon;
       const hasPreview = onEnableApp !== undefined;
@@ -351,15 +564,32 @@ export function useCmdKCommands({
           </div>
         ),
         label: app.displayName,
-        description: "Available to install",
-        keywords: [app.displayName.toLowerCase(), ...app.tags, "available", "install", "store", "app"],
-        onAction: hasPreview
-          ? { type: "focus" }
-          : { type: "navigate", href: `/projects/${projectId}/apps/${appId}` },
-        preview: hasPreview
-          ? getOrCreateAvailableAppPreview(appId, projectId, () => onEnableApp(appId))
+        description: parentApp == null ? "Available to install" : `Part of ${parentApp.displayName}`,
+        keywords: [
+          app.displayName.toLowerCase(),
+          app.subtitle.toLowerCase(),
+          appId,
+          ...app.tags,
+          "available",
+          "install",
+          "store",
+          "app",
+          ...(parentApp == null ? [] : ["sub-app", parentApp.displayName.toLowerCase()]),
+        ],
+        onAction: parentApp == null
+          ? hasPreview
+            ? { type: "focus" }
+            : { type: "navigate", href: `/projects/${projectId}/apps/${appId}` }
+          : { type: "navigate", href: parentDestination ?? `/projects/${projectId}/apps/${appId}` },
+        preview: parentApp == null && hasPreview
+          ? getOrCreateAvailableAppPreview(
+            appId,
+            projectId,
+            () => onEnableApp(appId),
+            undefined
+          )
           : null,
-        hasVisualPreview: hasPreview,
+        hasVisualPreview: parentApp == null && hasPreview,
       });
     }
 

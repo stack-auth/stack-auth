@@ -1,0 +1,146 @@
+---
+title: "Welcome"
+description: "Stack Auth documentation for setup, components, SDK usage, and REST APIs."
+sidebarTitle: "Overview"
+---
+
+<div className="not-prose relative left-1/2 right-1/2 -mx-[50vw] w-screen overflow-hidden bg-[#121212]">
+  <img
+    src="/images/hero-illustration-full.svg"
+    alt=""
+    aria-hidden="true"
+    className="pointer-events-none absolute right-[-14rem] top-1/2 w-[980px] max-w-none -translate-y-1/2 opacity-80 sm:right-[-10rem] sm:w-[1080px] lg:right-[-6rem] lg:w-[1180px] dark:opacity-55"
+  />
+  <div className="absolute inset-0 bg-gradient-to-r from-[#121212] via-[#121212]/78 to-[#121212]/28" />
+  <div className="relative mx-auto max-w-7xl px-4 py-16 sm:px-6 lg:px-8 lg:py-20">
+    <div className="flex flex-col justify-center">
+      <h1 className="mt-6 text-4xl font-bold tracking-tight text-white sm:text-5xl lg:text-6xl">
+        Ship auth without <br />
+        rebuilding the basics
+      </h1>
+      <p className="mt-5 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg">
+        Learn how to set up Stack Auth, drop in prebuilt components, use the
+        SDK, and integrate any backend through the REST API.
+      </p>
+      <div className="mt-8 flex flex-wrap gap-3">
+        <a
+          href="/guides/getting-started/setup"
+          className="inline-flex items-center justify-center rounded-lg bg-[#6346ec] px-5 py-3 text-sm font-semibold text-white no-underline transition hover:bg-[#6346ec]/90"
+        >
+          Start setup
+        </a>
+        <a
+          href="/guides/getting-started/setup"
+          className="inline-flex items-center justify-center rounded-lg border border-slate-600 px-5 py-3 text-sm font-semibold text-slate-200 no-underline transition hover:border-[#6346ec] hover:text-white"
+        >
+          Browse docs
+        </a>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div className="mx-auto mt-16 max-w-7xl px-4 sm:px-6 lg:px-8">
+  <div>
+    <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Quick Start</h2>
+    <p className="mt-3 max-w-3xl text-base text-slate-600 dark:text-slate-300">
+      Go from a new project to authenticated users with the shortest path through the docs.
+    </p>
+  </div>
+
+  <Steps className="mt-8">
+    <Step title="Set up Stack Auth">
+      Follow the [setup guide](/guides/getting-started/setup) to initialize Stack Auth in your app.
+
+      ```bash
+      npx @stackframe/stack-cli@latest init
+      ```
+    </Step>
+    <Step title="Add auth UI">
+      Use the [setup guide](/guides/getting-started/setup) to configure prebuilt auth interfaces and handlers.
+    </Step>
+    <Step title="Read user data in code">
+      Reach for the [SDK overview](/sdk/overview) when you need hooks, objects, and typed access to users, teams, and sessions.
+    </Step>
+    <Step title="Go lower-level when needed">
+      Use the [REST API overview](/api/overview) for backend integrations, custom clients, and non-Next.js environments.
+    </Step>
+
+  </Steps>
+</div>
+
+<div className="mx-auto mt-20 max-w-7xl px-4 sm:px-6 lg:px-8">
+  <div>
+    <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Explore the Docs</h2>
+    <p className="mt-3 max-w-3xl text-base text-slate-600 dark:text-slate-300">
+      Jump into the part of the platform that matches how you are integrating Stack Auth.
+    </p>
+  </div>
+
+  <CardGroup cols={2}>
+    <Card title="Getting Started" icon="rocket" href="/guides/getting-started/setup" cta="Open guide">
+      Installation, environment setup, and the first authentication flow.
+    </Card>
+    <Card title="Setup Guide" icon="puzzle-piece" href="/guides/getting-started/setup" cta="View setup">
+      Configure prebuilt React and Next.js auth UI, providers, and handlers.
+    </Card>
+    <Card title="SDK Reference" icon="book" href="/sdk/overview" cta="Browse SDK">
+      Hooks, objects, and types for working with users, teams, projects, and sessions.
+    </Card>
+    <Card title="REST API" icon="code" href="/api/overview" cta="See endpoints">
+      HTTP APIs for client, server, admin, and webhook integrations in any stack.
+    </Card>
+  </CardGroup>
+</div>
+
+<div className="mx-auto mt-20 max-w-7xl px-4 sm:px-6 lg:px-8">
+  <div>
+    <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Common Tasks</h2>
+    <p className="mt-3 max-w-3xl text-base text-slate-600 dark:text-slate-300">
+      Start from practical guides for the features teams tend to configure first.
+    </p>
+  </div>
+
+  <CardGroup cols={3}>
+    <Card title="API Keys" icon="key" href="/guides/apps/api-keys/overview" cta="Manage keys">
+      Set up publishable, secret, user, and team API keys.
+    </Card>
+    <Card title="Permissions" icon="shield" href="/guides/apps/rbac/overview" cta="Configure access">
+      Define roles and permission models for projects and teams.
+    </Card>
+    <Card title="Webhooks" icon="webhook" href="/guides/apps/webhooks/overview" cta="Add webhooks">
+      Trigger downstream systems from auth, user, and team events.
+    </Card>
+    <Card title="Backend Integration" icon="server" href="/guides/going-further/backend-integration" cta="Learn more">
+      Understand how Stack Auth fits into your server architecture.
+    </Card>
+    <Card title="MCP Setup" icon="terminal" href="/guides/other/mcp-setup" cta="Set up MCP">
+      Connect Stack Auth docs and workflows to AI-enabled development tools.
+    </Card>
+    <Card title="FAQ" icon="circle-question" href="/guides/faq" cta="Read FAQ">
+      Check answers to common setup, integration, and product questions.
+    </Card>
+  </CardGroup>
+</div>
+
+<div className="mx-auto mt-20 max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
+    <div>
+      <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Resources</h2>
+      <p className="mt-3 max-w-3xl text-base text-slate-600 dark:text-slate-300">
+        Reach for product access, source code, and support channels when you need more than reference docs.
+      </p>
+    </div>
+
+    <CardGroup cols={3}>
+      <Card title="Dashboard" icon="table-columns" href="https://app.stack-auth.com" cta="Open app">
+        Manage projects, keys, providers, and authentication settings.
+      </Card>
+      <Card title="GitHub" icon="github" href="https://github.com/stack-auth/stack" cta="View repository">
+        Explore the open-source codebase, examples, and release history.
+      </Card>
+      <Card title="Discord" icon="comments" href="https://discord.stack-auth.com" cta="Join community">
+        Ask questions, share feedback, and get help from the community.
+      </Card>
+    </CardGroup>
+
+</div>
