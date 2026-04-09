@@ -54,10 +54,12 @@ Basic information about a connected account. This is the base type that `OAuthCo
 
 ## Properties
 
-<ConnectionSection type="connection" property="id" defaultOpen={false}>
+<ConnectionSection type="connection" property="id" deprecated defaultOpen={false}>
   <MethodLayout>
     <MethodContent>
       The provider config ID. Same as `provider` and exists for backward compatibility.
+
+      <Warning>Deprecated: Use `provider` instead.</Warning>
     </MethodContent>
     <MethodAside title="Type Definition">
       ```typescript declare const id: string; ```

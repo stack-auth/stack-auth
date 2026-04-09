@@ -65,19 +65,29 @@ You can get `Team` objects with the `user.useTeams()` or `user.listTeams()` func
   clientReadOnlyMetadata: Json; //$stack-link-to:#teamclientreadonlymetadata
 
   update(data): Promise<void>; //$stack-link-to:#teamupdate
+  delete(): Promise<void>; //$stack-link-to:#teamdelete
   inviteUser(options): Promise<void>; //$stack-link-to:#teaminviteuser
   listUsers(): Promise<TeamUser[]>; //$stack-link-to:#teamlistusers
   useUsers(): TeamUser[]; //$stack-link-to:#teamuseusers
-  listInvitations(): Promise<{ ... }[]>; //$stack-link-to:#teamlistinvitations
-  useInvitations(): { ... }[]; //$stack-link-to:#teamuseinvitations
+  listInvitations(): Promise<SentTeamInvitation[]>; //$stack-link-to:#teamlistinvitations
+  useInvitations(): SentTeamInvitation[]; //$stack-link-to:#teamuseinvitations
 
   createApiKey(options): Promise<TeamApiKeyFirstView>; //$stack-link-to:#teamcreateapikey
   listApiKeys(): Promise<TeamApiKey[]>; //$stack-link-to:#teamlistapikeys
   useApiKeys(): TeamApiKey[]; //$stack-link-to:#teamuseapikeys
 
   createCheckoutUrl(options): Promise<string>; //$stack-link-to:#teamcreatecheckouturl
+  createPaymentMethodSetupIntent(): Promise<...>; //$stack-link-to:#teamcreatepaymentmethodsetupintent
+  setDefaultPaymentMethodFromSetupIntent(id): Promise<...>; //$stack-link-to:#teamsetdefaultpaymentmethodfromsetupintent
+  switchSubscription(options): Promise<void>; //$stack-link-to:#teamswitchsubscription
+  getBilling(): Promise<CustomerBilling>; //$stack-link-to:#teamgetbilling
+  useBilling(): CustomerBilling; //$stack-link-to:#teamusebilling
   getItem(itemId): Promise<Item>; //$stack-link-to:#teamgetitem
   useItem(itemId): Item; //$stack-link-to:#teamuseitem
+  listProducts([options]): Promise<CustomerProductsList>; //$stack-link-to:#teamlistproducts
+  useProducts([options]): CustomerProductsList; //$stack-link-to:#teamuseproducts
+  listInvoices([options]): Promise<CustomerInvoicesList>; //$stack-link-to:#teamlistinvoices
+  useInvoices([options]): CustomerInvoicesList; //$stack-link-to:#teamuseinvoices
 };`}
 />
 
@@ -194,6 +204,25 @@ You can get `Team` objects with the `user.useTeams()` or `user.listTeams()` func
   </MethodLayout>
 </TeamSection>
 
+<TeamSection type="team" property="delete" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Deletes the team. Requires the current user to have the `$delete_team` permission.
+
+      <MethodReturns type="Promise<void>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function delete(): Promise<void>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</TeamSection>
+
 <TeamSection type="team" property="inviteUser" signature="options" defaultOpen={false}>
   <MethodLayout>
     <MethodContent>
@@ -288,17 +317,13 @@ You can get `Team` objects with the `user.useTeams()` or `user.listTeams()` func
     <MethodContent>
       Gets a list of invitations to the team. Requires the `$read_members` and `$invite_members` permissions.
 
-      <MethodReturns type="Promise<{ id: string; email: string; expiresAt: Date }[]>" />
+      <MethodReturns type="Promise<SentTeamInvitation[]>" />
     </MethodContent>
 
     <MethodAside>
       <AsideSection title="Signature">
         ```typescript
-        declare function listInvitations(): Promise<{
-          id: string;
-          email: string;
-          expiresAt: Date;
-        }[]>;
+        declare function listInvitations(): Promise<SentTeamInvitation[]>;
         ```
       </AsideSection>
 
@@ -306,7 +331,7 @@ You can get `Team` objects with the `user.useTeams()` or `user.listTeams()` func
         ```typescript
         const invitations = await team.listInvitations();
         invitations.forEach((invitation) => {
-          console.log(invitation.id, invitation.email);
+          console.log(invitation.id, invitation.recipientEmail);
         });
         ```
       </AsideSection>
@@ -320,17 +345,13 @@ You can get `Team` objects with the `user.useTeams()` or `user.listTeams()` func
     <MethodContent>
       React hook version of `listInvitations()`.
 
-      <MethodReturns type="{ id: string; email: string; expiresAt: Date }[]" />
+      <MethodReturns type="SentTeamInvitation[]" />
     </MethodContent>
 
     <MethodAside>
       <AsideSection title="Signature">
         ```typescript
-        declare function useInvitations(): {
-          id: string;
-          email: string;
-          expiresAt: Date;
-        }[];
+        declare function useInvitations(): SentTeamInvitation[];
         ```
       </AsideSection>
     </MethodAside>
@@ -425,7 +446,7 @@ You can get `Team` objects with the `user.useTeams()` or `user.listTeams()` func
   </MethodLayout>
 </TeamSection>
 
-## Billing & Items
+## Billing & Payments
 
 <TeamSection type="team" property="createCheckoutUrl" signature="options" defaultOpen={false}>
   <MethodLayout>
@@ -520,6 +541,213 @@ You can get `Team` objects with the `user.useTeams()` or `user.listTeams()` func
   </MethodLayout>
 </TeamSection>
 
+<TeamSection type="team" property="createPaymentMethodSetupIntent" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Creates a Stripe setup intent for adding a payment method to the team.
+
+      <MethodReturns type="Promise<CustomerPaymentMethodSetupIntent>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function createPaymentMethodSetupIntent(): Promise<CustomerPaymentMethodSetupIntent>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</TeamSection>
+
+<TeamSection type="team" property="setDefaultPaymentMethodFromSetupIntent" signature="setupIntentId" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Sets the default payment method from a completed setup intent.
+
+      <ContentSection title="Parameters">
+        <ParamField body="setupIntentId" type="string" required>
+          The ID of the completed setup intent.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<CustomerDefaultPaymentMethod>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function setDefaultPaymentMethodFromSetupIntent(
+          setupIntentId: string,
+        ): Promise<CustomerDefaultPaymentMethod>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</TeamSection>
+
+<TeamSection type="team" property="switchSubscription" signature="options" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Switches a subscription from one product to another.
+
+      <ContentSection title="Parameters">
+        <ParamField body="options" type="object" required>
+          Subscription switch options.
+          <Expandable>
+            <ParamField body="fromProductId" type="string" required>
+              The product ID to switch from.
+            </ParamField>
+
+            <ParamField body="toProductId" type="string" required>
+              The product ID to switch to.
+            </ParamField>
+
+            <ParamField body="priceId" type="string">
+              A specific price ID to use.
+            </ParamField>
+
+            <ParamField body="quantity" type="number">
+              The quantity for the new subscription.
+            </ParamField>
+          </Expandable>
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<void>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function switchSubscription(options: {
+          fromProductId: string;
+          toProductId: string;
+          priceId?: string;
+          quantity?: number;
+        }): Promise<void>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</TeamSection>
+
+<TeamSection type="team" property="getBilling" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Returns the billing information for the team.
+
+      <MethodReturns type="Promise<CustomerBilling>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function getBilling(): Promise<CustomerBilling>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</TeamSection>
+
+<TeamSection type="team" property="useBilling" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      React hook that returns the billing information.
+
+      <MethodReturns type="CustomerBilling" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function useBilling(): CustomerBilling;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</TeamSection>
+
+<TeamSection type="team" property="listProducts" signature="[options]" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Returns all products available to the team.
+
+      <MethodReturns type="Promise<CustomerProductsList>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function listProducts(options?: CustomerProductsListOptions): Promise<CustomerProductsList>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</TeamSection>
+
+<TeamSection type="team" property="useProducts" signature="[options]" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      React hook that returns all products.
+
+      <MethodReturns type="CustomerProductsList" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function useProducts(options?: CustomerProductsListOptions): CustomerProductsList;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</TeamSection>
+
+<TeamSection type="team" property="listInvoices" signature="[options]" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Returns all invoices for the team.
+
+      <MethodReturns type="Promise<CustomerInvoicesList>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function listInvoices(options?: CustomerInvoicesListOptions): Promise<CustomerInvoicesList>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</TeamSection>
+
+<TeamSection type="team" property="useInvoices" signature="[options]" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      React hook that returns all invoices.
+
+      <MethodReturns type="CustomerInvoicesList" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function useInvoices(options?: CustomerInvoicesListOptions): CustomerInvoicesList;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</TeamSection>
+
 ---
 
 # `ServerTeam`
@@ -542,11 +770,11 @@ Calling `serverUser.getTeam(...)` and `serverUser.listTeams()` will return `Serv
     createdAt: Date; //$stack-link-to:#serverteamcreatedat
     serverMetadata: Json; //$stack-link-to:#serverteamservermetadata
 
+    update(data): Promise<void>; //$stack-link-to:#serverteamupdate
     listUsers(): Promise<ServerTeamUser[]>; //$stack-link-to:#serverteamlistusers
     useUsers(): ServerTeamUser[]; //$stack-link-to:#serverteamuseusers
     addUser(userId): Promise<void>; //$stack-link-to:#serverteamadduser
     removeUser(userId): Promise<void>; //$stack-link-to:#serverteamremoveuser
-    delete(): Promise<void>; //$stack-link-to:#serverteamdelete
 };`}
 />
 
@@ -575,6 +803,61 @@ Calling `serverUser.getTeam(...)` and `serverUser.listTeams()` will return `Serv
 </ServerTeamSection>
 
 ## Additional Methods
+
+<ServerTeamSection type="serverTeam" property="update" signature="data" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Extended update supporting server-only fields. Does not require any permissions.
+
+      <ContentSection title="Parameters">
+        <ParamField body="data" type="ServerTeamUpdateOptions" required>
+          The fields to update on the team.
+          <Expandable>
+            <ParamField body="displayName" type="string">
+              The display name of the team.
+            </ParamField>
+
+            <ParamField body="profileImageUrl" type="string | null">
+              The profile image URL of the team.
+            </ParamField>
+
+            <ParamField body="clientMetadata" type="ReadonlyJson">
+              Client metadata.
+            </ParamField>
+
+            <ParamField body="clientReadOnlyMetadata" type="ReadonlyJson">
+              Client read-only metadata.
+            </ParamField>
+
+            <ParamField body="serverMetadata" type="ReadonlyJson">
+              Server-only metadata.
+            </ParamField>
+          </Expandable>
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<void>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function update(data: ServerTeamUpdateOptions): Promise<void>;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        await serverTeam.update({
+          displayName: "Updated Team Name",
+          serverMetadata: { internalTag: "enterprise" },
+        });
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</ServerTeamSection>
 
 <ServerTeamSection type="serverTeam" property="listUsers" defaultOpen={false}>
   <MethodLayout>
@@ -685,27 +968,131 @@ Calling `serverUser.getTeam(...)` and `serverUser.listTeams()` will return `Serv
   </MethodLayout>
 </ServerTeamSection>
 
-<ServerTeamSection type="serverTeam" property="delete" defaultOpen={false}>
-  <MethodLayout>
-    <MethodContent>
-      Deletes the team.
+---
 
-      <MethodReturns type="Promise<void>" />
-    </MethodContent>
+# Types
 
-    <MethodAside>
-      <AsideSection title="Signature">
-        ```typescript
-        declare function delete(): Promise<void>;
-        ```
-      </AsideSection>
+### `TeamCreateOptions`
 
-      <AsideSection title="Examples">
-        ```typescript
-        await team.delete();
-        ```
-      </AsideSection>
-    </MethodAside>
+Options for creating a team via [`user.createTeam()`](/sdk/types/user#currentusercreateteam).
 
-  </MethodLayout>
-</ServerTeamSection>
+<ParamField body="displayName" type="string" required>
+  The display name for the team.
+</ParamField>
+
+<ParamField body="profileImageUrl" type="string">
+  The profile image URL for the team.
+</ParamField>
+
+### `ServerTeamCreateOptions`
+
+Extended creation options available on the server.
+
+<ParamField body="displayName" type="string" required>
+  The display name for the team.
+</ParamField>
+
+<ParamField body="profileImageUrl" type="string">
+  The profile image URL for the team.
+</ParamField>
+
+<ParamField body="creatorUserId" type="string">
+  The user ID of the team creator. If not set, the team is created without a creator.
+</ParamField>
+
+### `TeamUpdateOptions`
+
+Options for updating a team via [`team.update()`](#teamupdate).
+
+<ParamField body="displayName" type="string">
+  The display name of the team.
+</ParamField>
+
+<ParamField body="profileImageUrl" type="string | null">
+  The profile image URL of the team.
+</ParamField>
+
+<ParamField body="clientMetadata" type="ReadonlyJson">
+  Client metadata.
+</ParamField>
+
+### `ServerTeamUpdateOptions`
+
+Extended update options available on the server via [`serverTeam.update()`](#serverteamupdate).
+
+<ParamField body="displayName" type="string">
+  The display name of the team.
+</ParamField>
+
+<ParamField body="profileImageUrl" type="string | null">
+  The profile image URL of the team.
+</ParamField>
+
+<ParamField body="clientMetadata" type="ReadonlyJson">
+  Client metadata.
+</ParamField>
+
+<ParamField body="clientReadOnlyMetadata" type="ReadonlyJson">
+  Client read-only metadata.
+</ParamField>
+
+<ParamField body="serverMetadata" type="ReadonlyJson">
+  Server-only metadata.
+</ParamField>
+
+---
+
+# Invitation Types
+
+### `SentTeamInvitation`
+
+Represents an invitation that was sent from a team. Returned by [`team.listInvitations()`](#teamlistinvitations).
+
+<ParamField body="id" type="string">
+  The unique identifier for the invitation.
+</ParamField>
+
+<ParamField body="recipientEmail" type="string | null">
+  The email address of the invited user, or `null` if not specified.
+</ParamField>
+
+<ParamField body="expiresAt" type="Date">
+  The date and time when the invitation expires.
+</ParamField>
+
+```typescript
+declare function revoke(): Promise<void>;
+```
+
+The `revoke()` method cancels the invitation.
+
+### `ReceivedTeamInvitation`
+
+Represents an invitation received by a user. Returned by [`user.listTeamInvitations()`](/sdk/types/user#currentuserlistteaminvitations).
+
+<ParamField body="id" type="string">
+  The unique identifier for the invitation.
+</ParamField>
+
+<ParamField body="teamId" type="string">
+  The ID of the team that sent the invitation.
+</ParamField>
+
+<ParamField body="teamDisplayName" type="string">
+  The display name of the inviting team.
+</ParamField>
+
+<ParamField body="recipientEmail" type="string">
+  The email address the invitation was sent to.
+</ParamField>
+
+<ParamField body="expiresAt" type="Date">
+  The date and time when the invitation expires.
+</ParamField>
+
+```typescript
+declare function accept(): Promise<void>;
+```
+
+The `accept()` method accepts the invitation and adds the user to the team.
+
