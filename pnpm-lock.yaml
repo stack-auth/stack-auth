@@ -1064,6 +1064,12 @@ importers:
       '@emotion/styled':
         specifier: ^11.13.0
         version: 11.13.0(@emotion/react@11.13.3(@types/react@18.3.12)(react@19.0.1))(@types/react@18.3.12)(react@19.0.1)
+      '@stackframe/js':
+        specifier: workspace:*
+        version: link:../../packages/js
+      '@stackframe/react':
+        specifier: workspace:*
+        version: link:../../packages/react
       '@stackframe/stack':
         specifier: workspace:*
         version: link:../../packages/stack

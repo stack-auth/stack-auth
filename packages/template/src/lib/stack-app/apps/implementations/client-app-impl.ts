@@ -66,6 +66,9 @@ import { AnalyticsOptions, SessionRecorder, analyticsOptionsFromJson, analyticsO
 // IF_PLATFORM react-like
 import { useAsyncCache } from "./common";
 // END_PLATFORM
+// IF_PLATFORM js
+import { mountDevTool } from "../../../../dev-tool";
+// END_PLATFORM
 
 let isReactServer = false;
 // IF_PLATFORM next
@@ -573,6 +576,12 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       });
       this._eventTracker.start();
     }
+
+    // IF_PLATFORM js
+    if (isBrowserLike()) {
+      mountDevTool(this as any);
+    }
+    // END_PLATFORM
   }
 
   protected _initUniqueIdentifier() {
