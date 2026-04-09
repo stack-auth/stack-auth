@@ -172,7 +172,7 @@ export function declareLFoldTable<
         WHERE "changes"."shouldRecompute" AND "changes"."hasNewRow"
       `.toStatement(boundaryCandidatesTableName),
       sqlQuery`
-        SELECT
+        SELECT DISTINCT
           "candidate"."groupKey" AS "groupKey",
           "candidate"."boundarySortKey" AS "boundarySortKey",
           "candidate"."boundaryRowIdentifier" AS "boundaryRowIdentifier"

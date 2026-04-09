@@ -31,12 +31,20 @@ export function createPaymentsSchema() {
 
   const seedStoredTablesArray = Object.values(seedEventsStoredTables);
 
-  /** All tables in init order. Init from first to last; delete in reverse. */
-  const _allTables = [
+  /** Phase 1+2 tables in init order (for Phase 1 and Phase 2 tests) */
+  const _allPhase1And2Tables = [
     ...seedStoredTablesArray,
     ...events._allEventTables,
     ...txnTables._allTransactionTables,
     ...entryTables._allCompactedTransactionEntriesTables,
+  ] as const;
+
+  /** All tables in init order. Init from first to last; delete in reverse. */
+  const _allTables = [
+    ..._allPhase1And2Tables,
+    ...ownedProductsTables._allOwnedProductsTables,
+    ...changeTables._allItemChangesWithExpiriesTables,
+    ...itemQuantitiesTables._allItemQuantitiesTables,
   ] as const;
 
   /** Category metadata for Bulldozer Studio visualization */
@@ -55,6 +63,7 @@ export function createPaymentsSchema() {
     ...ownedProductsTables,
     ...changeTables,
     ...itemQuantitiesTables,
+    _allPhase1And2Tables,
     _allTables,
     _categories,
   };

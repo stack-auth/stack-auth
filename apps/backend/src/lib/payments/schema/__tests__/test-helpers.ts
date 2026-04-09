@@ -1,8 +1,9 @@
 /**
  * Shared test helpers for payments schema tests.
  *
- * Uses the existing dev database (which already has BulldozerStorageEngine).
- * Our "payments-*" table IDs don't conflict with anything else.
+ * Creates an isolated test database per test file (matching the bulldozer
+ * core test pattern). Each file gets a fresh BulldozerStorageEngine table
+ * with no leftover state.
  */
 
 import postgres from "postgres";
@@ -11,7 +12,7 @@ import { toExecutableSqlTransaction, toQueryableSqlQuery } from "@/lib/bulldozer
 type SqlStatement = { type: "statement", sql: string, outputName?: string };
 type SqlQuery = { type: "query", sql: string, toStatement(outputName?: string): SqlStatement };
 
-export function getConnectionString(): string {
+function getConnectionString(): string {
   const env = Reflect.get(import.meta, "env");
   const connectionString = Reflect.get(env, "STACK_DATABASE_CONNECTION_STRING");
   if (typeof connectionString !== "string" || connectionString.length === 0) {
@@ -20,39 +21,89 @@ export function getConnectionString(): string {
   return connectionString;
 }
 
-export function createSqlConnection() {
-  return postgres(getConnectionString(), { onnotice: () => undefined, max: 1 });
-}
+/**
+ * Creates an isolated test database. Call `setup()` in beforeAll and
+ * `teardown()` in afterAll. Access `runStatements` / `readRows` after setup.
+ *
+ * Follows the same pattern as apps/backend/src/lib/bulldozer/db/index.test.ts.
+ */
+export function createTestDb() {
+  const connectionString = getConnectionString();
+  const base = connectionString.replace(/\/[^/]*(\?.*)?$/, "");
+  const queryString = connectionString.split("?")[1] ?? "";
+  const dbName = `stack_payments_test_${Math.random().toString(16).slice(2, 12)}`;
+  const dbUrl = queryString.length === 0 ? `${base}/${dbName}` : `${base}/${dbName}?${queryString}`;
 
-export function makeRunStatements(sql: ReturnType<typeof postgres>) {
-  return async function runStatements(statements: SqlStatement[]) {
-    await sql.unsafe(toExecutableSqlTransaction(statements));
+  const adminSql = postgres(base, { onnotice: () => undefined });
+  let _sql: ReturnType<typeof postgres> | null = null;
+
+  const getSql = (): ReturnType<typeof postgres> => {
+    if (_sql == null) throw new Error("Test database not initialized — call setup() in beforeAll first");
+    return _sql;
   };
-}
 
-export function makeReadRows(sql: ReturnType<typeof postgres>) {
-  return async function readRows(query: SqlQuery) {
-    return await sql.unsafe(toQueryableSqlQuery(query));
+  return {
+    get sql() { return getSql(); },
+
+    runStatements: async (statements: SqlStatement[]) => {
+      await getSql().unsafe(toExecutableSqlTransaction(statements));
+    },
+
+    readRows: async (query: SqlQuery) => {
+      return await getSql().unsafe(toQueryableSqlQuery(query));
+    },
+
+    setup: async () => {
+      await adminSql.unsafe(`CREATE DATABASE ${dbName}`);
+      _sql = postgres(dbUrl, { onnotice: () => undefined, max: 1 });
+      await _sql.unsafe("CREATE EXTENSION IF NOT EXISTS pgcrypto");
+      await _sql.unsafe(`
+        CREATE TABLE "BulldozerStorageEngine" (
+          "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+          "keyPath" JSONB[] NOT NULL,
+          "keyPathParent" JSONB[] GENERATED ALWAYS AS (
+            CASE
+              WHEN cardinality("keyPath") = 0 THEN NULL
+              ELSE "keyPath"[1:cardinality("keyPath") - 1]
+            END
+          ) STORED,
+          "value" JSONB NOT NULL,
+          CONSTRAINT "BulldozerStorageEngine_pkey" PRIMARY KEY ("id"),
+          CONSTRAINT "BulldozerStorageEngine_keyPath_key" UNIQUE ("keyPath"),
+          CONSTRAINT "BulldozerStorageEngine_keyPathParent_fkey"
+            FOREIGN KEY ("keyPathParent")
+            REFERENCES "BulldozerStorageEngine"("keyPath")
+            ON DELETE CASCADE
+        )
+      `);
+      await _sql.unsafe(
+        `CREATE INDEX "BulldozerStorageEngine_keyPathParent_idx" ON "BulldozerStorageEngine"("keyPathParent")`
+      );
+      await _sql.unsafe(`
+        INSERT INTO "BulldozerStorageEngine" ("keyPath", "value")
+        VALUES
+          (ARRAY[]::jsonb[], 'null'::jsonb),
+          (ARRAY[to_jsonb('table'::text)]::jsonb[], 'null'::jsonb)
+      `);
+    },
+
+    teardown: async () => {
+      if (_sql != null) {
+        await _sql.end();
+        _sql = null;
+      }
+      await adminSql.unsafe(`
+        SELECT pg_terminate_backend(pg_stat_activity.pid)
+        FROM pg_stat_activity
+        WHERE pg_stat_activity.datname = '${dbName}'
+          AND pid <> pg_backend_pid()
+      `);
+      await adminSql.unsafe(`DROP DATABASE IF EXISTS ${dbName}`);
+      await adminSql.end();
+    },
   };
 }
 
 export function jsonbExpr(obj: unknown) {
   return { type: "expression" as const, sql: `'${JSON.stringify(obj).replaceAll("'", "''")}'::jsonb` };
-}
-
-/**
- * Runs table.delete() for each table, swallowing individual errors so that
- * all tables get a cleanup attempt even if one fails.
- */
-export async function cleanupTables(
-  runStatements: (statements: SqlStatement[]) => Promise<void>,
-  tables: Array<{ delete(): SqlStatement[] }>,
-) {
-  for (const table of tables) {
-    try {
-      await runStatements(table.delete());
-    } catch (e) {
-      console.warn("cleanup: failed to delete table, ignoring:", e);
-    }
-  }
 }

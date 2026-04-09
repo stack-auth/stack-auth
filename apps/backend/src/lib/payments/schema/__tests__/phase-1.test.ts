@@ -13,12 +13,11 @@ import { createPaymentsSchema } from "../index";
 import type {
   TransactionRow,
 } from "../types";
-import { cleanupTables, createSqlConnection, jsonbExpr, makeReadRows, makeRunStatements } from "./test-helpers";
+import { createTestDb, jsonbExpr } from "./test-helpers";
 
 describe.sequential("payments schema phase 1 (real postgres)", () => {
-  const sql = createSqlConnection();
-  const runStatements = makeRunStatements(sql);
-  const readRows = makeReadRows(sql);
+  const db = createTestDb();
+  const { runStatements, readRows } = db;
   const schema = createPaymentsSchema();
 
   const allRowsQuery = (table: { listRowsInGroup: (opts: any) => any }) =>
@@ -30,19 +29,14 @@ describe.sequential("payments schema phase 1 (real postgres)", () => {
   };
 
   beforeAll(async () => {
-    // Clean up stale data from any previous failed runs
-    await cleanupTables(runStatements, [...schema._allTables].reverse());
-    for (const table of schema._allTables) {
+    await db.setup();
+    for (const table of schema._allPhase1And2Tables) {
       await runStatements(table.init());
     }
   });
 
   afterAll(async () => {
-    try {
-      await cleanupTables(runStatements, [...schema._allTables].reverse());
-    } finally {
-      await sql.end();
-    }
+    await db.teardown();
   });
 
 

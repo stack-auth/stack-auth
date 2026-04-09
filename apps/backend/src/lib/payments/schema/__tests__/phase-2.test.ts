@@ -12,12 +12,11 @@
 
 import { describe, beforeAll, afterAll, it, expect } from "vitest";
 import { createPaymentsSchema } from "../index";
-import { createSqlConnection, makeRunStatements, makeReadRows, cleanupTables, jsonbExpr } from "./test-helpers";
+import { createTestDb, jsonbExpr } from "./test-helpers";
 
 describe.sequential("payments schema phase 2 (real postgres)", () => {
-  const sql = createSqlConnection();
-  const runStatements = makeRunStatements(sql);
-  const readRows = makeReadRows(sql);
+  const db = createTestDb();
+  const { runStatements, readRows } = db;
   const schema = createPaymentsSchema();
 
   const getRowDatas = async (table: { listRowsInGroup: (opts: any) => any }) => {
@@ -26,8 +25,8 @@ describe.sequential("payments schema phase 2 (real postgres)", () => {
   };
 
   beforeAll(async () => {
-    await cleanupTables(runStatements, [...schema._allTables].reverse());
-    for (const table of schema._allTables) {
+    await db.setup();
+    for (const table of schema._allPhase1And2Tables) {
       await runStatements(table.init());
     }
 
@@ -116,11 +115,7 @@ describe.sequential("payments schema phase 2 (real postgres)", () => {
   });
 
   afterAll(async () => {
-    try {
-      await cleanupTables(runStatements, [...schema._allTables].reverse());
-    } finally {
-      await sql.end();
-    }
+    await db.teardown();
   });
 
 
