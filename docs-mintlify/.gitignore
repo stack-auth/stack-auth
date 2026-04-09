@@ -1,3 +1,2 @@
-# Mintlify has no deploy-time codegen; OpenAPI JSON under openapi/ is committed
-# so hosted Mintlify can read it. Regenerate with backend codegen-docs before push.
+openapi/
 *.zip
