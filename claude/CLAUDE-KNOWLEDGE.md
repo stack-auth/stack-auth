@@ -164,3 +164,6 @@ A: Add project-level shortcuts to `PROJECT_SHORTCUTS` in `apps/dashboard/src/com
 
 Q: Which port suffixes are assigned to the two local docs sites?
 A: `docs` (old docs app) uses suffix `26`, and `docs-mintlify` uses suffix `04`. Keep these in sync across `docs/package.json`, `docs-mintlify/package.json`, `apps/dev-launchpad/public/index.html`, and `apps/dashboard/.env.development` (`NEXT_PUBLIC_STACK_DOCS_BASE_URL` points to old docs on `26`).
+
+Q: Why did the dashboard Vercel integration throw "Expected publishableClientKey" during key generation?
+A: In `apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/vercel/page-client.tsx`, the code always asserted `newKey.publishableClientKey` even when `project.requirePublishableClientKey` was false. Fix by only asserting/passing `publishableClientKey` when that project config flag is true.
