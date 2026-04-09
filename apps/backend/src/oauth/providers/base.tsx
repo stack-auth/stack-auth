@@ -47,6 +47,7 @@ export abstract class OAuthBaseProvider {
     public readonly defaultAccessTokenExpiresInMillis?: number,
     public readonly noPKCE?: boolean,
     public readonly openid?: boolean,
+    public readonly alternativeIssuers?: string[],
   ) {}
 
   protected static async createConstructorArgs(options:
@@ -59,6 +60,7 @@ export abstract class OAuthBaseProvider {
       defaultAccessTokenExpiresInMillis?: number,
       tokenEndpointAuthMethod?: "client_secret_post" | "client_secret_basic",
       noPKCE?: boolean,
+      alternativeIssuers?: string[],
     }
     & (
       | ({
@@ -106,6 +108,7 @@ export abstract class OAuthBaseProvider {
       options.defaultAccessTokenExpiresInMillis,
       options.noPKCE,
       options.openid,
+      options.alternativeIssuers,
     ] as const;
   }
 
@@ -134,9 +137,22 @@ export abstract class OAuthBaseProvider {
     state: string,
   }): Promise<{ userInfo: OAuthUserInfo, tokenSet: TokenSet }> {
     let tokenSet;
+    const callbackParams = { ...options.callbackParams };
+
+    // If the authorization server returns an `iss` parameter (RFC 9207) that matches
+    // one of the known alternative issuers, rewrite it to the configured issuer so
+    // openid-client's validation accepts it.
+    if (
+      this.alternativeIssuers
+      && typeof callbackParams.iss === "string"
+      && this.alternativeIssuers.includes(callbackParams.iss)
+    ) {
+      callbackParams.iss = this.oauthClient.issuer.metadata.issuer;
+    }
+
     const params = [
       this.redirectUri,
-      options.callbackParams,
+      callbackParams,
       {
         code_verifier: this.noPKCE ? undefined : options.codeVerifier,
         state: options.state,
