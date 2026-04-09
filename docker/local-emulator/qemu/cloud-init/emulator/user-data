@@ -1,0 +1,185 @@
+#cloud-config
+
+hostname: stack-emulator
+manage_etc_hosts: true
+
+users:
+  - name: stack
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: false
+
+chpasswd:
+  list: |
+    root:stack-emulator
+    stack:stack-emulator
+  expire: false
+
+ssh_pwauth: false
+
+package_update: true
+package_upgrade: false
+
+packages:
+  - docker.io
+  - ca-certificates
+  - curl
+  - netcat-openbsd
+  - qemu-guest-agent
+
+write_files:
+  - path: /usr/local/bin/install-emulator-containers
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      mkdir -p /mnt/stack-bundle
+      bundle_device="$(readlink -f /dev/disk/by-label/STACKBUNDLE)"
+      mount -o ro "$bundle_device" /mnt/stack-bundle
+
+      systemctl enable --now docker
+      until docker info >/dev/null 2>&1; do sleep 1; done
+
+      gzip -dc /mnt/stack-bundle/img.tgz | docker load
+
+  - path: /usr/local/bin/render-stack-env
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      mkdir -p /mnt/stack-runtime /run/stack-auth
+      runtime_device="$(readlink -f /dev/disk/by-label/STACKCFG)"
+      mountpoint -q /mnt/stack-runtime || mount -o ro "$runtime_device" /mnt/stack-runtime
+
+      set -a
+      source /mnt/stack-runtime/runtime.env
+      source /mnt/stack-runtime/base.env
+      set +a
+
+      # Container-local dependencies run on localhost. Host-only development
+      # services (such as the OAuth mock server) are reachable via the QEMU
+      # user-network host alias.
+      DEPS_HOST=127.0.0.1
+      HOST_SERVICES_HOST=10.0.2.2
+      P="$STACK_EMULATOR_PORT_PREFIX"
+
+      {
+        # Static vars from base config and runtime (e.g. API keys, feature flags)
+        cat /mnt/stack-runtime/base.env
+        cat /mnt/stack-runtime/runtime.env
+
+        # Computed vars — depend on port prefix or deps host
+        cat <<COMPUTED
+      NEXT_PUBLIC_STACK_PORT_PREFIX=${P}
+      STACK_RUNTIME_WORK_DIR=/app
+      STACK_LOCAL_EMULATOR_HOST_MOUNT_ROOT=/host
+      NEXT_PUBLIC_STACK_API_URL=http://localhost:${P}02
+      NEXT_PUBLIC_STACK_DASHBOARD_URL=http://localhost:${P}01
+      NEXT_PUBLIC_BROWSER_STACK_API_URL=http://localhost:${P}02
+      NEXT_PUBLIC_BROWSER_STACK_DASHBOARD_URL=http://localhost:${P}01
+      NEXT_PUBLIC_SERVER_STACK_API_URL=http://127.0.0.1:${P}02
+      NEXT_PUBLIC_SERVER_STACK_DASHBOARD_URL=http://127.0.0.1:${P}01
+      NEXT_PUBLIC_STACK_SVIX_SERVER_URL=http://localhost:${P}13
+      STACK_DATABASE_CONNECTION_STRING=postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@${DEPS_HOST}:5432/stackframe
+      STACK_EMAIL_HOST=${DEPS_HOST}
+      STACK_SVIX_SERVER_URL=http://${DEPS_HOST}:8071
+      STACK_S3_ENDPOINT=http://${DEPS_HOST}:9090
+      STACK_S3_PUBLIC_ENDPOINT=http://localhost:${P}21/stack-storage
+      STACK_QSTASH_URL=http://${DEPS_HOST}:8080
+      STACK_CLICKHOUSE_URL=http://${DEPS_HOST}:8123
+      STACK_EMAIL_MONITOR_VERIFICATION_CALLBACK_URL=http://localhost:${P}01/handler/email-verification
+      STACK_EMAIL_MONITOR_INBUCKET_API_URL=http://${DEPS_HOST}:9001
+      STACK_OAUTH_MOCK_URL=http://${HOST_SERVICES_HOST}:${P}14
+      BACKEND_PORT=${P}02
+      DASHBOARD_PORT=${P}01
+      COMPUTED
+      } > /run/stack-auth/local-emulator.env
+
+  - path: /usr/local/bin/mount-host-fs
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+      mkdir -p /host
+      if ! mountpoint -q /host; then
+        if ! mount -t 9p -o trans=virtio,version=9p2000.L hostfs /host; then
+          echo "Failed to mount host filesystem at /host" >&2
+          exit 1
+        fi
+      fi
+
+  - path: /usr/local/bin/run-stack-container
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      /usr/local/bin/mount-host-fs
+      /usr/local/bin/render-stack-env
+      docker rm -f stack >/dev/null 2>&1 || true
+      exec docker run \
+        --rm \
+        --name stack \
+        --network host \
+        --add-host host.docker.internal:host-gateway \
+        --env-file /run/stack-auth/local-emulator.env \
+        -v stack-postgres-data:/data/postgres \
+        -v stack-redis-data:/data/redis \
+        -v stack-clickhouse-data:/data/clickhouse \
+        -v stack-minio-data:/data/minio \
+        -v stack-inbucket-data:/data/inbucket \
+        -v /host:/host \
+        stack-local-emulator
+
+  - path: /usr/local/bin/wait-for-deps
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      until nc -z 127.0.0.1 5432 >/dev/null 2>&1; do sleep 1; done
+      until curl -sf http://127.0.0.1:8123/ping >/dev/null 2>&1; do sleep 1; done
+      until curl -sf http://127.0.0.1:8071/api/v1/health/ >/dev/null 2>&1; do sleep 1; done
+      until curl -sf http://127.0.0.1:9090/minio/health/live >/dev/null 2>&1; do sleep 1; done
+      until [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/ 2>/dev/null || true)" = "401" ]; do sleep 1; done
+
+  - path: /etc/systemd/system/stack.service
+    content: |
+      [Unit]
+      Description=Stack Auth local emulator
+      Wants=network-online.target docker.service
+      After=network-online.target docker.service
+
+      [Service]
+      Restart=always
+      RestartSec=5
+      TimeoutStartSec=0
+      ExecStart=/usr/local/bin/run-stack-container
+      ExecStop=/usr/bin/docker stop stack
+
+      [Install]
+      WantedBy=multi-user.target
+
+runcmd:
+  - systemctl disable --now ssh || true
+  - systemctl mask ssh || true
+  - bash /usr/local/bin/install-emulator-containers
+  - systemctl daemon-reload
+  - systemctl enable stack.service
+  - docker run --rm --name stack-build-init
+      --network host
+      -e STACK_DEPS_ONLY=true
+      -v stack-postgres-data:/data/postgres
+      -v stack-redis-data:/data/redis
+      -v stack-clickhouse-data:/data/clickhouse
+      -v stack-minio-data:/data/minio
+      -v stack-inbucket-data:/data/inbucket
+      -d stack-local-emulator
+  - bash /usr/local/bin/wait-for-deps
+  - docker stop stack-build-init || true
+  - echo "STACK_CLOUD_INIT_DONE" > /dev/console 2>/dev/null || true
+  - echo "STACK_CLOUD_INIT_DONE" > /dev/ttyAMA0 2>/dev/null || true
+  - echo "STACK_CLOUD_INIT_DONE" > /dev/ttyS0 2>/dev/null || true
+  - shutdown -P now

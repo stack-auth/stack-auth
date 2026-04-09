@@ -1,0 +1,237 @@
+---
+title: "SendEmailOptions"
+description: "Reference for the SendEmailOptions type used with the sendEmail method."
+sidebarTitle: "Email"
+mode: "wide"
+---
+
+import {
+  AsideSection,
+  ClickableTableOfContents,
+  CollapsibleTypesSection,
+  MethodAside,
+  MethodContent,
+  MethodLayout,
+} from "/snippets/sdk-type-components.jsx";
+
+export const EmailSection = (props) => (
+  <CollapsibleTypesSection
+    badge={
+      <Badge color="green" size="sm" shape="pill">
+        sendEmailOptions
+      </Badge>
+    }
+    {...props}
+  />
+);
+
+This is a detailed reference for email-related types in Stack Auth. If you're looking for a more high-level overview, please refer to our [guide on the email system](/guides/apps/emails/overview).
+
+# `SendEmailOptions`
+
+Options for sending emails via the `sendEmail` method on `StackServerApp`.
+
+## Table of Contents
+
+<ClickableTableOfContents
+  title="SendEmailOptions Table of Contents"
+  code={`type SendEmailOptions = {
+  // Recipients (one of the following):
+  userIds?: string[]; //$stack-link-to:#sendemailoptionsuserids
+  allUsers?: true; //$stack-link-to:#sendemailoptionsallusers
+
+  // Content (one of the following):
+  html?: string; //$stack-link-to:#sendemailoptionshtml
+  templateId?: string; //$stack-link-to:#sendemailoptionstemplateid
+  draftId?: string; //$stack-link-to:#sendemailoptionsdraftid
+
+  // Options:
+  themeId?: string | null | false; //$stack-link-to:#sendemailoptionsthemeid
+  subject?: string; //$stack-link-to:#sendemailoptionssubject
+  notificationCategoryName?: string; //$stack-link-to:#sendemailoptionsnotificationcategoryname
+  scheduledAt?: Date; //$stack-link-to:#sendemailoptionsscheduledat
+  variables?: Record<string, unknown>; //$stack-link-to:#sendemailoptionsvariables
+};`}
+/>
+
+## Recipients
+
+You must provide exactly one of `userIds` or `allUsers`.
+
+<EmailSection type="sendEmailOptions" property="userIds" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      An array of user IDs that will receive the email. All users must exist in your Stack Auth project. Cannot be used together with `allUsers`.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const userIds: string[]; ```
+    </MethodAside>
+  </MethodLayout>
+</EmailSection>
+
+<EmailSection type="sendEmailOptions" property="allUsers" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Set to `true` to send the email to all users in the project. Cannot be used together with `userIds`.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const allUsers: true; ```
+    </MethodAside>
+  </MethodLayout>
+</EmailSection>
+
+## Content
+
+You must provide exactly one of `html`, `templateId`, or `draftId`.
+
+<EmailSection type="sendEmailOptions" property="html" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Custom HTML content for the email. Cannot be used together with `templateId` or `draftId`.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const html: string; ```
+    </MethodAside>
+  </MethodLayout>
+</EmailSection>
+
+<EmailSection type="sendEmailOptions" property="templateId" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      ID of the email template to use. Cannot be used together with `html` or `draftId`.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const templateId: string; ```
+    </MethodAside>
+  </MethodLayout>
+</EmailSection>
+
+<EmailSection type="sendEmailOptions" property="draftId" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      ID of an email draft to send. Cannot be used together with `html` or `templateId`.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const draftId: string; ```
+    </MethodAside>
+  </MethodLayout>
+</EmailSection>
+
+## Options
+
+<EmailSection type="sendEmailOptions" property="themeId" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      A string ID for a custom theme, `null` for no theme, or `false` to use the default theme.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const themeId: string | null | false | undefined; ```
+    </MethodAside>
+  </MethodLayout>
+</EmailSection>
+
+<EmailSection type="sendEmailOptions" property="subject" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Optional email subject line. If you use a template, this overrides the template's default subject.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const subject: string | undefined; ```
+    </MethodAside>
+  </MethodLayout>
+</EmailSection>
+
+<EmailSection type="sendEmailOptions" property="notificationCategoryName" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Optional notification category name for user preferences. Users can opt in or out of specific categories through their account settings.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const notificationCategoryName: string | undefined; ```
+    </MethodAside>
+  </MethodLayout>
+</EmailSection>
+
+<EmailSection type="sendEmailOptions" property="scheduledAt" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Optional date to schedule the email for. If not provided, the email is sent immediately.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const scheduledAt: Date | undefined; ```
+    </MethodAside>
+  </MethodLayout>
+</EmailSection>
+
+<EmailSection type="sendEmailOptions" property="variables" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Optional variables to substitute in the template. Only used when `templateId` is provided.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const variables: Record<string, unknown> | undefined; ```
+    </MethodAside>
+  </MethodLayout>
+</EmailSection>
+
+## Usage
+
+Choose a content method (`html`, `templateId`, or `draftId`) and a recipient method (`userIds` or `allUsers`):
+
+<Tabs>
+  <Tab title="Custom HTML">
+    Provide custom HTML directly:
+
+    ```typescript
+    await stackServerApp.sendEmail({
+      userIds: ["user-id-1"],
+      subject: "Hello!",
+      html: "<h1>Welcome</h1><p>Thanks for signing up!</p>",
+    });
+    ```
+
+  </Tab>
+  <Tab title="Template">
+    Use a template with variable substitution:
+
+    ```typescript
+    await stackServerApp.sendEmail({
+      userIds: ["user-id-1"],
+      templateId: "welcome-template",
+      variables: {
+        userName: "John Doe",
+        activationUrl: "https://app.com/activate/token123",
+      },
+    });
+    ```
+
+  </Tab>
+  <Tab title="Draft">
+    Send from a saved email draft:
+
+    ```typescript
+    await stackServerApp.sendEmail({
+      allUsers: true,
+      draftId: "my-draft-id",
+    });
+    ```
+
+  </Tab>
+  <Tab title="Scheduled">
+    Schedule an email for later delivery:
+
+    ```typescript
+    await stackServerApp.sendEmail({
+      userIds: ["user-id-1"],
+      templateId: "weekly-digest",
+      scheduledAt: new Date("2025-01-15T09:00:00Z"),
+    });
+    ```
+
+  </Tab>
+</Tabs>
+
+<Note>
+  The `notificationCategoryName`, `themeId`, `scheduledAt`, and `variables` properties work independently
+  with any content method.
+</Note>

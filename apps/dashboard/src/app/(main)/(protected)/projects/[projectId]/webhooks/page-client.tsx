@@ -31,13 +31,20 @@ export default function PageClient() {
   const [updateCounter, setUpdateCounter] = useState(0);
   const [testDialogEndpoint, setTestDialogEndpoint] = useState<Endpoint | null>(null);
 
+  const isPreview = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_PREVIEW") === "true";
+
   return (
     <AppEnabledGuard appId="webhooks">
       <PageLayout
         title="Webhooks"
         description="Webhooks are used to sync users and teams events from Stack to your own server."
       >
-        {svixToken.url ? (
+        {isPreview ? (
+          <DesignAlert
+            variant="info"
+            title="Webhooks unavailable in preview mode"
+          />
+        ) : svixToken.url ? (
           <div>
             <AppPortal url={svixToken.url} darkMode={resolvedTheme === "dark"} fullSize />
           </div>

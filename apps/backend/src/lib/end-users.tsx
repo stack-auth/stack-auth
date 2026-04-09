@@ -1,3 +1,4 @@
+import { normalizeCountryCode } from "@stackframe/stack-shared/dist/utils/country-codes";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { isIpAddress } from "@stackframe/stack-shared/dist/utils/ips";
@@ -120,10 +121,11 @@ function getBrowserEndUserInfo(allHeaders: Headers, trustedProxy: TrustedProxy):
   // Geo headers are only trustworthy when they come from a verified proxy.
   // If a trusted proxy is configured but it did not provide its trusted IP header,
   // treat its geo headers as spoofed too.
+  const rawCountryCode = (isVercelTrusted ? allHeaders.get("x-vercel-ip-country") : undefined)
+    ?? (isCloudflareTrusted ? allHeaders.get("cf-ipcountry") : undefined)
+    ?? undefined;
   const geoLocation: EndUserLocation = {
-    countryCode: (isVercelTrusted ? allHeaders.get("x-vercel-ip-country") : undefined)
-      ?? (isCloudflareTrusted ? allHeaders.get("cf-ipcountry") : undefined)
-      ?? undefined,
+    countryCode: rawCountryCode ? normalizeCountryCode(rawCountryCode) : undefined,
     regionCode: (isVercelTrusted ? allHeaders.get("x-vercel-ip-country-region") : undefined) || undefined,
     cityName: (isVercelTrusted ? allHeaders.get("x-vercel-ip-city") : undefined) || undefined,
     latitude: parseCoordinate(isVercelTrusted ? allHeaders.get("x-vercel-ip-latitude") : null),
@@ -132,8 +134,9 @@ function getBrowserEndUserInfo(allHeaders: Headers, trustedProxy: TrustedProxy):
   };
 
   // When no proxy is trusted, geo headers are spoofable — still include them but under spoofedInfo
+  const rawSpoofedCountryCode = trustedProxy === "" ? ((allHeaders.get("x-vercel-ip-country") ?? allHeaders.get("cf-ipcountry")) || undefined) : undefined;
   const spoofedGeoLocation: EndUserLocation = trustedProxy === "" ? {
-    countryCode: (allHeaders.get("x-vercel-ip-country") ?? allHeaders.get("cf-ipcountry")) || undefined,
+    countryCode: rawSpoofedCountryCode ? normalizeCountryCode(rawSpoofedCountryCode) : undefined,
     regionCode: allHeaders.get("x-vercel-ip-country-region") || undefined,
     cityName: allHeaders.get("x-vercel-ip-city") || undefined,
     latitude: parseCoordinate(allHeaders.get("x-vercel-ip-latitude")),

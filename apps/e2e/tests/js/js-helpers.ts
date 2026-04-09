@@ -16,6 +16,7 @@ export async function scaffoldProject(body?: Omit<AdminProjectCreateOptions, 'di
     secretServerKey: STACK_INTERNAL_PROJECT_SERVER_KEY,
     superSecretAdminKey: STACK_INTERNAL_PROJECT_ADMIN_KEY,
     tokenStore: "memory",
+    redirectMethod: "none",
     extraRequestHeaders: testExtraRequestHeaders,
   });
 
@@ -56,6 +57,7 @@ export async function createApp(
     baseUrl: STACK_BACKEND_BASE_URL,
     projectOwnerSession: adminUser._internalSession,
     tokenStore: "memory",
+    redirectMethod: "none",
     extraRequestHeaders: testExtraRequestHeaders,
   });
 
@@ -77,6 +79,7 @@ export async function createApp(
     publishableClientKey: apiKey.publishableClientKey,
     secretServerKey,
     tokenStore: "memory",
+    redirectMethod: "none",
     extraRequestHeaders: testExtraRequestHeaders,
     ...(appOverrides?.server ?? {}),
   });
@@ -86,6 +89,7 @@ export async function createApp(
     projectId: project.id,
     publishableClientKey: apiKey.publishableClientKey,
     tokenStore: "memory",
+    redirectMethod: "none",
     extraRequestHeaders: testExtraRequestHeaders,
     ...(appOverrides?.client ?? {}),
   });
