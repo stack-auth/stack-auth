@@ -237,6 +237,7 @@ build_one() {
   local qemu_base pid elapsed total_build_lines
   local last_build_lines=0
   local guest_exited=false
+  local guest_failed=false
   local start_time=$SECONDS
 
   cp "$base_img" "$tmp_img"
@@ -258,6 +259,7 @@ build_one() {
   : > "$serial_log"
   : > "$provision_log"
   qemu_base="$(qemu_cmd_prefix_for_arch "$arch")"
+  log "QEMU command prefix (${arch}): $qemu_base"
 
   # shellcheck disable=SC2086
   $qemu_base \
@@ -279,6 +281,11 @@ build_one() {
   elapsed=0
   while [ "$elapsed" -lt "$PROVISION_TIMEOUT" ]; do
     if contains_provision_marker "$provision_log" "$serial_log" "STACK_CLOUD_INIT_DONE"; then
+      break
+    fi
+
+    if contains_provision_marker "$provision_log" "$serial_log" "STACK_CLOUD_INIT_FAILED"; then
+      guest_failed=true
       break
     fi
 
@@ -308,7 +315,9 @@ build_one() {
   echo ""
 
   if ! contains_provision_marker "$provision_log" "$serial_log" "STACK_CLOUD_INIT_DONE"; then
-    if [ "$guest_exited" = true ]; then
+    if [ "$guest_failed" = true ]; then
+      err "Guest provisioning reported failure for emulator (${arch})"
+    elif [ "$guest_exited" = true ]; then
       err "Provisioning exited before completion for emulator (${arch})"
     else
       err "Provisioning timed out for emulator (${arch})"

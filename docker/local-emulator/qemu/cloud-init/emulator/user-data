@@ -273,7 +273,7 @@ write_files:
         -v stack-inbucket-data:/data/inbucket \
         -d stack-local-emulator-slim
 
-      smoke_timeout=120
+      smoke_timeout=300
       smoke_elapsed=0
       smoke_passed=false
       while [ "$smoke_elapsed" -lt "$smoke_timeout" ]; do
@@ -286,13 +286,22 @@ write_files:
         smoke_elapsed=$((smoke_elapsed + 2))
       done
 
-      docker stop smoke-test 2>/dev/null || true
-      sleep 2
-
       if [ "$smoke_passed" = "false" ]; then
         log "SMOKE TEST FAILED: backend /health?db=1 did not return 200 within ${smoke_timeout}s"
+        log "--- docker ps -a ---"
+        docker ps -a 2>&1 | while IFS= read -r line; do log "ps: $line"; done || true
+        log "--- smoke-test container logs (last 200 lines) ---"
+        docker logs --tail 200 smoke-test 2>&1 | while IFS= read -r line; do log "smoke-test: $line"; done || true
+        log "--- free -m ---"
+        free -m 2>&1 | while IFS= read -r line; do log "mem: $line"; done || true
+        log "--- curl -v /health?db=1 ---"
+        curl -v --max-time 5 http://127.0.0.1:8102/health?db=1 2>&1 | while IFS= read -r line; do log "curl: $line"; done || true
+        docker stop smoke-test 2>/dev/null || true
         exit 1
       fi
+
+      docker stop smoke-test 2>/dev/null || true
+      sleep 2
       log "Smoke test passed (${smoke_elapsed}s)."
 
       log "Flattening image (docker export/import)..."
@@ -363,8 +372,17 @@ write_files:
 
       cleanup() {
         local status=$?
-        if [ "$status" -ne 0 ] && [ -n "${STACK_PROVISION_LOG_FILE:-}" ]; then
-          printf 'ERROR: provision-build exited with code %s\n' "$status" >> "$STACK_PROVISION_LOG_FILE"
+        if [ "$status" -ne 0 ]; then
+          if [ -n "${STACK_PROVISION_LOG_FILE:-}" ]; then
+            printf 'ERROR: provision-build exited with code %s\n' "$status" >> "$STACK_PROVISION_LOG_FILE"
+            printf '%s\n' "STACK_CLOUD_INIT_FAILED" >> "$STACK_PROVISION_LOG_FILE"
+          fi
+          for dev in /dev/console /dev/ttyAMA0 /dev/ttyS0; do
+            echo "STACK_CLOUD_INIT_FAILED" > "$dev" 2>/dev/null || true
+          done
+          sync || true
+          (sleep 2 && shutdown -P now) &
+          (sleep 15 && poweroff -f) &
         fi
       }
       trap cleanup EXIT

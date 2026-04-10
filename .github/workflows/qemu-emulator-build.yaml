@@ -47,7 +47,20 @@ jobs:
       - name: Install QEMU dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y qemu-system-x86 qemu-system-arm qemu-utils genisoimage socat qemu-efi-aarch64
+          sudo apt-get install -y qemu-system-x86 qemu-system-arm qemu-kvm qemu-utils genisoimage socat qemu-efi-aarch64
+
+      - name: Enable KVM access
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+          ls -la /dev/kvm || echo "no /dev/kvm present"
+          if [ -w /dev/kvm ]; then
+            echo "KVM is writable — hardware acceleration will be used"
+          else
+            echo "WARNING: /dev/kvm is not writable — will fall back to TCG (very slow)"
+          fi
 
       - name: Build QEMU image
         run: |
