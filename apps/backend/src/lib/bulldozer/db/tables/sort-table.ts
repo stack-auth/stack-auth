@@ -97,7 +97,7 @@ export function declareSortTable<
           ) AS "mapped"
         ) AS "newSortKey" ON ("changes"."newRowData" IS NOT NULL AND jsonb_typeof("changes"."newRowData") = 'object')
         WHERE ${isInitializedExpression}
-      `.toStatement(normalizedChangesTableName),
+      `.toStatement(normalizedChangesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowData" jsonb, "newRowData" jsonb, "oldComputedSortKey" jsonb, "newComputedSortKey" jsonb, "hasOldRow" boolean, "hasNewRow" boolean'),
       sqlStatement`
         INSERT INTO pg_temp.bulldozer_side_effects ("note")
         SELECT "effect"."note"
@@ -159,7 +159,7 @@ export function declareSortTable<
             OR "oldComputedSortKey" IS DISTINCT FROM "newComputedSortKey"
             OR "oldRowData" IS DISTINCT FROM "newRowData"
           )
-      `.toStatement(sortChangesTableName),
+      `.toStatement(sortChangesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb'),
       ...[...triggers.values()].flatMap((trigger) => trigger(quoteSqlIdentifier(sortChangesTableName))),
     ];
   };
@@ -207,7 +207,7 @@ export function declareSortTable<
           end: "end",
           startInclusive: true,
           endInclusive: true,
-        }).toStatement(fromGroupsTableName),
+        }).toStatement(fromGroupsTableName, '"groupkey" jsonb'),
         sqlQuery`
           SELECT
             "groups"."groupkey" AS "groupKey",
@@ -224,7 +224,7 @@ export function declareSortTable<
               endInclusive: true,
             })}
           ) AS "rows"
-        `.toStatement(fromRowsTableName),
+        `.toStatement(fromRowsTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldSortKey" jsonb, "rowData" jsonb'),
         sqlQuery`
           SELECT
             "rows"."groupKey" AS "groupKey",
@@ -244,7 +244,7 @@ export function declareSortTable<
               ) AS "sortInput"
             ) AS "mapped"
           ) AS "sortKey"
-        `.toStatement(sortedRowsTableName),
+        `.toStatement(sortedRowsTableName, '"groupKey" jsonb, "rowIdentifier" text, "rowData" jsonb, "rowSortKey" jsonb'),
         sqlStatement`
           INSERT INTO pg_temp.bulldozer_side_effects ("note")
           SELECT pg_temp.bulldozer_sort_bulk_init_from_table(

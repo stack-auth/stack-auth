@@ -76,7 +76,7 @@ export function declareLeftJoinTable<
         AND "rightRows"."rightJoinKey" IS NOT DISTINCT FROM "leftRows"."leftJoinKey"
     ) AS "joinedRows"
     ORDER BY "joinedRows"."groupKey", "joinedRows"."rowIdentifier"
-  `.toStatement(optionsForStatement.outputTableName);
+  `.toStatement(optionsForStatement.outputTableName, '"groupKey" jsonb, "rowIdentifier" text, "rowData" jsonb');
   const createLeftRowsStatement = (optionsForRows: {
     groupsTableName: string,
     groupKeySql: string,
@@ -108,7 +108,7 @@ export function declareLeftJoinTable<
         ) AS "joinKeyInput"
       ) AS "mapped"
     ) AS "mapped" ON true
-  `.toStatement(optionsForRows.outputTableName);
+  `.toStatement(optionsForRows.outputTableName, '"groupKey" jsonb, "leftRowIdentifier" text, "leftRowData" jsonb, "leftJoinKey" jsonb');
   const createRightRowsStatement = (optionsForRows: {
     groupsTableName: string,
     groupKeySql: string,
@@ -140,7 +140,7 @@ export function declareLeftJoinTable<
         ) AS "joinKeyInput"
       ) AS "mapped"
     ) AS "mapped" ON true
-  `.toStatement(optionsForRows.outputTableName);
+  `.toStatement(optionsForRows.outputTableName, '"groupKey" jsonb, "rightRowIdentifier" text, "rightRowData" jsonb, "rightJoinKey" jsonb');
 
   const registerInputTrigger = <InputRD extends RowData>(optionsForTrigger: {
     inputTable: Table<GK, any, InputRD>,
@@ -168,12 +168,12 @@ export function declareLeftJoinTable<
             ("changes"."newRowData" IS NOT NULL AND jsonb_typeof("changes"."newRowData") = 'object') AS "hasNewRow"
           FROM ${inputChangesTable} AS "changes"
           WHERE ${isInitializedExpression}
-        `.toStatement(normalizedChangesTableName),
+        `.toStatement(normalizedChangesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowData" jsonb, "newRowData" jsonb, "hasOldRow" boolean, "hasNewRow" boolean'),
         sqlQuery`
           SELECT DISTINCT "changes"."groupKey" AS "groupKey"
           FROM ${quoteSqlIdentifier(normalizedChangesTableName)} AS "changes"
           WHERE "changes"."hasOldRow" OR "changes"."hasNewRow"
-        `.toStatement(affectedGroupsTableName),
+        `.toStatement(affectedGroupsTableName, '"groupKey" jsonb'),
         sqlQuery`
           SELECT
             "groups"."groupKey" AS "groupKey",
@@ -182,7 +182,7 @@ export function declareLeftJoinTable<
           FROM ${quoteSqlIdentifier(affectedGroupsTableName)} AS "groups"
           INNER JOIN "BulldozerStorageEngine" AS "rows"
             ON "rows"."keyPathParent" = ${getGroupRowsPath(sqlExpression`"groups"."groupKey"`)}::jsonb[]
-        `.toStatement(oldLeftJoinRowsTableName),
+        `.toStatement(oldLeftJoinRowsTableName, '"groupKey" jsonb, "rowIdentifier" text, "rowData" jsonb'),
         createLeftRowsStatement({
           groupsTableName: affectedGroupsTableName,
           groupKeySql: `"groups"."groupKey"`,
@@ -226,14 +226,14 @@ export function declareLeftJoinTable<
             ) AS "mapped"
           ) AS "mapped" ON true
           WHERE "changes"."hasNewRow"
-        `.toStatement(newLeftRowsTableName) : sqlQuery`
+        `.toStatement(newLeftRowsTableName, '"groupKey" jsonb, "leftRowIdentifier" text, "leftRowData" jsonb, "leftJoinKey" jsonb') : sqlQuery`
           SELECT
             "rows"."groupKey" AS "groupKey",
             "rows"."leftRowIdentifier" AS "leftRowIdentifier",
             "rows"."leftRowData" AS "leftRowData",
             "rows"."leftJoinKey" AS "leftJoinKey"
           FROM ${quoteSqlIdentifier(oldLeftRowsTableName)} AS "rows"
-        `.toStatement(newLeftRowsTableName),
+        `.toStatement(newLeftRowsTableName, '"groupKey" jsonb, "leftRowIdentifier" text, "leftRowData" jsonb, "leftJoinKey" jsonb'),
         optionsForTrigger.changedSide === "right" ? sqlQuery`
           SELECT
             "rows"."groupKey" AS "groupKey",
@@ -267,14 +267,14 @@ export function declareLeftJoinTable<
             ) AS "mapped"
           ) AS "mapped" ON true
           WHERE "changes"."hasNewRow"
-        `.toStatement(newRightRowsTableName) : sqlQuery`
+        `.toStatement(newRightRowsTableName, '"groupKey" jsonb, "rightRowIdentifier" text, "rightRowData" jsonb, "rightJoinKey" jsonb') : sqlQuery`
           SELECT
             "rows"."groupKey" AS "groupKey",
             "rows"."rightRowIdentifier" AS "rightRowIdentifier",
             "rows"."rightRowData" AS "rightRowData",
             "rows"."rightJoinKey" AS "rightJoinKey"
           FROM ${quoteSqlIdentifier(oldRightRowsTableName)} AS "rows"
-        `.toStatement(newRightRowsTableName),
+        `.toStatement(newRightRowsTableName, '"groupKey" jsonb, "rightRowIdentifier" text, "rightRowData" jsonb, "rightJoinKey" jsonb'),
         createJoinedRowsStatement({
           leftRowsTableName: newLeftRowsTableName,
           rightRowsTableName: newRightRowsTableName,
@@ -343,7 +343,7 @@ export function declareLeftJoinTable<
             ON "oldRows"."groupKey" IS NOT DISTINCT FROM "newRows"."groupKey"
             AND "oldRows"."rowIdentifier" = "newRows"."rowIdentifier"
           WHERE "oldRows"."rowData" IS DISTINCT FROM "newRows"."rowData"
-        `.toStatement(leftJoinChangesTableName),
+        `.toStatement(leftJoinChangesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb'),
         ...[...triggers.values()].flatMap((trigger) => trigger(quoteSqlIdentifier(leftJoinChangesTableName))),
       ];
     });
@@ -403,7 +403,7 @@ export function declareLeftJoinTable<
           end: "end",
           startInclusive: true,
           endInclusive: true,
-        }).toStatement(leftGroupsTableName),
+        }).toStatement(leftGroupsTableName, '"groupkey" jsonb'),
         createLeftRowsStatement({
           groupsTableName: leftGroupsTableName,
           groupKeySql: `"groups"."groupkey"`,

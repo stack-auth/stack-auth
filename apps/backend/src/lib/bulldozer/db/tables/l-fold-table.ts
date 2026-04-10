@@ -153,7 +153,7 @@ export function declareLFoldTable<
           FROM ${fromChangesTable} AS "changes"
         ) AS "changes"
         WHERE ${isInitializedExpression}
-      `.toStatement(normalizedChangesTableName),
+      `.toStatement(normalizedChangesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb, "hasOldRow" boolean, "hasNewRow" boolean, "shouldRecompute" boolean'),
       sqlQuery`
         SELECT
           "changes"."groupKey" AS "groupKey",
@@ -170,7 +170,7 @@ export function declareLFoldTable<
           "changes"."rowIdentifier" AS "boundaryRowIdentifier"
         FROM ${quoteSqlIdentifier(normalizedChangesTableName)} AS "changes"
         WHERE "changes"."shouldRecompute" AND "changes"."hasNewRow"
-      `.toStatement(boundaryCandidatesTableName),
+      `.toStatement(boundaryCandidatesTableName, '"groupKey" jsonb, "boundarySortKey" jsonb, "boundaryRowIdentifier" text'),
       sqlQuery`
         SELECT DISTINCT
           "candidate"."groupKey" AS "groupKey",
@@ -189,11 +189,11 @@ export function declareLFoldTable<
               )
             )
         )
-      `.toStatement(earliestBoundaryCandidatesTableName),
+      `.toStatement(earliestBoundaryCandidatesTableName, '"groupKey" jsonb, "boundarySortKey" jsonb, "boundaryRowIdentifier" text'),
       sqlQuery`
         SELECT DISTINCT "groupKey"
         FROM ${quoteSqlIdentifier(earliestBoundaryCandidatesTableName)}
-      `.toStatement(touchedGroupsTableName),
+      `.toStatement(touchedGroupsTableName, '"groupKey" jsonb'),
       sqlQuery`
         SELECT
           "groups"."groupKey" AS "groupKey",
@@ -205,7 +205,7 @@ export function declareLFoldTable<
         FROM ${quoteSqlIdentifier(touchedGroupsTableName)} AS "groups"
         INNER JOIN "BulldozerStorageEngine" AS "sourceRows"
           ON "sourceRows"."keyPathParent" = ${getSourceSortGroupRowsPath(sqlExpression`"groups"."groupKey"`)}::jsonb[]
-      `.toStatement(currentSourceRowsTableName),
+      `.toStatement(currentSourceRowsTableName, '"groupKey" jsonb, "rowIdentifier" text, "rowSortKey" jsonb, "rowData" jsonb, "prevRowIdentifier" text, "nextRowIdentifier" text'),
       sqlQuery`
         SELECT
           "sourceRows"."groupKey" AS "groupKey",
@@ -223,7 +223,7 @@ export function declareLFoldTable<
             ${options.fromTable.compareSortKeys(sqlExpression`"sourceRows"."rowSortKey"`, sqlExpression`"boundary"."boundarySortKey"`)} = 0
             AND "sourceRows"."rowIdentifier" >= "boundary"."boundaryRowIdentifier"
           )
-      `.toStatement(affectedSourceRowsTableName),
+      `.toStatement(affectedSourceRowsTableName, '"groupKey" jsonb, "rowIdentifier" text, "rowSortKey" jsonb, "rowData" jsonb, "prevRowIdentifier" text, "nextRowIdentifier" text'),
       sqlQuery`
         SELECT
           "affectedRows"."groupKey" AS "groupKey",
@@ -237,7 +237,7 @@ export function declareLFoldTable<
           ON "affectedPrevRows"."groupKey" IS NOT DISTINCT FROM "affectedRows"."groupKey"
           AND "affectedPrevRows"."rowIdentifier" = "affectedRows"."prevRowIdentifier"
         WHERE "affectedPrevRows"."rowIdentifier" IS NULL
-      `.toStatement(firstAffectedRowsTableName),
+      `.toStatement(firstAffectedRowsTableName, '"groupKey" jsonb, "rowIdentifier" text, "rowSortKey" jsonb, "rowData" jsonb, "prevRowIdentifier" text, "nextRowIdentifier" text'),
       sqlQuery`
         SELECT DISTINCT
           "rows"."groupKey" AS "groupKey",
@@ -251,7 +251,7 @@ export function declareLFoldTable<
           "changes"."rowIdentifier" AS "rowIdentifier"
         FROM ${quoteSqlIdentifier(normalizedChangesTableName)} AS "changes"
         WHERE "changes"."shouldRecompute" AND "changes"."hasOldRow"
-      `.toStatement(rowsToClearTableName),
+      `.toStatement(rowsToClearTableName, '"groupKey" jsonb, "rowIdentifier" text'),
       sqlQuery`
         SELECT
           "rowsToClear"."groupKey" AS "groupKey",
@@ -273,7 +273,7 @@ export function declareLFoldTable<
             ELSE '[]'::jsonb
           END
         ) WITH ORDINALITY AS "flatRow"("rowData", "flatIndex")
-      `.toStatement(oldFoldRowsTableName),
+      `.toStatement(oldFoldRowsTableName, '"groupKey" jsonb, "rowIdentifier" text, "rowSortKey" jsonb, "rowData" jsonb'),
       sqlQuery`
         WITH RECURSIVE "recomputedRows" AS (
           SELECT
@@ -358,7 +358,7 @@ export function declareLFoldTable<
           "newState" AS "stateAfter",
           "newRowsData" AS "emittedRowsData"
         FROM "recomputedRows"
-      `.toStatement(recomputedSourceStatesTableName),
+      `.toStatement(recomputedSourceStatesTableName, '"groupKey" jsonb, "rowIdentifier" text, "rowSortKey" jsonb, "stateAfter" jsonb, "emittedRowsData" jsonb'),
       sqlQuery`
         SELECT
           "states"."groupKey" AS "groupKey",
@@ -375,7 +375,7 @@ export function declareLFoldTable<
             ELSE '[]'::jsonb
           END
         ) WITH ORDINALITY AS "flatRow"("rowData", "flatIndex")
-      `.toStatement(newFoldRowsTableName),
+      `.toStatement(newFoldRowsTableName, '"groupKey" jsonb, "rowIdentifier" text, "rowSortKey" jsonb, "rowData" jsonb'),
       sqlStatement`
         INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
         SELECT
@@ -487,7 +487,7 @@ export function declareLFoldTable<
           AND "oldRows"."rowIdentifier" = "newRows"."rowIdentifier"
         WHERE "oldRows"."rowSortKey" IS DISTINCT FROM "newRows"."rowSortKey"
           OR "oldRows"."rowData" IS DISTINCT FROM "newRows"."rowData"
-      `.toStatement(lfoldChangesTableName),
+      `.toStatement(lfoldChangesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb'),
       ...[...triggers.values()].flatMap((trigger) => trigger(quoteSqlIdentifier(lfoldChangesTableName))),
     ];
   };
@@ -547,7 +547,7 @@ export function declareLFoldTable<
           WHERE "groupPath"."keyPathParent" = ${getStorageEnginePath(sourceSortTableId, ["groups"])}::jsonb[]
             AND "groupRowsPath"."keyPath"[cardinality("groupRowsPath"."keyPath")] = to_jsonb('rows'::text)
             AND "sourceRows"."value"->>'prevRowIdentifier' IS NULL
-        `.toStatement(firstSourceRowsTableName),
+        `.toStatement(firstSourceRowsTableName, '"groupKey" jsonb, "rowIdentifier" text, "rowSortKey" jsonb, "rowData" jsonb, "prevRowIdentifier" text, "nextRowIdentifier" text'),
         sqlQuery`
           WITH RECURSIVE "recomputedRows" AS (
             SELECT
@@ -619,7 +619,7 @@ export function declareLFoldTable<
             "newState" AS "stateAfter",
             "newRowsData" AS "emittedRowsData"
           FROM "recomputedRows"
-        `.toStatement(recomputedSourceStatesTableName),
+        `.toStatement(recomputedSourceStatesTableName, '"groupKey" jsonb, "rowIdentifier" text, "rowSortKey" jsonb, "stateAfter" jsonb, "emittedRowsData" jsonb'),
         sqlQuery`
           SELECT
             "states"."groupKey" AS "groupKey",
@@ -636,7 +636,7 @@ export function declareLFoldTable<
               ELSE '[]'::jsonb
             END
           ) WITH ORDINALITY AS "flatRow"("rowData", "flatIndex")
-        `.toStatement(newFoldRowsTableName),
+        `.toStatement(newFoldRowsTableName, '"groupKey" jsonb, "rowIdentifier" text, "rowSortKey" jsonb, "rowData" jsonb'),
         sqlStatement`
           INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
           SELECT

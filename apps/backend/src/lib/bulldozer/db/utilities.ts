@@ -3,15 +3,15 @@ import { templateIdentity } from "@stackframe/stack-shared/dist/utils/strings";
 
 const sqlTemplateLiteral = <T>(type: T) => (strings: TemplateStringsArray, ...values: { sql: string }[]) => ({ type, sql: templateIdentity(strings, ...values.map(v => v.sql)) });
 
-export type SqlStatement = { type: "statement", outputName?: string, sql: string, requiresSequentialExecution?: boolean };
+export type SqlStatement = { type: "statement", outputName?: string, outputColumns?: string, sql: string, requiresSequentialExecution?: boolean };
 export const sqlStatement = sqlTemplateLiteral<"statement">("statement");
 
 export type SqlQuery<R extends void | Iterable<unknown> = void> = { type: "query", sql: string, toStatement(outputName?: string): SqlStatement };
 export const sqlQuery = (...args: Parameters<ReturnType<typeof sqlTemplateLiteral<"query">>>) => {
   return {
     ...sqlTemplateLiteral<"query">("query")(...args),
-    toStatement(outputName?: string) {
-      return { type: "statement", outputName, sql: this.sql } as const;
+    toStatement(outputName?: string, outputColumns?: string) {
+      return { type: "statement", outputName, outputColumns, sql: this.sql } as const;
     }
   };
 };

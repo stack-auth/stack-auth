@@ -166,14 +166,14 @@ export function declareReduceTable<
             ("changes"."newRowData" IS NOT NULL AND jsonb_typeof("changes"."newRowData") = 'object') AS "hasNewRow"
           FROM ${fromChangesTable} AS "changes"
           WHERE ${isInitializedExpression}
-        `.toStatement(normalizedChangesTableName),
+        `.toStatement(normalizedChangesTableName, '"groupKey" jsonb, "hasOldRow" boolean, "hasNewRow" boolean'),
         requiresSequentialExecution: true,
       },
       sqlQuery`
         SELECT DISTINCT "changes"."groupKey" AS "groupKey"
         FROM ${quoteSqlIdentifier(normalizedChangesTableName)} AS "changes"
         WHERE "changes"."hasOldRow" OR "changes"."hasNewRow"
-      `.toStatement(affectedGroupsTableName),
+      `.toStatement(affectedGroupsTableName, '"groupKey" jsonb'),
       // Read old materialized rows for affected groups
       sqlQuery`
         SELECT
@@ -186,7 +186,7 @@ export function declareReduceTable<
           ON "groupRowsPath"."keyPath" = ${getGroupRowsPath(sqlExpression`"groups"."groupKey"`)}::jsonb[]
         INNER JOIN "BulldozerStorageEngine" AS "rows"
           ON "rows"."keyPathParent" = "groupRowsPath"."keyPath"
-      `.toStatement(oldRowsTableName),
+      `.toStatement(oldRowsTableName, '"groupKey" jsonb, "rowIdentifier" text, "rowSortKey" jsonb, "rowData" jsonb'),
       // Compute new reduced rows for affected groups
       sqlQuery`
         WITH "targetGroups" AS (
@@ -194,7 +194,7 @@ export function declareReduceTable<
         ),
         ${computeReducedRowsSql}
         SELECT * FROM "reducedRows"
-      `.toStatement(newRowsTableName),
+      `.toStatement(newRowsTableName, '"groupKey" jsonb, "rowIdentifier" text, "rowSortKey" jsonb, "rowData" jsonb'),
       // Ensure group + rows paths exist for new groups
       sqlStatement`
         INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
@@ -269,7 +269,7 @@ export function declareReduceTable<
           ON "oldRows"."groupKey" IS NOT DISTINCT FROM "newRows"."groupKey"
           AND "oldRows"."rowIdentifier" = "newRows"."rowIdentifier"
         WHERE "oldRows"."rowData" IS DISTINCT FROM "newRows"."rowData"
-      `.toStatement(reduceChangesTableName),
+      `.toStatement(reduceChangesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb'),
       ...[...triggers.values()].flatMap((trigger) => trigger(quoteSqlIdentifier(reduceChangesTableName))),
     ];
   };
@@ -318,14 +318,14 @@ export function declareReduceTable<
           SELECT "groupkey" AS "groupKey" FROM (
             ${options.fromTable.listGroups({ start: "start", end: "end", startInclusive: true, endInclusive: true })}
           ) AS "g"
-        `.toStatement(allGroupsTableName),
+        `.toStatement(allGroupsTableName, '"groupKey" jsonb'),
         sqlQuery`
           WITH "targetGroups" AS (
             SELECT "groupKey" FROM ${quoteSqlIdentifier(allGroupsTableName)}
           ),
           ${computeReducedRowsSql}
           SELECT * FROM "reducedRows"
-        `.toStatement(initRowsTableName),
+        `.toStatement(initRowsTableName, '"groupKey" jsonb, "rowIdentifier" text, "rowSortKey" jsonb, "rowData" jsonb'),
         sqlStatement`
           INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
           SELECT

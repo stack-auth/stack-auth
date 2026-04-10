@@ -73,20 +73,52 @@ export function toExecutableSqlStatements(statements: SqlStatement[]): string {
     `;
   }
 
+  const seqOutputs = new Map<string, string>();
   const executableStatements = statements.map((statement) => {
-    if (statement.outputName == null) {
-      return `${statement.sql};`;
+    let sql = statement.sql;
+    for (const [name, columns] of seqOutputs) {
+      const quotedName = `"${name}"`;
+      if (sql.includes(quotedName)) {
+        const colList = columns.split(",").map(c => {
+          const trimmed = c.trim();
+          const parts = trimmed.split(/\s+/);
+          const colName = parts[0];
+          const colType = parts.slice(1).join(" ");
+          if (colType === "jsonb") {
+            return `COALESCE(r.${colName}, 'null'::jsonb) AS ${colName}`;
+          }
+          return `r.${colName}`;
+        }).join(", ");
+        const subquery = `(SELECT ${colList} FROM "__bulldozer_seq" AS "__s", LATERAL jsonb_to_record("__s"."__output_row") AS r(${columns}) WHERE "__s"."__output_name" = '${name}')`;
+        sql = sql.replaceAll(`${quotedName} AS `, `${subquery} AS `);
+        sql = sql.replaceAll(quotedName, `${subquery} AS ${quotedName}`);
+      }
     }
+    if (statement.outputName == null) {
+      return `${sql};`;
+    }
+    if (statement.outputColumns == null) {
+      return deindent`
+        CREATE TEMP TABLE ${quoteSqlIdentifier(statement.outputName).sql} ON COMMIT DROP AS
+        WITH "__statement_output" AS (
+          ${sql}
+        )
+        SELECT * FROM "__statement_output";
+      `;
+    }
+    seqOutputs.set(statement.outputName, statement.outputColumns);
     return deindent`
-      CREATE TEMP TABLE ${quoteSqlIdentifier(statement.outputName).sql} ON COMMIT DROP AS
-      WITH "__statement_output" AS (
-        ${statement.sql}
-      )
-      SELECT * FROM "__statement_output";
+      INSERT INTO "__bulldozer_seq" ("__output_name", "__output_row")
+      SELECT '${statement.outputName}', to_jsonb("__statement_output")
+      FROM (
+        ${sql}
+      ) AS "__statement_output";
     `;
   }).join("\n\n");
   return deindent`
     ${requiresSortHelpers ? BULLDOZER_SORT_HELPERS_SQL : ""}
+
+    CREATE TEMP TABLE IF NOT EXISTS "__bulldozer_seq" ("__output_name" text NOT NULL, "__output_row" jsonb NOT NULL) ON COMMIT DROP;
 
     ${executableStatements}
   `;

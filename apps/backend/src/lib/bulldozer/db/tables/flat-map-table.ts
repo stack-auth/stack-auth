@@ -71,7 +71,7 @@ export function declareFlatMapTable<
           ) AS "mapped"
         ) AS "newMapped" ON ("changes"."newRowData" IS NOT NULL AND jsonb_typeof("changes"."newRowData") = 'object')
         WHERE ${isInitializedExpression}
-      `.toStatement(mappedChangesTableName),
+      `.toStatement(mappedChangesTableName, '"groupKey" jsonb, "sourceRowIdentifier" text, "hasOldRow" boolean, "hasNewRow" boolean, "oldMappedRows" jsonb, "newMappedRows" jsonb'),
       sqlQuery`
         SELECT
           "changes"."groupKey" AS "groupKey",
@@ -92,7 +92,7 @@ export function declareFlatMapTable<
             ELSE '[]'::jsonb
           END
         ) WITH ORDINALITY AS "flatRow"("rowData", "flatIndex")
-      `.toStatement(oldFlatRowsTableName),
+      `.toStatement(oldFlatRowsTableName, '"groupKey" jsonb, "rowIdentifier" text, "rowData" jsonb'),
       sqlQuery`
         SELECT
           "changes"."groupKey" AS "groupKey",
@@ -113,7 +113,7 @@ export function declareFlatMapTable<
             ELSE '[]'::jsonb
           END
         ) WITH ORDINALITY AS "flatRow"("rowData", "flatIndex")
-      `.toStatement(newFlatRowsTableName),
+      `.toStatement(newFlatRowsTableName, '"groupKey" jsonb, "rowIdentifier" text, "rowData" jsonb'),
       sqlStatement`
         WITH "distinctGroups" AS (
           SELECT DISTINCT "groupKey"
@@ -200,7 +200,7 @@ export function declareFlatMapTable<
           ON "oldRows"."groupKey" IS NOT DISTINCT FROM "newRows"."groupKey"
           AND "oldRows"."rowIdentifier" = "newRows"."rowIdentifier"
         WHERE "oldRows"."rowData" IS DISTINCT FROM "newRows"."rowData"
-      `.toStatement(flatMapChangesTableName),
+      `.toStatement(flatMapChangesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb'),
       ...[...triggers.values()].flatMap((trigger) => trigger(quoteSqlIdentifier(flatMapChangesTableName))),
     ];
   };
@@ -248,7 +248,7 @@ export function declareFlatMapTable<
           end: "end",
           startInclusive: true,
           endInclusive: true,
-        }).toStatement(fromGroupsTableName),
+        }).toStatement(fromGroupsTableName, '"groupkey" jsonb'),
         sqlQuery`
           SELECT
             "groups"."groupkey" AS "groupKey",
@@ -264,7 +264,7 @@ export function declareFlatMapTable<
               endInclusive: true,
             })}
           ) AS "rows"
-        `.toStatement(fromRowsTableName),
+        `.toStatement(fromRowsTableName, '"groupKey" jsonb, "rowIdentifier" text, "rowData" jsonb'),
         sqlQuery`
           SELECT
             "rows"."groupKey" AS "groupKey",
@@ -282,7 +282,7 @@ export function declareFlatMapTable<
               ) AS "mapperInput"
             ) AS "mapped"
           ) AS "mapped" ON true
-        `.toStatement(mappedRowsTableName),
+        `.toStatement(mappedRowsTableName, '"groupKey" jsonb, "sourceRowIdentifier" text, "mappedRows" jsonb'),
         sqlQuery`
           SELECT
             "rows"."groupKey" AS "groupKey",
@@ -298,7 +298,7 @@ export function declareFlatMapTable<
               ELSE '[]'::jsonb
             END
           ) WITH ORDINALITY AS "flatRow"("rowData", "flatIndex")
-        `.toStatement(flatRowsTableName),
+        `.toStatement(flatRowsTableName, '"groupKey" jsonb, "rowIdentifier" text, "rowData" jsonb'),
         sqlStatement`
           WITH "distinctGroups" AS (
             SELECT DISTINCT "groupKey"

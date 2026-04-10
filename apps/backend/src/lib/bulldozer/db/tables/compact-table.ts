@@ -206,14 +206,14 @@ export function declareCompactTable<
             ("changes"."newRowData" IS NOT NULL AND jsonb_typeof("changes"."newRowData") = 'object') AS "hasNewRow"
           FROM ${fromChangesTable} AS "changes"
           WHERE ${isInitializedExpression}
-        `.toStatement(normalizedChangesTableName),
+        `.toStatement(normalizedChangesTableName, '"groupKey" jsonb, "hasOldRow" boolean, "hasNewRow" boolean'),
         requiresSequentialExecution: true,
       },
       sqlQuery`
         SELECT DISTINCT "changes"."groupKey" AS "groupKey"
         FROM ${quoteSqlIdentifier(normalizedChangesTableName)} AS "changes"
         WHERE "changes"."hasOldRow" OR "changes"."hasNewRow"
-      `.toStatement(affectedGroupsTableName),
+      `.toStatement(affectedGroupsTableName, '"groupKey" jsonb'),
       // Read old materialized rows for affected groups
       sqlQuery`
         SELECT
@@ -226,7 +226,7 @@ export function declareCompactTable<
           ON "groupRowsPath"."keyPath" = ${getGroupRowsPath(sqlExpression`"groups"."groupKey"`)}::jsonb[]
         INNER JOIN "BulldozerStorageEngine" AS "rows"
           ON "rows"."keyPathParent" = "groupRowsPath"."keyPath"
-      `.toStatement(oldRowsTableName),
+      `.toStatement(oldRowsTableName, '"groupKey" jsonb, "rowIdentifier" text, "rowSortKey" jsonb, "rowData" jsonb'),
       // Compute new compacted rows for affected groups
       sqlQuery`
         SELECT
@@ -238,7 +238,7 @@ export function declareCompactTable<
         CROSS JOIN LATERAL (
           ${computeCompactedRowsSql(sqlExpression`"groups"."groupKey"`)}
         ) AS "rows"
-      `.toStatement(newRowsTableName),
+      `.toStatement(newRowsTableName, '"groupKey" jsonb, "rowIdentifier" text, "rowSortKey" jsonb, "rowData" jsonb'),
       // Ensure group + rows paths exist for new groups
       sqlStatement`
         INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
@@ -311,7 +311,7 @@ export function declareCompactTable<
           AND "oldRows"."rowIdentifier" = "newRows"."rowIdentifier"
         WHERE "oldRows"."rowSortKey" IS DISTINCT FROM "newRows"."rowSortKey"
           OR "oldRows"."rowData" IS DISTINCT FROM "newRows"."rowData"
-      `.toStatement(compactChangesTableName),
+      `.toStatement(compactChangesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb'),
       ...[...triggers.values()].flatMap((trigger) => trigger(quoteSqlIdentifier(compactChangesTableName))),
     ];
   };
@@ -371,7 +371,7 @@ export function declareCompactTable<
           SELECT "groupkey" AS "groupKey" FROM (
             ${options.boundaryTable.listGroups({ start: "start", end: "end", startInclusive: true, endInclusive: true })}
           ) AS "g2"
-        `.toStatement(allGroupsTableName),
+        `.toStatement(allGroupsTableName, '"groupKey" jsonb'),
         // Compute compacted rows for each group
         sqlQuery`
           SELECT
@@ -383,7 +383,7 @@ export function declareCompactTable<
           CROSS JOIN LATERAL (
             ${computeCompactedRowsSql(sqlExpression`"groups"."groupKey"`)}
           ) AS "rows"
-        `.toStatement(initRowsTableName),
+        `.toStatement(initRowsTableName, '"groupKey" jsonb, "rowIdentifier" text, "rowSortKey" jsonb, "rowData" jsonb'),
         // Store results
         sqlStatement`
           INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")

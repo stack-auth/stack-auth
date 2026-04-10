@@ -81,7 +81,7 @@ export function declareGroupByTable<
             OR "changes"."oldRowData" IS DISTINCT FROM "changes"."newRowData"
             OR "oldGroup"."groupKey" IS DISTINCT FROM "newGroup"."groupKey"
           )
-      `.toStatement(mappedChangesTableName),
+      `.toStatement(mappedChangesTableName, '"rowIdentifier" text, "oldRowData" jsonb, "newRowData" jsonb, "hasOldRow" boolean, "hasNewRow" boolean, "oldGroupKey" jsonb, "newGroupKey" jsonb'),
       sqlStatement`
         INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
         SELECT
@@ -180,7 +180,7 @@ export function declareGroupByTable<
         FROM ${quoteSqlIdentifier(mappedChangesTableName)}
         WHERE "hasNewRow"
           AND (NOT "hasOldRow" OR "oldGroupKey" IS DISTINCT FROM "newGroupKey")
-      `.toStatement(groupedChangesTableName),
+      `.toStatement(groupedChangesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb'),
       ...[...triggers.values()].flatMap((trigger) => trigger(quoteSqlIdentifier(groupedChangesTableName))),
     ];
   };
@@ -226,7 +226,7 @@ export function declareGroupByTable<
           end: "end",
           startInclusive: true,
           endInclusive: true,
-        }).toStatement(fromTableAllRowsTableName),
+        }).toStatement(fromTableAllRowsTableName, '"groupkey" jsonb, "rowidentifier" text, "rowsortkey" jsonb, "rowdata" jsonb'),
         sqlQuery`
           SELECT
             "rows"."rowidentifier" AS "rowIdentifier",
@@ -244,7 +244,7 @@ export function declareGroupByTable<
               ) AS "groupByInput"
             ) AS "mapped"
           ) AS "mapped" ON true
-        `.toStatement(fromTableRowsWithGroupKeyTableName),
+        `.toStatement(fromTableRowsWithGroupKeyTableName, '"rowIdentifier" text, "rowData" jsonb, "groupKey" jsonb'),
         sqlStatement`
           INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
           SELECT

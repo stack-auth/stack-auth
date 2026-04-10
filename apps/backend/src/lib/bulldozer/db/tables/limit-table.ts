@@ -53,14 +53,14 @@ export function declareLimitTable<
           ("changes"."newRowData" IS NOT NULL AND jsonb_typeof("changes"."newRowData") = 'object') AS "hasNewRow"
         FROM ${fromChangesTable} AS "changes"
         WHERE ${isInitializedExpression}
-      `.toStatement(normalizedChangesTableName),
+      `.toStatement(normalizedChangesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb, "hasOldRow" boolean, "hasNewRow" boolean'),
         requiresSequentialExecution: true,
       },
       sqlQuery`
         SELECT DISTINCT "changes"."groupKey" AS "groupKey"
         FROM ${quoteSqlIdentifier(normalizedChangesTableName)} AS "changes"
         WHERE "changes"."hasOldRow" OR "changes"."hasNewRow"
-      `.toStatement(affectedGroupsTableName),
+      `.toStatement(affectedGroupsTableName, '"groupKey" jsonb'),
       sqlQuery`
         SELECT
           "groups"."groupKey" AS "groupKey",
@@ -72,7 +72,7 @@ export function declareLimitTable<
           ON "groupRowsPath"."keyPath" = ${getGroupRowsPath(sqlExpression`"groups"."groupKey"`)}::jsonb[]
         INNER JOIN "BulldozerStorageEngine" AS "rows"
           ON "rows"."keyPathParent" = "groupRowsPath"."keyPath"
-      `.toStatement(oldLimitedRowsTableName),
+      `.toStatement(oldLimitedRowsTableName, '"groupKey" jsonb, "rowIdentifier" text, "rowSortKey" jsonb, "rowData" jsonb'),
       sqlQuery`
         SELECT
           "groups"."groupKey" AS "groupKey",
@@ -135,7 +135,7 @@ export function declareLimitTable<
             LIMIT ${normalizedLimit}
           ) AS "selectedRows"
         ) AS "rows"
-      `.toStatement(newLimitedRowsTableName),
+      `.toStatement(newLimitedRowsTableName, '"groupKey" jsonb, "rowIdentifier" text, "rowSortKey" jsonb, "rowData" jsonb'),
       sqlStatement`
         INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
         SELECT
@@ -203,7 +203,7 @@ export function declareLimitTable<
           AND "oldRows"."rowIdentifier" = "newRows"."rowIdentifier"
         WHERE "oldRows"."rowSortKey" IS DISTINCT FROM "newRows"."rowSortKey"
           OR "oldRows"."rowData" IS DISTINCT FROM "newRows"."rowData"
-      `.toStatement(limitChangesTableName),
+      `.toStatement(limitChangesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb'),
       ...[...triggers.values()].flatMap((trigger) => trigger(quoteSqlIdentifier(limitChangesTableName))),
     ];
   };
@@ -248,7 +248,7 @@ export function declareLimitTable<
           end: "end",
           startInclusive: true,
           endInclusive: true,
-        }).toStatement(fromGroupsTableName),
+        }).toStatement(fromGroupsTableName, '"groupkey" jsonb'),
         sqlQuery`
           SELECT
             "groups"."groupkey" AS "groupKey",
@@ -311,7 +311,7 @@ export function declareLimitTable<
               LIMIT ${normalizedLimit}
             ) AS "selectedRows"
           ) AS "rows"
-        `.toStatement(limitedRowsTableName),
+        `.toStatement(limitedRowsTableName, '"groupKey" jsonb, "rowIdentifier" text, "rowSortKey" jsonb, "rowData" jsonb'),
         sqlStatement`
           INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
           SELECT

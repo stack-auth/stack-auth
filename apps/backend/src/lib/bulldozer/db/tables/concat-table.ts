@@ -114,7 +114,7 @@ export function declareConcatTable<
         FROM ${changesTable} AS "changes"
         WHERE ${isInitializedExpression}
           AND ${rawExpression<boolean>(getInputInitializedSql(table))}
-      `.toStatement(concatChangesTableName),
+      `.toStatement(concatChangesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb'),
       ...[...triggers.values()].flatMap((trigger) => trigger(quoteSqlIdentifier(concatChangesTableName))),
     ];
   };

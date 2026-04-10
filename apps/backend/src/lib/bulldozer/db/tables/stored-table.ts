@@ -92,7 +92,7 @@ export function declareStoredTable<RD extends RowData>(options: {
           SELECT "value"->'rowData' AS "oldRowData"
           FROM "BulldozerStorageEngine"
           WHERE "keyPath" = ${getStorageEnginePath(options.tableId, ["rows", rowIdentifier])}::jsonb[]
-        `.toStatement(oldRowsTableName),
+        `.toStatement(oldRowsTableName, '"oldRowData" jsonb'),
         sqlQuery`
           INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
           VALUES (
@@ -110,11 +110,11 @@ export function declareStoredTable<RD extends RowData>(options: {
             ${rowIdentifierLiteral}::text AS "rowIdentifier",
             'null'::jsonb AS "oldRowSortKey",
             'null'::jsonb AS "newRowSortKey",
-            ${quoteSqlIdentifier(oldRowsTableName)}."oldRowData" AS "oldRowData",
-            ${quoteSqlIdentifier(upsertedRowsTableName)}."newRowData" AS "newRowData"
+            "oldRowData" AS "oldRowData",
+            "newRowData" AS "newRowData"
           FROM ${quoteSqlIdentifier(upsertedRowsTableName)}
           LEFT JOIN ${quoteSqlIdentifier(oldRowsTableName)} ON true
-        `.toStatement(changesTableName),
+        `.toStatement(changesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb'),
         ...[...triggers.values()].flatMap(trigger => trigger(quoteSqlIdentifier(changesTableName)))
       ];
     },
@@ -137,7 +137,7 @@ export function declareStoredTable<RD extends RowData>(options: {
             ${quoteSqlIdentifier(deletedRowsTableName)}."oldRowData" AS "oldRowData",
             'null'::jsonb AS "newRowData"
           FROM ${quoteSqlIdentifier(deletedRowsTableName)}
-        `.toStatement(changesTableName),
+        `.toStatement(changesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb'),
         ...[...triggers.values()].flatMap(trigger => trigger(quoteSqlIdentifier(changesTableName)))
       ];
     },
