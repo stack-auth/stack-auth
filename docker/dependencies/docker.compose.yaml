@@ -203,7 +203,7 @@ services:
   # ================= Adobe S3 Mock =================
   
   s3mock:
-    image: adobe/s3mock:latest
+    image: adobe/s3mock:4.12.2
     ports:
       - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}21:9090"
     environment:

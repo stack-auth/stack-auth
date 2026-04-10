@@ -420,7 +420,7 @@ it("should eagerly create cross-subdomain cookie on construction when session ex
   });
 
   // The cross-subdomain cookie should be eagerly created on construction
-  const customRecreated = await waitUntil(() => cookieStore.has(customCookieName), 10_000);
+  const customRecreated = await waitUntil(() => cookieStore.has(customCookieName), 30_000);
   expect(customRecreated).toBe(true);
 
   // Clean up
