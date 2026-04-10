@@ -1,7 +1,7 @@
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { afterAll, beforeAll, describe, expect } from 'vitest';
-import { test } from '../../../../helpers';
+import { niceFetch, STACK_BACKEND_BASE_URL, test } from '../../../../helpers';
 import { withPortPrefix } from '../../../../helpers/ports';
 import { Auth, backendContext, InternalApiKey, Project, User, niceBackendFetch } from '../../../backend-helpers';
 import { randomUUID } from 'node:crypto';
@@ -1599,6 +1599,21 @@ describe.sequential('External DB Sync - Basic Tests', () => {
       sequencer_enabled: getResponse.body.sequencer_enabled,
       poller_enabled: getResponse.body.poller_enabled,
     });
+  }, TEST_TIMEOUT);
+
+  test('Sync engine ignores missing tenancy queue items', async () => {
+    const response = await niceFetch(new URL('/api/latest/internal/external-db-sync/sync-engine', STACK_BACKEND_BASE_URL), {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'upstash-signature': 'test-bypass',
+      },
+      body: JSON.stringify({
+        tenancyId: randomUUID(),
+      }),
+    });
+
+    expect(response.status).toBe(200);
   }, TEST_TIMEOUT);
 
   /**
