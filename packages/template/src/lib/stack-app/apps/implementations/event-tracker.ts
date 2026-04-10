@@ -62,13 +62,17 @@ export class EventTracker {
   start() {
     if (this._started) return;
     if (!isBrowserLike()) return;
-    const screenObject = Object.getOwnPropertyDescriptor(window, "screen")?.value;
+    // Note: we read `window.screen` / `window.history` directly rather than via
+    // Object.getOwnPropertyDescriptor(...).value. In real browsers these are
+    // accessor properties on Window.prototype (the descriptor has `.get`, not
+    // `.value`), so the descriptor-based lookup silently returns undefined and
+    // this start() would short-circuit, leaving EventTracker dormant.
     if (
       typeof window.addEventListener !== "function"
       || typeof window.removeEventListener !== "function"
       || typeof document.addEventListener !== "function"
       || typeof document.removeEventListener !== "function"
-      || !hasScreenDimensions(screenObject)
+      || !hasScreenDimensions(window.screen)
     ) {
       return;
     }
@@ -105,7 +109,7 @@ export class EventTracker {
   }
 
   private _capturePageView(entryType: "initial" | "push" | "replace" | "pop") {
-    const screenObject = Object.getOwnPropertyDescriptor(window, "screen")?.value;
+    const screenObject = window.screen;
     if (!hasScreenDimensions(screenObject)) {
       return;
     }
@@ -134,7 +138,7 @@ export class EventTracker {
   private _setupPageViewCapture() {
     // Fire initial page-view
     this._capturePageView("initial");
-    const historyObject = Object.getOwnPropertyDescriptor(window, "history")?.value;
+    const historyObject = window.history;
     if (!hasHistoryMethods(historyObject)) {
       return;
     }
@@ -246,7 +250,7 @@ export class EventTracker {
     }
 
     // Restore history methods
-    const historyObject = Object.getOwnPropertyDescriptor(window, "history")?.value;
+    const historyObject = window.history;
     if (hasHistoryMethods(historyObject)) {
       if (this._originalPushState) {
         historyObject.pushState = this._originalPushState;
