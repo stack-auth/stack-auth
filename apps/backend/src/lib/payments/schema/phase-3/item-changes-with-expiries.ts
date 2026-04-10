@@ -25,6 +25,7 @@ import {
   declareSortTable,
 } from "@/lib/bulldozer/db/index";
 import type { CompactedTransactionEntriesTables } from "../phase-2/compacted-transaction-entries";
+import { getSplitAlgoCteSql } from "./split-algo";
 
 const mapper = (sql: string) => ({ type: "mapper" as const, sql });
 const predicate = (sql: string) => ({ type: "predicate" as const, sql });
@@ -171,61 +172,16 @@ export function createItemChangesWithExpiries(entryTables: CompactedTransactionE
   });
 
   // FlatMap: split each (quantity, expiries[]) into individual (subQty, expiresAt) pairs.
-  // Algorithm (mirrors the spec):
-  //   remainingQuantity = row.quantity
-  //   for each expiry in order:
-  //     quantityExpiring = min(remainingQuantity, expiry.quantityExpiring)
-  //     remainingQuantity -= quantityExpiring
-  //     emit (quantityExpiring, expiry.txnEffectiveAtMillis)
-  //   emit (remainingQuantity, null)
+  // For grants (qty >= 0): use LEAST to cap each split at remaining.
+  // For removals (qty < 0): use GREATEST (closer to zero for negatives).
+  // Always emit a final (remaining, null) tail row.
   const splitChanges = declareFlatMapTable({
     tableId: "payments-split-item-changes-with-expiry",
     fromTable: allChangesUnified,
     mapper: mapper(`
       (
         WITH RECURSIVE
-        "expiryArray" AS (
-          SELECT
-            "exp"."value" AS "expiry",
-            "exp"."ordinality" AS "idx",
-            jsonb_array_length("rowData"->'expiries') AS "total"
-          FROM jsonb_array_elements("rowData"->'expiries') WITH ORDINALITY AS "exp"
-        ),
-        "walked" AS (
-          SELECT
-            1 AS "idx",
-            ("rowData"->>'quantity')::numeric AS "inputRemaining",
-            LEAST(
-              ("rowData"->>'quantity')::numeric,
-              COALESCE(("expiryArray"."expiry"->>'quantityExpiring')::numeric, 0)
-            ) AS "quantityExpiring",
-            ("rowData"->>'quantity')::numeric - LEAST(
-              ("rowData"->>'quantity')::numeric,
-              COALESCE(("expiryArray"."expiry"->>'quantityExpiring')::numeric, 0)
-            ) AS "remaining",
-            "expiryArray"."expiry"->'txnEffectiveAtMillis' AS "expiresAtMillis",
-            "expiryArray"."total" AS "total"
-          FROM "expiryArray"
-          WHERE "expiryArray"."idx" = 1
-
-          UNION ALL
-
-          SELECT
-            "walked"."idx" + 1 AS "idx",
-            "walked"."remaining" AS "inputRemaining",
-            LEAST(
-              "walked"."remaining",
-              COALESCE(("expiryArray"."expiry"->>'quantityExpiring')::numeric, 0)
-            ) AS "quantityExpiring",
-            "walked"."remaining" - LEAST(
-              "walked"."remaining",
-              COALESCE(("expiryArray"."expiry"->>'quantityExpiring')::numeric, 0)
-            ) AS "remaining",
-            "expiryArray"."expiry"->'txnEffectiveAtMillis' AS "expiresAtMillis",
-            "walked"."total" AS "total"
-          FROM "walked"
-          INNER JOIN "expiryArray" ON "expiryArray"."idx" = "walked"."idx" + 1
-        )
+        ${getSplitAlgoCteSql()}
         SELECT (
           SELECT COALESCE(jsonb_agg(
             jsonb_build_object(

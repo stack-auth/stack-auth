@@ -11,6 +11,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPaymentsSchema } from "../index";
+import { getSplitAlgoCteSql } from "../phase-3/split-algo";
 import { createTestDb, jsonbExpr } from "./test-helpers";
 
 describe.sequential("payments schema phase 3 (real postgres)", () => {
@@ -188,6 +189,76 @@ describe.sequential("payments schema phase 3 (real postgres)", () => {
       expect(igrCreditsSplits).toHaveLength(2);
       expect(igrCreditsSplits[0]).toMatchObject({ quantity: 30, expiresAtMillis: 3000 });
       expect(igrCreditsSplits[1]).toMatchObject({ quantity: 20, expiresAtMillis: null });
+    });
+  });
+
+
+  // ============================================================
+  // 2b. Splitting algorithm: direct SQL tests (mirrors spec pseudocode)
+  // ============================================================
+
+  describe("splitting algorithm (direct SQL)", () => {
+    const runSplitAlgo = async (quantity: number, expiries: Array<{ expiresAt: number, quantityExpiring: number }>) => {
+      const rowData = JSON.stringify({
+        txnId: "test", txnEffectiveAtMillis: 0, customerType: "user",
+        customerId: "u1", tenancyId: "t1", itemId: "x",
+        quantity,
+        expiries: expiries.map(e => ({ txnEffectiveAtMillis: e.expiresAt, quantityExpiring: e.quantityExpiring })),
+      });
+      const rows = await db.sql.unsafe(`
+        SELECT "result".*
+        FROM (SELECT '${rowData}'::jsonb AS "rowData") AS "input"
+        CROSS JOIN LATERAL (
+          WITH RECURSIVE
+          ${getSplitAlgoCteSql()}
+          SELECT "quantityExpiring"::numeric AS "qty", ("expiresAtMillis" #>> '{}')::numeric AS "exp"
+          FROM "walked"
+          UNION ALL
+          SELECT COALESCE(
+            (SELECT "remaining" FROM "walked" ORDER BY "idx" DESC LIMIT 1),
+            ${quantity}::numeric
+          ), NULL
+        ) AS "result"
+        ORDER BY "exp" NULLS LAST
+      `);
+      return rows.map((r: any) => [Number(r.qty), r.exp == null ? null : Number(r.exp)] as [number, number | null]);
+    };
+
+    it("positive grant, multiple expiries: [10] with expiries [2@100, 3@101, 4@102]", async () => {
+      const result = await runSplitAlgo(10, [
+        { expiresAt: 100, quantityExpiring: 2 },
+        { expiresAt: 101, quantityExpiring: 3 },
+        { expiresAt: 102, quantityExpiring: 4 },
+      ]);
+      expect(result).toEqual([[2, 100], [3, 101], [4, 102], [1, null]]);
+    });
+
+    it("positive grant, expiries exceed grant: [1] with expiries [2@100, 3@101, 4@102]", async () => {
+      const result = await runSplitAlgo(1, [
+        { expiresAt: 100, quantityExpiring: 2 },
+        { expiresAt: 101, quantityExpiring: 3 },
+        { expiresAt: 102, quantityExpiring: 4 },
+      ]);
+      expect(result).toEqual([[1, 100], [0, 101], [0, 102], [0, null]]);
+    });
+
+    it("negative removal, multiple expiries: [-8] with expiries [-3@100, -5@101, -4@102]", async () => {
+      const result = await runSplitAlgo(-8, [
+        { expiresAt: 100, quantityExpiring: -3 },
+        { expiresAt: 101, quantityExpiring: -5 },
+        { expiresAt: 102, quantityExpiring: -4 },
+      ]);
+      expect(result).toEqual([[-3, 100], [-5, 101], [0, 102], [0, null]]);
+    });
+
+    it("no expiries: passes through unchanged", async () => {
+      const result = await runSplitAlgo(10, []);
+      expect(result).toEqual([[10, null]]);
+    });
+
+    it("negative removal, no expiries: passes through unchanged", async () => {
+      const result = await runSplitAlgo(-5, []);
+      expect(result).toEqual([[-5, null]]);
     });
   });
 
