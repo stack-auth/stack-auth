@@ -7,6 +7,7 @@ import { AddManualQa } from "../components/AddManualQa";
 import { KnowledgeBase } from "../components/KnowledgeBase";
 import { Analytics } from "../components/Analytics";
 import { useMcpCallLogs } from "../hooks/useSpacetimeDB";
+import { mcpReviewApi } from "../lib/mcp-review-api";
 import type { McpCallLogRow } from "../types";
 
 type Tab = "calls" | "knowledge" | "analytics";
@@ -16,7 +17,7 @@ export default function App() {
   const [selectedRow, setSelectedRow] = useState<McpCallLogRow | null>(null);
   const [showAddQa, setShowAddQa] = useState(false);
   const [tab, setTab] = useState<Tab>("calls");
-  const { rows, connectionState, connection } = useMcpCallLogs();
+  const { rows, connectionState } = useMcpCallLogs();
 
   if (!user) {
     return (
@@ -126,13 +127,12 @@ export default function App() {
         <AddManualQa
           onClose={() => setShowAddQa(false)}
           onSave={(question, answer, publish) => {
-            if (!connection) return;
-            connection.reducers.addManualQa({
+            mcpReviewApi.addManual({
               question,
               answer,
               publish,
               reviewedBy,
-            }).catch(() => {});
+            }).catch(() => { /* errors are surfaced by UI state */ });
           }}
         />
       )}
@@ -154,14 +154,13 @@ export default function App() {
                 allRows={rows}
                 onClose={() => setSelectedRow(null)}
                 onSaveCorrection={(correlationId, correctedQuestion, correctedAnswer, publish) => {
-                  if (!connection) return;
-                  connection.reducers.updateHumanCorrection({
+                  mcpReviewApi.updateCorrection({
                     correlationId,
                     correctedQuestion,
                     correctedAnswer,
                     publish,
                     reviewedBy,
-                  }).catch(() => {});
+                  }).catch(() => { /* errors are surfaced by UI state */ });
                 }}
               />
             </aside>
@@ -174,20 +173,18 @@ export default function App() {
           <KnowledgeBase
             rows={rows}
             onSave={(correlationId, question, answer, publish) => {
-              if (!connection) return;
-              connection.reducers.updateHumanCorrection({
+              mcpReviewApi.updateCorrection({
                 correlationId,
                 correctedQuestion: question,
                 correctedAnswer: answer,
                 publish,
                 reviewedBy,
-              }).catch(() => {});
+              }).catch(() => { /* errors are surfaced by UI state */ });
             }}
             onDelete={(correlationId) => {
-              if (!connection) return;
-              connection.reducers.deleteQaEntry({
+              mcpReviewApi.delete({
                 correlationId,
-              }).catch(() => {});
+              }).catch(() => { /* errors are surfaced by UI state */ });
             }}
           />
         </main>

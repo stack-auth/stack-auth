@@ -109,5 +109,5 @@ export function useMcpCallLogs() {
     };
   }, []);
 
-  return { rows, connectionState, connection: connRef.current };
+  return { rows, connectionState };
 }

@@ -11,6 +11,7 @@ import {
 } from "spacetimedb";
 
 export default {
+  token: __t.string(),
   correlationId: __t.string(),
   reviewedBy: __t.string(),
 };

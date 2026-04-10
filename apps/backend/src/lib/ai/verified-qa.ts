@@ -25,7 +25,6 @@ async function getVerifiedQaContextInner(): Promise<string> {
     }
   }
 
-  console.log(`[verified-qa] Found ${pairs.length} published Q&A pairs`);
   if (pairs.length === 0) return "";
 
   const formatted = pairs.map((p, i) =>

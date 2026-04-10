@@ -128,10 +128,14 @@ export const update_mcp_qa_review = spacetimedb.reducer(
 
 export const mark_human_reviewed = spacetimedb.reducer(
   {
+    token: t.string(),
     correlationId: t.string(),
     reviewedBy: t.string(),
   },
   (ctx, args) => {
+    if (args.token !== EXPECTED_LOG_TOKEN) {
+      throw new SenderError('Invalid log token');
+    }
     for (const row of ctx.db.mcpCallLog.iter()) {
       if (row.correlationId === args.correlationId) {
         ctx.db.mcpCallLog.delete(row);
@@ -149,6 +153,7 @@ export const mark_human_reviewed = spacetimedb.reducer(
 
 export const update_human_correction = spacetimedb.reducer(
   {
+    token: t.string(),
     correlationId: t.string(),
     correctedQuestion: t.string(),
     correctedAnswer: t.string(),
@@ -156,6 +161,9 @@ export const update_human_correction = spacetimedb.reducer(
     reviewedBy: t.string(),
   },
   (ctx, args) => {
+    if (args.token !== EXPECTED_LOG_TOKEN) {
+      throw new SenderError('Invalid log token');
+    }
     for (const row of ctx.db.mcpCallLog.iter()) {
       if (row.correlationId === args.correlationId) {
         ctx.db.mcpCallLog.delete(row);
@@ -177,12 +185,16 @@ export const update_human_correction = spacetimedb.reducer(
 
 export const add_manual_qa = spacetimedb.reducer(
   {
+    token: t.string(),
     question: t.string(),
     answer: t.string(),
     publish: t.bool(),
     reviewedBy: t.string(),
   },
   (ctx, args) => {
+    if (args.token !== EXPECTED_LOG_TOKEN) {
+      throw new SenderError('Invalid log token');
+    }
     ctx.db.mcpCallLog.insert({
       id: 0n,
       correlationId: ctx.newUuidV4().toString(),
@@ -208,9 +220,13 @@ export const add_manual_qa = spacetimedb.reducer(
 
 export const delete_qa_entry = spacetimedb.reducer(
   {
+    token: t.string(),
     correlationId: t.string(),
   },
   (ctx, args) => {
+    if (args.token !== EXPECTED_LOG_TOKEN) {
+      throw new SenderError('Invalid log token');
+    }
     for (const row of ctx.db.mcpCallLog.iter()) {
       if (row.correlationId === args.correlationId) {
         ctx.db.mcpCallLog.delete(row);
