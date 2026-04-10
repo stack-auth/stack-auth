@@ -231,17 +231,26 @@ write_files:
       log "init-services done (${elapsed}s)."
 
       log "Running migrations..."
-      # NODE_OPTIONS=--jitless disables V8's JIT and runs the Ignition
-      # interpreter only. Migrations are short and I/O-bound so the perf hit
-      # doesn't matter, and it makes the process immune to V8-JIT ↔ QEMU-TCG
-      # mistranslation crashes that otherwise kill the node process with
-      # SIGTRAP (exit 133) during cross-arch builds.
+      # Capture stdout+stderr so failures surface the actual node error in
+      # the host-visible provision log instead of being swallowed by the
+      # serial-only stream.
+      migrate_log="$(mktemp)"
+      set +e
       docker exec \
         --env-file /etc/stack-build.env \
         --env-file /etc/stack-build-computed.env \
-        -e NODE_OPTIONS=--jitless \
         stack-build-init \
-        sh -c 'cd /app/apps/backend && node dist/db-migrations.mjs migrate && node dist/db-migrations.mjs seed'
+        sh -c 'cd /app/apps/backend && node dist/db-migrations.mjs migrate && node dist/db-migrations.mjs seed' \
+        > "$migrate_log" 2>&1
+      migrate_status=$?
+      set -e
+      if [ "$migrate_status" -ne 0 ]; then
+        log "MIGRATIONS FAILED (exit ${migrate_status}) — last 200 lines of migration output:"
+        tail -200 "$migrate_log" | while IFS= read -r line; do log "migrate: $line"; done || true
+        rm -f "$migrate_log"
+        exit "$migrate_status"
+      fi
+      rm -f "$migrate_log"
       log "Migrations + seed complete."
 
       log "Stopping deps container..."
