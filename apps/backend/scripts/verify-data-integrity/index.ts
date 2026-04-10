@@ -1,3 +1,4 @@
+import { syncExternalDatabases } from "@/lib/external-db-sync";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import type { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
@@ -228,6 +229,10 @@ async function main() {
 
       if (!shouldSkipClickhouse && clickhouseAvailable && tenancy) {
         await recurse("[clickhouse sync]", async (recurse) => {
+          // Flush any pending ClickHouse syncs by running a direct sync before verifying.
+          // This avoids race conditions where QStash hasn't delivered all sync callbacks yet.
+          await syncExternalDatabases(tenancy);
+
           await verifyClickhouseSync({
             tenancy,
             projectId,
