@@ -155,13 +155,62 @@ write_files:
     permissions: '0755'
     content: |
       #!/bin/bash
-      set -euo pipefail
+      set -uo pipefail
 
-      until nc -z 127.0.0.1 5432 >/dev/null 2>&1; do sleep 1; done
-      until curl -sf http://127.0.0.1:8123/ping >/dev/null 2>&1; do sleep 1; done
-      until curl -sf http://127.0.0.1:8071/api/v1/health/ >/dev/null 2>&1; do sleep 1; done
-      until curl -sf http://127.0.0.1:9090/minio/health/live >/dev/null 2>&1; do sleep 1; done
-      until [ "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1:8080/ 2>/dev/null || true)" = "401" ]; do sleep 1; done
+      # Hard upper bound across the whole dep wait. Under TCG every service
+      # init is 5-20x slower than native, so we allow a generous budget, but
+      # if we cross it something is genuinely stuck and we need to surface it.
+      DEPS_TIMEOUT="${STACK_DEPS_TIMEOUT:-1500}"
+      DEPS_CONTAINER="${STACK_DEPS_CONTAINER:-stack-build-init}"
+      start=$SECONDS
+      log() { /usr/local/bin/log-provision "wait-for-deps: $*"; }
+
+      dump_diagnostics() {
+        log "dumping diagnostics for stuck dep wait..."
+        log "--- docker ps -a ---"
+        docker ps -a 2>&1 | while IFS= read -r line; do log "ps: $line"; done || true
+        log "--- docker logs ${DEPS_CONTAINER} (last 300 lines) ---"
+        docker logs --tail 300 "$DEPS_CONTAINER" 2>&1 | while IFS= read -r line; do log "deps: $line"; done || true
+        log "--- per-service probes ---"
+        nc -z 127.0.0.1 5432 >/dev/null 2>&1 && log "postgres:5432 reachable" || log "postgres:5432 NOT reachable"
+        curl -sf --max-time 3 http://127.0.0.1:8123/ping >/dev/null 2>&1 && log "clickhouse:8123 reachable" || log "clickhouse:8123 NOT reachable"
+        curl -sf --max-time 3 http://127.0.0.1:8071/api/v1/health/ >/dev/null 2>&1 && log "svix:8071 reachable" || log "svix:8071 NOT reachable"
+        curl -sf --max-time 3 http://127.0.0.1:9090/minio/health/live >/dev/null 2>&1 && log "minio:9090 reachable" || log "minio:9090 NOT reachable"
+        code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 http://127.0.0.1:8080/ 2>/dev/null || true)
+        [ "$code" = "401" ] && log "qstash:8080 reachable (401)" || log "qstash:8080 NOT reachable (code=${code:-none})"
+      }
+
+      wait_for() {
+        local name="$1" probe="$2" elapsed
+        local svc_start=$SECONDS
+        local next_heartbeat=$((svc_start + 30))
+        while true; do
+          if eval "$probe" >/dev/null 2>&1; then
+            elapsed=$((SECONDS - svc_start))
+            log "${name} ready (${elapsed}s)"
+            return 0
+          fi
+          if [ "$SECONDS" -ge "$next_heartbeat" ]; then
+            log "still waiting for ${name} ($((SECONDS - svc_start))s elapsed)"
+            next_heartbeat=$((SECONDS + 30))
+          fi
+          if [ "$((SECONDS - start))" -ge "$DEPS_TIMEOUT" ]; then
+            elapsed=$((SECONDS - start))
+            log "TIMEOUT waiting for ${name} after ${elapsed}s (hard cap ${DEPS_TIMEOUT}s)"
+            dump_diagnostics
+            exit 1
+          fi
+          sleep 2
+        done
+      }
+
+      log "starting dep wait (timeout=${DEPS_TIMEOUT}s)"
+      wait_for "postgres"   'nc -z 127.0.0.1 5432'
+      wait_for "clickhouse" 'curl -sf http://127.0.0.1:8123/ping'
+      wait_for "svix"       'curl -sf http://127.0.0.1:8071/api/v1/health/'
+      wait_for "minio"      'curl -sf http://127.0.0.1:9090/minio/health/live'
+      wait_for "qstash"     '[ "$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/ 2>/dev/null || true)" = "401" ]'
+      log "all deps ready ($((SECONDS - start))s total)"
 
   - path: /etc/stack-build-computed.env
     content: |
