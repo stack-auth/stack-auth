@@ -4,9 +4,9 @@
   "version": "2.8.80",
   "type": "module",
   "scripts": {
-    "dev": "pnpm spacetime:publish:local && next dev --turbopack --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}26",
+    "dev": "pnpm spacetime:publish:local && next dev --turbopack --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}41",
     "build": "next build",
-    "start": "next start --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}26",
+    "start": "next start --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}41",
     "typecheck": "tsc --noEmit",
     "lint": "eslint --ext .ts,.tsx .",
     "clean": "rimraf .next && rimraf node_modules",
