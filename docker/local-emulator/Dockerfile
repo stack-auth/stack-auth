@@ -105,20 +105,17 @@ RUN cp $(which qstash) /qstash-binary 2>/dev/null || \
 
 # ── Strip / compress service binaries (parallel stages) ──────────────────────
 
-FROM debian:trixie-slim AS strip-clickhouse
-COPY --from=clickhouse-bin /usr/bin/clickhouse /usr/bin/clickhouse
-RUN apt-get update && apt-get install -y --no-install-recommends binutils && \
-    strip --strip-all /usr/bin/clickhouse && \
-    rm -rf /var/lib/apt/lists/*
-
 FROM debian:trixie-slim AS upx-compress
-RUN apt-get update && apt-get install -y --no-install-recommends upx-ucl && \
+RUN apt-get update && apt-get install -y --no-install-recommends upx-ucl binutils && \
     rm -rf /var/lib/apt/lists/*
+COPY --from=clickhouse-bin /usr/bin/clickhouse /out/clickhouse
 COPY --from=svix-bin /usr/local/bin/svix-server /out/svix-server
 COPY --from=minio-bin /usr/bin/minio /out/minio
 COPY --from=mc-bin /usr/bin/mc /out/mc
 COPY --from=qstash-bin /qstash-binary /out/qstash
-RUN upx -9 /out/minio /out/svix-server /out/mc /out/qstash
+RUN chmod u+w /out/* && \
+    strip --strip-all /out/clickhouse /out/minio /out/svix-server /out/mc /out/qstash && \
+    upx -9 /out/minio /out/svix-server /out/mc /out/qstash
 
 
 # ── Final image ───────────────────────────────────────────────────────────────
@@ -160,8 +157,8 @@ COPY --from=inbucket-bin /opt/inbucket /opt/inbucket
 # Svix (UPX-compressed)
 COPY --from=upx-compress /out/svix-server /usr/local/bin/svix-server
 
-# ClickHouse (stripped)
-COPY --from=strip-clickhouse /usr/bin/clickhouse /usr/bin/clickhouse
+# ClickHouse (stripped only)
+COPY --from=upx-compress /out/clickhouse /usr/bin/clickhouse
 RUN ln -sf /usr/bin/clickhouse /usr/bin/clickhouse-server && \
     ln -sf /usr/bin/clickhouse /usr/bin/clickhouse-client
 

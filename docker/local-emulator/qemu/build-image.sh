@@ -176,6 +176,46 @@ prepare_bundle_artifacts() {
   printf "%s" "$current_ids" > "$bundle_meta"
 }
 
+contains_provision_marker() {
+  local provision_log="$1"
+  local serial_log="$2"
+  local marker="$3"
+
+  if [ -f "$provision_log" ] && grep -Fqx "$marker" "$provision_log" 2>/dev/null; then
+    return 0
+  fi
+
+  if [ -f "$serial_log" ] && LC_ALL=C strings -a "$serial_log" 2>/dev/null | grep -Fqx "$marker" 2>/dev/null; then
+    return 0
+  fi
+
+  return 1
+}
+
+line_count() {
+  local file="$1"
+  local count=0
+
+  if [ -f "$file" ]; then
+    count="$(wc -l < "$file" | tr -d '[:space:]')" || count=0
+  fi
+
+  case "$count" in
+    ''|*[!0-9]*) count=0 ;;
+  esac
+
+  printf '%s\n' "$count"
+}
+
+persist_provision_logs() {
+  local arch="$1"
+  local serial_log="$2"
+  local provision_log="$3"
+
+  cp "$serial_log" "$IMAGE_DIR/provision-emulator-${arch}.log" 2>/dev/null || true
+  cp "$provision_log" "$IMAGE_DIR/provision-emulator-${arch}.progress.log" 2>/dev/null || true
+}
+
 build_one() {
   local arch="$1"
   local base_img="$IMAGE_DIR/debian-${DEBIAN_VERSION}-base-${arch}.qcow2"
@@ -192,8 +232,11 @@ build_one() {
   local bundle_iso="$tmp_dir/bundle.iso"
   local bundle_dir="$tmp_dir/bundle"
   local serial_log="$tmp_dir/serial.log"
+  local provision_log="$tmp_dir/provision.log"
   local pidfile="$tmp_dir/qemu.pid"
-  local qemu_base pid elapsed
+  local qemu_base pid elapsed total_build_lines
+  local last_build_lines=0
+  local guest_exited=false
   local start_time=$SECONDS
 
   cp "$base_img" "$tmp_img"
@@ -213,6 +256,7 @@ build_one() {
   make_iso_from_dir "$bundle_iso" "STACKBUNDLE" "$bundle_dir"
 
   : > "$serial_log"
+  : > "$provision_log"
   qemu_base="$(qemu_cmd_prefix_for_arch "$arch")"
 
   # shellcheck disable=SC2086
@@ -225,6 +269,7 @@ build_one() {
     -drive "file=$bundle_iso,format=raw,if=virtio,readonly=on" \
     -netdev user,id=net0 \
     -device virtio-net-pci,netdev=net0 \
+    -virtfs "local,path=$tmp_dir,mount_tag=hostfs,security_model=none" \
     -serial "file:$serial_log" \
     -display none \
     -daemonize \
@@ -233,23 +278,55 @@ build_one() {
   pid="$(cat "$pidfile")"
   elapsed=0
   while [ "$elapsed" -lt "$PROVISION_TIMEOUT" ]; do
-    if grep -q "STACK_CLOUD_INIT_DONE" "$serial_log" 2>/dev/null; then
+    if contains_provision_marker "$provision_log" "$serial_log" "STACK_CLOUD_INIT_DONE"; then
       break
     fi
+
+    if [ -f "$provision_log" ]; then
+      total_build_lines="$(line_count "$provision_log")"
+      if [ "$total_build_lines" -gt "$last_build_lines" ]; then
+        echo ""
+        sed -n "$((last_build_lines + 1)),${total_build_lines}p" "$provision_log" 2>/dev/null | while IFS= read -r msg; do
+          if [ "$msg" = "STACK_CLOUD_INIT_DONE" ]; then
+            continue
+          fi
+          printf "  [%3ds] %s\n" "$elapsed" "$msg"
+        done
+        last_build_lines="$total_build_lines"
+      fi
+    fi
+
+    if ! kill -0 "$pid" 2>/dev/null; then
+      guest_exited=true
+      break
+    fi
+
     sleep 5
     elapsed=$((SECONDS - start_time))
     printf "\r  [%3ds / %ds] provisioning emulator..." "$elapsed" "$PROVISION_TIMEOUT"
   done
   echo ""
 
-  if ! grep -q "STACK_CLOUD_INIT_DONE" "$serial_log" 2>/dev/null; then
-    err "Provisioning timed out for emulator (${arch})"
-    tail -50 "$serial_log" >&2 || true
+  if ! contains_provision_marker "$provision_log" "$serial_log" "STACK_CLOUD_INIT_DONE"; then
+    if [ "$guest_exited" = true ]; then
+      err "Provisioning exited before completion for emulator (${arch})"
+    else
+      err "Provisioning timed out for emulator (${arch})"
+    fi
+
+    if [ -s "$provision_log" ]; then
+      tail -50 "$provision_log" >&2 || true
+    else
+      LC_ALL=C strings -a "$serial_log" 2>/dev/null | tail -50 >&2 || tail -50 "$serial_log" >&2 || true
+    fi
+
     if kill -0 "$pid" 2>/dev/null; then
       kill "$pid" 2>/dev/null || true
       sleep 1
       kill -9 "$pid" 2>/dev/null || true
     fi
+
+    persist_provision_logs "$arch" "$serial_log" "$provision_log"
     rm -rf "$tmp_dir"
     exit 1
   fi
@@ -267,7 +344,7 @@ build_one() {
     kill -9 "$pid" 2>/dev/null || true
   fi
 
-  cp "$serial_log" "$IMAGE_DIR/provision-emulator-${arch}.log"
+  persist_provision_logs "$arch" "$serial_log" "$provision_log"
 
   log "Compressing final image (this may take several minutes)..."
   qemu-img convert -p -O qcow2 -c "$tmp_img" "$final_img"
