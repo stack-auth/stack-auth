@@ -62,11 +62,6 @@ export class EventTracker {
   start() {
     if (this._started) return;
     if (!isBrowserLike()) return;
-    // Note: we read `window.screen` / `window.history` directly rather than via
-    // Object.getOwnPropertyDescriptor(...).value. In real browsers these are
-    // accessor properties on Window.prototype (the descriptor has `.get`, not
-    // `.value`), so the descriptor-based lookup silently returns undefined and
-    // this start() would short-circuit, leaving EventTracker dormant.
     if (
       typeof window.addEventListener !== "function"
       || typeof window.removeEventListener !== "function"
