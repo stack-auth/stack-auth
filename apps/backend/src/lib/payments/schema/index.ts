@@ -31,11 +31,16 @@ export function createPaymentsSchema() {
 
   const seedStoredTablesArray = Object.values(seedEventsStoredTables);
 
-  /** Phase 1+2 tables in init order (for Phase 1 and Phase 2 tests) */
-  const _allPhase1And2Tables = [
+  /** Phase 1 tables only: stored tables → events → transactions */
+  const _allPhase1Tables = [
     ...seedStoredTablesArray,
     ...events._allEventTables,
     ...txnTables._allTransactionTables,
+  ] as const;
+
+  /** Phase 1+2 tables in init order */
+  const _allPhase1And2Tables = [
+    ..._allPhase1Tables,
     ...entryTables._allCompactedTransactionEntriesTables,
   ] as const;
 
@@ -63,6 +68,7 @@ export function createPaymentsSchema() {
     ...ownedProductsTables,
     ...changeTables,
     ...itemQuantitiesTables,
+    _allPhase1Tables,
     _allPhase1And2Tables,
     _allTables,
     _categories,

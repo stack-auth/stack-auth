@@ -475,9 +475,9 @@ export type ItemChangeWithExpiryRow = {
 export type ItemQuantityRow = {
   txnEffectiveAtMillis: number,
   txnId: string,
-  netQuantity: number,
+  /** Map of itemId → net quantity for all items this customer has interacted with */
+  itemQuantities: Record<string, number>,
   customerType: CustomerType,
   customerId: string,
   tenancyId: string,
-  itemId: string,
 };

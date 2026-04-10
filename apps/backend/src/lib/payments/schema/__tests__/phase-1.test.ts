@@ -30,7 +30,7 @@ describe.sequential("payments schema phase 1 (real postgres)", () => {
 
   beforeAll(async () => {
     await db.setup();
-    for (const table of schema._allPhase1And2Tables) {
+    for (const table of schema._allPhase1Tables) {
       await runStatements(table.init());
     }
   });
