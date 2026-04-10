@@ -13,9 +13,6 @@ async function advancePastAccessTokenRefresh() {
 
 function getSentEventTypes(sentBodies: string[]) {
   const [body] = sentBodies;
-  if (body == null) {
-    throw new Error("Expected EventTracker to send an analytics batch.");
-  }
 
   const payload = JSON.parse(body);
   if (typeof payload !== "object" || payload === null || !("events" in payload) || !Array.isArray(payload.events)) {
