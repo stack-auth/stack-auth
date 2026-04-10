@@ -112,15 +112,21 @@ qemu_cmd_prefix_for_arch() {
   case "$arch" in
     arm64)
       local accel="tcg"
+      # Under TCG (software emulation on an amd64 host) -cpu max advertises
+      # armv8.5+ features (PAC, BTI, SVE, LSE atomics…) that V8 happily emits
+      # JIT code for, but QEMU TCG mistranslates some of those instructions
+      # and the node process crashes with SIGTRAP during migrations. Falling
+      # back to cortex-a72 limits V8 to armv8.0-a, which TCG handles cleanly.
+      local cpu="cortex-a72"
       if [ "$HOST_ARCH" = "arm64" ]; then
         case "$HOST_OS" in
-          darwin) accel="hvf" ;;
-          linux) [ -w /dev/kvm ] && accel="kvm" ;;
+          darwin) accel="hvf"; cpu="max" ;;
+          linux) [ -w /dev/kvm ] && { accel="kvm"; cpu="max"; } ;;
         esac
       fi
       local firmware
       firmware="$(find_aarch64_firmware)"
-      echo "qemu-system-aarch64 -machine virt -accel $accel -cpu max -bios $firmware"
+      echo "qemu-system-aarch64 -machine virt -accel $accel -cpu $cpu -bios $firmware"
       ;;
     amd64)
       local accel="tcg"
@@ -254,6 +260,9 @@ build_one() {
   mkdir -p "$bundle_dir"
   cp "$bundle_tgz" "$bundle_dir/img.tgz"
   cp "$BUILD_ENV_FILE" "$bundle_dir/build.env"
+  # Tell the guest which arch it's being built for so cross-arch (TCG) builds
+  # can skip the smoke test, which isn't reliable under software emulation.
+  printf 'STACK_EMULATOR_BUILD_ARCH=%s\n' "$arch" > "$bundle_dir/build-arch.env"
   make_iso_from_dir "$bundle_iso" "STACKBUNDLE" "$bundle_dir"
 
   : > "$serial_log"

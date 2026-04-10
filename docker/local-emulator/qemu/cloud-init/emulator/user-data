@@ -48,6 +48,11 @@ write_files:
         cp /mnt/stack-bundle/build.env /etc/stack-build.env
       fi
 
+      # Copy per-arch build metadata (used to skip smoke test on cross-arch TCG builds)
+      if [ -f /mnt/stack-bundle/build-arch.env ]; then
+        cp /mnt/stack-bundle/build-arch.env /etc/stack-build-arch.env
+      fi
+
   - path: /usr/local/bin/render-stack-env
     permissions: '0755'
     content: |
@@ -226,9 +231,15 @@ write_files:
       log "init-services done (${elapsed}s)."
 
       log "Running migrations..."
+      # NODE_OPTIONS=--jitless disables V8's JIT and runs the Ignition
+      # interpreter only. Migrations are short and I/O-bound so the perf hit
+      # doesn't matter, and it makes the process immune to V8-JIT ↔ QEMU-TCG
+      # mistranslation crashes that otherwise kill the node process with
+      # SIGTRAP (exit 133) during cross-arch builds.
       docker exec \
         --env-file /etc/stack-build.env \
         --env-file /etc/stack-build-computed.env \
+        -e NODE_OPTIONS=--jitless \
         stack-build-init \
         sh -c 'cd /app/apps/backend && node dist/db-migrations.mjs migrate && node dist/db-migrations.mjs seed'
       log "Migrations + seed complete."
@@ -258,51 +269,67 @@ write_files:
       DOCKERFILE
       log "Slim image built."
 
-      log "Running smoke test on slim image..."
-      docker run --rm --name smoke-test \
-        --network host \
-        --env-file /etc/stack-build.env \
-        --env-file /etc/stack-build-computed.env \
-        -e STACK_SKIP_MIGRATIONS=true \
-        -e STACK_SKIP_SEED_SCRIPT=true \
-        -e STACK_RUNTIME_WORK_DIR=/app \
-        -v stack-postgres-data:/data/postgres \
-        -v stack-redis-data:/data/redis \
-        -v stack-clickhouse-data:/data/clickhouse \
-        -v stack-minio-data:/data/minio \
-        -v stack-inbucket-data:/data/inbucket \
-        -d stack-local-emulator-slim
-
-      smoke_timeout=300
-      smoke_elapsed=0
-      smoke_passed=false
-      while [ "$smoke_elapsed" -lt "$smoke_timeout" ]; do
-        code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://127.0.0.1:8102/health?db=1 2>/dev/null || true)
-        if [ "$code" = "200" ]; then
-          smoke_passed=true
-          break
-        fi
-        sleep 2
-        smoke_elapsed=$((smoke_elapsed + 2))
-      done
-
-      if [ "$smoke_passed" = "false" ]; then
-        log "SMOKE TEST FAILED: backend /health?db=1 did not return 200 within ${smoke_timeout}s"
-        log "--- docker ps -a ---"
-        docker ps -a 2>&1 | while IFS= read -r line; do log "ps: $line"; done || true
-        log "--- smoke-test container logs (last 200 lines) ---"
-        docker logs --tail 200 smoke-test 2>&1 | while IFS= read -r line; do log "smoke-test: $line"; done || true
-        log "--- free -m ---"
-        free -m 2>&1 | while IFS= read -r line; do log "mem: $line"; done || true
-        log "--- curl -v /health?db=1 ---"
-        curl -v --max-time 5 http://127.0.0.1:8102/health?db=1 2>&1 | while IFS= read -r line; do log "curl: $line"; done || true
-        docker stop smoke-test 2>/dev/null || true
-        exit 1
+      # Determine build arch to decide whether to run the smoke test. Cross-arch
+      # (TCG) builds can't reliably run the Next.js backend inside the smoke
+      # test container: V8 JIT ↔ QEMU TCG mistranslations crash the process,
+      # and even with --jitless the backend is too slow to respond within any
+      # sane timeout. amd64 builds run under KVM and are unaffected.
+      BUILD_ARCH=""
+      if [ -f /etc/stack-build-arch.env ]; then
+        # shellcheck disable=SC1091
+        . /etc/stack-build-arch.env
+        BUILD_ARCH="${STACK_EMULATOR_BUILD_ARCH:-}"
       fi
 
-      docker stop smoke-test 2>/dev/null || true
-      sleep 2
-      log "Smoke test passed (${smoke_elapsed}s)."
+      if [ "$BUILD_ARCH" = "arm64" ]; then
+        log "Skipping smoke test: build arch is arm64 and cross-arch TCG can't reliably run the backend."
+      else
+        log "Running smoke test on slim image..."
+        docker run --rm --name smoke-test \
+          --network host \
+          --env-file /etc/stack-build.env \
+          --env-file /etc/stack-build-computed.env \
+          -e STACK_SKIP_MIGRATIONS=true \
+          -e STACK_SKIP_SEED_SCRIPT=true \
+          -e STACK_RUNTIME_WORK_DIR=/app \
+          -v stack-postgres-data:/data/postgres \
+          -v stack-redis-data:/data/redis \
+          -v stack-clickhouse-data:/data/clickhouse \
+          -v stack-minio-data:/data/minio \
+          -v stack-inbucket-data:/data/inbucket \
+          -d stack-local-emulator-slim
+
+        smoke_timeout=300
+        smoke_elapsed=0
+        smoke_passed=false
+        while [ "$smoke_elapsed" -lt "$smoke_timeout" ]; do
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://127.0.0.1:8102/health?db=1 2>/dev/null || true)
+          if [ "$code" = "200" ]; then
+            smoke_passed=true
+            break
+          fi
+          sleep 2
+          smoke_elapsed=$((smoke_elapsed + 2))
+        done
+
+        if [ "$smoke_passed" = "false" ]; then
+          log "SMOKE TEST FAILED: backend /health?db=1 did not return 200 within ${smoke_timeout}s"
+          log "--- docker ps -a ---"
+          docker ps -a 2>&1 | while IFS= read -r line; do log "ps: $line"; done || true
+          log "--- smoke-test container logs (last 200 lines) ---"
+          docker logs --tail 200 smoke-test 2>&1 | while IFS= read -r line; do log "smoke-test: $line"; done || true
+          log "--- free -m ---"
+          free -m 2>&1 | while IFS= read -r line; do log "mem: $line"; done || true
+          log "--- curl -v /health?db=1 ---"
+          curl -v --max-time 5 http://127.0.0.1:8102/health?db=1 2>&1 | while IFS= read -r line; do log "curl: $line"; done || true
+          docker stop smoke-test 2>/dev/null || true
+          exit 1
+        fi
+
+        docker stop smoke-test 2>/dev/null || true
+        sleep 2
+        log "Smoke test passed (${smoke_elapsed}s)."
+      fi
 
       log "Flattening image (docker export/import)..."
       docker create --name flatten stack-local-emulator-slim /bin/true
