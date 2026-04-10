@@ -170,3 +170,6 @@ A: In `apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/vercel/pag
 
 Q: Why can restricted users appear logged out on auth handler pages even with a valid session?
 A: `useUser()` filters out restricted users by default. In `packages/template/src/components-page/auth-page.tsx`, use `useUser({ includeRestricted: true })` and explicitly redirect restricted users to onboarding when `automaticRedirect` is enabled.
+
+Q: Why can external-db-sync sequencer throw `operator does not exist: text = uuid` on team updates?
+A: In `apps/backend/src/app/api/latest/internal/external-db-sync/sequencer/route.ts`, the TEAM_INVITATION cascade compares JSON text (`"VerificationCode"."data"->>'team_id'`) against `"Team"."teamId"` (`uuid`). Cast the UUID side to text (`changed_teams."teamId"::text`) in the WHERE clause so Postgres type resolution succeeds and team-invitation re-sync marking works.
