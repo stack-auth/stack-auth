@@ -1,5 +1,7 @@
 [![Stack Logo](/.github/assets/logo.png)](https://stack-auth.com)
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/stack-auth/stack-auth)
+
 <h3 align="center">
   <a href="https://docs.stack-auth.com">📘 Docs</a>
   | <a href="https://stack-auth.com/">☁️ Hosted Version</a>

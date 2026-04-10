@@ -1,0 +1,12 @@
+{
+  "name": "@stackframe/internal-tool-module",
+  "private": true,
+  "version": "2.8.80",
+  "type": "module",
+  "dependencies": {
+    "spacetimedb": "^2.1.0"
+  },
+  "devDependencies": {
+    "typescript": "5.9.3"
+  }
+}

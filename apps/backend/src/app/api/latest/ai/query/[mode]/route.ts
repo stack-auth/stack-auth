@@ -11,6 +11,10 @@ import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Json } from "@stackframe/stack-shared/dist/utils/json";
 import { generateText, ModelMessage, stepCountIs, streamText } from "ai";
+import { logMcpCall } from "@/lib/ai/mcp-logger";
+import { reviewMcpCall } from "@/lib/ai/qa-reviewer";
+import { getVerifiedQaContext } from "@/lib/ai/verified-qa";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -61,10 +65,13 @@ export const POST = createSmartRouteHandler({
     }
 
     const model = selectModel(quality, speed, isAuthenticated);
-    const systemPrompt = getFullSystemPrompt(systemPromptId);
+    const isDocsOrSearch = systemPromptId === "docs-ask-ai" || systemPromptId === "command-center-ask-ai";
+    let systemPrompt = getFullSystemPrompt(systemPromptId);
+    if (isDocsOrSearch) {
+      systemPrompt += await getVerifiedQaContext();
+    }
     const tools = await getTools(toolNames, { auth: fullReq.auth, targetProjectId: projectId });
     const toolsArg = Object.keys(tools).length > 0 ? tools : undefined;
-    const isDocsOrSearch = systemPromptId === "docs-ask-ai" || systemPromptId === "command-center-ask-ai";
     const stepLimit = toolsArg == null ? 1 : isDocsOrSearch ? 50 : 5;
 
     if (mode === "stream") {
@@ -81,6 +88,7 @@ export const POST = createSmartRouteHandler({
         body: result.toUIMessageStreamResponse(),
       };
     } else {
+      const startedAt = Date.now();
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 120_000);
       const result = await generateText({
@@ -129,10 +137,49 @@ export const POST = createSmartRouteHandler({
         });
       });
 
+      let responseConversationId: string | undefined;
+      if (body.mcpCallMetadata != null) {
+        const correlationId = crypto.randomUUID();
+        const conversationId = body.mcpCallMetadata.conversationId ?? crypto.randomUUID();
+        responseConversationId = conversationId;
+        const firstUserMessage = messages.find(m => m.role === "user");
+        const question = typeof firstUserMessage?.content === "string"
+          ? firstUserMessage.content
+          : JSON.stringify(firstUserMessage?.content ?? "");
+
+        const innerToolCallsJson = JSON.stringify(contentBlocks.filter(b => b.type === "tool-call"));
+
+        runAsynchronously(logMcpCall({
+          correlationId,
+          toolName: body.mcpCallMetadata.toolName,
+          reason: body.mcpCallMetadata.reason,
+          userPrompt: body.mcpCallMetadata.userPrompt,
+          conversationId,
+          question,
+          response: result.text,
+          stepCount: result.steps.length,
+          innerToolCallsJson,
+          durationMs: BigInt(Date.now() - startedAt),
+          modelId: String(model.modelId),
+          errorMessage: undefined,
+        }));
+
+        runAsynchronously(reviewMcpCall({
+          correlationId,
+          question,
+          reason: body.mcpCallMetadata.reason,
+          response: result.text,
+        }));
+      }
+
       return {
         statusCode: 200,
         bodyType: "json" as const,
-        body: { content: contentBlocks, finalText: result.text },
+        body: {
+          content: contentBlocks,
+          finalText: result.text,
+          conversationId: responseConversationId ?? null,
+        },
       };
     }
   },

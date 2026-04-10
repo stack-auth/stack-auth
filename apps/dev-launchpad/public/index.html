@@ -131,6 +131,7 @@
         { suffix: "24", label: "LocalStack Gateway (AWS mock)" },
         { suffix: "25", label: "QStash mock" },
         { suffix: "33", label: "ClickHouse native interface" },
+        { suffix: "39", label: "SpacetimeDB (MCP call log)" },
         { range: ["50", "99"], label: "Reserved for LocalStack (external services)" },
       ];
 
@@ -189,6 +190,15 @@
             "Src: ./apps/hosted-components",
           ],
           importance: 2,
+        },
+        {
+          name: "Internal Tool",
+          portSuffix: "26",
+          description: [
+            "Src: ./apps/internal-tool",
+            "MCP call review tool",
+          ],
+          importance: 1,
         },
         {
           name: "Inbucket",
