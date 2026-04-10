@@ -37,6 +37,21 @@ export function createSqlQueryTool(auth: SmartRequestAuth | null, targetProjectI
       })
         .then(async (resultSet) => {
           const rows = await resultSet.json<Record<string, unknown>[]>();
+          const serialized = JSON.stringify(rows);
+          if (serialized.length > 50_000) {
+            return {
+              success: false as const,
+              error:
+                `Result too large: ${rows.length} rows, ${serialized.length} characters (limit 50000). ` +
+                `To fix: ` +
+                `(1) Use aggregation (COUNT, uniqExact, GROUP BY, topK, quantile) instead of fetching rows. ` +
+                `(2) If you need rows, add a WHERE clause or reduce LIMIT. ` +
+                `(3) Select only the columns you need — avoid the 'data' column on events unless essential.`,
+              rowCount: rows.length,
+              characters: serialized.length,
+              columnsReturned: rows.length > 0 ? Object.keys(rows[0]) : [],
+            };
+          }
           return {
             success: true as const,
             rowCount: rows.length,

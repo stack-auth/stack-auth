@@ -5,7 +5,7 @@ import { getPublicEnvVar } from "@/lib/env";
 import { useChat, type UIMessage } from "@ai-sdk/react";
 import { ArrowSquareOutIcon, CaretDownIcon, CheckIcon, CopyIcon, DatabaseIcon, PaperPlaneTiltIcon, SparkleIcon, SpinnerGapIcon, UserIcon } from "@phosphor-icons/react";
 import { useUser } from "@stackframe/stack";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { convertToModelMessages, DefaultChatTransport } from "ai";
 import { usePathname } from "next/navigation";
@@ -480,6 +480,23 @@ function getToolInvocations(message: UIMessage): ToolInvocationPart[] {
     .map((part) => part as unknown as ToolInvocationPart);
 }
 
+// Classifies raw AI provider errors into user-friendly messages.
+// The raw error is captured to Sentry separately via captureError — never shown to the user.
+function getFriendlyAiErrorMessage(error: Error): string {
+  const causeMessage = (error as { cause?: { message?: string } }).cause?.message ?? "";
+  const blob = `${error.message} ${causeMessage}`;
+  if (/maximum context length|context_length_exceeded|too many tokens|context length/i.test(blob)) {
+    return "The conversation got too long. Try starting a new chat or asking a more focused question.";
+  }
+  if (/rate limit|429|quota|too many requests/i.test(blob)) {
+    return "Service is busy. Please try again in a moment.";
+  }
+  if (/timeout|ECONNRESET|fetch failed|network/i.test(blob)) {
+    return "Request timed out. Please try again.";
+  }
+  return "Something went wrong. Please try again.";
+}
+
 // Word streaming hook - handles the progressive word reveal animation
 function useWordStreaming(content: string) {
   const [displayedWordCount, setDisplayedWordCount] = useState(0);
@@ -574,6 +591,13 @@ const AIChatPreviewInner = memo(function AIChatPreview({
   });
 
   const aiLoading = status === "submitted" || status === "streaming";
+
+  // Log the raw AI error once per error (Sentry captures the original message)
+  useEffect(() => {
+    if (aiError) {
+      captureError("ask-ai", aiError);
+    }
+  }, [aiError]);
 
   // Send initial query on mount (once) with debounce
   useDebouncedAction({
@@ -732,7 +756,7 @@ const AIChatPreviewInner = memo(function AIChatPreview({
         {aiError && (
           <div className="flex items-start gap-2 text-[12px] text-red-400/90 px-3 py-2 bg-red-500/[0.08] rounded-lg ring-1 ring-red-500/20">
             <span className="shrink-0 mt-0.5">⚠</span>
-            <span>{aiError.message || "Failed to get response. Please try again."}</span>
+            <span>{getFriendlyAiErrorMessage(aiError)}</span>
           </div>
         )}
       </div>
