@@ -17,6 +17,7 @@ export class GithubProvider extends OAuthBaseProvider {
   }) {
     return new GithubProvider(...await OAuthBaseProvider.createConstructorArgs({
       issuer: "https://github.com",
+      alternativeIssuers: ["https://github.com/login/oauth"],
       authorizationEndpoint: "https://github.com/login/oauth/authorize",
       tokenEndpoint: "https://github.com/login/oauth/access_token",
       userinfoEndpoint: "https://api.github.com/user",
