@@ -139,10 +139,38 @@ export function createCompactedTransactionEntries(txnTables: TransactionsTables)
     `),
   });
 
+  // Add a composite partition key so compaction is per-(customer, item),
+  // preventing entries from different customers being merged together.
+  const compactableWithPartitionKey = declareMapTable({
+    tableId: "payments-entries-compactable-with-partition-key",
+    fromTable: compactableEntries,
+    mapper: mapper(`
+      "rowData"->'type' AS "type",
+      "rowData"->'customerType' AS "customerType",
+      "rowData"->'customerId' AS "customerId",
+      "rowData"->'itemId' AS "itemId",
+      "rowData"->'quantity' AS "quantity",
+      "rowData"->'expiresWhen' AS "expiresWhen",
+      "rowData"->'index' AS "index",
+      "rowData"->'txnId' AS "txnId",
+      "rowData"->'txnEffectiveAtMillis' AS "txnEffectiveAtMillis",
+      "rowData"->'txnCreatedAtMillis' AS "txnCreatedAtMillis",
+      "rowData"->'txnType' AS "txnType",
+      "rowData"->'tenancyId' AS "tenancyId",
+      "rowData"->'paymentProvider' AS "paymentProvider",
+      to_jsonb(
+        COALESCE("rowData"->>'tenancyId', '') || '/'
+        || COALESCE("rowData"->>'customerType', '') || '/'
+        || COALESCE("rowData"->>'customerId', '') || '/'
+        || COALESCE("rowData"->>'itemId', '')
+      ) AS "compactPartitionKey"
+    `),
+  });
+
   // Sort both inputs ascending by txnEffectiveAtMillis (required by CompactTable).
   const compactableSorted = declareSortTable({
     tableId: "payments-entries-compactable-sorted",
-    fromTable: compactableEntries,
+    fromTable: compactableWithPartitionKey,
     getSortKey: mapper(`("rowData"->'txnEffectiveAtMillis') AS "newSortKey"`),
     compareSortKeys: numericSortKeyComparator,
   });
@@ -155,16 +183,16 @@ export function createCompactedTransactionEntries(txnTables: TransactionsTables)
   });
 
   // Compact: merge consecutive compactable entries between expire boundaries,
-  // partitioned by itemId so cross-item entries are never merged.
+  // partitioned by compactPartitionKey (tenancyId/customerType/customerId/itemId)
+  // so entries from different customers are never merged.
   // Both inputs must be sorted ascending by txnEffectiveAtMillis (ensured above).
-  // Note: output is NOT guaranteed to be sorted. Single-entry buckets pass through as-is.
   const compactedRaw = declareCompactTable({
     tableId: "payments-entries-compacted-raw",
     toBeCompactedTable: compactableSorted,
     boundaryTable: expiresSorted,
     orderingKey: "txnEffectiveAtMillis",
     compactKey: "quantity",
-    partitionKey: "itemId",
+    partitionKey: "compactPartitionKey",
   });
 
   // Remap type from "item-quantity-change" to "compacted-item-quantity-change"
@@ -222,6 +250,7 @@ export function createCompactedTransactionEntries(txnTables: TransactionsTables)
     allItemQuantityChangeEntries,
     compactableEntries,
     nonCompactableEntries,
+    compactableWithPartitionKey,
     compactableSorted,
     expiresSorted,
     compactedRaw,

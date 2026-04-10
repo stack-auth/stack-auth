@@ -245,4 +245,56 @@ describe.sequential("payments schema integration phase 2→3 (real postgres)", (
     expect(rows.at(-1).itemQuantities[itemA]).toBe(100);
     expect(rows.at(-1).itemQuantities[itemB]).toBe(50);
   });
+
+  it("should not compact items across different customers", async () => {
+    // Two customers both get 100 coins (same itemId) via separate OTPs.
+    // Each customer then spends 30. With correct per-customer compaction,
+    // each customer's compacted entry should be 70. With broken cross-customer
+    // compaction, they'd be merged into a single entry of 140.
+    const t = "t1";
+    await runStatements(makeOtp("otp-iso-c1", t, "customer-A", "prod-coins-iso", {
+      includedItems: { coins: { quantity: 100, expires: "never" } },
+      createdAtMillis: 1000,
+    }));
+    await runStatements(makeOtp("otp-iso-c2", t, "customer-B", "prod-coins-iso", {
+      includedItems: { coins: { quantity: 100, expires: "never" } },
+      createdAtMillis: 1000,
+    }));
+    await runStatements(schema.manualItemQuantityChanges.setRow("iqc-iso-c1", jsonbExpr({
+      id: "iqc-iso-c1",
+      tenancyId: t,
+      customerId: "customer-A",
+      customerType: "user",
+      itemId: "coins",
+      quantity: -30,
+      description: null,
+      expiresAtMillis: null,
+      paymentProvider: "stripe",
+      createdAtMillis: 1100,
+    })));
+    await runStatements(schema.manualItemQuantityChanges.setRow("iqc-iso-c2", jsonbExpr({
+      id: "iqc-iso-c2",
+      tenancyId: t,
+      customerId: "customer-B",
+      customerType: "user",
+      itemId: "coins",
+      quantity: -30,
+      description: null,
+      expiresAtMillis: null,
+      paymentProvider: "stripe",
+      createdAtMillis: 1100,
+    })));
+
+    const allRows = await getRowsForTenancy(schema.itemQuantities, t);
+    const customerA = allRows.filter((r: any) => r.customerId === "customer-A");
+    const customerB = allRows.filter((r: any) => r.customerId === "customer-B");
+
+    const latestA = customerA.sort((a: any, b: any) => a.txnEffectiveAtMillis - b.txnEffectiveAtMillis).at(-1);
+    const latestB = customerB.sort((a: any, b: any) => a.txnEffectiveAtMillis - b.txnEffectiveAtMillis).at(-1);
+
+    expect(latestA).toBeDefined();
+    expect(latestB).toBeDefined();
+    expect(latestA.itemQuantities.coins).toBe(70);
+    expect(latestB.itemQuantities.coins).toBe(70);
+  });
 });
