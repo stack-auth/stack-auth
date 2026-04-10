@@ -26,14 +26,23 @@ env:
 jobs:
   build:
     name: Build QEMU Image (${{ matrix.arch }})
-    runs-on: ubicloud-standard-8
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
         include:
+          # amd64 runs natively under KVM on ubicloud's amd64 runner.
           - arch: amd64
+            runner: ubicloud-standard-8
+          # arm64 runs under same-arch TCG on GitHub's native arm64 runner.
+          # No KVM (Azure Hyper-V doesn't expose nested virt on arm64) but
+          # same-arch TCG avoids the V8 JIT translation crashes that kill
+          # cross-arch TCG, and the smoke test is skipped on arm64 since
+          # the backend can't come up within any reasonable window under
+          # software emulation.
           - arch: arm64
+            runner: ubuntu-24.04-arm
 
     steps:
       - uses: actions/checkout@v6
