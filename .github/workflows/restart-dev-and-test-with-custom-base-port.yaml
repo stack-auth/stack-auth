@@ -36,12 +36,24 @@ jobs:
       - name: Install packages
         run: pnpm install
 
-      - name: Start dev environment
-        run: pnpm run restart-dev-environment
+      - name: Build packages
+        run: pnpm run build:packages
+
+      - name: Generate code
+        run: pnpm run codegen
+
+      - name: Restart dependencies
+        run: pnpm run restart-deps
+
+      - name: Start dev server in background
+        uses: JarvusInnovations/background-action@v1.0.7
+        with:
+          run: pnpm run dev
+          wait-on: |
+            http://localhost:6902
+          tail: true
+          wait-for: 120s
+          log-output-if: true
 
       - name: Run tests
         run: pnpm run test run --reporter=verbose
-      
-      - name: Print dev server logs
-        run: cat dev-server.log.untracked.txt
-        if: always()
