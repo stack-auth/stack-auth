@@ -51,13 +51,44 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y qemu-system-x86 qemu-system-arm qemu-kvm qemu-utils genisoimage socat qemu-efi-aarch64
 
-      - name: Enable KVM access
+      - name: Diagnose KVM availability
         run: |
+          set +e
+          echo "--- uname -a ---"
+          uname -a
+          echo "--- /proc/cpuinfo (first 40 lines) ---"
+          head -40 /proc/cpuinfo
+          echo "--- cpu virt / features grep ---"
+          grep -iE 'virtualization|vmx|svm|features' /proc/cpuinfo | sort -u | head -20 || echo "none"
+          echo "--- loaded kvm modules ---"
+          lsmod | grep -i kvm || echo "no kvm module loaded"
+          echo "--- available kvm module files ---"
+          find /lib/modules/$(uname -r) -name '*kvm*' 2>/dev/null || echo "no kvm module files found"
+          echo "--- modprobe kvm ---"
+          sudo modprobe kvm 2>&1; echo "exit=$?"
+          echo "--- modprobe kvm_arm64 (may not exist; expected to fail on non-arm64 kernels) ---"
+          sudo modprobe kvm_arm64 2>&1; echo "exit=$?"
+          echo "--- modprobe kvm_amd ---"
+          sudo modprobe kvm_amd 2>&1; echo "exit=$?"
+          echo "--- modprobe kvm_intel ---"
+          sudo modprobe kvm_intel 2>&1; echo "exit=$?"
+          echo "--- dmesg | grep -i kvm (last 20) ---"
+          sudo dmesg 2>/dev/null | grep -i kvm | tail -20 || echo "no kvm in dmesg"
+          echo "--- dmesg | grep -i virt (last 10) ---"
+          sudo dmesg 2>/dev/null | grep -i virt | tail -10 || echo "no virt in dmesg"
+          echo "--- /dev/kvm before udev fixup ---"
+          ls -la /dev/kvm 2>&1 || echo "no /dev/kvm"
+          echo "--- applying udev rule ---"
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
             | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm || true
-          ls -la /dev/kvm || echo "no /dev/kvm present"
+          echo "--- /dev/kvm after udev fixup ---"
+          ls -la /dev/kvm 2>&1 || echo "no /dev/kvm"
+          echo "--- group membership ---"
+          id
+          getent group kvm || echo "no kvm group"
+          echo "--- final writability check ---"
           if [ -w /dev/kvm ]; then
             echo "KVM is writable — hardware acceleration will be used"
           else
