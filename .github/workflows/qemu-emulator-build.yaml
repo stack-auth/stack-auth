@@ -35,7 +35,7 @@ jobs:
           - arch: amd64
             runner: ubicloud-standard-8
           - arch: arm64
-            runner: ubicloud-standard-8-arm
+            runner: ubuntu-24.04-arm
 
     steps:
       - uses: actions/checkout@v6
