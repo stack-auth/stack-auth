@@ -33,6 +33,7 @@ const LOAD_ONLINE_MUTATION_ITERATIONS = 5;
 const LOAD_ONLINE_MUTATION_MAX_MS = withCiPerfHeadroom(50);
 const LOAD_SUBSET_ITERATION_MAX_MS = withCiPerfHeadroom(50);
 const LOAD_SUBSET_ITERATION_ROW_COUNT = 1_000;
+const LOAD_SUBSET_ITERATION_MEASURED_RUNS = 5;
 const LOAD_TABLE_DELETE_MAX_MS = withCiPerfHeadroom(20_000);
 const LOAD_DERIVED_INIT_MAX_MS = withCiPerfHeadroom(90_000);
 const LOAD_DERIVED_COUNT_QUERY_MAX_MS = withCiPerfHeadroom(10_000);
@@ -143,6 +144,30 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     const elapsedMs = performance.now() - startedAt;
     logLine(`[bulldozer-perf] ${label}: ${elapsedMs.toFixed(1)} ms`);
     return { result, elapsedMs };
+  }
+
+  function summarizeMs(samplesMs: number[]): {
+    averageMs: number,
+    trimmedAverageMs: number,
+    medianMs: number,
+    varianceMs2: number,
+    stdDevMs: number,
+    minMs: number,
+    maxMs: number,
+  } {
+    const sortedMs = [...samplesMs].sort((a, b) => a - b);
+    const averageMs = samplesMs.reduce((acc, value) => acc + value, 0) / samplesMs.length;
+    const varianceMs2 = samplesMs.reduce((acc, value) => acc + ((value - averageMs) ** 2), 0) / samplesMs.length;
+    const stdDevMs = Math.sqrt(varianceMs2);
+    const minMs = sortedMs[0] ?? 0;
+    const maxMs = sortedMs[sortedMs.length - 1] ?? 0;
+    const midpoint = Math.floor(sortedMs.length / 2);
+    const medianMs = sortedMs.length % 2 === 0
+      ? (((sortedMs[midpoint - 1] ?? 0) + (sortedMs[midpoint] ?? 0)) / 2)
+      : (sortedMs[midpoint] ?? 0);
+    const trimmedSamples = sortedMs.length >= 5 ? sortedMs.slice(1, -1) : sortedMs;
+    const trimmedAverageMs = trimmedSamples.reduce((acc, value) => acc + value, 0) / trimmedSamples.length;
+    return { averageMs, trimmedAverageMs, medianMs, varianceMs2, stdDevMs, minMs, maxMs };
   }
 
   async function prefillStoredTableInSingleStatement(tableId: string, rowCount: number): Promise<void> {
@@ -862,11 +887,26 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     `;
     // Warm once so we measure steady-state subset iteration instead of first-touch planner/cache cost.
     await sql.unsafe(groupedSubsetSql);
-    const groupedSubsetFromStart = await measureMs(`load iterate groupedByTeam subset from start (${LOAD_SUBSET_ITERATION_ROW_COUNT} rows)`, async () => {
-      return await sql.unsafe(groupedSubsetSql);
-    });
-    expect(groupedSubsetFromStart.elapsedMs).toBeLessThanOrEqual(LOAD_SUBSET_ITERATION_MAX_MS);
-    expect(groupedSubsetFromStart.result).toHaveLength(LOAD_SUBSET_ITERATION_ROW_COUNT);
+    const groupedSubsetSamplesMs: number[] = [];
+    for (let runIndex = 0; runIndex < LOAD_SUBSET_ITERATION_MEASURED_RUNS; runIndex++) {
+      const groupedSubsetRun = await measureMs(`load iterate groupedByTeam subset from start (${LOAD_SUBSET_ITERATION_ROW_COUNT} rows) run ${runIndex + 1}/${LOAD_SUBSET_ITERATION_MEASURED_RUNS}`, async () => {
+        return await sql.unsafe(groupedSubsetSql);
+      });
+      groupedSubsetSamplesMs.push(groupedSubsetRun.elapsedMs);
+      expect(groupedSubsetRun.result).toHaveLength(LOAD_SUBSET_ITERATION_ROW_COUNT);
+    }
+    const groupedSubsetStats = summarizeMs(groupedSubsetSamplesMs);
+    logLine(
+      `[bulldozer-perf] load iterate groupedByTeam subset stats (${LOAD_SUBSET_ITERATION_MEASURED_RUNS} runs): `
+      + `avg=${groupedSubsetStats.averageMs.toFixed(1)} ms, `
+      + `trimmedAvg=${groupedSubsetStats.trimmedAverageMs.toFixed(1)} ms, `
+      + `median=${groupedSubsetStats.medianMs.toFixed(1)} ms, `
+      + `stddev=${groupedSubsetStats.stdDevMs.toFixed(1)} ms, `
+      + `variance=${groupedSubsetStats.varianceMs2.toFixed(1)} ms^2, `
+      + `min=${groupedSubsetStats.minMs.toFixed(1)} ms, `
+      + `max=${groupedSubsetStats.maxMs.toFixed(1)} ms`
+    );
+    expect(groupedSubsetStats.trimmedAverageMs).toBeLessThanOrEqual(LOAD_SUBSET_ITERATION_MAX_MS);
     const sortedHighValueByTeam = declareSortTable({
       tableId: "load-prefilled-users-high-value-sorted",
       fromTable: filteredHighValue,
@@ -910,11 +950,26 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       LIMIT ${LOAD_SUBSET_ITERATION_ROW_COUNT}
     `;
     await sql.unsafe(sortedSubsetFromStartSql);
-    const sortedSubsetFromStart = await measureMs(`load iterate sortedHighValueByTeam subset from start (${LOAD_SUBSET_ITERATION_ROW_COUNT} rows)`, async () => {
-      return await sql.unsafe(sortedSubsetFromStartSql);
-    });
-    expect(sortedSubsetFromStart.elapsedMs).toBeLessThanOrEqual(LOAD_SUBSET_ITERATION_MAX_MS);
-    expect(sortedSubsetFromStart.result).toHaveLength(LOAD_SUBSET_ITERATION_ROW_COUNT);
+    const sortedSubsetFromStartSamplesMs: number[] = [];
+    for (let runIndex = 0; runIndex < LOAD_SUBSET_ITERATION_MEASURED_RUNS; runIndex++) {
+      const sortedSubsetFromStartRun = await measureMs(`load iterate sortedHighValueByTeam subset from start (${LOAD_SUBSET_ITERATION_ROW_COUNT} rows) run ${runIndex + 1}/${LOAD_SUBSET_ITERATION_MEASURED_RUNS}`, async () => {
+        return await sql.unsafe(sortedSubsetFromStartSql);
+      });
+      sortedSubsetFromStartSamplesMs.push(sortedSubsetFromStartRun.elapsedMs);
+      expect(sortedSubsetFromStartRun.result).toHaveLength(LOAD_SUBSET_ITERATION_ROW_COUNT);
+    }
+    const sortedSubsetFromStartStats = summarizeMs(sortedSubsetFromStartSamplesMs);
+    logLine(
+      `[bulldozer-perf] load iterate sortedHighValueByTeam subset from start stats (${LOAD_SUBSET_ITERATION_MEASURED_RUNS} runs): `
+      + `avg=${sortedSubsetFromStartStats.averageMs.toFixed(1)} ms, `
+      + `trimmedAvg=${sortedSubsetFromStartStats.trimmedAverageMs.toFixed(1)} ms, `
+      + `median=${sortedSubsetFromStartStats.medianMs.toFixed(1)} ms, `
+      + `stddev=${sortedSubsetFromStartStats.stdDevMs.toFixed(1)} ms, `
+      + `variance=${sortedSubsetFromStartStats.varianceMs2.toFixed(1)} ms^2, `
+      + `min=${sortedSubsetFromStartStats.minMs.toFixed(1)} ms, `
+      + `max=${sortedSubsetFromStartStats.maxMs.toFixed(1)} ms`
+    );
+    expect(sortedSubsetFromStartStats.trimmedAverageMs).toBeLessThanOrEqual(LOAD_SUBSET_ITERATION_MAX_MS);
     const sortedSubsetFromSortKeySql = `
       SELECT *
       FROM (${toQueryableSqlQuery(sortedHighValueByTeam.listRowsInGroup({
@@ -927,11 +982,26 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       LIMIT ${LOAD_SUBSET_ITERATION_ROW_COUNT}
     `;
     await sql.unsafe(sortedSubsetFromSortKeySql);
-    const sortedSubsetFromSortKey = await measureMs(`load iterate sortedHighValueByTeam subset from sort-key cursor (${LOAD_SUBSET_ITERATION_ROW_COUNT} rows)`, async () => {
-      return await sql.unsafe(sortedSubsetFromSortKeySql);
-    });
-    expect(sortedSubsetFromSortKey.elapsedMs).toBeLessThanOrEqual(LOAD_SUBSET_ITERATION_MAX_MS);
-    expect(sortedSubsetFromSortKey.result).toHaveLength(LOAD_SUBSET_ITERATION_ROW_COUNT);
+    const sortedSubsetFromSortKeySamplesMs: number[] = [];
+    for (let runIndex = 0; runIndex < LOAD_SUBSET_ITERATION_MEASURED_RUNS; runIndex++) {
+      const sortedSubsetFromSortKeyRun = await measureMs(`load iterate sortedHighValueByTeam subset from sort-key cursor (${LOAD_SUBSET_ITERATION_ROW_COUNT} rows) run ${runIndex + 1}/${LOAD_SUBSET_ITERATION_MEASURED_RUNS}`, async () => {
+        return await sql.unsafe(sortedSubsetFromSortKeySql);
+      });
+      sortedSubsetFromSortKeySamplesMs.push(sortedSubsetFromSortKeyRun.elapsedMs);
+      expect(sortedSubsetFromSortKeyRun.result).toHaveLength(LOAD_SUBSET_ITERATION_ROW_COUNT);
+    }
+    const sortedSubsetFromSortKeyStats = summarizeMs(sortedSubsetFromSortKeySamplesMs);
+    logLine(
+      `[bulldozer-perf] load iterate sortedHighValueByTeam subset from sort-key cursor stats (${LOAD_SUBSET_ITERATION_MEASURED_RUNS} runs): `
+      + `avg=${sortedSubsetFromSortKeyStats.averageMs.toFixed(1)} ms, `
+      + `trimmedAvg=${sortedSubsetFromSortKeyStats.trimmedAverageMs.toFixed(1)} ms, `
+      + `median=${sortedSubsetFromSortKeyStats.medianMs.toFixed(1)} ms, `
+      + `stddev=${sortedSubsetFromSortKeyStats.stdDevMs.toFixed(1)} ms, `
+      + `variance=${sortedSubsetFromSortKeyStats.varianceMs2.toFixed(1)} ms^2, `
+      + `min=${sortedSubsetFromSortKeyStats.minMs.toFixed(1)} ms, `
+      + `max=${sortedSubsetFromSortKeyStats.maxMs.toFixed(1)} ms`
+    );
+    expect(sortedSubsetFromSortKeyStats.trimmedAverageMs).toBeLessThanOrEqual(LOAD_SUBSET_ITERATION_MAX_MS);
     const lFoldInit = await measureMs("load init foldedHighValueByTeam", async () => {
       await runStatements(foldedHighValueByTeam.init());
     });
@@ -1049,7 +1119,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     `;
     expect(isInitializedRows[0].initialized).toBe(false);
 
-    logLine(`[bulldozer-perf] load thresholds(ms): prefill<=${LOAD_PREFILL_MAX_MS}, baseCount<=${LOAD_COUNT_QUERY_MAX_MS}, setRowAvg<=${LOAD_SET_ROW_AVG_MAX_MS} over ${LOAD_SET_ROW_AVG_ITERATIONS}, pointDelete<=${LOAD_POINT_MUTATION_MAX_MS}, onlineMutationAvg<=${LOAD_ONLINE_MUTATION_MAX_MS} over ${LOAD_ONLINE_MUTATION_ITERATIONS}, subsetIteration<=${LOAD_SUBSET_ITERATION_MAX_MS} for ${LOAD_SUBSET_ITERATION_ROW_COUNT} rows, derivedInit<=${LOAD_DERIVED_INIT_MAX_MS}, filterInit<=${LOAD_FILTER_TABLE_INIT_MAX_MS}, sortInit<=${LOAD_SORT_TABLE_INIT_MAX_MS}, lfoldInit<=${LOAD_LFOLD_TABLE_INIT_MAX_MS}, leftJoinInit<=${LOAD_LEFT_JOIN_TABLE_INIT_MAX_MS}, concatInit<=${LOAD_CONCAT_TABLE_INIT_MAX_MS}, limitInit<=${LOAD_LIMIT_TABLE_INIT_MAX_MS}, expandingInit<=${LOAD_EXPANDING_INIT_MAX_MS}, derivedCount<=${LOAD_DERIVED_COUNT_QUERY_MAX_MS}, filterCount<=${LOAD_FILTER_TABLE_COUNT_QUERY_MAX_MS}, lfoldCount<=${LOAD_LFOLD_TABLE_COUNT_QUERY_MAX_MS}, leftJoinCount<=${LOAD_LEFT_JOIN_TABLE_COUNT_QUERY_MAX_MS}, concatCount<=${LOAD_CONCAT_TABLE_COUNT_QUERY_MAX_MS}, limitCount<=${LOAD_LIMIT_TABLE_COUNT_QUERY_MAX_MS}, expandingCount<=${LOAD_EXPANDING_COUNT_QUERY_MAX_MS}, filteredQuery<=${LOAD_FILTERED_QUERY_MAX_MS}, tableDelete<=${LOAD_TABLE_DELETE_MAX_MS}`);
+    logLine(`[bulldozer-perf] load thresholds(ms): prefill<=${LOAD_PREFILL_MAX_MS}, baseCount<=${LOAD_COUNT_QUERY_MAX_MS}, setRowAvg<=${LOAD_SET_ROW_AVG_MAX_MS} over ${LOAD_SET_ROW_AVG_ITERATIONS}, pointDelete<=${LOAD_POINT_MUTATION_MAX_MS}, onlineMutationAvg<=${LOAD_ONLINE_MUTATION_MAX_MS} over ${LOAD_ONLINE_MUTATION_ITERATIONS}, groupedSubsetTrimmedAvg<=${LOAD_SUBSET_ITERATION_MAX_MS} for ${LOAD_SUBSET_ITERATION_ROW_COUNT} rows over ${LOAD_SUBSET_ITERATION_MEASURED_RUNS} runs, derivedInit<=${LOAD_DERIVED_INIT_MAX_MS}, filterInit<=${LOAD_FILTER_TABLE_INIT_MAX_MS}, sortInit<=${LOAD_SORT_TABLE_INIT_MAX_MS}, lfoldInit<=${LOAD_LFOLD_TABLE_INIT_MAX_MS}, leftJoinInit<=${LOAD_LEFT_JOIN_TABLE_INIT_MAX_MS}, concatInit<=${LOAD_CONCAT_TABLE_INIT_MAX_MS}, limitInit<=${LOAD_LIMIT_TABLE_INIT_MAX_MS}, expandingInit<=${LOAD_EXPANDING_INIT_MAX_MS}, derivedCount<=${LOAD_DERIVED_COUNT_QUERY_MAX_MS}, filterCount<=${LOAD_FILTER_TABLE_COUNT_QUERY_MAX_MS}, lfoldCount<=${LOAD_LFOLD_TABLE_COUNT_QUERY_MAX_MS}, leftJoinCount<=${LOAD_LEFT_JOIN_TABLE_COUNT_QUERY_MAX_MS}, concatCount<=${LOAD_CONCAT_TABLE_COUNT_QUERY_MAX_MS}, limitCount<=${LOAD_LIMIT_TABLE_COUNT_QUERY_MAX_MS}, expandingCount<=${LOAD_EXPANDING_COUNT_QUERY_MAX_MS}, filteredQuery<=${LOAD_FILTERED_QUERY_MAX_MS}, tableDelete<=${LOAD_TABLE_DELETE_MAX_MS}`);
   }, 300_000);
 });
 

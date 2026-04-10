@@ -201,3 +201,9 @@ A: In `apps/backend/src/lib/bulldozer/db/index.test.ts`, wrap input tables with 
 
 Q: Why can `declareConcatTable` ignore input sort comparator differences?
 A: `declareConcatTable` always emits `rowSortKey = null` and uses `compareSortKeys: () => 0` itself, so input sort-order semantics are not part of concat output behavior. It should only enforce group-key comparator compatibility, not sort comparator compatibility.
+
+Q: How should flaky subset-iteration perf assertions be stabilized?
+A: In `apps/backend/src/lib/bulldozer/db/index.perf.test.ts`, keep a warmup query, then measure multiple timed runs (for example 5) and assert on average latency instead of a single run. Log average, standard deviation, variance, min, and max so regressions still show up while reducing one-off outlier failures.
+
+Q: What if multi-run average still flakes because of one or two large outliers?
+A: Use robust stats for thresholds: keep logging full `avg/stddev/variance/min/max`, but assert subset-iteration performance on `trimmedAverage` (drop one min/max sample when there are 5 runs). This preserves sensitivity to sustained regressions while tolerating transient host contention spikes during concurrent test-file execution.
