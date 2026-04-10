@@ -11,6 +11,7 @@
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPaymentsSchema } from "../index";
+import { getAllNetQtysSql } from "../phase-3/ledger-algo";
 import { getSplitAlgoCteSql } from "../phase-3/split-algo";
 import { createTestDb, jsonbExpr } from "./test-helpers";
 
@@ -359,12 +360,15 @@ describe.sequential("payments schema phase 3 (real postgres)", () => {
       expect(lastRow.itemQuantities.bonus).toBe(7);
     });
 
-    it("should show correct credits balance: 100 (sub-start) + 50 (igr) = 150", async () => {
+    it("should show correct credits balance with expiry-aware ledger", async () => {
+      // credits from sub-start: 100, split into (80, exp=2000) + (20, null)
+      // credits from igr: 50, split into (30, exp=3000) + (20, null)
+      // At t=2000 (latest row): grant (80, exp=2000) has expired → 0 + 20 + 30 + 20 = 70
       const rows = (await getRowDatas(schema.itemQuantities))
         .sort((a: any, b: any) => a.txnEffectiveAtMillis - b.txnEffectiveAtMillis);
 
       const lastRow = rows[rows.length - 1];
-      expect(lastRow.itemQuantities.credits).toBe(150);
+      expect(lastRow.itemQuantities.credits).toBe(70);
     });
 
     it("should include customer info on every item quantities row", async () => {
@@ -374,6 +378,184 @@ describe.sequential("payments schema phase 3 (real postgres)", () => {
         expect(row.customerId).toBe("u1");
         expect(row.tenancyId).toBe("t1");
       }
+    });
+  });
+
+
+  // ============================================================
+  // 5b. Ledger algorithm: direct SQL tests
+  // ============================================================
+
+  describe("ledger algorithm (direct SQL)", () => {
+    // Simulates the LFold by manually feeding rows into the reducer and
+    // reading the output itemQuantities. Tests the computation logic directly.
+    const runLedger = async (rows: Array<{
+      itemId: string,
+      quantity: number,
+      expiresAtMillis: number | null,
+      txnEffectiveAtMillis: number,
+    }>) => {
+      const state = new Map<string, { g: Array<{ q: number, e: number | null }>, r: Array<{ q: number, e: number | null }> }>();
+      for (const row of rows) {
+        if (!state.has(row.itemId)) {
+          state.set(row.itemId, { g: [], r: [] });
+        }
+        const entry = { q: row.quantity, e: row.expiresAtMillis };
+        const itemState = state.get(row.itemId) ?? (() => {
+          throw new Error("unreachable");
+        })();
+        if (row.quantity >= 0) {
+          itemState.g.push(entry);
+        } else {
+          itemState.r.push(entry);
+        }
+      }
+      const lastTime = rows[rows.length - 1].txnEffectiveAtMillis;
+      const stateJson = JSON.stringify(Object.fromEntries(state)).replaceAll("'", "''");
+
+      const result = await db.sql.unsafe(`
+        SELECT ${getAllNetQtysSql(`'${stateJson}'::jsonb`, `${lastTime}::numeric`)} AS "result"
+      `);
+      return result[0].result;
+    };
+
+    it("should handle simple grant with no expiry", async () => {
+      const result = await runLedger([
+        { itemId: "coins", quantity: 100, expiresAtMillis: null, txnEffectiveAtMillis: 1000 },
+      ]);
+      expect(result.coins).toBe(100);
+    });
+
+    it("should consume removals from soonest-expiring grants first", async () => {
+      const result = await runLedger([
+        { itemId: "coins", quantity: 10, expiresAtMillis: 5000, txnEffectiveAtMillis: 1000 },
+        { itemId: "coins", quantity: 20, expiresAtMillis: 3000, txnEffectiveAtMillis: 1000 },
+        { itemId: "coins", quantity: -8, expiresAtMillis: null, txnEffectiveAtMillis: 2000 },
+      ]);
+      // Grants sorted by exp: [(20, 3000), (10, 5000)]
+      // Remove 8 from soonest: 20→12, 10 untouched
+      // No expiries at t=2000 (3000 > 2000, 5000 > 2000)
+      // Total: 12 + 10 = 22
+      expect(result.coins).toBe(22);
+    });
+
+    it("should expire grants and apply removals correctly together", async () => {
+      const result = await runLedger([
+        { itemId: "coins", quantity: 20, expiresAtMillis: 3000, txnEffectiveAtMillis: 1000 },
+        { itemId: "coins", quantity: 10, expiresAtMillis: 5000, txnEffectiveAtMillis: 1000 },
+        { itemId: "coins", quantity: -8, expiresAtMillis: null, txnEffectiveAtMillis: 3500 },
+      ]);
+      // At t=3500:
+      // Grants sorted: [(20, 3000), (10, 5000)]
+      // Remove 8 from soonest: 20→12, 10 untouched
+      // Expire grants: (12, 3000) → 3000 <= 3500 → 0. (10, 5000) → stays.
+      // Total: 0 + 10 = 10
+      expect(result.coins).toBe(10);
+    });
+
+    it("should reverse expired removals (items come back)", async () => {
+      const result = await runLedger([
+        { itemId: "coins", quantity: 100, expiresAtMillis: null, txnEffectiveAtMillis: 1000 },
+        { itemId: "coins", quantity: -30, expiresAtMillis: 5000, txnEffectiveAtMillis: 2000 },
+        { itemId: "coins", quantity: -20, expiresAtMillis: 3000, txnEffectiveAtMillis: 2000 },
+        // Query at t=4000: removal(-20, exp=3000) has expired → reversed
+        { itemId: "coins", quantity: 0, expiresAtMillis: null, txnEffectiveAtMillis: 4000 },
+      ]);
+      // At t=4000:
+      // Active removals: (-30, exp=5000) is active. (-20, exp=3000) expired → reversed.
+      // Total to remove: 30
+      // Grant (100, null): consume 30 → 70
+      // No grant expiries (null = never)
+      // Total: 70
+      expect(result.coins).toBe(70);
+    });
+
+    it("should track multiple items independently in the same fold", async () => {
+      const result = await runLedger([
+        { itemId: "coins", quantity: 100, expiresAtMillis: null, txnEffectiveAtMillis: 1000 },
+        { itemId: "gems", quantity: 50, expiresAtMillis: 5000, txnEffectiveAtMillis: 1000 },
+        { itemId: "coins", quantity: -20, expiresAtMillis: null, txnEffectiveAtMillis: 2000 },
+        { itemId: "gems", quantity: 30, expiresAtMillis: null, txnEffectiveAtMillis: 2000 },
+      ]);
+      // coins: 100 - 20 = 80 (no expiries)
+      // gems: 50 (exp=5000, not expired at t=2000) + 30 (null) = 80
+      expect(result.coins).toBe(80);
+      expect(result.gems).toBe(80);
+    });
+
+    it("should expire a grant with no removals", async () => {
+      const result = await runLedger([
+        { itemId: "coins", quantity: 50, expiresAtMillis: 3000, txnEffectiveAtMillis: 1000 },
+        { itemId: "coins", quantity: 30, expiresAtMillis: null, txnEffectiveAtMillis: 1000 },
+        // Advance time past the expiry
+        { itemId: "coins", quantity: 0, expiresAtMillis: null, txnEffectiveAtMillis: 4000 },
+      ]);
+      // At t=4000: (50, exp=3000) expired → 0. (30, null) stays. (0, null) no effect.
+      // Total: 30
+      expect(result.coins).toBe(30);
+    });
+
+    it("should allow removals to push net quantity negative", async () => {
+      const result = await runLedger([
+        { itemId: "coins", quantity: 10, expiresAtMillis: null, txnEffectiveAtMillis: 1000 },
+        { itemId: "coins", quantity: -25, expiresAtMillis: null, txnEffectiveAtMillis: 2000 },
+      ]);
+      // 10 - 25 = -15 (removals can go negative)
+      expect(result.coins).toBe(-15);
+    });
+
+    it("should handle expiring penalty (removal expires, items return)", async () => {
+      const result = await runLedger([
+        { itemId: "coins", quantity: 100, expiresAtMillis: null, txnEffectiveAtMillis: 1000 },
+        { itemId: "coins", quantity: -40, expiresAtMillis: 3000, txnEffectiveAtMillis: 2000 },
+        // Advance past penalty expiry
+        { itemId: "coins", quantity: 0, expiresAtMillis: null, txnEffectiveAtMillis: 4000 },
+      ]);
+      // At t=4000: removal(-40, exp=3000) expired → reversed.
+      // No active removals. Grant(100, null) untouched.
+      // Total: 100
+      expect(result.coins).toBe(100);
+    });
+
+    it("should handle mix of expiring grants, expiring removals, and non-expiring entries", async () => {
+      const result = await runLedger([
+        // Subscription grant: 100 credits, expires when subscription ends
+        { itemId: "credits", quantity: 100, expiresAtMillis: 5000, txnEffectiveAtMillis: 1000 },
+        // Bonus grant: 20 credits, never expires
+        { itemId: "credits", quantity: 20, expiresAtMillis: null, txnEffectiveAtMillis: 1000 },
+        // Manual consumption: -30 credits, never expires
+        { itemId: "credits", quantity: -30, expiresAtMillis: null, txnEffectiveAtMillis: 2000 },
+        // Temporary penalty: -15 credits, expires at t=4000
+        { itemId: "credits", quantity: -15, expiresAtMillis: 4000, txnEffectiveAtMillis: 2500 },
+        // Advance past penalty expiry but before grant expiry
+        { itemId: "credits", quantity: 0, expiresAtMillis: null, txnEffectiveAtMillis: 4500 },
+      ]);
+      // At t=4500:
+      // Active removals: (-30, null) active. (-15, exp=4000) expired → reversed.
+      // Total to remove: 30
+      // Grants sorted by exp: [(100, 5000), (20, null)]
+      // Consume 30 from soonest: 100→70, 20 untouched
+      // Apply grant expiries: (70, 5000) → 5000 > 4500, stays. (20, null) stays.
+      // Total: 70 + 20 = 90
+      expect(result.credits).toBe(90);
+    });
+
+    it("should handle multiple grants with different expiry times", async () => {
+      const result = await runLedger([
+        { itemId: "coins", quantity: 30, expiresAtMillis: 2000, txnEffectiveAtMillis: 1000 },
+        { itemId: "coins", quantity: 50, expiresAtMillis: 4000, txnEffectiveAtMillis: 1000 },
+        { itemId: "coins", quantity: 20, expiresAtMillis: null, txnEffectiveAtMillis: 1000 },
+        { itemId: "coins", quantity: -10, expiresAtMillis: null, txnEffectiveAtMillis: 1500 },
+        // Advance past first grant expiry
+        { itemId: "coins", quantity: 0, expiresAtMillis: null, txnEffectiveAtMillis: 3000 },
+      ]);
+      // At t=3000:
+      // Active removals: (-10, null). Total to remove: 10
+      // Grants sorted by exp: [(30, 2000), (50, 4000), (20, null)]
+      // Consume from soonest: 30→20, 50 untouched, 20 untouched
+      // Apply expiries: (20, 2000) → 2000 <= 3000, expires → 0. (50, 4000) stays. (20, null) stays.
+      // Total: 0 + 50 + 20 = 70
+      expect(result.coins).toBe(70);
     });
   });
 
