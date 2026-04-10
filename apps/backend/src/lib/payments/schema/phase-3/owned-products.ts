@@ -12,7 +12,6 @@
 
 import {
   declareFilterTable,
-  declareGroupByTable,
   declareLFoldTable,
   declareSortTable,
 } from "@/lib/bulldozer/db/index";
@@ -34,23 +33,11 @@ export function createOwnedProductsTable(entryTables: CompactedTransactionEntrie
     `),
   });
 
-  // Group by (tenancyId, customerType, customerId)
-  const productEntriesByCustomer = declareGroupByTable({
-    tableId: "payments-product-entries-by-customer",
-    fromTable: productEntries,
-    groupBy: mapper(`
-      jsonb_build_object(
-        'tenancyId', "rowData"->'tenancyId',
-        'customerType', "rowData"->'customerType',
-        'customerId', "rowData"->'customerId'
-      ) AS "groupKey"
-    `),
-  });
-
-  // Sort by effectiveAtMillis within each customer group
+  // Sort by effectiveAtMillis within each customer group.
+  // GK = (tenancyId, customerType, customerId) inherited from phase 2.
   const productEntriesSorted = declareSortTable({
     tableId: "payments-product-entries-sorted",
-    fromTable: productEntriesByCustomer,
+    fromTable: productEntries,
     getSortKey: mapper(`
       ("rowData"->'txnEffectiveAtMillis') AS "newSortKey"
     `),
@@ -156,7 +143,6 @@ export function createOwnedProductsTable(entryTables: CompactedTransactionEntrie
 
   const _allOwnedProductsTables = [
     productEntries,
-    productEntriesByCustomer,
     productEntriesSorted,
     ownedProducts,
   ] as const;

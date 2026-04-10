@@ -18,6 +18,7 @@
 import {
   declareConcatTable,
   declareFilterTable,
+  declareGroupByTable,
   declareMapTable,
 } from "@/lib/bulldozer/db/index";
 import type { EventTables } from "./events";
@@ -334,8 +335,8 @@ export function createTransactionsTable(events: EventTables, manualTransactions:
   });
 
 
-  // ── Final Transactions table (ConcatTable) ─────────────
-  const transactions = declareConcatTable({
+  // ── Final Transactions table (ConcatTable → GroupBy customer) ────
+  const transactionsUngrouped = declareConcatTable({
     tableId: "payments-transactions",
     tables: [
       subscriptionRenewalTxns,
@@ -349,6 +350,21 @@ export function createTransactionsTable(events: EventTables, manualTransactions:
     ],
   });
 
+  // Group by customer so all downstream operations (compaction, phase 3
+  // LFolds) are per-customer. Also enables direct per-customer queries
+  // for getTransactions.
+  const transactions = declareGroupByTable({
+    tableId: "payments-transactions-by-customer",
+    fromTable: transactionsUngrouped,
+    groupBy: mapper(`
+      jsonb_build_object(
+        'tenancyId', "rowData"->'tenancyId',
+        'customerType', "rowData"->'customerType',
+        'customerId', "rowData"->'customerId'
+      ) AS "groupKey"
+    `),
+  });
+
   /** All tables in dependency order (init first → last, delete in reverse) */
   const _allTransactionTables = [
     subscriptionRenewalTxns,
@@ -359,6 +375,7 @@ export function createTransactionsTable(events: EventTables, manualTransactions:
     oneTimePurchaseTxns,
     manualItemQuantityChangeTxns,
     refundTxns,
+    transactionsUngrouped,
     transactions,
   ] as const;
 

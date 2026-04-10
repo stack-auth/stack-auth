@@ -51,6 +51,9 @@ export function createItemChangesWithExpiries(entryTables: CompactedTransactionE
     fromTable: expireEntries,
     groupBy: mapper(`
       jsonb_build_object(
+        'tenancyId', "rowData"->'tenancyId',
+        'customerType', "rowData"->'customerType',
+        'customerId', "rowData"->'customerId',
         'adjustedTransactionId', "rowData"->'adjustedTransactionId',
         'adjustedEntryIndex', "rowData"->'adjustedEntryIndex'
       ) AS "groupKey"
@@ -80,6 +83,9 @@ export function createItemChangesWithExpiries(entryTables: CompactedTransactionE
       )) AS "newState"
     `),
     finalize: mapper(`
+      "groupKey"->'tenancyId' AS "tenancyId",
+      "groupKey"->'customerType' AS "customerType",
+      "groupKey"->'customerId' AS "customerId",
       "groupKey"->'adjustedTransactionId' AS "adjustedTransactionId",
       "groupKey"->'adjustedEntryIndex' AS "adjustedEntryIndex",
       "state" AS "expiries"
@@ -87,18 +93,23 @@ export function createItemChangesWithExpiries(entryTables: CompactedTransactionE
   });
 
 
-  // Flatten the reduce output back to GK = null so it matches the
-  // non-compacted changes for the LeftJoin. This will be removed once
-  // we switch to early customer grouping throughout the pipeline.
-  const expiriesByChangeEntryFlat = declareGroupByTable({
-    tableId: "payments-expiries-by-change-entry-flat",
+  // Re-group back to customer level so the LeftJoin can match with
+  // non-compacted changes (both sides GK = customer).
+  const expiriesByCustomer = declareGroupByTable({
+    tableId: "payments-expiries-by-customer",
     fromTable: expiriesByChangeEntry,
-    groupBy: mapper(`'null'::jsonb AS "groupKey"`),
+    groupBy: mapper(`
+      jsonb_build_object(
+        'tenancyId', "rowData"->'tenancyId',
+        'customerType', "rowData"->'customerType',
+        'customerId', "rowData"->'customerId'
+      ) AS "groupKey"
+    `),
   });
 
 
   // ── Step 2: LeftJoin item-quantity-change with expiry lists ──
-  // Both sides are ungrouped (GK = null).
+  // Both sides are GK = (tenancyId, customerType, customerId).
 
   const nonCompactedChanges = declareFilterTable({
     tableId: "payments-phase3-non-compacted-changes",
@@ -109,7 +120,7 @@ export function createItemChangesWithExpiries(entryTables: CompactedTransactionE
   const changesWithExpiries = declareLeftJoinTable({
     tableId: "payments-changes-with-expiries",
     leftTable: nonCompactedChanges,
-    rightTable: expiriesByChangeEntryFlat,
+    rightTable: expiriesByCustomer,
     leftJoinKey: mapper(`
       jsonb_build_object(
         'txnId', "rowData"->'txnId',
@@ -222,7 +233,7 @@ export function createItemChangesWithExpiries(entryTables: CompactedTransactionE
     expireEntriesByTarget,
     expireEntriesSorted,
     expiriesByChangeEntry,
-    expiriesByChangeEntryFlat,
+    expiriesByCustomer,
     nonCompactedChanges,
     changesWithExpiries,
     changesWithExpiryArrays,

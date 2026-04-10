@@ -4,8 +4,9 @@
  * Takes the split item-changes-with-expiries and computes the net item
  * quantities at each transaction point using the ledger algorithm.
  *
- * Groups by (tenancyId, customerType, customerId), sorts by effectiveAtMillis,
- * and folds with the ledger reducer. The fold state is a map of itemId → quantity.
+ * GK = (tenancyId, customerType, customerId) inherited from phase 2.
+ * Sorts by effectiveAtMillis and folds with the ledger reducer.
+ * The fold state tracks grants and removals per item with expiry info.
  *
  * Each output row represents the full item quantities state for a customer after
  * a particular transaction. getItemQuantityForCustomer queries the latest row
@@ -13,7 +14,6 @@
  */
 
 import {
-  declareGroupByTable,
   declareLFoldTable,
   declareSortTable,
 } from "@/lib/bulldozer/db/index";
@@ -25,24 +25,11 @@ const mapper = (sql: string) => ({ type: "mapper" as const, sql });
 
 export function createItemQuantitiesTable(changeTables: ItemChangesWithExpiriesTables) {
 
-  // Group by (tenancyId, customerType, customerId) -- NOT by itemId.
-  // The fold tracks all items for a customer in its state map.
-  const changesByCustomer = declareGroupByTable({
-    tableId: "payments-changes-by-customer",
-    fromTable: changeTables.splitChanges,
-    groupBy: mapper(`
-      jsonb_build_object(
-        'tenancyId', "rowData"->'tenancyId',
-        'customerType', "rowData"->'customerType',
-        'customerId', "rowData"->'customerId'
-      ) AS "groupKey"
-    `),
-  });
-
-  // Sort by effectiveAtMillis within each customer group
+  // Sort by effectiveAtMillis within each customer group.
+  // GK = (tenancyId, customerType, customerId) inherited from phase 2.
   const changesSorted = declareSortTable({
     tableId: "payments-changes-sorted-for-ledger",
-    fromTable: changesByCustomer,
+    fromTable: changeTables.splitChanges,
     getSortKey: mapper(`("rowData"->'txnEffectiveAtMillis') AS "newSortKey"`),
     compareSortKeys: (a, b) => ({
       type: "expression",
@@ -51,7 +38,7 @@ export function createItemQuantitiesTable(changeTables: ItemChangesWithExpiriesT
   });
 
   // LFold with the ledger algorithm.
-  // State: JSONB map of itemId → net quantity (e.g. {"credits": 95, "bonus": 10})
+  // State: JSONB map of itemId → { g: [{q, e}], r: [{q, e}] }
   const itemQuantities = declareLFoldTable({
     tableId: "payments-item-quantities",
     fromTable: changesSorted,
@@ -60,7 +47,6 @@ export function createItemQuantitiesTable(changeTables: ItemChangesWithExpiriesT
   });
 
   const _allItemQuantitiesTables = [
-    changesByCustomer,
     changesSorted,
     itemQuantities,
   ] as const;
