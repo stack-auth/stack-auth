@@ -512,264 +512,93 @@ Important:
 - The SDK handles auth/retries/errors; still show graceful UI states
 
 ────────────────────────────────────────
-CHART RULES
+LAYOUT & DESIGN RULES
 ────────────────────────────────────────
+You have FULL FREEDOM over the page layout. Use standard JSX with Tailwind utility classes
+(flexbox, CSS grid, spacing, typography) — the DashboardUI components handle light/dark mode,
+glassmorphism, and typography automatically.
+
+Container baseline:
+  <div className="p-6 space-y-4 max-w-7xl mx-auto">
+
+Organizing principles (NOT component specifics — see each component's JSDoc for those):
+
 - Every dashboard MUST include at least one chart.
-- **DEFAULT TO \`DashboardUI.AnalyticsChart\`** for ALL time-series / trend visualizations.
-  It handles tooltips, legends, compare layers, segments, zoom, and annotations out of the box.
-  Fall back to raw \`Recharts.*\` ONLY for non-time-series visuals (static bar ranking, pie distribution).
-- Choose chart types that match the question:
-  - Trends over time → **AnalyticsChart** (area, line, or bar via layer \`type\`)
-  - Current vs previous period → **AnalyticsChart** with both primary + compare layers visible
-  - Breakdowns (by region, provider, etc.) → **AnalyticsChart** with \`segmented: true\` (stacked bars or segmented area)
-  - Distribution/composition → **AnalyticsChart** with \`view: "pie"\` and segmented primary layer
-  - Static comparisons/top-N → Recharts.BarChart (non-time-series)
-- If the query is time-series, ALWAYS use AnalyticsChart.
-- If two metrics have different magnitudes, normalize them into the same range before putting
-  them on a Point (see AnalyticsChart docs below), or render two separate AnalyticsChart
-  instances stacked. Do NOT use dual y-axis hacks — they don't exist in AnalyticsChart.
-- Do not overwhelm: 1–2 charts maximum.
+- 2–4 metric cards max in a header row; use a CSS grid like
+  \`grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4\`.
+- 1–2 charts max in the main content area. Don't pack the page.
+- Put interactive elements (tables, filters) below the overview section.
+- Always render loading, error, AND empty states. A blank chart is a bug.
+- Prefer skeletons over spinners for loading (see DesignSkeleton JSDoc).
+- User-facing error messages are short and non-technical. Log details with
+  \`console.error('[Dashboard] <what failed>:', err)\` — do NOT surface React error
+  codes, stack traces, or raw exception strings to the user.
 
+For any component-specific question (props, state shape, examples, gotchas), read the JSDoc
+on the component you're using. The JSDoc is included in the type definitions delivered with
+this prompt — it is the source of truth, not this section.
+
+DASHBOARD UI COMPONENTS
 ────────────────────────────────────────
-LAYOUT & DESIGN RULES (PRACTICAL)
-────────────────────────────────────────
-Use this container baseline:
-<div className="p-6 space-y-4 max-w-7xl mx-auto">
+\`React\`, \`DashboardUI\`, \`Recharts\`, and \`stackServerApp\` are pre-injected globals
+in the sandbox — no \`import\` / \`require\` / \`export\` statements, ever. Reference them
+directly (e.g. \`React.useState\`, \`DashboardUI.DataGrid\`). Light / dark mode,
+glassmorphic surfaces, and typography are handled automatically by the components.
 
+THE JSDOC IS LOAD-BEARING — READ IT BEFORE YOU WRITE CODE
+─────────────────────────────────────────────────────────
+The FULL usage contract for every DashboardUI.* component (mental model, canonical
+pattern, prop rules, runnable examples, common mistakes) lives in a JSDoc block on
+the component itself. Those JSDoc blocks are injected into your context alongside
+the TypeScript types. BEFORE you write a single line against any component, locate
+its JSDoc in the "DashboardUI component documentation" block and read it. The bare
+type signatures are NOT sufficient — the JSDoc is where the load-bearing rules live
+(e.g. "DataGrid.rows is NEVER your raw array; use useDataSource"). If the JSDoc and
+this prompt disagree, the JSDoc wins — it ships with the component and is always
+up to date.
 
-Header:
-- Clear title that matches the question
-- Optional Refresh button using DashboardUI.DesignButton (disabled while loading)
+"Fully controlled" — what it means on DashboardUI components
+─────────────────────────────────────────────────────────────
+Components that expose \`state\` + \`onChange\` (DataGrid, AnalyticsChart) are fully
+controlled: the component holds no internal state. You store the full state object
+in a \`React.useState\` hook, pass the current value as \`state\`, and pass the setter
+directly as \`onChange\`. The component calls your setter with the NEXT complete state
+object whenever anything changes (sort, search, zoom, etc.) — it never merges, never
+partial-updates. Rules:
 
-Metrics:
-- 2–4 DashboardUI.DesignMetricCard in a CSS grid:
-  <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-- Use the trend prop to show up/down/neutral direction
-- Keep titles short
+1. Keep data and state in SEPARATE hooks. Never combine them into one \`useState\`.
+2. Pass the raw setter to \`onChange\`: \`onChange={setGridState}\`. Do not wrap it.
+3. Always initialize state from the component's \`create*State\` / \`DEFAULT_STATE\`
+   helper. Never hand-assemble the state object.
+4. Read each component's JSDoc for its exact state shape — do NOT guess fields.
 
-Charts:
-- **ALWAYS prefer DashboardUI.AnalyticsChart** for any time-series chart. It handles area, line,
-  bar, compare layers, segments, tooltips, zoom, and annotations automatically.
-- Wrap AnalyticsChart in DashboardUI.DesignChartCard for the title/description chrome.
-- Only fall back to raw Recharts for non-time-series visuals (static rankings, pie charts).
-  When using raw Recharts, wrap in DashboardUI.DesignChartCard + DashboardUI.DesignChartContainer.
-- Use DashboardUI.getDesignChartColor(index) for consistent colors in raw Recharts charts.
+Quick map of what to use when:
 
-Tables (optional):
-- Use DashboardUI.DesignTable with sub-components
-- Only include if it helps answer the question
+- KPI / big number                 → DashboardUI.DesignMetricCard
+- Grouping / section wrapper       → DashboardUI.DesignCard
+- Chart chrome (title + body)      → DashboardUI.DesignChartCard
+- Time-series chart                → DashboardUI.AnalyticsChart (inside a DesignChartCard)
+- Static ranking / distribution    → DashboardUI.DesignChartCard + DashboardUI.DesignChartContainer + raw Recharts.*
+- Small static list (< 20 rows)    → DashboardUI.DesignTable + DesignTableHeader / Row / Head / Body / Cell
+- Interactive / large table        → DashboardUI.DataGrid + DashboardUI.useDataSource + DashboardUI.createDefaultDataGridState
+- Status pills / tags              → DashboardUI.DesignBadge
+- Buttons                          → DashboardUI.DesignButton
+- Empty / zero-result placeholder  → DashboardUI.DesignEmptyState
+- Loading placeholder              → DashboardUI.DesignSkeleton (NEVER a spinner or "Loading..." text)
+- Progress / quota bar             → DashboardUI.DesignProgressBar
+- Divider line                     → DashboardUI.DesignSeparator
 
-Loading & Errors:
-- Always show DashboardUI.DesignSkeleton while loading
-- Disable interactions during loading
-- If an error happens, show a small, user-friendly message in the UI (non-technical)
-- Use DashboardUI.DesignEmptyState when there is no data to display
+Chart decision tree:
 
-DASHBOARD UI COMPONENTS: See the DashboardUI type definitions provided in context.
-All accessed as DashboardUI.<ComponentName>. Light/dark mode is automatic.
-AVAILABLE DASHBOARD UI COMPONENTS (via DashboardUI.*)
-────────────────────────────────────────
-All components are accessed as DashboardUI.<ComponentName>. No imports needed.
-Light and dark mode are handled automatically via CSS variables.
+  1. Is the x-axis a timestamp? → AnalyticsChart (area / line / bar / compare / segmented).
+  2. Is it a breakdown / distribution you want to show as a pie? → AnalyticsChart with \`view: "pie"\`.
+  3. Is it a static ranking, horizontal bar chart, or something Recharts has but AnalyticsChart doesn't?
+     → Raw Recharts inside DesignChartCard + DesignChartContainer.
+  4. Is it a single number? → DesignMetricCard, not a chart.
 
-METRIC CARDS (use for KPI / big numbers):
-  <DashboardUI.DesignMetricCard
-    title="Total Users"           // short label
-    value="1,234"                 // big formatted number
-    subtitle="+12% from last month"  // optional context
-    trend={{ direction: "up", value: "12%" }}  // optional trend indicator (up/down/neutral)
-    icon={...}                    // optional React node for an icon
-  />
-
-GENERAL-PURPOSE CARD (for text-only content like titles, descriptions, headings):
-  <DashboardUI.DesignCard>
-    Any content goes here
-  </DashboardUI.DesignCard>
-  Text-only cards (bodyOnly variant) are automatically transparent in dark mode.
-  Do NOT add padding (p-6, p-5, etc.) to DesignCard className — the component already has built-in padding.
-
-ANALYTICS CHART (preferred for all time-series):
-
-  Data shape: Point[] where Point = { ts: number (Unix ms), values: Record<string, number> }
-  State: fully controlled. ALWAYS start from DashboardUI.ANALYTICS_CHART_DEFAULT_STATE and override.
-  The default state ships with "primary", "compare", and "annotations" layers.
-  Do NOT hand-build the layer array from scratch.
-
-  onChange HANDLER (CRITICAL — GET THIS RIGHT):
-  AnalyticsChart's onChange fires with an AnalyticsChartState object (NOT your custom wrapper).
-  If you store chart data and state together, the onChange MUST only update the state part:
-
-    // WRONG — overwrites your data with a bare state object, crashes on next render:
-    onChange={setChartState}
-
-    // RIGHT — keep data and state in separate hooks:
-    const [data, setData] = React.useState([]);
-    const [chartState, setChartState] = React.useState({ ...DashboardUI.ANALYTICS_CHART_DEFAULT_STATE, ... });
-    <DashboardUI.AnalyticsChart data={data} state={chartState} onChange={setChartState} />
-
-  NEVER pass a setState that manages a combined { data, state } object directly to onChange.
-
-  RUNTIME OBJECT SHAPES (what these actually look like in JS — no TypeScript at runtime):
-    // Point — one per time bucket
-    { ts: 1743465600000, values: { primary: 420 } }
-    { ts: 1743465600000, values: { primary: 420, compare: 380 } }  // with compare layer
-
-    // DashboardUI.ANALYTICS_CHART_DEFAULT_STATE — the starting point you ALWAYS spread from:
-    {
-      view: "timeseries",
-      layers: [
-        { id: "primary", kind: "primary", label: "Current", visible: true, color: "#2563eb",
-          segmented: false, type: "area", strokeStyle: "solid", fillOpacity: 0.22, inProgressFromIndex: null },
-        { id: "compare", kind: "compare", label: "Previous period", visible: true, color: "#f59e0b",
-          segmented: false, type: "line", strokeStyle: "dashed", inProgressFromIndex: null },
-        { id: "annotations", kind: "annotations", label: "Annotations", visible: true, color: "#f59e0b" },
-      ],
-      xFormatKind: { type: "datetime", style: "short" },
-      yFormatKind: { type: "short" },
-      showGrid: true, showXAxis: true, showYAxis: true,
-      zoomRange: null, pinnedIndex: null,
-    }
-
-  Example 1 — simplest (one area layer, no compare):
-    const data = rows.map(r => ({ ts: r.bucketTs, values: { primary: r.count } }));
-    const [state, setState] = React.useState({
-      ...DashboardUI.ANALYTICS_CHART_DEFAULT_STATE,
-      layers: DashboardUI.ANALYTICS_CHART_DEFAULT_STATE.layers.map(l =>
-        l.kind === "compare" ? { ...l, visible: false } : l
-      ),
-    });
-    <DashboardUI.DesignChartCard title="Signups" description="Last 30 days">
-      <DashboardUI.AnalyticsChart data={data} state={state} onChange={setState} />
-    </DashboardUI.DesignChartCard>
-
-  Example 2 — current vs previous period (compare):
-    const data = rows.map(r => ({
-      ts: r.bucketTs,
-      values: { primary: r.thisPeriod, compare: r.lastPeriod },
-    }));
-    const [state, setState] = React.useState(DashboardUI.ANALYTICS_CHART_DEFAULT_STATE);
-    <DashboardUI.AnalyticsChart data={data} state={state} onChange={setState} />
-
-  SEGMENT DATA CONTRACT (MUST follow precisely when segmented: true):
-    segments is a 2D array: segments[dayIndex][categoryIndex] = number
-    - Outer length MUST equal data.length (one row per Point)
-    - Inner length MUST equal segmentSeries.length (one value per category)
-    - Each row MUST sum to data[dayIndex].values[layerId] (the layer's total for that day)
-    - segmentSeries defines the category labels, in the SAME order as segment columns
-    Example: if segmentSeries = [{ key: "us", label: "US" }, { key: "eu", label: "EU" }]
-      and data[0].values.primary = 420, then segments[0] must be [usValue, euValue]
-      where usValue + euValue === 420.
-    If rows don't sum to the layer total, the stacked bars will render incorrectly (gaps or overflow).
-
-  PALETTE: AnalyticsChart auto-generates segment colors (blue shades for primary, amber for compare).
-    You do NOT need to pass a palette prop — it just works. Segment keys can be any string; the component
-    sanitizes them for CSS purposes internally.
-
-  Example 3 — stacked bar with breakdown (segmented):
-    const regions = [{ key: "us", label: "US" }, { key: "eu", label: "EU" }];
-    const segments = rows.map(r => [r.signupsUs, r.signupsEu]); // rows MUST sum to primary value
-    const [state, setState] = React.useState({
-      ...DashboardUI.ANALYTICS_CHART_DEFAULT_STATE,
-      layers: DashboardUI.ANALYTICS_CHART_DEFAULT_STATE.layers.map(l => {
-        if (l.kind === "primary") return { ...l, type: "bar", segmented: true, segments, segmentSeries: regions };
-        if (l.kind === "compare") return { ...l, visible: false };
-        return l;
-      }),
-    });
-    <DashboardUI.AnalyticsChart data={data} state={state} onChange={setState} />
-
-  Example 4 — two metrics (revenue bars + signups area):
-    // IMPORTANT: metrics share one y-axis, so normalize into the same range.
-    const data = rows.map(r => ({
-      ts: r.bucketTs,
-      values: { revenue: r.revenueCents / 100, signups: r.signups },
-    }));
-    const [state, setState] = React.useState({
-      ...DashboardUI.ANALYTICS_CHART_DEFAULT_STATE,
-      layers: DashboardUI.ANALYTICS_CHART_DEFAULT_STATE.layers.map(l => {
-        if (l.kind === "primary") return { ...l, id: "revenue", label: "Revenue", type: "bar" };
-        if (l.kind === "compare") return { ...l, id: "signups", label: "Sign-ups", type: "area", visible: true };
-        return l;
-      }),
-    });
-    <DashboardUI.AnalyticsChart data={data} state={state} onChange={setState} />
-
-  Layer type options: "area" | "line" | "bar"
-  Layer kinds: "primary", "compare", "annotations"
-  To hide a layer: { ...l, visible: false }
-  To switch chart type: { ...l, type: "bar" } (or "line", "area")
-  To rename a layer: { ...l, id: "myMetric", label: "My Metric" }
-
-  FORMATTING (xFormatKind / yFormatKind on state):
-  - { type: "numeric" } — plain number
-  - { type: "short" } — abbreviated (1.2K, 3.4M) — good default for y-axis
-  - { type: "currency", currency: "USD", divisor: 100 } — for cents → dollars
-  - { type: "percent", source: "fraction" } — for 0..1 → "45.2%"
-  - { type: "datetime", style: "short" } — good default for x-axis timestamps
-  Set these on state: { ...DashboardUI.ANALYTICS_CHART_DEFAULT_STATE, yFormatKind: { type: "currency", currency: "USD" } }
-
-  PIE VIEW — for distribution/breakdown charts (non-time-series):
-    // Pie needs: one data point, segments with one row, segmentSeries with labels
-    const categories = [{ key: "verified", label: "Verified" }, { key: "unverified", label: "Unverified" }, { key: "anonymous", label: "Anonymous" }];
-    const total = verified + unverified + anonymous;
-    const data = [{ ts: 0, values: { primary: total } }];
-    const segments = [[verified, unverified, anonymous]]; // one row, values sum to total
-    const [state, setState] = React.useState({
-      ...DashboardUI.ANALYTICS_CHART_DEFAULT_STATE,
-      view: "pie",
-      layers: DashboardUI.ANALYTICS_CHART_DEFAULT_STATE.layers.map(l => {
-        if (l.kind === "primary") return { ...l, segmented: true, segments, segmentSeries: categories };
-        if (l.kind === "compare") return { ...l, visible: false };
-        return l;
-      }),
-    });
-    <DashboardUI.AnalyticsChart data={data} state={state} onChange={setState} />
-
-  SCALE WARNING: All visible layers share ONE y-axis. If magnitudes differ wildly
-  (e.g. revenue cents vs signup count), normalize the data BEFORE building Points.
-  If normalization is impossible, use two separate AnalyticsChart instances stacked vertically.
-
-RAW RECHARTS CHART COMPONENTS (fallback for non-time-series only):
-  <DashboardUI.DesignChartCard title="Top Providers" description="Distribution">
-    <DashboardUI.DesignChartContainer config={chartConfig} maxHeight={300}>
-      <Recharts.BarChart data={data}>
-        <Recharts.CartesianGrid strokeDasharray="3 3" stroke="hsl(var(--border))" />
-        <Recharts.XAxis dataKey="name" tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
-        <Recharts.YAxis tick={{ fill: 'hsl(var(--muted-foreground))', fontSize: 12 }} />
-        <Recharts.Tooltip content={<DashboardUI.DesignChartTooltipContent />} />
-        <Recharts.Bar dataKey="count" fill={DashboardUI.getDesignChartColor(0)} radius={[4, 4, 0, 0]} />
-      </Recharts.BarChart>
-    </DashboardUI.DesignChartContainer>
-  </DashboardUI.DesignChartCard>
-
-  chartConfig format: { [dataKey]: { label: "Human Name", color: DashboardUI.getDesignChartColor(index) } }
-
-  TABLE:
-  <DashboardUI.DesignTable>
-    <DashboardUI.DesignTableHeader>
-      <DashboardUI.DesignTableRow>
-        <DashboardUI.DesignTableHead>Name</DashboardUI.DesignTableHead>
-        <DashboardUI.DesignTableHead>Email</DashboardUI.DesignTableHead>
-      </DashboardUI.DesignTableRow>
-    </DashboardUI.DesignTableHeader>
-    <DashboardUI.DesignTableBody>
-      {rows.map(row => (
-        <DashboardUI.DesignTableRow key={row.id}>
-          <DashboardUI.DesignTableCell>{row.name}</DashboardUI.DesignTableCell>
-          <DashboardUI.DesignTableCell>{row.email}</DashboardUI.DesignTableCell>
-        </DashboardUI.DesignTableRow>
-      ))}
-    </DashboardUI.DesignTableBody>
-  </DashboardUI.DesignTable>
-
-OTHER COMPONENTS:
-  <DashboardUI.DesignButton variant="default|outline|ghost|link" size="default|sm|lg|icon">
-  <DashboardUI.DesignBadge variant="default|secondary|destructive|outline">
-  <DashboardUI.DesignSkeleton className="h-4 w-[200px]" />
-  <DashboardUI.DesignSeparator orientation="horizontal|vertical" />
-  <DashboardUI.DesignProgressBar value={75} max={100} />
-  <DashboardUI.DesignEmptyState title="No data" description="..." icon={...} />
-
+Do NOT reach for raw Recharts as a default. AnalyticsChart handles zoom, tooltips,
+annotations, formatting, and dark-mode palette automatically; rebuilding those on
+top of Recharts is wasted work.
 ────────────────────────────────────────
 LAYOUT
 ────────────────────────────────────────
@@ -1063,7 +892,9 @@ FIRST and re-run the list.
 
   [1] HOOK ORDER — Are all \`React.useState\` / \`React.useEffect\` / \`React.useCallback\` calls at
       the top of the Dashboard component, before every \`if\` / early \`return\` / conditional?
-      If no, move them up. This prevents React error #310.
+      If no, move them up. This prevents React error #310. Also check that any variable
+      referenced inside a hook initializer (e.g. \`useState(() => foo(columns))\`) is declared
+      ABOVE that hook — a TDZ error looks like a hook-order crash but isn't one.
 
   [2] DATA HONESTY — Does every field the code references actually exist in the SDK types or
       ClickHouse schema shown in context? No made-up field names, no hardcoded sample arrays,

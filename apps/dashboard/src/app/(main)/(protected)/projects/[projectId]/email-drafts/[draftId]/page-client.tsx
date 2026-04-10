@@ -19,6 +19,16 @@ import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { ColumnDef } from "@tanstack/react-table";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
+
+const BUILDER_STATUS_MESSAGES = [
+  "Reading your current draft...",
+  "Understanding your changes...",
+  "Planning the update...",
+  "Crafting components...",
+  "Refining the layout...",
+  "Polishing the details...",
+  "Almost there...",
+];
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { useAdminApp } from "../../use-admin-app";
 import { SentEmailsView } from "../../email-sent/sent-emails-view";
@@ -93,6 +103,10 @@ export default function PageClient({ draftId }: { draftId: string }) {
     setNeedConfirm(true);
     return () => setNeedConfirm(false);
   }, [setNeedConfirm, draft, currentCode, selectedThemeId, stage]);
+
+  const [isRunning, setIsRunning] = useState(false);
+  const handleRunStart = useCallback(() => setIsRunning(true), []);
+  const handleRunEnd = useCallback(() => setIsRunning(false), []);
 
   const handleToolUpdate = (toolCall: ToolCallContent) => {
     setCurrentCode(toolCall.args.content);
@@ -233,9 +247,10 @@ export default function PageClient({ draftId }: { draftId: string }) {
                 chatComponent={
                   <AssistantChat
                     historyAdapter={createHistoryAdapter(stackAdminApp, draftId)}
-                    chatAdapter={createChatAdapter(backendBaseUrl, "email-draft", handleToolUpdate, () => currentCode, currentUser)}
+                    chatAdapter={createChatAdapter(backendBaseUrl, "email-draft", handleToolUpdate, () => currentCode, currentUser, handleRunStart, handleRunEnd)}
                     toolComponents={<EmailDraftUI setCurrentCode={setCurrentCode} />}
                     useOffWhiteLightMode
+                    runningStatusMessages={isRunning ? BUILDER_STATUS_MESSAGES : undefined}
                   />
                 }
               />

@@ -22,6 +22,7 @@ import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises"
 import { createContext, useContext, useEffect, useMemo, useRef, useState, type FC } from "react";
 
 const HideMessageActionsContext = createContext(false);
+const HasRunningStatusContext = createContext(false);
 
 const ComposerAttachmentsEnabledContext = createContext(false);
 
@@ -45,52 +46,61 @@ export const Thread: FC<{
   useOffWhiteLightMode?: boolean,
   composerPlaceholder?: ComposerPlaceholder,
   hideMessageActions?: boolean,
+  runningStatusMessages?: string[],
   composerAttachments?: boolean,
-}> = ({ useOffWhiteLightMode = false, composerPlaceholder, hideMessageActions = false, composerAttachments = false }) => {
+}> = ({ useOffWhiteLightMode = false, composerPlaceholder, hideMessageActions = false, runningStatusMessages, composerAttachments = false }) => {
   return (
     <HideMessageActionsContext.Provider value={hideMessageActions}>
-      <ComposerAttachmentsEnabledContext.Provider value={composerAttachments}>
-        <ThreadPrimitive.Root
-          className={cn(
-        "box-border flex h-0 flex-grow flex-col overflow-hidden",
-        useOffWhiteLightMode ? "bg-slate-50/90 dark:bg-background" : "bg-background",
-      )}
-          style={{
-            ["--thread-max-width" as string]: "100%",
-          }}
-        >
-          <ThreadPrimitive.Viewport
+      <HasRunningStatusContext.Provider value={!!runningStatusMessages}>
+        <ComposerAttachmentsEnabledContext.Provider value={composerAttachments}>
+          <ThreadPrimitive.Root
             className={cn(
-          "flex h-full flex-col items-center overflow-y-auto scroll-smooth px-3",
-          useOffWhiteLightMode ? "bg-slate-50/90 dark:bg-inherit" : "bg-inherit",
+          "box-border flex h-0 flex-grow flex-col overflow-hidden",
+          useOffWhiteLightMode ? "bg-slate-50/90 dark:bg-background" : "bg-background",
         )}
+            style={{
+              ["--thread-max-width" as string]: "100%",
+            }}
           >
-            <ThreadWelcome />
+            <ThreadPrimitive.Viewport
+              className={cn(
+            "flex h-full flex-col items-center overflow-y-auto scroll-smooth px-3",
+            useOffWhiteLightMode ? "bg-slate-50/90 dark:bg-inherit" : "bg-inherit",
+          )}
+            >
+              <ThreadWelcome />
 
-            <ThreadPrimitive.Messages
-              components={{
-                UserMessage: UserMessage,
-                EditComposer: EditComposer,
-                AssistantMessage: AssistantMessage,
-              }}
-            />
+              <ThreadPrimitive.Messages
+                components={{
+                  UserMessage: UserMessage,
+                  EditComposer: EditComposer,
+                  AssistantMessage: AssistantMessage,
+                }}
+              />
 
-            <ThreadPrimitive.If empty={false}>
-              <div className="min-h-6 flex-grow" />
-            </ThreadPrimitive.If>
+              {runningStatusMessages && (
+                <ThreadPrimitive.If running>
+                  <ThreadRunningStatus messages={runningStatusMessages} />
+                </ThreadPrimitive.If>
+              )}
 
-            <div className={cn(
-          "sticky bottom-0 mt-2 flex w-full max-w-[var(--thread-max-width)] flex-col items-center justify-end bg-gradient-to-t to-transparent pt-6 pb-3",
-          useOffWhiteLightMode
-            ? "from-slate-50/90 via-slate-50/90 dark:from-background dark:via-background"
-            : "from-background via-background",
-        )}>
-              <ThreadScrollToBottom />
-              <Composer placeholder={composerPlaceholder} />
-            </div>
-          </ThreadPrimitive.Viewport>
-        </ThreadPrimitive.Root>
-      </ComposerAttachmentsEnabledContext.Provider>
+              <ThreadPrimitive.If empty={false}>
+                <div className="min-h-6 flex-grow" />
+              </ThreadPrimitive.If>
+
+              <div className={cn(
+            "sticky bottom-0 mt-2 flex w-full max-w-[var(--thread-max-width)] flex-col items-center justify-end bg-gradient-to-t to-transparent pt-6 pb-3",
+            useOffWhiteLightMode
+              ? "from-slate-50/90 via-slate-50/90 dark:from-background dark:via-background"
+              : "from-background via-background",
+          )}>
+                <ThreadScrollToBottom />
+                <Composer placeholder={composerPlaceholder} />
+              </div>
+            </ThreadPrimitive.Viewport>
+          </ThreadPrimitive.Root>
+        </ComposerAttachmentsEnabledContext.Provider>
+      </HasRunningStatusContext.Provider>
     </HideMessageActionsContext.Provider>
   );
 };
@@ -552,16 +562,23 @@ const EditComposer: FC = () => {
 };
 
 const AssistantMessage: FC = () => {
+  const hasRunningStatus = useContext(HasRunningStatusContext);
   return (
     <MessagePrimitive.Root className="flex flex-col relative w-full max-w-[var(--thread-max-width)] py-4 group">
       <div className="flex items-start gap-3">
         <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500/20 to-blue-600/10 flex items-center justify-center shrink-0 ring-1 ring-blue-500/20 shadow-sm">
-          <ThreadPrimitive.If running>
-            <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
-          </ThreadPrimitive.If>
-          <ThreadPrimitive.If running={false}>
+          {hasRunningStatus ? (
             <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
-          </ThreadPrimitive.If>
+          ) : (
+            <>
+              <ThreadPrimitive.If running>
+                <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
+              </ThreadPrimitive.If>
+              <ThreadPrimitive.If running={false}>
+                <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+              </ThreadPrimitive.If>
+            </>
+          )}
         </div>
         <div className="flex-1 min-w-0 space-y-2">
           <div className="text-foreground break-words leading-relaxed text-sm">
@@ -662,6 +679,40 @@ const BranchPicker: FC<BranchPickerPrimitive.Root.Props> = ({
         </TooltipIconButton>
       </BranchPickerPrimitive.Next>
     </BranchPickerPrimitive.Root>
+  );
+};
+
+const ThreadRunningStatus: FC<{ messages: string[] }> = ({ messages }) => {
+  const [index, setIndex] = useState(0);
+  const prevMessagesRef = useRef(messages);
+
+  useEffect(() => {
+    if (prevMessagesRef.current !== messages) {
+      prevMessagesRef.current = messages;
+      setIndex(0);
+    }
+  }, [messages]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setIndex((prev) => (prev + 1) % messages.length);
+    }, 1200);
+    return () => clearInterval(interval);
+  }, [messages.length]);
+
+  return (
+    <div className="flex w-full max-w-[var(--thread-max-width)] py-3">
+      <div className="flex items-center gap-3 ml-10">
+        <div className="flex gap-1">
+          <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+          <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" style={{ animationDelay: "150ms" }} />
+          <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" style={{ animationDelay: "300ms" }} />
+        </div>
+        <span className="text-xs text-muted-foreground transition-opacity duration-300">
+          {messages[index]}
+        </span>
+      </div>
+    </div>
   );
 };
 

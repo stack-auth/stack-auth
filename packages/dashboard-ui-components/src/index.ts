@@ -55,3 +55,5 @@ export { DesignEmptyState } from "./components/empty-state";
 export type { DesignEmptyStateProps } from "./components/empty-state";
 
 export * from "./components/analytics-chart";
+
+export * from "./components/data-grid";

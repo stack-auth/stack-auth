@@ -11,6 +11,22 @@ export type DesignEmptyStateProps = {
   className?: string,
 };
 
+/**
+ * Centered "no data" placeholder. Show this inside a `DataGrid` via the
+ * `emptyState` prop, inside a chart when a query returns zero rows, or
+ * inside a card when a section has nothing to display.
+ *
+ * ```tsx
+ * <DesignEmptyState
+ *   icon={SearchIcon}
+ *   title="No results"
+ *   description="Try adjusting your filters."
+ * />
+ * ```
+ *
+ * Prefer this over a raw "No data" div — it handles spacing, typography,
+ * and the optional icon for you. `icon` is a component type, not a rendered node.
+ */
 export function DesignEmptyState({
   icon: Icon,
   title = "No data available",

@@ -4,6 +4,31 @@ import { forwardRefIfNeeded } from "@stackframe/stack-shared/dist/utils/react";
 import { cn } from "@stackframe/stack-ui";
 import React from "react";
 
+/**
+ * Simple static table — header + rows + cells. Use this for small,
+ * read-only lists (< 20 rows, no interaction). For anything that needs
+ * sorting, filtering, pagination, or virtualization, use `DataGrid` +
+ * `useDataSource` instead.
+ *
+ * ```tsx
+ * <DesignTable>
+ *   <DesignTableHeader>
+ *     <DesignTableRow>
+ *       <DesignTableHead>Name</DesignTableHead>
+ *       <DesignTableHead>Email</DesignTableHead>
+ *     </DesignTableRow>
+ *   </DesignTableHeader>
+ *   <DesignTableBody>
+ *     {rows.map(row => (
+ *       <DesignTableRow key={row.id}>
+ *         <DesignTableCell>{row.name}</DesignTableCell>
+ *         <DesignTableCell>{row.email}</DesignTableCell>
+ *       </DesignTableRow>
+ *     ))}
+ *   </DesignTableBody>
+ * </DesignTable>
+ * ```
+ */
 export const DesignTable = forwardRefIfNeeded<
   HTMLTableElement,
   React.HTMLAttributes<HTMLTableElement>

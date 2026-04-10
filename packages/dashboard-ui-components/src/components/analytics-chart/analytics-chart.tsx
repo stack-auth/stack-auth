@@ -485,6 +485,197 @@ function buildTooltipLayerView(args: {
   };
 }
 
+/**
+ * Preferred chart for all time-series: area, line, bar, compare layers,
+ * segmented stacks, tooltips, zoom, and annotations. Wrap in
+ * `DesignChartCard` for the title/description chrome. Only fall back to
+ * raw Recharts for non-time-series visuals (static rankings etc.).
+ *
+ * ## Data shape
+ *
+ * `data` is `Point[]`, where `Point = { ts: number, values: Record<string, number> }`.
+ * `ts` is a Unix milliseconds timestamp. `values` maps layer id → numeric value
+ * at that bucket. Example:
+ *
+ * ```ts
+ * { ts: 1743465600000, values: { primary: 420 } }
+ * { ts: 1743465600000, values: { primary: 420, compare: 380 } }  // with compare layer
+ * ```
+ *
+ * ## State is fully controlled — start from ANALYTICS_CHART_DEFAULT_STATE
+ *
+ * The default state ships with three pre-configured layers: `"primary"`,
+ * `"compare"`, and `"annotations"`. ALWAYS spread from
+ * `ANALYTICS_CHART_DEFAULT_STATE` and map over `layers` to override. Do NOT
+ * hand-build the layer array from scratch — you will miss fields and crash.
+ *
+ * ```ts
+ * // Default state shape (for reference — spread from the constant, don't copy):
+ * {
+ *   view: "timeseries",
+ *   layers: [
+ *     { id: "primary", kind: "primary", label: "Current", visible: true, color: "#2563eb",
+ *       segmented: false, type: "area", strokeStyle: "solid", fillOpacity: 0.22, inProgressFromIndex: null },
+ *     { id: "compare", kind: "compare", label: "Previous period", visible: true, color: "#f59e0b",
+ *       segmented: false, type: "line", strokeStyle: "dashed", inProgressFromIndex: null },
+ *     { id: "annotations", kind: "annotations", label: "Annotations", visible: true, color: "#f59e0b" },
+ *   ],
+ *   xFormatKind: { type: "datetime", style: "short" },
+ *   yFormatKind: { type: "short" },
+ *   showGrid: true, showXAxis: true, showYAxis: true,
+ *   zoomRange: null, pinnedIndex: null,
+ * }
+ * ```
+ *
+ * ## onChange — CRITICAL, get this right
+ *
+ * `onChange` fires with an `AnalyticsChartState` object — NOT your custom
+ * wrapper. If you store chart data and state together, `onChange` MUST only
+ * update the state part. Keep data and state in SEPARATE hooks:
+ *
+ * ```tsx
+ * // WRONG — overwrites your data with a bare state object, crashes on next render:
+ * const [combined, setCombined] = React.useState({ data: [], state: ANALYTICS_CHART_DEFAULT_STATE });
+ * <AnalyticsChart data={combined.data} state={combined.state} onChange={setCombined} />
+ *
+ * // RIGHT — two hooks:
+ * const [data, setData] = React.useState([]);
+ * const [chartState, setChartState] = React.useState({ ...ANALYTICS_CHART_DEFAULT_STATE });
+ * <AnalyticsChart data={data} state={chartState} onChange={setChartState} />
+ * ```
+ *
+ * NEVER pass a setter that manages a combined `{ data, state }` object directly to `onChange`.
+ *
+ * ## Common patterns
+ *
+ * ### 1. Simplest — one area layer, no compare
+ *
+ * ```tsx
+ * const data = rows.map(r => ({ ts: r.bucketTs, values: { primary: r.count } }));
+ * const [state, setState] = React.useState({
+ *   ...ANALYTICS_CHART_DEFAULT_STATE,
+ *   layers: ANALYTICS_CHART_DEFAULT_STATE.layers.map(l =>
+ *     l.kind === "compare" ? { ...l, visible: false } : l
+ *   ),
+ * });
+ * <DesignChartCard title="Signups" description="Last 30 days">
+ *   <AnalyticsChart data={data} state={state} onChange={setState} />
+ * </DesignChartCard>
+ * ```
+ *
+ * ### 2. Current vs previous period (compare)
+ *
+ * ```tsx
+ * const data = rows.map(r => ({
+ *   ts: r.bucketTs,
+ *   values: { primary: r.thisPeriod, compare: r.lastPeriod },
+ * }));
+ * const [state, setState] = React.useState(ANALYTICS_CHART_DEFAULT_STATE);
+ * <AnalyticsChart data={data} state={state} onChange={setState} />
+ * ```
+ *
+ * ### 3. Stacked bar with breakdown (segmented)
+ *
+ * ```tsx
+ * const regions = [{ key: "us", label: "US" }, { key: "eu", label: "EU" }];
+ * const segments = rows.map(r => [r.signupsUs, r.signupsEu]); // MUST sum to primary value per row
+ * const [state, setState] = React.useState({
+ *   ...ANALYTICS_CHART_DEFAULT_STATE,
+ *   layers: ANALYTICS_CHART_DEFAULT_STATE.layers.map(l => {
+ *     if (l.kind === "primary") return { ...l, type: "bar", segmented: true, segments, segmentSeries: regions };
+ *     if (l.kind === "compare") return { ...l, visible: false };
+ *     return l;
+ *   }),
+ * });
+ * <AnalyticsChart data={data} state={state} onChange={setState} />
+ * ```
+ *
+ * ### 4. Two metrics on one chart (revenue bars + signups area)
+ *
+ * ```tsx
+ * // IMPORTANT: metrics share one y-axis, so normalize into the same range.
+ * const data = rows.map(r => ({
+ *   ts: r.bucketTs,
+ *   values: { revenue: r.revenueCents / 100, signups: r.signups },
+ * }));
+ * const [state, setState] = React.useState({
+ *   ...ANALYTICS_CHART_DEFAULT_STATE,
+ *   layers: ANALYTICS_CHART_DEFAULT_STATE.layers.map(l => {
+ *     if (l.kind === "primary") return { ...l, id: "revenue", label: "Revenue", type: "bar" };
+ *     if (l.kind === "compare") return { ...l, id: "signups", label: "Sign-ups", type: "area", visible: true };
+ *     return l;
+ *   }),
+ * });
+ * <AnalyticsChart data={data} state={state} onChange={setState} />
+ * ```
+ *
+ * ### 5. Pie view (distribution / breakdown, non-time-series)
+ *
+ * Pie needs one data point, `segments` with one row, and `segmentSeries` with labels:
+ *
+ * ```tsx
+ * const categories = [{ key: "verified", label: "Verified" }, { key: "unverified", label: "Unverified" }, { key: "anonymous", label: "Anonymous" }];
+ * const total = verified + unverified + anonymous;
+ * const data = [{ ts: 0, values: { primary: total } }];
+ * const segments = [[verified, unverified, anonymous]]; // one row; values sum to total
+ * const [state, setState] = React.useState({
+ *   ...ANALYTICS_CHART_DEFAULT_STATE,
+ *   view: "pie",
+ *   layers: ANALYTICS_CHART_DEFAULT_STATE.layers.map(l => {
+ *     if (l.kind === "primary") return { ...l, segmented: true, segments, segmentSeries: categories };
+ *     if (l.kind === "compare") return { ...l, visible: false };
+ *     return l;
+ *   }),
+ * });
+ * <AnalyticsChart data={data} state={state} onChange={setState} />
+ * ```
+ *
+ * ## Segment data contract (MUST follow when segmented: true)
+ *
+ * `segments` is a 2D array: `segments[dayIndex][categoryIndex] = number`.
+ *
+ * - Outer length MUST equal `data.length` (one row per Point).
+ * - Inner length MUST equal `segmentSeries.length` (one value per category).
+ * - Each row MUST sum to `data[dayIndex].values[layerId]` (the layer's total for that day).
+ * - `segmentSeries` defines the category labels, in the SAME order as segment columns.
+ *
+ * Example: if `segmentSeries = [{ key: "us", label: "US" }, { key: "eu", label: "EU" }]`
+ * and `data[0].values.primary = 420`, then `segments[0]` must be `[usValue, euValue]`
+ * where `usValue + euValue === 420`. If rows don't sum to the layer total, stacked bars
+ * will render incorrectly (gaps or overflow).
+ *
+ * ## Palette
+ *
+ * AnalyticsChart auto-generates segment colors (blue shades for primary, amber for
+ * compare). You do NOT need to pass a palette prop — it just works. Segment keys
+ * can be any string; the component sanitizes them for CSS purposes internally.
+ *
+ * ## Layer quick reference
+ *
+ * - Layer `type` options: `"area" | "line" | "bar"`
+ * - Layer `kind` values: `"primary" | "compare" | "annotations"`
+ * - To hide a layer: `{ ...l, visible: false }`
+ * - To switch chart type: `{ ...l, type: "bar" }` (or `"line"`, `"area"`)
+ * - To rename a layer: `{ ...l, id: "myMetric", label: "My Metric" }`
+ *
+ * ## Formatting (xFormatKind / yFormatKind on state)
+ *
+ * - `{ type: "numeric" }` — plain number
+ * - `{ type: "short" }` — abbreviated (1.2K, 3.4M) — good default for y-axis
+ * - `{ type: "currency", currency: "USD", divisor: 100 }` — for cents → dollars
+ * - `{ type: "percent", source: "fraction" }` — for 0..1 → "45.2%"
+ * - `{ type: "datetime", style: "short" }` — good default for x-axis timestamps
+ *
+ * Set these on state:
+ * `{ ...ANALYTICS_CHART_DEFAULT_STATE, yFormatKind: { type: "currency", currency: "USD" } }`
+ *
+ * ## Scale warning
+ *
+ * All visible layers share ONE y-axis. If magnitudes differ wildly (e.g. revenue
+ * cents vs signup count), normalize the data BEFORE building Points. If
+ * normalization is impossible, use two separate `AnalyticsChart` instances stacked
+ * vertically.
+ */
 export function AnalyticsChart({
   data: fullData,
   annotations: fullAnnotations = [],

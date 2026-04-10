@@ -48,6 +48,24 @@ export const ANALYTICS_CHART_DEFAULT_LAYERS: AnalyticsChartLayers = [
   { id: "annotations", kind: "annotations", label: "Annotations", visible: true, color: "#f59e0b" },
 ];
 
+/**
+ * Default state for `AnalyticsChart`. ALWAYS spread from this when
+ * initializing state; never build the state object by hand. Ships with
+ * three pre-configured layers (primary, compare, annotations) — map over
+ * `layers` to override individual ones.
+ *
+ * ```tsx
+ * const [state, setState] = React.useState({
+ *   ...ANALYTICS_CHART_DEFAULT_STATE,
+ *   layers: ANALYTICS_CHART_DEFAULT_STATE.layers.map(l =>
+ *     l.kind === "compare" ? { ...l, visible: false } : l
+ *   ),
+ * });
+ * ```
+ *
+ * See the JSDoc on `AnalyticsChart` for the full contract, examples, and
+ * the segment data format.
+ */
 export const ANALYTICS_CHART_DEFAULT_STATE: AnalyticsChartState = {
   view: "timeseries",
   layers: ANALYTICS_CHART_DEFAULT_LAYERS,

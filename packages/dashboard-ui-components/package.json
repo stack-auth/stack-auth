@@ -57,6 +57,7 @@
     "@react-hook/resize-observer": "^2.0.2",
     "@stackframe/stack-shared": "workspace:*",
     "@stackframe/stack-ui": "workspace:*",
+    "@tanstack/react-virtual": "^3.13.0",
     "class-variance-authority": "^0.7.0"
   },
   "devDependencies": {

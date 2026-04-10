@@ -3,6 +3,7 @@
 
 import { DashboardSandboxHost, type DashboardRuntimeError, type WidgetSelection } from "@/components/commands/create-dashboard/dashboard-sandbox-host";
 import { useRouter, useRouterConfirm } from "@/components/router";
+import { StreamingCodeViewer } from "@/components/streaming-code-viewer";
 import { ActionDialog, Button, Typography, useToast } from "@/components/ui";
 import { Input } from "@/components/ui/input";
 import {
@@ -125,6 +126,11 @@ function DashboardDetailContent({
   const [deleteDialogOpen, setDeleteDialogOpen] = useState(false);
   const [currentTsxSource, setCurrentTsxSource] = useState(tsxSource);
   const [savedTsxSource, setSavedTsxSource] = useState(tsxSource);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [pendingCode, setPendingCode] = useState<string | null>(null);
+  const [iframeReady, setIframeReady] = useState(hasSource);
+  const [codePhase, setCodePhase] = useState<"typing" | "loading" | "done">("done");
+  const codePhaseTimerRef = useRef<ReturnType<typeof setTimeout>>();
   const hasUnsavedChanges = currentTsxSource !== savedTsxSource;
   const { setNeedConfirm } = useRouterConfirm();
   const { toast } = useToast();
@@ -233,8 +239,33 @@ function DashboardDetailContent({
 
   const handleCodeUpdate = useCallback((toolCall: ToolCallContent) => {
     if (typeof toolCall.args.content === "string") {
+      setPendingCode(toolCall.args.content);
       setCurrentTsxSource(toolCall.args.content);
+      clearTimeout(codePhaseTimerRef.current);
+      setCodePhase("typing");
+      codePhaseTimerRef.current = setTimeout(() => {
+        setCodePhase("loading");
+        codePhaseTimerRef.current = setTimeout(() => {
+          setCodePhase("done");
+        }, 1000);
+      }, 3000);
     }
+  }, []);
+
+  const handleRunStart = useCallback(() => {
+    setIsGenerating(true);
+    setPendingCode(null);
+    setIframeReady(false);
+    setCodePhase("typing");
+    clearTimeout(codePhaseTimerRef.current);
+  }, []);
+
+  const handleRunEnd = useCallback(() => {
+    setIsGenerating(false);
+  }, []);
+
+  const handleIframeReady = useCallback(() => {
+    setIframeReady(true);
   }, []);
 
   const handleSaveDashboard = useCallback(async () => {
@@ -276,30 +307,84 @@ function DashboardDetailContent({
     router.replace(`/projects/${projectId}/dashboards`);
   };
 
-  const dashboardPreview = currentHasSource ? (
-    <DashboardSandboxHost
-      artifact={artifact}
-      onBack={handleBack}
-      onEditToggle={handleEditToggle}
-      onNavigate={handleNavigate}
-      onRuntimeError={handleDashboardRuntimeError}
-      onWidgetSelected={handleWidgetSelected}
-      isChatOpen={isChatOpen}
-    />
-  ) : (
-    <div className="flex h-full items-center justify-center">
-      <div className="text-center space-y-3">
-        <div className="mx-auto h-12 w-12 rounded-2xl bg-foreground/[0.04] ring-1 ring-foreground/[0.06] flex items-center justify-center">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 256 256" className="text-muted-foreground/60" fill="currentColor">
-            <path d="M224,48H32A16,16,0,0,0,16,64V192a16,16,0,0,0,16,16H224a16,16,0,0,0,16-16V64A16,16,0,0,0,224,48ZM32,192V64H224V192ZM48,136a8,8,0,0,1,8-8H200a8,8,0,0,1,0,16H56A8,8,0,0,1,48,136Zm0-32a8,8,0,0,1,8-8h72a8,8,0,0,1,0,16H56A8,8,0,0,1,48,104Zm0,64a8,8,0,0,1,8-8H200a8,8,0,0,1,0,16H56A8,8,0,0,1,48,168Z"/>
-          </svg>
+  const isCreating = !currentHasSource;
+  const overlayActive = isCreating && (isGenerating || (pendingCode !== null && codePhase !== "done"));
+  const canShowDashboard = !isCreating || (codePhase === "done" && iframeReady);
+
+  const UPDATE_STATUS_MESSAGES = [
+    "Reviewing your current dashboard...",
+    "Understanding your changes...",
+    "Analyzing existing components...",
+    "Planning the update...",
+    "Building on your layout...",
+    "Applying modifications...",
+    "Updating data sources...",
+    "Adjusting the structure...",
+    "Refining components...",
+    "Wiring up interactions...",
+    "Polishing the details...",
+    "Almost there...",
+  ];
+
+  const dashboardPreview = (
+    <>
+      {overlayActive && (
+        <div className={cn(
+          "absolute inset-0 z-10 transition-opacity duration-700",
+          canShowDashboard ? "opacity-0 pointer-events-none" : "opacity-100"
+        )}>
+          {codePhase === "loading" ? (
+            <div className="flex h-full w-full items-center justify-center rounded-lg bg-zinc-50 dark:bg-zinc-950 ring-1 ring-zinc-200 dark:ring-white/[0.06]">
+              <div className="flex flex-col items-center gap-3">
+                <div className="flex gap-1">
+                  <div className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" />
+                  <div className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" style={{ animationDelay: "150ms" }} />
+                  <div className="w-2 h-2 rounded-full bg-cyan-500 animate-pulse" style={{ animationDelay: "300ms" }} />
+                </div>
+                <span className="text-[11px] text-zinc-400 dark:text-zinc-400">Loading dashboard...</span>
+              </div>
+            </div>
+          ) : (
+            <StreamingCodeViewer
+              code={pendingCode ?? ""}
+              isStreaming={isGenerating || codePhase === "typing"}
+            />
+          )}
         </div>
-        <Typography className="font-semibold text-foreground">No dashboard yet</Typography>
-        <Typography variant="secondary" className="text-sm max-w-[240px]">
-          Describe what you&apos;d like to see in the chat to generate your dashboard.
-        </Typography>
-      </div>
-    </div>
+      )}
+
+      {currentHasSource ? (
+        <div className={cn(
+          "h-full w-full transition-opacity duration-700",
+          canShowDashboard ? "opacity-100" : "opacity-0"
+        )}>
+          <DashboardSandboxHost
+            artifact={artifact}
+            onBack={handleBack}
+            onEditToggle={handleEditToggle}
+            onNavigate={handleNavigate}
+            onReady={handleIframeReady}
+            onRuntimeError={handleDashboardRuntimeError}
+            onWidgetSelected={handleWidgetSelected}
+            isChatOpen={isChatOpen}
+          />
+        </div>
+      ) : !isGenerating ? (
+        <div className="flex h-full items-center justify-center">
+          <div className="text-center space-y-3">
+            <div className="mx-auto h-12 w-12 rounded-2xl bg-foreground/[0.04] ring-1 ring-foreground/[0.06] flex items-center justify-center">
+              <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 256 256" className="text-muted-foreground/60" fill="currentColor">
+                <path d="M224,48H32A16,16,0,0,0,16,64V192a16,16,0,0,0,16,16H224a16,16,0,0,0,16-16V64A16,16,0,0,0,224,48ZM32,192V64H224V192ZM48,136a8,8,0,0,1,8-8H200a8,8,0,0,1,0,16H56A8,8,0,0,1,48,136Zm0-32a8,8,0,0,1,8-8h72a8,8,0,0,1,0,16H56A8,8,0,0,1,48,104Zm0,64a8,8,0,0,1,8-8H200a8,8,0,0,1,0,16H56A8,8,0,0,1,48,168Z"/>
+              </svg>
+            </div>
+            <Typography className="font-semibold text-foreground">No dashboard yet</Typography>
+            <Typography variant="secondary" className="text-sm max-w-[240px]">
+              Describe what you&apos;d like to see in the chat to generate your dashboard.
+            </Typography>
+          </div>
+        </div>
+      ) : null}
+    </>
   );
 
   return (
@@ -363,11 +448,12 @@ function DashboardDetailContent({
               />
               <div className="flex-1 min-h-0">
                 <AssistantChat
-                  chatAdapter={createDashboardChatAdapter(backendBaseUrl, currentTsxSource, handleCodeUpdate, currentUser, enabledAppIds, projectId)}
+                  chatAdapter={createDashboardChatAdapter(backendBaseUrl, currentTsxSource, handleCodeUpdate, currentUser, enabledAppIds, projectId, handleRunStart, handleRunEnd)}
                   historyAdapter={createHistoryAdapter(adminApp, dashboardId)}
                   toolComponents={<DashboardToolUI setCurrentCode={setCurrentTsxSource} currentCode={currentTsxSource} />}
                   useOffWhiteLightMode
                   composerPlaceholder={currentHasSource ? undefined : DASHBOARD_COMPOSER_PLACEHOLDER}
+                  runningStatusMessages={!isCreating ? UPDATE_STATUS_MESSAGES : undefined}
                   composerAttachments
                   onComposerReady={handleComposerReady}
                 />

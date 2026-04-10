@@ -29,6 +29,7 @@ type AssistantChatProps = {
   /** Static string, or `{ prefix, suffixes }` for a typing animation isolated to a leaf input. */
   composerPlaceholder?: ComposerPlaceholder,
   hideMessageActions?: boolean,
+  runningStatusMessages?: string[],
   /** Enable image attachment UI (subject to shared MAX_IMAGES_PER_MESSAGE/MAX_IMAGE_BYTES_PER_FILE). */
   composerAttachments?: boolean,
   /**
@@ -61,6 +62,7 @@ export default function AssistantChat({
   useOffWhiteLightMode = false,
   composerPlaceholder,
   hideMessageActions = false,
+  runningStatusMessages,
   composerAttachments = false,
   onComposerReady,
 }: AssistantChatProps) {
@@ -87,6 +89,7 @@ export default function AssistantChat({
             useOffWhiteLightMode={useOffWhiteLightMode}
             composerPlaceholder={composerPlaceholder}
             hideMessageActions={hideMessageActions}
+            runningStatusMessages={runningStatusMessages}
             composerAttachments={composerAttachments}
           />
         </TooltipProvider>

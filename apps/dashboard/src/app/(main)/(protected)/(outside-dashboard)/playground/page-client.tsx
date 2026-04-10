@@ -31,6 +31,12 @@ import {
 } from "@phosphor-icons/react";
 import {
   CursorBlastEffect,
+  DataGrid,
+  useDataSource,
+  type DataGridColumnDef,
+  type DataGridPaginationMode,
+  type DataGridSelectionMode,
+  createDefaultDataGridState,
   DesignAlert,
   DesignBadge,
   type DesignBadgeColor,
@@ -54,6 +60,7 @@ type ComponentId =
   | "card"
   | "category-tabs"
   | "cursor-blast"
+  | "data-grid"
   | "data-table"
   | "editable-grid"
   | "input"
@@ -71,6 +78,7 @@ const COMPONENT_LIST: Array<{ value: ComponentId, label: string }> = [
   { value: "card", label: "Card" },
   { value: "category-tabs", label: "Category Tabs" },
   { value: "cursor-blast", label: "Cursor Blast Effect" },
+  { value: "data-grid", label: "Data Grid" },
   { value: "data-table", label: "Data Table" },
   { value: "editable-grid", label: "Editable Grid" },
   { value: "input", label: "Input" },
@@ -218,6 +226,107 @@ const DEMO_ANALYTICS_POINTS = [
   { date: "Mar 11", new: 55, retained: 74, reactivated: 15, visitors: 1835, revenueCents: 28400, movingAvg: 113, highlightedAvg: 110 },
 ];
 
+// ─── Data Grid demo data ────────────────────────────────────────────────────
+
+type DemoGridUser = {
+  id: string,
+  name: string,
+  email: string,
+  role: "admin" | "editor" | "viewer",
+  status: "active" | "inactive" | "pending",
+  signUps: number,
+};
+
+const DEMO_GRID_USERS: DemoGridUser[] = [
+  { id: "1", name: "Alice Anderson", email: "alice@company.io", role: "admin", status: "active", signUps: 1240 },
+  { id: "2", name: "Bob Brown", email: "bob@gmail.com", role: "editor", status: "active", signUps: 870 },
+  { id: "3", name: "Carol Chen", email: "carol@outlook.com", role: "viewer", status: "pending", signUps: 310 },
+  { id: "4", name: "David Davis", email: "david@company.io", role: "editor", status: "inactive", signUps: 2100 },
+  { id: "5", name: "Eve Evans", email: "eve@hey.com", role: "admin", status: "active", signUps: 4500 },
+  { id: "6", name: "Frank Fisher", email: "frank@gmail.com", role: "viewer", status: "active", signUps: 95 },
+  { id: "7", name: "Grace Garcia", email: "grace@company.io", role: "editor", status: "pending", signUps: 1800 },
+  { id: "8", name: "Hank Harris", email: "hank@outlook.com", role: "viewer", status: "active", signUps: 620 },
+];
+
+const DEMO_GRID_COLUMNS: DataGridColumnDef<DemoGridUser>[] = [
+  {
+    id: "name",
+    header: "Name",
+    accessor: "name",
+    width: 180,
+    type: "string",
+    renderCell: ({ value }) => (
+      <div className="flex items-center gap-2.5">
+        <div className="flex h-7 w-7 items-center justify-center rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 text-xs font-semibold flex-shrink-0">
+          {String(value).charAt(0).toUpperCase()}
+        </div>
+        <span className="truncate font-medium">{String(value)}</span>
+      </div>
+    ),
+  },
+  { id: "email", header: "Email", accessor: "email", width: 200, type: "string" },
+  {
+    id: "role",
+    header: "Role",
+    accessor: "role",
+    width: 120,
+    type: "singleSelect",
+    valueOptions: [
+      { value: "admin", label: "Admin" },
+      { value: "editor", label: "Editor" },
+      { value: "viewer", label: "Viewer" },
+    ],
+    renderCell: ({ value }) => {
+      const colors: Record<string, string> = {
+        admin: "bg-purple-500/10 text-purple-600 dark:text-purple-400 ring-1 ring-purple-500/20",
+        editor: "bg-blue-500/10 text-blue-600 dark:text-blue-400 ring-1 ring-blue-500/20",
+        viewer: "bg-foreground/[0.04] text-muted-foreground ring-1 ring-foreground/[0.06]",
+      };
+      return (
+        <span className={`inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium ${colors[String(value)] ?? ""}`}>
+          {String(value)}
+        </span>
+      );
+    },
+  },
+  {
+    id: "status",
+    header: "Status",
+    accessor: "status",
+    width: 110,
+    type: "singleSelect",
+    valueOptions: [
+      { value: "active", label: "Active" },
+      { value: "inactive", label: "Inactive" },
+      { value: "pending", label: "Pending" },
+    ],
+    renderCell: ({ value }) => {
+      const dot: Record<string, string> = {
+        active: "bg-emerald-500",
+        inactive: "bg-foreground/20",
+        pending: "bg-amber-500",
+      };
+      return (
+        <div className="flex items-center gap-1.5">
+          <div className={`h-1.5 w-1.5 rounded-full ${dot[String(value)] ?? ""}`} />
+          <span className="text-xs capitalize">{String(value)}</span>
+        </div>
+      );
+    },
+  },
+  {
+    id: "signUps",
+    header: "Sign-ups",
+    accessor: "signUps",
+    width: 110,
+    type: "number",
+    align: "right",
+    renderCell: ({ value }) => (
+      <span className="tabular-nums font-medium">{Number(value).toLocaleString()}</span>
+    ),
+  },
+];
+
 // ─── Main ────────────────────────────────────────────────────────────────────
 
 export default function PageClient() {
@@ -276,6 +385,13 @@ export default function PageClient() {
   const [blastRageThreshold, setBlastRageThreshold] = useState(3);
   const [blastRageWindow, setBlastRageWindow] = useState(600);
   const [blastRageRadius, setBlastRageRadius] = useState(60);
+
+  // Data Grid
+  const [dgSelectionMode, setDgSelectionMode] = useState<DataGridSelectionMode>("none");
+  const [dgRowHeight, setDgRowHeight] = useState(44);
+  const [dgShowToolbar, setDgShowToolbar] = useState(true);
+  const [dgState, setDgState] = useState(() => createDefaultDataGridState(DEMO_GRID_COLUMNS));
+  const dgData = useDataSource({ data: DEMO_GRID_USERS, columns: DEMO_GRID_COLUMNS, getRowId: (r: DemoGridUser) => r.id, sorting: dgState.sorting, quickSearch: dgState.quickSearch, pagination: dgState.pagination, paginationMode: "client" });
 
   // Data Table
   const [tableClickableRows, setTableClickableRows] = useState(false);
@@ -762,6 +878,25 @@ export default function PageClient() {
               ? "Rage-click inside the preview area to trigger the blast effect."
               : "Enable the effect to see cursor blasts."}
           </Typography>
+        </div>
+      );
+    }
+    if (selected === "data-grid") {
+      return (
+        <div className="w-full max-w-3xl">
+          <DataGrid<DemoGridUser>
+            columns={DEMO_GRID_COLUMNS}
+            rows={dgData.rows}
+            getRowId={(row) => row.id}
+            totalRowCount={dgData.totalRowCount}
+            isLoading={dgData.isLoading}
+            state={dgState}
+            onChange={setDgState}
+            selectionMode={dgSelectionMode}
+            rowHeight={dgRowHeight}
+            toolbar={dgShowToolbar ? undefined : false}
+            maxHeight={400}
+          />
         </div>
       );
     }
@@ -1410,6 +1545,44 @@ export default function PageClient() {
         </div>
       );
     }
+    if (selected === "data-grid") {
+      return (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 items-end">
+          <PropField label="Selection Mode">
+            <DesignSelectorDropdown
+              value={dgSelectionMode}
+              onValueChange={(v) => {
+                if (v === "none" || v === "single" || v === "multiple") {
+                  setDgSelectionMode(v);
+                  return;
+                }
+                throw new Error(`Unknown selection mode "${v}"`);
+              }}
+              options={[
+                { value: "none", label: "None" },
+                { value: "single", label: "Single" },
+                { value: "multiple", label: "Multiple" },
+              ]}
+              size="sm"
+            />
+          </PropField>
+          <PropField label="Row Height">
+            <DesignInput
+              size="sm"
+              type="text"
+              value={String(dgRowHeight)}
+              onChange={(e) => {
+                const n = Number(e.target.value);
+                if (!Number.isNaN(n) && n >= 24) setDgRowHeight(n);
+              }}
+            />
+          </PropField>
+          <PropField label="Toolbar">
+            <BoolToggle value={dgShowToolbar} onChange={setDgShowToolbar} on="Shown" off="Hidden" />
+          </PropField>
+        </div>
+      );
+    }
     if (selected === "data-table") {
       return (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 items-end">
@@ -1866,6 +2039,19 @@ export default function PageClient() {
   rageClickThreshold={${blastRageThreshold}}
   rageClickWindowMs={${blastRageWindow}}
   rageClickRadiusPx={${blastRageRadius}}
+/>`;
+    }
+    if (selected === "data-grid") {
+      return `<DataGrid
+  columns={columns}
+  data={users}
+  getRowId={(row) => row.id}
+  state={gridState}
+  onChange={setGridState}
+  selectionMode="${dgSelectionMode}"
+  rowHeight={${dgRowHeight}}
+  toolbar={${dgShowToolbar}}
+  maxHeight={400}
 />`;
     }
     if (selected === "data-table") {

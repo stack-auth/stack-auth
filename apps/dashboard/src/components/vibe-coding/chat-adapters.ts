@@ -329,9 +329,12 @@ export function createChatAdapter(
   onToolCall: (toolCall: ToolCallContent) => void,
   getCurrentSource?: () => string,
   currentUser?: CurrentUser,
+  onRunStart?: () => void,
+  onRunEnd?: () => void,
 ): ChatModelAdapter {
   return {
     async run({ messages, abortSignal }: ChatModelRunOptions) {
+      onRunStart?.();
       try {
         const formattedMessages = formatThreadMessagesForBackend(messages);
 
@@ -372,6 +375,8 @@ export function createChatAdapter(
           return {};
         }
         throw new Error("Failed to get AI response. Please try again.");
+      } finally {
+        onRunEnd?.();
       }
     },
   };
@@ -384,9 +389,12 @@ export function createDashboardChatAdapter(
   currentUser?: CurrentUser,
   enabledAppIds?: AppId[],
   projectId?: string,
+  onRunStart?: () => void,
+  onRunEnd?: () => void,
 ): ChatModelAdapter {
   return {
     async *run({ messages, abortSignal }: ChatModelRunOptions): AsyncGenerator<ChatModelRunResult, void> {
+      onRunStart?.();
       try {
         const formattedMessages = formatThreadMessagesForBackend(messages);
 
@@ -417,6 +425,8 @@ export function createDashboardChatAdapter(
           return;
         }
         throw new Error("Failed to get AI response. Please try again.");
+      } finally {
+        onRunEnd?.();
       }
     },
   };

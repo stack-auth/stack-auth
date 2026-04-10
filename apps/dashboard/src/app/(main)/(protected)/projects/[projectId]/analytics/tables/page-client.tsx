@@ -1,7 +1,7 @@
 "use client";
 
 import { Link } from "@/components/link";
-import { Alert, Button, Skeleton, Typography } from "@/components/ui";
+import { Alert, Button, Typography } from "@/components/ui";
 import {
   Dialog,
   DialogBody,
@@ -9,78 +9,66 @@ import {
   DialogHeader,
   DialogTitle
 } from "@/components/ui/dialog";
-import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { SimpleTooltip } from "@/components/ui/simple-tooltip";
-import { Switch } from "@/components/ui/switch";
-import { useFromNow } from "@/hooks/use-from-now";
 import { cn } from "@/lib/utils";
 import {
   ArrowClockwiseIcon,
-  ArrowDownIcon,
-  ArrowUpIcon,
-  CalendarIcon,
-  ClockIcon,
-  MagnifyingGlassIcon,
   SparkleIcon,
 } from "@phosphor-icons/react";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { useVirtualizer } from "@tanstack/react-virtual";
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import {
+  createDefaultDataGridState,
+  DataGrid,
+  useDataSource,
+  type DataGridColumnDef,
+  type DataGridDataSource,
+  type DataGridState,
+} from "@stackframe/dashboard-ui-components";
+import { useCallback, useMemo, useRef, useState } from "react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
 import {
-  isDateValue,
   isJsonValue,
   JsonValue,
   parseClickHouseDate,
   RowData,
 } from "../shared";
 
-// Context for date display preference (specific to tables page for toggle feature)
-const DateDisplayContext = createContext<{ relative: boolean }>({ relative: true });
+type TableId = "events";
+
+type TableConfig = {
+  displayName: string,
+  baseQuery: string,
+  defaultOrderBy: string,
+  defaultOrderDir: "ASC" | "DESC",
+};
 
 // Available tables in the analytics database
-const AVAILABLE_TABLES = new Map([
+const AVAILABLE_TABLES = new Map<TableId, TableConfig>([
   ["events", {
     displayName: "Events",
     baseQuery: "SELECT * FROM default.events",
     defaultOrderBy: "event_at",
-    defaultOrderDir: "DESC" as const,
+    defaultOrderDir: "DESC",
   }],
 ]);
 
-type TableId = "events";
-type SortDir = "ASC" | "DESC";
-
 const PAGE_SIZE = 50;
 
-// Component for displaying dates with toggle support (specific to tables page)
-function DateValue({ value }: { value: string }) {
-  const { relative } = useContext(DateDisplayContext);
-  const date = parseClickHouseDate(value);
-  const fromNow = useFromNow(date);
-
-  if (relative) {
-    return (
-      <SimpleTooltip tooltip={date.toLocaleString()}>
-        <span className="cursor-help">{fromNow}</span>
-      </SimpleTooltip>
-    );
-  }
-
-  return <span>{date.toLocaleString()}</span>;
+// Date detection for dynamic columns — the grid now handles actual
+// rendering for `type: "dateTime"` columns, but we still need a runtime
+// check to decide which columns should be marked as dates.
+function isDateColumnName(name: string): boolean {
+  return name.endsWith("_at") || name === "date" || /(^|_)date($|_)/.test(name);
 }
 
-// Format a cell value for display
+// Format a non-date cell value for display. Date values never reach this
+// component because date columns get `type: "dateTime"` and the grid's
+// built-in date renderer kicks in.
 function CellValue({ value, truncate = true }: { value: unknown, truncate?: boolean }) {
   if (value === null || value === undefined) {
     return <span className="text-muted-foreground/50">—</span>;
-  }
-
-  if (isDateValue(value)) {
-    return <DateValue value={value} />;
   }
 
   if (isJsonValue(value)) {
@@ -97,6 +85,16 @@ function CellValue({ value, truncate = true }: { value: unknown, truncate?: bool
   }
 
   return <span>{str}</span>;
+}
+
+// `parseValue` adapter — ClickHouse emits "YYYY-MM-DD HH:MM:SS.mmm"
+// strings. Grid's default `new Date()` would interpret those as local
+// time; `parseClickHouseDate` treats them correctly as UTC and returns
+// `null` for invalid values so the grid falls back to "—".
+function parseClickHouseDateOrNull(value: unknown): Date | null {
+  if (typeof value !== "string") return null;
+  const d = parseClickHouseDate(value);
+  return isNaN(d.getTime()) ? null : d;
 }
 
 // Row detail dialog
@@ -144,445 +142,286 @@ function RowDetailDialog({
   );
 }
 
-// Column header with sort
-function ColumnHeader({
-  column,
-  sortColumn,
-  sortDir,
-  onSort,
-}: {
-  column: string,
-  sortColumn: string | null,
-  sortDir: SortDir,
-  onSort: (column: string) => void,
-}) {
-  const isSorted = sortColumn === column;
+// ─── Column width heuristic ──────────────────────────────────────────
 
-  return (
-    <button
-      onClick={() => onSort(column)}
-      className={cn(
-        "flex items-center gap-1 text-left font-mono text-xs font-medium",
-        "text-muted-foreground hover:text-foreground transition-colors hover:transition-none",
-        isSorted && "text-foreground"
-      )}
-    >
-      <span>{column}</span>
-      {isSorted && (
-        sortDir === "ASC"
-          ? <ArrowUpIcon className="h-3 w-3" />
-          : <ArrowDownIcon className="h-3 w-3" />
-      )}
-    </button>
-  );
-}
-
-// Virtualized flat table component
-function VirtualizedFlatTable({
-  columns,
-  rows,
-  onRowClick,
-  onLoadMore,
-  hasMore,
-  loadingMore,
-  sortColumn,
-  sortDir,
-  onSort,
-  refreshing = false,
-}: {
-  columns: string[],
-  rows: RowData[],
-  onRowClick: (row: RowData) => void,
-  onLoadMore: () => void,
-  hasMore: boolean,
-  loadingMore: boolean,
-  sortColumn: string | null,
-  sortDir: SortDir,
-  onSort: (column: string) => void,
-  refreshing?: boolean,
-}) {
-  const parentRef = useRef<HTMLDivElement>(null);
-
-  const rowVirtualizer = useVirtualizer({
-    count: rows.length + (hasMore ? 1 : 0), // +1 for loading indicator
-    getScrollElement: () => parentRef.current,
-    estimateSize: () => 40,
-    overscan: 10,
-  });
-
-  // Trigger load more when scrolling near the end
-  const virtualItems = rowVirtualizer.getVirtualItems();
-  const lastItemIndex = virtualItems.length > 0 ? virtualItems[virtualItems.length - 1]?.index ?? -1 : -1;
-
-  useEffect(() => {
-    if (lastItemIndex >= rows.length - 10 && hasMore && !loadingMore) {
-      onLoadMore();
-    }
-  }, [lastItemIndex, rows.length, hasMore, loadingMore, onLoadMore]);
-
-  // Column widths - distribute based on content type
-  const columnWidths = useMemo(() => {
-    const widths = new Map<string, string>();
-    columns.forEach((col) => {
-      if (col.includes("id") && col !== "project_id") {
-        widths.set(col, "minmax(280px, 1fr)");
-      } else if (col.includes("_at") || col.includes("date")) {
-        widths.set(col, "minmax(120px, 150px)");
-      } else if (col === "data" || col.includes("json")) {
-        widths.set(col, "minmax(200px, 2fr)");
-      } else if (col === "event_type" || col === "type") {
-        widths.set(col, "minmax(120px, 180px)");
-      } else {
-        widths.set(col, "minmax(100px, 1fr)");
-      }
-    });
-    return widths;
-  }, [columns]);
-
-  const gridTemplateColumns = columns.map((col) => columnWidths.get(col) ?? "1fr").join(" ");
-
-  // Calculate minimum content width based on columns
-  const minContentWidth = columns.length * 150;
-
-  return (
-    <div className="flex flex-col flex-1 min-h-0 overflow-hidden relative">
-      {/* Refresh loading overlay */}
-      {refreshing && (
-        <div className="absolute inset-0 bg-background/60 backdrop-blur-[1px] z-20 flex items-center justify-center">
-          <div className="flex items-center gap-3 px-4 py-2 rounded-lg bg-background/90 border border-border/50 shadow-lg">
-            <div className="h-4 w-4 border-2 border-muted-foreground/30 border-t-muted-foreground rounded-full animate-spin" />
-            <span className="text-sm text-muted-foreground">Refreshing...</span>
-          </div>
-        </div>
-      )}
-      {/* Single scroll container for both header and body - handles horizontal scroll */}
-      <div
-        ref={parentRef}
-        className="flex-1 overflow-auto"
-      >
-        {/* Inner container with min-width for horizontal scrolling */}
-        <div style={{ minWidth: `${minContentWidth}px` }}>
-          {/* Sticky header */}
-          <div
-            className="grid gap-4 pl-4 pr-16 py-2 border-b border-border/50 bg-muted/40 backdrop-blur-sm sticky top-0 z-10"
-            style={{ gridTemplateColumns }}
-          >
-            {columns.map((column) => (
-              <ColumnHeader
-                key={column}
-                column={column}
-                sortColumn={sortColumn}
-                sortDir={sortDir}
-                onSort={onSort}
-              />
-            ))}
-          </div>
-
-          {/* Virtualized rows container */}
-          <div
-            style={{
-              height: `${rowVirtualizer.getTotalSize()}px`,
-              width: "100%",
-              position: "relative",
-            }}
-          >
-            {rowVirtualizer.getVirtualItems().map((virtualRow) => {
-              const isLoaderRow = virtualRow.index >= rows.length;
-              const row = rows[virtualRow.index];
-
-              if (isLoaderRow) {
-                return (
-                  <div
-                    key="loader"
-                    className="absolute left-0 right-0 flex items-center justify-center py-4"
-                    style={{
-                      top: `${virtualRow.start}px`,
-                      height: `${virtualRow.size}px`,
-                    }}
-                  >
-                    {loadingMore ? (
-                      <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                        <div className="h-4 w-4 border-2 border-muted-foreground/30 border-t-muted-foreground rounded-full animate-spin" />
-                        Loading more...
-                      </div>
-                    ) : (
-                      <span className="text-muted-foreground text-sm">Scroll to load more</span>
-                    )}
-                  </div>
-                );
-              }
-
-              return (
-                <div
-                  key={virtualRow.index}
-                  className={cn(
-                    "absolute left-0 right-0 grid gap-4 pl-4 pr-16 items-center cursor-pointer",
-                    "border-b border-border/30 hover:bg-muted/30 transition-colors hover:transition-none",
-                    virtualRow.index % 2 === 0 ? "bg-transparent" : "bg-muted/10"
-                  )}
-                  style={{
-                    top: `${virtualRow.start}px`,
-                    height: `${virtualRow.size}px`,
-                    gridTemplateColumns,
-                  }}
-                  onClick={() => onRowClick(row)}
-                >
-                  {columns.map((column) => (
-                    <div key={column} className="font-mono text-xs truncate">
-                      <CellValue value={row[column]} />
-                    </div>
-                  ))}
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
-    </div>
-  );
+/** Pick a sensible initial width for a column based on its name. */
+function guessColumnWidth(colName: string): number {
+  if (colName.includes("id") && colName !== "project_id") return 280;
+  if (colName.includes("_at") || colName.includes("date")) return 170;
+  if (colName === "data" || colName.includes("json")) return 320;
+  if (colName === "event_type" || colName === "type") return 160;
+  return 150;
 }
 
 function TableContent({ tableId }: { tableId: TableId }) {
   const adminApp = useAdminApp();
-  const [columns, setColumns] = useState<string[]>([]);
-  const [rows, setRows] = useState<RowData[]>([]);
+  const tableConfig = AVAILABLE_TABLES.get(tableId)!;
+
+  const [discoveredColumns, setDiscoveredColumns] = useState<string[]>([]);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
-  const [hasMore, setHasMore] = useState(true);
-  const [relativeDate, setRelativeDate] = useState(true);
   const [selectedRow, setSelectedRow] = useState<RowData | null>(null);
   const [detailDialogOpen, setDetailDialogOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [sortColumn, setSortColumn] = useState<string | null>(null);
-  const [sortDir, setSortDir] = useState<SortDir>("DESC");
 
-  const tableConfig = AVAILABLE_TABLES.get(tableId);
+  // Ref mirror of discoveredColumns so the async generator (memoised
+  // against adminApp + tableConfig) can read the latest column list
+  // without being re-created every time the schema updates. The
+  // generator builds its WHERE clause from this ref.
+  const discoveredColumnsRef = useRef<string[]>([]);
 
-  const loadData = useCallback(async (offset: number = 0, append: boolean = false, isRefresh: boolean = false) => {
-    if (!tableConfig) return;
+  // Grid state — initialize with the table's default sort so the very
+  // first fetch already uses the right ORDER BY.
+  const [gridState, setGridState] = useState<DataGridState>(() => {
+    const base = createDefaultDataGridState([]);
+    return {
+      ...base,
+      sorting: [{
+        columnId: tableConfig.defaultOrderBy,
+        direction: tableConfig.defaultOrderDir === "DESC" ? "desc" : "asc",
+      }],
+      pagination: { pageIndex: 0, pageSize: PAGE_SIZE },
+    };
+  });
 
-    if (append) {
-      setLoadingMore(true);
-    } else if (isRefresh) {
-      // For refresh, keep existing data visible and just show loading overlay
-      setLoading(true);
-    } else {
-      // Initial load - clear everything
-      setLoading(true);
-      setRows([]);
-    }
-    setError(null);
+  // DataGrid column defs built from the discovered column names.
+  // Empty on first render — the grid renders blank until the first page
+  // comes back, then re-renders with populated columns. This is fine
+  // because the initial sort is by columnId string, not by column ref.
+  // Columns are sortable server-side via the ORDER BY in the generator.
+  //
+  // Date columns are detected by name (`*_at`, `date`). They get
+  // `type: "dateTime"` which enables the grid's built-in date cell
+  // renderer, and a `parseValue` override so ClickHouse's space-
+  // separated UTC strings parse correctly. The date format toggle
+  // (relative / absolute) lives in the grid's Columns popover and is
+  // wired up automatically once any date column exists.
+  const columns = useMemo<DataGridColumnDef<RowData>[]>(
+    () =>
+      discoveredColumns.map((col): DataGridColumnDef<RowData> => {
+        const isDate = isDateColumnName(col);
+        if (isDate) {
+          return {
+            id: col,
+            header: col,
+            accessor: (row) => row[col],
+            width: guessColumnWidth(col),
+            minWidth: 80,
+            sortable: true,
+            type: "dateTime",
+            parseValue: parseClickHouseDateOrNull,
+          };
+        }
+        return {
+          id: col,
+          header: col,
+          accessor: (row) => row[col],
+          width: guessColumnWidth(col),
+          minWidth: 80,
+          sortable: true,
+          type: "string",
+          renderCell: ({ value }) => <CellValue value={value} />,
+        };
+      }),
+    [discoveredColumns],
+  );
 
-    try {
-      const orderBy = sortColumn ?? tableConfig.defaultOrderBy;
-      const orderDir = sortColumn ? sortDir : tableConfig.defaultOrderDir;
-      const query = `${tableConfig.baseQuery} ORDER BY ${orderBy} ${orderDir} LIMIT ${PAGE_SIZE} OFFSET ${offset}`;
+  // Async data source — server-side sort + search + paginated fetch
+  // via SQL. The generator also discovers the schema from the first
+  // row of the first page (on every refetch, in case the schema
+  // changes).
+  const dataSource = useMemo<DataGridDataSource<RowData>>(() => {
+    return async function* (params) {
+      setError(null);
+      try {
+        // `sorting` is a tuple of zero or one item in practice — multi-sort
+        // isn't wired up server-side. Handle the empty case explicitly so
+        // we don't rely on `params.sorting[0]` being defined.
+        let orderBy: string;
+        let orderDir: "ASC" | "DESC";
+        if (params.sorting.length > 0) {
+          const first = params.sorting[0]!;
+          orderBy = first.columnId;
+          orderDir = first.direction === "asc" ? "ASC" : "DESC";
+        } else {
+          orderBy = tableConfig.defaultOrderBy;
+          orderDir = tableConfig.defaultOrderDir;
+        }
+        const pageSize = params.pagination.pageSize;
+        const offset = params.pagination.pageIndex * pageSize;
 
-      const response = await adminApp.queryAnalytics({
-        query,
-        include_all_branches: false,
-        timeout_ms: 30000,
-      });
+        // Build a WHERE clause from the quick-search text. We can only
+        // do this once the schema has been discovered (i.e. after the
+        // first unfiltered fetch), otherwise there are no columns to
+        // search against. Cast every column to String and OR ILIKE
+        // across all of them — generic enough for any events-style
+        // table. Single quotes in the query are escaped to prevent
+        // trivial injection via the search box; backslashes are
+        // doubled first so the escape itself doesn't re-introduce
+        // unescaped quotes.
+        const search = params.quickSearch.trim();
+        const searchableCols = discoveredColumnsRef.current;
+        let whereClause = "";
+        if (search && searchableCols.length > 0) {
+          const escaped = search.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
+          const clauses = searchableCols
+            .map((c) => `toString(\`${c}\`) ILIKE '%${escaped}%'`)
+            .join(" OR ");
+          whereClause = ` WHERE ${clauses}`;
+        }
 
-      const newRows = response.result as RowData[];
-      const newColumns = newRows.length > 0 ? Object.keys(newRows[0]) : [];
+        const query = `${tableConfig.baseQuery}${whereClause} ORDER BY ${orderBy} ${orderDir} LIMIT ${pageSize} OFFSET ${offset}`;
 
-      if (append) {
-        setRows((prev) => [...prev, ...newRows]);
-      } else {
-        setColumns(newColumns);
-        setRows(newRows);
+        const response = await adminApp.queryAnalytics({
+          query,
+          include_all_branches: false,
+          timeout_ms: 30000,
+        });
+
+        const newRows = response.result as RowData[];
+
+        // Refresh the column list only when the schema actually differs,
+        // otherwise every page load would cause a spurious re-render.
+        // Mirror to the ref so subsequent generator runs (including
+        // the one fired by a search-box keystroke) can build a WHERE
+        // clause without waiting for another re-render.
+        if (newRows.length > 0) {
+          const cols = Object.keys(newRows[0]!);
+          discoveredColumnsRef.current = cols;
+          setDiscoveredColumns((prev) => {
+            if (prev.length === cols.length && prev.every((c, i) => c === cols[i])) {
+              return prev;
+            }
+            return cols;
+          });
+        }
+
+        yield {
+          rows: newRows,
+          hasMore: newRows.length === pageSize,
+        };
+      } catch (e: unknown) {
+        const message = e instanceof Error ? e.message : "Failed to load table data";
+        setError(message);
+        yield { rows: [], hasMore: false };
       }
+    };
+  }, [adminApp, tableConfig]);
 
-      setHasMore(newRows.length === PAGE_SIZE);
-    } catch (e: unknown) {
-      const message = e instanceof Error ? e.message : "Failed to load table data";
-      setError(message);
-    } finally {
-      setLoading(false);
-      setLoadingMore(false);
-    }
-  }, [adminApp, tableConfig, sortColumn, sortDir]);
+  // Stable row ID — prefer explicit ID fields, fall back to a JSON
+  // fingerprint so infinite-scroll dedup in useDataSource still works
+  // for tables without a dedicated ID column.
+  const getRowId = useCallback((row: RowData): string => {
+    if (row.id != null) return String(row.id);
+    if (row.event_id != null) return String(row.event_id);
+    return JSON.stringify(row);
+  }, []);
 
-  // Auto-load data when the component mounts or sort changes
-  // If we already have rows, treat it as a refresh (keep data visible)
-  useEffect(() => {
-    const isRefresh = rows.length > 0;
-    runAsynchronouslyWithAlert(() => loadData(0, false, isRefresh));
-  }, [loadData]); // eslint-disable-line react-hooks/exhaustive-deps -- rows.length is intentionally not a dependency to avoid infinite loop
+  // The async data source handles server-side sort + search + infinite
+  // scroll. `quickSearch` flows straight from grid state into the
+  // generator via `params.quickSearch`, and the hook re-fires the
+  // generator on change (same mechanism as sorting).
+  const gridData = useDataSource<RowData>({
+    dataSource,
+    columns,
+    getRowId,
+    sorting: gridState.sorting,
+    quickSearch: gridState.quickSearch,
+    pagination: gridState.pagination,
+    paginationMode: "infinite",
+  });
 
-  const handleLoadMore = useCallback(() => {
-    if (!loadingMore && hasMore) {
-      runAsynchronouslyWithAlert(() => loadData(rows.length, true));
-    }
-  }, [loadData, loadingMore, hasMore, rows.length]);
-
-  const handleSort = useCallback((column: string) => {
-    if (sortColumn === column) {
-      setSortDir((prev) => (prev === "ASC" ? "DESC" : "ASC"));
-    } else {
-      setSortColumn(column);
-      setSortDir("DESC");
-    }
-  }, [sortColumn]);
-
-  const handleRowClick = (row: RowData) => {
+  const handleRowClick = useCallback((row: RowData) => {
     setSelectedRow(row);
     setDetailDialogOpen(true);
-  };
+  }, []);
 
-  const handleRefresh = useCallback(() => {
-    runAsynchronouslyWithAlert(() => loadData(0, false, true));
-  }, [loadData]);
+  const showEmptyError =
+    error != null && !gridData.isLoading && gridData.rows.length === 0;
 
-  // Filter rows based on search query
-  const filteredRows = useMemo(() => {
-    if (!searchQuery.trim()) return rows;
-    const query = searchQuery.toLowerCase();
-    return rows.filter((row) =>
-      columns.some((col) => {
-        const value = row[col];
-        if (value === null || value === undefined) return false;
-        const str = typeof value === "object" ? JSON.stringify(value) : String(value);
-        return str.toLowerCase().includes(query);
-      })
-    );
-  }, [rows, columns, searchQuery]);
+  // Rendered inside the DataGrid's default toolbar, to the left of the
+  // built-in columns / export actions. The date-format toggle now lives
+  // inside the grid's Columns popover (auto-wired because the grid sees
+  // `type: "dateTime"` columns), so this extras slot only has refresh +
+  // row count now.
+  const toolbarExtra = (
+    <div className="flex items-center gap-2">
+      <Button
+        variant="ghost"
+        size="sm"
+        onClick={gridData.reload}
+        className="h-7 px-2 text-xs"
+      >
+        <ArrowClockwiseIcon className="mr-1.5 h-3.5 w-3.5" />
+        Refresh
+      </Button>
 
-  if (loading && rows.length === 0) {
-    // If we have columns from a previous load, show them with skeleton rows
-    if (columns.length > 0) {
-      const gridTemplateColumns = columns.map(() => "1fr").join(" ");
-      return (
-        <div className="flex-1 flex flex-col min-h-0">
-          {/* Toolbar skeleton */}
-          <div className="flex items-center gap-4 pl-4 pr-16 py-3 border-b border-border/50">
-            <Skeleton className="h-9 w-64" />
-            <Skeleton className="h-9 w-24" />
-          </div>
-          {/* Header */}
-          <div
-            className="grid gap-4 pl-4 pr-16 py-2 border-b border-border/50 bg-muted/40"
-            style={{ gridTemplateColumns }}
-          >
-            {columns.map((column) => (
-              <span key={column} className="font-mono text-xs font-medium text-muted-foreground">
-                {column}
-              </span>
-            ))}
-          </div>
-          {/* Skeleton rows */}
-          <div className="flex-1 p-4">
-            <div className="space-y-1">
-              {Array.from({ length: 15 }).map((_, i) => (
-                <Skeleton key={i} className="h-10 w-full" />
-              ))}
-            </div>
-          </div>
-        </div>
-      );
-    }
-    // No columns yet - show simple skeleton
-    return (
-      <div className="flex-1 p-4">
-        <div className="space-y-1">
-          {Array.from({ length: 15 }).map((_, i) => (
-            <Skeleton key={i} className="h-10 w-full" />
-          ))}
-        </div>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="flex-1 p-4 space-y-4">
-        <Alert variant="destructive">{error}</Alert>
-        <Button variant="outline" onClick={handleRefresh}>
-          Retry
-        </Button>
-      </div>
-    );
-  }
-
-  if (rows.length === 0) {
-    return (
-      <div className="flex-1 flex flex-col items-center justify-center gap-4">
-        <Typography variant="secondary">No data available</Typography>
-        <Button variant="outline" onClick={handleRefresh}>
-          <ArrowClockwiseIcon className="mr-2 h-4 w-4" />
-          Refresh
-        </Button>
-      </div>
-    );
-  }
+      <span className="px-1 text-[11px] tabular-nums text-muted-foreground">
+        {gridData.rows.length.toLocaleString()} rows
+        {gridData.hasMore && "+"}
+      </span>
+    </div>
+  );
 
   return (
-    <DateDisplayContext.Provider value={{ relative: relativeDate }}>
-      <div className="flex-1 flex flex-col min-h-0">
-        {/* Toolbar */}
-        <div className="flex items-center gap-4 pl-4 pr-16 py-3 border-b border-border/50 flex-wrap">
-          {/* Search */}
-          <div className="relative flex-1 max-w-sm">
-            <MagnifyingGlassIcon className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="pl-9 h-8 bg-transparent border-border/50"
-            />
-          </div>
-
-          {/* Date toggle */}
-          <div className="flex items-center gap-2">
-            <SimpleTooltip tooltip={relativeDate ? "Relative dates" : "Absolute dates"}>
-              <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <CalendarIcon className={cn("h-4 w-4", !relativeDate && "text-foreground")} />
-                <Switch
-                  checked={relativeDate}
-                  onCheckedChange={setRelativeDate}
-                />
-                <ClockIcon className={cn("h-4 w-4", relativeDate && "text-foreground")} />
-              </div>
-            </SimpleTooltip>
-          </div>
-
-          {/* Refresh */}
-          <Button variant="ghost" size="sm" onClick={handleRefresh} className="h-8">
-            <ArrowClockwiseIcon className="mr-2 h-4 w-4" />
-            Refresh
-          </Button>
-
-          {/* Row count */}
-          <span className="text-xs text-muted-foreground">
-            {filteredRows.length.toLocaleString()} rows
-            {hasMore && "+"}
-          </span>
+    <div className="flex flex-1 min-h-0 flex-col">
+      {/* Non-fatal error banner — shown while data is still visible. */}
+      {error != null && !showEmptyError && (
+        <div className="shrink-0 px-4 pt-3">
+          <Alert variant="destructive">{error}</Alert>
         </div>
+      )}
 
-        {/* Table */}
-        <VirtualizedFlatTable
-          columns={columns}
-          rows={filteredRows}
-          onRowClick={handleRowClick}
-          onLoadMore={handleLoadMore}
-          hasMore={hasMore && !searchQuery.trim()}
-          loadingMore={loadingMore}
-          sortColumn={sortColumn}
-          sortDir={sortDir}
-          onSort={handleSort}
-          refreshing={loading && rows.length > 0}
-        />
+      {/* Fatal error panel — no data to fall back to. */}
+      {showEmptyError && (
+        <div className="flex flex-1 flex-col items-start gap-4 p-4">
+          <Alert variant="destructive">{error}</Alert>
+          <Button variant="outline" onClick={gridData.reload}>
+            <ArrowClockwiseIcon className="mr-2 h-4 w-4" />
+            Retry
+          </Button>
+        </div>
+      )}
 
-        <RowDetailDialog
-          row={selectedRow}
-          columns={columns}
-          open={detailDialogOpen}
-          onOpenChange={setDetailDialogOpen}
-        />
-      </div>
-    </DateDisplayContext.Provider>
+      {/* Data grid — fills remaining space via `flex-1 min-h-0`.
+          Uses the DataGrid's default toolbar (column visibility, CSV
+          export) and slots refresh + row count in via `toolbarExtra`.
+          The date format toggle shows up automatically inside the
+          Columns popover because at least one column is `dateTime`. */}
+      {!showEmptyError && (
+        <div className="flex-1 min-h-0 pr-8">
+          <DataGrid<RowData>
+            columns={columns}
+            rows={gridData.rows}
+            getRowId={getRowId}
+            totalRowCount={gridData.totalRowCount}
+            isLoading={gridData.isLoading}
+            isRefetching={gridData.isRefetching}
+            isLoadingMore={gridData.isLoadingMore}
+            hasMore={gridData.hasMore}
+            onLoadMore={gridData.loadMore}
+            state={gridState}
+            onChange={setGridState}
+            paginationMode="infinite"
+            selectionMode="none"
+            toolbarExtra={toolbarExtra}
+            footer={false}
+            exportFilename={`${tableId}-export`}
+            onRowClick={handleRowClick}
+            emptyState={
+              <div className="flex flex-col items-center justify-center gap-4 py-16">
+                <Typography variant="secondary">No data available</Typography>
+              </div>
+            }
+          />
+        </div>
+      )}
+
+      <RowDetailDialog
+        row={selectedRow}
+        columns={discoveredColumns}
+        open={detailDialogOpen}
+        onOpenChange={setDetailDialogOpen}
+      />
+    </div>
   );
 }
 
@@ -592,10 +431,10 @@ export default function PageClient() {
   return (
     <AppEnabledGuard appId="analytics">
       <PageLayout fillWidth noPadding>
-        <div className="flex flex-1 min-h-0 overflow-hidden -mx-2">
+        <div className="flex h-[calc(100vh-4.5rem)] max-h-[calc(100vh-4.5rem)] flex-1 min-h-0 overflow-hidden -mx-2 dark:h-full dark:max-h-full">
           {/* Left sidebar - table list (doesn't scroll, border extends full height) */}
-          <div className="w-48 flex-shrink-0 border-r border-border/50 flex flex-col pl-2">
-            <div className="flex-1 py-4 px-4">
+          <div className="flex h-full w-48 flex-shrink-0 flex-col overflow-hidden border-r border-border/50 pl-2">
+            <div className="flex-1 overflow-auto px-4 py-4">
               <Typography className="px-3 mb-3 text-xs font-semibold uppercase tracking-wide text-foreground/70">Tables</Typography>
               <div className="space-y-1">
                 {[...AVAILABLE_TABLES.entries()].map(([id, config]) => (
@@ -626,7 +465,7 @@ export default function PageClient() {
           </div>
 
           {/* Right content - table data (scrolls independently, extends to edge) */}
-          <div className="flex-1 min-w-0 flex flex-col overflow-hidden">
+          <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
             {selectedTable ? (
               <TableContent key={selectedTable} tableId={selectedTable} />
             ) : (

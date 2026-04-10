@@ -613,6 +613,7 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
   onBack,
   onEditToggle,
   onNavigate,
+  onReady,
   onRuntimeError,
   onWidgetSelected,
   isChatOpen,
@@ -621,6 +622,7 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
   onBack?: () => void,
   onEditToggle?: () => void,
   onNavigate?: (path: string) => void,
+  onReady?: () => void,
   /** Fires whenever the sandbox reports a runtime error. Parent uses this to auto-insert
       the crash into the assistant composer so the user can one-click fix it. */
   onRuntimeError?: (err: DashboardRuntimeError) => void,
@@ -635,6 +637,8 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
   onEditToggleRef.current = onEditToggle;
   const onNavigateRef = useRef(onNavigate);
   onNavigateRef.current = onNavigate;
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
   const onRuntimeErrorRef = useRef(onRuntimeError);
   onRuntimeErrorRef.current = onRuntimeError;
   const onWidgetSelectedRef = useRef(onWidgetSelected);
@@ -770,6 +774,7 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
       }
 
       if (type === "stack-ai-dashboard-ready") {
+        onReadyRef.current?.();
         return;
       }
     };

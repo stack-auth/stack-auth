@@ -62,6 +62,20 @@ export type DesignButtonProps = {
   loadingStyle?: "spinner" | "disabled",
 } & DesignOriginalButtonProps;
 
+/**
+ * Standard button. Variants: `default | destructive | outline | secondary | ghost | link | plain`.
+ * Sizes: `default | sm | lg | icon`.
+ *
+ * ```tsx
+ * <DesignButton variant="default" onClick={handleSave}>Save</DesignButton>
+ * <DesignButton variant="outline" size="sm" onClick={handleCancel}>Cancel</DesignButton>
+ * <DesignButton variant="ghost" size="icon"><PlusIcon className="h-4 w-4" /></DesignButton>
+ * ```
+ *
+ * Pass an async `onClick` and the button will automatically show a spinner
+ * while the promise is pending (set `loadingStyle="disabled"` if you prefer
+ * a simple disabled state instead).
+ */
 export const DesignButton = forwardRefIfNeeded<HTMLButtonElement, DesignButtonProps>(
   ({ onClick, loading: loadingProp, loadingStyle = "spinner", children, size, ...props }, ref) => {
     const [handleClick, isLoading] = useAsyncCallback(async (e: React.MouseEvent<HTMLButtonElement>) => {
