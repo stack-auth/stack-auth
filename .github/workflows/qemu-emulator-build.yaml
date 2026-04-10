@@ -26,14 +26,16 @@ env:
 jobs:
   build:
     name: Build QEMU Image (${{ matrix.arch }})
-    runs-on: ubicloud-standard-8
+    runs-on: ${{ matrix.runner }}
     timeout-minutes: 120
     strategy:
       fail-fast: false
       matrix:
         include:
           - arch: amd64
+            runner: ubicloud-standard-8
           - arch: arm64
+            runner: ubicloud-standard-8-arm
 
     steps:
       - uses: actions/checkout@v6
