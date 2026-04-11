@@ -1,5 +1,5 @@
 import { traceSpan } from '@/utils/telemetry';
-import { runAsynchronouslyAndWaitUntil } from '@/utils/vercel';
+import { runAsynchronouslyAndWaitUntil } from '@/utils/background-tasks';
 import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError, captureError } from '@stackframe/stack-shared/dist/utils/errors';
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
