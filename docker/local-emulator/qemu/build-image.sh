@@ -112,17 +112,25 @@ qemu_cmd_prefix_for_arch() {
   case "$arch" in
     arm64)
       local accel="tcg"
-      # Under TCG (software emulation on an amd64 host) -cpu max advertises
-      # armv8.5+ features (PAC, BTI, SVE, LSE atomics…) that V8 happily emits
-      # JIT code for, but QEMU TCG mistranslates some of those instructions
-      # and the node process crashes with SIGTRAP during migrations. Falling
-      # back to cortex-a72 limits V8 to armv8.0-a, which TCG handles cleanly.
-      local cpu="cortex-a72"
+      local cpu="max"
       if [ "$HOST_ARCH" = "arm64" ]; then
+        # Same-arch: prefer hardware acceleration, keep -cpu max. If no
+        # accelerator is available (e.g. Azure arm64 runners with no
+        # nested virt) we fall through to TCG, but same-arch TCG handles
+        # -cpu max correctly and more named CPU models have TCG bugs
+        # than -cpu max does.
         case "$HOST_OS" in
-          darwin) accel="hvf"; cpu="max" ;;
-          linux) [ -w /dev/kvm ] && { accel="kvm"; cpu="max"; } ;;
+          darwin) accel="hvf" ;;
+          linux) [ -w /dev/kvm ] && accel="kvm" ;;
         esac
+      else
+        # Cross-arch TCG (amd64 host emulating arm64 guest): -cpu max
+        # advertises armv8.5+ features (PAC, BTI, SVE, LSE…) that V8
+        # emits JIT code for, but the host's TCG mistranslates some of
+        # those instructions across architectures and node crashes with
+        # SIGTRAP during migrations. Dropping to cortex-a72 limits V8
+        # to armv8.0-a which cross-arch TCG handles cleanly.
+        cpu="cortex-a72"
       fi
       local firmware
       firmware="$(find_aarch64_firmware)"
