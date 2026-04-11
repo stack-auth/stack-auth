@@ -276,11 +276,11 @@ model ProjectUser {
   restrictedByAdminPrivateDetails String? // Private details (server access only)
 
   // Sign-up metadata
-  signedUpAt                      DateTime @default(now())
-  signUpIp                        String?
-  signUpIpTrusted                 Boolean?
-  signUpEmailNormalized           String?
-  signUpEmailBase                 String?
+  signedUpAt            DateTime @default(now())
+  signUpIp              String?
+  signUpIpTrusted       Boolean?
+  signUpEmailNormalized String?
+  signUpEmailBase       String?
 
   // Sign-up risk scores (0-100, set at sign-up time)
   signUpRiskScoreBot            Int @default(0) @db.SmallInt
