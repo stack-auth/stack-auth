@@ -62,6 +62,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-kms": "^3.876.0",
+    "@aws-sdk/credential-provider-web-identity": "^3.972.27",
     "@babel/core": "^7.28.5",
     "@babel/generator": "^7.28.5",
     "@babel/parser": "^7.28.5",
