@@ -102,5 +102,36 @@ pnpm start:dashboard`,
         filename: 'Terminal'
       }
     ] as CodeExample[],
+
+    'cloud-run-build': [
+      {
+        language: 'Shell',
+        framework: 'Docker',
+        code: `git clone git@github.com:stack-auth/stack-auth.git
+cd stack-auth
+docker build -f docker/backend/Dockerfile -t stack-backend .`,
+        highlightLanguage: 'bash',
+        filename: 'Terminal'
+      }
+    ] as CodeExample[],
+
+    'cloud-run-deploy': [
+      {
+        language: 'Shell',
+        framework: 'Google Cloud',
+        code: `# Tag and push to Google Container Registry
+docker tag stack-backend gcr.io/YOUR_PROJECT_ID/stack-backend
+docker push gcr.io/YOUR_PROJECT_ID/stack-backend
+
+# Deploy to Cloud Run
+gcloud run deploy stack-backend \\
+  --image gcr.io/YOUR_PROJECT_ID/stack-backend \\
+  --platform managed \\
+  --port 8102 \\
+  --set-env-vars "STACK_TRUSTED_PROXY=cloudrun"`,
+        highlightLanguage: 'bash',
+        filename: 'Terminal'
+      }
+    ] as CodeExample[],
   }
 };

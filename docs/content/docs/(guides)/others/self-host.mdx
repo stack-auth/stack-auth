@@ -1,6 +1,6 @@
 ---
 title: Self-host
-lastModified: "2026-01-10"
+lastModified: "2026-04-11"
 ---
 
 <Info type="danger">
@@ -55,6 +55,42 @@ Stack Auth provides a [pre-configured Docker](https://hub.docker.com/r/stackauth
 Now you can open the dashboard at [http://localhost:8101](http://localhost:8101) and the API backend on port 8102.
 
 Now, login with your admin account on the dashboard and follow the [normal setup process](../getting-started/setup.mdx). Add `NEXT_PUBLIC_STACK_API_URL=https://your-backend-url.com` to your app's environment variables so that it connects to your API backend instead of the default Stack Auth API backend (https://api.stack-auth.com).
+
+## Deploy to Cloud Run
+
+Stack Auth provides a dedicated Dockerfile optimized for Cloud Run deployments. This gives you more control over backend configuration and is designed for production use.
+
+### Build the Docker image
+
+Clone the repository and build the backend Docker image:
+
+<PlatformCodeblock document="others/self-host" examples={["cloud-run-build"]} hidePlatformSelector />
+
+### Configure environment variables
+
+Set the required environment variables for your Cloud Run deployment. In addition to the standard environment variables, set `STACK_TRUSTED_PROXY=cloudrun` to enable accurate client IP detection behind Cloud Run's load balancer:
+
+```bash
+STACK_TRUSTED_PROXY=cloudrun
+```
+
+You can also configure the database connection pool size with `STACK_DATABASE_POOL_MAX` (defaults to 25):
+
+```bash
+STACK_DATABASE_POOL_MAX=25
+```
+
+### Deploy to Cloud Run
+
+Push the image to Google Container Registry and deploy:
+
+<PlatformCodeblock document="others/self-host" examples={["cloud-run-deploy"]} hidePlatformSelector />
+
+<Info>
+The backend image exposes port 8102. Make sure to configure your Cloud Run service to use this port.
+</Info>
+
+After deployment, deploy the dashboard separately (using the standard Docker image or building from source) and point it to your Cloud Run backend URL.
 
 ## Local development
 
