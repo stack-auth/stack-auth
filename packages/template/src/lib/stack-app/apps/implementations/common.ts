@@ -9,7 +9,7 @@ import { ReactPromise } from "@stackframe/stack-shared/dist/utils/promises";
 import { suspendIfSsr, use } from "@stackframe/stack-shared/dist/utils/react";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { Store } from "@stackframe/stack-shared/dist/utils/stores";
-import { getDefaultApiUrls, getHardcodedFallbackUrls } from "@stackframe/stack-shared/dist/utils/urls";
+import { getDefaultApiUrls } from "@stackframe/stack-shared/dist/utils/urls";
 import React, { useCallback } from "react"; // THIS_LINE_PLATFORM react-like
 import { envVars } from "../../../env";
 import { HandlerUrlOptions, ResolvedHandlerUrls, stackAppInternalsSymbol } from "../../common";
@@ -159,12 +159,11 @@ export function resolveApiUrls(userExplicitBaseUrl: string | { browser: string, 
       return [getBaseUrl(userExplicitBaseUrl)];
     }
     const primary = getBaseUrl(undefined);
-    const fallbacks = getHardcodedFallbackUrls(primary);
-    if (fallbacks.length > 0) {
-      fetchBackendUrlsInBackground(primary);
-      return getGlobal('__stack-fetched-backend-urls') ?? getDefaultApiUrls(primary);
-    }
-    return [primary];
+    // Always try to fetch server-configured URLs (supports custom domains via
+    // STACK_BACKEND_URLS_CONFIG). Hardcoded fallbacks are used as a default
+    // until the background fetch completes.
+    fetchBackendUrlsInBackground(primary);
+    return getGlobal('__stack-fetched-backend-urls') ?? getDefaultApiUrls(primary);
   };
 }
 

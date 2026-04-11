@@ -147,6 +147,19 @@ export class StackClientInterface {
   }
 
   /**
+   * Returns the best-known-good API URL: the sticky fallback if we're in
+   * fallback mode, otherwise the primary. Use for browser-navigated URLs
+   * (e.g. OAuth authorize) where _withFallback can't help.
+   */
+  getBestApiUrl(): string {
+    const apiUrls = this.getApiUrls();
+    if (this._sticky && apiUrls[this._sticky.index]) {
+      return apiUrls[this._sticky.index];
+    }
+    return apiUrls[0];
+  }
+
+  /**
    * Routes a request through an ordered URL list with automatic failover.
    *
    * The URL list is [primary, ...fallbacks]. The logic has two modes:
@@ -1283,7 +1296,7 @@ export class StackClientInterface {
       throw new Error("Admin session token is currently not supported for OAuth");
     }
     const clientSecret = this.options.publishableClientKey ?? publishableClientKeyNotNecessarySentinel;
-    const url = new URL(this.getApiUrl() + "/auth/oauth/authorize/" + options.provider.toLowerCase());
+    const url = new URL(this.getBestApiUrl() + "/auth/oauth/authorize/" + options.provider.toLowerCase());
     url.searchParams.set("client_id", this.projectId);
     url.searchParams.set("client_secret", clientSecret);
     url.searchParams.set("redirect_uri", updatedRedirectUrl.toString());
