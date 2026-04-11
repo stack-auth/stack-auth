@@ -91,6 +91,7 @@ export default function AssistantChat({
             hideMessageActions={hideMessageActions}
             runningStatusMessages={runningStatusMessages}
             composerAttachments={composerAttachments}
+            attachmentAdapter={attachmentAdapter}
           />
         </TooltipProvider>
         {toolComponents}

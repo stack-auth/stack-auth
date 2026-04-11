@@ -3,6 +3,13 @@ import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button
 import { Button, useToast } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import {
+  validateComposerImageByteLength,
+  validateComposerImageCount,
+} from "./image-attachment-validation";
+import {
+  type Attachment,
+  type AttachmentAdapter,
+  type CompleteAttachment,
   ActionBarPrimitive,
   BranchPickerPrimitive,
   ComposerPrimitive,
@@ -11,11 +18,12 @@ import {
   useComposer,
   useComposerRuntime,
   useMessage,
+  useThreadRuntime,
+  type PendingAttachment,
 } from "@assistant-ui/react";
 import { ArrowClockwiseIcon, ArrowDownIcon, CaretLeftIcon, CaretRightIcon, CheckIcon, CopyIcon, ImageIcon, PaperPlaneRightIcon, PencilSimpleIcon, WarningCircle, XIcon } from "@phosphor-icons/react";
 import {
   MAX_IMAGES_PER_MESSAGE,
-  MAX_IMAGE_BYTES_PER_FILE,
   MAX_IMAGE_MB_PER_FILE,
 } from "@stackframe/stack-shared/dist/ai/image-limits";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
@@ -25,9 +33,14 @@ const HideMessageActionsContext = createContext(false);
 const HasRunningStatusContext = createContext(false);
 
 const ComposerAttachmentsEnabledContext = createContext(false);
+const ComposerAttachmentAdapterContext = createContext<AttachmentAdapter | null>(null);
 
 function useComposerAttachmentsEnabled() {
   return useContext(ComposerAttachmentsEnabledContext);
+}
+
+function useComposerAttachmentAdapter() {
+  return useContext(ComposerAttachmentAdapterContext);
 }
 
 /** Static placeholder string, or config for the typing-animation input. */
@@ -48,58 +61,61 @@ export const Thread: FC<{
   hideMessageActions?: boolean,
   runningStatusMessages?: string[],
   composerAttachments?: boolean,
-}> = ({ useOffWhiteLightMode = false, composerPlaceholder, hideMessageActions = false, runningStatusMessages, composerAttachments = false }) => {
+  attachmentAdapter?: AttachmentAdapter,
+}> = ({ useOffWhiteLightMode = false, composerPlaceholder, hideMessageActions = false, runningStatusMessages, composerAttachments = false, attachmentAdapter }) => {
   return (
     <HideMessageActionsContext.Provider value={hideMessageActions}>
       <HasRunningStatusContext.Provider value={!!runningStatusMessages}>
-        <ComposerAttachmentsEnabledContext.Provider value={composerAttachments}>
-          <ThreadPrimitive.Root
-            className={cn(
+        <ComposerAttachmentAdapterContext.Provider value={attachmentAdapter ?? null}>
+          <ComposerAttachmentsEnabledContext.Provider value={composerAttachments}>
+            <ThreadPrimitive.Root
+              className={cn(
           "box-border flex h-0 flex-grow flex-col overflow-hidden",
           useOffWhiteLightMode ? "bg-slate-50/90 dark:bg-background" : "bg-background",
         )}
-            style={{
-              ["--thread-max-width" as string]: "100%",
-            }}
-          >
-            <ThreadPrimitive.Viewport
-              className={cn(
+              style={{
+                ["--thread-max-width" as string]: "100%",
+              }}
+            >
+              <ThreadPrimitive.Viewport
+                className={cn(
             "flex h-full flex-col items-center overflow-y-auto scroll-smooth px-3",
             useOffWhiteLightMode ? "bg-slate-50/90 dark:bg-inherit" : "bg-inherit",
           )}
-            >
-              <ThreadWelcome />
+              >
+                <ThreadWelcome />
 
-              <ThreadPrimitive.Messages
-                components={{
-                  UserMessage: UserMessage,
-                  EditComposer: EditComposer,
-                  AssistantMessage: AssistantMessage,
-                }}
-              />
+                <ThreadPrimitive.Messages
+                  components={{
+                    UserMessage: UserMessage,
+                    EditComposer: EditComposer,
+                    AssistantMessage: AssistantMessage,
+                  }}
+                />
 
-              {runningStatusMessages && (
-                <ThreadPrimitive.If running>
-                  <ThreadRunningStatus messages={runningStatusMessages} />
+                {runningStatusMessages && (
+                  <ThreadPrimitive.If running>
+                    <ThreadRunningStatus messages={runningStatusMessages} />
+                  </ThreadPrimitive.If>
+                )}
+
+                <ThreadPrimitive.If empty={false}>
+                  <div className="min-h-6 flex-grow" />
                 </ThreadPrimitive.If>
-              )}
 
-              <ThreadPrimitive.If empty={false}>
-                <div className="min-h-6 flex-grow" />
-              </ThreadPrimitive.If>
-
-              <div className={cn(
+                <div className={cn(
             "sticky bottom-0 mt-2 flex w-full max-w-[var(--thread-max-width)] flex-col items-center justify-end bg-gradient-to-t to-transparent pt-6 pb-3",
             useOffWhiteLightMode
               ? "from-slate-50/90 via-slate-50/90 dark:from-background dark:via-background"
               : "from-background via-background",
           )}>
-                <ThreadScrollToBottom />
-                <Composer placeholder={composerPlaceholder} />
-              </div>
-            </ThreadPrimitive.Viewport>
-          </ThreadPrimitive.Root>
-        </ComposerAttachmentsEnabledContext.Provider>
+                  <ThreadScrollToBottom />
+                  <Composer placeholder={composerPlaceholder} />
+                </div>
+              </ThreadPrimitive.Viewport>
+            </ThreadPrimitive.Root>
+          </ComposerAttachmentsEnabledContext.Provider>
+        </ComposerAttachmentAdapterContext.Provider>
       </HasRunningStatusContext.Provider>
     </HideMessageActionsContext.Provider>
   );
@@ -182,6 +198,62 @@ function extractImageUrlFromContent(content: readonly unknown[] | undefined): st
     }
   }
   return null;
+}
+
+function isCompleteAttachment(attachment: Attachment): attachment is CompleteAttachment {
+  return attachment.status.type === "complete";
+}
+
+function isPendingAttachment(attachment: Attachment): attachment is PendingAttachment {
+  return attachment.status.type !== "complete";
+}
+
+function getAttachmentIdentityKey(attachment: Attachment): string {
+  return attachment.id;
+}
+
+function haveAttachmentListsChanged(
+  currentAttachments: readonly Attachment[],
+  originalAttachments: readonly Attachment[],
+): boolean {
+  if (currentAttachments.length !== originalAttachments.length) {
+    return true;
+  }
+  return currentAttachments.some((attachment, index) => (
+    getAttachmentIdentityKey(attachment) !== getAttachmentIdentityKey(originalAttachments[index]!)
+  ));
+}
+
+function getTextContent(parts: readonly { type: string, text?: string }[]): string {
+  return parts
+    .filter((part) => part.type === "text" && typeof part.text === "string")
+    .map((part) => part.text ?? "")
+    .join("");
+}
+
+async function resolveComposerAttachments(
+  attachments: readonly Attachment[],
+  attachmentAdapter: AttachmentAdapter | null,
+): Promise<readonly CompleteAttachment[]> {
+  if (attachments.length === 0) {
+    return [];
+  }
+  if (attachmentAdapter == null) {
+    if (attachments.some(isPendingAttachment)) {
+      throw new Error("Image attachments are not available in this composer.");
+    }
+    return attachments.filter(isCompleteAttachment);
+  }
+
+  const resolved: CompleteAttachment[] = [];
+  for (const attachment of attachments) {
+    if (isCompleteAttachment(attachment)) {
+      resolved.push(attachment);
+      continue;
+    }
+    resolved.push(await attachmentAdapter.send(attachment));
+  }
+  return resolved;
 }
 
 const AttachmentThumb: FC<{
@@ -277,7 +349,14 @@ const ComposerAttachmentsAddButton: FC = () => {
   const atLimit = count >= MAX_IMAGES_PER_MESSAGE;
 
   const handleClick = () => {
-    if (composerRuntime.getState().attachments.length >= MAX_IMAGES_PER_MESSAGE) return;
+    const countValidation = validateComposerImageCount(composerRuntime.getState().attachments.length + 1);
+    if (!countValidation.ok) {
+      toast({
+        variant: "destructive",
+        description: countValidation.reason,
+      });
+      return;
+    }
 
     const input = document.createElement("input");
     input.type = "file";
@@ -293,22 +372,33 @@ const ComposerAttachmentsAddButton: FC = () => {
         const remaining = Math.max(0, MAX_IMAGES_PER_MESSAGE - liveCount);
         const picked = Array.from(files);
         const selected = picked.slice(0, remaining);
-        const oversized = selected.filter((file) => file.size > MAX_IMAGE_BYTES_PER_FILE);
-        const valid = selected.filter((file) => file.size <= MAX_IMAGE_BYTES_PER_FILE);
+        const valid: File[] = [];
+        const oversized: File[] = [];
+        for (const file of selected) {
+          const sizeValidation = validateComposerImageByteLength(file.size);
+          if (sizeValidation.ok) {
+            valid.push(file);
+          } else {
+            oversized.push(file);
+          }
+        }
+
+        const countValidation = validateComposerImageCount(liveCount + picked.length);
+        if (!countValidation.ok) {
+          toast({
+            variant: "destructive",
+            description: countValidation.reason,
+          });
+        }
 
         if (oversized.length > 0) {
+          const firstOversizedValidation = validateComposerImageByteLength(oversized[0]!.size);
           toast({
             variant: "destructive",
             description:
               oversized.length === 1
-                ? `"${oversized[0].name}" is larger than ${MAX_IMAGE_MB_PER_FILE}MB and was skipped.`
+                ? `"${oversized[0]!.name}": ${firstOversizedValidation.ok ? `Image exceeds ${MAX_IMAGE_MB_PER_FILE}MB limit.` : firstOversizedValidation.reason}`
                 : `${oversized.length} images exceeded the ${MAX_IMAGE_MB_PER_FILE}MB limit and were skipped.`,
-          });
-        }
-
-        if (picked.length > remaining) {
-          toast({
-            description: `Only ${MAX_IMAGES_PER_MESSAGE} images per message — extras ignored.`,
           });
         }
 
@@ -350,8 +440,10 @@ const ComposerAttachmentsAddButton: FC = () => {
     <TooltipIconButton
       tooltip={tooltipText}
       onClick={handleClick}
-      disabled={atLimit}
-      className="h-7 w-7 rounded-lg text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground disabled:opacity-40"
+      className={cn(
+        "h-7 w-7 rounded-lg text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground",
+        atLimit && "text-muted-foreground/70",
+      )}
     >
       <ImageIcon className="h-[15px] w-[15px]" weight="regular" />
     </TooltipIconButton>
@@ -539,6 +631,50 @@ const UserActionBar: FC = () => {
 
 const EditComposer: FC = () => {
   const attachmentsEnabled = useComposerAttachmentsEnabled();
+  const attachmentAdapter = useComposerAttachmentAdapter();
+  const composerRuntime = useComposerRuntime();
+  const threadRuntime = useThreadRuntime();
+  const { toast } = useToast();
+  const messageId = useMessage((m) => m.id);
+  const parentId = useMessage((m) => m.parentId ?? null);
+  const role = useMessage((m) => m.role);
+  const originalContent = useMessage((m) => m.content);
+  const originalAttachments = useMessage((m) => m.attachments ?? []);
+  const composerText = useComposer((s) => s.text);
+  const composerAttachments = useComposer((s) => s.attachments);
+  const originalText = useMemo(() => getTextContent(originalContent), [originalContent]);
+  const hasChanges = composerText !== originalText
+    || haveAttachmentListsChanged(composerAttachments, originalAttachments);
+
+  const handleSend = async () => {
+    if (!hasChanges) {
+      return;
+    }
+
+    try {
+      const composerState = composerRuntime.getState();
+      const resolvedAttachments = await resolveComposerAttachments(
+        composerState.attachments,
+        attachmentAdapter,
+      );
+      threadRuntime.append({
+        parentId,
+        sourceId: messageId,
+        role,
+        content: composerState.text ? [{ type: "text", text: composerState.text }] : [],
+        attachments: resolvedAttachments,
+        metadata: { custom: {} },
+        runConfig: composerState.runConfig,
+      });
+      composerRuntime.cancel();
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        description: error instanceof Error ? error.message : "Failed to send edited message.",
+      });
+    }
+  };
+
   return (
     <ComposerPrimitive.Root className="bg-foreground/[0.03] my-3 flex w-full max-w-[var(--thread-max-width)] flex-col gap-2 rounded-xl ring-1 ring-foreground/[0.08]">
       {attachmentsEnabled && <ComposerAttachmentsRow />}
@@ -552,9 +688,14 @@ const EditComposer: FC = () => {
           <ComposerPrimitive.Cancel asChild>
             <Button variant="ghost" size="sm" className="h-7 px-2.5 text-xs">Cancel</Button>
           </ComposerPrimitive.Cancel>
-          <ComposerPrimitive.Send asChild>
-            <Button size="sm" className="h-7 px-3 text-xs bg-blue-600 hover:bg-blue-500">Send</Button>
-          </ComposerPrimitive.Send>
+          <Button
+            size="sm"
+            className="h-7 px-3 text-xs bg-blue-600 hover:bg-blue-500"
+            disabled={!hasChanges}
+            onClick={handleSend}
+          >
+            Send
+          </Button>
         </div>
       </div>
     </ComposerPrimitive.Root>

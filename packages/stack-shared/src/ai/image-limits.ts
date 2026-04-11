@@ -19,6 +19,26 @@ type ValidationResult = { ok: true } | { ok: false, reason: string };
 type UnknownPart = { type?: unknown, image?: unknown };
 type MessageLike = { role?: unknown, content?: unknown };
 
+export function validateImageCount(imageCount: number): ValidationResult {
+  if (imageCount > MAX_IMAGES_PER_MESSAGE) {
+    return {
+      ok: false,
+      reason: `Maximum ${MAX_IMAGES_PER_MESSAGE} images per message.`,
+    };
+  }
+  return { ok: true };
+}
+
+export function validateImageByteLength(bytes: number): ValidationResult {
+  if (bytes > MAX_IMAGE_BYTES_PER_FILE) {
+    return {
+      ok: false,
+      reason: `Image exceeds ${MAX_IMAGE_MB_PER_FILE}MB limit (${(bytes / 1024 / 1024).toFixed(2)}MB).`,
+    };
+  }
+  return { ok: true };
+}
+
 /** Validates per-message image count and per-file size for user messages. */
 export function validateImageAttachments(messages: readonly MessageLike[]): ValidationResult {
   for (const msg of messages) {
@@ -29,20 +49,12 @@ export function validateImageAttachments(messages: readonly MessageLike[]): Vali
       const part = rawPart as UnknownPart;
       if (part.type !== "image") continue;
       imageCount++;
-      if (imageCount > MAX_IMAGES_PER_MESSAGE) {
-        return {
-          ok: false,
-          reason: `Maximum ${MAX_IMAGES_PER_MESSAGE} images per message.`,
-        };
-      }
+      const countValidation = validateImageCount(imageCount);
+      if (!countValidation.ok) return countValidation;
       if (typeof part.image === "string") {
         const bytes = estimateBase64ByteLength(part.image);
-        if (bytes > MAX_IMAGE_BYTES_PER_FILE) {
-          return {
-            ok: false,
-            reason: `Image exceeds ${MAX_IMAGE_MB_PER_FILE}MB limit (${(bytes / 1024 / 1024).toFixed(2)}MB).`,
-          };
-        }
+        const sizeValidation = validateImageByteLength(bytes);
+        if (!sizeValidation.ok) return sizeValidation;
       }
     }
   }

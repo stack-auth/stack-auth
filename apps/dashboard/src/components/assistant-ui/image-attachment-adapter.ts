@@ -1,12 +1,9 @@
+import { validateComposerImageByteLength } from "@/components/assistant-ui/image-attachment-validation";
 import {
   type AttachmentAdapter,
   type CompleteAttachment,
   type PendingAttachment,
 } from "@assistant-ui/react";
-import {
-  MAX_IMAGE_BYTES_PER_FILE,
-  MAX_IMAGE_MB_PER_FILE,
-} from "@stackframe/stack-shared/dist/ai/image-limits";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 
 /** Chat composer attachments: UUID ids, shared max file size (see `image-limits`). */
@@ -14,10 +11,9 @@ export class ImageAttachmentAdapter implements AttachmentAdapter {
   public readonly accept = "image/*";
 
   public async add(state: { file: File }): Promise<PendingAttachment> {
-    if (state.file.size > MAX_IMAGE_BYTES_PER_FILE) {
-      throw new Error(
-        `"${state.file.name}" is larger than ${MAX_IMAGE_MB_PER_FILE}MB.`,
-      );
+    const sizeValidation = validateComposerImageByteLength(state.file.size);
+    if (!sizeValidation.ok) {
+      throw new Error(`"${state.file.name}": ${sizeValidation.reason}`);
     }
     return {
       id: generateUuid(),

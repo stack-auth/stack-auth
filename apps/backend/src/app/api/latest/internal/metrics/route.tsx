@@ -1,6 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
 import { EmailOutboxSimpleStatus } from "@/generated/prisma/enums";
-import { getClickhouseAdminClient } from "@/lib/clickhouse";
+import { getClickhouseAdminClient, getClickhouseExternalClient } from "@/lib/clickhouse";
 import { ClickHouseError } from "@clickhouse/client";
 import { ActivitySplit, buildSplitFromDailyEntitySets } from "@/lib/metrics-activity-split";
 import { Tenancy } from "@/lib/tenancies";
@@ -217,10 +217,12 @@ async function loadDailyActiveUsersSplit(tenancy: Tenancy, now: Date, includeAno
   });
 
   const activeUserIds = [...new Set(sanitizedUserRows.map((row) => row.user_id))];
-  const users: { projectUserId: string, createdAt: Date }[] = activeUserIds.length === 0
+  const users: { projectUserId: string, signedUpAtOrCreatedAt: Date }[] = activeUserIds.length === 0
     ? []
-    : await prisma.$replica().$queryRaw<{ projectUserId: string, createdAt: Date }[]>`
-        SELECT "projectUserId"::text AS "projectUserId", "createdAt"
+    : await prisma.$replica().$queryRaw<{ projectUserId: string, signedUpAtOrCreatedAt: Date }[]>`
+        SELECT
+          "projectUserId"::text AS "projectUserId",
+          COALESCE("signedUpAt", "createdAt") AS "signedUpAtOrCreatedAt"
         FROM ${sqlQuoteIdent(schema)}."ProjectUser"
         WHERE "tenancyId" = ${tenancy.id}::UUID
           AND "projectUserId" IN (${Prisma.join(activeUserIds.map((id) => Prisma.sql`${id}::UUID`))})
@@ -243,7 +245,7 @@ async function loadDailyActiveUsersSplit(tenancy: Tenancy, now: Date, includeAno
   }
 
   const createdDayByUserId = new Map<string, string>(
-    users.map((user) => [user.projectUserId, user.createdAt.toISOString().split('T')[0]])
+    users.map((user) => [user.projectUserId, user.signedUpAtOrCreatedAt.toISOString().split('T')[0]])
   );
 
   return buildSplitFromDailyEntitySets({
@@ -794,7 +796,11 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
   const since = new Date(todayUtc.getTime() - METRICS_WINDOW_MS);
   const untilExclusive = new Date(todayUtc.getTime() + ONE_DAY_MS);
 
-  const clickhouseClient = getClickhouseAdminClient();
+  const clickhouseClient = getClickhouseExternalClient();
+  const clickhouseSettings = {
+    SQL_project_id: tenancy.project.id,
+    SQL_branch_id: tenancy.branchId,
+  };
 
   // Session replay aggregates come from Postgres and have nothing to do with
   // ClickHouse availability. Run them in parallel with the ClickHouse queries
@@ -813,82 +819,109 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
   } | null = null;
 
   try {
+    const analyticsUserJoin = `
+      LEFT JOIN (
+        SELECT
+          user_id,
+          argMax(CAST(data.is_anonymous, 'UInt8'), event_at) AS latest_is_anonymous
+        FROM events
+        WHERE event_type = '$token-refresh'
+          AND user_id IS NOT NULL
+          AND event_at < {untilExclusive:DateTime}
+        GROUP BY user_id
+      ) AS token_refresh_users
+        ON e.user_id = token_refresh_users.user_id
+      LEFT JOIN users AS u
+        ON e.user_id = toString(u.id)
+    `;
+    const nonAnonymousAnalyticsUserFilter = "({includeAnonymous:UInt8} = 1 OR coalesce(u.is_anonymous, token_refresh_users.latest_is_anonymous, 1) = 0)";
     const [dailyEventResult, totalVisitorResult, referrerResult, topRegionResult, onlineResult] = await Promise.all([
       // Combined daily aggregates: page-view count, click count, and unique
       // visitors per day — one scan over the page-view/click event types.
       clickhouseClient.query({
         query: `
           SELECT
-            toDate(event_at) AS day,
-            countIf(event_type = '$page-view') AS pv,
-            countIf(event_type = '$click') AS cl,
+            toDate(e.event_at) AS day,
+            countIf(
+              e.event_type = '$page-view'
+                AND e.user_id IS NOT NULL
+                AND ${nonAnonymousAnalyticsUserFilter}
+            ) AS pv,
+            countIf(
+              e.event_type = '$click'
+                AND e.user_id IS NOT NULL
+                AND ${nonAnonymousAnalyticsUserFilter}
+            ) AS cl,
             uniqExactIf(
-              assumeNotNull(user_id),
-              event_type = '$page-view'
-                AND user_id IS NOT NULL
-                AND ({includeAnonymous:UInt8} = 1 OR JSONExtract(toJSONString(data), 'is_anonymous', 'UInt8') = 0)
+              assumeNotNull(e.user_id),
+              e.event_type = '$page-view'
+                AND e.user_id IS NOT NULL
+                AND ${nonAnonymousAnalyticsUserFilter}
             ) AS visitors
-          FROM analytics_internal.events
-          WHERE project_id = {projectId:String}
-            AND branch_id = {branchId:String}
-            AND event_type IN ('$page-view', '$click')
-            AND event_at >= {since:DateTime}
-            AND event_at < {untilExclusive:DateTime}
+          FROM events AS e
+          ${analyticsUserJoin}
+          WHERE e.event_type IN ('$page-view', '$click')
+            AND e.event_at >= {since:DateTime}
+            AND e.event_at < {untilExclusive:DateTime}
           GROUP BY day
           ORDER BY day ASC
         `,
         query_params: {
-          projectId: tenancy.project.id,
-          branchId: tenancy.branchId,
           since: formatClickhouseDateTimeParam(since),
           untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
           includeAnonymous: includeAnonymous ? 1 : 0,
         },
+        clickhouse_settings: clickhouseSettings,
         format: "JSONEachRow",
       }),
       clickhouseClient.query({
         query: `
           SELECT
-            uniqExact(assumeNotNull(user_id)) AS visitors
-          FROM analytics_internal.events
-          WHERE event_type = '$page-view'
-            AND project_id = {projectId:String}
-            AND branch_id = {branchId:String}
-            AND user_id IS NOT NULL
-            AND event_at >= {since:DateTime}
-            AND event_at < {untilExclusive:DateTime}
-            AND ({includeAnonymous:UInt8} = 1 OR JSONExtract(toJSONString(data), 'is_anonymous', 'UInt8') = 0)
+            uniqExactIf(
+              assumeNotNull(e.user_id),
+              e.user_id IS NOT NULL
+                AND ${nonAnonymousAnalyticsUserFilter}
+            ) AS visitors
+          FROM events AS e
+          ${analyticsUserJoin}
+          WHERE e.event_type = '$page-view'
+            AND e.user_id IS NOT NULL
+            AND e.event_at >= {since:DateTime}
+            AND e.event_at < {untilExclusive:DateTime}
         `,
         query_params: {
-          projectId: tenancy.project.id,
-          branchId: tenancy.branchId,
           since: formatClickhouseDateTimeParam(since),
           untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
           includeAnonymous: includeAnonymous ? 1 : 0,
         },
+        clickhouse_settings: clickhouseSettings,
         format: "JSONEachRow",
       }),
       clickhouseClient.query({
         query: `
           SELECT
-            nullIf(CAST(data.referrer, 'String'), '') AS referrer,
-            count() AS cnt
-          FROM analytics_internal.events
-          WHERE event_type = '$page-view'
-            AND project_id = {projectId:String}
-            AND branch_id = {branchId:String}
-            AND event_at >= {since:DateTime}
-            AND event_at < {untilExclusive:DateTime}
+            nullIf(CAST(e.data.referrer, 'String'), '') AS referrer,
+            uniqExactIf(
+              assumeNotNull(e.user_id),
+              e.user_id IS NOT NULL
+                AND ${nonAnonymousAnalyticsUserFilter}
+            ) AS visitors
+          FROM events AS e
+          ${analyticsUserJoin}
+          WHERE e.event_type = '$page-view'
+            AND e.event_at >= {since:DateTime}
+            AND e.event_at < {untilExclusive:DateTime}
           GROUP BY referrer
-          ORDER BY cnt DESC
+          HAVING visitors > 0
+          ORDER BY visitors DESC
           LIMIT ${TOP_REFERRERS_PAGE_SIZE}
         `,
         query_params: {
-          projectId: tenancy.project.id,
-          branchId: tenancy.branchId,
           since: formatClickhouseDateTimeParam(since),
           untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
+          includeAnonymous: includeAnonymous ? 1 : 0,
         },
+        clickhouse_settings: clickhouseSettings,
         format: "JSONEachRow",
       }),
       clickhouseClient.query({
@@ -896,43 +929,46 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
           SELECT
             CAST(data.ip_info.country_code, 'Nullable(String)') AS country_code,
             CAST(data.ip_info.region_code, 'Nullable(String)') AS region_code,
-            count() AS cnt
-          FROM analytics_internal.events
+            uniqExactIf(
+              assumeNotNull(user_id),
+              user_id IS NOT NULL
+                AND ({includeAnonymous:UInt8} = 1 OR JSONExtract(toJSONString(data), 'is_anonymous', 'UInt8') = 0)
+            ) AS visitors
+          FROM events
           WHERE event_type = '$token-refresh'
-            AND project_id = {projectId:String}
-            AND branch_id = {branchId:String}
+            AND user_id IS NOT NULL
             AND event_at >= {since:DateTime}
             AND event_at < {untilExclusive:DateTime}
           GROUP BY country_code, region_code
-          ORDER BY cnt DESC
+          HAVING visitors > 0
+          ORDER BY visitors DESC
           LIMIT 1
         `,
         query_params: {
-          projectId: tenancy.project.id,
-          branchId: tenancy.branchId,
           since: formatClickhouseDateTimeParam(since),
           untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
+          includeAnonymous: includeAnonymous ? 1 : 0,
         },
+        clickhouse_settings: clickhouseSettings,
         format: "JSONEachRow",
       }),
       clickhouseClient.query({
         query: `
           SELECT
             uniqExact(assumeNotNull(user_id)) AS online
-          FROM analytics_internal.events
+          FROM events
           WHERE event_type = '$token-refresh'
-            AND project_id = {projectId:String}
-            AND branch_id = {branchId:String}
             AND user_id IS NOT NULL
             AND event_at >= {onlineSince:DateTime}
             AND event_at < {untilExclusive:DateTime}
+            AND ({includeAnonymous:UInt8} = 1 OR JSONExtract(toJSONString(data), 'is_anonymous', 'UInt8') = 0)
         `,
         query_params: {
-          projectId: tenancy.project.id,
-          branchId: tenancy.branchId,
           onlineSince: formatClickhouseDateTimeParam(new Date(now.getTime() - 5 * 60 * 1000)),
           untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
+          includeAnonymous: includeAnonymous ? 1 : 0,
         },
+        clickhouse_settings: clickhouseSettings,
         format: "JSONEachRow",
       }),
     ]);
@@ -961,8 +997,8 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
       dailyVisitors.push({ date: key, activity: visitorByDay.get(key) ?? 0 });
     }
 
-    const referrers: { referrer: string | null, cnt: number }[] = await referrerResult.json();
-    const topRegionRows: { country_code: string | null, region_code: string | null, cnt: number }[] = await topRegionResult.json();
+    const referrers: { referrer: string | null, visitors: number }[] = await referrerResult.json();
+    const topRegionRows: { country_code: string | null, region_code: string | null, visitors: number }[] = await topRegionResult.json();
     const onlineRows: { online: number }[] = await onlineResult.json();
 
     clickhouseAggregates = {
@@ -973,12 +1009,12 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
       onlineLive: Number(onlineRows[0]?.online ?? 0),
       topReferrers: referrers.map((row) => ({
         referrer: row.referrer ?? '(direct)',
-        visitors: Number(row.cnt),
+        visitors: Number(row.visitors),
       })),
       topRegion: topRegionRows[0] ? {
         country_code: topRegionRows[0].country_code,
         region_code: topRegionRows[0].region_code,
-        count: Number(topRegionRows[0].cnt),
+        count: Number(topRegionRows[0].visitors),
       } : null,
     };
   } catch (error) {

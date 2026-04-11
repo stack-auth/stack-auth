@@ -46,6 +46,11 @@ export const POST = createSmartRouteHandler({
       }
     }
 
+    const imageValidationResult = validateImageAttachments(messages);
+    if (!imageValidationResult.ok) {
+      throw new StatusError(StatusError.BadRequest, imageValidationResult.reason);
+    }
+
     const model = selectModel(quality, speed, isAuthenticated);
     const systemPrompt = getFullSystemPrompt(systemPromptId);
     const tools = await getTools(toolNames, { auth: fullReq.auth, targetProjectId: projectId });

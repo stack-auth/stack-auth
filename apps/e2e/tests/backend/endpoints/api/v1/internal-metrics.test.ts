@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { expect } from "vitest";
@@ -11,6 +12,24 @@ type MetricsUser = {
 type LoginMethodMetric = {
   count: number,
 };
+
+async function uploadAnalyticsEventBatch(options: {
+  sessionReplaySegmentId: string,
+  batchId: string,
+  sentAtMs: number,
+  events: { event_type: string, event_at_ms: number, data: unknown }[],
+}) {
+  return await niceBackendFetch("/api/v1/analytics/events/batch", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      session_replay_segment_id: options.sessionReplaySegmentId,
+      batch_id: options.batchId,
+      sent_at_ms: options.sentAtMs,
+      events: options.events,
+    },
+  });
+}
 
 async function ensureAnonymousUsersAreStillExcluded(metricsResponse: NiceResponse) {
   const baselineTotalUsers = metricsResponse.body.total_users as number;
@@ -61,6 +80,47 @@ async function waitForMetricsToIncludeUsersByCountry(options: { countryCode: str
     await wait(2_000);
   }
   return response;
+}
+
+async function waitForMetricsMatch(
+  includeAnonymous: boolean,
+  predicate: (response: NiceResponse) => boolean,
+): Promise<NiceResponse> {
+  let response!: NiceResponse;
+  const suffix = includeAnonymous ? "?include_anonymous=true" : "";
+  for (let i = 0; i < 20; i++) {
+    response = await niceBackendFetch(`/api/v1/internal/metrics${suffix}`, { accessType: 'admin' });
+    if (predicate(response)) {
+      return response;
+    }
+    await wait(1_000);
+  }
+  return response;
+}
+
+async function waitForAnalyticsRowsForSessionReplaySegment(
+  sessionReplaySegmentId: string,
+  expectedCount: number,
+): Promise<void> {
+  for (let i = 0; i < 30; i++) {
+    const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        query: `
+          SELECT count() AS count
+          FROM events
+          WHERE session_replay_segment_id = {segId:String}
+        `,
+        params: { segId: sessionReplaySegmentId },
+      },
+    });
+    if (response.status === 200 && Number(response.body.result?.[0]?.count ?? 0) >= expectedCount) {
+      return;
+    }
+    await wait(500);
+  }
+  throw new Error(`Timed out waiting for ${expectedCount} analytics rows for session replay segment ${sessionReplaySegmentId}`);
 }
 
 it("should return metrics data", async ({ expect }) => {
@@ -380,4 +440,137 @@ it("should return correct auth_overview breakdown including teams", async ({ exp
   const nonAnonFromOverview = authOverview.verified_users + authOverview.unverified_users;
   expect(nonAnonFromOverview).toBeGreaterThanOrEqual(1);
   expect(authOverview.total_teams).toBeGreaterThanOrEqual(1);
+});
+
+it("should count top referrers by unique visitors and exclude anonymous analytics by default", async ({ expect }) => {
+  await Project.createAndSwitch({
+    config: {
+      magic_link_enabled: true,
+    }
+  });
+  await Project.updateConfig({
+    "apps.installed.analytics": { enabled: true },
+  });
+
+  await InternalApiKey.createAndSetProjectKeys();
+
+  backendContext.set({
+    mailbox: createMailbox(),
+    ipData: {
+      country: "US",
+      ipAddress: "127.0.0.11",
+      city: "New York",
+      region: "NY",
+      latitude: 40.7128,
+      longitude: -74.0060,
+      tzIdentifier: "America/New_York",
+    },
+  });
+  await Auth.Otp.signIn();
+
+  const regularSessionReplaySegmentId = randomUUID();
+  const regularNow = Date.now();
+  const regularReferrer = "https://regular.example/source";
+  const regularBatchResponse = await uploadAnalyticsEventBatch({
+    sessionReplaySegmentId: regularSessionReplaySegmentId,
+    batchId: randomUUID(),
+    sentAtMs: regularNow,
+    events: [
+      {
+        event_type: "$page-view",
+        event_at_ms: regularNow - 200,
+        data: {
+          url: "https://stack-auth.example/regular-1",
+          path: "/regular-1",
+          referrer: regularReferrer,
+          title: "Regular Page 1",
+          entry_type: "initial",
+          viewport_width: 1920,
+          viewport_height: 1080,
+          screen_width: 1920,
+          screen_height: 1080,
+        },
+      },
+      {
+        event_type: "$page-view",
+        event_at_ms: regularNow - 100,
+        data: {
+          url: "https://stack-auth.example/regular-2",
+          path: "/regular-2",
+          referrer: regularReferrer,
+          title: "Regular Page 2",
+          entry_type: "push",
+          viewport_width: 1920,
+          viewport_height: 1080,
+          screen_width: 1920,
+          screen_height: 1080,
+        },
+      },
+    ],
+  });
+  expect(regularBatchResponse.status).toBe(200);
+  await waitForAnalyticsRowsForSessionReplaySegment(regularSessionReplaySegmentId, 2);
+
+  backendContext.set({
+    ipData: {
+      country: "CA",
+      ipAddress: "127.0.0.12",
+      city: "Toronto",
+      region: "ON",
+      latitude: 43.6532,
+      longitude: -79.3832,
+      tzIdentifier: "America/Toronto",
+    },
+  });
+  await Auth.Anonymous.signUp();
+
+  const anonymousSessionReplaySegmentId = randomUUID();
+  const anonymousNow = Date.now();
+  const anonymousReferrer = "https://anonymous.example/source";
+  const anonymousBatchResponse = await uploadAnalyticsEventBatch({
+    sessionReplaySegmentId: anonymousSessionReplaySegmentId,
+    batchId: randomUUID(),
+    sentAtMs: anonymousNow,
+    events: [
+      {
+        event_type: "$page-view",
+        event_at_ms: anonymousNow - 100,
+        data: {
+          url: "https://stack-auth.example/anonymous-1",
+          path: "/anonymous-1",
+          referrer: anonymousReferrer,
+          title: "Anonymous Page 1",
+          entry_type: "initial",
+          viewport_width: 1920,
+          viewport_height: 1080,
+          screen_width: 1920,
+          screen_height: 1080,
+        },
+      },
+    ],
+  });
+  expect(anonymousBatchResponse.status).toBe(200);
+  await waitForAnalyticsRowsForSessionReplaySegment(anonymousSessionReplaySegmentId, 1);
+
+  const metricsWithoutAnonymous = await waitForMetricsMatch(false, (response) => {
+    const topReferrers = response.body.analytics_overview.top_referrers as Array<{ referrer: string, visitors: number }>;
+    return response.body.analytics_overview.online_live === 1
+      && topReferrers.some((item) => item.referrer === regularReferrer && item.visitors === 1)
+      && !topReferrers.some((item) => item.referrer === anonymousReferrer);
+  });
+  const topReferrersWithoutAnonymous = metricsWithoutAnonymous.body.analytics_overview.top_referrers as Array<{ referrer: string, visitors: number }>;
+  expect(topReferrersWithoutAnonymous).toContainEqual({ referrer: regularReferrer, visitors: 1 });
+  expect(topReferrersWithoutAnonymous.some((item) => item.referrer === anonymousReferrer)).toBe(false);
+  expect(metricsWithoutAnonymous.body.analytics_overview.online_live).toBe(1);
+
+  const metricsWithAnonymous = await waitForMetricsMatch(true, (response) => {
+    const topReferrers = response.body.analytics_overview.top_referrers as Array<{ referrer: string, visitors: number }>;
+    return response.body.analytics_overview.online_live === 2
+      && topReferrers.some((item) => item.referrer === regularReferrer && item.visitors === 1)
+      && topReferrers.some((item) => item.referrer === anonymousReferrer && item.visitors === 1);
+  });
+  const topReferrersWithAnonymous = metricsWithAnonymous.body.analytics_overview.top_referrers as Array<{ referrer: string, visitors: number }>;
+  expect(topReferrersWithAnonymous).toContainEqual({ referrer: regularReferrer, visitors: 1 });
+  expect(topReferrersWithAnonymous).toContainEqual({ referrer: anonymousReferrer, visitors: 1 });
+  expect(metricsWithAnonymous.body.analytics_overview.online_live).toBe(2);
 });
