@@ -15,7 +15,7 @@ function getDocsToolsBaseUrl(): string {
   }
   if (getNodeEnvironment() === "development") {
     const portPrefix = getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81");
-    return `http://localhost:${portPrefix}04`;
+    return `http://localhost:${portPrefix}26`;
   }
   return "https://mcp.stack-auth.com";
 }

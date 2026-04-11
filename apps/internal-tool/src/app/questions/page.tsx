@@ -61,9 +61,6 @@ export default function QuestionsPage() {
                 {row.publishedAt && (
                   <span>{format(toDate(row.publishedAt), "MMM d, yyyy")}</span>
                 )}
-                {row.humanReviewedBy && (
-                  <span>Reviewed by {row.humanReviewedBy}</span>
-                )}
               </div>
             </article>
           ))}

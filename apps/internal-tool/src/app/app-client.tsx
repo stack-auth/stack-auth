@@ -1,19 +1,19 @@
 import { useUser } from "@stackframe/react";
-import { useState } from "react";
 import { clsx } from "clsx";
-import { CallLogList } from "../components/CallLogList";
-import { CallLogDetail } from "../components/CallLogDetail";
+import { useState } from "react";
 import { AddManualQa } from "../components/AddManualQa";
-import { KnowledgeBase } from "../components/KnowledgeBase";
 import { Analytics } from "../components/Analytics";
+import { CallLogDetail } from "../components/CallLogDetail";
+import { CallLogList } from "../components/CallLogList";
+import { KnowledgeBase } from "../components/KnowledgeBase";
 import { useMcpCallLogs } from "../hooks/useSpacetimeDB";
-import { mcpReviewApi } from "../lib/mcp-review-api";
+import { makeMcpReviewApi } from "../lib/mcp-review-api";
 import type { McpCallLogRow } from "../types";
 
 type Tab = "calls" | "knowledge" | "analytics";
 
 export default function App() {
-  const user = useUser();
+  const user = useUser({ or: process.env.NODE_ENV === "development" ? "redirect" : "return-null" });
   const [selectedRow, setSelectedRow] = useState<McpCallLogRow | null>(null);
   const [showAddQa, setShowAddQa] = useState(false);
   const [tab, setTab] = useState<Tab>("calls");
@@ -52,9 +52,6 @@ export default function App() {
             <p className="text-sm text-gray-500 mb-1">
               You are signed in as {user.displayName ?? user.primaryEmail}, but your account is not approved.
             </p>
-            <p className="text-xs text-gray-400">
-              An admin needs to set <code className="bg-gray-100 px-1 rounded">approved: true</code> in your client read-only metadata.
-            </p>
           </div>
         </div>
       );
@@ -65,7 +62,16 @@ export default function App() {
     ? rows.find(r => r.id === selectedRow.id) ?? selectedRow
     : null;
 
-  const reviewedBy = user.displayName ?? user.primaryEmail ?? "unknown";
+  const currentUser = user;
+  const reviewedBy = currentUser.displayName ?? currentUser.primaryEmail ?? "unknown";
+
+  async function getApi() {
+    const { accessToken, refreshToken } = await currentUser.getAuthJson();
+    const authHeaders: Record<string, string> = {};
+    if (accessToken) authHeaders["x-stack-access-token"] = accessToken;
+    if (refreshToken) authHeaders["x-stack-refresh-token"] = refreshToken;
+    return makeMcpReviewApi(authHeaders);
+  }
 
   return (
     <div className="min-h-screen bg-gray-50">
@@ -127,12 +133,9 @@ export default function App() {
         <AddManualQa
           onClose={() => setShowAddQa(false)}
           onSave={(question, answer, publish) => {
-            mcpReviewApi.addManual({
-              question,
-              answer,
-              publish,
-              reviewedBy,
-            }).catch(() => { /* errors are surfaced by UI state */ });
+            getApi()
+              .then(api => api.addManual({ question, answer, publish, reviewedBy }))
+              .catch(() => { /* errors are surfaced by UI state */ });
           }}
         />
       )}
@@ -154,13 +157,14 @@ export default function App() {
                 allRows={rows}
                 onClose={() => setSelectedRow(null)}
                 onSaveCorrection={(correlationId, correctedQuestion, correctedAnswer, publish) => {
-                  mcpReviewApi.updateCorrection({
-                    correlationId,
-                    correctedQuestion,
-                    correctedAnswer,
-                    publish,
-                    reviewedBy,
-                  }).catch(() => { /* errors are surfaced by UI state */ });
+                  getApi()
+                    .then(api => api.updateCorrection({ correlationId, correctedQuestion, correctedAnswer, publish, reviewedBy }))
+                    .catch(() => { /* errors are surfaced by UI state */ });
+                }}
+                onMarkReviewed={(correlationId) => {
+                  getApi()
+                    .then(api => api.markReviewed({ correlationId, reviewedBy }))
+                    .catch(() => { /* errors are surfaced by UI state */ });
                 }}
               />
             </aside>
@@ -173,18 +177,14 @@ export default function App() {
           <KnowledgeBase
             rows={rows}
             onSave={(correlationId, question, answer, publish) => {
-              mcpReviewApi.updateCorrection({
-                correlationId,
-                correctedQuestion: question,
-                correctedAnswer: answer,
-                publish,
-                reviewedBy,
-              }).catch(() => { /* errors are surfaced by UI state */ });
+              getApi()
+                .then(api => api.updateCorrection({ correlationId, correctedQuestion: question, correctedAnswer: answer, publish, reviewedBy }))
+                .catch(() => { /* errors are surfaced by UI state */ });
             }}
             onDelete={(correlationId) => {
-              mcpReviewApi.delete({
-                correlationId,
-              }).catch(() => { /* errors are surfaced by UI state */ });
+              getApi()
+                .then(api => api.delete({ correlationId }))
+                .catch(() => { /* errors are surfaced by UI state */ });
             }}
           />
         </main>

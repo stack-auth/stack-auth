@@ -28,13 +28,15 @@ function CopyButton({ text }: { text: string }) {
 
 // ─── Main Component ────────────────────────────────────
 
-export function CallLogDetail({ row, allRows, onClose, onSaveCorrection }: {
+export function CallLogDetail({ row, allRows, onClose, onSaveCorrection, onMarkReviewed }: {
   row: McpCallLogRow;
   allRows: McpCallLogRow[];
   onClose: () => void;
   onSaveCorrection?: (correlationId: string, correctedQuestion: string, correctedAnswer: string, publish: boolean) => void;
+  onMarkReviewed?: (correlationId: string) => void;
 }) {
   const [showReplay, setShowReplay] = useState(false);
+  const isReviewed = row.humanReviewedAt != null;
 
   return (
     <div className="p-4 space-y-4">
@@ -44,8 +46,26 @@ export function CallLogDetail({ row, allRows, onClose, onSaveCorrection }: {
 
       {/* Header */}
       <div className="flex items-center justify-between">
-        <h2 className="text-sm font-semibold text-gray-900">Call Detail</h2>
         <div className="flex items-center gap-2">
+          <h2 className="text-sm font-semibold text-gray-900">Call Detail</h2>
+          {isReviewed && (
+            <span
+              className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-800"
+              title={`Reviewed ${row.humanReviewedAt ? format(toDate(row.humanReviewedAt), "PPpp") : ""}${row.humanReviewedBy ? ` by ${row.humanReviewedBy}` : ""}`}
+            >
+              &#10003; Reviewed{row.humanReviewedBy ? ` by ${row.humanReviewedBy}` : ""}
+            </span>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          {!isReviewed && onMarkReviewed && (
+            <button
+              onClick={() => onMarkReviewed(row.correlationId)}
+              className="px-2.5 py-1 text-xs font-medium text-green-700 bg-green-50 rounded-md hover:bg-green-100 border border-green-200"
+            >
+              Mark as reviewed
+            </button>
+          )}
           <button
             onClick={() => setShowReplay(true)}
             className="px-2.5 py-1 text-xs font-medium text-purple-600 bg-purple-50 rounded-md hover:bg-purple-100"

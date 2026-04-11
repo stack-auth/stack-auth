@@ -2,8 +2,12 @@ import { useEffect, useState, useRef } from "react";
 import { DbConnection, type EventContext, type SubscriptionEventContext } from "../module_bindings";
 import type { McpCallLogRow } from "../types";
 
-const HOST = process.env.NEXT_PUBLIC_SPACETIMEDB_HOST ?? "";
-const DB_NAME = process.env.NEXT_PUBLIC_SPACETIMEDB_DB_NAME ?? "";
+const IS_DEV = process.env.NODE_ENV === "development";
+const PLACEHOLDER = "REPLACE_ME";
+const rawHost = process.env.NEXT_PUBLIC_SPACETIMEDB_HOST;
+const rawDbName = process.env.NEXT_PUBLIC_SPACETIMEDB_DB_NAME;
+const HOST = (!rawHost || rawHost === PLACEHOLDER) ? (IS_DEV ? "ws://localhost:8139" : "") : rawHost;
+const DB_NAME = (!rawDbName || rawDbName === PLACEHOLDER) ? (IS_DEV ? "stack-auth-llm" : "") : rawDbName;
 const TOKEN_KEY = `spacetimedb_${HOST}/${DB_NAME}/auth_token`;
 
 const MAX_RETRIES = 5;

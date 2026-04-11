@@ -1,7 +1,7 @@
 import { getConnection } from "@/lib/ai/mcp-logger";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
 export const POST = createSmartRouteHandler({
@@ -28,9 +28,11 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ body }, fullReq) => {
-    const metadata = fullReq.auth?.user?.client_read_only_metadata;
-    if (!(metadata && typeof metadata === "object" && "approved" in metadata && metadata.approved === true)) {
-      throw new StatusError(StatusError.Forbidden, "You are not approved to perform MCP review operations.");
+    if (getNodeEnvironment() !== "development") {
+      const metadata = fullReq.auth?.user?.client_read_only_metadata;
+      if (!(metadata && typeof metadata === "object" && "approved" in metadata && metadata.approved === true)) {
+        throw new StatusError(StatusError.Forbidden, "You are not approved to perform MCP review operations.");
+      }
     }
 
     const conn = await getConnection();
