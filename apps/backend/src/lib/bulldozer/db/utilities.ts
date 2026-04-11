@@ -21,6 +21,7 @@ export const sqlExpression = sqlTemplateLiteral<"expression">("expression");
 
 export type Json = string | number | boolean | null | { [key: string]: Json } | Json[];
 export type RowData = Record<string, Json>;
+export type Timestamp = string;
 export type SqlMapper<OldRD extends RowData, NewRD extends RowData> = { type: "mapper", sql: string };  // ex.: "row.id AS id, row.old_value + 1 AS new_value"
 export const sqlMapper = sqlTemplateLiteral<"mapper">("mapper");
 export type SqlPredicate<RD extends RowData> = { type: "predicate", sql: string };  // ex.: "user_id = 123"

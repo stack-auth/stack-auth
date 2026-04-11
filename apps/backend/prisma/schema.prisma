@@ -1257,6 +1257,29 @@ model BulldozerStorageEngine {
   @@index([keyPathParent], map: "BulldozerStorageEngine_keyPathParent_idx")
 }
 
+model BulldozerTimeFoldQueue {
+  id               String   @id @default(uuid()) @db.Uuid
+  tableStoragePath Json[]
+  groupKey         Json
+  rowIdentifier    String
+  scheduledAt      DateTime
+  stateAfter       Json
+  rowData          Json
+  reducerSql       String
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @default(now()) @updatedAt
+
+  @@unique([tableStoragePath, groupKey, rowIdentifier], map: "BulldozerTimeFoldQueue_table_group_row_key")
+  @@index([scheduledAt], map: "BulldozerTimeFoldQueue_scheduledAt_idx")
+}
+
+model BulldozerTimeFoldMetadata {
+  key             String   @id
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @default(now()) @updatedAt
+  lastProcessedAt DateTime
+}
+
 model DeletedRow {
   id        String @id @default(uuid()) @db.Uuid
   tenancyId String @db.Uuid

@@ -49,6 +49,7 @@ export { declareLimitTable } from "./tables/limit-table";
 export { declareMapTable } from "./tables/map-table";
 export { declareSortTable } from "./tables/sort-table";
 export { declareStoredTable } from "./tables/stored-table";
+export { declareTimeFoldTable } from "./tables/time-fold-table";
 
 const BULLDOZER_LOCK_ID = 7857391;  // random number to avoid conflicts with other applications
 

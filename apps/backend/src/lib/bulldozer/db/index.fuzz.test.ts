@@ -1,7 +1,7 @@
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
-import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLeftJoinTable, declareLFoldTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
+import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLeftJoinTable, declareLFoldTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable, declareTimeFoldTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
 
 type TestDb = { full: string, base: string };
 
@@ -416,6 +416,21 @@ function lFoldRowsWithSortKeys(groups: GroupedRows<{ team: string | null, value:
     return stringCompare(a.rowIdentifier, b.rowIdentifier);
   });
 }
+function timeFoldGroupsForSourceInput(groups: GroupedRows<{ team: string | null, value: number }>) {
+  const folded: GroupedRows<{ runningTotal: number, value: number, timestamp: null }> = new Map();
+  for (const [groupKey, group] of groups) {
+    const rows = new Map<string, { runningTotal: number, value: number, timestamp: null }>();
+    for (const [rowIdentifier, rowData] of group.rows) {
+      rows.set(`${rowIdentifier}:1`, {
+        runningTotal: rowData.value,
+        value: rowData.value,
+        timestamp: null,
+      });
+    }
+    folded.set(groupKey, { groupKey: group.groupKey, rows });
+  }
+  return folded;
+}
 
 describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
   const dbUrls = getTestDbUrls();
@@ -576,6 +591,9 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
       detail: `DROP TABLE IF EXISTS "BulldozerStorageEngine"`,
     });
 
+    await sql`DROP TABLE IF EXISTS "BulldozerTimeFoldQueue"`;
+    await sql`DROP TABLE IF EXISTS "BulldozerTimeFoldMetadata"`;
+
     const createTableStartedAt = performance.now();
     await sql`
       CREATE TABLE "BulldozerStorageEngine" (
@@ -625,6 +643,36 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
       ms: performance.now() - seedRootsStartedAt,
       detail: `INSERT root key paths`,
     });
+
+    await sql`
+      CREATE TABLE "BulldozerTimeFoldQueue" (
+        "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+        "tableStoragePath" JSONB[] NOT NULL,
+        "groupKey" JSONB NOT NULL,
+        "rowIdentifier" TEXT NOT NULL,
+        "scheduledAt" TIMESTAMPTZ NOT NULL,
+        "stateAfter" JSONB NOT NULL,
+        "rowData" JSONB NOT NULL,
+        "reducerSql" TEXT NOT NULL,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "BulldozerTimeFoldQueue_pkey" PRIMARY KEY ("id"),
+        CONSTRAINT "BulldozerTimeFoldQueue_table_group_row_key" UNIQUE ("tableStoragePath", "groupKey", "rowIdentifier")
+      )
+    `;
+    await sql`CREATE INDEX "BulldozerTimeFoldQueue_scheduledAt_idx" ON "BulldozerTimeFoldQueue"("scheduledAt")`;
+    await sql`
+      CREATE TABLE "BulldozerTimeFoldMetadata" (
+        "key" TEXT PRIMARY KEY,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "lastProcessedAt" TIMESTAMPTZ NOT NULL
+      )
+    `;
+    await sql`
+      INSERT INTO "BulldozerTimeFoldMetadata" ("key", "lastProcessedAt")
+      VALUES ('singleton', now())
+    `;
   });
 
   afterEach(() => {
@@ -1425,6 +1473,147 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
             return stringCompare(a.rowIdentifier, b.rowIdentifier);
           });
           expect(actualFoldRows).toEqual(lFoldRowsWithSortKeys(expectedGrouped));
+        }
+      }
+    }
+  }, 120_000);
+
+  test("fuzz: timefold table preserves output and queue invariants under random mutations and re-inits", async () => {
+    const identifiers = ["tf1", "tf2", "tf3", "tf4", "tf:5", "tf 6", "tf/7"] as const;
+    const teams = ["alpha", "beta", "gamma", null] as const;
+
+    for (const seed of [3601]) {
+      const rng = createRng(seed);
+      const sourceRows = new Map<string, SourceRow>();
+      let timeFoldInitialized = true;
+
+      const fromTable = declareStoredTable<{ value: number, team: string | null }>({ tableId: `timefold-fuzz-users-${seed}` });
+      const groupedTable = declareGroupByTable({
+        tableId: `timefold-fuzz-users-by-team-${seed}`,
+        fromTable,
+        groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+      });
+      const timeFoldTable = declareTimeFoldTable({
+        tableId: `timefold-fuzz-result-${seed}`,
+        fromTable: groupedTable,
+        initialState: expr(`'0'::jsonb`),
+        reducer: mapper(`
+          (("oldRowData"->>'value')::int) AS "newState",
+          jsonb_build_array(
+            jsonb_build_object(
+              'runningTotal', (("oldRowData"->>'value')::int),
+              'value', (("oldRowData"->>'value')::int),
+              'timestamp', CASE WHEN "timestamp" IS NULL THEN 'null'::jsonb ELSE to_jsonb("timestamp") END
+            )
+          ) AS "newRowsData",
+          CASE
+            WHEN "timestamp" IS NULL THEN (now() + interval '15 minutes')
+            ELSE NULL::timestamptz
+          END AS "nextTimestamp"
+        `),
+      });
+
+      await runStatements(fromTable.init());
+      await runStatements(groupedTable.init());
+      await runStatements(timeFoldTable.init());
+
+      for (let step = 0; step < 32; step++) {
+        const roll = rng();
+        if (roll < 0.62) {
+          const rowIdentifier = choose(rng, identifiers);
+          const rowData: SourceRow = {
+            team: choose(rng, teams),
+            value: Math.floor(rng() * 90),
+          };
+          sourceRows.set(rowIdentifier, rowData);
+          await runStatements(fromTable.setRow(rowIdentifier, expr(jsonbLiteral(rowData))));
+        } else if (roll < 0.86) {
+          const rowIdentifier = choose(rng, identifiers);
+          sourceRows.delete(rowIdentifier);
+          await runStatements(fromTable.deleteRow(rowIdentifier));
+        } else if (roll < 0.93) {
+          if (timeFoldInitialized) {
+            await runStatements(timeFoldTable.delete());
+            timeFoldInitialized = false;
+          }
+        } else if (!timeFoldInitialized) {
+          await runStatements(timeFoldTable.init());
+          timeFoldInitialized = true;
+        }
+
+        if (step % 3 === 0 || step === 31) {
+          const expectedGrouped = computeTeamGroups(sourceRows);
+          await assertTableMatches(groupedTable, expectedGrouped);
+
+          if (!timeFoldInitialized) {
+            expect(await readBoolean(timeFoldTable.isInitialized())).toBe(false);
+            expect(await readRows(timeFoldTable.listGroups({
+              start: "start",
+              end: "end",
+              startInclusive: true,
+              endInclusive: true,
+            }))).toEqual([]);
+            const queueRows = await sql<Array<{ count: number }>>`
+              SELECT COUNT(*)::int AS "count"
+              FROM "BulldozerTimeFoldQueue"
+            `;
+            const firstRow = queueRows[0];
+            expect(firstRow.count).toBe(0);
+            continue;
+          }
+
+          expect(await readBoolean(timeFoldTable.isInitialized())).toBe(true);
+          await assertTableMatches(timeFoldTable, timeFoldGroupsForSourceInput(expectedGrouped));
+
+          const queueRowsRaw = await sql<Array<Record<string, unknown>>>`
+            SELECT
+              "rowIdentifier",
+              "groupKey"#>>'{}' AS "groupKey",
+              ("stateAfter"#>>'{}')::int AS "stateAfter",
+              "rowData"
+            FROM "BulldozerTimeFoldQueue"
+            ORDER BY "rowIdentifier"
+          `;
+          const queueRows = queueRowsRaw.map((row) => ({
+            rowIdentifier: (() => {
+              const raw = Reflect.get(row, "rowIdentifier") ?? Reflect.get(row, "rowidentifier");
+              if (typeof raw !== "string") throw new Error("expected queue rowIdentifier string");
+              return raw;
+            })(),
+            groupKey: (() => {
+              const raw = Reflect.get(row, "groupKey") ?? Reflect.get(row, "groupkey");
+              if (raw === null || typeof raw === "string") return raw;
+              throw new Error("expected queue groupKey nullable string");
+            })(),
+            stateAfter: (() => {
+              const raw = Reflect.get(row, "stateAfter") ?? Reflect.get(row, "stateafter");
+              if (typeof raw !== "number") throw new Error("expected queue stateAfter number");
+              return raw;
+            })(),
+            rowData: (() => {
+              const raw = Reflect.get(row, "rowData") ?? Reflect.get(row, "rowdata");
+              if (!isRecord(raw)) throw new Error("expected queue rowData object");
+              const teamRaw = Reflect.get(raw, "team");
+              const valueRaw = Reflect.get(raw, "value");
+              if (!(teamRaw === null || typeof teamRaw === "string")) {
+                throw new Error("expected queue rowData.team nullable string");
+              }
+              if (typeof valueRaw !== "number") {
+                throw new Error("expected queue rowData.value number");
+              }
+              return { team: teamRaw, value: valueRaw };
+            })(),
+          }));
+          const expectedQueueRows = [...sourceRows.entries()]
+            .map(([rowIdentifier, rowData]) => ({
+              rowIdentifier,
+              groupKey: rowData.team,
+              stateAfter: rowData.value,
+              rowData,
+            }))
+            .sort((a, b) => stringCompare(a.rowIdentifier, b.rowIdentifier));
+          const sortedQueueRows = [...queueRows].sort((a, b) => stringCompare(a.rowIdentifier, b.rowIdentifier));
+          expect(sortedQueueRows).toEqual(expectedQueueRows);
         }
       }
     }

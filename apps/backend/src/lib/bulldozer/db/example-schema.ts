@@ -1,4 +1,4 @@
-import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLeftJoinTable, declareLFoldTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable } from "./index";
+import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLeftJoinTable, declareLFoldTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable, declareTimeFoldTable } from "./index";
 
 const mapper = (sql: string) => ({ type: "mapper" as const, sql });
 const predicate = (sql: string) => ({ type: "predicate" as const, sql });
@@ -175,6 +175,94 @@ export const exampleFungibleLedgerSchema = (() => {
       ) AS "newRowsData"
     `),
   });
+  // Timefold reducers should avoid non-deterministic values (for example now()/random()) for
+  // output-driving fields, otherwise replaying from scratch can produce different results.
+  // These examples derive next timestamps from stable row timestamps.
+  const accountEntriesTimedExposure = declareTimeFoldTable({
+    tableId: "bulldozer-example-ledger-account-entries-timed-exposure",
+    fromTable: entriesByAccount,
+    initialState: { type: "expression", sql: "'0'::jsonb" },
+    reducer: mapper(`
+      (
+        COALESCE(("oldState"#>>'{}')::numeric, 0)
+        + (
+          CASE
+            WHEN "oldRowData"->>'side' = 'credit' THEN (("oldRowData"->>'amount')::numeric)
+            ELSE -(("oldRowData"->>'amount')::numeric)
+          END
+        )
+      ) AS "newState",
+      jsonb_build_array(
+        jsonb_build_object(
+          'accountId', "oldRowData"->'accountId',
+          'asset', "oldRowData"->'asset',
+          'txHash', "oldRowData"->'txHash',
+          'timedExposure',
+            (
+              COALESCE(("oldState"#>>'{}')::numeric, 0)
+              + (
+                CASE
+                  WHEN "oldRowData"->>'side' = 'credit' THEN (("oldRowData"->>'amount')::numeric)
+                  ELSE -(("oldRowData"->>'amount')::numeric)
+                END
+              )
+            ),
+          'tickTimestamp',
+            CASE
+              WHEN "timestamp" IS NULL THEN 'null'::jsonb
+              ELSE to_jsonb("timestamp")
+            END
+        )
+      ) AS "newRowsData",
+      CASE
+        WHEN "timestamp" IS NULL THEN (("oldRowData"->>'timestamp')::timestamptz + interval '5 minutes')
+        ELSE NULL::timestamptz
+      END AS "nextTimestamp"
+    `),
+  });
+  // Emit repeated timed checkpoints for each row until a bounded step counter
+  // reaches completion. This showcases recurring scheduling behavior.
+  const accountEntriesTimedReprice = declareTimeFoldTable({
+    tableId: "bulldozer-example-ledger-account-entries-timed-reprice",
+    fromTable: entriesByAccount,
+    initialState: { type: "expression", sql: "'0'::jsonb" },
+    reducer: mapper(`
+      CASE
+        WHEN "timestamp" IS NULL THEN 1
+        WHEN COALESCE(("oldState"#>>'{}')::int, 0) < 3 THEN (COALESCE(("oldState"#>>'{}')::int, 0) + 1)
+        ELSE COALESCE(("oldState"#>>'{}')::int, 0)
+      END AS "newState",
+      jsonb_build_array(
+        jsonb_build_object(
+          'accountId', "oldRowData"->'accountId',
+          'asset', "oldRowData"->'asset',
+          'txHash', "oldRowData"->'txHash',
+          'amount', (("oldRowData"->>'amount')::numeric),
+          'step',
+            CASE
+              WHEN "timestamp" IS NULL THEN 1
+              ELSE COALESCE(("oldState"#>>'{}')::int, 0)
+            END,
+          'mode',
+            CASE
+              WHEN "timestamp" IS NULL THEN 'initial'
+              WHEN COALESCE(("oldState"#>>'{}')::int, 0) < 3 THEN 'follow-up'
+              ELSE 'terminal'
+            END,
+          'tickTimestamp',
+            CASE
+              WHEN "timestamp" IS NULL THEN 'null'::jsonb
+              ELSE to_jsonb("timestamp")
+            END
+        )
+      ) AS "newRowsData",
+      CASE
+        WHEN "timestamp" IS NULL THEN (("oldRowData"->>'timestamp')::timestamptz + interval '1 minute')
+        WHEN COALESCE(("oldState"#>>'{}')::int, 0) < 3 THEN ("timestamp" + interval '1 minute')
+        ELSE NULL::timestamptz
+      END AS "nextTimestamp"
+    `),
+  });
 
   // Keep only large-value entries to model risk/alerting-style subsets.
   const highValueEntriesByAsset = declareFilterTable({
@@ -228,6 +316,8 @@ export const exampleFungibleLedgerSchema = (() => {
     accountCounterpartySample,
     accountCounterpartyJoinedSample,
     accountEntriesRunningExposure,
+    accountEntriesTimedExposure,
+    accountEntriesTimedReprice,
     highValueEntriesByAsset,
     highValueEntriesByAssetAccount,
     accountPriorityEntries,

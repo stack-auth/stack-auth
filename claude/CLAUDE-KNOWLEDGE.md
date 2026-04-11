@@ -207,3 +207,24 @@ A: In `apps/backend/src/lib/bulldozer/db/index.perf.test.ts`, keep a warmup quer
 
 Q: What if multi-run average still flakes because of one or two large outliers?
 A: Use robust stats for thresholds: keep logging full `avg/stddev/variance/min/max`, but assert subset-iteration performance on `trimmedAverage` (drop one min/max sample when there are 5 runs). This preserves sensitivity to sustained regressions while tolerating transient host contention spikes during concurrent test-file execution.
+
+Q: How should `declareTimeFoldTable` row identifiers and SQL aliases behave?
+A: `declareTimeFoldTable` emits expanded output identifiers with a flat-row suffix (for example `sourceRowId:1` even when one row is emitted), matching other fold-style operators. For query outputs, use unquoted aliases (`AS groupKey`, `AS rowIdentifier`, etc.) if later clauses reference them (`ORDER BY groupKey, rowIdentifier`) to avoid case-sensitive alias lookup errors in Postgres.
+
+Q: Why can Bulldozer Studio show initialized derived tables that do not react to new stored-table mutations?
+A: Trigger registrations are in-memory and are established in table `init()`. If the DB already has initialized derived tables from a previous Studio process, a fresh Studio process can report `initialized: true` from storage while lacking active trigger subscriptions. In `run-bulldozer-studio.ts`, rebind initialized derived tables at startup by deleting and re-initializing them in dependency order so subscriptions are re-registered.
+
+Q: How can I inspect the `declareTimeFoldTable` scheduler state in Bulldozer Studio?
+A: Use the new `⏱️ Timefold` mode in `apps/backend/scripts/run-bulldozer-studio.ts`. It calls `/api/timefold/debug`, which reports whether `BulldozerTimeFoldQueue` and `BulldozerTimeFoldMetadata` exist, the metadata `lastProcessedAt` value, and up to 500 queued rows (including `scheduledAt`, `stateAfter`, `rowData`, and `reducerSql`) ordered by scheduled execution time.
+
+Q: Why can timefold queue rows remain overdue even though the reducer function exists?
+A: The migration creates the queue processor function regardless of `pg_cron`, but `pg_cron` setup is best-effort and can be skipped (for example if `cron.job` is unavailable). In that state, `BulldozerTimeFoldQueue` grows while `lastProcessedAt` stops moving until `public.bulldozer_timefold_process_queue()` is called manually or `pg_cron` is installed/configured correctly.
+
+Q: How do we ensure `pg_cron` is actually available in local dev Postgres?
+A: In `docker/dev-postgres-with-extensions/Dockerfile`, install `postgresql-15-cron`, add `pg_cron` to `shared_preload_libraries`, set `cron.database_name='stackframe'`, and create the extension during init (`CREATE EXTENSION pg_cron;`). After `pnpm run restart-deps`, `to_regclass('cron.job')` should be non-null and `cron.job_run_details` should show the `bulldozer-timefold-worker` running every second.
+
+Q: How does Bulldozer Studio "init all" work?
+A: `apps/backend/scripts/run-bulldozer-studio.ts` now exposes `POST /api/tables/init-all`, which initializes only non-initialized tables in topological dependency order derived from table snapshots. The toolbar has a `🚀 init all` button that calls this endpoint and refreshes schema/details afterward.
+
+Q: What are safe reducer practices for `declareTimeFoldTable`, and how do timed reruns affect outputs?
+A: Timefold reducers should avoid non-deterministic values (`now()`, random) for output-driving logic; prefer stable row timestamps and prior reducer timestamps so replay/re-init stays deterministic. Timed reruns now append newly emitted rows on top of existing emitted rows for a source row (instead of replacing prior timed outputs), while source updates/deletes still recompute/reset that source row’s materialized outputs.

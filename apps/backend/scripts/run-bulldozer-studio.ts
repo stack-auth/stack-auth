@@ -322,6 +322,105 @@ async function getTableSnapshot(record: StudioTableRecord): Promise<{
   };
 }
 
+function topologicallySortTableIds(
+  tables: Array<Awaited<ReturnType<typeof getTableSnapshot>>>,
+): string[] {
+  const ids = new Set(tables.map((table) => table.id));
+  const outgoing = new Map<string, string[]>();
+  const inDegree = new Map<string, number>();
+
+  for (const table of tables) {
+    outgoing.set(table.id, []);
+    inDegree.set(table.id, 0);
+  }
+
+  for (const table of tables) {
+    for (const dependencyId of table.dependencies) {
+      if (!ids.has(dependencyId)) continue;
+      const next = outgoing.get(dependencyId);
+      if (next == null) continue;
+      next.push(table.id);
+      const currentInDegree = inDegree.get(table.id);
+      if (currentInDegree == null) continue;
+      inDegree.set(table.id, currentInDegree + 1);
+    }
+  }
+
+  const queue = [...inDegree.entries()]
+    .filter((entry) => entry[1] === 0)
+    .map((entry) => entry[0])
+    .sort(stringCompare);
+  const ordered: string[] = [];
+
+  while (queue.length > 0) {
+    const id = queue.shift();
+    if (id == null) continue;
+    ordered.push(id);
+    const nextIds = outgoing.get(id) ?? [];
+    for (const nextId of nextIds) {
+      const currentInDegree = inDegree.get(nextId);
+      if (currentInDegree == null) continue;
+      const updatedInDegree = currentInDegree - 1;
+      inDegree.set(nextId, updatedInDegree);
+      if (updatedInDegree === 0) {
+        queue.push(nextId);
+        queue.sort(stringCompare);
+      }
+    }
+  }
+
+  if (ordered.length === tables.length) return ordered;
+
+  const remaining = [...ids].filter((id) => !ordered.includes(id)).sort(stringCompare);
+  return [...ordered, ...remaining];
+}
+
+async function rebindInitializedDerivedTables(): Promise<void> {
+  const snapshots = await Promise.all(registry.tables.map((table) => getTableSnapshot(table)));
+  const initializedDerivedTableIds = new Set(
+    snapshots
+      .filter((table) => table.initialized && !table.supportsSetRow)
+      .map((table) => table.id),
+  );
+  if (initializedDerivedTableIds.size === 0) return;
+
+  const sortedIds = topologicallySortTableIds(snapshots);
+  const recordsToDelete = [...sortedIds]
+    .reverse()
+    .map((id) => registry.tableById.get(id))
+    .filter((record): record is StudioTableRecord => record != null && initializedDerivedTableIds.has(record.id));
+  const recordsToInit = sortedIds
+    .map((id) => registry.tableById.get(id))
+    .filter((record): record is StudioTableRecord => record != null && initializedDerivedTableIds.has(record.id));
+
+  for (const record of recordsToDelete) {
+    await executeStatements(record.table.delete());
+  }
+  for (const record of recordsToInit) {
+    await executeStatements(record.table.init());
+  }
+
+  console.log(`[studio] rebound ${recordsToInit.length} initialized derived tables`);
+}
+
+async function initAllTablesInTopologicalOrder(): Promise<string[]> {
+  const snapshots = await Promise.all(registry.tables.map((table) => getTableSnapshot(table)));
+  const snapshotById = new Map(snapshots.map((snapshot) => [snapshot.id, snapshot]));
+  const sortedIds = topologicallySortTableIds(snapshots);
+  const initializedIds: string[] = [];
+
+  for (const id of sortedIds) {
+    const snapshot = snapshotById.get(id);
+    if (snapshot == null || snapshot.initialized) continue;
+    const record = registry.tableById.get(id);
+    if (record == null) continue;
+    await executeStatements(record.table.init());
+    initializedIds.push(id);
+  }
+
+  return initializedIds;
+}
+
 async function computeStudioLayout(tables: Array<Awaited<ReturnType<typeof getTableSnapshot>>>): Promise<null | {
   positions: Record<string, { x: number, y: number }>,
   sceneWidth: number,
@@ -424,6 +523,69 @@ async function getTableDetails(record: StudioTableRecord): Promise<{
     groups,
     totalRows: allRowsRaw.length,
   };
+}
+
+async function getTimefoldDebugSnapshot(): Promise<{
+  queueTableExists: boolean,
+  metadataTableExists: boolean,
+  pgCronInstalled: boolean,
+  lastProcessedAt: unknown,
+  queue: Array<Record<string, unknown>>,
+}> {
+  return await retryTransaction(globalPrismaClient, async (tx) => {
+    const relationRows = await tx.$queryRawUnsafe<Array<Record<string, unknown>>>(`
+      SELECT
+        to_regclass('"BulldozerTimeFoldQueue"') IS NOT NULL AS "queueTableExists",
+        to_regclass('"BulldozerTimeFoldMetadata"') IS NOT NULL AS "metadataTableExists",
+        to_regclass('cron.job') IS NOT NULL AS "pgCronInstalled"
+    `);
+    const relationRow = requireRecord(relationRows[0], "timefold relation probe returned invalid row");
+    const queueTableExists = Reflect.get(relationRow, "queueTableExists") === true || Reflect.get(relationRow, "queuetableexists") === true;
+    const metadataTableExists = Reflect.get(relationRow, "metadataTableExists") === true || Reflect.get(relationRow, "metadatatableexists") === true;
+    const pgCronInstalled = Reflect.get(relationRow, "pgCronInstalled") === true || Reflect.get(relationRow, "pgcroninstalled") === true;
+
+    let lastProcessedAt: unknown = null;
+    if (metadataTableExists) {
+      const metadataRows = await tx.$queryRawUnsafe<Array<Record<string, unknown>>>(`
+        SELECT "lastProcessedAt"
+        FROM "BulldozerTimeFoldMetadata"
+        WHERE "key" = 'singleton'
+        LIMIT 1
+      `);
+      if (metadataRows.length > 0) {
+        const metadataRow = requireRecord(metadataRows[0], "timefold metadata query returned invalid row");
+        lastProcessedAt = Reflect.get(metadataRow, "lastProcessedAt") ?? Reflect.get(metadataRow, "lastprocessedat") ?? null;
+      }
+    }
+
+    let queue: Array<Record<string, unknown>> = [];
+    if (queueTableExists) {
+      queue = await tx.$queryRawUnsafe<Array<Record<string, unknown>>>(`
+        SELECT
+          "id",
+          "tableStoragePath",
+          "groupKey",
+          "rowIdentifier",
+          "scheduledAt",
+          "stateAfter",
+          "rowData",
+          "reducerSql",
+          "createdAt",
+          "updatedAt"
+        FROM "BulldozerTimeFoldQueue"
+        ORDER BY "scheduledAt" ASC, "id" ASC
+        LIMIT 500
+      `);
+    }
+
+    return {
+      queueTableExists,
+      metadataTableExists,
+      pgCronInstalled,
+      lastProcessedAt,
+      queue,
+    };
+  });
 }
 
 async function getRawNode(pathSegments: string[]): Promise<{
@@ -739,6 +901,9 @@ function getStudioPageHtml(): string {
     .node-type.leftjoin {
       color: color-mix(in srgb, var(--accent) 55%, var(--ok));
     }
+    .node-type.timefold {
+      color: color-mix(in srgb, var(--filter) 60%, var(--danger));
+    }
     .node-name {
       font-size: 13px;
       font-weight: 700;
@@ -769,6 +934,9 @@ function getStudioPageHtml(): string {
     }
     .node-name.leftjoin {
       color: color-mix(in srgb, var(--accent) 60%, var(--ok));
+    }
+    .node-name.timefold {
+      color: color-mix(in srgb, var(--filter) 65%, var(--danger));
     }
     .node-meta {
       font-size: 11px;
@@ -949,6 +1117,8 @@ function getStudioPageHtml(): string {
         <div class="title">Bulldozer Studio</div>
         <button id="modeTablesBtn" class="btn active">🧩 Tables</button>
         <button id="modeRawBtn" class="btn">🗂️ Raw</button>
+        <button id="modeTimefoldBtn" class="btn">⏱️ Timefold</button>
+        <button id="initAllBtn" class="btn good">🚀 init all</button>
         <button id="refreshBtn" class="btn icon" title="Refresh">🔄</button>
         <button id="fitBtn" class="btn icon" title="Fit graph">🧭</button>
         <button id="themeBtn" class="btn icon" title="Toggle theme">🌙</button>
@@ -1021,6 +1191,7 @@ function getStudioPageHtml(): string {
       selectedTableDetails: null,
       rawNode: null,
       rawPath: [],
+      timefoldDebug: null,
       status: "ready",
       theme: "dark",
       serverVersion: null,
@@ -1057,6 +1228,8 @@ function getStudioPageHtml(): string {
     const errorCloseBtn = document.getElementById("errorCloseBtn");
     const modeTablesBtn = document.getElementById("modeTablesBtn");
     const modeRawBtn = document.getElementById("modeRawBtn");
+    const modeTimefoldBtn = document.getElementById("modeTimefoldBtn");
+    const initAllBtn = document.getElementById("initAllBtn");
     const refreshBtn = document.getElementById("refreshBtn");
     const fitBtn = document.getElementById("fitBtn");
     const themeBtn = document.getElementById("themeBtn");
@@ -1478,6 +1651,7 @@ function getStudioPageHtml(): string {
       state.mode = mode;
       modeTablesBtn.classList.toggle("active", mode === "table");
       modeRawBtn.classList.toggle("active", mode === "raw");
+      modeTimefoldBtn.classList.toggle("active", mode === "timefold");
       renderDetails();
     }
 
@@ -1505,7 +1679,7 @@ function getStudioPageHtml(): string {
       for (const table of tables) {
         const operatorClass = (() => {
           const normalized = String(table.operator || "unknown").toLowerCase();
-          if (normalized === "stored" || normalized === "map" || normalized === "flatmap" || normalized === "groupby" || normalized === "filter" || normalized === "limit" || normalized === "concat" || normalized === "sort" || normalized === "lfold" || normalized === "leftjoin") {
+          if (normalized === "stored" || normalized === "map" || normalized === "flatmap" || normalized === "groupby" || normalized === "filter" || normalized === "limit" || normalized === "concat" || normalized === "sort" || normalized === "lfold" || normalized === "leftjoin" || normalized === "timefold") {
             return normalized;
           }
           return "derived";
@@ -1613,6 +1787,8 @@ function getStudioPageHtml(): string {
         await selectTable(state.selectedTableId);
       } else if (state.mode === "raw") {
         await loadRawNode(state.rawPath.length === 0 ? [] : state.rawPath);
+      } else if (state.mode === "timefold") {
+        await loadTimefoldDebug();
       }
       setStatus("ready");
       fitGraphToView();
@@ -1640,11 +1816,30 @@ function getStudioPageHtml(): string {
       }
     }
 
+    async function initAllTables() {
+      setStatus("initializing all tables...");
+      await fetchJson("/api/tables/init-all", {
+        method: "POST",
+      });
+      await loadSchema();
+      if (state.selectedTableId) {
+        await selectTable(state.selectedTableId);
+      }
+    }
+
     async function loadRawNode(path) {
       state.mode = "raw";
       setStatus("loading raw node...");
       state.rawNode = await fetchJson("/api/raw/node?path=" + encodeURIComponent(JSON.stringify(path)));
       state.rawPath = state.rawNode.path;
+      setStatus("ready");
+      renderDetails();
+    }
+
+    async function loadTimefoldDebug() {
+      state.mode = "timefold";
+      setStatus("loading timefold debug...");
+      state.timefoldDebug = await fetchJson("/api/timefold/debug");
       setStatus("ready");
       renderDetails();
     }
@@ -1967,9 +2162,126 @@ function getStudioPageHtml(): string {
       detailsPane.appendChild(children);
     }
 
+    function renderTimefoldDetails() {
+      detailsPane.innerHTML = "";
+
+      const head = document.createElement("div");
+      head.className = "detail-head";
+      const title = document.createElement("div");
+      title.className = "detail-title";
+      title.textContent = "Timefold queue debug";
+      const actions = document.createElement("div");
+      actions.className = "row";
+      const refreshTimefoldBtn = document.createElement("button");
+      refreshTimefoldBtn.className = "btn icon";
+      refreshTimefoldBtn.title = "Refresh timefold debug";
+      refreshTimefoldBtn.textContent = "🔄";
+      refreshTimefoldBtn.onclick = () => runUiAction("refresh timefold debug", async () => {
+        await loadTimefoldDebug();
+      });
+      actions.appendChild(refreshTimefoldBtn);
+      head.appendChild(title);
+      head.appendChild(actions);
+      detailsPane.appendChild(head);
+
+      if (state.timefoldDebug == null || typeof state.timefoldDebug !== "object") {
+        detailsPane.innerHTML += "<div class='detail-section'>No timefold debug data loaded.</div>";
+        return;
+      }
+
+      const debug = state.timefoldDebug;
+      const queueRows = Array.isArray(debug.queue) ? debug.queue : [];
+      const queueTableExists = debug.queueTableExists === true;
+      const metadataTableExists = debug.metadataTableExists === true;
+      const pgCronInstalled = debug.pgCronInstalled === true;
+
+      const info = document.createElement("div");
+      info.className = "detail-section";
+      const infoTitle = document.createElement("div");
+      infoTitle.className = "muted mono";
+      infoTitle.style.marginBottom = "6px";
+      infoTitle.textContent = "metadata";
+      info.appendChild(infoTitle);
+      const infoGrid = document.createElement("div");
+      infoGrid.className = "kv";
+      const infoRows = [
+        ["queue table exists", String(queueTableExists)],
+        ["metadata table exists", String(metadataTableExists)],
+        ["pg_cron installed", String(pgCronInstalled)],
+        ["lastProcessedAt", String(debug.lastProcessedAt ?? "null")],
+        ["queue rows", String(queueRows.length)],
+      ];
+      for (const [label, value] of infoRows) {
+        const keyCell = document.createElement("div");
+        keyCell.className = "kv-key mono";
+        keyCell.textContent = label;
+        const valueCell = document.createElement("div");
+        valueCell.className = "mono";
+        valueCell.textContent = value;
+        infoGrid.appendChild(keyCell);
+        infoGrid.appendChild(valueCell);
+      }
+      info.appendChild(infoGrid);
+      detailsPane.appendChild(info);
+
+      const queueSection = document.createElement("div");
+      queueSection.className = "detail-section";
+      queueSection.innerHTML = "<div class='muted mono' style='margin-bottom:6px;'>queue rows (up to 500)</div>";
+      if (queueRows.length === 0) {
+        const empty = document.createElement("div");
+        empty.className = "mono muted";
+        empty.textContent = "(empty)";
+        queueSection.appendChild(empty);
+      }
+      for (const queueRow of queueRows) {
+        const rowIdentifier = queueRow.rowIdentifier ?? queueRow.rowidentifier ?? "(unknown)";
+        const scheduledAt = queueRow.scheduledAt ?? queueRow.scheduledat ?? "(unknown)";
+        const detailsElement = document.createElement("details");
+        detailsElement.open = queueRows.length <= 10;
+        const summary = document.createElement("summary");
+        summary.textContent = String(scheduledAt) + " | rowIdentifier=" + String(rowIdentifier);
+        detailsElement.appendChild(summary);
+        const rowGrid = document.createElement("div");
+        rowGrid.className = "kv";
+        const fields = [
+          ["id", queueRow.id ?? null],
+          ["tableStoragePath", queueRow.tableStoragePath ?? queueRow.tablestoragepath ?? null],
+          ["groupKey", queueRow.groupKey ?? queueRow.groupkey ?? null],
+          ["rowIdentifier", rowIdentifier],
+          ["scheduledAt", scheduledAt],
+          ["stateAfter", queueRow.stateAfter ?? queueRow.stateafter ?? null],
+          ["rowData", queueRow.rowData ?? queueRow.rowdata ?? null],
+          ["createdAt", queueRow.createdAt ?? queueRow.createdat ?? null],
+          ["updatedAt", queueRow.updatedAt ?? queueRow.updatedat ?? null],
+          ["reducerSql", queueRow.reducerSql ?? queueRow.reducersql ?? null],
+        ];
+        for (const [field, value] of fields) {
+          const keyCell = document.createElement("div");
+          keyCell.className = "kv-key mono";
+          keyCell.textContent = field;
+          const valueCell = document.createElement("div");
+          if (typeof value === "string" && !value.includes("\\n") && value.length <= 140) {
+            valueCell.className = "mono";
+            valueCell.textContent = value;
+          } else {
+            const pre = document.createElement("pre");
+            pre.textContent = prettyJson(value);
+            valueCell.appendChild(pre);
+          }
+          rowGrid.appendChild(keyCell);
+          rowGrid.appendChild(valueCell);
+        }
+        detailsElement.appendChild(rowGrid);
+        queueSection.appendChild(detailsElement);
+      }
+      detailsPane.appendChild(queueSection);
+    }
+
     function renderDetails() {
       if (state.mode === "raw") {
         renderRawDetails();
+      } else if (state.mode === "timefold") {
+        renderTimefoldDetails();
       } else {
         renderTableDetails();
       }
@@ -2099,6 +2411,13 @@ function getStudioPageHtml(): string {
       setMode("raw");
       await loadRawNode(state.rawPath.length === 0 ? [] : state.rawPath);
     });
+    modeTimefoldBtn.onclick = () => runUiAction("switch mode", async () => {
+      setMode("timefold");
+      await loadTimefoldDebug();
+    });
+    initAllBtn.onclick = () => runUiAction("init all tables", async () => {
+      await initAllTables();
+    });
     refreshBtn.onclick = () => runUiAction("refresh", async () => {
       await loadSchema();
     });
@@ -2155,6 +2474,18 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
     const tables = await Promise.all(registry.tables.map((table) => getTableSnapshot(table)));
     const layout = await computeStudioLayout(tables);
     sendJson(response, 200, { tables, layout });
+    return;
+  }
+
+  if (method === "GET" && pathname === "/api/timefold/debug") {
+    const snapshot = await getTimefoldDebugSnapshot();
+    sendJson(response, 200, snapshot);
+    return;
+  }
+
+  if (method === "POST" && pathname === "/api/tables/init-all") {
+    const initializedTableIds = await initAllTablesInTopologicalOrder();
+    sendJson(response, 200, { ok: true, initializedTableIds });
     return;
   }
 
@@ -2283,6 +2614,8 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
 }
 
 async function main(): Promise<void> {
+  await rebindInitializedDerivedTables();
+
   const server = http.createServer((request, response) => {
     handleRequest(request, response).then(
       () => undefined,

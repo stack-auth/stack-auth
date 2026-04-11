@@ -1,7 +1,7 @@
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
-import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLeftJoinTable, declareLFoldTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
+import { declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLeftJoinTable, declareLFoldTable, declareLimitTable, declareMapTable, declareSortTable, declareStoredTable, declareTimeFoldTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
 
 type TestDb = { full: string, base: string };
 type SqlExpression<T> = { type: "expression", sql: string };
@@ -50,6 +50,8 @@ const LOAD_SORT_TABLE_INIT_MAX_MS = withCiPerfHeadroom(90_000);
 const LOAD_SORT_TABLE_COUNT_QUERY_MAX_MS = withCiPerfHeadroom(8_000);
 const LOAD_LFOLD_TABLE_INIT_MAX_MS = withCiPerfHeadroom(130_000);
 const LOAD_LFOLD_TABLE_COUNT_QUERY_MAX_MS = withCiPerfHeadroom(12_000);
+const LOAD_TIMEFOLD_TABLE_INIT_MAX_MS = withCiPerfHeadroom(130_000);
+const LOAD_TIMEFOLD_TABLE_COUNT_QUERY_MAX_MS = withCiPerfHeadroom(12_000);
 const LOAD_LEFT_JOIN_TABLE_INIT_MAX_MS = withCiPerfHeadroom(90_000);
 const LOAD_LEFT_JOIN_TABLE_COUNT_QUERY_MAX_MS = withCiPerfHeadroom(8_000);
 const STACKED_MAP_PIPELINE_MUTATION_MAX_MS = withCiPerfHeadroom(400);
@@ -250,6 +252,8 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
   beforeEach(async () => {
     await sql`CREATE EXTENSION IF NOT EXISTS pgcrypto`;
     await sql`DROP TABLE IF EXISTS "BulldozerStorageEngine"`;
+    await sql`DROP TABLE IF EXISTS "BulldozerTimeFoldQueue"`;
+    await sql`DROP TABLE IF EXISTS "BulldozerTimeFoldMetadata"`;
     await sql`
       CREATE TABLE "BulldozerStorageEngine" (
         "id" UUID NOT NULL DEFAULT gen_random_uuid(),
@@ -275,6 +279,35 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       VALUES
         (ARRAY[]::jsonb[], 'null'::jsonb),
         (ARRAY[to_jsonb('table'::text)]::jsonb[], 'null'::jsonb)
+    `;
+    await sql`
+      CREATE TABLE "BulldozerTimeFoldQueue" (
+        "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+        "tableStoragePath" JSONB[] NOT NULL,
+        "groupKey" JSONB NOT NULL,
+        "rowIdentifier" TEXT NOT NULL,
+        "scheduledAt" TIMESTAMPTZ NOT NULL,
+        "stateAfter" JSONB NOT NULL,
+        "rowData" JSONB NOT NULL,
+        "reducerSql" TEXT NOT NULL,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "BulldozerTimeFoldQueue_pkey" PRIMARY KEY ("id"),
+        CONSTRAINT "BulldozerTimeFoldQueue_table_group_row_key" UNIQUE ("tableStoragePath", "groupKey", "rowIdentifier")
+      )
+    `;
+    await sql`CREATE INDEX "BulldozerTimeFoldQueue_scheduledAt_idx" ON "BulldozerTimeFoldQueue"("scheduledAt")`;
+    await sql`
+      CREATE TABLE "BulldozerTimeFoldMetadata" (
+        "key" TEXT PRIMARY KEY,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "lastProcessedAt" TIMESTAMPTZ NOT NULL
+      )
+    `;
+    await sql`
+      INSERT INTO "BulldozerTimeFoldMetadata" ("key", "lastProcessedAt")
+      VALUES ('singleton', now())
     `;
   });
 
@@ -930,6 +963,29 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
         ) AS "newRowsData"
       ` },
     });
+    const timedExposureByTeam = declareTimeFoldTable({
+      tableId: "load-prefilled-users-timefold",
+      fromTable: groupedByTeam,
+      initialState: expr(`'0'::jsonb`),
+      reducer: { type: "mapper", sql: `
+        (("oldRowData"->>'value')::int) AS "newState",
+        jsonb_build_array(
+          jsonb_build_object(
+            'team', "oldRowData"->'team',
+            'value', (("oldRowData"->>'value')::int),
+            'timestamp',
+              CASE
+                WHEN "timestamp" IS NULL THEN 'null'::jsonb
+                ELSE to_jsonb("timestamp")
+              END
+          )
+        ) AS "newRowsData",
+        CASE
+          WHEN "timestamp" IS NULL THEN (now() + interval '15 minutes')
+          ELSE NULL::timestamptz
+        END AS "nextTimestamp"
+      ` },
+    });
     const sortInit = await measureMs("load init sortedHighValueByTeam", async () => {
       await runStatements(sortedHighValueByTeam.init());
     });
@@ -1006,6 +1062,10 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       await runStatements(foldedHighValueByTeam.init());
     });
     expect(lFoldInit.elapsedMs).toBeLessThan(LOAD_LFOLD_TABLE_INIT_MAX_MS);
+    const timeFoldInit = await measureMs("load init timedExposureByTeam", async () => {
+      await runStatements(timedExposureByTeam.init());
+    });
+    expect(timeFoldInit.elapsedMs).toBeLessThan(LOAD_TIMEFOLD_TABLE_INIT_MAX_MS);
     const sortedDeltaRows = await readRows(sortedHighValueByTeam.listRowsInGroup({
       groupKey: expr(`to_jsonb('delta'::text)`),
       start: "start",
@@ -1030,6 +1090,20 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       value: 999,
       runningTotal: 999,
     });
+    const timedExposureDeltaRows = await readRows(timedExposureByTeam.listRowsInGroup({
+      groupKey: expr(`to_jsonb('delta'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(timedExposureDeltaRows).toHaveLength(1);
+    expect(timedExposureDeltaRows[0].rowidentifier).toBe("seed-100000:1");
+    expect(timedExposureDeltaRows[0].rowdata).toEqual({
+      team: "delta",
+      value: 999,
+      timestamp: null,
+    });
     const foldedHighValueCountOnly = await measureMs("load count foldedHighValueByTeam table only", async () => {
       return await sql.unsafe(`
         SELECT COUNT(*)::int AS "count"
@@ -1044,6 +1118,22 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     expect(foldedHighValueCountOnly.elapsedMs).toBeLessThan(LOAD_LFOLD_TABLE_COUNT_QUERY_MAX_MS);
     expect(Number(foldedHighValueCountOnly.result[0].count)).toBeGreaterThan(0);
     expect(Number(foldedHighValueCountOnly.result[0].count)).toBeLessThanOrEqual(Number(filteredHighValueCountOnly.result[0].count) + 1);
+    const timedExposureCountOnly = await measureMs("load count timedExposureByTeam table only", async () => {
+      return await sql.unsafe(`
+        SELECT COUNT(*)::int AS "count"
+        FROM (${toQueryableSqlQuery(timedExposureByTeam.listRowsInGroup({
+          start: "start",
+          end: "end",
+          startInclusive: true,
+          endInclusive: true,
+        }))}) AS "rows"
+      `);
+    });
+    expect(timedExposureCountOnly.elapsedMs).toBeLessThan(LOAD_TIMEFOLD_TABLE_COUNT_QUERY_MAX_MS);
+    const expectedTimedExposureCount = loadRowCount >= 100_000
+      ? (loadRowCount - 1)
+      : loadRowCount;
+    expect(Number(timedExposureCountOnly.result[0].count)).toBe(expectedTimedExposureCount);
     const concatenatedDeltaRows = await readRows(concatenatedByTeam.listRowsInGroup({
       groupKey: expr(`to_jsonb('delta'::text)`),
       start: "start",
@@ -1119,7 +1209,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     `;
     expect(isInitializedRows[0].initialized).toBe(false);
 
-    logLine(`[bulldozer-perf] load thresholds(ms): prefill<=${LOAD_PREFILL_MAX_MS}, baseCount<=${LOAD_COUNT_QUERY_MAX_MS}, setRowAvg<=${LOAD_SET_ROW_AVG_MAX_MS} over ${LOAD_SET_ROW_AVG_ITERATIONS}, pointDelete<=${LOAD_POINT_MUTATION_MAX_MS}, onlineMutationAvg<=${LOAD_ONLINE_MUTATION_MAX_MS} over ${LOAD_ONLINE_MUTATION_ITERATIONS}, groupedSubsetTrimmedAvg<=${LOAD_SUBSET_ITERATION_MAX_MS} for ${LOAD_SUBSET_ITERATION_ROW_COUNT} rows over ${LOAD_SUBSET_ITERATION_MEASURED_RUNS} runs, derivedInit<=${LOAD_DERIVED_INIT_MAX_MS}, filterInit<=${LOAD_FILTER_TABLE_INIT_MAX_MS}, sortInit<=${LOAD_SORT_TABLE_INIT_MAX_MS}, lfoldInit<=${LOAD_LFOLD_TABLE_INIT_MAX_MS}, leftJoinInit<=${LOAD_LEFT_JOIN_TABLE_INIT_MAX_MS}, concatInit<=${LOAD_CONCAT_TABLE_INIT_MAX_MS}, limitInit<=${LOAD_LIMIT_TABLE_INIT_MAX_MS}, expandingInit<=${LOAD_EXPANDING_INIT_MAX_MS}, derivedCount<=${LOAD_DERIVED_COUNT_QUERY_MAX_MS}, filterCount<=${LOAD_FILTER_TABLE_COUNT_QUERY_MAX_MS}, lfoldCount<=${LOAD_LFOLD_TABLE_COUNT_QUERY_MAX_MS}, leftJoinCount<=${LOAD_LEFT_JOIN_TABLE_COUNT_QUERY_MAX_MS}, concatCount<=${LOAD_CONCAT_TABLE_COUNT_QUERY_MAX_MS}, limitCount<=${LOAD_LIMIT_TABLE_COUNT_QUERY_MAX_MS}, expandingCount<=${LOAD_EXPANDING_COUNT_QUERY_MAX_MS}, filteredQuery<=${LOAD_FILTERED_QUERY_MAX_MS}, tableDelete<=${LOAD_TABLE_DELETE_MAX_MS}`);
+    logLine(`[bulldozer-perf] load thresholds(ms): prefill<=${LOAD_PREFILL_MAX_MS}, baseCount<=${LOAD_COUNT_QUERY_MAX_MS}, setRowAvg<=${LOAD_SET_ROW_AVG_MAX_MS} over ${LOAD_SET_ROW_AVG_ITERATIONS}, pointDelete<=${LOAD_POINT_MUTATION_MAX_MS}, onlineMutationAvg<=${LOAD_ONLINE_MUTATION_MAX_MS} over ${LOAD_ONLINE_MUTATION_ITERATIONS}, groupedSubsetTrimmedAvg<=${LOAD_SUBSET_ITERATION_MAX_MS} for ${LOAD_SUBSET_ITERATION_ROW_COUNT} rows over ${LOAD_SUBSET_ITERATION_MEASURED_RUNS} runs, derivedInit<=${LOAD_DERIVED_INIT_MAX_MS}, filterInit<=${LOAD_FILTER_TABLE_INIT_MAX_MS}, sortInit<=${LOAD_SORT_TABLE_INIT_MAX_MS}, lfoldInit<=${LOAD_LFOLD_TABLE_INIT_MAX_MS}, timefoldInit<=${LOAD_TIMEFOLD_TABLE_INIT_MAX_MS}, leftJoinInit<=${LOAD_LEFT_JOIN_TABLE_INIT_MAX_MS}, concatInit<=${LOAD_CONCAT_TABLE_INIT_MAX_MS}, limitInit<=${LOAD_LIMIT_TABLE_INIT_MAX_MS}, expandingInit<=${LOAD_EXPANDING_INIT_MAX_MS}, derivedCount<=${LOAD_DERIVED_COUNT_QUERY_MAX_MS}, filterCount<=${LOAD_FILTER_TABLE_COUNT_QUERY_MAX_MS}, lfoldCount<=${LOAD_LFOLD_TABLE_COUNT_QUERY_MAX_MS}, timefoldCount<=${LOAD_TIMEFOLD_TABLE_COUNT_QUERY_MAX_MS}, leftJoinCount<=${LOAD_LEFT_JOIN_TABLE_COUNT_QUERY_MAX_MS}, concatCount<=${LOAD_CONCAT_TABLE_COUNT_QUERY_MAX_MS}, limitCount<=${LOAD_LIMIT_TABLE_COUNT_QUERY_MAX_MS}, expandingCount<=${LOAD_EXPANDING_COUNT_QUERY_MAX_MS}, filteredQuery<=${LOAD_FILTERED_QUERY_MAX_MS}, tableDelete<=${LOAD_TABLE_DELETE_MAX_MS}`);
   }, 300_000);
 });
 
