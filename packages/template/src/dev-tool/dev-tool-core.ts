@@ -10,6 +10,8 @@ import { getBaseUrl } from "../lib/stack-app/apps/implementations/common";
 import { envVars } from "../lib/env";
 import { getPagePrompt } from "../lib/stack-app/url-targets";
 import { devToolCSS } from "./dev-tool-styles";
+import type { TriggerPlacement } from "./dev-tool-trigger-position";
+import { clampTriggerPosition, getSnappedTriggerPlacement, resolveTriggerPosition } from "./dev-tool-trigger-position";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -261,33 +263,48 @@ function setHtml(el: HTMLElement, html: string) {
 
 function createTrigger(onClick: () => void): HTMLElement {
   type Position = { left: number; top: number };
+  type Placement = TriggerPlacement;
+  const triggerSize = { width: 76, height: 36 };
 
   const defaultPos = (): Position => ({
     left: window.innerWidth - 76 - 16,
     top: window.innerHeight - 36 - 16,
   });
 
-  function loadPos(): Position | null {
+  function isPosition(value: unknown): value is Position {
+    if (typeof value !== 'object' || value === null) return false;
+    return typeof Reflect.get(value, 'left') === 'number' && typeof Reflect.get(value, 'top') === 'number';
+  }
+
+  function isPlacement(value: unknown): value is Placement {
+    if (typeof value !== 'object' || value === null) return false;
+    const side = Reflect.get(value, 'side');
+    return ['left', 'right', 'top', 'bottom'].includes(String(side)) && typeof Reflect.get(value, 'offset') === 'number';
+  }
+
+  function loadPlacement(): Placement | null {
     try {
       const raw = localStorage.getItem(TRIGGER_POS_KEY);
       if (!raw) return null;
-      const p = JSON.parse(raw);
-      if (typeof p.left === 'number' && typeof p.top === 'number') return p;
+      const parsed = JSON.parse(raw);
+      if (isPlacement(parsed)) return parsed;
+      if (isPosition(parsed)) {
+        return getSnappedTriggerPlacement(parsed, triggerSize, { width: window.innerWidth, height: window.innerHeight });
+      }
     } catch {}
     return null;
   }
 
-  function savePos(p: Position) {
+  function savePlacement(placement: Placement) {
     try {
-      localStorage.setItem(TRIGGER_POS_KEY, JSON.stringify(p));
+      localStorage.setItem(TRIGGER_POS_KEY, JSON.stringify(placement));
     } catch {}
   }
 
-  function clamp(pos: Position, w: number, ht: number): Position {
-    return {
-      left: Math.max(0, Math.min(pos.left, window.innerWidth - w)),
-      top: Math.max(0, Math.min(pos.top, window.innerHeight - ht)),
-    };
+  function applyPos(nextPos: Position) {
+    pos = nextPos;
+    btn.style.left = pos.left + 'px';
+    btn.style.top = pos.top + 'px';
   }
 
   const btn = h('button', { className: 'sdt-trigger', 'aria-label': 'Toggle Stack Auth Dev Tools', title: 'Stack Auth Dev Tools' });
@@ -296,10 +313,9 @@ function createTrigger(onClick: () => void): HTMLElement {
   btn.appendChild(logoSpan);
   btn.appendChild(h('span', { className: 'sdt-trigger-text' }, 'DEV'));
 
-  let pos = loadPos() ?? defaultPos();
-  pos = clamp(pos, 76, 36);
-  btn.style.left = pos.left + 'px';
-  btn.style.top = pos.top + 'px';
+  let placement = loadPlacement() ?? getSnappedTriggerPlacement(defaultPos(), triggerSize, { width: window.innerWidth, height: window.innerHeight });
+  let pos = resolveTriggerPosition(placement, triggerSize, { width: window.innerWidth, height: window.innerHeight });
+  applyPos(pos);
 
   let dragState: { startX: number; startY: number; startLeft: number; startTop: number; didDrag: boolean } | null = null;
 
@@ -315,10 +331,11 @@ function createTrigger(onClick: () => void): HTMLElement {
     const dy = e.clientY - dragState.startY;
     if (!dragState.didDrag && Math.abs(dx) + Math.abs(dy) < DRAG_THRESHOLD) return;
     dragState.didDrag = true;
-    const rect = btn.getBoundingClientRect();
-    pos = clamp({ left: dragState.startLeft + dx, top: dragState.startTop + dy }, rect.width, rect.height);
-    btn.style.left = pos.left + 'px';
-    btn.style.top = pos.top + 'px';
+    applyPos(clampTriggerPosition(
+      { left: dragState.startLeft + dx, top: dragState.startTop + dy },
+      triggerSize,
+      { width: window.innerWidth, height: window.innerHeight },
+    ));
   });
 
   btn.addEventListener('pointerup', (e) => {
@@ -327,20 +344,20 @@ function createTrigger(onClick: () => void): HTMLElement {
     if (!ds) return;
     btn.releasePointerCapture(e.pointerId);
     if (ds.didDrag) {
-      savePos(pos);
+      placement = getSnappedTriggerPlacement(pos, triggerSize, { width: window.innerWidth, height: window.innerHeight });
+      applyPos(resolveTriggerPosition(placement, triggerSize, { width: window.innerWidth, height: window.innerHeight }));
+      savePlacement(placement);
     } else {
       onClick();
     }
   });
 
   window.addEventListener('resize', () => {
-    const rect = btn.getBoundingClientRect();
-    const clamped = clamp(pos, rect.width, rect.height);
-    if (clamped.left !== pos.left || clamped.top !== pos.top) {
-      pos = clamped;
-      btn.style.left = pos.left + 'px';
-      btn.style.top = pos.top + 'px';
-      savePos(pos);
+    const resizedPos = resolveTriggerPosition(placement, triggerSize, { width: window.innerWidth, height: window.innerHeight });
+    if (resizedPos.left !== pos.left || resizedPos.top !== pos.top) {
+      applyPos(resizedPos);
+      placement = getSnappedTriggerPlacement(pos, triggerSize, { width: window.innerWidth, height: window.innerHeight });
+      savePlacement(placement);
     }
   });
 
