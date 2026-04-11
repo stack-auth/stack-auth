@@ -19,7 +19,7 @@ function getSentEventTypes(sentBodies: string[]) {
     throw new Error("Expected analytics batch payload to include an events array.");
   }
 
-  return payload.events.map((event) => event.event_type);
+  return (payload.events as { event_type: string }[]).map((event) => event.event_type);
 }
 
 describe("EventTracker", () => {
