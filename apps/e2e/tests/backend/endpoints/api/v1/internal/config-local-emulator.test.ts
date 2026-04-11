@@ -30,6 +30,7 @@ async function switchToLocalEmulatorProject() {
       superSecretAdminKey: response.body.super_secret_admin_key,
     },
   });
+  return filePath;
 }
 
 describe("local emulator config restrictions", () => {
@@ -96,7 +97,7 @@ describe("local emulator config restrictions", () => {
   });
 
   it.runIf(isLocalEmulator)("keeps branch override updates enabled", async ({ expect }) => {
-    await switchToLocalEmulatorProject();
+    const filePath = await switchToLocalEmulatorProject();
 
     const response = await niceBackendFetch("/api/v1/internal/config/override/branch", {
       method: "PATCH",
@@ -110,5 +111,18 @@ describe("local emulator config restrictions", () => {
 
     expect(response.status).toBe(200);
     expect(response.body).toStrictEqual({ success: true });
+
+    const fileContent = await fs.readFile(filePath, "utf-8");
+    expect(fileContent).toMatchInlineSnapshot(`
+      deindent\`
+        import type { StackConfig } from "@stackframe/js";
+        
+        export const config: StackConfig = {
+          "teams": {
+            "allowClientTeamCreation": true
+          }
+        };
+      \` + "\\n"
+    `);
   });
 });

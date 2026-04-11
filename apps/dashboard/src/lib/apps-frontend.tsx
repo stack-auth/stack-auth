@@ -1,5 +1,5 @@
 import { Link } from "@/components/link";
-import { ChartLineIcon, ClipboardTextIcon, CreditCardIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, RocketIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
+import { ChartLineIcon, ClipboardTextIcon, CreditCardIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { StackAdminApp } from "@stackframe/stack";
 import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@stackframe/stack-shared/dist/utils/urls";
@@ -33,34 +33,55 @@ export type AppFrontend = {
   icon: React.FunctionComponent<React.SVGProps<SVGSVGElement>>,
   logo?: React.FunctionComponent<{}>,
   href: string,
-  matchPath?: (relativePart: string) => boolean,
-  getBreadcrumbItems?: (stackAdminApp: StackAdminApp<false>, relativePart: string) => Promise<BreadcrumbDefinition | null | undefined>,
-  navigationItems: AppNavigationItem[],
   screenshots: (string | StaticImageData)[],
   storeDescription: JSX.Element,
-};
+} & (
+  | {
+    navigationItems: AppNavigationItem[],
+    matchPath?: (relativePart: string) => boolean,
+    getBreadcrumbItems?: (stackAdminApp: StackAdminApp<false>, relativePart: string) => Promise<BreadcrumbDefinition | null | undefined>,
+  }
+  | {
+    parentAppId: AppId,
+  }
+)
+
+export type NavigableAppFrontend = Extract<AppFrontend, { navigationItems: AppNavigationItem[] }>;
+export type SubAppFrontend = Extract<AppFrontend, { parentAppId: AppId }>;
+
+export function hasNavigationItems(appFrontend: AppFrontend): appFrontend is NavigableAppFrontend {
+  return "navigationItems" in appFrontend;
+}
+
+export function isSubApp(appFrontend: AppFrontend): appFrontend is SubAppFrontend {
+  return "parentAppId" in appFrontend;
+}
 
 export function getAppPath(projectId: string, appFrontend: AppFrontend) {
   const url = new URL(appFrontend.href, `${DUMMY_ORIGIN}/projects/${projectId}/`);
   return getRelativePart(url);
 }
 
-export function getItemPath(projectId: string, appFrontend: AppFrontend, item: AppFrontend["navigationItems"][number]) {
+export function getItemPath(projectId: string, appFrontend: NavigableAppFrontend, item: AppNavigationItem) {
   const url = new URL(item.href, new URL(appFrontend.href, `${DUMMY_ORIGIN}/projects/${projectId}/`) + "/");
   return getRelativePart(url);
 }
 
 export function testAppPath(projectId: string, appFrontend: AppFrontend, fullUrl: URL) {
-  if (appFrontend.matchPath) return appFrontend.matchPath(getRelativePart(fullUrl));
+  if ("matchPath" in appFrontend && appFrontend.matchPath) {
+    return appFrontend.matchPath(getRelativePart(fullUrl));
+  }
 
-  for (const item of appFrontend.navigationItems) {
-    if (testItemPath(projectId, appFrontend, item, fullUrl)) return true;
+  if (hasNavigationItems(appFrontend)) {
+    for (const item of appFrontend.navigationItems) {
+      if (testItemPath(projectId, appFrontend, item, fullUrl)) return true;
+    }
   }
   const url = new URL(appFrontend.href, `${DUMMY_ORIGIN}/projects/${projectId}/`);
   return isChildUrl(url, fullUrl);
 }
 
-export function testItemPath(projectId: string, appFrontend: AppFrontend, item: AppFrontend["navigationItems"][number], fullUrl: URL) {
+export function testItemPath(projectId: string, appFrontend: NavigableAppFrontend, item: AppNavigationItem, fullUrl: URL) {
   if (item.matchPath) return item.matchPath(getRelativePart(fullUrl));
 
   const url = new URL(getItemPath(projectId, appFrontend, item), fullUrl);
@@ -70,21 +91,29 @@ export function testItemPath(projectId: string, appFrontend: AppFrontend, item: 
 export const ALL_APPS_FRONTEND = {
   authentication: {
     icon: FingerprintSimpleIcon,
-    href: "users",
+    href: "auth-methods",
     navigationItems: [
-      { displayName: "Users", href: ".", getBreadcrumbItems: getUserBreadcrumbItems },
-      { displayName: "Auth Methods", href: "../auth-methods" },
+      { displayName: "Auth Methods", href: "." },
       { displayName: "Sign-up Rules", href: "../sign-up-rules" },
-      { displayName: "Trusted Domains", href: "../domains" },
     ],
     screenshots: getScreenshots('auth', 6),
     storeDescription: (
       <>
         <p>Authentication centralizes everything you need to operate your Stack Auth user directory.</p>
-        <p>Browse and create users, tune sign-up behavior, and configure auth methods without leaving the dashboard.</p>
-        <p>When it is time to harden production, manage trusted domains and other guardrails in the same place.</p>
+        <p>Tune sign-up behavior and configure auth methods without leaving the dashboard.</p>
+        <p>When it is time to harden production, you can pair these controls with project-level guardrails.</p>
       </>
     ),
+  },
+  "fraud-protection": {
+    icon: ShieldCheckIcon,
+    href: "sign-up-rules",
+    parentAppId: "authentication",
+    screenshots: [],
+    storeDescription: <>
+      <p>Fraud Protection helps you protect your project from fraud and abuse.</p>
+      <p>Configure sign-up rules and use our built-in fraud protection features to detect bots, free trial abuse, and other fraudulent activity.</p>
+    </>,
   },
   onboarding: {
     icon: ClipboardTextIcon,
@@ -367,28 +396,6 @@ async function getEmailTemplatesBreadcrumbItems(stackAdminApp: StackAdminApp<fal
     {
       item: template.displayName,
       href: `./${encodeURIComponent(template.id)}`,
-    },
-  ];
-}
-
-async function getUserBreadcrumbItems(stackAdminApp: StackAdminApp<false>, relativePart: string) {
-  const baseCrumbs = [{ item: "Users", href: "." }];
-  const match = relativePart.match(/^\/([^/]+)(?:\/.*)?$/);
-  if (!match) {
-    return baseCrumbs;
-  }
-
-  const userId = decodeURIComponent(match[1]);
-  const user = await stackAdminApp.getUser(userId);
-  if (!user) {
-    return baseCrumbs;
-  }
-
-  return [
-    ...baseCrumbs,
-    {
-      item: user.displayName ?? user.primaryEmail ?? user.id,
-      href: `./${encodeURIComponent(user.id)}`,
     },
   ];
 }
