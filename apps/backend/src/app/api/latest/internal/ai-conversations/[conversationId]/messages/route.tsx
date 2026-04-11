@@ -1,4 +1,4 @@
-import { globalPrismaClient, retryTransaction } from "@/prisma-client";
+import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getOwnedConversation } from "../../utils";
@@ -36,27 +36,27 @@ export const PUT = createSmartRouteHandler({
   handler: async ({ auth, params, body }) => {
     await getOwnedConversation(params.conversationId, auth.user.id);
 
-    await retryTransaction(globalPrismaClient, async (tx) => {
-      await tx.aiMessage.deleteMany({
-        where: { conversationId: params.conversationId },
-      });
-
-      if (body.messages.length > 0) {
-        await tx.aiMessage.createMany({
-          data: body.messages.map((msg, index) => ({
-            conversationId: params.conversationId,
-            position: index,
-            role: msg.role,
-            content: msg.content as object,
-          })),
-        });
-      }
-
-      await tx.aiConversation.update({
-        where: { id: params.conversationId },
-        data: { updatedAt: new Date() },
-      });
-    });
+    await globalPrismaClient.$executeRaw`
+      WITH input AS (
+        SELECT
+          (ord - 1)::int AS position,
+          (elem->>'role')::text AS role,
+          elem->'content' AS content
+        FROM jsonb_array_elements(${JSON.stringify(body.messages)}::jsonb)
+          WITH ORDINALITY AS t(elem, ord)
+      ),
+      deleted AS (
+        DELETE FROM "AiMessage" WHERE "conversationId" = ${params.conversationId}::uuid
+      ),
+      inserted AS (
+        INSERT INTO "AiMessage" ("id", "conversationId", "position", "role", "content")
+        SELECT gen_random_uuid(), ${params.conversationId}::uuid, position, role, content
+        FROM input
+      )
+      UPDATE "AiConversation"
+      SET "updatedAt" = NOW()
+      WHERE "id" = ${params.conversationId}::uuid
+    `;
 
     return {
       statusCode: 200 as const,

@@ -533,6 +533,7 @@ function AIChatWidgetInner({
               value={input}
               onChange={(e) => setInput(e.target.value)}
               onKeyDown={handleInputKeyDown}
+              aria-label="Initial prompt"
               placeholder="Ask a question..."
               className="flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground/40"
               autoComplete="off"
@@ -663,6 +664,7 @@ function AIChatWidgetInner({
             value={followUpInput}
             onChange={(e) => setFollowUpInput(e.target.value)}
             onKeyDown={handleFollowUpKeyDown}
+            aria-label="Follow-up question"
             placeholder="Ask a follow-up question..."
             className="flex-1 bg-transparent text-[13px] outline-none placeholder:text-muted-foreground/40"
             autoComplete="off"
