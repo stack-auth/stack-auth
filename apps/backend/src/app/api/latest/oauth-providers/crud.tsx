@@ -303,6 +303,14 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
         });
       }
 
+      if (data.account_id !== undefined && data.account_id !== existingOAuthAccount.providerAccountId) {
+        await recordExternalDbSyncDeletion(tx, {
+          tableName: "ProjectUserOAuthAccount",
+          tenancyId: auth.tenancy.id,
+          oauthAccountId: params.provider_id,
+        });
+      }
+
       await tx.projectUserOAuthAccount.update({
         where: {
           tenancyId_id: {

@@ -145,7 +145,7 @@ jobs:
       - name: Start run-cron-jobs in background
         uses: JarvusInnovations/background-action@v1.0.7
         with:
-          run: pnpm -C apps/backend run run-cron-jobs --log-order=stream &
+          run: pnpm -C apps/backend run run-cron-jobs:test --log-order=stream &
           wait-on: |
             http://localhost:6702
           tail: true

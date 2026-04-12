@@ -57,7 +57,7 @@ import { isHostedHandlerUrlForProject, resolveHandlerUrls } from "../../url-targ
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
-import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getAnalyticsBaseUrl, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveConstructorOptions } from "./common";
+import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getAnalyticsBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveApiUrls, resolveConstructorOptions } from "./common";
 import { EventTracker } from "./event-tracker";
 import { crossDomainAuthQueryParams, getCrossDomainHandoffParamsFromCurrentUrl, planRedirectToHandler } from "./redirect-page-urls";
 import type { CrossDomainHandoffParams } from "./redirect-page-urls";
@@ -520,9 +520,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     if (extraOptions && extraOptions.interface) {
       this._interface = extraOptions.interface;
     } else {
+      const apiUrls = resolveApiUrls(resolvedOptions.baseUrl);
       this._interface = new StackClientInterface({
-        getBaseUrl: () => getBaseUrl(resolvedOptions.baseUrl),
-        getAnalyticsBaseUrl: () => getAnalyticsBaseUrl(getBaseUrl(resolvedOptions.baseUrl)),
+        getBaseUrl: () => apiUrls()[0],
+        getAnalyticsBaseUrl: () => getAnalyticsBaseUrl(apiUrls()[0]),
+        getApiUrls: apiUrls,
         extraRequestHeaders: resolvedOptions.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
         projectId,
         clientVersion,
