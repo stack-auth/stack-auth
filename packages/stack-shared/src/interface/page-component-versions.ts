@@ -36,7 +36,7 @@ export type CustomPagePrompt = {
 const stackAuthReminders = deindent`
   Some quick reminders on Stack Auth: 
 
-  - Stack Auth is a platform that provides a variety of apps that help you connect with your users. As of the time of writing these reminders, Stack Auth provides the following apps (although not all may be enabled): ${Object.entries(ALL_APPS).filter(([, app]) => app.stage !== "alpha").map(([key]) => key).join(", ")}
+  - Stack Auth is a platform that provides a variety of apps that help you connect with your users. As of the time of writing these reminders, Stack Auth provides the following apps (although not all may be enabled): ${Object.entries(ALL_APPS).filter(([, app]) => app.stage !== "alpha").map(([key]) => key).join(", ")}. Don't hardcode this list, as it changes rapidly.
   - The most important object in Stack Auth is the Stack App object. StackClientApp provides client-side functionality, while StackServerApp also provides server-side functionality (but can usually only be imported on the server, as it requires a secret server key environment variable). You can usually find an instance of this object in a file called \`stack/client.tsx\` or \`stack/server.tsx\`, although it may be in a different location in this particular codebase.
   - Take extra care to always have great error handling and loading states whenever necessary (including in button onClick handlers; Stack Auth's code examples often use a special onClick class which handles loading states, but your own button may not). Stack Auth's SDK tends to return errors that need to be handled explicitly in its return types.
   - Language, framework, and library-specific details:
@@ -67,7 +67,7 @@ function createCustomPagePrompt(options: {
 
     The user's codebase may already have a ${options.title} page that could be suitable (eg. from an earlier version of Stack Auth, a template, another auth provider before migrating to Stack Auth, etc.). Use your critical thinking skills to determine what the user's intent is; it is likely that instead of creating a new page, you can just modify the existing page to use Stack Auth & support the logic/structure below.
 
-    Below is a description of the logical structure of what this page should contain (note that the visual structure and layout may be different, and up to you):
+    Below is a description of the logical structure of what this page should contain (note that the visual structure and layout may be different, and up to you). The page can have more content than this, but it should always contain at least what's described below.
 
     ${options.structure}
 
@@ -76,7 +76,7 @@ function createCustomPagePrompt(options: {
     - When implementing the custom page, make sure to adjust its design to match the frameworks, libraries, codestyle, design and branding of the remaining app.
     ${options.notes}
 
-    Below is a React example of one implementation of this page. Note that this is an example, not a template, and as such you should spend careful consideration on how to implement the page in a way that is consistent with the existing codebase. Also note that these components are NOT self-contained, and NOT shadcn-ui components or a UI framework like that. They serve purely as examples on how to implement the page, but you must make sure to use the correct components and props for the framework and libraries you're using yourself.
+    Below is a React example of an extremely minimalistic implementation of this page. Note that this is an example, not a template, and as such you should spend careful consideration on how to implement the page in a way that is consistent with the existing codebase. Also note that these components are NOT self-contained, and NOT shadcn-ui components or a UI framework like that. They serve purely as examples on how to implement the page, but you must make sure to use the correct components and props for the framework and libraries you're using yourself. DO NOT USE THE EXACT DESIGN AS SPECIFIED IN THIS EXAMPLE, INSTEAD MAKE IT LOOK REALLY GOOD. THIS EXAMPLE ONLY DESCRIBES THE MINIMAL LOGIC THAT A SIGN-IN PAGE NEEDS TO SUPPORT, IT IS NOT A COMPLETE EXAMPLE!
 
     \`\`\`tsx
     ${options.reactExample}
