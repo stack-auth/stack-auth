@@ -153,7 +153,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
         WHERE "VerificationCode"."projectId" = changed_teams."projectId"
           AND "VerificationCode"."branchId" = changed_teams."branchId"
           AND "VerificationCode"."type" = 'TEAM_INVITATION'
-          AND "VerificationCode"."data"->>'team_id' = changed_teams."teamId"
+          AND "VerificationCode"."data"->>'team_id' = changed_teams."teamId"::text
           AND "VerificationCode"."shouldUpdateSequenceId" = FALSE
       `;
     }

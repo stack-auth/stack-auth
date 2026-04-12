@@ -35,7 +35,7 @@ import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, 
 import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
-import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, resolveConstructorOptions } from "./common";
+import { clientVersion, createCache, createCacheBySession, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, resolveApiUrls, resolveConstructorOptions } from "./common";
 
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
@@ -421,14 +421,18 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
     super(resolvedOptions, {
       ...extraOptions,
-      interface: extraOptions?.interface ?? new StackServerInterface({
-        getBaseUrl: () => getBaseUrl(resolvedOptions.baseUrl),
-        projectId: resolvedOptions.projectId ?? getDefaultProjectId(),
-        extraRequestHeaders: resolvedOptions.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
-        clientVersion,
-        ...(publishableClientKey != null ? { publishableClientKey } : {}),
-        secretServerKey: resolvedOptions.secretServerKey ?? getDefaultSecretServerKey(),
-      }),
+      interface: extraOptions?.interface ?? (() => {
+        const apiUrls = resolveApiUrls(resolvedOptions.baseUrl);
+        return new StackServerInterface({
+          getBaseUrl: () => apiUrls()[0],
+          getApiUrls: apiUrls,
+          projectId: resolvedOptions.projectId ?? getDefaultProjectId(),
+          extraRequestHeaders: resolvedOptions.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
+          clientVersion,
+          ...(publishableClientKey != null ? { publishableClientKey } : {}),
+          secretServerKey: resolvedOptions.secretServerKey ?? getDefaultSecretServerKey(),
+        });
+      })(),
     });
   }
 
