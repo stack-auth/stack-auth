@@ -43,7 +43,7 @@ type EndUserLocation = {
   tzIdentifier?: string,
 };
 
-type TrustedProxy = "" | "vercel" | "cloudflare";
+type TrustedProxy = "" | "vercel" | "cloudflare" | "cloudrun";
 
 export async function getSpoofableEndUserLocation(): Promise<EndUserLocation | null> {
   const endUserInfo = await getEndUserInfo();
@@ -98,15 +98,21 @@ function getBrowserEndUserInfo(allHeaders: Headers, trustedProxy: TrustedProxy):
   | null {
   const isVercelTrusted = trustedProxy === "vercel";
   const isCloudflareTrusted = trustedProxy === "cloudflare";
+  const isCloudRunTrusted = trustedProxy === "cloudrun";
 
-  // Only read proxy headers as trusted when the corresponding proxy is configured
+  // Only read proxy headers as trusted when the corresponding proxy is configured.
+  // Google Cloud's HTTP(S) LB appends two entries to X-Forwarded-For:
+  //   <client-supplied>, <real-client-ip>, <lb-ip>
+  // So the real client IP is the second-to-last entry (.at(-2)).
+  // See: https://cloud.google.com/load-balancing/docs/https#x-forwarded-for_header
   const trustedIp = (isVercelTrusted ? allHeaders.get("x-vercel-forwarded-for") : undefined)
     ?? (isCloudflareTrusted ? allHeaders.get("cf-connecting-ip") : undefined)
+    ?? (isCloudRunTrusted ? allHeaders.get("x-forwarded-for")?.split(",").at(-2)?.trim() : undefined)
     ?? undefined;
 
   // All other IP headers are always spoofable — including proxy headers when the proxy is not configured as trusted
   const spoofableIp = allHeaders.get("x-real-ip")
-    ?? allHeaders.get("x-forwarded-for")?.split(",").at(0)
+    ?? (!isCloudRunTrusted ? allHeaders.get("x-forwarded-for")?.split(",").at(0) : undefined)
     ?? (!isVercelTrusted ? allHeaders.get("x-vercel-forwarded-for") : undefined)
     ?? (!isCloudflareTrusted ? allHeaders.get("cf-connecting-ip") : undefined)
     ?? undefined;
@@ -170,10 +176,10 @@ export async function getEndUserInfo(): Promise<
   if (isClaimingToBeBrowser) {
     // Determine which proxy we trust based on deployment configuration.
     // These headers can only be trusted when the origin is exclusively reachable through the proxy;
-    // STACK_TRUSTED_PROXY should be set to "vercel", "cloudflare", or left empty/unset for no proxy trust.
+    // STACK_TRUSTED_PROXY should be set to "vercel", "cloudflare", "cloudrun", or left empty/unset for no proxy trust.
     const trustedProxy = getEnvVariable("STACK_TRUSTED_PROXY", "").toLowerCase().trim();
-    if (trustedProxy !== "" && trustedProxy !== "vercel" && trustedProxy !== "cloudflare") {
-      throw new StackAssertionError(`STACK_TRUSTED_PROXY must be "vercel", "cloudflare", or empty/unset, but got: "${trustedProxy}"`);
+    if (trustedProxy !== "" && trustedProxy !== "vercel" && trustedProxy !== "cloudflare" && trustedProxy !== "cloudrun") {
+      throw new StackAssertionError(`STACK_TRUSTED_PROXY must be "vercel", "cloudflare", "cloudrun", or empty/unset, but got: "${trustedProxy}"`);
     }
     return getBrowserEndUserInfo(allHeaders, trustedProxy);
   }
@@ -219,6 +225,67 @@ import.meta.vitest?.describe("getBrowserEndUserInfo(...)", () => {
       maybeSpoofed: true,
       spoofedInfo: {
         ip: "203.0.113.10",
+      },
+    });
+  });
+
+  test("trusts second-to-last x-forwarded-for entry when Cloud Run proxy is configured", () => {
+    // Google Cloud LB appends: <client-supplied>, <real-client-ip>, <lb-ip>
+    const result = getBrowserEndUserInfo(new Headers({
+      "user-agent": "Mozilla/5.0",
+      "x-forwarded-for": "198.51.100.42, 10.0.0.1",
+    }), "cloudrun");
+
+    expect(result).toEqual({
+      maybeSpoofed: false,
+      exactInfo: {
+        ip: "198.51.100.42",
+      },
+    });
+  });
+
+  test("ignores client-spoofed x-forwarded-for entries for Cloud Run proxy", () => {
+    // Client sends "1.1.1.1", LB appends real client IP and its own IP
+    const result = getBrowserEndUserInfo(new Headers({
+      "user-agent": "Mozilla/5.0",
+      "x-forwarded-for": "1.1.1.1, 198.51.100.42, 10.0.0.1",
+    }), "cloudrun");
+
+    expect(result).toEqual({
+      maybeSpoofed: false,
+      exactInfo: {
+        ip: "198.51.100.42",
+      },
+    });
+  });
+
+  test("does not expose x-forwarded-for as spoofable when Cloud Run proxy is configured", () => {
+    const result = getBrowserEndUserInfo(new Headers({
+      "user-agent": "Mozilla/5.0",
+      "x-forwarded-for": "198.51.100.42, 10.0.0.1",
+      "x-real-ip": "10.0.0.1",
+    }), "cloudrun");
+
+    expect(result).toEqual({
+      maybeSpoofed: false,
+      exactInfo: {
+        ip: "198.51.100.42",
+      },
+    });
+  });
+
+  test("does not trust geo headers for Cloud Run proxy", () => {
+    const result = getBrowserEndUserInfo(new Headers({
+      "user-agent": "Mozilla/5.0",
+      "x-forwarded-for": "198.51.100.42, 10.0.0.1",
+      "x-vercel-ip-country": "US",
+      "cf-ipcountry": "DE",
+    }), "cloudrun");
+
+    expect(result).toEqual({
+      maybeSpoofed: false,
+      exactInfo: {
+        ip: "198.51.100.42",
       },
     });
   });
