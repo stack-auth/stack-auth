@@ -1,7 +1,7 @@
 import { stringCompare, templateIdentity } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, it, test } from "vitest";
-import { declareCompactTable, declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLeftJoinTable, declareLFoldTable, declareLimitTable, declareMapTable, declareReduceTable, declareSortTable, declareStoredTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
+import { declareCompactTable, declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLeftJoinTable, declareLFoldTable, declareLimitTable, declareMapTable, declareReduceTable, declareSortTable, declareStoredTable, declareTimeFoldTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
 
 type TestDb = { full: string, base: string };
 
@@ -98,6 +98,40 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       ORDER BY "id"
     `);
   }
+  async function readTimeFoldQueueRows() {
+    const queueRowsRaw = await sql<Array<Record<string, unknown>>>`
+      SELECT
+        "rowIdentifier",
+        "groupKey"#>>'{}' AS "groupKey",
+        ("stateAfter"#>>'{}')::int AS "stateAfter",
+        "rowData"
+      FROM "BulldozerTimeFoldQueue"
+      ORDER BY "rowIdentifier" ASC, "groupKey"#>>'{}' ASC NULLS FIRST
+    `;
+    return queueRowsRaw.map((row) => ({
+      rowIdentifier: (() => {
+        const raw = Reflect.get(row, "rowIdentifier") ?? Reflect.get(row, "rowidentifier");
+        if (typeof raw !== "string") throw new Error("expected string rowIdentifier");
+        return raw;
+      })(),
+      groupKey: (() => {
+        const raw = Reflect.get(row, "groupKey") ?? Reflect.get(row, "groupkey");
+        if (raw === undefined) return null;
+        if (raw === null || typeof raw === "string") return raw;
+        throw new Error("expected nullable string groupKey");
+      })(),
+      stateAfter: (() => {
+        const raw = Reflect.get(row, "stateAfter") ?? Reflect.get(row, "stateafter");
+        if (typeof raw !== "number") throw new Error("expected numeric stateAfter");
+        return raw;
+      })(),
+      rowData: (() => {
+        const raw = Reflect.get(row, "rowData") ?? Reflect.get(row, "rowdata");
+        if (raw == null || typeof raw !== "object") throw new Error("expected object rowData");
+        return raw;
+      })(),
+    }));
+  }
 
   beforeAll(async () => {
     await adminSql.unsafe(`CREATE DATABASE ${dbName}`);
@@ -105,6 +139,8 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   beforeEach(async () => {
     await sql`CREATE EXTENSION IF NOT EXISTS pgcrypto`;
+    await sql`DROP TABLE IF EXISTS "BulldozerTimeFoldQueue"`;
+    await sql`DROP TABLE IF EXISTS "BulldozerTimeFoldMetadata"`;
     await sql`DROP TABLE IF EXISTS "BulldozerMapTriggerAudit"`;
     await sql`DROP TABLE IF EXISTS "BulldozerGroupTriggerAudit"`;
     await sql`DROP TABLE IF EXISTS "BulldozerTriggerAudit"`;
@@ -163,6 +199,38 @@ describe.sequential("declareStoredTable (real postgres)", () => {
         "oldRowData" JSONB,
         "newRowData" JSONB
       )
+    `;
+    await sql`
+      CREATE TABLE "BulldozerTimeFoldQueue" (
+        "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+        "tableStoragePath" JSONB[] NOT NULL,
+        "groupKey" JSONB NOT NULL,
+        "rowIdentifier" TEXT NOT NULL,
+        "scheduledAt" TIMESTAMPTZ NOT NULL,
+        "stateAfter" JSONB NOT NULL,
+        "rowData" JSONB NOT NULL,
+        "reducerSql" TEXT NOT NULL,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "BulldozerTimeFoldQueue_pkey" PRIMARY KEY ("id"),
+        CONSTRAINT "BulldozerTimeFoldQueue_table_group_row_key" UNIQUE ("tableStoragePath", "groupKey", "rowIdentifier")
+      )
+    `;
+    await sql`
+      CREATE INDEX "BulldozerTimeFoldQueue_scheduledAt_idx"
+      ON "BulldozerTimeFoldQueue"("scheduledAt")
+    `;
+    await sql`
+      CREATE TABLE "BulldozerTimeFoldMetadata" (
+        "key" TEXT PRIMARY KEY,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "lastProcessedAt" TIMESTAMPTZ NOT NULL
+      )
+    `;
+    await sql`
+      INSERT INTO "BulldozerTimeFoldMetadata" ("key", "lastProcessedAt")
+      VALUES ('singleton', now())
     `;
   });
 
@@ -364,6 +432,35 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       `),
     });
     return { fromTable, groupedTable, sortedTable, lFoldTable };
+  }
+  function createTimeFoldTable() {
+    const { fromTable, groupedTable } = createGroupedTable();
+    const timeFoldTable = declareTimeFoldTable({
+      tableId: "users-by-team-timefold",
+      fromTable: groupedTable,
+      initialState: expr(`'0'::jsonb`),
+      reducer: mapper(`
+        (
+          COALESCE(("oldState"#>>'{}')::int, 0) + (("oldRowData"->>'value')::int)
+        ) AS "newState",
+        jsonb_build_array(
+          jsonb_build_object(
+            'runningTotal', COALESCE(("oldState"#>>'{}')::int, 0) + (("oldRowData"->>'value')::int),
+            'value', (("oldRowData"->>'value')::int),
+            'timestamp',
+              CASE
+                WHEN "timestamp" IS NULL THEN 'null'::jsonb
+                ELSE to_jsonb("timestamp")
+              END
+          )
+        ) AS "newRowsData",
+        CASE
+          WHEN "timestamp" IS NULL THEN (now() + interval '10 minutes')
+          ELSE NULL::timestamptz
+        END AS "nextTimestamp"
+      `),
+    });
+    return { fromTable, groupedTable, timeFoldTable };
   }
   function createLeftJoinedTable() {
     const fromTable = declareStoredTable<{ value: number, team: string | null }>({ tableId: "left-join-users" });
@@ -636,6 +733,29 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       `,
     ]);
   }
+  function registerTimeFoldAuditTrigger(
+    table: ReturnType<typeof createTimeFoldTable>["timeFoldTable"],
+    event: string,
+  ) {
+    return table.registerRowChangeTrigger((changesTable) => [
+      sqlStatement`
+        INSERT INTO "BulldozerMapTriggerAudit" (
+          "event",
+          "groupKey",
+          "rowIdentifier",
+          "oldRowData",
+          "newRowData"
+        )
+        SELECT
+          ${expr<string>(sqlStringLiteral(event))},
+          "groupKey",
+          "rowIdentifier",
+          "oldRowData",
+          "newRowData"
+        FROM ${changesTable}
+      `,
+    ]);
+  }
   function registerLeftJoinAuditTrigger(
     table: ReturnType<typeof createLeftJoinedTable>["leftJoinedTable"],
     event: string,
@@ -875,6 +995,36 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     expect(sortedTableInstrumentation.getStats()).toEqual({ registerCalls: 2, deregisterCalls: 1, activeRegistrations: 1 });
     lFoldTable.delete();
     expect(sortedTableInstrumentation.getStats()).toEqual({ registerCalls: 2, deregisterCalls: 2, activeRegistrations: 0 });
+  });
+
+  test("timefold registers upstream trigger in init and deregisters in delete", () => {
+    const fromTable = declareStoredTable<{ value: number, team: string }>({ tableId: "users-timefold-lifecycle" });
+    const groupedTable = declareGroupByTable({
+      tableId: "users-timefold-lifecycle-by-team",
+      fromTable,
+      groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+    });
+    const groupedTableInstrumentation = instrumentTriggerLifecycle(groupedTable);
+    const timeFoldTable = declareTimeFoldTable({
+      tableId: "users-timefold-lifecycle-folded",
+      fromTable: groupedTableInstrumentation.table,
+      initialState: expr(`'0'::jsonb`),
+      reducer: mapper(`
+        "oldState" AS "newState",
+        jsonb_build_array("oldRowData") AS "newRowsData",
+        NULL::timestamptz AS "nextTimestamp"
+      `),
+    });
+
+    expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 0, deregisterCalls: 0, activeRegistrations: 0 });
+    timeFoldTable.init();
+    expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
+    timeFoldTable.delete();
+    expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 1, activeRegistrations: 0 });
+    timeFoldTable.init();
+    expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 2, deregisterCalls: 1, activeRegistrations: 1 });
+    timeFoldTable.delete();
+    expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 2, deregisterCalls: 2, activeRegistrations: 0 });
   });
 
   test("leftJoin registers all upstream triggers in init and deregisters in delete", () => {
@@ -3061,6 +3211,257 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       startInclusive: true,
       endInclusive: true,
     }))).toEqual([]);
+  });
+
+  test("timeFoldTable init emits rows and enqueues future reductions", async () => {
+    const { fromTable, groupedTable, timeFoldTable } = createTimeFoldTable();
+    await runStatements(fromTable.init());
+    await runStatements(fromTable.setRow("a1", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow("a2", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(fromTable.setRow("b1", expr(`'{"team":"beta","value":4}'::jsonb`)));
+    await runStatements(groupedTable.init());
+    await runStatements(timeFoldTable.init());
+
+    expect(await readBoolean(timeFoldTable.isInitialized())).toBe(true);
+    const alphaRows = await readRows(timeFoldTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(alphaRows.map((row) => ({
+      rowIdentifier: String(Reflect.get(row, "rowidentifier") ?? Reflect.get(row, "rowIdentifier")),
+      rowData: row.rowdata,
+    })).sort((a, b) => stringCompare(a.rowIdentifier, b.rowIdentifier))).toEqual([
+      { rowIdentifier: "a1:1", rowData: { runningTotal: 2, value: 2, timestamp: null } },
+      { rowIdentifier: "a2:1", rowData: { runningTotal: 3, value: 3, timestamp: null } },
+    ]);
+
+    const queuedRows = await readTimeFoldQueueRows();
+    expect(queuedRows).toEqual([
+      { rowIdentifier: "a1", groupKey: "alpha", stateAfter: 2, rowData: { team: "alpha", value: 2 } },
+      { rowIdentifier: "a2", groupKey: "alpha", stateAfter: 3, rowData: { team: "alpha", value: 3 } },
+      { rowIdentifier: "b1", groupKey: "beta", stateAfter: 4, rowData: { team: "beta", value: 4 } },
+    ]);
+  });
+
+  test("timeFoldTable updates and deletes keep queue rows in sync", async () => {
+    const { fromTable, groupedTable, timeFoldTable } = createTimeFoldTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(timeFoldTable.init());
+    registerTimeFoldAuditTrigger(timeFoldTable, "timefold_change");
+
+    await runStatements(fromTable.setRow("a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("a1", expr(`'{"team":"alpha","value":4}'::jsonb`)));
+
+    const queueAfterUpdate = await readTimeFoldQueueRows();
+    expect(queueAfterUpdate).toEqual([
+      { rowIdentifier: "a1", groupKey: "alpha", stateAfter: 4, rowData: { team: "alpha", value: 4 } },
+    ]);
+
+    const auditRows = (await readMapTriggerAuditRows()).filter((row) => row.event === "timefold_change");
+    expect(auditRows.map((row) => ({
+      rowIdentifier: row.rowIdentifier,
+      oldRowData: row.oldRowData,
+      newRowData: row.newRowData,
+    }))).toEqual([
+      {
+        rowIdentifier: "a1:1",
+        oldRowData: null,
+        newRowData: { runningTotal: 1, value: 1, timestamp: null },
+      },
+      {
+        rowIdentifier: "a1:1",
+        oldRowData: { runningTotal: 1, value: 1, timestamp: null },
+        newRowData: { runningTotal: 4, value: 4, timestamp: null },
+      },
+    ]);
+
+    await runStatements(fromTable.deleteRow("a1"));
+    const rowsAfterDelete = await readRows(timeFoldTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(rowsAfterDelete).toEqual([]);
+
+    const queueAfterDelete = await sql<Array<{ count: number }>>`
+      SELECT COUNT(*)::int AS "count"
+      FROM "BulldozerTimeFoldQueue"
+    `;
+    const queueCountRow = queueAfterDelete[0];
+    expect(queueCountRow.count).toBe(0);
+  });
+
+  test("timeFoldTable stays no-op while uninitialized", async () => {
+    const { fromTable, groupedTable, timeFoldTable } = createTimeFoldTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    registerTimeFoldAuditTrigger(timeFoldTable, "timefold_uninitialized");
+
+    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":7}'::jsonb`)));
+
+    expect(await readBoolean(timeFoldTable.isInitialized())).toBe(false);
+    expect((await readMapTriggerAuditRows()).filter((row) => row.event === "timefold_uninitialized")).toEqual([]);
+    expect(await readRows(timeFoldTable.listGroups({
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }))).toEqual([]);
+    expect(await readTimeFoldQueueRows()).toEqual([]);
+  });
+
+  test("timeFoldTable reruns immediately when reducer timestamp is already due", async () => {
+    const fromTable = declareStoredTable<{ value: number, team: string }>({ tableId: "users-timefold-immediate" });
+    const groupedTable = declareGroupByTable({
+      tableId: "users-timefold-immediate-by-team",
+      fromTable,
+      groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+    });
+    const timeFoldTable = declareTimeFoldTable({
+      tableId: "users-timefold-immediate-folded",
+      fromTable: groupedTable,
+      initialState: expr(`'0'::jsonb`),
+      reducer: mapper(`
+        CASE
+          WHEN "timestamp" IS NULL THEN 1
+          ELSE 2
+        END AS "newState",
+        jsonb_build_array(
+          jsonb_build_object(
+            'phase',
+              CASE
+                WHEN "timestamp" IS NULL THEN 'initial'
+                ELSE 'rerun'
+              END,
+            'value', (("oldRowData"->>'value')::int),
+            'timestamp',
+              CASE
+                WHEN "timestamp" IS NULL THEN 'null'::jsonb
+                ELSE to_jsonb("timestamp")
+              END
+          )
+        ) AS "newRowsData",
+        CASE
+          WHEN "timestamp" IS NULL THEN (now() - interval '1 minute')
+          ELSE NULL::timestamptz
+        END AS "nextTimestamp"
+      `),
+    });
+
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(timeFoldTable.init());
+    await runStatements(fromTable.setRow("a1", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+
+    const alphaRows = await readRows(timeFoldTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(alphaRows).toHaveLength(2);
+    expect(alphaRows.map((row) => ({
+      rowIdentifier: row.rowidentifier,
+      rowData: row.rowdata,
+    }))).toEqual([
+      {
+        rowIdentifier: "a1:1",
+        rowData: { phase: "initial", value: 5, timestamp: null },
+      },
+      {
+        rowIdentifier: "a1:2",
+        rowData: expect.objectContaining({ phase: "rerun", value: 5 }),
+      },
+    ]);
+    const rerunRow = alphaRows[1];
+    expect(Reflect.get(rerunRow.rowdata as object, "timestamp")).not.toBeNull();
+    expect(await readTimeFoldQueueRows()).toEqual([]);
+  });
+
+  test("timeFoldTable does not enqueue when reducer returns null nextTimestamp", async () => {
+    const fromTable = declareStoredTable<{ value: number, team: string }>({ tableId: "users-timefold-no-queue" });
+    const groupedTable = declareGroupByTable({
+      tableId: "users-timefold-no-queue-by-team",
+      fromTable,
+      groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+    });
+    const timeFoldTable = declareTimeFoldTable({
+      tableId: "users-timefold-no-queue-folded",
+      fromTable: groupedTable,
+      initialState: expr(`'0'::jsonb`),
+      reducer: mapper(`
+        ("oldState") AS "newState",
+        jsonb_build_array(
+          jsonb_build_object(
+            'value', (("oldRowData"->>'value')::int),
+            'timestamp', 'null'::jsonb
+          )
+        ) AS "newRowsData",
+        NULL::timestamptz AS "nextTimestamp"
+      `),
+    });
+
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(timeFoldTable.init());
+    await runStatements(fromTable.setRow("a1", expr(`'{"team":"alpha","value":9}'::jsonb`)));
+
+    const alphaRows = await readRows(timeFoldTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(alphaRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowData: row.rowdata }))).toEqual([
+      { rowIdentifier: "a1:1", rowData: { value: 9, timestamp: null } },
+    ]);
+    expect(await readTimeFoldQueueRows()).toEqual([]);
+  });
+
+  test("timeFoldTable moving rows across groups replaces queued group entry", async () => {
+    const { fromTable, groupedTable, timeFoldTable } = createTimeFoldTable();
+    await runStatements(fromTable.init());
+    await runStatements(groupedTable.init());
+    await runStatements(timeFoldTable.init());
+
+    await runStatements(fromTable.setRow("a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow("a1", expr(`'{"team":null,"value":7}'::jsonb`)));
+
+    const queueRows = await readTimeFoldQueueRows();
+    expect(queueRows).toHaveLength(1);
+    const queueRow = queueRows[0];
+    expect(queueRow.rowIdentifier).toBe("a1");
+    expect(queueRow.groupKey).toBe(null);
+    expect(queueRow.rowData).toEqual({ team: null, value: 7 });
+    expect(queueRow.stateAfter).toBeGreaterThan(0);
+
+    const alphaRows = await readRows(timeFoldTable.listRowsInGroup({
+      groupKey: expr(`to_jsonb('alpha'::text)`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(alphaRows).toEqual([]);
+    const nullGroupRows = await readRows(timeFoldTable.listRowsInGroup({
+      groupKey: expr(`'null'::jsonb`),
+      start: "start",
+      end: "end",
+      startInclusive: true,
+      endInclusive: true,
+    }));
+    expect(nullGroupRows).toHaveLength(1);
+    const nullGroupRow = nullGroupRows[0];
+    expect(nullGroupRow.rowidentifier).toBe("a1:1");
+    expect(nullGroupRow.rowdata).toMatchObject({ value: 7, timestamp: null });
   });
 
   test("leftJoinTable init backfills matches and unmatched left rows per group", async () => {

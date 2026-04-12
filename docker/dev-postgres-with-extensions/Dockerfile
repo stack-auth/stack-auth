@@ -4,7 +4,8 @@ RUN apt-get update && apt-get install -y \
     git \
     build-essential \
     libpq-dev \
-    postgresql-server-dev-15
+    postgresql-server-dev-15 \
+    postgresql-15-cron
 
 # Install HypoPG
 RUN git clone https://github.com/HypoPG/hypopg.git /hypopg
@@ -16,6 +17,7 @@ RUN cd /index_advisor && make install
 
 # Write initialization SQL
 RUN echo "CREATE EXTENSION pg_stat_statements;" >> /docker-entrypoint-initdb.d/init.sql
+RUN echo "CREATE EXTENSION pg_cron;" >> /docker-entrypoint-initdb.d/init.sql
 RUN echo "CREATE EXTENSION hypopg;" >> /docker-entrypoint-initdb.d/init.sql
 RUN echo "CREATE EXTENSION index_advisor;" >> /docker-entrypoint-initdb.d/init.sql
 RUN echo "CREATE ROLE anon;" >> /docker-entrypoint-initdb.d/init.sql
@@ -46,7 +48,8 @@ ENTRYPOINT ["sh", "-c", "\
   \
   # Start Postgres with replication enabled and extensions \
   exec docker-entrypoint.sh postgres \
-    -c shared_preload_libraries='pg_stat_statements' \
+    -c shared_preload_libraries='pg_stat_statements,pg_cron' \
+    -c cron.database_name='stackframe' \
     -c pg_stat_statements.track=all \
     -c wal_level=logical \
     -c max_wal_senders=5 \
