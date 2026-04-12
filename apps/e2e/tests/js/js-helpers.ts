@@ -8,10 +8,14 @@ const testExtraRequestHeaders = {
   "x-stack-disable-artificial-development-delay": "yes",
 };
 
+// When STACK_TEST_SDK_FALLBACK is set, omit explicit baseUrl so the SDK resolves
+// from NEXT_PUBLIC_STACK_API_URL and exercises its fallback logic
+const sdkBaseUrl = process.env.STACK_TEST_SDK_FALLBACK ? undefined : STACK_BACKEND_BASE_URL;
+
 export async function scaffoldProject(body?: Omit<AdminProjectCreateOptions, 'displayName' | 'teamId'> & { displayName?: string }) {
   const internalApp = new StackAdminApp({
     projectId: 'internal',
-    baseUrl: STACK_BACKEND_BASE_URL,
+    baseUrl: sdkBaseUrl,
     publishableClientKey: STACK_INTERNAL_PROJECT_CLIENT_KEY,
     secretServerKey: STACK_INTERNAL_PROJECT_SERVER_KEY,
     superSecretAdminKey: STACK_INTERNAL_PROJECT_ADMIN_KEY,
@@ -54,7 +58,7 @@ export async function createApp(
   const { project, adminUser } = await scaffoldProject(body);
   const adminApp = new StackAdminApp({
     projectId: project.id,
-    baseUrl: STACK_BACKEND_BASE_URL,
+    baseUrl: sdkBaseUrl,
     projectOwnerSession: adminUser._internalSession,
     tokenStore: "memory",
     redirectMethod: "none",
@@ -74,7 +78,7 @@ export async function createApp(
   const secretServerKey = apiKey.secretServerKey;
 
   const serverApp = new StackServerApp({
-    baseUrl: STACK_BACKEND_BASE_URL,
+    baseUrl: sdkBaseUrl,
     projectId: project.id,
     publishableClientKey: apiKey.publishableClientKey,
     secretServerKey,
@@ -85,7 +89,7 @@ export async function createApp(
   });
 
   const clientApp = new StackClientApp({
-    baseUrl: STACK_BACKEND_BASE_URL,
+    baseUrl: sdkBaseUrl,
     projectId: project.id,
     publishableClientKey: apiKey.publishableClientKey,
     tokenStore: "memory",
