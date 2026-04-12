@@ -1,6 +1,6 @@
-import { tool } from "ai";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { tool } from "ai";
 import { z } from "zod";
 
 type DocsToolHttpResult = {
@@ -55,6 +55,74 @@ async function postDocsToolAction(action: Record<string, unknown>): Promise<stri
  * `/api/latest/ai/query/generate`; these tools avoid MCP recursion by calling the HTTP API directly.
  */
 export async function createDocsTools() {
+  return {
+    list_available_docs: tool({
+      description:
+        "Use this tool to learn about what Stack Auth is, available documentation, and see if you can use it for what you're working on. It returns a list of all available Stack Auth Documentation pages.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        return await postDocsToolAction({ action: "list_available_docs" });
+      },
+    }),
+
+    search_docs: tool({
+      description:
+        "Search through all Stack Auth documentation including API docs, guides, and examples. Returns ranked results with snippets and relevance scores.",
+      inputSchema: z.object({
+        search_query: z.string().describe("The search query to find relevant documentation"),
+        result_limit: z.number().optional().describe("Maximum number of results to return (default: 50)"),
+      }),
+      execute: async ({ search_query, result_limit = 50 }) => {
+        return await postDocsToolAction({
+          action: "search_docs",
+          search_query,
+          result_limit,
+        });
+      },
+    }),
+
+    get_docs_by_id: tool({
+      description:
+        "Use this tool to retrieve a specific Stack Auth Documentation page by its ID. It gives you the full content of the page so you can know exactly how to use specific Stack Auth APIs. Whenever using Stack Auth, you should always check the documentation first to have the most up-to-date information. When you write code using Stack Auth documentation you should reference the content you used in your comments.",
+      inputSchema: z.object({
+        id: z.string(),
+      }),
+      execute: async ({ id }) => {
+        return await postDocsToolAction({ action: "get_docs_by_id", id });
+      },
+    }),
+
+    get_stack_auth_setup_instructions: tool({
+      description:
+        "Use this tool when the user wants to set up authentication in a new project. It provides step-by-step instructions for installing and configuring Stack Auth authentication.",
+      inputSchema: z.object({}),
+      execute: async () => {
+        return await postDocsToolAction({ action: "get_stack_auth_setup_instructions" });
+      },
+    }),
+
+    search: tool({
+      description:
+        "Search for Stack Auth documentation pages.\n\nUse this tool to find documentation pages that contain a specific keyword or phrase.",
+      inputSchema: z.object({
+        query: z.string(),
+      }),
+      execute: async ({ query }) => {
+        return await postDocsToolAction({ action: "search", query });
+      },
+    }),
+
+    fetch: tool({
+      description:
+        "Fetch a particular Stack Auth Documentation page by its ID.\n\nThis tool is identical to `get_docs_by_id`.",
+      inputSchema: z.object({
+        id: z.string(),
+      }),
+      execute: async ({ id }) => {
+        return await postDocsToolAction({ action: "fetch", id });
+      },
+    }),
+  };
   return {
     list_available_docs: tool({
       description:
