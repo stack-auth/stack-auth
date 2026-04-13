@@ -4709,8 +4709,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 38,
-            "free_trial_abuse": 38,
+            "bot": 0,
+            "free_trial_abuse": 0,
           },
         },
         "selected_team": null,
@@ -4743,8 +4743,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 38,
-            "free_trial_abuse": 38,
+            "bot": 0,
+            "free_trial_abuse": 0,
           },
         },
         "selected_team": null,
@@ -4777,8 +4777,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 38,
-            "free_trial_abuse": 38,
+            "bot": 0,
+            "free_trial_abuse": 0,
           },
         },
         "selected_team": null,
@@ -4811,8 +4811,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 38,
-            "free_trial_abuse": 38,
+            "bot": 0,
+            "free_trial_abuse": 0,
           },
         },
         "selected_team": null,
@@ -4845,8 +4845,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 38,
-            "free_trial_abuse": 38,
+            "bot": 0,
+            "free_trial_abuse": 0,
           },
         },
         "selected_team": null,
@@ -4881,8 +4881,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 38,
-            "free_trial_abuse": 38,
+            "bot": 0,
+            "free_trial_abuse": 0,
           },
         },
         "selected_team": null,
@@ -4915,8 +4915,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 38,
-            "free_trial_abuse": 38,
+            "bot": 0,
+            "free_trial_abuse": 0,
           },
         },
         "selected_team": null,
@@ -4949,8 +4949,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 38,
-            "free_trial_abuse": 38,
+            "bot": 0,
+            "free_trial_abuse": 0,
           },
         },
         "selected_team": null,
@@ -4983,8 +4983,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 38,
-            "free_trial_abuse": 38,
+            "bot": 0,
+            "free_trial_abuse": 0,
           },
         },
         "selected_team": null,
@@ -5017,8 +5017,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 38,
-            "free_trial_abuse": 38,
+            "bot": 0,
+            "free_trial_abuse": 0,
           },
         },
         "selected_team": null,
@@ -5051,8 +5051,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 38,
-            "free_trial_abuse": 38,
+            "bot": 0,
+            "free_trial_abuse": 0,
           },
         },
         "selected_team": null,
@@ -5085,8 +5085,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 38,
-            "free_trial_abuse": 38,
+            "bot": 0,
+            "free_trial_abuse": 0,
           },
         },
         "selected_team": null,
@@ -5119,8 +5119,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 38,
-            "free_trial_abuse": 38,
+            "bot": 0,
+            "free_trial_abuse": 0,
           },
         },
         "selected_team": null,
@@ -5153,8 +5153,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 38,
-            "free_trial_abuse": 38,
+            "bot": 0,
+            "free_trial_abuse": 0,
           },
         },
         "selected_team": null,
