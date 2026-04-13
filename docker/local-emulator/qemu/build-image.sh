@@ -124,13 +124,20 @@ qemu_cmd_prefix_for_arch() {
           linux) [ -w /dev/kvm ] && accel="kvm" ;;
         esac
       else
-        # Cross-arch TCG (amd64 host emulating arm64 guest): -cpu max
-        # advertises armv8.5+ features (PAC, BTI, SVE, LSE…) that V8
-        # emits JIT code for, but the host's TCG mistranslates some of
-        # those instructions across architectures and node crashes with
-        # SIGTRAP during migrations. Dropping to cortex-a72 limits V8
-        # to armv8.0-a which cross-arch TCG handles cleanly.
-        cpu="cortex-a72"
+        # Cross-arch TCG (amd64 host emulating arm64 guest) needs a CPU
+        # model that threads a narrow needle:
+        #   * -cpu max advertises armv8.5+ features (PAC, BTI, SVE, LSE…)
+        #     that V8's TurboFan then emits JIT code for; cross-arch TCG
+        #     mistranslates some of those and node SIGTRAPs in migrations.
+        #   * -cpu cortex-a72 (armv8.0-a) keeps V8 safe but makes
+        #     ClickHouse SIGILL on startup because its statically-linked
+        #     LSE atomics (armv8.1+) aren't recognized.
+        # cortex-a76 is armv8.2-a: it exposes LSE (ClickHouse happy)
+        # while predating PAC (v8.3) and BTI (v8.5), so V8's aggressive
+        # JIT tiers don't emit the instructions that tripped TCG. Pair
+        # this with `node --no-opt` on the migration exec, which keeps
+        # V8 in Ignition+Sparkplug only (no TurboFan/Maglev).
+        cpu="cortex-a76"
       fi
       local firmware
       firmware="$(find_aarch64_firmware)"
