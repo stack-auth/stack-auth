@@ -135,7 +135,7 @@ export const POST = createSmartRouteHandler({
 
         const innerToolCallsJson = JSON.stringify(contentBlocks.filter(b => b.type === "tool-call"));
 
-        runAsynchronously(logMcpCall({
+        const logPromise = logMcpCall({
           correlationId,
           toolName: body.mcpCallMetadata.toolName,
           reason: body.mcpCallMetadata.reason,
@@ -148,9 +148,11 @@ export const POST = createSmartRouteHandler({
           durationMs: BigInt(Date.now() - startedAt),
           modelId: String(model.modelId),
           errorMessage: undefined,
-        }));
+        });
+        runAsynchronously(logPromise);
 
         runAsynchronously(reviewMcpCall({
+          logPromise,
           correlationId,
           question,
           reason: body.mcpCallMetadata.reason,

@@ -39,6 +39,7 @@ Set needsHumanReview=true if: score < 50, any critical flag, or you are uncertai
 const REVIEW_MODEL_ID = "anthropic/claude-haiku-4.5";
 
 export async function reviewMcpCall(entry: {
+  logPromise: Promise<void>;
   correlationId: string;
   question: string;
   reason: string;
@@ -75,7 +76,7 @@ export async function reviewMcpCall(entry: {
 
   try {
     // Wait for the log row to be written first
-    await new Promise(r => setTimeout(r, 3000));
+    await entry.logPromise;
 
     devinClient = await createMCPClient({
       transport: {
