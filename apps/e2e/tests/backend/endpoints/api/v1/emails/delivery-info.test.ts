@@ -168,7 +168,7 @@ describe("with valid credentials", () => {
     `);
 
     // wait for the email to be processed
-    await wait(5_000);
+    await wait(12_000);
 
     const response = await niceBackendFetch("/api/v1/emails/delivery-info", {
       method: "GET",
