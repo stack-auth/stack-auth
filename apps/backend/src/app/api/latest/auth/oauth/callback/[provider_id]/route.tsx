@@ -402,7 +402,7 @@ const handler = createSmartRouteHandler({
       return oauthResponseToSmartResponse(oauthResponse);
     } catch (error) {
       if (KnownError.isKnownError(error)) {
-        redirectOrThrowError(error, tenancy, { errorRedirectUrl });
+        throw error;
       }
       throw error;
     }
