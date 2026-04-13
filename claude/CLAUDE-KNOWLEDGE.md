@@ -218,6 +218,12 @@ A: Add project-level shortcuts to `PROJECT_SHORTCUTS` in `apps/dashboard/src/com
 Q: Which port suffixes are assigned to the two local docs sites?
 A: `docs` (old docs app) uses suffix `26`, and `docs-mintlify` uses suffix `04`. Keep these in sync across `docs/package.json`, `docs-mintlify/package.json`, `apps/dev-launchpad/public/index.html`, and `apps/dashboard/.env.development` (`NEXT_PUBLIC_STACK_DOCS_BASE_URL` points to old docs on `26`).
 
+Q: Do analytics `$page-view` / `$click` rows in ClickHouse carry `is_anonymous` today?
+A: Not by default. The client event tracker in `packages/template/src/lib/stack-app/apps/implementations/event-tracker.ts` sends page-view and click payloads without `is_anonymous`, and `apps/backend/src/app/api/latest/analytics/events/batch/route.tsx` currently inserts `event.data` unchanged into `analytics_internal.events`. Any metrics code that wants anonymous filtering for page-view/click events must either enrich those rows at ingestion time or do a time-correct join against another source.
+
+Q: What does the current overview revenue logic count?
+A: The overview metrics queries in `apps/backend/src/app/api/latest/internal/metrics/route.tsx` currently derive `daily_revenue`, `payments_overview.revenue_cents`, `payments_overview.mrr_cents`, and `analytics_overview.total_revenue_cents` from `SubscriptionInvoice.amountTotal` only. `OneTimePurchase` rows do not have an `amountTotal` column in the Prisma schema, so one-time-purchase-only projects will show zero revenue unless that amount is derived from the stored product/price snapshot and added separately.
+
 Q: Why did the dashboard Vercel integration throw "Expected publishableClientKey" during key generation?
 A: In `apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/vercel/page-client.tsx`, the code always asserted `newKey.publishableClientKey` even when `project.requirePublishableClientKey` was false. Fix by only asserting/passing `publishableClientKey` when that project config flag is true.
 
@@ -235,3 +241,60 @@ A: After exhausting transient-network retries in `OAuthBaseProvider.getCallback`
 
 Q: How should OAuth callback errors be surfaced to handler-based clients?
 A: In `apps/backend/src/app/api/latest/auth/oauth/callback/[provider_id]/route.tsx`, prefer redirecting known errors to the original OAuth callback URL (`redirectUri`) with `error`, `error_description`, `errorCode`, `message`, and `details` query params (fallback to `errorRedirectUrl` if needed). In template client handling (`packages/template/src/lib/auth.ts` + `components-page/oauth-callback.tsx`), detect those params, reconstruct a `KnownError`, and route to the handler error page so users get actionable UI instead of silent sign-in redirects.
+
+Q: How should OAuth E2E tests assert callback failures after handler-based error redirects?
+A: In OAuth callback/merge strategy E2E tests, assert `307` plus parsed `location` query params (`error`, `errorCode`, `error_description`, `message`, and optionally `details`) instead of snapshotting old `4xx` JSON error responses. This matches current callback semantics and avoids brittle encoded-URL snapshots.
+
+Q: How should auth sign-up-rules OAuth rejection tests assert failures now?
+A: In `apps/e2e/tests/backend/endpoints/api/v1/auth/sign-up-rules.test.ts`, OAuth rejection cases should assert the callback redirect (`307`) and validate `location` query params (`error=server_error`, `errorCode=SIGN_UP_REJECTED`, `message`/`error_description`, and JSON `details`) rather than expecting direct `403` response bodies.
+
+Q: Where is the docs-mintlify homepage hero/island content defined?
+A: The top homepage island on docs-mintlify is authored directly in `docs-mintlify/index.mdx` as the first `not-prose` block, so copy/design/CTA updates should be made there.
+
+Q: Why can a docs-mintlify snippet fail validation when importing React?
+A: `mint validate` rejects non-local imports in `/snippets/*.jsx` (for example `import { useState } from "react"`), so snippets must avoid package imports and rely on zero-import component code.
+
+Q: Where was the docs homepage Quick Start block defined?
+A: The Quick Start section on the docs-mintlify homepage lived directly in `docs-mintlify/index.mdx` right after `<HomePromptIsland />`, so removing that full `<div className="mx-auto mt-16 ...">` block removes the entire Quick Start UI.
+
+Q: How is the docs homepage "Explore Apps" step now rendered?
+A: It is embedded inside the "Navigate Through Our Docs" timeline as a single step via `DocsAppsHomeGrid` from `docs-mintlify/snippets/docs-apps-home-grid.jsx`, using app icon SVGs in a dashboard-style quick-access grid.
+
+Q: Why did docs-mintlify throw `ReferenceError: agentSetupPromptPlaceholder is not defined` on the homepage?
+A: In snippet components (`/snippets/*.jsx`), top-level constants can fail to resolve in the runtime-compiled output; moving constants like `agentSetupPromptPlaceholder` and `appLinks` inside the exported component function avoids the reference error.
+
+Q: How was the docs homepage prompt island restyled for stronger contrast?
+A: `docs-mintlify/snippets/home-prompt-island.jsx` now uses an inverted minimal palette (`bg-[#0b0b0d]` in light mode and `dark:bg-zinc-50` in dark mode) with simplified borders, reduced visual effects, and custom button styles for cleaner contrast.
+
+Q: Why did `DocsAppsHomeGrid` throw `ReferenceError` for helper functions despite passing lint?
+A: In docs-mintlify snippets, top-level helper function references can disappear in the runtime-compiled output even when `mint validate` passes; keep helper functions/constants inside the exported component body to avoid runtime `ReferenceError`s.
+
+Q: How to ensure the manual-installation CTA remains visible on the inverted dark-mode hero?
+A: In `docs-mintlify/snippets/home-prompt-island.jsx`, force explicit dark-mode button contrast with strong dark variant classes (for example `dark:bg-zinc-100` and `dark:!text-zinc-900`) so Mintlify base link styles cannot wash out label text.
+
+Q: How can the docs homepage prompt feel compact while still implying multi-line content?
+A: In `docs-mintlify/snippets/home-prompt-island.jsx`, use a low-height read-only textarea (`h-28`) with `overflow-hidden`, place the copy button as an absolute suffix inside the field, and add a bottom gradient overlay to hint hidden lines.
+
+Q: Where is the docs homepage recommended-order timeline controlled?
+A: The ordered step blocks are authored directly in `docs-mintlify/index.mdx` inside the "Navigate Through Our Docs" section, so adding steps like `SDK Reference` and `REST API` is done by inserting new timeline `<div className="relative ...">` blocks there.
+
+Q: Why can the docs copy button throw `Cannot set properties of null (setting 'textContent')`?
+A: In `docs-mintlify/snippets/home-prompt-island.jsx`, reading `event.currentTarget` after `await navigator.clipboard.writeText(...)` can produce null in runtime event wrappers. Capture `const button = event.currentTarget` before awaiting.
+
+Q: How should the docs Explore Apps grid support both light and dark themes?
+A: In `docs-mintlify/snippets/docs-apps-home-grid.jsx`, use light-first container/tile styles with explicit `dark:*` overrides (including `dark:invert` for icons) so light mode remains readable while dark mode keeps the neon tile look.
+
+Q: How can docs-mintlify add an Apps sidebar filter without React hooks?
+A: In `docs-mintlify/snippets/docs-apps-home-grid.jsx`, inject a compact `<input>` under the sidebar "Apps" header via DOM (`#navigation-items` + `.sidebar-group-header` text match), filter that group's `<ul>` rows on `input`, and observe `document.documentElement.classList` with `MutationObserver` to swap light/dark inline styles when `html` toggles between `light` and `dark`.
+
+Q: Why did Explore Apps look light in dark mode even with `dark:bg` set on the container?
+A: `bg-gradient-to-b` applies a background image, and `dark:bg-[#...]` only changes background color, so the light gradient image stays visible. Use `dark:from[...] dark:to[...]` (or a full dark gradient/image override) so dark mode replaces the gradient itself.
+
+Q: What should we do when changing docs sidebar search injection from block to inline?
+A: Remove legacy `div[data-apps-sidebar-search='true']` nodes before adding the new inline header input; otherwise old and new filters can coexist after hot reload and render duplicate search boxes.
+
+Q: What caused the Explore Apps hover layout shift?
+A: The app link wrapper in `docs-mintlify/snippets/docs-apps-home-grid.jsx` used `hover:-translate-y-0.5`, which makes tiles physically move on hover and looks like layout jank. Removing the translate/transform from the wrapper keeps hover effects without perceived shifting.
+
+Q: How should the sidebar Apps filter behave when there are no matches?
+A: In `docs-mintlify/snippets/docs-apps-home-grid.jsx`, track visible rows while filtering and show a small inline empty state (`No more results. Clear filter`) when query is non-empty and visible count is zero; wire `Clear filter` to reset the input, rerun filtering, and refocus the input.

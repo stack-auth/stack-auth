@@ -10,10 +10,11 @@ import { CmdKPreviewProps } from "../cmdk-commands";
 import {
   AssistantMessage,
   createAskAiTransport,
+  getFriendlyAiErrorMessage,
   getMessageContent,
   getToolInvocations,
   UserMessage,
-  useWordStreaming,
+  useWordStreaming
 } from "./ai-chat-shared";
 
 
@@ -216,7 +217,7 @@ const AIChatPreviewInner = memo(function AIChatPreview({
         {aiError && (
           <div className="flex items-start gap-2 text-[12px] text-red-400/90 px-3 py-2 bg-red-500/[0.08] rounded-lg ring-1 ring-red-500/20">
             <span className="shrink-0 mt-0.5">⚠</span>
-            <span>{aiError.message || "Failed to get response. Please try again."}</span>
+            <span>{getFriendlyAiErrorMessage(aiError)}</span>
           </div>
         )}
       </div>
