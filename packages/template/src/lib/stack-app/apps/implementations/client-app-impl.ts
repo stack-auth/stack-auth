@@ -548,10 +548,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
 
     this._analyticsOptions = resolvedOptions.analytics;
-    const getAnalyticsAccessToken = async (): Promise<string | null> => {
-      this._ensurePersistentTokenStore();
-      return await (await this.getUser({ or: "anonymous" })).getAccessToken();
-    };
 
     if (isBrowserLike() && this._analyticsOptions?.replays?.enabled === true) {
       this._sessionRecorder = new SessionRecorder({
@@ -566,7 +562,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     if (isBrowserLike()) {
       this._eventTracker = new EventTracker({
         projectId: this.projectId,
-        getAccessToken: getAnalyticsAccessToken,
         sendBatch: async (body, opts) => {
           return await this._interface.sendAnalyticsEventBatch(body, await this._getSession(), opts);
         },
@@ -2675,7 +2670,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       return null;
     }
     const isAnonymous = accessToken.payload.is_anonymous;
-    if (isAnonymous && options.or !== "anonymous") {
+    if (isAnonymous && options.or !== "anonymous-if-exists") {
       return null;
     }
     return {

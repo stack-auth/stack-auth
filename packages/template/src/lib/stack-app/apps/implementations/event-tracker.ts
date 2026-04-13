@@ -29,7 +29,6 @@ function hasHistoryMethods(value: unknown): value is { pushState: History["pushS
 
 export type EventTrackerDeps = {
   projectId: string,
-  getAccessToken: () => Promise<string | null>,
   sendBatch: (body: string, options: { keepalive: boolean }) => Promise<Result<Response, Error>>,
 };
 
@@ -46,7 +45,6 @@ export class EventTracker {
   private _flushTimer: ReturnType<typeof setInterval> | null = null;
   private _events: TrackedEvent[] = [];
   private _approxBytes = 0;
-  private _lastKnownAccessToken: string | null = null;
   private _lastUrl: string | null = null;
   private readonly _sessionReplaySegmentId: string;
   private readonly _deps: EventTrackerDeps;
@@ -265,7 +263,6 @@ export class EventTracker {
   }
 
   private async _flush(options: { keepalive: boolean }) {
-    if (!this._lastKnownAccessToken) return;
     if (this._events.length === 0) return;
 
     const nowMs = Date.now();
@@ -298,13 +295,7 @@ export class EventTracker {
 
   private _tick() {
     if (this._cancelled) return;
-
-    runAsynchronously(async () => {
-      this._lastKnownAccessToken = await this._deps.getAccessToken();
-    }, { noErrorLogging: true });
-
-    const hasAuth = !!this._lastKnownAccessToken;
-    if (hasAuth && this._events.length > 0) {
+    if (this._events.length > 0) {
       runAsynchronously(() => this._flush({ keepalive: false }), { noErrorLogging: true });
     }
   }
