@@ -169,7 +169,6 @@ const migrate = async (selectedMigrationFiles?: { migrationName: string, sql: st
   console.log('='.repeat(60) + '\n');
 
   await runClickhouseMigrations();
-  await runBulldozerPaymentsInit(globalPrismaClient);
 
   return result;
 };
@@ -215,15 +214,18 @@ const main = async () => {
     }
     case 'seed': {
       await seed();
+      await runBulldozerPaymentsInit(globalPrismaClient);
       break;
     }
     case 'init': {
       await migrate(undefined, { interactive });
       await seed();
+      await runBulldozerPaymentsInit(globalPrismaClient);
       break;
     }
     case 'migrate': {
       await migrate(undefined, { interactive });
+      await runBulldozerPaymentsInit(globalPrismaClient);
       break;
     }
     case 'help': {
