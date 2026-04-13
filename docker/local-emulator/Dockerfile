@@ -114,7 +114,14 @@ COPY --from=minio-bin /usr/bin/minio /out/minio
 COPY --from=mc-bin /usr/bin/mc /out/mc
 COPY --from=qstash-bin /qstash-binary /out/qstash
 RUN chmod u+w /out/* && \
-    strip --strip-all /out/clickhouse /out/minio /out/svix-server /out/mc /out/qstash && \
+    # Intentionally NOT stripping /out/clickhouse. The clickhouse binary is a
+    # self-extracting compressed executable (a small loader with a ZSTD
+    # payload appended after the section table); strip rewrites the ELF and
+    # can invalidate the loader's "find my payload" lookup, causing the
+    # decompressor to spin on garbage with zero log output — the exact
+    # symptom seen on cross-arch TCG runs. Savings from stripping would be
+    # only the tiny bootstrap anyway since the payload isn't in any section.
+    strip --strip-all /out/minio /out/svix-server /out/mc /out/qstash && \
     upx -9 /out/minio /out/svix-server /out/mc /out/qstash
 
 
