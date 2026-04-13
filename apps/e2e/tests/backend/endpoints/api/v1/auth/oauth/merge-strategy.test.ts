@@ -1,6 +1,26 @@
 import { it, updateCookiesFromResponse } from "../../../../../../helpers";
 import { Auth, ContactChannels, InternalApiKey, Project, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
 
+const getOAuthErrorRedirectLocationUrl = (location: string | null) => {
+  if (location == null) {
+    throw new Error("OAuth callback error redirect location is missing");
+  }
+  return new URL(location);
+};
+
+const expectOAuthErrorRedirect = (
+  locationUrl: URL,
+  { expectedErrorCode, expectedDescription }: { expectedErrorCode: string, expectedDescription: string },
+  expectFn: (input: unknown) => { toBe: (value: unknown) => void },
+) => {
+  expectFn(locationUrl.origin).toBe("http://stack-test.localhost");
+  expectFn(locationUrl.pathname).toBe("/some-callback-url");
+  expectFn(locationUrl.searchParams.get("error")).toBe("server_error");
+  expectFn(locationUrl.searchParams.get("errorCode")).toBe(expectedErrorCode);
+  expectFn(locationUrl.searchParams.get("error_description")).toBe(expectedDescription);
+  expectFn(locationUrl.searchParams.get("message")).toBe(expectedDescription);
+};
+
 it("should allow duplicates, if the merge strategy is set to allow_duplicates", async ({ expect }) => {
   const proj = await Project.createAndSwitch({
     config: {
@@ -47,25 +67,13 @@ it("should not allow duplicates, if the merge strategy set to raise_error", asyn
   expect(cc.used_for_auth).toBe(true);
 
   const { response } = await Auth.OAuth.getMaybeFailingAuthorizationCode();
-  expect(response).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 409,
-      "body": {
-        "code": "CONTACT_CHANNEL_ALREADY_USED_FOR_AUTH_BY_SOMEONE_ELSE",
-        "details": {
-          "contact_channel_value": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-          "type": "email",
-          "would_work_if_email_was_verified": false,
-        },
-        "error": "This email \\"(default-mailbox--<stripped UUID>@stack-generated.example.com)\\" is already used for authentication by another account.",
-      },
-      "headers": Headers {
-        "set-cookie": <deleting cookie 'stack-oauth-inner-<stripped cookie name key>' at path '/'>,
-        "x-stack-known-error": "CONTACT_CHANNEL_ALREADY_USED_FOR_AUTH_BY_SOMEONE_ELSE",
-        <some fields may have been hidden>,
-      },
-    }
-  `);
+  expect(response.status).toBe(307);
+  const locationUrl = getOAuthErrorRedirectLocationUrl(response.headers.get("location"));
+  expectOAuthErrorRedirect(locationUrl, {
+    expectedErrorCode: "CONTACT_CHANNEL_ALREADY_USED_FOR_AUTH_BY_SOMEONE_ELSE",
+    expectedDescription: `This email "(${cc.value})" is already used for authentication by another account.`,
+  }, expect);
+  expect(response.headers.get("set-cookie")).toMatch(/stack-oauth-inner-/);
 });
 
 it("should merge accounts, if the merge strategy set to link_method", async ({ expect }) => {
@@ -114,25 +122,13 @@ it("should not merge accounts if the merge strategy is set to link_method, but t
   expect(cc.used_for_auth).toBe(true);
 
   const { response } = await Auth.OAuth.getMaybeFailingAuthorizationCode();
-  expect(response).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 409,
-      "body": {
-        "code": "CONTACT_CHANNEL_ALREADY_USED_FOR_AUTH_BY_SOMEONE_ELSE",
-        "details": {
-          "contact_channel_value": "default-mailbox--<stripped UUID>@stack-generated.example.com",
-          "type": "email",
-          "would_work_if_email_was_verified": true,
-        },
-        "error": "This email \\"(default-mailbox--<stripped UUID>@stack-generated.example.com)\\" is already used for authentication by another account but the email is not verified. Please login to your existing account with the method you used to sign up, and then verify your email to sign in with this login method.",
-      },
-      "headers": Headers {
-        "set-cookie": <deleting cookie 'stack-oauth-inner-<stripped cookie name key>' at path '/'>,
-        "x-stack-known-error": "CONTACT_CHANNEL_ALREADY_USED_FOR_AUTH_BY_SOMEONE_ELSE",
-        <some fields may have been hidden>,
-      },
-    }
-  `);
+  expect(response.status).toBe(307);
+  const locationUrl = getOAuthErrorRedirectLocationUrl(response.headers.get("location"));
+  expectOAuthErrorRedirect(locationUrl, {
+    expectedErrorCode: "CONTACT_CHANNEL_ALREADY_USED_FOR_AUTH_BY_SOMEONE_ELSE",
+    expectedDescription: `This email "(${cc.value})" is already used for authentication by another account but the email is not verified. Please login to your existing account with the method you used to sign up, and then verify your email to sign in with this login method.`,
+  }, expect);
+  expect(response.headers.get("set-cookie")).toMatch(/stack-oauth-inner-/);
 });
 
 it("should allow OAuth login with manually created account when sign-ups are disabled", async ({ expect }) => {
