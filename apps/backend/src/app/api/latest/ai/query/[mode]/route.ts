@@ -59,7 +59,18 @@ export const POST = createSmartRouteHandler({
     // create-dashboard now does an inspection loop (queryAnalytics) before calling updateDashboard,
     // so it needs room for ~3 exploratory queries + the final tool call + some retry slack.
     const isCreateDashboard = systemPromptId === "create-dashboard";
-    const stepLimit = toolsArg == null ? 1 : isDocsOrSearch ? 50 : isCreateDashboard ? 12 : 5;
+    // build-analytics-query aims for one-shot queries with complete schema
+    // knowledge, but needs a few steps for retries on errors or follow-ups.
+    const isBuildAnalyticsQuery = systemPromptId === "build-analytics-query";
+    const stepLimit = toolsArg == null
+      ? 1
+      : isDocsOrSearch
+        ? 50
+        : isCreateDashboard
+          ? 12
+          : isBuildAnalyticsQuery
+            ? 5
+            : 5;
 
     if (mode === "stream") {
       const result = streamText({

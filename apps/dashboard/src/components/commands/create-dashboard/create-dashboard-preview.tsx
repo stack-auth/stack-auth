@@ -266,11 +266,11 @@ const CreateDashboardPreviewInner = memo(function CreateDashboardPreviewInner({
     <div className="flex h-full w-full flex-col">
       <div className="px-3 py-2 border-b border-foreground/[0.08] space-y-2">
         <div className="flex items-center justify-between gap-3">
-          <div>
+          <div className="min-w-0">
             <div className="text-[12px] font-medium text-foreground">Create Dashboard</div>
             <div className="text-[10px] text-muted-foreground truncate">{prompt}</div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex shrink-0 items-center gap-2">
             {phase === "ready" && artifact && (
               <Button
                 size="sm"

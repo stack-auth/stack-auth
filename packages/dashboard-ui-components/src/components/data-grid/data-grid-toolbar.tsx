@@ -83,12 +83,12 @@ function QuickSearch({
   placeholder: string;
 }) {
   return (
-    <div className="relative flex items-center">
+    <div className="relative flex min-w-0 flex-1 items-center sm:flex-initial">
       <MagnifyingGlass className="absolute left-2.5 h-3.5 w-3.5 text-muted-foreground/50 pointer-events-none" />
       <input
         type="text"
         className={cn(
-          "h-8 w-52 pl-8 pr-7 rounded-xl text-xs",
+          "h-8 w-full sm:w-52 pl-8 pr-7 rounded-xl text-xs",
           "bg-background",
           "border border-black/[0.08] dark:border-white/[0.08]",
           "placeholder:text-muted-foreground/40",
@@ -118,17 +118,20 @@ function ToolbarButton({
   children,
   onClick,
   active,
+  title,
   className: extraClassName,
 }: {
   children: React.ReactNode;
   onClick?: () => void;
   active?: boolean;
+  title?: string;
   className?: string;
 }) {
   return (
     <button
       className={cn(
-        "relative flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg text-xs font-medium",
+        "relative flex items-center justify-center rounded-lg text-xs font-medium",
+        "h-7 w-7",
         "transition-colors duration-75",
         active
           ? "bg-foreground/[0.06] text-foreground"
@@ -136,6 +139,7 @@ function ToolbarButton({
         extraClassName,
       )}
       onClick={onClick}
+      title={title}
     >
       {children}
     </button>
@@ -266,6 +270,8 @@ function ColumnManager<TRow>({
 export function DataGridToolbar<TRow>({
   ctx,
   extra,
+  extraLeading,
+  hideQuickSearch,
 }: {
   ctx: DataGridToolbarContext<TRow>;
   /** Extra content rendered inside the toolbar row, to the left of the
@@ -273,6 +279,16 @@ export function DataGridToolbar<TRow>({
    *  affordances (refresh, custom toggles, row counts) without giving up
    *  the default actions. */
   extra?: React.ReactNode;
+  /** Extra content rendered at the START of the toolbar row — occupies
+   *  the same position as the built-in quick search (after it, if the
+   *  quick search is visible). Use this together with `hideQuickSearch`
+   *  to fully replace the quick search with a custom input, e.g. an
+   *  AI-powered search bar. */
+  extraLeading?: React.ReactNode;
+  /** Whether to hide the built-in quick-search input. When `true`,
+   *  callers are expected to provide their own search UI via
+   *  `extraLeading`. */
+  hideQuickSearch?: boolean;
 }) {
   const { state, onChange, columns, strings, exportCsv } = ctx;
 
@@ -312,23 +328,26 @@ export function DataGridToolbar<TRow>({
   );
 
   return (
-    <div className="flex items-center gap-2 px-4 py-2.5 border-b border-foreground/[0.06]">
-      <QuickSearch
-        value={state.quickSearch}
-        onChange={updateQuickSearch}
-        placeholder={strings.searchPlaceholder}
-      />
-      <div className="flex-1" />
+    <div className="flex items-center gap-2 px-2.5 py-2.5 border-b border-foreground/[0.06]">
+      {!hideQuickSearch && (
+        <QuickSearch
+          value={state.quickSearch}
+          onChange={updateQuickSearch}
+          placeholder={strings.searchPlaceholder}
+        />
+      )}
+      {extraLeading}
+      <div className="flex-1 min-w-0" />
 
       {extra}
 
-      <div className="relative" ref={columnPopover.ref}>
+      <div className="relative shrink-0" ref={columnPopover.ref}>
         <ToolbarButton
           onClick={() => columnPopover.setOpen(!columnPopover.open)}
           active={columnPopover.open}
+          title={strings.columns}
         >
           <Eye className="h-3.5 w-3.5" />
-          {strings.columns}
         </ToolbarButton>
         {columnPopover.open && (
           <PopoverPanel popoverRef={columnPopover.ref} className="right-0 left-auto">
@@ -345,9 +364,8 @@ export function DataGridToolbar<TRow>({
         )}
       </div>
 
-      <ToolbarButton onClick={exportCsv}>
+      <ToolbarButton onClick={exportCsv} title={strings.export}>
         <DownloadSimple className="h-3.5 w-3.5" />
-        {strings.export}
       </ToolbarButton>
     </div>
   );

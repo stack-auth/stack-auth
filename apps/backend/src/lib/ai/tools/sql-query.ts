@@ -15,11 +15,11 @@ export function createSqlQueryTool(auth: SmartRequestAuth | null, targetProjectI
   const MAX_ROWS_FOR_AI = 50;
 
   return tool({
-    description: "Run a read-only ClickHouse SQL query against the project's analytics database for INSPECTION. Only SELECT queries are allowed. Project filtering is automatic. Results are capped at 50 rows for your context — always include a LIMIT clause and prefer aggregates (count, sum, min, max, avg, quantile, GROUP BY) over SELECT *.",
+    description: `Set and validate a ClickHouse SQL query for the analytics data grid. The grid runs the full query independently — you only receive a preview of the first ${MAX_ROWS_FOR_AI} rows to confirm correctness. Only SELECT queries are allowed. Project filtering is automatic. Always include a LIMIT clause.`,
     inputSchema: z.object({
       query: z
         .string()
-        .describe("The ClickHouse SQL query to execute. Only SELECT queries are allowed. Always include a LIMIT clause (≤20 for row samples)."),
+        .describe("The ClickHouse SQL query to execute. Only SELECT queries are allowed. Always include a LIMIT clause unless the system prompt tells you to do otherwise."),
     }),
     execute: async ({ query }: { query: string }) => {
       const client = getClickhouseExternalClient();
