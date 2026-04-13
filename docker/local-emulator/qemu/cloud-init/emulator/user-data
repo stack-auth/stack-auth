@@ -405,7 +405,12 @@ write_files:
       docker tag stack-local-emulator:final stack-local-emulator
       docker rmi stack-local-emulator:final || true
       docker builder prune -af || true
-      docker image prune -af || true
+      # Must be `prune -f` (dangling only), NOT `prune -af`. With -a, docker
+      # deletes every image that isn't referenced by a running/stopped
+      # container — at this point stack.service is only systemctl enable'd,
+      # not yet started, so the freshly-tagged stack-local-emulator image
+      # has zero container refs and would be nuked, bricking the final qcow2.
+      docker image prune -f || true
       log "Intermediate images pruned."
 
       log "Releasing free space for qcow2 compression (fstrim)..."
