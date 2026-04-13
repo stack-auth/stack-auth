@@ -556,7 +556,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     if (isBrowserLike() && this._analyticsOptions?.replays?.enabled === true) {
       this._sessionRecorder = new SessionRecorder({
         projectId: this.projectId,
-        getAccessToken: getAnalyticsAccessToken,
         sendBatch: async (body, opts) => {
           return await this._interface.sendSessionReplayBatch(body, await this._getSession(), opts);
         },
