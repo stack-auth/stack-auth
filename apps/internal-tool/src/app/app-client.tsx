@@ -63,7 +63,6 @@ export default function App() {
     : null;
 
   const currentUser = user;
-  const reviewedBy = currentUser.displayName ?? currentUser.primaryEmail ?? "unknown";
 
   async function getApi() {
     const { accessToken, refreshToken } = await currentUser.getAuthJson();
@@ -132,10 +131,9 @@ export default function App() {
       {showAddQa && (
         <AddManualQa
           onClose={() => setShowAddQa(false)}
-          onSave={(question, answer, publish) => {
-            getApi()
-              .then(api => api.addManual({ question, answer, publish, reviewedBy }))
-              .catch(() => { /* errors are surfaced by UI state */ });
+          onSave={async (question, answer, publish) => {
+            const api = await getApi();
+            await api.addManual({ question, answer, publish });
           }}
         />
       )}
@@ -158,12 +156,12 @@ export default function App() {
                 onClose={() => setSelectedRow(null)}
                 onSaveCorrection={(correlationId, correctedQuestion, correctedAnswer, publish) => {
                   getApi()
-                    .then(api => api.updateCorrection({ correlationId, correctedQuestion, correctedAnswer, publish, reviewedBy }))
+                    .then(api => api.updateCorrection({ correlationId, correctedQuestion, correctedAnswer, publish }))
                     .catch(() => { /* errors are surfaced by UI state */ });
                 }}
                 onMarkReviewed={(correlationId) => {
                   getApi()
-                    .then(api => api.markReviewed({ correlationId, reviewedBy }))
+                    .then(api => api.markReviewed({ correlationId }))
                     .catch(() => { /* errors are surfaced by UI state */ });
                 }}
               />
@@ -178,7 +176,7 @@ export default function App() {
             rows={rows}
             onSave={(correlationId, question, answer, publish) => {
               getApi()
-                .then(api => api.updateCorrection({ correlationId, correctedQuestion: question, correctedAnswer: answer, publish, reviewedBy }))
+                .then(api => api.updateCorrection({ correlationId, correctedQuestion: question, correctedAnswer: answer, publish }))
                 .catch(() => { /* errors are surfaced by UI state */ });
             }}
             onDelete={(correlationId) => {

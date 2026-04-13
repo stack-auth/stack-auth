@@ -174,7 +174,7 @@ export const update_human_correction = spacetimedb.reducer(
           humanReviewedAt: row.humanReviewedAt ?? ctx.timestamp,
           humanReviewedBy: row.humanReviewedBy ?? args.reviewedBy,
           publishedToQa: args.publish,
-          publishedAt: args.publish ? (row.publishedAt ?? ctx.timestamp) : row.publishedAt,
+          publishedAt: args.publish ? (row.publishedAt ?? ctx.timestamp) : undefined,
         });
         return;
       }

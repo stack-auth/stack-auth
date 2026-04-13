@@ -27,9 +27,12 @@ function CopyButton({ text }: { text: string }) {
       className="shrink-0 rounded p-0.5 transition-colors text-gray-400 hover:text-gray-600 hover:bg-gray-100"
       onClick={(e) => {
         e.stopPropagation();
-        navigator.clipboard.writeText(text).catch(() => {});
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
+        navigator.clipboard.writeText(text).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        }, (err) => {
+          console.error("Clipboard write failed:", err);
+        });
       }}
     >
       <span className="text-[10px]">{copied ? "copied" : "copy"}</span>

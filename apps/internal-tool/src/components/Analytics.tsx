@@ -71,7 +71,7 @@ export function Analytics({ rows }: { rows: McpCallLogRow[] }) {
     // Duration stats
     const durations = rows.map(r => Number(r.durationMs)).filter(d => d > 0).sort((a, b) => a - b);
     const avgDuration = durations.length > 0 ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : 0;
-    const p95Duration = durations.length > 0 ? durations[Math.floor(durations.length * 0.95)] : 0;
+    const p95Duration = durations.length > 0 ? durations[Math.min(Math.floor(durations.length * 0.95), durations.length - 1)] : 0;
     const maxDuration = durations.length > 0 ? durations[durations.length - 1] : 0;
 
     // Tool usage

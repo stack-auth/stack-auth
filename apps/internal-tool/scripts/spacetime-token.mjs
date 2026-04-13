@@ -13,12 +13,19 @@ const action = process.argv[2];
 
 if (action === "inject") {
   const token = process.env.STACK_MCP_LOG_TOKEN || "change-me";
+  if (existsSync(BACKUP)) {
+    console.error("Refusing to inject: backup already exists. Run restore first.");
+    process.exit(1);
+  }
   const content = readFileSync(TARGET, "utf8");
   writeFileSync(BACKUP, content, "utf8");
-  writeFileSync(TARGET, content.replaceAll(PLACEHOLDER, token), "utf8");
+  const escapedToken = JSON.stringify(token).slice(1, -1);
+  writeFileSync(TARGET, content.replaceAll(PLACEHOLDER, escapedToken), "utf8");
 } else if (action === "restore") {
   if (existsSync(BACKUP)) {
-    unlinkSync(TARGET);
+    if (existsSync(TARGET)) {
+      unlinkSync(TARGET);
+    }
     renameSync(BACKUP, TARGET);
   }
 } else {

@@ -8,9 +8,12 @@ function CopyBtn({ text, size = "xs" }: { text: string; size?: "xs" | "sm" }) {
       onClick={(e) => {
         e.preventDefault();
         e.stopPropagation();
-        navigator.clipboard.writeText(text).catch(() => {});
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
+        navigator.clipboard.writeText(text).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        }, (err) => {
+          console.error("Clipboard write failed:", err);
+        });
       }}
       className={clsx(
         "shrink-0 rounded transition-colors",
@@ -66,8 +69,6 @@ const CodeBlock = memo(function CodeBlock({ children, className }: { children?: 
 });
 
 const SmartLink = memo(function SmartLink({ href, children }: { href?: string; children?: React.ReactNode }) {
-  const displayText = String(children || href || "");
-
   return (
     <a
       href={href}
@@ -75,7 +76,7 @@ const SmartLink = memo(function SmartLink({ href, children }: { href?: string; c
       target="_blank"
       rel="noopener noreferrer"
     >
-      {displayText}
+      {children ?? href ?? ""}
     </a>
   );
 });

@@ -16,9 +16,12 @@ function CopyButton({ text }: { text: string }) {
     <button
       className="text-xs text-blue-500 hover:text-blue-700 ml-2"
       onClick={() => {
-        navigator.clipboard.writeText(text).catch(() => {});
-        setCopied(true);
-        setTimeout(() => setCopied(false), 1500);
+        navigator.clipboard.writeText(text).then(() => {
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1500);
+        }, (err) => {
+          console.error("Clipboard write failed:", err);
+        });
       }}
     >
       {copied ? "copied" : "copy"}
@@ -32,8 +35,8 @@ export function CallLogDetail({ row, allRows, onClose, onSaveCorrection, onMarkR
   row: McpCallLogRow;
   allRows: McpCallLogRow[];
   onClose: () => void;
-  onSaveCorrection?: (correlationId: string, correctedQuestion: string, correctedAnswer: string, publish: boolean) => void;
-  onMarkReviewed?: (correlationId: string) => void;
+  onSaveCorrection?: (correlationId: string, correctedQuestion: string, correctedAnswer: string, publish: boolean) => Promise<void> | void;
+  onMarkReviewed?: (correlationId: string) => Promise<void> | void;
 }) {
   const [showReplay, setShowReplay] = useState(false);
   const isReviewed = row.humanReviewedAt != null;
@@ -373,22 +376,32 @@ async function fetchDeepWikiAnswer(questionText: string): Promise<string> {
 
 function HumanCorrectionCard({ row, onSave }: {
   row: McpCallLogRow;
-  onSave?: (correlationId: string, correctedQuestion: string, correctedAnswer: string, publish: boolean) => void;
+  onSave?: (correlationId: string, correctedQuestion: string, correctedAnswer: string, publish: boolean) => Promise<void> | void;
 }) {
   const [question, setQuestion] = useState(row.humanCorrectedQuestion ?? "");
   const [answer, setAnswer] = useState(row.humanCorrectedAnswer ?? "");
-  const [lastAction, setLastAction] = useState<"published" | "saved" | "deepwiki-error" | null>(null);
+  const [lastAction, setLastAction] = useState<"published" | "saved" | "deepwiki-error" | "error" | null>(null);
   const [deepWikiLoading, setDeepWikiLoading] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
 
   useEffect(() => {
     setQuestion(row.humanCorrectedQuestion ?? "");
     setAnswer(row.humanCorrectedAnswer ?? "");
   }, [row.humanCorrectedQuestion, row.humanCorrectedAnswer, row.correlationId]);
 
-  const handleSave = (publish: boolean) => {
-    onSave?.(row.correlationId, question, answer, publish);
-    setLastAction(publish ? "published" : "saved");
-    setTimeout(() => setLastAction(null), 3000);
+  const handleSave = async (publish: boolean) => {
+    if (isSaving) return;
+    setIsSaving(true);
+    try {
+      await onSave?.(row.correlationId, question, answer, publish);
+      setLastAction(publish ? "published" : "saved");
+      setTimeout(() => setLastAction(null), 3000);
+    } catch {
+      setLastAction("error");
+      setTimeout(() => setLastAction(null), 3000);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const hasUnsavedChanges =
@@ -441,12 +454,13 @@ function HumanCorrectionCard({ row, onSave }: {
           <div className={clsx(
             "px-3 py-1.5 rounded text-xs font-medium",
             lastAction === "published" ? "bg-green-100 text-green-700" :
-              lastAction === "deepwiki-error" ? "bg-red-100 text-red-700" :
+              lastAction === "deepwiki-error" || lastAction === "error" ? "bg-red-100 text-red-700" :
                 "bg-blue-100 text-blue-700"
           )}>
             {lastAction === "published" ? "Published to /questions" :
               lastAction === "deepwiki-error" ? "Failed to fetch from DeepWiki" :
-                "Draft saved"}
+                lastAction === "error" ? "Failed to save" :
+                  "Draft saved"}
           </div>
         )}
 
@@ -627,16 +641,15 @@ function QaToolCard({ pair }: { pair: { toolName: string; args: unknown; result:
       </div>
       {resultStr != null && (
         <div className="px-3 py-2 border-t border-indigo-100">
-          <button
-            className="w-full flex items-center justify-between text-[10px] uppercase text-gray-400 font-medium hover:text-gray-600"
-            onClick={() => setResultExpanded(prev => !prev)}
-          >
-            <span>Result ({formatByteSize(pair.result)})</span>
-            <span className="flex items-center gap-1">
-              {resultExpanded && <CopyButton text={resultStr} />}
-              <span>{resultExpanded ? "collapse" : "expand"}</span>
-            </span>
-          </button>
+          <div className="w-full flex items-center justify-between text-[10px] uppercase text-gray-400 font-medium">
+            <button
+              className="hover:text-gray-600"
+              onClick={() => setResultExpanded(prev => !prev)}
+            >
+              Result ({formatByteSize(pair.result)}) — {resultExpanded ? "collapse" : "expand"}
+            </button>
+            {resultExpanded && <CopyButton text={resultStr} />}
+          </div>
           {resultExpanded && (
             <pre className="mt-1 text-xs text-gray-600 overflow-auto max-h-64 whitespace-pre-wrap">{resultStr}</pre>
           )}

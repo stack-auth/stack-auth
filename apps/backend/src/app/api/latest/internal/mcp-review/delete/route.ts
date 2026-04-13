@@ -37,7 +37,7 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(503, "SpacetimeDB unavailable");
     }
 
-    const token = getEnvVariable("STACK_MCP_LOG_TOKEN", "change-me");
+    const token = getEnvVariable("STACK_MCP_LOG_TOKEN");
     await conn.reducers.deleteQaEntry({
       token,
       correlationId: body.correlationId,

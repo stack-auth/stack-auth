@@ -22,15 +22,19 @@ if (target === "prod" && !process.env.STACK_MCP_LOG_TOKEN) {
   process.exit(1);
 }
 
-// Inject token
-const inject = spawnSync("node", ["scripts/spacetime-token.mjs", "inject"], { stdio: "inherit" });
-if (inject.status !== 0) {
-  process.exit(inject.status ?? 1);
-}
-
+let exitCode = 1;
 try {
-  const publish = spawnSync("spacetime", args, { stdio: "inherit" });
-  process.exitCode = publish.status ?? 1;
+  const inject = spawnSync("node", ["scripts/spacetime-token.mjs", "inject"], { stdio: "inherit" });
+  if (inject.status !== 0) {
+    exitCode = inject.status ?? 1;
+  } else {
+    const publish = spawnSync("spacetime", args, { stdio: "inherit" });
+    exitCode = publish.status ?? 1;
+  }
 } finally {
-  spawnSync("node", ["scripts/spacetime-token.mjs", "restore"], { stdio: "inherit" });
+  const restore = spawnSync("node", ["scripts/spacetime-token.mjs", "restore"], { stdio: "inherit" });
+  if (restore.status !== 0 && exitCode === 0) {
+    exitCode = restore.status ?? 1;
+  }
+  process.exitCode = exitCode;
 }

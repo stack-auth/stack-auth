@@ -14,7 +14,6 @@ export const POST = createSmartRouteHandler({
     }).defined(),
     body: yupObject({
       correlationId: yupString().defined(),
-      reviewedBy: yupString().defined(),
     }).defined(),
     method: yupString().oneOf(["POST"]).defined(),
   }),
@@ -38,11 +37,11 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(503, "SpacetimeDB unavailable");
     }
 
-    const token = getEnvVariable("STACK_MCP_LOG_TOKEN", "change-me");
+    const token = getEnvVariable("STACK_MCP_LOG_TOKEN");
     await conn.reducers.markHumanReviewed({
       token,
       correlationId: body.correlationId,
-      reviewedBy: body.reviewedBy,
+      reviewedBy: fullReq.auth.user.display_name ?? fullReq.auth.user.primary_email ?? fullReq.auth.user.id,
     });
 
     return {

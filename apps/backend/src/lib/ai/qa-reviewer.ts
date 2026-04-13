@@ -111,7 +111,7 @@ export async function reviewMcpCall(entry: {
     });
 
     const conversation = result.steps.map((step, i) => {
-      const toolCalls = step.toolCalls.map(tc => ({ toolName: tc.toolName, args: tc.input }));
+      const toolCalls = step.toolCalls.map(tc => ({ toolName: tc.toolName, toolCallId: tc.toolCallId, args: tc.input }));
       const toolResults = step.toolResults.map(tr => ({
         toolName: tr.toolName,
         toolCallId: tr.toolCallId,
@@ -129,7 +129,17 @@ export async function reviewMcpCall(entry: {
     if (!jsonMatch) {
       throw new Error("No JSON found in QA review response");
     }
-    const parsed = JSON.parse(jsonMatch[0]) as {
+    const raw = JSON.parse(jsonMatch[0]);
+    if (
+      typeof raw.needsHumanReview !== "boolean" ||
+      typeof raw.answerCorrect !== "boolean" ||
+      typeof raw.answerRelevant !== "boolean" ||
+      !Array.isArray(raw.flags) ||
+      typeof raw.overallScore !== "number"
+    ) {
+      throw new Error(`Invalid QA review response shape: ${JSON.stringify(raw).slice(0, 200)}`);
+    }
+    const parsed = raw as {
       needsHumanReview: boolean,
       answerCorrect: boolean,
       answerRelevant: boolean,
@@ -137,6 +147,7 @@ export async function reviewMcpCall(entry: {
       improvementSuggestions: string,
       overallScore: number,
     };
+    parsed.overallScore = Math.max(0, Math.min(100, Math.round(parsed.overallScore)));
 
     update = {
       qaNeedsHumanReview: parsed.needsHumanReview,

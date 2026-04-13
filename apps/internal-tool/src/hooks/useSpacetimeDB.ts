@@ -6,8 +6,13 @@ const IS_DEV = process.env.NODE_ENV === "development";
 const PLACEHOLDER = "REPLACE_ME";
 const rawHost = process.env.NEXT_PUBLIC_SPACETIMEDB_HOST;
 const rawDbName = process.env.NEXT_PUBLIC_SPACETIMEDB_DB_NAME;
-const HOST = (!rawHost || rawHost === PLACEHOLDER) ? (IS_DEV ? "ws://localhost:8139" : "") : rawHost;
-const DB_NAME = (!rawDbName || rawDbName === PLACEHOLDER) ? (IS_DEV ? "stack-auth-llm" : "") : rawDbName;
+function resolveEnv(raw: string | undefined, devDefault: string, name: string): string {
+  if (raw && raw !== PLACEHOLDER) return raw;
+  if (IS_DEV) return devDefault;
+  throw new Error(`${name} is not configured. Set it in .env.local or hosting platform env.`);
+}
+const HOST = resolveEnv(rawHost, "ws://localhost:8139", "NEXT_PUBLIC_SPACETIMEDB_HOST");
+const DB_NAME = resolveEnv(rawDbName, "stack-auth-llm", "NEXT_PUBLIC_SPACETIMEDB_DB_NAME");
 const TOKEN_KEY = `spacetimedb_${HOST}/${DB_NAME}/auth_token`;
 
 const MAX_RETRIES = 5;
@@ -39,76 +44,70 @@ export function useMcpCallLogs() {
       retryTimer = setTimeout(() => {
         retryTimer = null;
         if (!cancelled) {
-          connect().catch(() => {});
+          connect();
         }
       }, RETRY_DELAY_MS);
     }
 
-    async function connect() {
-      try {
-        const conn = DbConnection.builder()
-          .withUri(HOST)
-          .withDatabaseName(DB_NAME)
-          .withToken(localStorage.getItem(TOKEN_KEY) || undefined)
-          .onConnect((connInstance: DbConnection, _identity: unknown, token: string) => {
+    function connect() {
+      const conn = DbConnection.builder()
+        .withUri(HOST)
+        .withDatabaseName(DB_NAME)
+        .withToken(localStorage.getItem(TOKEN_KEY) || undefined)
+        .onConnect((connInstance: DbConnection, _identity: unknown, token: string) => {
+          if (cancelled) return;
+          console.log("[SpacetimeDB] Connected successfully");
+          retryCount = 0;
+          localStorage.setItem(TOKEN_KEY, token);
+          connRef.current = connInstance;
+
+          connInstance.subscriptionBuilder()
+            .onApplied((ctx: SubscriptionEventContext) => {
+              if (cancelled) return;
+              const initialRows: McpCallLogRow[] = [];
+              for (const row of ctx.db.mcpCallLog.iter()) {
+                initialRows.push(row);
+              }
+              initialRows.sort((a, b) => Number(b.id - a.id));
+              console.log("[SpacetimeDB] Loaded", initialRows.length, "rows");
+              setRows(initialRows);
+              setConnectionState("connected");
+            })
+            .subscribe(`SELECT * FROM mcp_call_log`);
+
+          connInstance.db.mcpCallLog.onInsert((_ctx: EventContext, row: McpCallLogRow) => {
             if (cancelled) return;
-            console.log("[SpacetimeDB] Connected successfully");
-            retryCount = 0;
-            localStorage.setItem(TOKEN_KEY, token);
-            connRef.current = connInstance;
-
-            connInstance.subscriptionBuilder()
-              .onApplied((ctx: SubscriptionEventContext) => {
-                if (cancelled) return;
-                const initialRows: McpCallLogRow[] = [];
-                for (const row of ctx.db.mcpCallLog.iter()) {
-                  initialRows.push(row);
-                }
-                initialRows.sort((a, b) => Number(b.id - a.id));
-                console.log("[SpacetimeDB] Loaded", initialRows.length, "rows");
-                setRows(initialRows);
-                setConnectionState("connected");
-              })
-              .subscribe(`SELECT * FROM mcp_call_log`);
-
-            connInstance.db.mcpCallLog.onInsert((_ctx: EventContext, row: McpCallLogRow) => {
-              if (cancelled) return;
-              setRows(prev => {
-                const existing = prev.findIndex(r => r.id === row.id);
-                if (existing >= 0) {
-                  const updated = [...prev];
-                  updated[existing] = row;
-                  return updated;
-                }
-                return [row, ...prev];
-              });
+            setRows(prev => {
+              const existing = prev.findIndex(r => r.id === row.id);
+              if (existing >= 0) {
+                const updated = [...prev];
+                updated[existing] = row;
+                return updated;
+              }
+              return [row, ...prev];
             });
+          });
 
-            connInstance.db.mcpCallLog.onDelete((_ctx: EventContext, row: McpCallLogRow) => {
-              if (cancelled) return;
-              setRows(prev => prev.filter(r => r.id !== row.id));
-            });
-          })
-          .onConnectError((_ctx: unknown, err: unknown) => {
-            console.error("[SpacetimeDB] Connection error:", err);
-            // Clear stale token if present
-            const storedToken = localStorage.getItem(TOKEN_KEY);
-            if (storedToken) {
-              console.log("[SpacetimeDB] Clearing stale token");
-              localStorage.removeItem(TOKEN_KEY);
-            }
-            retry();
-          })
-          .build();
+          connInstance.db.mcpCallLog.onDelete((_ctx: EventContext, row: McpCallLogRow) => {
+            if (cancelled) return;
+            setRows(prev => prev.filter(r => r.id !== row.id));
+          });
+        })
+        .onConnectError((_ctx: unknown, err: unknown) => {
+          console.error("[SpacetimeDB] Connection error:", err);
+          const storedToken = localStorage.getItem(TOKEN_KEY);
+          if (storedToken) {
+            console.log("[SpacetimeDB] Clearing stale token");
+            localStorage.removeItem(TOKEN_KEY);
+          }
+          retry();
+        })
+        .build();
 
-        connRef.current = conn;
-      } catch (err) {
-        console.error("[SpacetimeDB] Failed to build connection:", err);
-        retry();
-      }
+      connRef.current = conn;
     }
 
-    connect().catch(() => {});
+    connect();
 
     return () => {
       cancelled = true;

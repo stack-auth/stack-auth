@@ -3,26 +3,36 @@ import { clsx } from "clsx";
 
 export function AddManualQa({ onClose, onSave }: {
   onClose: () => void;
-  onSave: (question: string, answer: string, publish: boolean) => void;
+  onSave: (question: string, answer: string, publish: boolean) => Promise<void>;
 }) {
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [saved, setSaved] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const canSave = question.trim().length > 0 && answer.trim().length > 0;
+  const canSave = question.trim().length > 0 && answer.trim().length > 0 && !isSaving;
 
-  const handleSave = (publish: boolean) => {
+  const handleSave = async (publish: boolean) => {
     if (!canSave) return;
-    onSave(question.trim(), answer.trim(), publish);
-    setSaved(true);
-    setTimeout(() => {
-      setSaved(false);
-      setQuestion("");
-      setAnswer("");
-      if (publish) {
-        onClose();
-      }
-    }, 1500);
+    setIsSaving(true);
+    setError(null);
+    try {
+      await onSave(question.trim(), answer.trim(), publish);
+      setSaved(true);
+      setTimeout(() => {
+        setSaved(false);
+        setQuestion("");
+        setAnswer("");
+        if (publish) {
+          onClose();
+        }
+      }, 1500);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save");
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   return (
@@ -41,6 +51,11 @@ export function AddManualQa({ onClose, onSave }: {
           {saved && (
             <div className="px-3 py-1.5 rounded text-xs font-medium bg-green-50 text-green-700">
               Saved successfully
+            </div>
+          )}
+          {error && (
+            <div className="px-3 py-1.5 rounded text-xs font-medium bg-red-50 text-red-700">
+              {error}
             </div>
           )}
 

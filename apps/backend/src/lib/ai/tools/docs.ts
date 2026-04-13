@@ -23,29 +23,34 @@ function getDocsToolsBaseUrl(): string {
 async function postDocsToolAction(action: Record<string, unknown>): Promise<string> {
   const base = getDocsToolsBaseUrl();
 
-  const res = await fetch(`${base}/api/internal/docs-tools`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(action),
-  });
+  try {
+    const res = await fetch(`${base}/api/internal/docs-tools`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(action),
+    });
 
-  if (!res.ok) {
-    const errBody = await res.text();
-    captureError("docs-tools-http-error", new Error(`Stack Auth docs tools error (${res.status}): ${errBody}`));
-    return `Stack Auth docs tools error (${res.status}): ${errBody}`;
+    if (!res.ok) {
+      const errBody = await res.text();
+      captureError("docs-tools-http-error", new Error(`Stack Auth docs tools error (${res.status}): ${errBody}`));
+      return `Stack Auth docs tools error (${res.status}): ${errBody}`;
+    }
+
+    const data = (await res.json()) as DocsToolHttpResult;
+    const text = data.content
+      ?.filter((c): c is { type: "text", text: string } => c.type === "text" && typeof c.text === "string")
+      .map((c) => c.text)
+      .join("\n") ?? "";
+
+    if (data.isError === true) {
+      return text || "Unknown docs tool error";
+    }
+
+    return text;
+  } catch (err) {
+    captureError("docs-tools-transport-error", err instanceof Error ? err : new Error(String(err)));
+    return `Stack Auth docs tools error: ${err instanceof Error ? err.message : String(err)}`;
   }
-
-  const data = (await res.json()) as DocsToolHttpResult;
-  const text = data.content
-    ?.filter((c): c is { type: "text", text: string } => c.type === "text" && typeof c.text === "string")
-    .map((c) => c.text)
-    .join("\n") ?? "";
-
-  if (data.isError === true) {
-    return text || "Unknown docs tool error";
-  }
-
-  return text;
 }
 
 /**

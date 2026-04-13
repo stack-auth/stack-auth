@@ -36,7 +36,7 @@ async function post(path: string, body: unknown, authHeaders: Record<string, str
 
 export function makeMcpReviewApi(authHeaders: Record<string, string>) {
   return {
-    markReviewed: (body: { correlationId: string; reviewedBy: string }) =>
+    markReviewed: (body: { correlationId: string }) =>
       post("mark-reviewed", body, authHeaders),
 
     updateCorrection: (body: {
@@ -44,14 +44,12 @@ export function makeMcpReviewApi(authHeaders: Record<string, string>) {
       correctedQuestion: string;
       correctedAnswer: string;
       publish: boolean;
-      reviewedBy: string;
     }) => post("update-correction", body, authHeaders),
 
     addManual: (body: {
       question: string;
       answer: string;
       publish: boolean;
-      reviewedBy: string;
     }) => post("add-manual", body, authHeaders),
 
     delete: (body: { correlationId: string }) =>
