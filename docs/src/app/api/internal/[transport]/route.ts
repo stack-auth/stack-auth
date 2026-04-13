@@ -95,14 +95,11 @@ const handler = createMcpHandler(
     capabilities: {
       tools: {
         ask_stack_auth: {
-        ask_stack_auth: {
           description:
-            "Ask the Stack Auth documentation assistant any question about Stack Auth (setup, APIs, SDKs, configuration, troubleshooting).",
             "Ask the Stack Auth documentation assistant any question about Stack Auth (setup, APIs, SDKs, configuration, troubleshooting).",
           parameters: {
             type: "object",
             properties: {
-              question: {
               question: {
                 type: "string",
                 description: "The full question to ask about Stack Auth.",
@@ -132,7 +129,6 @@ const handler = createMcpHandler(
   {
     basePath: "/api/internal",
     verboseLogs: true,
-    maxDuration: 120,
     maxDuration: 120,
   }
 );
