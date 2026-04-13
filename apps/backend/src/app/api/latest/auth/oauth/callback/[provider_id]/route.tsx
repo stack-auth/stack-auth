@@ -46,12 +46,23 @@ async function createProjectUserOAuthAccountForLink(prisma: PrismaClientTransact
   });
 }
 
-const redirectOrThrowError = (error: KnownError, tenancy: Tenancy, errorRedirectUrl?: string) => {
-  if (!errorRedirectUrl || (!validateRedirectUrl(errorRedirectUrl, tenancy) && !isAcceptedNativeAppUrl(errorRedirectUrl))) {
+const redirectOrThrowError = (error: KnownError, tenancy: Tenancy, options: {
+  oauthCallbackRedirectUrl?: string,
+  errorRedirectUrl?: string,
+}) => {
+  const targetRedirectUrl =
+    options.oauthCallbackRedirectUrl && (validateRedirectUrl(options.oauthCallbackRedirectUrl, tenancy) || isAcceptedNativeAppUrl(options.oauthCallbackRedirectUrl))
+      ? options.oauthCallbackRedirectUrl
+      : options.errorRedirectUrl && (validateRedirectUrl(options.errorRedirectUrl, tenancy) || isAcceptedNativeAppUrl(options.errorRedirectUrl))
+        ? options.errorRedirectUrl
+        : null;
+  if (!targetRedirectUrl) {
     throw error;
   }
 
-  const url = new URL(errorRedirectUrl);
+  const url = new URL(targetRedirectUrl);
+  url.searchParams.set("error", "server_error");
+  url.searchParams.set("error_description", error.message);
   url.searchParams.set("errorCode", error.errorCode);
   url.searchParams.set("message", error.message);
   url.searchParams.set("details", error.details ? JSON.stringify(error.details) : JSON.stringify({}));
@@ -113,6 +124,7 @@ const handler = createSmartRouteHandler({
       projectUserId,
       providerScope,
       errorRedirectUrl,
+      redirectUri,
       afterCallbackRedirectUrl,
     } = outerInfo;
 
@@ -152,7 +164,7 @@ const handler = createSmartRouteHandler({
         });
       } catch (error) {
         if (KnownErrors['OAuthProviderAccessDenied'].isInstance(error)) {
-          redirectOrThrowError(error, tenancy, errorRedirectUrl);
+          redirectOrThrowError(error, tenancy, { oauthCallbackRedirectUrl: redirectUri, errorRedirectUrl });
         }
         throw error;
       }
@@ -387,7 +399,7 @@ const handler = createSmartRouteHandler({
       return oauthResponseToSmartResponse(oauthResponse);
     } catch (error) {
       if (KnownError.isKnownError(error)) {
-        redirectOrThrowError(error, tenancy, errorRedirectUrl);
+        redirectOrThrowError(error, tenancy, { oauthCallbackRedirectUrl: redirectUri, errorRedirectUrl });
       }
       throw error;
     }
