@@ -1181,6 +1181,7 @@ model OneTimePurchase {
   quantity              Int
   stripePaymentIntentId String?
   createdAt             DateTime               @default(now())
+  revokedAt             DateTime?
   refundedAt            DateTime?
   creationSource        PurchaseCreationSource
 

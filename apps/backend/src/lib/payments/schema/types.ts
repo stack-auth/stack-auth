@@ -116,6 +116,7 @@ export type OneTimePurchaseRow = {
   product: ProductSnapshot,
   quantity: number,
   stripePaymentIntentId: string | null,
+  revokedAtMillis: number | null,
   refundedAtMillis: number | null,
   creationSource: PurchaseCreationSource,
   createdAtMillis: number,
