@@ -31,4 +31,24 @@ describe("isRetryableOAuthUserInfoError", () => {
       message: "client credentials are invalid",
     })).toBe(false);
   });
+
+  it("returns true for provider temporary-unavailability errors", () => {
+    expect(isRetryableOAuthUserInfoError({
+      error: "temporarily_unavailable",
+      message: "provider is temporarily unavailable",
+    })).toBe(true);
+  });
+
+  it("returns true for HTTP 5xx and 429 response statuses", () => {
+    expect(isRetryableOAuthUserInfoError({
+      response: {
+        status: 503,
+      },
+    })).toBe(true);
+    expect(isRetryableOAuthUserInfoError({
+      response: {
+        status: 429,
+      },
+    })).toBe(true);
+  });
 });
