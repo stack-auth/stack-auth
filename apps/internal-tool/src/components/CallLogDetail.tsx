@@ -63,7 +63,7 @@ export function CallLogDetail({ row, allRows, onClose, onSaveCorrection, onMarkR
         <div className="flex items-center gap-2">
           {!isReviewed && onMarkReviewed && (
             <button
-              onClick={() => onMarkReviewed(row.correlationId)}
+              onClick={() => void onMarkReviewed(row.correlationId)}
               className="px-2.5 py-1 text-xs font-medium text-green-700 bg-green-50 rounded-md hover:bg-green-100 border border-green-200"
             >
               Mark as reviewed
@@ -439,7 +439,7 @@ function HumanCorrectionCard({ row, onSave }: {
           )}
           {row.publishedToQa && (
             <button
-              onClick={() => handleSave(false)}
+              onClick={() => void handleSave(false)}
               className="text-red-500 hover:text-red-700"
             >
               Unpublish
@@ -525,13 +525,13 @@ function HumanCorrectionCard({ row, onSave }: {
           )}
           <div className="ml-auto flex items-center gap-2">
             <button
-              onClick={() => handleSave(false)}
+              onClick={() => void handleSave(false)}
               className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
             >
               Save Draft
             </button>
             <button
-              onClick={() => handleSave(true)}
+              onClick={() => void handleSave(true)}
               className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
             >
               {row.publishedToQa ? "Update & Publish" : "Save & Publish"}

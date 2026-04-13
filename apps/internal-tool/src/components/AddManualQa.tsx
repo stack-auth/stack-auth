@@ -89,7 +89,7 @@ export function AddManualQa({ onClose, onSave }: {
               Cancel
             </button>
             <button
-              onClick={() => handleSave(false)}
+              onClick={() => void handleSave(false)}
               disabled={!canSave}
               className={clsx(
                 "px-3 py-1.5 text-xs font-medium rounded-md",
@@ -99,7 +99,7 @@ export function AddManualQa({ onClose, onSave }: {
               Save Draft
             </button>
             <button
-              onClick={() => handleSave(true)}
+              onClick={() => void handleSave(true)}
               disabled={!canSave}
               className={clsx(
                 "px-3 py-1.5 text-xs font-medium rounded-md",
