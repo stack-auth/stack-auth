@@ -3,11 +3,11 @@
 import type { RequestLogEntry } from "@stackframe/stack-shared/dist/interface/client-interface";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { isLocalhost } from "@stackframe/stack-shared/dist/utils/urls";
-import type { StackClientApp } from "../lib/stack-app";
-import { stackAppInternalsSymbol } from "../lib/stack-app/common";
-import type { HandlerUrlOptions, HandlerUrls, HandlerUrlTarget } from "../lib/stack-app/common";
-import { getBaseUrl } from "../lib/stack-app/apps/implementations/common";
 import { envVars } from "../lib/env";
+import type { StackClientApp } from "../lib/stack-app";
+import { getBaseUrl } from "../lib/stack-app/apps/implementations/common";
+import type { HandlerUrlOptions, HandlerUrls, HandlerUrlTarget } from "../lib/stack-app/common";
+import { stackAppInternalsSymbol } from "../lib/stack-app/common";
 import { getPagePrompt } from "../lib/stack-app/url-targets";
 import { devToolCSS } from "./dev-tool-styles";
 import type { TriggerPlacement } from "./dev-tool-trigger-position";
@@ -255,6 +255,75 @@ function h<K extends keyof HTMLElementTagNameMap>(
 
 function setHtml(el: HTMLElement, html: string) {
   el.innerHTML = html;
+}
+
+function hasAppendChild(value: unknown): value is { appendChild(node: Node): void } {
+  return typeof value === 'object' && value !== null && typeof Reflect.get(value, 'appendChild') === 'function';
+}
+
+function parseMarkdownImage(line: string): { alt: string, src: string } | null {
+  const match = line.trim().match(/^!\[([^\]]*)\]\((.+)\)$/);
+  if (!match) return null;
+
+  const [, alt, src] = match;
+  const normalizedSrc = src.trim();
+  if (normalizedSrc === '') return null;
+
+  return {
+    alt: alt.trim(),
+    src: normalizedSrc,
+  };
+}
+
+function appendInlineMarkdown(container: HTMLElement, text: string) {
+  const tokenPattern = /(\[[^\]]+\]\([^)]+\)|`[^`\n]+`|\*\*[^*\n]+\*\*|__[^_\n]+__|\*[^*\n]+\*|_[^_\n]+_)/g;
+  let lastIndex = 0;
+  let match: RegExpExecArray | null;
+
+  while ((match = tokenPattern.exec(text)) !== null) {
+    if (match.index > lastIndex) {
+      container.appendChild(document.createTextNode(text.slice(lastIndex, match.index)));
+    }
+
+    const token = match[0];
+    if (token.startsWith("`")) {
+      container.appendChild(h("code", { className: "sdt-ai-inline-code" }, token.slice(1, -1)));
+    } else if (token.startsWith("**") || token.startsWith("__")) {
+      const bold = h("strong", { className: "sdt-ai-bold" });
+      appendInlineMarkdown(bold, token.slice(2, -2));
+      container.appendChild(bold);
+    } else if (token.startsWith("*") || token.startsWith("_")) {
+      const italic = h("em");
+      appendInlineMarkdown(italic, token.slice(1, -1));
+      container.appendChild(italic);
+    } else {
+      const linkMatch = token.match(/^\[([^\]]+)\]\(([^)]+)\)$/);
+      if (linkMatch) {
+        const [, linkText, href] = linkMatch;
+        const trimmedHref = href.trim();
+        if (/^(https?:\/\/|mailto:)/i.test(trimmedHref)) {
+          const link = h("a", {
+            className: "sdt-ai-link",
+            href: trimmedHref,
+            target: "_blank",
+            rel: "noopener noreferrer",
+          });
+          appendInlineMarkdown(link, linkText);
+          container.appendChild(link);
+        } else {
+          container.appendChild(document.createTextNode(token));
+        }
+      } else {
+        container.appendChild(document.createTextNode(token));
+      }
+    }
+
+    lastIndex = tokenPattern.lastIndex;
+  }
+
+  if (lastIndex < text.length) {
+    container.appendChild(document.createTextNode(text.slice(lastIndex)));
+  }
 }
 
 // ---------------------------------------------------------------------------
@@ -729,9 +798,9 @@ function createOverviewTab(app: StackClientApp<true>): HTMLElement {
   const idValSpan = h('span', { className: 'sdt-ov-project-val-mono' }, projectId || 'N/A');
   addProjectRow('Project ID', idValSpan);
 
-  const envVal = h('span', null);
+  const envVal = h('span', { className: 'sdt-ov-env-val' });
   const dot = h('span', { className: 'sdt-ov-pulse-dot' });
-  envVal.append(dot, document.createTextNode('Development'));
+  envVal.append(dot, h('span', null, 'Development'));
   addProjectRow('Environment', envVal);
 
   projectCard.appendChild(projectRows);
@@ -818,7 +887,7 @@ function createOverviewTab(app: StackClientApp<true>): HTMLElement {
   changelogCard.appendChild(h('div', { className: 'sdt-ov-label' }, "What's New"));
 
   const changelogPath = '/api/latest/internal/changelog';
-  const changelogContent = h('div', null);
+  const changelogContent = h('div', { className: 'sdt-ov-changelog-content' });
   changelogContent.innerHTML = '<div style="padding:12px 0;color:var(--sdt-text-tertiary);font-size:12px">Loading changelog...</div>';
   changelogCard.appendChild(changelogContent);
 
@@ -872,19 +941,50 @@ function createOverviewTab(app: StackClientApp<true>): HTMLElement {
           const body = h('div', { className: 'sdt-ov-release-body', style: { padding: '4px 0 8px' } });
           const lines = entry.markdown.split('\n');
           for (const line of lines) {
-            if (line.trim() === '') continue;
+            const trimmedLine = line.trim();
+            if (trimmedLine === '') continue;
+
+            const image = parseMarkdownImage(trimmedLine);
+            if (image) {
+              const figure = h('figure', { className: 'sdt-ov-release-image-figure' });
+              const imageLink = h('a', {
+                className: 'sdt-ov-release-image-link',
+                href: image.src,
+                target: '_blank',
+                rel: 'noopener noreferrer',
+              });
+              imageLink.appendChild(h('img', {
+                className: 'sdt-ov-release-image',
+                src: image.src,
+                alt: image.alt,
+                loading: 'lazy',
+                decoding: 'async',
+              }));
+              figure.appendChild(imageLink);
+              if (image.alt !== '') {
+                figure.appendChild(h('figcaption', { className: 'sdt-ov-release-image-caption' }, image.alt));
+              }
+              body.appendChild(figure);
+              continue;
+            }
+
             const headingMatch = line.match(/^###\s+(.+)/);
             if (headingMatch) {
-              body.appendChild(h('div', { style: { fontWeight: '600', color: 'var(--sdt-text)', marginTop: '8px', marginBottom: '4px', fontSize: '12px' } }, headingMatch[1]));
+              const heading = h('div', { style: { fontWeight: '600', color: 'var(--sdt-text)', marginTop: '8px', marginBottom: '4px', fontSize: '12px' } });
+              appendInlineMarkdown(heading, headingMatch[1]);
+              body.appendChild(heading);
               continue;
             }
             if (line.startsWith('- ')) {
               const li = h('div', { style: { fontSize: '12px', color: 'var(--sdt-text-secondary)', lineHeight: '1.6', paddingLeft: '12px' } });
-              li.textContent = '\u2022 ' + line.slice(2);
+              li.appendChild(document.createTextNode('\u2022 '));
+              appendInlineMarkdown(li, line.slice(2));
               body.appendChild(li);
               continue;
             }
-            body.appendChild(h('div', { style: { fontSize: '12px', color: 'var(--sdt-text-secondary)', lineHeight: '1.6' } }, line));
+            const paragraph = h('div', { style: { fontSize: '12px', color: 'var(--sdt-text-secondary)', lineHeight: '1.6' } });
+            appendInlineMarkdown(paragraph, line);
+            body.appendChild(paragraph);
           }
           release.appendChild(body);
         }
@@ -1072,9 +1172,25 @@ function createAITab(app: StackClientApp<true>): HTMLElement {
   const container = h('div', { className: 'sdt-ai-container' });
   const apiBaseUrl = resolveApiBaseUrl(app);
 
-  type Message = { role: 'user' | 'assistant'; content: string };
+  type ToolCallState = 'running' | 'success' | 'error';
+  type ToolCall = {
+    id: string,
+    toolName: string,
+    argsText: string | null,
+    resultText: string | null,
+    state: ToolCallState,
+    errorText: string | null,
+    isExpanded: boolean,
+  };
+  type AssistantPart =
+    | { type: 'text', content: string }
+    | { type: 'tool', toolCallId: string };
+  type UserMessage = { role: 'user'; content: string };
+  type AssistantMessage = { role: 'assistant'; parts: AssistantPart[]; toolCallsById: Map<string, ToolCall> };
+  type Message = UserMessage | AssistantMessage;
   const messages: Message[] = [];
   let aiLoading = false;
+  let activeAiAbortController: AbortController | null = null;
 
   const messagesArea = h('div', { className: 'sdt-ai-messages' });
   const inputArea = h('div', { className: 'sdt-ai-input-area' });
@@ -1096,6 +1212,41 @@ function createAITab(app: StackClientApp<true>): HTMLElement {
       headers['X-Stack-Publishable-Client-Key'] = opts.publishableClientKey as string;
     }
     return headers;
+  }
+
+  function renderToolCard(toolCall: ToolCall): HTMLElement {
+    const toolCard = h('div', { className: 'sdt-ai-tool-card' });
+    const header = h('button', { className: 'sdt-ai-tool-header', type: 'button' });
+    header.appendChild(h('span', { className: 'sdt-ai-tool-name' }, toolCall.toolName));
+    header.appendChild(h('span', { className: `sdt-ai-tool-status sdt-ai-tool-status-${toolCall.state}` }, toolCall.state));
+    header.appendChild(h('span', { className: `sdt-ai-tool-chevron${toolCall.isExpanded ? ' sdt-ai-tool-chevron-open' : ''}` }, '\u25BE'));
+    header.addEventListener('click', () => {
+      toolCall.isExpanded = !toolCall.isExpanded;
+      renderMessages();
+    });
+    toolCard.appendChild(header);
+
+    if (toolCall.isExpanded) {
+      const body = h('div', { className: 'sdt-ai-tool-body' });
+      if (toolCall.argsText !== null) {
+        body.appendChild(h('div', { className: 'sdt-ai-tool-label' }, 'Args'));
+        const argsPre = h('pre', { className: 'sdt-ai-tool-pre' });
+        argsPre.appendChild(h('code', null, toolCall.argsText));
+        body.appendChild(argsPre);
+      }
+      if (toolCall.resultText !== null) {
+        body.appendChild(h('div', { className: 'sdt-ai-tool-label' }, toolCall.state === 'error' ? 'Error' : 'Result'));
+        const resultPre = h('pre', { className: 'sdt-ai-tool-pre' });
+        resultPre.appendChild(h('code', null, toolCall.resultText));
+        body.appendChild(resultPre);
+      }
+      if (toolCall.state === 'running') {
+        body.appendChild(h('div', { className: 'sdt-ai-tool-running' }, 'Running...'));
+      }
+      toolCard.appendChild(body);
+    }
+
+    return toolCard;
   }
 
   function renderMessages() {
@@ -1141,10 +1292,33 @@ function createAITab(app: StackClientApp<true>): HTMLElement {
         setHtml(avatarDiv, '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>');
         msgDiv.appendChild(avatarDiv);
         const bubble = h('div', { className: 'sdt-ai-bubble sdt-ai-bubble-assistant' });
-        if (msg.content) {
-          renderMarkdownInto(bubble, msg.content);
-        } else {
+        if (msg.parts.length === 0) {
           bubble.innerHTML = '<div class="sdt-ai-thinking"><span class="sdt-ai-thinking-dot"></span><span class="sdt-ai-thinking-dot"></span><span class="sdt-ai-thinking-dot"></span></div>';
+        } else {
+          for (const part of msg.parts) {
+            if (part.type === 'text') {
+              const textContainer = h('div', { className: 'sdt-ai-part-text' });
+              renderMarkdownInto(textContainer, part.content);
+              bubble.appendChild(textContainer);
+              continue;
+            }
+
+            const toolCall = msg.toolCallsById.get(part.toolCallId);
+            if (toolCall == null) {
+              const missingTool = h('div', { className: 'sdt-ai-tool-card' });
+              const missingBody = h('div', { className: 'sdt-ai-tool-body' });
+              missingBody.appendChild(h('div', { className: 'sdt-ai-tool-label' }, 'Error'));
+              const missingPre = h('pre', { className: 'sdt-ai-tool-pre' });
+              missingPre.appendChild(h('code', null, `Missing tool call state for ${part.toolCallId}`));
+              missingBody.appendChild(missingPre);
+              missingTool.appendChild(missingBody);
+              bubble.appendChild(missingTool);
+              continue;
+            }
+            const toolsContainer = h('div', { className: 'sdt-ai-tools' });
+            toolsContainer.appendChild(renderToolCard(toolCall));
+            bubble.appendChild(toolsContainer);
+          }
         }
         msgDiv.appendChild(bubble);
         list.appendChild(msgDiv);
@@ -1155,6 +1329,12 @@ function createAITab(app: StackClientApp<true>): HTMLElement {
   }
 
   function renderMarkdownInto(el: HTMLElement, content: string) {
+    function appendBlockWithInlineMarkdown(tag: "p" | "li" | "h1" | "h2" | "h3", className: string, text: string) {
+      const block = h(tag, { className });
+      appendInlineMarkdown(block, text);
+      el.appendChild(block);
+    }
+
     const lines = content.split('\n');
     let i = 0;
     while (i < lines.length) {
@@ -1194,7 +1374,7 @@ function createAITab(app: StackClientApp<true>): HTMLElement {
       const headingMatch = line.match(/^(#{1,3}) (.+)/);
       if (headingMatch) {
         const tag = `h${headingMatch[1].length}` as 'h1' | 'h2' | 'h3';
-        el.appendChild(h(tag, { className: 'sdt-ai-heading' }, headingMatch[2]));
+        appendBlockWithInlineMarkdown(tag, "sdt-ai-heading", headingMatch[2]);
         i++;
         continue;
       }
@@ -1202,7 +1382,9 @@ function createAITab(app: StackClientApp<true>): HTMLElement {
       if (/^[-*] /.test(line)) {
         const ul = h('ul', { className: 'sdt-ai-list' });
         while (i < lines.length && /^[-*] /.test(lines[i])) {
-          ul.appendChild(h('li', null, lines[i].replace(/^[-*] /, '')));
+          const li = h("li");
+          appendInlineMarkdown(li, lines[i].replace(/^[-*] /, ""));
+          ul.appendChild(li);
           i++;
         }
         el.appendChild(ul);
@@ -1212,7 +1394,9 @@ function createAITab(app: StackClientApp<true>): HTMLElement {
       if (/^\d+\. /.test(line)) {
         const ol = h('ol', { className: 'sdt-ai-list sdt-ai-list-ordered' });
         while (i < lines.length && /^\d+\. /.test(lines[i])) {
-          ol.appendChild(h('li', null, lines[i].replace(/^\d+\. /, '')));
+          const li = h("li");
+          appendInlineMarkdown(li, lines[i].replace(/^\d+\. /, ""));
+          ol.appendChild(li);
           i++;
         }
         el.appendChild(ol);
@@ -1224,44 +1408,122 @@ function createAITab(app: StackClientApp<true>): HTMLElement {
         continue;
       }
 
-      el.appendChild(h('p', { className: 'sdt-ai-paragraph' }, line));
+      appendBlockWithInlineMarkdown("p", "sdt-ai-paragraph", line);
       i++;
     }
+  }
+
+  function stringifyForDebug(value: unknown): string {
+    const json = JSON.stringify(value, null, 2);
+    return json === undefined ? String(value) : json;
+  }
+
+  function isRecord(value: unknown): value is Record<string, unknown> {
+    return typeof value === 'object' && value !== null && !Array.isArray(value);
+  }
+
+  function expectObject(value: unknown, payload: string): Record<string, unknown> {
+    if (!isRecord(value)) {
+      throw new Error(`SSE payload must be an object: ${payload}`);
+    }
+    return value;
+  }
+
+  function getRequiredStringField(event: Record<string, unknown>, field: string, payload: string): string {
+    const value = event[field];
+    if (typeof value !== 'string') {
+      throw new Error(`SSE event '${String(event.type)}' missing string '${field}': ${payload}`);
+    }
+    return value;
+  }
+
+  function getCurrentAssistantMessage(): AssistantMessage {
+    const lastMessage = messages[messages.length - 1];
+    if (lastMessage == null || lastMessage.role !== 'assistant') {
+      throw new Error('Expected current message to be an assistant message');
+    }
+    return lastMessage;
+  }
+
+  function appendTextDelta(delta: string) {
+    const assistantMessage = getCurrentAssistantMessage();
+    const lastPart = assistantMessage.parts[assistantMessage.parts.length - 1];
+    if (lastPart != null && lastPart.type === 'text') {
+      lastPart.content += delta;
+      return;
+    }
+    assistantMessage.parts.push({ type: 'text', content: delta });
+  }
+
+  function ensureToolPart(assistantMessage: AssistantMessage, toolCallId: string) {
+    const hasPart = assistantMessage.parts.some(part => part.type === 'tool' && part.toolCallId === toolCallId);
+    if (!hasPart) {
+      assistantMessage.parts.push({ type: 'tool', toolCallId });
+    }
+  }
+
+  function findOrCreateToolCall(toolCallId: string, fallbackToolName: string): ToolCall {
+    const assistantMessage = getCurrentAssistantMessage();
+    const existing = assistantMessage.toolCallsById.get(toolCallId);
+    if (existing != null) {
+      if (existing.toolName === 'tool' && fallbackToolName !== 'tool') {
+        existing.toolName = fallbackToolName;
+      }
+      ensureToolPart(assistantMessage, toolCallId);
+      return existing;
+    }
+
+    const created: ToolCall = {
+      id: toolCallId,
+      toolName: fallbackToolName,
+      argsText: null,
+      resultText: null,
+      state: 'running',
+      errorText: null,
+      isExpanded: false,
+    };
+    assistantMessage.toolCallsById.set(toolCallId, created);
+    ensureToolPart(assistantMessage, toolCallId);
+    return created;
   }
 
   async function sendMessage(text: string) {
     if (!text.trim() || aiLoading) return;
     messages.push({ role: 'user', content: text.trim() });
-    messages.push({ role: 'assistant', content: '' });
+    messages.push({ role: 'assistant', parts: [], toolCallsById: new Map<string, ToolCall>() });
     aiLoading = true;
     renderMessages();
     renderInput();
 
     try {
+      const abortController = new AbortController();
+      activeAiAbortController = abortController;
       const res = await fetch(`${apiBaseUrl}/api/latest/ai/query/stream`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           ...getHeaders(),
         },
+        signal: abortController.signal,
         body: JSON.stringify({
           systemPrompt: 'command-center-ask-ai',
           tools: ['docs'],
           quality: 'smart',
           speed: 'slow',
-          messages: messages.slice(0, -1).map((m) => ({
-            role: m.role,
-            content: [{ type: 'text', text: m.content }],
-          })),
+          messages: messages
+            .slice(0, -1)
+            .map((m) => ({
+              role: m.role,
+              content: [{ type: 'text', text: m.role === 'user' ? m.content : m.parts.filter(part => part.type === 'text').map(part => part.content).join('') }],
+            })),
         }),
       });
 
-      if (!res.ok || !res.body) {
-        messages[messages.length - 1].content = 'Sorry, something went wrong. Please try again.';
-        aiLoading = false;
-        renderMessages();
-        renderInput();
-        return;
+      if (!res.ok) {
+        throw new Error(`AI request failed with status ${res.status}`);
+      }
+      if (!res.body) {
+        throw new Error('AI request returned no response body');
       }
 
       const reader = res.body.getReader();
@@ -1274,23 +1536,152 @@ function createAITab(app: StackClientApp<true>): HTMLElement {
         buffer += decoder.decode(value, { stream: true });
         const streamLines = buffer.split('\n');
         buffer = streamLines.pop() || '';
+
         for (const streamLine of streamLines) {
-          if (streamLine.startsWith('0:')) {
-            try {
-              const parsed = JSON.parse(streamLine.slice(2));
-              messages[messages.length - 1].content += parsed;
-            } catch {}
+          const line = streamLine.trim();
+          if (line === '' || line.startsWith(':')) continue;
+          if (!line.startsWith('data: ')) {
+            throw new Error(`Unexpected SSE line: ${line}`);
+          }
+
+          const payload = line.slice(6);
+          if (payload === '[DONE]') continue;
+          const event = expectObject(JSON.parse(payload), payload);
+          const eventType = getRequiredStringField(event, 'type', payload);
+
+          switch (eventType) {
+            case 'start':
+            case 'start-step':
+            case 'finish-step':
+            case 'finish':
+            case 'message-metadata':
+            case 'text-start':
+            case 'text-end':
+            case 'reasoning-start':
+            case 'reasoning-delta':
+            case 'reasoning-end':
+            case 'source-url':
+            case 'source-document':
+            case 'file':
+              break;
+            case 'text-delta': {
+              const delta = getRequiredStringField(event, 'delta', payload);
+              appendTextDelta(delta);
+              break;
+            }
+            case 'tool-input-start': {
+              const toolCallId = getRequiredStringField(event, 'toolCallId', payload);
+              const toolName = getRequiredStringField(event, 'toolName', payload);
+              const toolCall = findOrCreateToolCall(toolCallId, toolName);
+              toolCall.state = 'running';
+              toolCall.resultText = null;
+              toolCall.errorText = null;
+              toolCall.argsText = '';
+              break;
+            }
+            case 'tool-input-delta': {
+              const toolCallId = getRequiredStringField(event, 'toolCallId', payload);
+              const inputTextDelta = getRequiredStringField(event, 'inputTextDelta', payload);
+              const toolCall = findOrCreateToolCall(toolCallId, 'tool');
+              toolCall.argsText = (toolCall.argsText ?? '') + inputTextDelta;
+              break;
+            }
+            case 'tool-input-available': {
+              const toolCallId = getRequiredStringField(event, 'toolCallId', payload);
+              const toolName = getRequiredStringField(event, 'toolName', payload);
+              const toolCall = findOrCreateToolCall(toolCallId, toolName);
+              toolCall.argsText = stringifyForDebug(event.input);
+              break;
+            }
+            case 'tool-input-error': {
+              const toolCallId = getRequiredStringField(event, 'toolCallId', payload);
+              const toolName = getRequiredStringField(event, 'toolName', payload);
+              const errorText = getRequiredStringField(event, 'errorText', payload);
+              const toolCall = findOrCreateToolCall(toolCallId, toolName);
+              toolCall.state = 'error';
+              toolCall.errorText = errorText;
+              toolCall.resultText = errorText;
+              break;
+            }
+            case 'tool-output-available': {
+              const toolCallId = getRequiredStringField(event, 'toolCallId', payload);
+              const toolCall = findOrCreateToolCall(toolCallId, 'tool');
+              const preliminary = event.preliminary === true;
+              toolCall.resultText = stringifyForDebug(event.output);
+              if (!preliminary) {
+                toolCall.state = 'success';
+              }
+              break;
+            }
+            case 'tool-output-error': {
+              const toolCallId = getRequiredStringField(event, 'toolCallId', payload);
+              const errorText = getRequiredStringField(event, 'errorText', payload);
+              const toolCall = findOrCreateToolCall(toolCallId, 'tool');
+              toolCall.state = 'error';
+              toolCall.errorText = errorText;
+              toolCall.resultText = errorText;
+              break;
+            }
+            case 'tool-output-denied': {
+              const toolCallId = getRequiredStringField(event, 'toolCallId', payload);
+              const toolCall = findOrCreateToolCall(toolCallId, 'tool');
+              toolCall.state = 'error';
+              toolCall.errorText = 'Tool output denied';
+              toolCall.resultText = 'Tool output denied';
+              break;
+            }
+            case 'tool-approval-request': {
+              const toolCallId = getRequiredStringField(event, 'toolCallId', payload);
+              const approvalId = getRequiredStringField(event, 'approvalId', payload);
+              const toolCall = findOrCreateToolCall(toolCallId, 'tool');
+              toolCall.state = 'running';
+              toolCall.resultText = `Approval requested (${approvalId})`;
+              break;
+            }
+            case 'abort': {
+              const reason = typeof event.reason === 'string' ? event.reason : 'unknown reason';
+              throw new Error(`AI stream aborted: ${reason}`);
+            }
+            case 'error':
+              throw new Error(
+                typeof event.errorText === 'string'
+                  ? `AI stream error: ${event.errorText}`
+                  : `AI stream error event: ${payload}`
+              );
+            default:
+              if (eventType.startsWith('data-')) {
+                break;
+              }
+              throw new Error(`Unexpected AI stream event type: ${eventType}`);
           }
         }
+
         renderMessages();
       }
-    } catch {
-      messages[messages.length - 1].content = 'Sorry, something went wrong. Please try again.';
-    }
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        const assistantMessage = getCurrentAssistantMessage();
+        if (assistantMessage.parts.length === 0) {
+          assistantMessage.parts.push({ type: 'text', content: 'Stopped.' });
+        }
+        renderMessages();
+        return;
+      }
 
-    aiLoading = false;
-    renderMessages();
-    renderInput();
+      const message = error instanceof Error ? error.message : 'Unknown AI stream error';
+      const lastMessage = messages[messages.length - 1];
+      if (lastMessage != null && lastMessage.role === 'assistant') {
+        lastMessage.parts = [{ type: 'text', content: message }];
+        lastMessage.toolCallsById.clear();
+      }
+      renderMessages();
+      alert(`AI stream failed: ${message}`);
+    } finally {
+      aiLoading = false;
+      activeAiAbortController = null;
+      renderMessages();
+      renderInput();
+    }
   }
 
   const inputWrapper = h('div', { className: 'sdt-ai-input-wrapper' });
@@ -1306,12 +1697,23 @@ function createAITab(app: StackClientApp<true>): HTMLElement {
   setHtml(sendBtn, '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>');
 
   function renderInput() {
-    input.disabled = aiLoading;
+    input.disabled = false;
     input.placeholder = messages.length === 0 ? 'Ask anything about Stack Auth...' : 'Ask a follow-up...';
-    if (input.value.trim() && !aiLoading) {
+    if (aiLoading) {
       sendBtn.classList.add('sdt-ai-send-btn-active');
+      sendBtn.classList.add('sdt-ai-stop-btn');
+      sendBtn.setAttribute('title', 'Stop');
+      setHtml(sendBtn, '<svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>');
+    } else if (input.value.trim()) {
+      sendBtn.classList.add('sdt-ai-send-btn-active');
+      sendBtn.classList.remove('sdt-ai-stop-btn');
+      sendBtn.setAttribute('title', 'Send');
+      setHtml(sendBtn, '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>');
     } else {
       sendBtn.classList.remove('sdt-ai-send-btn-active');
+      sendBtn.classList.remove('sdt-ai-stop-btn');
+      sendBtn.setAttribute('title', 'Send');
+      setHtml(sendBtn, '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>');
     }
   }
 
@@ -1319,20 +1721,31 @@ function createAITab(app: StackClientApp<true>): HTMLElement {
   input.addEventListener('keydown', (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      runAsynchronously(sendMessage(input.value));
-      input.value = '';
+      if (aiLoading) {
+        activeAiAbortController?.abort();
+      } else {
+        runAsynchronously(sendMessage(input.value));
+        input.value = '';
+      }
       renderInput();
     }
   });
   sendBtn.addEventListener('click', () => {
-    runAsynchronously(sendMessage(input.value));
-    input.value = '';
+    if (aiLoading) {
+      activeAiAbortController?.abort();
+    } else {
+      runAsynchronously(sendMessage(input.value));
+      input.value = '';
+    }
     renderInput();
   });
 
   const newChatBtn = h('button', { className: 'sdt-ai-new-chat', title: 'New conversation', style: { display: 'none' } });
   setHtml(newChatBtn, '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>');
   newChatBtn.addEventListener('click', () => {
+    if (aiLoading) {
+      activeAiAbortController?.abort();
+    }
     messages.length = 0;
     input.value = '';
     renderMessages();
@@ -1943,9 +2356,15 @@ function createPanel(
 // ===========================================================================================
 
 export function createDevTool(app: StackClientApp<true>): () => void {
+  if (typeof document === 'undefined' || typeof document.createElement !== 'function') {
+    return () => {};
+  }
+  const body = Reflect.get(document, 'body');
+  if (!hasAppendChild(body)) return () => {};
+
   const root = document.createElement('div');
   root.id = '__stack-dev-tool-root';
-  document.body.appendChild(root);
+  body.appendChild(root);
 
   const wrapper = h('div', { className: 'stack-devtool' });
   root.appendChild(wrapper);

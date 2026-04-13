@@ -5,22 +5,10 @@ import { globalVar } from "@stackframe/stack-shared/dist/utils/globals";
 import React, { useEffect } from "react";
 import { useStackApp } from "..";
 import { StackClientApp, StackClientAppJson, stackAppInternalsSymbol } from "../lib/stack-app";
-// IF_PLATFORM react-like
-import { mountDevTool } from "../dev-tool";
-// END_PLATFORM
 
 export const StackContext = React.createContext<null | {
   app: StackClientApp<true>,
 }>(null);
-
-// IF_PLATFORM react-like
-function DevToolMount({ app }: { app: StackClientApp<true> }) {
-  useEffect(() => {
-    return mountDevTool(app);
-  }, [app]);
-  return null;
-}
-// END_PLATFORM
 
 export function StackProviderClient(props: {
   app: StackClientAppJson<true, string> | StackClientApp<true>,
@@ -35,9 +23,6 @@ export function StackProviderClient(props: {
   return (
     <StackContext.Provider value={{ app }}>
       {props.children}
-      {/* IF_PLATFORM react-like */}
-      <DevToolMount app={app} />
-      {/* END_PLATFORM */}
     </StackContext.Provider>
   );
 }

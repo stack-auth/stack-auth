@@ -6,6 +6,20 @@ import { createDevTool } from "./dev-tool-core";
 
 const OVERRIDE_KEY = '__stack-dev-tool-override';
 
+function hasAppendChild(value: unknown): value is { appendChild(node: Node): void } {
+  return typeof value === 'object' && value !== null && typeof Reflect.get(value, 'appendChild') === 'function';
+}
+
+function canMountIntoDom(): boolean {
+  if (typeof window === 'undefined' || typeof document === 'undefined') {
+    return false;
+  }
+  if (typeof document.createElement !== 'function') {
+    return false;
+  }
+  return hasAppendChild(Reflect.get(document, 'body'));
+}
+
 function getOverride(): boolean | null {
   try {
     const val = localStorage.getItem(OVERRIDE_KEY);
@@ -18,7 +32,7 @@ function getOverride(): boolean | null {
 function shouldShow(): boolean {
   const override = getOverride();
   if (override !== null) return override;
-  if (typeof window === 'undefined') return false;
+  if (!canMountIntoDom()) return false;
   return isLocalhost(window.location.href);
 }
 
@@ -31,7 +45,7 @@ function tryMount() {
     activeCleanup = null;
   }
 
-  if (!shouldShow() || !activeApp || typeof window === 'undefined') return;
+  if (!shouldShow() || !activeApp || !canMountIntoDom()) return;
 
   const app = activeApp;
   activeCleanup = createDevTool(app);

@@ -586,6 +586,12 @@ export const devToolCSS = `
     color: var(--sdt-error);
   }
 
+  .stack-devtool .sdt-ov-env-val {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+  }
+
   .stack-devtool .sdt-ov-pulse-dot {
     width: 7px;
     height: 7px;
@@ -751,6 +757,25 @@ export const devToolCSS = `
     grid-column: span 2;
   }
 
+  .stack-devtool .sdt-ov-changelog-content {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+  }
+
+  .stack-devtool .sdt-ov-changelog-content::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .stack-devtool .sdt-ov-changelog-content::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .stack-devtool .sdt-ov-changelog-content::-webkit-scrollbar-thumb {
+    background: var(--sdt-border);
+    border-radius: 3px;
+  }
+
   .stack-devtool .sdt-ov-changelog {
     display: flex;
     flex-direction: column;
@@ -795,6 +820,36 @@ export const devToolCSS = `
 
   .stack-devtool .sdt-ov-release-text {
     min-width: 0;
+  }
+
+  .stack-devtool .sdt-ov-release-image-figure {
+    margin: 10px 0 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .stack-devtool .sdt-ov-release-image-link {
+    display: block;
+    width: 45%;
+    max-width: 100%;
+    overflow: hidden;
+    border-radius: 10px;
+    border: 1px solid var(--sdt-border-subtle);
+    background: var(--sdt-bg-subtle);
+  }
+
+  .stack-devtool .sdt-ov-release-image {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    height: auto;
+  }
+
+  .stack-devtool .sdt-ov-release-image-caption {
+    font-size: 11px;
+    color: var(--sdt-text-tertiary);
+    line-height: 1.4;
   }
 
   .stack-devtool .sdt-ov-tag {
@@ -2380,6 +2435,106 @@ export const devToolCSS = `
     list-style-type: decimal;
   }
 
+  .stack-devtool .sdt-ai-tools {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    margin: 6px 0;
+  }
+
+  .stack-devtool .sdt-ai-part-text {
+    margin: 6px 0;
+  }
+
+  .stack-devtool .sdt-ai-tool-card {
+    border: 1px solid var(--sdt-border-subtle);
+    border-radius: var(--sdt-radius);
+    background: var(--sdt-bg-subtle);
+    overflow: hidden;
+  }
+
+  .stack-devtool .sdt-ai-tool-header {
+    width: 100%;
+    border: none;
+    background: transparent;
+    color: inherit;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    cursor: pointer;
+    text-align: left;
+    font-family: var(--sdt-font);
+  }
+
+  .stack-devtool .sdt-ai-tool-header:hover {
+    background: var(--sdt-bg-hover);
+  }
+
+  .stack-devtool .sdt-ai-tool-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--sdt-text);
+    flex: 1;
+  }
+
+  .stack-devtool .sdt-ai-tool-status {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    font-weight: 600;
+  }
+
+  .stack-devtool .sdt-ai-tool-status-running { color: var(--sdt-warning); }
+  .stack-devtool .sdt-ai-tool-status-success { color: var(--sdt-success); }
+  .stack-devtool .sdt-ai-tool-status-error { color: var(--sdt-error); }
+
+  .stack-devtool .sdt-ai-tool-chevron {
+    color: var(--sdt-text-tertiary);
+    font-size: 10px;
+    transition: transform 0.15s ease;
+  }
+
+  .stack-devtool .sdt-ai-tool-chevron-open {
+    transform: rotate(180deg);
+  }
+
+  .stack-devtool .sdt-ai-tool-body {
+    border-top: 1px solid var(--sdt-border-subtle);
+    padding: 8px 10px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .stack-devtool .sdt-ai-tool-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--sdt-text-tertiary);
+    font-weight: 600;
+  }
+
+  .stack-devtool .sdt-ai-tool-pre {
+    margin: 0;
+    padding: 8px;
+    border: 1px solid var(--sdt-border-subtle);
+    border-radius: var(--sdt-radius-sm);
+    background: var(--sdt-bg);
+    font-family: var(--sdt-font-mono);
+    font-size: 11px;
+    line-height: 1.5;
+    color: var(--sdt-text-secondary);
+    overflow-x: auto;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .stack-devtool .sdt-ai-tool-running {
+    font-size: 11px;
+    color: var(--sdt-text-secondary);
+  }
+
   .stack-devtool .sdt-ai-blockquote {
     border-left: 3px solid var(--sdt-accent);
     padding-left: 12px;
@@ -2578,6 +2733,12 @@ export const devToolCSS = `
 
   .stack-devtool .sdt-ai-send-btn-active:hover {
     background: var(--sdt-accent-hover);
+  }
+
+  .stack-devtool .sdt-ai-stop-btn,
+  .stack-devtool .sdt-ai-stop-btn:hover {
+    background: var(--sdt-error);
+    color: white;
   }
 
   /* Accessible focus indicator for keyboard navigation */
