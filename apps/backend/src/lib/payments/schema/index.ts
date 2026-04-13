@@ -58,6 +58,8 @@ export function createPaymentsSchema() {
     "phase-1-events": { label: "Phase 1: Events", color: "rgba(34,197,94,0.10)", tables: events._allEventTables },
     "phase-1-txns": { label: "Phase 1: Transactions", color: "rgba(234,179,8,0.10)", tables: txnTables._allTransactionTables },
     "phase-2": { label: "Phase 2: Compacted Entries", color: "rgba(249,115,22,0.10)", tables: entryTables._allCompactedTransactionEntriesTables },
+    "phase-3-owned": { label: "Phase 3: Owned Products", color: "rgba(168,85,247,0.10)", tables: ownedProductsTables._allOwnedProductsTables },
+    "phase-3-items": { label: "Phase 3: Item Quantities", color: "rgba(236,72,153,0.10)", tables: [...changeTables._allItemChangesWithExpiriesTables, ...itemQuantitiesTables._allItemQuantitiesTables] },
   };
 
   return {

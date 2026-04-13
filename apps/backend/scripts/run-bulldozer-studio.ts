@@ -1822,7 +1822,9 @@ function getStudioPageHtml(): string {
         label.style.fontSize = "36px";
         label.style.fontWeight = "800";
         label.style.opacity = "0.18";
-        label.style.whiteSpace = "nowrap";
+        label.style.whiteSpace = "normal";
+        label.style.wordWrap = "break-word";
+        label.style.maxWidth = "90%";
         label.style.letterSpacing = "1px";
         label.style.userSelect = "none";
         label.style.textAlign = "center";
