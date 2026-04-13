@@ -175,3 +175,15 @@ A: `useUser()` filters out restricted users by default. In `packages/template/sr
 
 Q: Why can external-db-sync sequencer throw `operator does not exist: text = uuid` on team updates?
 A: In `apps/backend/src/app/api/latest/internal/external-db-sync/sequencer/route.ts`, the TEAM_INVITATION cascade compares JSON text (`"VerificationCode"."data"->>'team_id'`) against `"Team"."teamId"` (`uuid`). Cast the UUID side to text (`changed_teams."teamId"::text`) in the WHERE clause so Postgres type resolution succeeds and team-invitation re-sync marking works.
+
+Q: Why shouldn't OAuth callback retries wrap the whole `getCallback` flow?
+A: The authorization code exchange (`oauthClient.callback` / `oauthCallback`) is effectively one-shot, so retrying the full callback can convert a transient downstream failure into `invalid_grant` on the next attempt. Retries should wrap only post-exchange user-info fetches (`postProcessUserInfo`) and only for transient network/timeout errors.
+
+Q: How should OAuth callback behave when userinfo retries still fail?
+A: After exhausting transient-network retries in `OAuthBaseProvider.getCallback`, capture internal diagnostics (`oauth-userinfo-retry-exhausted`) but throw `KnownErrors.OAuthProviderTemporarilyUnavailable` so clients get a user-recoverable error/redirect flow instead of an internal assertion.
+
+Q: How should OAuth callback errors be surfaced to handler-based clients?
+A: In `apps/backend/src/app/api/latest/auth/oauth/callback/[provider_id]/route.tsx`, prefer redirecting known errors to the original OAuth callback URL (`redirectUri`) with `error`, `error_description`, `errorCode`, `message`, and `details` query params (fallback to `errorRedirectUrl` if needed). In template client handling (`packages/template/src/lib/auth.ts` + `components-page/oauth-callback.tsx`), detect those params, reconstruct a `KnownError`, and route to the handler error page so users get actionable UI instead of silent sign-in redirects.
+
+Q: How should OAuth E2E tests assert callback failures after handler-based error redirects?
+A: In OAuth callback/merge strategy E2E tests, assert `307` plus parsed `location` query params (`error`, `errorCode`, `error_description`, `message`, and optionally `details`) instead of snapshotting old `4xx` JSON error responses. This matches current callback semantics and avoids brittle encoded-URL snapshots.
