@@ -77,7 +77,6 @@ describe.sequential("payments schema phase 2 (real postgres)", () => {
       quantity: -5,
       description: null,
       expiresAtMillis: null,
-      paymentProvider: "stripe",
       createdAtMillis: 2000,
     })));
 
@@ -90,7 +89,6 @@ describe.sequential("payments schema phase 2 (real postgres)", () => {
       quantity: -3,
       description: null,
       expiresAtMillis: null,
-      paymentProvider: "stripe",
       createdAtMillis: 3000,
     })));
 
@@ -104,7 +102,6 @@ describe.sequential("payments schema phase 2 (real postgres)", () => {
       quantity: 50,
       description: null,
       expiresAtMillis: null,
-      paymentProvider: "stripe",
       createdAtMillis: 5000,
     })));
   }, 60_000);

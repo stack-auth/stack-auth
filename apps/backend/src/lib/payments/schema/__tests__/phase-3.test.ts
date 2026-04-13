@@ -76,7 +76,6 @@ describe.sequential("payments schema phase 3 (real postgres)", () => {
       quantity: -3,
       description: null,
       expiresAtMillis: null,
-      paymentProvider: "stripe",
       createdAtMillis: 1500,
     })));
   }, 60_000);

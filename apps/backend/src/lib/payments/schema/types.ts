@@ -131,7 +131,6 @@ export type ManualItemQuantityChangeRow = {
   quantity: number,
   description: string | null,
   expiresAtMillis: number | null,
-  paymentProvider: PaymentProvider,
   createdAtMillis: number,
 };
 
@@ -278,7 +277,7 @@ export type TransactionRow = {
   entries: TransactionEntryData[],
   customerType: CustomerType,
   customerId: string,
-  paymentProvider: PaymentProvider,
+  paymentProvider: PaymentProvider | null,
   createdAtMillis: number,
 };
 
@@ -301,7 +300,7 @@ type BaseEntryRowFields = {
   txnCreatedAtMillis: number,
   txnType: TransactionType,
   tenancyId: string,
-  paymentProvider: PaymentProvider,
+  paymentProvider: PaymentProvider | null,
 };
 
 export type TransactionEntryRow = TransactionEntryData & BaseEntryRowFields;
@@ -434,7 +433,6 @@ export type ManualItemQuantityChangeEventRow = {
   customerType: CustomerType,
   itemId: string,
   quantity: number,
-  paymentProvider: PaymentProvider,
   effectiveAtMillis: number,
   createdAtMillis: number,
 };

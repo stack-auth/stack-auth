@@ -193,7 +193,6 @@ describe.sequential("payments schema phase 1 (real postgres)", () => {
         quantity: -5,
         description: null,
         expiresAtMillis: null,
-        paymentProvider: "stripe",
         createdAtMillis: 4000,
       })));
 
@@ -203,7 +202,6 @@ describe.sequential("payments schema phase 1 (real postgres)", () => {
       expect(event).toMatchObject({
         itemId: "credits",
         quantity: -5,
-        paymentProvider: "stripe",
         effectiveAtMillis: 4000,
       });
     });

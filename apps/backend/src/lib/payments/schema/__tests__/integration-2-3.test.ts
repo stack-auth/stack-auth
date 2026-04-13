@@ -219,7 +219,6 @@ describe.sequential("payments schema integration phase 2→3 (real postgres)", (
       quantity: -30,
       description: null,
       expiresAtMillis: null,
-      paymentProvider: "stripe",
       createdAtMillis: 1100,
     })));
 
@@ -270,7 +269,6 @@ describe.sequential("payments schema integration phase 2→3 (real postgres)", (
       quantity: -30,
       description: null,
       expiresAtMillis: null,
-      paymentProvider: "stripe",
       createdAtMillis: 1100,
     })));
     await runStatements(schema.manualItemQuantityChanges.setRow("iqc-iso-c2", jsonbExpr({
@@ -282,7 +280,6 @@ describe.sequential("payments schema integration phase 2→3 (real postgres)", (
       quantity: -30,
       description: null,
       expiresAtMillis: null,
-      paymentProvider: "stripe",
       createdAtMillis: 1100,
     })));
 

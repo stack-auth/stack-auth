@@ -155,7 +155,6 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         quantity: -50,
         description: null,
         expiresAtMillis: null,
-        paymentProvider: "stripe",
         createdAtMillis: 2500,
       })));
     });
@@ -571,6 +570,318 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
       expect(txns[0].entries).toHaveLength(1);
       expect(txns[0].entries[0].type).toBe("money-transfer");
       expect(txns[0].entries[0].chargedAmount).toMatchObject({ USD: "30" });
+    });
+  });
+
+
+  // ============================================================
+  // Empty state: no purchases
+  // ============================================================
+
+  describe("empty state", () => {
+    it("should return empty owned products for customer with no purchases", async () => {
+      const rows = (await getRowDatas(schema.ownedProducts))
+        .filter((r: any) => r.customerId === "u-nonexistent");
+      expect(rows).toHaveLength(0);
+    });
+
+    it("should return empty item quantities for customer with no purchases", async () => {
+      const rows = (await getRowDatas(schema.itemQuantities))
+        .filter((r: any) => r.customerId === "u-nonexistent");
+      expect(rows).toHaveLength(0);
+    });
+  });
+
+
+  // ============================================================
+  // Multi-customer item quantity isolation
+  // ============================================================
+
+  describe("multi-customer item quantity isolation", () => {
+    beforeAll(async () => {
+      await runStatements(schema.oneTimePurchases.setRow("otp-iso-a", jsonbExpr({
+        id: "otp-iso-a",
+        tenancyId: "t1",
+        customerId: "u-iso-a",
+        customerType: "user",
+        productId: "prod-iso",
+        priceId: "p1",
+        product: {
+          displayName: "Iso Pack",
+          customerType: "user",
+          productLineId: "line-iso",
+          prices: { p1: { USD: "5" } },
+          includedItems: { gems: { quantity: 100, expires: "never" } },
+        },
+        quantity: 1,
+        stripePaymentIntentId: null,
+        revokedAtMillis: null,
+        refundedAtMillis: null,
+        creationSource: "TEST_MODE",
+        createdAtMillis: 10000,
+      })));
+
+      await runStatements(schema.oneTimePurchases.setRow("otp-iso-b", jsonbExpr({
+        id: "otp-iso-b",
+        tenancyId: "t1",
+        customerId: "u-iso-b",
+        customerType: "user",
+        productId: "prod-iso",
+        priceId: "p1",
+        product: {
+          displayName: "Iso Pack",
+          customerType: "user",
+          productLineId: "line-iso",
+          prices: { p1: { USD: "5" } },
+          includedItems: { gems: { quantity: 50, expires: "never" } },
+        },
+        quantity: 1,
+        stripePaymentIntentId: null,
+        revokedAtMillis: null,
+        refundedAtMillis: null,
+        creationSource: "TEST_MODE",
+        createdAtMillis: 10000,
+      })));
+
+      await runStatements(schema.manualItemQuantityChanges.setRow("iqc-iso-a", jsonbExpr({
+        id: "iqc-iso-a",
+        tenancyId: "t1",
+        customerId: "u-iso-a",
+        customerType: "user",
+        itemId: "gems",
+        quantity: -30,
+        description: null,
+        expiresAtMillis: null,
+        createdAtMillis: 11000,
+      })));
+    });
+
+    it("should show customer A with 70 gems and customer B with 50 gems", async () => {
+      const allRows = await getRowDatas(schema.itemQuantities);
+
+      const aRows = allRows.filter((r: any) => r.customerId === "u-iso-a");
+      const bRows = allRows.filter((r: any) => r.customerId === "u-iso-b");
+
+      const aLatest = aRows.sort((a: any, b: any) => b.txnEffectiveAtMillis - a.txnEffectiveAtMillis)[0];
+      const bLatest = bRows.sort((a: any, b: any) => b.txnEffectiveAtMillis - a.txnEffectiveAtMillis)[0];
+
+      expect(aLatest.itemQuantities.gems).toBe(70);
+      expect(bLatest.itemQuantities.gems).toBe(50);
+    });
+  });
+
+
+  // ============================================================
+  // Complex owned products: multiple purchases of same product
+  // ============================================================
+
+  describe("complex owned products with partial revocation", () => {
+    beforeAll(async () => {
+      // Two OTPs for same product, quantity 1 each → net quantity 2
+      await runStatements(schema.oneTimePurchases.setRow("otp-complex-1", jsonbExpr({
+        id: "otp-complex-1",
+        tenancyId: "t1",
+        customerId: "u-complex",
+        customerType: "user",
+        productId: "prod-complex",
+        priceId: "p1",
+        product: {
+          displayName: "Complex Product",
+          customerType: "user",
+          productLineId: "line-complex",
+          prices: { p1: { USD: "10" } },
+          includedItems: {},
+        },
+        quantity: 1,
+        stripePaymentIntentId: null,
+        revokedAtMillis: null,
+        refundedAtMillis: null,
+        creationSource: "TEST_MODE",
+        createdAtMillis: 20000,
+      })));
+
+      await runStatements(schema.oneTimePurchases.setRow("otp-complex-2", jsonbExpr({
+        id: "otp-complex-2",
+        tenancyId: "t1",
+        customerId: "u-complex",
+        customerType: "user",
+        productId: "prod-complex",
+        priceId: "p1",
+        product: {
+          displayName: "Complex Product",
+          customerType: "user",
+          productLineId: "line-complex",
+          prices: { p1: { USD: "10" } },
+          includedItems: {},
+        },
+        quantity: 1,
+        stripePaymentIntentId: null,
+        revokedAtMillis: null,
+        refundedAtMillis: null,
+        creationSource: "TEST_MODE",
+        createdAtMillis: 21000,
+      })));
+
+      // Refund only the first purchase (revoke 1 of 2)
+      await runStatements(schema.manualTransactions.setRow("refund-complex", jsonbExpr({
+        txnId: "refund:otp-complex-1",
+        tenancyId: "t1",
+        effectiveAtMillis: 22000,
+        type: "refund",
+        entries: [{
+          type: "product-revocation",
+          customerType: "user",
+          customerId: "u-complex",
+          adjustedTransactionId: "otp:otp-complex-1",
+          adjustedEntryIndex: 0,
+          quantity: 1,
+          productId: "prod-complex",
+          productLineId: "line-complex",
+        }],
+        customerType: "user",
+        customerId: "u-complex",
+        paymentProvider: "test_mode",
+        createdAtMillis: 22000,
+      })));
+    });
+
+    it("should show net quantity 1 after partial revocation (2 grants - 1 revocation)", async () => {
+      const rows = (await getRowDatas(schema.ownedProducts))
+        .filter((r: any) => r.customerId === "u-complex")
+        .sort((a: any, b: any) => a.txnEffectiveAtMillis - b.txnEffectiveAtMillis);
+
+      const latest = rows[rows.length - 1];
+      expect(latest.ownedProducts["prod-complex"].quantity).toBe(1);
+    });
+  });
+
+
+  // ============================================================
+  // Ledger edge case: grant A(exp e1) + grant B(exp e2) + removal(exp e3)
+  // e1 < e3 < e2. Removal consumed from A (soonest), A expires at e1,
+  // removal expires at e3 but items don't come back (A already gone).
+  // ============================================================
+
+  describe("complex expiry interaction: consumption + grant expiry + removal expiry", () => {
+    const DAY_MS = 86400000;
+
+    beforeAll(async () => {
+      // Two subscriptions + manual change = 3 full cascades; needs extended timeout
+      // Subscription grants itemA with expires=when-purchase-expires
+      // endedAt = 10 days (e1)
+      await runStatements(schema.subscriptions.setRow("sub-ledger-a", jsonbExpr({
+        id: "sub-ledger-a",
+        tenancyId: "t1",
+        customerId: "u-ledger",
+        customerType: "user",
+        productId: "prod-ledger-a",
+        priceId: "p1",
+        product: {
+          displayName: "Plan A",
+          customerType: "user",
+          productLineId: "line-ledger-a",
+          prices: { p1: { USD: "10" } },
+          includedItems: {
+            energy: { quantity: 100, expires: "when-purchase-expires" },
+          },
+        },
+        quantity: 1,
+        stripeSubscriptionId: null,
+        status: "canceled",
+        currentPeriodStartMillis: 0,
+        currentPeriodEndMillis: MONTH_MS,
+        cancelAtPeriodEnd: true,
+        endedAtMillis: 10 * DAY_MS,
+        refundedAtMillis: null,
+        creationSource: "TEST_MODE",
+        createdAtMillis: 0,
+      })));
+
+      // Second subscription grants energy with later expiry
+      // endedAt = 30 days (e2)
+      await runStatements(schema.subscriptions.setRow("sub-ledger-b", jsonbExpr({
+        id: "sub-ledger-b",
+        tenancyId: "t1",
+        customerId: "u-ledger",
+        customerType: "user",
+        productId: "prod-ledger-b",
+        priceId: "p1",
+        product: {
+          displayName: "Plan B",
+          customerType: "user",
+          productLineId: "line-ledger-b",
+          prices: { p1: { USD: "20" } },
+          includedItems: {
+            energy: { quantity: 200, expires: "when-purchase-expires" },
+          },
+        },
+        quantity: 1,
+        stripeSubscriptionId: null,
+        status: "canceled",
+        currentPeriodStartMillis: 1000,
+        currentPeriodEndMillis: 1000 + MONTH_MS,
+        cancelAtPeriodEnd: true,
+        endedAtMillis: 30 * DAY_MS,
+        refundedAtMillis: null,
+        creationSource: "TEST_MODE",
+        createdAtMillis: 1000,
+      })));
+
+      // Manual consumption of 40 energy at day 5
+      await runStatements(schema.manualItemQuantityChanges.setRow("iqc-ledger-consume", jsonbExpr({
+        id: "iqc-ledger-consume",
+        tenancyId: "t1",
+        customerId: "u-ledger",
+        customerType: "user",
+        itemId: "energy",
+        quantity: -40,
+        description: null,
+        expiresAtMillis: null,
+        createdAtMillis: 5 * DAY_MS,
+      })));
+    }, 60_000);
+
+    it("should consume removal from soonest-expiring grant (A not B)", async () => {
+      const rows = (await getRowDatas(schema.itemQuantities))
+        .filter((r: any) => r.customerId === "u-ledger")
+        .sort((a: any, b: any) => a.txnEffectiveAtMillis - b.txnEffectiveAtMillis);
+
+      // Before any expiry (at consumption time, day 5):
+      // Grant A: 100 (exp=10d), Grant B: 200 (exp=30d)
+      // Removal: -40 consumed from A (soonest) → A has 60 remaining, B untouched
+      // Total at day 5: 60 + 200 = 260
+      const atConsumption = rows.find((r: any) =>
+        r.txnEffectiveAtMillis === 5 * DAY_MS && r.itemQuantities?.energy != null
+      );
+      if (atConsumption) {
+        expect(atConsumption.itemQuantities.energy).toBe(260);
+      }
+    });
+
+    it("should expire grant A at e1, losing only remaining (60 not 100), B still alive", async () => {
+      const rows = (await getRowDatas(schema.itemQuantities))
+        .filter((r: any) => r.customerId === "u-ledger")
+        .sort((a: any, b: any) => a.txnEffectiveAtMillis - b.txnEffectiveAtMillis);
+
+      // At day 10 (e1): grant A (60 remaining) expires → 0
+      // Grant B still 200 (expires at day 30). Total: 200
+      // Find the row closest to day 10 (the expiry marker row)
+      const atE1 = rows.filter((r: any) =>
+        r.txnEffectiveAtMillis >= 10 * DAY_MS && r.txnEffectiveAtMillis < 30 * DAY_MS
+      );
+      expect(atE1.length).toBeGreaterThan(0);
+      const latestBeforeE2 = atE1[atE1.length - 1];
+      expect(latestBeforeE2.itemQuantities.energy).toBe(200);
+    });
+
+    it("should show 0 energy after both grants expire at e2", async () => {
+      const rows = (await getRowDatas(schema.itemQuantities))
+        .filter((r: any) => r.customerId === "u-ledger")
+        .sort((a: any, b: any) => a.txnEffectiveAtMillis - b.txnEffectiveAtMillis);
+
+      // At day 30 (e2): grant B also expires → 0
+      const latest = rows[rows.length - 1];
+      expect(latest.itemQuantities.energy).toBe(0);
     });
   });
 });

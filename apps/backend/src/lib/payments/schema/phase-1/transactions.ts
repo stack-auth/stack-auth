@@ -319,7 +319,7 @@ export function createTransactionsTable(events: EventTables, manualTransactions:
       ) AS "entries",
       "rowData"->'customerType' AS "customerType",
       "rowData"->'customerId' AS "customerId",
-      "rowData"->'paymentProvider' AS "paymentProvider",
+      'null'::jsonb AS "paymentProvider",
       "rowData"->'createdAtMillis' AS "createdAtMillis"
     `),
   });

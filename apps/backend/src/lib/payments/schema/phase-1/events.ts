@@ -22,9 +22,9 @@ import {
   declareMapTable,
   declareTimeFoldTable,
 } from "@/lib/bulldozer/db/index";
+import { getOtpTimeFoldReducerSql } from "./otp-timefold-algo";
 import type { SeedEventsStoredTables } from "./stored-tables";
 import { getSubscriptionTimeFoldReducerSql } from "./subscription-timefold-algo";
-import { getOtpTimeFoldReducerSql } from "./otp-timefold-algo";
 
 const mapper = (sql: string) => ({ type: "mapper" as const, sql });
 const predicate = (sql: string) => ({ type: "predicate" as const, sql });
@@ -267,7 +267,6 @@ export function createEventTables(stored: SeedEventsStoredTables) {
       "rowData"->'customerType' AS "customerType",
       "rowData"->'itemId' AS "itemId",
       "rowData"->'quantity' AS "quantity",
-      "rowData"->'paymentProvider' AS "paymentProvider",
       "rowData"->'createdAtMillis' AS "effectiveAtMillis",
       "rowData"->'createdAtMillis' AS "createdAtMillis"
     `),
