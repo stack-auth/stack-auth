@@ -2,6 +2,11 @@
 
 ---
 
+## 4/13/26
+
+### OAuth
+- Improved OAuth login reliability by adding automatic retries for transient network errors during user info fetches
+
 ## 1/23/26
 
 ### Payments
