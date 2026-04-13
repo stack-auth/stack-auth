@@ -1,5 +1,5 @@
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 
 export type ModelQuality = "dumb" | "smart" | "smartest";
 export type ModelSpeed = "slow" | "fast";
@@ -59,9 +59,9 @@ export const ALLOWED_MODEL_IDS: ReadonlySet<string> = new Set([
 ]);
 
 export function createOpenRouterProvider() {
-  const baseURL = getNodeEnvironment() === "development"
-    ? "http://localhost:8102/api/latest/integrations/ai-proxy/v1"
-    : "https://api.stack-auth.com/api/latest/integrations/ai-proxy/v1";
+  const baseURL = getEnvVariable("STACK_OPENROUTER_API_KEY", "") === "FORWARD_TO_PRODUCTION"
+    ? "https://api.stack-auth.com/api/latest/integrations/ai-proxy/v1"
+    : `${getEnvVariable("NEXT_PUBLIC_STACK_API_URL")}/api/latest/integrations/ai-proxy/v1`;
   return createOpenRouter({
     apiKey: "forwarded",
     baseURL,
