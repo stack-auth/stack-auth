@@ -175,3 +175,6 @@ A: `useUser()` filters out restricted users by default. In `packages/template/sr
 
 Q: Why can external-db-sync sequencer throw `operator does not exist: text = uuid` on team updates?
 A: In `apps/backend/src/app/api/latest/internal/external-db-sync/sequencer/route.ts`, the TEAM_INVITATION cascade compares JSON text (`"VerificationCode"."data"->>'team_id'`) against `"Team"."teamId"` (`uuid`). Cast the UUID side to text (`changed_teams."teamId"::text`) in the WHERE clause so Postgres type resolution succeeds and team-invitation re-sync marking works.
+
+Q: Why shouldn't OAuth callback retries wrap the whole `getCallback` flow?
+A: The authorization code exchange (`oauthClient.callback` / `oauthCallback`) is effectively one-shot, so retrying the full callback can convert a transient downstream failure into `invalid_grant` on the next attempt. Retries should wrap only post-exchange user-info fetches (`postProcessUserInfo`) and only for transient network/timeout errors.
