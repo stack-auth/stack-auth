@@ -163,7 +163,10 @@ const handler = createSmartRouteHandler({
           },
         });
       } catch (error) {
-        if (KnownErrors['OAuthProviderAccessDenied'].isInstance(error)) {
+        if (
+          KnownErrors.OAuthProviderAccessDenied.isInstance(error) ||
+          KnownErrors.OAuthProviderTemporarilyUnavailable.isInstance(error)
+        ) {
           redirectOrThrowError(error, tenancy, { oauthCallbackRedirectUrl: redirectUri, errorRedirectUrl });
         }
         throw error;
@@ -399,7 +402,7 @@ const handler = createSmartRouteHandler({
       return oauthResponseToSmartResponse(oauthResponse);
     } catch (error) {
       if (KnownError.isKnownError(error)) {
-        redirectOrThrowError(error, tenancy, { oauthCallbackRedirectUrl: redirectUri, errorRedirectUrl });
+        redirectOrThrowError(error, tenancy, { errorRedirectUrl });
       }
       throw error;
     }

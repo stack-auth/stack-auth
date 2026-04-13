@@ -1,5 +1,5 @@
-import { Prisma } from "@/generated/prisma/client";
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
+import { Prisma } from "@/generated/prisma/client";
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, globalPrismaClient, sqlQuoteIdent } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";

@@ -1,9 +1,9 @@
-import { Prisma } from "@/generated/prisma/client";
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
+import { Prisma } from "@/generated/prisma/client";
+import { Tenancy } from "@/lib/tenancies";
 import { generateAccessTokenFromRefreshTokenIfValid } from "@/lib/tokens";
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, globalPrismaClient, sqlQuoteIdent } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { Tenancy } from "@/lib/tenancies";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -203,6 +203,8 @@ export const POST = createSmartRouteHandler<PostCliAuthCompleteRequest, PostCliA
   response: postCliAuthCompleteResponseSchema,
   async handler({ auth: { tenancy }, body: { login_code, mode, refresh_token } }) {
     const cliAuth = await getPendingCliAuthAttempt(tenancy, login_code);
+    const prisma = await getPrismaClientForTenancy(tenancy);
+    const schema = await getPrismaSchemaForTenancy(tenancy);
 
     if (mode === "check") {
       const cliAnonymousSession = await getCliAnonymousSession(tenancy, cliAuth.anonRefreshToken);
@@ -220,8 +222,6 @@ export const POST = createSmartRouteHandler<PostCliAuthCompleteRequest, PostCliA
       // Atomically consume the anon session (one-shot): null out anonRefreshToken
       // on the CliAuthAttempt row so subsequent claim-anon-session calls cannot
       // replay and re-retrieve the anon user's refresh token.
-      const prisma = await getPrismaClientForTenancy(tenancy);
-      const schema = await getPrismaSchemaForTenancy(tenancy);
       const consumed = await prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
         UPDATE ${sqlQuoteIdent(schema)}."CliAuthAttempt"
         SET
@@ -266,8 +266,6 @@ export const POST = createSmartRouteHandler<PostCliAuthCompleteRequest, PostCliA
     // the anonymous user into the authenticated user (that was a security risk).
     // The anonymous user is left untouched and will simply be orphaned from
     // this CLI flow.
-    const prisma = await getPrismaClientForTenancy(tenancy);
-    const schema = await getPrismaSchemaForTenancy(tenancy);
     const claimed = await prisma.$queryRaw<{ id: string }[]>(Prisma.sql`
       UPDATE ${sqlQuoteIdent(schema)}."CliAuthAttempt"
       SET
