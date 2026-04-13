@@ -1,3 +1,5 @@
+import { SQL_QUERY_RESULT_MAX_CHARS } from "@/lib/ai/tools/sql-query";
+
 /**
  * Base prompt for all Stack Auth AI interactions.
  * Contains global guidelines and core knowledge about Stack Auth.
@@ -104,7 +106,7 @@ SQL QUERY GUIDELINES:
   - Event types: SELECT event_type, COUNT(*) as count FROM events GROUP BY event_type ORDER BY count DESC LIMIT 10
 
 TOOL RESULT BUDGET (HARD LIMIT):
-- The queryAnalytics tool returns { success: false } if the result JSON exceeds 50,000 characters.
+- The queryAnalytics tool returns { success: false } if the result JSON exceeds ${SQL_QUERY_RESULT_MAX_CHARS.toLocaleString()} characters.
   NO ROWS reach you in that case — you get { success: false, error, rowCount, characters, columnsReturned }
   and you MUST re-query with a more specific SQL statement.
 - The events.data JSON blob typically triples per-row cost. Never SELECT * on events unless you have
@@ -117,7 +119,7 @@ push the math into SQL using ClickHouse functions. Examples:
   Count:              SELECT COUNT(*) FROM events WHERE event_type='$token-refresh' AND event_at >= today()
   Distinct count:     SELECT uniqExact(user_id) FROM events WHERE event_at >= today() - INTERVAL 7 DAY
   Top N:              SELECT user_id, COUNT(*) AS c FROM events GROUP BY user_id ORDER BY c DESC LIMIT 10
-  Quantiles:          SELECT quantile(0.5)(amount), quantile(0.95)(amount) FROM events
+  Quantiles:          SELECT quantile(0.5)(c), quantile(0.95)(c) FROM (SELECT user_id, COUNT(*) AS c FROM events GROUP BY user_id)
   Time bucketing:     SELECT toStartOfHour(event_at) AS bucket, COUNT(*) AS c FROM events
                       WHERE event_at >= now() - INTERVAL 1 DAY GROUP BY bucket ORDER BY bucket
   JSON key discovery: SELECT arrayJoin(JSONExtractKeys(data)) AS k, COUNT(*) AS c FROM events
@@ -131,7 +133,7 @@ WHEN INDIVIDUAL ROWS MATTER (user explicitly asked to see records):
 - Drop the 'data' column unless the user specifically asked about event payloads.
 
 GROUP BY REQUIRES ORDER BY + LIMIT unless you expect <= 50 groups, otherwise the result may
-exceed the 50,000-character budget and fail.
+exceed the ${SQL_QUERY_RESULT_MAX_CHARS.toLocaleString()}-character budget and fail.
 
 HANDLING { success: false } ERRORS:
 When the tool returns success:false with "Result too large":

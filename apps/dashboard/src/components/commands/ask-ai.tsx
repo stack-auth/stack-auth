@@ -494,6 +494,11 @@ function getFriendlyAiErrorMessage(error: Error): string {
   if (/timeout|ECONNRESET|fetch failed|network/i.test(blob)) {
     return "Request timed out. Please try again.";
   }
+  if (/result too large|limit \d+/i.test(blob)) {
+    return "The query returned too much data. Try narrowing your question or requesting fewer rows.";
+  }
+  // Unclassified — this is unexpected, report it
+  captureError("ask-ai", error);
   return "Something went wrong. Please try again.";
 }
 
@@ -591,13 +596,6 @@ const AIChatPreviewInner = memo(function AIChatPreview({
   });
 
   const aiLoading = status === "submitted" || status === "streaming";
-
-  // Log the raw AI error once per error (Sentry captures the original message)
-  useEffect(() => {
-    if (aiError) {
-      captureError("ask-ai", aiError);
-    }
-  }, [aiError]);
 
   // Send initial query on mount (once) with debounce
   useDebouncedAction({

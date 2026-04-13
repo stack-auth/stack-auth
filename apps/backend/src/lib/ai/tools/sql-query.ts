@@ -3,6 +3,8 @@ import { SmartRequestAuth } from "@/route-handlers/smart-request";
 import { tool } from "ai";
 import { z } from "zod";
 
+export const SQL_QUERY_RESULT_MAX_CHARS = 50_000;
+
 export function createSqlQueryTool(auth: SmartRequestAuth | null, targetProjectId?: string | null) {
   if (auth == null) {
     // Return null or throw - analytics queries require authentication
@@ -37,12 +39,13 @@ export function createSqlQueryTool(auth: SmartRequestAuth | null, targetProjectI
       })
         .then(async (resultSet) => {
           const rows = await resultSet.json<Record<string, unknown>[]>();
-          const serialized = JSON.stringify(rows);
-          if (serialized.length > 50_000) {
+          const response = { success: true as const, rowCount: rows.length, result: rows };
+          const serialized = JSON.stringify(response);
+          if (serialized.length > SQL_QUERY_RESULT_MAX_CHARS) {
             return {
               success: false as const,
               error:
-                `Result too large: ${rows.length} rows, ${serialized.length} characters (limit 50000). ` +
+                `Result too large: ${rows.length} rows, ${serialized.length} characters (limit ${SQL_QUERY_RESULT_MAX_CHARS}). ` +
                 `To fix: ` +
                 `(1) Use aggregation (COUNT, uniqExact, GROUP BY, topK, quantile) instead of fetching rows. ` +
                 `(2) If you need rows, add a WHERE clause or reduce LIMIT. ` +
@@ -52,11 +55,7 @@ export function createSqlQueryTool(auth: SmartRequestAuth | null, targetProjectI
               columnsReturned: rows.length > 0 ? Object.keys(rows[0]) : [],
             };
           }
-          return {
-            success: true as const,
-            rowCount: rows.length,
-            result: rows,
-          };
+          return response;
         })
         .catch((error: unknown) => ({
           success: false as const,
