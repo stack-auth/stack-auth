@@ -399,28 +399,16 @@ write_files:
         - stack-local-emulator:final
       log "Flatten done."
 
-      log "Saving final image to /var/tmp..."
+      log "Pruning intermediate images in place..."
       docker rm flatten
-      docker save stack-local-emulator:final -o /var/tmp/final-image.tar
-      mv /var/lib/docker/volumes /var/tmp/volumes-backup
-      log "Nuking Docker storage and reloading..."
-      systemctl stop docker containerd
-      rm -rf /var/lib/docker /var/lib/containerd
-      systemctl start docker containerd
-      until docker info >/dev/null 2>&1; do sleep 1; done
-      docker load -i /var/tmp/final-image.tar
+      docker rmi stack-local-emulator stack-local-emulator-slim || true
       docker tag stack-local-emulator:final stack-local-emulator
       docker rmi stack-local-emulator:final || true
-      rm -f /var/tmp/final-image.tar
-      systemctl stop docker
-      rm -rf /var/lib/docker/volumes
-      mv /var/tmp/volumes-backup /var/lib/docker/volumes
-      systemctl start docker
-      log "Docker storage rebuilt."
+      docker builder prune -af || true
+      docker image prune -af || true
+      log "Intermediate images pruned."
 
-      log "Zeroing free space for qcow2 compression..."
-      dd if=/dev/zero of=/zero.fill bs=1M 2>/dev/null || true
-      rm -f /zero.fill
+      log "Releasing free space for qcow2 compression (fstrim)..."
       sync
       fstrim -av 2>/dev/null || true
       log "slim-docker-image done."
