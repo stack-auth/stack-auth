@@ -8,6 +8,7 @@ import fs from "fs";
 import path from "path";
 import * as readline from "readline";
 import { seed } from "../prisma/seed";
+import { runBulldozerPaymentsInit } from "./bulldozer-payments-init";
 import { runClickhouseMigrations } from "./clickhouse-migrations";
 
 const getClickhouseClient = () => getClickhouseAdminClient();
@@ -168,6 +169,7 @@ const migrate = async (selectedMigrationFiles?: { migrationName: string, sql: st
   console.log('='.repeat(60) + '\n');
 
   await runClickhouseMigrations();
+  await runBulldozerPaymentsInit(globalPrismaClient);
 
   return result;
 };
