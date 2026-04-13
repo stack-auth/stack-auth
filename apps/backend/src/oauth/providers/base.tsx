@@ -17,6 +17,11 @@ const RETRYABLE_OAUTH_NETWORK_ERROR_CODES = new Set([
   "UND_ERR_HEADERS_TIMEOUT",
   "UND_ERR_BODY_TIMEOUT",
 ]);
+const RETRYABLE_OAUTH_PROVIDER_ERROR_CODES = new Set([
+  "server_error",
+  "temporarily_unavailable",
+  "timeout",
+]);
 
 export type TokenSet = {
   accessToken: string,
@@ -40,14 +45,33 @@ function getUnknownProperty(obj: unknown, key: string): unknown {
   return Reflect.get(obj, key);
 }
 
+function getNumberProperty(obj: unknown, key: string): number | undefined {
+  if (typeof obj !== "object" || obj === null || !(key in obj)) {
+    return undefined;
+  }
+  const value = Reflect.get(obj, key);
+  return typeof value === "number" ? value : undefined;
+}
+
 export function isRetryableOAuthUserInfoError(error: unknown): boolean {
   const code = getStringProperty(error, "code");
   if (code && RETRYABLE_OAUTH_NETWORK_ERROR_CODES.has(code)) {
     return true;
   }
 
+  const providerErrorCode = getStringProperty(error, "error")?.toLowerCase();
+  if (providerErrorCode && RETRYABLE_OAUTH_PROVIDER_ERROR_CODES.has(providerErrorCode)) {
+    return true;
+  }
+
   const name = getStringProperty(error, "name");
   if (name === "AbortError" || name === "TimeoutError") {
+    return true;
+  }
+
+  const response = getUnknownProperty(error, "response");
+  const responseStatus = getNumberProperty(response, "status");
+  if (responseStatus === 429 || (responseStatus != null && responseStatus >= 500)) {
     return true;
   }
 
@@ -235,6 +259,14 @@ export abstract class OAuthBaseProvider {
       if (error?.error === 'invalid_client') {
         throw new StatusError(400, `Invalid client credentials for this OAuth provider. Please ensure the configuration in the Stack Auth dashboard is correct.`);
       }
+      if (isRetryableOAuthUserInfoError(error)) {
+        captureError("inner-oauth-callback-retryable-error", new StackAssertionError("Transient OAuth provider failure during callback exchange.", {
+          provider: this.constructor.name,
+          params,
+          cause: error,
+        }));
+        throw new KnownErrors.OAuthProviderTemporarilyUnavailable();
+      }
       if (error?.error === 'unauthorized_scope_error') {
         const scopeMatch = error?.error_description?.match(/Scope &quot;([^&]+)&quot; is not authorized for your application/);
         const missingScope = scopeMatch ? scopeMatch[1] : null;
@@ -262,11 +294,12 @@ export abstract class OAuthBaseProvider {
     });
 
     if (userInfoResult.status === "error") {
-      throw new StackAssertionError("Failed to fetch OAuth user info after retries.", {
+      captureError("oauth-userinfo-retry-exhausted", new StackAssertionError("Failed to fetch OAuth user info after retries.", {
         attempts: userInfoResult.attempts,
         provider: this.constructor.name,
         cause: userInfoResult.error,
-      });
+      }));
+      throw new KnownErrors.OAuthProviderTemporarilyUnavailable();
     }
 
     return {
