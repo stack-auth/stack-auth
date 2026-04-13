@@ -2409,14 +2409,15 @@ export function createDevTool(app: StackClientApp<true>): () => void {
 
   function closePanel() {
     if (!panel) return;
-    panel.element.classList.add('sdt-panel-exiting');
     const closing = panel;
+    panel = null;
+    closing.cleanup();
+    closing.element.classList.add('sdt-panel-exiting');
     setTimeout(() => {
       if (wrapper.contains(closing.element)) {
         wrapper.removeChild(closing.element);
       }
     }, 150);
-    panel = null;
   }
 
   function togglePanel() {
