@@ -186,6 +186,8 @@ export function createItemChangesWithExpiries(entryTables: CompactedTransactionE
   // For grants (qty >= 0): use LEAST to cap each split at remaining.
   // For removals (qty < 0): use GREATEST (closer to zero for negatives).
   // Always emit a final (remaining, null) tail row.
+  // Also emit zero-quantity "expiry marker" rows at each expiresAtMillis time,
+  // so the downstream ledger LFold advances its clock past expiry boundaries.
   const splitChanges = declareFlatMapTable({
     tableId: "payments-split-item-changes-with-expiry",
     fromTable: allChangesUnified,
@@ -223,6 +225,23 @@ export function createItemChangesWithExpiries(entryTables: CompactedTransactionE
             )),
             'expiresAtMillis', 'null'::jsonb
           )
+        )
+        || (
+          SELECT COALESCE(jsonb_agg(
+            jsonb_build_object(
+              'txnId', "rowData"->'txnId',
+              'txnEffectiveAtMillis', "w"."expiresAtMillis",
+              'customerType', "rowData"->'customerType',
+              'customerId', "rowData"->'customerId',
+              'tenancyId', "rowData"->'tenancyId',
+              'itemId', "rowData"->'itemId',
+              'quantity', to_jsonb(0),
+              'expiresAtMillis', 'null'::jsonb
+            )
+          ), '[]'::jsonb)
+          FROM "walked" AS "w"
+          WHERE "w"."expiresAtMillis" IS NOT NULL
+            AND "w"."expiresAtMillis" != 'null'::jsonb
         )
       ) AS "rows"
     `),
