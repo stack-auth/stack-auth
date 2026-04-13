@@ -216,15 +216,9 @@ contains_provision_marker() {
 line_count() {
   local file="$1"
   local count=0
-
   if [ -f "$file" ]; then
     count="$(wc -l < "$file" | tr -d '[:space:]')" || count=0
   fi
-
-  case "$count" in
-    ''|*[!0-9]*) count=0 ;;
-  esac
-
   printf '%s\n' "$count"
 }
 

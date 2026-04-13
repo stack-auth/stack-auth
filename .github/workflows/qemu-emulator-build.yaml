@@ -80,15 +80,11 @@ jobs:
       - name: Generate emulator env
         run: node docker/local-emulator/generate-env-development.mjs
 
-      # VM boot + service verification is amd64-only. arm64 runs under
-      # cross-arch TCG on this branch, where (a) the Next.js backend
-      # runtime still uses V8 TurboFan (we only applied --no-opt to the
-      # one-shot migration exec), which would re-trigger the original
-      # cross-arch TCG SIGTRAP, and (b) even if we solved that, next start
-      # is too slow under TCG to come up within any reasonable timeout.
-      # amd64 verify under KVM already exercises the image's service
-      # stack; real arm64 hardware has KVM, so end-users exercise it
-      # properly on their machines.
+      # arm64 runs under cross-arch TCG on an amd64 runner; the backend's
+      # V8 TurboFan JIT re-triggers the SIGTRAPs we dodge in migrations
+      # with --no-opt, and even if it didn't, boot is too slow under TCG
+      # to verify in any sane window. amd64 KVM already exercises the
+      # service stack; real arm64 hosts have KVM for end-users.
       - name: Start emulator and verify
         if: matrix.arch == 'amd64'
         run: |

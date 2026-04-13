@@ -43,12 +43,11 @@ write_files:
 
       gzip -dc /mnt/stack-bundle/img.tgz | docker load
 
-      # Copy build env file for pre-baking migrations
       if [ -f /mnt/stack-bundle/build.env ]; then
         cp /mnt/stack-bundle/build.env /etc/stack-build.env
       fi
 
-      # Copy per-arch build metadata (used to skip smoke test on cross-arch TCG builds)
+      # build-arch.env lets the guest skip the smoke test on cross-arch TCG.
       if [ -f /mnt/stack-bundle/build-arch.env ]; then
         cp /mnt/stack-bundle/build-arch.env /etc/stack-build-arch.env
       fi
@@ -165,14 +164,25 @@ write_files:
       start=$SECONDS
       log() { /usr/local/bin/log-provision "wait-for-deps: $*"; }
 
+      # name|probe pairs — probe runs through `eval` and must exit 0 when ready.
+      # No --max-time on these: under slow TCG a service may take >3s to
+      # respond; let curl wait, outer DEPS_TIMEOUT bounds the whole dep wait.
+      SERVICES=(
+        'postgres|nc -z 127.0.0.1 5432'
+        'clickhouse|curl -sf http://127.0.0.1:8123/ping'
+        'svix|curl -sf http://127.0.0.1:8071/api/v1/health/'
+        'minio|curl -sf http://127.0.0.1:9090/minio/health/live'
+        'qstash|[ "$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/ 2>/dev/null || true)" = "401" ]'
+      )
+
       dump_diagnostics() {
         log "dumping diagnostics for stuck dep wait..."
         log "--- docker ps -a ---"
-        docker ps -a 2>&1 | while IFS= read -r line; do log "ps: $line"; done || true
+        docker ps -a 2>&1 | /usr/local/bin/log-provision-stream "wait-for-deps: ps" || true
         log "--- docker logs ${DEPS_CONTAINER} (last 300 lines) ---"
-        docker logs --tail 300 "$DEPS_CONTAINER" 2>&1 | while IFS= read -r line; do log "deps: $line"; done || true
-        log "--- per-service probes ---"
-        nc -z 127.0.0.1 5432 >/dev/null 2>&1 && log "postgres:5432 reachable" || log "postgres:5432 NOT reachable"
+        docker logs --tail 300 "$DEPS_CONTAINER" 2>&1 | /usr/local/bin/log-provision-stream "wait-for-deps: deps" || true
+        log "--- per-service probes (3s timeout) ---"
+        nc -z -w 3 127.0.0.1 5432 >/dev/null 2>&1 && log "postgres:5432 reachable" || log "postgres:5432 NOT reachable"
         curl -sf --max-time 3 http://127.0.0.1:8123/ping >/dev/null 2>&1 && log "clickhouse:8123 reachable" || log "clickhouse:8123 NOT reachable"
         curl -sf --max-time 3 http://127.0.0.1:8071/api/v1/health/ >/dev/null 2>&1 && log "svix:8071 reachable" || log "svix:8071 NOT reachable"
         curl -sf --max-time 3 http://127.0.0.1:9090/minio/health/live >/dev/null 2>&1 && log "minio:9090 reachable" || log "minio:9090 NOT reachable"
@@ -205,11 +215,9 @@ write_files:
       }
 
       log "starting dep wait (timeout=${DEPS_TIMEOUT}s)"
-      wait_for "postgres"   'nc -z 127.0.0.1 5432'
-      wait_for "clickhouse" 'curl -sf http://127.0.0.1:8123/ping'
-      wait_for "svix"       'curl -sf http://127.0.0.1:8071/api/v1/health/'
-      wait_for "minio"      'curl -sf http://127.0.0.1:9090/minio/health/live'
-      wait_for "qstash"     '[ "$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/ 2>/dev/null || true)" = "401" ]'
+      for entry in "${SERVICES[@]}"; do
+        wait_for "${entry%%|*}" "${entry#*|}"
+      done
       log "all deps ready ($((SECONDS - start))s total)"
 
   - path: /etc/stack-build-computed.env
@@ -238,6 +246,17 @@ write_files:
       if [ -n "${STACK_PROVISION_LOG_FILE:-}" ]; then
         printf '%s\n' "$msg" >> "$STACK_PROVISION_LOG_FILE"
       fi
+
+  - path: /usr/local/bin/log-provision-stream
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -uo pipefail
+
+      prefix="${1:-}"
+      while IFS= read -r line; do
+        /usr/local/bin/log-provision "${prefix}: ${line}"
+      done
 
   - path: /usr/local/bin/run-build-migrations
     permissions: '0755'
@@ -280,26 +299,12 @@ write_files:
       log "init-services done (${elapsed}s)."
 
       log "Running migrations..."
-      # Capture stdout+stderr so failures surface the actual node error in
-      # the host-visible provision log instead of being swallowed by the
-      # serial-only stream.
-      # Two V8 flags, both only meaningful under cross-arch TCG, both harmless
-      # under KVM so we apply unconditionally:
-      #   --no-opt            disables TurboFan/Maglev. Without it, TurboFan
-      #                       emits aggressive arm64 (PAC/BTI/LSE) that
-      #                       cross-arch TCG mis-translates into a SIGTRAP
-      #                       before the first migration runs.
-      #   --no-wasm-tier-up   pins Prisma 7's wasm query compiler to V8's
-      #                       Liftoff baseline. Without it, once wasm
-      #                       functions get hot, V8 calls
-      #                       Runtime_WasmTriggerTierUp which walks the
-      #                       stack via InnerPointerToCodeCache — and
-      #                       cross-arch TCG's translated inner pointers
-      #                       don't line up with V8's code-cache entries,
-      #                       tripping `Check failed: it->second.Size() >
-      #                       offset` deep inside v8::internal::Heap.
-      # Both flags are passed on node's CLI because NODE_OPTIONS's allowlist
-      # rejects them.
+      # --no-opt / --no-wasm-tier-up keep V8 off TurboFan/Maglev and pin
+      # Prisma's wasm to Liftoff; without them cross-arch TCG mistranslates
+      # JIT-emitted arm64 (SIGTRAP on migrate) and V8's wasm tier-up trips
+      # an InnerPointerToCodeCache check deep in the heap. Both flags are
+      # no-ops under KVM, and must be passed on node's CLI (NODE_OPTIONS
+      # rejects them).
       migrate_log="$(mktemp)"
       set +e
       docker exec \
@@ -312,7 +317,7 @@ write_files:
       set -e
       if [ "$migrate_status" -ne 0 ]; then
         log "MIGRATIONS FAILED (exit ${migrate_status}) — last 200 lines of migration output:"
-        tail -200 "$migrate_log" | while IFS= read -r line; do log "migrate: $line"; done || true
+        tail -200 "$migrate_log" | /usr/local/bin/log-provision-stream "migrate" || true
         rm -f "$migrate_log"
         exit "$migrate_status"
       fi
@@ -390,13 +395,13 @@ write_files:
         if [ "$smoke_passed" = "false" ]; then
           log "SMOKE TEST FAILED: backend /health?db=1 did not return 200 within ${smoke_timeout}s"
           log "--- docker ps -a ---"
-          docker ps -a 2>&1 | while IFS= read -r line; do log "ps: $line"; done || true
+          docker ps -a 2>&1 | /usr/local/bin/log-provision-stream "ps" || true
           log "--- smoke-test container logs (last 200 lines) ---"
-          docker logs --tail 200 smoke-test 2>&1 | while IFS= read -r line; do log "smoke-test: $line"; done || true
+          docker logs --tail 200 smoke-test 2>&1 | /usr/local/bin/log-provision-stream "smoke-test" || true
           log "--- free -m ---"
-          free -m 2>&1 | while IFS= read -r line; do log "mem: $line"; done || true
+          free -m 2>&1 | /usr/local/bin/log-provision-stream "mem" || true
           log "--- curl -v /health?db=1 ---"
-          curl -v --max-time 5 http://127.0.0.1:8102/health?db=1 2>&1 | while IFS= read -r line; do log "curl: $line"; done || true
+          curl -v --max-time 5 http://127.0.0.1:8102/health?db=1 2>&1 | /usr/local/bin/log-provision-stream "curl" || true
           docker stop smoke-test 2>/dev/null || true
           exit 1
         fi
@@ -472,6 +477,13 @@ write_files:
         export STACK_PROVISION_LOG_FILE=""
       fi
 
+      write_marker_to_consoles() {
+        local marker="$1"
+        for dev in /dev/console /dev/ttyAMA0 /dev/ttyS0; do
+          echo "$marker" > "$dev" 2>/dev/null || true
+        done
+      }
+
       cleanup() {
         local status=$?
         if [ "$status" -ne 0 ]; then
@@ -479,9 +491,7 @@ write_files:
             printf 'ERROR: provision-build exited with code %s\n' "$status" >> "$STACK_PROVISION_LOG_FILE"
             printf '%s\n' "STACK_CLOUD_INIT_FAILED" >> "$STACK_PROVISION_LOG_FILE"
           fi
-          for dev in /dev/console /dev/ttyAMA0 /dev/ttyS0; do
-            echo "STACK_CLOUD_INIT_FAILED" > "$dev" 2>/dev/null || true
-          done
+          write_marker_to_consoles "STACK_CLOUD_INIT_FAILED"
           sync || true
           (sleep 2 && shutdown -P now) &
           (sleep 15 && poweroff -f) &
@@ -489,7 +499,6 @@ write_files:
       }
       trap cleanup EXIT
 
-      # Find the serial device and tee all output to it
       SERIAL=""
       for d in /dev/ttyAMA0 /dev/ttyS0; do
         [ -c "$d" ] && SERIAL="$d" && break
@@ -523,9 +532,7 @@ write_files:
       if [ -n "${STACK_PROVISION_LOG_FILE:-}" ]; then
         printf '%s\n' "STACK_CLOUD_INIT_DONE" >> "$STACK_PROVISION_LOG_FILE"
       fi
-      for dev in /dev/console /dev/ttyAMA0 /dev/ttyS0; do
-        echo "STACK_CLOUD_INIT_DONE" > "$dev" 2>/dev/null || true
-      done
+      write_marker_to_consoles "STACK_CLOUD_INIT_DONE"
 
       shutdown -P now
 
