@@ -1414,8 +1414,14 @@ function createAITab(app: StackClientApp<true>): HTMLElement {
   }
 
   function stringifyForDebug(value: unknown): string {
-    const json = JSON.stringify(value, null, 2);
-    return json === undefined ? String(value) : json;
+    if (value === undefined || typeof value === 'function' || typeof value === 'symbol') {
+      return String(value);
+    }
+    return JSON.stringify(value, null, 2);
+  }
+
+  function getLastItem<T>(items: readonly T[]): T | undefined {
+    return items.length > 0 ? items[items.length - 1] : undefined;
   }
 
   function isRecord(value: unknown): value is Record<string, unknown> {
@@ -1438,8 +1444,8 @@ function createAITab(app: StackClientApp<true>): HTMLElement {
   }
 
   function getCurrentAssistantMessage(): AssistantMessage {
-    const lastMessage = messages[messages.length - 1];
-    if (lastMessage == null || lastMessage.role !== 'assistant') {
+    const lastMessage = getLastItem(messages);
+    if (lastMessage?.role !== 'assistant') {
       throw new Error('Expected current message to be an assistant message');
     }
     return lastMessage;
@@ -1447,8 +1453,8 @@ function createAITab(app: StackClientApp<true>): HTMLElement {
 
   function appendTextDelta(delta: string) {
     const assistantMessage = getCurrentAssistantMessage();
-    const lastPart = assistantMessage.parts[assistantMessage.parts.length - 1];
-    if (lastPart != null && lastPart.type === 'text') {
+    const lastPart = getLastItem(assistantMessage.parts);
+    if (lastPart?.type === 'text') {
       lastPart.content += delta;
       return;
     }
@@ -1562,8 +1568,9 @@ function createAITab(app: StackClientApp<true>): HTMLElement {
             case 'reasoning-end':
             case 'source-url':
             case 'source-document':
-            case 'file':
+            case 'file': {
               break;
+            }
             case 'text-delta': {
               const delta = getRequiredStringField(event, 'delta', payload);
               appendTextDelta(delta);
@@ -1642,17 +1649,19 @@ function createAITab(app: StackClientApp<true>): HTMLElement {
               const reason = typeof event.reason === 'string' ? event.reason : 'unknown reason';
               throw new Error(`AI stream aborted: ${reason}`);
             }
-            case 'error':
+            case 'error': {
               throw new Error(
                 typeof event.errorText === 'string'
                   ? `AI stream error: ${event.errorText}`
                   : `AI stream error event: ${payload}`
               );
-            default:
+            }
+            default: {
               if (eventType.startsWith('data-')) {
                 break;
               }
               throw new Error(`Unexpected AI stream event type: ${eventType}`);
+            }
           }
         }
 
@@ -1669,8 +1678,8 @@ function createAITab(app: StackClientApp<true>): HTMLElement {
       }
 
       const message = error instanceof Error ? error.message : 'Unknown AI stream error';
-      const lastMessage = messages[messages.length - 1];
-      if (lastMessage != null && lastMessage.role === 'assistant') {
+      const lastMessage = getLastItem(messages);
+      if (lastMessage?.role === 'assistant') {
         lastMessage.parts = [{ type: 'text', content: message }];
         lastMessage.toolCallsById.clear();
       }
