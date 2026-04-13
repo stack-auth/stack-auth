@@ -40,6 +40,11 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(503, "SpacetimeDB unavailable");
     }
 
+    const authUser = fullReq.auth?.user;
+    if (!authUser) {
+      throw new StatusError(StatusError.Unauthorized, "Authentication required");
+    }
+
     const token = getEnvVariable("STACK_MCP_LOG_TOKEN");
     await conn.reducers.updateHumanCorrection({
       token,
@@ -47,7 +52,7 @@ export const POST = createSmartRouteHandler({
       correctedQuestion: body.correctedQuestion,
       correctedAnswer: body.correctedAnswer,
       publish: body.publish,
-      reviewedBy: fullReq.auth.user.display_name ?? fullReq.auth.user.primary_email ?? fullReq.auth.user.id,
+      reviewedBy: authUser.display_name ?? authUser.primary_email ?? authUser.id,
     });
 
     return {
