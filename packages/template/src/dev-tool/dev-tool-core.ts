@@ -19,6 +19,8 @@ import { clampTriggerPosition, getSnappedTriggerPlacement, resolveTriggerPositio
 
 type TabId = 'overview' | 'components' | 'ai' | 'docs' | 'dashboard' | 'console' | 'support';
 
+type TabResult = { element: HTMLElement, cleanup?: () => void };
+
 type ApiLogEntry = {
   id: string;
   timestamp: number;
@@ -558,7 +560,7 @@ function createIframeTab(src: string, title: string, loadingMsg = 'Loading\u2026
 // Overview tab
 // ---------------------------------------------------------------------------
 
-function createOverviewTab(app: StackClientApp<true>): HTMLElement {
+function createOverviewTab(app: StackClientApp<true>): TabResult {
   const container = h('div', { className: 'sdt-ov' });
   const apiBaseUrl = resolveApiBaseUrl(app);
 
@@ -1001,18 +1003,14 @@ function createOverviewTab(app: StackClientApp<true>): HTMLElement {
 
   container.append(heroCard, projectCard, authCard, checksCard, changelogCard);
 
-  (container as any).__cleanup = () => {
-    clearInterval(userPoll);
-  };
-
-  return container;
+  return { element: container, cleanup: () => clearInterval(userPoll) };
 }
 
 // ---------------------------------------------------------------------------
 // Console tab
 // ---------------------------------------------------------------------------
 
-function createConsoleTab(app: StackClientApp<true>, logStore: LogStore, state: ReturnType<typeof createStateStore>): HTMLElement {
+function createConsoleTab(app: StackClientApp<true>, logStore: LogStore, state: ReturnType<typeof createStateStore>): TabResult {
   const container = h('div', { style: { display: 'flex', flexDirection: 'column', height: '100%' } });
 
   const EVENT_TYPE_STYLES: Record<string, string> = {
@@ -1159,9 +1157,8 @@ function createConsoleTab(app: StackClientApp<true>, logStore: LogStore, state: 
       renderLogs();
     }
   });
-  (container as any).__cleanup = unsub;
 
-  return container;
+  return { element: container, cleanup: unsub };
 }
 
 // ---------------------------------------------------------------------------
@@ -2239,7 +2236,7 @@ function createPanel(
   state: ReturnType<typeof createStateStore>,
   logStore: LogStore,
   onClose: () => void,
-): HTMLElement {
+): { element: HTMLElement, cleanup: () => void } {
   const panel = h('div', { className: 'sdt-panel' });
   panel.style.width = state.get().panelWidth + 'px';
   panel.style.height = state.get().panelHeight + 'px';
@@ -2262,6 +2259,18 @@ function createPanel(
   inner.appendChild(content);
 
   const mountedPanes = new Map<TabId, HTMLElement>();
+  const cleanups: Array<() => void> = [];
+
+  function mountTab(pane: HTMLElement, result: TabResult | HTMLElement) {
+    if ('element' in result) {
+      pane.appendChild(result.element);
+      if (result.cleanup) {
+        cleanups.push(result.cleanup);
+      }
+    } else {
+      pane.appendChild(result);
+    }
+  }
 
   function getOrCreatePane(tabId: TabId): HTMLElement {
     if (mountedPanes.has(tabId)) {
@@ -2270,31 +2279,31 @@ function createPanel(
     const pane = h('div', { className: 'sdt-tab-pane' });
     switch (tabId) {
       case 'overview': {
-        pane.appendChild(createOverviewTab(app));
+        mountTab(pane, createOverviewTab(app));
         break;
       }
       case 'components': {
-        pane.appendChild(createComponentsTab(app));
+        mountTab(pane, createComponentsTab(app));
         break;
       }
       case 'ai': {
-        pane.appendChild(createAITab(app));
+        mountTab(pane, createAITab(app));
         break;
       }
       case 'console': {
-        pane.appendChild(createConsoleTab(app, logStore, state));
+        mountTab(pane, createConsoleTab(app, logStore, state));
         break;
       }
       case 'docs': {
-        pane.appendChild(createDocsTab());
+        mountTab(pane, createDocsTab());
         break;
       }
       case 'dashboard': {
-        pane.appendChild(createDashboardTab(app));
+        mountTab(pane, createDashboardTab(app));
         break;
       }
       case 'support': {
-        pane.appendChild(createSupportTab(app));
+        mountTab(pane, createSupportTab(app));
         break;
       }
     }
@@ -2357,7 +2366,12 @@ function createPanel(
   addResizeHandle('top-left');
 
   panel.appendChild(inner);
-  return panel;
+  return {
+    element: panel,
+    cleanup: () => {
+      for (const fn of cleanups) fn();
+    },
+  };
 }
 
 // ===========================================================================================
@@ -2385,23 +2399,24 @@ export function createDevTool(app: StackClientApp<true>): () => void {
   const state = createStateStore();
   const logStore = getGlobalLogStore();
 
-  let panel: HTMLElement | null = null;
+  let panel: { element: HTMLElement, cleanup: () => void } | null = null;
 
   function openPanel() {
     if (panel) return;
     panel = createPanel(app, state, logStore, closePanel);
-    wrapper.appendChild(panel);
+    wrapper.appendChild(panel.element);
   }
 
   function closePanel() {
     if (!panel) return;
-    panel.classList.add('sdt-panel-exiting');
+    panel.element.classList.add('sdt-panel-exiting');
+    const closing = panel;
     setTimeout(() => {
-      if (panel && wrapper.contains(panel)) {
-        wrapper.removeChild(panel);
+      if (wrapper.contains(closing.element)) {
+        wrapper.removeChild(closing.element);
       }
-      panel = null;
     }, 150);
+    panel = null;
   }
 
   function togglePanel() {
@@ -2441,6 +2456,7 @@ export function createDevTool(app: StackClientApp<true>): () => void {
 
   return () => {
     removeRequestListener();
+    panel?.cleanup();
     if (root.parentNode) {
       root.parentNode.removeChild(root);
     }
