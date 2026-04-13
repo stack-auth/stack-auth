@@ -3,12 +3,13 @@ import { buildStackAuthHeaders, type CurrentUser } from "@/lib/api-headers";
 import { getPublicEnvVar } from "@/lib/env";
 import type { UIMessage } from "@ai-sdk/react";
 import { ArrowSquareOutIcon, CaretDownIcon, CheckIcon, CopyIcon, DatabaseIcon, SparkleIcon, SpinnerGapIcon, UserIcon } from "@phosphor-icons/react";
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { convertToModelMessages, DefaultChatTransport } from "ai";
 import { memo, useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+
 
 export function createAskAiTransport({
   currentUser,
@@ -531,4 +532,27 @@ export function useWordStreaming(content: string) {
     getDisplayContent: (text: string) => getFirstNWords(text, displayedWordCount),
     isRevealing: displayedWordCount < targetWordCount,
   };
+}
+
+
+// Classifies raw AI provider errors into user-friendly messages.
+// The raw error is captured to Sentry separately via captureError — never shown to the user.
+export function getFriendlyAiErrorMessage(error: Error): string {
+  const causeMessage = (error as { cause?: { message?: string } }).cause?.message ?? "";
+  const blob = `${error.message} ${causeMessage}`;
+  if (/maximum context length|context_length_exceeded|too many tokens|context length/i.test(blob)) {
+    return "The conversation got too long. Try starting a new chat or asking a more focused question.";
+  }
+  if (/rate limit|429|quota|too many requests/i.test(blob)) {
+    return "Service is busy. Please try again in a moment.";
+  }
+  if (/timeout|ECONNRESET|fetch failed|network/i.test(blob)) {
+    return "Request timed out. Please try again.";
+  }
+  if (/result too large|limit \d+/i.test(blob)) {
+    return "The query returned too much data. Try narrowing your question or requesting fewer rows.";
+  }
+  // Unclassified — this is unexpected, report it
+  captureError("ask-ai", error);
+  return "Something went wrong. Please try again.";
 }
