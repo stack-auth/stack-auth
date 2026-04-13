@@ -2,6 +2,12 @@
 
 ---
 
+## 4/13/26
+
+### Dashboard
+- Added "Ask AI" chat feature to the Stack Companion sidebar for AI-powered assistance with Stack Auth, your project configuration, and analytics
+- Includes streaming responses, code block formatting with copy-to-clipboard, and persistent conversation history
+
 ## 1/23/26
 
 ### Payments
