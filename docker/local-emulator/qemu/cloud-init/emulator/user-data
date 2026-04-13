@@ -283,20 +283,30 @@ write_files:
       # Capture stdout+stderr so failures surface the actual node error in
       # the host-visible provision log instead of being swallowed by the
       # serial-only stream.
-      # node --no-opt disables V8's TurboFan optimizer (the tier that emits
-      # aggressive arm64 instructions — PAC/BTI/LSE — that cross-arch TCG
-      # mis-translates into the migration SIGTRAP). Ignition + Sparkplug
-      # still run, and the Wasm JIT is left intact so Prisma 7's wasm query
-      # compiler keeps working. Passed directly on node's CLI because
-      # NODE_OPTIONS's allowlist rejects --no-opt. Cheap enough under KVM
-      # that we apply it unconditionally rather than gating on arch.
+      # Two V8 flags, both only meaningful under cross-arch TCG, both harmless
+      # under KVM so we apply unconditionally:
+      #   --no-opt            disables TurboFan/Maglev. Without it, TurboFan
+      #                       emits aggressive arm64 (PAC/BTI/LSE) that
+      #                       cross-arch TCG mis-translates into a SIGTRAP
+      #                       before the first migration runs.
+      #   --no-wasm-tier-up   pins Prisma 7's wasm query compiler to V8's
+      #                       Liftoff baseline. Without it, once wasm
+      #                       functions get hot, V8 calls
+      #                       Runtime_WasmTriggerTierUp which walks the
+      #                       stack via InnerPointerToCodeCache — and
+      #                       cross-arch TCG's translated inner pointers
+      #                       don't line up with V8's code-cache entries,
+      #                       tripping `Check failed: it->second.Size() >
+      #                       offset` deep inside v8::internal::Heap.
+      # Both flags are passed on node's CLI because NODE_OPTIONS's allowlist
+      # rejects them.
       migrate_log="$(mktemp)"
       set +e
       docker exec \
         --env-file /etc/stack-build.env \
         --env-file /etc/stack-build-computed.env \
         stack-build-init \
-        sh -c 'cd /app/apps/backend && node --no-opt dist/db-migrations.mjs migrate && node --no-opt dist/db-migrations.mjs seed' \
+        sh -c 'cd /app/apps/backend && node --no-opt --no-wasm-tier-up dist/db-migrations.mjs migrate && node --no-opt --no-wasm-tier-up dist/db-migrations.mjs seed' \
         > "$migrate_log" 2>&1
       migrate_status=$?
       set -e
