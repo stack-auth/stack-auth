@@ -35,7 +35,7 @@ import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, 
 import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
-import { LOCAL_EMULATOR_INTERNAL_PUBLISHABLE_CLIENT_KEY, clientVersion, createCache, createCacheBySession, fetchEmulatorProjectCredentials, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getLocalEmulatorConfigFilePath, localEmulatorBaseUrl, resolveApiUrls, resolveConstructorOptions } from "./common";
+import { LOCAL_EMULATOR_INTERNAL_PUBLISHABLE_CLIENT_KEY, assertNoEmulatorOptionConflict, clientVersion, createCache, createCacheBySession, fetchEmulatorProjectCredentials, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getLocalEmulatorConfigFilePath, localEmulatorBaseUrl, resolveApiUrls, resolveConstructorOptions } from "./common";
 
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
@@ -419,6 +419,12 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
     const emulatorConfigFilePath = getLocalEmulatorConfigFilePath(resolvedOptions.localEmulatorConfigFilePath);
     const isEmulator = !!emulatorConfigFilePath;
+
+    assertNoEmulatorOptionConflict(emulatorConfigFilePath, {
+      projectId: resolvedOptions.projectId,
+      publishableClientKey: resolvedOptions.publishableClientKey,
+      secretServerKey: resolvedOptions.secretServerKey,
+    });
 
     const publishableClientKey = resolvedOptions.publishableClientKey ?? getDefaultPublishableClientKey() ?? (isEmulator ? LOCAL_EMULATOR_INTERNAL_PUBLISHABLE_CLIENT_KEY : undefined);
 

@@ -56,7 +56,7 @@ import { isHostedHandlerUrlForProject, resolveHandlerUrls } from "../../url-targ
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
-import { LOCAL_EMULATOR_INTERNAL_PUBLISHABLE_CLIENT_KEY, TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, fetchEmulatorProjectCredentials, getAnalyticsBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getLocalEmulatorConfigFilePath, getUrls, localEmulatorBaseUrl, resolveApiUrls, resolveConstructorOptions } from "./common";
+import { LOCAL_EMULATOR_INTERNAL_PUBLISHABLE_CLIENT_KEY, TokenObject, assertNoEmulatorOptionConflict, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, fetchEmulatorProjectCredentials, getAnalyticsBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getLocalEmulatorConfigFilePath, getUrls, localEmulatorBaseUrl, resolveApiUrls, resolveConstructorOptions } from "./common";
 import { EventTracker } from "./event-tracker";
 import { crossDomainAuthQueryParams, getCrossDomainHandoffParamsFromCurrentUrl, planRedirectToHandler } from "./redirect-page-urls";
 import type { CrossDomainHandoffParams } from "./redirect-page-urls";
@@ -509,6 +509,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
     const emulatorConfigFilePath = getLocalEmulatorConfigFilePath(resolvedOptions.localEmulatorConfigFilePath);
     const isEmulator = !!emulatorConfigFilePath;
+
+    assertNoEmulatorOptionConflict(emulatorConfigFilePath, {
+      projectId: resolvedOptions.projectId,
+      publishableClientKey: resolvedOptions.publishableClientKey,
+    });
 
     const projectId = resolvedOptions.projectId ?? getDefaultProjectId({ isEmulator });
     if (projectId !== "internal" && !(projectId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i))) {

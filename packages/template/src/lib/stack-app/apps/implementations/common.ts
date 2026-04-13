@@ -72,28 +72,41 @@ export function getLocalEmulatorConfigFilePath(explicitOption?: string): string 
   return explicitOption || envVars.NEXT_PUBLIC_STACK_LOCAL_EMULATOR_CONFIG_FILE_PATH || undefined;
 }
 
-export function fetchEmulatorProjectCredentials(emulatorConfigFilePath: string): Promise<{
+export async function fetchEmulatorProjectCredentials(emulatorConfigFilePath: string): Promise<{
   project_id: string,
   publishable_client_key: string,
   secret_server_key: string,
   super_secret_admin_key: string,
 }> {
-  return (async () => {
-    const res = await fetch(`${localEmulatorBaseUrl}/api/v1/internal/local-emulator/project`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "X-Stack-Project-Id": "internal",
-        "X-Stack-Access-Type": "client",
-        "X-Stack-Publishable-Client-Key": LOCAL_EMULATOR_INTERNAL_PUBLISHABLE_CLIENT_KEY,
-      },
-      body: JSON.stringify({ absolute_file_path: emulatorConfigFilePath }),
-    });
-    if (!res.ok) {
-      throw new Error(`Failed to initialize local emulator: ${res.status} ${await res.text()}`);
-    }
-    return await res.json();
-  })();
+  const res = await fetch(`${localEmulatorBaseUrl}/api/v1/internal/local-emulator/project`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Stack-Project-Id": "internal",
+      "X-Stack-Access-Type": "client",
+      "X-Stack-Publishable-Client-Key": LOCAL_EMULATOR_INTERNAL_PUBLISHABLE_CLIENT_KEY,
+    },
+    body: JSON.stringify({ absolute_file_path: emulatorConfigFilePath }),
+  });
+  if (!res.ok) {
+    throw new Error(`Failed to initialize local emulator: ${res.status} ${await res.text()}`);
+  }
+  return await res.json();
+}
+
+export function assertNoEmulatorOptionConflict(
+  emulatorConfigFilePath: string | undefined,
+  options: Record<string, unknown>,
+) {
+  if (!emulatorConfigFilePath) return;
+  const conflicting = Object.entries(options)
+    .filter(([, value]) => value !== undefined && value !== null)
+    .map(([key]) => key);
+  if (conflicting.length > 0) {
+    throw new Error(
+      `Cannot specify ${conflicting.join(", ")} together with localEmulatorConfigFilePath — the local emulator provides these credentials automatically.`
+    );
+  }
 }
 
 export function getDefaultProjectId(options?: { isEmulator?: boolean }) {
