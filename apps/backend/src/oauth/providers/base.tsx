@@ -5,12 +5,67 @@ import { mergeScopeStrings } from "@stackframe/stack-shared/dist/utils/strings";
 import { CallbackParamsType, Client, Issuer, TokenSet as OIDCTokenSet, generators } from "openid-client";
 import { OAuthUserInfo } from "../utils";
 
+const OAUTH_USERINFO_TOTAL_ATTEMPTS = 3;
+const OAUTH_USERINFO_RETRY_DELAY_BASE_MS = 250;
+const RETRYABLE_OAUTH_NETWORK_ERROR_CODES = new Set([
+  "ETIMEDOUT",
+  "ECONNRESET",
+  "ECONNREFUSED",
+  "EAI_AGAIN",
+  "ENETUNREACH",
+  "UND_ERR_CONNECT_TIMEOUT",
+  "UND_ERR_HEADERS_TIMEOUT",
+  "UND_ERR_BODY_TIMEOUT",
+]);
+
 export type TokenSet = {
   accessToken: string,
   refreshToken?: string,
   accessTokenExpiredAt: Date,
   idToken?: string,
 };
+
+function getStringProperty(obj: unknown, key: string): string | undefined {
+  if (typeof obj !== "object" || obj === null || !(key in obj)) {
+    return undefined;
+  }
+  const value = Reflect.get(obj, key);
+  return typeof value === "string" ? value : undefined;
+}
+
+function getUnknownProperty(obj: unknown, key: string): unknown {
+  if (typeof obj !== "object" || obj === null || !(key in obj)) {
+    return undefined;
+  }
+  return Reflect.get(obj, key);
+}
+
+export function isRetryableOAuthUserInfoError(error: unknown): boolean {
+  const code = getStringProperty(error, "code");
+  if (code && RETRYABLE_OAUTH_NETWORK_ERROR_CODES.has(code)) {
+    return true;
+  }
+
+  const name = getStringProperty(error, "name");
+  if (name === "AbortError" || name === "TimeoutError") {
+    return true;
+  }
+
+  const message = getStringProperty(error, "message")?.toLowerCase();
+  if (message?.includes("outgoing request timed out")) {
+    return true;
+  }
+  if (message?.includes("timed out")) {
+    return true;
+  }
+
+  const cause = getUnknownProperty(error, "cause");
+  if (cause !== undefined && cause !== error) {
+    return isRetryableOAuthUserInfoError(cause);
+  }
+
+  return false;
+}
 
 function processTokenSet(providerName: string, tokenSet: OIDCTokenSet, defaultAccessTokenExpiresInMillis?: number): TokenSet {
   if (!tokenSet.access_token) {
@@ -193,8 +248,29 @@ export abstract class OAuthBaseProvider {
     }
     tokenSet = processTokenSet(this.constructor.name, tokenSet, this.defaultAccessTokenExpiresInMillis);
 
+    const userInfoResult = await Result.retry(async () => {
+      try {
+        return Result.ok(await this.postProcessUserInfo(tokenSet));
+      } catch (error) {
+        if (isRetryableOAuthUserInfoError(error)) {
+          return Result.error(error);
+        }
+        throw error;
+      }
+    }, OAUTH_USERINFO_TOTAL_ATTEMPTS, {
+      exponentialDelayBase: OAUTH_USERINFO_RETRY_DELAY_BASE_MS,
+    });
+
+    if (userInfoResult.status === "error") {
+      throw new StackAssertionError("Failed to fetch OAuth user info after retries.", {
+        attempts: userInfoResult.attempts,
+        provider: this.constructor.name,
+        cause: userInfoResult.error,
+      });
+    }
+
     return {
-      userInfo: await this.postProcessUserInfo(tokenSet),
+      userInfo: userInfoResult.data,
       tokenSet,
     };
   }
