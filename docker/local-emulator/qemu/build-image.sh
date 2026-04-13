@@ -112,15 +112,36 @@ qemu_cmd_prefix_for_arch() {
   case "$arch" in
     arm64)
       local accel="tcg"
+      local cpu="max"
       if [ "$HOST_ARCH" = "arm64" ]; then
+        # Same-arch: prefer hardware acceleration, keep -cpu max. If no
+        # accelerator is available (e.g. Azure arm64 runners with no
+        # nested virt) we fall through to TCG, but same-arch TCG handles
+        # -cpu max correctly and more named CPU models have TCG bugs
+        # than -cpu max does.
         case "$HOST_OS" in
           darwin) accel="hvf" ;;
           linux) [ -w /dev/kvm ] && accel="kvm" ;;
         esac
+      else
+        # Cross-arch TCG (amd64 host emulating arm64 guest) needs a CPU
+        # model that threads a narrow needle:
+        #   * -cpu max advertises armv8.5+ features (PAC, BTI, SVE, LSE…)
+        #     that V8's TurboFan then emits JIT code for; cross-arch TCG
+        #     mistranslates some of those and node SIGTRAPs in migrations.
+        #   * -cpu cortex-a72 (armv8.0-a) keeps V8 safe but makes
+        #     ClickHouse SIGILL on startup because its statically-linked
+        #     LSE atomics (armv8.1+) aren't recognized.
+        # cortex-a76 is armv8.2-a: it exposes LSE (ClickHouse happy)
+        # while predating PAC (v8.3) and BTI (v8.5), so V8's aggressive
+        # JIT tiers don't emit the instructions that tripped TCG. Pair
+        # this with `node --no-opt` on the migration exec, which keeps
+        # V8 in Ignition+Sparkplug only (no TurboFan/Maglev).
+        cpu="cortex-a76"
       fi
       local firmware
       firmware="$(find_aarch64_firmware)"
-      echo "qemu-system-aarch64 -machine virt -accel $accel -cpu max -bios $firmware"
+      echo "qemu-system-aarch64 -machine virt -accel $accel -cpu $cpu -bios $firmware"
       ;;
     amd64)
       local accel="tcg"
@@ -176,6 +197,40 @@ prepare_bundle_artifacts() {
   printf "%s" "$current_ids" > "$bundle_meta"
 }
 
+contains_provision_marker() {
+  local provision_log="$1"
+  local serial_log="$2"
+  local marker="$3"
+
+  if [ -f "$provision_log" ] && grep -Fqx "$marker" "$provision_log" 2>/dev/null; then
+    return 0
+  fi
+
+  if [ -f "$serial_log" ] && LC_ALL=C strings -a "$serial_log" 2>/dev/null | grep -Fqx "$marker" 2>/dev/null; then
+    return 0
+  fi
+
+  return 1
+}
+
+line_count() {
+  local file="$1"
+  local count=0
+  if [ -f "$file" ]; then
+    count="$(wc -l < "$file" | tr -d '[:space:]')" || count=0
+  fi
+  printf '%s\n' "$count"
+}
+
+persist_provision_logs() {
+  local arch="$1"
+  local serial_log="$2"
+  local provision_log="$3"
+
+  cp "$serial_log" "$IMAGE_DIR/provision-emulator-${arch}.log" 2>/dev/null || true
+  cp "$provision_log" "$IMAGE_DIR/provision-emulator-${arch}.progress.log" 2>/dev/null || true
+}
+
 build_one() {
   local arch="$1"
   local base_img="$IMAGE_DIR/debian-${DEBIAN_VERSION}-base-${arch}.qcow2"
@@ -192,8 +247,12 @@ build_one() {
   local bundle_iso="$tmp_dir/bundle.iso"
   local bundle_dir="$tmp_dir/bundle"
   local serial_log="$tmp_dir/serial.log"
+  local provision_log="$tmp_dir/provision.log"
   local pidfile="$tmp_dir/qemu.pid"
-  local qemu_base pid elapsed
+  local qemu_base pid elapsed total_build_lines
+  local last_build_lines=0
+  local guest_exited=false
+  local guest_failed=false
   local start_time=$SECONDS
 
   cp "$base_img" "$tmp_img"
@@ -209,21 +268,28 @@ build_one() {
 
   mkdir -p "$bundle_dir"
   cp "$bundle_tgz" "$bundle_dir/img.tgz"
+  cp "$BUILD_ENV_FILE" "$bundle_dir/build.env"
+  # Tell the guest which arch it's being built for so cross-arch (TCG) builds
+  # can skip the smoke test, which isn't reliable under software emulation.
+  printf 'STACK_EMULATOR_BUILD_ARCH=%s\n' "$arch" > "$bundle_dir/build-arch.env"
   make_iso_from_dir "$bundle_iso" "STACKBUNDLE" "$bundle_dir"
 
   : > "$serial_log"
+  : > "$provision_log"
   qemu_base="$(qemu_cmd_prefix_for_arch "$arch")"
+  log "QEMU command prefix (${arch}): $qemu_base"
 
   # shellcheck disable=SC2086
   $qemu_base \
     -boot order=c \
     -m "$RAM" \
     -smp "$CPUS" \
-    -drive "file=$tmp_img,format=qcow2,if=virtio" \
+    -drive "file=$tmp_img,format=qcow2,if=virtio,discard=on,detect-zeroes=unmap" \
     -drive "file=$seed_iso,format=raw,if=virtio,readonly=on" \
     -drive "file=$bundle_iso,format=raw,if=virtio,readonly=on" \
     -netdev user,id=net0 \
     -device virtio-net-pci,netdev=net0 \
+    -virtfs "local,path=$tmp_dir,mount_tag=hostfs,security_model=none" \
     -serial "file:$serial_log" \
     -display none \
     -daemonize \
@@ -232,23 +298,62 @@ build_one() {
   pid="$(cat "$pidfile")"
   elapsed=0
   while [ "$elapsed" -lt "$PROVISION_TIMEOUT" ]; do
-    if grep -q "STACK_CLOUD_INIT_DONE" "$serial_log" 2>/dev/null; then
+    if contains_provision_marker "$provision_log" "$serial_log" "STACK_CLOUD_INIT_DONE"; then
       break
     fi
+
+    if contains_provision_marker "$provision_log" "$serial_log" "STACK_CLOUD_INIT_FAILED"; then
+      guest_failed=true
+      break
+    fi
+
+    if [ -f "$provision_log" ]; then
+      total_build_lines="$(line_count "$provision_log")"
+      if [ "$total_build_lines" -gt "$last_build_lines" ]; then
+        echo ""
+        sed -n "$((last_build_lines + 1)),${total_build_lines}p" "$provision_log" 2>/dev/null | while IFS= read -r msg; do
+          if [ "$msg" = "STACK_CLOUD_INIT_DONE" ]; then
+            continue
+          fi
+          printf "  [%3ds] %s\n" "$elapsed" "$msg"
+        done
+        last_build_lines="$total_build_lines"
+      fi
+    fi
+
+    if ! kill -0 "$pid" 2>/dev/null; then
+      guest_exited=true
+      break
+    fi
+
     sleep 5
     elapsed=$((SECONDS - start_time))
     printf "\r  [%3ds / %ds] provisioning emulator..." "$elapsed" "$PROVISION_TIMEOUT"
   done
   echo ""
 
-  if ! grep -q "STACK_CLOUD_INIT_DONE" "$serial_log" 2>/dev/null; then
-    err "Provisioning timed out for emulator (${arch})"
-    tail -50 "$serial_log" >&2 || true
+  if ! contains_provision_marker "$provision_log" "$serial_log" "STACK_CLOUD_INIT_DONE"; then
+    if [ "$guest_failed" = true ]; then
+      err "Guest provisioning reported failure for emulator (${arch})"
+    elif [ "$guest_exited" = true ]; then
+      err "Provisioning exited before completion for emulator (${arch})"
+    else
+      err "Provisioning timed out for emulator (${arch})"
+    fi
+
+    if [ -s "$provision_log" ]; then
+      tail -50 "$provision_log" >&2 || true
+    else
+      LC_ALL=C strings -a "$serial_log" 2>/dev/null | tail -50 >&2 || tail -50 "$serial_log" >&2 || true
+    fi
+
     if kill -0 "$pid" 2>/dev/null; then
       kill "$pid" 2>/dev/null || true
       sleep 1
       kill -9 "$pid" 2>/dev/null || true
     fi
+
+    persist_provision_logs "$arch" "$serial_log" "$provision_log"
     rm -rf "$tmp_dir"
     exit 1
   fi
@@ -266,18 +371,20 @@ build_one() {
     kill -9 "$pid" 2>/dev/null || true
   fi
 
-  cp "$tmp_img" "$final_img"
-  cp "$serial_log" "$IMAGE_DIR/provision-emulator-${arch}.log"
-  rm -rf "$tmp_dir"
+  persist_provision_logs "$arch" "$serial_log" "$provision_log"
 
   log "Compressing final image (this may take several minutes)..."
-  qemu-img convert -p -O qcow2 -c "$final_img" "$final_img.tmp"
-  mv "$final_img.tmp" "$final_img"
+  qemu-img convert -p -O qcow2 -c "$tmp_img" "$final_img"
+  rm -rf "$tmp_dir"
 
   local size
   size="$(du -h "$final_img" | cut -f1)"
   log "━━━ Emulator image ready: $final_img (${size}) ━━━"
 }
+
+log "Generating emulator build env file..."
+node "$REPO_ROOT/docker/local-emulator/generate-env-development.mjs"
+BUILD_ENV_FILE="$REPO_ROOT/docker/local-emulator/.env.development"
 
 for arch in "${TARGET_ARCHS[@]}"; do
   local_base="$IMAGE_DIR/debian-${DEBIAN_VERSION}-base-${arch}.qcow2"
