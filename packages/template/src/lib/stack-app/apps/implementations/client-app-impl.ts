@@ -549,11 +549,21 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
     this._analyticsOptions = resolvedOptions.analytics;
 
+    const getAnalyticsSession = async (): Promise<InternalSession> => {
+      this._ensurePersistentTokenStore();
+      const partialUser = await this.getPartialUser({ from: 'token', or: 'anonymous-if-exists' });
+      if (partialUser) {
+        return await this._getSession();
+      }
+      const anonUser = await this.getUser({ or: "anonymous" });
+      return anonUser._internalSession;
+    };
+
     if (isBrowserLike() && this._analyticsOptions?.replays?.enabled === true) {
       this._sessionRecorder = new SessionRecorder({
         projectId: this.projectId,
         sendBatch: async (body, opts) => {
-          return await this._interface.sendSessionReplayBatch(body, await this._getSession(), opts);
+          return await this._interface.sendSessionReplayBatch(body, await getAnalyticsSession(), opts);
         },
       }, this._analyticsOptions.replays);
       this._sessionRecorder.start();
@@ -563,7 +573,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       this._eventTracker = new EventTracker({
         projectId: this.projectId,
         sendBatch: async (body, opts) => {
-          return await this._interface.sendAnalyticsEventBatch(body, await this._getSession(), opts);
+          return await this._interface.sendAnalyticsEventBatch(body, await getAnalyticsSession(), opts);
         },
       });
       this._eventTracker.start();

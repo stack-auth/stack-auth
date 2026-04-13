@@ -84,7 +84,7 @@ export class EventTracker {
       clearInterval(this._flushTimer);
       this._flushTimer = null;
     }
-    runAsynchronously(() => this._flush({ keepalive: true }), { noErrorLogging: true });
+    runAsynchronously(() => this._flush({ keepalive: true }));
     this._teardown();
   }
 
@@ -97,7 +97,7 @@ export class EventTracker {
     this._events.push(event);
     this._approxBytes += JSON.stringify(event).length;
     if (this._events.length >= MAX_EVENTS_PER_BATCH || this._approxBytes >= MAX_APPROX_BYTES_PER_BATCH) {
-      runAsynchronously(() => this._flush({ keepalive: false }), { noErrorLogging: true });
+      runAsynchronously(() => this._flush({ keepalive: false }));
     }
   }
 
@@ -224,7 +224,7 @@ export class EventTracker {
   }
 
   private readonly _onPageHide = () => {
-    runAsynchronously(() => this._flush({ keepalive: true }), { noErrorLogging: true });
+    runAsynchronously(() => this._flush({ keepalive: true }));
   };
 
   private _setupPageHideListeners() {
@@ -296,7 +296,7 @@ export class EventTracker {
   private _tick() {
     if (this._cancelled) return;
     if (this._events.length > 0) {
-      runAsynchronously(() => this._flush({ keepalive: false }), { noErrorLogging: true });
+      runAsynchronously(() => this._flush({ keepalive: false }));
     }
   }
 }

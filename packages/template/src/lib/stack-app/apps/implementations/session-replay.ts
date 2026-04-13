@@ -181,7 +181,7 @@ export class SessionRecorder {
       this._flushTimer = null;
     }
     // Flush remaining events before cleanup
-    runAsynchronously(() => this._flush({ keepalive: true }), { noErrorLogging: true });
+    runAsynchronously(() => this._flush({ keepalive: true }));
     this._stopCurrentRecording();
   }
 
@@ -284,7 +284,7 @@ export class SessionRecorder {
         this._events.push(event);
         this._approxBytes += JSON.stringify(event).length;
         if (this._events.length >= MAX_EVENTS_PER_BATCH || this._approxBytes >= MAX_APPROX_BYTES_PER_BATCH) {
-          runAsynchronously(() => this._flush({ keepalive: false }), { noErrorLogging: true });
+          runAsynchronously(() => this._flush({ keepalive: false }));
         }
       },
       maskAllInputs: this._replayOptions.maskAllInputs ?? true,
@@ -295,7 +295,7 @@ export class SessionRecorder {
     this._recording = true;
 
     const onPageHide = () => {
-      runAsynchronously(() => this._flush({ keepalive: true }), { noErrorLogging: true });
+      runAsynchronously(() => this._flush({ keepalive: true }));
     };
     window.addEventListener("pagehide", onPageHide);
     document.addEventListener("visibilitychange", onPageHide);
