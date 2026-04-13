@@ -1,4 +1,5 @@
 import { ensureCustomerExists, getItemQuantityForCustomer } from "@/lib/payments";
+import { bulldozerWriteItemQuantityChange } from "@/lib/payments/bulldozer-dual-write";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -104,7 +105,8 @@ export const POST = createSmartRouteHandler({
       if (!allowNegative && (totalQuantity + req.body.delta < 0)) {
         throw new KnownErrors.ItemQuantityInsufficientAmount(req.params.item_id, req.params.customer_id, req.body.delta);
       }
-      await tx.itemQuantityChange.create({
+      // dual write - prisma and bulldozer
+      const change = await tx.itemQuantityChange.create({
         data: {
           tenancyId: tenancy.id,
           customerId: req.params.customer_id,
@@ -115,6 +117,7 @@ export const POST = createSmartRouteHandler({
           expiresAt: req.body.expires_at ? new Date(req.body.expires_at) : null,
         },
       });
+      await bulldozerWriteItemQuantityChange(tx, change);
     });
 
     return {

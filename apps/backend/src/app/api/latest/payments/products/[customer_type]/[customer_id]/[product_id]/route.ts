@@ -1,4 +1,5 @@
 import { ensureProductIdOrInlineProduct, getOwnedProductsForCustomer } from "@/lib/payments";
+import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -146,6 +147,11 @@ export const DELETE = createSmartRouteHandler({
           cancelAtPeriodEnd: true,
         },
       });
+      // dual write - prisma and bulldozer
+      const updatedSub = await prisma.subscription.findUniqueOrThrow({
+        where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: subscription.id } },
+      });
+      await bulldozerWriteSubscription(prisma, updatedSub);
     }
 
     return {

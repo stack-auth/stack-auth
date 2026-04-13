@@ -1,4 +1,5 @@
 import { CustomerType } from "@/generated/prisma/client";
+import { bulldozerWriteSubscription, bulldozerWriteSubscriptionInvoice } from "@/lib/payments/bulldozer-dual-write";
 import { getProductVersion } from "@/lib/product-versions";
 import { getTenancy, Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
@@ -272,7 +273,8 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
       context: { subscriptionId: subscription.id },
     });
 
-    await prisma.subscription.upsert({
+    // dual write - prisma and bulldozer
+    const upsertedSub = await prisma.subscription.upsert({
       where: {
         tenancyId_stripeSubscriptionId: {
           tenancyId: tenancy.id,
@@ -304,6 +306,7 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
         creationSource: "PURCHASE_PAGE"
       },
     });
+    await bulldozerWriteSubscription(prisma, upsertedSub);
   }
 }
 
@@ -327,7 +330,8 @@ export async function upsertStripeInvoice(stripe: Stripe, stripeAccountId: strin
   const tenancy = await getTenancyFromStripeAccountIdOrThrow(stripe, stripeAccountId);
   const prisma = await getPrismaClientForTenancy(tenancy);
 
-  await prisma.subscriptionInvoice.upsert({
+  // dual write - prisma and bulldozer
+  const upsertedInvoice = await prisma.subscriptionInvoice.upsert({
     where: {
       tenancyId_stripeInvoiceId: {
         tenancyId: tenancy.id,
@@ -351,4 +355,5 @@ export async function upsertStripeInvoice(stripe: Stripe, stripeAccountId: strin
       hostedInvoiceUrl: invoice.hosted_invoice_url,
     },
   });
+  await bulldozerWriteSubscriptionInvoice(prisma, upsertedInvoice);
 }

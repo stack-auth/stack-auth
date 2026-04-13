@@ -1,5 +1,6 @@
 import { getPrismaClientForTenancy, PrismaClientTransaction } from "@/prisma-client";
 import { ensureUserTeamPermissionExists } from "@/lib/request-checks";
+import { bulldozerWriteOneTimePurchase, bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { PurchaseCreationSource, SubscriptionStatus } from "@/generated/prisma/client";
 import { CustomerType } from "@/generated/prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -759,6 +760,11 @@ export async function grantProductToCustomer(options: {
           cancelAtPeriodEnd: true,
         },
       });
+      // dual write - prisma and bulldozer
+      const updatedConflicting = await prisma.subscription.findUniqueOrThrow({
+        where: { tenancyId_id: { tenancyId: tenancy.id, id: conflicting.id } },
+      });
+      await bulldozerWriteSubscription(prisma, updatedConflicting);
     }
   }
 
@@ -779,6 +785,8 @@ export async function grantProductToCustomer(options: {
         creationSource,
       },
     });
+    // dual write - prisma and bulldozer
+    await bulldozerWriteOneTimePurchase(prisma, purchase);
     return { type: "one_time", purchaseId: purchase.id };
   }
 
@@ -798,6 +806,8 @@ export async function grantProductToCustomer(options: {
       creationSource,
     },
   });
+  // dual write - prisma and bulldozer
+  await bulldozerWriteSubscription(prisma, subscription);
 
   return { type: "subscription", subscriptionId: subscription.id };
 }

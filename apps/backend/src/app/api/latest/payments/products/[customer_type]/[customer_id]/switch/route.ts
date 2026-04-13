@@ -1,5 +1,6 @@
 import { SubscriptionStatus } from "@/generated/prisma/client";
 import { ensureClientCanAccessCustomer, getCustomerPurchaseContext, getDefaultCardPaymentMethodSummary, getStripeCustomerForCustomerOrNull } from "@/lib/payments";
+import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { upsertProductVersion } from "@/lib/product-versions";
 import { getStripeForAccount, sanitizeStripePeriodDates } from "@/lib/stripe";
 import { getPrismaClientForTenancy } from "@/prisma-client";
@@ -231,6 +232,11 @@ export const POST = createSmartRouteHandler({
           cancelAtPeriodEnd: updatedSubscription.cancel_at_period_end,
         },
       });
+      // dual write - prisma and bulldozer
+      const updatedSub = await prisma.subscription.findUniqueOrThrow({
+        where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: subscription.id } },
+      });
+      await bulldozerWriteSubscription(prisma, updatedSub);
     } else {
       const created = await stripe.subscriptions.create({
         customer: stripeCustomer.id,
@@ -283,6 +289,11 @@ export const POST = createSmartRouteHandler({
           creationSource: "PURCHASE_PAGE",
         },
       });
+      // dual write - prisma and bulldozer
+      const createdSub = await prisma.subscription.findUniqueOrThrow({
+        where: { tenancyId_stripeSubscriptionId: { tenancyId: auth.tenancy.id, stripeSubscriptionId: createdSubscription.id } },
+      });
+      await bulldozerWriteSubscription(prisma, createdSub);
     }
 
     return {

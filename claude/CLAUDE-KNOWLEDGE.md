@@ -228,3 +228,12 @@ A: `apps/backend/scripts/run-bulldozer-studio.ts` now exposes `POST /api/tables/
 
 Q: What are safe reducer practices for `declareTimeFoldTable`, and how do timed reruns affect outputs?
 A: Timefold reducers should avoid non-deterministic values (`now()`, random) for output-driving logic; prefer stable row timestamps and prior reducer timestamps so replay/re-init stays deterministic. Timed reruns now append newly emitted rows on top of existing emitted rows for a source row (instead of replacing prior timed outputs), while source updates/deletes still recompute/reset that source row’s materialized outputs.
+
+Q: How does the Bulldozer payments dual-write work?
+A: `apps/backend/src/lib/payments/bulldozer-dual-write.ts` exports `bulldozerWrite*` functions (one per payment model: Subscription, OneTimePurchase, SubscriptionInvoice, ItemQuantityChange). Each takes a full Prisma row, converts it to the Bulldozer stored table format via `*ToStoredRow`, then calls `schema.<table>.setRow()` + `toExecutableSqlTransaction` + `prisma.$executeRaw`. Every Prisma create/update/upsert on these models has a `// dual write - prisma and bulldozer` comment and a call to the corresponding function. For `update` calls (which don't return full rows), a `findUniqueOrThrow` re-reads the row before passing to the bulldozer write. The conversion functions are also reused by the ingress script (`bulldozer-payments-init.ts`).
+
+Q: Does `ManualItemQuantityChangeRow` have a `paymentProvider` field?
+A: No. It was removed because item quantity changes have nothing to do with payment providers. The `manualItemQuantityChangeTxns` mapper in `transactions.ts` emits `'null'::jsonb AS "paymentProvider"`, and `TransactionRow.paymentProvider` is typed as `PaymentProvider | null` to accommodate this.
+
+Q: Are Bulldozer table `init()` calls idempotent?
+A: No. They use plain `INSERT INTO "BulldozerStorageEngine"` without `ON CONFLICT DO NOTHING`, so calling `init()` twice crashes with a unique constraint violation. The ingress script (`bulldozer-payments-init.ts`) checks `table.isInitialized()` per-table before calling `init()` to handle this safely.

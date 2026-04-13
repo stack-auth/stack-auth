@@ -1,4 +1,5 @@
 import { buildOneTimePurchaseTransaction, buildSubscriptionTransaction, resolveSelectedPriceFromProduct } from "@/app/api/latest/internal/payments/transactions/transaction-builder";
+import { bulldozerWriteOneTimePurchase, bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { getStripeForAccount } from "@/lib/stripe";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -220,6 +221,11 @@ export const POST = createSmartRouteHandler({
           data: { refundedAt: new Date() },
         });
       }
+      // dual write - prisma and bulldozer
+      const updatedSub = await prisma.subscription.findUniqueOrThrow({
+        where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
+      });
+      await bulldozerWriteSubscription(prisma, updatedSub);
     } else {
       const purchase = await prisma.oneTimePurchase.findUnique({
         where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
@@ -267,6 +273,11 @@ export const POST = createSmartRouteHandler({
         where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
         data: { refundedAt: new Date() },
       });
+      // dual write - prisma and bulldozer
+      const updatedPurchase = await prisma.oneTimePurchase.findUniqueOrThrow({
+        where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },
+      });
+      await bulldozerWriteOneTimePurchase(prisma, updatedPurchase);
     }
 
     return {

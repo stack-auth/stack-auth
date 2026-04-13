@@ -12,6 +12,12 @@
 import { Prisma } from "@/generated/prisma/client";
 import { toExecutableSqlTransaction } from "@/lib/bulldozer/db/index";
 import type { SqlStatement, TableId } from "@/lib/bulldozer/db/utilities";
+import {
+  itemQuantityChangeToStoredRow,
+  oneTimePurchaseToStoredRow,
+  subscriptionInvoiceToStoredRow,
+  subscriptionToStoredRow,
+} from "@/lib/payments/bulldozer-dual-write";
 import { createPaymentsSchema } from "@/lib/payments/schema/index";
 import type { PrismaClientTransaction } from "@/prisma-client";
 
@@ -59,14 +65,6 @@ async function getExistingRowIds(prisma: PrismaClientTransaction, tableId: Table
     )
   ` as Array<{ rowId: string }>;
   return new Set(rows.map(r => r.rowId));
-}
-
-function dateToMillis(d: Date | null | undefined): number | null {
-  return d ? d.getTime() : null;
-}
-
-function customerTypeToLower(ct: string): string {
-  return ct.toLowerCase();
 }
 
 /**
@@ -127,65 +125,10 @@ export async function runBulldozerPaymentsInit(prisma: PrismaClientTransaction) 
 
   console.log("[Bulldozer] Syncing Prisma data into bulldozer stored tables...");
 
-  await paginatedIngress(prisma, "Subscription", schema.subscriptions, (sub) => ({
-    id: sub.id,
-    tenancyId: sub.tenancyId,
-    customerId: sub.customerId,
-    customerType: customerTypeToLower(sub.customerType),
-    productId: sub.productId,
-    priceId: sub.priceId,
-    product: sub.product,
-    quantity: sub.quantity,
-    stripeSubscriptionId: sub.stripeSubscriptionId,
-    status: sub.status.toLowerCase(),
-    currentPeriodStartMillis: dateToMillis(sub.currentPeriodStart),
-    currentPeriodEndMillis: dateToMillis(sub.currentPeriodEnd),
-    cancelAtPeriodEnd: sub.cancelAtPeriodEnd,
-    endedAtMillis: dateToMillis(sub.endedAt),
-    refundedAtMillis: dateToMillis(sub.refundedAt),
-    creationSource: sub.creationSource,
-    createdAtMillis: dateToMillis(sub.createdAt),
-  }));
-
-  await paginatedIngress(prisma, "SubscriptionInvoice", schema.subscriptionInvoices, (inv) => ({
-    id: inv.id,
-    tenancyId: inv.tenancyId,
-    stripeSubscriptionId: inv.stripeSubscriptionId,
-    stripeInvoiceId: inv.stripeInvoiceId,
-    isSubscriptionCreationInvoice: inv.isSubscriptionCreationInvoice,
-    status: inv.status,
-    amountTotal: inv.amountTotal,
-    hostedInvoiceUrl: inv.hostedInvoiceUrl,
-    createdAtMillis: dateToMillis(inv.createdAt),
-  }));
-
-  await paginatedIngress(prisma, "OneTimePurchase", schema.oneTimePurchases, (p) => ({
-    id: p.id,
-    tenancyId: p.tenancyId,
-    customerId: p.customerId,
-    customerType: customerTypeToLower(p.customerType),
-    productId: p.productId,
-    priceId: p.priceId,
-    product: p.product,
-    quantity: p.quantity,
-    stripePaymentIntentId: p.stripePaymentIntentId,
-    revokedAtMillis: dateToMillis(p.revokedAt),
-    refundedAtMillis: dateToMillis(p.refundedAt),
-    creationSource: p.creationSource,
-    createdAtMillis: dateToMillis(p.createdAt),
-  }));
-
-  await paginatedIngress(prisma, "ItemQuantityChange", schema.manualItemQuantityChanges, (c) => ({
-    id: c.id,
-    tenancyId: c.tenancyId,
-    customerId: c.customerId,
-    customerType: customerTypeToLower(c.customerType),
-    itemId: c.itemId,
-    quantity: c.quantity,
-    description: c.description ?? null,
-    expiresAtMillis: dateToMillis(c.expiresAt),
-    createdAtMillis: dateToMillis(c.createdAt),
-  }));
+  await paginatedIngress(prisma, "Subscription", schema.subscriptions, subscriptionToStoredRow);
+  await paginatedIngress(prisma, "SubscriptionInvoice", schema.subscriptionInvoices, subscriptionInvoiceToStoredRow);
+  await paginatedIngress(prisma, "OneTimePurchase", schema.oneTimePurchases, oneTimePurchaseToStoredRow);
+  await paginatedIngress(prisma, "ItemQuantityChange", schema.manualItemQuantityChanges, itemQuantityChangeToStoredRow);
 
   console.log("[Bulldozer] Payments data ingress complete.");
 }

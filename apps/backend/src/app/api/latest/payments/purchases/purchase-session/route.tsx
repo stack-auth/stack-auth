@@ -1,5 +1,6 @@
 import { SubscriptionStatus } from "@/generated/prisma/client";
 import { getClientSecretFromStripeSubscription, validatePurchaseSession } from "@/lib/payments";
+import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { upsertProductVersion } from "@/lib/product-versions";
 import { getStripeForAccount } from "@/lib/stripe";
 import { getTenancy } from "@/lib/tenancies";
@@ -132,6 +133,11 @@ export const POST = createSmartRouteHandler({
             status: SubscriptionStatus.canceled,
           },
         });
+        // dual write - prisma and bulldozer
+        const updatedConflicting = await prisma.subscription.findUniqueOrThrow({
+          where: { tenancyId_id: { tenancyId: tenancy.id, id: conflicting.id } },
+        });
+        await bulldozerWriteSubscription(prisma, updatedConflicting);
       }
     }
     // One-time payment path after conflicts handled
