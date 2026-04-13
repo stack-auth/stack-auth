@@ -29,6 +29,29 @@ const MAX_USERS_FOR_COUNTRY_SAMPLE = 10_000;
 const METRICS_WINDOW_DAYS = 30;
 const METRICS_WINDOW_MS = METRICS_WINDOW_DAYS * 24 * 60 * 60 * 1000;
 const ONE_DAY_MS = 24 * 60 * 60 * 1000;
+export const METRICS_REVENUE_INVOICE_STATUSES = ["paid", "succeeded"] as const;
+const METRICS_REVENUE_INVOICE_STATUSES_SQL = Prisma.raw(
+  METRICS_REVENUE_INVOICE_STATUSES.map((status) => `'${status}'`).join(", "),
+);
+const METRICS_REVENUE_INVOICE_STATUS_SET = new Set<string>(METRICS_REVENUE_INVOICE_STATUSES);
+
+export function isMetricsRevenueInvoiceStatus(status: string | null | undefined): boolean {
+  return status != null && METRICS_REVENUE_INVOICE_STATUS_SET.has(status);
+}
+
+export function getMetricsWindowBounds(now: Date): {
+  todayUtc: Date,
+  since: Date,
+  untilExclusive: Date,
+} {
+  const todayUtc = new Date(now);
+  todayUtc.setUTCHours(0, 0, 0, 0);
+  return {
+    todayUtc,
+    since: new Date(todayUtc.getTime() - METRICS_WINDOW_MS),
+    untilExclusive: new Date(todayUtc.getTime() + ONE_DAY_MS),
+  };
+}
 
 function formatClickhouseDateTimeParam(date: Date): string {
   // ClickHouse DateTime params are passed as "YYYY-MM-DDTHH:MM:SS" (no timezone); treat them as UTC.
@@ -374,13 +397,8 @@ async function loadRecentlyActiveUsers(tenancy: Tenancy, includeAnonymous: boole
   return dbUsers.map((user) => userPrismaToCrud(user, tenancy.config));
 }
 
-async function loadMonthlyActiveUsers(tenancy: Tenancy, includeAnonymous: boolean = false): Promise<number> {
-  const now = new Date();
-  const todayUtc = new Date(now);
-  todayUtc.setUTCHours(0, 0, 0, 0);
-  // 30-day rolling window for MAU
-  const since = new Date(todayUtc.getTime() - METRICS_WINDOW_MS);
-  const untilExclusive = new Date(todayUtc.getTime() + ONE_DAY_MS);
+async function loadMonthlyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymous: boolean = false): Promise<number> {
+  const { since, untilExclusive } = getMetricsWindowBounds(now);
 
   const clickhouseClient = getClickhouseAdminClient();
   try {
@@ -439,9 +457,7 @@ async function loadMonthlyActiveUsers(tenancy: Tenancy, includeAnonymous: boolea
 async function loadDailyRevenue(tenancy: Tenancy, now: Date): Promise<Array<{ date: string, new_cents: number, refund_cents: number }>> {
   const schema = await getPrismaSchemaForTenancy(tenancy);
   const prisma = await getPrismaClientForTenancy(tenancy);
-  const todayUtc = new Date(now);
-  todayUtc.setUTCHours(0, 0, 0, 0);
-  const since = new Date(todayUtc.getTime() - METRICS_WINDOW_MS);
+  const { since } = getMetricsWindowBounds(now);
 
   const rows = await prisma.$replica().$queryRaw<{ day: string, new_cents: bigint }[]>`
     SELECT
@@ -450,7 +466,7 @@ async function loadDailyRevenue(tenancy: Tenancy, now: Date): Promise<Array<{ da
     FROM ${sqlQuoteIdent(schema)}."SubscriptionInvoice"
     WHERE "tenancyId" = ${tenancy.id}::UUID
       AND "amountTotal" IS NOT NULL
-      AND "status" IN ('paid', 'succeeded')
+      AND "status" IN (${METRICS_REVENUE_INVOICE_STATUSES_SQL})
       AND "createdAt" >= ${since}
     GROUP BY day
     ORDER BY day
@@ -471,12 +487,11 @@ async function loadDailyRevenue(tenancy: Tenancy, now: Date): Promise<Array<{ da
   return dailyRevenue;
 }
 
-async function loadPaymentsOverview(tenancy: Tenancy) {
+async function loadPaymentsOverview(tenancy: Tenancy, now: Date) {
   const schema = await getPrismaSchemaForTenancy(tenancy);
   const prisma = await getPrismaClientForTenancy(tenancy);
 
-  const now = new Date();
-  const thirtyDaysAgo = new Date(now.getTime() - METRICS_WINDOW_MS);
+  const { since: thirtyDaysAgo } = getMetricsWindowBounds(now);
 
   const [
     subscriptionsByStatus,
@@ -508,19 +523,20 @@ async function loadPaymentsOverview(tenancy: Tenancy) {
         (SELECT COALESCE(SUM("amountTotal"), 0)::bigint
           FROM ${sqlQuoteIdent(schema)}."SubscriptionInvoice"
           WHERE "tenancyId" = ${tenancy.id}::UUID
-            AND "amountTotal" IS NOT NULL) AS revenue_cents,
+            AND "amountTotal" IS NOT NULL
+            AND "status" IN (${METRICS_REVENUE_INVOICE_STATUSES_SQL})) AS revenue_cents,
         (SELECT COUNT(*)::int
           FROM ${sqlQuoteIdent(schema)}."SubscriptionInvoice"
           WHERE "tenancyId" = ${tenancy.id}::UUID) AS total_subscription_invoices,
         (SELECT COUNT(*)::int
           FROM ${sqlQuoteIdent(schema)}."SubscriptionInvoice"
           WHERE "tenancyId" = ${tenancy.id}::UUID
-            AND "status" IN ('paid', 'succeeded')) AS successful_subscription_invoices,
+            AND "status" IN (${METRICS_REVENUE_INVOICE_STATUSES_SQL})) AS successful_subscription_invoices,
         (SELECT COALESCE(SUM("amountTotal"), 0)::bigint
           FROM ${sqlQuoteIdent(schema)}."SubscriptionInvoice"
           WHERE "tenancyId" = ${tenancy.id}::UUID
             AND "amountTotal" IS NOT NULL
-            AND "status" IN ('paid', 'succeeded')
+            AND "status" IN (${METRICS_REVENUE_INVOICE_STATUSES_SQL})
             AND "createdAt" >= ${thirtyDaysAgo}) AS mrr_cents
     `,
     // Daily subscription signups for the last 30 days
@@ -582,11 +598,10 @@ async function loadPaymentsOverview(tenancy: Tenancy) {
 
 // ── Email Aggregates ─────────────────────────────────────────────────────────
 
-async function loadEmailOverview(tenancy: Tenancy) {
+async function loadEmailOverview(tenancy: Tenancy, now: Date) {
   const schema = await getPrismaSchemaForTenancy(tenancy);
   const prisma = await getPrismaClientForTenancy(tenancy);
-  const now = new Date();
-  const thirtyDaysAgo = new Date(now.getTime() - METRICS_WINDOW_MS);
+  const { since: thirtyDaysAgo } = getMetricsWindowBounds(now);
 
   const [
     counts,
@@ -777,7 +792,8 @@ async function loadSessionReplayAggregates(tenancy: Tenancy, since: Date): Promi
       (SELECT COALESCE(SUM("amountTotal"), 0)::bigint
         FROM ${sqlQuoteIdent(schema)}."SubscriptionInvoice"
         WHERE "tenancyId" = ${tenancy.id}::UUID
-          AND "amountTotal" IS NOT NULL) AS total_revenue_cents
+          AND "amountTotal" IS NOT NULL
+          AND "status" IN (${METRICS_REVENUE_INVOICE_STATUSES_SQL})) AS total_revenue_cents
   `;
 
   const row = result[0];
@@ -1117,7 +1133,7 @@ async function loadAuthOverview(tenancy: Tenancy, includeAnonymous: boolean, now
     `,
     loadDailyActiveUsersSplit(tenancy, now, includeAnonymous),
     loadDailyActiveTeamsSplit(tenancy, now),
-    loadMonthlyActiveUsers(tenancy, includeAnonymous),
+    loadMonthlyActiveUsers(tenancy, now, includeAnonymous),
   ]);
 
   const totalUsers = Number(counts[0].total_users);
@@ -1216,8 +1232,8 @@ export const GET = createSmartRouteHandler({
       loadRecentlyActiveUsers(req.auth.tenancy, includeAnonymous),
       loadLoginMethods(req.auth.tenancy),
       loadAuthOverview(req.auth.tenancy, includeAnonymous, now),
-      loadPaymentsOverview(req.auth.tenancy),
-      loadEmailOverview(req.auth.tenancy),
+      loadPaymentsOverview(req.auth.tenancy, now),
+      loadEmailOverview(req.auth.tenancy, now),
       loadAnalyticsOverview(req.auth.tenancy, now, includeAnonymous),
       loadDailyRevenue(req.auth.tenancy, now),
     ] as const);

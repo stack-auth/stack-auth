@@ -117,6 +117,7 @@ function useAsyncDataSource<TRow>(opts: {
   const abortRef = useRef<AbortController | null>(null);
   const pageIndexRef = useRef(0);
   const hasDataRef = useRef(false);
+  const hasMountedServerPaginationRef = useRef(false);
 
   const latestArgsRef = useRef({
     dataSource,
@@ -215,9 +216,15 @@ function useAsyncDataSource<TRow>(opts: {
   }, [fetchPage, sortingKey, quickSearchKey, pagination.pageSize]);
 
   useEffect(() => {
-    if (paginationMode === "server") {
-      fetchPage(false).catch(() => {});
+    if (paginationMode !== "server") {
+      hasMountedServerPaginationRef.current = false;
+      return;
     }
+    if (!hasMountedServerPaginationRef.current) {
+      hasMountedServerPaginationRef.current = true;
+      return;
+    }
+    fetchPage(false).catch(() => {});
   }, [fetchPage, paginationMode, pagination.pageIndex]);
 
   const loadMore = useCallback(() => {

@@ -136,6 +136,8 @@ export type QueryDataGridHandle = {
   getDiscoveredColumns: () => string[],
 };
 
+const INTERNAL_ROW_ID_KEY = "__stack_row_id";
+
 // ─── Utility helpers ────────────────────────────────────────────────
 
 /** Detect whether a column name refers to a date/time value. */
@@ -460,10 +462,13 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
             timeout_ms: 30000,
           });
 
-          const newRows = response.result as RowData[];
+          const newRows = (response.result as RowData[]).map((row, index) => ({
+            ...row,
+            [INTERNAL_ROW_ID_KEY]: `${offset + index}`,
+          }));
 
           if (newRows.length > 0) {
-            const cols = Object.keys(newRows[0]!);
+            const cols = Object.keys(newRows[0]!).filter((col) => col !== INTERNAL_ROW_ID_KEY);
             discoveredColumnsRef.current = cols;
             setDiscoveredColumns((prev) => {
               if (prev.length === cols.length && prev.every((c, i) => c === cols[i])) {
@@ -487,9 +492,10 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
     }, [adminApp]);
 
     const getRowId = useCallback((row: RowData): string => {
+      if (typeof row[INTERNAL_ROW_ID_KEY] === "string") return row[INTERNAL_ROW_ID_KEY];
       if (row.id != null) return String(row.id);
       if (row.event_id != null) return String(row.event_id);
-      return JSON.stringify(row);
+      throw new Error("QueryDataGrid row is missing an internal row id");
     }, []);
 
     const gridData = useDataSource<RowData>({

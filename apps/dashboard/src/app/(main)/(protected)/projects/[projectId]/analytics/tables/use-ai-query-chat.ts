@@ -13,6 +13,7 @@ type ToolPart = {
   type: string,
   state: string,
   input?: Record<string, unknown>,
+  output?: Record<string, unknown>,
 };
 
 function isToolPart(part: unknown): part is ToolPart {
@@ -21,13 +22,20 @@ function isToolPart(part: unknown): part is ToolPart {
   return typeof typed.type === "string" && typed.type.startsWith("tool-");
 }
 
+function isSuccessfulQueryToolPart(part: ToolPart): boolean {
+  if (part.state === "output-error") return false;
+  const success = part.output?.success;
+  if (success === false) return false;
+  return part.state === "output-available";
+}
+
 /**
  * Walk backwards through messages / parts and return the most recent
  * `queryAnalytics` tool call. The frontend uses the `query` argument
  * of that call to drive the data grid — the AI is instructed to call
  * the tool any time it wants to commit a new query.
  */
-function extractLatestQuery(messages: UIMessage[]): {
+export function extractLatestQuery(messages: UIMessage[]): {
   query: string,
   state: string,
   toolCallIndex: number,
@@ -52,10 +60,10 @@ function extractLatestQuery(messages: UIMessage[]): {
       const part = msg.parts[j]!;
       if (!isToolPart(part)) continue;
       if (!part.type.endsWith("queryAnalytics")) continue;
-      // Wait for the tool input to be fully committed before surfacing
-      // the query to the grid — otherwise we'd re-run partially
-      // streamed SQL on every chunk.
-      if (part.state === "input-streaming") continue;
+      // Wait for a successful tool result before surfacing the query
+      // to the grid — otherwise we'd re-run partially streamed or
+      // failed SQL on every chunk / failed turn.
+      if (!isSuccessfulQueryToolPart(part)) continue;
       const query =
         typeof part.input?.query === "string" ? (part.input.query as string) : null;
       if (query && query.trim().length > 0) {
