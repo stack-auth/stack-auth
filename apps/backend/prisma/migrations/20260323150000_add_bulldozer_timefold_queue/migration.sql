@@ -255,8 +255,7 @@ END;
 $function$;
 -- SPLIT_STATEMENT_SENTINEL
 
--- Best-effort pg_cron setup. If pg_cron is unavailable, the queue can still be
--- processed via explicit calls to public.bulldozer_timefold_process_queue().
+-- Require pg_cron setup. We fail fast if extension setup is unavailable.
 -- SPLIT_STATEMENT_SENTINEL
 -- SINGLE_STATEMENT_SENTINEL
 DO $$
@@ -264,7 +263,8 @@ BEGIN
   CREATE EXTENSION IF NOT EXISTS pg_cron;
 EXCEPTION
   WHEN insufficient_privilege OR undefined_file OR feature_not_supported OR object_not_in_prerequisite_state OR raise_exception THEN
-    RAISE NOTICE 'Skipping pg_cron extension setup for bulldozer timefold worker.';
+    RAISE EXCEPTION 'Failed to set up pg_cron extension for bulldozer timefold worker.'
+      USING DETAIL = SQLERRM;
 END
 $$;
 -- SPLIT_STATEMENT_SENTINEL
@@ -277,14 +277,9 @@ BEGIN
     RETURN;
   END IF;
 
-  BEGIN
-    PERFORM cron.unschedule("jobid")
-    FROM cron.job
-    WHERE "jobname" = 'bulldozer-timefold-worker';
-  EXCEPTION
-    WHEN undefined_table THEN
-      NULL;
-  END;
+  PERFORM cron.unschedule("jobid")
+  FROM cron.job
+  WHERE "jobname" = 'bulldozer-timefold-worker';
 
   PERFORM cron.schedule(
     'bulldozer-timefold-worker',
@@ -293,7 +288,8 @@ BEGIN
   );
 EXCEPTION
   WHEN insufficient_privilege OR undefined_function OR feature_not_supported THEN
-    RAISE NOTICE 'Skipping pg_cron schedule setup for bulldozer timefold worker.';
+    RAISE EXCEPTION 'Failed to schedule pg_cron bulldozer timefold worker.'
+      USING DETAIL = SQLERRM;
 END
 $$;
 -- SPLIT_STATEMENT_SENTINEL
