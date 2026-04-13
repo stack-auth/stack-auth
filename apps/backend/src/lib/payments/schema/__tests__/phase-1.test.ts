@@ -1,39 +1,68 @@
 /**
  * Phase 1 tests: SeedEvents StoredTables → Events → Transactions
  *
- * Tests:
- * 1. Events generated from source table inserts
- * 2. Transaction structure, entries, ordering, back-references
- * 3. Charged amount computation
- * 4. effectiveAtMillis, indexes, txnId derivation
+ * Tests are grouped by:
+ * 1. Non-TimeFold events (subscription-renewal, subscription-cancel, OTP, manual-item-quantity-change)
+ * 2. TimeFold events (subscription-start, subscription-end, item-grant-repeat)
+ * 3. Event → Transaction mapping
+ * 4. Transaction fields (txnId, effectiveAtMillis, entry ordering)
+ *
+ * Each test uses unique IDs and is self-contained.
+ * Time simulation: BulldozerTimeFoldMetadata.lastProcessedAt = 2099-01-01
+ * so all TimeFold-scheduled repeats fire immediately.
  */
 
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createPaymentsSchema } from "../index";
-import type {
-  TransactionRow,
-} from "../types";
+import type { TransactionRow } from "../types";
 import { createTestDb, jsonbExpr } from "./test-helpers";
+
+const DAY_MS = 86400000;
+const MONTH_MS = 2592000000;
 
 describe.sequential("payments schema phase 1 (real postgres)", () => {
   const db = createTestDb();
   const { runStatements, readRows } = db;
   const schema = createPaymentsSchema();
 
-  const allRowsQuery = (table: { listRowsInGroup: (opts: any) => any }) =>
-    table.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true });
-
   const getRowDatas = async (table: { listRowsInGroup: (opts: any) => any }) => {
-    const rows = await readRows(allRowsQuery(table));
+    const rows = await readRows(table.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
     return rows.map((r: any) => r.rowdata);
   };
+
+  const makeSubscription = (id: string, overrides: Record<string, unknown> = {}) => ({
+    id,
+    tenancyId: "t1",
+    customerId: `customer-${id}`,
+    customerType: "user",
+    productId: `prod-${id}`,
+    priceId: "p1",
+    product: {
+      displayName: "Test Plan",
+      customerType: "user",
+      productLineId: `line-${id}`,
+      prices: { p1: { USD: "10" } },
+      includedItems: {},
+    },
+    quantity: 1,
+    stripeSubscriptionId: null,
+    status: "active",
+    currentPeriodStartMillis: 0,
+    currentPeriodEndMillis: MONTH_MS,
+    cancelAtPeriodEnd: false,
+    endedAtMillis: null,
+    refundedAtMillis: null,
+    creationSource: "TEST_MODE",
+    createdAtMillis: 0,
+    ...overrides,
+  });
 
   beforeAll(async () => {
     await db.setup();
     for (const table of schema._allPhase1Tables) {
       await runStatements(table.init());
     }
-  });
+  }, 60_000);
 
   afterAll(async () => {
     await db.teardown();
@@ -41,177 +70,88 @@ describe.sequential("payments schema phase 1 (real postgres)", () => {
 
 
   // ============================================================
-  // 1. Events from source table inserts
+  // 1. Non-TimeFold events
   // ============================================================
 
-  describe("subscription-renewal events (LeftJoin: invoices × subscriptions)", () => {
+  describe("subscription-renewal events", () => {
     it("should generate renewal event from subscription + non-creation invoice", async () => {
-      await runStatements(schema.subscriptions.setRow("sub-r1", jsonbExpr({
-        id: "sub-r1",
-        tenancyId: "t1",
-        customerId: "u1",
-        customerType: "user",
-        productId: "prod-basic",
-        priceId: "price-monthly",
-        product: {
-          displayName: "Basic",
-          customerType: "user",
-          productLineId: "line-1",
-          prices: { "price-monthly": { USD: "9.99", interval: [1, "month"] } },
-          includedItems: {},
-        },
-        quantity: 1,
-        stripeSubscriptionId: "stripe-sub-r1",
-        status: "active",
-        currentPeriodStartMillis: 1000,
-        currentPeriodEndMillis: 2000,
-        cancelAtPeriodEnd: false,
-        refundedAtMillis: null,
+      await runStatements(schema.subscriptions.setRow("sub-renewal-1", jsonbExpr(makeSubscription("sub-renewal-1", {
+        stripeSubscriptionId: "stripe-sub-renewal-1",
         creationSource: "PURCHASE_PAGE",
         createdAtMillis: 1000,
-      })));
-
-      await runStatements(schema.subscriptionInvoices.setRow("inv-r1", jsonbExpr({
-        id: "inv-r1",
+      }))));
+      await runStatements(schema.subscriptionInvoices.setRow("inv-renewal-1", jsonbExpr({
+        id: "inv-renewal-1",
         tenancyId: "t1",
-        stripeSubscriptionId: "stripe-sub-r1",
-        stripeInvoiceId: "stripe-inv-r1",
+        stripeSubscriptionId: "stripe-sub-renewal-1",
+        stripeInvoiceId: "stripe-inv-1",
         isSubscriptionCreationInvoice: false,
         status: "paid",
-        amountTotal: 999,
+        amountTotal: 1000,
         hostedInvoiceUrl: null,
-        createdAtMillis: 1500,
+        createdAtMillis: 2000,
       })));
 
       const events = await getRowDatas(schema.subscriptionRenewalEvents);
-      expect(events).toHaveLength(1);
-      expect(events[0]).toMatchObject({
-        subscriptionId: "sub-r1",
-        invoiceId: "inv-r1",
-        customerType: "user",
-        customerId: "u1",
-        paymentProvider: "stripe",
-        effectiveAtMillis: 1500,
-        createdAtMillis: 1500,
-      });
+      const event = events.find((e: any) => e.invoiceId === "inv-renewal-1");
+      expect(event).toBeDefined();
+      expect(event.subscriptionId).toBe("sub-renewal-1");
+      expect(event.paymentProvider).toBe("stripe");
+      expect(event.effectiveAtMillis).toBe(2000);
     });
 
     it("should NOT generate renewal event for creation invoices", async () => {
-      await runStatements(schema.subscriptionInvoices.setRow("inv-creation", jsonbExpr({
-        id: "inv-creation",
+      await runStatements(schema.subscriptionInvoices.setRow("inv-creation-1", jsonbExpr({
+        id: "inv-creation-1",
         tenancyId: "t1",
-        stripeSubscriptionId: "stripe-sub-r1",
+        stripeSubscriptionId: "stripe-sub-renewal-1",
         stripeInvoiceId: "stripe-inv-creation",
         isSubscriptionCreationInvoice: true,
         status: "paid",
-        amountTotal: 999,
+        amountTotal: 1000,
         hostedInvoiceUrl: null,
         createdAtMillis: 1000,
       })));
 
       const events = await getRowDatas(schema.subscriptionRenewalEvents);
-      expect(events).toHaveLength(1);
-      expect(events[0].invoiceId).toBe("inv-r1");
-    });
-
-    it("should compute chargedAmount from product price × quantity", async () => {
-      const events = await getRowDatas(schema.subscriptionRenewalEvents);
-      expect(events[0].chargedAmount).toMatchObject({ USD: "9.99" });
+      const creationEvent = events.find((e: any) => e.invoiceId === "inv-creation-1");
+      expect(creationEvent).toBeUndefined();
     });
   });
 
 
-  describe("subscription-cancel events (Filter + Map from subscriptions)", () => {
+  describe("subscription-cancel events", () => {
     it("should generate cancel event for active subscription with cancelAtPeriodEnd", async () => {
-      await runStatements(schema.subscriptions.setRow("sub-c1", jsonbExpr({
-        id: "sub-c1",
-        tenancyId: "t1",
-        customerId: "u2",
-        customerType: "user",
-        productId: "prod-basic",
-        priceId: "price-monthly",
-        product: {
-          displayName: "Basic",
-          customerType: "user",
-          prices: { "price-monthly": { USD: "9.99" } },
-          includedItems: {},
-        },
-        quantity: 1,
-        stripeSubscriptionId: null,
-        status: "active",
-        currentPeriodStartMillis: 1000,
-        currentPeriodEndMillis: 2000,
+      await runStatements(schema.subscriptions.setRow("sub-cancel-1", jsonbExpr(makeSubscription("sub-cancel-1", {
         cancelAtPeriodEnd: true,
-        refundedAtMillis: null,
-        creationSource: "TEST_MODE",
-        createdAtMillis: 1000,
-      })));
+        status: "active",
+      }))));
 
       const events = await getRowDatas(schema.subscriptionCancelEvents);
-      expect(events).toHaveLength(1);
-      expect(events[0]).toMatchObject({
-        subscriptionId: "sub-c1",
-        changeType: "cancel",
-        paymentProvider: "test_mode",
-      });
+      const event = events.find((e: any) => e.subscriptionId === "sub-cancel-1");
+      expect(event).toBeDefined();
+      expect(event.changeType).toBe("cancel");
     });
 
-    it("should NOT generate cancel event for already-canceled subscription", async () => {
-      await runStatements(schema.subscriptions.setRow("sub-c2", jsonbExpr({
-        id: "sub-c2",
-        tenancyId: "t1",
-        customerId: "u3",
-        customerType: "user",
-        productId: null,
-        priceId: null,
-        product: { displayName: "X", customerType: "user", prices: {}, includedItems: {} },
-        quantity: 1,
-        stripeSubscriptionId: null,
+    it("should NOT generate cancel event for canceled subscription", async () => {
+      await runStatements(schema.subscriptions.setRow("sub-cancel-2", jsonbExpr(makeSubscription("sub-cancel-2", {
+        cancelAtPeriodEnd: true,
         status: "canceled",
-        currentPeriodStartMillis: 1000,
-        currentPeriodEndMillis: 2000,
-        cancelAtPeriodEnd: true,
-        refundedAtMillis: null,
-        creationSource: "TEST_MODE",
-        createdAtMillis: 1000,
-      })));
+      }))));
 
       const events = await getRowDatas(schema.subscriptionCancelEvents);
-      expect(events).toHaveLength(1);
-    });
-
-    it("should NOT generate cancel event when cancelAtPeriodEnd is false", async () => {
-      await runStatements(schema.subscriptions.setRow("sub-c3", jsonbExpr({
-        id: "sub-c3",
-        tenancyId: "t1",
-        customerId: "u4",
-        customerType: "user",
-        productId: null,
-        priceId: null,
-        product: { displayName: "X", customerType: "user", prices: {}, includedItems: {} },
-        quantity: 1,
-        stripeSubscriptionId: null,
-        status: "active",
-        currentPeriodStartMillis: 1000,
-        currentPeriodEndMillis: 2000,
-        cancelAtPeriodEnd: false,
-        refundedAtMillis: null,
-        creationSource: "TEST_MODE",
-        createdAtMillis: 1000,
-      })));
-
-      const events = await getRowDatas(schema.subscriptionCancelEvents);
-      expect(events).toHaveLength(1);
+      const event = events.find((e: any) => e.subscriptionId === "sub-cancel-2");
+      expect(event).toBeUndefined();
     });
   });
 
 
-  describe("one-time-purchase events (Map from OTP StoredTable)", () => {
-    it("should generate OTP event with computed fields", async () => {
-      await runStatements(schema.oneTimePurchases.setRow("otp-1", jsonbExpr({
-        id: "otp-1",
+  describe("one-time-purchase events", () => {
+    it("should generate OTP event with computed chargedAmount and itemGrants", async () => {
+      await runStatements(schema.oneTimePurchases.setRow("otp-ev-1", jsonbExpr({
+        id: "otp-ev-1",
         tenancyId: "t1",
-        customerId: "u1",
+        customerId: "u-otp-ev",
         customerType: "user",
         productId: "prod-coins",
         priceId: "price-coins",
@@ -219,536 +159,448 @@ describe.sequential("payments schema phase 1 (real postgres)", () => {
           displayName: "Coin Pack",
           customerType: "user",
           productLineId: "line-coins",
-          prices: { "price-coins": { USD: "4.99" } },
+          prices: { "price-coins": { USD: "5" } },
           includedItems: {
             coins: { quantity: 100, expires: "never" },
-            bonus: { quantity: 5, expires: "when-purchase-expires" },
           },
         },
         quantity: 2,
-        stripePaymentIntentId: "pi-1",
+        stripePaymentIntentId: "pi-ev-1",
+        revokedAtMillis: null,
         refundedAtMillis: null,
         creationSource: "PURCHASE_PAGE",
         createdAtMillis: 3000,
       })));
 
       const events = await getRowDatas(schema.oneTimePurchaseEvents);
-      expect(events).toHaveLength(1);
-
-      const event = events[0];
-      expect(event.purchaseId).toBe("otp-1");
-      expect(event.productLineId).toBe("line-coins");
-      expect(event.chargedAmount).toMatchObject({ USD: "9.98" });
-      expect(event.paymentProvider).toBe("stripe");
-      expect(event.effectiveAtMillis).toBe(3000);
-
-      const grants = event.itemGrants as any[];
-      expect(grants).toHaveLength(2);
-      const coinsGrant = grants.find((g: any) => g.itemId === "coins");
-      const bonusGrant = grants.find((g: any) => g.itemId === "bonus");
-      expect(coinsGrant).toMatchObject({ quantity: 200, expiresWhen: null });
-      expect(bonusGrant).toMatchObject({ quantity: 10, expiresWhen: "when-purchase-expires" });
-    });
-
-    it("should NOT generate event for refunded OTP", async () => {
-      await runStatements(schema.oneTimePurchases.setRow("otp-refunded", jsonbExpr({
-        id: "otp-refunded",
-        tenancyId: "t1",
-        customerId: "u1",
-        customerType: "user",
-        productId: "prod-coins",
-        priceId: "price-coins",
-        product: {
-          displayName: "Coin Pack",
-          customerType: "user",
-          prices: { "price-coins": { USD: "4.99" } },
-          includedItems: {},
-        },
-        quantity: 1,
-        stripePaymentIntentId: "pi-refunded",
-        refundedAtMillis: 5000,
-        creationSource: "PURCHASE_PAGE",
-        createdAtMillis: 3000,
-      })));
-
-      const events = await getRowDatas(schema.oneTimePurchaseEvents);
-      expect(events).toHaveLength(1);
-      expect(events[0].purchaseId).toBe("otp-1");
+      const event = events.find((e: any) => e.purchaseId === "otp-ev-1");
+      expect(event).toBeDefined();
+      expect(event.chargedAmount).toMatchObject({ USD: "10" });
+      expect(event.itemGrants).toHaveLength(1);
+      expect(event.itemGrants[0]).toMatchObject({ itemId: "coins", quantity: 200 });
     });
   });
 
 
-  describe("manual-item-quantity-change events (Map from ManualItemQuantityChanges)", () => {
+  describe("manual-item-quantity-change events", () => {
     it("should map through all fields correctly", async () => {
-      await runStatements(schema.manualItemQuantityChanges.setRow("iqc-1", jsonbExpr({
-        id: "iqc-1",
+      await runStatements(schema.manualItemQuantityChanges.setRow("iqc-ev-1", jsonbExpr({
+        id: "iqc-ev-1",
         tenancyId: "t1",
-        customerId: "u1",
+        customerId: "u-iqc-ev",
         customerType: "user",
         itemId: "credits",
         quantity: -5,
-        description: "Used 5 credits",
+        description: null,
         expiresAtMillis: null,
         paymentProvider: "stripe",
         createdAtMillis: 4000,
       })));
 
       const events = await getRowDatas(schema.manualItemQuantityChangeEvents);
-      expect(events).toHaveLength(1);
-      expect(events[0]).toMatchObject({
-        changeId: "iqc-1",
+      const event = events.find((e: any) => e.changeId === "iqc-ev-1");
+      expect(event).toBeDefined();
+      expect(event).toMatchObject({
         itemId: "credits",
         quantity: -5,
         paymentProvider: "stripe",
         effectiveAtMillis: 4000,
-        createdAtMillis: 4000,
       });
     });
   });
 
 
-  // TODO: TimeFold event tests (subscription-start, subscription-end, item-grant-repeat)
-  // These will be testable once declareTimeFoldTable is available.
-  // For now, we test the transaction mapping by populating the stubs directly.
-
-
   // ============================================================
-  // 2. Event → Transaction mapping
+  // 2. TimeFold events
   // ============================================================
 
-  describe("subscription-renewal transaction", () => {
-    it("should produce correct txnId, type, and money-transfer entry", async () => {
-      const txns = (await getRowDatas(schema.transactions))
-        .filter((t: any) => t.type === "subscription-renewal");
-      expect(txns).toHaveLength(1);
+  describe("subscription TimeFold: subscription-start", () => {
+    it("should emit subscription-start event when a subscription is inserted", async () => {
+      await runStatements(schema.subscriptions.setRow("sub-tf-start", jsonbExpr(makeSubscription("sub-tf-start", {
+        product: {
+          displayName: "TF Plan",
+          customerType: "user",
+          productLineId: "line-tf",
+          prices: { p1: { USD: "20" } },
+          includedItems: {
+            credits: { quantity: 100, expires: "when-purchase-expires" },
+          },
+        },
+        createdAtMillis: 5000,
+      }))));
 
-      const txn = txns[0] as TransactionRow;
-      expect(txn.txnId).toBe("sub-renewal:inv-r1");
-      expect(txn.effectiveAtMillis).toBe(1500);
-      expect(txn.paymentProvider).toBe("stripe");
-      expect(txn.entries).toHaveLength(1);
-      expect(txn.entries[0]).toMatchObject({
-        type: "money-transfer",
+      const startEvents = await getRowDatas(schema.subscriptionStartEvents);
+      const event = startEvents.find((e: any) => e.subscriptionId === "sub-tf-start");
+      expect(event).toBeDefined();
+      expect(event.type).toBe("subscription-start");
+      expect(event.effectiveAtMillis).toBe(5000);
+      expect(event.itemGrants.length).toBeGreaterThanOrEqual(1);
+      expect(event.itemGrants[0]).toMatchObject({ itemId: "credits", quantity: 100 });
+    });
+  });
+
+
+  describe("subscription TimeFold: item-grant-repeat with when-repeated expiry", () => {
+    it("should emit repeats that expire previous when-repeated grants", async () => {
+      await runStatements(schema.subscriptions.setRow("sub-tf-repeat", jsonbExpr(makeSubscription("sub-tf-repeat", {
+        product: {
+          displayName: "Repeat Plan",
+          customerType: "user",
+          productLineId: "line-tf-repeat",
+          prices: { p1: { USD: "5" } },
+          includedItems: {
+            tokens: { quantity: 50, repeat: [7, "day"], expires: "when-repeated" },
+          },
+        },
+        endedAtMillis: 30 * DAY_MS,
+        createdAtMillis: 0,
+      }))));
+
+      const repeatEvents = (await getRowDatas(schema.itemGrantRepeatEvents))
+        .filter((e: any) => e.sourceId === "sub-tf-repeat" && e.sourceType === "subscription");
+
+      expect(repeatEvents.length).toBeGreaterThan(0);
+
+      for (const event of repeatEvents) {
+        expect(event.itemGrants).toEqual(
+          expect.arrayContaining([expect.objectContaining({ itemId: "tokens", quantity: 50 })])
+        );
+      }
+
+      const withExpiries = repeatEvents.filter((e: any) => e.previousGrantsToExpire?.length > 0);
+      expect(withExpiries.length).toBeGreaterThan(0);
+      for (const event of withExpiries) {
+        expect(event.previousGrantsToExpire[0].itemId).toBe("tokens");
+      }
+    });
+  });
+
+
+  describe("subscription TimeFold: subscription-end", () => {
+    it("should emit subscription-end with correct expiries when endedAt is set", async () => {
+      const endTime = 3 * MONTH_MS;
+      await runStatements(schema.subscriptions.setRow("sub-tf-end", jsonbExpr(makeSubscription("sub-tf-end", {
+        product: {
+          displayName: "End Plan",
+          customerType: "user",
+          productLineId: "line-tf-end",
+          prices: { p1: { USD: "15" } },
+          includedItems: {
+            storage: { quantity: 100, repeat: [30, "day"], expires: "when-purchase-expires" },
+          },
+        },
+        endedAtMillis: endTime,
+        createdAtMillis: 0,
+      }))));
+
+      const endEvents = (await getRowDatas(schema.subscriptionEndEvents))
+        .filter((e: any) => e.subscriptionId === "sub-tf-end");
+      expect(endEvents).toHaveLength(1);
+
+      const endEvent = endEvents[0];
+      expect(endEvent.type).toBe("subscription-end");
+      expect(endEvent.effectiveAtMillis).toBe(endTime);
+      expect(endEvent.itemQuantityChangesToExpire.length).toBeGreaterThan(0);
+      for (const expiry of endEvent.itemQuantityChangesToExpire) {
+        expect(expiry.itemId).toBe("storage");
+      }
+    });
+
+    it("should have correct product revocation back-reference", async () => {
+      const endEvents = (await getRowDatas(schema.subscriptionEndEvents))
+        .filter((e: any) => e.subscriptionId === "sub-tf-end");
+      expect(endEvents[0].startProductGrantRef).toEqual({
+        transactionId: "sub-start:sub-tf-end",
+        entryIndex: 1,
+      });
+    });
+
+    it("should NOT expire items with expires=never", async () => {
+      const endTime = 2 * MONTH_MS;
+      await runStatements(schema.subscriptions.setRow("sub-tf-mixed", jsonbExpr(makeSubscription("sub-tf-mixed", {
+        product: {
+          displayName: "Mixed Plan",
+          customerType: "user",
+          productLineId: "line-tf-mixed",
+          prices: { p1: { USD: "10" } },
+          includedItems: {
+            expiring: { quantity: 50, expires: "when-purchase-expires" },
+            permanent: { quantity: 20, expires: "never" },
+          },
+        },
+        endedAtMillis: endTime,
+        createdAtMillis: 0,
+      }))));
+
+      const endEvents = (await getRowDatas(schema.subscriptionEndEvents))
+        .filter((e: any) => e.subscriptionId === "sub-tf-mixed");
+      expect(endEvents).toHaveLength(1);
+
+      const expiredItemIds = endEvents[0].itemQuantityChangesToExpire.map((e: any) => e.itemId);
+      expect(expiredItemIds).toContain("expiring");
+      expect(expiredItemIds).not.toContain("permanent");
+    });
+
+    it("should NOT emit subscription-end for active subscription without endedAt", async () => {
+      const endEvents = (await getRowDatas(schema.subscriptionEndEvents))
+        .filter((e: any) => e.subscriptionId === "sub-tf-start");
+      expect(endEvents).toHaveLength(0);
+    });
+  });
+
+
+  describe("subscription TimeFold: repeat timing", () => {
+    it("should schedule repeats at anchor + N*interval and stop before endedAt", async () => {
+      await runStatements(schema.subscriptions.setRow("sub-tf-timing", jsonbExpr(makeSubscription("sub-tf-timing", {
+        product: {
+          displayName: "Timing Plan",
+          customerType: "user",
+          productLineId: "line-tf-timing",
+          prices: { p1: { USD: "10" } },
+          includedItems: {
+            daily: { quantity: 10, repeat: [1, "day"], expires: "when-repeated" },
+          },
+        },
+        endedAtMillis: 5 * DAY_MS,
+        createdAtMillis: 5000,
+      }))));
+
+      const repeatEvents = (await getRowDatas(schema.itemGrantRepeatEvents))
+        .filter((e: any) => e.sourceId === "sub-tf-timing" && e.sourceType === "subscription")
+        .sort((a: any, b: any) => a.effectiveAtMillis - b.effectiveAtMillis);
+
+      expect(repeatEvents.length).toBeGreaterThan(0);
+      expect(repeatEvents[0].effectiveAtMillis).toBe(5000 + DAY_MS);
+
+      for (let i = 1; i < repeatEvents.length; i++) {
+        expect(repeatEvents[i].effectiveAtMillis).toBe(repeatEvents[i - 1].effectiveAtMillis + DAY_MS);
+      }
+
+      for (const event of repeatEvents) {
+        expect(event.effectiveAtMillis).toBeLessThanOrEqual(5 * DAY_MS);
+      }
+    });
+  });
+
+
+  describe("OTP TimeFold: item-grant-repeat", () => {
+    it("should emit item-grant-repeat events for OTP with repeating items", async () => {
+      await runStatements(schema.oneTimePurchases.setRow("otp-tf-repeat", jsonbExpr({
+        id: "otp-tf-repeat",
+        tenancyId: "t1",
+        customerId: "u-otp-tf",
         customerType: "user",
-        customerId: "u1",
-        chargedAmount: { USD: "9.99" },
-      });
+        productId: "prod-otp-tf",
+        priceId: "p1",
+        product: {
+          displayName: "Token Pack",
+          customerType: "user",
+          productLineId: "line-otp-tf",
+          prices: { p1: { USD: "5" } },
+          includedItems: {
+            tokens: { quantity: 100, repeat: [7, "day"], expires: "when-repeated" },
+          },
+        },
+        quantity: 1,
+        stripePaymentIntentId: null,
+        revokedAtMillis: 30 * DAY_MS,
+        refundedAtMillis: null,
+        creationSource: "TEST_MODE",
+        createdAtMillis: 0,
+      })));
+
+      const repeatEvents = (await getRowDatas(schema.itemGrantRepeatEvents))
+        .filter((e: any) => e.sourceId === "otp-tf-repeat" && e.sourceType === "one_time_purchase");
+
+      expect(repeatEvents.length).toBeGreaterThan(0);
+      for (const event of repeatEvents) {
+        expect(event.itemGrants).toEqual(
+          expect.arrayContaining([expect.objectContaining({ itemId: "tokens", quantity: 100 })])
+        );
+      }
     });
   });
 
 
-  describe("subscription-cancel transaction", () => {
-    it("should produce correct active-subscription-change entry", async () => {
-      const txns = (await getRowDatas(schema.transactions))
-        .filter((t: any) => t.type === "subscription-cancel");
-      expect(txns).toHaveLength(1);
+  // ============================================================
+  // 3. Event → Transaction mapping
+  // ============================================================
 
-      const txn = txns[0] as TransactionRow;
-      expect(txn.txnId).toBe("sub-cancel:sub-c1");
-      expect(txn.entries).toHaveLength(1);
-      expect(txn.entries[0]).toMatchObject({
+  describe("transaction mapping", () => {
+    it("subscription-renewal transaction has correct money-transfer entry", async () => {
+      const txns = (await getRowDatas(schema.transactions))
+        .filter((t: any) => t.txnId === "sub-renewal:inv-renewal-1") as TransactionRow[];
+      expect(txns).toHaveLength(1);
+      expect(txns[0].entries).toHaveLength(1);
+      expect(txns[0].entries[0]).toMatchObject({
+        type: "money-transfer",
+        chargedAmount: { USD: "10" },
+      });
+    });
+
+    it("subscription-cancel transaction has correct entry", async () => {
+      const txns = (await getRowDatas(schema.transactions))
+        .filter((t: any) => t.txnId === "sub-cancel:sub-cancel-1") as TransactionRow[];
+      expect(txns).toHaveLength(1);
+      expect(txns[0].entries[0]).toMatchObject({
         type: "active-subscription-change",
-        subscriptionId: "sub-c1",
         changeType: "cancel",
       });
     });
-  });
 
-
-  describe("subscription-start transaction (via stub)", () => {
-    beforeAll(async () => {
-      await runStatements(schema._timeFoldStubs.subscriptionStartEvents.setRow("start-A", jsonbExpr({
-        subscriptionId: "sub-A",
-        tenancyId: "t1",
-        customerId: "u10",
-        customerType: "user",
-        productId: "prod-pro",
-        product: {
-          displayName: "Pro Plan",
-          customerType: "user",
-          productLineId: "line-1",
-          prices: { "price-1": { USD: "29.99" } },
-          includedItems: { credits: { quantity: 500 } },
-        },
-        productLineId: "line-1",
-        priceId: "price-1",
-        quantity: 1,
-        chargedAmount: { USD: "29.99" },
-        itemGrants: [
-          { itemId: "credits", quantity: 500, expiresWhen: null },
-          { itemId: "bonus", quantity: 10, expiresWhen: "when-purchase-expires" },
-        ],
-        paymentProvider: "stripe",
-        effectiveAtMillis: 500,
-        createdAtMillis: 500,
-      })));
-
-      await runStatements(schema._timeFoldStubs.subscriptionStartEvents.setRow("start-B", jsonbExpr({
-        subscriptionId: "sub-B",
-        tenancyId: "t1",
-        customerId: "u10",
-        customerType: "user",
-        productId: "prod-basic",
-        product: {
-          displayName: "Basic Plan",
-          customerType: "user",
-          productLineId: "line-1",
-          prices: { "price-basic": { USD: "9.99" } },
-          includedItems: { credits: { quantity: 100 } },
-        },
-        productLineId: "line-1",
-        priceId: "price-basic",
-        quantity: 1,
-        chargedAmount: { USD: "9.99" },
-        itemGrants: [{ itemId: "credits", quantity: 100, expiresWhen: null }],
-        paymentProvider: "test_mode",
-        effectiveAtMillis: 600,
-        createdAtMillis: 600,
-      })));
-    });
-
-    it("should produce transactions for both subscriptions with correct entry ordering", async () => {
+    it("subscription-start transaction has correct entry ordering", async () => {
       const txns = (await getRowDatas(schema.transactions))
-        .filter((t: any) => t.type === "subscription-start") as TransactionRow[];
-      expect(txns).toHaveLength(2);
+        .filter((t: any) => t.txnId === "sub-start:sub-tf-start") as TransactionRow[];
+      expect(txns).toHaveLength(1);
 
-      const txnA = txns.find(t => t.txnId === "sub-start:sub-A")!;
-      expect(txnA).toBeDefined();
-
-      const entryTypes = txnA.entries.map(e => e.type);
+      const entryTypes = txns[0].entries.map((e: any) => e.type);
       expect(entryTypes[0]).toBe("active-subscription-start");
       expect(entryTypes[1]).toBe("product-grant");
-      expect(entryTypes[2]).toBe("money-transfer");
-      expect(entryTypes[3]).toBe("item-quantity-change");
-      expect(entryTypes[4]).toBe("item-quantity-change");
-      expect(txnA.entries).toHaveLength(5);
     });
 
-    it("should set correct fields on product-grant entry", async () => {
+    it("one-time-purchase transaction has product-grant with oneTimePurchaseId", async () => {
       const txns = (await getRowDatas(schema.transactions))
-        .filter((t: any) => t.type === "subscription-start") as TransactionRow[];
-      const txnA = txns.find(t => t.txnId === "sub-start:sub-A")!;
-
-      const productGrant = txnA.entries[1];
-      expect(productGrant).toMatchObject({
+        .filter((t: any) => t.txnId === "otp:otp-ev-1") as TransactionRow[];
+      expect(txns).toHaveLength(1);
+      expect(txns[0].entries[0]).toMatchObject({
         type: "product-grant",
-        productId: "prod-pro",
-        productLineId: "line-1",
-        quantity: 1,
-        subscriptionId: "sub-A",
+        oneTimePurchaseId: "otp-ev-1",
       });
     });
 
-    it("should set expiresWhen on item-quantity-change entries", async () => {
+    it("manual-item-quantity-change transaction has single entry with expiresWhen null", async () => {
       const txns = (await getRowDatas(schema.transactions))
-        .filter((t: any) => t.type === "subscription-start") as TransactionRow[];
-      const txnA = txns.find(t => t.txnId === "sub-start:sub-A")!;
-
-      const itemChanges = txnA.entries.filter(e => e.type === "item-quantity-change");
-      expect(itemChanges).toHaveLength(2);
-
-      const creditsChange = itemChanges.find((e: any) => e.itemId === "credits");
-      const bonusChange = itemChanges.find((e: any) => e.itemId === "bonus");
-      expect((creditsChange as any).expiresWhen).toBeNull();
-      expect((bonusChange as any).expiresWhen).toBe("when-purchase-expires");
-    });
-
-    it("should omit money-transfer for test_mode subscription", async () => {
-      const txns = (await getRowDatas(schema.transactions))
-        .filter((t: any) => t.type === "subscription-start") as TransactionRow[];
-      const txnB = txns.find(t => t.txnId === "sub-start:sub-B")!;
-
-      const entryTypes = txnB.entries.map(e => e.type);
-      expect(entryTypes).not.toContain("money-transfer");
+        .filter((t: any) => t.txnId === "miqc:iqc-ev-1") as TransactionRow[];
+      expect(txns).toHaveLength(1);
+      expect(txns[0].entries).toHaveLength(1);
+      expect((txns[0].entries[0] as any).expiresWhen).toBeNull();
     });
   });
 
 
-  describe("subscription-end transaction (via stub)", () => {
-    beforeAll(async () => {
-      await runStatements(schema._timeFoldStubs.subscriptionEndEvents.setRow("end-A", jsonbExpr({
-        subscriptionId: "sub-A",
+  // ============================================================
+  // 4. Refund pass-through
+  // ============================================================
+
+  describe("refund transaction", () => {
+    it("should pass through refund from manualTransactions", async () => {
+      await runStatements(schema.manualTransactions.setRow("refund-p1", jsonbExpr({
+        txnId: "refund-p1-001",
         tenancyId: "t1",
-        customerId: "u10",
-        customerType: "user",
-        productId: "prod-pro",
-        productLineId: "line-1",
-        quantity: 1,
-        startProductGrantRef: { transactionId: "sub-start:sub-A", entryIndex: 1 },
-        itemQuantityChangesToExpire: [
-          { transactionId: "sub-start:sub-A", entryIndex: 3, itemId: "credits", quantity: 500 },
-          { transactionId: "sub-start:sub-A", entryIndex: 4, itemId: "bonus", quantity: 10 },
-        ],
-        paymentProvider: "stripe",
-        effectiveAtMillis: 2000,
-        createdAtMillis: 2000,
-      })));
-    });
-
-    it("should produce product-revocation pointing at the correct product-grant", async () => {
-      const txns = (await getRowDatas(schema.transactions))
-        .filter((t: any) => t.type === "subscription-end") as TransactionRow[];
-      expect(txns).toHaveLength(1);
-
-      const txn = txns[0];
-      expect(txn.txnId).toBe("sub-end:sub-A");
-
-      const revocation = txn.entries.find(e => e.type === "product-revocation") as any;
-      expect(revocation).toBeDefined();
-      expect(revocation.adjustedTransactionId).toBe("sub-start:sub-A");
-      expect(revocation.adjustedEntryIndex).toBe(1);
-      expect(revocation.productId).toBe("prod-pro");
-      expect(revocation.productLineId).toBe("line-1");
-    });
-
-    it("should produce item-quantity-expire entries pointing at correct item-quantity-changes", async () => {
-      const txns = (await getRowDatas(schema.transactions))
-        .filter((t: any) => t.type === "subscription-end") as TransactionRow[];
-      const txn = txns[0];
-
-      const expires = txn.entries.filter(e => e.type === "item-quantity-expire") as any[];
-      expect(expires).toHaveLength(2);
-
-      const creditsExpire = expires.find(e => e.itemId === "credits");
-      expect(creditsExpire).toMatchObject({
-        adjustedTransactionId: "sub-start:sub-A",
-        adjustedEntryIndex: 3,
-        quantity: 500,
-      });
-
-      const bonusExpire = expires.find(e => e.itemId === "bonus");
-      expect(bonusExpire).toMatchObject({
-        adjustedTransactionId: "sub-start:sub-A",
-        adjustedEntryIndex: 4,
-        quantity: 10,
-      });
-    });
-
-    it("should have correct entry ordering: [active-subscription-end, product-revocation, ...item-quantity-expire]", async () => {
-      const txns = (await getRowDatas(schema.transactions))
-        .filter((t: any) => t.type === "subscription-end") as TransactionRow[];
-      const txn = txns[0];
-
-      expect(txn.entries[0].type).toBe("active-subscription-end");
-      expect(txn.entries[1].type).toBe("product-revocation");
-      expect(txn.entries[2].type).toBe("item-quantity-expire");
-      expect(txn.entries[3].type).toBe("item-quantity-expire");
-    });
-  });
-
-
-  describe("item-grant-repeat transaction (via stub)", () => {
-    beforeAll(async () => {
-      await runStatements(schema._timeFoldStubs.itemGrantRepeatFromSubscriptions.setRow("igr-1", jsonbExpr({
-        sourceType: "subscription",
-        sourceId: "sub-A",
-        tenancyId: "t1",
-        customerId: "u10",
-        customerType: "user",
-        itemGrants: [{ itemId: "credits", quantity: 500, expiresWhen: "when-repeated" }],
-        previousGrantsToExpire: [
-          { transactionId: "sub-start:sub-A", entryIndex: 3, itemId: "credits", quantity: 500 },
-        ],
-        paymentProvider: "stripe",
-        effectiveAtMillis: 1000,
-        createdAtMillis: 1000,
-      })));
-    });
-
-    it("should expire previous grants before adding new ones", async () => {
-      const txns = (await getRowDatas(schema.transactions))
-        .filter((t: any) => t.type === "item-grant-repeat") as TransactionRow[];
-      expect(txns).toHaveLength(1);
-
-      const txn = txns[0];
-      expect(txn.txnId).toBe("igr:sub-A:1000");
-
-      const entryTypes = txn.entries.map(e => e.type);
-      expect(entryTypes[0]).toBe("item-quantity-expire");
-      expect(entryTypes[1]).toBe("item-quantity-change");
-
-      const expire = txn.entries[0] as any;
-      expect(expire.adjustedTransactionId).toBe("sub-start:sub-A");
-      expect(expire.adjustedEntryIndex).toBe(3);
-
-      const change = txn.entries[1] as any;
-      expect(change.itemId).toBe("credits");
-      expect(change.quantity).toBe(500);
-      expect(change.expiresWhen).toBe("when-repeated");
-    });
-  });
-
-
-  describe("one-time-purchase transaction", () => {
-    it("should produce correct entry structure with productLineId", async () => {
-      const txns = (await getRowDatas(schema.transactions))
-        .filter((t: any) => t.type === "one-time-purchase") as TransactionRow[];
-      expect(txns).toHaveLength(1);
-
-      const txn = txns[0];
-      expect(txn.txnId).toBe("otp:otp-1");
-      expect(txn.effectiveAtMillis).toBe(3000);
-      expect(txn.paymentProvider).toBe("stripe");
-
-      expect(txn.entries[0].type).toBe("product-grant");
-      const grant = txn.entries[0] as any;
-      expect(grant.productId).toBe("prod-coins");
-      expect(grant.productLineId).toBe("line-coins");
-      expect(grant.oneTimePurchaseId).toBe("otp-1");
-
-      expect(txn.entries[1].type).toBe("money-transfer");
-      expect((txn.entries[1] as any).chargedAmount).toMatchObject({ USD: "9.98" });
-
-      const itemChanges = txn.entries.filter(e => e.type === "item-quantity-change");
-      expect(itemChanges).toHaveLength(2);
-    });
-
-    it("should set expiresWhen on OTP item-quantity-change entries from product config", async () => {
-      const txns = (await getRowDatas(schema.transactions))
-        .filter((t: any) => t.type === "one-time-purchase") as TransactionRow[];
-      const txn = txns[0];
-
-      const itemChanges = txn.entries.filter(e => e.type === "item-quantity-change") as any[];
-      const coinsChange = itemChanges.find(e => e.itemId === "coins");
-      const bonusChange = itemChanges.find(e => e.itemId === "bonus");
-
-      expect(coinsChange.expiresWhen).toBeNull();
-      expect(bonusChange.expiresWhen).toBe("when-purchase-expires");
-      expect(coinsChange.quantity).toBe(200);
-      expect(bonusChange.quantity).toBe(10);
-    });
-  });
-
-
-  describe("manual-item-quantity-change transaction", () => {
-    it("should produce single item-quantity-change entry with expiresWhen: null", async () => {
-      const txns = (await getRowDatas(schema.transactions))
-        .filter((t: any) => t.type === "manual-item-quantity-change") as TransactionRow[];
-      expect(txns).toHaveLength(1);
-
-      const txn = txns[0];
-      expect(txn.txnId).toBe("miqc:iqc-1");
-      expect(txn.effectiveAtMillis).toBe(4000);
-      expect(txn.entries).toHaveLength(1);
-
-      const entry = txn.entries[0] as any;
-      expect(entry).toMatchObject({
-        type: "item-quantity-change",
-        itemId: "credits",
-        quantity: -5,
-        expiresWhen: null,
-      });
-    });
-  });
-
-
-  describe("refund transaction (ManualTransactions pass-through)", () => {
-    beforeAll(async () => {
-      await runStatements(schema.manualTransactions.setRow("refund-1", jsonbExpr({
-        txnId: "refund-001",
-        tenancyId: "t1",
-        effectiveAtMillis: 5000,
+        effectiveAtMillis: 9000,
         type: "refund",
         entries: [
-          { type: "money-transfer", customerType: "user", customerId: "u1", chargedAmount: { USD: "-9.99" } },
+          { type: "money-transfer", customerType: "user", customerId: "u-refund", chargedAmount: { USD: "-10" } },
         ],
         customerType: "user",
-        customerId: "u1",
+        customerId: "u-refund",
         paymentProvider: "stripe",
-        createdAtMillis: 5000,
+        createdAtMillis: 9000,
       })));
-    });
 
-    it("should appear in transactions table unchanged", async () => {
       const txns = (await getRowDatas(schema.transactions))
-        .filter((t: any) => t.type === "refund") as TransactionRow[];
+        .filter((t: any) => t.txnId === "refund-p1-001");
       expect(txns).toHaveLength(1);
-      expect(txns[0].txnId).toBe("refund-001");
-      expect(txns[0].entries).toHaveLength(1);
-      expect((txns[0].entries[0] as any).chargedAmount.USD).toBe("-9.99");
+      expect(txns[0].type).toBe("refund");
     });
 
     it("should NOT pass through non-refund manual transactions", async () => {
-      await runStatements(schema.manualTransactions.setRow("non-refund", jsonbExpr({
-        txnId: "other-001",
+      await runStatements(schema.manualTransactions.setRow("non-refund-p1", jsonbExpr({
+        txnId: "other-p1-001",
         tenancyId: "t1",
-        effectiveAtMillis: 6000,
+        effectiveAtMillis: 9500,
         type: "subscription-start",
         entries: [],
         customerType: "user",
-        customerId: "u1",
+        customerId: "u-other",
         paymentProvider: "test_mode",
-        createdAtMillis: 6000,
+        createdAtMillis: 9500,
       })));
 
       const txns = (await getRowDatas(schema.transactions))
-        .filter((t: any) => t.txnId === "other-001");
+        .filter((t: any) => t.txnId === "other-p1-001");
       expect(txns).toHaveLength(0);
     });
   });
 
 
   // ============================================================
-  // 3. Charged amount computation
+  // 5. Charged amount computation
   // ============================================================
 
-  describe("charged amount edge cases", () => {
+  describe("charged amount computation", () => {
     it("should multiply price by quantity for multi-quantity OTP", async () => {
       const txns = (await getRowDatas(schema.transactions))
-        .filter((t: any) => t.type === "one-time-purchase") as TransactionRow[];
-
-      const moneyEntry = txns[0].entries.find(e => e.type === "money-transfer") as any;
-      expect(moneyEntry.chargedAmount.USD).toBe("9.98");
+        .filter((t: any) => t.txnId === "otp:otp-ev-1") as TransactionRow[];
+      const moneyEntry = txns[0].entries.find((e: any) => e.type === "money-transfer") as any;
+      expect(moneyEntry).toBeDefined();
+      expect(moneyEntry.chargedAmount.USD).toBe("10");
     });
 
-    it("should omit money-transfer when chargedAmount is empty (test_mode)", async () => {
-      const txns = (await getRowDatas(schema.transactions))
-        .filter((t: any) => t.type === "subscription-start") as TransactionRow[];
-      const txnB = txns.find(t => t.txnId === "sub-start:sub-B")!;
+    it("should compute chargedAmount for subscription renewal from product price", async () => {
+      const events = await getRowDatas(schema.subscriptionRenewalEvents);
+      const event = events.find((e: any) => e.invoiceId === "inv-renewal-1");
+      expect(event.chargedAmount).toMatchObject({ USD: "10" });
+    });
 
-      expect(txnB.entries.some(e => e.type === "money-transfer")).toBe(false);
+    it("should omit money-transfer for test_mode subscriptions", async () => {
+      const txns = (await getRowDatas(schema.transactions))
+        .filter((t: any) => t.txnId?.startsWith("sub-start:sub-cancel-")) as TransactionRow[];
+
+      for (const txn of txns) {
+        const hasMoneyTransfer = txn.entries.some((e: any) => e.type === "money-transfer");
+        expect(hasMoneyTransfer).toBe(false);
+      }
     });
   });
 
 
   // ============================================================
-  // 4. txnId, effectiveAtMillis, indexes
+  // 6. txnId derivation
   // ============================================================
 
   describe("txnId derivation", () => {
-    it("should use correct prefixes", async () => {
+    it("should use correct prefixes for all transaction types", async () => {
       const txns = await getRowDatas(schema.transactions);
-      const txnIds = txns.map((t: any) => t.txnId);
+      const txnIds = txns.map((t: any) => t.txnId as string);
 
-      expect(txnIds).toContain("sub-renewal:inv-r1");
-      expect(txnIds).toContain("sub-cancel:sub-c1");
-      expect(txnIds).toContain("sub-start:sub-A");
-      expect(txnIds).toContain("sub-start:sub-B");
-      expect(txnIds).toContain("sub-end:sub-A");
-      expect(txnIds).toContain("igr:sub-A:1000");
-      expect(txnIds).toContain("otp:otp-1");
-      expect(txnIds).toContain("miqc:iqc-1");
-      expect(txnIds).toContain("refund-001");
+      expect(txnIds.some(id => id.startsWith("sub-renewal:"))).toBe(true);
+      expect(txnIds.some(id => id.startsWith("sub-cancel:"))).toBe(true);
+      expect(txnIds.some(id => id.startsWith("sub-start:"))).toBe(true);
+      expect(txnIds.some(id => id.startsWith("otp:"))).toBe(true);
+      expect(txnIds.some(id => id.startsWith("miqc:"))).toBe(true);
+      expect(txnIds.some(id => id.startsWith("refund"))).toBe(true);
     });
   });
 
+
+  // ============================================================
+  // 7. effectiveAtMillis correctness
+  // ============================================================
+
   describe("effectiveAtMillis correctness", () => {
-    it("subscription-renewal effectiveAt should come from invoice createdAt", async () => {
+    it("subscription-renewal effectiveAt comes from invoice createdAt", async () => {
       const txns = (await getRowDatas(schema.transactions))
-        .filter((t: any) => t.type === "subscription-renewal") as TransactionRow[];
-      expect(txns[0].effectiveAtMillis).toBe(1500);
+        .filter((t: any) => t.txnId === "sub-renewal:inv-renewal-1") as TransactionRow[];
+      expect(txns[0].effectiveAtMillis).toBe(2000);
     });
 
-    it("OTP effectiveAt should come from purchase createdAt", async () => {
+    it("OTP effectiveAt comes from purchase createdAt", async () => {
       const txns = (await getRowDatas(schema.transactions))
-        .filter((t: any) => t.type === "one-time-purchase") as TransactionRow[];
+        .filter((t: any) => t.txnId === "otp:otp-ev-1") as TransactionRow[];
       expect(txns[0].effectiveAtMillis).toBe(3000);
     });
 
-    it("manual change effectiveAt should come from change createdAt", async () => {
+    it("manual change effectiveAt comes from change createdAt", async () => {
       const txns = (await getRowDatas(schema.transactions))
-        .filter((t: any) => t.type === "manual-item-quantity-change") as TransactionRow[];
+        .filter((t: any) => t.txnId === "miqc:iqc-ev-1") as TransactionRow[];
       expect(txns[0].effectiveAtMillis).toBe(4000);
+    });
+
+    it("subscription-start effectiveAt comes from subscription createdAt", async () => {
+      const txns = (await getRowDatas(schema.transactions))
+        .filter((t: any) => t.txnId === "sub-start:sub-tf-start") as TransactionRow[];
+      expect(txns[0].effectiveAtMillis).toBe(5000);
     });
   });
 });

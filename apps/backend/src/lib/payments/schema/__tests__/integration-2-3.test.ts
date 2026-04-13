@@ -46,6 +46,7 @@ describe.sequential("payments schema integration phase 2→3 (real postgres)", (
     },
     quantity: opts.quantity ?? 1,
     stripePaymentIntentId: `pi-${id}`,
+    revokedAtMillis: null,
     refundedAtMillis: null,
     creationSource: "PURCHASE_PAGE",
     createdAtMillis: opts.createdAtMillis,

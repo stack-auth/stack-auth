@@ -6,10 +6,10 @@
  *   subscription-end, item-grant-repeat, one-time-purchase,
  *   manual-item-quantity-change
  *
- * TimeFold-produced events (subscription-start, subscription-end,
- * item-grant-repeat from subscriptions, item-grant-repeat from OTPs) are
- * currently StoredTable stubs awaiting the TimeFoldTable implementation.
- * Replace stubs with declareTimeFoldTable once available.
+ * Subscription TimeFold processes each subscription row and emits
+ * subscription-start, item-grant-repeat, and subscription-end events.
+ * OTP TimeFold processes each OTP row and emits item-grant-repeat events.
+ * Both TimeFold outputs are split by type via FilterTables.
  *
  * Note: one-time-purchase events are derived directly from the OTP StoredTable,
  * NOT from a TimeFold. The OTP TimeFold only produces item-grant-repeat events.
@@ -20,14 +20,11 @@ import {
   declareFilterTable,
   declareLeftJoinTable,
   declareMapTable,
-  declareStoredTable,
+  declareTimeFoldTable,
 } from "@/lib/bulldozer/db/index";
-import type {
-  ItemGrantRepeatEventRow,
-  SubscriptionEndEventRow,
-  SubscriptionStartEventRow,
-} from "../types";
 import type { SeedEventsStoredTables } from "./stored-tables";
+import { getSubscriptionTimeFoldReducerSql } from "./subscription-timefold-algo";
+import { getOtpTimeFoldReducerSql } from "./otp-timefold-algo";
 
 const mapper = (sql: string) => ({ type: "mapper" as const, sql });
 const predicate = (sql: string) => ({ type: "predicate" as const, sql });
@@ -158,43 +155,44 @@ export function createEventTables(stored: SeedEventsStoredTables) {
   });
 
 
-  //TODO: ── TimeFold-produced events (stubs) ──────────────────────
-  // These StoredTable stubs will be replaced with declareTimeFoldTable
-  // calls once the TimeFold implementation is available on the coworker's
-  // branch. Until then, they can be populated directly in tests.
+  // ── Subscription TimeFold ────────────────────────────────
+  // Processes each subscription row and emits subscription-start,
+  // item-grant-repeat, and subscription-end events (tagged with `type`).
+  // FilterTables split the mixed output into separate event tables.
 
-  const subscriptionStartEvents = declareStoredTable<SubscriptionStartEventRow>({
+  const subscriptionTimeFoldOutput = declareTimeFoldTable({
+    tableId: "payments-subscription-timefold",
+    fromTable: stored.subscriptions,
+    initialState: { type: "expression" as const, sql: "'{}'::jsonb" },
+    reducer: mapper(getSubscriptionTimeFoldReducerSql()),
+  });
+
+  const subscriptionStartEvents = declareFilterTable({
     tableId: "payments-subscription-start-events",
+    fromTable: subscriptionTimeFoldOutput,
+    filter: predicate(`"rowData"->>'type' = 'subscription-start'`),
   });
 
-  const subscriptionEndEvents = declareStoredTable<SubscriptionEndEventRow>({
+  const subscriptionEndEvents = declareFilterTable({
     tableId: "payments-subscription-end-events",
+    fromTable: subscriptionTimeFoldOutput,
+    filter: predicate(`"rowData"->>'type' = 'subscription-end'`),
   });
 
-  const itemGrantRepeatFromSubscriptions = declareStoredTable<ItemGrantRepeatEventRow>({
+  const itemGrantRepeatFromSubscriptions = declareFilterTable({
     tableId: "payments-item-grant-repeat-from-subscriptions",
-  });
-
-  const itemGrantRepeatFromOTPs = declareStoredTable<ItemGrantRepeatEventRow>({
-    tableId: "payments-item-grant-repeat-from-otps",
+    fromTable: subscriptionTimeFoldOutput,
+    filter: predicate(`"rowData"->>'type' = 'item-grant-repeat'`),
   });
 
   // ── one-time-purchase ───────────────────────────────────
   // Derived directly from OneTimePurchases StoredTable (not from TimeFold).
-  // The OTP TimeFold only produces item-grant-repeat events.
-
-  const nonRefundedOTPs = declareFilterTable({
-    tableId: "payments-non-refunded-otps",
-    fromTable: stored.oneTimePurchases,
-    filter: predicate(`
-      "rowData"->'refundedAtMillis' IS NULL
-      OR "rowData"->'refundedAtMillis' = 'null'::jsonb
-    `),
-  });
+  // Refunds are handled via manualTransactions (additive), not by filtering
+  // out refunded OTPs. The OTP TimeFold uses revokedAtMillis to stop repeats.
 
   const oneTimePurchaseEvents = declareMapTable({
     tableId: "payments-one-time-purchase-events",
-    fromTable: nonRefundedOTPs,
+    fromTable: stored.oneTimePurchases,
     mapper: mapper(`
       "rowData"->'id' AS "purchaseId",
       "rowData"->'tenancyId' AS "tenancyId",
@@ -228,6 +226,23 @@ export function createEventTables(stored: SeedEventsStoredTables) {
       "rowData"->'createdAtMillis' AS "effectiveAtMillis",
       "rowData"->'createdAtMillis' AS "createdAtMillis"
     `),
+  });
+
+
+  // ── OTP TimeFold ───────────────────────────────────────
+  // Processes each non-refunded OTP row and emits item-grant-repeat events.
+
+  const otpTimeFoldOutput = declareTimeFoldTable({
+    tableId: "payments-otp-timefold",
+    fromTable: stored.oneTimePurchases,
+    initialState: { type: "expression" as const, sql: "'{}'::jsonb" },
+    reducer: mapper(getOtpTimeFoldReducerSql()),
+  });
+
+  const itemGrantRepeatFromOTPs = declareFilterTable({
+    tableId: "payments-item-grant-repeat-from-otps",
+    fromTable: otpTimeFoldOutput,
+    filter: predicate(`"rowData"->>'type' = 'item-grant-repeat'`),
   });
 
 
@@ -266,13 +281,14 @@ export function createEventTables(stored: SeedEventsStoredTables) {
     subscriptionRenewalEvents,
     cancelPendingSubscriptions,
     subscriptionCancelEvents,
+    subscriptionTimeFoldOutput,
     subscriptionStartEvents,
     subscriptionEndEvents,
     itemGrantRepeatFromSubscriptions,
+    oneTimePurchaseEvents,
+    otpTimeFoldOutput,
     itemGrantRepeatFromOTPs,
     itemGrantRepeatEvents,
-    nonRefundedOTPs,
-    oneTimePurchaseEvents,
     manualItemQuantityChangeEvents,
   ] as const;
 
@@ -285,14 +301,6 @@ export function createEventTables(stored: SeedEventsStoredTables) {
     oneTimePurchaseEvents,
     manualItemQuantityChangeEvents,
     _allEventTables,
-
-    /** Expose TimeFold stub tables for direct population in tests */
-    _timeFoldStubs: {
-      subscriptionStartEvents,
-      subscriptionEndEvents,
-      itemGrantRepeatFromSubscriptions,
-      itemGrantRepeatFromOTPs,
-    },
   };
 }
 

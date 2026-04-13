@@ -85,6 +85,38 @@ export function createTestDb() {
           (ARRAY[]::jsonb[], 'null'::jsonb),
           (ARRAY[to_jsonb('table'::text)]::jsonb[], 'null'::jsonb)
       `);
+      await _sql.unsafe(`
+        CREATE TABLE "BulldozerTimeFoldQueue" (
+          "id" UUID NOT NULL DEFAULT gen_random_uuid(),
+          "tableStoragePath" JSONB[] NOT NULL,
+          "groupKey" JSONB NOT NULL,
+          "rowIdentifier" TEXT NOT NULL,
+          "scheduledAt" TIMESTAMPTZ NOT NULL,
+          "stateAfter" JSONB NOT NULL,
+          "rowData" JSONB NOT NULL,
+          "reducerSql" TEXT NOT NULL,
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "BulldozerTimeFoldQueue_pkey" PRIMARY KEY ("id"),
+          CONSTRAINT "BulldozerTimeFoldQueue_table_group_row_key" UNIQUE ("tableStoragePath", "groupKey", "rowIdentifier")
+        )
+      `);
+      await _sql.unsafe(`
+        CREATE INDEX "BulldozerTimeFoldQueue_scheduledAt_idx"
+        ON "BulldozerTimeFoldQueue"("scheduledAt")
+      `);
+      await _sql.unsafe(`
+        CREATE TABLE "BulldozerTimeFoldMetadata" (
+          "key" TEXT PRIMARY KEY,
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "lastProcessedAt" TIMESTAMPTZ NOT NULL
+        )
+      `);
+      await _sql.unsafe(`
+        INSERT INTO "BulldozerTimeFoldMetadata" ("key", "lastProcessedAt")
+        VALUES ('singleton', '2099-01-01T00:00:00Z'::timestamptz)
+      `);
     },
 
     teardown: async () => {
