@@ -1,3 +1,4 @@
+ul#sidebar-group > li > button > div:first-child,
 ul#sidebar-group > li > a > div:first-child {
   background: transparent !important;
   border: 0 !important;
@@ -6,6 +7,7 @@ ul#sidebar-group > li > a > div:first-child {
 }
 
 ul#sidebar-group > li > button > img,
+ul#sidebar-group > li > button > div:first-child > img,
 ul#sidebar-group > li > a > div:first-child > img {
   /* AppIcon-like shell */
   border: 1px solid transparent !important;
@@ -22,8 +24,10 @@ ul#sidebar-group > li > a > div:first-child > img {
 }
 
 html.dark ul#sidebar-group > li > button > img,
+html.dark ul#sidebar-group > li > button > div:first-child > img,
 html.dark ul#sidebar-group > li > a > div:first-child > img,
 :root[data-theme="dark"] ul#sidebar-group > li > button > img,
+:root[data-theme="dark"] ul#sidebar-group > li > button > div:first-child > img,
 :root[data-theme="dark"] ul#sidebar-group > li > a > div:first-child > img {
   border: 1px solid transparent !important;
   /* Use inverted shell colors so post-filter background stays blue */
