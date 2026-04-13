@@ -1126,11 +1126,12 @@ model Subscription {
   product      Json
   quantity     Int          @default(1)
 
-  stripeSubscriptionId String?
-  status               SubscriptionStatus
-  currentPeriodEnd     DateTime
-  currentPeriodStart   DateTime
-  cancelAtPeriodEnd    Boolean
+  stripeSubscriptionId   String?
+  status                 SubscriptionStatus
+  currentPeriodEnd       DateTime
+  currentPeriodStart     DateTime
+  cancelAtPeriodEnd      Boolean
+  endedAt                DateTime?
 
   refundedAt DateTime?
 
