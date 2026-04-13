@@ -283,16 +283,18 @@ write_files:
       # Capture stdout+stderr so failures surface the actual node error in
       # the host-visible provision log instead of being swallowed by the
       # serial-only stream.
-      # NODE_OPTIONS=--jitless disables V8's JIT and forces interpreter-only
-      # execution, which avoids the cross-arch TCG × V8 JIT SIGTRAPs we see
-      # when emulating arm64 guests on an amd64 host. Under KVM this costs
-      # nothing measurable for a short-lived migration process.
+      # NODE_OPTIONS=--no-opt disables V8's TurboFan optimizer (the tier that
+      # emits aggressive arm64 instructions — PAC/BTI/LSE — that cross-arch
+      # TCG mis-translates into the migration SIGTRAP). Ignition + Sparkplug
+      # still run, and crucially the Wasm JIT is left intact so Prisma 7's
+      # wasm query compiler keeps working. Cheap enough under KVM that we
+      # apply it unconditionally rather than gating on arch.
       migrate_log="$(mktemp)"
       set +e
       docker exec \
         --env-file /etc/stack-build.env \
         --env-file /etc/stack-build-computed.env \
-        -e NODE_OPTIONS=--jitless \
+        -e NODE_OPTIONS=--no-opt \
         stack-build-init \
         sh -c 'cd /app/apps/backend && node dist/db-migrations.mjs migrate && node dist/db-migrations.mjs seed' \
         > "$migrate_log" 2>&1
