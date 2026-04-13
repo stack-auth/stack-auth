@@ -78,19 +78,22 @@ export function declareTimeFoldTable<
     const timeFoldChangesTableName = `time_fold_changes_${generateSecureRandomString()}`;
 
     return [
-      sqlQuery`
-        SELECT
-          "changes"."groupKey" AS "groupKey",
-          "changes"."rowIdentifier" AS "rowIdentifier",
-          "stateRows"."value" AS "stateValue"
-        FROM ${normalizedChangesTable} AS "changes"
-        INNER JOIN "BulldozerStorageEngine" AS "stateRows"
-          ON "changes"."hasOldRow"
-          AND "stateRows"."keyPath" = ${getGroupStatePath(
-            sqlExpression`"changes"."groupKey"`,
-            sqlExpression`to_jsonb("changes"."rowIdentifier"::text)`,
-          )}::jsonb[]
-      `.toStatement(oldStateRowsTableName),
+      {
+        ...sqlQuery`
+          SELECT
+            "changes"."groupKey" AS "groupKey",
+            "changes"."rowIdentifier" AS "rowIdentifier",
+            "stateRows"."value" AS "stateValue"
+          FROM ${normalizedChangesTable} AS "changes"
+          INNER JOIN "BulldozerStorageEngine" AS "stateRows"
+            ON "changes"."hasOldRow"
+            AND "stateRows"."keyPath" = ${getGroupStatePath(
+              sqlExpression`"changes"."groupKey"`,
+              sqlExpression`to_jsonb("changes"."rowIdentifier"::text)`,
+            )}::jsonb[]
+        `.toStatement(oldStateRowsTableName, '"groupKey" jsonb, "rowIdentifier" text, "stateValue" jsonb'),
+        requiresSequentialExecution: true,
+      },
       sqlQuery`
         SELECT
           "states"."groupKey" AS "groupKey",
@@ -106,7 +109,7 @@ export function declareTimeFoldTable<
             ELSE '[]'::jsonb
           END
         ) WITH ORDINALITY AS "flatRow"("rowData", "flatIndex")
-      `.toStatement(oldTimeFoldRowsTableName),
+      `.toStatement(oldTimeFoldRowsTableName, '"groupKey" jsonb, "rowIdentifier" text, "rowData" jsonb'),
       sqlQuery`
         WITH RECURSIVE "stateChain" AS (
           SELECT
@@ -198,7 +201,7 @@ export function declareTimeFoldTable<
           "nextTimestamp" AS "nextTimestamp"
         FROM "stateChain"
         ORDER BY "groupKey", "rowIdentifier", "depth" DESC
-      `.toStatement(recomputedStatesTableName),
+      `.toStatement(recomputedStatesTableName, '"groupKey" jsonb, "rowIdentifier" text, "rowData" jsonb, "lastProcessedAt" timestamptz, "stateAfter" jsonb, "emittedRowsData" jsonb, "nextTimestamp" timestamptz'),
       sqlQuery`
         SELECT
           "states"."groupKey" AS "groupKey",
@@ -214,7 +217,7 @@ export function declareTimeFoldTable<
             ELSE '[]'::jsonb
           END
         ) WITH ORDINALITY AS "flatRow"("rowData", "flatIndex")
-      `.toStatement(newTimeFoldRowsTableName),
+      `.toStatement(newTimeFoldRowsTableName, '"groupKey" jsonb, "rowIdentifier" text, "rowData" jsonb'),
       sqlStatement`
         INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
         SELECT
@@ -374,33 +377,36 @@ export function declareTimeFoldTable<
           ON "oldRows"."groupKey" IS NOT DISTINCT FROM "newRows"."groupKey"
           AND "oldRows"."rowIdentifier" = "newRows"."rowIdentifier"
         WHERE "oldRows"."rowData" IS DISTINCT FROM "newRows"."rowData"
-      `.toStatement(timeFoldChangesTableName),
+      `.toStatement(timeFoldChangesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb'),
       ...[...triggers.values()].flatMap((trigger) => trigger(quoteSqlIdentifier(timeFoldChangesTableName))),
     ];
   };
   const createFromTableTriggerStatements = (fromChangesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => {
     const normalizedChangesTableName = `normalized_changes_${generateSecureRandomString()}`;
     return [
-      sqlQuery`
-        SELECT
-          "changes"."groupKey" AS "groupKey",
-          "changes"."rowIdentifier" AS "rowIdentifier",
-          "changes"."oldRowData" AS "oldRowData",
-          "changes"."newRowData" AS "newRowData",
-          ("changes"."oldRowData" IS NOT NULL AND jsonb_typeof("changes"."oldRowData") = 'object') AS "hasOldRow",
-          ("changes"."newRowData" IS NOT NULL AND jsonb_typeof("changes"."newRowData") = 'object') AS "hasNewRow"
-        FROM ${fromChangesTable} AS "changes"
-        WHERE ${isInitializedExpression}
-          AND (
-            NOT (
-              "changes"."oldRowData" IS NOT NULL
-              AND jsonb_typeof("changes"."oldRowData") = 'object'
-              AND "changes"."newRowData" IS NOT NULL
-              AND jsonb_typeof("changes"."newRowData") = 'object'
+      {
+        ...sqlQuery`
+          SELECT
+            "changes"."groupKey" AS "groupKey",
+            "changes"."rowIdentifier" AS "rowIdentifier",
+            "changes"."oldRowData" AS "oldRowData",
+            "changes"."newRowData" AS "newRowData",
+            ("changes"."oldRowData" IS NOT NULL AND jsonb_typeof("changes"."oldRowData") = 'object') AS "hasOldRow",
+            ("changes"."newRowData" IS NOT NULL AND jsonb_typeof("changes"."newRowData") = 'object') AS "hasNewRow"
+          FROM ${fromChangesTable} AS "changes"
+          WHERE ${isInitializedExpression}
+            AND (
+              NOT (
+                "changes"."oldRowData" IS NOT NULL
+                AND jsonb_typeof("changes"."oldRowData") = 'object'
+                AND "changes"."newRowData" IS NOT NULL
+                AND jsonb_typeof("changes"."newRowData") = 'object'
+              )
+              OR "changes"."oldRowData" IS DISTINCT FROM "changes"."newRowData"
             )
-            OR "changes"."oldRowData" IS DISTINCT FROM "changes"."newRowData"
-          )
-      `.toStatement(normalizedChangesTableName),
+        `.toStatement(normalizedChangesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowData" jsonb, "newRowData" jsonb, "hasOldRow" boolean, "hasNewRow" boolean'),
+        requiresSequentialExecution: true,
+      },
       ...createApplyChangesStatements(quoteSqlIdentifier(normalizedChangesTableName)),
     ];
   };
@@ -448,7 +454,7 @@ export function declareTimeFoldTable<
           end: "end",
           startInclusive: true,
           endInclusive: true,
-        }).toStatement(fromGroupsTableName),
+        }).toStatement(fromGroupsTableName, '"groupkey" jsonb'),
         sqlQuery`
           SELECT
             "groups"."groupkey" AS "groupKey",
@@ -464,7 +470,7 @@ export function declareTimeFoldTable<
               endInclusive: true,
             })}
           ) AS "rows"
-        `.toStatement(fromRowsTableName),
+        `.toStatement(fromRowsTableName, '"groupKey" jsonb, "rowIdentifier" text, "newRowData" jsonb'),
         sqlQuery`
           SELECT
             "rows"."groupKey" AS "groupKey",
@@ -474,7 +480,7 @@ export function declareTimeFoldTable<
             false AS "hasOldRow",
             true AS "hasNewRow"
           FROM ${quoteSqlIdentifier(fromRowsTableName)} AS "rows"
-        `.toStatement(initChangesTableName),
+        `.toStatement(initChangesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowData" jsonb, "newRowData" jsonb, "hasOldRow" boolean, "hasNewRow" boolean'),
         ...createApplyChangesStatements(quoteSqlIdentifier(initChangesTableName)),
       ];
     },
