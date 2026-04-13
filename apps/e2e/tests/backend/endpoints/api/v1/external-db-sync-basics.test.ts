@@ -1,7 +1,7 @@
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { afterAll, beforeAll, describe, expect } from 'vitest';
-import { test } from '../../../../helpers';
+import { niceFetch, STACK_BACKEND_BASE_URL, test } from '../../../../helpers';
 import { withPortPrefix } from '../../../../helpers/ports';
 import { Auth, backendContext, InternalApiKey, Project, User, niceBackendFetch } from '../../../backend-helpers';
 import { randomUUID } from 'node:crypto';
@@ -1175,6 +1175,83 @@ describe.sequential('External DB Sync - Basic Tests', () => {
 
   /**
    * What it does:
+   * - Sends a team invitation, renames the team, and verifies team_display_name updates externally.
+   *
+   * Why it matters:
+   * - Covers the sequencer cascade that marks TEAM_INVITATION rows for re-sync on team updates.
+   */
+  test('TeamInvitation sync updates display name after team rename (Postgres)', async () => {
+    const dbName = 'team_invitation_team_rename_test';
+    const connectionString = await dbManager.createDatabase(dbName);
+
+    await createProjectWithExternalDb({
+      main: {
+        type: 'postgres',
+        connectionString,
+      }
+    }, { display_name: 'Invitation Rename Test Project' });
+
+    const client = dbManager.getClient(dbName);
+    const initialTeamName = 'Invitation Team Before Rename';
+    const updatedTeamName = 'Invitation Team After Rename';
+    const invitedEmail = `team-rename-${randomUUID()}@example.com`;
+
+    const createTeamResponse = await niceBackendFetch('/api/v1/teams', {
+      accessType: 'admin',
+      method: 'POST',
+      body: { display_name: initialTeamName },
+    });
+    expect(createTeamResponse.status).toBe(201);
+    const teamId = createTeamResponse.body.id;
+
+    const inviteResponse = await niceBackendFetch('/api/v1/team-invitations/send-code', {
+      accessType: 'admin',
+      method: 'POST',
+      body: { team_id: teamId, email: invitedEmail, callback_url: 'http://localhost:12345/callback' },
+    });
+    expect(inviteResponse.status).toBe(200);
+
+    await waitForSyncedTeamInvitation(client, invitedEmail);
+
+    const initialInvitation = await client.query(
+      `SELECT "team_display_name" FROM "team_invitations" WHERE "recipient_email" = $1`,
+      [invitedEmail],
+    );
+    expect(initialInvitation.rows.length).toBe(1);
+    expect(initialInvitation.rows[0].team_display_name).toBe(initialTeamName);
+
+    const updateTeamResponse = await niceBackendFetch(`/api/v1/teams/${teamId}`, {
+      accessType: 'admin',
+      method: 'PATCH',
+      body: { display_name: updatedTeamName },
+    });
+    expect(updateTeamResponse.status).toBe(200);
+
+    await waitForCondition(
+      async () => {
+        const updatedInvitation = await client.query(
+          `SELECT "team_display_name" FROM "team_invitations" WHERE "recipient_email" = $1`,
+          [invitedEmail],
+        );
+        return updatedInvitation.rows.length === 1 && updatedInvitation.rows[0].team_display_name === updatedTeamName;
+      },
+      {
+        timeoutMs: 180_000,
+        intervalMs: 500,
+        description: `team invitation for ${invitedEmail} to reflect renamed team`,
+      },
+    );
+
+    const finalInvitation = await client.query(
+      `SELECT "team_display_name" FROM "team_invitations" WHERE "recipient_email" = $1`,
+      [invitedEmail],
+    );
+    expect(finalInvitation.rows.length).toBe(1);
+    expect(finalInvitation.rows[0].team_display_name).toBe(updatedTeamName);
+  }, TEST_TIMEOUT);
+
+  /**
+   * What it does:
    * - Sends a team invitation, queries ClickHouse analytics API to verify.
    */
   test('TeamInvitation sync (ClickHouse)', async ({ expect }) => {
@@ -1522,6 +1599,21 @@ describe.sequential('External DB Sync - Basic Tests', () => {
       sequencer_enabled: getResponse.body.sequencer_enabled,
       poller_enabled: getResponse.body.poller_enabled,
     });
+  }, TEST_TIMEOUT);
+
+  test('Sync engine ignores missing tenancy queue items', async () => {
+    const response = await niceFetch(new URL('/api/latest/internal/external-db-sync/sync-engine', STACK_BACKEND_BASE_URL), {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'upstash-signature': 'test-bypass',
+      },
+      body: JSON.stringify({
+        tenancyId: randomUUID(),
+      }),
+    });
+
+    expect(response.status).toBe(200);
   }, TEST_TIMEOUT);
 
   /**

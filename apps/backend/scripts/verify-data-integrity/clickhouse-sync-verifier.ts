@@ -18,7 +18,7 @@ const SORT_KEYS = {
   team_invitations: ["id"],
   email_outboxes: ["id"],
   project_permissions: ["user_id", "permission_id"],
-  notification_preferences: ["id"],
+  notification_preferences: ["user_id", "notification_category_id"],
   refresh_tokens: ["id"],
   connected_accounts: ["user_id", "provider", "provider_account_id"],
 } satisfies Record<keyof typeof DEFAULT_DB_SYNC_MAPPINGS, string[]>;

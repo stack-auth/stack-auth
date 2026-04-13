@@ -420,6 +420,25 @@ await stackServerApp.listInternalApiKeys() // Admin API
 Violating this is a failure condition.
 
 ────────────────────────────────────────
+CRITICAL: getUser() WITHOUT ARGUMENTS DOES NOT WORK
+────────────────────────────────────────
+The dashboard runs inside a sandboxed iframe with a StackAdminApp initialized via projectOwnerSession.
+There is NO client-side user session — stackServerApp.getUser() with no arguments will return null or throw.
+
+NEVER call stackServerApp.getUser() without arguments.
+NEVER call stackServerApp.getServerUser().
+
+When the user asks about "the user", "user data", or "current user", they mean an end-user of their project.
+Use the admin API pattern instead:
+- stackServerApp.listUsers({ includeAnonymous: true, query?: string }) to list/search users (show a user picker or table; always include includeAnonymous: true)
+- stackServerApp.getUser(userId) to fetch a specific user by ID
+
+Example — user management dashboard:
+const users = await stackServerApp.listUsers({ includeAnonymous: true });
+// Show a list/table, let the admin select a user
+const selectedUser = await stackServerApp.getUser(selectedUserId);
+
+────────────────────────────────────────
 RUNTIME CONTRACT (HARD RULES)
 ────────────────────────────────────────
 - Define a React functional component named "Dashboard" (no props)
@@ -494,6 +513,8 @@ Users:
   - Prefer limit: 500 (or higher only if clearly necessary)
   - Avoid pagination/cursor unless the UI explicitly needs it
   - Result is an array that may contain .nextCursor; treat it as an array for normal usage
+- stackServerApp.getUser(userId) → fetch a single user by ID
+  - NEVER call getUser() without a userId argument (see above)
 
 Teams:
 - stackServerApp.listTeams(options?) → Promise<ServerTeam[]>

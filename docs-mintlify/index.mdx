@@ -4,7 +4,23 @@ description: "Stack Auth documentation for setup, components, SDK usage, and RES
 sidebarTitle: "Overview"
 ---
 
-<div className="not-prose relative left-1/2 right-1/2 -mx-[50vw] w-screen overflow-hidden bg-[#121212]">
+export const SectionLink = ({ href, children }) => (
+  <a href={href} className="text-base font-semibold text-slate-900 no-underline hover:text-[#6b5df7] dark:text-white dark:hover:text-[#8b7cf9]">{children}</a>
+);
+
+export const ChipLink = ({ href, children }) => (
+  <a href={href} className="inline-flex rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 no-underline transition hover:bg-[#6b5df7]/10 hover:text-[#6b5df7] dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-[#6b5df7]/20 dark:hover:text-[#8b7cf9]">{children}</a>
+);
+
+export const CardTitle = ({ href, children }) => (
+  <a href={href} className="mb-1 block text-sm font-semibold text-slate-900 no-underline hover:text-[#6b5df7] dark:text-white dark:hover:text-[#8b7cf9]">{children}</a>
+);
+
+export const CardChip = ({ href, children }) => (
+  <a href={href} className="rounded bg-slate-100 px-2 py-0.5 text-xs text-slate-500 no-underline transition hover:bg-[#6b5df7]/10 hover:text-[#6b5df7] dark:bg-slate-800 dark:text-slate-400 dark:hover:bg-[#6b5df7]/20 dark:hover:text-[#8b7cf9]">{children}</a>
+);
+
+<div className="not-prose relative w-full overflow-hidden rounded-xl bg-[#121212]">
   <img
     src="/images/hero-illustration-full.svg"
     alt=""
@@ -71,55 +87,102 @@ sidebarTitle: "Overview"
 
 <div className="mx-auto mt-20 max-w-7xl px-4 sm:px-6 lg:px-8">
   <div>
-    <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Explore the Docs</h2>
+    <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Navigate Through Our Docs</h2>
     <p className="mt-3 max-w-3xl text-base text-slate-600 dark:text-slate-300">
-      Jump into the part of the platform that matches how you are integrating Stack Auth.
+      Start at the top and work your way down, or jump straight to the section you need.
     </p>
   </div>
 
-  <CardGroup cols={2}>
-    <Card title="Getting Started" icon="rocket" href="/guides/getting-started/setup" cta="Open guide">
-      Installation, environment setup, and the first authentication flow.
-    </Card>
-    <Card title="Setup Guide" icon="puzzle-piece" href="/guides/getting-started/setup" cta="View setup">
-      Configure prebuilt React and Next.js auth UI, providers, and handlers.
-    </Card>
-    <Card title="SDK Reference" icon="book" href="/sdk/overview" cta="Browse SDK">
-      Hooks, objects, and types for working with users, teams, projects, and sessions.
-    </Card>
-    <Card title="REST API" icon="code" href="/api/overview" cta="See endpoints">
-      HTTP APIs for client, server, admin, and webhook integrations in any stack.
-    </Card>
-  </CardGroup>
-</div>
+  <h3 className="mt-10 mb-6 text-lg font-semibold text-slate-500 dark:text-slate-400">Recommended Order</h3>
 
-<div className="mx-auto mt-20 max-w-7xl px-4 sm:px-6 lg:px-8">
-  <div>
-    <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Common Tasks</h2>
-    <p className="mt-3 max-w-3xl text-base text-slate-600 dark:text-slate-300">
-      Start from practical guides for the features teams tend to configure first.
-    </p>
+  <div className="relative mt-2 ml-4 border-l-2 border-slate-200 pl-8 dark:border-slate-700">
+    {/* Getting Started */}
+    <div className="relative mb-10">
+      <div className="absolute -left-[2.55rem] top-0.5 h-4 w-4 rounded-full border-2 border-[#6b5df7] bg-[#6b5df7]" />
+      <SectionLink href="/guides/getting-started/setup">Getting Started</SectionLink>
+      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">First-time setup, install the SDK, get auth running in minutes.</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <ChipLink href="/guides/getting-started/setup">Setup</ChipLink>
+        <ChipLink href="/guides/getting-started/user-fundamentals">Users</ChipLink>
+        <ChipLink href="/guides/getting-started/ai-integration">AI Integration</ChipLink>
+        <ChipLink href="/guides/apps/launch-checklist/overview">Production</ChipLink>
+      </div>
+    </div>
+
+    {/* Components */}
+    <div className="relative mb-10">
+      <div className="absolute -left-[2.55rem] top-0.5 h-4 w-4 rounded-full border-2 border-[#6b5df7] bg-[#6b5df7]" />
+      <SectionLink href="/sdk/overview">Components</SectionLink>
+      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Drop-in UI for sign-in, sign-up, account settings, and team switching.</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <ChipLink href="/guides/apps/authentication/overview">SignIn / SignUp</ChipLink>
+      </div>
+    </div>
+
+    {/* SDK Reference */}
+    <div className="relative mb-4">
+      <div className="absolute -left-[2.55rem] top-0.5 h-4 w-4 rounded-full border-2 border-[#6b5df7] bg-[#6b5df7]" />
+      <SectionLink href="/sdk/overview">SDK Reference</SectionLink>
+      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Hooks, types, and objects for reading and writing user data in code.</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <ChipLink href="/sdk/hooks/use-user">useUser</ChipLink>
+        <ChipLink href="/sdk/types/user">Types</ChipLink>
+        <ChipLink href="/sdk/objects/stack-app">StackApp</ChipLink>
+      </div>
+    </div>
   </div>
+
+  {/* Branch divider */}
+  <div className="ml-4 flex items-center gap-3 py-4 pl-8">
+    <div className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
+    <span className="text-xs font-medium uppercase tracking-wider text-slate-400 dark:text-slate-500">Then pick your path</span>
+    <div className="h-px flex-1 bg-slate-200 dark:bg-slate-700" />
+  </div>
+
+  {/* Branching cards */}
+  <div className="ml-4 grid grid-cols-1 gap-3 pl-8 sm:grid-cols-3">
+    <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-700">
+      <CardTitle href="/guides/going-further/stack-app">Going Further</CardTitle>
+      <p className="text-xs text-slate-500 dark:text-slate-400">Stack App configuration, backend integration, local development, metadata.</p>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <CardChip href="/guides/going-further/stack-app">Stack App</CardChip>
+        <CardChip href="/guides/going-further/local-development">Local dev</CardChip>
+        <CardChip href="/guides/going-further/backend-integration">Backend</CardChip>
+      </div>
+    </div>
+    <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-700">
+      <CardTitle href="/guides/apps/authentication/overview">Apps</CardTitle>
+      <p className="text-xs text-slate-500 dark:text-slate-400">Authentication, emails, payments, webhooks, API keys.</p>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <CardChip href="/guides/apps/authentication/overview">Auth</CardChip>
+        <CardChip href="/guides/apps/emails/overview">Emails</CardChip>
+        <CardChip href="/guides/apps/payments/overview">Payments</CardChip>
+      </div>
+    </div>
+    <div className="rounded-lg border border-slate-200 p-4 dark:border-slate-700">
+      <CardTitle href="/api/overview">REST API</CardTitle>
+      <p className="text-xs text-slate-500 dark:text-slate-400">HTTP endpoints for any backend or language.</p>
+      <div className="mt-2 flex flex-wrap gap-1.5">
+        <CardChip href="/api/overview">REST API</CardChip>
+        <CardChip href="/guides/apps/webhooks/overview">Webhooks</CardChip>
+      </div>
+    </div>
+  </div>
+
+  <h3 className="mt-10 mb-6 text-lg font-semibold text-slate-500 dark:text-slate-400">Explore Apps</h3>
 
   <CardGroup cols={3}>
-    <Card title="API Keys" icon="key" href="/guides/apps/api-keys/overview" cta="Manage keys">
-      Set up publishable, secret, user, and team API keys.
-    </Card>
-    <Card title="Permissions" icon="shield" href="/guides/apps/rbac/overview" cta="Configure access">
-      Define roles and permission models for projects and teams.
-    </Card>
-    <Card title="Webhooks" icon="webhook" href="/guides/apps/webhooks/overview" cta="Add webhooks">
-      Trigger downstream systems from auth, user, and team events.
-    </Card>
-    <Card title="Backend Integration" icon="server" href="/guides/going-further/backend-integration" cta="Learn more">
-      Understand how Stack Auth fits into your server architecture.
-    </Card>
-    <Card title="MCP Setup" icon="terminal" href="/guides/other/mcp-setup" cta="Set up MCP">
-      Connect Stack Auth docs and workflows to AI-enabled development tools.
-    </Card>
-    <Card title="FAQ" icon="circle-question" href="/guides/faq" cta="Read FAQ">
-      Check answers to common setup, integration, and product questions.
-    </Card>
+    <Card title="Authentication" icon="right-to-bracket" href="/guides/apps/authentication/overview" />
+    <Card title="Auth Providers" icon="users" href="/guides/apps/authentication/auth-providers" />
+    <Card title="Emails" icon="envelope" href="/guides/apps/emails/overview" />
+    <Card title="Payments" icon="credit-card" href="/guides/apps/payments/overview" />
+    <Card title="Webhooks" icon="webhook" href="/guides/apps/webhooks/overview" />
+    <Card title="API Keys" icon="key" href="/guides/apps/api-keys/overview" />
+    <Card title="Permissions" icon="shield" href="/guides/apps/rbac/overview" />
+    <Card title="Teams" icon="people-group" href="/guides/apps/teams/overview" />
+    <Card title="Analytics" icon="chart-line" href="/guides/apps/analytics/overview" />
+    <Card title="Data Vault" icon="database" href="/guides/apps/data-vault/overview" />
+    <Card title="Launch Checklist" icon="clipboard-check" href="/guides/apps/launch-checklist/overview" />
   </CardGroup>
 </div>
 
