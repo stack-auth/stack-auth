@@ -5,7 +5,7 @@
 ## 4/13/26
 
 ### OAuth
-- Improved OAuth login reliability by adding automatic retries for transient network errors during user info fetches
+- Improved OAuth login reliability by adding automatic retries for transient network errors during user info fetches. If a provider is temporarily unavailable, users now see a clear error message asking them to try again instead of a cryptic internal error.
 
 ## 1/23/26
 
