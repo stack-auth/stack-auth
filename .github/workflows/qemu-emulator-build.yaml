@@ -80,7 +80,13 @@ jobs:
       - name: Generate emulator env
         run: node docker/local-emulator/generate-env-development.mjs
 
+      # VM boot + service verification is amd64-only. Under same-arch TCG on
+      # the arm64 runner there's no KVM, and the Next.js backend can't come
+      # up within any reasonable window under software emulation — same
+      # reason the build-time smoke test is skipped on arm64. The arm64
+      # image is built and uploaded blind; it runs on real arm64 hardware.
       - name: Start emulator and verify
+        if: matrix.arch == 'amd64'
         run: |
           chmod +x docker/local-emulator/qemu/run-emulator.sh
           EMULATOR_ARCH=${{ matrix.arch }} \
@@ -88,12 +94,13 @@ jobs:
             docker/local-emulator/qemu/run-emulator.sh start
 
       - name: Verify services are healthy
+        if: matrix.arch == 'amd64'
         run: |
           EMULATOR_ARCH=${{ matrix.arch }} \
             docker/local-emulator/qemu/run-emulator.sh status
 
       - name: Stop emulator
-        if: always()
+        if: always() && matrix.arch == 'amd64'
         run: |
           EMULATOR_ARCH=${{ matrix.arch }} \
             docker/local-emulator/qemu/run-emulator.sh stop
