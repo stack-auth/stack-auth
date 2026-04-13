@@ -1,6 +1,6 @@
 import { Prisma } from "@/generated/prisma/client";
 import { EmailOutboxSimpleStatus } from "@/generated/prisma/enums";
-import { getClickhouseAdminClient, getClickhouseExternalClient } from "@/lib/clickhouse";
+import { getClickhouseAdminClient } from "@/lib/clickhouse";
 import { ClickHouseError } from "@clickhouse/client";
 import { ActivitySplit, buildSplitFromDailyEntitySets } from "@/lib/metrics-activity-split";
 import { Tenancy } from "@/lib/tenancies";
@@ -812,11 +812,7 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
   const since = new Date(todayUtc.getTime() - METRICS_WINDOW_MS);
   const untilExclusive = new Date(todayUtc.getTime() + ONE_DAY_MS);
 
-  const clickhouseClient = getClickhouseExternalClient();
-  const clickhouseSettings = {
-    SQL_project_id: tenancy.project.id,
-    SQL_branch_id: tenancy.branchId,
-  };
+  const clickhouseClient = getClickhouseAdminClient();
 
   // Session replay aggregates come from Postgres and have nothing to do with
   // ClickHouse availability. Run them in parallel with the ClickHouse queries
@@ -839,18 +835,18 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
       LEFT JOIN (
         SELECT
           user_id,
-          argMax(CAST(data.is_anonymous, 'UInt8'), event_at) AS latest_is_anonymous
-        FROM events
+          argMax(JSONExtract(toJSONString(data), 'is_anonymous', 'UInt8'), event_at) AS latest_is_anonymous
+        FROM analytics_internal.events
         WHERE event_type = '$token-refresh'
+          AND project_id = {projectId:String}
+          AND branch_id = {branchId:String}
           AND user_id IS NOT NULL
           AND event_at < {untilExclusive:DateTime}
         GROUP BY user_id
       ) AS token_refresh_users
         ON e.user_id = token_refresh_users.user_id
-      LEFT JOIN users AS u
-        ON e.user_id = toString(u.id)
     `;
-    const nonAnonymousAnalyticsUserFilter = "({includeAnonymous:UInt8} = 1 OR coalesce(u.is_anonymous, token_refresh_users.latest_is_anonymous, 1) = 0)";
+    const nonAnonymousAnalyticsUserFilter = "({includeAnonymous:UInt8} = 1 OR coalesce(JSONExtract(toJSONString(e.data), 'is_anonymous', 'Nullable(UInt8)'), token_refresh_users.latest_is_anonymous, 0) = 0)";
     const [dailyEventResult, totalVisitorResult, referrerResult, topRegionResult, onlineResult] = await Promise.all([
       // Combined daily aggregates: page-view count, click count, and unique
       // visitors per day — one scan over the page-view/click event types.
@@ -874,9 +870,11 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
                 AND e.user_id IS NOT NULL
                 AND ${nonAnonymousAnalyticsUserFilter}
             ) AS visitors
-          FROM events AS e
+          FROM analytics_internal.events AS e
           ${analyticsUserJoin}
           WHERE e.event_type IN ('$page-view', '$click')
+            AND e.project_id = {projectId:String}
+            AND e.branch_id = {branchId:String}
             AND e.event_at >= {since:DateTime}
             AND e.event_at < {untilExclusive:DateTime}
           GROUP BY day
@@ -885,9 +883,10 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
         query_params: {
           since: formatClickhouseDateTimeParam(since),
           untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
+          projectId: tenancy.project.id,
+          branchId: tenancy.branchId,
           includeAnonymous: includeAnonymous ? 1 : 0,
         },
-        clickhouse_settings: clickhouseSettings,
         format: "JSONEachRow",
       }),
       clickhouseClient.query({
@@ -898,9 +897,11 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
               e.user_id IS NOT NULL
                 AND ${nonAnonymousAnalyticsUserFilter}
             ) AS visitors
-          FROM events AS e
+          FROM analytics_internal.events AS e
           ${analyticsUserJoin}
           WHERE e.event_type = '$page-view'
+            AND e.project_id = {projectId:String}
+            AND e.branch_id = {branchId:String}
             AND e.user_id IS NOT NULL
             AND e.event_at >= {since:DateTime}
             AND e.event_at < {untilExclusive:DateTime}
@@ -908,9 +909,10 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
         query_params: {
           since: formatClickhouseDateTimeParam(since),
           untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
+          projectId: tenancy.project.id,
+          branchId: tenancy.branchId,
           includeAnonymous: includeAnonymous ? 1 : 0,
         },
-        clickhouse_settings: clickhouseSettings,
         format: "JSONEachRow",
       }),
       clickhouseClient.query({
@@ -922,9 +924,11 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
               e.user_id IS NOT NULL
                 AND ${nonAnonymousAnalyticsUserFilter}
             ) AS visitors
-          FROM events AS e
+          FROM analytics_internal.events AS e
           ${analyticsUserJoin}
           WHERE e.event_type = '$page-view'
+            AND e.project_id = {projectId:String}
+            AND e.branch_id = {branchId:String}
             AND e.event_at >= {since:DateTime}
             AND e.event_at < {untilExclusive:DateTime}
           GROUP BY referrer
@@ -935,9 +939,10 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
         query_params: {
           since: formatClickhouseDateTimeParam(since),
           untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
+          projectId: tenancy.project.id,
+          branchId: tenancy.branchId,
           includeAnonymous: includeAnonymous ? 1 : 0,
         },
-        clickhouse_settings: clickhouseSettings,
         format: "JSONEachRow",
       }),
       clickhouseClient.query({
@@ -950,8 +955,10 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
               user_id IS NOT NULL
                 AND ({includeAnonymous:UInt8} = 1 OR JSONExtract(toJSONString(data), 'is_anonymous', 'UInt8') = 0)
             ) AS visitors
-          FROM events
+          FROM analytics_internal.events
           WHERE event_type = '$token-refresh'
+            AND project_id = {projectId:String}
+            AND branch_id = {branchId:String}
             AND user_id IS NOT NULL
             AND event_at >= {since:DateTime}
             AND event_at < {untilExclusive:DateTime}
@@ -963,17 +970,20 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
         query_params: {
           since: formatClickhouseDateTimeParam(since),
           untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
+          projectId: tenancy.project.id,
+          branchId: tenancy.branchId,
           includeAnonymous: includeAnonymous ? 1 : 0,
         },
-        clickhouse_settings: clickhouseSettings,
         format: "JSONEachRow",
       }),
       clickhouseClient.query({
         query: `
           SELECT
             uniqExact(assumeNotNull(user_id)) AS online
-          FROM events
+          FROM analytics_internal.events
           WHERE event_type = '$token-refresh'
+            AND project_id = {projectId:String}
+            AND branch_id = {branchId:String}
             AND user_id IS NOT NULL
             AND event_at >= {onlineSince:DateTime}
             AND event_at < {untilExclusive:DateTime}
@@ -982,9 +992,10 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
         query_params: {
           onlineSince: formatClickhouseDateTimeParam(new Date(now.getTime() - 5 * 60 * 1000)),
           untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
+          projectId: tenancy.project.id,
+          branchId: tenancy.branchId,
           includeAnonymous: includeAnonymous ? 1 : 0,
         },
-        clickhouse_settings: clickhouseSettings,
         format: "JSONEachRow",
       }),
     ]);
