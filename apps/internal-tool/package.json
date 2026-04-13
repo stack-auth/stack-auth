@@ -11,10 +11,10 @@
     "lint": "eslint --ext .ts,.tsx .",
     "clean": "rimraf .next && rimraf node_modules",
     "spacetime:generate": "spacetime generate --lang typescript --out-dir src/module_bindings --module-path spacetimedb",
-    "spacetime:inject-token": "sed -i.bak \"s/__SPACETIMEDB_LOG_TOKEN__/${STACK_MCP_LOG_TOKEN:-change-me}/\" spacetimedb/src/index.ts",
-    "spacetime:restore-token": "mv spacetimedb/src/index.ts.bak spacetimedb/src/index.ts",
-    "spacetime:publish:local": "pnpm spacetime:inject-token && spacetime publish stack-auth-llm --server local -p spacetimedb --yes --no-config --delete-data=on-conflict; EXIT=$?; pnpm spacetime:restore-token; exit $EXIT",
-    "spacetime:publish:prod": "pnpm spacetime:inject-token && spacetime publish stack-auth-llm --server maincloud -p spacetimedb --yes --no-config; EXIT=$?; pnpm spacetime:restore-token; exit $EXIT"
+    "spacetime:inject-token": "node scripts/spacetime-token.mjs inject",
+    "spacetime:restore-token": "node scripts/spacetime-token.mjs restore",
+    "spacetime:publish:local": "node scripts/spacetime-publish.mjs local",
+    "spacetime:publish:prod": "node scripts/spacetime-publish.mjs prod"
   },
   "dependencies": {
     "@stackframe/react": "workspace:*",

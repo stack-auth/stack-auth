@@ -295,7 +295,7 @@ function QaReviewCard({ row }: { row: McpCallLogRow }) {
         {flags.length > 0 && (
           <div className="space-y-1.5">
             {flags.map((flag, i) => (
-              <div key={i} className={`border-l-3 pl-3 py-1.5 rounded-r text-sm ${severityColors[flag.severity] ?? severityColors.low}`}>
+              <div key={i} className={`border-l-4 pl-3 py-1.5 rounded-r text-sm ${severityColors[flag.severity] ?? severityColors.low}`}>
                 <div className="flex items-center gap-2 mb-0.5">
                   <span className="font-mono text-xs text-gray-600">{flag.type}</span>
                   <span className="text-[10px] uppercase text-gray-400">{flag.severity}</span>

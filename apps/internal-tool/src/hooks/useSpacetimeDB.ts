@@ -23,6 +23,7 @@ export function useMcpCallLogs() {
   useEffect(() => {
     let cancelled = false;
     let retryCount = 0;
+    let retryTimer: ReturnType<typeof setTimeout> | null = null;
 
     console.log("[SpacetimeDB] Connecting to", HOST, "db:", DB_NAME);
 
@@ -35,7 +36,8 @@ export function useMcpCallLogs() {
         return;
       }
       console.log(`[SpacetimeDB] Retrying in ${RETRY_DELAY_MS}ms (attempt ${retryCount}/${MAX_RETRIES})...`);
-      setTimeout(() => {
+      retryTimer = setTimeout(() => {
+        retryTimer = null;
         if (!cancelled) {
           connect().catch(() => {});
         }
@@ -110,6 +112,14 @@ export function useMcpCallLogs() {
 
     return () => {
       cancelled = true;
+      if (retryTimer !== null) {
+        clearTimeout(retryTimer);
+        retryTimer = null;
+      }
+      if (connRef.current) {
+        connRef.current.disconnect();
+        connRef.current = null;
+      }
     };
   }, []);
 

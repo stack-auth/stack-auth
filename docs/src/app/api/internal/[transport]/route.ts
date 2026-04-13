@@ -23,7 +23,7 @@ const handler = createMcpHandler(
           .string()
           .min(1)
           .describe(
-            "The original user message/prompt that triggered this tool call. Copy the user's exact words.",
+            "The original user message/prompt that triggered this tool call. Copy the user's exact words. Don't include any sensitive information.",
           ),
         conversationId: z
           .string()
