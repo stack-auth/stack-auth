@@ -35,14 +35,14 @@ jobs:
           # amd64 runs natively under KVM on ubicloud's amd64 runner.
           - arch: amd64
             runner: ubicloud-standard-8
-          # arm64 runs under same-arch TCG on GitHub's native arm64 runner.
-          # No KVM (Azure Hyper-V doesn't expose nested virt on arm64) but
-          # same-arch TCG avoids the V8 JIT translation crashes that kill
-          # cross-arch TCG, and the smoke test is skipped on arm64 since
-          # the backend can't come up within any reasonable window under
-          # software emulation.
+          # arm64 runs under cross-arch TCG on ubicloud's amd64 runner.
+          # No KVM for arm64 guests on an amd64 host; cortex-a72 + V8
+          # --jitless together sidestep the SIGTRAPs that cross-arch TCG
+          # hits on aggressive arm64 JIT code. Smoke test is still skipped
+          # because the backend can't come up reliably under cross-arch
+          # TCG within any sane window.
           - arch: arm64
-            runner: ubuntu-24.04-arm
+            runner: ubicloud-standard-8
 
     steps:
       - uses: actions/checkout@v6

@@ -283,11 +283,16 @@ write_files:
       # Capture stdout+stderr so failures surface the actual node error in
       # the host-visible provision log instead of being swallowed by the
       # serial-only stream.
+      # NODE_OPTIONS=--jitless disables V8's JIT and forces interpreter-only
+      # execution, which avoids the cross-arch TCG × V8 JIT SIGTRAPs we see
+      # when emulating arm64 guests on an amd64 host. Under KVM this costs
+      # nothing measurable for a short-lived migration process.
       migrate_log="$(mktemp)"
       set +e
       docker exec \
         --env-file /etc/stack-build.env \
         --env-file /etc/stack-build-computed.env \
+        -e NODE_OPTIONS=--jitless \
         stack-build-init \
         sh -c 'cd /app/apps/backend && node dist/db-migrations.mjs migrate && node dist/db-migrations.mjs seed' \
         > "$migrate_log" 2>&1
