@@ -56,7 +56,7 @@ import { isHostedHandlerUrlForProject, resolveHandlerUrls } from "../../url-targ
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
-import { LOCAL_EMULATOR_INTERNAL_PUBLISHABLE_CLIENT_KEY, TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, fetchEmulatorProjectCredentials, getAnalyticsBaseUrl, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getLocalEmulatorConfigFilePath, getUrls, resolveConstructorOptions } from "./common";
+import { LOCAL_EMULATOR_INTERNAL_PUBLISHABLE_CLIENT_KEY, TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, fetchEmulatorProjectCredentials, getAnalyticsBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getLocalEmulatorConfigFilePath, getUrls, localEmulatorBaseUrl, resolveApiUrls, resolveConstructorOptions } from "./common";
 import { EventTracker } from "./event-tracker";
 import { crossDomainAuthQueryParams, getCrossDomainHandoffParamsFromCurrentUrl, planRedirectToHandler } from "./redirect-page-urls";
 import type { CrossDomainHandoffParams } from "./redirect-page-urls";
@@ -520,9 +520,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     if (extraOptions && extraOptions.interface) {
       this._interface = extraOptions.interface;
     } else {
+      const apiUrls = resolveApiUrls(resolvedOptions.baseUrl ?? (isEmulator ? localEmulatorBaseUrl : undefined));
       this._interface = new StackClientInterface({
-        getBaseUrl: () => getBaseUrl(resolvedOptions.baseUrl, { isEmulator }),
-        getAnalyticsBaseUrl: () => getAnalyticsBaseUrl(getBaseUrl(resolvedOptions.baseUrl, { isEmulator })),
+        getBaseUrl: () => apiUrls()[0],
+        getAnalyticsBaseUrl: () => getAnalyticsBaseUrl(apiUrls()[0]),
+        getApiUrls: apiUrls,
         extraRequestHeaders: resolvedOptions.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
         projectId,
         clientVersion,

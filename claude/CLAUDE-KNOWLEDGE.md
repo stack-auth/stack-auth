@@ -139,6 +139,8 @@ A: Update affected inline snapshots in `apps/e2e/tests/backend/endpoints/api/v1/
 Q: How should `createOrUpdateProjectWithLegacyConfig` handle `onboardingStatus` for forward-compat checks?
 A: Only write `onboardingStatus` when the `Project.onboardingStatus` column exists (for example by checking `information_schema.columns` in-transaction) so current code can still run against older schemas where that column is absent.
 
+Q: How does the Stack Auth docs MCP relate to the ask-chat API and doc tools?
+A: The public MCP (`/api/internal/mcp` on the docs site) exposes only `ask_stack_auth`, which POSTs to `/api/latest/ai/query/generate` with `tools: ["docs"]` and `systemPrompt: "docs-ask-ai"`. The backend no longer loads doc tools via MCP; `createDocsTools()` calls the docs app `POST /api/internal/docs-tools` with typed actions (same behavior as before). Optional `STACK_INTERNAL_DOCS_TOOLS_SECRET` gates the internal route; `STACK_DOCS_INTERNAL_BASE_URL` overrides the docs origin for the backend.
 Q: What caused the March 19, 2026 QEMU local emulator deps startup regression?
 A: The QEMU runtime path regressed when it switched from mounting `docker/local-emulator/base.env` into the runtime ISO to mounting the generated hidden file `docker/local-emulator/.env.development` instead. In testing, the `.env.development` QEMU path left cold boot stuck with only PostgreSQL healthy, while restoring the runtime ISO back to `base.env` brought deps startup back to about 12-13 seconds. The env payloads were effectively the same, so the likely issue was the QEMU runtime bundle/path handling for `.env.development`, not the actual env values.
 Q: Where is the private sign-up risk engine generated entrypoint in backend now?
@@ -167,3 +169,9 @@ A: `docs` (old docs app) uses suffix `26`, and `docs-mintlify` uses suffix `04`.
 
 Q: Why did the dashboard Vercel integration throw "Expected publishableClientKey" during key generation?
 A: In `apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/vercel/page-client.tsx`, the code always asserted `newKey.publishableClientKey` even when `project.requirePublishableClientKey` was false. Fix by only asserting/passing `publishableClientKey` when that project config flag is true.
+
+Q: Why can restricted users appear logged out on auth handler pages even with a valid session?
+A: `useUser()` filters out restricted users by default. In `packages/template/src/components-page/auth-page.tsx`, use `useUser({ includeRestricted: true })` and explicitly redirect restricted users to onboarding when `automaticRedirect` is enabled.
+
+Q: Why can external-db-sync sequencer throw `operator does not exist: text = uuid` on team updates?
+A: In `apps/backend/src/app/api/latest/internal/external-db-sync/sequencer/route.ts`, the TEAM_INVITATION cascade compares JSON text (`"VerificationCode"."data"->>'team_id'`) against `"Team"."teamId"` (`uuid`). Cast the UUID side to text (`changed_teams."teamId"::text`) in the WHERE clause so Postgres type resolution succeeds and team-invitation re-sync marking works.

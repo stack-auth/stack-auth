@@ -100,7 +100,7 @@ describe("with valid credentials", () => {
           "boost_multiplier": 1,
           "is_boost_active": false,
           "penalty_factor": 1,
-          "rate_per_second": 2.7777777777777777,
+          "rate_per_second": 27.77777777777778,
         },
         "stats": {
           "day": {
@@ -168,7 +168,7 @@ describe("with valid credentials", () => {
     `);
 
     // wait for the email to be processed
-    await wait(5_000);
+    await wait(12_000);
 
     const response = await niceBackendFetch("/api/v1/emails/delivery-info", {
       method: "GET",
@@ -184,7 +184,7 @@ describe("with valid credentials", () => {
             "boost_multiplier": 1,
             "is_boost_active": false,
             "penalty_factor": 1,
-            "rate_per_second": 2.7777793209876545,
+            "rate_per_second": 27.777779320987655,
           },
           "stats": {
             "day": {

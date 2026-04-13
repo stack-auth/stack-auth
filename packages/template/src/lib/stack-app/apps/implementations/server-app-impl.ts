@@ -35,7 +35,7 @@ import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, 
 import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
-import { LOCAL_EMULATOR_INTERNAL_PUBLISHABLE_CLIENT_KEY, clientVersion, createCache, createCacheBySession, fetchEmulatorProjectCredentials, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getLocalEmulatorConfigFilePath, resolveConstructorOptions } from "./common";
+import { LOCAL_EMULATOR_INTERNAL_PUBLISHABLE_CLIENT_KEY, clientVersion, createCache, createCacheBySession, fetchEmulatorProjectCredentials, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getLocalEmulatorConfigFilePath, localEmulatorBaseUrl, resolveApiUrls, resolveConstructorOptions } from "./common";
 
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
@@ -424,17 +424,21 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
     super(resolvedOptions, {
       ...extraOptions,
-      interface: extraOptions?.interface ?? new StackServerInterface({
-        getBaseUrl: () => getBaseUrl(resolvedOptions.baseUrl, { isEmulator }),
-        projectId: resolvedOptions.projectId ?? getDefaultProjectId({ isEmulator }),
-        extraRequestHeaders: resolvedOptions.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
-        clientVersion,
-        ...(publishableClientKey != null ? { publishableClientKey } : {}),
-        secretServerKey: resolvedOptions.secretServerKey ?? getDefaultSecretServerKey({ isEmulator }),
-        prepareRequest: async () => {
-          if (this._emulatorInitPromise) await this._emulatorInitPromise;
-        },
-      }),
+      interface: extraOptions?.interface ?? (() => {
+        const apiUrls = resolveApiUrls(resolvedOptions.baseUrl ?? (isEmulator ? localEmulatorBaseUrl : undefined));
+        return new StackServerInterface({
+          getBaseUrl: () => apiUrls()[0],
+          getApiUrls: apiUrls,
+          projectId: resolvedOptions.projectId ?? getDefaultProjectId({ isEmulator }),
+          extraRequestHeaders: resolvedOptions.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
+          clientVersion,
+          ...(publishableClientKey != null ? { publishableClientKey } : {}),
+          secretServerKey: resolvedOptions.secretServerKey ?? getDefaultSecretServerKey({ isEmulator }),
+          prepareRequest: async () => {
+            if (this._emulatorInitPromise) await this._emulatorInitPromise;
+          },
+        });
+      })(),
     });
 
     if (isEmulator && !extraOptions?.interface) {

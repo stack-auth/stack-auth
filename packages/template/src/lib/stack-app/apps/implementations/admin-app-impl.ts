@@ -22,7 +22,7 @@ import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectP
 import { AdminOwnedProject, AdminProject, AdminProjectUpdateOptions, PushConfigOptions, adminProjectUpdateOptionsToCrud } from "../../projects";
 import type { AdminSessionReplay, AdminSessionReplayChunk, ListSessionReplayChunksOptions, ListSessionReplayChunksResult, ListSessionReplaysOptions, ListSessionReplaysResult, SessionReplayAllEventsResult } from "../../session-replays";
 import { ManagedEmailProviderListItem, ManagedEmailProviderSetupResult, ManagedEmailProviderStatus, EmailOutboxUpdateOptions, StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/admin-app";
-import { LOCAL_EMULATOR_INTERNAL_PUBLISHABLE_CLIENT_KEY, clientVersion, createCache, fetchEmulatorProjectCredentials, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey, getLocalEmulatorConfigFilePath, resolveConstructorOptions } from "./common";
+import { LOCAL_EMULATOR_INTERNAL_PUBLISHABLE_CLIENT_KEY, clientVersion, createCache, fetchEmulatorProjectCredentials, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey, getLocalEmulatorConfigFilePath, localEmulatorBaseUrl, resolveApiUrls, resolveConstructorOptions } from "./common";
 import { _StackServerAppImplIncomplete } from "./server-app-impl";
 
 import { CompleteConfig, EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
@@ -134,22 +134,26 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
 
     super(resolvedOptions, {
       ...extraOptions,
-      interface: extraOptions?.interface ?? new StackAdminInterface({
-        getBaseUrl: () => getBaseUrl(resolvedOptions.baseUrl, { isEmulator }),
-        projectId: resolvedOptions.projectId ?? getDefaultProjectId({ isEmulator }),
-        extraRequestHeaders: resolvedOptions.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
-        clientVersion,
-        ...resolvedOptions.projectOwnerSession ? {
-          projectOwnerSession: resolvedOptions.projectOwnerSession,
-        } : {
-          ...(publishableClientKey ? { publishableClientKey } : {}),
-          secretServerKey: resolvedOptions.secretServerKey ?? getDefaultSecretServerKey({ isEmulator }),
-          superSecretAdminKey: resolvedOptions.superSecretAdminKey ?? getDefaultSuperSecretAdminKey({ isEmulator }),
-        },
-        prepareRequest: async () => {
-          if (this._emulatorInitPromise) await this._emulatorInitPromise;
-        },
-      }),
+      interface: extraOptions?.interface ?? (() => {
+        const apiUrls = resolveApiUrls(resolvedOptions.baseUrl ?? (isEmulator ? localEmulatorBaseUrl : undefined));
+        return new StackAdminInterface({
+          getBaseUrl: () => apiUrls()[0],
+          getApiUrls: apiUrls,
+          projectId: resolvedOptions.projectId ?? getDefaultProjectId({ isEmulator }),
+          extraRequestHeaders: resolvedOptions.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
+          clientVersion,
+          ...resolvedOptions.projectOwnerSession ? {
+            projectOwnerSession: resolvedOptions.projectOwnerSession,
+          } : {
+            ...(publishableClientKey ? { publishableClientKey } : {}),
+            secretServerKey: resolvedOptions.secretServerKey ?? getDefaultSecretServerKey({ isEmulator }),
+            superSecretAdminKey: resolvedOptions.superSecretAdminKey ?? getDefaultSuperSecretAdminKey({ isEmulator }),
+          },
+          prepareRequest: async () => {
+            if (this._emulatorInitPromise) await this._emulatorInitPromise;
+          },
+        });
+      })(),
     });
 
     if (isEmulator && !extraOptions?.interface) {
