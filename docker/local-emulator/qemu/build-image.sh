@@ -5,7 +5,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=common.sh
 source "$SCRIPT_DIR/common.sh"
 
-IMAGE_DIR="$SCRIPT_DIR/images"
+IMAGE_DIR="${EMULATOR_IMAGE_DIR:-$HOME/.stack/emulator/images}"
 CLOUD_INIT_ROOT="$SCRIPT_DIR/cloud-init"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 
