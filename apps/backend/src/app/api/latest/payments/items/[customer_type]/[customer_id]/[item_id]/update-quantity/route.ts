@@ -118,7 +118,7 @@ export const POST = createSmartRouteHandler({
           expiresAt: req.body.expires_at ? new Date(req.body.expires_at) : null,
         },
       });
-      await bulldozerWriteItemQuantityChange(tx, change);
+      await bulldozerWriteItemQuantityChange(tx, change, { withinPrismaTransaction: true });
     });
 
     return {

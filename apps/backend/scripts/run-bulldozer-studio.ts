@@ -3,6 +3,7 @@ import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors"
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import ELK from "elkjs/lib/elk.bundled.js";
 import http from "node:http";
+import { performance } from "node:perf_hooks";
 import { exampleFungibleLedgerSchema } from "../src/lib/bulldozer/db/example-schema";
 import { toExecutableSqlStatements, toQueryableSqlQuery } from "../src/lib/bulldozer/db/index";
 import { quoteSqlJsonbLiteral } from "../src/lib/bulldozer/db/utilities";
@@ -12,8 +13,43 @@ import { globalPrismaClient, retryTransaction } from "../src/prisma-client";
 type JsonPrimitive = string | number | boolean | null;
 type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 type SqlExpression<T> = { type: "expression", sql: string };
-type SqlStatement = { type: "statement", sql: string, outputName?: string };
+type SqlStatement = { type: "statement", sql: string, outputName?: string, requiresSequentialExecution?: boolean };
 type SqlQuery = { type: "query", sql: string, toStatement(outputName?: string): SqlStatement };
+type StatementExecutionMetrics = {
+  durationMs: number,
+  statementCount: number,
+  logicalStatementCount: number,
+  executableStatementCount: number,
+  sequentialStatementCount: number,
+  uniqueTableReferenceCount: number,
+  sqlScriptLength: number,
+  sqlScript: string,
+  firstStatementPreviews: Array<{ index: number, outputName: string | null, sqlPreview: string }>,
+  lastStatementPreviews: Array<{ index: number, outputName: string | null, sqlPreview: string }>,
+  topTableReferences: Array<{ tableId: string, statementReferences: number }>,
+  timingBreakdown: {
+    statementWallMsTotal: number,
+    totalPlanningMs: number,
+    totalExecutionMs: number,
+    explainedStatementCount: number,
+    notExplainedStatementCount: number,
+  },
+  slowestStatements: Array<{
+    index: number,
+    kind: string,
+    outputName: string | null,
+    wallMs: number,
+    planningMs: number | null,
+    executionMs: number | null,
+    rootNodeType: string | null,
+    actualRows: number | null,
+    sharedHitBlocks: number | null,
+    sharedReadBlocks: number | null,
+    tempWrittenBlocks: number | null,
+    walBytes: number | null,
+    sqlPreview: string,
+  }>,
+};
 
 type StudioTable = {
   tableId: unknown,
@@ -50,6 +86,8 @@ const GRAPH_NODE_HEIGHT = 126;
 const GRAPH_LEVEL_GAP_Y = 230;
 const GRAPH_COLUMN_GAP_X = 320;
 const GRAPH_SCENE_MARGIN = 40;
+const STATEMENT_SQL_PREVIEW_CHARS = 260;
+const SLOW_STATEMENT_LIMIT = 20;
 const elk = new ELK();
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -304,24 +342,196 @@ let registry = createTableRegistry(
   (AVAILABLE_SCHEMAS[currentSchemaName] ?? AVAILABLE_SCHEMAS["example"])()
 );
 function switchSchema(name: string): void {
-  const factory = AVAILABLE_SCHEMAS[name];
-  if (!factory) {
+  const factory = Reflect.get(AVAILABLE_SCHEMAS, name);
+  if (typeof factory !== "function") {
     throw new StackAssertionError(`Unknown schema "${name}". Available: ${Object.keys(AVAILABLE_SCHEMAS).join(", ")}`);
   }
   currentSchemaName = name;
   registry = createTableRegistry(factory());
 }
 
-async function executeStatements(statements: SqlStatement[]): Promise<void> {
+async function executeStatements(statements: SqlStatement[]): Promise<StatementExecutionMetrics> {
+  const startedAt = performance.now();
   const sqlScript = toExecutableSqlStatements(statements);
   const executableStatements = splitSqlStatements(sqlScript);
+  const statementExecutions: Array<{
+    index: number,
+    kind: string,
+    outputName: string | null,
+    wallMs: number,
+    planningMs: number | null,
+    executionMs: number | null,
+    rootNodeType: string | null,
+    actualRows: number | null,
+    sharedHitBlocks: number | null,
+    sharedReadBlocks: number | null,
+    tempWrittenBlocks: number | null,
+    walBytes: number | null,
+    sqlPreview: string,
+  }> = [];
+  const analyzableStatementKinds = new Set(["SELECT", "WITH", "INSERT", "UPDATE", "DELETE"]);
+  const readNumeric = (value: unknown): null | number => {
+    if (typeof value !== "number" || !Number.isFinite(value)) return null;
+    return value;
+  };
+  const readString = (value: unknown): null | string => {
+    return typeof value === "string" ? value : null;
+  };
+  const toSqlPreview = (sql: string): string => {
+    return sql.length <= STATEMENT_SQL_PREVIEW_CHARS
+      ? sql
+      : `${sql.slice(0, STATEMENT_SQL_PREVIEW_CHARS)}...`;
+  };
+  const getStatementKind = (sql: string): string => {
+    const withoutLeadingComments = sql.replace(/^(\s*--[^\n]*\n)+/g, "").trimStart();
+    const match = withoutLeadingComments.match(/^[A-Za-z]+/);
+    return (match?.[0] ?? "UNKNOWN").toUpperCase();
+  };
+  const parseExplainOutput = (rows: unknown): null | {
+    planningMs: number | null,
+    executionMs: number | null,
+    rootNodeType: string | null,
+    actualRows: number | null,
+    sharedHitBlocks: number | null,
+    sharedReadBlocks: number | null,
+    tempWrittenBlocks: number | null,
+    walBytes: number | null,
+  } => {
+    if (!Array.isArray(rows) || rows.length === 0 || !isRecord(rows[0])) return null;
+    const firstRow = rows[0];
+    const queryPlanValue = Reflect.get(firstRow, "QUERY PLAN");
+    if (!Array.isArray(queryPlanValue) || queryPlanValue.length === 0 || !isRecord(queryPlanValue[0])) return null;
+    const explainEntry = queryPlanValue[0];
+    const plan = isRecord(Reflect.get(explainEntry, "Plan")) ? Reflect.get(explainEntry, "Plan") : null;
+    return {
+      planningMs: readNumeric(Reflect.get(explainEntry, "Planning Time")),
+      executionMs: readNumeric(Reflect.get(explainEntry, "Execution Time")),
+      rootNodeType: readString(Reflect.get(plan ?? {}, "Node Type")),
+      actualRows: readNumeric(Reflect.get(plan ?? {}, "Actual Rows")),
+      sharedHitBlocks: readNumeric(Reflect.get(plan ?? {}, "Shared Hit Blocks")),
+      sharedReadBlocks: readNumeric(Reflect.get(plan ?? {}, "Shared Read Blocks")),
+      tempWrittenBlocks: readNumeric(Reflect.get(plan ?? {}, "Temp Written Blocks")),
+      walBytes: readNumeric(Reflect.get(plan ?? {}, "WAL Bytes")),
+    };
+  };
+  let totalPlanningMs = 0;
+  let totalExecutionMs = 0;
+  let explainedStatementCount = 0;
+  let notExplainedStatementCount = 0;
+  let statementWallMsTotal = 0;
+
   await retryTransaction(globalPrismaClient, async (tx) => {
     await tx.$executeRawUnsafe(`SET LOCAL jit = off`);
     await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${BULLDOZER_LOCK_ID})`);
-    for (const statement of executableStatements) {
-      await tx.$executeRawUnsafe(statement);
+    for (let index = 0; index < executableStatements.length; index++) {
+      const statement = executableStatements[index];
+      const kind = getStatementKind(statement);
+      const shouldExplain = analyzableStatementKinds.has(kind);
+      const statementStart = performance.now();
+      let planningMs: null | number = null;
+      let executionMs: null | number = null;
+      let rootNodeType: null | string = null;
+      let actualRows: null | number = null;
+      let sharedHitBlocks: null | number = null;
+      let sharedReadBlocks: null | number = null;
+      let tempWrittenBlocks: null | number = null;
+      let walBytes: null | number = null;
+      if (shouldExplain) {
+        const explainRows = await tx.$queryRawUnsafe<unknown[]>(
+          `EXPLAIN (ANALYZE, BUFFERS, WAL, SETTINGS, FORMAT JSON) ${statement}`,
+        );
+        const parsedExplain = parseExplainOutput(explainRows);
+        if (parsedExplain == null) {
+          notExplainedStatementCount += 1;
+        } else {
+          explainedStatementCount += 1;
+          planningMs = parsedExplain.planningMs;
+          executionMs = parsedExplain.executionMs;
+          rootNodeType = parsedExplain.rootNodeType;
+          actualRows = parsedExplain.actualRows;
+          sharedHitBlocks = parsedExplain.sharedHitBlocks;
+          sharedReadBlocks = parsedExplain.sharedReadBlocks;
+          tempWrittenBlocks = parsedExplain.tempWrittenBlocks;
+          walBytes = parsedExplain.walBytes;
+          if (planningMs != null) totalPlanningMs += planningMs;
+          if (executionMs != null) totalExecutionMs += executionMs;
+        }
+      } else {
+        notExplainedStatementCount += 1;
+        await tx.$executeRawUnsafe(statement);
+      }
+      const wallMs = Number((performance.now() - statementStart).toFixed(3));
+      statementWallMsTotal += wallMs;
+      statementExecutions.push({
+        index,
+        kind,
+        outputName: null,
+        wallMs,
+        planningMs,
+        executionMs,
+        rootNodeType,
+        actualRows,
+        sharedHitBlocks,
+        sharedReadBlocks,
+        tempWrittenBlocks,
+        walBytes,
+        sqlPreview: toSqlPreview(statement),
+      });
     }
   });
+  const tableReferenceCounts = new Map<string, number>();
+  for (const statement of statements) {
+    const matches = statement.sql.match(/external:[A-Za-z0-9-]+/g) ?? [];
+    const uniqueTableIds = new Set(matches);
+    for (const tableId of uniqueTableIds) {
+      tableReferenceCounts.set(tableId, (tableReferenceCounts.get(tableId) ?? 0) + 1);
+    }
+  }
+  const topTableReferences = [...tableReferenceCounts.entries()]
+    .sort((a, b) => b[1] - a[1] || stringCompare(a[0], b[0]))
+    .slice(0, 8)
+    .map(([tableId, statementReferences]) => ({ tableId, statementReferences }));
+  const toStatementPreview = (statement: SqlStatement, index: number) => ({
+    index,
+    outputName: statement.outputName ?? null,
+    sqlPreview: statement.sql.length <= STATEMENT_SQL_PREVIEW_CHARS
+      ? statement.sql
+      : `${statement.sql.slice(0, STATEMENT_SQL_PREVIEW_CHARS)}...`,
+  });
+  const lastPreviewStartIndex = Math.max(statements.length - 5, 0);
+  const slowestStatements = [...statementExecutions]
+    .sort((a, b) => b.wallMs - a.wallMs)
+    .slice(0, SLOW_STATEMENT_LIMIT);
+  const metrics: StatementExecutionMetrics = {
+    durationMs: Number((performance.now() - startedAt).toFixed(1)),
+    statementCount: statements.length,
+    logicalStatementCount: statements.length,
+    executableStatementCount: executableStatements.length,
+    sequentialStatementCount: statements.filter((statement) => statement.requiresSequentialExecution === true).length,
+    uniqueTableReferenceCount: tableReferenceCounts.size,
+    sqlScriptLength: sqlScript.length,
+    sqlScript,
+    firstStatementPreviews: statements.slice(0, 5).map((statement, index) => toStatementPreview(statement, index)),
+    lastStatementPreviews: statements.slice(lastPreviewStartIndex).map((statement, index) => toStatementPreview(statement, lastPreviewStartIndex + index)),
+    topTableReferences,
+    timingBreakdown: {
+      statementWallMsTotal: Number(statementWallMsTotal.toFixed(1)),
+      totalPlanningMs: Number(totalPlanningMs.toFixed(1)),
+      totalExecutionMs: Number(totalExecutionMs.toFixed(1)),
+      explainedStatementCount,
+      notExplainedStatementCount,
+    },
+    slowestStatements,
+  };
+  if (metrics.durationMs >= 1000) {
+    const topSummary = metrics.topTableReferences
+      .slice(0, 3)
+      .map((entry) => `${entry.tableId}(${entry.statementReferences})`)
+      .join(", ");
+    const timingSummary = `planning=${metrics.timingBreakdown.totalPlanningMs}ms execution=${metrics.timingBreakdown.totalExecutionMs}ms explained=${metrics.timingBreakdown.explainedStatementCount}`;
+    console.log(`[studio] slow mutation ${metrics.durationMs}ms (${metrics.statementCount} statements) ${timingSummary} topRefs=${topSummary}`);
+  }
+  return metrics;
 }
 
 async function queryRows(query: SqlQuery): Promise<unknown[]> {
@@ -1209,6 +1419,17 @@ function getStudioPageHtml(): string {
     </div>
   </dialog>
 
+  <dialog id="metricsDialog">
+    <div class="dialog-content">
+      <div class="dialog-title" style="color:var(--text);" id="metricsDialogTitle">Execution details</div>
+      <div id="metricsDialogMeta" class="mono muted"></div>
+      <pre id="metricsDialogText"></pre>
+      <div class="row">
+        <button id="metricsDialogCloseBtn" class="btn">Close</button>
+      </div>
+    </div>
+  </dialog>
+
   <script>
     const NODE_WIDTH = ${GRAPH_NODE_WIDTH};
     const NODE_HEIGHT = ${GRAPH_NODE_HEIGHT};
@@ -1250,6 +1471,7 @@ function getStudioPageHtml(): string {
       schema: null,
       selectedTableId: null,
       selectedTableDetails: null,
+      lastMutationMetrics: {},
       rawNode: null,
       rawPath: [],
       timefoldDebug: null,
@@ -1288,6 +1510,11 @@ function getStudioPageHtml(): string {
     const errorDialog = document.getElementById("errorDialog");
     const errorText = document.getElementById("errorText");
     const errorCloseBtn = document.getElementById("errorCloseBtn");
+    const metricsDialog = document.getElementById("metricsDialog");
+    const metricsDialogTitle = document.getElementById("metricsDialogTitle");
+    const metricsDialogMeta = document.getElementById("metricsDialogMeta");
+    const metricsDialogText = document.getElementById("metricsDialogText");
+    const metricsDialogCloseBtn = document.getElementById("metricsDialogCloseBtn");
     const modeTablesBtn = document.getElementById("modeTablesBtn");
     const modeRawBtn = document.getElementById("modeRawBtn");
     const schemaSelect = document.getElementById("schemaSelect");
@@ -1327,6 +1554,144 @@ function getStudioPageHtml(): string {
       errorDialog.showModal();
     }
 
+    function readFiniteNumber(value) {
+      const numberValue = Number(value);
+      return Number.isFinite(numberValue) ? numberValue : null;
+    }
+
+    function readMutationDurationMs(metrics) {
+      if (!metrics || typeof metrics !== "object") return null;
+      return readFiniteNumber(metrics.durationMs);
+    }
+
+    function statementCountFromMetrics(metrics) {
+      if (!metrics || typeof metrics !== "object") return null;
+      return readFiniteNumber(metrics.logicalStatementCount ?? metrics.statementCount);
+    }
+
+    function executableStatementCountFromMetrics(metrics) {
+      if (!metrics || typeof metrics !== "object") return null;
+      return readFiniteNumber(metrics.executableStatementCount);
+    }
+
+    function mutationDetailLines(metrics) {
+      if (!metrics || typeof metrics !== "object") {
+        return "No execution details available.";
+      }
+      const timing = (metrics.timingBreakdown && typeof metrics.timingBreakdown === "object") ? metrics.timingBreakdown : null;
+      const topRefs = Array.isArray(metrics.topTableReferences) ? metrics.topTableReferences : [];
+      const firstPreviews = Array.isArray(metrics.firstStatementPreviews) ? metrics.firstStatementPreviews : [];
+      const lastPreviews = Array.isArray(metrics.lastStatementPreviews) ? metrics.lastStatementPreviews : [];
+      const slowestStatements = Array.isArray(metrics.slowestStatements) ? metrics.slowestStatements : [];
+      const lines = [
+        "Execution summary",
+        "durationMs: " + (readFiniteNumber(metrics.durationMs) ?? "n/a"),
+        "logicalStatementCount: " + (statementCountFromMetrics(metrics) ?? "n/a"),
+        "executableStatementCount: " + (executableStatementCountFromMetrics(metrics) ?? "n/a"),
+        "sequentialStatementCount: " + (readFiniteNumber(metrics.sequentialStatementCount) ?? "n/a"),
+        "uniqueTableReferenceCount: " + (readFiniteNumber(metrics.uniqueTableReferenceCount) ?? "n/a"),
+        "sqlScriptLengthChars: " + (readFiniteNumber(metrics.sqlScriptLength) ?? "n/a"),
+        "statementWallMsTotal: " + (readFiniteNumber(timing?.statementWallMsTotal) ?? "n/a"),
+        "totalPlanningMs(explain): " + (readFiniteNumber(timing?.totalPlanningMs) ?? "n/a"),
+        "totalExecutionMs(explain): " + (readFiniteNumber(timing?.totalExecutionMs) ?? "n/a"),
+        "explainedStatementCount: " + (readFiniteNumber(timing?.explainedStatementCount) ?? "n/a"),
+        "notExplainedStatementCount: " + (readFiniteNumber(timing?.notExplainedStatementCount) ?? "n/a"),
+        "",
+        "Top referenced tables",
+      ];
+      if (topRefs.length === 0) {
+        lines.push("(none)");
+      } else {
+        for (const entry of topRefs) {
+          const tableId = typeof entry?.tableId === "string" ? entry.tableId : "unknown-table";
+          const count = readFiniteNumber(entry?.statementReferences);
+          lines.push("- " + tableId + ": " + (count ?? "?") + " statement references");
+        }
+      }
+
+      lines.push("", "Slowest executable statements");
+      if (slowestStatements.length === 0) {
+        lines.push("(none)");
+      } else {
+        for (const statement of slowestStatements) {
+          const wallMs = readFiniteNumber(statement?.wallMs);
+          const planningMs = readFiniteNumber(statement?.planningMs);
+          const executionMs = readFiniteNumber(statement?.executionMs);
+          const kind = typeof statement?.kind === "string" ? statement.kind : "UNKNOWN";
+          const index = readFiniteNumber(statement?.index);
+          const rootNodeType = typeof statement?.rootNodeType === "string" ? statement.rootNodeType : "n/a";
+          const actualRows = readFiniteNumber(statement?.actualRows);
+          const sharedHits = readFiniteNumber(statement?.sharedHitBlocks);
+          const sharedReads = readFiniteNumber(statement?.sharedReadBlocks);
+          const tempWrites = readFiniteNumber(statement?.tempWrittenBlocks);
+          const walBytes = readFiniteNumber(statement?.walBytes);
+          lines.push(
+            "#" + (index == null ? "?" : String(index))
+            + " kind=" + kind
+            + " wallMs=" + (wallMs == null ? "?" : String(wallMs))
+            + " planningMs=" + (planningMs == null ? "n/a" : String(planningMs))
+            + " executionMs=" + (executionMs == null ? "n/a" : String(executionMs))
+            + " node=" + rootNodeType
+            + " actualRows=" + (actualRows == null ? "n/a" : String(actualRows))
+            + " sharedHit=" + (sharedHits == null ? "n/a" : String(sharedHits))
+            + " sharedRead=" + (sharedReads == null ? "n/a" : String(sharedReads))
+            + " tempWritten=" + (tempWrites == null ? "n/a" : String(tempWrites))
+            + " walBytes=" + (walBytes == null ? "n/a" : String(walBytes))
+          );
+          lines.push(typeof statement?.sqlPreview === "string" ? statement.sqlPreview : "(missing sql preview)");
+          lines.push("");
+        }
+      }
+
+      lines.push("", "First generated statements");
+      if (firstPreviews.length === 0) {
+        lines.push("(none)");
+      } else {
+        for (const preview of firstPreviews) {
+          lines.push("#" + (preview.index ?? "?") + " (" + (preview.outputName ?? "no outputName") + ")");
+          lines.push(typeof preview.sqlPreview === "string" ? preview.sqlPreview : "(missing sql preview)");
+          lines.push("");
+        }
+      }
+
+      lines.push("Last generated statements");
+      if (lastPreviews.length === 0) {
+        lines.push("(none)");
+      } else {
+        for (const preview of lastPreviews) {
+          lines.push("#" + (preview.index ?? "?") + " (" + (preview.outputName ?? "no outputName") + ")");
+          lines.push(typeof preview.sqlPreview === "string" ? preview.sqlPreview : "(missing sql preview)");
+          lines.push("");
+        }
+      }
+
+      lines.push("Executed SQL script");
+      lines.push(typeof metrics.sqlScript === "string" ? metrics.sqlScript : "(missing sql script)");
+      return lines.join("\\n");
+    }
+
+    function showMetricsDialog(actionLabel, tableId, metrics) {
+      const durationMs = readMutationDurationMs(metrics);
+      const statementCount = statementCountFromMetrics(metrics);
+      const executableStatementCount = executableStatementCountFromMetrics(metrics);
+      const timing = (metrics && typeof metrics === "object" && metrics.timingBreakdown && typeof metrics.timingBreakdown === "object")
+        ? metrics.timingBreakdown
+        : null;
+      metricsDialogTitle.textContent = actionLabel + " • " + tableId;
+      metricsDialogMeta.textContent = [
+        "duration=" + (durationMs == null ? "n/a" : formatDuration(durationMs)),
+        "logicalStatements=" + (statementCount == null ? "n/a" : String(statementCount)),
+        "executableStatements=" + (executableStatementCount == null ? "n/a" : String(executableStatementCount)),
+        "planningMs=" + (readFiniteNumber(timing?.totalPlanningMs) ?? "n/a"),
+        "executionMs=" + (readFiniteNumber(timing?.totalExecutionMs) ?? "n/a"),
+      ].join(" • ");
+      metricsDialogText.textContent = mutationDetailLines(metrics);
+      if (metricsDialog.open) {
+        metricsDialog.close();
+      }
+      metricsDialog.showModal();
+    }
+
     async function runUiAction(label, fn) {
       try {
         await fn();
@@ -1334,6 +1699,51 @@ function getStudioPageHtml(): string {
         const message = error instanceof Error ? error.message : String(error);
         showErrorDialog(label + ": " + message);
       }
+    }
+
+    async function runButtonAction(button, loadingText, fn) {
+      const originalLabel = button.textContent;
+      const wasDisabled = button.disabled;
+      button.disabled = true;
+      button.textContent = loadingText;
+      try {
+        return await fn();
+      } finally {
+        button.disabled = wasDisabled;
+        button.textContent = originalLabel;
+      }
+    }
+
+    function formatDuration(durationMs) {
+      if (!Number.isFinite(durationMs)) return "n/a";
+      if (durationMs < 1000) return durationMs.toFixed(1) + "ms";
+      return (durationMs / 1000).toFixed(2) + "s";
+    }
+
+    function formatMutationMetrics(metrics) {
+      if (!metrics || typeof metrics !== "object") return "";
+      const durationMs = readMutationDurationMs(metrics);
+      const statementCount = statementCountFromMetrics(metrics);
+      const executableStatementCount = executableStatementCountFromMetrics(metrics);
+      const timing = (metrics.timingBreakdown && typeof metrics.timingBreakdown === "object") ? metrics.timingBreakdown : null;
+      const planningMs = readFiniteNumber(timing?.totalPlanningMs);
+      const executionMs = readFiniteNumber(timing?.totalExecutionMs);
+      const topRefs = Array.isArray(metrics.topTableReferences) ? metrics.topTableReferences : [];
+      const topSummary = topRefs
+        .slice(0, 3)
+        .map((entry) => {
+          const tableId = typeof entry?.tableId === "string" ? entry.tableId : "unknown-table";
+          const count = readFiniteNumber(entry?.statementReferences);
+          return tableId + ":" + (count == null ? "?" : String(count));
+        })
+        .join(", ");
+      const statementLabel = statementCount == null ? "?" : String(statementCount);
+      const executableSuffix = executableStatementCount == null ? "" : " • " + executableStatementCount + " executable";
+      const planExecSuffix = (planningMs == null && executionMs == null)
+        ? ""
+        : " • plan/exec=" + (planningMs == null ? "n/a" : String(planningMs)) + "/" + (executionMs == null ? "n/a" : String(executionMs)) + "ms";
+      const base = formatDuration(durationMs ?? Number.NaN) + " • " + statementLabel + " logical" + executableSuffix + planExecSuffix;
+      return topSummary ? base + " • top refs: " + topSummary : base;
     }
 
     function sortJsonValue(value) {
@@ -1973,15 +2383,22 @@ function getStudioPageHtml(): string {
 
     async function tableAction(tableId, action, payload) {
       setStatus(action + "...");
-      await fetchJson("/api/table/" + encodeURIComponent(tableId) + "/" + action, {
+      const response = await fetchJson("/api/table/" + encodeURIComponent(tableId) + "/" + action, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload || {}),
       });
+      if ((action === "set-row" || action === "delete-row") && response && typeof response === "object") {
+        const metrics = response.metrics;
+        if (metrics && typeof metrics === "object") {
+          state.lastMutationMetrics[tableId + ":" + action] = metrics;
+        }
+      }
       await loadSchema();
       if (state.selectedTableId) {
         await selectTable(state.selectedTableId);
       }
+      return response;
     }
 
     async function initAllTables() {
@@ -2150,6 +2567,8 @@ function getStudioPageHtml(): string {
         const mutate = document.createElement("div");
         mutate.className = "detail-section";
         mutate.innerHTML = "<div class='muted mono' style='margin-bottom:6px;'>mutations</div>";
+        const setMetrics = state.lastMutationMetrics[table.id + ":set-row"];
+        const deleteMetrics = state.lastMutationMetrics[table.id + ":delete-row"];
         const setRowId = document.createElement("input");
         setRowId.placeholder = "rowIdentifier";
         const setRowData = document.createElement("textarea");
@@ -2160,12 +2579,14 @@ function getStudioPageHtml(): string {
         setBtn.className = "btn good";
         setBtn.textContent = "💾 set row";
         setBtn.onclick = () => runUiAction("set row", async () => {
-          const rowIdentifier = setRowId.value.trim();
-          if (!rowIdentifier) {
-            throw new Error("rowIdentifier is required");
-          }
-          const rowData = JSON.parse(setRowData.value);
-          await tableAction(table.id, "set-row", { rowIdentifier, rowData });
+          await runButtonAction(setBtn, "⏳ setting...", async () => {
+            const rowIdentifier = setRowId.value.trim();
+            if (!rowIdentifier) {
+              throw new Error("rowIdentifier is required");
+            }
+            const rowData = JSON.parse(setRowData.value);
+            await tableAction(table.id, "set-row", { rowIdentifier, rowData });
+          });
         });
         const deleteRowId = document.createElement("input");
         deleteRowId.placeholder = "rowIdentifier to delete";
@@ -2173,11 +2594,13 @@ function getStudioPageHtml(): string {
         deleteRowBtn.className = "btn bad";
         deleteRowBtn.textContent = "🗑️ delete row";
         deleteRowBtn.onclick = () => runUiAction("delete row", async () => {
-          const rowIdentifier = deleteRowId.value.trim();
-          if (!rowIdentifier) {
-            throw new Error("rowIdentifier is required");
-          }
-          await tableAction(table.id, "delete-row", { rowIdentifier });
+          await runButtonAction(deleteRowBtn, "⏳ deleting...", async () => {
+            const rowIdentifier = deleteRowId.value.trim();
+            if (!rowIdentifier) {
+              throw new Error("rowIdentifier is required");
+            }
+            await tableAction(table.id, "delete-row", { rowIdentifier });
+          });
         });
         setRowActions.appendChild(setBtn);
         setRowActions.appendChild(deleteRowBtn);
@@ -2185,6 +2608,40 @@ function getStudioPageHtml(): string {
         mutate.appendChild(setRowData);
         mutate.appendChild(deleteRowId);
         mutate.appendChild(setRowActions);
+        if (setMetrics && typeof setMetrics === "object") {
+          const setMetricsRow = document.createElement("div");
+          setMetricsRow.className = "row";
+          const setDurationBtn = document.createElement("button");
+          setDurationBtn.className = "btn";
+          setDurationBtn.style.fontSize = "11px";
+          const setDuration = readMutationDurationMs(setMetrics);
+          setDurationBtn.textContent = "⏱ set " + formatDuration(setDuration ?? Number.NaN);
+          setDurationBtn.onclick = () => showMetricsDialog("set-row", table.tableId, setMetrics);
+          const setMetricsSummary = document.createElement("div");
+          setMetricsSummary.className = "mono muted";
+          setMetricsSummary.style.fontSize = "11px";
+          setMetricsSummary.textContent = formatMutationMetrics(setMetrics);
+          setMetricsRow.appendChild(setDurationBtn);
+          setMetricsRow.appendChild(setMetricsSummary);
+          mutate.appendChild(setMetricsRow);
+        }
+        if (deleteMetrics && typeof deleteMetrics === "object") {
+          const deleteMetricsRow = document.createElement("div");
+          deleteMetricsRow.className = "row";
+          const deleteDurationBtn = document.createElement("button");
+          deleteDurationBtn.className = "btn";
+          deleteDurationBtn.style.fontSize = "11px";
+          const deleteDuration = readMutationDurationMs(deleteMetrics);
+          deleteDurationBtn.textContent = "⏱ delete " + formatDuration(deleteDuration ?? Number.NaN);
+          deleteDurationBtn.onclick = () => showMetricsDialog("delete-row", table.tableId, deleteMetrics);
+          const deleteMetricsSummary = document.createElement("div");
+          deleteMetricsSummary.className = "mono muted";
+          deleteMetricsSummary.style.fontSize = "11px";
+          deleteMetricsSummary.textContent = formatMutationMetrics(deleteMetrics);
+          deleteMetricsRow.appendChild(deleteDurationBtn);
+          deleteMetricsRow.appendChild(deleteMetricsSummary);
+          mutate.appendChild(deleteMetricsRow);
+        }
         detailsPane.appendChild(mutate);
       }
 
@@ -2618,6 +3075,11 @@ function getStudioPageHtml(): string {
         errorDialog.close();
       }
     };
+    metricsDialogCloseBtn.onclick = () => {
+      if (metricsDialog.open) {
+        metricsDialog.close();
+      }
+    };
 
     configurePanZoom();
     const initialTheme = loadInitialTheme();
@@ -2669,7 +3131,8 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
     const body = await readRequestBody(request);
     const parsed = JSON.parse(body);
     const name = parsed?.name;
-    if (typeof name !== "string" || !AVAILABLE_SCHEMAS[name]) {
+    const schemaFactory = typeof name === "string" ? Reflect.get(AVAILABLE_SCHEMAS, name) : null;
+    if (typeof name !== "string" || typeof schemaFactory !== "function") {
       sendJson(response, 400, { error: `Unknown schema "${name}". Available: ${Object.keys(AVAILABLE_SCHEMAS).join(", ")}` });
       return;
     }
@@ -2735,11 +3198,11 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
       if (!isRecord(rowData)) {
         throw new StackAssertionError("rowData must be a JSON object.");
       }
-      await executeStatements(record.table.setRow(
+      const metrics = await executeStatements(record.table.setRow(
         rowIdentifier,
         { type: "expression", sql: quoteSqlJsonbLiteral(rowData).sql },
       ));
-      sendJson(response, 200, { ok: true });
+      sendJson(response, 200, { ok: true, metrics });
       return;
     }
 
@@ -2750,8 +3213,8 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
       }
       const body = requireRecord(await readJsonBody(request), "delete-row body must be an object.");
       const rowIdentifier = requireString(Reflect.get(body, "rowIdentifier"), "rowIdentifier must be a string.");
-      await executeStatements(record.table.deleteRow(rowIdentifier));
-      sendJson(response, 200, { ok: true });
+      const metrics = await executeStatements(record.table.deleteRow(rowIdentifier));
+      sendJson(response, 200, { ok: true, metrics });
       return;
     }
   }

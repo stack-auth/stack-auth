@@ -237,3 +237,27 @@ A: No. It was removed because item quantity changes have nothing to do with paym
 
 Q: Are Bulldozer table `init()` calls idempotent?
 A: No. They use plain `INSERT INTO "BulldozerStorageEngine"` without `ON CONFLICT DO NOTHING`, so calling `init()` twice crashes with a unique constraint violation. The ingress script (`bulldozer-payments-init.ts`) checks `table.isInitialized()` per-table before calling `init()` to handle this safely.
+
+Q: What should the internal payments transactions endpoint do if the Bulldozer phase-1 pipeline is not initialized yet?
+A: Lazily initialize `schema._allPhase1Tables` by checking each table with `table.isInitialized()` and only running `table.init()` for missing tables before querying ledger rows. This keeps grouped-table reads working in environments where only dual writes were happening.
+
+Q: Why can grouped-table reads for payments transactions show duplicate rows, and how should queries handle it?
+A: During mixed initialization/backfill + trigger flow, the grouped table can surface duplicate rows for the same `txnId`. In SQL, dedupe with `ROW_NUMBER() OVER (PARTITION BY rowData->>'txnId' ...)` and keep rank 1 before applying pagination ordering/limits.
+
+Q: Why are payments Bulldozer writes much slower than core Bulldozer perf tests?
+A: The payments graph currently explodes a single `subscriptions.setRow()` into thousands of SQL sub-statements due to phase fanout, especially phase-3 item-expiry derivations. Measured on dev DB: phase1 ≈ `162` statements / `~86ms`, phase1+2 ≈ `862` / `~296-469ms`, phase1+2+3 ≈ `8412` / `~12.8-13.3s`. The largest contributor is `phase-3/item-changes-with-expiries` (not transactions), with top referenced tables including `external:payments-split-item-changes-with-expiry`, `external:payments-changes-with-expiries`, and `external:payments-changes-with-expiry-arrays`.
+
+Q: In Bulldozer Studio mutation metrics, what does "statement count" include?
+A: `logicalStatementCount` counts generated Bulldozer SQL statements (`SqlStatement[]`) before execution. `executableStatementCount` counts SQL commands after compiling/splitting the executable script. Neither count includes iterative work inside Postgres execution nodes (for example recursive CTE steps or loop-like row processing): those are runtime work within a single SQL statement, not additional statements.
+
+Q: How can Bulldozer Studio expose planning vs execution timing for set/delete mutations?
+A: In `apps/backend/scripts/run-bulldozer-studio.ts`, execute analyzable SQL statements through `EXPLAIN (ANALYZE, BUFFERS, WAL, SETTINGS, FORMAT JSON) <statement>` and parse `QUERY PLAN` JSON fields (`Planning Time`, `Execution Time`, root node stats). Keep per-statement wall time as well, aggregate totals (`timingBreakdown`), and surface `slowestStatements` plus SQL previews in the metrics dialog.
+
+Q: Why can `declareLeftJoinTable` trigger SQL fail with `UNION types jsonb and integer cannot be matched`?
+A: `leftJoinKey`/`rightJoinKey` mappers can emit scalar types (for example integers). Inside `declareLeftJoinTable`, trigger queries union newly mapped join keys with previously materialized rows whose join-key columns are `jsonb`. If mapped keys are not normalized first, Postgres sees `integer` vs `jsonb` in the same UNION arm. Fix by wrapping mapped join keys with `to_jsonb(...)` anywhere they are selected into `"leftJoinKey"` / `"rightJoinKey"` in trigger SQL.
+
+Q: Why can `includes TEST_MODE subscription` look slow even when adding a subscriptions row in Bulldozer Studio is fast?
+A: The e2e test duration includes the whole HTTP flow, not just `subscriptions.setRow()`: project setup/config update, user signup, purchase URL creation, test-mode purchase endpoint, and transactions fetch. A direct profile run measured roughly setup ~2.0s, signup ~0.7s, purchase-url ~0.4s, test-mode purchase ~0.85s, transactions fetch ~0.23s (total test body ~4.2s). So Studio row insertion and e2e test duration are not comparable one-to-one.
+
+Q: Why did `transactions.test` sometimes return 3 manual item-quantity-change transactions instead of 1?
+A: `bulldozerWriteItemQuantityChange` executed SQL from `toExecutableSqlTransaction(...)`, which includes `BEGIN; ... COMMIT;`. When called inside `retryTransaction(..., async (tx) => ...)`, that nested SQL could commit work per retry attempt, causing duplicate persisted writes under retry-induced flakiness. Fix by executing `toExecutableSqlStatements(...)` (no nested `BEGIN/COMMIT`) when already inside a Prisma transaction, and use that mode from `update-quantity` route.

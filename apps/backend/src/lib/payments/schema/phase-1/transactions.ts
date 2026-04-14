@@ -104,6 +104,7 @@ export function createTransactionsTable(events: EventTables, manualTransactions:
             'customerId', "rowData"->'customerId',
             'productId', "rowData"->'productId',
             'product', "rowData"->'product',
+            'priceId', "rowData"->'priceId',
             'quantity', "rowData"->'quantity',
             'productLineId', "rowData"->'productLineId',
             'subscriptionId', "rowData"->'subscriptionId'
@@ -258,6 +259,7 @@ export function createTransactionsTable(events: EventTables, manualTransactions:
             'customerId', "rowData"->'customerId',
             'productId', "rowData"->'productId',
             'product', "rowData"->'product',
+            'priceId', "rowData"->'priceId',
             'quantity', "rowData"->'quantity',
             'productLineId', "rowData"->'productLineId',
             'oneTimePurchaseId', "rowData"->'purchaseId'

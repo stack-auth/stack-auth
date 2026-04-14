@@ -8,11 +8,11 @@
  */
 
 import { Prisma } from "@/generated/prisma/client";
-import { toExecutableSqlTransaction } from "@/lib/bulldozer/db/index";
-import { createPaymentsSchema } from "@/lib/payments/schema/index";
+import { toExecutableSqlStatements, toExecutableSqlTransaction } from "@/lib/bulldozer/db/index";
+import { paymentsSchema } from "@/lib/payments/schema/singleton";
 import type { PrismaClientTransaction } from "@/prisma-client";
 
-const schema = createPaymentsSchema();
+const schema = paymentsSchema;
 
 function dateToMillis(d: Date | null | undefined): number | null {
   return d ? d.getTime() : null;
@@ -149,11 +149,19 @@ async function executeSetRow(
   storedTable: { setRow(id: string, data: { type: "expression", sql: string }): { type: "statement", sql: string }[] },
   id: string,
   rowData: Record<string, unknown>,
+  options: {
+    withinPrismaTransaction?: boolean,
+  } = {},
 ) {
   const escaped = JSON.stringify(rowData).replaceAll("'", "''");
-  const sql = toExecutableSqlTransaction(
-    storedTable.setRow(id, { type: "expression", sql: `'${escaped}'::jsonb` })
-  );
+  const statements = storedTable.setRow(id, { type: "expression", sql: `'${escaped}'::jsonb` });
+  const sql = options.withinPrismaTransaction
+    ? `
+      SET LOCAL jit = off;
+      SELECT pg_advisory_xact_lock(7857391);
+      ${toExecutableSqlStatements(statements)}
+    `
+    : toExecutableSqlTransaction(statements);
   await prisma.$executeRaw`${Prisma.raw(sql)}`;
 }
 
@@ -181,6 +189,9 @@ export async function bulldozerWriteOneTimePurchase(
 export async function bulldozerWriteItemQuantityChange(
   prisma: PrismaClientTransaction,
   change: Parameters<typeof itemQuantityChangeToStoredRow>[0],
+  options: {
+    withinPrismaTransaction?: boolean,
+  } = {},
 ) {
-  await executeSetRow(prisma, schema.manualItemQuantityChanges, change.id, itemQuantityChangeToStoredRow(change));
+  await executeSetRow(prisma, schema.manualItemQuantityChanges, change.id, itemQuantityChangeToStoredRow(change), options);
 }
