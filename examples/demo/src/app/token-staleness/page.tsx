@@ -23,7 +23,7 @@ export default function TokenStalenessPage() {
   const [newDisplayName, setNewDisplayName] = useState('');
 
   // Get partial user from token (can be stale compared to actual user data)
-  const partialUserFromToken = app.usePartialUser({ from: 'token', or: 'anonymous' });
+  const partialUserFromToken = app.usePartialUser({ from: 'token', or: 'anonymous-if-exists' });
 
   // Get raw tokens
   const tokens = user?.currentSession.useTokens();

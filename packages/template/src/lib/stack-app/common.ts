@@ -61,7 +61,7 @@ export type ConvexCtx =
 
 export type GetCurrentPartialUserOptions<HasTokenStore> =
   & {
-    or?: 'return-null' | 'anonymous',  // note: unlike normal getUser, 'anonymous' still returns null sometimes (eg. if no token is present)
+    or?: 'return-null' | 'anonymous-if-exists',  // note: unlike normal getUser, 'anonymous' still returns null sometimes (eg. if no token is present)
     tokenStore?: TokenStoreInit,
   }
   & (

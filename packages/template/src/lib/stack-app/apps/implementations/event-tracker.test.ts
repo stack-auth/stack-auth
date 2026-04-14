@@ -4,9 +4,7 @@ import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { EventTracker } from "./event-tracker";
 
-async function advancePastAccessTokenRefresh() {
-  await vi.advanceTimersByTimeAsync(10_000);
-  await Promise.resolve();
+async function advancePastFlush() {
   await vi.advanceTimersByTimeAsync(10_000);
   await Promise.resolve();
 }
@@ -41,7 +39,6 @@ describe("EventTracker", () => {
     const sentBodies: string[] = [];
     const tracker = new EventTracker({
       projectId: "internal",
-      getAccessToken: async () => "access-token",
       sendBatch: async (body) => {
         sentBodies.push(body);
         return Result.ok(new Response());
@@ -56,7 +53,7 @@ describe("EventTracker", () => {
         clientY: 34,
       }));
 
-      await advancePastAccessTokenRefresh();
+      await advancePastFlush();
 
       expect(getSentEventTypes(sentBodies)).toMatchInlineSnapshot(`
         [
@@ -79,7 +76,6 @@ describe("EventTracker", () => {
     const sentBodies: string[] = [];
     const tracker = new EventTracker({
       projectId: "internal",
-      getAccessToken: async () => "access-token",
       sendBatch: async (body) => {
         sentBodies.push(body);
         return Result.ok(new Response());
@@ -90,7 +86,7 @@ describe("EventTracker", () => {
       tracker.start();
       window.history.pushState({}, "", "/projects/test-project");
 
-      await advancePastAccessTokenRefresh();
+      await advancePastFlush();
 
       expect(getSentEventTypes(sentBodies)).toMatchInlineSnapshot(`
         [
