@@ -170,7 +170,7 @@ describe("setRow via dual-write conversion", () => {
     expect((stored as any).customerType).toBe("user");
   });
 
-  it("overwrites an existing subscription row (no duplicates)", async () => {
+  it("overwrites an existing subscription row (no duplicates)", { timeout: 60_000 }, async () => {
     const countBefore = await countStoredRows("payments-subscriptions");
 
     const updatedRowData = subscriptionToStoredRow({

@@ -38,7 +38,7 @@ export function createItemQuantitiesTable(changeTables: ItemChangesWithExpiriesT
   });
 
   // LFold with the ledger algorithm.
-  // State: JSONB map of itemId → { g: [{q, e}], r: [{q, e}] }
+  // State: JSONB map of itemId → { grants: [{q, e}], debt: number }
   const itemQuantities = declareLFoldTable({
     tableId: "payments-item-quantities",
     fromTable: changesSorted,

@@ -3,9 +3,11 @@
  *
  * Extracted for reuse in both the FlatMap mapper and direct tests.
  *
- * Splits a (quantity, expiries[]) pair into individual (subQty, expiresAt) rows.
- * For grants (qty >= 0): uses LEAST to cap each split at remaining.
- * For removals (qty < 0): uses GREATEST (closer to zero for negatives).
+ * Splits a grant (quantity >= 0, expiries[]) into individual (subQty, expiresAt) rows.
+ * Uses LEAST to cap each split at remaining quantity.
+ *
+ * Only called for grants (qty >= 0). Removals (qty < 0) bypass the split
+ * entirely and are passed through as a single row.
  *
  * Expects `"rowData"` to be in scope with fields `quantity` (numeric) and
  * `expiries` (jsonb array of {txnEffectiveAtMillis, quantityExpiring}).
@@ -26,14 +28,8 @@ export function getSplitAlgoCteSql(): string {
       SELECT
         1 AS "idx",
         ("rowData"->>'quantity')::numeric AS "inputRemaining",
-        (CASE WHEN ("rowData"->>'quantity')::numeric >= 0
-          THEN LEAST(("rowData"->>'quantity')::numeric, COALESCE(("expiryArray"."expiry"->>'quantityExpiring')::numeric, 0))
-          ELSE GREATEST(("rowData"->>'quantity')::numeric, COALESCE(("expiryArray"."expiry"->>'quantityExpiring')::numeric, 0))
-        END) AS "quantityExpiring",
-        ("rowData"->>'quantity')::numeric - (CASE WHEN ("rowData"->>'quantity')::numeric >= 0
-          THEN LEAST(("rowData"->>'quantity')::numeric, COALESCE(("expiryArray"."expiry"->>'quantityExpiring')::numeric, 0))
-          ELSE GREATEST(("rowData"->>'quantity')::numeric, COALESCE(("expiryArray"."expiry"->>'quantityExpiring')::numeric, 0))
-        END) AS "remaining",
+        LEAST(("rowData"->>'quantity')::numeric, COALESCE(("expiryArray"."expiry"->>'quantityExpiring')::numeric, 0)) AS "quantityExpiring",
+        ("rowData"->>'quantity')::numeric - LEAST(("rowData"->>'quantity')::numeric, COALESCE(("expiryArray"."expiry"->>'quantityExpiring')::numeric, 0)) AS "remaining",
         "expiryArray"."expiry"->'txnEffectiveAtMillis' AS "expiresAtMillis",
         "expiryArray"."total" AS "total"
       FROM "expiryArray"
@@ -44,14 +40,8 @@ export function getSplitAlgoCteSql(): string {
       SELECT
         "walked"."idx" + 1 AS "idx",
         "walked"."remaining" AS "inputRemaining",
-        (CASE WHEN "walked"."inputRemaining" >= 0
-          THEN LEAST("walked"."remaining", COALESCE(("expiryArray"."expiry"->>'quantityExpiring')::numeric, 0))
-          ELSE GREATEST("walked"."remaining", COALESCE(("expiryArray"."expiry"->>'quantityExpiring')::numeric, 0))
-        END) AS "quantityExpiring",
-        "walked"."remaining" - (CASE WHEN "walked"."inputRemaining" >= 0
-          THEN LEAST("walked"."remaining", COALESCE(("expiryArray"."expiry"->>'quantityExpiring')::numeric, 0))
-          ELSE GREATEST("walked"."remaining", COALESCE(("expiryArray"."expiry"->>'quantityExpiring')::numeric, 0))
-        END) AS "remaining",
+        LEAST("walked"."remaining", COALESCE(("expiryArray"."expiry"->>'quantityExpiring')::numeric, 0)) AS "quantityExpiring",
+        "walked"."remaining" - LEAST("walked"."remaining", COALESCE(("expiryArray"."expiry"->>'quantityExpiring')::numeric, 0)) AS "remaining",
         "expiryArray"."expiry"->'txnEffectiveAtMillis' AS "expiresAtMillis",
         "walked"."total" AS "total"
       FROM "walked"

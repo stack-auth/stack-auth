@@ -182,17 +182,27 @@ export function createItemChangesWithExpiries(entryTables: CompactedTransactionE
     tables: [changesWithExpiryArrays, compactedChangesWithNullExpiries],
   });
 
-  // FlatMap: split each (quantity, expiries[]) into individual (subQty, expiresAt) pairs.
-  // For grants (qty >= 0): use LEAST to cap each split at remaining.
-  // For removals (qty < 0): use GREATEST (closer to zero for negatives).
-  // Always emit a final (remaining, null) tail row.
-  // Also emit zero-quantity "expiry marker" rows at each expiresAtMillis time,
-  // so the downstream ledger LFold advances its clock past expiry boundaries.
+  // FlatMap: for grants (qty >= 0), split by expiry buckets via recursive CTE
+  // and emit expiry marker rows. For removals (qty < 0), pass through as a
+  // single row with expiresAtMillis = null (removals are permanent).
   const splitChanges = declareFlatMapTable({
     tableId: "payments-split-item-changes-with-expiry",
     fromTable: allChangesUnified,
     mapper: mapper(`
-      (
+      CASE WHEN ("rowData"->>'quantity')::numeric < 0 THEN
+        jsonb_build_array(
+          jsonb_build_object(
+            'txnId', "rowData"->'txnId',
+            'txnEffectiveAtMillis', "rowData"->'txnEffectiveAtMillis',
+            'customerType', "rowData"->'customerType',
+            'customerId', "rowData"->'customerId',
+            'tenancyId', "rowData"->'tenancyId',
+            'itemId', "rowData"->'itemId',
+            'quantity', "rowData"->'quantity',
+            'expiresAtMillis', 'null'::jsonb
+          )
+        )
+      ELSE (
         WITH RECURSIVE
         ${getSplitAlgoCteSql()}
         SELECT (
@@ -243,7 +253,8 @@ export function createItemChangesWithExpiries(entryTables: CompactedTransactionE
           WHERE "w"."expiresAtMillis" IS NOT NULL
             AND "w"."expiresAtMillis" != 'null'::jsonb
         )
-      ) AS "rows"
+      )
+      END AS "rows"
     `),
   });
 
