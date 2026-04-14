@@ -1,0 +1,228 @@
+{
+  "$schema": "https://mintlify.com/docs.json",
+  "name": "Stack Auth Documentation",
+  "theme": "mint",
+  "logo": {
+    "dark": "/images/logo-dark.svg",
+    "light": "/images/logo-light.svg"
+  },
+  "favicon": "/images/favicon.ico",
+  "colors": {
+    "primary": "#6b5df7",
+    "light": "#8b7cf9",
+    "dark": "#6b5df7"
+  },
+  "background": {
+    "color": {
+      "dark": "#09090b"
+    }
+  },
+  "fonts": {
+    "heading": {
+      "family": "Geist",
+      "weight": 500
+    },
+    "body": {
+      "family": "Geist",
+      "weight": 400
+    }
+  },
+  "navbar": {
+    "links": [
+      {
+        "type": "github",
+        "href": "https://github.com/stack-auth/stack-auth"
+      }
+    ],
+    "primary": {
+      "type": "button",
+      "label": "Dashboard",
+      "href": "https://app.stack-auth.com"
+    }
+  },
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "pages": [
+          "index",
+          "guides/faq",
+          {
+            "group": "Getting Started",
+            "pages": [
+              "guides/getting-started/setup",
+              "guides/getting-started/user-fundamentals",
+              "guides/getting-started/ai-integration"
+            ]
+          },
+          {
+            "group": "Going Further",
+            "pages": [
+              "guides/going-further/stack-app",
+              "guides/going-further/backend-integration",
+              "guides/going-further/local-development",
+              "guides/going-further/user-metadata"
+            ]
+          },
+          {
+            "group": "Apps",
+            "pages": [
+              {
+                "group": "Authentication",
+                "icon": "/images/app-icons/authentication.svg",
+                "pages": [
+                  "guides/apps/authentication/overview",
+                  "guides/apps/authentication/user-onboarding",
+                  "guides/apps/authentication/connected-accounts",
+                  "guides/apps/authentication/jwts",
+                  "guides/apps/authentication/sign-up-rules",
+                  "guides/apps/authentication/cli-authentication",
+                  {
+                    "group": "All Auth Providers",
+                    "root": "guides/apps/authentication/auth-providers",
+                    "pages": [
+                      "guides/apps/authentication/auth-providers/apple",
+                      "guides/apps/authentication/auth-providers/bitbucket",
+                      "guides/apps/authentication/auth-providers/discord",
+                      "guides/apps/authentication/auth-providers/facebook",
+                      "guides/apps/authentication/auth-providers/github",
+                      "guides/apps/authentication/auth-providers/gitlab",
+                      "guides/apps/authentication/auth-providers/google",
+                      "guides/apps/authentication/auth-providers/linkedin",
+                      "guides/apps/authentication/auth-providers/microsoft",
+                      "guides/apps/authentication/auth-providers/passkey",
+                      "guides/apps/authentication/auth-providers/spotify",
+                      "guides/apps/authentication/auth-providers/twitch",
+                      "guides/apps/authentication/auth-providers/two-factor-auth",
+                      "guides/apps/authentication/auth-providers/x-twitter"
+                    ]
+                  }
+                ]
+              },
+              "guides/apps/emails/overview",
+              "guides/apps/payments/overview",
+              "guides/apps/analytics/overview",
+              {
+                "group": "Teams",
+                "icon": "/images/app-icons/teams.svg",
+                "pages": [
+                  "guides/apps/teams/overview",
+                  "guides/apps/teams/team-selection"
+                ]
+              },
+              "guides/apps/fraud-protection/overview",
+              "guides/apps/rbac/overview",
+              "guides/apps/api-keys/overview",
+              "guides/apps/data-vault/overview",
+              "guides/apps/webhooks/overview",
+              "guides/apps/launch-checklist/overview"
+            ]
+          },
+          {
+            "group": "Integrations",
+            "pages": [
+              "guides/integrations/supabase/overview",
+              "guides/integrations/convex/overview",
+              "guides/integrations/vercel/overview"
+            ]
+          },
+          {
+            "group": "Other",
+            "pages": [
+              "guides/other/self-host",
+              "guides/other/mcp-setup",
+              {
+                "group": "Tutorials",
+                "pages": [
+                  "guides/other/tutorials/build-a-saas-with-stack-auth",
+                  "guides/other/tutorials/build-a-team-based-app",
+                  "guides/other/tutorials/ship-production-ready-auth"
+                ]
+              },
+              "guides/other/showcase"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "SDK Reference",
+        "pages": [
+          "sdk/overview",
+          {
+            "group": "Objects",
+            "pages": ["sdk/objects/stack-app"]
+          },
+          {
+            "group": "Types",
+            "pages": [
+              "sdk/types/user",
+              "sdk/types/team",
+              "sdk/types/team-user",
+              "sdk/types/team-permission",
+              "sdk/types/team-profile",
+              "sdk/types/contact-channel",
+              "sdk/types/email",
+              "sdk/types/api-key",
+              "sdk/types/project",
+              "sdk/types/connected-account",
+              "sdk/types/item",
+              "sdk/types/customer"
+            ]
+          },
+          {
+            "group": "Hooks",
+            "pages": ["sdk/hooks/use-stack-app", "sdk/hooks/use-user"]
+          }
+        ]
+      },
+      {
+        "tab": "REST API",
+        "pages": [
+          "api/overview",
+          {
+            "group": "Client API",
+            "openapi": {
+              "source": "openapi/client.json",
+              "directory": "api/client"
+            }
+          },
+          {
+            "group": "Server API",
+            "openapi": {
+              "source": "openapi/server.json",
+              "directory": "api/server"
+            }
+          },
+          {
+            "group": "Admin API",
+            "openapi": {
+              "source": "openapi/admin.json",
+              "directory": "api/admin",
+              "hidden": "true"
+            }
+          },
+          {
+            "group": "Webhooks",
+            "openapi": {
+              "source": "openapi/webhooks.json",
+              "directory": "api/webhooks"
+            }
+          }
+        ]
+      }
+    ]
+  },
+  "footer": {
+    "socials": {
+      "x": "https://x.com/stack_auth",
+      "github": "https://github.com/stack-auth/stack",
+      "discord": "https://discord.stack-auth.com"
+    }
+  },
+  "seo": {
+    "metatags": {
+      "robots": "noindex"
+    }
+  },
+  "redirects": []
+}

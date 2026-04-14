@@ -1432,7 +1432,7 @@ export default function PageClient({ initialReplayId }: PageClientProps) {
         ) : undefined}
         fillWidth
       >
-        <PanelGroup direction="horizontal" className="!h-[calc(100vh-180px)] min-h-[520px] rounded-xl border border-border/40 overflow-hidden bg-background">
+        <PanelGroup data-walkthrough="analytics-replays" direction="horizontal" className="!h-[calc(100vh-180px)] min-h-[520px] rounded-xl border border-border/40 overflow-hidden bg-background">
           {!isStandaloneReplayPage && (
             <>
               <Panel defaultSize={25} minSize={16}>

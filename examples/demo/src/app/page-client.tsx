@@ -4,11 +4,9 @@ import { UserAvatar, useStackApp, useUser } from '@stackframe/stack';
 import { Button, buttonVariants, Card, CardContent, CardFooter, CardHeader, Typography } from '@stackframe/stack-ui';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
 
 export default function PageClient() {
   const user = useUser({ includeRestricted: true });
-  const router = useRouter();
   const app = useStackApp();
 
   const authButtons = (
@@ -18,8 +16,8 @@ export default function PageClient() {
       <Typography>Try signing in/up with the buttons below!</Typography>
       <Typography>Also feel free to check out the things on the top right corner.</Typography>
       <div className='flex gap-2'>
-        <Button onClick={() => router.push(app.urls.signIn)}>Sign In</Button>
-        <Button onClick={() => router.push(app.urls.signUp)}>Sign Up</Button>
+        <Button onClick={async () => await app.redirectToSignIn()}>Sign In</Button>
+        <Button onClick={async () => await app.redirectToSignUp()}>Sign Up</Button>
       </div>
     </div>
   );
@@ -72,9 +70,9 @@ export default function PageClient() {
                 <Link href="https://app.stack-auth.com" className={buttonVariants()}>
                   Visit Stack Auth
                 </Link>
-                <Link href={app.urls.signOut} className={buttonVariants({ variant: 'destructive' })}>
+                <Button variant='destructive' onClick={async () => await app.redirectToSignOut()}>
                   Sign Out
-                </Link>
+                </Button>
               </div>
             </CardFooter>
           </Card>

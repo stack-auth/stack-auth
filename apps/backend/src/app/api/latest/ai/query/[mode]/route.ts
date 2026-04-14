@@ -1,4 +1,3 @@
-import { forwardToProduction } from "@/lib/ai/forward";
 import { selectModel } from "@/lib/ai/models";
 import { getFullSystemPrompt } from "@/lib/ai/prompts";
 import { requestBodySchema } from "@/lib/ai/schema";
@@ -7,7 +6,6 @@ import { listManagedProjectIds } from "@/lib/projects";
 import { SmartResponse } from "@/route-handlers/smart-response";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Json } from "@stackframe/stack-shared/dist/utils/json";
 import { generateText, ModelMessage, stepCountIs, streamText } from "ai";
@@ -30,24 +28,15 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(StatusError.BadRequest, `Invalid tool names in request.`);
     }
 
-    const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY");
-
-
-    if (apiKey === "FORWARD_TO_PRODUCTION") {
-      const prodResponse = await forwardToProduction(mode, body);
-      return {
-        statusCode: prodResponse.status,
-        bodyType: "response" as const,
-        body: prodResponse,
-      };
-    }
-
     const isAuthenticated = fullReq.auth != null;
     const { quality, speed, systemPrompt: systemPromptId, tools: toolNames, messages, projectId } = body;
 
     // Verify user has access to the target project
     if (projectId != null) {
-      const user = fullReq.auth?.user;
+      if (fullReq.auth?.project.id !== "internal") {
+        throw new StatusError(StatusError.Forbidden, "You do not have access to this project");
+      }
+      const user = fullReq.auth.user;
       if (user == null) {
         throw new StatusError(StatusError.Forbidden, "You do not have access to this project");
       }
@@ -129,7 +118,7 @@ export const POST = createSmartRouteHandler({
       return {
         statusCode: 200,
         bodyType: "json" as const,
-        body: { content: contentBlocks },
+        body: { content: contentBlocks, finalText: result.text },
       };
     }
   },

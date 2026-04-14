@@ -3,6 +3,39 @@ import { describe } from "vitest";
 import { it } from "../../../../../helpers";
 import { Auth, InternalApiKey, Project, backendContext, niceBackendFetch } from "../../../../backend-helpers";
 
+const expectOAuthSignUpRejectedRedirect = (
+  expect: typeof import("vitest").expect,
+  response: { status: number, headers: Headers },
+) => {
+  expect(response.status).toBe(307);
+
+  const location = response.headers.get("location");
+  expect(location).toBeTruthy();
+  if (location == null) {
+    throw new Error("OAuth callback rejection redirect location is missing");
+  }
+
+  const locationUrl = new URL(location);
+  expect(locationUrl.origin).toBe("http://stack-test.localhost");
+  expect(locationUrl.pathname).toBe("/some-callback-url");
+  expect(locationUrl.searchParams.get("error")).toBe("server_error");
+  expect(locationUrl.searchParams.get("errorCode")).toBe("SIGN_UP_REJECTED");
+  expect(locationUrl.searchParams.get("error_description")).toBe("Your sign up was rejected by an administrator's sign-up rule.");
+  expect(locationUrl.searchParams.get("message")).toBe("Your sign up was rejected by an administrator's sign-up rule.");
+
+  const detailsRaw = locationUrl.searchParams.get("details");
+  expect(detailsRaw).toBeTruthy();
+  if (detailsRaw == null) {
+    throw new Error("OAuth callback rejection redirect details are missing");
+  }
+  const details: unknown = JSON.parse(detailsRaw);
+  if (typeof details !== "object" || details == null || !("message" in details)) {
+    throw new Error("OAuth callback rejection redirect details are malformed");
+  }
+  expect(details.message).toBe("Your sign up was rejected by an administrator's sign-up rule.");
+  expect(response.headers.get("set-cookie")).toMatch(/stack-oauth-inner-/);
+};
+
 describe("sign-up rules", () => {
   // ==========================================
   // BASIC RULE BEHAVIOR
@@ -1181,10 +1214,7 @@ describe("sign-up rules", () => {
 
     // OAuth signup should be rejected
     const { response } = await Auth.OAuth.getMaybeFailingAuthorizationCode();
-    expect(response.status).toBe(403);
-    expect(response.body).toMatchObject({
-      code: 'SIGN_UP_REJECTED',
-    });
+    expectOAuthSignUpRejectedRedirect(expect, response);
   });
 
   it("should match oauthProvider condition for specific OAuth provider", async ({ expect }) => {
@@ -1211,10 +1241,7 @@ describe("sign-up rules", () => {
 
     // Spotify OAuth signup should be rejected
     const { response } = await Auth.OAuth.getMaybeFailingAuthorizationCode();
-    expect(response.status).toBe(403);
-    expect(response.body).toMatchObject({
-      code: 'SIGN_UP_REJECTED',
-    });
+    expectOAuthSignUpRejectedRedirect(expect, response);
   });
 
   it("should allow OAuth signup when rule blocks different provider", async ({ expect }) => {
@@ -1460,10 +1487,7 @@ describe("sign-up rules", () => {
     });
 
     const { response } = await Auth.OAuth.getMaybeFailingAuthorizationCode();
-    expect(response.status).toBe(403);
-    expect(response.body).toMatchObject({
-      code: 'SIGN_UP_REJECTED',
-    });
+    expectOAuthSignUpRejectedRedirect(expect, response);
   });
 
   // ==========================================

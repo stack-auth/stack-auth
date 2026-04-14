@@ -2,7 +2,7 @@ import { BooleanTrue, Prisma } from "@/generated/prisma/client";
 import { getRenderedOrganizationConfigQuery, getRenderedProjectConfigQuery } from "@/lib/config";
 import { demoteAllContactChannelsToNonPrimary, setContactChannelAsPrimaryByValue } from "@/lib/contact-channel";
 import { normalizeEmail } from "@/lib/emails";
-import { recordExternalDbSyncContactChannelDeletionsForUser, recordExternalDbSyncDeletion, withExternalDbSyncUpdate } from "@/lib/external-db-sync";
+import { recordExternalDbSyncContactChannelDeletionsForUser, recordExternalDbSyncDeletion, recordExternalDbSyncNotificationPreferenceDeletionsForUser, recordExternalDbSyncOAuthAccountDeletionsForUser, recordExternalDbSyncProjectPermissionDeletionsForUser, recordExternalDbSyncRefreshTokenDeletionsForUser, recordExternalDbSyncTeamMemberDeletionsForUser, recordExternalDbSyncTeamPermissionDeletionsForUser, withExternalDbSyncUpdate } from "@/lib/external-db-sync";
 import { grantDefaultProjectPermissions } from "@/lib/permissions";
 import { ensureTeamMembershipExists, ensureUserExists } from "@/lib/request-checks";
 import { Tenancy } from "@/lib/tenancies";
@@ -12,7 +12,7 @@ import { PrismaClientTransaction, RawQuery, getPrismaClientForSourceOfTruth, get
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { uploadAndGetUrl } from "@/s3";
 import { log } from "@/utils/telemetry";
-import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
+import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { currentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import { UsersCrud, usersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
@@ -498,6 +498,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     desc: yupString().oneOf(["true", "false"]).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Whether to sort the results in descending order. Defaults to false" } }),
     query: yupString().optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "A search query to filter the results by. This is a free-text search that is applied to the user's id (exact-match only), display name and primary email." } }),
     include_anonymous: yupString().oneOf(["true", "false"]).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Whether to include anonymous users in the results. When true, also includes restricted users. Defaults to false" } }),
+    only_anonymous: yupString().oneOf(["true", "false"]).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Whether to return only anonymous users. When true, implies include_anonymous=true. Defaults to false" } }),
     include_restricted: yupString().oneOf(["true", "false"]).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Whether to include restricted users in the results. Defaults to false" } }),
   }),
   onRead: async ({ auth, params, query }) => {
@@ -515,7 +516,12 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     // - No flags: only Normal users (not anonymous, not restricted)
     // - include_restricted=true: Restricted + Normal users (not anonymous)
     // - include_anonymous=true: Anonymous + Restricted + Normal users (everything)
+    // - only_anonymous=true with include_anonymous=true: only Anonymous users
+    const onlyAnonymous = query.only_anonymous === "true";
     const includeAnonymous = query.include_anonymous === "true";
+    if (onlyAnonymous && !includeAnonymous) {
+      throw new StatusError(StatusError.BadRequest, "only_anonymous=true requires include_anonymous=true");
+    }
     const includeRestricted = query.include_restricted === "true" || includeAnonymous; // include_anonymous also includes restricted
 
     // TODO: Instead of hardcoding this, we should use computeRestrictedStatus
@@ -531,10 +537,16 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           },
         },
       } : {},
-      ...includeAnonymous ? {} : {
-        // Don't return anonymous users unless explicitly requested
-        isAnonymous: false,
-      },
+      ...onlyAnonymous
+        ? {
+          isAnonymous: true,
+        }
+        : !includeAnonymous
+          ? {
+            // Don't return anonymous users unless explicitly requested
+            isAnonymous: false,
+          }
+          : {},
       // Filter out restricted users if needed (restricted = signed up but email not verified)
       ...shouldFilterRestrictedByEmail ? {
         // User must have a verified primary email to not be restricted
@@ -1121,9 +1133,9 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
             },
             displayName: personalTeamDefaultDisplayName,
           },
-          data: {
+          data: withExternalDbSyncUpdate({
             displayName: getPersonalTeamDisplayName(data.display_name ?? null, data.primary_email ?? null),
-          },
+          }),
         });
       }
 
@@ -1190,6 +1202,11 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
 
     // if user password changed, reset all refresh tokens
     if (passwordHash !== undefined) {
+      await recordExternalDbSyncRefreshTokenDeletionsForUser(globalPrismaClient, {
+        tenancyId: auth.tenancy.id,
+        projectUserId: params.user_id,
+      });
+
       await globalPrismaClient.projectUserRefreshToken.deleteMany({
         where: {
           tenancyId: auth.tenancy.id,
@@ -1234,6 +1251,43 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       await recordExternalDbSyncContactChannelDeletionsForUser(tx, {
         tenancyId: auth.tenancy.id,
         projectUserId: params.user_id,
+      });
+
+      await recordExternalDbSyncTeamMemberDeletionsForUser(tx, {
+        tenancyId: auth.tenancy.id,
+        projectUserId: params.user_id,
+      });
+
+      await recordExternalDbSyncTeamPermissionDeletionsForUser(tx, {
+        tenancyId: auth.tenancy.id,
+        projectUserId: params.user_id,
+      });
+
+      await recordExternalDbSyncProjectPermissionDeletionsForUser(tx, {
+        tenancyId: auth.tenancy.id,
+        projectUserId: params.user_id,
+      });
+
+      await recordExternalDbSyncNotificationPreferenceDeletionsForUser(tx, {
+        tenancyId: auth.tenancy.id,
+        projectUserId: params.user_id,
+      });
+
+      await recordExternalDbSyncRefreshTokenDeletionsForUser(tx, {
+        tenancyId: auth.tenancy.id,
+        projectUserId: params.user_id,
+      });
+
+      await recordExternalDbSyncOAuthAccountDeletionsForUser(tx, {
+        tenancyId: auth.tenancy.id,
+        projectUserId: params.user_id,
+      });
+
+      await tx.projectUserRefreshToken.deleteMany({
+        where: {
+          tenancyId: auth.tenancy.id,
+          projectUserId: params.user_id,
+        },
       });
 
       await tx.projectUser.delete({

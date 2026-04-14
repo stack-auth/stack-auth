@@ -4,13 +4,18 @@ import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { STACK_BACKEND_BASE_URL, it } from "../helpers";
 import { scaffoldProject } from "./js-helpers";
 
+// When STACK_TEST_SDK_FALLBACK is set, omit explicit baseUrl so the SDK resolves
+// from NEXT_PUBLIC_STACK_API_URL and exercises its fallback logic
+const sdkBaseUrl = process.env.STACK_TEST_SDK_FALLBACK ? undefined : STACK_BACKEND_BASE_URL;
+
 it("StackServerApp can inherit configuration from StackClientApp", async ({ expect }) => {
   const { project, adminUser } = await scaffoldProject();
   const adminApp = new StackAdminApp({
     projectId: project.id,
-    baseUrl: STACK_BACKEND_BASE_URL,
+    baseUrl: sdkBaseUrl,
     projectOwnerSession: adminUser._internalSession,
     tokenStore: "memory",
+    redirectMethod: "none",
   });
 
   const key = await adminApp.createInternalApiKey({
@@ -22,10 +27,11 @@ it("StackServerApp can inherit configuration from StackClientApp", async ({ expe
   });
 
   const clientApp = new StackClientApp({
-    baseUrl: STACK_BACKEND_BASE_URL,
+    baseUrl: sdkBaseUrl,
     projectId: project.id,
     publishableClientKey: key.publishableClientKey,
     tokenStore: "memory",
+    redirectMethod: "none",
   });
 
   const serverApp = new StackServerApp({
@@ -49,9 +55,10 @@ it("StackAdminApp can inherit configuration from StackServerApp", async ({ expec
   const { project, adminUser } = await scaffoldProject();
   const adminApp = new StackAdminApp({
     projectId: project.id,
-    baseUrl: STACK_BACKEND_BASE_URL,
+    baseUrl: sdkBaseUrl,
     projectOwnerSession: adminUser._internalSession,
     tokenStore: "memory",
+    redirectMethod: "none",
   });
 
   const key = await adminApp.createInternalApiKey({
@@ -63,10 +70,11 @@ it("StackAdminApp can inherit configuration from StackServerApp", async ({ expec
   });
 
   const clientApp = new StackClientApp({
-    baseUrl: STACK_BACKEND_BASE_URL,
+    baseUrl: sdkBaseUrl,
     projectId: project.id,
     publishableClientKey: key.publishableClientKey,
     tokenStore: "memory",
+    redirectMethod: "none",
   });
 
   const serverApp = new StackServerApp({

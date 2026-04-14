@@ -1,7 +1,11 @@
 import { getClickhouseExternalClient } from "@/lib/clickhouse";
+import { getSafeClickhouseErrorMessage } from "@/lib/clickhouse-errors";
 import { SmartRequestAuth } from "@/route-handlers/smart-request";
+import { ClickHouseError } from "@clickhouse/client";
 import { tool } from "ai";
 import { z } from "zod";
+
+export const SQL_QUERY_RESULT_MAX_CHARS = 50_000;
 
 export function createSqlQueryTool(auth: SmartRequestAuth | null, targetProjectId?: string | null) {
   if (auth == null) {
@@ -21,32 +25,48 @@ export function createSqlQueryTool(auth: SmartRequestAuth | null, targetProjectI
     }),
     execute: async ({ query }: { query: string }) => {
       const client = getClickhouseExternalClient();
-      return await client.query({
-        query,
-        clickhouse_settings: {
-          SQL_project_id: projectId,
-          SQL_branch_id: branchId,
-          max_execution_time: 5,
-          readonly: "1",
-          allow_ddl: 0,
-          max_result_rows: "10000",
-          max_result_bytes: (10 * 1024 * 1024).toString(),
-          result_overflow_mode: "throw",
-        },
-        format: "JSONEachRow",
-      })
-        .then(async (resultSet) => {
-          const rows = await resultSet.json<Record<string, unknown>[]>();
+      try {
+        const resultSet = await client.query({
+          query,
+          clickhouse_settings: {
+            SQL_project_id: projectId,
+            SQL_branch_id: branchId,
+            max_execution_time: 5,
+            readonly: "1",
+            allow_ddl: 0,
+            max_result_rows: "10000",
+            max_result_bytes: (10 * 1024 * 1024).toString(),
+            result_overflow_mode: "throw",
+          },
+          format: "JSONEachRow",
+        });
+        const rows = await resultSet.json<Record<string, unknown>[]>();
+        const response = { success: true as const, rowCount: rows.length, result: rows };
+        const serialized = JSON.stringify(response);
+        if (serialized.length > SQL_QUERY_RESULT_MAX_CHARS) {
           return {
-            success: true as const,
+            success: false as const,
+            error:
+              `Result too large: ${rows.length} rows, ${serialized.length} characters (limit ${SQL_QUERY_RESULT_MAX_CHARS}). ` +
+              `To fix: ` +
+              `(1) Use aggregation (COUNT, uniqExact, GROUP BY, topK, quantile) instead of fetching rows. ` +
+              `(2) If you need rows, add a WHERE clause or reduce LIMIT. ` +
+              `(3) Select only the columns you need — avoid the 'data' column on events unless essential.`,
             rowCount: rows.length,
-            result: rows,
+            characters: serialized.length,
+            columnsReturned: rows.length > 0 ? Object.keys(rows[0]) : [],
           };
-        })
-        .catch((error: unknown) => ({
+        }
+        return response;
+      } catch (error) {
+        if (!(error instanceof ClickHouseError)) {
+          throw error;
+        }
+        return {
           success: false as const,
-          error: error instanceof Error ? error.message : "Query failed",
-        }));
+          error: getSafeClickhouseErrorMessage(error, query),
+        };
+      }
     },
   });
 }
