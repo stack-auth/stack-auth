@@ -1,7 +1,9 @@
 import { Command } from "commander";
 import { execFileSync, spawn } from "child_process";
 import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync } from "fs";
-import { join, resolve } from "path";
+import { homedir } from "os";
+import { dirname, join, resolve } from "path";
+import { fileURLToPath } from "url";
 import { CliError } from "../lib/errors.js";
 
 const DEFAULT_EMULATOR_BACKEND_PORT = 26701;
@@ -16,8 +18,20 @@ function emulatorBackendPort(): number {
   return parsed;
 }
 
+function emulatorHome(): string {
+  return process.env.STACK_EMULATOR_HOME ?? join(homedir(), ".stack", "emulator");
+}
+
+function emulatorRunDir(): string {
+  return join(emulatorHome(), "run");
+}
+
+function emulatorImageDir(): string {
+  return join(emulatorHome(), "images");
+}
+
 function internalPckPath(): string {
-  return join(findQemuDir(), "run", "vm", "internal-pck");
+  return join(emulatorRunDir(), "vm", "internal-pck");
 }
 
 async function readInternalPck(timeoutMs = 60_000): Promise<string> {
@@ -79,31 +93,47 @@ function gh(args: string[]): string {
   }
 }
 
-function findQemuDir(): string {
-  for (const rel of ["docker/local-emulator/qemu", "../docker/local-emulator/qemu"]) {
-    const dir = resolve(process.cwd(), rel);
-    if (existsSync(join(dir, "run-emulator.sh"))) return dir;
-  }
-  throw new CliError("Could not find QEMU emulator directory. Run this from the stack-auth repo root.");
+function emulatorScriptsDir(): string {
+  const here = dirname(fileURLToPath(import.meta.url));
+  const bundled = join(here, "emulator");
+  if (existsSync(join(bundled, "run-emulator.sh"))) return bundled;
+  const repo = resolve(here, "../../../docker/local-emulator/qemu");
+  if (existsSync(join(repo, "run-emulator.sh"))) return repo;
+  throw new CliError("Emulator scripts not found in CLI bundle.");
+}
+
+function emulatorSpawnEnv(extra?: Record<string, string>): NodeJS.ProcessEnv {
+  return {
+    ...process.env,
+    EMULATOR_RUN_DIR: emulatorRunDir(),
+    EMULATOR_IMAGE_DIR: emulatorImageDir(),
+    ...extra,
+  };
 }
 
 function runEmulator(action: string, env?: Record<string, string>): Promise<void> {
-  const qemuDir = findQemuDir();
-  return new Promise((resolve, reject) => {
-    const child = spawn(join(qemuDir, "run-emulator.sh"), [action], {
+  const scriptsDir = emulatorScriptsDir();
+  mkdirSync(emulatorRunDir(), { recursive: true });
+  mkdirSync(emulatorImageDir(), { recursive: true });
+  return new Promise((resolvePromise, reject) => {
+    const child = spawn(join(scriptsDir, "run-emulator.sh"), [action], {
       stdio: "inherit",
-      env: { ...process.env, ...env },
-      cwd: qemuDir,
+      env: emulatorSpawnEnv(env),
+      cwd: scriptsDir,
     });
-    child.on("close", (code) => code === 0 ? resolve() : reject(new CliError(`run-emulator.sh ${action} exited with code ${code}`)));
+    child.on("close", (code) => code === 0 ? resolvePromise() : reject(new CliError(`run-emulator.sh ${action} exited with code ${code}`)));
     child.on("error", (err) => reject(new CliError(`Failed to run run-emulator.sh: ${err.message}`)));
   });
 }
 
 function isEmulatorRunning(): boolean {
-  const qemuDir = findQemuDir();
+  const scriptsDir = emulatorScriptsDir();
   try {
-    execFileSync(join(qemuDir, "run-emulator.sh"), ["status"], { stdio: "pipe", cwd: qemuDir });
+    execFileSync(join(scriptsDir, "run-emulator.sh"), ["status"], {
+      stdio: "pipe",
+      cwd: scriptsDir,
+      env: emulatorSpawnEnv(),
+    });
     return true;
   } catch {
     return false;
@@ -111,7 +141,8 @@ function isEmulatorRunning(): boolean {
 }
 
 async function startEmulator(arch: "arm64" | "amd64"): Promise<void> {
-  const img = join(findQemuDir(), "images", `stack-emulator-${arch}.qcow2`);
+  mkdirSync(emulatorImageDir(), { recursive: true });
+  const img = join(emulatorImageDir(), `stack-emulator-${arch}.qcow2`);
   if (!existsSync(img)) {
     console.log("No emulator image found. Pulling latest...");
     pullRelease(arch);
@@ -130,7 +161,7 @@ function pullRelease(arch: "arm64" | "amd64", opts: { repo?: string; branch?: st
   const branch = opts.branch ?? "dev";
   const tag = opts.tag ?? `emulator-${branch}-latest`;
   const asset = `stack-emulator-${arch}.qcow2`;
-  const imageDir = join(findQemuDir(), "images");
+  const imageDir = emulatorImageDir();
   mkdirSync(imageDir, { recursive: true });
   const dest = join(imageDir, asset);
   const tmpDest = `${dest}.download`;
@@ -172,7 +203,7 @@ export function registerEmulatorCommand(program: Command) {
           runId = String(runs[0].databaseId);
         }
 
-        const imageDir = join(findQemuDir(), "images");
+        const imageDir = emulatorImageDir();
         mkdirSync(imageDir, { recursive: true });
         const dest = join(imageDir, `stack-emulator-${arch}.qcow2`);
         if (existsSync(dest)) unlinkSync(dest);

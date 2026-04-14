@@ -1,5 +1,5 @@
 import { Prisma } from "@/generated/prisma/client";
-import { overrideBranchConfigOverride } from "@/lib/config";
+import { overrideEnvironmentConfigOverride } from "@/lib/config";
 import {
   LOCAL_EMULATOR_ADMIN_USER_ID,
   LOCAL_EMULATOR_ONLY_ENDPOINT_MESSAGE,
@@ -100,6 +100,25 @@ async function getOrCreateLocalEmulatorProjectId(absoluteFilePath: string): Prom
     },
   });
 
+  const created = existingRow === undefined;
+
+  // Seed environment-level defaults BEFORE registering as a LocalEmulatorProject:
+  // once registered, setEnvironmentConfigOverride refuses to write.
+  //   - domains.allowLocalhost: fresh emulator projects allow localhost redirects
+  //     so developers don't hit "Redirect URL not whitelisted" before configuring
+  //     trustedDomains.
+  //   - payments.testMode: emulator payments always go through stripe-mock.
+  if (created) {
+    await overrideEnvironmentConfigOverride({
+      projectId,
+      branchId: DEFAULT_BRANCH_ID,
+      environmentConfigOverrideOverride: {
+        "domains.allowLocalhost": true,
+        "payments.testMode": true,
+      },
+    });
+  }
+
   await globalPrismaClient.$executeRaw(Prisma.sql`
     INSERT INTO "LocalEmulatorProject" ("absoluteFilePath", "projectId", "createdAt", "updatedAt")
     VALUES (${absoluteFilePath}, ${projectId}, NOW(), NOW())
@@ -109,7 +128,7 @@ async function getOrCreateLocalEmulatorProjectId(absoluteFilePath: string): Prom
       "updatedAt" = NOW()
   `);
 
-  return { projectId, created: existingRow === undefined };
+  return { projectId, created };
 }
 
 async function getOrCreateCredentials(projectId: string) {
@@ -219,20 +238,7 @@ export const POST = createSmartRouteHandler({
 
     await assertLocalEmulatorOwnerTeamReadiness();
 
-    const { projectId, created } = await getOrCreateLocalEmulatorProjectId(absoluteFilePath);
-    if (created) {
-      // Emulator projects are for local development. Default-allow localhost
-      // redirects so fresh projects don't hit "Redirect URL not whitelisted"
-      // before the developer has configured trustedDomains. User-supplied
-      // stack.config.ts still overrides this if they set domains explicitly.
-      await overrideBranchConfigOverride({
-        projectId,
-        branchId: DEFAULT_BRANCH_ID,
-        branchConfigOverrideOverride: {
-          "domains.allowLocalhost": true,
-        },
-      });
-    }
+    const { projectId } = await getOrCreateLocalEmulatorProjectId(absoluteFilePath);
     const credentials = await getOrCreateCredentials(projectId);
     const fileConfig = await readConfigFromFile(absoluteFilePath);
 

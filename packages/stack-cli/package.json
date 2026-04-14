@@ -10,7 +10,7 @@
   },
   "scripts": {
     "clean": "rimraf node_modules && rimraf dist",
-    "build": "tsdown",
+    "build": "tsdown && node scripts/copy-emulator-assets.mjs",
     "dev": "tsdown --watch",
     "lint": "eslint --ext .tsx,.ts .",
     "typecheck": "tsc --noEmit"

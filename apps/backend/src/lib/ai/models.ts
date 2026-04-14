@@ -1,3 +1,4 @@
+import { isLocalEmulatorEnabled } from "@/lib/local-emulator";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 
@@ -59,7 +60,7 @@ export const ALLOWED_MODEL_IDS: ReadonlySet<string> = new Set([
 ]);
 
 export function createOpenRouterProvider() {
-  const baseURL = getNodeEnvironment() === "development"
+  const baseURL = (getNodeEnvironment() === "development" || isLocalEmulatorEnabled())
     ? "http://localhost:8102/api/latest/integrations/ai-proxy/v1"
     : "https://api.stack-auth.com/api/latest/integrations/ai-proxy/v1";
   return createOpenRouter({

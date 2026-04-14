@@ -5,8 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=common.sh
 source "$SCRIPT_DIR/common.sh"
 
-IMAGE_DIR="$SCRIPT_DIR/images"
-RUN_DIR="${EMULATOR_RUN_DIR:-$SCRIPT_DIR/run}"
+IMAGE_DIR="${EMULATOR_IMAGE_DIR:-$HOME/.stack/emulator/images}"
+RUN_DIR="${EMULATOR_RUN_DIR:-$HOME/.stack/emulator/run}"
 
 VM_RAM="${EMULATOR_RAM:-4096}"
 VM_CPUS="${EMULATOR_CPUS:-4}"

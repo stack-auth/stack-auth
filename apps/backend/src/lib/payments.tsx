@@ -7,7 +7,6 @@ import type { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/use
 import type { inlineProductSchema, productSchema, productSchemaWithMetadata } from "@stackframe/stack-shared/dist/schema-fields";
 import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currency-constants";
 import { FAR_FUTURE_DATE, addInterval, getIntervalsElapsed } from "@stackframe/stack-shared/dist/utils/dates";
-import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, getOrUndefined, has, typedEntries, typedFromEntries, typedKeys, typedValues } from "@stackframe/stack-shared/dist/utils/objects";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
@@ -15,11 +14,9 @@ import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import Stripe from "stripe";
 import * as yup from "yup";
 import { Tenancy } from "./tenancies";
-import { getStripeForAccount } from "./stripe";
+import { getStripeForAccount, useStripeMock } from "./stripe";
 
 const DEFAULT_PRODUCT_START_DATE = new Date("1973-01-01T12:00:00.000Z"); // monday
-const stripeSecretKey = getEnvVariable("STACK_STRIPE_SECRET_KEY", "");
-const useStripeMock = stripeSecretKey === "sk_test_mockstripekey" && ["development", "test"].includes(getNodeEnvironment());
 
 type Product = yup.InferType<typeof productSchema>;
 type ProductWithMetadata = yup.InferType<typeof productSchemaWithMetadata>;
