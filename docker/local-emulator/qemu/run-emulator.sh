@@ -85,6 +85,10 @@ prepare_runtime_config_iso() {
   mkdir -p "$cfg_dir"
   {
     printf "STACK_EMULATOR_PORT_PREFIX=%s\n" "$PORT_PREFIX"
+    printf "STACK_EMULATOR_DASHBOARD_HOST_PORT=%s\n" "$EMULATOR_DASHBOARD_PORT"
+    printf "STACK_EMULATOR_BACKEND_HOST_PORT=%s\n" "$EMULATOR_BACKEND_PORT"
+    printf "STACK_EMULATOR_MINIO_HOST_PORT=%s\n" "$EMULATOR_MINIO_PORT"
+    printf "STACK_EMULATOR_INBUCKET_HOST_PORT=%s\n" "$EMULATOR_INBUCKET_PORT"
   } > "$cfg_dir/runtime.env"
   cp "$SCRIPT_DIR/../.env.development" "$cfg_dir/base.env"
   make_iso_from_dir "$cfg_iso" "STACKCFG" "$cfg_dir"
