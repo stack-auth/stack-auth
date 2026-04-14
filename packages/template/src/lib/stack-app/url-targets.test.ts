@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { isLocalHandlerUrlTarget, resolveHandlerUrls, resolveUnknownHandlerPathFallbackUrl } from "./url-targets";
+import { getPagePrompt, isLocalHandlerUrlTarget, resolveHandlerUrls, resolveUnknownHandlerPathFallbackUrl } from "./url-targets";
 
 describe("handler URL targets", () => {
   afterEach(() => {
@@ -41,11 +41,32 @@ describe("handler URL targets", () => {
     })).toThrowError(/cannot be a custom page/);
   });
 
-  it("throws on unsupported non-zero custom target versions", () => {
+  it("supports the latest documented custom target version", () => {
+    const signInPrompt = getPagePrompt("signIn");
+    if (signInPrompt == null) {
+      throw new Error("Expected signIn prompt metadata to exist");
+    }
+
+    const urls = resolveHandlerUrls({
+      projectId: "project-id",
+      urls: {
+        signIn: { type: "custom", url: "/custom-sign-in", version: signInPrompt.latestVersion },
+      },
+    });
+
+    expect(urls.signIn).toBe("/custom-sign-in");
+  });
+
+  it("throws on custom target versions newer than the latest supported version", () => {
+    const signInPrompt = getPagePrompt("signIn");
+    if (signInPrompt == null) {
+      throw new Error("Expected signIn prompt metadata to exist");
+    }
+
     expect(() => resolveHandlerUrls({
       projectId: "project-id",
       urls: {
-        signIn: { type: "custom", url: "/custom-sign-in", version: 1 },
+        signIn: { type: "custom", url: "/custom-sign-in", version: signInPrompt.latestVersion + 1 },
       },
     })).toThrowError(/Unsupported custom page version/);
   });

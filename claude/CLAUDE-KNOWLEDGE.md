@@ -164,6 +164,23 @@ A: Use `signed_up_at` (OIDC-style naming) in access tokens and encode it as Unix
 Q: Where should new globally searchable Cmd+K destinations be added in the dashboard?
 A: Add project-level shortcuts to `PROJECT_SHORTCUTS` in `apps/dashboard/src/components/cmdk-commands.tsx` (optionally gated with `requiredApps`), and for app subpages rely on the flattened `appFrontend.navigationItems` command generation in the same file so pages are directly searchable without nested preview navigation.
 
+Q: How should handler URL/shared interface renames be rolled out when template/backend import `@stackframe/stack-shared/dist/*`?
+A: Add the new source entrypoint in `packages/stack-shared/src/interface` and update imports to the new `dist` path, but validate with package typechecks after the stack-shared dist artifacts are refreshed (for example via existing dev watchers), because consumers resolve through `dist/*` entrypoints rather than `src/*`.
+
+Q: How are custom page prompts organized in `page-component-versions.ts` now?
+A: `signIn` and `signUp` share a single `createAuthPagePrompt(type)` helper, and all remaining pages (`signOut`, `emailVerification`, `passwordReset`, `forgotPassword`, `oauthCallback`, `magicLinkCallback`, `accountSettings`, `teamInvitation`, `mfa`, `error`, `onboarding`) now use `createCustomPagePrompt(...)` with concise logical `structure` plus a React `reactExample`.
+
+Q: What makes custom page prompt examples actionable for coding agents?
+A: Avoid abstract placeholders for core flows (for example undefined section components or form primitives). In `page-component-versions.ts`, examples are most useful when they inline the section/form components and state transitions they rely on, while keeping `structure` focused on logical behavior rather than visual layout.
+
+Q: How detailed should the Account Settings custom-page prompt be?
+A: The `accountSettings` prompt should enumerate each top-level page and each subsection's exact responsibilities and API calls (emails, password, passkey, OTP, MFA, notifications, sessions, API keys, payments, settings, team pages, team creation). The example should inline section components and actions rather than referencing undefined placeholders.
+
+Q: What should we do if dashboard typecheck fails with syntax errors in `apps/dashboard/.next/dev/types/routes.d.ts`?
+A: Regenerate Next route types with `pnpm --filter @stackframe/dashboard exec next typegen` (and if needed, delete the corrupted `apps/dashboard/.next/dev/types/routes.d.ts` first). This fixes transient generated-file corruption without changing source code.
+
+Q: What is the current `getCustomPagePrompts` API shape?
+A: `getCustomPagePrompts` now takes no arguments and returns all prompts directly; call it as `getCustomPagePrompts()` instead of passing an SDK package name.
 Q: Which port suffixes are assigned to the two local docs sites?
 A: `docs` (old docs app) uses suffix `26`, and `docs-mintlify` uses suffix `04`. Keep these in sync across `docs/package.json`, `docs-mintlify/package.json`, `apps/dev-launchpad/public/index.html`, and `apps/dashboard/.env.development` (`NEXT_PUBLIC_STACK_DOCS_BASE_URL` points to old docs on `26`).
 
@@ -187,3 +204,57 @@ A: In `apps/backend/src/app/api/latest/auth/oauth/callback/[provider_id]/route.t
 
 Q: How should OAuth E2E tests assert callback failures after handler-based error redirects?
 A: In OAuth callback/merge strategy E2E tests, assert `307` plus parsed `location` query params (`error`, `errorCode`, `error_description`, `message`, and optionally `details`) instead of snapshotting old `4xx` JSON error responses. This matches current callback semantics and avoids brittle encoded-URL snapshots.
+
+Q: How should auth sign-up-rules OAuth rejection tests assert failures now?
+A: In `apps/e2e/tests/backend/endpoints/api/v1/auth/sign-up-rules.test.ts`, OAuth rejection cases should assert the callback redirect (`307`) and validate `location` query params (`error=server_error`, `errorCode=SIGN_UP_REJECTED`, `message`/`error_description`, and JSON `details`) rather than expecting direct `403` response bodies.
+
+Q: Where is the docs-mintlify homepage hero/island content defined?
+A: The top homepage island on docs-mintlify is authored directly in `docs-mintlify/index.mdx` as the first `not-prose` block, so copy/design/CTA updates should be made there.
+
+Q: Why can a docs-mintlify snippet fail validation when importing React?
+A: `mint validate` rejects non-local imports in `/snippets/*.jsx` (for example `import { useState } from "react"`), so snippets must avoid package imports and rely on zero-import component code.
+
+Q: Where was the docs homepage Quick Start block defined?
+A: The Quick Start section on the docs-mintlify homepage lived directly in `docs-mintlify/index.mdx` right after `<HomePromptIsland />`, so removing that full `<div className="mx-auto mt-16 ...">` block removes the entire Quick Start UI.
+
+Q: How is the docs homepage "Explore Apps" step now rendered?
+A: It is embedded inside the "Navigate Through Our Docs" timeline as a single step via `DocsAppsHomeGrid` from `docs-mintlify/snippets/docs-apps-home-grid.jsx`, using app icon SVGs in a dashboard-style quick-access grid.
+
+Q: Why did docs-mintlify throw `ReferenceError: agentSetupPromptPlaceholder is not defined` on the homepage?
+A: In snippet components (`/snippets/*.jsx`), top-level constants can fail to resolve in the runtime-compiled output; moving constants like `agentSetupPromptPlaceholder` and `appLinks` inside the exported component function avoids the reference error.
+
+Q: How was the docs homepage prompt island restyled for stronger contrast?
+A: `docs-mintlify/snippets/home-prompt-island.jsx` now uses an inverted minimal palette (`bg-[#0b0b0d]` in light mode and `dark:bg-zinc-50` in dark mode) with simplified borders, reduced visual effects, and custom button styles for cleaner contrast.
+
+Q: Why did `DocsAppsHomeGrid` throw `ReferenceError` for helper functions despite passing lint?
+A: In docs-mintlify snippets, top-level helper function references can disappear in the runtime-compiled output even when `mint validate` passes; keep helper functions/constants inside the exported component body to avoid runtime `ReferenceError`s.
+
+Q: How to ensure the manual-installation CTA remains visible on the inverted dark-mode hero?
+A: In `docs-mintlify/snippets/home-prompt-island.jsx`, force explicit dark-mode button contrast with strong dark variant classes (for example `dark:bg-zinc-100` and `dark:!text-zinc-900`) so Mintlify base link styles cannot wash out label text.
+
+Q: How can the docs homepage prompt feel compact while still implying multi-line content?
+A: In `docs-mintlify/snippets/home-prompt-island.jsx`, use a low-height read-only textarea (`h-28`) with `overflow-hidden`, place the copy button as an absolute suffix inside the field, and add a bottom gradient overlay to hint hidden lines.
+
+Q: Where is the docs homepage recommended-order timeline controlled?
+A: The ordered step blocks are authored directly in `docs-mintlify/index.mdx` inside the "Navigate Through Our Docs" section, so adding steps like `SDK Reference` and `REST API` is done by inserting new timeline `<div className="relative ...">` blocks there.
+
+Q: Why can the docs copy button throw `Cannot set properties of null (setting 'textContent')`?
+A: In `docs-mintlify/snippets/home-prompt-island.jsx`, reading `event.currentTarget` after `await navigator.clipboard.writeText(...)` can produce null in runtime event wrappers. Capture `const button = event.currentTarget` before awaiting.
+
+Q: How should the docs Explore Apps grid support both light and dark themes?
+A: In `docs-mintlify/snippets/docs-apps-home-grid.jsx`, use light-first container/tile styles with explicit `dark:*` overrides (including `dark:invert` for icons) so light mode remains readable while dark mode keeps the neon tile look.
+
+Q: How can docs-mintlify add an Apps sidebar filter without React hooks?
+A: In `docs-mintlify/snippets/docs-apps-home-grid.jsx`, inject a compact `<input>` under the sidebar "Apps" header via DOM (`#navigation-items` + `.sidebar-group-header` text match), filter that group's `<ul>` rows on `input`, and observe `document.documentElement.classList` with `MutationObserver` to swap light/dark inline styles when `html` toggles between `light` and `dark`.
+
+Q: Why did Explore Apps look light in dark mode even with `dark:bg` set on the container?
+A: `bg-gradient-to-b` applies a background image, and `dark:bg-[#...]` only changes background color, so the light gradient image stays visible. Use `dark:from[...] dark:to[...]` (or a full dark gradient/image override) so dark mode replaces the gradient itself.
+
+Q: What should we do when changing docs sidebar search injection from block to inline?
+A: Remove legacy `div[data-apps-sidebar-search='true']` nodes before adding the new inline header input; otherwise old and new filters can coexist after hot reload and render duplicate search boxes.
+
+Q: What caused the Explore Apps hover layout shift?
+A: The app link wrapper in `docs-mintlify/snippets/docs-apps-home-grid.jsx` used `hover:-translate-y-0.5`, which makes tiles physically move on hover and looks like layout jank. Removing the translate/transform from the wrapper keeps hover effects without perceived shifting.
+
+Q: How should the sidebar Apps filter behave when there are no matches?
+A: In `docs-mintlify/snippets/docs-apps-home-grid.jsx`, track visible rows while filtering and show a small inline empty state (`No more results. Clear filter`) when query is non-empty and visible count is zero; wire `Clear filter` to reset the input, rerun filtering, and refocus the input.
