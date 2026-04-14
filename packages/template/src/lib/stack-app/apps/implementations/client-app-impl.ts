@@ -552,17 +552,22 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
 
     this._analyticsOptions = resolvedOptions.analytics;
-    const getAnalyticsAccessToken = async (): Promise<string | null> => {
+
+    const getAnalyticsSession = async (): Promise<InternalSession> => {
       this._ensurePersistentTokenStore();
-      return await (await this.getUser({ or: "anonymous" })).getAccessToken();
+      const partialUser = await this.getPartialUser({ from: 'token', or: 'anonymous-if-exists' });
+      if (partialUser) {
+        return await this._getSession();
+      }
+      const anonUser = await this.getUser({ or: "anonymous" });
+      return anonUser._internalSession;
     };
 
     if (isBrowserLike() && this._analyticsOptions?.replays?.enabled === true) {
       this._sessionRecorder = new SessionRecorder({
         projectId: this.projectId,
-        getAccessToken: getAnalyticsAccessToken,
         sendBatch: async (body, opts) => {
-          return await this._interface.sendSessionReplayBatch(body, await this._getSession(), opts);
+          return await this._interface.sendSessionReplayBatch(body, await getAnalyticsSession(), opts);
         },
       }, this._analyticsOptions.replays);
       this._sessionRecorder.start();
@@ -571,9 +576,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     if (isBrowserLike()) {
       this._eventTracker = new EventTracker({
         projectId: this.projectId,
-        getAccessToken: getAnalyticsAccessToken,
         sendBatch: async (body, opts) => {
-          return await this._interface.sendAnalyticsEventBatch(body, await this._getSession(), opts);
+          return await this._interface.sendAnalyticsEventBatch(body, await getAnalyticsSession(), opts);
         },
       });
       this._eventTracker.start();
@@ -2686,7 +2690,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       return null;
     }
     const isAnonymous = accessToken.payload.is_anonymous;
-    if (isAnonymous && options.or !== "anonymous") {
+    if (isAnonymous && options.or !== "anonymous-if-exists") {
       return null;
     }
     return {
