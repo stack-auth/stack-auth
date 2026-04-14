@@ -1,0 +1,89 @@
+---
+title: "TeamMemberProfile"
+description: "Reference for TeamMemberProfile and ServerTeamMemberProfile types for team-specific user profiles."
+sidebarTitle: "TeamProfile"
+mode: "wide"
+---
+
+import {
+  ClickableTableOfContents,
+  CollapsibleTypesSection,
+  MethodAside,
+  MethodContent,
+  MethodLayout,
+} from "/snippets/sdk-type-components.jsx";
+
+export const TeamProfileSection = (props) => (
+  <CollapsibleTypesSection
+    badge={
+      <Badge color="green" size="sm" shape="pill">
+        teamMemberProfile
+      </Badge>
+    }
+    {...props}
+  />
+);
+
+This is a detailed reference for the `TeamMemberProfile` and `ServerTeamMemberProfile` objects.
+
+On this page:
+
+- [TeamMemberProfile](#teammemberprofile)
+- [ServerTeamMemberProfile](#serverteammemberprofile)
+
+# `TeamMemberProfile`
+
+The `TeamMemberProfile` object represents the profile of a user within the context of a team. It includes the user's profile information specific to the team and can be accessed through the `teamUser.teamProfile` property on a `TeamUser` object.
+
+## Table of Contents
+
+<ClickableTableOfContents
+  title="TeamMemberProfile Table of Contents"
+  code={`type TeamMemberProfile = {
+  displayName: string | null; //$stack-link-to:#teammemberprofiledisplayname
+  profileImageUrl: string | null; //$stack-link-to:#teammemberprofileprofileimageurl
+};`}
+/>
+
+## Properties
+
+<TeamProfileSection type="teamMemberProfile" property="displayName" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The display name of the user within the team context, or `null` if no display name is set.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const displayName: string | null; ```
+    </MethodAside>
+  </MethodLayout>
+</TeamProfileSection>
+
+<TeamProfileSection type="teamMemberProfile" property="profileImageUrl" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The profile image URL of the user within the team context, or `null` if no profile image is set.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const profileImageUrl: string | null; ```
+    </MethodAside>
+  </MethodLayout>
+</TeamProfileSection>
+
+---
+
+# `ServerTeamMemberProfile`
+
+The `ServerTeamMemberProfile` object is currently the same as `TeamMemberProfile`.
+
+<ClickableTableOfContents
+  title="ServerTeamMemberProfile Table of Contents"
+  code={`type ServerTeamMemberProfile =
+  // Inherits all functionality from TeamMemberProfile
+  TeamMemberProfile; //$stack-link-to:#teammemberprofile`}
+/>
+
+<Note>
+  These are team-specific profile attributes, distinct from general user profile
+  data. Users may have different display names and profile images within
+  different teams.
+</Note>

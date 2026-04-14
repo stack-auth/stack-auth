@@ -1,0 +1,17 @@
+{
+  "name": "@stackframe/docs-mintlify",
+  "version": "2.8.83",
+  "private": true,
+  "scripts": {
+    "dev": "mint dev --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}04 --no-open",
+    "typecheck": "mint validate",
+    "lint": "mint validate",
+    "clean": "node -e \"require('node:fs').rmSync('.mintlify', { recursive: true, force: true })\"",
+    "login": "mint login",
+    "status": "mint status"
+  },
+  "devDependencies": {
+    "mint": "^4.2.487"
+  },
+  "packageManager": "pnpm@10.23.0"
+}

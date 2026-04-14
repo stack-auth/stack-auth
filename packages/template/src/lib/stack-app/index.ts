@@ -33,6 +33,9 @@ export type {
 export {
   stackAppInternalsSymbol
 } from "./common";
+export {
+  getPagePrompt,
+} from "./url-targets";
 export type {
   GetCurrentUserOptions,
   /** @deprecated Use GetCurrentUserOptions instead */
