@@ -1,5 +1,6 @@
 import { WebAuthnError, startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { KnownErrors, StackClientInterface } from "@stackframe/stack-shared";
+import type { RequestListener } from "@stackframe/stack-shared/dist/interface/client-interface";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import type { CustomerInvoicesListResponse } from "@stackframe/stack-shared/dist/interface/crud/invoices";
@@ -64,6 +65,9 @@ import { AnalyticsOptions, SessionRecorder, analyticsOptionsFromJson, analyticsO
 
 // IF_PLATFORM react-like
 import { useAsyncCache } from "./common";
+// END_PLATFORM
+// IF_PLATFORM js-like
+import { mountDevTool } from "../../../../dev-tool";
 // END_PLATFORM
 
 let isReactServer = false;
@@ -574,6 +578,12 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       });
       this._eventTracker.start();
     }
+
+    // IF_PLATFORM js-like
+    if (isBrowserLike()) {
+      mountDevTool(this as any);
+    }
+    // END_PLATFORM
   }
 
   protected _initUniqueIdentifier() {
@@ -3442,6 +3452,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
       sendAnalyticsEventBatch: async (body: string, options: { keepalive: boolean }) => {
         return await this._interface.sendAnalyticsEventBatch(body, await this._getSession(), options);
+      },
+      addRequestListener: (listener: RequestListener) => {
+        return this._interface.addRequestListener(listener);
       },
       sendRequest: async (
         path: string,
