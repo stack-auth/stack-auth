@@ -6,7 +6,7 @@ const sqlTemplateLiteral = <T>(type: T) => (strings: TemplateStringsArray, ...va
 export type SqlStatement = { type: "statement", outputName?: string, outputColumns?: string, sql: string, requiresSequentialExecution?: boolean };
 export const sqlStatement = sqlTemplateLiteral<"statement">("statement");
 
-export type SqlQuery<R extends void | Iterable<unknown> = void> = { type: "query", sql: string, toStatement(outputName?: string): SqlStatement };
+export type SqlQuery<R extends void | Iterable<unknown> = void> = { type: "query", sql: string, toStatement(outputName?: string, outputColumns?: string): SqlStatement };
 export const sqlQuery = (...args: Parameters<ReturnType<typeof sqlTemplateLiteral<"query">>>) => {
   return {
     ...sqlTemplateLiteral<"query">("query")(...args),

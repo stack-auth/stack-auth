@@ -2,7 +2,7 @@ import { stringCompare, templateIdentity } from "@stackframe/stack-shared/dist/u
 import postgres from "postgres";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, test } from "vitest";
 import type { Table } from "./index";
-import { declareCompactTable, declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLeftJoinTable, declareLFoldTable, declareLimitTable, declareMapTable, declareReduceTable, declareSortTable, declareStoredTable, declareTimeFoldTable, toExecutableSqlTransaction, toQueryableSqlQuery, verifyAllTablesIntegrity } from "./index";
+import { declareCompactTable, declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLeftJoinTable, declareLFoldTable, declareLimitTable, declareMapTable, declareReduceTable, declareSortTable, declareStoredTable, declareTimeFoldTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
 
 type TestDb = { full: string, base: string };
 
@@ -243,8 +243,8 @@ describe.sequential("declareStoredTable (real postgres)", () => {
   }
 
   afterEach(async () => {
-    if (allInitializedTables.length > 0) {
-      const errors = await readRows(verifyAllTablesIntegrity(allInitializedTables));
+    for (const table of allInitializedTables) {
+      const errors = await readRows(table.verifyDataIntegrity());
       expect(errors).toEqual([]);
     }
     allInitializedTables.length = 0;

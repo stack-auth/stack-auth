@@ -3,7 +3,7 @@ import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 
 import { BULLDOZER_SORT_HELPERS_SQL } from "./bulldozer-sort-helpers-sql";
 import type { Json, RowData, RowIdentifier, SqlExpression, SqlQuery, SqlStatement, TableId } from "./utilities";
-import { quoteSqlIdentifier, sqlQuery, tableIdToDebugString } from "./utilities";
+import { quoteSqlIdentifier } from "./utilities";
 
 // ====== Table implementations ======
 // IMPORTANT NOTE: For every new table implementation, we should also add tests (unit, fuzzing, & perf; including an entry in the "hundreds of thousands" perf test), an example in the example schema, and support in Bulldozer Studio.
@@ -140,18 +140,4 @@ export function toExecutableSqlTransaction(statements: SqlStatement[], options: 
 
     COMMIT;
   `;
-}
-
-// any is used here because the verifier works with heterogeneous table types
-export function verifyAllTablesIntegrity(tables: Table<any, any, any>[]): SqlQuery<Iterable<{ tableId: string, errorType: string, groupKey: Json | null, rowIdentifier: RowIdentifier | null, expected: Json | null, actual: Json | null }>> {
-  if (tables.length === 0) {
-    return sqlQuery`SELECT NULL::text AS tableid, NULL::text AS errortype, NULL::jsonb AS groupkey, NULL::text AS rowidentifier, NULL::jsonb AS expected, NULL::jsonb AS actual WHERE false`;
-  }
-  const combined: { sql: string } = {
-    sql: tables.map(t => {
-      const label = tableIdToDebugString(t.tableId).replaceAll("'", "''");
-      return `SELECT '${label}' AS tableid, "v".* FROM (${t.verifyDataIntegrity().sql}) AS "v"`;
-    }).join("\nUNION ALL\n"),
-  };
-  return sqlQuery`${combined}`;
 }

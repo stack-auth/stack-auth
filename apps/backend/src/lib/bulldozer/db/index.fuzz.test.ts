@@ -1,7 +1,48 @@
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
-import { declareCompactTable, declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLeftJoinTable, declareLFoldTable, declareLimitTable, declareMapTable, declareReduceTable, declareSortTable, declareStoredTable, declareTimeFoldTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
+import type { Table } from "./index";
+import {
+  declareCompactTable as _declareCompactTable,
+  declareConcatTable as _declareConcatTable,
+  declareFilterTable as _declareFilterTable,
+  declareFlatMapTable as _declareFlatMapTable,
+  declareGroupByTable as _declareGroupByTable,
+  declareLeftJoinTable as _declareLeftJoinTable,
+  declareLFoldTable as _declareLFoldTable,
+  declareLimitTable as _declareLimitTable,
+  declareMapTable as _declareMapTable,
+  declareReduceTable as _declareReduceTable,
+  declareSortTable as _declareSortTable,
+  declareStoredTable as _declareStoredTable,
+  declareTimeFoldTable as _declareTimeFoldTable,
+  toExecutableSqlTransaction,
+  toQueryableSqlQuery,
+} from "./index";
+
+// any is used here because the verifier works with heterogeneous table types
+const allInitializedTables: Table<any, any, any>[] = [];
+function trackTable<T extends Table<any, any, any>>(table: T): T {
+  allInitializedTables.push(table);
+  return table;
+}
+function tracked<Fn extends (...args: any[]) => Table<any, any, any>>(fn: Fn): Fn {
+  return ((...args: unknown[]) => trackTable(fn(...args))) as Fn;
+}
+
+const declareCompactTable = tracked(_declareCompactTable);
+const declareConcatTable = tracked(_declareConcatTable);
+const declareFilterTable = tracked(_declareFilterTable);
+const declareFlatMapTable = tracked(_declareFlatMapTable);
+const declareGroupByTable = tracked(_declareGroupByTable);
+const declareLeftJoinTable = tracked(_declareLeftJoinTable);
+const declareLFoldTable = tracked(_declareLFoldTable);
+const declareLimitTable = tracked(_declareLimitTable);
+const declareMapTable = tracked(_declareMapTable);
+const declareReduceTable = tracked(_declareReduceTable);
+const declareSortTable = tracked(_declareSortTable);
+const declareStoredTable = tracked(_declareStoredTable);
+const declareTimeFoldTable = tracked(_declareTimeFoldTable);
 
 type TestDb = { full: string, base: string };
 
@@ -675,7 +716,13 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
     `;
   });
 
-  afterEach(() => {
+  afterEach(async () => {
+    for (const table of allInitializedTables) {
+      const errors = await readRows(table.verifyDataIntegrity(), "afterEach.verifyDataIntegrity");
+      expect(errors).toEqual([]);
+    }
+    allInitializedTables.length = 0;
+
     if (!FUZZ_TRACE_ENABLED) return;
     const testName = getCurrentTestNameForTrace();
     const bucket = tracesByTest.get(testName);
