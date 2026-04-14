@@ -1,7 +1,7 @@
 "use client";
 
 import { Suspense } from "react";
-import { StackProvider, StackTheme } from "@stackframe/react";
+import { StackProvider, StackTheme } from "@stackframe/stack";
 import { stackClientApp } from "../stack";
 import Loading from "./loading";
 import "./globals.css";

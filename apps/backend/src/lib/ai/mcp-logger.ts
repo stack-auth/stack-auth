@@ -1,5 +1,5 @@
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { DbConnection } from "./spacetimedb-bindings";
 import type { LogMcpCallParams } from "./spacetimedb-bindings/types/reducers";
 
@@ -35,6 +35,14 @@ export async function getConnection(): Promise<DbConnection | null> {
   }
 
   return await connectionPromise;
+}
+
+export async function getConnectionOrThrow(): Promise<DbConnection> {
+  const conn = await getConnection();
+  if (!conn) {
+    throw new StackAssertionError("SpacetimeDB connection unavailable");
+  }
+  return conn;
 }
 
 export async function logMcpCall(entry: McpLogEntry): Promise<void> {

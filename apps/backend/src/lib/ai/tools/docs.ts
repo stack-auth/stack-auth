@@ -33,7 +33,7 @@ async function postDocsToolAction(action: Record<string, unknown>): Promise<stri
     if (!res.ok) {
       const errBody = await res.text();
       captureError("docs-tools-http-error", new Error(`Stack Auth docs tools error (${res.status}): ${errBody}`));
-      return `Stack Auth docs tools error (${res.status}): ${errBody}`;
+      return "Stack Auth docs tools returned an error. Please try again later.";
     }
 
     const data = (await res.json()) as DocsToolHttpResult;
@@ -49,7 +49,7 @@ async function postDocsToolAction(action: Record<string, unknown>): Promise<stri
     return text;
   } catch (err) {
     captureError("docs-tools-transport-error", err instanceof Error ? err : new Error(String(err)));
-    return `Stack Auth docs tools error: ${err instanceof Error ? err.message : String(err)}`;
+    return "Stack Auth docs tools are temporarily unavailable. Please try again later.";
   }
 }
 

@@ -1,4 +1,4 @@
-import { getConnection } from "@/lib/ai/mcp-logger";
+import { getConnectionOrThrow } from "@/lib/ai/mcp-logger";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
@@ -24,29 +24,22 @@ export const POST = createSmartRouteHandler({
       success: yupBoolean().defined(),
     }).defined(),
   }),
-  handler: async ({ body }, fullReq) => {
+  handler: async ({ auth, body }) => {
+    const user = auth.user;
     if (getNodeEnvironment() !== "development") {
-      const metadata = fullReq.auth?.user?.client_read_only_metadata;
-      if (!(metadata && typeof metadata === "object" && "approved" in metadata && metadata.approved === true)) {
+      const metadata = user.client_read_only_metadata;
+      if (!(metadata && typeof metadata === "object" && "isAiChatReviewer" in metadata && metadata.isAiChatReviewer === true)) {
         throw new StatusError(StatusError.Forbidden, "You are not approved to perform MCP review operations.");
       }
     }
 
-    const conn = await getConnection();
-    if (!conn) {
-      throw new StatusError(503, "SpacetimeDB unavailable");
-    }
-
-    const authUser = fullReq.auth?.user;
-    if (!authUser) {
-      throw new StatusError(StatusError.Unauthorized, "Authentication required");
-    }
+    const conn = await getConnectionOrThrow();
 
     const token = getEnvVariable("STACK_MCP_LOG_TOKEN");
     await conn.reducers.markHumanReviewed({
       token,
       correlationId: body.correlationId,
-      reviewedBy: authUser.display_name ?? authUser.primary_email ?? authUser.id,
+      reviewedBy: user.display_name ?? user.primary_email ?? user.id,
     });
 
     return {

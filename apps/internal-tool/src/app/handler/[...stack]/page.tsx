@@ -1,6 +1,6 @@
 "use client";
 
-import { StackHandler } from "@stackframe/react";
+import { StackHandler } from "@stackframe/stack";
 import { useEffect, useState } from "react";
 
 export default function Handler() {

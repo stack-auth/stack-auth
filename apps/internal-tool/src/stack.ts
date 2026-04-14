@@ -1,4 +1,4 @@
-import { StackClientApp } from "@stackframe/react";
+import { StackClientApp } from "@stackframe/stack";
 
 const IS_DEV = process.env.NODE_ENV === "development";
 const PLACEHOLDER = "REPLACE_ME";

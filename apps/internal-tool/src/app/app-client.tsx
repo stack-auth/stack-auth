@@ -1,4 +1,4 @@
-import { useUser } from "@stackframe/react";
+import { useUser } from "@stackframe/stack";
 import { clsx } from "clsx";
 import { useState } from "react";
 import { AddManualQa } from "../components/AddManualQa";
@@ -44,7 +44,7 @@ export default function App() {
 
   if (process.env.NODE_ENV !== "development") {
     const metadata = user.clientReadOnlyMetadata as Record<string, unknown> | null;
-    if (!metadata?.approved) {
+    if (!metadata?.isAiChatReviewer) {
       return (
         <div className="flex items-center justify-center h-screen bg-gray-50">
           <div className="text-center">

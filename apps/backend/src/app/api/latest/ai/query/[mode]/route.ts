@@ -8,10 +8,10 @@ import { getVerifiedQaContext } from "@/lib/ai/verified-qa";
 import { listManagedProjectIds } from "@/lib/projects";
 import { SmartResponse } from "@/route-handlers/smart-response";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Json } from "@stackframe/stack-shared/dist/utils/json";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { generateText, ModelMessage, stepCountIs, streamText } from "ai";
 
 export const POST = createSmartRouteHandler({
@@ -149,9 +149,9 @@ export const POST = createSmartRouteHandler({
           modelId: String(model.modelId),
           errorMessage: undefined,
         });
-        runAsynchronously(logPromise);
+        runAsynchronouslyAndWaitUntil(logPromise);
 
-        runAsynchronously(reviewMcpCall({
+        runAsynchronouslyAndWaitUntil(reviewMcpCall({
           logPromise,
           correlationId,
           question,

@@ -17,7 +17,7 @@
     "spacetime:publish:prod": "node scripts/spacetime-publish.mjs prod"
   },
   "dependencies": {
-    "@stackframe/react": "workspace:*",
+    "@stackframe/stack": "workspace:*",
     "@stackframe/stack-shared": "workspace:*",
     "clsx": "^2.1.1",
     "date-fns": "^4.1.0",
