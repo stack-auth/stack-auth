@@ -427,10 +427,23 @@ write_files:
         log "Skipping smoke test: build arch is arm64 and cross-arch TCG can't reliably run the backend."
       else
         log "Running smoke test on slim image..."
+        # build.env sets NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR=true, which makes
+        # docker/server/entrypoint.sh require the three internal SEED keys.
+        # At real-VM boot those come from render-stack-env via
+        # /run/stack-auth/local-emulator.env, but that path doesn't run during
+        # the build-time smoke test. Mint throwaway hex keys for this container
+        # only; they must be hex because entrypoint.sh also validates that
+        # before the internal ApiKeySet bootstrap SQL.
+        SMOKE_PCK="$(openssl rand -hex 32)"
+        SMOKE_SSK="$(openssl rand -hex 32)"
+        SMOKE_SAK="$(openssl rand -hex 32)"
         docker run --rm --name smoke-test \
           --network host \
           --env-file /etc/stack-build.env \
           --env-file /etc/stack-build-computed.env \
+          -e STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY="$SMOKE_PCK" \
+          -e STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY="$SMOKE_SSK" \
+          -e STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY="$SMOKE_SAK" \
           -e STACK_SKIP_MIGRATIONS=true \
           -e STACK_SKIP_SEED_SCRIPT=true \
           -e STACK_RUNTIME_WORK_DIR=/app \
