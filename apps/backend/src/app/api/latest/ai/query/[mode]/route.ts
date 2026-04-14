@@ -53,11 +53,25 @@ export const POST = createSmartRouteHandler({
     const isDocsOrSearch = systemPromptId === "docs-ask-ai" || systemPromptId === "command-center-ask-ai";
     const stepLimit = toolsArg == null ? 1 : isDocsOrSearch ? 50 : 5;
 
+    // Anthropic models require an explicit cache_control breakpoint for prompt caching
+    // to work via OpenRouter (whether routed to Anthropic, Bedrock, or Google Vertex).
+    // Mark the static system prompt as an ephemeral cache breakpoint.
+    const isAnthropic = model.modelId.startsWith("anthropic/");
+    const systemMessage: ModelMessage = {
+      role: "system",
+      content: systemPrompt,
+      ...(isAnthropic && {
+        providerOptions: {
+          openrouter: { cacheControl: { type: "ephemeral" } },
+        },
+      }),
+    };
+    const fullMessages: ModelMessage[] = [systemMessage, ...(messages as ModelMessage[])];
+
     if (mode === "stream") {
       const result = streamText({
         model,
-        system: systemPrompt,
-        messages: messages as ModelMessage[],
+        messages: fullMessages,
         tools: toolsArg,
         stopWhen: stepCountIs(stepLimit),
       });
@@ -71,8 +85,7 @@ export const POST = createSmartRouteHandler({
       const timeoutId = setTimeout(() => controller.abort(), 120_000);
       const result = await generateText({
         model,
-        system: systemPrompt,
-        messages: messages as ModelMessage[],
+        messages: fullMessages,
         tools: toolsArg,
         abortSignal: controller.signal,
         stopWhen: stepCountIs(stepLimit),
