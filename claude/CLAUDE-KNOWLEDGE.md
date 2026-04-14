@@ -269,3 +269,6 @@ A: Inbucket persists mail across runs. `Mailbox.waitForMessagesWithSubject` wait
 
 Q: Why does `@typescript-eslint/no-unnecessary-condition` fire on `props.reset` in Next.js `ErrorBoundary` `errorComponent`?
 A: Next’s typings treat `reset` as always present on the error component props, so `props.reset &&` is redundant; render the reload control unconditionally and call `props.reset()` directly.
+
+Q: Why can dashboard onboarding clicks trigger `Cannot call this function on a Stack app without a persistent token store` dev toasts?
+A: `useOwnedProjects()` creates each `AdminOwnedProject["app"]` with `tokenStore: null`, but `packages/template/src/lib/stack-app/apps/implementations/client-app-impl.ts` used to start browser `EventTracker` unconditionally. Clicking onboarding controls queued tracked events, and the flush later threw when analytics tried to resolve a session. Fix by only starting browser event/replay tracking when the app has a persistent token store.
