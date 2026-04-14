@@ -1,4 +1,5 @@
 import { sendSupportFeedbackEmail } from "@/lib/internal-feedback-emails";
+import { isLocalEmulatorEnabled } from "@/lib/local-emulator";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { adaptSchema, emailSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -45,7 +46,7 @@ export const POST = createSmartRouteHandler({
   async handler({ auth, body }) {
     // Forward to production in local emulator (same pattern as AI query endpoint)
     const feedbackMode = getEnvVariable("STACK_FEEDBACK_MODE", "email");
-    if (feedbackMode === "FORWARD_TO_PRODUCTION") {
+    if (feedbackMode === "FORWARD_TO_PRODUCTION" && isLocalEmulatorEnabled()) {
       const prodResponse = await fetch("https://api.stack-auth.com/api/latest/internal/feedback", {
         method: "POST",
         headers: { "content-type": "application/json", "accept-encoding": "identity" },
