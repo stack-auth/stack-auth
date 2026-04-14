@@ -25,7 +25,11 @@ async function postDocsToolAction(action: Record<string, unknown>): Promise<stri
 
   const res = await fetch(`${base}/api/internal/docs-tools`, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      // MCP-style JSON-RPC endpoint requires clients to advertise both JSON and SSE.
+      Accept: "application/json, text/event-stream",
+    },
     body: JSON.stringify(action),
   });
 
