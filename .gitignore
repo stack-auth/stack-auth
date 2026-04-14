@@ -52,6 +52,7 @@ dist
 .docusaurus
 .cache-loader
 **.tsbuildinfo
+implementation.generated.ts
 
 .xata*
 

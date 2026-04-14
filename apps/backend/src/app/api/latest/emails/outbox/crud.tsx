@@ -447,6 +447,9 @@ export const emailOutboxCrudHandlers = createLazyProxy(() => createCrudHandlers(
       set("updatedAt", Prisma.sql`NOW()`);
     }
 
+    // Mark for external DB sync
+    set("shouldUpdateSequenceId", Prisma.sql`TRUE`);
+
     const updateQuery: RawQuery<EmailOutbox | null> = {
       supportedPrismaClients: ["global"],
       readOnlyQuery: false,
@@ -543,6 +546,8 @@ function parseEmailOutboxFromJson(j: Record<string, unknown>): EmailOutbox {
     clickedAt: dateOrNull("clickedAt"),
     unsubscribedAt: dateOrNull("unsubscribedAt"),
     markedAsSpamAt: dateOrNull("markedAsSpamAt"),
+    sequenceId: j.sequenceId != null ? BigInt(j.sequenceId as string | number) : null,
+    shouldUpdateSequenceId: j.shouldUpdateSequenceId as boolean,
   };
 }
 
