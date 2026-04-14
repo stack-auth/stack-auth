@@ -56,7 +56,7 @@ import { isHostedHandlerUrlForProject, resolveHandlerUrls } from "../../url-targ
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
-import { LOCAL_EMULATOR_INTERNAL_PUBLISHABLE_CLIENT_KEY, TokenObject, assertNoEmulatorOptionConflict, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, fetchEmulatorProjectCredentials, getAnalyticsBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getLocalEmulatorConfigFilePath, getUrls, localEmulatorBaseUrl, resolveApiUrls, resolveConstructorOptions } from "./common";
+import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getAnalyticsBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveApiUrls, resolveConstructorOptions } from "./common";
 import { EventTracker } from "./event-tracker";
 import { crossDomainAuthQueryParams, getCrossDomainHandoffParamsFromCurrentUrl, planRedirectToHandler } from "./redirect-page-urls";
 import type { CrossDomainHandoffParams } from "./redirect-page-urls";
@@ -105,7 +105,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   private _sessionRecorder: SessionRecorder | null = null;
   private _eventTracker: EventTracker | null = null;
 
-  protected _emulatorInitPromise: Promise<void> | null = null;
   private __DEMO_ENABLE_SLIGHT_FETCH_DELAY = false;
   private readonly _ownedAdminApps = new DependenciesMap<[InternalSession, string], _StackAdminAppImplIncomplete<false, string>>();
 
@@ -507,25 +506,17 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     this._options = resolvedOptions;
     this._extraOptions = extraOptions;
 
-    const emulatorConfigFilePath = getLocalEmulatorConfigFilePath(resolvedOptions.localEmulatorConfigFilePath);
-    const isEmulator = !!emulatorConfigFilePath;
-
-    assertNoEmulatorOptionConflict(emulatorConfigFilePath, {
-      projectId: resolvedOptions.projectId,
-      publishableClientKey: resolvedOptions.publishableClientKey,
-    });
-
-    const projectId = resolvedOptions.projectId ?? getDefaultProjectId({ isEmulator });
+    const projectId = resolvedOptions.projectId ?? getDefaultProjectId();
     if (projectId !== "internal" && !(projectId.match(/^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i))) {
       throw new Error(`Invalid project ID: ${projectId}. Project IDs must be UUIDs. Please check your environment variables and/or your StackApp.`);
     }
 
-    const publishableClientKey = resolvedOptions.publishableClientKey ?? getDefaultPublishableClientKey() ?? (isEmulator ? LOCAL_EMULATOR_INTERNAL_PUBLISHABLE_CLIENT_KEY : undefined);
+    const publishableClientKey = resolvedOptions.publishableClientKey ?? getDefaultPublishableClientKey();
 
     if (extraOptions && extraOptions.interface) {
       this._interface = extraOptions.interface;
     } else {
-      const apiUrls = resolveApiUrls(resolvedOptions.baseUrl ?? (isEmulator ? localEmulatorBaseUrl : undefined));
+      const apiUrls = resolveApiUrls(resolvedOptions.baseUrl);
       this._interface = new StackClientInterface({
         getBaseUrl: () => apiUrls()[0],
         getAnalyticsBaseUrl: () => getAnalyticsBaseUrl(apiUrls()[0]),
@@ -535,19 +526,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         clientVersion,
         ...(publishableClientKey != null ? { publishableClientKey } : {}),
         prepareRequest: async () => {
-          if (this._emulatorInitPromise) await this._emulatorInitPromise;
           await cookies?.(); // THIS_LINE_PLATFORM next
         }
-      });
-    }
-
-    if (isEmulator && !(extraOptions && extraOptions.interface)) {
-      const iface = this._interface;
-      this._emulatorInitPromise = fetchEmulatorProjectCredentials(emulatorConfigFilePath!).then((data) => {
-        iface._updateEmulatorCredentials({
-          projectId: data.project_id,
-          publishableClientKey: data.publishable_client_key,
-        });
       });
     }
 

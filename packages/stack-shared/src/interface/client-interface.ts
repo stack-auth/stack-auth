@@ -123,9 +123,6 @@ function getBotChallengeRequestFields(botChallenge: BotChallengeInput | undefine
 export class StackClientInterface {
   private pendingNetworkDiagnostics?: ReturnType<StackClientInterface["_runNetworkDiagnosticsInner"]>;
 
-  protected _projectIdOverride?: string;
-  protected _publishableClientKeyOverride?: string;
-
   /**
    * Fallback state. When null, we're in normal mode (primary first).
    * When set, we skip straight to `stickyIndex` and only probe primary occasionally.
@@ -138,16 +135,7 @@ export class StackClientInterface {
   }
 
   get projectId() {
-    return this._projectIdOverride ?? this.options.projectId;
-  }
-
-  _updateEmulatorCredentials(opts: { projectId?: string, publishableClientKey?: string }) {
-    if (opts.projectId) {
-      this._projectIdOverride = opts.projectId;
-    }
-    if (opts.publishableClientKey) {
-      this._publishableClientKeyOverride = opts.publishableClientKey;
-    }
+    return this.options.projectId;
   }
 
   getApiUrl() {
@@ -635,9 +623,7 @@ export class StackClientInterface {
           "X-Stack-Refresh-Token": tokenObj.refreshToken.token,
         } : {}),
         "X-Stack-Allow-Anonymous-User": "true",
-        ...(this._publishableClientKeyOverride ? {
-          "X-Stack-Publishable-Client-Key": this._publishableClientKeyOverride,
-        } : "publishableClientKey" in this.options && this.options.publishableClientKey ? {
+        ...("publishableClientKey" in this.options && this.options.publishableClientKey ? {
           "X-Stack-Publishable-Client-Key": this.options.publishableClientKey,
         } : {}),
         ...(adminTokenObj ? {

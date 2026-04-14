@@ -1,4 +1,5 @@
 import { Prisma } from "@/generated/prisma/client";
+import { overrideBranchConfigOverride } from "@/lib/config";
 import {
   LOCAL_EMULATOR_ADMIN_USER_ID,
   LOCAL_EMULATOR_ONLY_ENDPOINT_MESSAGE,
@@ -58,14 +59,15 @@ async function assertLocalEmulatorOwnerTeamReadiness() {
   }
 }
 
-async function getOrCreateLocalEmulatorProjectId(absoluteFilePath: string): Promise<string> {
+async function getOrCreateLocalEmulatorProjectId(absoluteFilePath: string): Promise<{ projectId: string, created: boolean }> {
   const existingRows = await globalPrismaClient.$queryRaw<LocalEmulatorProjectMappingRow[]>(Prisma.sql`
     SELECT "projectId"
     FROM "LocalEmulatorProject"
     WHERE "absoluteFilePath" = ${absoluteFilePath}
     LIMIT 1
   `);
-  const projectId = existingRows[0] ? existingRows[0].projectId : generateUuid();
+  const existingRow = existingRows.length > 0 ? existingRows[0] : undefined;
+  const projectId = existingRow ? existingRow.projectId : generateUuid();
 
   await globalPrismaClient.project.upsert({
     where: {
@@ -107,7 +109,7 @@ async function getOrCreateLocalEmulatorProjectId(absoluteFilePath: string): Prom
       "updatedAt" = NOW()
   `);
 
-  return projectId;
+  return { projectId, created: existingRow === undefined };
 }
 
 async function getOrCreateCredentials(projectId: string) {
@@ -217,7 +219,20 @@ export const POST = createSmartRouteHandler({
 
     await assertLocalEmulatorOwnerTeamReadiness();
 
-    const projectId = await getOrCreateLocalEmulatorProjectId(absoluteFilePath);
+    const { projectId, created } = await getOrCreateLocalEmulatorProjectId(absoluteFilePath);
+    if (created) {
+      // Emulator projects are for local development. Default-allow localhost
+      // redirects so fresh projects don't hit "Redirect URL not whitelisted"
+      // before the developer has configured trustedDomains. User-supplied
+      // stack.config.ts still overrides this if they set domains explicitly.
+      await overrideBranchConfigOverride({
+        projectId,
+        branchId: DEFAULT_BRANCH_ID,
+        branchConfigOverrideOverride: {
+          "domains.allowLocalhost": true,
+        },
+      });
+    }
     const credentials = await getOrCreateCredentials(projectId);
     const fileConfig = await readConfigFromFile(absoluteFilePath);
 

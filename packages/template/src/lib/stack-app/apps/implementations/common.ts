@@ -62,57 +62,7 @@ export function getUrls(partial: HandlerUrlOptions, options: { projectId: string
   });
 }
 
-export const localEmulatorBaseUrl = "http://localhost:9999";
-
-export const LOCAL_EMULATOR_INTERNAL_PUBLISHABLE_CLIENT_KEY = "local-emulator-publishable-client-key";
-export const LOCAL_EMULATOR_INTERNAL_SECRET_SERVER_KEY = "local-emulator-secret-server-key";
-export const LOCAL_EMULATOR_INTERNAL_SUPER_SECRET_ADMIN_KEY = "local-emulator-super-secret-admin-key";
-
-export function getLocalEmulatorConfigFilePath(explicitOption?: string): string | undefined {
-  return explicitOption || envVars.NEXT_PUBLIC_STACK_LOCAL_EMULATOR_CONFIG_FILE_PATH || undefined;
-}
-
-export async function fetchEmulatorProjectCredentials(emulatorConfigFilePath: string): Promise<{
-  project_id: string,
-  publishable_client_key: string,
-  secret_server_key: string,
-  super_secret_admin_key: string,
-}> {
-  const res = await fetch(`${localEmulatorBaseUrl}/api/v1/internal/local-emulator/project`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      "X-Stack-Project-Id": "internal",
-      "X-Stack-Access-Type": "client",
-      "X-Stack-Publishable-Client-Key": LOCAL_EMULATOR_INTERNAL_PUBLISHABLE_CLIENT_KEY,
-    },
-    body: JSON.stringify({ absolute_file_path: emulatorConfigFilePath }),
-  });
-  if (!res.ok) {
-    throw new Error(`Failed to initialize local emulator: ${res.status} ${await res.text()}`);
-  }
-  return await res.json();
-}
-
-export function assertNoEmulatorOptionConflict(
-  emulatorConfigFilePath: string | undefined,
-  options: Record<string, unknown>,
-) {
-  if (!emulatorConfigFilePath) return;
-  const conflicting = Object.entries(options)
-    .filter(([, value]) => value !== undefined && value !== null)
-    .map(([key]) => key);
-  if (conflicting.length > 0) {
-    throw new Error(
-      `Cannot specify ${conflicting.join(", ")} together with localEmulatorConfigFilePath — the local emulator provides these credentials automatically.`
-    );
-  }
-}
-
-export function getDefaultProjectId(options?: { isEmulator?: boolean }) {
-  if (options?.isEmulator) {
-    return envVars.NEXT_PUBLIC_STACK_PROJECT_ID || envVars.STACK_PROJECT_ID || "internal";
-  }
+export function getDefaultProjectId() {
   return envVars.NEXT_PUBLIC_STACK_PROJECT_ID || envVars.STACK_PROJECT_ID || throwErr(new Error("Welcome to Stack Auth! It seems that you haven't provided a project ID. Please create a project on the Stack dashboard at https://app.stack-auth.com and put it in the NEXT_PUBLIC_STACK_PROJECT_ID environment variable."));
 }
 
@@ -120,17 +70,11 @@ export function getDefaultPublishableClientKey() {
   return envVars.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY || envVars.STACK_PUBLISHABLE_CLIENT_KEY;
 }
 
-export function getDefaultSecretServerKey(options?: { isEmulator?: boolean }) {
-  if (options?.isEmulator) {
-    return envVars.STACK_SECRET_SERVER_KEY || LOCAL_EMULATOR_INTERNAL_SECRET_SERVER_KEY;
-  }
+export function getDefaultSecretServerKey() {
   return envVars.STACK_SECRET_SERVER_KEY || throwErr(new Error("No secret server key provided. Please copy your key from the Stack dashboard and put it in the STACK_SECRET_SERVER_KEY environment variable."));
 }
 
-export function getDefaultSuperSecretAdminKey(options?: { isEmulator?: boolean }) {
-  if (options?.isEmulator) {
-    return envVars.STACK_SUPER_SECRET_ADMIN_KEY || LOCAL_EMULATOR_INTERNAL_SUPER_SECRET_ADMIN_KEY;
-  }
+export function getDefaultSuperSecretAdminKey() {
   return envVars.STACK_SUPER_SECRET_ADMIN_KEY || throwErr(new Error("No super secret admin key provided. Please copy your key from the Stack dashboard and put it in the STACK_SUPER_SECRET_ADMIN_KEY environment variable."));
 }
 
@@ -156,7 +100,7 @@ export function getDefaultExtraRequestHeaders() {
  * @returns The configured base URL without trailing slash
 
  */
-export function getBaseUrl(userSpecifiedBaseUrl: string | { browser: string, server: string } | undefined, options?: { isEmulator?: boolean }) {
+export function getBaseUrl(userSpecifiedBaseUrl: string | { browser: string, server: string } | undefined) {
   let url;
   if (userSpecifiedBaseUrl) {
     if (typeof userSpecifiedBaseUrl === "string") {
@@ -175,7 +119,7 @@ export function getBaseUrl(userSpecifiedBaseUrl: string | { browser: string, ser
     } else {
       url = envVars.NEXT_PUBLIC_SERVER_STACK_API_URL || envVars.NEXT_PUBLIC_STACK_API_URL_SERVER || envVars.STACK_API_URL_SERVER;
     }
-    url = url || envVars.NEXT_PUBLIC_STACK_API_URL || envVars.STACK_API_URL || envVars.NEXT_PUBLIC_STACK_URL || (options?.isEmulator ? localEmulatorBaseUrl : defaultBaseUrl);
+    url = url || envVars.NEXT_PUBLIC_STACK_API_URL || envVars.STACK_API_URL || envVars.NEXT_PUBLIC_STACK_URL || defaultBaseUrl;
   }
 
   return replaceStackPortPrefix(url.endsWith('/') ? url.slice(0, -1) : url);

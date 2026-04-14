@@ -56,17 +56,8 @@ export type InternalApiKeyCreateCrudResponse = InternalApiKeysCrud["Admin"]["Rea
 
 
 export class StackAdminInterface extends StackServerInterface {
-  protected _superSecretAdminKeyOverride?: string;
-
   constructor(public readonly options: AdminAuthApplicationOptions) {
     super(options);
-  }
-
-  override _updateEmulatorCredentials(opts: { projectId?: string, publishableClientKey?: string, secretServerKey?: string, superSecretAdminKey?: string }) {
-    super._updateEmulatorCredentials(opts);
-    if (opts.superSecretAdminKey) {
-      this._superSecretAdminKeyOverride = opts.superSecretAdminKey;
-    }
   }
 
   public async sendAdminRequest(path: string, options: RequestInit, session: InternalSession | null, requestType: "admin" = "admin") {
@@ -75,7 +66,7 @@ export class StackAdminInterface extends StackServerInterface {
       {
         ...options,
         headers: {
-          "x-stack-super-secret-admin-key": this._superSecretAdminKeyOverride ?? ("superSecretAdminKey" in this.options ? this.options.superSecretAdminKey : ""),
+          "x-stack-super-secret-admin-key": "superSecretAdminKey" in this.options ? this.options.superSecretAdminKey : "",
           ...options.headers,
         },
       },

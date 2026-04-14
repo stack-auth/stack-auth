@@ -14,9 +14,6 @@ export const envVars = {
   get STACK_PROJECT_ID() {
     return (typeof process !== "undefined" ? process.env.STACK_PROJECT_ID : undefined) ?? undefined;
   },
-  get NEXT_PUBLIC_STACK_LOCAL_EMULATOR_CONFIG_FILE_PATH() {
-    return (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_STACK_LOCAL_EMULATOR_CONFIG_FILE_PATH : undefined) ?? undefined;
-  },
   get NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY() {
     return (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY : undefined) ?? undefined;
   },

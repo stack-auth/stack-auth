@@ -90,9 +90,11 @@ const entries = [
   fromSource("apps/backend/.env.development", backendEnv, "STACK_SEED_INTERNAL_PROJECT_ALLOW_LOCALHOST"),
   fromSource("apps/backend/.env.development", backendEnv, "STACK_SEED_INTERNAL_PROJECT_OAUTH_PROVIDERS"),
   fromSource("apps/backend/.env.development", backendEnv, "STACK_SEED_INTERNAL_PROJECT_USER_INTERNAL_ACCESS"),
-  fromSource("apps/backend/.env.development", backendEnv, "STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY"),
-  fromSource("apps/backend/.env.development", backendEnv, "STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY"),
-  fromSource("apps/backend/.env.development", backendEnv, "STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
+  // STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY is generated per-VM at boot
+  // by docker/local-emulator/qemu/cloud-init/emulator/user-data and injected via
+  // /run/stack-auth/local-emulator.env. SECRET_SERVER_KEY and SUPER_SECRET_ADMIN_KEY
+  // are intentionally omitted so the seed script leaves them null on the internal
+  // project; per-project credentials come from /api/v1/internal/local-emulator/project.
   blank(),
   comment("# Third-party/test integrations"),
   fromSource("apps/backend/.env.development", backendEnv, "STACK_SVIX_API_KEY"),

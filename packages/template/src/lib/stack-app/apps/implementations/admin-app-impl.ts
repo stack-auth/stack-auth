@@ -22,7 +22,7 @@ import { AdminProjectPermission, AdminProjectPermissionDefinition, AdminProjectP
 import { AdminOwnedProject, AdminProject, AdminProjectUpdateOptions, PushConfigOptions, adminProjectUpdateOptionsToCrud } from "../../projects";
 import type { AdminSessionReplay, AdminSessionReplayChunk, ListSessionReplayChunksOptions, ListSessionReplayChunksResult, ListSessionReplaysOptions, ListSessionReplaysResult, SessionReplayAllEventsResult } from "../../session-replays";
 import { ManagedEmailProviderListItem, ManagedEmailProviderSetupResult, ManagedEmailProviderStatus, EmailOutboxUpdateOptions, StackAdminApp, StackAdminAppConstructorOptions } from "../interfaces/admin-app";
-import { LOCAL_EMULATOR_INTERNAL_PUBLISHABLE_CLIENT_KEY, assertNoEmulatorOptionConflict, clientVersion, createCache, fetchEmulatorProjectCredentials, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey, getLocalEmulatorConfigFilePath, localEmulatorBaseUrl, resolveApiUrls, resolveConstructorOptions } from "./common";
+import { clientVersion, createCache, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, getDefaultSuperSecretAdminKey, resolveApiUrls, resolveConstructorOptions } from "./common";
 import { _StackServerAppImplIncomplete } from "./server-app-impl";
 
 import { CompleteConfig, EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
@@ -127,53 +127,28 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   constructor(options: StackAdminAppConstructorOptions<HasTokenStore, ProjectId>, extraOptions?: { uniqueIdentifier?: string, checkString?: string, interface?: StackAdminInterface }) {
     const resolvedOptions = resolveConstructorOptions(options);
 
-    const emulatorConfigFilePath = getLocalEmulatorConfigFilePath(resolvedOptions.localEmulatorConfigFilePath);
-    const isEmulator = !!emulatorConfigFilePath;
-
-    assertNoEmulatorOptionConflict(emulatorConfigFilePath, {
-      projectId: resolvedOptions.projectId,
-      publishableClientKey: resolvedOptions.publishableClientKey,
-      secretServerKey: resolvedOptions.secretServerKey,
-      superSecretAdminKey: resolvedOptions.superSecretAdminKey,
-    });
-
-    const publishableClientKey = resolvedOptions.publishableClientKey ?? getDefaultPublishableClientKey() ?? (isEmulator ? LOCAL_EMULATOR_INTERNAL_PUBLISHABLE_CLIENT_KEY : undefined);
+    const publishableClientKey = resolvedOptions.publishableClientKey ?? getDefaultPublishableClientKey();
 
     super(resolvedOptions, {
       ...extraOptions,
       interface: extraOptions?.interface ?? (() => {
-        const apiUrls = resolveApiUrls(resolvedOptions.baseUrl ?? (isEmulator ? localEmulatorBaseUrl : undefined));
+        const apiUrls = resolveApiUrls(resolvedOptions.baseUrl);
         return new StackAdminInterface({
           getBaseUrl: () => apiUrls()[0],
           getApiUrls: apiUrls,
-          projectId: resolvedOptions.projectId ?? getDefaultProjectId({ isEmulator }),
+          projectId: resolvedOptions.projectId ?? getDefaultProjectId(),
           extraRequestHeaders: resolvedOptions.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
           clientVersion,
           ...resolvedOptions.projectOwnerSession ? {
             projectOwnerSession: resolvedOptions.projectOwnerSession,
           } : {
             ...(publishableClientKey ? { publishableClientKey } : {}),
-            secretServerKey: resolvedOptions.secretServerKey ?? getDefaultSecretServerKey({ isEmulator }),
-            superSecretAdminKey: resolvedOptions.superSecretAdminKey ?? getDefaultSuperSecretAdminKey({ isEmulator }),
-          },
-          prepareRequest: async () => {
-            if (this._emulatorInitPromise) await this._emulatorInitPromise;
+            secretServerKey: resolvedOptions.secretServerKey ?? getDefaultSecretServerKey(),
+            superSecretAdminKey: resolvedOptions.superSecretAdminKey ?? getDefaultSuperSecretAdminKey(),
           },
         });
       })(),
     });
-
-    if (isEmulator && !extraOptions?.interface) {
-      const iface = this._interface;
-      this._emulatorInitPromise = fetchEmulatorProjectCredentials(emulatorConfigFilePath!).then((data) => {
-        iface._updateEmulatorCredentials({
-          projectId: data.project_id,
-          publishableClientKey: data.publishable_client_key,
-          secretServerKey: data.secret_server_key,
-          superSecretAdminKey: data.super_secret_admin_key,
-        });
-      });
-    }
   }
 
   _adminConfigFromCrud(data: { config_string: string }): CompleteConfig {
