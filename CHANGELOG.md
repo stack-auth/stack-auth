@@ -2,6 +2,23 @@
 
 ---
 
+## 4/14/26
+
+### Developer Tools
+Introduced a new Developer Tools panel that appears automatically on localhost to help debug and test your Stack Auth integration.
+
+- **Overview**: View current user identity, project info, SDK version, and quickly sign in/out with test users
+- **Components**: Track component versions and get update notifications
+- **AI Chat**: Get AI-powered assistance for debugging your integration
+- **Console**: Monitor API requests and events in real-time
+- **Docs**: Quick access to Stack Auth documentation
+- **Dashboard**: Direct link to your project dashboard
+- **Support**: Submit bug reports and feature requests
+
+Use console commands to control visibility: `StackDevTool.enable()`, `StackDevTool.disable()`, `StackDevTool.reset()`
+
+---
+
 ## 1/23/26
 
 ### Payments

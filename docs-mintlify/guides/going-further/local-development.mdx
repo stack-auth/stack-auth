@@ -1,6 +1,92 @@
 ---
 title: "Local Development"
-description: "Set up and run Stack Auth locally for development and testing"
+description: "Debug and test your Stack Auth integration with Developer Tools"
 ---
 
-This page is under construction. Check back soon for instructions on setting up Stack Auth for local development.
+# Local Development
+
+Stack Auth includes built-in Developer Tools for debugging and testing your integration during local development. The panel appears automatically when running your app on localhost.
+
+## Developer Tools
+
+When you run your Stack Auth-powered app on localhost, a floating trigger button appears in the corner of your screen. Click it to open the Developer Tools panel.
+
+### Enabling and Disabling
+
+Developer Tools appear automatically on localhost. You can control visibility using console commands:
+
+```javascript
+// Force-show the Developer Tools (even in production)
+StackDevTool.enable()
+
+// Force-hide the Developer Tools
+StackDevTool.disable()
+
+// Reset to default behavior (visible on localhost only)
+StackDevTool.reset()
+```
+
+### Overview Tab
+
+The Overview tab shows your current authentication state and project configuration:
+
+- **Identity**: The currently signed-in user with their avatar, display name, and email
+- **Quick Sign In**: Create random test users instantly with one click (localhost only)
+- **Sign in as email**: Sign in or create a user with a specific email address
+- **Project Info**: Your SDK version, project ID, and API base URL
+- **SDK Version Check**: Notifications when your SDK version is outdated
+
+### Components Tab
+
+The Components tab tracks which Stack Auth UI components are rendered on the current page:
+
+- See all active Stack Auth components
+- Check component versions
+- Get notifications when updates are available
+
+### AI Chat Tab
+
+The AI Chat tab provides an integrated AI assistant for debugging your Stack Auth integration:
+
+- Ask questions about Stack Auth features and configuration
+- Get help troubleshooting authentication issues
+- Learn about best practices and implementation patterns
+
+### Console Tab
+
+The Console tab provides real-time monitoring of your authentication activity:
+
+**Logs Sub-tab**:
+- View API requests made by the Stack Auth SDK
+- See request methods, URLs, status codes, and timing
+- Monitor authentication events and errors
+- Clear logs to focus on specific interactions
+
+**Config Sub-tab**:
+- View your current Stack Auth configuration
+- Check handler URLs and settings
+
+### Docs Tab
+
+Quick access to Stack Auth documentation directly from the Developer Tools panel.
+
+### Dashboard Tab
+
+Opens your project's Stack Auth dashboard in a new tab where you can manage users, teams, settings, and more.
+
+### Support Tab
+
+Submit feedback and get help:
+
+- **Bug Reports**: Report issues you encounter during development
+- **Feature Requests**: Suggest new features or improvements
+
+## Tips for Local Development
+
+1. **Use Quick Sign In**: The Overview tab's Quick Sign In button creates random test users instantly — great for testing different authentication states.
+
+2. **Monitor API Calls**: Use the Console tab to see exactly what API calls Stack Auth makes and understand the authentication flow.
+
+3. **Check SDK Version**: The Overview tab warns you if your SDK is outdated so you can stay up to date with the latest features and fixes.
+
+4. **Test Different Users**: Use "Sign in as email" to quickly switch between different test accounts.
