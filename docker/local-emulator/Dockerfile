@@ -81,8 +81,6 @@ RUN cp -a /app/node_modules /pruned-node_modules && \
       posthog-js@* \
       @prisma+studio-core@* @prisma+dev@* @prisma+query-plan-executor@* \
       convex@* @electric-sql+*@* \
-      # Duplicate Next.js copies (keep only one for next/headers.js resolution)
-      'next@16.1.5_@babel+core@7.29.0*' 'next@16.1.5_@babel+core@7.28.5*' \
       next@14* @next+swc-*@14* \
       # Native build binaries not needed at runtime
       @esbuild+*@* esbuild@* @rolldown+*@* \
