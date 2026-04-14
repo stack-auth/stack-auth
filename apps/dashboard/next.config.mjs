@@ -91,6 +91,7 @@ const nextConfig = {
   },
 
   async headers() {
+    const isLocalEmulator = process.env.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR === "true";
     return [
       {
         source: "/(.*)",
@@ -118,7 +119,9 @@ const nextConfig = {
           }],
           {
             key: "Content-Security-Policy",
-            value: "",
+            // Note: *.localhost requires Chrome 117+ and may not work in Firefox
+            // without network.dns.localDomains configuration. Fine for dev tool purposes.
+            value: isLocalEmulator ? "frame-ancestors 'self' http://localhost:* https://localhost:* http://127.0.0.1:* https://127.0.0.1:* http://[::1]:* https://[::1]:* http://*.localhost https://*.localhost" : "",
           },
         ],
       },
