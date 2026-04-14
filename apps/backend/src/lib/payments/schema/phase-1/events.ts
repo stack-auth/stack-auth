@@ -267,6 +267,7 @@ export function createEventTables(stored: SeedEventsStoredTables) {
       "rowData"->'customerType' AS "customerType",
       "rowData"->'itemId' AS "itemId",
       "rowData"->'quantity' AS "quantity",
+      "rowData"->'expiresAtMillis' AS "expiresAtMillis",
       "rowData"->'createdAtMillis' AS "effectiveAtMillis",
       "rowData"->'createdAtMillis' AS "createdAtMillis"
     `),

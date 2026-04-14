@@ -492,22 +492,14 @@ export function declareLFoldTable<
       `.toStatement(lfoldChangesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb'),
     ];
   };
-  let sourceSortTriggerRegistration: null | { deregister: () => void } = null;
-  const ensureSourceSortTriggerRegistration = () => {
-    if (sourceSortTriggerRegistration != null) return;
-    const sourceSortTrigger = attachRowChangeTriggerMetadata(
-      (fromChangesTable) => createSourceSortTriggerStatements(fromChangesTable),
-      {
-        targetTableId: tableIdToDebugString(options.tableId),
-        targetTableTriggers: triggers,
-      },
-    );
-    sourceSortTriggerRegistration = sourceSortTable.registerRowChangeTrigger(sourceSortTrigger);
-  };
-  const deregisterSourceSortTrigger = () => {
-    sourceSortTriggerRegistration?.deregister();
-    sourceSortTriggerRegistration = null;
-  };
+  const sourceSortTrigger = attachRowChangeTriggerMetadata(
+    (fromChangesTable) => createSourceSortTriggerStatements(fromChangesTable),
+    {
+      targetTableId: tableIdToDebugString(options.tableId),
+      targetTableTriggers: triggers,
+    },
+  );
+  sourceSortTable.registerRowChangeTrigger(sourceSortTrigger);
 
   return {
     tableId: options.tableId,
@@ -522,7 +514,6 @@ export function declareLFoldTable<
     compareGroupKeys: options.fromTable.compareGroupKeys,
     compareSortKeys: options.fromTable.compareSortKeys,
     init: () => {
-      ensureSourceSortTriggerRegistration();
       const firstSourceRowsTableName = `first_source_rows_${generateSecureRandomString()}`;
       const recomputedSourceStatesTableName = `recomputed_source_states_${generateSecureRandomString()}`;
       const newFoldRowsTableName = `new_fold_rows_${generateSecureRandomString()}`;
@@ -708,7 +699,6 @@ export function declareLFoldTable<
       ];
     },
     delete: () => {
-      deregisterSourceSortTrigger();
       return [sqlStatement`
         WITH RECURSIVE "pathsToDelete" AS (
           SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"

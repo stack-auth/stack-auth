@@ -316,7 +316,7 @@ export function createTransactionsTable(events: EventTables, manualTransactions:
           'customerId', "rowData"->'customerId',
           'itemId', "rowData"->'itemId',
           'quantity', "rowData"->'quantity',
-          'expiresWhen', 'null'::jsonb
+          'expiresWhen', "rowData"->'expiresAtMillis'
         )
       ) AS "entries",
       "rowData"->'customerType' AS "customerType",

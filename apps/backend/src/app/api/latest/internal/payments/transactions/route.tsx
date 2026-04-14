@@ -516,15 +516,60 @@ function mapLedgerTransactionTypeToApiType(type: LedgerTransactionType): Transac
   return "purchase";
 }
 
-function buildAdjustedBy(row: QueriedLedgerTransactionRow, entries: TransactionEntry[]): Transaction["adjusted_by"] {
-  if (row.refundedAtMillis == null) {
-    return [];
+function buildAdjustedByFromRefunds(options: {
+  row: QueriedLedgerTransactionRow,
+  adjustedByLookup: Map<string, Transaction["adjusted_by"]>,
+}): Transaction["adjusted_by"] {
+  const adjustedByFromRefunds = options.adjustedByLookup.get(options.row.txnId);
+  return adjustedByFromRefunds ?? [];
+}
+
+function buildAdjustedByLookupFromRefundRows(rows: unknown[]): Map<string, Transaction["adjusted_by"]> {
+  const lookup = new Map<string, Transaction["adjusted_by"]>();
+  for (const rowData of rows) {
+    if (!isRecord(rowData)) {
+      throw new StackAssertionError("Refund transaction rowData is not an object", { rowData });
+    }
+    const refundTxnId = Reflect.get(rowData, "txnId");
+    const entries = Reflect.get(rowData, "entries");
+    if (typeof refundTxnId !== "string" || refundTxnId.length === 0) {
+      throw new StackAssertionError("Refund transaction row is missing txnId", { rowData });
+    }
+    if (!Array.isArray(entries)) {
+      throw new StackAssertionError("Refund transaction row has invalid entries", { rowData });
+    }
+    for (const entry of entries) {
+      if (!isRecord(entry)) {
+        throw new StackAssertionError("Refund transaction entry is not an object", { entry, rowData });
+      }
+      if (entry.type !== "product-revocation") {
+        continue;
+      }
+      const adjustedTransactionId = Reflect.get(entry, "adjustedTransactionId");
+      const adjustedEntryIndex = Reflect.get(entry, "adjustedEntryIndex");
+      if (
+        typeof adjustedTransactionId !== "string" ||
+        adjustedTransactionId.length === 0 ||
+        typeof adjustedEntryIndex !== "number" ||
+        !Number.isInteger(adjustedEntryIndex) ||
+        adjustedEntryIndex < 0
+      ) {
+        throw new StackAssertionError("Refund transaction has invalid product-revocation back reference", {
+          entry,
+          rowData,
+        });
+      }
+      const existing = lookup.get(adjustedTransactionId) ?? [];
+      lookup.set(adjustedTransactionId, [
+        ...existing,
+        {
+          transaction_id: refundTxnId,
+          entry_index: adjustedEntryIndex,
+        },
+      ]);
+    }
   }
-  const productGrantIndex = entries.findIndex((entry) => entry.type === "product_grant");
-  return [{
-    transaction_id: `${row.sourceId}:refund`,
-    entry_index: productGrantIndex >= 0 ? productGrantIndex : 0,
-  }];
+  return lookup;
 }
 
 async function getTransactions(options: {
@@ -596,6 +641,30 @@ async function getTransactions(options: {
 
   const hasMore = parsedRows.length > options.limit;
   const pageRows = hasMore ? parsedRows.slice(0, options.limit) : parsedRows;
+  let refundRows: Array<{ rowData: unknown }> = [];
+  if (pageRows.length > 0) {
+    const adjustedTransactionIdsSql = pageRows.map((row) => quoteSqlStringLiteral(row.txnId).sql).join(", ");
+    const refundWhereClauses = [
+      `"__rows"."rowdata"->>'tenancyId' = ${quoteSqlStringLiteral(options.tenancyId).sql}`,
+      `"__rows"."rowdata"->>'type' = 'refund'`,
+      `EXISTS (
+        SELECT 1
+        FROM jsonb_array_elements("__rows"."rowdata"->'entries') AS "__entry"
+        WHERE "__entry"->>'type' = 'product-revocation'
+          AND "__entry"->>'adjustedTransactionId' IN (${adjustedTransactionIdsSql})
+      )`,
+    ];
+    if (options.customerType) {
+      refundWhereClauses.push(`"__rows"."rowdata"->>'customerType' = ${quoteSqlStringLiteral(options.customerType).sql}`);
+    }
+    const refundSql = `
+      SELECT "__rows"."rowdata" AS "rowData"
+      FROM (${baseSql}) AS "__rows"
+      WHERE ${refundWhereClauses.join("\n        AND ")}
+    `;
+    refundRows = await options.prisma.$queryRaw<Array<{ rowData: unknown }>>`${Prisma.raw(refundSql)}`;
+  }
+  const resolvedAdjustedByLookup = buildAdjustedByLookupFromRefundRows(refundRows.map((row) => row.rowData));
 
   const transactions: Transaction[] = pageRows.map((row): Transaction => {
     const entries = row.entries.flatMap((entry): TransactionEntry[] => {
@@ -608,7 +677,10 @@ async function getTransactions(options: {
       effective_at_millis: row.effectiveAtMillis,
       type: mapLedgerTransactionTypeToApiType(row.type),
       entries,
-      adjusted_by: buildAdjustedBy(row, entries),
+      adjusted_by: buildAdjustedByFromRefunds({
+        row,
+        adjustedByLookup: resolvedAdjustedByLookup,
+      }),
       test_mode: row.paymentProvider === "test_mode",
     };
   });

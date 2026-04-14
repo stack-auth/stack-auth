@@ -8,8 +8,9 @@
  */
 
 import { Prisma } from "@/generated/prisma/client";
-import { toExecutableSqlStatements, toExecutableSqlTransaction } from "@/lib/bulldozer/db/index";
+import { toExecutableSqlTransaction } from "@/lib/bulldozer/db/index";
 import { paymentsSchema } from "@/lib/payments/schema/singleton";
+import type { ManualTransactionRow } from "@/lib/payments/schema/types";
 import type { PrismaClientTransaction } from "@/prisma-client";
 
 const schema = paymentsSchema;
@@ -142,6 +143,10 @@ export function itemQuantityChangeToStoredRow(c: {
   };
 }
 
+export function manualTransactionToStoredRow(transaction: ManualTransactionRow): Record<string, unknown> {
+  return transaction;
+}
+
 // ── Dual-write executors ──────────────────────────────────────────────
 
 async function executeSetRow(
@@ -149,19 +154,11 @@ async function executeSetRow(
   storedTable: { setRow(id: string, data: { type: "expression", sql: string }): { type: "statement", sql: string }[] },
   id: string,
   rowData: Record<string, unknown>,
-  options: {
-    withinPrismaTransaction?: boolean,
-  } = {},
 ) {
   const escaped = JSON.stringify(rowData).replaceAll("'", "''");
-  const statements = storedTable.setRow(id, { type: "expression", sql: `'${escaped}'::jsonb` });
-  const sql = options.withinPrismaTransaction
-    ? `
-      SET LOCAL jit = off;
-      SELECT pg_advisory_xact_lock(7857391);
-      ${toExecutableSqlStatements(statements)}
-    `
-    : toExecutableSqlTransaction(statements);
+  const sql = toExecutableSqlTransaction(
+    storedTable.setRow(id, { type: "expression", sql: `'${escaped}'::jsonb` })
+  );
   await prisma.$executeRaw`${Prisma.raw(sql)}`;
 }
 
@@ -189,9 +186,14 @@ export async function bulldozerWriteOneTimePurchase(
 export async function bulldozerWriteItemQuantityChange(
   prisma: PrismaClientTransaction,
   change: Parameters<typeof itemQuantityChangeToStoredRow>[0],
-  options: {
-    withinPrismaTransaction?: boolean,
-  } = {},
 ) {
-  await executeSetRow(prisma, schema.manualItemQuantityChanges, change.id, itemQuantityChangeToStoredRow(change), options);
+  await executeSetRow(prisma, schema.manualItemQuantityChanges, change.id, itemQuantityChangeToStoredRow(change));
+}
+
+export async function bulldozerWriteManualTransaction(
+  prisma: PrismaClientTransaction,
+  transactionId: string,
+  transaction: ManualTransactionRow,
+) {
+  await executeSetRow(prisma, schema.manualTransactions, transactionId, manualTransactionToStoredRow(transaction));
 }

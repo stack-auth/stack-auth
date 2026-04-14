@@ -1,3 +1,4 @@
+import { range } from "@stackframe/stack-shared/dist/utils/arrays";
 import { describe, expect } from "vitest";
 import { it } from "../../../../../helpers";
 import { Auth, InternalProjectKeys, Project, User, backendContext, createMailbox, niceBackendFetch } from "../../../../backend-helpers";
@@ -345,50 +346,86 @@ it("allows team admins to be added when item quantity is increased", async ({ ex
     method: "POST",
     accessType: "admin",
     body: {
-      delta: 1,
+      delta: 3,  // TODO: set this back to 2 when default products are reintroduced
     },
   });
 
-  const mailboxB = createMailbox();
-  const sendInvitationResponse = await niceBackendFetch("/api/v1/team-invitations/send-code", {
-    method: "POST",
-    accessType: "server",
-    body: {
-      email: mailboxB.emailAddress,
-      team_id: ownerTeamId,
-      callback_url: "http://localhost:12345/some-callback-url",
-    },
+  const itemQuantityResponse = await niceBackendFetch(`/api/v1/payments/items/team/${ownerTeamId}/dashboard_admins`, {
+    accessType: "admin",
   });
-  expect(sendInvitationResponse).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 200,
-      "body": {
-        "id": "<stripped UUID>",
-        "success": true,
+  expect(itemQuantityResponse.status).toBe(200);
+  expect(itemQuantityResponse.body.quantity).toBe(3);
+
+  const itemQuantity = itemQuantityResponse.body.quantity;
+  const availableInvitations = itemQuantity - 1;
+
+  const mailboxes = await Promise.all(range(availableInvitations + 1).map(async () => {
+    const mailbox = createMailbox();
+    const sendInvitationResponse = await niceBackendFetch("/api/v1/team-invitations/send-code", {
+      method: "POST",
+      accessType: "server",
+      body: {
+        email: mailbox.emailAddress,
+        team_id: ownerTeamId,
+        callback_url: "http://localhost:12345/some-callback-url",
       },
-      "headers": Headers { <some fields may have been hidden> },
+    });
+    expect(sendInvitationResponse).toMatchInlineSnapshot(`
+      NiceResponse {
+        "status": 200,
+        "body": {
+          "id": "<stripped UUID>",
+          "success": true,
+        },
+        "headers": Headers { <some fields may have been hidden> },
+      }
+    `);
+    return mailbox;
+  }));
+
+  for (let i = 0; i < mailboxes.length; i++) {
+    const mailbox = mailboxes[i];
+    backendContext.set({ mailbox: mailbox });
+    await Auth.fastSignUp();
+
+    const invitationMessages = await mailbox.waitForMessagesWithSubject("join");
+    const acceptResponse = await niceBackendFetch("/api/v1/team-invitations/accept", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        code: invitationMessages.findLast((m) => m.subject.includes("join"))?.body?.text.match(/http:\/\/localhost:12345\/some-callback-url\?code=([a-zA-Z0-9]+)/)?.[1],
+      },
+    });
+
+    if (i < availableInvitations) {
+      expect(acceptResponse).toMatchInlineSnapshot(`
+        NiceResponse {
+          "status": 200,
+          "body": {},
+          "headers": Headers { <some fields may have been hidden> },
+        }
+      `);
+    } else {
+      expect(acceptResponse).toMatchInlineSnapshot(`
+        NiceResponse {
+          "status": 400,
+          "body": {
+            "code": "ITEM_QUANTITY_INSUFFICIENT_AMOUNT",
+            "details": {
+              "customer_id": "<stripped UUID>",
+              "item_id": "dashboard_admins",
+              "quantity": -1,
+            },
+            "error": "The item with ID \\"dashboard_admins\\" has an insufficient quantity for the customer with ID \\"<stripped UUID>\\". An attempt was made to charge -1 credits.",
+          },
+          "headers": Headers {
+            "x-stack-known-error": "ITEM_QUANTITY_INSUFFICIENT_AMOUNT",
+            <some fields may have been hidden>,
+          },
+        }
+      `);
     }
-  `);
-
-  backendContext.set({ mailbox: mailboxB });
-  await Auth.fastSignUp();
-
-  const invitationMessages = await mailboxB.waitForMessagesWithSubject("join");
-  const acceptResponse = await niceBackendFetch("/api/v1/team-invitations/accept", {
-    method: "POST",
-    accessType: "client",
-    body: {
-      code: invitationMessages.findLast((m) => m.subject.includes("join"))?.body?.text.match(/http:\/\/localhost:12345\/some-callback-url\?code=([a-zA-Z0-9]+)/)?.[1],
-    },
-  });
-
-  expect(acceptResponse).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 200,
-      "body": {},
-      "headers": Headers { <some fields may have been hidden> },
-    }
-  `);
+  }
 });
 
 it("should allow negative quantity changes when allow_negative is true", async ({ expect }) => {
