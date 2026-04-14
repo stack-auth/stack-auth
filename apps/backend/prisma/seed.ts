@@ -101,11 +101,6 @@ export async function seed() {
       onboarding: {
         requireEmailVerification: false,
       },
-      ...(localEmulatorEnabled ? {
-        project: {
-          requirePublishableClientKey: false,
-        },
-      } : {}),
       dataVault: {
         stores: {
           'neon-connection-strings': {
