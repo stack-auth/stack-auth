@@ -5,7 +5,11 @@
 set -e
 
 BACKEND_URL="http://127.0.0.1:${BACKEND_PORT:-8102}"
-CRON_SECRET="${CRON_SECRET:-mock_cron_secret}"
+
+if [ -z "${CRON_SECRET:-}" ]; then
+  echo "CRON_SECRET is not set; refusing to start cron loops." >&2
+  exit 1
+fi
 
 # Wait for the backend to be ready
 until curl -fsS "${BACKEND_URL}/health" >/dev/null 2>&1; do sleep 2; done
@@ -17,7 +21,7 @@ run_loop() {
   while true; do
     curl -sf -o /dev/null --max-time 120 "${BACKEND_URL}${endpoint}" \
       -H "Authorization: Bearer ${CRON_SECRET}" || true
-    sleep 60
+    sleep 1
   done
 }
 
