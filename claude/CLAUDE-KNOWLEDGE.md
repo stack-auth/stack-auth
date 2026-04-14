@@ -261,3 +261,6 @@ A: In `docs-mintlify/snippets/docs-apps-home-grid.jsx`, track visible rows while
 
 Q: Why did internal feedback E2E tests expect 1 Inbucket message but get 2?
 A: Inbucket persists mail across runs. `Mailbox.waitForMessagesWithSubject` waits until at least one match then returns **all** messages whose subject includes the string. Fixed subjects like `[Support] devtool-user@example.com` accumulate, so assertions should use a unique subject per run (e.g. `randomUUID()` in the sender email) or a baseline count before/after.
+
+Q: Why does `@typescript-eslint/no-unnecessary-condition` fire on `props.reset` in Next.js `ErrorBoundary` `errorComponent`?
+A: Next’s typings treat `reset` as always present on the error component props, so `props.reset &&` is redundant; render the reload control unconditionally and call `props.reset()` directly.
