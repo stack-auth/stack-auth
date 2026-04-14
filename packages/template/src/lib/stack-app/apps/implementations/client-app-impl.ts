@@ -1,5 +1,6 @@
 import { WebAuthnError, startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { KnownErrors, StackClientInterface } from "@stackframe/stack-shared";
+import type { RequestListener } from "@stackframe/stack-shared/dist/interface/client-interface";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import type { CustomerInvoicesListResponse } from "@stackframe/stack-shared/dist/interface/crud/invoices";
@@ -64,6 +65,9 @@ import { AnalyticsOptions, SessionRecorder, analyticsOptionsFromJson, analyticsO
 
 // IF_PLATFORM react-like
 import { useAsyncCache } from "./common";
+// END_PLATFORM
+// IF_PLATFORM js-like
+import { mountDevTool } from "../../../../dev-tool";
 // END_PLATFORM
 
 let isReactServer = false;
@@ -548,17 +552,22 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
 
     this._analyticsOptions = resolvedOptions.analytics;
-    const getAnalyticsAccessToken = async (): Promise<string | null> => {
+
+    const getAnalyticsSession = async (): Promise<InternalSession> => {
       this._ensurePersistentTokenStore();
-      return await (await this.getUser({ or: "anonymous" })).getAccessToken();
+      const partialUser = await this.getPartialUser({ from: 'token', or: 'anonymous-if-exists' });
+      if (partialUser) {
+        return await this._getSession();
+      }
+      const anonUser = await this.getUser({ or: "anonymous" });
+      return anonUser._internalSession;
     };
 
     if (isBrowserLike() && this._analyticsOptions?.replays?.enabled === true) {
       this._sessionRecorder = new SessionRecorder({
         projectId: this.projectId,
-        getAccessToken: getAnalyticsAccessToken,
         sendBatch: async (body, opts) => {
-          return await this._interface.sendSessionReplayBatch(body, await this._getSession(), opts);
+          return await this._interface.sendSessionReplayBatch(body, await getAnalyticsSession(), opts);
         },
       }, this._analyticsOptions.replays);
       this._sessionRecorder.start();
@@ -567,13 +576,18 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     if (isBrowserLike()) {
       this._eventTracker = new EventTracker({
         projectId: this.projectId,
-        getAccessToken: getAnalyticsAccessToken,
         sendBatch: async (body, opts) => {
-          return await this._interface.sendAnalyticsEventBatch(body, await this._getSession(), opts);
+          return await this._interface.sendAnalyticsEventBatch(body, await getAnalyticsSession(), opts);
         },
       });
       this._eventTracker.start();
     }
+
+    // IF_PLATFORM js-like
+    if (isBrowserLike()) {
+      mountDevTool(this as any);
+    }
+    // END_PLATFORM
   }
 
   protected _initUniqueIdentifier() {
@@ -2676,7 +2690,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       return null;
     }
     const isAnonymous = accessToken.payload.is_anonymous;
-    if (isAnonymous && options.or !== "anonymous") {
+    if (isAnonymous && options.or !== "anonymous-if-exists") {
       return null;
     }
     return {
@@ -3022,7 +3036,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
    * @param options.expiresInMillis Optional duration in milliseconds before the auth attempt expires (default: 2 hours)
    * @param options.maxAttempts Optional maximum number of polling attempts (default: Infinity)
    * @param options.waitTimeMillis Optional time to wait between polling attempts (default: 2 seconds)
-   * @param options.promptLink Optional function to call with the login URL to prompt the user to open the browser
+   * @param options.promptLink Optional function to call with the login URL and code to prompt the user to open the browser
+   * @param options.anonRefreshToken Optional anonymous refresh token from the CLI's token store to associate with this login attempt
    * @returns Result containing either the refresh token or an error
    */
   async promptCliLogin(options: {
@@ -3030,7 +3045,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     expiresInMillis?: number,
     maxAttempts?: number,
     waitTimeMillis?: number,
-    promptLink?: (url: string) => void,
+    promptLink?: (url: string, loginCode: string) => void,
+    anonRefreshToken?: string,
   }): Promise<Result<string, KnownErrors["CliAuthError"] | KnownErrors["CliAuthExpiredError"] | KnownErrors["CliAuthUsedError"]>> {
     // Step 1: Initiate the CLI auth process
     const response = await this._interface.sendClientRequest(
@@ -3042,6 +3058,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         },
         body: JSON.stringify({
           expires_in_millis: options.expiresInMillis,
+          ...(options.anonRefreshToken != null ? { anon_refresh_token: options.anonRefreshToken } : {}),
         }),
       },
       null
@@ -3055,14 +3072,14 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     const pollingCode = initResult.polling_code;
     const loginCode = initResult.login_code;
 
-    // Step 2: Open the browser for the user to authenticate
+    // Step 2: Open the browser for the user to authenticate and display the verification code
     const url = `${options.appUrl}/handler/cli-auth-confirm?login_code=${encodeURIComponent(loginCode)}`;
     if (options.promptLink) {
-      options.promptLink(url);
+      options.promptLink(url, loginCode);
     } else {
+      console.log(`Your verification code: ${loginCode}`);
       console.log(`Please visit the following URL to authenticate:\n${url}`);
     }
-
 
     // Step 3: Poll for the token
     let attempts = 0;
@@ -3442,6 +3459,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
       sendAnalyticsEventBatch: async (body: string, options: { keepalive: boolean }) => {
         return await this._interface.sendAnalyticsEventBatch(body, await this._getSession(), options);
+      },
+      addRequestListener: (listener: RequestListener) => {
+        return this._interface.addRequestListener(listener);
       },
       sendRequest: async (
         path: string,

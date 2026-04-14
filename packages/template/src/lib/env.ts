@@ -77,4 +77,7 @@ export const envVars = {
   get NODE_ENV() {
     return (typeof process !== "undefined" ? process.env.NODE_ENV : undefined) ?? undefined;
   },
+  get NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR() {
+    return (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR : undefined) ?? undefined;
+  },
 };

@@ -215,6 +215,23 @@ A: Use `signed_up_at` (OIDC-style naming) in access tokens and encode it as Unix
 Q: Where should new globally searchable Cmd+K destinations be added in the dashboard?
 A: Add project-level shortcuts to `PROJECT_SHORTCUTS` in `apps/dashboard/src/components/cmdk-commands.tsx` (optionally gated with `requiredApps`), and for app subpages rely on the flattened `appFrontend.navigationItems` command generation in the same file so pages are directly searchable without nested preview navigation.
 
+Q: How should handler URL/shared interface renames be rolled out when template/backend import `@stackframe/stack-shared/dist/*`?
+A: Add the new source entrypoint in `packages/stack-shared/src/interface` and update imports to the new `dist` path, but validate with package typechecks after the stack-shared dist artifacts are refreshed (for example via existing dev watchers), because consumers resolve through `dist/*` entrypoints rather than `src/*`.
+
+Q: How are custom page prompts organized in `page-component-versions.ts` now?
+A: `signIn` and `signUp` share a single `createAuthPagePrompt(type)` helper, and all remaining pages (`signOut`, `emailVerification`, `passwordReset`, `forgotPassword`, `oauthCallback`, `magicLinkCallback`, `accountSettings`, `teamInvitation`, `mfa`, `error`, `onboarding`) now use `createCustomPagePrompt(...)` with concise logical `structure` plus a React `reactExample`.
+
+Q: What makes custom page prompt examples actionable for coding agents?
+A: Avoid abstract placeholders for core flows (for example undefined section components or form primitives). In `page-component-versions.ts`, examples are most useful when they inline the section/form components and state transitions they rely on, while keeping `structure` focused on logical behavior rather than visual layout.
+
+Q: How detailed should the Account Settings custom-page prompt be?
+A: The `accountSettings` prompt should enumerate each top-level page and each subsection's exact responsibilities and API calls (emails, password, passkey, OTP, MFA, notifications, sessions, API keys, payments, settings, team pages, team creation). The example should inline section components and actions rather than referencing undefined placeholders.
+
+Q: What should we do if dashboard typecheck fails with syntax errors in `apps/dashboard/.next/dev/types/routes.d.ts`?
+A: Regenerate Next route types with `pnpm --filter @stackframe/dashboard exec next typegen` (and if needed, delete the corrupted `apps/dashboard/.next/dev/types/routes.d.ts` first). This fixes transient generated-file corruption without changing source code.
+
+Q: What is the current `getCustomPagePrompts` API shape?
+A: `getCustomPagePrompts` now takes no arguments and returns all prompts directly; call it as `getCustomPagePrompts()` instead of passing an SDK package name.
 Q: Which port suffixes are assigned to the two local docs sites?
 A: `docs` (old docs app) uses suffix `26`, and `docs-mintlify` uses suffix `04`. Keep these in sync across `docs/package.json`, `docs-mintlify/package.json`, `apps/dev-launchpad/public/index.html`, and `apps/dashboard/.env.development` (`NEXT_PUBLIC_STACK_DOCS_BASE_URL` points to old docs on `26`).
 

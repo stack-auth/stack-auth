@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/dashboard",
-  "version": "2.8.82",
+  "version": "2.8.83",
   "repository": "https://github.com/stack-auth/stack-auth",
   "private": true,
   "scripts": {

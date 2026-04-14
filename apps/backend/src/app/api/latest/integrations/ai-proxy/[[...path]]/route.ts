@@ -5,6 +5,7 @@ import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { NextRequest } from "next/server";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api";
+const PRODUCTION_PROXY_BASE_URL = "https://api.stack-auth.com/api/latest/integrations/ai-proxy";
 const OPENROUTER_DEFAULT_MODEL = "anthropic/claude-sonnet-4.6";
 
 function sanitizeBody(raw: ArrayBuffer): Uint8Array {
@@ -36,21 +37,42 @@ async function proxyToOpenRouter(req: NextRequest, options: { params: Promise<{ 
   const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY");
   const params = await options.params;
   const subpath = params.path?.join("/") ?? "";
-  const targetUrl = `${OPENROUTER_BASE_URL}/${subpath}${req.nextUrl.search}`;
 
+  const contentType = req.headers.get("Content-Type");
+  const body = req.method !== "GET" && req.method !== "HEAD"
+    ? Buffer.from(sanitizeBody(await req.arrayBuffer()))
+    : undefined;
+
+  if (apiKey === "FORWARD_TO_PRODUCTION") {
+    const targetUrl = `${PRODUCTION_PROXY_BASE_URL}/${subpath}${req.nextUrl.search}`;
+    const headers: Record<string, string> = {};
+    if (contentType) {
+      headers["Content-Type"] = contentType;
+    }
+
+    const response = await fetch(targetUrl, {
+      method: req.method,
+      headers,
+      body,
+    });
+
+    return new Response(response.body, {
+      status: response.status,
+      headers: {
+        "Content-Type": response.headers.get("Content-Type") ?? "application/json",
+        "Cache-Control": "no-cache",
+      },
+    });
+  }
+
+  const targetUrl = `${OPENROUTER_BASE_URL}/${subpath}${req.nextUrl.search}`;
   const headers: Record<string, string> = {
     "Authorization": `Bearer ${apiKey}`,
     "anthropic-version": "2023-06-01",
   };
-
-  const contentType = req.headers.get("Content-Type");
   if (contentType) {
     headers["Content-Type"] = contentType;
   }
-
-  const body = req.method !== "GET" && req.method !== "HEAD"
-    ? Buffer.from(sanitizeBody(await req.arrayBuffer()))
-    : undefined;
 
   const response = await fetch(targetUrl, {
     method: req.method,
