@@ -341,6 +341,16 @@ const DUMMY_SEED_IDS = {
     ameliaSeatPack: '0b696a83-c54e-4a74-ae47-3ac5a4db49e6',
     launchCouncilUpfront: '10766081-37fd-410c-8b2e-1c3351e2d364',
   },
+  invoices: {
+    growthMonthly1: 'e1a2b3c4-d5e6-4f78-9a0b-1c2d3e4f5a60',
+    growthMonthly2: 'f2b3c4d5-e6f7-4890-ab1c-2d3e4f5a6b71',
+    growthMonthly3: 'a3c4d5e6-f7a8-4901-bc2d-3e4f5a6b7c82',
+    growthMonthly4: 'b4d5e6f7-a8b9-4012-cd3e-4f5a6b7c8d93',
+    growthMonthly5: 'c5e6f7a8-b9c0-4123-de4f-5a6b7c8d9ea4',
+    starterCreation: 'd6f7a8b9-c0d1-4234-ef50-6a7b8c9d0fb5',
+    legacyPaid1: 'e7a8b9c0-d1e2-4345-a061-7b8c9d0e1ac6',
+    legacyPaid2: 'f8b9c0d1-e2f3-4456-b172-8c9d0e1f2bd7',
+  },
   emails: {
     welcomeAmelia: 'af8cfd90-8912-4bf7-93a7-20ff2be54767',
     passkeyMilo: 'd534d777-5aa2-4014-a198-6484bbadcbf2',
@@ -986,6 +996,116 @@ async function seedDummyTransactions(options: TransactionsSeedOptions) {
         creationSource: purchase.creationSource,
         stripePaymentIntentId: purchase.stripePaymentIntentId ?? null,
         createdAt: purchase.createdAt,
+      },
+    });
+  }
+
+  type InvoiceSeed = {
+    id: string,
+    stripeSubscriptionId: string,
+    stripeInvoiceId: string,
+    isSubscriptionCreationInvoice: boolean,
+    status: string,
+    amountTotal: number,
+    createdAt: Date,
+  };
+
+  const invoiceSeeds: InvoiceSeed[] = [
+    {
+      id: DUMMY_SEED_IDS.invoices.growthMonthly1,
+      stripeSubscriptionId: 'sub_growth_designsystems',
+      stripeInvoiceId: 'in_growth_ds_001',
+      isSubscriptionCreationInvoice: true,
+      status: 'paid',
+      amountTotal: 12900,
+      createdAt: daysAgo(25, 10),
+    },
+    {
+      id: DUMMY_SEED_IDS.invoices.growthMonthly2,
+      stripeSubscriptionId: 'sub_growth_designsystems',
+      stripeInvoiceId: 'in_growth_ds_002',
+      isSubscriptionCreationInvoice: false,
+      status: 'paid',
+      amountTotal: 12900,
+      createdAt: daysAgo(18, 10),
+    },
+    {
+      id: DUMMY_SEED_IDS.invoices.growthMonthly3,
+      stripeSubscriptionId: 'sub_growth_designsystems',
+      stripeInvoiceId: 'in_growth_ds_003',
+      isSubscriptionCreationInvoice: false,
+      status: 'paid',
+      amountTotal: 12900,
+      createdAt: daysAgo(11, 10),
+    },
+    {
+      id: DUMMY_SEED_IDS.invoices.growthMonthly4,
+      stripeSubscriptionId: 'sub_growth_designsystems',
+      stripeInvoiceId: 'in_growth_ds_004',
+      isSubscriptionCreationInvoice: false,
+      status: 'paid',
+      amountTotal: 12900,
+      createdAt: daysAgo(4, 10),
+    },
+    {
+      id: DUMMY_SEED_IDS.invoices.growthMonthly5,
+      stripeSubscriptionId: 'sub_growth_designsystems',
+      stripeInvoiceId: 'in_growth_ds_005',
+      isSubscriptionCreationInvoice: false,
+      status: 'succeeded',
+      amountTotal: 15900,
+      createdAt: daysAgo(1, 14),
+    },
+    {
+      id: DUMMY_SEED_IDS.invoices.starterCreation,
+      stripeSubscriptionId: 'sub_starter_prototype',
+      stripeInvoiceId: 'in_starter_proto_001',
+      isSubscriptionCreationInvoice: true,
+      status: 'paid',
+      amountTotal: 0,
+      createdAt: daysAgo(20, 8),
+    },
+    {
+      id: DUMMY_SEED_IDS.invoices.legacyPaid1,
+      stripeSubscriptionId: 'sub_legacy_enterprise_alpha',
+      stripeInvoiceId: 'in_legacy_ent_001',
+      isSubscriptionCreationInvoice: true,
+      status: 'paid',
+      amountTotal: 49900,
+      createdAt: daysAgo(28, 9),
+    },
+    {
+      id: DUMMY_SEED_IDS.invoices.legacyPaid2,
+      stripeSubscriptionId: 'sub_legacy_enterprise_alpha',
+      stripeInvoiceId: 'in_legacy_ent_002',
+      isSubscriptionCreationInvoice: false,
+      status: 'paid',
+      amountTotal: 49900,
+      createdAt: daysAgo(14, 9),
+    },
+  ];
+
+  for (const invoice of invoiceSeeds) {
+    await prisma.subscriptionInvoice.upsert({
+      where: {
+        tenancyId_id: {
+          tenancyId,
+          id: invoice.id,
+        },
+      },
+      update: {
+        status: invoice.status,
+        amountTotal: invoice.amountTotal,
+      },
+      create: {
+        tenancyId,
+        id: invoice.id,
+        stripeSubscriptionId: invoice.stripeSubscriptionId,
+        stripeInvoiceId: invoice.stripeInvoiceId,
+        isSubscriptionCreationInvoice: invoice.isSubscriptionCreationInvoice,
+        status: invoice.status,
+        amountTotal: invoice.amountTotal,
+        createdAt: invoice.createdAt,
       },
     });
   }

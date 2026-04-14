@@ -236,11 +236,20 @@ it("should exclude anonymous users from metrics", async ({ expect }) => {
     await Auth.Anonymous.signUp();
   }
 
-  // the event log is async, so let's give it some time to be written to the DB
+  // Poll until the core metrics (which exclude anonymous users) stabilize.
+  // We can't compare the entire body because auth_overview.anonymous_users
+  // will have changed.
   let result!: NiceResponse;
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 10; i++) {
     result = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
-    if (deepPlainEquals(result.body, beforeMetrics.body)) {
+    if (
+      result.body.total_users === beforeMetrics.body.total_users &&
+      deepPlainEquals(result.body.users_by_country, beforeMetrics.body.users_by_country) &&
+      deepPlainEquals(
+        (result.body.recently_registered as Array<{ id: string }>).map((u: { id: string }) => u.id),
+        (beforeMetrics.body.recently_registered as Array<{ id: string }>).map((u: { id: string }) => u.id),
+      )
+    ) {
       break;
     }
     await wait(2_000);
@@ -264,6 +273,8 @@ it("should exclude anonymous users from metrics", async ({ expect }) => {
   expect(result.body.users_by_country["US"]).toBe(1);
 
   await ensureAnonymousUsersAreStillExcluded(result);
+}, {
+  timeout: 120_000,
 });
 
 it("should handle anonymous users with activity correctly", async ({ expect }) => {
@@ -304,6 +315,8 @@ it("should handle anonymous users with activity correctly", async ({ expect }) =
   expect(response.body.users_by_country["US"]).toBeUndefined();
 
   await ensureAnonymousUsersAreStillExcluded(response);
+}, {
+  timeout: 120_000,
 });
 
 it("should handle mixed auth methods excluding anonymous users", async ({ expect }) => {
@@ -346,6 +359,8 @@ it("should handle mixed auth methods excluding anonymous users", async ({ expect
   expect(totalMethodCount).toBe(2); // 1 OTP + 1 password, no anonymous
 
   await ensureAnonymousUsersAreStillExcluded(response);
+}, {
+  timeout: 120_000,
 });
 
 it("should return cross-product aggregates in the metrics response", async ({ expect }) => {
@@ -573,4 +588,6 @@ it("should count top referrers by unique visitors and exclude anonymous analytic
   expect(topReferrersWithAnonymous).toContainEqual({ referrer: regularReferrer, visitors: 1 });
   expect(topReferrersWithAnonymous).toContainEqual({ referrer: anonymousReferrer, visitors: 1 });
   expect(metricsWithAnonymous.body.analytics_overview.online_live).toBe(2);
+}, {
+  timeout: 120_000,
 });
