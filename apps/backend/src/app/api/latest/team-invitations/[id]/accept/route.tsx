@@ -1,5 +1,5 @@
 import { teamMembershipsCrudHandlers } from "@/app/api/latest/team-memberships/crud";
-import { getItemQuantityForCustomer } from "@/lib/payments";
+import { getItemQuantityForCustomer } from "@/lib/payments/customer-data";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { globalPrismaClient } from "@/prisma-client";
 import { VerificationCodeType } from "@/generated/prisma/client";
@@ -113,7 +113,7 @@ export const POST = createSmartRouteHandler({
         });
         const maxDashboardAdmins = await getItemQuantityForCustomer({
           prisma: tx,
-          tenancy: auth.tenancy,
+          tenancyId: auth.tenancy.id,
           customerId: invitationData.team_id,
           itemId: "dashboard_admins",
           customerType: "team",

@@ -1,4 +1,4 @@
-import { ensureProductIdOrInlineProduct, getOwnedProductsForCustomer } from "@/lib/payments";
+import { ensureProductIdOrInlineProduct, getOwnedProductsForCustomerLegacy } from "@/lib/payments";
 import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -90,7 +90,7 @@ export const DELETE = createSmartRouteHandler({
         );
       }
 
-      const ownedProducts = await getOwnedProductsForCustomer({
+      const ownedProducts = await getOwnedProductsForCustomerLegacy({
         prisma,
         tenancy: auth.tenancy,
         customerType: params.customer_type,

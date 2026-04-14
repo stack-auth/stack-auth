@@ -1,6 +1,6 @@
 import { teamMembershipsCrudHandlers } from "@/app/api/latest/team-memberships/crud";
 import { sendEmailFromDefaultTemplate } from "@/lib/emails";
-import { getItemQuantityForCustomer } from "@/lib/payments";
+import { getItemQuantityForCustomer } from "@/lib/payments/customer-data";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createVerificationCodeHandler } from "@/route-handlers/verification-code-handler";
@@ -88,7 +88,7 @@ export const teamInvitationCodeHandler = createVerificationCodeHandler({
       }
       const maxDashboardAdmins = await getItemQuantityForCustomer({
         prisma,
-        tenancy,
+        tenancyId: tenancy.id,
         customerId: data.team_id,
         itemId: "dashboard_admins",
         customerType: "team",
