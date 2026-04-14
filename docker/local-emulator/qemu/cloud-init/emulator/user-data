@@ -58,7 +58,7 @@ write_files:
       #!/bin/bash
       set -euo pipefail
 
-      mkdir -p /mnt/stack-runtime /run/stack-auth
+      mkdir -p /mnt/stack-runtime /run/stack-auth /var/lib/stack-auth
       runtime_device="$(readlink -f /dev/disk/by-label/STACKCFG)"
       mountpoint -q /mnt/stack-runtime || mount -o ro "$runtime_device" /mnt/stack-runtime
 
@@ -66,6 +66,24 @@ write_files:
       source /mnt/stack-runtime/runtime.env
       source /mnt/stack-runtime/base.env
       set +a
+
+      # Generate and persist the internal-project keys on first boot; reuse
+      # across container restarts so the dashboard keeps its internal-project
+      # session. Reset via `stack emulator reset`.
+      #
+      # pck: used by stack-cli to auth against /api/v1/internal/local-emulator/project
+      # ssk/sak: required by the emulator's own dashboard (StackServerApp
+      #   construction throws without them). Not used by user-app flows; the
+      #   /local-emulator/project route mints separate per-project credentials.
+      umask 077
+      for key in internal-pck internal-ssk internal-sak; do
+        if [ ! -s "/var/lib/stack-auth/$key" ]; then
+          openssl rand -hex 32 > "/var/lib/stack-auth/$key"
+        fi
+      done
+      INTERNAL_PCK="$(cat /var/lib/stack-auth/internal-pck)"
+      INTERNAL_SSK="$(cat /var/lib/stack-auth/internal-ssk)"
+      INTERNAL_SAK="$(cat /var/lib/stack-auth/internal-sak)"
 
       # Container-local dependencies run on localhost. Host-only development
       # services (such as the OAuth mock server) are reachable via the QEMU
@@ -78,6 +96,9 @@ write_files:
         # Static vars from base config and runtime (e.g. API keys, feature flags)
         cat /mnt/stack-runtime/base.env
         cat /mnt/stack-runtime/runtime.env
+        printf 'STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY=%s\n' "$INTERNAL_PCK"
+        printf 'STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY=%s\n' "$INTERNAL_SSK"
+        printf 'STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY=%s\n' "$INTERNAL_SAK"
 
         # Computed vars — depend on port prefix or deps host
         # Host-side ports (for browser URLs — browser runs on host, not in VM)
@@ -108,7 +129,10 @@ write_files:
       STACK_CLICKHOUSE_URL=http://${DEPS_HOST}:8123
       STACK_EMAIL_MONITOR_VERIFICATION_CALLBACK_URL=http://localhost:${HP_DASHBOARD}/handler/email-verification
       STACK_EMAIL_MONITOR_INBUCKET_API_URL=http://${DEPS_HOST}:9001
-      STACK_OAUTH_MOCK_URL=http://${HOST_SERVICES_HOST}:${P}14
+      STACK_OAUTH_MOCK_URL=http://localhost:${P}14
+      STACK_FREESTYLE_API_ENDPOINT=http://${DEPS_HOST}:8180
+      STACK_STRIPE_MOCK_PORT=12111
+      NEXT_PUBLIC_STACK_STRIPE_PUBLISHABLE_KEY=pk_test_mock_publishable_key_for_local_emulator
       BACKEND_PORT=${P}02
       DASHBOARD_PORT=${P}01
       COMPUTED
@@ -135,20 +159,54 @@ write_files:
 
       /usr/local/bin/mount-host-fs
       /usr/local/bin/render-stack-env
+
+      # Publish the internal publishable client key to the host via 9p so the
+      # stack-cli can authenticate its bootstrap call to
+      # /api/v1/internal/local-emulator/project.
+      set -a
+      source /mnt/stack-runtime/runtime.env
+      set +a
+      if [ -n "${STACK_EMULATOR_VM_DIR_HOST:-}" ] && [ -s /var/lib/stack-auth/internal-pck ]; then
+        install -m 0600 /var/lib/stack-auth/internal-pck \
+          "/host${STACK_EMULATOR_VM_DIR_HOST}/internal-pck"
+      fi
+
       docker rm -f stack >/dev/null 2>&1 || true
-      exec docker run \
-        --rm \
-        --name stack \
-        --network host \
-        --add-host host.docker.internal:host-gateway \
-        --env-file /run/stack-auth/local-emulator.env \
-        -v stack-postgres-data:/data/postgres \
-        -v stack-redis-data:/data/redis \
-        -v stack-clickhouse-data:/data/clickhouse \
-        -v stack-minio-data:/data/minio \
-        -v stack-inbucket-data:/data/inbucket \
-        -v /host:/host \
-        stack-local-emulator
+
+      # Mirror container stdout/stderr to a host-visible log for debugging.
+      # The container already bind-mounts /host:/host, so we reuse that path.
+      # Falls back to stdout (captured by systemd-journald) when no host log is set.
+      if [ -n "${STACK_EMULATOR_VM_DIR_HOST:-}" ]; then
+        host_log="/host${STACK_EMULATOR_VM_DIR_HOST}/stack.log"
+        : > "$host_log" 2>/dev/null || true
+        exec docker run \
+          --rm \
+          --name stack \
+          --network host \
+          --add-host host.docker.internal:host-gateway \
+          --env-file /run/stack-auth/local-emulator.env \
+          -v stack-postgres-data:/data/postgres \
+          -v stack-redis-data:/data/redis \
+          -v stack-clickhouse-data:/data/clickhouse \
+          -v stack-minio-data:/data/minio \
+          -v stack-inbucket-data:/data/inbucket \
+          -v /host:/host \
+          stack-local-emulator 2>&1 | tee -a "$host_log"
+      else
+        exec docker run \
+          --rm \
+          --name stack \
+          --network host \
+          --add-host host.docker.internal:host-gateway \
+          --env-file /run/stack-auth/local-emulator.env \
+          -v stack-postgres-data:/data/postgres \
+          -v stack-redis-data:/data/redis \
+          -v stack-clickhouse-data:/data/clickhouse \
+          -v stack-minio-data:/data/minio \
+          -v stack-inbucket-data:/data/inbucket \
+          -v /host:/host \
+          stack-local-emulator
+      fi
 
   - path: /usr/local/bin/wait-for-deps
     permissions: '0755'
@@ -231,7 +289,7 @@ write_files:
       NEXT_PUBLIC_SERVER_STACK_DASHBOARD_URL=http://127.0.0.1:8101
       NEXT_PUBLIC_STACK_SVIX_SERVER_URL=http://localhost:8071
       NEXT_PUBLIC_STACK_PORT_PREFIX=81
-      STACK_CLICKHOUSE_DATABASE=analytics
+      STACK_CLICKHOUSE_DATABASE=default
       BACKEND_PORT=8102
       DASHBOARD_PORT=8101
 
@@ -369,10 +427,23 @@ write_files:
         log "Skipping smoke test: build arch is arm64 and cross-arch TCG can't reliably run the backend."
       else
         log "Running smoke test on slim image..."
+        # build.env sets NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR=true, which makes
+        # docker/server/entrypoint.sh require the three internal SEED keys.
+        # At real-VM boot those come from render-stack-env via
+        # /run/stack-auth/local-emulator.env, but that path doesn't run during
+        # the build-time smoke test. Mint throwaway hex keys for this container
+        # only; they must be hex because entrypoint.sh also validates that
+        # before the internal ApiKeySet bootstrap SQL.
+        SMOKE_PCK="$(openssl rand -hex 32)"
+        SMOKE_SSK="$(openssl rand -hex 32)"
+        SMOKE_SAK="$(openssl rand -hex 32)"
         docker run --rm --name smoke-test \
           --network host \
           --env-file /etc/stack-build.env \
           --env-file /etc/stack-build-computed.env \
+          -e STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY="$SMOKE_PCK" \
+          -e STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY="$SMOKE_SSK" \
+          -e STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY="$SMOKE_SAK" \
           -e STACK_SKIP_MIGRATIONS=true \
           -e STACK_SKIP_SEED_SCRIPT=true \
           -e STACK_RUNTIME_WORK_DIR=/app \
