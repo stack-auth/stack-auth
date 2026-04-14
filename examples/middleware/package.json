@@ -4,7 +4,7 @@
   "repository": "https://github.com/stack-auth/stack-auth",
   "private": true,
   "scripts": {
-    "dev": "cd ../.. && node packages/stack-cli/dist/index.js emulator run --config-file examples/middleware/stack.config.ts 'cd examples/middleware && next dev --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}12'",
+    "dev": "next dev --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}12",
     "build": "next build",
     "start": "next start --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}12",
     "lint": "next lint",
