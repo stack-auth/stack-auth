@@ -962,40 +962,9 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     expect(groupedTableBInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
   });
 
-  test("lfold registers upstream trigger in init and deregisters in delete", () => {
-    const fromTable = declareStoredTable<{ value: number, team: string }>({ tableId: "users-lfold-lifecycle" });
-    const groupedTable = declareGroupByTable({
-      tableId: "users-lfold-lifecycle-by-team",
-      fromTable,
-      groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
-    });
-    const sortedTable = declareSortTable({
-      tableId: "users-lfold-lifecycle-sorted",
-      fromTable: groupedTable,
-      getSortKey: mapper(`(("rowData"->>'value')::int) AS "newSortKey"`),
-      compareSortKeys: (a, b) => expr(`(((${a.sql}) #>> '{}')::int) - (((${b.sql}) #>> '{}')::int)`),
-    });
-    const sortedTableInstrumentation = instrumentTriggerLifecycle(sortedTable);
-    const lFoldTable = declareLFoldTable({
-      tableId: "users-lfold-lifecycle-folded",
-      fromTable: sortedTableInstrumentation.table,
-      initialState: expr(`'0'::jsonb`),
-      reducer: mapper(`
-        "oldState" AS "newState",
-        jsonb_build_array("oldRowData") AS "newRowsData"
-      `),
-    });
-
-    expect(sortedTableInstrumentation.getStats()).toEqual({ registerCalls: 0, deregisterCalls: 0, activeRegistrations: 0 });
-    lFoldTable.init();
-    expect(sortedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
-    lFoldTable.delete();
-    expect(sortedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 1, activeRegistrations: 0 });
-    lFoldTable.init();
-    expect(sortedTableInstrumentation.getStats()).toEqual({ registerCalls: 2, deregisterCalls: 1, activeRegistrations: 1 });
-    lFoldTable.delete();
-    expect(sortedTableInstrumentation.getStats()).toEqual({ registerCalls: 2, deregisterCalls: 2, activeRegistrations: 0 });
-  });
+  // "lfold registers upstream trigger in init and deregisters in delete" was
+  // removed: with topological trigger dispatch, triggers register eagerly in the
+  // constructor rather than lazily in init()/delete().
 
   test("timefold registers upstream trigger in init and deregisters in delete", () => {
     const fromTable = declareStoredTable<{ value: number, team: string }>({ tableId: "users-timefold-lifecycle" });
