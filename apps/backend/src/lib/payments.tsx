@@ -1,13 +1,12 @@
-import { getPrismaClientForTenancy, PrismaClientTransaction } from "@/prisma-client";
-import { ensureUserTeamPermissionExists } from "@/lib/request-checks";
+import { CustomerType, PurchaseCreationSource, SubscriptionStatus } from "@/generated/prisma/client";
 import { bulldozerWriteOneTimePurchase, bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
-import { PurchaseCreationSource, SubscriptionStatus } from "@/generated/prisma/client";
-import { CustomerType } from "@/generated/prisma/client";
+import { ensureUserTeamPermissionExists } from "@/lib/request-checks";
+import { getPrismaClientForTenancy, PrismaClientTransaction } from "@/prisma-client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import type { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import type { inlineProductSchema, productSchema, productSchemaWithMetadata } from "@stackframe/stack-shared/dist/schema-fields";
 import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currency-constants";
-import { FAR_FUTURE_DATE, addInterval, getIntervalsElapsed } from "@stackframe/stack-shared/dist/utils/dates";
+import { addInterval, FAR_FUTURE_DATE, getIntervalsElapsed } from "@stackframe/stack-shared/dist/utils/dates";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, getOrUndefined, has, typedEntries, typedFromEntries, typedKeys, typedValues } from "@stackframe/stack-shared/dist/utils/objects";
@@ -15,8 +14,8 @@ import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import Stripe from "stripe";
 import * as yup from "yup";
-import { Tenancy } from "./tenancies";
 import { getStripeForAccount } from "./stripe";
+import { Tenancy } from "./tenancies";
 
 const DEFAULT_PRODUCT_START_DATE = new Date("1973-01-01T12:00:00.000Z"); // monday
 const stripeSecretKey = getEnvVariable("STACK_STRIPE_SECRET_KEY", "");
@@ -741,6 +740,8 @@ export async function grantProductToCustomer(options: {
     quantity,
   });
 
+  const now = new Date();
+
   if (conflictingProductLineSubscriptions.length > 0) {
     const conflicting = conflictingProductLineSubscriptions[0];
     if (conflicting.stripeSubscriptionId) {
@@ -756,7 +757,8 @@ export async function grantProductToCustomer(options: {
         },
         data: {
           status: SubscriptionStatus.canceled,
-          currentPeriodEnd: new Date(),
+          currentPeriodEnd: now,
+          endedAt: now,
           cancelAtPeriodEnd: true,
         },
       });
@@ -800,8 +802,8 @@ export async function grantProductToCustomer(options: {
       priceId,
       product,
       quantity,
-      currentPeriodStart: new Date(),
-      currentPeriodEnd: addInterval(new Date(), selectedPrice.interval!),
+      currentPeriodStart: now,
+      currentPeriodEnd: addInterval(now, selectedPrice.interval!),
       cancelAtPeriodEnd: false,
       creationSource,
     },

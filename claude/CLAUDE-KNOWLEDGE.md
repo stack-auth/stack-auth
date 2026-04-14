@@ -368,3 +368,9 @@ A: Remove legacy `div[data-apps-sidebar-search='true']` nodes before adding the 
 
 Q: What caused the Explore Apps hover layout shift?
 A: The app link wrapper in `docs-mintlify/snippets/docs-apps-home-grid.jsx` used `hover:-translate-y-0.5`, which makes tiles physically move on hover and looks like layout jank. Removing the translate/transform from the wrapper keeps hover effects without perceived shifting.
+
+Q: Why can "grant premium after base in same product line" still show old + new item quantities (5 instead of 3)?
+A: Canceling the old subscription only enqueues the subscription-end timefold event; without processing due queue work in the same request, reads can still see both sub-start grants. In `grantProductToCustomer`, set cancellation `endedAt/currentPeriodEnd` to an immediate-past timestamp and call `SELECT public.bulldozer_timefold_process_queue()` when a conflicting product-line subscription was canceled to make revocation visible immediately.
+
+Q: Should a TimeFold input row edit require calling `bulldozer_timefold_process_queue()` to see immediate effects?
+A: No. The correct fix is in `declareTimeFoldTable` trigger recomputation: use a recomputation cutoff of `GREATEST(now(), lastProcessedAt)` so row-change-trigger recomputes the edited row's state chain through all due timestamps up to now. This makes immediate subscription-end/item-expiry effects visible without manual queue processing in business logic.

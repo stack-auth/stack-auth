@@ -1,8 +1,8 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import type { Table } from "..";
-import { attachRowChangeTriggerMetadata, normalizeRowChangeTrigger } from "../row-change-trigger-dispatch";
 import type { RegisteredRowChangeTrigger } from "../row-change-trigger-dispatch";
-import type { Json, RowData, RowIdentifier, SqlExpression, SqlMapper, SqlStatement, TableId, Timestamp } from "../utilities";
+import { attachRowChangeTriggerMetadata, normalizeRowChangeTrigger } from "../row-change-trigger-dispatch";
+import type { Json, RowData, RowIdentifier, SqlExpression, SqlMapper, TableId, Timestamp } from "../utilities";
 import {
   getStorageEnginePath,
   getTablePath,
@@ -69,7 +69,7 @@ export function declareTimeFoldTable<
         FROM "BulldozerTimeFoldMetadata"
         WHERE "key" = 'singleton'
       ),
-      now()
+      '2000-01-01T00:00:00Z'::timestamptz
     )
   `;
   const createApplyChangesStatements = (normalizedChangesTable: SqlExpression<string>) => {

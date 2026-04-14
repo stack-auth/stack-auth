@@ -1,6 +1,7 @@
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { it } from "../../../../../helpers";
-import { Auth, niceBackendFetch, Payments, Project, Team, User } from "../../../../backend-helpers";
+import { Auth, niceBackendFetch, Payments, Project, Team } from "../../../../backend-helpers";
 
 async function configureProduct(config: any) {
   await Project.updateConfig({
@@ -1375,7 +1376,7 @@ it("listing products should support cursor pagination", async ({ expect }) => {
   expect(combinedItems).toEqual(allResponse.body.items);
 });
 
-it("should immediately cancel existing subscriptions when granting a product of same catalog", async ({ expect }) => {
+it("should cancel existing subscriptions immediately when granting a product of same catalog", async ({ expect }) => {
   await Project.createAndSwitch();
   await Payments.setup();
   await configureProduct({
@@ -1460,6 +1461,9 @@ it("should immediately cancel existing subscriptions when granting a product of 
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
+
+  // wait for timefold to process and catch up with lastProcessedAt; this usually takes <1 second
+  await wait(2000);
 
   const itemQuantities = await niceBackendFetch(`/api/v1/payments/items/user/${userId}/i1`, {
     accessType: "client",
