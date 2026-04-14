@@ -1103,11 +1103,12 @@ model CliAuthAttempt {
   tenancyId String @db.Uuid
 
   id           String    @default(uuid()) @db.Uuid
-  pollingCode  String    @unique
-  loginCode    String    @unique
-  refreshToken String?
-  expiresAt    DateTime
-  usedAt       DateTime?
+  pollingCode      String    @unique
+  loginCode        String    @unique
+  refreshToken     String?
+  anonRefreshToken String?
+  expiresAt        DateTime
+  usedAt           DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

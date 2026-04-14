@@ -357,19 +357,23 @@ write_files:
       log "init-services done (${elapsed}s)."
 
       log "Running migrations..."
-      # --no-opt / --no-wasm-tier-up keep V8 off TurboFan/Maglev and pin
-      # Prisma's wasm to Liftoff; without them cross-arch TCG mistranslates
-      # JIT-emitted arm64 (SIGTRAP on migrate) and V8's wasm tier-up trips
-      # an InnerPointerToCodeCache check deep in the heap. Both flags are
-      # no-ops under KVM, and must be passed on node's CLI (NODE_OPTIONS
-      # rejects them).
+      # Cross-arch TCG mistranslates V8's JIT-emitted arm64, and V8's wasm
+      # tier-up path trips an InnerPointerToCodeCache check deep in the heap
+      # (Runtime_WasmTriggerTierUp → StackFrameIterator::Advance crashes
+      # when Wasm code has been freed while a frame still references it).
+      # --no-opt            keeps JS off TurboFan/Maglev
+      # --no-wasm-tier-up   keeps Wasm on Liftoff (no TurboFan)
+      # --no-wasm-dynamic-tiering suppresses the tier-up decision runtime call
+      # --no-wasm-code-gc   keeps Wasm code alive across stack walks
+      # All four are no-ops under KVM, and must be passed on node's CLI
+      # (NODE_OPTIONS rejects them).
       migrate_log="$(mktemp)"
       set +e
       docker exec \
         --env-file /etc/stack-build.env \
         --env-file /etc/stack-build-computed.env \
         stack-build-init \
-        sh -c 'cd /app/apps/backend && node --no-opt --no-wasm-tier-up dist/db-migrations.mjs migrate && node --no-opt --no-wasm-tier-up dist/db-migrations.mjs seed' \
+        sh -c 'cd /app/apps/backend && node --no-opt --no-wasm-tier-up --no-wasm-dynamic-tiering --no-wasm-code-gc dist/db-migrations.mjs migrate && node --no-opt --no-wasm-tier-up --no-wasm-dynamic-tiering --no-wasm-code-gc dist/db-migrations.mjs seed' \
         > "$migrate_log" 2>&1
       migrate_status=$?
       set -e
