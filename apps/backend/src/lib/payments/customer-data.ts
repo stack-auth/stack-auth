@@ -11,7 +11,7 @@ import { quoteSqlStringLiteral } from "@/lib/bulldozer/db/utilities";
 import { ensureCustomerExists } from "@/lib/payments";
 import type { PrismaClientTransaction } from "@/prisma-client";
 import { createPaymentsSchema } from "./schema/index";
-import type { CustomerType, ItemQuantityRow, OwnedProductsRow } from "./schema/types";
+import type { CustomerType, ItemQuantityRow, OwnedProductsRow, SubscriptionMapRow, SubscriptionRow } from "./schema/types";
 
 const schema = createPaymentsSchema();
 
@@ -121,4 +121,27 @@ export async function getItemQuantityForCustomer(options: {
     customerId: options.customerId,
   });
   return quantities[options.itemId] ?? 0;
+}
+
+
+// ── Per-customer subscription map ─────────────────────────────────────
+
+/**
+ * Returns a map of subscriptionId → SubscriptionRow for a customer.
+ * Reads from the subscriptions LFold (O(1) per customer, no full table scan).
+ */
+export async function getSubscriptionMapForCustomer(options: {
+  prisma: PrismaClientTransaction,
+  tenancyId: string,
+  customerType: CustomerType,
+  customerId: string,
+}): Promise<Record<string, SubscriptionRow>> {
+  const row = await getLatestRow<SubscriptionMapRow>(
+    options.prisma,
+    schema.subscriptionMapByCustomer,
+    options.tenancyId,
+    options.customerType,
+    options.customerId,
+  );
+  return row?.subscriptions ?? {};
 }
