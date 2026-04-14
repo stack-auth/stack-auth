@@ -225,7 +225,7 @@ export default function PageClient() {
   return (
     <AppEnabledGuard appId="analytics">
       <PageLayout fillWidth noPadding>
-        <div className="flex h-[calc(100vh-4.5rem)] max-h-[calc(100vh-4.5rem)] flex-1 min-h-0 overflow-hidden lg:-mx-2 dark:h-full dark:max-h-full">
+        <div className="flex h-full flex-1 min-h-0 overflow-hidden lg:-mx-2">
           {/* Left sidebar — hidden on mobile */}
           <div className="hidden lg:flex h-full w-48 flex-shrink-0 flex-col overflow-hidden border-r border-border/50 pl-2">
             <div className="flex-1 overflow-auto px-4 py-4">
