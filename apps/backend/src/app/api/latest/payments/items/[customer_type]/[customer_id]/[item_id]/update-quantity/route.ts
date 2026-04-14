@@ -1,5 +1,6 @@
-import { ensureCustomerExists, getItemQuantityForCustomer } from "@/lib/payments";
+import { ensureCustomerExists } from "@/lib/payments";
 import { bulldozerWriteItemQuantityChange } from "@/lib/payments/bulldozer-dual-write";
+import { getItemQuantityForCustomer } from "@/lib/payments/customer-data";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -97,7 +98,7 @@ export const POST = createSmartRouteHandler({
     await retryTransaction(prisma, async (tx) => {
       const totalQuantity = await getItemQuantityForCustomer({
         prisma: tx,
-        tenancy,
+        tenancyId: tenancy.id,
         itemId: req.params.item_id,
         customerId: req.params.customer_id,
         customerType: req.params.customer_type,

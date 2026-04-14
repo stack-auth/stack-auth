@@ -186,7 +186,7 @@ function addWhenRepeatedItemWindowTransactions(options: {
   return entries;
 }
 
-export async function getItemQuantityForCustomer(options: {
+export async function getItemQuantityForCustomerLegacy(options: {
   prisma: PrismaClientTransaction,
   tenancy: Tenancy,
   itemId: string,
@@ -827,7 +827,7 @@ export type OwnedProduct = {
   },
 };
 
-export async function getOwnedProductsForCustomer(options: {
+export async function getOwnedProductsForCustomerLegacy(options: {
   prisma: PrismaClientTransaction,
   tenancy: Tenancy,
   customerType: "user" | "team" | "custom",

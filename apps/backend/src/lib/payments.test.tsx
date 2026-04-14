@@ -1,7 +1,7 @@
 import type { PrismaClientTransaction } from '@/prisma-client';
 import { KnownErrors } from '@stackframe/stack-shared';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { getItemQuantityForCustomer, getSubscriptions, validatePurchaseSession } from './payments';
+import { getItemQuantityForCustomerLegacy, getSubscriptions, validatePurchaseSession } from './payments';
 import type { Tenancy } from './tenancies';
 
 function createMockPrisma(overrides: Partial<PrismaClientTransaction> = {}): PrismaClientTransaction {
@@ -77,7 +77,7 @@ describe('getItemQuantityForCustomer - manual changes (no subscription)', () => 
       },
     } as any);
 
-    const qty = await getItemQuantityForCustomer({
+    const qty = await getItemQuantityForCustomerLegacy({
       prisma,
       tenancy,
       itemId,
@@ -119,7 +119,7 @@ describe('getItemQuantityForCustomer - manual changes (no subscription)', () => 
       },
     } as any);
 
-    const qty = await getItemQuantityForCustomer({
+    const qty = await getItemQuantityForCustomerLegacy({
       prisma,
       tenancy,
       itemId,
@@ -171,7 +171,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
       },
     } as any);
 
-    const qty = await getItemQuantityForCustomer({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
+    const qty = await getItemQuantityForCustomerLegacy({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
     // 3 per period * subscription quantity 2 => 6 within period
     expect(qty).toBe(6);
     vi.useRealTimers();
@@ -211,7 +211,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
     } as any);
 
     // From 2025-02-01 to 2025-02-15: elapsed weeks = 2 → occurrences = 3 → 3 * 4 = 12
-    const qty = await getItemQuantityForCustomer({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
+    const qty = await getItemQuantityForCustomerLegacy({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
     // Accumulate 3 occurrences * 4 each within current period => 12
     expect(qty).toBe(12);
     vi.useRealTimers();
@@ -251,7 +251,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
     } as any);
 
     // From 2025-02-01 to 2025-02-15: elapsed weeks = 2 → occurrences = 3 → 3 * 4 = 12
-    const qty = await getItemQuantityForCustomer({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
+    const qty = await getItemQuantityForCustomerLegacy({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
     // Accumulate 3 occurrences * 4 each within current period => 12
     expect(qty).toBe(12);
     vi.useRealTimers();
@@ -291,7 +291,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
       },
     } as any);
 
-    const qty = await getItemQuantityForCustomer({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
+    const qty = await getItemQuantityForCustomerLegacy({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
     // when-repeated: single grant per billing period regardless of repeat windows => 7
     expect(qty).toBe(7);
     vi.useRealTimers();
@@ -330,7 +330,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
       },
     } as any);
 
-    const qty = await getItemQuantityForCustomer({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
+    const qty = await getItemQuantityForCustomerLegacy({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
     // Persistent grant: 2 per period * subscription quantity 3 => 6
     expect(qty).toBe(6);
     vi.useRealTimers();
@@ -369,12 +369,12 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
 
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2025-02-02T00:00:00.000Z'));
-    const qtyEarly = await getItemQuantityForCustomer({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
+    const qtyEarly = await getItemQuantityForCustomerLegacy({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
     // when-repeated: within the period, base stays constant at any instant => 7
     expect(qtyEarly).toBe(7);
 
     vi.setSystemTime(new Date('2025-02-23T00:00:00.000Z'));
-    const qtyLate = await getItemQuantityForCustomer({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
+    const qtyLate = await getItemQuantityForCustomerLegacy({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
     // Still within the same period; remains 7 (new weekly window, same base)
     expect(qtyLate).toBe(7);
     vi.useRealTimers();
@@ -419,12 +419,12 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
 
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2025-02-15T00:00:00.000Z'));
-    const qtyFirst = await getItemQuantityForCustomer({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
+    const qtyFirst = await getItemQuantityForCustomerLegacy({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
     // First billing period grant => 7
     expect(qtyFirst).toBe(7);
 
     vi.setSystemTime(new Date('2025-03-15T00:00:00.000Z'));
-    const qtySecond = await getItemQuantityForCustomer({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
+    const qtySecond = await getItemQuantityForCustomerLegacy({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
     // Renewal grants again for next period => 7
     expect(qtySecond).toBe(7);
     vi.useRealTimers();
@@ -471,12 +471,12 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
     vi.useFakeTimers();
     // During week with negative active: 10 - 3 = 7
     vi.setSystemTime(new Date('2025-02-12T00:00:00.000Z'));
-    const qtyDuring = await getItemQuantityForCustomer({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
+    const qtyDuring = await getItemQuantityForCustomerLegacy({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
     expect(qtyDuring).toBe(7);
 
     // Next week (negative expired): resets without renewal => 10
     vi.setSystemTime(new Date('2025-02-20T00:00:00.000Z'));
-    const qtyNextWeek = await getItemQuantityForCustomer({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
+    const qtyNextWeek = await getItemQuantityForCustomerLegacy({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
     expect(qtyNextWeek).toBe(10);
     vi.useRealTimers();
   });
@@ -521,7 +521,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
 
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2025-02-15T00:00:00.000Z'));
-    const qty = await getItemQuantityForCustomer({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
+    const qty = await getItemQuantityForCustomerLegacy({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
     // Persistent: 5 (grant) + 3 (manual +) - 6 (manual -) => 2
     expect(qty).toBe(2);
     vi.useRealTimers();
@@ -574,7 +574,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
       },
     } as any);
 
-    const qty = await getItemQuantityForCustomer({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
+    const qty = await getItemQuantityForCustomerLegacy({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
     expect(qty).toBe(11);
     vi.useRealTimers();
   });
@@ -614,8 +614,8 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
       },
     } as any);
 
-    const qtyA = await getItemQuantityForCustomer({ prisma, tenancy, itemId: itemA, customerId: 'u1', customerType: 'user' });
-    const qtyB = await getItemQuantityForCustomer({ prisma, tenancy, itemId: itemB, customerId: 'u1', customerType: 'user' });
+    const qtyA = await getItemQuantityForCustomerLegacy({ prisma, tenancy, itemId: itemA, customerId: 'u1', customerType: 'user' });
+    const qtyB = await getItemQuantityForCustomerLegacy({ prisma, tenancy, itemId: itemB, customerId: 'u1', customerType: 'user' });
     expect(qtyA).toBe(4);
     expect(qtyB).toBe(8);
     vi.useRealTimers();
@@ -652,7 +652,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
       },
     } as any);
 
-    const qty = await getItemQuantityForCustomer({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
+    const qty = await getItemQuantityForCustomerLegacy({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
     expect(qty).toBe(15);
     vi.useRealTimers();
   });
@@ -688,7 +688,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
       },
     } as any);
 
-    const qty = await getItemQuantityForCustomer({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
+    const qty = await getItemQuantityForCustomerLegacy({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
     expect(qty).toBe(0);
     vi.useRealTimers();
   });
@@ -729,7 +729,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
       },
     } as any);
 
-    const qty = await getItemQuantityForCustomer({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
+    const qty = await getItemQuantityForCustomerLegacy({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
     expect(qty).toBe(8);
     vi.useRealTimers();
   });
@@ -761,7 +761,7 @@ describe('getItemQuantityForCustomer - subscriptions', () => {
       subscription: { findMany: async () => [] },
     } as any);
 
-    const qty = await getItemQuantityForCustomer({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
+    const qty = await getItemQuantityForCustomerLegacy({ prisma, tenancy, itemId, customerId: 'u1', customerType: 'user' });
     expect(qty).toBe(5);
     vi.useRealTimers();
   });
@@ -788,7 +788,7 @@ describe('getItemQuantityForCustomer - one-time purchases', () => {
       },
     } as any);
 
-    const qty = await getItemQuantityForCustomer({
+    const qty = await getItemQuantityForCustomerLegacy({
       prisma,
       tenancy,
       itemId,
@@ -815,7 +815,7 @@ describe('getItemQuantityForCustomer - one-time purchases', () => {
       },
     } as any);
 
-    const qty = await getItemQuantityForCustomer({
+    const qty = await getItemQuantityForCustomerLegacy({
       prisma,
       tenancy,
       itemId,
@@ -1128,7 +1128,7 @@ describe('combined sources - one-time purchases + manual changes + subscriptions
       },
     } as any);
 
-    const qty = await getItemQuantityForCustomer({ prisma, tenancy, itemId, customerId: 'user-1', customerType: 'user' });
+    const qty = await getItemQuantityForCustomerLegacy({ prisma, tenancy, itemId, customerId: 'user-1', customerType: 'user' });
     // OTP: 4 + (2*3)=6 => 10; Manual: +3 -1 => +2; Subscription: 5 * 2 => 10; Total => 22
     expect(qty).toBe(22);
     vi.useRealTimers();

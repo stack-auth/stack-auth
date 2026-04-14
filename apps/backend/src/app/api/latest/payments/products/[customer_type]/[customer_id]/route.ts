@@ -1,4 +1,4 @@
-import { ensureClientCanAccessCustomer, ensureProductIdOrInlineProduct, getOwnedProductsForCustomer, grantProductToCustomer, productToInlineProduct } from "@/lib/payments";
+import { ensureClientCanAccessCustomer, ensureProductIdOrInlineProduct, getOwnedProductsForCustomerLegacy, grantProductToCustomer, productToInlineProduct } from "@/lib/payments";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, clientOrHigherAuthTypeSchema, inlineProductSchema, serverOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -43,7 +43,7 @@ export const GET = createSmartRouteHandler({
       });
     }
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
-    const ownedProducts = await getOwnedProductsForCustomer({
+    const ownedProducts = await getOwnedProductsForCustomerLegacy({
       prisma,
       tenancy: auth.tenancy,
       customerType: params.customer_type,

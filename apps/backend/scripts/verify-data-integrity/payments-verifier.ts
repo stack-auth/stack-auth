@@ -1,5 +1,5 @@
 import type { Tenancy } from "@/lib/tenancies";
-import { getItemQuantityForCustomer } from "@/lib/payments";
+import { getItemQuantityForCustomer } from "@/lib/payments/customer-data";
 import { SubscriptionStatus } from "@/generated/prisma/client";
 import type { getPrismaClientForTenancy } from "@/prisma-client";
 import type { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
@@ -698,7 +698,7 @@ export async function createPaymentsVerifier(options: {
       if (response.quantity !== expectedQuantity) {
         const dbQuantity = await getItemQuantityForCustomer({
           prisma: options.prisma,
-          tenancy: options.tenancy,
+          tenancyId: options.tenancy.id,
           itemId,
           customerId: customer.customerId,
           customerType: customer.customerType,
