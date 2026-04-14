@@ -1,21 +1,21 @@
 "use client";
 
-import { StripeWordmark } from "@/components/stripe-wordmark";
+import { DesignCard, DesignPillToggle } from "@/components/design-components";
 import { DesignAlert } from "@/components/design-components/alert";
 import { DesignButton } from "@/components/design-components/button";
-import { DesignCard, DesignPillToggle } from "@/components/design-components";
 import { DesignSelectorDropdown } from "@/components/design-components/select";
 import { useRouter } from "@/components/router";
+import { StripeWordmark } from "@/components/stripe-wordmark";
 import {
   Alert,
   AlertDescription,
   AlertTitle,
   BrowserFrame,
   Button,
+  cn,
   Switch,
   TooltipProvider,
   Typography,
-  cn,
 } from "@/components/ui";
 import { useUpdateConfig } from "@/lib/config-update";
 import {
@@ -737,7 +737,7 @@ export function ProjectOnboardingWizard(props: {
       <OnboardingPage
         stepKey="payments-setup"
         title="Set up payments"
-        subtitle="Connect Stripe to start accepting payments from your users."
+        subtitle="Connect bank account to start accepting payments from your users."
         steps={timelineSteps}
         currentStep="payments_setup"
         onStepClick={handleTimelineStepClick}
@@ -768,7 +768,7 @@ export function ProjectOnboardingWizard(props: {
               window.location.href = redirectUrl.toString();
             }))}
           >
-            Connect Stripe
+            Connect
           </DesignButton>
         ) : undefined}
       >
