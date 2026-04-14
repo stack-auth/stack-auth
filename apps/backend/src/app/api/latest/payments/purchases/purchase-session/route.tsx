@@ -64,10 +64,13 @@ export const POST = createSmartRouteHandler({
     }
     const stripe = await getStripeForAccount({ accountId: data.stripeAccountId });
     const prisma = await getPrismaClientForTenancy(tenancy);
-    const { selectedPrice, conflictingProductLineSubscriptions } = await validatePurchaseSession({
+    const { selectedPrice, conflictingSubscriptions } = await validatePurchaseSession({
       prisma,
-      tenancy,
-      codeData: data,
+      tenancyId: tenancy.id,
+      customerType: data.product.customerType,
+      customerId: data.customerId,
+      product: data.product,
+      productId: data.productId,
       priceId: price_id,
       quantity,
     });
@@ -82,8 +85,8 @@ export const POST = createSmartRouteHandler({
       productJson: data.product,
     });
 
-    if (conflictingProductLineSubscriptions.length > 0) {
-      const conflicting = conflictingProductLineSubscriptions[0];
+    if (conflictingSubscriptions.length > 0) {
+      const conflicting = conflictingSubscriptions[0];
       if (conflicting.stripeSubscriptionId) {
         const existingStripeSub = await stripe.subscriptions.retrieve(conflicting.stripeSubscriptionId);
         const existingItem = existingStripeSub.items.data[0];

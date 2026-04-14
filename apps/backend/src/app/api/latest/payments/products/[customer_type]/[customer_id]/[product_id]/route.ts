@@ -1,5 +1,6 @@
-import { ensureProductIdOrInlineProduct, getOwnedProductsForCustomerLegacy } from "@/lib/payments";
+import { customerOwnsProduct, ensureProductIdOrInlineProduct, isActiveSubscription } from "@/lib/payments";
 import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
+import { getOwnedProductsForCustomer, getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -64,18 +65,21 @@ export const DELETE = createSmartRouteHandler({
 
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
+    // Fetch subscription map and owned products from Bulldozer
+    const subMap = await getSubscriptionMapForCustomer({
+      prisma,
+      tenancyId: auth.tenancy.id,
+      customerType: params.customer_type,
+      customerId: params.customer_id,
+    });
+    const allSubs = Object.values(subMap);
+
     let subscriptions;
     if (query.subscription_id) {
       // Cancel by subscription DB ID (used for inline products that have no product_id)
-      subscriptions = await prisma.subscription.findMany({
-        where: {
-          tenancyId: auth.tenancy.id,
-          id: query.subscription_id,
-          customerType: typedToUppercase(params.customer_type),
-          customerId: params.customer_id,
-          status: { in: [SubscriptionStatus.active, SubscriptionStatus.trialing] },
-        },
-      });
+      subscriptions = allSubs.filter(s =>
+        s.id === query.subscription_id && isActiveSubscription(s)
+      );
       if (subscriptions.length === 0) {
         throw new StatusError(400, "No active subscription found with this ID for the given customer.");
       }
@@ -90,39 +94,24 @@ export const DELETE = createSmartRouteHandler({
         );
       }
 
-      const ownedProducts = await getOwnedProductsForCustomerLegacy({
+      // Check ownership via Bulldozer owned products (covers both subs and OTPs)
+      const ownedProducts = await getOwnedProductsForCustomer({
         prisma,
-        tenancy: auth.tenancy,
+        tenancyId: auth.tenancy.id,
         customerType: params.customer_type,
         customerId: params.customer_id,
       });
-      const ownedProductsForProduct = ownedProducts.filter((p) => p.id === params.product_id);
-      if (ownedProductsForProduct.length === 0) {
+      if (!customerOwnsProduct(ownedProducts, params.product_id)) {
         throw new StatusError(400, "Customer does not have this product.");
       }
-      if (ownedProductsForProduct.some((product) => product.type === "one_time")) {
-        throw new StatusError(400, "This product is a one time purchase and cannot be canceled.");
-      }
 
-      subscriptions = await prisma.subscription.findMany({
-        where: {
-          tenancyId: auth.tenancy.id,
-          customerType: typedToUppercase(params.customer_type),
-          customerId: params.customer_id,
-          productId: params.product_id,
-          status: { in: [SubscriptionStatus.active, SubscriptionStatus.trialing] },
-        },
-      });
+      // Find the active subscription to cancel
+      subscriptions = allSubs.filter(s =>
+        s.productId === params.product_id && isActiveSubscription(s)
+      );
       if (subscriptions.length === 0) {
-        captureError("cancel-subscription-missing", new StackAssertionError(
-          "Owned subscription product missing active/trialing subscription record.",
-          {
-            customerType: params.customer_type,
-            customerId: params.customer_id,
-            productId: params.product_id,
-          },
-        ));
-        throw new StatusError(400, "This subscription cannot be canceled.");
+        // Customer owns the product but via OTP, not subscription
+        throw new StatusError(400, "This product is a one time purchase and cannot be canceled.");
       }
     }
 

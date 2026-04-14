@@ -1,4 +1,5 @@
-import { getSubscriptions, isActiveSubscription, productToInlineProduct } from "@/lib/payments";
+import { productToInlineProduct } from "@/lib/payments";
+import { getOwnedProductsForCustomer } from "@/lib/payments/customer-data";
 import { validateRedirectUrl } from "@/lib/redirect-urls";
 import { getTenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy } from "@/prisma-client";
@@ -59,16 +60,21 @@ export const POST = createSmartRouteHandler({
     }
     const product = verificationCode.data.product;
 
-    // Compute purchase context info
+    // Compute purchase context info from Bulldozer owned products
     const prisma = await getPrismaClientForTenancy(tenancy);
-    const subscriptions = await getSubscriptions({
+    const ownedProducts = await getOwnedProductsForCustomer({
       prisma,
-      tenancy,
+      tenancyId: tenancy.id,
       customerType: product.customerType,
       customerId: verificationCode.data.customerId,
     });
 
-    const alreadyBoughtNonStackable = !!(subscriptions.find((s) => s.productId === verificationCode.data.productId) && product.stackable !== true);
+    const alreadyBoughtNonStackable = !!(
+      verificationCode.data.productId
+      && verificationCode.data.productId in ownedProducts
+      && ownedProducts[verificationCode.data.productId].quantity > 0
+      && product.stackable !== true
+    );
 
     const productLines = tenancy.config.payments.productLines;
     const productLineId = Object.keys(productLines).find((g) => product.productLineId === g);
@@ -76,17 +82,12 @@ export const POST = createSmartRouteHandler({
     if (productLineId) {
       const isSubscribable = product.prices !== "include-by-default" && Object.values(product.prices).some((p: any) => p && p.interval);
       if (isSubscribable) {
-        const conflicts = subscriptions.filter((subscription) => (
-          subscription.productId &&
-          subscription.product.productLineId === productLineId &&
-          isActiveSubscription(subscription) &&
-          subscription.product.prices !== "include-by-default" &&
-          (!product.isAddOnTo || !Object.keys(product.isAddOnTo).includes(subscription.productId))
-        ));
-        conflictingProductLineProducts = conflicts.map((s) => ({
-          product_id: s.productId!,
-          display_name: s.product.displayName ?? s.productId!,
-        }));
+        conflictingProductLineProducts = Object.entries(ownedProducts)
+          .filter(([, p]) => p.productLineId === productLineId && p.quantity > 0)
+          .map(([productId, p]) => ({
+            product_id: productId,
+            display_name: p.product.displayName ?? productId,
+          }));
       }
     }
 

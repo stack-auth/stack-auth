@@ -289,6 +289,10 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
         currentPeriodStart: sanitizedDates.start,
         cancelAtPeriodEnd: subscription.cancel_at_period_end,
         priceId: priceId ?? null,
+        // Set endedAt when subscription is no longer active and period has ended
+        ...(subscription.status === "canceled" && sanitizedDates.end <= new Date()
+          ? { endedAt: sanitizedDates.end }
+          : {}),
       },
       create: {
         tenancyId: tenancy.id,

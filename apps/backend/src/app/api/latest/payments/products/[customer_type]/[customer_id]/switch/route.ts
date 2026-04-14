@@ -1,6 +1,7 @@
 import { SubscriptionStatus } from "@/generated/prisma/client";
-import { ensureClientCanAccessCustomer, getCustomerPurchaseContext, getDefaultCardPaymentMethodSummary, getStripeCustomerForCustomerOrNull } from "@/lib/payments";
+import { customerOwnsProductInProductLine, ensureClientCanAccessCustomer, getDefaultCardPaymentMethodSummary, getStripeCustomerForCustomerOrNull } from "@/lib/payments";
 import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
+import { getOwnedProductsForCustomer } from "@/lib/payments/customer-data";
 import { upsertProductVersion } from "@/lib/product-versions";
 import { getStripeForAccount, sanitizeStripePeriodDates } from "@/lib/stripe";
 import { getPrismaClientForTenancy } from "@/prisma-client";
@@ -87,19 +88,16 @@ export const POST = createSmartRouteHandler({
     }
 
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
-    const { existingOneTimePurchases } = await getCustomerPurchaseContext({
-      prisma,
-      tenancy: auth.tenancy,
-      customerType: params.customer_type,
-      customerId: params.customer_id,
-      productId: body.to_product_id,
-    });
-    const hasOneTimeInProductLine = existingOneTimePurchases.some((purchase) => {
-      const product = purchase.product as typeof toProduct;
-      return product.productLineId === fromProduct.productLineId;
-    });
-    if (hasOneTimeInProductLine) {
-      throw new StatusError(400, "Customer already has a one-time purchase in this product line");
+    if (fromProduct.productLineId) {
+      const ownedProducts = await getOwnedProductsForCustomer({
+        prisma,
+        tenancyId: auth.tenancy.id,
+        customerType: params.customer_type,
+        customerId: params.customer_id,
+      });
+      if (customerOwnsProductInProductLine(ownedProducts, fromProduct.productLineId)) {
+        throw new StatusError(400, "Customer already has a product in this product line");
+      }
     }
 
     let subscription = null;
