@@ -1,4 +1,3 @@
-import { forwardToProduction } from "@/lib/ai/forward";
 import { selectModel } from "@/lib/ai/models";
 import { getFullSystemPrompt } from "@/lib/ai/prompts";
 import { requestBodySchema } from "@/lib/ai/schema";
@@ -7,7 +6,6 @@ import { listManagedProjectIds } from "@/lib/projects";
 import { SmartResponse } from "@/route-handlers/smart-response";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Json } from "@stackframe/stack-shared/dist/utils/json";
 import { generateText, ModelMessage, stepCountIs, streamText } from "ai";
@@ -28,18 +26,6 @@ export const POST = createSmartRouteHandler({
 
     if (!validateToolNames(body.tools)) {
       throw new StatusError(StatusError.BadRequest, `Invalid tool names in request.`);
-    }
-
-    const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY");
-
-
-    if (apiKey === "FORWARD_TO_PRODUCTION") {
-      const prodResponse = await forwardToProduction(mode, body);
-      return {
-        statusCode: prodResponse.status,
-        bodyType: "response" as const,
-        body: prodResponse,
-      };
     }
 
     const isAuthenticated = fullReq.auth != null;
@@ -132,7 +118,7 @@ export const POST = createSmartRouteHandler({
       return {
         statusCode: 200,
         bodyType: "json" as const,
-        body: { content: contentBlocks },
+        body: { content: contentBlocks, finalText: result.text },
       };
     }
   },

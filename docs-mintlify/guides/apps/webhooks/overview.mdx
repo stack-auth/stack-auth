@@ -1,0 +1,251 @@
+---
+title: "Webhooks"
+description: "Receive real-time updates when events occur in your Stack project"
+icon: "/images/app-icons/webhooks.svg"
+---
+
+Webhooks are a powerful way to keep your backend in sync with Stack. They allow you to receive real-time updates when events occur in your Stack project, such as when a user or team is created, updated, or deleted.
+
+For payload schemas and each webhook event, see the [webhook API reference](/api/webhooks/users/usercreated).
+
+## Setting up webhooks
+
+In the Stack dashboard, you can create a webhook endpoint in the "Webhooks" section. After creating this endpoint with your server URL, you will start receiving POST requests with a JSON payload at that endpoint. The event payload will look something like this:
+
+```json
+{
+  "type": "team.created",
+  "data": {
+    "id": "2209422a-eef7-4668-967d-be79409972c5",
+    "display_name": "My Team",
+    ...
+  }
+}
+```
+
+## Testing webhooks locally
+
+You can use services like [Svix Playground](https://www.svix.com/play/) or [Webhook.site](https://webhook.site/) to test the receiving of webhooks or relay them to your local development environment.
+
+## Verifying webhooks
+
+To ensure the webhook is coming from Stack (and not from a malicious actor) and is not prone to replay attacks, you should verify the request.
+
+Stack signs the webhook payload with a secret key that you can find in the endpoint details on the dashboard. You can verify the signature using the Svix client library. Check out the [Svix documentation](https://docs.svix.com/receiving/verifying-payloads/how) for instructions on how to verify the signature in JavaScript, Python, Ruby, and other languages. Here are example handlers across the supported frameworks:
+
+<CodeGroup dropdown>
+```tsx Next.js
+// app/api/webhooks/stack/route.ts
+import { Webhook } from "svix";
+
+export async function POST(request: Request) {
+  const secret = process.env.STACK_WEBHOOK_SECRET!;
+  const payload = await request.text();
+  const headers = {
+    "svix-id": request.headers.get("svix-id") ?? "",
+    "svix-timestamp": request.headers.get("svix-timestamp") ?? "",
+    "svix-signature": request.headers.get("svix-signature") ?? "",
+  };
+
+  const wh = new Webhook(secret);
+  // Throws on error, returns the verified content on success.
+  const verifiedPayload = wh.verify(payload, headers);
+
+  return Response.json({ ok: true, type: verifiedPayload.type });
+}
+```
+
+```tsx React
+// server/webhooks.ts
+// Webhooks must be received on a server, even if your frontend is a React app.
+import express from "express";
+import { Webhook } from "svix";
+
+const app = express();
+app.use("/api/webhooks/stack", express.text({ type: "application/json" }));
+
+app.post("/api/webhooks/stack", (req, res) => {
+  const wh = new Webhook(process.env.STACK_WEBHOOK_SECRET!);
+  const verifiedPayload = wh.verify(req.body, {
+    "svix-id": req.header("svix-id") ?? "",
+    "svix-timestamp": req.header("svix-timestamp") ?? "",
+    "svix-signature": req.header("svix-signature") ?? "",
+  });
+
+  res.json({ ok: true, type: verifiedPayload.type });
+});
+```
+
+```javascript Express
+import express from "express";
+import { Webhook } from "svix";
+
+const app = express();
+app.use("/api/webhooks/stack", express.text({ type: "application/json" }));
+
+app.post("/api/webhooks/stack", (req, res) => {
+  const wh = new Webhook(process.env.STACK_WEBHOOK_SECRET);
+  const verifiedPayload = wh.verify(req.body, {
+    "svix-id": req.header("svix-id") ?? "",
+    "svix-timestamp": req.header("svix-timestamp") ?? "",
+    "svix-signature": req.header("svix-signature") ?? "",
+  });
+
+  res.json({ ok: true, type: verifiedPayload.type });
+});
+```
+
+```javascript Node.js
+import { createServer } from "node:http";
+import { Webhook } from "svix";
+
+createServer(async (req, res) => {
+  if (req.method !== "POST" || req.url !== "/api/webhooks/stack") {
+    res.writeHead(404).end();
+    return;
+  }
+
+  const payload = await new Promise((resolve, reject) => {
+    let body = "";
+    req.setEncoding("utf8");
+    req.on("data", (chunk) => {
+      body += chunk;
+    });
+    req.on("end", () => resolve(body));
+    req.on("error", reject);
+  });
+
+  const wh = new Webhook(process.env.STACK_WEBHOOK_SECRET);
+  const verifiedPayload = wh.verify(payload, {
+    "svix-id": req.headers["svix-id"] ?? "",
+    "svix-timestamp": req.headers["svix-timestamp"] ?? "",
+    "svix-signature": req.headers["svix-signature"] ?? "",
+  });
+
+  res.writeHead(200, { "content-type": "application/json" });
+  res.end(JSON.stringify({ ok: true, type: verifiedPayload.type }));
+}).listen(3000);
+```
+
+```javascript Vanilla JavaScript
+// server.js
+// Browser-only JavaScript apps still need a server endpoint to receive webhooks.
+import { createServer } from "node:http";
+import { Webhook } from "svix";
+
+createServer(async (req, res) => {
+  if (req.method !== "POST" || req.url !== "/api/webhooks/stack") {
+    res.writeHead(404).end();
+    return;
+  }
+
+  const payload = await new Promise((resolve, reject) => {
+    let body = "";
+    req.setEncoding("utf8");
+    req.on("data", (chunk) => {
+      body += chunk;
+    });
+    req.on("end", () => resolve(body));
+    req.on("error", reject);
+  });
+
+  const wh = new Webhook(process.env.STACK_WEBHOOK_SECRET);
+  const verifiedPayload = wh.verify(payload, {
+    "svix-id": req.headers["svix-id"] ?? "",
+    "svix-timestamp": req.headers["svix-timestamp"] ?? "",
+    "svix-signature": req.headers["svix-signature"] ?? "",
+  });
+
+  res.writeHead(200, { "content-type": "application/json" });
+  res.end(JSON.stringify({ ok: true, type: verifiedPayload.type }));
+}).listen(3000);
+```
+
+```python Django
+from django.conf import settings
+from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from svix.webhooks import Webhook
+
+
+@csrf_exempt
+def stack_webhook(request):
+    wh = Webhook(settings.STACK_WEBHOOK_SECRET)
+    verified_payload = wh.verify(
+        request.body.decode("utf-8"),
+        {
+            "svix-id": request.headers["svix-id"],
+            "svix-timestamp": request.headers["svix-timestamp"],
+            "svix-signature": request.headers["svix-signature"],
+        },
+    )
+
+    return JsonResponse({"ok": True, "type": verified_payload["type"]})
+```
+
+```python FastAPI
+from fastapi import FastAPI, Request
+from svix.webhooks import Webhook
+
+app = FastAPI()
+
+
+@app.post("/api/webhooks/stack")
+async def stack_webhook(request: Request):
+    payload = await request.body()
+    wh = Webhook(STACK_WEBHOOK_SECRET)
+    verified_payload = wh.verify(
+        payload.decode("utf-8"),
+        {
+            "svix-id": request.headers["svix-id"],
+            "svix-timestamp": request.headers["svix-timestamp"],
+            "svix-signature": request.headers["svix-signature"],
+        },
+    )
+
+    return {"ok": True, "type": verified_payload["type"]}
+```
+
+```python Flask
+from flask import Flask, jsonify, request
+from svix.webhooks import Webhook
+
+app = Flask(__name__)
+
+
+@app.post("/api/webhooks/stack")
+def stack_webhook():
+    wh = Webhook(STACK_WEBHOOK_SECRET)
+    verified_payload = wh.verify(
+        request.get_data(as_text=True),
+        {
+            "svix-id": request.headers["svix-id"],
+            "svix-timestamp": request.headers["svix-timestamp"],
+            "svix-signature": request.headers["svix-signature"],
+        },
+    )
+
+    return jsonify({"ok": True, "type": verified_payload["type"]})
+```
+</CodeGroup>
+
+If you do not want to install the Svix client library or are using a language that is not supported, you can [verify the signature manually](https://docs.svix.com/receiving/verifying-payloads/how-manual).
+
+## Event types
+
+These are the `type` values you may receive. Each links to its API reference page.
+
+- [`user.created`](/api/webhooks/users/usercreated)
+- [`user.updated`](/api/webhooks/users/userupdated)
+- [`user.deleted`](/api/webhooks/users/userdeleted)
+- [`team.created`](/api/webhooks/teams/teamcreated)
+- [`team.updated`](/api/webhooks/teams/teamupdated)
+- [`team.deleted`](/api/webhooks/teams/teamdeleted)
+- [`team_membership.created`](/api/webhooks/teams/team_membershipcreated)
+- [`team_membership.deleted`](/api/webhooks/teams/team_membershipdeleted)
+- [`team_permission.created`](/api/webhooks/teams/team_permissioncreated)
+- [`team_permission.deleted`](/api/webhooks/teams/team_permissiondeleted)
+
+## Examples
+
+Some members of the community have shared their webhook implementations. For example, [here is an example by Clark Gredona](https://gist.github.com/clarkg/56ffad44949826ae3efe0a431b6021c4) that validates the Webhook schema and update a database user.

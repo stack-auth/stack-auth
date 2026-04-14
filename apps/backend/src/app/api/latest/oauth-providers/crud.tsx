@@ -1,3 +1,4 @@
+import { recordExternalDbSyncDeletion, withExternalDbSyncUpdate } from "@/lib/external-db-sync";
 import { ensureUserExists } from "@/lib/request-checks";
 import { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
@@ -252,9 +253,9 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
               id: params.provider_id,
             },
           },
-          data: {
+          data: withExternalDbSyncUpdate({
             allowSignIn: data.allow_sign_in,
-          },
+          }),
         });
 
         if (data.allow_sign_in) {
@@ -296,9 +297,17 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
               id: params.provider_id,
             },
           },
-          data: {
+          data: withExternalDbSyncUpdate({
             allowConnectedAccounts: data.allow_connected_accounts,
-          },
+          }),
+        });
+      }
+
+      if (data.account_id !== undefined && data.account_id !== existingOAuthAccount.providerAccountId) {
+        await recordExternalDbSyncDeletion(tx, {
+          tableName: "ProjectUserOAuthAccount",
+          tenancyId: auth.tenancy.id,
+          oauthAccountId: params.provider_id,
         });
       }
 
@@ -309,10 +318,10 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
             id: params.provider_id,
           },
         },
-        data: {
+        data: withExternalDbSyncUpdate({
           email: data.email,
           providerAccountId: data.account_id,
-        },
+        }),
       });
 
       const providerType = resolveProviderType(auth.tenancy, existingOAuthAccount.configOAuthProviderId)
@@ -355,6 +364,12 @@ export const oauthProviderCrudHandlers = createLazyProxy(() => createCrudHandler
           },
         });
       }
+
+      await recordExternalDbSyncDeletion(tx, {
+        tableName: "ProjectUserOAuthAccount",
+        tenancyId: auth.tenancy.id,
+        oauthAccountId: params.provider_id,
+      });
 
       await tx.projectUserOAuthAccount.delete({
         where: {

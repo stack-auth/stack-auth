@@ -1,0 +1,118 @@
+---
+title: "Welcome"
+description: "Stack Auth documentation for setup, components, SDK usage, and REST APIs."
+sidebarTitle: "Overview"
+---
+
+import { HomePromptIsland } from "/snippets/home-prompt-island.jsx";
+import { DocsAppsHomeGrid } from "/snippets/docs-apps-home-grid.jsx";
+
+export const SectionLink = ({ href, children }) => (
+  <a href={href} className="text-base font-semibold text-slate-900 no-underline hover:text-[#6b5df7] dark:text-white dark:hover:text-[#8b7cf9]">{children}</a>
+);
+
+export const ChipLink = ({ href, children }) => (
+  <a href={href} className="inline-flex rounded-md bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-600 no-underline transition hover:bg-[#6b5df7]/10 hover:text-[#6b5df7] dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-[#6b5df7]/20 dark:hover:text-[#8b7cf9]">{children}</a>
+);
+
+<HomePromptIsland />
+
+<div className="mx-auto mt-20 max-w-7xl px-4 sm:px-6 lg:px-8">
+  <div>
+    <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Navigate Through Our Docs</h2>
+    <p className="mt-3 max-w-3xl text-base text-slate-600 dark:text-slate-300">
+      Start at the top and work your way down, or jump straight to the section you need.
+    </p>
+  </div>
+
+  <h3 className="mt-10 mb-6 text-lg font-semibold text-slate-500 dark:text-slate-400">Recommended Order</h3>
+
+  <div className="relative mt-2 ml-4 border-l-2 border-slate-200 pl-8 dark:border-slate-700">
+    {/* Getting Started */}
+    <div className="relative mb-10">
+      <div className="absolute -left-[2.55rem] top-0.5 h-4 w-4 rounded-full border-2 border-[#6b5df7] bg-[#6b5df7]" />
+      <SectionLink href="/guides/getting-started/setup">Getting Started</SectionLink>
+      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">First-time setup, install the SDK, get auth running in minutes.</p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <ChipLink href="/guides/getting-started/setup">Setup</ChipLink>
+        <ChipLink href="/guides/getting-started/user-fundamentals">Users</ChipLink>
+        <ChipLink href="/guides/getting-started/ai-integration">AI Integration</ChipLink>
+        <ChipLink href="/guides/apps/launch-checklist/overview">Production</ChipLink>
+      </div>
+    </div>
+
+    {/* Explore Apps */}
+    <div className="relative mb-10">
+      <div className="absolute -left-[2.55rem] top-0.5 h-4 w-4 rounded-full border-2 border-[#6b5df7] bg-[#6b5df7]" />
+      <SectionLink href="/guides/apps/authentication/overview">Explore Apps</SectionLink>
+      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+        Open app guides from a home-screen style quick access grid, modeled after dashboard Overview.
+      </p>
+      <DocsAppsHomeGrid />
+    </div>
+
+    {/* Going Further */}
+    <div className="relative mb-10">
+      <div className="absolute -left-[2.55rem] top-0.5 h-4 w-4 rounded-full border-2 border-[#6b5df7] bg-[#6b5df7]" />
+      <SectionLink href="/guides/going-further/stack-app">Going Further</SectionLink>
+      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+        Configure Stack App deeply, integrate your backend, and use lower-level interfaces where needed.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <ChipLink href="/guides/going-further/stack-app">Stack App</ChipLink>
+        <ChipLink href="/guides/going-further/backend-integration">Backend Integration</ChipLink>
+        <ChipLink href="/guides/going-further/local-development">Local Development</ChipLink>
+      </div>
+    </div>
+
+    {/* SDK Reference */}
+    <div className="relative mb-10">
+      <div className="absolute -left-[2.55rem] top-0.5 h-4 w-4 rounded-full border-2 border-[#6b5df7] bg-[#6b5df7]" />
+      <SectionLink href="/sdk/overview">SDK Reference</SectionLink>
+      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+        Use hooks, objects, and types to read and write auth data directly in your app code.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <ChipLink href="/sdk/hooks/use-user">useUser</ChipLink>
+        <ChipLink href="/sdk/objects/stack-app">StackApp</ChipLink>
+        <ChipLink href="/sdk/types/user">User Type</ChipLink>
+      </div>
+    </div>
+
+    {/* REST API */}
+    <div className="relative mb-4">
+      <div className="absolute -left-[2.55rem] top-0.5 h-4 w-4 rounded-full border-2 border-[#6b5df7] bg-[#6b5df7]" />
+      <SectionLink href="/api/overview">REST API</SectionLink>
+      <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+        Integrate Stack Auth from any backend or language through HTTP endpoints and webhook flows.
+      </p>
+      <div className="mt-3 flex flex-wrap gap-2">
+        <ChipLink href="/api/overview">Overview</ChipLink>
+        <ChipLink href="/guides/apps/webhooks/overview">Webhooks</ChipLink>
+        <ChipLink href="/guides/going-further/backend-integration">Backend Integration</ChipLink>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div className="mx-auto mt-20 max-w-7xl px-4 pb-16 sm:px-6 lg:px-8">
+    <div>
+      <h2 className="text-3xl font-bold tracking-tight text-slate-900 dark:text-white">Resources</h2>
+      <p className="mt-3 max-w-3xl text-base text-slate-600 dark:text-slate-300">
+        Reach for product access, source code, and support channels when you need more than reference docs.
+      </p>
+    </div>
+
+    <CardGroup cols={3}>
+      <Card title="Dashboard" icon="table-columns" href="https://app.stack-auth.com" cta="Open app">
+        Manage projects, keys, providers, and authentication settings.
+      </Card>
+      <Card title="GitHub" icon="github" href="https://github.com/stack-auth/stack" cta="View repository">
+        Explore the open-source codebase, examples, and release history.
+      </Card>
+      <Card title="Discord" icon="comments" href="https://discord.stack-auth.com" cta="Join community">
+        Ask questions, share feedback, and get help from the community.
+      </Card>
+    </CardGroup>
+
+</div>

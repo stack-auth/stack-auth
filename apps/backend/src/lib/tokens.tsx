@@ -267,10 +267,10 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: Refres
           id: options.refreshTokenObj.id,
         },
       },
-      data: {
+      data: withExternalDbSyncUpdate({
         lastActiveAt: now,
         lastActiveAtIpInfo: ipInfo ?? undefined,
-      },
+      }),
     }),
   ]);
 

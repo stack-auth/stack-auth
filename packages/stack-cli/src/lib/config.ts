@@ -4,7 +4,7 @@ import * as os from "os";
 
 const CONFIG_PATH = process.env.STACK_CLI_CONFIG_PATH ?? path.join(os.homedir(), ".config", "stack-auth", "credentials.json");
 
-type ConfigKey = "STACK_CLI_REFRESH_TOKEN" | "STACK_API_URL" | "STACK_DASHBOARD_URL";
+type ConfigKey = "STACK_CLI_REFRESH_TOKEN" | "STACK_CLI_ANON_REFRESH_TOKEN" | "STACK_API_URL" | "STACK_DASHBOARD_URL";
 
 function readConfigJson(): Record<string, string> {
   try {

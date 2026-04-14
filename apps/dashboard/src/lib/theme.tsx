@@ -1,5 +1,6 @@
 'use client';
 
+import { getPublicEnvVar } from '@/lib/env';
 import { useSyncExternalStore } from 'react';
 
 type Theme = 'light' | 'dark' | 'system';
@@ -8,8 +9,9 @@ type ResolvedTheme = 'light' | 'dark';
 const STORAGE_KEY = 'theme';
 
 // --- Theme preference store (module-level singleton) ---
-
-let currentTheme: Theme = 'system';
+// In preview mode, default to 'light' to match the inline script in layout.tsx
+const isPreviewMode = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_PREVIEW") === "true";
+let currentTheme: Theme = isPreviewMode ? 'light' : 'system';
 
 if (typeof window !== 'undefined') {
   try {

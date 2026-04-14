@@ -1,1 +1,1 @@
-Please compare `dev` to `main` and ensure that all migrations are backwards compatible. In what ways could breakage occur? Report the result to me in detail.
+Please compare `dev` to `main` and ensure that all migrations are backwards compatible. In what ways could breakage occur? Report the result to me in detail. Anything else that's scary that could occur, or that we should think about while migrating?

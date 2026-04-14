@@ -38,7 +38,9 @@ export default function PageClient() {
             <StyledLink href={teamSettingsPath}>Go here</StyledLink>.
           </Alert>
         )}
-        <TeamTable teams={teams} />
+        <div data-walkthrough="teams-table">
+          <TeamTable teams={teams} />
+        </div>
         <CreateDialog
           open={createTeamsOpen}
           onOpenChange={setCreateTeamsOpen}

@@ -1,5 +1,5 @@
 import { BUNDLED_DASHBOARD_UI_TYPES, BUNDLED_TYPE_DEFINITIONS } from "@/generated/bundled-type-definitions";
-import { ALL_APPS_FRONTEND, type AppId, getItemPath } from "@/lib/apps-frontend";
+import { ALL_APPS_FRONTEND, type AppId, getItemPath, hasNavigationItems } from "@/lib/apps-frontend";
 import { buildStackAuthHeaders, type CurrentUser } from "@/lib/api-headers";
 
 /**
@@ -19,6 +19,9 @@ export function buildAvailableRoutes(enabledAppIds: AppId[]): string {
   // Dynamic routes from enabled apps
   for (const appId of enabledAppIds) {
     const appFrontend = ALL_APPS_FRONTEND[appId as keyof typeof ALL_APPS_FRONTEND];
+    if (!hasNavigationItems(appFrontend)) {
+      continue;
+    }
     for (const item of appFrontend.navigationItems) {
       // Use a placeholder project ID — we only need the path relative to /projects/[id]/
       const fullPath = getItemPath("__PROJECT__", appFrontend, item);
@@ -94,7 +97,7 @@ No markdown, no explanation — just the JSON.`;
     }
 
     const selected = parsed.selectedFiles.filter((f) => availableFiles.includes(f));
-    console.log("[selectRelevantFiles] selected:", selected);
+
     return selected;
   } catch (e) {
     console.log("[selectRelevantFiles] failed, returning all files:", e);
@@ -155,7 +158,6 @@ export async function buildDashboardMessages(
   const typeDefinitions = loadSelectedTypeDefinitions(selectedFiles);
 
   const availableRoutes = enabledAppIds ? buildAvailableRoutes(enabledAppIds) : "";
-  console.log("[buildDashboardMessages] enabledAppIds:", enabledAppIds?.length, "availableRoutes:", availableRoutes.slice(0, 200));
 
   const contextMessages: Array<{ role: string, content: string }> = [];
 
