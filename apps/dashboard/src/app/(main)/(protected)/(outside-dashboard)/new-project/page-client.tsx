@@ -165,6 +165,27 @@ function buildTimeline(includePayments: boolean): TimelineStep[] {
   return timeline;
 }
 
+export function beginPendingAction(
+  pendingRef: { current: boolean },
+  setPending: (value: boolean) => void,
+) {
+  if (pendingRef.current) {
+    return false;
+  }
+
+  pendingRef.current = true;
+  setPending(true);
+  return true;
+}
+
+export function endPendingAction(
+  pendingRef: { current: boolean },
+  setPending: (value: boolean) => void,
+) {
+  pendingRef.current = false;
+  setPending(false);
+}
+
 function deriveInitialSignInMethods(project: AdminOwnedProject, status: ProjectOnboardingStatus): Set<SignInMethod> {
   const config = project.config;
   const methods = new Set<SignInMethod>();
@@ -238,7 +259,7 @@ function getStepIndex(steps: TimelineStep[], stepId: ProjectOnboardingStatus) {
   return steps.findIndex((step) => step.id === stepId);
 }
 
-function OnboardingPage(props: {
+export function OnboardingPage(props: {
   stepKey: string,
   title: string,
   subtitle?: string,
@@ -309,8 +330,10 @@ function OnboardingPage(props: {
                 type="button"
                 disabled={!isClickable}
                 onClick={() => { if (isClickable) props.onStepClick?.(step.id); }}
+                aria-label={isClickable ? `Go to step: ${step.label}` : step.label}
+                aria-current={isCurrent ? "step" : undefined}
                 className={cn(
-                  "rounded-full transition-all duration-300",
+                  "rounded-full transition-colors duration-300 hover:transition-none",
                   isCurrent
                     ? "h-[6px] w-5 bg-foreground"
                     : isComplete
@@ -323,30 +346,6 @@ function OnboardingPage(props: {
           })}
         </div>
       </div>
-
-      <style>{`
-        @keyframes onboarding-cascade-in {
-          0% {
-            opacity: 0;
-            transform: translateY(18px);
-          }
-          100% {
-            opacity: 1;
-            transform: translateY(0);
-          }
-        }
-        .onboarding-cascade {
-          opacity: 0;
-          animation: onboarding-cascade-in 500ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
-          animation-delay: calc(var(--cascade-i, 0) * 80ms + 60ms);
-        }
-        @media (prefers-reduced-motion: reduce) {
-          .onboarding-cascade {
-            animation: none;
-            opacity: 1;
-          }
-        }
-      `}</style>
     </div>
   );
 }
@@ -362,7 +361,7 @@ function appStageBadgeColor(stage: (typeof ALL_APPS)[AppId]["stage"]) {
   return null;
 }
 
-function OnboardingAppCard(props: {
+export function OnboardingAppCard(props: {
   appId: AppId,
   selected: boolean,
   required: boolean,
@@ -380,6 +379,8 @@ function OnboardingAppCard(props: {
           type="button"
           onClick={props.required ? undefined : props.onToggle}
           disabled={props.disabled}
+          aria-disabled={props.required ? true : undefined}
+          tabIndex={props.required ? -1 : undefined}
           className={cn(
             "group flex flex-col items-center gap-1.5 rounded-xl p-1 transition-opacity duration-150 hover:transition-none",
             props.primary ? "w-[100px]" : "w-[90px]",
@@ -431,6 +432,49 @@ function OnboardingAppCard(props: {
   );
 }
 
+export function DomainSetupTransitionState(props: {
+  advancing: boolean,
+  errorMessage: string | null,
+  onRetry: () => void,
+  onOpenProject: () => void,
+}) {
+  if (props.errorMessage == null) {
+    return (
+      <div className="flex w-full min-h-[320px] items-center justify-center">
+        <Spinner size={24} />
+      </div>
+    );
+  }
+
+  return (
+    <div className="mx-auto flex w-full max-w-xl flex-col items-center justify-center px-4 py-10">
+      <Card className="w-full">
+        <CardHeader>
+          <CardTitle>We couldn&apos;t continue onboarding</CardTitle>
+          <CardDescription>
+            Retry the automatic transition to email setup, or open the project and continue from there.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <Alert>
+            <WarningCircleIcon className="h-4 w-4" />
+            <AlertTitle>Domain setup transition failed</AlertTitle>
+            <AlertDescription>{props.errorMessage}</AlertDescription>
+          </Alert>
+          <div className="flex flex-col gap-3 sm:flex-row sm:justify-end">
+            <Button variant="outline" onClick={props.onOpenProject}>
+              Open Project
+            </Button>
+            <Button onClick={props.onRetry} disabled={props.advancing}>
+              {props.advancing ? "Retrying..." : "Retry"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+}
+
 function OnboardingEmailThemePreview(props: {
   adminApp: AdminOwnedProject["app"],
   themeId: string,
@@ -468,7 +512,7 @@ function ModeNotImplementedCard(props: { onBack: () => void }) {
   );
 }
 
-function ProjectOnboardingWizard(props: {
+export function ProjectOnboardingWizard(props: {
   project: AdminOwnedProject,
   status: ProjectOnboardingStatus,
   mode: string | null,
@@ -494,6 +538,8 @@ function ProjectOnboardingWizard(props: {
   const [selectedPaymentsCountry, setSelectedPaymentsCountry] = useState("US");
   const [selectedConfigChoice, setSelectedConfigChoice] = useState<"create-new" | "link-existing">("create-new");
   const [authSetupMobileTab, setAuthSetupMobileTab] = useState<"methods" | "preview">("methods");
+  const [domainSetupAutoAdvanceError, setDomainSetupAutoAdvanceError] = useState<string | null>(null);
+  const [domainSetupAutoAdvancing, setDomainSetupAutoAdvancing] = useState(false);
   const previousProjectId = useRef<string | null>(null);
 
   const runWithSaving = useCallback(async (fn: () => Promise<void>) => {
@@ -537,6 +583,8 @@ function ProjectOnboardingWizard(props: {
     setManagedDomainSetupStatus(null);
     setSelectedConfigChoice("create-new");
     setAuthSetupMobileTab("methods");
+    setDomainSetupAutoAdvanceError(null);
+    setDomainSetupAutoAdvancing(false);
   }, [completeConfig, project, project.id, status]);
 
   const emailThemes = project.app.useEmailThemes();
@@ -558,15 +606,28 @@ function ProjectOnboardingWizard(props: {
     });
   }, [currentTimelineIndex, setMode, setStatus, timelineSteps]);
 
+  const advanceFromDomainSetup = useCallback(() => {
+    return runAsynchronouslyWithAlert(async () => {
+      setDomainSetupAutoAdvanceError(null);
+      setDomainSetupAutoAdvancing(true);
+      try {
+        await setStatus("email_theme_setup");
+      } catch (error) {
+        setDomainSetupAutoAdvanceError(error instanceof Error ? error.message : "Failed to continue to the email theme step.");
+        throw error;
+      } finally {
+        setDomainSetupAutoAdvancing(false);
+      }
+    });
+  }, [setStatus]);
+
   useEffect(() => {
     if (status !== "domain_setup") {
       return;
     }
 
-    runAsynchronouslyWithAlert(async () => {
-      await setStatus("email_theme_setup");
-    });
-  }, [setStatus, status]);
+    advanceFromDomainSetup();
+  }, [advanceFromDomainSetup, status]);
 
   const authPreviewProject = useMemo(() => {
     return {
@@ -1010,9 +1071,12 @@ function ProjectOnboardingWizard(props: {
 
   if (props.status === "domain_setup") {
     return (
-      <div className="flex w-full min-h-[320px] items-center justify-center">
-        <Spinner size={24} />
-      </div>
+      <DomainSetupTransitionState
+        advancing={domainSetupAutoAdvancing}
+        errorMessage={domainSetupAutoAdvanceError}
+        onRetry={advanceFromDomainSetup}
+        onOpenProject={() => router.push(`/projects/${encodeURIComponent(project.id)}`)}
+      />
     );
   }
 
@@ -1256,6 +1320,8 @@ export default function PageClient() {
   const [isCreateProjectOpen, setIsCreateProjectOpen] = useState(true);
   const [isCreateTeamOpen, setIsCreateTeamOpen] = useState(false);
   const [newTeamName, setNewTeamName] = useState("");
+  const creatingTeamRef = useRef(false);
+  const creatingProjectRef = useRef(false);
 
   useEffect(() => {
     if (selectedTeamId != null) {
@@ -1515,56 +1581,61 @@ export default function PageClient() {
               <DesignButton
                 className="rounded-xl"
                 loading={creatingProject}
-                onClick={() => runAsynchronouslyWithAlert(async () => {
-                  const trimmedProjectName = projectName.trim();
-                  if (trimmedProjectName.length === 0) {
-                    throw new Error("Project name is required.");
+                onClick={() => {
+                  if (!beginPendingAction(creatingProjectRef, setCreatingProject)) {
+                    return;
                   }
 
-                  const firstTeam = teams.at(0);
-                  const teamId = selectedTeamId ?? user.selectedTeam?.id ?? firstTeam?.id;
-                  if (teamId === undefined) {
-                    throw new Error("Select a team before creating the project.");
-                  }
-
-                  setCreatingProject(true);
-                  try {
-                    const newProject = await user.createProject({
-                      displayName: trimmedProjectName,
-                      teamId,
-                      onboardingStatus: "config_choice",
-                    });
-
-                    setProjectStatuses((previous) => {
-                      const next = new Map(previous);
-                      next.set(newProject.id, "config_choice");
-                      return next;
-                    });
-
-                    if (redirectToNeonConfirmWith != null) {
-                      const confirmSearchParams = new URLSearchParams(redirectToNeonConfirmWith);
-                      confirmSearchParams.set("default_selected_project_id", newProject.id);
-                      router.push(`/integrations/neon/confirm?${confirmSearchParams.toString()}`);
-                      await wait(2000);
-                      return;
+                  return runAsynchronouslyWithAlert(async () => {
+                    const trimmedProjectName = projectName.trim();
+                    if (trimmedProjectName.length === 0) {
+                      throw new Error("Project name is required.");
                     }
 
-                    if (redirectToConfirmWith != null) {
-                      const confirmSearchParams = new URLSearchParams(redirectToConfirmWith);
-                      confirmSearchParams.set("default_selected_project_id", newProject.id);
-                      router.push(`/integrations/custom/confirm?${confirmSearchParams.toString()}`);
-                      await wait(2000);
-                      return;
+                    const firstTeam = teams.at(0);
+                    const teamId = selectedTeamId ?? user.selectedTeam?.id ?? firstTeam?.id;
+                    if (teamId === undefined) {
+                      throw new Error("Select a team before creating the project.");
                     }
 
-                    updateSearchParams({
-                      project_id: newProject.id,
-                      mode: null,
-                    });
-                  } finally {
-                    setCreatingProject(false);
-                  }
-                })}
+                    try {
+                      const newProject = await user.createProject({
+                        displayName: trimmedProjectName,
+                        teamId,
+                        onboardingStatus: "config_choice",
+                      });
+
+                      setProjectStatuses((previous) => {
+                        const next = new Map(previous);
+                        next.set(newProject.id, "config_choice");
+                        return next;
+                      });
+
+                      if (redirectToNeonConfirmWith != null) {
+                        const confirmSearchParams = new URLSearchParams(redirectToNeonConfirmWith);
+                        confirmSearchParams.set("default_selected_project_id", newProject.id);
+                        router.push(`/integrations/neon/confirm?${confirmSearchParams.toString()}`);
+                        await wait(2000);
+                        return;
+                      }
+
+                      if (redirectToConfirmWith != null) {
+                        const confirmSearchParams = new URLSearchParams(redirectToConfirmWith);
+                        confirmSearchParams.set("default_selected_project_id", newProject.id);
+                        router.push(`/integrations/custom/confirm?${confirmSearchParams.toString()}`);
+                        await wait(2000);
+                        return;
+                      }
+
+                      updateSearchParams({
+                        project_id: newProject.id,
+                        mode: null,
+                      });
+                    } finally {
+                      endPendingAction(creatingProjectRef, setCreatingProject);
+                    }
+                  });
+                }}
               >
                 Create Project
               </DesignButton>
@@ -1611,25 +1682,30 @@ export default function PageClient() {
               <DesignButton
                 className="rounded-xl"
                 loading={creatingTeam}
-                onClick={() => runAsynchronouslyWithAlert(async () => {
-                  const trimmedTeamName = newTeamName.trim();
-                  if (trimmedTeamName.length === 0) {
-                    throw new Error("Team name is required.");
+                onClick={() => {
+                  if (!beginPendingAction(creatingTeamRef, setCreatingTeam)) {
+                    return;
                   }
 
-                  setCreatingTeam(true);
-                  try {
-                    const createdTeam = await user.createTeam({
-                      displayName: trimmedTeamName,
-                    });
-                    await user.setSelectedTeam(createdTeam.id);
-                    setSelectedTeamId(createdTeam.id);
-                    setNewTeamName("");
-                    setIsCreateTeamOpen(false);
-                  } finally {
-                    setCreatingTeam(false);
-                  }
-                })}
+                  return runAsynchronouslyWithAlert(async () => {
+                    const trimmedTeamName = newTeamName.trim();
+                    if (trimmedTeamName.length === 0) {
+                      throw new Error("Team name is required.");
+                    }
+
+                    try {
+                      const createdTeam = await user.createTeam({
+                        displayName: trimmedTeamName,
+                      });
+                      await user.setSelectedTeam(createdTeam.id);
+                      setSelectedTeamId(createdTeam.id);
+                      setNewTeamName("");
+                      setIsCreateTeamOpen(false);
+                    } finally {
+                      endPendingAction(creatingTeamRef, setCreatingTeam);
+                    }
+                  });
+                }}
               >
                 Create Team
               </DesignButton>

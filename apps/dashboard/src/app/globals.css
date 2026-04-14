@@ -186,6 +186,31 @@
   --ring: 240 4.9% 83.9%;
 }
 
+@keyframes onboarding-cascade-in {
+  0% {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+
+  100% {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.onboarding-cascade {
+  opacity: 0;
+  animation: onboarding-cascade-in 500ms cubic-bezier(0.16, 1, 0.3, 1) forwards;
+  animation-delay: calc(var(--cascade-i, 0) * 80ms + 60ms);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .onboarding-cascade {
+    animation: none;
+    opacity: 1;
+  }
+}
+
 @layer base {
   * {
     @apply border-border;
