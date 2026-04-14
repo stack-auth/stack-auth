@@ -206,7 +206,7 @@ export function registerEmulatorCommand(program: Command) {
       }
 
       if (isEmulatorRunning()) {
-        console.log("Emulator already running, reusing existing instance.");
+        console.warn("Emulator already running, reusing existing instance.");
       } else {
         await startEmulator(arch);
       }
