@@ -3,8 +3,10 @@ import { describe } from "vitest";
 import { it } from "../../../../../helpers";
 import { Auth, backendContext, createMailbox, niceBackendFetch, waitForOutboxEmailWithStatus } from "../../../../backend-helpers";
 
+const isLocalEmulator = process.env.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR === "true";
+
 describe("POST /api/v1/internal/feedback", () => {
-  it("should send feedback from an authenticated user", async ({ expect }) => {
+  it.runIf(!isLocalEmulator)("should send feedback from an authenticated user", async ({ expect }) => {
     const senderEmail = backendContext.value.mailbox.emailAddress;
     const signInResult = await Auth.Otp.signIn();
     const recipientMailbox = createMailbox("team@stack-auth.com");
@@ -44,7 +46,7 @@ describe("POST /api/v1/internal/feedback", () => {
     expect(messages[0].body?.text).toContain("Authenticated feedback from the dashboard.");
   });
 
-  it("should send feedback without authentication (dev tool)", async ({ expect }) => {
+  it.runIf(!isLocalEmulator)("should send feedback without authentication (dev tool)", async ({ expect }) => {
     const recipientMailbox = createMailbox("team@stack-auth.com");
     const senderEmail = `devtool-user-${randomUUID()}@example.com`;
     const subject = `[Support] ${senderEmail}`;
@@ -81,7 +83,7 @@ describe("POST /api/v1/internal/feedback", () => {
     expect(messages[0].body?.text).toContain("Unauthenticated feedback from the dev tool.");
   });
 
-  it("should send bug reports with correct label", async ({ expect }) => {
+  it.runIf(!isLocalEmulator)("should send bug reports with correct label", async ({ expect }) => {
     const recipientMailbox = createMailbox("team@stack-auth.com");
     const reporterEmail = `bug-${randomUUID()}@example.com`;
     const subject = `[Bug Report] ${reporterEmail}`;
