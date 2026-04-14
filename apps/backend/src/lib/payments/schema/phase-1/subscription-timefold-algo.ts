@@ -177,6 +177,19 @@ export function getSubscriptionTimeFoldReducerSql(): string {
     'outstandingGrants', ${initOutstandingGrants},
     'repeatCount', to_jsonb(0)
   )`;
+  const initialHasRepeatSchedule = `(
+    EXISTS (
+      SELECT 1
+      FROM jsonb_each(${initialState}->'itemRepeatSchedule') AS "sched"
+      WHERE "sched"."value"->>'nextRepeatMillis' != 'null'
+        AND "sched"."value"->'nextRepeatMillis' IS NOT NULL
+    )
+  )`;
+  const initialShouldEmitImmediateEnd = `(
+    ${initialState}->>'endedAtMillis' != 'null'
+    AND ${initialState}->'endedAtMillis' IS NOT NULL
+    AND NOT ${initialHasRepeatSchedule}
+  )`;
 
   // ── subscription-start event row ──
   const startEventItemGrants = `(
@@ -222,15 +235,23 @@ export function getSubscriptionTimeFoldReducerSql(): string {
   )`;
 
   const nextTimestampFromState = (stateSql: string) => `(
-    SELECT (to_timestamp(
-      LEAST(
-        ${soonestRepeatFromState(stateSql)},
-        CASE WHEN ${stateSql}->>'endedAtMillis' != 'null' AND ${stateSql}->'endedAtMillis' IS NOT NULL
+    SELECT CASE
+      WHEN "nextMillis"."millis" IS NULL THEN NULL::timestamptz
+      ELSE to_timestamp("nextMillis"."millis" / 1000.0)
+    END
+    FROM (
+      SELECT MIN("candidate"."millis") AS "millis"
+      FROM (
+        SELECT ${soonestRepeatFromState(stateSql)} AS "millis"
+        UNION ALL
+        SELECT CASE
+          WHEN ${stateSql}->>'endedAtMillis' != 'null' AND ${stateSql}->'endedAtMillis' IS NOT NULL
           THEN (${stateSql}->>'endedAtMillis')::numeric
-          ELSE NULL
-        END
-      ) / 1000.0
-    ))
+          ELSE NULL::numeric
+        END AS "millis"
+      ) AS "candidate"
+      WHERE "candidate"."millis" IS NOT NULL
+    ) AS "nextMillis"
   )`;
 
   // ── item-grant-repeat event ──
@@ -363,7 +384,7 @@ export function getSubscriptionTimeFoldReducerSql(): string {
 
   // ── subscription-end event ──
   // Expire all outstanding grants with expiresWhen="when-purchase-expires"
-  const endItemQuantityChangesToExpire = `(
+  const endItemQuantityChangesToExpire = (stateSql: string) => `(
     SELECT COALESCE(jsonb_agg(
       jsonb_build_object(
         'transactionId', "g"->'txnId',
@@ -372,27 +393,27 @@ export function getSubscriptionTimeFoldReducerSql(): string {
         'quantity', "g"->'quantity'
       )
     ), '[]'::jsonb)
-    FROM jsonb_array_elements(${S}->'outstandingGrants') AS "g"
+    FROM jsonb_array_elements(${stateSql}->'outstandingGrants') AS "g"
     WHERE "g"->>'expiresWhen' = 'when-purchase-expires'
   )`;
 
-  const endEventRow = `jsonb_build_object(
+  const endEventRowFromState = (stateSql: string) => `jsonb_build_object(
     'type', '"subscription-end"'::jsonb,
-    'subscriptionId', ${S}->'subscriptionId',
-    'tenancyId', ${S}->'tenancyId',
-    'customerId', ${S}->'customerId',
-    'customerType', ${S}->'customerType',
-    'productId', ${S}->'productId',
-    'productLineId', ${S}->'productLineId',
-    'quantity', ${S}->'quantity',
+    'subscriptionId', ${stateSql}->'subscriptionId',
+    'tenancyId', ${stateSql}->'tenancyId',
+    'customerId', ${stateSql}->'customerId',
+    'customerType', ${stateSql}->'customerType',
+    'productId', ${stateSql}->'productId',
+    'productLineId', ${stateSql}->'productLineId',
+    'quantity', ${stateSql}->'quantity',
     'startProductGrantRef', jsonb_build_object(
-      'transactionId', ${S}->'startTxnId',
-      'entryIndex', ${S}->'startProductGrantEntryIndex'
+      'transactionId', ${stateSql}->'startTxnId',
+      'entryIndex', ${stateSql}->'startProductGrantEntryIndex'
     ),
-    'itemQuantityChangesToExpire', ${endItemQuantityChangesToExpire},
-    'paymentProvider', ${S}->'paymentProvider',
-    'effectiveAtMillis', ${S}->'endedAtMillis',
-    'createdAtMillis', ${S}->'endedAtMillis'
+    'itemQuantityChangesToExpire', ${endItemQuantityChangesToExpire(stateSql)},
+    'paymentProvider', ${stateSql}->'paymentProvider',
+    'effectiveAtMillis', ${stateSql}->'endedAtMillis',
+    'createdAtMillis', ${stateSql}->'endedAtMillis'
   )`;
 
   // ── Combine into reducer ──
@@ -405,12 +426,14 @@ export function getSubscriptionTimeFoldReducerSql(): string {
     END AS "newState",
 
     CASE
+      WHEN ${T} IS NULL AND ${initialShouldEmitImmediateEnd} THEN jsonb_build_array(${startEventRow}, ${endEventRowFromState(initialState)})
       WHEN ${T} IS NULL THEN jsonb_build_array(${startEventRow})
-      WHEN ${isEndEvent} THEN jsonb_build_array(${endEventRow})
+      WHEN ${isEndEvent} THEN jsonb_build_array(${endEventRowFromState(S)})
       ELSE jsonb_build_array(${igrEventRow})
     END AS "newRowsData",
 
     CASE
+      WHEN ${T} IS NULL AND ${initialShouldEmitImmediateEnd} THEN NULL::timestamptz
       WHEN ${T} IS NULL THEN ${nextTimestampFromState(initialState)}
       WHEN ${isEndEvent} THEN NULL::timestamptz
       ELSE ${nextTimestampFromState(igrNewState)}
