@@ -314,6 +314,7 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: Refres
     email: user.primary_email,
     email_verified: user.primary_email_verified,
     selected_team_id: user.selected_team_id,
+    signed_up_at: Math.floor(user.signed_up_at_millis / 1000),
     is_anonymous: user.is_anonymous,
     is_restricted: user.is_restricted,
     restricted_reason: user.restricted_reason,

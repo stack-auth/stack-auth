@@ -277,5 +277,3 @@ A: It reads from Bulldozer-backed functions: `getOwnedProductsForCustomer` (LFol
 Q: When does syncStripeSubscriptions set endedAt?
 A: When `subscription.status === "canceled"` and `sanitizedDates.end <= new Date()` (period has already ended). This triggers TimeFold to emit subscription-end events which revoke the product and expire items.
 
-Q: Why do JS SDK tests fail with "Access token in fetchNewAccessToken is invalid"?
-A: The `accessTokenPayloadSchema` in `schema-fields.ts` requires `signed_up_at: yupNumber().defined()`, but `tokens.tsx` doesn't include `signed_up_at` in the JWT payload. The client-side Yup validation rejects the token. This is a pre-existing bug from a dev merge, not related to payments work.
