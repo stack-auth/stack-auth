@@ -22,6 +22,8 @@ concurrency:
 
 env:
   EMULATOR_IMAGE_NAME: stack-local-emulator
+  EMULATOR_IMAGE_DIR: ${{ github.workspace }}/docker/local-emulator/qemu/images
+  EMULATOR_RUN_DIR: ${{ github.workspace }}/docker/local-emulator/qemu/run
 
 jobs:
   build:

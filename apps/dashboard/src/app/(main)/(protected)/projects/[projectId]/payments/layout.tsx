@@ -61,7 +61,9 @@ function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
     });
   };
 
-  if (!stripeAccountInfo) {
+  const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
+
+  if (!stripeAccountInfo && !isLocalEmulator) {
     return (
       <div className="mx-auto max-w-sm h-full flex items-center">
         <Card className="w-full">
@@ -236,7 +238,7 @@ function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       )}
-      {getPublicEnvVar("NEXT_PUBLIC_STACK_IS_PREVIEW") !== "true" && (
+      {getPublicEnvVar("NEXT_PUBLIC_STACK_IS_PREVIEW") !== "true" && getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") !== "true" && (
         <div className={cn(bannerHasItems && "p-4", "flex justify-center")}>
           <div style={{ maxWidth: 1250, width: '100%' }}>
             <ConnectNotificationBanner
