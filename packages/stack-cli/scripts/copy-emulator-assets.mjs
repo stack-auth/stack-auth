@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 import { execFileSync } from "child_process";
-import { chmodSync, cpSync, existsSync, mkdirSync } from "fs";
+import { chmodSync, cpSync, mkdirSync } from "fs";
 import { dirname, join, resolve } from "path";
 import { fileURLToPath } from "url";
 
@@ -12,9 +12,7 @@ const envSrc = resolve(packageRoot, "../../docker/local-emulator/.env.developmen
 const distDir = join(packageRoot, "dist");
 const emulatorDist = join(distDir, "emulator");
 
-if (!existsSync(envSrc)) {
-  execFileSync(process.execPath, [envGenScript], { stdio: "inherit" });
-}
+execFileSync(process.execPath, [envGenScript], { stdio: "inherit" });
 
 mkdirSync(emulatorDist, { recursive: true });
 

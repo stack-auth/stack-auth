@@ -161,7 +161,7 @@ const entries = [
   literal("STACK_S3_ENDPOINT", "http://127.0.0.1:9090"),
   literal("STACK_QSTASH_URL", "http://127.0.0.1:8080"),
   literal("STACK_CLICKHOUSE_URL", "http://127.0.0.1:8123"),
-  literal("STACK_CLICKHOUSE_DATABASE", "analytics"),
+  literal("STACK_CLICKHOUSE_DATABASE", "default"),
   literal("STACK_EMAIL_MONITOR_INBUCKET_API_URL", "http://127.0.0.1:9001"),
   literal("BACKEND_PORT", "8102"),
   literal("DASHBOARD_PORT", "8101"),

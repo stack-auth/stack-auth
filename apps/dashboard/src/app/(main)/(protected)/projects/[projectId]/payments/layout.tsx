@@ -174,7 +174,7 @@ function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </div>
-      ) : !stripeAccountInfo.details_submitted && (
+      ) : stripeAccountInfo && !stripeAccountInfo.details_submitted && (
         <div className="flex justify-center px-4 pt-4 sm:px-6 sm:pt-6">
           <div className={cn(
             "w-full max-w-[1250px] rounded-2xl p-4 sm:p-5",
