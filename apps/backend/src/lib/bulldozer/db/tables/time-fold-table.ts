@@ -422,7 +422,7 @@ export function declareTimeFoldTable<
     fromTableTriggerRegistration = null;
   };
 
-  return {
+  const table: ReturnType<typeof declareTimeFoldTable<GK, OldRD, NewRD, S>> = {
     tableId: options.tableId,
     inputTables: [options.fromTable],
     debugArgs: {
@@ -564,5 +564,31 @@ export function declareTimeFoldTable<
       triggers.set(id, trigger);
       return { deregister: () => triggers.delete(id) };
     },
+    verifyDataIntegrity: () => {
+      const allInputGroups = options.fromTable.listGroups({
+        start: "start", end: "end", startInclusive: true, endInclusive: true,
+      });
+      const allActualGroups = table.listGroups({
+        start: "start", end: "end", startInclusive: true, endInclusive: true,
+      });
+      return sqlQuery`
+        WITH "inputGroups" AS (
+          SELECT "g"."groupkey" AS "groupKey" FROM (${allInputGroups}) AS "g"
+        ),
+        "actualGroups" AS (
+          SELECT "g"."groupkey" AS "groupKey" FROM (${allActualGroups}) AS "g"
+        ),
+        "extraGroups" AS (
+          SELECT 'extra_group' AS errortype,
+            "actualGroups"."groupKey" AS groupkey, NULL::text AS rowidentifier,
+            NULL::jsonb AS expected, NULL::jsonb AS actual
+          FROM "actualGroups"
+          LEFT JOIN "inputGroups" ON "inputGroups"."groupKey" IS NOT DISTINCT FROM "actualGroups"."groupKey"
+          WHERE "inputGroups"."groupKey" IS NULL
+        )
+        SELECT * FROM "extraGroups" WHERE ${isInitializedExpression}
+      `;
+    },
   };
+  return table;
 }

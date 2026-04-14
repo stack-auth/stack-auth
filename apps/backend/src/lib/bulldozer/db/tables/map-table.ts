@@ -84,6 +84,7 @@ export function declareMapTable<
       "listGroups",
       "listRowsInGroup",
       "registerRowChangeTrigger",
+      "verifyDataIntegrity",
     ]),
   };
 }

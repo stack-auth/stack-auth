@@ -77,6 +77,7 @@ export function declareFilterTable<
       "listGroups",
       "listRowsInGroup",
       "registerRowChangeTrigger",
+      "verifyDataIntegrity",
     ]),
   };
 }

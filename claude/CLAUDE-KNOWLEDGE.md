@@ -237,3 +237,9 @@ A: No. It was removed because item quantity changes have nothing to do with paym
 
 Q: Are Bulldozer table `init()` calls idempotent?
 A: No. They use plain `INSERT INTO "BulldozerStorageEngine"` without `ON CONFLICT DO NOTHING`, so calling `init()` twice crashes with a unique constraint violation. The ingress script (`bulldozer-payments-init.ts`) checks `table.isInitialized()` per-table before calling `init()` to handle this safely.
+
+Q: How does the Bulldozer `verifyDataIntegrity()` method work?
+A: Each `Table` has a `verifyDataIntegrity()` method returning a `SqlQuery` that produces error rows (empty = healthy). For derived tables (flat-map, sort, group-by, left-join, compact), it re-derives expected rows from input tables and does a FULL OUTER JOIN with actual materialized rows. For stored/concat tables (leaf/virtual), it returns empty. For reduce/l-fold/time-fold, it does structural group-correspondence checks. All derived-table queries are gated on `isInitialized` so uninitialized tables are silently skipped. The helper `verifyAllTablesIntegrity(tables)` UNION ALLs all tables' queries with a `tableid` column. Filter and map tables delegate to their internal nested flat-map table's verifyDataIntegrity via the `pick()` spread.
+
+Q: How are Bulldozer table implementations structured when they need self-referencing methods?
+A: When a table method (like `verifyDataIntegrity`) needs to call another method on the same table (like `listRowsInGroup`), the `declare*Table` function assigns the result object to a `const table` variable first, then returns it: `const table: ReturnType<typeof declare*Table<...>> = { ... }; return table;`. This lets closures reference `table` by the time they execute.

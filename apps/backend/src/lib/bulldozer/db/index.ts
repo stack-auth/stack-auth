@@ -3,7 +3,7 @@ import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 
 import { BULLDOZER_SORT_HELPERS_SQL } from "./bulldozer-sort-helpers-sql";
 import type { Json, RowData, RowIdentifier, SqlExpression, SqlQuery, SqlStatement, TableId } from "./utilities";
-import { quoteSqlIdentifier } from "./utilities";
+import { quoteSqlIdentifier, sqlQuery, tableIdToDebugString } from "./utilities";
 
 // ====== Table implementations ======
 // IMPORTANT NOTE: For every new table implementation, we should also add tests (unit, fuzzing, & perf; including an entry in the "hundreds of thousands" perf test), an example in the example schema, and support in Bulldozer Studio.
@@ -37,6 +37,9 @@ export type Table<GK extends Json, SK extends Json, RD extends RowData> = {
    * @param trigger A SQL statement that can reference the changes table with columns `groupKey: GK`, `rowIdentifier: RowIdentifier`, `oldRowSortKey: SK | null`, `newRowSortKey: SK | null`, `oldRowData: RowData | null`, `newRowData: RowData | null`. Note that this trigger should be a no-op if the table that created this trigger is not initialized.
    */
   registerRowChangeTrigger(trigger: (changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => SqlStatement[]): { deregister: () => void },
+
+  /** Returns a query producing error rows if materialized data differs from re-derivation from inputs. Empty result = healthy. */
+  verifyDataIntegrity(): SqlQuery<Iterable<{ errorType: string, groupKey: GK | null, rowIdentifier: RowIdentifier | null, expected: Json | null, actual: Json | null }>>,
 };
 
 export { declareCompactTable } from "./tables/compact-table";
@@ -137,4 +140,18 @@ export function toExecutableSqlTransaction(statements: SqlStatement[], options: 
 
     COMMIT;
   `;
+}
+
+// any is used here because the verifier works with heterogeneous table types
+export function verifyAllTablesIntegrity(tables: Table<any, any, any>[]): SqlQuery<Iterable<{ tableId: string, errorType: string, groupKey: Json | null, rowIdentifier: RowIdentifier | null, expected: Json | null, actual: Json | null }>> {
+  if (tables.length === 0) {
+    return sqlQuery`SELECT NULL::text AS tableid, NULL::text AS errortype, NULL::jsonb AS groupkey, NULL::text AS rowidentifier, NULL::jsonb AS expected, NULL::jsonb AS actual WHERE false`;
+  }
+  const combined: { sql: string } = {
+    sql: tables.map(t => {
+      const label = tableIdToDebugString(t.tableId).replaceAll("'", "''");
+      return `SELECT '${label}' AS tableid, "v".* FROM (${t.verifyDataIntegrity().sql}) AS "v"`;
+    }).join("\nUNION ALL\n"),
+  };
+  return sqlQuery`${combined}`;
 }
