@@ -1,6 +1,6 @@
 ---
 title: Self-host
-lastModified: "2026-04-06"
+lastModified: "2026-04-14"
 ---
 
 <Info type="danger">
@@ -123,6 +123,7 @@ The Stack CLI provides commands to manage the emulator:
 | `emulator reset` | Wipe all data and reset to a fresh state |
 | `emulator status` | Show emulator and service health |
 | `emulator list-releases` | List available emulator releases |
+| `emulator run` | Run a command with emulator credentials injected |
 
 ### Bundled Services
 
@@ -134,12 +135,35 @@ The emulator runs these services inside the virtual machine:
 | Backend | 26701 | Stack Auth API server |
 | MinIO | 26702 | S3-compatible storage |
 | Inbucket | 26703 | Email testing interface |
+| OAuth Mock | 26714 | Mock OAuth provider for testing social login |
 
-PostgreSQL, Redis, ClickHouse, Svix, and QStash run internally and are not exposed to the host.
+PostgreSQL, Redis, ClickHouse, Svix, QStash, Stripe Mock, and Freestyle Mock run internally and are not exposed to the host.
+
+### Mock Services
+
+The emulator includes mock implementations of external services so you can test integrations locally without external dependencies:
+
+- **Stripe Mock**: A local mock of the Stripe API for testing payments without real transactions
+- **OAuth Mock**: A mock OAuth provider for testing social login flows without configuring real OAuth credentials
+- **Freestyle Mock**: A mock of the Freestyle JS execution service for email template rendering
 
 ### Using the Emulator with Your App
 
-Once the emulator is running, configure your app to connect to the local backend:
+The easiest way to run your app with the emulator is using the `emulator run` command, which automatically starts the emulator and injects credentials into your app's environment:
+
+<PlatformCodeblock document="others/self-host" examples={["emulator-run"]} hidePlatformSelector />
+
+This command:
+1. Starts the emulator if not already running
+2. Fetches credentials for the project mapped to your config file
+3. Injects environment variables into the child process (`STACK_PROJECT_ID`, `STACK_PUBLISHABLE_CLIENT_KEY`, `STACK_SECRET_SERVER_KEY`, and `STACK_API_URL` with their `NEXT_PUBLIC_` variants)
+4. Stops the emulator when your command exits (if it started it)
+
+Alternatively, you can start the emulator separately and configure your app manually:
+
+<PlatformCodeblock document="others/self-host" examples={["emulator-start"]} hidePlatformSelector />
+
+Then set the environment variable in your app:
 
 ```
 NEXT_PUBLIC_STACK_API_URL=http://localhost:26701

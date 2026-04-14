@@ -152,5 +152,15 @@ pnpm start:dashboard`,
         filename: 'Terminal'
       }
     ] as CodeExample[],
+
+    'emulator-run': [
+      {
+        language: 'Shell',
+        framework: 'npm',
+        code: `npx @stackframe/stack-cli emulator run --config-file ./stack.config.ts "npm run dev"`,
+        highlightLanguage: 'bash',
+        filename: 'Terminal'
+      }
+    ] as CodeExample[],
   }
 };
