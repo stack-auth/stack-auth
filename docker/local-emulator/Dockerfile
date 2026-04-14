@@ -103,6 +103,28 @@ RUN cp $(which qstash) /qstash-binary 2>/dev/null || \
     { echo "ERROR: qstash binary not found" >&2; exit 1; }
 
 
+# ── Strip / compress service binaries (parallel stages) ──────────────────────
+
+FROM debian:trixie-slim AS upx-compress
+RUN apt-get update && apt-get install -y --no-install-recommends upx-ucl binutils && \
+    rm -rf /var/lib/apt/lists/*
+COPY --from=clickhouse-bin /usr/bin/clickhouse /out/clickhouse
+COPY --from=svix-bin /usr/local/bin/svix-server /out/svix-server
+COPY --from=minio-bin /usr/bin/minio /out/minio
+COPY --from=mc-bin /usr/bin/mc /out/mc
+COPY --from=qstash-bin /qstash-binary /out/qstash
+RUN chmod u+w /out/* && \
+    # Intentionally NOT stripping /out/clickhouse. The clickhouse binary is a
+    # self-extracting compressed executable (a small loader with a ZSTD
+    # payload appended after the section table); strip rewrites the ELF and
+    # can invalidate the loader's "find my payload" lookup, causing the
+    # decompressor to spin on garbage with zero log output — the exact
+    # symptom seen on cross-arch TCG runs. Savings from stripping would be
+    # only the tiny bootstrap anyway since the payload isn't in any section.
+    strip --strip-all /out/minio /out/svix-server /out/mc /out/qstash && \
+    upx -9 /out/minio /out/svix-server /out/mc /out/qstash
+
+
 # ── Final image ───────────────────────────────────────────────────────────────
 
 FROM debian:trixie-slim
@@ -139,20 +161,20 @@ COPY --from=node-base /usr/local/bin/node /usr/local/bin/node
 # Inbucket
 COPY --from=inbucket-bin /opt/inbucket /opt/inbucket
 
-# Svix
-COPY --from=svix-bin /usr/local/bin/svix-server /usr/local/bin/svix-server
+# Svix (UPX-compressed)
+COPY --from=upx-compress /out/svix-server /usr/local/bin/svix-server
 
-# ClickHouse
-COPY --from=clickhouse-bin /usr/bin/clickhouse /usr/bin/clickhouse
+# ClickHouse (stripped only)
+COPY --from=upx-compress /out/clickhouse /usr/bin/clickhouse
 RUN ln -sf /usr/bin/clickhouse /usr/bin/clickhouse-server && \
     ln -sf /usr/bin/clickhouse /usr/bin/clickhouse-client
 
-# MinIO
-COPY --from=minio-bin /usr/bin/minio /usr/local/bin/minio
-COPY --from=mc-bin /usr/bin/mc /usr/local/bin/mc
+# MinIO (UPX-compressed)
+COPY --from=upx-compress /out/minio /usr/local/bin/minio
+COPY --from=upx-compress /out/mc /usr/local/bin/mc
 
-# QStash
-COPY --from=qstash-bin --chmod=755 /qstash-binary /usr/local/bin/qstash
+# QStash (UPX-compressed)
+COPY --from=upx-compress --chmod=755 /out/qstash /usr/local/bin/qstash
 
 # App
 WORKDIR /app
@@ -164,6 +186,10 @@ COPY --from=builder /app/apps/backend/node_modules ./apps/backend/node_modules
 COPY --from=builder /app/apps/dashboard/.next/standalone ./
 COPY --from=builder /app/apps/dashboard/.next/static ./apps/dashboard/.next/static
 COPY --from=builder /app/apps/dashboard/public ./apps/dashboard/public
+# Save the standalone-traced node_modules (runtime deps only) before the full
+# migration-pruner copy overwrites it. The slim-docker-image step in the QEMU
+# build restores this after migrations are baked in.
+RUN cp -a /app/node_modules /app/node_modules.standalone 2>/dev/null || mkdir -p /app/node_modules.standalone
 COPY --from=migration-pruner /pruned-node_modules ./node_modules
 COPY --from=builder /app/packages ./packages
 
