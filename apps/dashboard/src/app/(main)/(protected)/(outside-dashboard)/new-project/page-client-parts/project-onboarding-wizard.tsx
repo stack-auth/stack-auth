@@ -87,6 +87,8 @@ export function ProjectOnboardingWizard(props: {
   const [domainSetupAutoAdvanceError, setDomainSetupAutoAdvanceError] = useState<string | null>(null);
   const [domainSetupAutoAdvancing, setDomainSetupAutoAdvancing] = useState(false);
   const previousProjectId = useRef<string | null>(null);
+  const paymentsAutoCompletingRef = useRef(false);
+  const stripeAccountInfo = props.project.app.useStripeAccountInfo();
 
   const runWithSaving = useCallback(async (fn: () => Promise<void>) => {
     setSaving(true);
@@ -131,6 +133,7 @@ export function ProjectOnboardingWizard(props: {
     setAuthSetupMobileTab("methods");
     setDomainSetupAutoAdvanceError(null);
     setDomainSetupAutoAdvancing(false);
+    paymentsAutoCompletingRef.current = false;
   }, [completeConfig, project, project.id, status]);
 
   const emailThemes = project.app.useEmailThemes();
@@ -225,6 +228,22 @@ export function ProjectOnboardingWizard(props: {
       finishProjectOnboarding();
     });
   }, [finishProjectOnboarding, runWithSaving, setProjectOnboardingStatus]);
+
+  useEffect(() => {
+    if (status !== "payments_setup" || stripeAccountInfo?.details_submitted !== true || paymentsAutoCompletingRef.current) {
+      return;
+    }
+
+    paymentsAutoCompletingRef.current = true;
+    runAsynchronouslyWithAlert(async () => {
+      try {
+        await finalizeOnboarding();
+      } catch (error) {
+        paymentsAutoCompletingRef.current = false;
+        throw error;
+      }
+    });
+  }, [finalizeOnboarding, status, stripeAccountInfo?.details_submitted]);
 
   if (props.status === "config_choice" && props.mode === "link-existing") {
     return (
