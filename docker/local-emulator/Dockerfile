@@ -52,6 +52,7 @@ COPY docs ./docs
 
 # https://nextjs.org/docs/pages/api-reference/next-config-js/output
 ENV NEXT_CONFIG_OUTPUT=standalone
+ENV NEXT_PUBLIC_STACK_STRIPE_PUBLISHABLE_KEY=pk_test_mock_publishable_key_for_local_emulator
 
 # Build the backend NextJS app
 RUN pnpm turbo run docker-build --filter=@stackframe/backend... --filter=@stackframe/dashboard...
@@ -80,8 +81,6 @@ RUN cp -a /app/node_modules /pruned-node_modules && \
       posthog-js@* \
       @prisma+studio-core@* @prisma+dev@* @prisma+query-plan-executor@* \
       convex@* @electric-sql+*@* \
-      # Duplicate Next.js copies (keep only one for next/headers.js resolution)
-      'next@16.1.5_@babel+core@7.29.0*' 'next@16.1.5_@babel+core@7.28.5*' \
       next@14* @next+swc-*@14* \
       # Native build binaries not needed at runtime
       @esbuild+*@* esbuild@* @rolldown+*@* \
@@ -89,8 +88,47 @@ RUN cp -a /app/node_modules /pruned-node_modules && \
       date-fns@2* date-fns@3*
 
 
+# ── Freestyle mock build ─────────────────────────────────────────────────────
+
+FROM node-base AS freestyle-mock-builder
+WORKDIR /freestyle-mock
+COPY docker/dependencies/freestyle-mock/Dockerfile /tmp/freestyle-mock-dockerfile
+# Extract the inline package.json and server.mjs from the Dockerfile's RUN cat commands,
+# then install dependencies. This avoids duplicating the source.
+RUN node -e " \
+  const fs = require('fs'); \
+  const df = fs.readFileSync('/tmp/freestyle-mock-dockerfile', 'utf8'); \
+  const pkgMatch = df.match(/cat <<'EOF' > package\\.json\\n([\\s\\S]*?)\\nEOF/); \
+  fs.writeFileSync('package.json', pkgMatch[1]); \
+  const srvMatch = df.match(/cat <<'EOF' > server\\.mjs\\n([\\s\\S]*?)\\nEOF/); \
+  let server = srvMatch[1]; \
+  server = server.replace('server.listen(8080)', 'server.listen(process.env.PORT || 8080)'); \
+  server = server.replace( \
+    'from \"fs/promises\"', \
+    'from \"fs/promises\"; import { symlinkSync } from \"fs\"' \
+  ); \
+  server = server.replace( \
+    'await mkdir(workDir, { recursive: true });', \
+    'await mkdir(workDir, { recursive: true }); try { symlinkSync(\"/app/freestyle-mock/node_modules\", join(workDir, \"node_modules\")); } catch {}' \
+  ); \
+  fs.writeFileSync('server.mjs', server); \
+"
+RUN npm install
+
+
+# ── Mock OAuth server build ───────────────────────────────────────────────────
+
+FROM node-base AS mock-oauth-builder
+WORKDIR /mock-oauth
+COPY apps/mock-oauth-server/package.json .
+RUN pnpm install && pnpm add esbuild --save-dev
+COPY apps/mock-oauth-server/src ./src
+RUN npx esbuild src/index.ts --bundle --platform=node --target=node22 --outfile=dist/index.cjs
+
+
 # ── Service binary stages ─────────────────────────────────────────────────────
 
+FROM stripe/stripe-mock:v0.195.0 AS stripe-mock-bin
 FROM inbucket/inbucket:3.1.0 AS inbucket-bin
 FROM svix/svix-server:v1.88.0 AS svix-bin
 FROM clickhouse/clickhouse-server:25.10 AS clickhouse-bin
@@ -161,6 +199,9 @@ COPY --from=node-base /usr/local/bin/node /usr/local/bin/node
 # Inbucket
 COPY --from=inbucket-bin /opt/inbucket /opt/inbucket
 
+# Stripe mock
+COPY --from=stripe-mock-bin /bin/stripe-mock /usr/local/bin/stripe-mock
+
 # Svix (UPX-compressed)
 COPY --from=upx-compress /out/svix-server /usr/local/bin/svix-server
 
@@ -193,6 +234,14 @@ RUN cp -a /app/node_modules /app/node_modules.standalone 2>/dev/null || mkdir -p
 COPY --from=migration-pruner /pruned-node_modules ./node_modules
 COPY --from=builder /app/packages ./packages
 
+# Mock OAuth server (bundled single file)
+COPY --from=mock-oauth-builder /mock-oauth/dist/index.cjs /app/mock-oauth-server/index.cjs
+
+# Freestyle mock (JS execution for email rendering)
+COPY --from=freestyle-mock-builder /freestyle-mock /app/freestyle-mock
+COPY --from=node-base /usr/local/bin/npm /usr/local/bin/npm
+COPY --from=node-base /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/npm
+
 RUN mkdir -p \
     /data/postgres \
     /data/redis \
@@ -209,17 +258,18 @@ RUN mkdir -p \
   && chown -R postgres:postgres /data/postgres
 
 COPY docker/local-emulator/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY docker/local-emulator/run-cron-jobs.sh /run-cron-jobs.sh
 COPY docker/local-emulator/entrypoint.sh /entrypoint.sh
 COPY docker/local-emulator/init-services.sh /init-services.sh
 COPY docker/local-emulator/start-app.sh /start-app.sh
 COPY docker/local-emulator/clickhouse-config.xml /etc/clickhouse-server/config.xml
 COPY docker/local-emulator/clickhouse-users.xml /etc/clickhouse-server/users.xml
 COPY docker/server/entrypoint.sh /app-entrypoint.sh
-RUN chmod +x /entrypoint.sh /init-services.sh /start-app.sh /app-entrypoint.sh
+RUN chmod +x /entrypoint.sh /init-services.sh /start-app.sh /app-entrypoint.sh /run-cron-jobs.sh
 
 # PostgreSQL: 5432, Redis: 6379, Inbucket: 2500/9001/1100,
 # Svix: 8071, ClickHouse: 8123/9009, MinIO: 9090, QStash: 8080
-# Backend: 8102, Dashboard: 8101
-EXPOSE 5432 6379 2500 9001 1100 8071 8123 9009 9090 8080 8101 8102
+# Backend: 8102, Dashboard: 8101, Mock OAuth: 8114
+EXPOSE 5432 6379 2500 9001 1100 8071 8123 9009 9090 8080 8101 8102 8114
 
 ENTRYPOINT ["/entrypoint.sh"]

@@ -79,9 +79,6 @@ A: Run lint from `apps/dashboard` directly (for example `pnpm lint -- "src/app/(
 Q: How should unsubscribe-link e2e tests avoid breakage from email theme/layout changes?
 A: In `apps/e2e/tests/backend/endpoints/api/v1/unsubscribe-link.test.ts`, avoid snapshotting the entire rendered HTML for transactional emails; assert stable behavior instead (email content present and `/api/v1/emails/unsubscribe-link` absent) so cosmetic wrapper/style changes do not fail the test.
 
-Q: Why is the JIT disabled for Bulldozer DB mutations with only a few rows?
-A: PostgreSQL JIT can dominate runtime for Bulldozer's giant single-statement CTE transactions. In a `group -> map -> map -> group` mutation with only 31 SQL statements and ~8 source rows, `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON, VERBOSE)` showed ~1.4ms planning, ~1598.9ms execution, and ~1597.5ms of JIT time (`Optimization` ~836ms, `Emission` ~740ms) while the actual plan nodes were sub-millisecond. Disabling JIT locally for Bulldozer transactions with `SET LOCAL jit = off;` in `toExecutableSqlTransaction()` dropped the same query to ~0.63ms execution and brought the stacked fuzz case from ~41s to ~0.34s.
-
 Q: How do cross-domain auth handoffs avoid creating extra refresh-token sessions?
 A: The cross-domain authorize route must carry the current `refreshTokenId` through authorization-code exchange and OAuth token issuance must reuse that ID. Keep `afterCallbackRedirectUrl` URL-only and persist refresh-token linkage in `ProjectUserAuthorizationCode.grantedRefreshTokenId`; then return that as `user.refreshTokenId` in `getAuthorizationCode` so token issuance can reuse the same refresh-token row with ownership checks.
 
@@ -149,21 +146,6 @@ A: The QEMU runtime path regressed when it switched from mounting `docker/local-
 Q: Where is the private sign-up risk engine generated entrypoint in backend now?
 A: The generator script writes `apps/backend/src/private/implementation.generated.ts` (not `src/generated/private-sign-up-risk-engine.ts`), and backend runtime imports should target `@/private/implementation.generated`.
 
-Q: When do Bulldozer transactions need sequential temp-table execution instead of the default giant CTE executor?
-A: Most Bulldozer operators should keep using the original giant-CTE executor because it is faster and matches existing semantics. `declareSortTable` is the exception for its bulk-init path: it needs real temp tables so a transaction-local PL/pgSQL helper can read intermediate sorted rows by table name. The safe split is to keep the CTE executor by default and switch to sequential execution only when a statement uses `pg_temp.bulldozer_sort_bulk_init_from_table`. Also, plain side-effecting `SELECT pg_temp.helper(...)` CTEs are not reliable unless they are wrapped in a data-modifying statement such as `INSERT INTO pg_temp.bulldozer_side_effects ...`.
-
-Q: Why can initializing a Bulldozer operator with an internal child table fail with `BulldozerStorageEngine_keyPathParent_fkey`?
-A: Internal child table paths add an extra `"table"` segment (for example `.../table/external:parent/table/internal:child`). The parent operator must insert the intermediate `.../table` keyPath before running the child table `init()`. Without that node, inserting the child root path violates the storage engine parent foreign key.
-
-Q: Why can a multi-input operator like `declareLeftJoinTable` read stale upstream rows inside trigger execution?
-A: Bulldozer executes most statement batches as one giant CTE transaction for speed. Within that single statement snapshot, downstream reads of `BulldozerStorageEngine` may not see upstream writes from earlier CTEs unless data is passed explicitly. For left-join trigger correctness (especially when one input depends on the other), force sequential execution for those statements (for example with a sentinel checked in `toExecutableSqlStatements`) or derive new input state directly from change tables instead of re-reading storage.
-
-Q: How can `declareLeftJoinTable` avoid accidental scans over unrelated `BulldozerStorageEngine` rows?
-A: Avoid all-groups `listRowsInGroup` scans in `init()`. First list left-table groups, then fetch left/right rows per group via `CROSS JOIN LATERAL listRowsInGroup({ groupKey })`. For all-groups read paths, traverse from table-local group nodes using `keyPathParent = <groupsPath>` equality joins (`groupPath -> groupRowsPath -> rows`) instead of prefix-slice predicates like `keyPathParent[1:cardinality(...)] = ...`.
-
-Q: What query shape should Bulldozer use to list all rows without scaling with entire `BulldozerStorageEngine` size?
-A: For table-scoped all-groups reads, use equality-join traversal rooted at that table's groups path: `groupPath (keyPathParent = groupsPath) -> groupRowsPath (keyPathParent = groupPath.keyPath and leaf = 'rows') -> rows (keyPathParent = groupRowsPath.keyPath)`. Avoid prefix slicing on `keyPathParent` (`[1:cardinality(...)] = ...`), which can force broad scans over unrelated tables.
-
 Q: Why did EventTracker throw `Reflect.get called on non-object` in JS cookie tests?
 A: Partial browser mocks can expose `window` without a real `history` object. Calling `Reflect.get(historyObject, "pushState")` throws before type checks. Use normal guarded access (`Object.getOwnPropertyDescriptor(window, "history")?.value`) plus type guards for `pushState`/`replaceState`, and patch/restore methods directly without `Reflect`.
 
@@ -176,104 +158,9 @@ A: In `packages/template/src/components-page/stack-handler-client.tsx`, parse ha
 Q: What is the current `app.urls` contract after deprecating runtime URL mutation?
 A: `app.urls` is now static (`getUrls(...)` only) and no longer injects runtime `after_auth_return_to` / `stack_cross_domain_*` params from `window.location`. For navigation flows, examples and consumers should use `redirectToXyz()` methods instead (for example `redirectToSignIn()` / `redirectToSignOut()`), while tests for hosted flows should assert dynamic params on actual redirect methods, not on `app.urls`.
 
-Q: What is the fastest safe way to delete a Bulldozer table subtree from `BulldozerStorageEngine`?
-A: Delete only the table root `keyPath` and rely on the existing `keyPathParent -> keyPath ON DELETE CASCADE` FK to remove descendants. This avoids recursive CTE path enumeration and significantly speeds up large deletes while preserving semantics.
-
-Q: How should `declareLimitTable.listRowsInGroup` implement the all-groups read path for performance?
-A: Read directly from the materialized limit table subtree (`groups -> rows` via `keyPathParent` equality joins) and apply range predicates on stored `rowSortKey`, instead of scanning upstream source rows and semi-joining with `EXISTS` on each row. This keeps behavior but removes an avoidable full-source scan.
-
 Q: How should user signup time be exposed in JWT claims before production rollout?
 A: Use `signed_up_at` (OIDC-style naming) in access tokens and encode it as Unix seconds in `apps/backend/src/lib/tokens.tsx` (`Math.floor(user.signed_up_at_millis / 1000)`). Since this is pre-prod, the payload schema can require `signed_up_at` directly without a backward-compat optional shim.
 
-Q: Why did adding `signed_up_at` to the access token payload break backend typecheck?
-A: `AccessTokenPayload` currently does not include `signed_up_at`. In `apps/backend/src/lib/tokens.tsx`, `payload` is typed as `Omit<AccessTokenPayload, "iss" | "aud" | "iat">`, so extra fields fail with `TS2353`. Until the schema/type is updated consistently, keep `signed_up_at` out of the payload object.
-
-Q: How should Bulldozer Studio mutation endpoints be hardened?
-A: In `apps/backend/scripts/run-bulldozer-studio.ts`, enforce loopback-only requests, require a per-instance mutation token header (for all POST routes), bound request body size before buffering/JSON parse, and ensure raw writes use the same advisory transaction lock as other table mutations. For raw upsert correctness, insert missing parent key paths before upserting the leaf node.
-
-Q: What is the new `declareLeftJoinTable` API contract and why was it changed?
-A: `declareLeftJoinTable` now takes `leftJoinKey` and `rightJoinKey` SQL mappers (each producing a `joinKey`) instead of an arbitrary `on` predicate. Join rows are matched when `leftJoinKey IS NOT DISTINCT FROM rightJoinKey` within the same group. This removes custom non-equality predicates, enables planner-friendly equality joins, and keeps null-key matching explicit (`IS NOT DISTINCT FROM`).
-
-Q: What does `listRowsInGroup` return regarding `groupKey` and what pitfall was fixed?
-A: In Bulldozer, all-groups row queries can include `groupKey`, while specific-group queries may omit it. A bug in `declareStoredTable.listRowsInGroup` ignored the provided `groupKey` and did not expose `groupKey` for all-groups reads. It now returns `'null'::jsonb AS groupKey` for all-groups reads and correctly filters specific-group reads to only the null group (`groupKey IS NOT DISTINCT FROM 'null'::jsonb`).
-
-Q: How should Bulldozer materialized operators manage upstream trigger registrations across init/delete?
-A: Register upstream row-change triggers lazily in `init()` (via an idempotent `ensure...Registration` helper), store deregistration handles, and call those `deregister()` functions in `delete()`. This avoids leaked/no-op trigger callbacks after table teardown while still allowing re-initialization to re-register subscriptions.
-
-Q: How can we test trigger registration lifecycle behavior without depending on database row changes?
-A: In `apps/backend/src/lib/bulldozer/db/index.test.ts`, wrap input tables with an instrumentation helper that intercepts `registerRowChangeTrigger`, counts `register`/`deregister` calls, and tracks active registrations. Then assert `init()` registers exactly once per input, repeated `init()` is idempotent, `delete()` deregisters, and re-`init()` re-registers.
-
-Q: Why can `declareConcatTable` ignore input sort comparator differences?
-A: `declareConcatTable` always emits `rowSortKey = null` and uses `compareSortKeys: () => 0` itself, so input sort-order semantics are not part of concat output behavior. It should only enforce group-key comparator compatibility, not sort comparator compatibility.
-
-Q: How should flaky subset-iteration perf assertions be stabilized?
-A: In `apps/backend/src/lib/bulldozer/db/index.perf.test.ts`, keep a warmup query, then measure multiple timed runs (for example 5) and assert on average latency instead of a single run. Log average, standard deviation, variance, min, and max so regressions still show up while reducing one-off outlier failures.
-
-Q: What if multi-run average still flakes because of one or two large outliers?
-A: Use robust stats for thresholds: keep logging full `avg/stddev/variance/min/max`, but assert subset-iteration performance on `trimmedAverage` (drop one min/max sample when there are 5 runs). This preserves sensitivity to sustained regressions while tolerating transient host contention spikes during concurrent test-file execution.
-
-Q: How should `declareTimeFoldTable` row identifiers and SQL aliases behave?
-A: `declareTimeFoldTable` emits expanded output identifiers with a flat-row suffix (for example `sourceRowId:1` even when one row is emitted), matching other fold-style operators. For query outputs, use unquoted aliases (`AS groupKey`, `AS rowIdentifier`, etc.) if later clauses reference them (`ORDER BY groupKey, rowIdentifier`) to avoid case-sensitive alias lookup errors in Postgres.
-
-Q: Why can Bulldozer Studio show initialized derived tables that do not react to new stored-table mutations?
-A: Trigger registrations are in-memory and are established in table `init()`. If the DB already has initialized derived tables from a previous Studio process, a fresh Studio process can report `initialized: true` from storage while lacking active trigger subscriptions. In `run-bulldozer-studio.ts`, rebind initialized derived tables at startup by deleting and re-initializing them in dependency order so subscriptions are re-registered.
-
-Q: How can I inspect the `declareTimeFoldTable` scheduler state in Bulldozer Studio?
-A: Use the new `⏱️ Timefold` mode in `apps/backend/scripts/run-bulldozer-studio.ts`. It calls `/api/timefold/debug`, which reports whether `BulldozerTimeFoldQueue` and `BulldozerTimeFoldMetadata` exist, the metadata `lastProcessedAt` value, and up to 500 queued rows (including `scheduledAt`, `stateAfter`, `rowData`, and `reducerSql`) ordered by scheduled execution time.
-
-Q: Why can timefold queue rows remain overdue even though the reducer function exists?
-A: The migration creates the queue processor function regardless of `pg_cron`, but `pg_cron` setup is best-effort and can be skipped (for example if `cron.job` is unavailable). In that state, `BulldozerTimeFoldQueue` grows while `lastProcessedAt` stops moving until `public.bulldozer_timefold_process_queue()` is called manually or `pg_cron` is installed/configured correctly.
-
-Q: How do we ensure `pg_cron` is actually available in local dev Postgres?
-A: In `docker/dev-postgres-with-extensions/Dockerfile`, install `postgresql-15-cron`, add `pg_cron` to `shared_preload_libraries`, set `cron.database_name='stackframe'`, and create the extension during init (`CREATE EXTENSION pg_cron;`). After `pnpm run restart-deps`, `to_regclass('cron.job')` should be non-null and `cron.job_run_details` should show the `bulldozer-timefold-worker` running every second.
-
-Q: How does Bulldozer Studio "init all" work?
-A: `apps/backend/scripts/run-bulldozer-studio.ts` now exposes `POST /api/tables/init-all`, which initializes only non-initialized tables in topological dependency order derived from table snapshots. The toolbar has a `🚀 init all` button that calls this endpoint and refreshes schema/details afterward.
-
-Q: What are safe reducer practices for `declareTimeFoldTable`, and how do timed reruns affect outputs?
-A: Timefold reducers should avoid non-deterministic values (`now()`, random) for output-driving logic; prefer stable row timestamps and prior reducer timestamps so replay/re-init stays deterministic. Timed reruns now append newly emitted rows on top of existing emitted rows for a source row (instead of replacing prior timed outputs), while source updates/deletes still recompute/reset that source row’s materialized outputs.
-
-Q: How does the Bulldozer payments dual-write work?
-A: `apps/backend/src/lib/payments/bulldozer-dual-write.ts` exports `bulldozerWrite*` functions (one per payment model: Subscription, OneTimePurchase, SubscriptionInvoice, ItemQuantityChange). Each takes a full Prisma row, converts it to the Bulldozer stored table format via `*ToStoredRow`, then calls `schema.<table>.setRow()` + `toExecutableSqlTransaction` + `prisma.$executeRaw`. Every Prisma create/update/upsert on these models has a `// dual write - prisma and bulldozer` comment and a call to the corresponding function. For `update` calls (which don't return full rows), a `findUniqueOrThrow` re-reads the row before passing to the bulldozer write. The conversion functions are also reused by the ingress script (`bulldozer-payments-init.ts`).
-
-Q: Does `ManualItemQuantityChangeRow` have a `paymentProvider` field?
-A: No. It was removed because item quantity changes have nothing to do with payment providers. The `manualItemQuantityChangeTxns` mapper in `transactions.ts` emits `'null'::jsonb AS "paymentProvider"`, and `TransactionRow.paymentProvider` is typed as `PaymentProvider | null` to accommodate this.
-
-Q: Are Bulldozer table `init()` calls idempotent?
-A: No. They use plain `INSERT INTO "BulldozerStorageEngine"` without `ON CONFLICT DO NOTHING`, so calling `init()` twice crashes with a unique constraint violation. The ingress script (`bulldozer-payments-init.ts`) checks `table.isInitialized()` per-table before calling `init()` to handle this safely.
-
-Q: What should the internal payments transactions endpoint do if the Bulldozer phase-1 pipeline is not initialized yet?
-A: Lazily initialize `schema._allPhase1Tables` by checking each table with `table.isInitialized()` and only running `table.init()` for missing tables before querying ledger rows. This keeps grouped-table reads working in environments where only dual writes were happening.
-
-Q: Why can grouped-table reads for payments transactions show duplicate rows, and how should queries handle it?
-A: During mixed initialization/backfill + trigger flow, the grouped table can surface duplicate rows for the same `txnId`. In SQL, dedupe with `ROW_NUMBER() OVER (PARTITION BY rowData->>'txnId' ...)` and keep rank 1 before applying pagination ordering/limits.
-
-Q: Why are payments Bulldozer writes much slower than core Bulldozer perf tests?
-A: The payments graph currently explodes a single `subscriptions.setRow()` into thousands of SQL sub-statements due to phase fanout, especially phase-3 item-expiry derivations. Measured on dev DB: phase1 ≈ `162` statements / `~86ms`, phase1+2 ≈ `862` / `~296-469ms`, phase1+2+3 ≈ `8412` / `~12.8-13.3s`. The largest contributor is `phase-3/item-changes-with-expiries` (not transactions), with top referenced tables including `external:payments-split-item-changes-with-expiry`, `external:payments-changes-with-expiries`, and `external:payments-changes-with-expiry-arrays`.
-
-Q: In Bulldozer Studio mutation metrics, what does "statement count" include?
-A: `logicalStatementCount` counts generated Bulldozer SQL statements (`SqlStatement[]`) before execution. `executableStatementCount` counts SQL commands after compiling/splitting the executable script. Neither count includes iterative work inside Postgres execution nodes (for example recursive CTE steps or loop-like row processing): those are runtime work within a single SQL statement, not additional statements.
-
-Q: How can Bulldozer Studio expose planning vs execution timing for set/delete mutations?
-A: In `apps/backend/scripts/run-bulldozer-studio.ts`, execute analyzable SQL statements through `EXPLAIN (ANALYZE, BUFFERS, WAL, SETTINGS, FORMAT JSON) <statement>` and parse `QUERY PLAN` JSON fields (`Planning Time`, `Execution Time`, root node stats). Keep per-statement wall time as well, aggregate totals (`timingBreakdown`), and surface `slowestStatements` plus SQL previews in the metrics dialog.
-
-Q: Why can `declareLeftJoinTable` trigger SQL fail with `UNION types jsonb and integer cannot be matched`?
-A: `leftJoinKey`/`rightJoinKey` mappers can emit scalar types (for example integers). Inside `declareLeftJoinTable`, trigger queries union newly mapped join keys with previously materialized rows whose join-key columns are `jsonb`. If mapped keys are not normalized first, Postgres sees `integer` vs `jsonb` in the same UNION arm. Fix by wrapping mapped join keys with `to_jsonb(...)` anywhere they are selected into `"leftJoinKey"` / `"rightJoinKey"` in trigger SQL.
-
-Q: Why can `includes TEST_MODE subscription` look slow even when adding a subscriptions row in Bulldozer Studio is fast?
-A: The e2e test duration includes the whole HTTP flow, not just `subscriptions.setRow()`: project setup/config update, user signup, purchase URL creation, test-mode purchase endpoint, and transactions fetch. A direct profile run measured roughly setup ~2.0s, signup ~0.7s, purchase-url ~0.4s, test-mode purchase ~0.85s, transactions fetch ~0.23s (total test body ~4.2s). So Studio row insertion and e2e test duration are not comparable one-to-one.
-
-Q: Why did `transactions.test` sometimes return 3 manual item-quantity-change transactions instead of 1?
-A: `bulldozerWriteItemQuantityChange` executed SQL from `toExecutableSqlTransaction(...)`, which includes `BEGIN; ... COMMIT;`. When called inside `retryTransaction(..., async (tx) => ...)`, that nested SQL could commit work per retry attempt, causing duplicate persisted writes under retry-induced flakiness. Fix by executing `toExecutableSqlStatements(...)` (no nested `BEGIN/COMMIT`) when already inside a Prisma transaction, and use that mode from `update-quantity` route.
-
-Q: Why could item quantities stay at 0 even though transactions/compacted/split rows existed?
-A: `declareLFoldTable` still registered its upstream trigger lazily (`ensureSourceSortTriggerRegistration()` in `init()`), so when tables were already initialized from migrations and `init()` was not called at runtime, the trigger from `payments-changes-sorted-for-ledger` to `payments-item-quantities` was never registered. Fix by registering the source sort trigger inline in the constructor and removing deregistration from `delete()`, matching the eager trigger-registration model used by other operators.
-
-Q: Why did `ignores expired changes` return quantity 4 instead of 0 for manual item changes with a past `expires_at`?
-A: Manual item-quantity changes were dropping `expiresAtMillis` in Phase 1 event mapping, and transaction entries always set `expiresWhen` to null, so they were treated as non-expiring/compactable and never produced expiry-aware split rows. Fix by propagating `expiresAtMillis` through `manualItemQuantityChangeEvents`, setting manual transaction entry `expiresWhen` to that value, and in phase-3 `changesWithExpiryArrays` converting numeric `expiresWhen` into an expiry-array entry. Also filter split output so expiry-derived grant slices and expiry markers are emitted only when expiry time is strictly after the transaction effective time.
-
-Q: How should refund-adjusted transactions be represented after moving to `payments-manual-transactions`?
-A: Keep writing Stripe/Prisma refund state as before, but also insert a manual transaction row in `payments-manual-transactions` with `type: "refund"`, `txnId: "<source-id>:refund"`, product-revocation entries pointing at the original txn ids (`otp:<id>` / `sub-start:<id>`), and a negative USD money-transfer entry. For API compatibility, `internal/payments/transactions` should derive `adjusted_by` from those refund rows (with legacy `refundedAtMillis` fallback) so response shape remains unchanged.
 Q: Where should new globally searchable Cmd+K destinations be added in the dashboard?
 A: Add project-level shortcuts to `PROJECT_SHORTCUTS` in `apps/dashboard/src/components/cmdk-commands.tsx` (optionally gated with `requiredApps`), and for app subpages rely on the flattened `appFrontend.navigationItems` command generation in the same file so pages are directly searchable without nested preview navigation.
 
@@ -369,8 +256,26 @@ A: Remove legacy `div[data-apps-sidebar-search='true']` nodes before adding the 
 Q: What caused the Explore Apps hover layout shift?
 A: The app link wrapper in `docs-mintlify/snippets/docs-apps-home-grid.jsx` used `hover:-translate-y-0.5`, which makes tiles physically move on hover and looks like layout jank. Removing the translate/transform from the wrapper keeps hover effects without perceived shifting.
 
-Q: Why can "grant premium after base in same product line" still show old + new item quantities (5 instead of 3)?
-A: The subscription TimeFold reducer could fail to schedule/emit the end event for non-repeating products. In `subscription-timefold-algo.ts`, fix `nextTimestampFromState` to take `MIN` over non-null candidates (repeat timestamp and `endedAtMillis`), and when a subscription is already ended with no repeat schedule, emit `[subscription-start, subscription-end]` in the initial reducer run with `nextTimestamp = NULL`.
+Q: How should the sidebar Apps filter behave when there are no matches?
+A: In `docs-mintlify/snippets/docs-apps-home-grid.jsx`, track visible rows while filtering and show a small inline empty state (`No more results. Clear filter`) when query is non-empty and visible count is zero; wire `Clear filter` to reset the input, rerun filtering, and refocus the input.
 
-Q: Why did subscription row edits fail to queue/process end events for products with `repeat: "never"`?
-A: In `subscription-timefold-algo.ts`, `nextTimestampFromState` used `LEAST(soonestRepeat, endedAtMillis)`. For non-repeating products `soonestRepeat` is null, so the result could become null and no end scheduling happened. Fix by computing `MIN` over non-null timestamp candidates (repeat and endedAt). Also, for already-ended subscriptions with no repeat schedule, emit `[subscription-start, subscription-end]` in the initial reducer run and set `nextTimestamp` to null, so immediate cancellations are reflected without depending on queue advancement.
+Q: Why did internal feedback E2E tests expect 1 Inbucket message but get 2?
+A: Inbucket persists mail across runs. `Mailbox.waitForMessagesWithSubject` waits until at least one match then returns **all** messages whose subject includes the string. Fixed subjects like `[Support] devtool-user@example.com` accumulate, so assertions should use a unique subject per run (e.g. `randomUUID()` in the sender email) or a baseline count before/after.
+
+Q: Why does `@typescript-eslint/no-unnecessary-condition` fire on `props.reset` in Next.js `ErrorBoundary` `errorComponent`?
+A: Next’s typings treat `reset` as always present on the error component props, so `props.reset &&` is redundant; render the reload control unconditionally and call `props.reset()` directly.
+
+Q: Why do E2E payment tests fail when run in parallel but pass individually?
+A: The Bulldozer advisory lock (`pg_advisory_xact_lock` in `toExecutableSqlTransaction`) serializes ALL Bulldozer writes globally. Each dual-write triggers an 848KB SQL cascade that holds the lock. When dozens of E2E tests run concurrently, each creating users/products/purchases, the lock contention causes tokens to expire and requests to timeout. Running payment tests independently avoids this.
+
+Q: Why did we remove `type` and `subscription` from the list products API response?
+A: Product ownership is independent of how you acquired the product (subscription vs OTP). A customer could own the same product via both. The old response conflated "what do I own" with "how did I get it." The simplified response returns just `{ id, quantity, product, switch_options }`. Subscription management info (cancel, period end) is a separate concern.
+
+Q: How does validatePurchaseSession work now?
+A: It reads from Bulldozer-backed functions: `getOwnedProductsForCustomer` (LFold), `getSubscriptionMapForCustomer` (subscription LFold). Steps: 1) ensureCustomerExists, 2) resolve price, 3) stackability check, 4) fetch owned products once, 5) duplicate check via `customerOwnsProduct`, 6) add-on prerequisite check, 7) product-line conflict detection + find cancelable subscriptions. If conflict exists but no subscription to cancel, throws "already has OTP in product line."
+
+Q: When does syncStripeSubscriptions set endedAt?
+A: When `subscription.status === "canceled"` and `sanitizedDates.end <= new Date()` (period has already ended). This triggers TimeFold to emit subscription-end events which revoke the product and expire items.
+
+Q: Why do JS SDK tests fail with "Access token in fetchNewAccessToken is invalid"?
+A: The `accessTokenPayloadSchema` in `schema-fields.ts` requires `signed_up_at: yupNumber().defined()`, but `tokens.tsx` doesn't include `signed_up_at` in the JWT payload. The client-side Yup validation rejects the token. This is a pre-existing bug from a dev merge, not related to payments work.
