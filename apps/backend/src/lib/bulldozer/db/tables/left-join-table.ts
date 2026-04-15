@@ -363,7 +363,7 @@ export function declareLeftJoinTable<
     changedSide: "right",
   });
 
-  return {
+  const table: ReturnType<typeof declareLeftJoinTable<GK, JK, OldRD, NewRD>> = {
     tableId: options.tableId,
     inputTables: [options.leftTable, options.rightTable],
     debugArgs: {
@@ -511,5 +511,94 @@ export function declareLeftJoinTable<
       triggers.set(id, normalizeRowChangeTrigger(trigger));
       return { deregister: () => triggers.delete(id) };
     },
+    verifyDataIntegrity: () => {
+      const allLeftRows = options.leftTable.listRowsInGroup({
+        start: "start", end: "end", startInclusive: true, endInclusive: true,
+      });
+      const allRightRows = options.rightTable.listRowsInGroup({
+        start: "start", end: "end", startInclusive: true, endInclusive: true,
+      });
+      const allActualRows = table.listRowsInGroup({
+        start: "start", end: "end", startInclusive: true, endInclusive: true,
+      });
+      return sqlQuery`
+        WITH "leftRows" AS (
+          SELECT
+            "source"."groupkey" AS "groupKey",
+            "source"."rowidentifier" AS "leftRowIdentifier",
+            "source"."rowdata" AS "leftRowData",
+            "joinKey"."joinKey" AS "leftJoinKey"
+          FROM (${allLeftRows}) AS "source"
+          LEFT JOIN LATERAL (
+            SELECT "mapped"."joinKey"
+            FROM (
+              SELECT ${options.leftJoinKey}
+              FROM (SELECT "source"."rowidentifier" AS "rowIdentifier", "source"."rowdata" AS "rowData") AS "joinKeyInput"
+            ) AS "mapped"
+          ) AS "joinKey" ON true
+        ),
+        "rightRows" AS (
+          SELECT
+            "source"."groupkey" AS "groupKey",
+            "source"."rowidentifier" AS "rightRowIdentifier",
+            "source"."rowdata" AS "rightRowData",
+            "joinKey"."joinKey" AS "rightJoinKey"
+          FROM (${allRightRows}) AS "source"
+          LEFT JOIN LATERAL (
+            SELECT "mapped"."joinKey"
+            FROM (
+              SELECT ${options.rightJoinKey}
+              FROM (SELECT "source"."rowidentifier" AS "rowIdentifier", "source"."rowdata" AS "rowData") AS "joinKeyInput"
+            ) AS "mapped"
+          ) AS "joinKey" ON true
+        ),
+        "expected" AS (
+          SELECT DISTINCT ON ("joined"."groupKey", "joined"."rowIdentifier")
+            "joined"."groupKey" AS "groupKey",
+            "joined"."rowIdentifier" AS "rowIdentifier",
+            "joined"."rowData" AS "rowData"
+          FROM (
+            SELECT
+              "leftRows"."groupKey" AS "groupKey",
+              ${createJoinedRowIdentifier(
+                sqlExpression`"leftRows"."leftRowIdentifier"`,
+                sqlExpression`"rightRows"."rightRowIdentifier"`,
+              )} AS "rowIdentifier",
+              jsonb_build_object(
+                'leftRowData', "leftRows"."leftRowData",
+                'rightRowData', "rightRows"."rightRowData"
+              ) AS "rowData"
+            FROM "leftRows"
+            LEFT JOIN "rightRows"
+              ON "rightRows"."groupKey" IS NOT DISTINCT FROM "leftRows"."groupKey"
+              AND "rightRows"."rightJoinKey" IS NOT DISTINCT FROM "leftRows"."leftJoinKey"
+          ) AS "joined"
+          ORDER BY "joined"."groupKey", "joined"."rowIdentifier"
+        ),
+        "actual" AS (
+          SELECT "r"."groupkey" AS "groupKey", "r"."rowidentifier" AS "rowIdentifier", "r"."rowdata" AS "rowData"
+          FROM (${allActualRows}) AS "r"
+        )
+        SELECT
+          CASE
+            WHEN "expected"."rowIdentifier" IS NULL THEN 'extra_row'
+            WHEN "actual"."rowIdentifier" IS NULL THEN 'missing_row'
+            ELSE 'data_mismatch'
+          END AS errortype,
+          COALESCE("expected"."groupKey", "actual"."groupKey") AS groupkey,
+          COALESCE("expected"."rowIdentifier", "actual"."rowIdentifier") AS rowidentifier,
+          "expected"."rowData" AS expected,
+          "actual"."rowData" AS actual
+        FROM "expected"
+        FULL OUTER JOIN "actual"
+          ON "expected"."groupKey" IS NOT DISTINCT FROM "actual"."groupKey"
+          AND "expected"."rowIdentifier" = "actual"."rowIdentifier"
+        WHERE ("expected"."rowIdentifier" IS NULL
+          OR "actual"."rowIdentifier" IS NULL
+          OR "expected"."rowData" IS DISTINCT FROM "actual"."rowData")
+          AND ${isInitializedExpression}
+      `;
+    },
   };
+  return table;
 }

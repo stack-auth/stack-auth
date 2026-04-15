@@ -501,7 +501,7 @@ export function declareLFoldTable<
   );
   sourceSortTable.registerRowChangeTrigger(sourceSortTrigger);
 
-  return {
+  const table: ReturnType<typeof declareLFoldTable<GK, SK, OldRD, NewRD, S>> = {
     tableId: options.tableId,
     inputTables: [options.fromTable],
     debugArgs: {
@@ -795,5 +795,40 @@ export function declareLFoldTable<
       triggers.set(id, normalizeRowChangeTrigger(trigger));
       return { deregister: () => triggers.delete(id) };
     },
+    verifyDataIntegrity: () => {
+      const allInputGroups = options.fromTable.listGroups({
+        start: "start", end: "end", startInclusive: true, endInclusive: true,
+      });
+      const allActualGroups = table.listGroups({
+        start: "start", end: "end", startInclusive: true, endInclusive: true,
+      });
+      return sqlQuery`
+        WITH "inputGroups" AS (
+          SELECT "g"."groupkey" AS "groupKey" FROM (${allInputGroups}) AS "g"
+        ),
+        "actualGroups" AS (
+          SELECT "g"."groupkey" AS "groupKey" FROM (${allActualGroups}) AS "g"
+        ),
+        "missingGroups" AS (
+          SELECT 'missing_group' AS errortype,
+            "inputGroups"."groupKey" AS groupkey, NULL::text AS rowidentifier,
+            NULL::jsonb AS expected, NULL::jsonb AS actual
+          FROM "inputGroups"
+          LEFT JOIN "actualGroups" ON "actualGroups"."groupKey" IS NOT DISTINCT FROM "inputGroups"."groupKey"
+          WHERE "actualGroups"."groupKey" IS NULL
+        ),
+        "extraGroups" AS (
+          SELECT 'extra_group' AS errortype,
+            "actualGroups"."groupKey" AS groupkey, NULL::text AS rowidentifier,
+            NULL::jsonb AS expected, NULL::jsonb AS actual
+          FROM "actualGroups"
+          LEFT JOIN "inputGroups" ON "inputGroups"."groupKey" IS NOT DISTINCT FROM "actualGroups"."groupKey"
+          WHERE "inputGroups"."groupKey" IS NULL
+        )
+        SELECT * FROM "missingGroups" WHERE ${isInitializedExpression}
+        UNION ALL SELECT * FROM "extraGroups" WHERE ${isInitializedExpression}
+      `;
+    },
   };
+  return table;
 }

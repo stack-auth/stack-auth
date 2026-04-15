@@ -217,7 +217,7 @@ export function declareLimitTable<
   );
   options.fromTable.registerRowChangeTrigger(fromTableTrigger);
 
-  return {
+  const table: ReturnType<typeof declareLimitTable<GK, SK, RD>> = {
     tableId: options.tableId,
     inputTables: [options.fromTable],
     debugArgs: {
@@ -489,5 +489,46 @@ export function declareLimitTable<
       triggers.set(id, normalizeRowChangeTrigger(trigger));
       return { deregister: () => triggers.delete(id) };
     },
+    verifyDataIntegrity: () => {
+      const allInputRows = options.fromTable.listRowsInGroup({
+        start: "start", end: "end", startInclusive: true, endInclusive: true,
+      });
+      const allActualRows = table.listRowsInGroup({
+        start: "start", end: "end", startInclusive: true, endInclusive: true,
+      });
+      return sqlQuery`
+        WITH "inputRows" AS (
+          SELECT "r"."groupkey" AS "groupKey", "r"."rowidentifier" AS "rowIdentifier", "r"."rowdata" AS "rowData"
+          FROM (${allInputRows}) AS "r"
+        ),
+        "actual" AS (
+          SELECT "r"."groupkey" AS "groupKey", "r"."rowidentifier" AS "rowIdentifier", "r"."rowdata" AS "rowData"
+          FROM (${allActualRows}) AS "r"
+        ),
+        "extraRows" AS (
+          SELECT 'extra_row' AS errortype,
+            "actual"."groupKey" AS groupkey, "actual"."rowIdentifier" AS rowidentifier,
+            NULL::jsonb AS expected, "actual"."rowData" AS actual
+          FROM "actual"
+          LEFT JOIN "inputRows"
+            ON "inputRows"."groupKey" IS NOT DISTINCT FROM "actual"."groupKey"
+            AND "inputRows"."rowIdentifier" = "actual"."rowIdentifier"
+          WHERE "inputRows"."rowIdentifier" IS NULL
+        ),
+        "overLimit" AS (
+          SELECT 'over_limit' AS errortype,
+            "counts"."groupKey" AS groupkey, NULL::text AS rowidentifier,
+            to_jsonb("counts"."cnt") AS expected, to_jsonb(${normalizedLimit}) AS actual
+          FROM (
+            SELECT "groupKey", COUNT(*)::int AS "cnt" FROM "actual" GROUP BY "groupKey"
+          ) AS "counts"
+          WHERE "counts"."cnt" > ${normalizedLimit}
+        )
+        SELECT * FROM "extraRows" WHERE ${isInitializedExpression}
+        UNION ALL
+        SELECT * FROM "overLimit" WHERE ${isInitializedExpression}
+      `;
+    },
   };
+  return table;
 }

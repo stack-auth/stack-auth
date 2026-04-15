@@ -284,7 +284,7 @@ export function declareReduceTable<
   );
   options.fromTable.registerRowChangeTrigger(fromTableTrigger);
 
-  return {
+  const table: ReturnType<typeof declareReduceTable<GK, SK, OldRD, NewRD, S>> = {
     tableId: options.tableId,
     inputTables: [options.fromTable],
     debugArgs: {
@@ -428,5 +428,52 @@ export function declareReduceTable<
       triggers.set(id, normalizeRowChangeTrigger(trigger));
       return { deregister: () => triggers.delete(id) };
     },
+    verifyDataIntegrity: () => {
+      const allInputGroups = options.fromTable.listGroups({
+        start: "start", end: "end", startInclusive: true, endInclusive: true,
+      });
+      const allActualRows = table.listRowsInGroup({
+        start: "start", end: "end", startInclusive: true, endInclusive: true,
+      });
+      return sqlQuery`
+        WITH "inputGroups" AS (
+          SELECT "g"."groupkey" AS "groupKey" FROM (${allInputGroups}) AS "g"
+        ),
+        "actual" AS (
+          SELECT "r"."groupkey" AS "groupKey", "r"."rowidentifier" AS "rowIdentifier", "r"."rowdata" AS "rowData"
+          FROM (${allActualRows}) AS "r"
+        ),
+        "actualGroupCounts" AS (
+          SELECT "groupKey", COUNT(*)::int AS "cnt" FROM "actual" GROUP BY "groupKey"
+        ),
+        "missingGroups" AS (
+          SELECT 'missing_group' AS errortype,
+            "inputGroups"."groupKey" AS groupkey, NULL::text AS rowidentifier,
+            NULL::jsonb AS expected, NULL::jsonb AS actual
+          FROM "inputGroups"
+          LEFT JOIN "actualGroupCounts" ON "actualGroupCounts"."groupKey" IS NOT DISTINCT FROM "inputGroups"."groupKey"
+          WHERE "actualGroupCounts"."groupKey" IS NULL
+        ),
+        "extraGroups" AS (
+          SELECT 'extra_group' AS errortype,
+            "actualGroupCounts"."groupKey" AS groupkey, NULL::text AS rowidentifier,
+            NULL::jsonb AS expected, NULL::jsonb AS actual
+          FROM "actualGroupCounts"
+          LEFT JOIN "inputGroups" ON "inputGroups"."groupKey" IS NOT DISTINCT FROM "actualGroupCounts"."groupKey"
+          WHERE "inputGroups"."groupKey" IS NULL
+        ),
+        "wrongRowCount" AS (
+          SELECT 'wrong_row_count' AS errortype,
+            "actualGroupCounts"."groupKey" AS groupkey, NULL::text AS rowidentifier,
+            '1'::jsonb AS expected, to_jsonb("actualGroupCounts"."cnt") AS actual
+          FROM "actualGroupCounts"
+          WHERE "actualGroupCounts"."cnt" <> 1
+        )
+        SELECT * FROM "missingGroups" WHERE ${isInitializedExpression}
+        UNION ALL SELECT * FROM "extraGroups" WHERE ${isInitializedExpression}
+        UNION ALL SELECT * FROM "wrongRowCount" WHERE ${isInitializedExpression}
+      `;
+    },
   };
+  return table;
 }

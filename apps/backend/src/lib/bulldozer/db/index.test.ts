@@ -1,6 +1,7 @@
 import { stringCompare, templateIdentity } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
-import { afterAll, beforeAll, beforeEach, describe, expect, it, test } from "vitest";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, test } from "vitest";
+import type { Table } from "./index";
 import { declareCompactTable, declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLeftJoinTable, declareLFoldTable, declareLimitTable, declareMapTable, declareReduceTable, declareSortTable, declareStoredTable, declareTimeFoldTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
 
 type TestDb = { full: string, base: string };
@@ -234,6 +235,21 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     `;
   });
 
+  // any is used here because the verifier works with heterogeneous table types
+  const allInitializedTables: Table<any, any, any>[] = [];
+  function trackTable<T extends Table<any, any, any>>(t: T): T {
+    allInitializedTables.push(t);
+    return t;
+  }
+
+  afterEach(async () => {
+    for (const table of allInitializedTables) {
+      const errors = await readRows(table.verifyDataIntegrity());
+      expect(errors).toEqual([]);
+    }
+    allInitializedTables.length = 0;
+  });
+
   afterAll(async () => {
     await sql.end();
     await adminSql.unsafe(`
@@ -269,28 +285,28 @@ describe.sequential("declareStoredTable (real postgres)", () => {
   }
   function createGroupedTable() {
     const fromTable = declareStoredTable<{ value: number, team: string }>({ tableId: "users" });
-    const groupedTable = declareGroupByTable({
+    const groupedTable = trackTable(declareGroupByTable({
       tableId: "users-by-team",
       fromTable,
       groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
-    });
+    }));
     return { fromTable, groupedTable };
   }
   function createMappedTable() {
     const { fromTable, groupedTable } = createGroupedTable();
-    const mappedTable = declareMapTable({
+    const mappedTable = trackTable(declareMapTable({
       tableId: "users-by-team-mapped",
       fromTable: groupedTable,
       mapper: mapper(`
         ("rowData"->'team') AS "team",
         (("rowData"->>'value')::int + 100) AS "mappedValue"
       `),
-    });
+    }));
     return { fromTable, groupedTable, mappedTable };
   }
   function createFlatMappedTable() {
     const { fromTable, groupedTable } = createGroupedTable();
-    const flatMappedTable = declareFlatMapTable({
+    const flatMappedTable = trackTable(declareFlatMapTable({
       tableId: "users-by-team-flat-mapped",
       fromTable: groupedTable,
       mapper: mapper(`
@@ -310,78 +326,78 @@ describe.sequential("declareStoredTable (real postgres)", () => {
           )
         END AS "rows"
       `),
-    });
+    }));
     return { fromTable, groupedTable, flatMappedTable };
   }
   function createFilteredTable() {
     const { fromTable, groupedTable } = createGroupedTable();
-    const filteredTable = declareFilterTable({
+    const filteredTable = trackTable(declareFilterTable({
       tableId: "users-by-team-filtered",
       fromTable: groupedTable,
       filter: predicate(`(("rowData"->>'value')::int) >= 2`),
-    });
+    }));
     return { fromTable, groupedTable, filteredTable };
   }
   function createLimitedTable() {
     const { fromTable, groupedTable } = createGroupedTable();
-    const limitedTable = declareLimitTable({
+    const limitedTable = trackTable(declareLimitTable({
       tableId: "users-by-team-limited",
       fromTable: groupedTable,
       limit: expr(`2`),
-    });
+    }));
     return { fromTable, groupedTable, limitedTable };
   }
   function createConcatenatedTable() {
     const fromTableA = declareStoredTable<{ value: number, team: string }>({ tableId: "users-a" });
     const fromTableB = declareStoredTable<{ value: number, team: string }>({ tableId: "users-b" });
-    const groupedTableA = declareGroupByTable({
+    const groupedTableA = trackTable(declareGroupByTable({
       tableId: "users-a-by-team",
       fromTable: fromTableA,
       groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
-    });
-    const groupedTableB = declareGroupByTable({
+    }));
+    const groupedTableB = trackTable(declareGroupByTable({
       tableId: "users-b-by-team",
       fromTable: fromTableB,
       groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
-    });
-    const concatenatedTable = declareConcatTable({
+    }));
+    const concatenatedTable = trackTable(declareConcatTable({
       tableId: "users-by-team-concat",
       tables: [groupedTableA, groupedTableB],
-    });
+    }));
     return { fromTableA, fromTableB, groupedTableA, groupedTableB, concatenatedTable };
   }
   function createSortedTable() {
     const { fromTable, groupedTable } = createGroupedTable();
-    const sortedTable = declareSortTable({
+    const sortedTable = trackTable(declareSortTable({
       tableId: "users-by-team-sorted",
       fromTable: groupedTable,
       getSortKey: mapper(`(("rowData"->>'value')::int) AS "newSortKey"`),
       compareSortKeys: (a, b) => expr(`(((${a.sql}) #>> '{}')::int) - (((${b.sql}) #>> '{}')::int)`),
-    });
+    }));
     return { fromTable, groupedTable, sortedTable };
   }
   function createDescendingSortedTable() {
     const { fromTable, groupedTable } = createGroupedTable();
-    const sortedTable = declareSortTable({
+    const sortedTable = trackTable(declareSortTable({
       tableId: "users-by-team-sorted-desc",
       fromTable: groupedTable,
       getSortKey: mapper(`(("rowData"->>'value')::int) AS "newSortKey"`),
       compareSortKeys: (a, b) => expr(`(((${b.sql}) #>> '{}')::int) - (((${a.sql}) #>> '{}')::int)`),
-    });
+    }));
     return { fromTable, groupedTable, sortedTable };
   }
   function createDescendingLimitedTable() {
     const { fromTable, groupedTable, sortedTable } = createDescendingSortedTable();
-    const limitedTable = declareLimitTable({
+    const limitedTable = trackTable(declareLimitTable({
       tableId: "users-by-team-limit-desc",
       fromTable: sortedTable,
       limit: expr(`2`),
-    });
+    }));
     return { fromTable, groupedTable, sortedTable, limitedTable };
   }
   function createDescendingLFoldTable() {
     const { fromTable, groupedTable, sortedTable } = createDescendingSortedTable();
-    const lFoldTable = declareLFoldTable({
+    const lFoldTable = trackTable(declareLFoldTable({
       tableId: "users-by-team-lfold-desc",
       fromTable: sortedTable,
       initialState: expr(`'0'::jsonb`),
@@ -393,12 +409,12 @@ describe.sequential("declareStoredTable (real postgres)", () => {
           )
         ) AS "newRowsData"
       `),
-    });
+    }));
     return { fromTable, groupedTable, sortedTable, lFoldTable };
   }
   function createLFoldTable() {
     const { fromTable, groupedTable, sortedTable } = createSortedTable();
-    const lFoldTable = declareLFoldTable({
+    const lFoldTable = trackTable(declareLFoldTable({
       tableId: "users-by-team-lfold",
       fromTable: sortedTable,
       initialState: expr(`'0'::jsonb`),
@@ -430,12 +446,12 @@ describe.sequential("declareStoredTable (real postgres)", () => {
           END
         ) AS "newRowsData"
       `),
-    });
+    }));
     return { fromTable, groupedTable, sortedTable, lFoldTable };
   }
   function createTimeFoldTable() {
     const { fromTable, groupedTable } = createGroupedTable();
-    const timeFoldTable = declareTimeFoldTable({
+    const timeFoldTable = trackTable(declareTimeFoldTable({
       tableId: "users-by-team-timefold",
       fromTable: groupedTable,
       initialState: expr(`'0'::jsonb`),
@@ -459,34 +475,34 @@ describe.sequential("declareStoredTable (real postgres)", () => {
           ELSE NULL::timestamptz
         END AS "nextTimestamp"
       `),
-    });
+    }));
     return { fromTable, groupedTable, timeFoldTable };
   }
   function createLeftJoinedTable() {
     const fromTable = declareStoredTable<{ value: number, team: string | null }>({ tableId: "left-join-users" });
     const joinTable = declareStoredTable<{ team: string | null, threshold: number, label: string }>({ tableId: "left-join-rules" });
-    const groupedFromTable = declareGroupByTable({
+    const groupedFromTable = trackTable(declareGroupByTable({
       tableId: "left-join-users-by-team",
       fromTable,
       groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
-    });
-    const groupedJoinTable = declareGroupByTable({
+    }));
+    const groupedJoinTable = trackTable(declareGroupByTable({
       tableId: "left-join-rules-by-team",
       fromTable: joinTable,
       groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
-    });
-    const leftJoinedTable = declareLeftJoinTable({
+    }));
+    const leftJoinedTable = trackTable(declareLeftJoinTable({
       tableId: "left-join-users-rules",
       leftTable: groupedFromTable,
       rightTable: groupedJoinTable,
       leftJoinKey: mapper(`(("rowData"->>'value')::int) AS "joinKey"`),
       rightJoinKey: mapper(`(("rowData"->>'threshold')::int) AS "joinKey"`),
-    });
+    }));
     return { fromTable, joinTable, groupedFromTable, groupedJoinTable, leftJoinedTable };
   }
   function createFlatMapMapGroupPipeline() {
     const { fromTable, groupedTable, flatMappedTable } = createFlatMappedTable();
-    const mappedAfterFlatMap = declareMapTable({
+    const mappedAfterFlatMap = trackTable(declareMapTable({
       tableId: "users-by-team-flat-map-then-map",
       fromTable: flatMappedTable,
       mapper: mapper(`
@@ -494,25 +510,25 @@ describe.sequential("declareStoredTable (real postgres)", () => {
         ("rowData"->'kind') AS "kind",
         (("rowData"->>'mappedValue')::int + 1) AS "mappedValuePlusOne"
       `),
-    });
-    const groupedByKind = declareGroupByTable({
+    }));
+    const groupedByKind = trackTable(declareGroupByTable({
       tableId: "users-by-kind",
       fromTable: mappedAfterFlatMap,
       groupBy: mapper(`"rowData"->'kind' AS "groupKey"`),
-    });
+    }));
     return { fromTable, groupedTable, flatMappedTable, mappedAfterFlatMap, groupedByKind };
   }
   function createStackedMappedTables() {
     const { fromTable, groupedTable } = createGroupedTable();
-    const mappedTableLevel1 = declareMapTable({
+    const mappedTableLevel1 = trackTable(declareMapTable({
       tableId: "users-by-team-map-level-1",
       fromTable: groupedTable,
       mapper: mapper(`
         ("rowData"->'team') AS "team",
         (("rowData"->>'value')::int + 10) AS "valuePlusTen"
       `),
-    });
-    const mappedTableLevel2 = declareMapTable({
+    }));
+    const mappedTableLevel2 = trackTable(declareMapTable({
       tableId: "users-by-team-map-level-2",
       fromTable: mappedTableLevel1,
       mapper: mapper(`
@@ -525,16 +541,16 @@ describe.sequential("declareStoredTable (real postgres)", () => {
           END
         ) AS "bucket"
       `),
-    });
+    }));
     return { fromTable, groupedTable, mappedTableLevel1, mappedTableLevel2 };
   }
   function createGroupMapGroupPipeline() {
     const { fromTable, groupedTable, mappedTableLevel1, mappedTableLevel2 } = createStackedMappedTables();
-    const groupedByBucketTable = declareGroupByTable({
+    const groupedByBucketTable = trackTable(declareGroupByTable({
       tableId: "users-by-bucket",
       fromTable: mappedTableLevel2,
       groupBy: mapper(`"rowData"->'bucket' AS "groupKey"`),
-    });
+    }));
     return { fromTable, groupedTable, mappedTableLevel1, mappedTableLevel2, groupedByBucketTable };
   }
   function registerGroupAuditTrigger(
@@ -829,11 +845,11 @@ describe.sequential("declareStoredTable (real postgres)", () => {
   test("groupBy registers upstream trigger in init and deregisters in delete", () => {
     const fromTable = declareStoredTable<{ value: number, team: string }>({ tableId: "users-groupby-lifecycle" });
     const fromTableInstrumentation = instrumentTriggerLifecycle(fromTable);
-    const groupedTable = declareGroupByTable({
+    const groupedTable = trackTable(declareGroupByTable({
       tableId: "users-groupby-lifecycle-by-team",
       fromTable: fromTableInstrumentation.table,
       groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
-    });
+    }));
 
     expect(fromTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
     groupedTable.init();
@@ -852,17 +868,17 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("flatMap registers upstream trigger in init and deregisters in delete", () => {
     const fromTable = declareStoredTable<{ value: number, team: string }>({ tableId: "users-flatmap-lifecycle" });
-    const groupedTable = declareGroupByTable({
+    const groupedTable = trackTable(declareGroupByTable({
       tableId: "users-flatmap-lifecycle-by-team",
       fromTable,
       groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
-    });
+    }));
     const groupedTableInstrumentation = instrumentTriggerLifecycle(groupedTable);
-    const flatMappedTable = declareFlatMapTable({
+    const flatMappedTable = trackTable(declareFlatMapTable({
       tableId: "users-flatmap-lifecycle-expanded",
       fromTable: groupedTableInstrumentation.table,
       mapper: mapper(`jsonb_build_array("rowData") AS "rows"`),
-    });
+    }));
 
     expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
     flatMappedTable.init();
@@ -877,18 +893,18 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("sort registers upstream trigger in init and deregisters in delete", () => {
     const fromTable = declareStoredTable<{ value: number, team: string }>({ tableId: "users-sort-lifecycle" });
-    const groupedTable = declareGroupByTable({
+    const groupedTable = trackTable(declareGroupByTable({
       tableId: "users-sort-lifecycle-by-team",
       fromTable,
       groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
-    });
+    }));
     const groupedTableInstrumentation = instrumentTriggerLifecycle(groupedTable);
-    const sortedTable = declareSortTable({
+    const sortedTable = trackTable(declareSortTable({
       tableId: "users-sort-lifecycle-sorted",
       fromTable: groupedTableInstrumentation.table,
       getSortKey: mapper(`(("rowData"->>'value')::int) AS "newSortKey"`),
       compareSortKeys: (a, b) => expr(`(((${a.sql}) #>> '{}')::int) - (((${b.sql}) #>> '{}')::int)`),
-    });
+    }));
 
     expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
     sortedTable.init();
@@ -903,17 +919,17 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("limit registers upstream trigger in init and deregisters in delete", () => {
     const fromTable = declareStoredTable<{ value: number, team: string }>({ tableId: "users-limit-lifecycle" });
-    const groupedTable = declareGroupByTable({
+    const groupedTable = trackTable(declareGroupByTable({
       tableId: "users-limit-lifecycle-by-team",
       fromTable,
       groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
-    });
+    }));
     const groupedTableInstrumentation = instrumentTriggerLifecycle(groupedTable);
-    const limitedTable = declareLimitTable({
+    const limitedTable = trackTable(declareLimitTable({
       tableId: "users-limit-lifecycle-limited",
       fromTable: groupedTableInstrumentation.table,
       limit: expr(`2`),
-    });
+    }));
 
     expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
     limitedTable.init();
@@ -929,22 +945,22 @@ describe.sequential("declareStoredTable (real postgres)", () => {
   test("concat registers all upstream triggers in init and deregisters in delete", () => {
     const fromTableA = declareStoredTable<{ value: number, team: string }>({ tableId: "users-concat-lifecycle-a" });
     const fromTableB = declareStoredTable<{ value: number, team: string }>({ tableId: "users-concat-lifecycle-b" });
-    const groupedTableA = declareGroupByTable({
+    const groupedTableA = trackTable(declareGroupByTable({
       tableId: "users-concat-lifecycle-a-by-team",
       fromTable: fromTableA,
       groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
-    });
-    const groupedTableB = declareGroupByTable({
+    }));
+    const groupedTableB = trackTable(declareGroupByTable({
       tableId: "users-concat-lifecycle-b-by-team",
       fromTable: fromTableB,
       groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
-    });
+    }));
     const groupedTableAInstrumentation = instrumentTriggerLifecycle(groupedTableA);
     const groupedTableBInstrumentation = instrumentTriggerLifecycle(groupedTableB);
-    const concatenatedTable = declareConcatTable({
+    const concatenatedTable = trackTable(declareConcatTable({
       tableId: "users-concat-lifecycle",
       tables: [groupedTableAInstrumentation.table, groupedTableBInstrumentation.table],
-    });
+    }));
 
     expect(groupedTableAInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
     expect(groupedTableBInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
@@ -968,13 +984,13 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("timefold registers upstream trigger in init and deregisters in delete", () => {
     const fromTable = declareStoredTable<{ value: number, team: string }>({ tableId: "users-timefold-lifecycle" });
-    const groupedTable = declareGroupByTable({
+    const groupedTable = trackTable(declareGroupByTable({
       tableId: "users-timefold-lifecycle-by-team",
       fromTable,
       groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
-    });
+    }));
     const groupedTableInstrumentation = instrumentTriggerLifecycle(groupedTable);
-    const timeFoldTable = declareTimeFoldTable({
+    const timeFoldTable = trackTable(declareTimeFoldTable({
       tableId: "users-timefold-lifecycle-folded",
       fromTable: groupedTableInstrumentation.table,
       initialState: expr(`'0'::jsonb`),
@@ -983,7 +999,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
         jsonb_build_array("oldRowData") AS "newRowsData",
         NULL::timestamptz AS "nextTimestamp"
       `),
-    });
+    }));
 
     expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
     timeFoldTable.init();
@@ -999,25 +1015,25 @@ describe.sequential("declareStoredTable (real postgres)", () => {
   test("leftJoin registers all upstream triggers in init and deregisters in delete", () => {
     const fromTable = declareStoredTable<{ value: number, team: string | null }>({ tableId: "users-left-join-lifecycle" });
     const joinTable = declareStoredTable<{ team: string | null, threshold: number, label: string }>({ tableId: "rules-left-join-lifecycle" });
-    const groupedFromTable = declareGroupByTable({
+    const groupedFromTable = trackTable(declareGroupByTable({
       tableId: "users-left-join-lifecycle-by-team",
       fromTable,
       groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
-    });
-    const groupedJoinTable = declareGroupByTable({
+    }));
+    const groupedJoinTable = trackTable(declareGroupByTable({
       tableId: "rules-left-join-lifecycle-by-team",
       fromTable: joinTable,
       groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
-    });
+    }));
     const groupedFromTableInstrumentation = instrumentTriggerLifecycle(groupedFromTable);
     const groupedJoinTableInstrumentation = instrumentTriggerLifecycle(groupedJoinTable);
-    const leftJoinedTable = declareLeftJoinTable({
+    const leftJoinedTable = trackTable(declareLeftJoinTable({
       tableId: "users-rules-left-join-lifecycle",
       leftTable: groupedFromTableInstrumentation.table,
       rightTable: groupedJoinTableInstrumentation.table,
       leftJoinKey: mapper(`(("rowData"->>'value')::int) AS "joinKey"`),
       rightJoinKey: mapper(`(("rowData"->>'threshold')::int) AS "joinKey"`),
-    });
+    }));
 
     expect(groupedFromTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
     expect(groupedJoinTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
@@ -1984,7 +2000,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("mapTable matches equivalent single-row flatMap for rows, groups, and trigger payloads", async () => {
     const { fromTable, groupedTable, mappedTable } = createMappedTable();
-    const equivalentFlatMapTable = declareFlatMapTable({
+    const equivalentFlatMapTable = trackTable(declareFlatMapTable({
       tableId: "users-by-team-mapped-equivalent-flatmap",
       fromTable: groupedTable,
       mapper: mapper(`
@@ -2002,7 +2018,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
           )
         ) AS "rows"
       `),
-    });
+    }));
 
     await runStatements(fromTable.init());
     await runStatements(groupedTable.init());
@@ -2805,35 +2821,35 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("concatTable allows input tables with different sort comparators", async () => {
     const fromTableAsc = declareStoredTable<{ value: number, team: string }>({ tableId: "users-concat-sort-asc" });
-    const groupedTableAsc = declareGroupByTable({
+    const groupedTableAsc = trackTable(declareGroupByTable({
       tableId: "users-concat-sort-asc-by-team",
       fromTable: fromTableAsc,
       groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
-    });
-    const sortedTableAsc = declareSortTable({
+    }));
+    const sortedTableAsc = trackTable(declareSortTable({
       tableId: "users-concat-sort-asc-sorted",
       fromTable: groupedTableAsc,
       getSortKey: mapper(`(("rowData"->>'value')::int) AS "newSortKey"`),
       compareSortKeys: (a, b) => expr(`(((${a.sql}) #>> '{}')::int) - (((${b.sql}) #>> '{}')::int)`),
-    });
+    }));
 
     const fromTableDesc = declareStoredTable<{ value: number, team: string }>({ tableId: "users-concat-sort-desc" });
-    const groupedTableDesc = declareGroupByTable({
+    const groupedTableDesc = trackTable(declareGroupByTable({
       tableId: "users-concat-sort-desc-by-team",
       fromTable: fromTableDesc,
       groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
-    });
-    const sortedTableDesc = declareSortTable({
+    }));
+    const sortedTableDesc = trackTable(declareSortTable({
       tableId: "users-concat-sort-desc-sorted",
       fromTable: groupedTableDesc,
       getSortKey: mapper(`(("rowData"->>'value')::int) AS "newSortKey"`),
       compareSortKeys: (a, b) => expr(`(((${b.sql}) #>> '{}')::int) - (((${a.sql}) #>> '{}')::int)`),
-    });
+    }));
 
-    const concatenatedTable = declareConcatTable({
+    const concatenatedTable = trackTable(declareConcatTable({
       tableId: "users-by-team-concat-sort-mismatch",
       tables: [sortedTableAsc, sortedTableDesc],
-    });
+    }));
 
     await runStatements(fromTableAsc.init());
     await runStatements(groupedTableAsc.init());
@@ -3287,12 +3303,12 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("timeFoldTable reruns immediately when reducer timestamp is already due", async () => {
     const fromTable = declareStoredTable<{ value: number, team: string }>({ tableId: "users-timefold-immediate" });
-    const groupedTable = declareGroupByTable({
+    const groupedTable = trackTable(declareGroupByTable({
       tableId: "users-timefold-immediate-by-team",
       fromTable,
       groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
-    });
-    const timeFoldTable = declareTimeFoldTable({
+    }));
+    const timeFoldTable = trackTable(declareTimeFoldTable({
       tableId: "users-timefold-immediate-folded",
       fromTable: groupedTable,
       initialState: expr(`'0'::jsonb`),
@@ -3321,7 +3337,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
           ELSE NULL::timestamptz
         END AS "nextTimestamp"
       `),
-    });
+    }));
 
     await runStatements(fromTable.init());
     await runStatements(groupedTable.init());
@@ -3356,12 +3372,12 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("timeFoldTable does not enqueue when reducer returns null nextTimestamp", async () => {
     const fromTable = declareStoredTable<{ value: number, team: string }>({ tableId: "users-timefold-no-queue" });
-    const groupedTable = declareGroupByTable({
+    const groupedTable = trackTable(declareGroupByTable({
       tableId: "users-timefold-no-queue-by-team",
       fromTable,
       groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
-    });
-    const timeFoldTable = declareTimeFoldTable({
+    }));
+    const timeFoldTable = trackTable(declareTimeFoldTable({
       tableId: "users-timefold-no-queue-folded",
       fromTable: groupedTable,
       initialState: expr(`'0'::jsonb`),
@@ -3375,7 +3391,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
         ) AS "newRowsData",
         NULL::timestamptz AS "nextTimestamp"
       `),
-    });
+    }));
 
     await runStatements(fromTable.init());
     await runStatements(groupedTable.init());
@@ -3509,23 +3525,23 @@ describe.sequential("declareStoredTable (real postgres)", () => {
   test("leftJoinTable matches null join keys with IS NOT DISTINCT FROM semantics", async () => {
     const fromTable = declareStoredTable<{ value: number | null, team: string | null }>({ tableId: "left-join-null-users" });
     const joinTable = declareStoredTable<{ threshold: number | null, team: string | null, label: string }>({ tableId: "left-join-null-rules" });
-    const groupedFromTable = declareGroupByTable({
+    const groupedFromTable = trackTable(declareGroupByTable({
       tableId: "left-join-null-users-by-team",
       fromTable,
       groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
-    });
-    const groupedJoinTable = declareGroupByTable({
+    }));
+    const groupedJoinTable = trackTable(declareGroupByTable({
       tableId: "left-join-null-rules-by-team",
       fromTable: joinTable,
       groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
-    });
-    const leftJoinedTable = declareLeftJoinTable({
+    }));
+    const leftJoinedTable = trackTable(declareLeftJoinTable({
       tableId: "left-join-null-users-rules",
       leftTable: groupedFromTable,
       rightTable: groupedJoinTable,
       leftJoinKey: mapper(`"rowData"->'value' AS "joinKey"`),
       rightJoinKey: mapper(`"rowData"->'threshold' AS "joinKey"`),
-    });
+    }));
 
     await runStatements(fromTable.init());
     await runStatements(joinTable.init());
@@ -4121,22 +4137,22 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("parallel map tables on the same grouped source stay isolated", async () => {
     const { fromTable, groupedTable } = createGroupedTable();
-    const mapTableA = declareMapTable({
+    const mapTableA = trackTable(declareMapTable({
       tableId: "users-map-a",
       fromTable: groupedTable,
       mapper: mapper(`
         ("rowData"->'team') AS "team",
         (("rowData"->>'value')::int + 100) AS "mappedValueA"
       `),
-    });
-    const mapTableB = declareMapTable({
+    }));
+    const mapTableB = trackTable(declareMapTable({
       tableId: "users-map-b",
       fromTable: groupedTable,
       mapper: mapper(`
         ("rowData"->'team') AS "team",
         ((("rowData"->>'value')::int) * -1) AS "mappedValueB"
       `),
-    });
+    }));
 
     await runStatements(fromTable.init());
     await runStatements(groupedTable.init());
@@ -4193,26 +4209,26 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     const boundaries = declareStoredTable<{ t: number }>({
       tableId: "compact-test-boundaries",
     });
-    const entriesSorted = declareSortTable({
+    const entriesSorted = trackTable(declareSortTable({
       tableId: "compact-test-entries-sorted",
       fromTable: entries,
       getSortKey: mapper(`(("rowData"->>'t')::numeric) AS "newSortKey"`),
       compareSortKeys: (a, b) => ({ type: "expression", sql: `(((${a.sql}) #>> '{}')::numeric > ((${b.sql}) #>> '{}')::numeric)::int - (((${a.sql}) #>> '{}')::numeric < ((${b.sql}) #>> '{}')::numeric)::int` }),
-    });
-    const boundariesSorted = declareSortTable({
+    }));
+    const boundariesSorted = trackTable(declareSortTable({
       tableId: "compact-test-boundaries-sorted",
       fromTable: boundaries,
       getSortKey: mapper(`(("rowData"->>'t')::numeric) AS "newSortKey"`),
       compareSortKeys: (a, b) => ({ type: "expression", sql: `(((${a.sql}) #>> '{}')::numeric > ((${b.sql}) #>> '{}')::numeric)::int - (((${a.sql}) #>> '{}')::numeric < ((${b.sql}) #>> '{}')::numeric)::int` }),
-    });
-    const compacted = declareCompactTable({
+    }));
+    const compacted = trackTable(declareCompactTable({
       tableId: "compact-test-compacted",
       toBeCompactedTable: entriesSorted,
       boundaryTable: boundariesSorted,
       orderingKey: "t",
       compactKey: "quantity",
       partitionKey: "itemId",
-    });
+    }));
     return { entries, boundaries, entriesSorted, boundariesSorted, compacted };
   }
 
@@ -4482,12 +4498,12 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     const source = declareStoredTable<{ team: string, value: number }>({
       tableId: "reduce-test-source",
     });
-    const grouped = declareGroupByTable({
+    const grouped = trackTable(declareGroupByTable({
       tableId: "reduce-test-grouped",
       fromTable: source,
       groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
-    });
-    const reduced = declareReduceTable({
+    }));
+    const reduced = trackTable(declareReduceTable({
       tableId: "reduce-test-sum",
       fromTable: grouped,
       initialState: expr(`'0'::jsonb`),
@@ -4501,7 +4517,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
         "groupKey" AS "team",
         ("state" #>> '{}')::numeric AS "total"
       `),
-    });
+    }));
     return { source, grouped, reduced };
   }
 
@@ -4510,18 +4526,18 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     const source = declareStoredTable<{ category: string, label: string, t: number }>({
       tableId: "reduce-test-arr-source",
     });
-    const grouped = declareGroupByTable({
+    const grouped = trackTable(declareGroupByTable({
       tableId: "reduce-test-arr-grouped",
       fromTable: source,
       groupBy: mapper(`"rowData"->'category' AS "groupKey"`),
-    });
-    const sorted = declareSortTable({
+    }));
+    const sorted = trackTable(declareSortTable({
       tableId: "reduce-test-arr-sorted",
       fromTable: grouped,
       getSortKey: mapper(`(("rowData"->>'t')::numeric) AS "newSortKey"`),
       compareSortKeys: (a, b) => ({ type: "expression", sql: `(((${a.sql}) #>> '{}')::numeric > ((${b.sql}) #>> '{}')::numeric)::int - (((${a.sql}) #>> '{}')::numeric < ((${b.sql}) #>> '{}')::numeric)::int` }),
-    });
-    const reduced = declareReduceTable({
+    }));
+    const reduced = trackTable(declareReduceTable({
       tableId: "reduce-test-arr",
       fromTable: sorted,
       initialState: expr(`'[]'::jsonb`),
@@ -4532,7 +4548,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
         "groupKey" AS "category",
         "state" AS "labels"
       `),
-    });
+    }));
     return { source, grouped, sorted, reduced };
   }
 
@@ -4606,7 +4622,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     const source = declareStoredTable<{ value: number }>({
       tableId: "reduce-test-ungrouped-source",
     });
-    const reduced = declareReduceTable({
+    const reduced = trackTable(declareReduceTable({
       tableId: "reduce-test-ungrouped",
       fromTable: source,
       initialState: expr(`'0'::jsonb`),
@@ -4619,7 +4635,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       finalize: mapper(`
         ("state" #>> '{}')::numeric AS "total"
       `),
-    });
+    }));
     await runStatements(source.init());
     await runStatements(reduced.init());
 
@@ -4881,12 +4897,12 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     const source = declareStoredTable<{ team: string | null, value: number }>({
       tableId: "reduce-test-null-gk-source",
     });
-    const grouped = declareGroupByTable({
+    const grouped = trackTable(declareGroupByTable({
       tableId: "reduce-test-null-gk-grouped",
       fromTable: source,
       groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
-    });
-    const reduced = declareReduceTable({
+    }));
+    const reduced = trackTable(declareReduceTable({
       tableId: "reduce-test-null-gk",
       fromTable: grouped,
       initialState: expr(`'0'::jsonb`),
@@ -4900,7 +4916,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
         "groupKey" AS "team",
         ("state" #>> '{}')::numeric AS "total"
       `),
-    });
+    }));
     await runStatements(source.init());
     await runStatements(grouped.init());
     await runStatements(reduced.init());
@@ -4922,7 +4938,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     const source = declareStoredTable<{ tenancyId: string, customerId: string, value: number }>({
       tableId: "reduce-test-complex-gk-source",
     });
-    const grouped = declareGroupByTable({
+    const grouped = trackTable(declareGroupByTable({
       tableId: "reduce-test-complex-gk-grouped",
       fromTable: source,
       groupBy: mapper(`
@@ -4931,8 +4947,8 @@ describe.sequential("declareStoredTable (real postgres)", () => {
           'customerId', "rowData"->'customerId'
         ) AS "groupKey"
       `),
-    });
-    const reduced = declareReduceTable({
+    }));
+    const reduced = trackTable(declareReduceTable({
       tableId: "reduce-test-complex-gk",
       fromTable: grouped,
       initialState: expr(`'0'::jsonb`),
@@ -4947,7 +4963,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
         "groupKey"->'customerId' AS "customerId",
         ("state" #>> '{}')::numeric AS "total"
       `),
-    });
+    }));
     await runStatements(source.init());
     await runStatements(grouped.init());
     await runStatements(reduced.init());

@@ -215,7 +215,7 @@ export function declareFlatMapTable<
   });
   options.fromTable.registerRowChangeTrigger(fromTableTrigger);
 
-  return {
+  const table: ReturnType<typeof declareFlatMapTable<GK, OldRD, NewRD>> = {
     tableId: options.tableId,
     inputTables: [options.fromTable],
     debugArgs: {
@@ -402,5 +402,60 @@ export function declareFlatMapTable<
       triggers.set(id, normalizeRowChangeTrigger(trigger));
       return { deregister: () => triggers.delete(id) };
     },
+    verifyDataIntegrity: () => {
+      const allInputRows = options.fromTable.listRowsInGroup({
+        start: "start", end: "end", startInclusive: true, endInclusive: true,
+      });
+      const allActualRows = table.listRowsInGroup({
+        start: "start", end: "end", startInclusive: true, endInclusive: true,
+      });
+      return sqlQuery`
+        WITH "expected" AS (
+          SELECT
+            "source"."groupkey" AS "groupKey",
+            ${createExpandedRowIdentifier(
+              sqlExpression`"source"."rowidentifier"`,
+              sqlExpression`"flatRow"."flatIndex"`,
+            )} AS "rowIdentifier",
+            "flatRow"."rowData" AS "rowData"
+          FROM (${allInputRows}) AS "source"
+          LEFT JOIN LATERAL (
+            SELECT "mapped"."rows" AS "mappedRows"
+            FROM (
+              SELECT ${options.mapper}
+              FROM (
+                SELECT "source"."rowidentifier" AS "rowIdentifier", "source"."rowdata" AS "rowData"
+              ) AS "mapperInput"
+            ) AS "mapped"
+          ) AS "mapped" ON true
+          CROSS JOIN LATERAL jsonb_array_elements(
+            CASE WHEN jsonb_typeof("mapped"."mappedRows") = 'array' THEN "mapped"."mappedRows" ELSE '[]'::jsonb END
+          ) WITH ORDINALITY AS "flatRow"("rowData", "flatIndex")
+        ),
+        "actual" AS (
+          SELECT "r"."groupkey" AS "groupKey", "r"."rowidentifier" AS "rowIdentifier", "r"."rowdata" AS "rowData"
+          FROM (${allActualRows}) AS "r"
+        )
+        SELECT
+          CASE
+            WHEN "expected"."rowIdentifier" IS NULL THEN 'extra_row'
+            WHEN "actual"."rowIdentifier" IS NULL THEN 'missing_row'
+            ELSE 'data_mismatch'
+          END AS errortype,
+          COALESCE("expected"."groupKey", "actual"."groupKey") AS groupkey,
+          COALESCE("expected"."rowIdentifier", "actual"."rowIdentifier") AS rowidentifier,
+          "expected"."rowData" AS expected,
+          "actual"."rowData" AS actual
+        FROM "expected"
+        FULL OUTER JOIN "actual"
+          ON "expected"."groupKey" IS NOT DISTINCT FROM "actual"."groupKey"
+          AND "expected"."rowIdentifier" = "actual"."rowIdentifier"
+        WHERE ("expected"."rowIdentifier" IS NULL
+          OR "actual"."rowIdentifier" IS NULL
+          OR "expected"."rowData" IS DISTINCT FROM "actual"."rowData")
+          AND ${isInitializedExpression}
+      `;
+    },
   };
+  return table;
 }

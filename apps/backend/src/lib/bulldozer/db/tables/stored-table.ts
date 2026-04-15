@@ -79,6 +79,10 @@ export function declareStoredTable<RD extends RowData>(options: {
       triggers.set(id, normalizeRowChangeTrigger(trigger));
       return { deregister: () => triggers.delete(id) };
     },
+    verifyDataIntegrity: () => sqlQuery`
+      SELECT NULL::text AS errortype, NULL::jsonb AS groupkey, NULL::text AS rowidentifier, NULL::jsonb AS expected, NULL::jsonb AS actual
+      WHERE false
+    `,
     setRow: (rowIdentifier, rowData) => {
       const oldRowsTableName = `old_rows_${generateSecureRandomString()}`;
       const upsertedRowsTableName = `upserted_rows_${generateSecureRandomString()}`;
