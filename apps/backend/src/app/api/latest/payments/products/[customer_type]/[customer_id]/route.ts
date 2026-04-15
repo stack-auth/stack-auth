@@ -1,5 +1,5 @@
-import { ensureClientCanAccessCustomer, ensureProductIdOrInlineProduct, grantProductToCustomer, productToInlineProduct } from "@/lib/payments";
-import { getOwnedProductsForCustomer } from "@/lib/payments/customer-data";
+import { ensureClientCanAccessCustomer, ensureProductIdOrInlineProduct, grantProductToCustomer, isActiveSubscription, productToInlineProduct } from "@/lib/payments";
+import { getOwnedProductsForCustomer, getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -45,12 +45,24 @@ export const GET = createSmartRouteHandler({
       });
     }
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
-    const ownedProducts = await getOwnedProductsForCustomer({
-      prisma,
-      tenancyId: auth.tenancy.id,
-      customerType: params.customer_type,
-      customerId: params.customer_id,
-    });
+    const [ownedProducts, subMap] = await Promise.all([
+      getOwnedProductsForCustomer({
+        prisma,
+        tenancyId: auth.tenancy.id,
+        customerType: params.customer_type,
+        customerId: params.customer_id,
+      }),
+      getSubscriptionMapForCustomer({
+        prisma,
+        tenancyId: auth.tenancy.id,
+        customerType: params.customer_type,
+        customerId: params.customer_id,
+      }),
+    ]);
+    // Deprecated: map productId → active subscription for backward-compat fields
+    const activeSubByProductId = new Map(
+      Object.values(subMap).filter(s => isActiveSubscription(s)).map(s => [s.productId, s] as const)
+    );
 
     // Build switch options per product line (available plan upgrades/downgrades)
     const switchOptionsByProductLineId = new Map<string, Array<{ product_id: string, product: ReturnType<typeof productToInlineProduct> }>>();
@@ -84,6 +96,9 @@ export const GET = createSmartRouteHandler({
         const switchOptions = productLineId
           ? (switchOptionsByProductLineId.get(productLineId) ?? []).filter((option) => option.product_id !== productId)
           : undefined;
+        // Deprecated fields for backward compat
+        const sub = activeSubByProductId.get(productId);
+        const type = sub ? "subscription" as const : "one_time" as const;
 
         return {
           cursor: productId,
@@ -92,6 +107,13 @@ export const GET = createSmartRouteHandler({
             quantity: p.quantity,
             // ProductSnapshot uses null where the Yup productSchema uses undefined; the data is equivalent
             product: productToInlineProduct(p.product as Parameters<typeof productToInlineProduct>[0]),
+            type,
+            subscription: sub ? {
+              subscription_id: sub.id,
+              current_period_end: sub.currentPeriodEndMillis ? new Date(sub.currentPeriodEndMillis).toISOString() : null,
+              cancel_at_period_end: sub.cancelAtPeriodEnd,
+              is_cancelable: true,
+            } : null,
             switch_options: switchOptions,
           },
         };
