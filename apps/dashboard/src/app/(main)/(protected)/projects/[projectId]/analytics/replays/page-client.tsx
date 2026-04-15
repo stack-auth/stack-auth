@@ -19,7 +19,7 @@ import {
 } from "@/lib/session-replay-streams";
 import { cn } from "@/lib/utils";
 import { ArrowLeftIcon, ArrowsClockwiseIcon, CursorClickIcon, FastForwardIcon, FunnelSimpleIcon, GearIcon, LinkIcon, MonitorPlayIcon, PauseIcon, PlayIcon, XIcon } from "@phosphor-icons/react";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
@@ -1822,11 +1822,11 @@ export default function PageClient({ initialReplayId }: PageClientProps) {
                       size="icon"
                       className="h-7 w-7"
                       aria-label="Copy link to replay"
-                      onClick={async () => {
+                      onClick={() => runAsynchronouslyWithAlert(async () => {
                         await navigator.clipboard.writeText(
                           `${window.location.origin}/projects/${encodeURIComponent(adminApp.projectId)}/analytics/replays/${encodeURIComponent(selectedRecordingId)}`,
                         );
-                      }}
+                      })}
                     >
                       <LinkIcon className="h-4 w-4" />
                     </Button>
