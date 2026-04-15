@@ -5,8 +5,6 @@ import * as RechartsPrimitive from "recharts";
 import { cn } from "@stackframe/stack-ui";
 import { useDesignChart, getPayloadConfigFromPayload } from "./chart-container";
 
-export const DesignChartLegend = RechartsPrimitive.Legend;
-
 export const DesignChartLegendContent = React.forwardRef<
   HTMLDivElement,
   React.ComponentProps<"div"> &

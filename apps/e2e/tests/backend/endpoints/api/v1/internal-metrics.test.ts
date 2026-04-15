@@ -1,15 +1,73 @@
+import { randomUUID } from "node:crypto";
+import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { expect } from "vitest";
 import { NiceResponse, it } from "../../../../helpers";
-import { Auth, InternalApiKey, Project, backendContext, createMailbox, niceBackendFetch } from "../../../backend-helpers";
+import { Auth, InternalApiKey, Project, Team, backendContext, createMailbox, niceBackendFetch } from "../../../backend-helpers";
+
+type MetricsUser = {
+  is_anonymous: boolean,
+};
+
+type LoginMethodMetric = {
+  count: number,
+};
+
+async function uploadAnalyticsEventBatch(options: {
+  sessionReplaySegmentId: string,
+  batchId: string,
+  sentAtMs: number,
+  events: { event_type: string, event_at_ms: number, data: unknown }[],
+}) {
+  return await niceBackendFetch("/api/v1/analytics/events/batch", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      session_replay_segment_id: options.sessionReplaySegmentId,
+      batch_id: options.batchId,
+      sent_at_ms: options.sentAtMs,
+      events: options.events,
+    },
+  });
+}
 
 async function ensureAnonymousUsersAreStillExcluded(metricsResponse: NiceResponse) {
+  const baselineTotalUsers = metricsResponse.body.total_users as number;
+  const baselineUsersByCountry = metricsResponse.body.users_by_country as Record<string, number>;
+  const baselineRecentlyRegisteredIds = (metricsResponse.body.recently_registered as Array<{ id: string }>).map((user) => user.id);
+  const baselineRecentlyActiveIds = (metricsResponse.body.recently_active as Array<{ id: string }>).map((user) => user.id);
+
   for (let i = 0; i < 2; i++) {
     await Auth.Anonymous.signUp();
   }
-  await wait(2000); // the event log is async, so let's give it some time to be written to the DB
-  const response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
-  expect(response.body).toEqual(metricsResponse.body);
+
+  // ClickHouse ingestion is async; poll until anonymous users are excluded again.
+  let response!: NiceResponse;
+  for (let i = 0; i < 10; i++) {
+    await wait(2_000);
+    response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
+    const noAnonymousInRecentlyRegistered = (response.body.recently_registered as MetricsUser[]).every((user) => !user.is_anonymous);
+    const noAnonymousInRecentlyActive = (response.body.recently_active as MetricsUser[]).every((user) => !user.is_anonymous);
+    const currentRecentlyRegisteredIds = (response.body.recently_registered as Array<{ id: string }>).map((user) => user.id);
+    const currentRecentlyActiveIds = (response.body.recently_active as Array<{ id: string }>).map((user) => user.id);
+    if (
+      response.body.total_users === baselineTotalUsers &&
+      deepPlainEquals(response.body.users_by_country, baselineUsersByCountry) &&
+      noAnonymousInRecentlyRegistered &&
+      noAnonymousInRecentlyActive &&
+      deepPlainEquals(currentRecentlyRegisteredIds, baselineRecentlyRegisteredIds) &&
+      deepPlainEquals(currentRecentlyActiveIds, baselineRecentlyActiveIds)
+    ) {
+      return;
+    }
+  }
+
+  expect(response.body.total_users).toBe(baselineTotalUsers);
+  expect(response.body.users_by_country).toEqual(baselineUsersByCountry);
+  expect((response.body.recently_registered as MetricsUser[]).every((user) => !user.is_anonymous)).toBe(true);
+  expect((response.body.recently_active as MetricsUser[]).every((user) => !user.is_anonymous)).toBe(true);
+  expect((response.body.recently_registered as Array<{ id: string }>).map((user) => user.id)).toEqual(baselineRecentlyRegisteredIds);
+  expect((response.body.recently_active as Array<{ id: string }>).map((user) => user.id)).toEqual(baselineRecentlyActiveIds);
 }
 
 async function waitForMetricsToIncludeUsersByCountry(options: { countryCode: string, expectedCount: number }): Promise<NiceResponse> {
@@ -22,6 +80,47 @@ async function waitForMetricsToIncludeUsersByCountry(options: { countryCode: str
     await wait(2_000);
   }
   return response;
+}
+
+async function waitForMetricsMatch(
+  includeAnonymous: boolean,
+  predicate: (response: NiceResponse) => boolean,
+): Promise<NiceResponse> {
+  let response!: NiceResponse;
+  const suffix = includeAnonymous ? "?include_anonymous=true" : "";
+  for (let i = 0; i < 20; i++) {
+    response = await niceBackendFetch(`/api/v1/internal/metrics${suffix}`, { accessType: 'admin' });
+    if (predicate(response)) {
+      return response;
+    }
+    await wait(1_000);
+  }
+  return response;
+}
+
+async function waitForAnalyticsRowsForSessionReplaySegment(
+  sessionReplaySegmentId: string,
+  expectedCount: number,
+): Promise<void> {
+  for (let i = 0; i < 30; i++) {
+    const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        query: `
+          SELECT count() AS count
+          FROM events
+          WHERE session_replay_segment_id = {segId:String}
+        `,
+        params: { segId: sessionReplaySegmentId },
+      },
+    });
+    if (response.status === 200 && Number(response.body.result?.[0]?.count ?? 0) >= expectedCount) {
+      return;
+    }
+    await wait(500);
+  }
+  throw new Error(`Timed out waiting for ${expectedCount} analytics rows for session replay segment ${sessionReplaySegmentId}`);
 }
 
 it("should return metrics data", async ({ expect }) => {
@@ -137,11 +236,20 @@ it("should exclude anonymous users from metrics", async ({ expect }) => {
     await Auth.Anonymous.signUp();
   }
 
-  // the event log is async, so let's give it some time to be written to the DB
+  // Poll until the core metrics (which exclude anonymous users) stabilize.
+  // We can't compare the entire body because auth_overview.anonymous_users
+  // will have changed.
   let result!: NiceResponse;
-  for (let i = 0; i < 5; i++) {
+  for (let i = 0; i < 10; i++) {
     result = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
-    if (JSON.stringify(result.body) === JSON.stringify(beforeMetrics.body)) {
+    if (
+      result.body.total_users === beforeMetrics.body.total_users &&
+      deepPlainEquals(result.body.users_by_country, beforeMetrics.body.users_by_country) &&
+      deepPlainEquals(
+        (result.body.recently_registered as Array<{ id: string }>).map((u: { id: string }) => u.id),
+        (beforeMetrics.body.recently_registered as Array<{ id: string }>).map((u: { id: string }) => u.id),
+      )
+    ) {
       break;
     }
     await wait(2_000);
@@ -152,10 +260,10 @@ it("should exclude anonymous users from metrics", async ({ expect }) => {
 
   // Verify anonymous users don't appear in recently_registered
   expect(result.body.recently_registered.length).toBe(1);
-  expect(result.body.recently_registered.every((user: any) => !user.is_anonymous)).toBe(true);
+  expect(result.body.recently_registered.every((user: MetricsUser) => !user.is_anonymous)).toBe(true);
 
   // Verify anonymous users don't appear in recently_active
-  expect(result.body.recently_active.every((user: any) => !user.is_anonymous)).toBe(true);
+  expect(result.body.recently_active.every((user: MetricsUser) => !user.is_anonymous)).toBe(true);
 
   // Verify anonymous users aren't counted in daily_users
   const lastDayUsers = result.body.daily_users[result.body.daily_users.length - 1];
@@ -165,6 +273,8 @@ it("should exclude anonymous users from metrics", async ({ expect }) => {
   expect(result.body.users_by_country["US"]).toBe(1);
 
   await ensureAnonymousUsersAreStillExcluded(result);
+}, {
+  timeout: 120_000,
 });
 
 it("should handle anonymous users with activity correctly", async ({ expect }) => {
@@ -205,6 +315,8 @@ it("should handle anonymous users with activity correctly", async ({ expect }) =
   expect(response.body.users_by_country["US"]).toBeUndefined();
 
   await ensureAnonymousUsersAreStillExcluded(response);
+}, {
+  timeout: 120_000,
 });
 
 it("should handle mixed auth methods excluding anonymous users", async ({ expect }) => {
@@ -243,8 +355,239 @@ it("should handle mixed auth methods excluding anonymous users", async ({ expect
 
   // Login methods should only count regular users' methods
   const loginMethods = response.body.login_methods;
-  const totalMethodCount = loginMethods.reduce((sum: number, method: any) => sum + method.count, 0);
+  const totalMethodCount = loginMethods.reduce((sum: number, method: LoginMethodMetric) => sum + method.count, 0);
   expect(totalMethodCount).toBe(2); // 1 OTP + 1 password, no anonymous
 
   await ensureAnonymousUsersAreStillExcluded(response);
+}, {
+  timeout: 120_000,
+});
+
+it("should return cross-product aggregates in the metrics response", async ({ expect }) => {
+  await Project.createAndSwitch({
+    config: {
+      magic_link_enabled: true,
+    }
+  });
+
+  await wait(2000);
+
+  const response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
+  expect(response.status).toBe(200);
+
+  // Core auth fields must always be present
+  expect(response.body).toHaveProperty('total_users');
+  expect(response.body).toHaveProperty('daily_users');
+  expect(response.body).toHaveProperty('daily_active_users');
+  expect(response.body).toHaveProperty('login_methods');
+
+  // Extended aggregate groups must always be present (even for sparse projects)
+  expect(response.body).toHaveProperty('auth_overview');
+  expect(response.body).toHaveProperty('payments_overview');
+  expect(response.body).toHaveProperty('email_overview');
+  expect(response.body).toHaveProperty('analytics_overview');
+
+  // Auth overview shape
+  const authOverview = response.body.auth_overview;
+  expect(typeof authOverview.verified_users).toBe('number');
+  expect(typeof authOverview.unverified_users).toBe('number');
+  expect(typeof authOverview.anonymous_users).toBe('number');
+  expect(typeof authOverview.total_teams).toBe('number');
+  // MAU field introduced for analytics chart widget
+  expect(typeof authOverview.mau).toBe('number');
+
+  // Payments overview shape
+  const paymentsOverview = response.body.payments_overview;
+  expect(typeof paymentsOverview.subscriptions_by_status).toBe('object');
+  expect(typeof paymentsOverview.active_subscription_count).toBe('number');
+  expect(typeof paymentsOverview.total_one_time_purchases).toBe('number');
+  expect(Array.isArray(paymentsOverview.daily_subscriptions)).toBe(true);
+
+  // Email overview shape
+  const emailOverview = response.body.email_overview;
+  expect(typeof emailOverview.emails_by_status).toBe('object');
+  expect(typeof emailOverview.total_emails).toBe('number');
+  expect(Array.isArray(emailOverview.daily_emails)).toBe(true);
+
+  // Analytics overview shape (may have empty arrays for sparse projects)
+  const analyticsOverview = response.body.analytics_overview;
+  expect(Array.isArray(analyticsOverview.daily_page_views)).toBe(true);
+  expect(Array.isArray(analyticsOverview.daily_clicks)).toBe(true);
+  expect(typeof analyticsOverview.total_replays).toBe('number');
+  expect(typeof analyticsOverview.recent_replays).toBe('number');
+  // Fields used by visitors/revenue hover charts
+  expect(Array.isArray(analyticsOverview.daily_visitors)).toBe(true);
+  expect(Array.isArray(analyticsOverview.daily_revenue)).toBe(true);
+  expect(typeof analyticsOverview.visitors).toBe('number');
+  expect(Array.isArray(analyticsOverview.top_referrers)).toBe(true);
+});
+
+it("should return correct auth_overview breakdown including teams", async ({ expect }) => {
+  await Project.createAndSwitch({
+    config: {
+      magic_link_enabled: true,
+    }
+  });
+  await Team.create();
+
+  await InternalApiKey.createAndSetProjectKeys();
+
+  // Create a verified user
+  const verifiedMailbox = createMailbox();
+  backendContext.set({ mailbox: verifiedMailbox });
+  await Auth.Otp.signIn();
+
+  // Create an anonymous user
+  await Auth.Anonymous.signUp();
+
+  await wait(2000);
+
+  const response = await niceBackendFetch("/api/v1/internal/metrics", { accessType: 'admin' });
+  expect(response.status).toBe(200);
+
+  const authOverview = response.body.auth_overview;
+
+  // Total = 1 regular (verified by OTP/magic-link) + 1 anonymous
+  // anonymous_users count should be 1
+  expect(authOverview.anonymous_users).toBeGreaterThanOrEqual(1);
+
+  // verified + unverified should match non-anonymous total
+  const nonAnonFromOverview = authOverview.verified_users + authOverview.unverified_users;
+  expect(nonAnonFromOverview).toBeGreaterThanOrEqual(1);
+  expect(authOverview.total_teams).toBeGreaterThanOrEqual(1);
+});
+
+it("should count top referrers by unique visitors and exclude anonymous analytics by default", async ({ expect }) => {
+  await Project.createAndSwitch({
+    config: {
+      magic_link_enabled: true,
+    }
+  });
+  await Project.updateConfig({
+    "apps.installed.analytics": { enabled: true },
+  });
+
+  await InternalApiKey.createAndSetProjectKeys();
+
+  backendContext.set({
+    mailbox: createMailbox(),
+    ipData: {
+      country: "US",
+      ipAddress: "127.0.0.11",
+      city: "New York",
+      region: "NY",
+      latitude: 40.7128,
+      longitude: -74.0060,
+      tzIdentifier: "America/New_York",
+    },
+  });
+  await Auth.Otp.signIn();
+
+  const regularSessionReplaySegmentId = randomUUID();
+  const regularNow = Date.now();
+  const regularReferrer = "https://regular.example/source";
+  const regularBatchResponse = await uploadAnalyticsEventBatch({
+    sessionReplaySegmentId: regularSessionReplaySegmentId,
+    batchId: randomUUID(),
+    sentAtMs: regularNow,
+    events: [
+      {
+        event_type: "$page-view",
+        event_at_ms: regularNow - 200,
+        data: {
+          url: "https://stack-auth.example/regular-1",
+          path: "/regular-1",
+          referrer: regularReferrer,
+          title: "Regular Page 1",
+          entry_type: "initial",
+          viewport_width: 1920,
+          viewport_height: 1080,
+          screen_width: 1920,
+          screen_height: 1080,
+        },
+      },
+      {
+        event_type: "$page-view",
+        event_at_ms: regularNow - 100,
+        data: {
+          url: "https://stack-auth.example/regular-2",
+          path: "/regular-2",
+          referrer: regularReferrer,
+          title: "Regular Page 2",
+          entry_type: "push",
+          viewport_width: 1920,
+          viewport_height: 1080,
+          screen_width: 1920,
+          screen_height: 1080,
+        },
+      },
+    ],
+  });
+  expect(regularBatchResponse.status).toBe(200);
+  await waitForAnalyticsRowsForSessionReplaySegment(regularSessionReplaySegmentId, 2);
+
+  backendContext.set({
+    ipData: {
+      country: "CA",
+      ipAddress: "127.0.0.12",
+      city: "Toronto",
+      region: "ON",
+      latitude: 43.6532,
+      longitude: -79.3832,
+      tzIdentifier: "America/Toronto",
+    },
+  });
+  await Auth.Anonymous.signUp();
+
+  const anonymousSessionReplaySegmentId = randomUUID();
+  const anonymousNow = Date.now();
+  const anonymousReferrer = "https://anonymous.example/source";
+  const anonymousBatchResponse = await uploadAnalyticsEventBatch({
+    sessionReplaySegmentId: anonymousSessionReplaySegmentId,
+    batchId: randomUUID(),
+    sentAtMs: anonymousNow,
+    events: [
+      {
+        event_type: "$page-view",
+        event_at_ms: anonymousNow - 100,
+        data: {
+          url: "https://stack-auth.example/anonymous-1",
+          path: "/anonymous-1",
+          referrer: anonymousReferrer,
+          title: "Anonymous Page 1",
+          entry_type: "initial",
+          viewport_width: 1920,
+          viewport_height: 1080,
+          screen_width: 1920,
+          screen_height: 1080,
+        },
+      },
+    ],
+  });
+  expect(anonymousBatchResponse.status).toBe(200);
+  await waitForAnalyticsRowsForSessionReplaySegment(anonymousSessionReplaySegmentId, 1);
+
+  const metricsWithoutAnonymous = await waitForMetricsMatch(false, (response) => {
+    const topReferrers = response.body.analytics_overview.top_referrers as Array<{ referrer: string, visitors: number }>;
+    return response.body.analytics_overview.online_live === 1
+      && topReferrers.some((item) => item.referrer === regularReferrer && item.visitors === 1)
+      && !topReferrers.some((item) => item.referrer === anonymousReferrer);
+  });
+  const topReferrersWithoutAnonymous = metricsWithoutAnonymous.body.analytics_overview.top_referrers as Array<{ referrer: string, visitors: number }>;
+  expect(topReferrersWithoutAnonymous).toContainEqual({ referrer: regularReferrer, visitors: 1 });
+  expect(topReferrersWithoutAnonymous.some((item) => item.referrer === anonymousReferrer)).toBe(false);
+  expect(metricsWithoutAnonymous.body.analytics_overview.online_live).toBe(1);
+
+  const metricsWithAnonymous = await waitForMetricsMatch(true, (response) => {
+    const topReferrers = response.body.analytics_overview.top_referrers as Array<{ referrer: string, visitors: number }>;
+    return response.body.analytics_overview.online_live === 2
+      && topReferrers.some((item) => item.referrer === regularReferrer && item.visitors === 1)
+      && topReferrers.some((item) => item.referrer === anonymousReferrer && item.visitors === 1);
+  });
+  const topReferrersWithAnonymous = metricsWithAnonymous.body.analytics_overview.top_referrers as Array<{ referrer: string, visitors: number }>;
+  expect(topReferrersWithAnonymous).toContainEqual({ referrer: regularReferrer, visitors: 1 });
+  expect(topReferrersWithAnonymous).toContainEqual({ referrer: anonymousReferrer, visitors: 1 });
+  expect(metricsWithAnonymous.body.analytics_overview.online_live).toBe(2);
+}, {
+  timeout: 120_000,
 });
