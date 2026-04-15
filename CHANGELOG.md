@@ -2,6 +2,11 @@
 
 ---
 
+## 4/15/26
+
+### MCP Server
+- MCP server now preserves conversation context for follow-up questions
+
 ## 1/23/26
 
 ### Payments
