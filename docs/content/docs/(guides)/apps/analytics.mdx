@@ -59,7 +59,24 @@ If you want replay recordings, also enable `analytics.replays.enabled` in your c
 
 The **Tables** screen is the fastest way to inspect recent analytics records.
 
-- Currently shows the `events` table
+You can browse any of the following ClickHouse views:
+
+| Table | Description |
+|-------|-------------|
+| `events` | Client and server analytics events |
+| `users` | User records |
+| `contact_channels` | User email addresses and contact methods |
+| `teams` | Team records |
+| `team_member_profiles` | Team membership profiles |
+| `team_permissions` | Team permission grants |
+| `team_invitations` | Pending team invitations |
+| `email_outboxes` | Outgoing email records |
+| `project_permissions` | Project-level permission grants |
+| `notification_preferences` | User notification settings |
+| `refresh_tokens` | Session refresh tokens |
+| `connected_accounts` | OAuth connected accounts |
+
+Each table view includes:
 - Built-in ordering and client-side search
 - Relative/absolute timestamp display toggle
 - Row detail dialog for inspecting full JSON payloads
@@ -113,7 +130,7 @@ export const stackClientApp = new StackClientApp({
 
 ## Best Practices
 
-1. **Use Tables for quick incident triage**: the Tables UI is the fastest way to inspect recent `events` rows without writing SQL.
+1. **Use Tables for quick incident triage**: the Tables UI is the fastest way to inspect recent records without writing SQL.
 2. **Use Queries for repeatable analysis**: save important SQL in folders, and scope queries with filters/`LIMIT` so they stay within result and timeout limits.
 3. **Use Replays for behavioral debugging**: start from an event pattern, then inspect matching session replays to understand what users actually did.
 4. **Keep replay privacy defaults on**: leave `maskAllInputs` enabled unless you have a specific reason and a data-handling policy for unmasked inputs.
