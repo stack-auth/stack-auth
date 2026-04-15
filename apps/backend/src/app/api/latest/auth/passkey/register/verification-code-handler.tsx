@@ -80,12 +80,6 @@ export const registerVerificationCodeHandler = createVerificationCodeHandler({
     }
 
     const registrationInfo = verification.registrationInfo;
-    if (registrationInfo == null) {
-      throw new StackAssertionError("Passkey registration verification succeeded without registration info", {
-        tenancyId: tenancy.id,
-        projectUserId: user.id,
-      });
-    }
     const prisma = await getPrismaClientForTenancy(tenancy);
 
     await retryTransaction(prisma, async (tx) => {
