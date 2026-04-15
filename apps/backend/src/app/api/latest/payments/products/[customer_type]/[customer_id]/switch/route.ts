@@ -1,7 +1,7 @@
 import { SubscriptionStatus } from "@/generated/prisma/client";
-import { customerOwnsProductInProductLine, ensureClientCanAccessCustomer, getDefaultCardPaymentMethodSummary, getStripeCustomerForCustomerOrNull } from "@/lib/payments";
+import { ensureClientCanAccessCustomer, getDefaultCardPaymentMethodSummary, getStripeCustomerForCustomerOrNull, isActiveSubscription } from "@/lib/payments";
 import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
-import { getOwnedProductsForCustomer } from "@/lib/payments/customer-data";
+import { getOwnedProductsForCustomer, getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
 import { upsertProductVersion } from "@/lib/product-versions";
 import { getStripeForAccount, sanitizeStripePeriodDates } from "@/lib/stripe";
 import { getPrismaClientForTenancy } from "@/prisma-client";
@@ -88,6 +88,17 @@ export const POST = createSmartRouteHandler({
     }
 
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
+
+    // Fetch subscription map (used for both OTP guard and subscription lookup)
+    const subMap = await getSubscriptionMapForCustomer({
+      prisma,
+      tenancyId: auth.tenancy.id,
+      customerType: params.customer_type,
+      customerId: params.customer_id,
+    });
+
+    // Block switching if a non-subscription (OTP) product exists in the same product line,
+    // since OTPs can't be replaced. Subscription ownership is fine — that's what we're switching.
     if (fromProduct.productLineId) {
       const ownedProducts = await getOwnedProductsForCustomer({
         prisma,
@@ -95,28 +106,29 @@ export const POST = createSmartRouteHandler({
         customerType: params.customer_type,
         customerId: params.customer_id,
       });
-      if (customerOwnsProductInProductLine(ownedProducts, fromProduct.productLineId)) {
-        throw new StatusError(400, "Customer already has a product in this product line");
+      const activeSubProductIds = new Set(
+        Object.values(subMap).filter(s => isActiveSubscription(s)).map(s => s.productId)
+      );
+      const hasOtpInProductLine = Object.entries(ownedProducts).some(
+        ([productId, p]) => p.productLineId === fromProduct.productLineId
+          && p.quantity > 0
+          && !activeSubProductIds.has(productId)
+      );
+      if (hasOtpInProductLine) {
+        throw new StatusError(400, "Customer already has a one-time purchase in this product line");
       }
     }
 
-    let subscription = null;
-    if (!fromIsIncludeByDefault) {
-      subscription = await prisma.subscription.findFirst({
-        where: {
-          tenancyId: auth.tenancy.id,
-          customerType: typedToUppercase(params.customer_type),
-          customerId: params.customer_id,
-          productId: body.from_product_id,
-          status: { in: [SubscriptionStatus.active, SubscriptionStatus.trialing] },
-        },
-        orderBy: { createdAt: "desc" },
-      });
-    }
-    if (!subscription && !fromIsIncludeByDefault) {
+    // Find the active subscription to switch from
+    const existingSub = !fromIsIncludeByDefault
+      ? Object.values(subMap).find(
+        s => s.productId === body.from_product_id && isActiveSubscription(s)
+      ) ?? null
+      : null;
+    if (!existingSub && !fromIsIncludeByDefault) {
       throw new StatusError(400, "This subscription cannot be switched.");
     }
-    if (subscription && !subscription.stripeSubscriptionId) {
+    if (existingSub && !existingSub.stripeSubscriptionId) {
       throw new StatusError(400, "This subscription cannot be switched.");
     }
 
@@ -138,7 +150,7 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(400, "Target price must include a USD amount.");
     }
     const selectedInterval = selectedPrice.interval;
-    const quantity = body.quantity ?? subscription?.quantity ?? 1;
+    const quantity = body.quantity ?? existingSub?.quantity ?? 1;
     if (body.quantity !== undefined && quantity !== 1 && toProduct.stackable !== true) {
       throw new StatusError(400, "This product is not stackable; quantity must be 1");
     }
@@ -167,6 +179,8 @@ export const POST = createSmartRouteHandler({
     }
     const resolvedPaymentMethodId = defaultPaymentMethod.id;
 
+    // Creates a new Stripe Product object each time — wasteful since these accumulate
+    // in the Stripe account and are never reused. Should upsert by productId instead.
     const stripeProduct = await stripe.products.create({ name: toProduct.displayName || "Subscription" });
 
     const productVersionId = await upsertProductVersion({
@@ -176,13 +190,13 @@ export const POST = createSmartRouteHandler({
       productJson: toProduct,
     });
 
-    if (subscription?.stripeSubscriptionId) {
-      const existingStripeSub = await stripe.subscriptions.retrieve(subscription.stripeSubscriptionId);
+    if (existingSub?.stripeSubscriptionId) {
+      const existingStripeSub = await stripe.subscriptions.retrieve(existingSub.stripeSubscriptionId);
       if (existingStripeSub.items.data.length === 0) {
-        throw new StackAssertionError("Stripe subscription has no items", { subscriptionId: subscription.id });
+        throw new StackAssertionError("Stripe subscription has no items", { subscriptionId: existingSub.id });
       }
       const existingItem = existingStripeSub.items.data[0];
-      const updated = await stripe.subscriptions.update(subscription.stripeSubscriptionId, {
+      const updated = await stripe.subscriptions.update(existingSub.stripeSubscriptionId, {
         payment_behavior: "error_if_incomplete",
         payment_settings: { save_default_payment_method: "on_subscription" },
         default_payment_method: resolvedPaymentMethodId,
@@ -209,14 +223,14 @@ export const POST = createSmartRouteHandler({
       const sanitizedUpdateDates = sanitizeStripePeriodDates(
         existingItem.current_period_start,
         existingItem.current_period_end,
-        { subscriptionId: subscription.stripeSubscriptionId, tenancyId: auth.tenancy.id }
+        { subscriptionId: existingSub.stripeSubscriptionId, tenancyId: auth.tenancy.id }
       );
 
       await prisma.subscription.update({
         where: {
           tenancyId_id: {
             tenancyId: auth.tenancy.id,
-            id: subscription.id,
+            id: existingSub.id,
           },
         },
         data: {
@@ -232,10 +246,13 @@ export const POST = createSmartRouteHandler({
       });
       // dual write - prisma and bulldozer
       const updatedSub = await prisma.subscription.findUniqueOrThrow({
-        where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: subscription.id } },
+        where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: existingSub.id } },
       });
       await bulldozerWriteSubscription(prisma, updatedSub);
     } else {
+      // DEPRECATED: this path handles switching from include-by-default (free) products
+      // to paid subscriptions. Default products are being removed; this code is kept
+      // for backward compatibility only.
       const created = await stripe.subscriptions.create({
         customer: stripeCustomer.id,
         payment_behavior: "error_if_incomplete",
