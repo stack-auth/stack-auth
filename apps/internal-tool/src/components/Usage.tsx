@@ -676,9 +676,7 @@ function SortHeader({
 
 function formatUsd(value: number): string {
   if (value === 0) return "$0";
-  if (value < 0.01) return `$${value.toFixed(4)}`;
-  if (value < 1) return `$${value.toFixed(3)}`;
-  return `$${value.toFixed(2)}`;
+  return `$${value.toFixed(4)}`;
 }
 
 function MetricCard({ label, value, valueClass }: { label: string, value: string, valueClass?: string }) {

@@ -103,7 +103,7 @@ export function UsageDetail({ row, onClose }: { row: AiQueryLogRow, onClose: () 
               <> (cached {row.cachedInputTokens.toLocaleString()})</>
             )}
             {" · "}out {row.outputTokens?.toLocaleString() ?? "?"} tok
-            {row.costUsd != null && <>{" · "}{row.costUsd < 0.01 ? `$${row.costUsd.toFixed(4)}` : `$${row.costUsd.toFixed(3)}`}</>}
+            {row.costUsd != null && <>{" · "}${row.costUsd.toFixed(4)}</>}
           </p>
         </div>
         <button
