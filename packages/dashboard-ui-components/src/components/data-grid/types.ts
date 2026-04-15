@@ -273,6 +273,10 @@ export type DataGridProps<TRow> = {
   overscan?: number;
   /** Grid max height. If omitted, grid takes available space. */
   maxHeight?: number | string;
+  /** Top offset for the sticky toolbar + header (px or CSS string).
+   *  Set this to the page header height so the grid chrome sticks
+   *  below it instead of overlapping. Defaults to 0. */
+  stickyTop?: number | string;
 
   // ── Callbacks ──────────────────────────────────────────────────
 } & DataGridCallbacks<TRow> & {

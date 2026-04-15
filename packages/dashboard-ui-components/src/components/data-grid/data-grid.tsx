@@ -20,13 +20,13 @@ import React, {
 } from "react";
 
 import { DesignSkeleton } from "../skeleton";
-import { DataGridToolbar } from "./data-grid-toolbar";
 import {
   applyDraggedColumnWidth,
   clampColumnWidth,
   createGridSizingStyle,
   getColumnSizingStyle,
 } from "./data-grid-sizing";
+import { DataGridToolbar } from "./data-grid-toolbar";
 import {
   clearSelection,
   exportToCsv,
@@ -799,6 +799,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
     headerHeight = 44,
     overscan = 5,
     maxHeight,
+    stickyTop,
     toolbar,
     toolbarExtra,
     emptyState,
@@ -964,12 +965,57 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
   // ── Virtualizer ──────────────────────────────────────────────
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const headerScrollRef = useRef<HTMLDivElement>(null);
+  const stickyChromeRef = useRef<HTMLDivElement>(null);
+  const [shouldShowStickyBlur, setShouldShowStickyBlur] = React.useState(false);
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollContainerRef.current,
     estimateSize: () => rowHeight,
     overscan,
   });
+
+  // Apply expensive backdrop blur once the first data row has moved at least
+  // 75% under the header band. This keeps the trigger stable (no per-row
+  // pulsing) while still matching visual layering.
+  useLayoutEffect(() => {
+    const stickyChrome = stickyChromeRef.current;
+    const scrollContainer = scrollContainerRef.current;
+    if (!stickyChrome || !scrollContainer) return;
+    const FIRST_ROW_HIDDEN_THRESHOLD = 0.75;
+
+    const updateBlurState = () => {
+      if (rows.length === 0 || rowHeight <= 0) {
+        setShouldShowStickyBlur(false);
+        return;
+      }
+
+      const scrollTop = scrollContainer.scrollTop;
+      const stickyRect = stickyChrome.getBoundingClientRect();
+      const headerBandBottomPx = stickyRect.bottom;
+      const scrollContainerTopPx = scrollContainer.getBoundingClientRect().top;
+      const firstRowTopPx = scrollContainerTopPx - scrollTop;
+      const firstRowHiddenPx = headerBandBottomPx - firstRowTopPx;
+      const shouldShowBlur = firstRowHiddenPx >= rowHeight * FIRST_ROW_HIDDEN_THRESHOLD;
+
+      setShouldShowStickyBlur((prev) => (prev === shouldShowBlur ? prev : shouldShowBlur));
+    };
+
+    const resizeObserver = new ResizeObserver(updateBlurState);
+    resizeObserver.observe(stickyChrome);
+    resizeObserver.observe(scrollContainer);
+
+    updateBlurState();
+    window.addEventListener("scroll", updateBlurState, true);
+    window.addEventListener("resize", updateBlurState);
+    scrollContainer.addEventListener("scroll", updateBlurState, { passive: true });
+
+    return () => {
+      resizeObserver.disconnect();
+      window.removeEventListener("scroll", updateBlurState, true);
+      window.removeEventListener("resize", updateBlurState);
+      scrollContainer.removeEventListener("scroll", updateBlurState);
+    };
+  }, [stickyTop, rows.length, rowHeight]);
 
   // Sync horizontal scroll from body to header
   const handleBodyScroll = useCallback(() => {
@@ -1018,10 +1064,9 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
   // - Root is `flex flex-col h-full min-h-0 bg-transparent`. `h-full`
   //   makes the grid fill a bounded parent; in an unbounded parent it
   //   resolves to `auto` and the grid takes the content's intrinsic size.
-  // - Toolbar/header/footer are `shrink-0`; the scroll body is
-  //   `flex-1 min-h-0 overflow-auto`, so the scroll area naturally takes
-  //   whatever space remains after the fixed-size chrome — regardless of
-  //   toolbar/footer size.
+  // - Toolbar + header are wrapped in a single `sticky top-0` container
+  //   so they pin to the top of the nearest scroll ancestor. Footer is
+  //   `shrink-0`; the scroll body is `flex-1 min-h-0 overflow-auto`.
   // - `maxHeight` is applied directly to the root; the scroll body never
   //   subtracts chrome sizes manually (that math breaks when the toolbar
   //   wraps, the footer grows, etc.).
@@ -1029,7 +1074,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
     <div
       ref={gridRef}
       className={cn(
-        "flex flex-col h-full min-h-0 bg-transparent",
+        "flex flex-col h-full min-h-0 bg-transparent rounded-[calc(var(--radius)*2)]",
         className,
       )}
       style={maxHeight != null ? { ...gridSizingStyle, maxHeight } : gridSizingStyle}
@@ -1037,199 +1082,209 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
       aria-rowcount={totalRowCount ?? rows.length}
       aria-colcount={visibleColumns.length}
     >
-      {/* Toolbar. When a custom `toolbar` render function is supplied,
-          it owns the whole row — `toolbarExtra` is ignored because the
-          custom render can consume `ctx` and include whatever it wants.
-          When the default toolbar is used, `toolbarExtra` is injected
-          into its row to the left of the columns / export actions. */}
-      {toolbar !== false && (
-        <div className="relative shrink-0 bg-transparent">
-          {toolbar ? (
-            toolbar(toolbarCtx)
-          ) : (
-            <DataGridToolbar
-              ctx={toolbarCtx}
-              extra={
-                typeof toolbarExtra === "function"
-                  ? toolbarExtra(toolbarCtx)
-                  : toolbarExtra
-              }
-            />
-          )}
-        </div>
-      )}
-
-      {/* Grid content */}
-      <div className="relative flex min-h-0 flex-1 flex-col">
-        {/* Refetch indicator — thin progress bar, no layout shift */}
-        {isRefetching && (
-          <div className="absolute top-0 left-0 right-0 h-0.5 z-30 bg-foreground/[0.04] overflow-hidden">
-            <div className="h-full w-1/3 bg-blue-500/60 rounded-full animate-pulse" />
+      {/* Sticky chrome: toolbar + header pin to the top of the nearest
+          scroll ancestor so they remain visible while the body scrolls. */}
+      <div
+        ref={stickyChromeRef}
+        className={cn(
+          "sticky z-20 shrink-0 rounded-t-[calc(var(--radius)*2)]",
+          "bg-transparent",
+          shouldShowStickyBlur && [
+            "supports-[backdrop-filter]:backdrop-blur-2xl",
+            "dark:supports-[backdrop-filter]:backdrop-blur-3xl",
+            "dark:supports-[backdrop-filter]:backdrop-brightness-50",
+            "dark:supports-[backdrop-filter]:backdrop-saturate-150",
+            "dark:bg-black/75",
+          ],
+        )}
+        style={{ top: stickyTop ?? "var(--data-grid-sticky-top, 0px)" }}
+      >
+        {/* Toolbar */}
+        {toolbar !== false && (
+          <div className="relative bg-transparent">
+            {toolbar ? (
+              toolbar(toolbarCtx)
+            ) : (
+              <DataGridToolbar
+                ctx={toolbarCtx}
+                extra={
+                  typeof toolbarExtra === "function"
+                    ? toolbarExtra(toolbarCtx)
+                    : toolbarExtra
+                }
+              />
+            )}
           </div>
         )}
 
-        {/* Header row — separate from scroll body, syncs horizontal scroll */}
-        <div
-          ref={headerScrollRef}
-          className="overflow-hidden shrink-0 border-b border-foreground/[0.06]"
-        >
+        {/* Header row — syncs horizontal scroll with the body */}
+        <div className="relative">
+          {isRefetching && (
+            <div className="absolute top-0 left-0 right-0 h-0.5 z-30 bg-foreground/[0.04] overflow-hidden">
+              <div className="h-full w-1/3 bg-blue-500/60 rounded-full animate-pulse" />
+            </div>
+          )}
           <div
-            className="flex"
-            style={{ height: headerHeight, minWidth: visibleColumnMetrics.totalWidth }}
-            role="row"
+            ref={headerScrollRef}
+            className="overflow-hidden shrink-0 border-b border-foreground/[0.06]"
           >
-            {selectionMode !== "none" && (
-              <div
-                className="flex items-center justify-center border-r border-foreground/[0.04]"
-                style={{ width: 44 }}
-              >
-                {selectionMode === "multiple" && (
-                  <SelectionCheckbox
-                    checked={allSelected}
-                    indeterminate={someSelected}
-                    onChange={handleSelectAll}
-                    ariaLabel="Select all rows"
-                  />
-                )}
-              </div>
-            )}
-            {visibleColumns.map((col) => (
-              <HeaderCell
-                key={col.id}
-                col={col}
-                isSorted={getSortDirection(state.sorting, col.id)}
-                sortIndex={getSortIndex(state.sorting, col.id)}
-                resizable={resizable}
-                onSort={handleSort}
-                onResize={handleResize}
-                onResizeEnd={handleResizeEnd}
-              />
-            ))}
+            <div
+              className="flex"
+              style={{ height: headerHeight, minWidth: visibleColumnMetrics.totalWidth }}
+              role="row"
+            >
+              {selectionMode !== "none" && (
+                <div
+                  className="flex items-center justify-center border-r border-foreground/[0.04]"
+                  style={{ width: 44 }}
+                >
+                  {selectionMode === "multiple" && (
+                    <SelectionCheckbox
+                      checked={allSelected}
+                      indeterminate={someSelected}
+                      onChange={handleSelectAll}
+                      ariaLabel="Select all rows"
+                    />
+                  )}
+                </div>
+              )}
+              {visibleColumns.map((col) => (
+                <HeaderCell
+                  key={col.id}
+                  col={col}
+                  isSorted={getSortDirection(state.sorting, col.id)}
+                  sortIndex={getSortIndex(state.sorting, col.id)}
+                  resizable={resizable}
+                  onSort={handleSort}
+                  onResize={handleResize}
+                  onResizeEnd={handleResizeEnd}
+                />
+              ))}
+            </div>
           </div>
         </div>
+      </div>
 
-        {/* Scrollable body — flex-1 + min-h-0 makes it take the remaining
-            space inside the `flex flex-col` grid wrapper, no manual math. */}
-        <div
-          ref={scrollContainerRef}
-          className={cn(
-            "min-h-0 overflow-auto flex-1 bg-transparent",
-            // Custom scrollbar
-            "[&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar]:h-1.5",
-            "[&::-webkit-scrollbar-track]:bg-transparent",
-            "[&::-webkit-scrollbar-thumb]:bg-foreground/[0.08] [&::-webkit-scrollbar-thumb]:rounded-full",
-            "[&::-webkit-scrollbar-thumb]:hover:bg-foreground/[0.15]",
-          )}
-          onScroll={handleBodyScroll}
-        >
-          {/* Loading initial */}
-          {isLoading && (
-            <div style={{ minWidth: visibleColumnMetrics.totalWidth }}>
-              {loadingState ??
-                Array.from({ length: 8 }).map((_, i) => (
-                  <SkeletonRow
-                    key={i}
-                    columns={visibleColumns}
-                    height={rowHeight}
-                    showCheckbox={selectionMode !== "none"}
-                  />
-                ))}
-            </div>
-          )}
+      {/* Scrollable body — flex-1 + min-h-0 makes it take the remaining
+          space inside the `flex flex-col` grid wrapper, no manual math. */}
+      <div
+        ref={scrollContainerRef}
+        className={cn(
+          "min-h-0 overflow-auto flex-1 bg-transparent",
+          "[&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar]:h-1.5",
+          "[&::-webkit-scrollbar-track]:bg-transparent",
+          "[&::-webkit-scrollbar-thumb]:bg-foreground/[0.08] [&::-webkit-scrollbar-thumb]:rounded-full",
+          "[&::-webkit-scrollbar-thumb]:hover:bg-foreground/[0.15]",
+        )}
+        onScroll={handleBodyScroll}
+      >
+        {/* Loading initial */}
+        {isLoading && (
+          <div style={{ minWidth: visibleColumnMetrics.totalWidth }}>
+            {loadingState ??
+              Array.from({ length: 8 }).map((_, i) => (
+                <SkeletonRow
+                  key={i}
+                  columns={visibleColumns}
+                  height={rowHeight}
+                  showCheckbox={selectionMode !== "none"}
+                />
+              ))}
+          </div>
+        )}
 
-          {/* Empty state */}
-          {!isLoading && rows.length === 0 && (
-            <div
-              className="flex items-center justify-center py-16 text-sm text-muted-foreground"
-              style={{ minWidth: visibleColumnMetrics.totalWidth }}
-            >
-              {emptyState ?? strings.noData}
-            </div>
-          )}
+        {/* Empty state */}
+        {!isLoading && rows.length === 0 && (
+          <div
+            className="flex items-center justify-center py-16 text-sm text-muted-foreground"
+            style={{ minWidth: visibleColumnMetrics.totalWidth }}
+          >
+            {emptyState ?? strings.noData}
+          </div>
+        )}
 
-          {/* Virtualized rows */}
-          {!isLoading && rows.length > 0 && (
-            <div
-              style={{
-                height: rowVirtualizer.getTotalSize(),
-                width: "100%",
-                minWidth: visibleColumnMetrics.totalWidth,
-                position: "relative",
-              }}
-            >
-              {rowVirtualizer.getVirtualItems().map((virtualRow: VirtualItem) => {
-                const row = rows[virtualRow.index]!;
-                const rowId = getRowId(row);
-                const isSelected = state.selection.selectedIds.has(rowId);
+        {/* Virtualized rows */}
+        {!isLoading && rows.length > 0 && (
+          <div
+            style={{
+              height: rowVirtualizer.getTotalSize(),
+              width: "100%",
+              minWidth: visibleColumnMetrics.totalWidth,
+              position: "relative",
+            }}
+          >
+            {rowVirtualizer.getVirtualItems().map((virtualRow: VirtualItem) => {
+              const row = rows[virtualRow.index]!;
+              const rowId = getRowId(row);
+              const isSelected = state.selection.selectedIds.has(rowId);
 
-                const isOddRow = virtualRow.index % 2 === 1;
-                return (
-                  <div
-                    key={rowId}
-                    className={cn(
-                      "absolute left-0 w-full flex",
-                      "border-b border-black/[0.03] dark:border-white/[0.03]",
-                      "transition-colors duration-75",
-                      isSelected
-                        ? "bg-blue-500/[0.06] dark:bg-blue-400/[0.08] hover:bg-blue-500/[0.08] dark:hover:bg-blue-400/[0.1]"
-                        : isOddRow
-                          ? "bg-foreground/[0.02] dark:bg-foreground/[0.03] hover:bg-foreground/[0.04] dark:hover:bg-foreground/[0.06]"
-                          : "hover:bg-foreground/[0.025] dark:hover:bg-foreground/[0.04]",
-                      (selectionMode !== "none" || onRowClick) && "cursor-pointer",
-                    )}
-                    style={{
-                      height: rowHeight,
-                      transform: `translateY(${virtualRow.start}px)`,
-                    }}
-                    onClick={(e) => handleRowClick(row, rowId, e)}
-                    onDoubleClick={(e) => onRowDoubleClick?.(row, rowId, e)}
-                    role="row"
-                    aria-rowindex={virtualRow.index + 2}
-                    aria-selected={isSelected}
-                    data-row-id={rowId}
-                    data-state={isSelected ? "selected" : undefined}
-                  >
-                    {/* Selection checkbox */}
-                    {selectionMode !== "none" && (
-                      <div
-                        className="flex items-center justify-center border-r border-black/[0.04] dark:border-white/[0.04]"
-                        style={{ width: 44 }}
-                      >
-                        <SelectionCheckbox
-                          checked={isSelected}
-                          onChange={(event) => handleRowSelectionCheckboxClick(row, rowId, event)}
-                          ariaLabel={`Select row ${rowId}`}
-                        />
-                      </div>
-                    )}
-
-                    {/* Data cells */}
-                    {visibleColumns.map((col) => (
-                      <DataCell
-                        key={col.id}
-                        col={col}
-                        row={row}
-                        rowId={rowId}
-                        rowIndex={virtualRow.index}
-                        isSelected={isSelected}
-                        dateDisplay={state.dateDisplay}
+              const isOddRow = virtualRow.index % 2 === 1;
+              return (
+                <div
+                  key={rowId}
+                  className={cn(
+                    "absolute left-0 w-full flex",
+                    "border-b border-black/[0.03] dark:border-white/[0.03]",
+                    "transition-colors duration-75",
+                    isSelected
+                      ? "bg-blue-500/[0.06] dark:bg-blue-400/[0.08] hover:bg-blue-500/[0.08] dark:hover:bg-blue-400/[0.1]"
+                      : isOddRow
+                        ? "bg-foreground/[0.02] dark:bg-foreground/[0.03] hover:bg-foreground/[0.04] dark:hover:bg-foreground/[0.06]"
+                        : "hover:bg-foreground/[0.025] dark:hover:bg-foreground/[0.04]",
+                    (selectionMode !== "none" || onRowClick) && "cursor-pointer",
+                  )}
+                  style={{
+                    height: rowHeight,
+                    transform: `translateY(${virtualRow.start}px)`,
+                  }}
+                  onClick={(e) => handleRowClick(row, rowId, e)}
+                  onDoubleClick={(e) => onRowDoubleClick?.(row, rowId, e)}
+                  role="row"
+                  aria-rowindex={virtualRow.index + 2}
+                  aria-selected={isSelected}
+                  data-row-id={rowId}
+                  data-state={isSelected ? "selected" : undefined}
+                >
+                  {/* Selection checkbox */}
+                  {selectionMode !== "none" && (
+                    <div
+                      className="flex items-center justify-center border-r border-black/[0.04] dark:border-white/[0.04]"
+                      style={{ width: 44 }}
+                    >
+                      <SelectionCheckbox
+                        checked={isSelected}
+                        onChange={(event) => handleRowSelectionCheckboxClick(row, rowId, event)}
+                        ariaLabel={`Select row ${rowId}`}
                       />
-                    ))}
-                  </div>
-                );
-              })}
-            </div>
-          )}
+                    </div>
+                  )}
 
-          {/* Infinite scroll sentinel */}
-          {paginationMode === "infinite" && hasMore && !isLoading && (
-            <InfiniteScrollSentinel
-              onIntersect={onLoadMore ?? (() => {})}
-              isLoading={isLoadingMore}
-              strings={strings}
-            />
-          )}
-        </div>
+                  {/* Data cells */}
+                  {visibleColumns.map((col) => (
+                    <DataCell
+                      key={col.id}
+                      col={col}
+                      row={row}
+                      rowId={rowId}
+                      rowIndex={virtualRow.index}
+                      isSelected={isSelected}
+                      dateDisplay={state.dateDisplay}
+                    />
+                  ))}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {/* Infinite scroll sentinel */}
+        {paginationMode === "infinite" && hasMore && !isLoading && (
+          <InfiniteScrollSentinel
+            onIntersect={onLoadMore ?? (() => {})}
+            isLoading={isLoadingMore}
+            strings={strings}
+          />
+        )}
       </div>
 
       {/* Footer */}

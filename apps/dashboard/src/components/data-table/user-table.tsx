@@ -21,7 +21,7 @@ import {
   SimpleTooltip,
   toast,
 } from "@/components/ui";
-import { ArrowDownIcon, ArrowUpIcon, CheckCircleIcon, CopyIcon, DotsThreeIcon, MagnifyingGlassIcon, XCircleIcon } from "@phosphor-icons/react";
+import { CheckCircleIcon, CopyIcon, DotsThreeIcon, MagnifyingGlassIcon, XCircleIcon } from "@phosphor-icons/react";
 import type { ServerUser } from "@stackframe/stack";
 import {
   createDefaultDataGridState,
@@ -101,85 +101,70 @@ function formatUserId(id: string) {
 
 // ─── Column definitions ──────────────────────────────────────────────
 
-function createColumns(
-  onToggleSort: () => void,
-  isSignedUpDesc: boolean,
-): DataGridColumnDef<ExtendedServerUser>[] {
-  return [
-    {
-      id: "user",
-      header: "User",
-      width: 180,
-      flex: 1,
-      sortable: false,
-      renderCell: ({ row }) => <UserIdentityCell user={row} />,
-    },
-    {
-      id: "email",
-      header: "Email",
-      width: 180,
-      flex: 1,
-      sortable: false,
-      renderCell: ({ row }) => <UserEmailCell user={row} />,
-    },
-    {
-      id: "userId",
-      header: "User ID",
-      width: 130,
-      sortable: false,
-      renderCell: ({ row }) => <UserIdCell user={row} />,
-    },
-    {
-      id: "emailStatus",
-      header: "Email Verified",
-      width: 110,
-      sortable: false,
-      renderCell: ({ row }) => <EmailStatusCell user={row} />,
-    },
-    {
-      id: "lastActiveAt",
-      header: "Last active",
-      width: 110,
-      sortable: false,
-      renderCell: ({ row }) => <DateMetaCell value={row.lastActiveAt} emptyLabel="Never" />,
-    },
-    {
-      id: "auth",
-      header: "Auth methods",
-      width: 150,
-      sortable: false,
-      renderCell: ({ row }) => <AuthMethodsCell user={row} />,
-    },
-    {
-      id: "signedUpAt",
-      header: () => (
-        <button
-          type="button"
-          onClick={onToggleSort}
-          className="inline-flex items-center gap-1 text-xs font-semibold tracking-wide text-muted-foreground transition-colors hover:transition-none hover:text-foreground focus:outline-none"
-        >
-          <span>Signed up</span>
-          {isSignedUpDesc ? <ArrowDownIcon className="h-3 w-3" /> : <ArrowUpIcon className="h-3 w-3" />}
-        </button>
-      ),
-      width: 110,
-      sortable: false,
-      renderCell: ({ row }) => <DateMetaCell value={row.signedUpAt} emptyLabel="Unknown" />,
-    },
-    {
-      id: "actions",
-      header: "",
-      width: 44,
-      minWidth: 44,
-      maxWidth: 44,
-      sortable: false,
-      hideable: false,
-      resizable: false,
-      align: "right",
-      renderCell: ({ row }) => <UserActions user={row} />,
-    },
-  ];
-}
+const USER_TABLE_COLUMNS: DataGridColumnDef<ExtendedServerUser>[] = [
+  {
+    id: "user",
+    header: "User",
+    width: 180,
+    flex: 1,
+    sortable: false,
+    renderCell: ({ row }) => <UserIdentityCell user={row} />,
+  },
+  {
+    id: "email",
+    header: "Email",
+    width: 180,
+    flex: 1,
+    sortable: false,
+    renderCell: ({ row }) => <UserEmailCell user={row} />,
+  },
+  {
+    id: "userId",
+    header: "User ID",
+    width: 130,
+    sortable: false,
+    renderCell: ({ row }) => <UserIdCell user={row} />,
+  },
+  {
+    id: "emailStatus",
+    header: "Email Verified",
+    width: 110,
+    sortable: false,
+    renderCell: ({ row }) => <EmailStatusCell user={row} />,
+  },
+  {
+    id: "lastActiveAt",
+    header: "Last active",
+    width: 110,
+    sortable: false,
+    renderCell: ({ row }) => <DateMetaCell value={row.lastActiveAt} emptyLabel="Never" />,
+  },
+  {
+    id: "auth",
+    header: "Auth methods",
+    width: 150,
+    sortable: false,
+    renderCell: ({ row }) => <AuthMethodsCell user={row} />,
+  },
+  {
+    id: "signedUpAt",
+    header: "Signed up",
+    width: 110,
+    renderCell: ({ row }) => <DateMetaCell value={row.signedUpAt} emptyLabel="Unknown" />,
+  },
+  {
+    id: "actions",
+    header: "",
+    width: 44,
+    minWidth: 44,
+    maxWidth: 44,
+    sortable: false,
+    hideable: false,
+    resizable: false,
+    align: "right",
+    renderCell: ({ row }) => <UserActions user={row} />,
+  },
+];
 
 // ─── UserTable ───────────────────────────────────────────────────────
 
@@ -277,16 +262,20 @@ function UserTableBody(props: {
     }
   }, [nextCursor, isLoadingMore, stackAdminApp]);
 
-  const columns = useMemo(
-    () => createColumns(
-      () => setFilters((prev) => ({ ...prev, signedUpOrder: prev.signedUpOrder === "desc" ? "asc" : "desc" })),
-      filters.signedUpOrder === "desc",
-    ),
-    [filters.signedUpOrder, setFilters],
-  );
-
-  const [gridState, setGridState] = useState<DataGridState>(() => createDefaultDataGridState(columns));
+  const [gridState, setGridState] = useState<DataGridState>(() => ({
+    ...createDefaultDataGridState(USER_TABLE_COLUMNS),
+    sorting: [{ columnId: "signedUpAt", direction: filters.signedUpOrder }],
+  }));
   const trimmedQuickSearch = gridState.quickSearch.trim();
+
+  const sortDirection = gridState.sorting.find((s) => s.columnId === "signedUpAt")?.direction ?? "desc";
+  useEffect(() => {
+    setFilters((prev) => (
+      prev.signedUpOrder === sortDirection
+        ? prev
+        : { ...prev, signedUpOrder: sortDirection }
+    ));
+  }, [sortDirection, setFilters]);
 
   useEffect(() => {
     const timeout = setTimeout(() => {
@@ -316,7 +305,7 @@ function UserTableBody(props: {
 
   return (
     <DataGrid
-      columns={columns}
+      columns={USER_TABLE_COLUMNS}
       rows={rows}
       getRowId={(row) => row.id}
       isLoading={isLoading}
