@@ -55,13 +55,14 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      # Node/pnpm are needed on both arches: arm64 also runs
+      # generate-env-development.mjs inside build-image.sh. amd64 additionally
+      # builds and runs the CLI for the verification steps below.
       - uses: pnpm/action-setup@v4
-        if: matrix.arch == 'amd64'
         with:
           version: 10.23.0
 
       - uses: actions/setup-node@v4
-        if: matrix.arch == 'amd64'
         with:
           node-version: 22
           cache: pnpm
@@ -177,8 +178,14 @@ jobs:
           if [ -f "$SAVEVM" ]; then
             cp "$SAVEVM" "stack-emulator-${{ matrix.arch }}.savevm.zst"
             ls -lh "stack-emulator-${{ matrix.arch }}.savevm.zst"
+          elif [ "${{ matrix.arch }}" = "amd64" ]; then
+            # amd64 is the fast-resume contract: if the build didn't produce a
+            # snapshot, fail loudly rather than silently shipping a
+            # cold-boot-only release.
+            echo "ERROR: snapshot build expected to produce $SAVEVM for amd64." >&2
+            exit 1
           else
-            echo "NOTE: no savevm snapshot was produced; fast-start will be unavailable for this arch."
+            echo "NOTE: no savevm snapshot was produced for ${{ matrix.arch }}; fast-start will be unavailable for this arch."
           fi
 
       - name: Upload image artifact

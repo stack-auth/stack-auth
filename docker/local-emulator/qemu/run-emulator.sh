@@ -308,7 +308,7 @@ build_qemu_cmd() {
   # build and are not needed at runtime, but their virtio-blk slots must
   # exist so the migration replay matches device IDs. Runtime-only devices
   # (virtfs, balloon) live at higher slots — extra at destination is fine.
-  local snapshot_args=() runtime_only_args=() snapshot_smp="$VM_CPUS"
+  local snapshot_args=() runtime_only_args=() snapshot_smp="$VM_CPUS" snapshot_ram="$VM_RAM"
   if snapshot_available; then
     log "Snapshot found at $savevm_file — fast-resume enabled."
     # -incoming defer: QEMU starts, waits for a QMP migrate-incoming command.
@@ -316,8 +316,16 @@ build_qemu_cmd() {
     # which enables parallel RAM restore (~2-3x faster than streamed decode).
     snapshot_args+=(-incoming defer)
     snapshot_smp="${EMULATOR_SNAPSHOT_CPUS:-4}"
+    # RAM size is baked into the snapshot; migration replay requires an
+    # identical -m value. Pin to the build-time RAM (4096) and ignore
+    # EMULATOR_RAM — override via EMULATOR_SNAPSHOT_RAM if a different
+    # snapshot was produced.
+    snapshot_ram="${EMULATOR_SNAPSHOT_RAM:-4096}"
     if [ "$snapshot_smp" != "$VM_CPUS" ]; then
       log "Pinning SMP to ${snapshot_smp} for snapshot resume (build-time value)."
+    fi
+    if [ "$snapshot_ram" != "$VM_RAM" ]; then
+      log "Pinning RAM to ${snapshot_ram}MB for snapshot resume (ignoring EMULATOR_RAM=${VM_RAM})."
     fi
 
     # Tiny placeholder ISOs to match the seed.iso / bundle.iso slots present
@@ -351,7 +359,7 @@ build_qemu_cmd() {
       -cpu "$cpu"
       "${firmware_args[@]}"
       -boot order=c
-      -m "$VM_RAM"
+      -m "$snapshot_ram"
       -smp "$snapshot_smp"
       -drive "file=$VM_DIR/disk.qcow2,format=qcow2,if=virtio"
       "${runtime_only_args[@]}"
@@ -502,14 +510,17 @@ qmp_incoming_and_cont() {
   return 1
 }
 
-# Generate fresh per-install secrets on the host. We pass them to the guest
-# through QGA's guest-exec input-data field (base64-encoded), so no host file
-# or virtfs mount is needed in the snapshot path.
-generate_fresh_secrets_payload() {
-  printf 'STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY=%s\n' "$(openssl rand -hex 32)"
-  printf 'STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY=%s\n' "$(openssl rand -hex 32)"
-  printf 'STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY=%s\n' "$(openssl rand -hex 32)"
-  printf 'CRON_SECRET=%s\n' "$(openssl rand -hex 32)"
+# Placeholder PCK baked into the snapshot. Kept in sync with the value in
+# docker/local-emulator/qemu/cloud-init/emulator/user-data.
+SNAPSHOT_PLACEHOLDER_PCK="00000000000000000000000000000000ffffffffffffffffffffffffffffffff"
+
+# Write the internal PCK to the host path the CLI reads (see
+# readInternalPck() in packages/stack-cli/src/commands/emulator.ts). In
+# cold-boot mode the guest publishes this via virtfs/9p, but snapshot mode
+# drops virtfs, so the host has to write it itself.
+write_internal_pck_for_cli() {
+  local pck="$1"
+  (umask 077 && printf '%s' "$pck" > "$VM_DIR/internal-pck")
 }
 
 # Drive qemu-guest-agent via its virtserialport socket. QGA speaks the same
@@ -547,8 +558,22 @@ qga_trigger_fast_rotate() {
   # message is available in serial.log. We pipe the fresh-secrets env file
   # (as base64) to the script via input-data — keeps secrets off the
   # filesystem and avoids needing virtfs.
-  local secrets_b64 resp pid
-  secrets_b64=$(generate_fresh_secrets_payload | base64 | tr -d '\n')
+  local fresh_pck fresh_ssk fresh_sak fresh_cron payload secrets_b64 resp pid
+  fresh_pck="$(openssl rand -hex 32)"
+  fresh_ssk="$(openssl rand -hex 32)"
+  fresh_sak="$(openssl rand -hex 32)"
+  fresh_cron="$(openssl rand -hex 32)"
+  payload=$(
+    printf 'STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY=%s\n' "$fresh_pck"
+    printf 'STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY=%s\n' "$fresh_ssk"
+    printf 'STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY=%s\n' "$fresh_sak"
+    printf 'CRON_SECRET=%s\n' "$fresh_cron"
+  )
+  # Publish the fresh PCK to the host path the CLI reads. Writing before the
+  # guest-exec so a --config-file flow that polls from another process can
+  # pick it up the moment rotation completes.
+  write_internal_pck_for_cli "$fresh_pck"
+  secrets_b64=$(printf '%s' "$payload" | base64 | tr -d '\n')
   local cmd
   cmd=$(printf '{"execute":"guest-exec","arguments":{"path":"/usr/local/bin/trigger-fast-rotate","capture-output":true,"input-data":"%s"}}' "$secrets_b64")
   resp=$(printf '%s\n' "$cmd" | qga_send || true)
@@ -599,8 +624,11 @@ stop_vm() {
       kill -9 "$pid" 2>/dev/null || true
     fi
   fi
-  rm -f "$VM_DIR/qemu.pid" "$VM_DIR/monitor.sock" "$VM_DIR/serial.log"
-  rm -f "$VM_DIR/runtime-config.iso"
+  rm -f "$VM_DIR/qemu.pid" "$VM_DIR/monitor.sock" "$VM_DIR/qga.sock" "$VM_DIR/serial.log"
+  # Do NOT remove runtime-config.iso: the CLI owns its lifecycle and run-emulator.sh
+  # cannot regenerate it. Removing here breaks the snapshot → cold-boot fallback
+  # (which calls stop_vm before recursing into cmd_start → ensure_runtime_config_iso).
+  # `cmd_reset` wipes $RUN_DIR entirely when a full reset is wanted.
 }
 
 cmd_start() {
@@ -642,6 +670,9 @@ cmd_start() {
 
     if [ "$EMULATOR_NO_ROTATION" = "1" ]; then
       warn "EMULATOR_NO_ROTATION=1: snapshot's placeholder secrets are in effect — do not expose this instance."
+      # The placeholder PCK is live in the running image; publish it to the
+      # host path so --config-file flows still work.
+      write_internal_pck_for_cli "$SNAPSHOT_PLACEHOLDER_PCK"
       if ! wait_for_condition "services" "$SNAPSHOT_READY_TIMEOUT" all_ready; then
         warn "Services did not respond after resume — falling back to cold boot."
         tail_vm_logs
@@ -691,9 +722,8 @@ cmd_start() {
 snapshot_fallback_to_cold_boot() {
   warn "Retrying with cold boot (EMULATOR_NO_SNAPSHOT=1)..."
   stop_vm
-  # Wipe the overlay + fingerprint so build_qemu_cmd re-creates a fresh one,
-  # but keep the CLI-generated runtime-config.iso (we can't regenerate it
-  # from shell — the CLI owns that).
+  # Wipe the overlay + fingerprint so build_qemu_cmd re-creates a fresh one.
+  # runtime-config.iso is preserved by stop_vm (the CLI owns it).
   rm -f "$VM_DIR/disk.qcow2" "$VM_DIR/base-image.fingerprint" \
         "$VM_DIR/seed.phantom" "$VM_DIR/bundle.phantom"
   EMULATOR_NO_SNAPSHOT=1
