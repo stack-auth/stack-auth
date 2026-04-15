@@ -255,9 +255,13 @@ persist_provision_logs() {
 # object per line); responses are written to stdout. Uses socat's bidirectional
 # pipe so we can interleave request/response in one connection — QMP requires
 # qmp_capabilities to come first and keeps state across commands.
+# Keeps stdin open briefly after caller's input ends so QEMU has time to
+# process the last command before socat closes.
 qmp_session() {
   local sock="$1"
-  socat -t30 - "UNIX-CONNECT:${sock}"
+  local payload
+  payload="$(cat)"
+  ( printf '%s\n' "$payload"; sleep 0.5 ) | socat -t30 - "UNIX-CONNECT:${sock}"
 }
 
 # Drive the snapshot capture over QMP:
@@ -284,9 +288,32 @@ capture_vm_state() {
     return 1
   }
 
+  log "  QMP: enabling mapped-ram + multifd for fast resume..."
+  # mapped-ram: writes each RAM page to a fixed offset in the output file
+  # (vs the legacy streamed format). This lets the target QEMU mmap the file
+  # and fault pages lazily — and combined with multifd, load RAM in parallel.
+  # multifd-channels=4 matches our pinned SMP so the channels don't starve
+  # each other on the target's 4 vCPUs.
+  local caps_cmd params_cmd
+  caps_cmd='{"execute":"migrate-set-capabilities","arguments":{"capabilities":[{"capability":"mapped-ram","state":true},{"capability":"multifd","state":true}]}}'
+  params_cmd='{"execute":"migrate-set-parameters","arguments":{"multifd-channels":4}}'
+  local setup_resp
+  setup_resp=$({
+    printf '%s\n' '{"execute":"qmp_capabilities"}'
+    printf '%s\n' "$caps_cmd"
+    printf '%s\n' "$params_cmd"
+  } | qmp_session "$sock") || {
+    err "QMP capabilities setup failed"
+    return 1
+  }
+  if printf '%s' "$setup_resp" | grep -q '"error"[[:space:]]*:'; then
+    err "QMP capabilities returned error: $setup_resp"
+    return 1
+  fi
+
   log "  QMP: migrating RAM state to ${guest_path}..."
   # Use file: migration (native QEMU) instead of exec: to avoid relying on a
-  # spawned shell finding zstd in PATH. We compress as a separate host step
+  # spawned shell finding zstd in PATH. Compressed as a separate host step
   # after migrate completes.
   local migrate_cmd
   migrate_cmd=$(printf '{"execute":"migrate","arguments":{"uri":"file:%s"}}' "$guest_path")
@@ -583,8 +610,10 @@ build_one() {
       exit 1
     fi
 
+    # zstd -1 trades ~30% larger file for ~40% faster decompression at resume.
+    # For shipping-and-decompress-once-per-start, that's the right balance.
     log "Compressing VM state with zstd..."
-    zstd -3 -T0 --rm -o "$savevm_tmp" "$savevm_raw"
+    zstd -1 -T0 --rm -o "$savevm_tmp" "$savevm_raw"
 
     mv "$savevm_tmp" "$savevm_file"
     local savevm_size

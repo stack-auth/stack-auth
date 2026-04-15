@@ -17,6 +17,10 @@ READY_TIMEOUT="${EMULATOR_READY_TIMEOUT:-240}"
 SNAPSHOT_READY_TIMEOUT="${EMULATOR_SNAPSHOT_READY_TIMEOUT:-45}"
 # Set to 1 to force a cold boot and ignore any shipped savevm file.
 EMULATOR_NO_SNAPSHOT="${EMULATOR_NO_SNAPSHOT:-0}"
+# Skip the post-resume secret rotation. Keeps the baked placeholder secrets
+# in place — acceptable for tests and CI that don't reach the emulator over
+# a shared network. Shaves ~2-3s off `emulator start`.
+EMULATOR_NO_ROTATION="${EMULATOR_NO_ROTATION:-0}"
 
 # Fixed host-side ports for the QEMU emulator (267xx range).
 # Only user-facing services are exposed; internal deps stay inside the VM.
@@ -71,12 +75,53 @@ savevm_path() {
   echo "$IMAGE_DIR/stack-emulator-$ARCH.savevm.zst"
 }
 
+# Cached, decompressed mapped-ram file. Created on first resume from the .zst
+# and reused on subsequent resumes — mapped-ram format requires a seekable
+# file, so we can't stream through zstd and use multifd at the same time.
+savevm_raw_path() {
+  echo "$IMAGE_DIR/stack-emulator-$ARCH.savevm.raw"
+}
+
 runtime_iso_path() {
   echo "$VM_DIR/runtime-config.iso"
 }
 
 snapshot_available() {
   [ "$EMULATOR_NO_SNAPSHOT" != "1" ] && [ -s "$(savevm_path)" ]
+}
+
+# Ensure the decompressed mapped-ram cache is up-to-date with the shipped
+# .zst. Compares mtime: if .raw is older or missing, re-decompress.
+ensure_savevm_raw() {
+  local zst raw
+  zst="$(savevm_path)"
+  raw="$(savevm_raw_path)"
+
+  local zst_ts raw_ts
+  case "$HOST_OS" in
+    darwin)
+      zst_ts="$(stat -f '%m' "$zst" 2>/dev/null || echo 0)"
+      raw_ts="$(stat -f '%m' "$raw" 2>/dev/null || echo 0)"
+      ;;
+    *)
+      zst_ts="$(stat -c '%Y' "$zst" 2>/dev/null || echo 0)"
+      raw_ts="$(stat -c '%Y' "$raw" 2>/dev/null || echo 0)"
+      ;;
+  esac
+
+  if [ -s "$raw" ] && [ "$raw_ts" -ge "$zst_ts" ]; then
+    return 0
+  fi
+
+  log "Decompressing snapshot cache (one-time; ~2-3GB sparse)..."
+  local tmp="${raw}.tmp"
+  rm -f "$tmp"
+  if ! zstd -dc "$zst" > "$tmp"; then
+    err "Failed to decompress $zst"
+    rm -f "$tmp"
+    return 1
+  fi
+  mv "$tmp" "$raw"
 }
 
 # Returns a fast fingerprint (size:mtime) of the base QEMU image.
@@ -107,22 +152,14 @@ runtime_fingerprint() {
   printf '%s|%s\n' "$base_fp" "$savevm_fp"
 }
 
-prepare_runtime_config_iso() {
-  local cfg_dir="$VM_DIR/runtime-config"
+ensure_runtime_config_iso() {
   local cfg_iso
   cfg_iso="$(runtime_iso_path)"
-  rm -rf "$cfg_dir"
-  mkdir -p "$cfg_dir"
-  {
-    printf "STACK_EMULATOR_PORT_PREFIX=%s\n" "$PORT_PREFIX"
-    printf "STACK_EMULATOR_DASHBOARD_HOST_PORT=%s\n" "$EMULATOR_DASHBOARD_PORT"
-    printf "STACK_EMULATOR_BACKEND_HOST_PORT=%s\n" "$EMULATOR_BACKEND_PORT"
-    printf "STACK_EMULATOR_MINIO_HOST_PORT=%s\n" "$EMULATOR_MINIO_PORT"
-    printf "STACK_EMULATOR_INBUCKET_HOST_PORT=%s\n" "$EMULATOR_INBUCKET_PORT"
-    printf "STACK_EMULATOR_VM_DIR_HOST=%s\n" "$VM_DIR"
-  } > "$cfg_dir/runtime.env"
-  cp "$SCRIPT_DIR/../.env.development" "$cfg_dir/base.env"
-  make_iso_from_dir "$cfg_iso" "STACKCFG" "$cfg_dir"
+  if [ ! -s "$cfg_iso" ]; then
+    err "Runtime config ISO missing at $cfg_iso."
+    err "The CLI normally generates this; if you're invoking run-emulator.sh directly, run via 'stack emulator start' instead."
+    exit 1
+  fi
 }
 
 service_is_up() {
@@ -274,7 +311,10 @@ build_qemu_cmd() {
   local snapshot_args=() runtime_only_args=() snapshot_smp="$VM_CPUS"
   if snapshot_available; then
     log "Snapshot found at $savevm_file — fast-resume enabled."
-    snapshot_args+=(-incoming "exec:zstd -dc $savevm_file")
+    # -incoming defer: QEMU starts, waits for a QMP migrate-incoming command.
+    # We use that to set mapped-ram + multifd capabilities before loading,
+    # which enables parallel RAM restore (~2-3x faster than streamed decode).
+    snapshot_args+=(-incoming defer)
     snapshot_smp="${EMULATOR_SNAPSHOT_CPUS:-4}"
     if [ "$snapshot_smp" != "$VM_CPUS" ]; then
       log "Pinning SMP to ${snapshot_smp} for snapshot resume (build-time value)."
@@ -389,7 +429,7 @@ ensure_ports_free() {
 start_vm() {
   mkdir -p "$VM_DIR"
   : > "$VM_DIR/serial.log"
-  prepare_runtime_config_iso
+  ensure_runtime_config_iso
   build_qemu_cmd
   "${QEMU_CMD[@]}"
 }
@@ -411,12 +451,34 @@ qmp_send() {
   } | socat -t5 - "UNIX-CONNECT:$VM_DIR/monitor.sock" 2>/dev/null
 }
 
-# After -incoming, QEMU is in "inmigrate" until the entire migration stream has
-# been received. Sending `cont` mid-migration would abort it (the host-side
-# decompressor / pipe gets killed). Wait for the VM to reach a runnable state
-# (paused / postmigrate / prelaunch / running) before continuing.
-qmp_wait_for_paused_and_continue() {
-  local deadline=$((SECONDS + 120))
+# After -incoming defer, QEMU waits for a migrate-incoming command. This sets
+# up mapped-ram + multifd capabilities and kicks off the RAM load from the
+# decompressed cache file. Returns once the VM is running.
+qmp_incoming_and_cont() {
+  local raw_file="$1"
+
+  # Set caps + parameters before migrate-incoming, same as source.
+  local setup_resp
+  setup_resp=$( {
+    printf '%s\n' '{"execute":"migrate-set-capabilities","arguments":{"capabilities":[{"capability":"mapped-ram","state":true},{"capability":"multifd","state":true}]}}'
+    printf '%s\n' '{"execute":"migrate-set-parameters","arguments":{"multifd-channels":4}}'
+  } | qmp_send)
+  if printf '%s' "$setup_resp" | grep -q '"error"'; then
+    err "QMP caps setup failed: $setup_resp"
+    return 1
+  fi
+
+  # Kick off the incoming migration from the mapped-ram file.
+  local inc_cmd inc_resp
+  inc_cmd=$(printf '{"execute":"migrate-incoming","arguments":{"uri":"file:%s"}}' "$raw_file")
+  inc_resp=$(printf '%s\n' "$inc_cmd" | qmp_send)
+  if printf '%s' "$inc_resp" | grep -q '"error"'; then
+    err "QMP migrate-incoming failed: $inc_resp"
+    return 1
+  fi
+
+  # Poll until status reaches a runnable state, then cont.
+  local deadline=$((SECONDS + 60))
   while [ "$SECONDS" -lt "$deadline" ]; do
     local out status
     out=$(printf '%s\n' '{"execute":"query-status"}' | qmp_send || true)
@@ -430,7 +492,6 @@ qmp_wait_for_paused_and_continue() {
         return 0
         ;;
       inmigrate|"")
-        # still loading migration data
         ;;
       *)
         log "unexpected QMP status: $status"
@@ -539,7 +600,6 @@ stop_vm() {
     fi
   fi
   rm -f "$VM_DIR/qemu.pid" "$VM_DIR/monitor.sock" "$VM_DIR/serial.log"
-  rm -rf "$VM_DIR/runtime-config"
   rm -f "$VM_DIR/runtime-config.iso"
 }
 
@@ -553,6 +613,11 @@ cmd_start() {
 
   local using_snapshot=0
   if snapshot_available; then
+    if ! ensure_savevm_raw; then
+      warn "Snapshot decompression failed — falling back to cold boot."
+      snapshot_fallback_to_cold_boot
+      return
+    fi
     using_snapshot=1
   fi
 
@@ -561,8 +626,8 @@ cmd_start() {
   info "VM: ${VM_RAM}MB / ${VM_CPUS} CPUs"
 
   if [ "$using_snapshot" = "1" ]; then
-    log "Resuming from snapshot..."
-    if ! qmp_wait_for_paused_and_continue; then
+    log "Resuming from snapshot (mapped-ram + multifd)..."
+    if ! qmp_incoming_and_cont "$(savevm_raw_path)"; then
       warn "Snapshot resume did not reach a runnable state — falling back to cold boot."
       snapshot_fallback_to_cold_boot
       return
@@ -575,23 +640,33 @@ cmd_start() {
       return
     fi
 
-    log "Generating fresh secrets + triggering rotation..."
-    if ! qga_trigger_fast_rotate; then
-      warn "Failed to trigger rotate-secrets — falling back to cold boot."
-      snapshot_fallback_to_cold_boot
-      return
-    fi
+    if [ "$EMULATOR_NO_ROTATION" = "1" ]; then
+      warn "EMULATOR_NO_ROTATION=1: snapshot's placeholder secrets are in effect — do not expose this instance."
+      if ! wait_for_condition "services" "$SNAPSHOT_READY_TIMEOUT" all_ready; then
+        warn "Services did not respond after resume — falling back to cold boot."
+        tail_vm_logs
+        snapshot_fallback_to_cold_boot
+        return
+      fi
+    else
+      log "Generating fresh secrets + triggering rotation..."
+      if ! qga_trigger_fast_rotate; then
+        warn "Failed to trigger rotate-secrets — falling back to cold boot."
+        snapshot_fallback_to_cold_boot
+        return
+      fi
 
-    # Wait for the *new* backend (post-supervisor-restart) to actually be
-    # listening. all_ready may briefly return true against the OLD Node
-    # processes between when supervisor sends SIGTERM and when the children
-    # die; sleep a beat so we measure the real readiness.
-    sleep 1
-    if ! wait_for_condition "rotated services" "$SNAPSHOT_READY_TIMEOUT" all_ready; then
-      warn "Services did not recover after rotation — falling back to cold boot."
-      tail_vm_logs
-      snapshot_fallback_to_cold_boot
-      return
+      # Wait for the *new* backend (post-supervisor-restart) to actually be
+      # listening. all_ready may briefly return true against the OLD Node
+      # processes between when supervisor sends SIGTERM and when the children
+      # die; sleep a beat so we measure the real readiness.
+      sleep 1
+      if ! wait_for_condition "rotated services" "$SNAPSHOT_READY_TIMEOUT" all_ready; then
+        warn "Services did not recover after rotation — falling back to cold boot."
+        tail_vm_logs
+        snapshot_fallback_to_cold_boot
+        return
+      fi
     fi
   else
     if ! wait_for_condition "deps services" "$READY_TIMEOUT" deps_ready; then
@@ -616,7 +691,11 @@ cmd_start() {
 snapshot_fallback_to_cold_boot() {
   warn "Retrying with cold boot (EMULATOR_NO_SNAPSHOT=1)..."
   stop_vm
-  rm -rf "$VM_DIR"
+  # Wipe the overlay + fingerprint so build_qemu_cmd re-creates a fresh one,
+  # but keep the CLI-generated runtime-config.iso (we can't regenerate it
+  # from shell — the CLI owns that).
+  rm -f "$VM_DIR/disk.qcow2" "$VM_DIR/base-image.fingerprint" \
+        "$VM_DIR/seed.phantom" "$VM_DIR/bundle.phantom"
   EMULATOR_NO_SNAPSHOT=1
   cmd_start
 }

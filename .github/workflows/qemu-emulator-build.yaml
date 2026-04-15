@@ -55,10 +55,21 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
+      - uses: pnpm/action-setup@v4
+        if: matrix.arch == 'amd64'
+        with:
+          version: 10.23.0
+
+      - uses: actions/setup-node@v4
+        if: matrix.arch == 'amd64'
+        with:
+          node-version: 22
+          cache: pnpm
+
       - name: Install QEMU dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y qemu-system-x86 qemu-system-arm qemu-kvm qemu-utils genisoimage socat qemu-efi-aarch64
+          sudo apt-get install -y qemu-system-x86 qemu-system-arm qemu-kvm qemu-utils genisoimage socat qemu-efi-aarch64 zstd
 
       - name: Enable KVM access
         run: |
@@ -82,41 +93,61 @@ jobs:
       - name: Generate emulator env
         run: node docker/local-emulator/generate-env-development.mjs
 
-      # arm64 runs under cross-arch TCG on an amd64 runner; the backend's
-      # V8 TurboFan JIT re-triggers the SIGTRAPs we dodge in migrations
-      # with --no-opt, and even if it didn't, boot is too slow under TCG
-      # to verify in any sane window. amd64 KVM already exercises the
-      # service stack; real arm64 hosts have KVM for end-users.
-      - name: Start emulator and verify
+      # amd64 runs under KVM on the runner so we can boot the newly-built
+      # image to verify it works end-to-end before publishing. arm64 runs
+      # under cross-arch TCG on an amd64 host, which can't reliably boot
+      # Next.js within any sane window — skipped.
+      - name: Build stack-cli (for emulator CLI)
         if: matrix.arch == 'amd64'
         run: |
-          chmod +x docker/local-emulator/qemu/run-emulator.sh
-          EMULATOR_ARCH=${{ matrix.arch }} \
-          EMULATOR_READY_TIMEOUT=3200 \
-            docker/local-emulator/qemu/run-emulator.sh start
+          pnpm install --frozen-lockfile --filter @stackframe/stack-cli...
+          pnpm --filter @stackframe/stack-cli run build
+
+      - name: Start emulator and verify
+        if: matrix.arch == 'amd64'
+        env:
+          EMULATOR_ARCH: ${{ matrix.arch }}
+          EMULATOR_READY_TIMEOUT: 3200
+          EMULATOR_IMAGE_DIR: ${{ env.EMULATOR_IMAGE_DIR }}
+          EMULATOR_RUN_DIR: ${{ env.EMULATOR_RUN_DIR }}
+        run: node packages/stack-cli/dist/index.js emulator start
 
       - name: Verify services are healthy
         if: matrix.arch == 'amd64'
-        run: |
-          EMULATOR_ARCH=${{ matrix.arch }} \
-            docker/local-emulator/qemu/run-emulator.sh status
+        env:
+          EMULATOR_ARCH: ${{ matrix.arch }}
+          EMULATOR_IMAGE_DIR: ${{ env.EMULATOR_IMAGE_DIR }}
+          EMULATOR_RUN_DIR: ${{ env.EMULATOR_RUN_DIR }}
+        run: node packages/stack-cli/dist/index.js emulator status
 
       - name: Stop emulator
         if: always() && matrix.arch == 'amd64'
-        run: |
-          EMULATOR_ARCH=${{ matrix.arch }} \
-            docker/local-emulator/qemu/run-emulator.sh stop
+        env:
+          EMULATOR_ARCH: ${{ matrix.arch }}
+          EMULATOR_IMAGE_DIR: ${{ env.EMULATOR_IMAGE_DIR }}
+          EMULATOR_RUN_DIR: ${{ env.EMULATOR_RUN_DIR }}
+        run: node packages/stack-cli/dist/index.js emulator stop
 
       - name: Package image
         run: |
           BASE_IMG="docker/local-emulator/qemu/images/stack-emulator-${{ matrix.arch }}.qcow2"
+          SAVEVM="docker/local-emulator/qemu/images/stack-emulator-${{ matrix.arch }}.savevm.zst"
           cp "$BASE_IMG" "stack-emulator-${{ matrix.arch }}.qcow2"
+          if [ -f "$SAVEVM" ]; then
+            cp "$SAVEVM" "stack-emulator-${{ matrix.arch }}.savevm.zst"
+            ls -lh "stack-emulator-${{ matrix.arch }}.savevm.zst"
+          else
+            echo "NOTE: no savevm snapshot was produced; fast-start will be unavailable for this arch."
+          fi
 
       - name: Upload image artifact
         uses: actions/upload-artifact@v4
         with:
           name: qemu-emulator-${{ matrix.arch }}
-          path: stack-emulator-${{ matrix.arch }}.qcow2
+          path: |
+            stack-emulator-${{ matrix.arch }}.qcow2
+            stack-emulator-${{ matrix.arch }}.savevm.zst
+          if-no-files-found: warn
           retention-days: 30
           compression-level: 0
 
@@ -137,28 +168,48 @@ jobs:
       - name: Install QEMU dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y qemu-system-x86 qemu-utils genisoimage socat
+          sudo apt-get install -y qemu-system-x86 qemu-utils socat zstd
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.23.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install stack-cli deps + build
+        run: |
+          pnpm install --frozen-lockfile --filter @stackframe/stack-cli...
+          pnpm --filter @stackframe/stack-cli run build
 
       - name: Download built image
         uses: actions/download-artifact@v4
         with:
           name: qemu-emulator-${{ matrix.arch }}
-          path: docker/local-emulator/qemu/images/
+          path: ${{ github.workspace }}/.stack-emulator-images/
 
-      - name: Generate emulator env
-        run: node docker/local-emulator/generate-env-development.mjs
-
-      - name: Start emulator from artifact
+      - name: Place images into STACK_EMULATOR_HOME layout
         run: |
-          chmod +x docker/local-emulator/qemu/run-emulator.sh docker/local-emulator/qemu/common.sh
+          mkdir -p "$HOME/.stack/emulator/images"
+          cp "${{ github.workspace }}/.stack-emulator-images/stack-emulator-${{ matrix.arch }}.qcow2" "$HOME/.stack/emulator/images/"
+          if [ -f "${{ github.workspace }}/.stack-emulator-images/stack-emulator-${{ matrix.arch }}.savevm.zst" ]; then
+            cp "${{ github.workspace }}/.stack-emulator-images/stack-emulator-${{ matrix.arch }}.savevm.zst" "$HOME/.stack/emulator/images/"
+            echo "Snapshot present — will test snapshot-resume path."
+          else
+            echo "No snapshot — will test cold-boot path."
+          fi
+          ls -lh "$HOME/.stack/emulator/images/"
+
+      - name: Start emulator via CLI
+        run: |
           EMULATOR_ARCH=${{ matrix.arch }} \
           EMULATOR_READY_TIMEOUT=600 \
-            docker/local-emulator/qemu/run-emulator.sh start
+            node packages/stack-cli/dist/index.js emulator start
 
       - name: Verify services are healthy
-        run: |
-          EMULATOR_ARCH=${{ matrix.arch }} \
-            docker/local-emulator/qemu/run-emulator.sh status
+        run: node packages/stack-cli/dist/index.js emulator status
 
       - name: Smoke test — backend health
         run: curl -sf http://localhost:26701/health?db=1
@@ -174,13 +225,11 @@ jobs:
 
       - name: Stop emulator
         if: always()
-        run: |
-          EMULATOR_ARCH=${{ matrix.arch }} \
-            docker/local-emulator/qemu/run-emulator.sh stop
+        run: node packages/stack-cli/dist/index.js emulator stop
 
       - name: Print serial log on failure
         if: failure()
-        run: tail -100 docker/local-emulator/qemu/run/vm/serial.log 2>/dev/null || true
+        run: tail -100 $HOME/.stack/emulator/run/vm/serial.log 2>/dev/null || true
 
   publish:
     name: Publish to GitHub Releases
@@ -211,6 +260,11 @@ jobs:
           for f in artifacts/qemu-emulator-*/*.qcow2; do
             cp "$f" release/
           done
+          # savevm.zst is optional — older branches may not produce it. Skip
+          # missing files rather than failing the publish.
+          for f in artifacts/qemu-emulator-*/*.savevm.zst; do
+            [ -f "$f" ] && cp "$f" release/
+          done
 
           cat > release-notes.md <<EOF
           ## QEMU Emulator Images
@@ -220,8 +274,13 @@ jobs:
           ### Images
           | File | Description |
           |------|-------------|
-          | \`stack-emulator-arm64.qcow2\` | ARM64 emulator image |
-          | \`stack-emulator-amd64.qcow2\` | AMD64 emulator image |
+          | \`stack-emulator-arm64.qcow2\` | ARM64 disk image |
+          | \`stack-emulator-amd64.qcow2\` | AMD64 disk image |
+          | \`stack-emulator-arm64.savevm.zst\` | ARM64 warm VM snapshot (fast-start) |
+          | \`stack-emulator-amd64.savevm.zst\` | AMD64 warm VM snapshot (fast-start) |
+
+          \`emulator pull\` downloads both; \`emulator start\` uses the snapshot
+          when present and falls back to cold-boot otherwise.
 
           ### Usage
           \`\`\`bash

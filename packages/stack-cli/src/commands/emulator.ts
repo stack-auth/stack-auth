@@ -1,5 +1,6 @@
 import { Command } from "commander";
 import { execFileSync, spawn } from "child_process";
+import extract from "extract-zip";
 import { createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync } from "fs";
 import { homedir } from "os";
 import { dirname, join, resolve } from "path";
@@ -7,17 +8,34 @@ import { Readable } from "stream";
 import { pipeline } from "stream/promises";
 import { fileURLToPath } from "url";
 import { CliError } from "../lib/errors.js";
+import { writeIso } from "../lib/iso.js";
 
 const DEFAULT_EMULATOR_BACKEND_PORT = 26701;
+const DEFAULT_EMULATOR_DASHBOARD_PORT = 26700;
+const DEFAULT_EMULATOR_MINIO_PORT = 26702;
+const DEFAULT_EMULATOR_INBUCKET_PORT = 26703;
+const DEFAULT_PORT_PREFIX = "81";
+const GITHUB_API = "https://api.github.com";
+const DEFAULT_REPO = "stack-auth/stack-auth";
+const AARCH64_FIRMWARE_PATHS = [
+  "/opt/homebrew/share/qemu/edk2-aarch64-code.fd",
+  "/usr/share/qemu/edk2-aarch64-code.fd",
+  "/usr/share/AAVMF/AAVMF_CODE.fd",
+  "/usr/share/qemu-efi-aarch64/QEMU_EFI.fd",
+];
 
-function emulatorBackendPort(): number {
-  const raw = process.env.EMULATOR_BACKEND_PORT;
-  if (!raw) return DEFAULT_EMULATOR_BACKEND_PORT;
+export function envPort(name: string, fallback: number): number {
+  const raw = process.env[name];
+  if (!raw) return fallback;
   const parsed = Number(raw);
   if (!Number.isInteger(parsed) || parsed <= 0) {
-    throw new CliError(`Invalid EMULATOR_BACKEND_PORT: ${raw}`);
+    throw new CliError(`Invalid ${name}: ${raw}`);
   }
   return parsed;
+}
+
+function emulatorBackendPort(): number {
+  return envPort("EMULATOR_BACKEND_PORT", DEFAULT_EMULATOR_BACKEND_PORT);
 }
 
 function emulatorHome(): string {
@@ -84,15 +102,40 @@ async function fetchEmulatorCredentials(pck: string, backendPort: number, config
   };
 }
 
-function gh(args: string[]): string {
+// Resolve a GitHub auth token. We try GITHUB_TOKEN first so users can pin a
+// PAT, then fall back to `gh auth token` if the gh CLI is installed and
+// signed in. If neither works we return undefined — public release downloads
+// still work (anonymous, lower rate limit) but artifact downloads fail with a
+// clear error at the call site.
+function githubToken(): string | undefined {
+  if (process.env.GITHUB_TOKEN) return process.env.GITHUB_TOKEN;
   try {
-    return execFileSync("gh", args, { encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim();
-  } catch (err: unknown) {
-    if (err instanceof Error && "stderr" in err && typeof err.stderr === "string") {
-      throw new CliError(`GitHub CLI error: ${err.stderr}`);
-    }
-    throw new CliError("GitHub CLI (gh) is required. Install: https://cli.github.com/");
+    const out = execFileSync("gh", ["auth", "token"], {
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    }).trim();
+    return out || undefined;
+  } catch {
+    return undefined;
   }
+}
+
+async function ghApi<T>(path: string): Promise<T> {
+  const token = githubToken();
+  const headers: Record<string, string> = {
+    Accept: "application/vnd.github+json",
+    "X-GitHub-Api-Version": "2022-11-28",
+  };
+  if (token) headers.Authorization = `Bearer ${token}`;
+  const res = await fetch(`${GITHUB_API}${path}`, { headers });
+  if (!res.ok) {
+    const body = await res.text().catch(() => "");
+    const hint = res.status === 401 || res.status === 403
+      ? " (set GITHUB_TOKEN or run `gh auth login` for higher rate limits / private access)"
+      : "";
+    throw new CliError(`GitHub API ${res.status} ${res.statusText} for ${path}${hint}${body ? `: ${body.slice(0, 300)}` : ""}`);
+  }
+  return await (res.json() as Promise<T>);
 }
 
 function emulatorScriptsDir(): string {
@@ -104,6 +147,16 @@ function emulatorScriptsDir(): string {
   throw new CliError("Emulator scripts not found in CLI bundle.");
 }
 
+function baseEnvPath(): string {
+  // Lives one directory up from the scripts dir in both bundled and repo
+  // layouts (dist/.env.development vs docker/local-emulator/.env.development).
+  const path = resolve(emulatorScriptsDir(), "..", ".env.development");
+  if (!existsSync(path)) {
+    throw new CliError(`Emulator base.env not found at ${path}`);
+  }
+  return path;
+}
+
 function emulatorSpawnEnv(extra?: Record<string, string>): NodeJS.ProcessEnv {
   return {
     ...process.env,
@@ -111,6 +164,33 @@ function emulatorSpawnEnv(extra?: Record<string, string>): NodeJS.ProcessEnv {
     EMULATOR_IMAGE_DIR: emulatorImageDir(),
     ...extra,
   };
+}
+
+// Generate the runtime config ISO that the VM mounts via STACKCFG. Replaces
+// the hdiutil/mkisofs/genisoimage host dep — see ../lib/iso.ts.
+function prepareRuntimeConfigIso(): void {
+  const vmDir = join(emulatorRunDir(), "vm");
+  mkdirSync(vmDir, { recursive: true });
+  const portPrefix = process.env.PORT_PREFIX ?? process.env.NEXT_PUBLIC_STACK_PORT_PREFIX ?? DEFAULT_PORT_PREFIX;
+  const dashboardPort = envPort("EMULATOR_DASHBOARD_PORT", DEFAULT_EMULATOR_DASHBOARD_PORT);
+  const backendPort = envPort("EMULATOR_BACKEND_PORT", DEFAULT_EMULATOR_BACKEND_PORT);
+  const minioPort = envPort("EMULATOR_MINIO_PORT", DEFAULT_EMULATOR_MINIO_PORT);
+  const inbucketPort = envPort("EMULATOR_INBUCKET_PORT", DEFAULT_EMULATOR_INBUCKET_PORT);
+
+  const runtimeEnv = [
+    `STACK_EMULATOR_PORT_PREFIX=${portPrefix}`,
+    `STACK_EMULATOR_DASHBOARD_HOST_PORT=${dashboardPort}`,
+    `STACK_EMULATOR_BACKEND_HOST_PORT=${backendPort}`,
+    `STACK_EMULATOR_MINIO_HOST_PORT=${minioPort}`,
+    `STACK_EMULATOR_INBUCKET_HOST_PORT=${inbucketPort}`,
+    `STACK_EMULATOR_VM_DIR_HOST=${vmDir}`,
+    "",
+  ].join("\n");
+  const baseEnv = readFileSync(baseEnvPath());
+  writeIso(join(vmDir, "runtime-config.iso"), "STACKCFG", [
+    { name: "runtime.env", data: Buffer.from(runtimeEnv, "utf-8") },
+    { name: "base.env", data: baseEnv },
+  ]);
 }
 
 function runEmulator(action: string, env?: Record<string, string>): Promise<void> {
@@ -149,17 +229,21 @@ async function startEmulator(arch: "arm64" | "amd64"): Promise<void> {
     console.log("No emulator image found. Pulling latest...");
     await pullRelease(arch);
   }
+  prepareRuntimeConfigIso();
   await runEmulator("start", { EMULATOR_ARCH: arch });
 }
 
-function resolveArch(raw?: string): "arm64" | "amd64" {
+export function resolveArch(raw?: string): "arm64" | "amd64" {
   const arch = raw ?? (process.arch === "arm64" ? "arm64" : process.arch === "x64" ? "amd64" : null);
   if (arch === "arm64" || arch === "amd64") return arch;
   throw new CliError(`Invalid architecture: ${raw ?? process.arch}. Expected arm64 or amd64.`);
 }
 
+type ReleaseAsset = { name: string, url: string, size: number };
+type ReleaseResponse = { assets: ReleaseAsset[] };
+
 async function pullRelease(arch: "arm64" | "amd64", opts: { repo?: string, branch?: string, tag?: string } = {}) {
-  const repo = opts.repo ?? "stack-auth/stack-auth";
+  const repo = opts.repo ?? DEFAULT_REPO;
   const branch = opts.branch ?? "dev";
   const tag = opts.tag ?? `emulator-${branch}-latest`;
   const imageDir = emulatorImageDir();
@@ -171,39 +255,36 @@ async function pullRelease(arch: "arm64" | "amd64", opts: { repo?: string, branc
   // back to a cold boot.
   const snapshotAsset = `stack-emulator-${arch}.savevm.zst`;
 
-  const assets = JSON.parse(gh(["release", "view", tag, "--repo", repo, "--json", "assets"])) as {
-    assets: { name: string, apiUrl: string, size: number }[],
-  };
-  const diskMatch = assets.assets.find((a) => a.name === diskAsset);
+  const release = await ghApi<ReleaseResponse>(`/repos/${repo}/releases/tags/${tag}`);
+  const diskMatch = release.assets.find((a) => a.name === diskAsset);
   if (!diskMatch) {
     throw new CliError(`Asset ${diskAsset} not found in release ${tag}. Run 'stack emulator list-releases' to see available releases.`);
   }
-  const snapshotMatch = assets.assets.find((a) => a.name === snapshotAsset);
-  const token = gh(["auth", "token"]);
+  const snapshotMatch = release.assets.find((a) => a.name === snapshotAsset);
+  const token = githubToken();
 
-  await downloadAsset(diskMatch, imageDir, diskAsset, token, tag);
+  await downloadReleaseAsset(diskMatch, imageDir, diskAsset, token, tag);
   if (snapshotMatch) {
-    await downloadAsset(snapshotMatch, imageDir, snapshotAsset, token, tag);
+    await downloadReleaseAsset(snapshotMatch, imageDir, snapshotAsset, token, tag);
   } else {
     console.log(`Snapshot asset ${snapshotAsset} not available in release ${tag}; fast-start disabled for this image.`);
   }
 }
 
-async function downloadAsset(
-  match: { name: string, apiUrl: string, size: number },
+async function downloadReleaseAsset(
+  match: ReleaseAsset,
   imageDir: string,
   asset: string,
-  token: string,
+  token: string | undefined,
   tag: string,
 ): Promise<void> {
   const dest = join(imageDir, asset);
   const tmpDest = `${dest}.download`;
   console.log(`Pulling ${asset} from release ${tag}...`);
+  const headers: Record<string, string> = { Accept: "application/octet-stream" };
+  if (token) headers.Authorization = `Bearer ${token}`;
   try {
-    await downloadWithProgress(match.apiUrl, {
-      Authorization: `Bearer ${token}`,
-      Accept: "application/octet-stream",
-    }, tmpDest, match.size);
+    await downloadWithProgress(match.url, headers, tmpDest, match.size);
   } catch (err) {
     if (existsSync(tmpDest)) unlinkSync(tmpDest);
     if (err instanceof CliError) throw err;
@@ -248,7 +329,7 @@ async function downloadWithProgress(url: string, headers: Record<string, string>
   if (isTty) process.stderr.write("\n");
 }
 
-function renderProgressLine(downloaded: number, total: number, bytesPerSec: number): string {
+export function renderProgressLine(downloaded: number, total: number, bytesPerSec: number): string {
   const barWidth = 30;
   const pct = total > 0 ? Math.min(100, (downloaded / total) * 100) : 0;
   const filled = total > 0 ? Math.round((downloaded / total) * barWidth) : 0;
@@ -260,7 +341,7 @@ function renderProgressLine(downloaded: number, total: number, bytesPerSec: numb
   return `  [${bar}] ${pctStr}  ${sizeStr}  ${speedStr}${etaStr}`;
 }
 
-function formatBytes(bytes: number): string {
+export function formatBytes(bytes: number): string {
   if (!Number.isFinite(bytes) || bytes < 0) return "?";
   const units = ["B", "KB", "MB", "GB", "TB"];
   let v = bytes;
@@ -272,7 +353,7 @@ function formatBytes(bytes: number): string {
   return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${units[i]}`;
 }
 
-function formatDuration(seconds: number): string {
+export function formatDuration(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return "?";
   const s = Math.round(seconds);
   if (s < 60) return `${s}s`;
@@ -282,6 +363,116 @@ function formatDuration(seconds: number): string {
   const h = Math.floor(m / 60);
   const rm = m % 60;
   return `${h}h${rm.toString().padStart(2, "0")}m`;
+}
+
+// --- Dependency preflight ---------------------------------------------------
+
+type BinarySpec = { name: string, install: string };
+
+function commandExists(bin: string): boolean {
+  try {
+    execFileSync(process.platform === "win32" ? "where" : "which", [bin], { stdio: "pipe" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+export function platformInstallHint(linuxPkg: string, macPkg: string): string {
+  switch (process.platform) {
+    case "darwin": {
+      return `brew install ${macPkg}`;
+    }
+    case "linux": {
+      return `apt install ${linuxPkg} (or your distro's equivalent)`;
+    }
+    default: {
+      return `install ${macPkg}`;
+    }
+  }
+}
+
+function bin(name: string, linuxPkg: string, macPkg: string): BinarySpec {
+  return { name, install: platformInstallHint(linuxPkg, macPkg) };
+}
+
+function requireBinaries(commandName: string, bins: BinarySpec[]): void {
+  const missing = bins.filter((b) => !commandExists(b.name));
+  if (missing.length === 0) return;
+  const lines = missing.map((b) => `  - ${b.name}  →  ${b.install}`);
+  throw new CliError(
+    `\`stack emulator ${commandName}\` requires the following missing binaries:\n${lines.join("\n")}`,
+  );
+}
+
+function warnIfMissing(commandName: string, bins: BinarySpec[]): void {
+  const missing = bins.filter((b) => !commandExists(b.name));
+  if (missing.length === 0) return;
+  for (const b of missing) {
+    console.warn(`[stack emulator ${commandName}] optional dep '${b.name}' missing — feature degraded. Install: ${b.install}`);
+  }
+}
+
+function aarch64FirmwareAvailable(): boolean {
+  return AARCH64_FIRMWARE_PATHS.some((p) => existsSync(p));
+}
+
+function commonVmBins(): BinarySpec[] {
+  return [
+    bin("qemu-img", "qemu-utils", "qemu"),
+    bin("socat", "socat", "socat"),
+    bin("curl", "curl", "curl"),
+    bin("nc", "ncat", "netcat"),
+    bin("lsof", "lsof", "lsof"),
+    bin("openssl", "openssl", "openssl"),
+  ];
+}
+
+function archSpecificQemuBin(arch: "arm64" | "amd64"): BinarySpec {
+  if (arch === "arm64") {
+    return bin("qemu-system-aarch64", "qemu-system-arm", "qemu");
+  }
+  return bin("qemu-system-x86_64", "qemu-system-x86", "qemu");
+}
+
+function preflightForVmStart(commandName: string, arch: "arm64" | "amd64"): void {
+  requireBinaries(commandName, [archSpecificQemuBin(arch), ...commonVmBins()]);
+  warnIfMissing(commandName, [bin("zstd", "zstd", "zstd")]);
+  if (arch === "arm64" && !aarch64FirmwareAvailable()) {
+    throw new CliError(
+      `aarch64 UEFI firmware not found. Looked in:\n${AARCH64_FIRMWARE_PATHS.map((p) => `  - ${p}`).join("\n")}\n` +
+      `Install: ${platformInstallHint("qemu-efi-aarch64", "qemu")}`,
+    );
+  }
+}
+
+// --- Workflow run / artifact downloads (replaces `gh run download`) ---------
+
+type WorkflowRunsResponse = { workflow_runs: { id: number }[] };
+type ArtifactsResponse = { artifacts: { id: number, name: string, size_in_bytes: number }[] };
+type PullResponse = { head: { ref: string } };
+
+async function downloadArtifactByName(repo: string, runId: string, name: string, destDir: string): Promise<boolean> {
+  const token = githubToken();
+  if (!token) {
+    throw new CliError(
+      "Downloading workflow run artifacts requires authentication. Set GITHUB_TOKEN or run `gh auth login`.",
+    );
+  }
+  const list = await ghApi<ArtifactsResponse>(`/repos/${repo}/actions/runs/${runId}/artifacts?per_page=100`);
+  const match = list.artifacts.find((a) => a.name === name);
+  if (!match) return false;
+  const zipPath = join(destDir, `${name}.zip`);
+  console.log(`Downloading artifact '${name}' from run ${runId}...`);
+  await downloadWithProgress(
+    `${GITHUB_API}/repos/${repo}/actions/artifacts/${match.id}/zip`,
+    { Accept: "application/octet-stream", Authorization: `Bearer ${token}` },
+    zipPath,
+    match.size_in_bytes,
+  );
+  await extract(zipPath, { dir: destDir });
+  unlinkSync(zipPath);
+  return true;
 }
 
 export function registerEmulatorCommand(program: Command) {
@@ -298,16 +489,21 @@ export function registerEmulatorCommand(program: Command) {
     .option("--run <id>", "Pull from a specific workflow run's artifacts")
     .action(async (opts) => {
       const arch = resolveArch(opts.arch);
-      const repo = opts.repo ?? "stack-auth/stack-auth";
+      const repo = opts.repo ?? DEFAULT_REPO;
 
       if (opts.run || opts.pr) {
         let runId = opts.run as string | undefined;
         if (!runId) {
           console.log(`Finding latest successful build for PR #${opts.pr}...`);
-          const { headRefName } = JSON.parse(gh(["pr", "view", opts.pr, "--repo", repo, "--json", "headRefName"]));
-          const runs = JSON.parse(gh(["run", "list", "--repo", repo, "--workflow", "qemu-emulator-build.yaml", "--branch", headRefName, "--status", "success", "--limit", "1", "--json", "databaseId"]));
-          if (runs.length === 0) throw new CliError(`No successful build found for PR #${opts.pr} (branch: ${headRefName}).`);
-          runId = String(runs[0].databaseId);
+          const pr = await ghApi<PullResponse>(`/repos/${repo}/pulls/${opts.pr}`);
+          const headRefName = pr.head.ref;
+          const runs = await ghApi<WorkflowRunsResponse>(
+            `/repos/${repo}/actions/workflows/qemu-emulator-build.yaml/runs?branch=${encodeURIComponent(headRefName)}&status=success&per_page=1`,
+          );
+          if (runs.workflow_runs.length === 0) {
+            throw new CliError(`No successful build found for PR #${opts.pr} (branch: ${headRefName}).`);
+          }
+          runId = String(runs.workflow_runs[0].id);
         }
 
         const imageDir = emulatorImageDir();
@@ -316,21 +512,22 @@ export function registerEmulatorCommand(program: Command) {
         const snapshotDest = join(imageDir, `stack-emulator-${arch}.savevm.zst`);
         if (existsSync(dest)) unlinkSync(dest);
         if (existsSync(snapshotDest)) unlinkSync(snapshotDest);
-        console.log(`Downloading qemu-emulator-${arch} from workflow run ${runId}...`);
-        try {
-          execFileSync("gh", ["run", "download", runId, "--repo", repo, "--name", `qemu-emulator-${arch}`, "--dir", imageDir], { stdio: "inherit" });
-        } catch (err) {
-          throw new CliError(`Failed to download artifact from run ${runId}: ${err instanceof Error ? err.message : err}`);
+        const downloaded = await downloadArtifactByName(repo, runId, `qemu-emulator-${arch}`, imageDir);
+        if (!downloaded) {
+          throw new CliError(`Artifact qemu-emulator-${arch} not found in workflow run ${runId}.`);
         }
         if (!existsSync(dest)) throw new CliError(`Expected image not found at ${dest} after download.`);
         console.log(`Downloaded: ${dest}`);
         // Snapshot artifact is optional — older CI builds may not produce it.
+        let snapshotDownloaded = false;
         try {
-          execFileSync("gh", ["run", "download", runId, "--repo", repo, "--name", `qemu-emulator-${arch}-savevm`, "--dir", imageDir], { stdio: "pipe" });
-          if (existsSync(snapshotDest)) {
-            console.log(`Downloaded: ${snapshotDest}`);
-          }
-        } catch {
+          snapshotDownloaded = await downloadArtifactByName(repo, runId, `qemu-emulator-${arch}-savevm`, imageDir);
+        } catch (err) {
+          console.log(`Snapshot artifact unavailable for run ${runId}: ${err instanceof Error ? err.message : err}`);
+        }
+        if (snapshotDownloaded && existsSync(snapshotDest)) {
+          console.log(`Downloaded: ${snapshotDest}`);
+        } else if (!snapshotDownloaded) {
           console.log(`Snapshot artifact not available for run ${runId}; fast-start disabled.`);
         }
       } else {
@@ -345,6 +542,7 @@ export function registerEmulatorCommand(program: Command) {
     .option("--config-file <path>", "Path to a config file; when set, credentials for this project are printed to stdout as JSON")
     .action(async (opts: { arch?: string, configFile?: string }) => {
       const arch = resolveArch(opts.arch);
+      preflightForVmStart("start", arch);
 
       let resolvedConfigFile: string | undefined;
       if (opts.configFile) {
@@ -375,6 +573,7 @@ export function registerEmulatorCommand(program: Command) {
     .option("--config-file <path>", "Path to a config file; fetches credentials and injects STACK_PROJECT_ID / STACK_PUBLISHABLE_CLIENT_KEY / STACK_SECRET_SERVER_KEY into the child")
     .action(async (cmd: string, opts: { arch?: string, configFile?: string }) => {
       const arch = resolveArch(opts.arch);
+      preflightForVmStart("run", arch);
 
       let resolvedConfigFile: string | undefined;
       if (opts.configFile) {
@@ -429,18 +628,50 @@ export function registerEmulatorCommand(program: Command) {
       });
     });
 
-  emulator.command("stop").description("Stop the emulator (data preserved; use 'reset' to clear)").action(() => runEmulator("stop"));
-  emulator.command("reset").description("Reset emulator state for a fresh boot").action(() => runEmulator("reset"));
-  emulator.command("status").description("Show emulator and service health").action(() => runEmulator("status"));
+  emulator
+    .command("stop")
+    .description("Stop the emulator (data preserved; use 'reset' to clear)")
+    .action(() => {
+      requireBinaries("stop", [bin("socat", "socat", "socat")]);
+      return runEmulator("stop");
+    });
+
+  emulator
+    .command("reset")
+    .description("Reset emulator state for a fresh boot")
+    .action(() => {
+      requireBinaries("reset", [bin("socat", "socat", "socat")]);
+      return runEmulator("reset");
+    });
+
+  emulator
+    .command("status")
+    .description("Show emulator and service health")
+    .action(() => {
+      requireBinaries("status", [
+        bin("curl", "curl", "curl"),
+        bin("nc", "ncat", "netcat"),
+      ]);
+      return runEmulator("status");
+    });
 
   emulator
     .command("list-releases")
     .description("List available emulator releases")
     .option("--repo <repo>", "GitHub repository (default: stack-auth/stack-auth)")
-    .action((opts) => {
-      const repo = opts.repo ?? "stack-auth/stack-auth";
+    .action(async (opts) => {
+      const repo = opts.repo ?? DEFAULT_REPO;
       console.log(`Available emulator releases from ${repo}:\n`);
-      const lines = gh(["release", "list", "--repo", repo, "--limit", "20"]).split("\n").filter((l) => l.toLowerCase().includes("emulator"));
+      type Release = { tag_name: string, name: string | null, published_at: string | null, draft: boolean, prerelease: boolean };
+      const releases = await ghApi<Release[]>(`/repos/${repo}/releases?per_page=50`);
+      const lines = releases
+        .filter((r) => (r.tag_name + " " + (r.name ?? "")).toLowerCase().includes("emulator"))
+        .slice(0, 20)
+        .map((r) => {
+          const status = r.draft ? "Draft" : r.prerelease ? "Pre-release" : "Latest";
+          const date = r.published_at ? r.published_at.slice(0, 10) : "";
+          return `${r.tag_name}\t${status}\t${date}`;
+        });
       if (lines.length === 0) console.log("No emulator releases found.");
       else for (const line of lines) console.log(line);
     });
