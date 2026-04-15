@@ -37,13 +37,14 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
 import {
   DomainSetupTransitionState,
-  ModeNotImplementedCard,
   OnboardingAppCard,
   OnboardingEmailThemePreview,
   OnboardingPage,
+  WelcomeSlide,
 } from "./components";
 import {
   ALL_APP_IDS,
+  buildLinkExistingTimeline,
   buildTimeline,
   deriveInitialApps,
   deriveInitialSignInMethods,
@@ -55,6 +56,7 @@ import {
   SIGN_IN_METHODS,
   type SignInMethod,
 } from "./shared";
+import { LinkExistingOnboarding } from "./link-existing-onboarding";
 
 const PROJECT_ONBOARDING_STATUSES = projectOnboardingStatusValues;
 
@@ -137,8 +139,17 @@ export function ProjectOnboardingWizard(props: {
   }, [completeConfig, project, project.id, status]);
 
   const emailThemes = project.app.useEmailThemes();
-  const includePayments = selectedApps.has("payments") || status === "payments_setup" || completeConfig.apps.installed.payments?.enabled === true;
-  const timelineSteps = useMemo(() => buildTimeline(includePayments), [includePayments]);
+  const isLinkExistingMode = props.mode === "link-existing";
+  const paymentsAppEnabledInConfig = completeConfig.apps.installed.payments?.enabled === true;
+  const includePayments = (
+    status === "payments_setup"
+    || paymentsAppEnabledInConfig
+    || (!isLinkExistingMode && selectedApps.has("payments"))
+  );
+  const timelineSteps = useMemo(
+    () => isLinkExistingMode ? buildLinkExistingTimeline(includePayments) : buildTimeline(includePayments),
+    [includePayments, isLinkExistingMode],
+  );
   const currentTimelineIndex = useMemo(() => getStepIndex(timelineSteps, status), [status, timelineSteps]);
 
   const handleTimelineStepClick = useCallback((step: ProjectOnboardingStatus) => {
@@ -148,12 +159,12 @@ export function ProjectOnboardingWizard(props: {
     }
 
     runAsynchronouslyWithAlert(async () => {
-      if (step === "config_choice") {
+      if (step === "config_choice" && props.mode !== "link-existing") {
         setMode(null);
       }
       await setStatus(step);
     });
-  }, [currentTimelineIndex, setMode, setStatus, timelineSteps]);
+  }, [currentTimelineIndex, props.mode, setMode, setStatus, timelineSteps]);
 
   const advanceFromDomainSetup = useCallback(() => {
     return runAsynchronouslyWithAlert(async () => {
@@ -237,44 +248,47 @@ export function ProjectOnboardingWizard(props: {
     paymentsAutoCompletingRef.current = true;
     runAsynchronouslyWithAlert(async () => {
       try {
-        await finalizeOnboarding();
+        await setStatus("welcome");
       } catch (error) {
         paymentsAutoCompletingRef.current = false;
         throw error;
       }
     });
-  }, [finalizeOnboarding, status, stripeAccountInfo?.details_submitted]);
+  }, [setStatus, status, stripeAccountInfo?.details_submitted]);
+
+  if (props.status === "welcome") {
+    return (
+      <WelcomeSlide
+        steps={timelineSteps}
+        saving={saving}
+        enabledApps={completeConfig.apps.installed}
+        onFinish={() => runAsynchronouslyWithAlert(finalizeOnboarding)}
+      />
+    );
+  }
 
   if (props.status === "config_choice" && props.mode === "link-existing") {
     return (
-      <OnboardingPage
-        stepKey="config-choice-link-existing"
-        title="Link an existing config"
-        subtitle="This option is coming soon."
+      <LinkExistingOnboarding
+        project={props.project}
         steps={timelineSteps}
+        disabled={saving}
         currentStep="config_choice"
         onStepClick={handleTimelineStepClick}
-        disabled={saving}
-        primaryAction={
-          <DesignButton
-            variant="outline"
-            className="w-full rounded-full"
-            onClick={() => {
-              props.setMode(null);
-              setSelectedConfigChoice("create-new");
-            }}
-          >
-            Go Back
-          </DesignButton>
-        }
-      >
-        <ModeNotImplementedCard
-          onBack={() => {
-            props.setMode(null);
-            setSelectedConfigChoice("create-new");
-          }}
-        />
-      </OnboardingPage>
+        onBack={() => {
+          props.setMode(null);
+          setSelectedConfigChoice("create-new");
+        }}
+        onContinueAfterLink={async () => {
+          const latestConfig = await props.project.getConfig();
+          const paymentsEnabledInLatestConfig = latestConfig.apps.installed.payments?.enabled === true;
+          if (paymentsEnabledInLatestConfig) {
+            await props.setStatus("payments_setup");
+          } else {
+            await props.setStatus("welcome");
+          }
+        }}
+      />
     );
   }
 
@@ -332,7 +346,7 @@ export function ProjectOnboardingWizard(props: {
             </div>
             <div className="space-y-1.5">
               <Typography className="text-base font-semibold">Create New</Typography>
-              <Typography variant="secondary" className="text-sm leading-relaxed">Start from curated defaults.</Typography>
+              <Typography variant="secondary" className="text-sm leading-relaxed">Create and customize a new Stack Auth project.</Typography>
             </div>
           </button>
 
@@ -360,7 +374,7 @@ export function ProjectOnboardingWizard(props: {
             </div>
             <div className="space-y-1.5">
               <Typography className="text-base font-semibold">Link Existing Config</Typography>
-              <Typography variant="secondary" className="text-sm leading-relaxed">Bring an existing config into this project.</Typography>
+              <Typography variant="secondary" className="text-sm leading-relaxed">If you already have a Stack Auth project locally or on GitHub, link it here.</Typography>
             </div>
           </button>
         </div>
@@ -677,8 +691,7 @@ export function ProjectOnboardingWizard(props: {
               if (includePayments) {
                 await props.setStatus("payments_setup");
               } else {
-                await props.setStatus("completed");
-                props.onComplete();
+                await props.setStatus("welcome");
               }
             }))}
           >
@@ -767,8 +780,9 @@ export function ProjectOnboardingWizard(props: {
             className="rounded-full px-6"
             loading={saving}
             onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
-              await finalizeOnboarding();
+              await props.setStatus("welcome");
             }))}
+
           >
             Do Later
           </DesignButton>

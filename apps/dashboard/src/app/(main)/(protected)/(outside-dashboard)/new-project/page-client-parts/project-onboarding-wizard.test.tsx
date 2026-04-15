@@ -120,6 +120,16 @@ vi.mock("./components", () => ({
       <div>{secondaryAction}</div>
     </div>
   ),
+  WelcomeSlide: ({ onFinish }: { onFinish: () => void }) => (
+    <div>
+      <h1>Welcome to Stack Auth</h1>
+      <button type="button" onClick={onFinish}>Get Started</button>
+    </div>
+  ),
+}));
+
+vi.mock("./link-existing-onboarding", () => ({
+  LinkExistingOnboarding: () => <div>Link existing onboarding</div>,
 }));
 
 import { ProjectOnboardingWizard } from "./project-onboarding-wizard";
@@ -181,10 +191,8 @@ describe("ProjectOnboardingWizard", () => {
     );
 
     await waitFor(() => {
-      expect(setStatus).toHaveBeenCalledWith("completed");
+      expect(setStatus).toHaveBeenCalledWith("welcome");
     });
-    await waitFor(() => {
-      expect(onComplete).toHaveBeenCalledTimes(1);
-    });
+    expect(onComplete).not.toHaveBeenCalled();
   });
 });

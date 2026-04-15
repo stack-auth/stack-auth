@@ -104,7 +104,20 @@ export function buildTimeline(includePayments: boolean): TimelineStep[] {
     timeline.push({ id: "payments_setup", label: "Payments" });
   }
 
-  timeline.push({ id: "completed", label: "Finish" });
+  timeline.push({ id: "welcome", label: "Finish" });
+  return timeline;
+}
+
+export function buildLinkExistingTimeline(includePayments: boolean): TimelineStep[] {
+  const timeline: TimelineStep[] = [
+    { id: "config_choice", label: "Config" },
+  ];
+
+  if (includePayments) {
+    timeline.push({ id: "payments_setup", label: "Payments" });
+  }
+
+  timeline.push({ id: "welcome", label: "Finish" });
   return timeline;
 }
 

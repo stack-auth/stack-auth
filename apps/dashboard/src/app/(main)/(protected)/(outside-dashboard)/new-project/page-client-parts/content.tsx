@@ -24,11 +24,11 @@ import {
 import { getPublicEnvVar } from "@/lib/env";
 import { PlusCircleIcon } from "@phosphor-icons/react";
 import { AdminOwnedProject, useStackApp, useUser } from "@stackframe/stack";
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 
+import type { ProjectOnboardingStatus } from "@stackframe/stack-shared/dist/schema-fields";
 import { ProjectOnboardingWizard } from "./project-onboarding-wizard";
 import {
   beginPendingAction,
@@ -36,7 +36,6 @@ import {
   getStackAppInternals,
   isProjectOnboardingStatus,
 } from "./shared";
-import type { ProjectOnboardingStatus } from "@stackframe/stack-shared/dist/schema-fields";
 
 export default function PageClient() {
   const app = useStackApp();
@@ -53,7 +52,6 @@ export default function PageClient() {
   const redirectToNeonConfirmWith = searchParams.get("redirect_to_neon_confirm_with");
   const redirectToConfirmWith = searchParams.get("redirect_to_confirm_with");
   const mode = searchParams.get("mode");
-  const linkExistingBaitCapturedRef = useRef(false);
 
   const [projectStatuses, setProjectStatuses] = useState<Map<string, ProjectOnboardingStatus>>(new Map());
   const [loadingStatuses, setLoadingStatuses] = useState(true);
@@ -97,15 +95,6 @@ export default function PageClient() {
     const query = params.toString();
     router.replace(query.length > 0 ? `/new-project?${query}` : "/new-project");
   }, [router, searchParams]);
-
-  useEffect(() => {
-    if (mode !== "link-existing" || linkExistingBaitCapturedRef.current) {
-      return;
-    }
-
-    linkExistingBaitCapturedRef.current = true;
-    captureError("new-project-link-existing-bait-engaged", new Error("bait engaged"));
-  }, [mode]);
 
   useEffect(() => {
     let cancelled = false;

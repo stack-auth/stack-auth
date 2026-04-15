@@ -272,3 +272,12 @@ A: Next’s typings treat `reset` as always present on the error component props
 
 Q: Why can dashboard onboarding clicks trigger `Cannot call this function on a Stack app without a persistent token store` dev toasts?
 A: `useOwnedProjects()` creates each `AdminOwnedProject["app"]` with `tokenStore: null`, but `packages/template/src/lib/stack-app/apps/implementations/client-app-impl.ts` used to start browser `EventTracker` unconditionally. Clicking onboarding controls queued tracked events, and the flush later threw when analytics tried to resolve a session. Fix by only starting browser event/replay tracking when the app has a persistent token store.
+
+Q: Why can "Link Existing -> Load Repositories" fail even when a GitHub connected-account row exists?
+A: In `link-existing-onboarding.tsx`, GitHub API calls require a usable provider access token from `connectedAccount.getAccessToken()`. If token retrieval fails, the UI intentionally errors with "Could not get a GitHub access token. Reconnect your GitHub account and try again." and repository/branch selectors remain disabled.
+
+Q: What should GitHub `POST /repos/{owner}/{repo}/actions/workflows/{workflow_id}/dispatches` use for `workflow_id`?
+A: Use the workflow **file name** (e.g. `stack-auth-config-sync.yml`), not a path like `.github/workflows/...`. Paths with slashes are rejected or mis-resolved by the API.
+
+Q: How should the dashboard load `stack.config` path suggestions after picking a GitHub branch without stale React state?
+A: Have `loadBranches` return the resolved branch string, then call `loadConfigSuggestions({ repository, branch })` from the Continue handler with those explicit values instead of relying on `setState` having flushed before the tree fetch runs.
