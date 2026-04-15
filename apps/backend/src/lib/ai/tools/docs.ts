@@ -23,12 +23,15 @@ function getDocsToolsBaseUrl(): string {
 async function postDocsToolAction(action: Record<string, unknown>): Promise<string> {
   const base = getDocsToolsBaseUrl();
 
-  try {
-    const res = await fetch(`${base}/api/internal/docs-tools`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(action),
-    });
+  const res = await fetch(`${base}/api/internal/docs-tools`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      // MCP-style JSON-RPC endpoint requires clients to advertise both JSON and SSE.
+      Accept: "application/json, text/event-stream",
+    },
+    body: JSON.stringify(action),
+  });
 
     if (!res.ok) {
       const errBody = await res.text();
