@@ -212,7 +212,7 @@ wait_for_condition() {
       log "${label} ready in ${elapsed}s"
       return 0
     fi
-    sleep 1
+    sleep 0.2
     elapsed=$((SECONDS - started))
     printf "\r  [%3ds] %s..." "$elapsed" "$label"
   done

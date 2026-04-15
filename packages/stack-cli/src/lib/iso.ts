@@ -259,13 +259,6 @@ function buildVolumeDescriptorTerminator(): Buffer {
   return buf;
 }
 
-// Builds the 34-byte root directory record that lives inside the volume
-// descriptor (BP 157-190 of PVD/SVD). Identical layout to a regular directory
-// record but identifier is the single byte 0x00.
-function buildRootDirRecordInVD(rootSector: number, rootSize: number, recDate: Buffer): Buffer {
-  return buildDirRecord(rootSector, rootSize, true, recDate, Buffer.from([0x00]));
-}
-
 export type IsoFile = { name: string, data: Buffer };
 
 export function buildIso(volumeId: string, files: IsoFile[]): Buffer {
@@ -317,8 +310,11 @@ export function buildIso(volumeId: string, files: IsoFile[]): Buffer {
   const totalSectors = nextSector;
   const pathTableSize = 10;
 
-  const isoRootDirRecordVD = buildRootDirRecordInVD(isoRootSector, SECTOR, recDate);
-  const jolietRootDirRecordVD = buildRootDirRecordInVD(jolietRootSector, SECTOR, recDate);
+  // Root directory record inside the volume descriptor (BP 157-190 of PVD/SVD):
+  // same layout as a regular dir record but the identifier is the single byte 0x00.
+  const rootIdent = Buffer.from([0x00]);
+  const isoRootDirRecordVD = buildDirRecord(isoRootSector, SECTOR, true, recDate, rootIdent);
+  const jolietRootDirRecordVD = buildDirRecord(jolietRootSector, SECTOR, true, recDate, rootIdent);
 
   const pvd = buildVolumeDescriptor({
     joliet: false,

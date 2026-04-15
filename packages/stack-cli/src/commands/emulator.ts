@@ -57,11 +57,13 @@ function internalPckPath(): string {
 async function readInternalPck(timeoutMs = 60_000): Promise<string> {
   const path = internalPckPath();
   const deadline = Date.now() + timeoutMs;
-  let delay = 250;
+  let delay = 50;
   while (Date.now() < deadline) {
-    if (existsSync(path)) {
+    try {
       const contents = readFileSync(path, "utf-8").trim();
       if (contents) return contents;
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== "ENOENT") throw e;
     }
     await new Promise((r) => setTimeout(r, delay));
     delay = Math.min(delay * 2, 2000);
@@ -223,7 +225,6 @@ function isEmulatorRunning(): boolean {
 }
 
 async function startEmulator(arch: "arm64" | "amd64"): Promise<void> {
-  mkdirSync(emulatorImageDir(), { recursive: true });
   const img = join(emulatorImageDir(), `stack-emulator-${arch}.qcow2`);
   if (!existsSync(img)) {
     console.log("No emulator image found. Pulling latest...");
@@ -518,9 +519,6 @@ export function registerEmulatorCommand(program: Command) {
         }
         if (!existsSync(dest)) throw new CliError(`Expected image not found at ${dest} after download.`);
         console.log(`Downloaded: ${dest}`);
-        // CI publishes both files inside the single qemu-emulator-${arch}
-        // artifact, so the first download already extracts the snapshot when
-        // present. Older builds may not include it.
         if (existsSync(snapshotDest)) {
           console.log(`Downloaded: ${snapshotDest}`);
         } else {
@@ -617,8 +615,12 @@ export function registerEmulatorCommand(program: Command) {
           process.exit(exitCode);
         } else {
           console.log("\nStopping emulator...");
+          const warnStopFailed = (e: unknown) => {
+            const msg = e instanceof Error ? e.message : String(e);
+            process.stderr.write(`Failed to stop emulator cleanly: ${msg}\n`);
+          };
           runEmulator("stop")
-            .catch(() => { /* best-effort stop */ })
+            .catch(warnStopFailed)
             .finally(() => process.exit(exitCode));
         }
       });
