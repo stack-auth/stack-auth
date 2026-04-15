@@ -4,6 +4,1572 @@ exports[`should return metrics data > metrics_result_no_users 1`] = `
 NiceResponse {
   "status": 200,
   "body": {
+    "analytics_overview": {
+      "avg_session_seconds": 0,
+      "daily_clicks": [
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+      ],
+      "daily_page_views": [
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+      ],
+      "daily_revenue": [
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+      ],
+      "daily_visitors": [
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+      ],
+      "online_live": 0,
+      "recent_replays": 0,
+      "revenue_per_visitor": 0,
+      "top_referrers": [],
+      "top_region": null,
+      "total_replays": 0,
+      "total_revenue_cents": 0,
+      "visitors": 0,
+    },
+    "auth_overview": {
+      "anonymous_users": 0,
+      "daily_active_teams_split": {
+        "new": [
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+        ],
+        "reactivated": [
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+        ],
+        "retained": [
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+        ],
+        "total": [
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+        ],
+      },
+      "daily_active_users_split": {
+        "new": [
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+        ],
+        "reactivated": [
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+        ],
+        "retained": [
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+        ],
+        "total": [
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+        ],
+      },
+      "mau": 0,
+      "total_teams": 0,
+      "total_users_filtered": 0,
+      "unverified_users": 0,
+      "verified_users": 0,
+    },
     "daily_active_users": [
       {
         "activity": 0,
@@ -256,7 +1822,471 @@ NiceResponse {
         "date": <stripped field 'date'>,
       },
     ],
+    "email_overview": {
+      "bounce_rate": 0,
+      "click_rate": 0,
+      "daily_emails": [
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+      ],
+      "daily_emails_by_status": [
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+      ],
+      "deliverability_rate": 0,
+      "deliverability_status": {
+        "bounced": 0,
+        "delivered": 0,
+        "error": 0,
+        "in_progress": 0,
+      },
+      "emails_by_status": {},
+      "emails_sent": 0,
+      "recent_emails": [],
+      "total_emails": 0,
+    },
     "login_methods": [],
+    "payments_overview": {
+      "active_subscription_count": 0,
+      "checkout_conversion_rate": 0,
+      "daily_subscriptions": [
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+      ],
+      "mrr_cents": 0,
+      "revenue_cents": 0,
+      "subscriptions_by_status": {},
+      "total_one_time_purchases": 0,
+      "total_orders": 0,
+    },
     "recently_active": [],
     "recently_registered": [],
     "total_users": 0,
@@ -270,6 +2300,1576 @@ exports[`should return metrics data with users > metrics_result_with_users 1`] =
 NiceResponse {
   "status": 200,
   "body": {
+    "analytics_overview": {
+      "avg_session_seconds": 0,
+      "daily_clicks": [
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+      ],
+      "daily_page_views": [
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+      ],
+      "daily_revenue": [
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "new_cents": 0,
+          "refund_cents": 0,
+        },
+      ],
+      "daily_visitors": [
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+      ],
+      "online_live": 10,
+      "recent_replays": 0,
+      "revenue_per_visitor": 0,
+      "top_referrers": [],
+      "top_region": {
+        "count": 10,
+        "country_code": null,
+        "region_code": null,
+      },
+      "total_replays": 0,
+      "total_revenue_cents": 0,
+      "visitors": 0,
+    },
+    "auth_overview": {
+      "anonymous_users": 0,
+      "daily_active_teams_split": {
+        "new": [
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+        ],
+        "reactivated": [
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+        ],
+        "retained": [
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+        ],
+        "total": [
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+        ],
+      },
+      "daily_active_users_split": {
+        "new": [
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 9,
+            "date": <stripped field 'date'>,
+          },
+        ],
+        "reactivated": [
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 1,
+            "date": <stripped field 'date'>,
+          },
+        ],
+        "retained": [
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+        ],
+        "total": [
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 0,
+            "date": <stripped field 'date'>,
+          },
+          {
+            "activity": 10,
+            "date": <stripped field 'date'>,
+          },
+        ],
+      },
+      "mau": 10,
+      "total_teams": 0,
+      "total_users_filtered": 9,
+      "unverified_users": 0,
+      "verified_users": 9,
+    },
     "daily_active_users": [
       {
         "activity": 0,
@@ -522,12 +4122,567 @@ NiceResponse {
         "date": <stripped field 'date'>,
       },
     ],
+    "email_overview": {
+      "bounce_rate": 0,
+      "click_rate": 0,
+      "daily_emails": [
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 15,
+          "date": <stripped field 'date'>,
+        },
+      ],
+      "daily_emails_by_status": [
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 0,
+        },
+        {
+          "date": <stripped field 'date'>,
+          "error": 0,
+          "in_progress": 0,
+          "ok": 15,
+        },
+      ],
+      "deliverability_rate": 0,
+      "deliverability_status": {
+        "bounced": 0,
+        "delivered": 0,
+        "error": 0,
+        "in_progress": 0,
+      },
+      "emails_by_status": { "ok": 15 },
+      "emails_sent": 15,
+      "recent_emails": [
+        {
+          "created_at_millis": <stripped field 'created_at_millis'>,
+          "id": "<stripped UUID>",
+          "status": "SENT",
+          "subject": "Sign in to New Project: Your code is <stripped code>",
+        },
+        {
+          "created_at_millis": <stripped field 'created_at_millis'>,
+          "id": "<stripped UUID>",
+          "status": "SENT",
+          "subject": "Sign in to New Project: Your code is <stripped code>",
+        },
+        {
+          "created_at_millis": <stripped field 'created_at_millis'>,
+          "id": "<stripped UUID>",
+          "status": "SENT",
+          "subject": "Sign in to New Project: Your code is <stripped code>",
+        },
+        {
+          "created_at_millis": <stripped field 'created_at_millis'>,
+          "id": "<stripped UUID>",
+          "status": "SENT",
+          "subject": "Sign in to New Project: Your code is <stripped code>",
+        },
+        {
+          "created_at_millis": <stripped field 'created_at_millis'>,
+          "id": "<stripped UUID>",
+          "status": "SENT",
+          "subject": "Sign in to New Project: Your code is <stripped code>",
+        },
+        {
+          "created_at_millis": <stripped field 'created_at_millis'>,
+          "id": "<stripped UUID>",
+          "status": "SENT",
+          "subject": "Sign in to New Project: Your code is <stripped code>",
+        },
+        {
+          "created_at_millis": <stripped field 'created_at_millis'>,
+          "id": "<stripped UUID>",
+          "status": "SENT",
+          "subject": "Sign in to New Project: Your code is <stripped code>",
+        },
+        {
+          "created_at_millis": <stripped field 'created_at_millis'>,
+          "id": "<stripped UUID>",
+          "status": "SENT",
+          "subject": "Sign in to New Project: Your code is <stripped code>",
+        },
+        {
+          "created_at_millis": <stripped field 'created_at_millis'>,
+          "id": "<stripped UUID>",
+          "status": "SENT",
+          "subject": "Sign in to New Project: Your code is <stripped code>",
+        },
+        {
+          "created_at_millis": <stripped field 'created_at_millis'>,
+          "id": "<stripped UUID>",
+          "status": "SENT",
+          "subject": "Sign in to New Project: Your code is <stripped code>",
+        },
+        {
+          "created_at_millis": <stripped field 'created_at_millis'>,
+          "id": "<stripped UUID>",
+          "status": "SENT",
+          "subject": "Sign in to New Project: Your code is <stripped code>",
+        },
+        {
+          "created_at_millis": <stripped field 'created_at_millis'>,
+          "id": "<stripped UUID>",
+          "status": "SENT",
+          "subject": "Sign in to New Project: Your code is <stripped code>",
+        },
+        {
+          "created_at_millis": <stripped field 'created_at_millis'>,
+          "id": "<stripped UUID>",
+          "status": "SENT",
+          "subject": "Sign in to New Project: Your code is <stripped code>",
+        },
+        {
+          "created_at_millis": <stripped field 'created_at_millis'>,
+          "id": "<stripped UUID>",
+          "status": "SENT",
+          "subject": "Sign in to New Project: Your code is <stripped code>",
+        },
+        {
+          "created_at_millis": <stripped field 'created_at_millis'>,
+          "id": "<stripped UUID>",
+          "status": "SENT",
+          "subject": "Sign in to New Project: Your code is <stripped code>",
+        },
+      ],
+      "total_emails": 15,
+    },
     "login_methods": [
       {
         "count": 9,
         "method": "otp",
       },
     ],
+    "payments_overview": {
+      "active_subscription_count": 0,
+      "checkout_conversion_rate": 0,
+      "daily_subscriptions": [
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+      ],
+      "mrr_cents": 0,
+      "revenue_cents": 0,
+      "subscriptions_by_status": {},
+      "total_one_time_purchases": 0,
+      "total_orders": 0,
+    },
     "recently_active": [
       {
         "auth_with_email": true,
@@ -852,6 +5007,142 @@ NiceResponse {
         "otp_auth_enabled": true,
         "passkey_auth_enabled": false,
         "primary_email": "mailbox-5--<stripped UUID>@stack-generated.example.com",
+        "primary_email_auth_enabled": true,
+        "primary_email_verified": true,
+        "profile_image_url": null,
+        "requires_totp_mfa": false,
+        "restricted_by_admin": false,
+        "restricted_by_admin_private_details": null,
+        "restricted_by_admin_reason": null,
+        "restricted_reason": null,
+        "risk_scores": {
+          "sign_up": {
+            "bot": 0,
+            "free_trial_abuse": 0,
+          },
+        },
+        "selected_team": null,
+        "selected_team_id": null,
+        "server_metadata": null,
+        "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+      },
+      {
+        "auth_with_email": true,
+        "client_metadata": null,
+        "client_read_only_metadata": null,
+        "country_code": null,
+        "display_name": null,
+        "has_password": false,
+        "id": "<stripped UUID>",
+        "is_anonymous": false,
+        "is_restricted": false,
+        "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+        "oauth_providers": [],
+        "otp_auth_enabled": true,
+        "passkey_auth_enabled": false,
+        "primary_email": "mailbox-4--<stripped UUID>@stack-generated.example.com",
+        "primary_email_auth_enabled": true,
+        "primary_email_verified": true,
+        "profile_image_url": null,
+        "requires_totp_mfa": false,
+        "restricted_by_admin": false,
+        "restricted_by_admin_private_details": null,
+        "restricted_by_admin_reason": null,
+        "restricted_reason": null,
+        "risk_scores": {
+          "sign_up": {
+            "bot": 0,
+            "free_trial_abuse": 0,
+          },
+        },
+        "selected_team": null,
+        "selected_team_id": null,
+        "server_metadata": null,
+        "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+      },
+      {
+        "auth_with_email": true,
+        "client_metadata": null,
+        "client_read_only_metadata": null,
+        "country_code": null,
+        "display_name": null,
+        "has_password": false,
+        "id": "<stripped UUID>",
+        "is_anonymous": false,
+        "is_restricted": false,
+        "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+        "oauth_providers": [],
+        "otp_auth_enabled": true,
+        "passkey_auth_enabled": false,
+        "primary_email": "mailbox-3--<stripped UUID>@stack-generated.example.com",
+        "primary_email_auth_enabled": true,
+        "primary_email_verified": true,
+        "profile_image_url": null,
+        "requires_totp_mfa": false,
+        "restricted_by_admin": false,
+        "restricted_by_admin_private_details": null,
+        "restricted_by_admin_reason": null,
+        "restricted_reason": null,
+        "risk_scores": {
+          "sign_up": {
+            "bot": 0,
+            "free_trial_abuse": 0,
+          },
+        },
+        "selected_team": null,
+        "selected_team_id": null,
+        "server_metadata": null,
+        "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+      },
+      {
+        "auth_with_email": true,
+        "client_metadata": null,
+        "client_read_only_metadata": null,
+        "country_code": null,
+        "display_name": null,
+        "has_password": false,
+        "id": "<stripped UUID>",
+        "is_anonymous": false,
+        "is_restricted": false,
+        "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+        "oauth_providers": [],
+        "otp_auth_enabled": true,
+        "passkey_auth_enabled": false,
+        "primary_email": "mailbox-2--<stripped UUID>@stack-generated.example.com",
+        "primary_email_auth_enabled": true,
+        "primary_email_verified": true,
+        "profile_image_url": null,
+        "requires_totp_mfa": false,
+        "restricted_by_admin": false,
+        "restricted_by_admin_private_details": null,
+        "restricted_by_admin_reason": null,
+        "restricted_reason": null,
+        "risk_scores": {
+          "sign_up": {
+            "bot": 0,
+            "free_trial_abuse": 0,
+          },
+        },
+        "selected_team": null,
+        "selected_team_id": null,
+        "server_metadata": null,
+        "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+      },
+      {
+        "auth_with_email": true,
+        "client_metadata": null,
+        "client_read_only_metadata": null,
+        "country_code": "AQ",
+        "display_name": null,
+        "has_password": false,
+        "id": "<stripped UUID>",
+        "is_anonymous": false,
+        "is_restricted": false,
+        "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+        "oauth_providers": [],
+        "otp_auth_enabled": true,
+        "passkey_auth_enabled": false,
+        "primary_email": "mailbox-1--<stripped UUID>@stack-generated.example.com",
         "primary_email_auth_enabled": true,
         "primary_email_verified": true,
         "profile_image_url": null,
