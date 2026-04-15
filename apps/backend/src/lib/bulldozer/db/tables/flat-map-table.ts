@@ -1,5 +1,7 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import type { Table } from "..";
+import { createTableRowChangeTrigger, normalizeRowChangeTrigger } from "../row-change-trigger-dispatch";
+import type { RegisteredRowChangeTrigger } from "../row-change-trigger-dispatch";
 import type { Json, RowData, RowIdentifier, SqlExpression, SqlMapper, SqlStatement, TableId } from "../utilities";
 import {
   getStorageEnginePath,
@@ -21,7 +23,7 @@ export function declareFlatMapTable<
   fromTable: Table<GK, any, OldRD>,
   mapper: SqlMapper<OldRD, { rows: NewRD[] }>,
 }): Table<GK, null, NewRD> {
-  const triggers = new Map<string, (changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => SqlStatement[]>();
+  const triggers = new Map<string, RegisteredRowChangeTrigger>();
   const getGroupKeyPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey]);
   const getGroupRowsPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey, "rows"]);
   const getGroupRowPath = (groupKey: SqlExpression<Json>, rowIdentifier: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey, "rows", rowIdentifier]);
@@ -33,11 +35,13 @@ export function declareFlatMapTable<
       WHERE "keyPath" = ${getStorageEnginePath(options.tableId, ["metadata"])}::jsonb[]
     )
   `;
-  const createFromTableTriggerStatements = (fromChangesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => {
+  const createFromTableTriggerStatements = (
+    fromChangesTable: SqlExpression<{ __brand: "$SQL_Table" }>,
+    outputChangesTableName: string,
+  ) => {
     const mappedChangesTableName = `mapped_changes_${generateSecureRandomString()}`;
     const oldFlatRowsTableName = `old_flat_rows_${generateSecureRandomString()}`;
     const newFlatRowsTableName = `new_flat_rows_${generateSecureRandomString()}`;
-    const flatMapChangesTableName = `flat_map_changes_${generateSecureRandomString()}`;
     return [
       sqlQuery`
         SELECT
@@ -200,21 +204,16 @@ export function declareFlatMapTable<
           ON "oldRows"."groupKey" IS NOT DISTINCT FROM "newRows"."groupKey"
           AND "oldRows"."rowIdentifier" = "newRows"."rowIdentifier"
         WHERE "oldRows"."rowData" IS DISTINCT FROM "newRows"."rowData"
-      `.toStatement(flatMapChangesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb'),
-      ...[...triggers.values()].flatMap((trigger) => trigger(quoteSqlIdentifier(flatMapChangesTableName))),
+      `.toStatement(outputChangesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb'),
     ];
   };
-  let fromTableTriggerRegistration: null | { deregister: () => void } = null;
-  const ensureFromTableTriggerRegistration = () => {
-    if (fromTableTriggerRegistration != null) return;
-    fromTableTriggerRegistration = options.fromTable.registerRowChangeTrigger((fromChangesTable) => {
-      return createFromTableTriggerStatements(fromChangesTable);
-    });
-  };
-  const deregisterFromTableTrigger = () => {
-    fromTableTriggerRegistration?.deregister();
-    fromTableTriggerRegistration = null;
-  };
+  const fromTableTrigger = createTableRowChangeTrigger({
+    targetTableId: tableIdToDebugString(options.tableId),
+    createStatements: (fromChangesTable, outputChangesTableName) =>
+      createFromTableTriggerStatements(fromChangesTable, outputChangesTableName),
+    getTriggeredTables: () => [...triggers.values()],
+  });
+  options.fromTable.registerRowChangeTrigger(fromTableTrigger);
 
   const table: ReturnType<typeof declareFlatMapTable<GK, OldRD, NewRD>> = {
     tableId: options.tableId,
@@ -228,7 +227,6 @@ export function declareFlatMapTable<
     compareGroupKeys: options.fromTable.compareGroupKeys,
     compareSortKeys: (a, b) => sqlExpression` 0 `,
     init: () => {
-      ensureFromTableTriggerRegistration();
       const fromGroupsTableName = `from_groups_${generateSecureRandomString()}`;
       const fromRowsTableName = `from_rows_${generateSecureRandomString()}`;
       const mappedRowsTableName = `mapped_rows_${generateSecureRandomString()}`;
@@ -336,7 +334,6 @@ export function declareFlatMapTable<
       ];
     },
     delete: () => {
-      deregisterFromTableTrigger();
       return [sqlStatement`
         WITH RECURSIVE "pathsToDelete" AS (
           SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
@@ -402,7 +399,7 @@ export function declareFlatMapTable<
     `,
     registerRowChangeTrigger: (trigger) => {
       const id = generateSecureRandomString();
-      triggers.set(id, trigger);
+      triggers.set(id, normalizeRowChangeTrigger(trigger));
       return { deregister: () => triggers.delete(id) };
     },
     verifyDataIntegrity: () => {

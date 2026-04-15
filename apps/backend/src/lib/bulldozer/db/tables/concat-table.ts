@@ -2,6 +2,8 @@ import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import type { Table } from "..";
+import { attachRowChangeTriggerMetadata, normalizeRowChangeTrigger } from "../row-change-trigger-dispatch";
+import type { RegisteredRowChangeTrigger } from "../row-change-trigger-dispatch";
 import type { Json, RowData, RowIdentifier, SqlExpression, SqlStatement, TableId } from "../utilities";
 import {
   getStorageEnginePath,
@@ -39,7 +41,7 @@ export function declareConcatTable<
       });
     }
   }
-  const triggers = new Map<string, (changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => SqlStatement[]>();
+  const triggers = new Map<string, RegisteredRowChangeTrigger>();
   const rawExpression = <T>(sql: string): SqlExpression<T> => ({ type: "expression", sql });
   const isInitializedExpression = sqlExpression`
     EXISTS (
@@ -115,24 +117,18 @@ export function declareConcatTable<
         WHERE ${isInitializedExpression}
           AND ${rawExpression<boolean>(getInputInitializedSql(table))}
       `.toStatement(concatChangesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb'),
-      ...[...triggers.values()].flatMap((trigger) => trigger(quoteSqlIdentifier(concatChangesTableName))),
     ];
   };
-  let inputTriggerRegistrations: Array<{ deregister: () => void }> = [];
-  const ensureInputTriggerRegistrations = () => {
-    if (inputTriggerRegistrations.length > 0) return;
-    inputTriggerRegistrations = tables.map((table, tableIndex) => {
-      return table.registerRowChangeTrigger((changesTable) => {
-        return createInputTriggerStatements(table, tableIndex, changesTable);
-      });
-    });
-  };
-  const deregisterInputTriggers = () => {
-    for (const registration of inputTriggerRegistrations) {
-      registration.deregister();
-    }
-    inputTriggerRegistrations = [];
-  };
+  tables.forEach((table, tableIndex) => {
+    const fromTableTrigger = attachRowChangeTriggerMetadata(
+      (changesTable) => createInputTriggerStatements(table, tableIndex, changesTable),
+      {
+        targetTableId: tableIdToDebugString(options.tableId),
+        targetTableTriggers: triggers,
+      },
+    );
+    table.registerRowChangeTrigger(fromTableTrigger);
+  });
 
   return {
     tableId: options.tableId,
@@ -181,7 +177,6 @@ export function declareConcatTable<
     compareGroupKeys: firstTable.compareGroupKeys,
     compareSortKeys: () => sqlExpression`0`,
     init: () => {
-      ensureInputTriggerRegistrations();
       return [sqlStatement`
         INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
         VALUES
@@ -192,7 +187,6 @@ export function declareConcatTable<
       `];
     },
     delete: () => {
-      deregisterInputTriggers();
       return [sqlStatement`
         WITH RECURSIVE "pathsToDelete" AS (
           SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
@@ -208,7 +202,7 @@ export function declareConcatTable<
     isInitialized: () => isInitializedExpression,
     registerRowChangeTrigger: (trigger) => {
       const id = generateSecureRandomString();
-      triggers.set(id, trigger);
+      triggers.set(id, normalizeRowChangeTrigger(trigger));
       return { deregister: () => triggers.delete(id) };
     },
     verifyDataIntegrity: () => sqlQuery`

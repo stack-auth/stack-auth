@@ -1,5 +1,7 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import type { Table } from "..";
+import { attachRowChangeTriggerMetadata, normalizeRowChangeTrigger } from "../row-change-trigger-dispatch";
+import type { RegisteredRowChangeTrigger } from "../row-change-trigger-dispatch";
 import type { Json, RowData, RowIdentifier, SqlExpression, SqlStatement, TableId } from "../utilities";
 import {
   getStorageEnginePath,
@@ -57,7 +59,7 @@ export function declareCompactTable<
   compactKey: string,
   partitionKey: string,
 }): Table<GK, null, ToBeCompactedRD> {
-  const triggers = new Map<string, (changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => SqlStatement[]>();
+  const triggers = new Map<string, RegisteredRowChangeTrigger>();
   const groupsPath = getStorageEnginePath(options.tableId, ["groups"]);
   const getGroupKeyPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey]);
   const getGroupRowsPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey, "rows"]);
@@ -312,28 +314,25 @@ export function declareCompactTable<
         WHERE "oldRows"."rowSortKey" IS DISTINCT FROM "newRows"."rowSortKey"
           OR "oldRows"."rowData" IS DISTINCT FROM "newRows"."rowData"
       `.toStatement(compactChangesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb'),
-      ...[...triggers.values()].flatMap((trigger) => trigger(quoteSqlIdentifier(compactChangesTableName))),
     ];
   };
 
-  let inputTriggerRegistrations: Array<{ deregister: () => void }> = [];
-  const ensureInputTriggerRegistrations = () => {
-    if (inputTriggerRegistrations.length > 0) return;
-    inputTriggerRegistrations = [
-      options.toBeCompactedTable.registerRowChangeTrigger((changesTable) =>
-        createTriggerStatements(changesTable)
-      ),
-      options.boundaryTable.registerRowChangeTrigger((changesTable) =>
-        createTriggerStatements(changesTable)
-      ),
-    ];
-  };
-  const deregisterInputTriggers = () => {
-    for (const registration of inputTriggerRegistrations) {
-      registration.deregister();
-    }
-    inputTriggerRegistrations = [];
-  };
+  const toBeCompactedTrigger = attachRowChangeTriggerMetadata(
+    (changesTable) => createTriggerStatements(changesTable),
+    {
+      targetTableId: tableIdToDebugString(options.tableId),
+      targetTableTriggers: triggers,
+    },
+  );
+  options.toBeCompactedTable.registerRowChangeTrigger(toBeCompactedTrigger);
+  const boundaryTrigger = attachRowChangeTriggerMetadata(
+    (changesTable) => createTriggerStatements(changesTable),
+    {
+      targetTableId: tableIdToDebugString(options.tableId),
+      targetTableTriggers: triggers,
+    },
+  );
+  options.boundaryTable.registerRowChangeTrigger(boundaryTrigger);
 
   const table: ReturnType<typeof declareCompactTable<GK, SK, ToBeCompactedRD, BoundaryRD>> = {
     tableId: options.tableId,
@@ -350,7 +349,6 @@ export function declareCompactTable<
     compareGroupKeys: options.toBeCompactedTable.compareGroupKeys,
     compareSortKeys: () => sqlExpression` 0 `,
     init: () => {
-      ensureInputTriggerRegistrations();
       const allGroupsTableName = `all_groups_${generateSecureRandomString()}`;
       const initRowsTableName = `init_compacted_rows_${generateSecureRandomString()}`;
       return [
@@ -417,7 +415,6 @@ export function declareCompactTable<
       ];
     },
     delete: () => {
-      deregisterInputTriggers();
       return [sqlStatement`
         WITH RECURSIVE "pathsToDelete" AS (
           SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
@@ -487,7 +484,7 @@ export function declareCompactTable<
       `,
     registerRowChangeTrigger: (trigger) => {
       const id = generateSecureRandomString();
-      triggers.set(id, trigger);
+      triggers.set(id, normalizeRowChangeTrigger(trigger));
       return { deregister: () => triggers.delete(id) };
     },
     verifyDataIntegrity: () => {

@@ -1,0 +1,114 @@
+---
+title: "All Auth Providers"
+description: "Configure authentication providers for your application"
+sidebarTitle: All Auth Providers
+---
+
+Stack Auth supports a variety of authentication providers to give your users flexible sign-in options. You can configure these providers through the Stack Auth dashboard.
+
+## Overview
+
+Authentication providers determine how users can sign in to your application. Stack supports the following provider types:
+
+- **Email/Password**: Traditional email and password authentication
+- **Magic Link**: Passwordless authentication via email links
+- **OAuth Providers**: Third-party sign-in with providers like Google, GitHub, Facebook, Microsoft, and more
+- **Passkeys**: WebAuthn-based passwordless authentication
+
+## Configuring Providers
+
+<Steps>
+  <Step title="Open the Stack Auth dashboard">
+    Navigate to your project in the Stack Auth dashboard.
+  </Step>
+  <Step title="Go to Auth Providers">
+    Click on the **Auth Providers** section in the sidebar.
+  </Step>
+  <Step title="Enable providers">
+    Toggle the providers you want to enable for your application.
+  </Step>
+  <Step title="Configure OAuth providers">
+    For OAuth providers, you can use Stack's shared keys for development or configure your own OAuth client ID and client secret for production.
+  </Step>
+</Steps>
+
+## Shared vs. Custom OAuth Keys
+
+<Info>
+  For development and testing, Stack provides shared OAuth keys that work out of the box. For production, you should set up your own OAuth client credentials.
+</Info>
+
+### Shared Keys
+
+Shared keys allow you to quickly get started without needing to register your application with each OAuth provider. These are suitable for development only.
+
+### Custom Keys
+
+For production use, configure your own OAuth client ID and client secret for each provider:
+
+1. Register your application with the OAuth provider (e.g., Google Cloud Console, GitHub Developer Settings)
+2. Obtain the client ID and client secret
+3. Enter them in the Stack Auth dashboard under the respective provider settings
+
+## OAuth Providers
+
+<CardGroup cols={3}>
+  <Card title="GitHub" icon="github" href="/guides/apps/authentication/auth-providers/github">
+    Sign in with GitHub
+  </Card>
+  <Card title="Google" icon="google" href="/guides/apps/authentication/auth-providers/google">
+    Sign in with Google
+  </Card>
+  <Card title="Facebook" icon="facebook" href="/guides/apps/authentication/auth-providers/facebook">
+    Sign in with Facebook
+  </Card>
+  <Card title="Microsoft" icon="microsoft" href="/guides/apps/authentication/auth-providers/microsoft">
+    Sign in with Microsoft
+  </Card>
+  <Card title="Spotify" icon="spotify" href="/guides/apps/authentication/auth-providers/spotify">
+    Sign in with Spotify
+  </Card>
+  <Card title="Discord" icon="discord" href="/guides/apps/authentication/auth-providers/discord">
+    Sign in with Discord
+  </Card>
+  <Card title="GitLab" icon="gitlab" href="/guides/apps/authentication/auth-providers/gitlab">
+    Sign in with GitLab
+  </Card>
+  <Card title="Apple" icon="apple" href="/guides/apps/authentication/auth-providers/apple">
+    Sign in with Apple
+  </Card>
+  <Card title="Bitbucket" icon="bitbucket" href="/guides/apps/authentication/auth-providers/bitbucket">
+    Sign in with Bitbucket
+  </Card>
+  <Card title="LinkedIn" icon="linkedin" href="/guides/apps/authentication/auth-providers/linkedin">
+    Sign in with LinkedIn
+  </Card>
+  <Card title="X (Twitter)" icon="x-twitter" href="/guides/apps/authentication/auth-providers/x-twitter">
+    Sign in with X
+  </Card>
+  <Card title="Twitch" icon="twitch" href="/guides/apps/authentication/auth-providers/twitch">
+    Sign in with Twitch
+  </Card>
+</CardGroup>
+
+## Other Authentication Methods
+
+<CardGroup cols={2}>
+  <Card title="Passkey" icon="key" href="/guides/apps/authentication/auth-providers/passkey">
+    WebAuthn-based passwordless authentication
+  </Card>
+  <Card title="Two-Factor Auth (2FA)" icon="shield-check" href="/guides/apps/authentication/auth-providers/two-factor-auth">
+    TOTP-based two-factor authentication
+  </Card>
+</CardGroup>
+
+
+## Going to Production
+
+When preparing your application for production, make sure to:
+
+- Replace shared OAuth keys with your own client credentials
+- Configure a custom email server for email-based authentication
+- Set up proper redirect URLs for OAuth providers
+
+For more details, see [Going to Production](/guides/apps/launch-checklist/overview).

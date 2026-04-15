@@ -30,14 +30,17 @@ export type SignUpRiskAssessment = {
 export type SignUpRiskRecentStatsRequest = {
   signedUpAt: Date,
   signUpIp: string | null,
+  signUpEmailNormalized: string | null,
   signUpEmailBase: string | null,
   recentWindowHours: number,
   sameIpLimit: number,
+  sameEmailLimit: number,
   similarEmailLimit: number,
 };
 
 export type SignUpRiskRecentStats = {
   sameIpCount: number,
+  sameEmailCount: number,
   similarEmailCount: number,
 };
 
@@ -64,7 +67,7 @@ async function loadRecentSignUpStats(
   const schema = await getPrismaSchemaForTenancy(tenancy);
   const windowStart = new Date(request.signedUpAt.getTime() - request.recentWindowHours * 60 * 60 * 1000);
 
-  const [sameIpRows, similarEmailRows] = await Promise.all([
+  const [sameIpRows, sameEmailRows, similarEmailRows] = await Promise.all([
     request.signUpIp == null || request.sameIpLimit === 0
       ? []
       : prisma.$replica().$queryRaw<{ matched: number }[]>`
@@ -75,6 +78,18 @@ async function loadRecentSignUpStats(
             AND "signedUpAt" >= ${windowStart}
             AND "signUpIp" = ${request.signUpIp}
           LIMIT ${request.sameIpLimit}
+        `,
+
+    request.signUpEmailNormalized == null || request.sameEmailLimit === 0
+      ? []
+      : prisma.$replica().$queryRaw<{ matched: number }[]>`
+          SELECT 1 AS "matched"
+          FROM ${sqlQuoteIdent(schema)}."ProjectUser"
+          WHERE "tenancyId" = ${tenancy.id}::UUID
+            AND "isAnonymous" = false
+            AND "signedUpAt" >= ${windowStart}
+            AND "signUpEmailNormalized" = ${request.signUpEmailNormalized}
+          LIMIT ${request.sameEmailLimit}
         `,
 
     request.signUpEmailBase == null || request.similarEmailLimit === 0
@@ -92,6 +107,7 @@ async function loadRecentSignUpStats(
 
   return {
     sameIpCount: sameIpRows.length,
+    sameEmailCount: sameEmailRows.length,
     similarEmailCount: similarEmailRows.length,
   };
 }
@@ -144,7 +160,7 @@ import.meta.vitest?.test("loaded private sign-up risk engine can calculate score
       turnstileAssessment: { status: "ok" },
     }, {
       checkPrimaryEmailRisk: async () => ({ emailableScore: null }),
-      loadRecentSignUpStats: async () => ({ sameIpCount: 0, similarEmailCount: 0 }),
+      loadRecentSignUpStats: async () => ({ sameIpCount: 0, sameEmailCount: 0, similarEmailCount: 0 }),
     });
 
     expect(assessment).toMatchInlineSnapshot(`

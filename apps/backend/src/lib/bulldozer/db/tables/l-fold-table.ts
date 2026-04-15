@@ -1,5 +1,7 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import type { Table } from "..";
+import { attachRowChangeTriggerMetadata, normalizeRowChangeTrigger } from "../row-change-trigger-dispatch";
+import type { RegisteredRowChangeTrigger } from "../row-change-trigger-dispatch";
 import type { Json, RowData, RowIdentifier, SqlExpression, SqlMapper, SqlStatement, TableId } from "../utilities";
 import {
   getStorageEnginePath,
@@ -50,7 +52,7 @@ export function declareLFoldTable<
   initialState: SqlExpression<S>,
   reducer: SqlMapper<{ oldState: S, oldRowData: OldRD }, { newState: S, newRowsData: NewRD[] }>,
 }): Table<GK, SK, NewRD> {
-  const triggers = new Map<string, (changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => SqlStatement[]>();
+  const triggers = new Map<string, RegisteredRowChangeTrigger>();
   const fromTableOperator = (
     "operator" in options.fromTable.debugArgs
     && typeof options.fromTable.debugArgs.operator === "string"
@@ -488,20 +490,16 @@ export function declareLFoldTable<
         WHERE "oldRows"."rowSortKey" IS DISTINCT FROM "newRows"."rowSortKey"
           OR "oldRows"."rowData" IS DISTINCT FROM "newRows"."rowData"
       `.toStatement(lfoldChangesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb'),
-      ...[...triggers.values()].flatMap((trigger) => trigger(quoteSqlIdentifier(lfoldChangesTableName))),
     ];
   };
-  let sourceSortTriggerRegistration: null | { deregister: () => void } = null;
-  const ensureSourceSortTriggerRegistration = () => {
-    if (sourceSortTriggerRegistration != null) return;
-    sourceSortTriggerRegistration = sourceSortTable.registerRowChangeTrigger((fromChangesTable) => {
-      return createSourceSortTriggerStatements(fromChangesTable);
-    });
-  };
-  const deregisterSourceSortTrigger = () => {
-    sourceSortTriggerRegistration?.deregister();
-    sourceSortTriggerRegistration = null;
-  };
+  const sourceSortTrigger = attachRowChangeTriggerMetadata(
+    (fromChangesTable) => createSourceSortTriggerStatements(fromChangesTable),
+    {
+      targetTableId: tableIdToDebugString(options.tableId),
+      targetTableTriggers: triggers,
+    },
+  );
+  sourceSortTable.registerRowChangeTrigger(sourceSortTrigger);
 
   const table: ReturnType<typeof declareLFoldTable<GK, SK, OldRD, NewRD, S>> = {
     tableId: options.tableId,
@@ -516,7 +514,6 @@ export function declareLFoldTable<
     compareGroupKeys: options.fromTable.compareGroupKeys,
     compareSortKeys: options.fromTable.compareSortKeys,
     init: () => {
-      ensureSourceSortTriggerRegistration();
       const firstSourceRowsTableName = `first_source_rows_${generateSecureRandomString()}`;
       const recomputedSourceStatesTableName = `recomputed_source_states_${generateSecureRandomString()}`;
       const newFoldRowsTableName = `new_fold_rows_${generateSecureRandomString()}`;
@@ -702,7 +699,6 @@ export function declareLFoldTable<
       ];
     },
     delete: () => {
-      deregisterSourceSortTrigger();
       return [sqlStatement`
         WITH RECURSIVE "pathsToDelete" AS (
           SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
@@ -796,7 +792,7 @@ export function declareLFoldTable<
     `,
     registerRowChangeTrigger: (trigger) => {
       const id = generateSecureRandomString();
-      triggers.set(id, trigger);
+      triggers.set(id, normalizeRowChangeTrigger(trigger));
       return { deregister: () => triggers.delete(id) };
     },
     verifyDataIntegrity: () => {

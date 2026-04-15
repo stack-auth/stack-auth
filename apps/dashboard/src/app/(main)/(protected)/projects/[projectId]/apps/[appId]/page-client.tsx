@@ -4,7 +4,8 @@ import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-a
 import { AppStoreEntry } from "@/components/app-store-entry";
 import { useRouter } from "@/components/router";
 import { useUpdateConfig } from "@/lib/config-update";
-import { ALL_APPS_FRONTEND, getAppPath, type AppId } from "@/lib/apps-frontend";
+import { ALL_APPS_FRONTEND, getAppPath, isSubApp, type AppId } from "@/lib/apps-frontend";
+import { isAppEnabled } from "@/lib/apps-utils";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { PageLayout } from "../../page-layout";
@@ -17,13 +18,21 @@ export default function AppDetailsPageClient({ appId }: { appId: AppId }) {
   const config = project.useConfig();
   const updateConfig = useUpdateConfig();
 
-  const isEnabled = config.apps.installed[appId]?.enabled ?? false;
+  const isEnabled = isAppEnabled(config.apps.installed, appId);
 
   const appFrontend = ALL_APPS_FRONTEND[appId];
   if (!(appFrontend as any)) {
     throw new StackAssertionError(`App frontend not found for appId: ${appId}`, { appId });
   }
+  const parentAppId = isSubApp(appFrontend) ? appFrontend.parentAppId : null;
+  const parentAppFrontend = parentAppId == null ? null : ALL_APPS_FRONTEND[parentAppId];
+  const parentAppEnabled = parentAppId == null ? false : isAppEnabled(config.apps.installed, parentAppId);
   const appPath = getAppPath(project.id, appFrontend);
+  const subAppDestinationPath = parentAppFrontend == null
+    ? null
+    : parentAppEnabled
+      ? appPath
+      : `/projects/${project.id}/apps/${parentAppId}`;
 
   const handleEnable = async () => {
     await updateConfig({
@@ -35,7 +44,7 @@ export default function AppDetailsPageClient({ appId }: { appId: AppId }) {
   };
 
   const handleOpen = () => {
-    router.push(appPath);
+    router.push(subAppDestinationPath ?? appPath);
   };
 
   const handleDisable = async () => {

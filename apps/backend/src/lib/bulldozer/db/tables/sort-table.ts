@@ -1,5 +1,7 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import type { Table } from "..";
+import { attachRowChangeTriggerMetadata, normalizeRowChangeTrigger } from "../row-change-trigger-dispatch";
+import type { RegisteredRowChangeTrigger } from "../row-change-trigger-dispatch";
 import type { Json, RowData, RowIdentifier, SqlExpression, SqlMapper, SqlStatement, TableId } from "../utilities";
 import {
   getStorageEnginePath,
@@ -23,7 +25,7 @@ export function declareSortTable<
   getSortKey: SqlMapper<{ rowIdentifier: RowIdentifier, oldSortKey: OldSK, rowData: RD }, { newSortKey: NewSK }>,
   compareSortKeys: (a: SqlExpression<NewSK>, b: SqlExpression<NewSK>) => SqlExpression<number>,
 }): Table<GK, NewSK, RD> {
-  const triggers = new Map<string, (changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => SqlStatement[]>();
+  const triggers = new Map<string, RegisteredRowChangeTrigger>();
   const groupsPath = getStorageEnginePath(options.tableId, ["groups"]);
   const getGroupKeyPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey]);
   const getGroupRowsPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey, "rows"]);
@@ -160,20 +162,16 @@ export function declareSortTable<
             OR "oldRowData" IS DISTINCT FROM "newRowData"
           )
       `.toStatement(sortChangesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb'),
-      ...[...triggers.values()].flatMap((trigger) => trigger(quoteSqlIdentifier(sortChangesTableName))),
     ];
   };
-  let fromTableTriggerRegistration: null | { deregister: () => void } = null;
-  const ensureFromTableTriggerRegistration = () => {
-    if (fromTableTriggerRegistration != null) return;
-    fromTableTriggerRegistration = options.fromTable.registerRowChangeTrigger((fromChangesTable) => {
-      return createFromTableTriggerStatements(fromChangesTable);
-    });
-  };
-  const deregisterFromTableTrigger = () => {
-    fromTableTriggerRegistration?.deregister();
-    fromTableTriggerRegistration = null;
-  };
+  const fromTableTrigger = attachRowChangeTriggerMetadata(
+    (fromChangesTable) => createFromTableTriggerStatements(fromChangesTable),
+    {
+      targetTableId: tableIdToDebugString(options.tableId),
+      targetTableTriggers: triggers,
+    },
+  );
+  options.fromTable.registerRowChangeTrigger(fromTableTrigger);
 
   const table: ReturnType<typeof declareSortTable<GK, OldSK, NewSK, RD>> = {
     tableId: options.tableId,
@@ -188,7 +186,6 @@ export function declareSortTable<
     compareGroupKeys: options.fromTable.compareGroupKeys,
     compareSortKeys: options.compareSortKeys,
     init: () => {
-      ensureFromTableTriggerRegistration();
       const fromGroupsTableName = `from_groups_${generateSecureRandomString()}`;
       const fromRowsTableName = `from_rows_${generateSecureRandomString()}`;
       const sortedRowsTableName = `sorted_rows_${generateSecureRandomString()}`;
@@ -256,7 +253,6 @@ export function declareSortTable<
       ];
     },
     delete: () => {
-      deregisterFromTableTrigger();
       return [sqlStatement`
         WITH RECURSIVE "pathsToDelete" AS (
           SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
@@ -411,7 +407,7 @@ export function declareSortTable<
     `,
     registerRowChangeTrigger: (trigger) => {
       const id = generateSecureRandomString();
-      triggers.set(id, trigger);
+      triggers.set(id, normalizeRowChangeTrigger(trigger));
       return { deregister: () => triggers.delete(id) };
     },
     verifyDataIntegrity: () => {

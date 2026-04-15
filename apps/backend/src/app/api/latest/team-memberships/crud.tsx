@@ -1,3 +1,4 @@
+import { recordExternalDbSyncDeletion, recordExternalDbSyncTeamPermissionDeletionsForTeamMember, withExternalDbSyncUpdate } from "@/lib/external-db-sync";
 import { grantDefaultTeamPermissions } from "@/lib/permissions";
 import { ensureTeamExists, ensureTeamMembershipDoesNotExist, ensureTeamMembershipExists, ensureUserExists, ensureUserTeamPermissionExists } from "@/lib/request-checks";
 import { Tenancy } from "@/lib/tenancies";
@@ -5,7 +6,7 @@ import { PrismaTransaction } from "@/lib/types";
 import { sendTeamMembershipCreatedWebhook, sendTeamMembershipDeletedWebhook, sendTeamPermissionCreatedWebhook } from "@/lib/webhooks";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
-import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
+import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { teamMembershipsCrud } from "@stackframe/stack-shared/dist/interface/crud/team-memberships";
 import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -20,11 +21,11 @@ export async function addUserToTeam(tx: PrismaTransaction, options: {
   type: 'member' | 'creator',
 }) {
   await tx.teamMember.create({
-    data: {
+    data: withExternalDbSyncUpdate({
       projectUserId: options.userId,
       teamId: options.teamId,
       tenancyId: options.tenancy.id,
-    },
+    }),
   });
 
   const result = await grantDefaultTeamPermissions(tx, {
@@ -136,6 +137,19 @@ export const teamMembershipsCrudHandlers = createLazyProxy(() => createCrudHandl
         tenancyId: auth.tenancy.id,
         teamId: params.team_id,
         userId: params.user_id,
+      });
+
+      await recordExternalDbSyncTeamPermissionDeletionsForTeamMember(tx, {
+        tenancyId: auth.tenancy.id,
+        projectUserId: params.user_id,
+        teamId: params.team_id,
+      });
+
+      await recordExternalDbSyncDeletion(tx, {
+        tableName: "TeamMember",
+        tenancyId: auth.tenancy.id,
+        projectUserId: params.user_id,
+        teamId: params.team_id,
       });
 
       await tx.teamMember.delete({

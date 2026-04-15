@@ -1,5 +1,6 @@
 import { createTemplateComponentFromHtml } from "@/lib/email-rendering";
 import { normalizeEmail, sendEmailToMany } from "@/lib/emails";
+import { isLocalEmulatorEnabled } from "@/lib/local-emulator";
 import { getNotificationCategoryByName } from "@/lib/notification-categories";
 import { Tenancy } from "@/lib/tenancies";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
@@ -82,24 +83,41 @@ async function sendInternalOperationsEmail(options: {
 
 export async function sendSupportFeedbackEmail(options: {
   tenancy: Tenancy,
-  user: UsersCrud["Admin"]["Read"],
+  user: UsersCrud["Admin"]["Read"] | null,
   name: string | null,
   email: string,
   message: string,
+  feedbackType?: string,
 }) {
-  const displayName = options.name ?? options.user.display_name ?? "Not provided";
+  const displayName = options.name ?? options.user?.display_name ?? "Not provided";
+  const feedbackLabel = options.feedbackType === "bug" ? "Bug Report" : "Support";
+
+  const fields: Array<{ label: string, value: string }> = [
+    { label: "Sender name", value: displayName },
+    { label: "Sender email", value: options.email },
+  ];
+
+  if (options.user) {
+    fields.push(
+      { label: "Stack Auth user ID", value: options.user.id },
+      { label: "Stack Auth display name", value: options.user.display_name ?? "Not provided" },
+    );
+  }
+
+  if (options.feedbackType) {
+    fields.push({ label: "Type", value: feedbackLabel });
+  }
+
+  if (isLocalEmulatorEnabled()) {
+    fields.push({ label: "Environment", value: "Local Emulator" });
+  }
 
   await sendInternalOperationsEmail({
     tenancy: options.tenancy,
-    subject: `[Support] ${options.email}`,
+    subject: `[${feedbackLabel}] ${options.email}`,
     htmlContent: buildInternalEmailHtml({
-      heading: "Support feedback submission",
-      fields: [
-        { label: "Sender name", value: displayName },
-        { label: "Sender email", value: options.email },
-        { label: "Stack Auth user ID", value: options.user.id },
-        { label: "Stack Auth display name", value: options.user.display_name ?? "Not provided" },
-      ],
+      heading: `${feedbackLabel} feedback submission`,
+      fields,
       contentLabel: "Message",
       contentBody: options.message,
     }),

@@ -1,5 +1,7 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import type { Table } from "..";
+import { attachRowChangeTriggerMetadata, normalizeRowChangeTrigger } from "../row-change-trigger-dispatch";
+import type { RegisteredRowChangeTrigger } from "../row-change-trigger-dispatch";
 import type { Json, RowData, RowIdentifier, SqlExpression, SqlMapper, SqlStatement, TableId } from "../utilities";
 import {
   getStorageEnginePath,
@@ -20,7 +22,7 @@ export function declareGroupByTable<
   fromTable: Table<GK, any, RD>,
   groupBy: SqlMapper<{ rowIdentifier: RowIdentifier, rowData: RD }, { groupKey: GK }>,
 }): Table<GK, null, RD> {
-  const triggers = new Map<string, (changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => SqlStatement[]>();
+  const triggers = new Map<string, RegisteredRowChangeTrigger>();
   const getGroupKeyPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey]);
   const getGroupRowsPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey, "rows"]);
   const getGroupRowPath = (groupKey: SqlExpression<Json>, rowIdentifier: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey, "rows", rowIdentifier]);
@@ -181,20 +183,16 @@ export function declareGroupByTable<
         WHERE "hasNewRow"
           AND (NOT "hasOldRow" OR "oldGroupKey" IS DISTINCT FROM "newGroupKey")
       `.toStatement(groupedChangesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb'),
-      ...[...triggers.values()].flatMap((trigger) => trigger(quoteSqlIdentifier(groupedChangesTableName))),
     ];
   };
-  let fromTableTriggerRegistration: null | { deregister: () => void } = null;
-  const ensureFromTableTriggerRegistration = () => {
-    if (fromTableTriggerRegistration != null) return;
-    fromTableTriggerRegistration = options.fromTable.registerRowChangeTrigger((fromChangesTable) => {
-      return createFromTableTriggerStatements(fromChangesTable);
-    });
-  };
-  const deregisterFromTableTrigger = () => {
-    fromTableTriggerRegistration?.deregister();
-    fromTableTriggerRegistration = null;
-  };
+  const fromTableTrigger = attachRowChangeTriggerMetadata(
+    (fromChangesTable) => createFromTableTriggerStatements(fromChangesTable),
+    {
+      targetTableId: tableIdToDebugString(options.tableId),
+      targetTableTriggers: triggers,
+    },
+  );
+  options.fromTable.registerRowChangeTrigger(fromTableTrigger);
 
   const table: ReturnType<typeof declareGroupByTable<GK, RD>> = {
     tableId: options.tableId,
@@ -208,7 +206,6 @@ export function declareGroupByTable<
     compareGroupKeys,
     compareSortKeys: (a, b) => sqlExpression` 0 `,
     init: () => {
-      ensureFromTableTriggerRegistration();
       const fromTableAllRowsTableName = `from_table_all_rows_${generateSecureRandomString()}`;
       const fromTableRowsWithGroupKeyTableName = `from_table_rows_with_group_key_${generateSecureRandomString()}`;
 
@@ -274,7 +271,6 @@ export function declareGroupByTable<
       ];
     },
     delete: () => {
-      deregisterFromTableTrigger();
       return [sqlStatement`
         WITH RECURSIVE "pathsToDelete" AS (
           SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
@@ -347,7 +343,7 @@ export function declareGroupByTable<
     `,
     registerRowChangeTrigger: (trigger) => {
       const id = generateSecureRandomString();
-      triggers.set(id, trigger);
+      triggers.set(id, normalizeRowChangeTrigger(trigger));
       return { deregister: () => triggers.delete(id) };
     },
     verifyDataIntegrity: () => {

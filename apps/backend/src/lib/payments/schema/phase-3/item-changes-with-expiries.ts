@@ -139,6 +139,9 @@ export function createItemChangesWithExpiries(entryTables: CompactedTransactionE
     tableId: "payments-changes-with-expiry-arrays",
     fromTable: changesWithExpiries,
     mapper: mapper(`
+      -- Some item-quantity-change rows carry absolute expiry directly in expiresWhen
+      -- (for example manual item quantity changes). Convert numeric expiresWhen into
+      -- an expiry array so split logic can handle them uniformly.
       "rowData"->'leftRowData'->'txnId' AS "txnId",
       "rowData"->'leftRowData'->'txnEffectiveAtMillis' AS "txnEffectiveAtMillis",
       "rowData"->'leftRowData'->'customerType' AS "customerType",
@@ -146,7 +149,18 @@ export function createItemChangesWithExpiries(entryTables: CompactedTransactionE
       "rowData"->'leftRowData'->'tenancyId' AS "tenancyId",
       "rowData"->'leftRowData'->'itemId' AS "itemId",
       "rowData"->'leftRowData'->'quantity' AS "quantity",
-      COALESCE("rowData"->'rightRowData'->'expiries', '[]'::jsonb) AS "expiries"
+      (
+        COALESCE("rowData"->'rightRowData'->'expiries', '[]'::jsonb)
+        || CASE
+          WHEN jsonb_typeof("rowData"->'leftRowData'->'expiresWhen') = 'number' THEN jsonb_build_array(
+            jsonb_build_object(
+              'txnEffectiveAtMillis', "rowData"->'leftRowData'->'expiresWhen',
+              'quantityExpiring', "rowData"->'leftRowData'->'quantity'
+            )
+          )
+          ELSE '[]'::jsonb
+        END
+      ) AS "expiries"
     `),
   });
 
@@ -220,6 +234,9 @@ export function createItemChangesWithExpiries(entryTables: CompactedTransactionE
             ORDER BY "w"."idx"
           ), '[]'::jsonb)
           FROM "walked" AS "w"
+          WHERE "w"."expiresAtMillis" IS NOT NULL
+            AND "w"."expiresAtMillis" != 'null'::jsonb
+            AND (("w"."expiresAtMillis" #>> '{}')::numeric > (("rowData"->'txnEffectiveAtMillis' #>> '{}')::numeric))
         )
         || jsonb_build_array(
           jsonb_build_object(
@@ -252,6 +269,7 @@ export function createItemChangesWithExpiries(entryTables: CompactedTransactionE
           FROM "walked" AS "w"
           WHERE "w"."expiresAtMillis" IS NOT NULL
             AND "w"."expiresAtMillis" != 'null'::jsonb
+            AND (("w"."expiresAtMillis" #>> '{}')::numeric > (("rowData"->'txnEffectiveAtMillis' #>> '{}')::numeric))
         )
       )
       END AS "rows"

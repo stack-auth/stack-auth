@@ -1,5 +1,7 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import type { Table } from "..";
+import { collectRowChangeTriggerStatements, normalizeRowChangeTrigger } from "../row-change-trigger-dispatch";
+import type { RegisteredRowChangeTrigger } from "../row-change-trigger-dispatch";
 import type { RowData, RowIdentifier, SqlExpression, SqlStatement, TableId } from "../utilities";
 import {
   getStorageEnginePath,
@@ -19,7 +21,7 @@ export function declareStoredTable<RD extends RowData>(options: {
   setRow(rowIdentifier: RowIdentifier, rowData: SqlExpression<RD>): SqlStatement[],
   deleteRow(rowIdentifier: RowIdentifier): SqlStatement[],
 } {
-  const triggers = new Map<string, (changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => SqlStatement[]>();
+  const triggers = new Map<string, RegisteredRowChangeTrigger>();
 
   // Note that this table has only one group and sort key (null), so all groups and rows are always returned by every filter.
   return {
@@ -74,7 +76,7 @@ export function declareStoredTable<RD extends RowData>(options: {
     `,
     registerRowChangeTrigger: (trigger) => {
       const id = generateSecureRandomString();
-      triggers.set(id, trigger);
+      triggers.set(id, normalizeRowChangeTrigger(trigger));
       return { deregister: () => triggers.delete(id) };
     },
     verifyDataIntegrity: () => sqlQuery`
@@ -119,7 +121,11 @@ export function declareStoredTable<RD extends RowData>(options: {
           FROM ${quoteSqlIdentifier(upsertedRowsTableName)}
           LEFT JOIN ${quoteSqlIdentifier(oldRowsTableName)} ON true
         `.toStatement(changesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb'),
-        ...[...triggers.values()].flatMap(trigger => trigger(quoteSqlIdentifier(changesTableName)))
+        ...collectRowChangeTriggerStatements({
+          sourceTableId: tableIdToDebugString(options.tableId),
+          sourceChangesTable: quoteSqlIdentifier(changesTableName),
+          sourceTableTriggers: triggers,
+        }),
       ];
     },
     deleteRow: (rowIdentifier) => {
@@ -142,7 +148,11 @@ export function declareStoredTable<RD extends RowData>(options: {
             'null'::jsonb AS "newRowData"
           FROM ${quoteSqlIdentifier(deletedRowsTableName)}
         `.toStatement(changesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb'),
-        ...[...triggers.values()].flatMap(trigger => trigger(quoteSqlIdentifier(changesTableName)))
+        ...collectRowChangeTriggerStatements({
+          sourceTableId: tableIdToDebugString(options.tableId),
+          sourceChangesTable: quoteSqlIdentifier(changesTableName),
+          sourceTableTriggers: triggers,
+        }),
       ];
     },
   };

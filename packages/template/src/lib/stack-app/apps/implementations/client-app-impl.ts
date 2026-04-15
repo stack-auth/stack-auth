@@ -1,5 +1,6 @@
 import { WebAuthnError, startAuthentication, startRegistration } from "@simplewebauthn/browser";
 import { KnownErrors, StackClientInterface } from "@stackframe/stack-shared";
+import type { RequestListener } from "@stackframe/stack-shared/dist/interface/client-interface";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import type { CustomerInvoicesListResponse } from "@stackframe/stack-shared/dist/interface/crud/invoices";
@@ -18,7 +19,7 @@ import { TeamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
-import { encodeBase32 } from "@stackframe/stack-shared/dist/utils/bytes";
+import { decodeBase32, encodeBase32 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { scrambleDuringCompileTime } from "@stackframe/stack-shared/dist/utils/compile-time";
 import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
@@ -56,7 +57,7 @@ import { isHostedHandlerUrlForProject, resolveHandlerUrls } from "../../url-targ
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
-import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getAnalyticsBaseUrl, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveConstructorOptions } from "./common";
+import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getAnalyticsBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveApiUrls, resolveConstructorOptions } from "./common";
 import { EventTracker } from "./event-tracker";
 import { crossDomainAuthQueryParams, getCrossDomainHandoffParamsFromCurrentUrl, planRedirectToHandler } from "./redirect-page-urls";
 import type { CrossDomainHandoffParams } from "./redirect-page-urls";
@@ -64,6 +65,9 @@ import { AnalyticsOptions, SessionRecorder, analyticsOptionsFromJson, analyticsO
 
 // IF_PLATFORM react-like
 import { useAsyncCache } from "./common";
+// END_PLATFORM
+// IF_PLATFORM js-like
+import { mountDevTool } from "../../../../dev-tool";
 // END_PLATFORM
 
 let isReactServer = false;
@@ -516,9 +520,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     if (extraOptions && extraOptions.interface) {
       this._interface = extraOptions.interface;
     } else {
+      const apiUrls = resolveApiUrls(resolvedOptions.baseUrl);
       this._interface = new StackClientInterface({
-        getBaseUrl: () => getBaseUrl(resolvedOptions.baseUrl),
-        getAnalyticsBaseUrl: () => getAnalyticsBaseUrl(getBaseUrl(resolvedOptions.baseUrl)),
+        getBaseUrl: () => apiUrls()[0],
+        getAnalyticsBaseUrl: () => getAnalyticsBaseUrl(apiUrls()[0]),
+        getApiUrls: apiUrls,
         extraRequestHeaders: resolvedOptions.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
         projectId,
         clientVersion,
@@ -535,6 +541,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     this._urlOptions = resolvedOptions.urls ?? {};
     this._oauthScopesOnSignIn = resolvedOptions.oauthScopesOnSignIn ?? {};
     this._prefetchCrossDomainHandoffParamsIfNeeded();
+    if (isBrowserLike() && (resolvedOptions.tokenStore === "cookie" || resolvedOptions.tokenStore === "nextjs-cookie")) {
+      runAsynchronously(this._trustedParentDomainCache.getOrWait([window.location.hostname], "write-only"));
+      this._ensureCrossSubdomainCookieExists();
+    }
 
     if (extraOptions && extraOptions.uniqueIdentifier) {
       this._uniqueIdentifier = extraOptions.uniqueIdentifier;
@@ -542,32 +552,42 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
 
     this._analyticsOptions = resolvedOptions.analytics;
-    const getAnalyticsAccessToken = async (): Promise<string | null> => {
+
+    const getAnalyticsSession = async (): Promise<InternalSession> => {
       this._ensurePersistentTokenStore();
-      return await (await this.getUser({ or: "anonymous" })).getAccessToken();
+      const partialUser = await this.getPartialUser({ from: 'token', or: 'anonymous-if-exists' });
+      if (partialUser) {
+        return await this._getSession();
+      }
+      const anonUser = await this.getUser({ or: "anonymous" });
+      return anonUser._internalSession;
     };
 
-    if (isBrowserLike() && this._analyticsOptions?.replays?.enabled === true) {
+    if (isBrowserLike() && this._hasPersistentTokenStore() && this._analyticsOptions?.replays?.enabled === true) {
       this._sessionRecorder = new SessionRecorder({
         projectId: this.projectId,
-        getAccessToken: getAnalyticsAccessToken,
         sendBatch: async (body, opts) => {
-          return await this._interface.sendSessionReplayBatch(body, await this._getSession(), opts);
+          return await this._interface.sendSessionReplayBatch(body, await getAnalyticsSession(), opts);
         },
       }, this._analyticsOptions.replays);
       this._sessionRecorder.start();
     }
 
-    if (isBrowserLike()) {
+    if (isBrowserLike() && this._hasPersistentTokenStore()) {
       this._eventTracker = new EventTracker({
         projectId: this.projectId,
-        getAccessToken: getAnalyticsAccessToken,
         sendBatch: async (body, opts) => {
-          return await this._interface.sendAnalyticsEventBatch(body, await this._getSession(), opts);
+          return await this._interface.sendAnalyticsEventBatch(body, await getAnalyticsSession(), opts);
         },
       });
       this._eventTracker.start();
     }
+
+    // IF_PLATFORM js-like
+    if (isBrowserLike()) {
+      mountDevTool(this as any);
+    }
+    // END_PLATFORM
   }
 
   protected _initUniqueIdentifier() {
@@ -619,6 +639,15 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   private _getCustomRefreshCookieName(domain: string): string {
     const encoded = encodeBase32(new TextEncoder().encode(domain.toLowerCase()));
     return `${this._refreshTokenCookieName}--custom-${encoded}`;
+  }
+  private _getDomainFromCustomRefreshCookieName(name: string): string | null {
+    const prefix = `${this._refreshTokenCookieName}--custom-`;
+    if (!name.startsWith(prefix)) return null;
+    try {
+      return new TextDecoder().decode(decodeBase32(name.slice(prefix.length)));
+    } catch {
+      return null;
+    }
   }
   private _formatRefreshCookieValue(refreshToken: string, updatedAt: number): string {
     return JSON.stringify({
@@ -763,6 +792,26 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       cookieNamesToDelete: [...cookieNames],
     };
   }
+
+  private _ensureCrossSubdomainCookieExists() {
+    runAsynchronously(async () => {
+      const hostname = window.location.hostname;
+      const domain = await this._trustedParentDomainCache.getOrWait([hostname], "read-write");
+      if (domain.status === "error" || !domain.data) {
+        return;
+      }
+      const cookies = this._getAllBrowserCookies();
+      const customCookieName = this._getCustomRefreshCookieName(domain.data);
+      if (cookies[customCookieName]) {
+        return;
+      }
+      const { refreshToken, updatedAt } = this._extractRefreshTokenFromCookieMap(cookies);
+      if (refreshToken && updatedAt) {
+        const value = this._formatRefreshCookieValue(refreshToken, updatedAt);
+        setOrDeleteCookieClient(customCookieName, value, { maxAge: 60 * 60 * 24 * 365, domain: domain.data });
+      }
+    });
+  }
   private _queueCustomRefreshCookieUpdate(refreshToken: string | null, updatedAt: number | null, context: "browser" | "server") {
     runAsynchronously(async () => {
       this._mostRecentQueuedCookieRefreshIndex++;
@@ -855,7 +904,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           );
           setOrDeleteCookieClient(defaultName, refreshCookieValue, { maxAge: 60 * 60 * 24 * 365, secure });
           setOrDeleteCookieClient(this._accessTokenCookieName, accessTokenPayload, { maxAge: 60 * 60 * 24 });
-          cookieNamesToDelete.forEach((name) => deleteCookieClient(name, {}));
+          cookieNamesToDelete.forEach((name) => {
+            const domain = this._getDomainFromCustomRefreshCookieName(name);
+            deleteCookieClient(name, domain ? { domain } : {});
+          });
           this._queueCustomRefreshCookieUpdate(refreshToken, updatedAt, "browser");
           hasSucceededInWriting = true;
         } catch (e) {
@@ -912,9 +964,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
               ]);
               if (cookieNamesToDelete.length > 0) {
                 await Promise.all(
-                  cookieNamesToDelete.map((name) =>
-                    deleteCookie(name, { noOpIfServerComponent: true }),
-                  ),
+                  cookieNamesToDelete.map((name) => {
+                    const domain = this._getDomainFromCustomRefreshCookieName(name);
+                    return deleteCookie(name, { noOpIfServerComponent: true, ...(domain ? { domain } : {}) });
+                  }),
                 );
               }
               this._queueCustomRefreshCookieUpdate(refreshToken, updatedAt, "server");
@@ -2637,7 +2690,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       return null;
     }
     const isAnonymous = accessToken.payload.is_anonymous;
-    if (isAnonymous && options.or !== "anonymous") {
+    if (isAnonymous && options.or !== "anonymous-if-exists") {
       return null;
     }
     return {
@@ -2983,7 +3036,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
    * @param options.expiresInMillis Optional duration in milliseconds before the auth attempt expires (default: 2 hours)
    * @param options.maxAttempts Optional maximum number of polling attempts (default: Infinity)
    * @param options.waitTimeMillis Optional time to wait between polling attempts (default: 2 seconds)
-   * @param options.promptLink Optional function to call with the login URL to prompt the user to open the browser
+   * @param options.promptLink Optional function to call with the login URL and code to prompt the user to open the browser
+   * @param options.anonRefreshToken Optional anonymous refresh token from the CLI's token store to associate with this login attempt
    * @returns Result containing either the refresh token or an error
    */
   async promptCliLogin(options: {
@@ -2991,7 +3045,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     expiresInMillis?: number,
     maxAttempts?: number,
     waitTimeMillis?: number,
-    promptLink?: (url: string) => void,
+    promptLink?: (url: string, loginCode: string) => void,
+    anonRefreshToken?: string,
   }): Promise<Result<string, KnownErrors["CliAuthError"] | KnownErrors["CliAuthExpiredError"] | KnownErrors["CliAuthUsedError"]>> {
     // Step 1: Initiate the CLI auth process
     const response = await this._interface.sendClientRequest(
@@ -3003,6 +3058,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         },
         body: JSON.stringify({
           expires_in_millis: options.expiresInMillis,
+          ...(options.anonRefreshToken != null ? { anon_refresh_token: options.anonRefreshToken } : {}),
         }),
       },
       null
@@ -3016,14 +3072,14 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     const pollingCode = initResult.polling_code;
     const loginCode = initResult.login_code;
 
-    // Step 2: Open the browser for the user to authenticate
+    // Step 2: Open the browser for the user to authenticate and display the verification code
     const url = `${options.appUrl}/handler/cli-auth-confirm?login_code=${encodeURIComponent(loginCode)}`;
     if (options.promptLink) {
-      options.promptLink(url);
+      options.promptLink(url, loginCode);
     } else {
+      console.log(`Your verification code: ${loginCode}`);
       console.log(`Please visit the following URL to authenticate:\n${url}`);
     }
-
 
     // Step 3: Poll for the token
     let attempts = 0;
@@ -3403,6 +3459,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       },
       sendAnalyticsEventBatch: async (body: string, options: { keepalive: boolean }) => {
         return await this._interface.sendAnalyticsEventBatch(body, await this._getSession(), options);
+      },
+      addRequestListener: (listener: RequestListener) => {
+        return this._interface.addRequestListener(listener);
       },
       sendRequest: async (
         path: string,

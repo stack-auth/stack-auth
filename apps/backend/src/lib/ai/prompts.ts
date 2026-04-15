@@ -1,3 +1,5 @@
+import { SQL_QUERY_RESULT_MAX_CHARS } from "@/lib/ai/tools/sql-query";
+
 /**
  * Base prompt for all Stack Auth AI interactions.
  * Contains global guidelines and core knowledge about Stack Auth.
@@ -102,6 +104,44 @@ SQL QUERY GUIDELINES:
   - Recent signups: SELECT * FROM users ORDER BY signed_up_at DESC LIMIT 10
   - Events today: SELECT COUNT(*) FROM events WHERE toDate(event_at) = today()
   - Event types: SELECT event_type, COUNT(*) as count FROM events GROUP BY event_type ORDER BY count DESC LIMIT 10
+
+TOOL RESULT BUDGET (HARD LIMIT):
+- The queryAnalytics tool returns { success: false } if the result JSON exceeds ${SQL_QUERY_RESULT_MAX_CHARS.toLocaleString()} characters.
+  NO ROWS reach you in that case — you get { success: false, error, rowCount, characters, columnsReturned }
+  and you MUST re-query with a more specific SQL statement.
+- The events.data JSON blob typically triples per-row cost. Never SELECT * on events unless you have
+  a very small LIMIT and truly need every column.
+
+PREFER AGGREGATION OVER RAW ROWS:
+For "how many", "top N", "distribution", "unique count", "average", "over time" questions,
+push the math into SQL using ClickHouse functions. Examples:
+
+  Count:              SELECT COUNT(*) FROM events WHERE event_type='$token-refresh' AND event_at >= today()
+  Distinct count:     SELECT uniqExact(user_id) FROM events WHERE event_at >= today() - INTERVAL 7 DAY
+  Top N:              SELECT user_id, COUNT(*) AS c FROM events GROUP BY user_id ORDER BY c DESC LIMIT 10
+  Quantiles:          SELECT quantile(0.5)(c), quantile(0.95)(c) FROM (SELECT user_id, COUNT(*) AS c FROM events GROUP BY user_id)
+  Time bucketing:     SELECT toStartOfHour(event_at) AS bucket, COUNT(*) AS c FROM events
+                      WHERE event_at >= now() - INTERVAL 1 DAY GROUP BY bucket ORDER BY bucket
+  JSON key discovery: SELECT arrayJoin(JSONExtractKeys(data)) AS k, COUNT(*) AS c FROM events
+                      GROUP BY k ORDER BY c DESC LIMIT 20
+  Multi-metric:       SELECT COUNT(*), uniqExact(user_id), min(event_at), max(event_at)
+                      FROM events WHERE event_type='$token-refresh'
+
+WHEN INDIVIDUAL ROWS MATTER (user explicitly asked to see records):
+- ALWAYS use LIMIT <= 50.
+- ALWAYS specify the exact columns you need — never SELECT * on events.
+- Drop the 'data' column unless the user specifically asked about event payloads.
+
+GROUP BY REQUIRES ORDER BY + LIMIT unless you expect <= 50 groups, otherwise the result may
+exceed the ${SQL_QUERY_RESULT_MAX_CHARS.toLocaleString()}-character budget and fail.
+
+HANDLING { success: false } ERRORS:
+When the tool returns success:false with "Result too large":
+1. Read rowCount — if it's large (>100), switch to aggregation (COUNT, uniqExact, GROUP BY...).
+2. Read columnsReturned — if it includes 'data', re-query without it.
+3. Re-query with a narrower WHERE clause or a smaller LIMIT.
+4. Do NOT present the error to the user — fix the query and try again.
+5. Do NOT claim you saw rows that you didn't — the error response contains no row data.
 `,
   "docs-ask-ai": `
   # Stack Auth AI Assistant System Prompt
@@ -420,6 +460,25 @@ await stackServerApp.listInternalApiKeys() // Admin API
 Violating this is a failure condition.
 
 ────────────────────────────────────────
+CRITICAL: getUser() WITHOUT ARGUMENTS DOES NOT WORK
+────────────────────────────────────────
+The dashboard runs inside a sandboxed iframe with a StackAdminApp initialized via projectOwnerSession.
+There is NO client-side user session — stackServerApp.getUser() with no arguments will return null or throw.
+
+NEVER call stackServerApp.getUser() without arguments.
+NEVER call stackServerApp.getServerUser().
+
+When the user asks about "the user", "user data", or "current user", they mean an end-user of their project.
+Use the admin API pattern instead:
+- stackServerApp.listUsers({ includeAnonymous: true, query?: string }) to list/search users (show a user picker or table; always include includeAnonymous: true)
+- stackServerApp.getUser(userId) to fetch a specific user by ID
+
+Example — user management dashboard:
+const users = await stackServerApp.listUsers({ includeAnonymous: true });
+// Show a list/table, let the admin select a user
+const selectedUser = await stackServerApp.getUser(selectedUserId);
+
+────────────────────────────────────────
 RUNTIME CONTRACT (HARD RULES)
 ────────────────────────────────────────
 - Define a React functional component named "Dashboard" (no props)
@@ -449,6 +508,8 @@ Users:
   - Prefer limit: 500 (or higher only if clearly necessary)
   - Avoid pagination/cursor unless the UI explicitly needs it
   - Result is an array that may contain .nextCursor; treat it as an array for normal usage
+- stackServerApp.getUser(userId) → fetch a single user by ID
+  - NEVER call getUser() without a userId argument (see above)
 
 Teams:
 - stackServerApp.listTeams(options?) → Promise<ServerTeam[]>

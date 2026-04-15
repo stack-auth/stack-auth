@@ -194,7 +194,7 @@ async function warnOnValidationFailure(
       captureError("config-override-validation-warning", `Config override validation warning for project ${options.projectId} (this may not be a logic error, but rather a client/implementation issue — e.g. dot notation into non-existent record entries): ${validationResult.error}`);
     }
   } catch (e) {
-    captureError("config-override-validation-check-failed", new StackAssertionError("Config override validation check failed. This may be really bad! Make sure to check the error and the config.", { cause: e, options, levelConfig }));
+    captureError("config-override-validation-check-failed", new StackAssertionError("Config override validation check failed. This may be really bad! Make sure to check the error and the config.", { cause: e, options }));
   }
 }
 

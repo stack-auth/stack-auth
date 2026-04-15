@@ -2,6 +2,7 @@ import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 
 import { BULLDOZER_SORT_HELPERS_SQL } from "./bulldozer-sort-helpers-sql";
+import type { RegisteredRowChangeTrigger, RowChangeTriggerInput } from "./row-change-trigger-dispatch";
 import type { Json, RowData, RowIdentifier, SqlExpression, SqlQuery, SqlStatement, TableId } from "./utilities";
 import { quoteSqlIdentifier } from "./utilities";
 
@@ -36,11 +37,13 @@ export type Table<GK extends Json, SK extends Json, RD extends RowData> = {
   /**
    * @param trigger A SQL statement that can reference the changes table with columns `groupKey: GK`, `rowIdentifier: RowIdentifier`, `oldRowSortKey: SK | null`, `newRowSortKey: SK | null`, `oldRowData: RowData | null`, `newRowData: RowData | null`. Note that this trigger should be a no-op if the table that created this trigger is not initialized.
    */
-  registerRowChangeTrigger(trigger: (changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => SqlStatement[]): { deregister: () => void },
+  registerRowChangeTrigger(trigger: RowChangeTriggerInput): { deregister: () => void },
 
   /** Returns a query producing error rows if materialized data differs from re-derivation from inputs. Empty result = healthy. */
   verifyDataIntegrity(): SqlQuery<Iterable<{ errorType: string, groupKey: GK | null, rowIdentifier: RowIdentifier | null, expected: Json | null, actual: Json | null }>>,
 };
+
+export type { RegisteredRowChangeTrigger };
 
 export { declareCompactTable } from "./tables/compact-table";
 export { declareConcatTable } from "./tables/concat-table";

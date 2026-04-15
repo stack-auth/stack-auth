@@ -9,10 +9,11 @@
 
 import { Prisma } from "@/generated/prisma/client";
 import { toExecutableSqlTransaction } from "@/lib/bulldozer/db/index";
-import { createPaymentsSchema } from "@/lib/payments/schema/index";
+import { paymentsSchema } from "@/lib/payments/schema/singleton";
+import type { ManualTransactionRow } from "@/lib/payments/schema/types";
 import type { PrismaClientTransaction } from "@/prisma-client";
 
-const schema = createPaymentsSchema();
+const schema = paymentsSchema;
 
 function dateToMillis(d: Date | null | undefined): number | null {
   return d ? d.getTime() : null;
@@ -142,6 +143,10 @@ export function itemQuantityChangeToStoredRow(c: {
   };
 }
 
+export function manualTransactionToStoredRow(transaction: ManualTransactionRow): Record<string, unknown> {
+  return transaction;
+}
+
 // ── Dual-write executors ──────────────────────────────────────────────
 
 async function executeSetRow(
@@ -183,4 +188,12 @@ export async function bulldozerWriteItemQuantityChange(
   change: Parameters<typeof itemQuantityChangeToStoredRow>[0],
 ) {
   await executeSetRow(prisma, schema.manualItemQuantityChanges, change.id, itemQuantityChangeToStoredRow(change));
+}
+
+export async function bulldozerWriteManualTransaction(
+  prisma: PrismaClientTransaction,
+  transactionId: string,
+  transaction: ManualTransactionRow,
+) {
+  await executeSetRow(prisma, schema.manualTransactions, transactionId, manualTransactionToStoredRow(transaction));
 }

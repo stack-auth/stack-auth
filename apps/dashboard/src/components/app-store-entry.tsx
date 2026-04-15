@@ -2,8 +2,8 @@
 
 import { AppIcon } from "@/components/app-square";
 import { Badge, Button, Dialog, DialogContent, DialogTitle, ScrollArea, cn } from "@/components/ui";
-import { ALL_APPS_FRONTEND, type AppId } from "@/lib/apps-frontend";
-import { ArrowSquareOutIcon, CaretLeftIcon, CaretRightIcon, CheckIcon, LightningIcon, ShieldCheckIcon, XIcon } from "@phosphor-icons/react";
+import { ALL_APPS_FRONTEND, isSubApp, type AppId } from "@/lib/apps-frontend";
+import { ArrowRightIcon, CaretLeftIcon, CaretRightIcon, CheckIcon, LightningIcon, ShieldCheckIcon, XIcon } from "@phosphor-icons/react";
 import { ALL_APPS, ALL_APP_TAGS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import Image from "next/image";
 import { FunctionComponent, useCallback, useEffect, useRef, useState } from "react";
@@ -25,6 +25,8 @@ export function AppStoreEntry({
 }) {
   const app = ALL_APPS[appId];
   const appFrontend = ALL_APPS_FRONTEND[appId];
+  const parentAppId = isSubApp(appFrontend) ? appFrontend.parentAppId : null;
+  const parentApp = parentAppId == null ? null : ALL_APPS[parentAppId];
   const screenshotContainerRef = useRef<HTMLDivElement>(null);
   const [previewIndex, setPreviewIndex] = useState<number | null>(null);
 
@@ -142,36 +144,52 @@ export function AppStoreEntry({
                 </div>
 
                 {/* CTA Button */}
-                <div className="flex items-center gap-4">
-                  {isEnabled ? (
+                <div className={cn("flex gap-4", parentApp == null ? "items-center" : "flex-col items-start")}>
+                  {parentApp == null ? (
+                    isEnabled ? (
+                      <>
+                        <Button
+                          onClick={onOpen}
+                          size="lg"
+                          className="px-8 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white font-medium shadow-lg shadow-blue-500/20"
+                        >
+                          <ArrowRightIcon className="w-4 h-4 mr-2" />
+                          Open App
+                        </Button>
+                        {onDisable && (
+                          <Button
+                            onClick={onDisable}
+                            variant="ghost"
+                            size="lg"
+                            className="text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-950 dark:hover:text-red-300"
+                          >
+                            Disable
+                          </Button>
+                        )}
+                      </>
+                    ) : (
+                      <Button
+                        onClick={onEnable}
+                        size="lg"
+                        className="px-8 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white font-medium shadow-lg shadow-blue-500/20"
+                      >
+                        Enable App
+                      </Button>
+                    )
+                  ) : (
                     <>
+                      <p className="text-xs text-muted-foreground">
+                        This app is part of the {parentApp.displayName} app.
+                      </p>
                       <Button
                         onClick={onOpen}
                         size="lg"
                         className="px-8 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white font-medium shadow-lg shadow-blue-500/20"
                       >
-                        <ArrowSquareOutIcon className="w-4 h-4 mr-2" />
-                        Open App
+                        <ArrowRightIcon className="w-4 h-4 mr-2" />
+                        Go to {parentApp.displayName}
                       </Button>
-                      {onDisable && (
-                        <Button
-                          onClick={onDisable}
-                          variant="ghost"
-                          size="lg"
-                          className="text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-400 dark:hover:bg-red-950 dark:hover:text-red-300"
-                        >
-                          Disable
-                        </Button>
-                      )}
                     </>
-                  ) : (
-                    <Button
-                      onClick={onEnable}
-                      size="lg"
-                      className="px-8 bg-blue-600 hover:bg-blue-700 dark:bg-blue-500 dark:hover:bg-blue-600 text-white font-medium shadow-lg shadow-blue-500/20"
-                    >
-                      Enable App
-                    </Button>
                   )}
                 </div>
               </div>

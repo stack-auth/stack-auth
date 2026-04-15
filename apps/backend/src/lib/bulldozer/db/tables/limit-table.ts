@@ -1,5 +1,7 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import type { Table } from "..";
+import { attachRowChangeTriggerMetadata, normalizeRowChangeTrigger } from "../row-change-trigger-dispatch";
+import type { RegisteredRowChangeTrigger } from "../row-change-trigger-dispatch";
 import type { Json, RowData, SqlExpression, SqlStatement, TableId } from "../utilities";
 import {
   getStorageEnginePath,
@@ -20,7 +22,7 @@ export function declareLimitTable<
   fromTable: Table<GK, SK, RD>,
   limit: SqlExpression<number>,
 }): Table<GK, SK, RD> {
-  const triggers = new Map<string, (changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => SqlStatement[]>();
+  const triggers = new Map<string, RegisteredRowChangeTrigger>();
   const getGroupKeyPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey]);
   const getGroupRowsPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey, "rows"]);
   const getGroupRowPath = (groupKey: SqlExpression<Json>, rowIdentifier: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey, "rows", rowIdentifier]);
@@ -204,20 +206,16 @@ export function declareLimitTable<
         WHERE "oldRows"."rowSortKey" IS DISTINCT FROM "newRows"."rowSortKey"
           OR "oldRows"."rowData" IS DISTINCT FROM "newRows"."rowData"
       `.toStatement(limitChangesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb'),
-      ...[...triggers.values()].flatMap((trigger) => trigger(quoteSqlIdentifier(limitChangesTableName))),
     ];
   };
-  let fromTableTriggerRegistration: null | { deregister: () => void } = null;
-  const ensureFromTableTriggerRegistration = () => {
-    if (fromTableTriggerRegistration != null) return;
-    fromTableTriggerRegistration = options.fromTable.registerRowChangeTrigger((fromChangesTable) => {
-      return createFromTableTriggerStatements(fromChangesTable);
-    });
-  };
-  const deregisterFromTableTrigger = () => {
-    fromTableTriggerRegistration?.deregister();
-    fromTableTriggerRegistration = null;
-  };
+  const fromTableTrigger = attachRowChangeTriggerMetadata(
+    (fromChangesTable) => createFromTableTriggerStatements(fromChangesTable),
+    {
+      targetTableId: tableIdToDebugString(options.tableId),
+      targetTableTriggers: triggers,
+    },
+  );
+  options.fromTable.registerRowChangeTrigger(fromTableTrigger);
 
   const table: ReturnType<typeof declareLimitTable<GK, SK, RD>> = {
     tableId: options.tableId,
@@ -231,7 +229,6 @@ export function declareLimitTable<
     compareGroupKeys: options.fromTable.compareGroupKeys,
     compareSortKeys: options.fromTable.compareSortKeys,
     init: () => {
-      ensureFromTableTriggerRegistration();
       const fromGroupsTableName = `from_groups_${generateSecureRandomString()}`;
       const limitedRowsTableName = `limited_rows_${generateSecureRandomString()}`;
       return [
@@ -344,7 +341,6 @@ export function declareLimitTable<
       ];
     },
     delete: () => {
-      deregisterFromTableTrigger();
       return [sqlStatement`
         WITH RECURSIVE "pathsToDelete" AS (
           SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
@@ -490,7 +486,7 @@ export function declareLimitTable<
     `,
     registerRowChangeTrigger: (trigger) => {
       const id = generateSecureRandomString();
-      triggers.set(id, trigger);
+      triggers.set(id, normalizeRowChangeTrigger(trigger));
       return { deregister: () => triggers.delete(id) };
     },
     verifyDataIntegrity: () => {

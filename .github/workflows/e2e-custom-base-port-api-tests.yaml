@@ -92,16 +92,16 @@ jobs:
         run: pnpm run wait-until-postgres-is-ready:pg_isready
 
       - name: Wait on Inbucket
-        run: pnpx wait-on tcp:localhost:6729
+        run: pnpm exec wait-on tcp:localhost:6729
 
       - name: Wait on Svix
-        run: pnpx wait-on tcp:localhost:6713
+        run: pnpm exec wait-on tcp:localhost:6713
       
       - name: Wait on QStash
-        run: pnpx wait-on tcp:localhost:6725
+        run: pnpm exec wait-on tcp:localhost:6725
 
       - name: Wait on ClickHouse
-        run: pnpx wait-on http://localhost:6736/ping
+        run: pnpm exec wait-on http://localhost:6736/ping
 
       - name: Initialize database
         run: pnpm run db:init
@@ -145,7 +145,7 @@ jobs:
       - name: Start run-cron-jobs in background
         uses: JarvusInnovations/background-action@v1.0.7
         with:
-          run: pnpm -C apps/backend run run-cron-jobs --log-order=stream &
+          run: pnpm -C apps/backend run run-cron-jobs:test --log-order=stream &
           wait-on: |
             http://localhost:6702
           tail: true

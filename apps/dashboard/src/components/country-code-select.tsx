@@ -2,107 +2,42 @@
 
 import { cn } from "@/lib/utils";
 import {
-  Button,
-  Command,
-  CommandEmpty,
-  CommandGroup,
-  CommandInput,
-  CommandItem,
-  CommandList,
   FormControl,
   FormField,
   FormItem,
   FormMessage,
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
+  Input,
 } from "@/components/ui";
 import { FieldLabel } from "@/components/form-fields";
-import { CaretSortIcon, CheckIcon } from "@radix-ui/react-icons";
-import { ISO_3166_ALPHA_2_COUNTRY_CODES } from "@stackframe/stack-shared/dist/schema-fields";
 import { Control, FieldValues, Path } from "react-hook-form";
-import { useState } from "react";
 
-const COUNTRY_CODE_OPTIONS = ISO_3166_ALPHA_2_COUNTRY_CODES.map((code) => ({
-  value: code,
-  label: code,
-}));
-
-type CountryCodeSelectProps = {
+type CountryCodeInputProps = {
   value: string | null,
   onChange: (value: string | null) => void,
   placeholder?: string,
   disabled?: boolean,
   className?: string,
-  allowClear?: boolean,
 };
 
-export function CountryCodeSelect({
+export function CountryCodeInput({
   value,
   onChange,
-  placeholder = "Select country code...",
+  placeholder = "e.g. US",
   disabled,
   className,
-  allowClear = true,
-}: CountryCodeSelectProps) {
-  const [open, setOpen] = useState(false);
-
+}: CountryCodeInputProps) {
   return (
-    <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <Button
-          variant="outline"
-          role="combobox"
-          aria-expanded={open}
-          disabled={disabled}
-          className={cn(
-            "justify-between font-normal",
-            !value && "text-muted-foreground",
-            className,
-          )}
-        >
-          {value || placeholder}
-          <CaretSortIcon className="ml-2 h-4 w-4 shrink-0 opacity-50" />
-        </Button>
-      </PopoverTrigger>
-      <PopoverContent className="w-[200px] p-0" align="start">
-        <Command>
-          <CommandInput placeholder="Search country code..." />
-          <CommandList>
-            <CommandEmpty>No country found.</CommandEmpty>
-            <CommandGroup>
-              {allowClear && value && (
-                <CommandItem
-                  value="__clear__"
-                  onSelect={() => {
-                    onChange(null);
-                    setOpen(false);
-                  }}
-                  className="text-muted-foreground"
-                >
-                  Clear
-                </CommandItem>
-              )}
-              {COUNTRY_CODE_OPTIONS.map((option) => (
-                <CommandItem
-                  key={option.value}
-                  value={option.value}
-                  onSelect={() => {
-                    onChange(option.value);
-                    setOpen(false);
-                  }}
-                >
-                  {option.label}
-                  {value === option.value && (
-                    <CheckIcon className="ml-auto h-4 w-4" />
-                  )}
-                </CommandItem>
-              ))}
-            </CommandGroup>
-          </CommandList>
-        </Command>
-      </PopoverContent>
-    </Popover>
+    <Input
+      value={value ?? ""}
+      onChange={(e) => {
+        const val = e.target.value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2);
+        onChange(val || null);
+      }}
+      placeholder={placeholder}
+      disabled={disabled}
+      maxLength={2}
+      className={cn("font-mono", className)}
+    />
   );
 }
 
@@ -123,10 +58,10 @@ export function CountryCodeField<F extends FieldValues>(props: {
           <label className="flex flex-col gap-2">
             {props.label ? <FieldLabel required={props.required}>{props.label}</FieldLabel> : null}
             <FormControl>
-              <CountryCodeSelect
+              <CountryCodeInput
                 value={field.value || null}
                 onChange={(val) => field.onChange(val)}
-                placeholder={props.placeholder ?? "Select country code..."}
+                placeholder={props.placeholder ?? "e.g. US"}
                 disabled={props.disabled}
                 className="max-w-lg"
               />

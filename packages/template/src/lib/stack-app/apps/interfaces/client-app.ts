@@ -2,6 +2,7 @@ import { KnownErrors } from "@stackframe/stack-shared";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { AsyncStoreProperty, AuthLike, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrlOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, ResolvedHandlerUrls, stackAppInternalsSymbol, TokenStoreInit } from "../../common";
+import type { RequestListener } from "@stackframe/stack-shared/dist/interface/client-interface";
 import { CustomerInvoicesList, CustomerInvoicesRequestOptions, CustomerProductsList, CustomerProductsRequestOptions, Item } from "../../customers";
 import { Project } from "../../projects";
 import { ProjectCurrentUser, SyncedPartialUser, TokenPartialUser } from "../../users";
@@ -67,7 +68,7 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
     } & ({ noVerificationCallback: true } | { noVerificationCallback?: false, verificationCallbackUrl?: string })): Promise<Result<undefined, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"] | KnownErrors["BotChallengeFailed"]>>,
     signInWithPasskey(): Promise<Result<undefined, KnownErrors["PasskeyAuthenticationFailed"] | KnownErrors["InvalidTotpCode"] | KnownErrors["PasskeyWebAuthnError"]>>,
     callOAuthCallback(): Promise<boolean>,
-    promptCliLogin(options: { appUrl: string, expiresInMillis?: number }): Promise<Result<string, KnownErrors["CliAuthError"] | KnownErrors["CliAuthExpiredError"] | KnownErrors["CliAuthUsedError"]>>,
+    promptCliLogin(options: { appUrl: string, expiresInMillis?: number, anonRefreshToken?: string, promptLink?: (url: string, loginCode: string) => void }): Promise<Result<string, KnownErrors["CliAuthError"] | KnownErrors["CliAuthExpiredError"] | KnownErrors["CliAuthUsedError"]>>,
     sendForgotPasswordEmail(email: string, options?: { callbackUrl?: string }): Promise<Result<undefined, KnownErrors["UserNotFound"]>>,
     sendMagicLinkEmail(email: string, options?: { callbackUrl?: string }): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"] | KnownErrors["BotChallengeFailed"]>>,
     resetPassword(options: { code: string, password: string }): Promise<Result<undefined, KnownErrors["VerificationCodeError"]>>,
@@ -115,6 +116,9 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
       getConstructorOptions(): StackClientAppConstructorOptions<HasTokenStore, ProjectId> & { inheritsFrom?: undefined },
       sendSessionReplayBatch(body: string, options: { keepalive: boolean }): Promise<Result<Response, Error>>,
       sendAnalyticsEventBatch(body: string, options: { keepalive: boolean }): Promise<Result<Response, Error>>,
+      addRequestListener(listener: RequestListener): () => void,
+      sendRequest(path: string, requestOptions: RequestInit, requestType?: "client" | "server" | "admin"): Promise<Response>,
+      signInWithTokens(tokens: { accessToken: string, refreshToken: string }): Promise<void>,
     },
   }
   & AsyncStoreProperty<"project", [], Project, false>

@@ -8,92 +8,30 @@ type SearchResult = {
   title?: string,
 };
 
-// Helper function to call MCP server
-async function callMcpServer(search_query: string): Promise<SearchResult[]> {
+// Helper: same search implementation as MCP / backend docs tools (internal HTTP API)
+async function callDocsToolsSearch(search_query: string, requestOrigin: string): Promise<SearchResult[]> {
   try {
-    // Use localhost during development, production URL otherwise
-    const mcpUrl = process.env.NODE_ENV === 'development'
-      ? 'http://localhost:8104/api/internal/mcp'
-      : 'https://mcp.stack-auth.com/api/internal/mcp';
-
-    console.log(`Calling MCP server at: ${mcpUrl}`);
-
-    const response = await fetch(mcpUrl, {
+    const response = await fetch(`${requestOrigin}/api/internal/docs-tools`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json, text/event-stream',
       },
       body: JSON.stringify({
-        jsonrpc: '2.0',
-        method: 'tools/call',
-        params: {
-          name: 'search_docs',
-          arguments: { search_query, result_limit: 20 },
-        },
-        id: Date.now(),
+        action: 'search_docs',
+        search_query,
+        result_limit: 20,
       }),
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error(`MCP server error (${response.status}):`, errorText);
-      throw new Error(`MCP server error: ${response.status} - ${errorText.substring(0, 200)}`);
+      console.error(`docs-tools error (${response.status}):`, errorText);
+      throw new Error(`docs-tools error: ${response.status} - ${errorText.substring(0, 200)}`);
     }
 
-    // Parse Server-Sent Events format response
-    // Read the stream until we get the data event (don't wait for connection to close)
-    if (!response.body) {
-      throw new Error('No response body');
-    }
+    const jsonData = (await response.json()) as { content?: Array<{ type: string, text?: string }> };
 
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder();
-    let buffer = '';
-    let jsonData = null;
-
-    try {
-      while (true) {
-        const { done, value } = await reader.read();
-
-        if (value) {
-          buffer += decoder.decode(value, { stream: true });
-
-          // Look for complete data: lines in the buffer
-          const lines = buffer.split('\n');
-
-          for (const line of lines) {
-            if (line.startsWith('data: ')) {
-              try {
-                jsonData = JSON.parse(line.substring(6));
-                // Found our data, we can stop reading
-                await reader.cancel();
-                break;
-              } catch (e) {
-                // Continue looking for valid JSON data
-              }
-            }
-          }
-
-          if (jsonData) break;
-        }
-
-        if (done) break;
-      }
-    } finally {
-      reader.releaseLock();
-    }
-
-    if (!jsonData) {
-      throw new Error('Invalid MCP response format');
-    }
-
-    if (jsonData.error) {
-      throw new Error(jsonData.error.message || 'MCP search failed');
-    }
-
-    // Parse the search results from the text response
-    const searchResultText = jsonData.result?.content?.[0]?.text || '';
+    const searchResultText = jsonData.content?.[0]?.text || '';
     if (searchResultText.includes('No results found')) {
       return [];
     }
@@ -139,7 +77,7 @@ async function callMcpServer(search_query: string): Promise<SearchResult[]> {
 
     return results;
   } catch (error) {
-    console.error('MCP server call failed:', error);
+    console.error('docs-tools search failed:', error);
     // Fallback to empty results
     return [];
   }
@@ -167,20 +105,20 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    // Call MCP server for search results
-    const results = await callMcpServer(search_query);
+    const origin = new URL(request.url).origin;
+    const results = await callDocsToolsSearch(search_query, origin);
 
-    console.log(`Found ${results.length} search results from MCP server for "${search_query}"`);
+    console.log(`Found ${results.length} search results from docs-tools for "${search_query}"`);
 
     // Filter out admin API endpoints as an additional safety measure
     const filteredResults = results.filter(result => !result.url.startsWith('/api/admin'));
 
-    // Sort by platform priority since MCP server already handles relevance
+    // Sort by platform priority since docs-tools already handles relevance
     const sortedResults = filteredResults.sort((a, b) => {
       return getPlatformPriority(b.url) - getPlatformPriority(a.url);
     });
 
-    console.log(`\n=== MCP SEARCH RESULTS FOR "${search_query}" ===`);
+    console.log(`\n=== DOCS SEARCH RESULTS FOR "${search_query}" ===`);
     sortedResults.slice(0, 10).forEach((result, i) => {
       const priority = getPlatformPriority(result.url);
       console.log(`${i + 1}. "${result.content}" (${result.type}) - Priority: ${priority} - URL: ${result.url}`);

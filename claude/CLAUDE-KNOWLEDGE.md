@@ -79,9 +79,6 @@ A: Run lint from `apps/dashboard` directly (for example `pnpm lint -- "src/app/(
 Q: How should unsubscribe-link e2e tests avoid breakage from email theme/layout changes?
 A: In `apps/e2e/tests/backend/endpoints/api/v1/unsubscribe-link.test.ts`, avoid snapshotting the entire rendered HTML for transactional emails; assert stable behavior instead (email content present and `/api/v1/emails/unsubscribe-link` absent) so cosmetic wrapper/style changes do not fail the test.
 
-Q: Why is the JIT disabled for Bulldozer DB mutations with only a few rows?
-A: PostgreSQL JIT can dominate runtime for Bulldozer's giant single-statement CTE transactions. In a `group -> map -> map -> group` mutation with only 31 SQL statements and ~8 source rows, `EXPLAIN (ANALYZE, BUFFERS, FORMAT JSON, VERBOSE)` showed ~1.4ms planning, ~1598.9ms execution, and ~1597.5ms of JIT time (`Optimization` ~836ms, `Emission` ~740ms) while the actual plan nodes were sub-millisecond. Disabling JIT locally for Bulldozer transactions with `SET LOCAL jit = off;` in `toExecutableSqlTransaction()` dropped the same query to ~0.63ms execution and brought the stacked fuzz case from ~41s to ~0.34s.
-
 Q: How do cross-domain auth handoffs avoid creating extra refresh-token sessions?
 A: The cross-domain authorize route must carry the current `refreshTokenId` through authorization-code exchange and OAuth token issuance must reuse that ID. Keep `afterCallbackRedirectUrl` URL-only and persist refresh-token linkage in `ProjectUserAuthorizationCode.grantedRefreshTokenId`; then return that as `user.refreshTokenId` in `getAuthorizationCode` so token issuance can reuse the same refresh-token row with ownership checks.
 
@@ -142,23 +139,12 @@ A: Update affected inline snapshots in `apps/e2e/tests/backend/endpoints/api/v1/
 Q: How should `createOrUpdateProjectWithLegacyConfig` handle `onboardingStatus` for forward-compat checks?
 A: Only write `onboardingStatus` when the `Project.onboardingStatus` column exists (for example by checking `information_schema.columns` in-transaction) so current code can still run against older schemas where that column is absent.
 
+Q: How does the Stack Auth docs MCP relate to the ask-chat API and doc tools?
+A: The public MCP (`/api/internal/mcp` on the docs site) exposes only `ask_stack_auth`, which POSTs to `/api/latest/ai/query/generate` with `tools: ["docs"]` and `systemPrompt: "docs-ask-ai"`. The backend no longer loads doc tools via MCP; `createDocsTools()` calls the docs app `POST /api/internal/docs-tools` with typed actions (same behavior as before). Optional `STACK_INTERNAL_DOCS_TOOLS_SECRET` gates the internal route; `STACK_DOCS_INTERNAL_BASE_URL` overrides the docs origin for the backend.
+Q: What caused the March 19, 2026 QEMU local emulator deps startup regression?
+A: The QEMU runtime path regressed when it switched from mounting `docker/local-emulator/base.env` into the runtime ISO to mounting the generated hidden file `docker/local-emulator/.env.development` instead. In testing, the `.env.development` QEMU path left cold boot stuck with only PostgreSQL healthy, while restoring the runtime ISO back to `base.env` brought deps startup back to about 12-13 seconds. The env payloads were effectively the same, so the likely issue was the QEMU runtime bundle/path handling for `.env.development`, not the actual env values.
 Q: Where is the private sign-up risk engine generated entrypoint in backend now?
 A: The generator script writes `apps/backend/src/private/implementation.generated.ts` (not `src/generated/private-sign-up-risk-engine.ts`), and backend runtime imports should target `@/private/implementation.generated`.
-
-Q: When do Bulldozer transactions need sequential temp-table execution instead of the default giant CTE executor?
-A: Most Bulldozer operators should keep using the original giant-CTE executor because it is faster and matches existing semantics. `declareSortTable` is the exception for its bulk-init path: it needs real temp tables so a transaction-local PL/pgSQL helper can read intermediate sorted rows by table name. The safe split is to keep the CTE executor by default and switch to sequential execution only when a statement uses `pg_temp.bulldozer_sort_bulk_init_from_table`. Also, plain side-effecting `SELECT pg_temp.helper(...)` CTEs are not reliable unless they are wrapped in a data-modifying statement such as `INSERT INTO pg_temp.bulldozer_side_effects ...`.
-
-Q: Why can initializing a Bulldozer operator with an internal child table fail with `BulldozerStorageEngine_keyPathParent_fkey`?
-A: Internal child table paths add an extra `"table"` segment (for example `.../table/external:parent/table/internal:child`). The parent operator must insert the intermediate `.../table` keyPath before running the child table `init()`. Without that node, inserting the child root path violates the storage engine parent foreign key.
-
-Q: Why can a multi-input operator like `declareLeftJoinTable` read stale upstream rows inside trigger execution?
-A: Bulldozer executes most statement batches as one giant CTE transaction for speed. Within that single statement snapshot, downstream reads of `BulldozerStorageEngine` may not see upstream writes from earlier CTEs unless data is passed explicitly. For left-join trigger correctness (especially when one input depends on the other), force sequential execution for those statements (for example with a sentinel checked in `toExecutableSqlStatements`) or derive new input state directly from change tables instead of re-reading storage.
-
-Q: How can `declareLeftJoinTable` avoid accidental scans over unrelated `BulldozerStorageEngine` rows?
-A: Avoid all-groups `listRowsInGroup` scans in `init()`. First list left-table groups, then fetch left/right rows per group via `CROSS JOIN LATERAL listRowsInGroup({ groupKey })`. For all-groups read paths, traverse from table-local group nodes using `keyPathParent = <groupsPath>` equality joins (`groupPath -> groupRowsPath -> rows`) instead of prefix-slice predicates like `keyPathParent[1:cardinality(...)] = ...`.
-
-Q: What query shape should Bulldozer use to list all rows without scaling with entire `BulldozerStorageEngine` size?
-A: For table-scoped all-groups reads, use equality-join traversal rooted at that table's groups path: `groupPath (keyPathParent = groupsPath) -> groupRowsPath (keyPathParent = groupPath.keyPath and leaf = 'rows') -> rows (keyPathParent = groupRowsPath.keyPath)`. Avoid prefix slicing on `keyPathParent` (`[1:cardinality(...)] = ...`), which can force broad scans over unrelated tables.
 
 Q: Why did EventTracker throw `Reflect.get called on non-object` in JS cookie tests?
 A: Partial browser mocks can expose `window` without a real `history` object. Calling `Reflect.get(historyObject, "pushState")` throws before type checks. Use normal guarded access (`Object.getOwnPropertyDescriptor(window, "history")?.value`) plus type guards for `pushState`/`replaceState`, and patch/restore methods directly without `Reflect`.
@@ -172,74 +158,122 @@ A: In `packages/template/src/components-page/stack-handler-client.tsx`, parse ha
 Q: What is the current `app.urls` contract after deprecating runtime URL mutation?
 A: `app.urls` is now static (`getUrls(...)` only) and no longer injects runtime `after_auth_return_to` / `stack_cross_domain_*` params from `window.location`. For navigation flows, examples and consumers should use `redirectToXyz()` methods instead (for example `redirectToSignIn()` / `redirectToSignOut()`), while tests for hosted flows should assert dynamic params on actual redirect methods, not on `app.urls`.
 
-Q: What is the fastest safe way to delete a Bulldozer table subtree from `BulldozerStorageEngine`?
-A: Delete only the table root `keyPath` and rely on the existing `keyPathParent -> keyPath ON DELETE CASCADE` FK to remove descendants. This avoids recursive CTE path enumeration and significantly speeds up large deletes while preserving semantics.
-
-Q: How should `declareLimitTable.listRowsInGroup` implement the all-groups read path for performance?
-A: Read directly from the materialized limit table subtree (`groups -> rows` via `keyPathParent` equality joins) and apply range predicates on stored `rowSortKey`, instead of scanning upstream source rows and semi-joining with `EXISTS` on each row. This keeps behavior but removes an avoidable full-source scan.
-
 Q: How should user signup time be exposed in JWT claims before production rollout?
 A: Use `signed_up_at` (OIDC-style naming) in access tokens and encode it as Unix seconds in `apps/backend/src/lib/tokens.tsx` (`Math.floor(user.signed_up_at_millis / 1000)`). Since this is pre-prod, the payload schema can require `signed_up_at` directly without a backward-compat optional shim.
 
-Q: Why did adding `signed_up_at` to the access token payload break backend typecheck?
-A: `AccessTokenPayload` currently does not include `signed_up_at`. In `apps/backend/src/lib/tokens.tsx`, `payload` is typed as `Omit<AccessTokenPayload, "iss" | "aud" | "iat">`, so extra fields fail with `TS2353`. Until the schema/type is updated consistently, keep `signed_up_at` out of the payload object.
+Q: Where should new globally searchable Cmd+K destinations be added in the dashboard?
+A: Add project-level shortcuts to `PROJECT_SHORTCUTS` in `apps/dashboard/src/components/cmdk-commands.tsx` (optionally gated with `requiredApps`), and for app subpages rely on the flattened `appFrontend.navigationItems` command generation in the same file so pages are directly searchable without nested preview navigation.
 
-Q: How should Bulldozer Studio mutation endpoints be hardened?
-A: In `apps/backend/scripts/run-bulldozer-studio.ts`, enforce loopback-only requests, require a per-instance mutation token header (for all POST routes), bound request body size before buffering/JSON parse, and ensure raw writes use the same advisory transaction lock as other table mutations. For raw upsert correctness, insert missing parent key paths before upserting the leaf node.
+Q: How should handler URL/shared interface renames be rolled out when template/backend import `@stackframe/stack-shared/dist/*`?
+A: Add the new source entrypoint in `packages/stack-shared/src/interface` and update imports to the new `dist` path, but validate with package typechecks after the stack-shared dist artifacts are refreshed (for example via existing dev watchers), because consumers resolve through `dist/*` entrypoints rather than `src/*`.
 
-Q: What is the new `declareLeftJoinTable` API contract and why was it changed?
-A: `declareLeftJoinTable` now takes `leftJoinKey` and `rightJoinKey` SQL mappers (each producing a `joinKey`) instead of an arbitrary `on` predicate. Join rows are matched when `leftJoinKey IS NOT DISTINCT FROM rightJoinKey` within the same group. This removes custom non-equality predicates, enables planner-friendly equality joins, and keeps null-key matching explicit (`IS NOT DISTINCT FROM`).
+Q: How are custom page prompts organized in `page-component-versions.ts` now?
+A: `signIn` and `signUp` share a single `createAuthPagePrompt(type)` helper, and all remaining pages (`signOut`, `emailVerification`, `passwordReset`, `forgotPassword`, `oauthCallback`, `magicLinkCallback`, `accountSettings`, `teamInvitation`, `mfa`, `error`, `onboarding`) now use `createCustomPagePrompt(...)` with concise logical `structure` plus a React `reactExample`.
 
-Q: What does `listRowsInGroup` return regarding `groupKey` and what pitfall was fixed?
-A: In Bulldozer, all-groups row queries can include `groupKey`, while specific-group queries may omit it. A bug in `declareStoredTable.listRowsInGroup` ignored the provided `groupKey` and did not expose `groupKey` for all-groups reads. It now returns `'null'::jsonb AS groupKey` for all-groups reads and correctly filters specific-group reads to only the null group (`groupKey IS NOT DISTINCT FROM 'null'::jsonb`).
+Q: What makes custom page prompt examples actionable for coding agents?
+A: Avoid abstract placeholders for core flows (for example undefined section components or form primitives). In `page-component-versions.ts`, examples are most useful when they inline the section/form components and state transitions they rely on, while keeping `structure` focused on logical behavior rather than visual layout.
 
-Q: How should Bulldozer materialized operators manage upstream trigger registrations across init/delete?
-A: Register upstream row-change triggers lazily in `init()` (via an idempotent `ensure...Registration` helper), store deregistration handles, and call those `deregister()` functions in `delete()`. This avoids leaked/no-op trigger callbacks after table teardown while still allowing re-initialization to re-register subscriptions.
+Q: How detailed should the Account Settings custom-page prompt be?
+A: The `accountSettings` prompt should enumerate each top-level page and each subsection's exact responsibilities and API calls (emails, password, passkey, OTP, MFA, notifications, sessions, API keys, payments, settings, team pages, team creation). The example should inline section components and actions rather than referencing undefined placeholders.
 
-Q: How can we test trigger registration lifecycle behavior without depending on database row changes?
-A: In `apps/backend/src/lib/bulldozer/db/index.test.ts`, wrap input tables with an instrumentation helper that intercepts `registerRowChangeTrigger`, counts `register`/`deregister` calls, and tracks active registrations. Then assert `init()` registers exactly once per input, repeated `init()` is idempotent, `delete()` deregisters, and re-`init()` re-registers.
+Q: What should we do if dashboard typecheck fails with syntax errors in `apps/dashboard/.next/dev/types/routes.d.ts`?
+A: Regenerate Next route types with `pnpm --filter @stackframe/dashboard exec next typegen` (and if needed, delete the corrupted `apps/dashboard/.next/dev/types/routes.d.ts` first). This fixes transient generated-file corruption without changing source code.
 
-Q: Why can `declareConcatTable` ignore input sort comparator differences?
-A: `declareConcatTable` always emits `rowSortKey = null` and uses `compareSortKeys: () => 0` itself, so input sort-order semantics are not part of concat output behavior. It should only enforce group-key comparator compatibility, not sort comparator compatibility.
+Q: What is the current `getCustomPagePrompts` API shape?
+A: `getCustomPagePrompts` now takes no arguments and returns all prompts directly; call it as `getCustomPagePrompts()` instead of passing an SDK package name.
+Q: Which port suffixes are assigned to the two local docs sites?
+A: `docs` (old docs app) uses suffix `26`, and `docs-mintlify` uses suffix `04`. Keep these in sync across `docs/package.json`, `docs-mintlify/package.json`, `apps/dev-launchpad/public/index.html`, and `apps/dashboard/.env.development` (`NEXT_PUBLIC_STACK_DOCS_BASE_URL` points to old docs on `26`).
 
-Q: How should flaky subset-iteration perf assertions be stabilized?
-A: In `apps/backend/src/lib/bulldozer/db/index.perf.test.ts`, keep a warmup query, then measure multiple timed runs (for example 5) and assert on average latency instead of a single run. Log average, standard deviation, variance, min, and max so regressions still show up while reducing one-off outlier failures.
+Q: Why did the dashboard Vercel integration throw "Expected publishableClientKey" during key generation?
+A: In `apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/vercel/page-client.tsx`, the code always asserted `newKey.publishableClientKey` even when `project.requirePublishableClientKey` was false. Fix by only asserting/passing `publishableClientKey` when that project config flag is true.
 
-Q: What if multi-run average still flakes because of one or two large outliers?
-A: Use robust stats for thresholds: keep logging full `avg/stddev/variance/min/max`, but assert subset-iteration performance on `trimmedAverage` (drop one min/max sample when there are 5 runs). This preserves sensitivity to sustained regressions while tolerating transient host contention spikes during concurrent test-file execution.
+Q: Why can restricted users appear logged out on auth handler pages even with a valid session?
+A: `useUser()` filters out restricted users by default. In `packages/template/src/components-page/auth-page.tsx`, use `useUser({ includeRestricted: true })` and explicitly redirect restricted users to onboarding when `automaticRedirect` is enabled.
 
-Q: How should `declareTimeFoldTable` row identifiers and SQL aliases behave?
-A: `declareTimeFoldTable` emits expanded output identifiers with a flat-row suffix (for example `sourceRowId:1` even when one row is emitted), matching other fold-style operators. For query outputs, use unquoted aliases (`AS groupKey`, `AS rowIdentifier`, etc.) if later clauses reference them (`ORDER BY groupKey, rowIdentifier`) to avoid case-sensitive alias lookup errors in Postgres.
+Q: Why can external-db-sync sequencer throw `operator does not exist: text = uuid` on team updates?
+A: In `apps/backend/src/app/api/latest/internal/external-db-sync/sequencer/route.ts`, the TEAM_INVITATION cascade compares JSON text (`"VerificationCode"."data"->>'team_id'`) against `"Team"."teamId"` (`uuid`). Cast the UUID side to text (`changed_teams."teamId"::text`) in the WHERE clause so Postgres type resolution succeeds and team-invitation re-sync marking works.
 
-Q: Why can Bulldozer Studio show initialized derived tables that do not react to new stored-table mutations?
-A: Trigger registrations are in-memory and are established in table `init()`. If the DB already has initialized derived tables from a previous Studio process, a fresh Studio process can report `initialized: true` from storage while lacking active trigger subscriptions. In `run-bulldozer-studio.ts`, rebind initialized derived tables at startup by deleting and re-initializing them in dependency order so subscriptions are re-registered.
+Q: Why shouldn't OAuth callback retries wrap the whole `getCallback` flow?
+A: The authorization code exchange (`oauthClient.callback` / `oauthCallback`) is effectively one-shot, so retrying the full callback can convert a transient downstream failure into `invalid_grant` on the next attempt. Retries should wrap only post-exchange user-info fetches (`postProcessUserInfo`) and only for transient network/timeout errors.
 
-Q: How can I inspect the `declareTimeFoldTable` scheduler state in Bulldozer Studio?
-A: Use the new `⏱️ Timefold` mode in `apps/backend/scripts/run-bulldozer-studio.ts`. It calls `/api/timefold/debug`, which reports whether `BulldozerTimeFoldQueue` and `BulldozerTimeFoldMetadata` exist, the metadata `lastProcessedAt` value, and up to 500 queued rows (including `scheduledAt`, `stateAfter`, `rowData`, and `reducerSql`) ordered by scheduled execution time.
+Q: How should OAuth callback behave when userinfo retries still fail?
+A: After exhausting transient-network retries in `OAuthBaseProvider.getCallback`, capture internal diagnostics (`oauth-userinfo-retry-exhausted`) but throw `KnownErrors.OAuthProviderTemporarilyUnavailable` so clients get a user-recoverable error/redirect flow instead of an internal assertion.
 
-Q: Why can timefold queue rows remain overdue even though the reducer function exists?
-A: The migration creates the queue processor function regardless of `pg_cron`, but `pg_cron` setup is best-effort and can be skipped (for example if `cron.job` is unavailable). In that state, `BulldozerTimeFoldQueue` grows while `lastProcessedAt` stops moving until `public.bulldozer_timefold_process_queue()` is called manually or `pg_cron` is installed/configured correctly.
+Q: How should OAuth callback errors be surfaced to handler-based clients?
+A: In `apps/backend/src/app/api/latest/auth/oauth/callback/[provider_id]/route.tsx`, prefer redirecting known errors to the original OAuth callback URL (`redirectUri`) with `error`, `error_description`, `errorCode`, `message`, and `details` query params (fallback to `errorRedirectUrl` if needed). In template client handling (`packages/template/src/lib/auth.ts` + `components-page/oauth-callback.tsx`), detect those params, reconstruct a `KnownError`, and route to the handler error page so users get actionable UI instead of silent sign-in redirects.
 
-Q: How do we ensure `pg_cron` is actually available in local dev Postgres?
-A: In `docker/dev-postgres-with-extensions/Dockerfile`, install `postgresql-15-cron`, add `pg_cron` to `shared_preload_libraries`, set `cron.database_name='stackframe'`, and create the extension during init (`CREATE EXTENSION pg_cron;`). After `pnpm run restart-deps`, `to_regclass('cron.job')` should be non-null and `cron.job_run_details` should show the `bulldozer-timefold-worker` running every second.
+Q: How should OAuth E2E tests assert callback failures after handler-based error redirects?
+A: In OAuth callback/merge strategy E2E tests, assert `307` plus parsed `location` query params (`error`, `errorCode`, `error_description`, `message`, and optionally `details`) instead of snapshotting old `4xx` JSON error responses. This matches current callback semantics and avoids brittle encoded-URL snapshots.
 
-Q: How does Bulldozer Studio "init all" work?
-A: `apps/backend/scripts/run-bulldozer-studio.ts` now exposes `POST /api/tables/init-all`, which initializes only non-initialized tables in topological dependency order derived from table snapshots. The toolbar has a `🚀 init all` button that calls this endpoint and refreshes schema/details afterward.
+Q: How should auth sign-up-rules OAuth rejection tests assert failures now?
+A: In `apps/e2e/tests/backend/endpoints/api/v1/auth/sign-up-rules.test.ts`, OAuth rejection cases should assert the callback redirect (`307`) and validate `location` query params (`error=server_error`, `errorCode=SIGN_UP_REJECTED`, `message`/`error_description`, and JSON `details`) rather than expecting direct `403` response bodies.
 
-Q: What are safe reducer practices for `declareTimeFoldTable`, and how do timed reruns affect outputs?
-A: Timefold reducers should avoid non-deterministic values (`now()`, random) for output-driving logic; prefer stable row timestamps and prior reducer timestamps so replay/re-init stays deterministic. Timed reruns now append newly emitted rows on top of existing emitted rows for a source row (instead of replacing prior timed outputs), while source updates/deletes still recompute/reset that source row’s materialized outputs.
+Q: Where is the docs-mintlify homepage hero/island content defined?
+A: The top homepage island on docs-mintlify is authored directly in `docs-mintlify/index.mdx` as the first `not-prose` block, so copy/design/CTA updates should be made there.
 
-Q: How does the Bulldozer payments dual-write work?
-A: `apps/backend/src/lib/payments/bulldozer-dual-write.ts` exports `bulldozerWrite*` functions (one per payment model: Subscription, OneTimePurchase, SubscriptionInvoice, ItemQuantityChange). Each takes a full Prisma row, converts it to the Bulldozer stored table format via `*ToStoredRow`, then calls `schema.<table>.setRow()` + `toExecutableSqlTransaction` + `prisma.$executeRaw`. Every Prisma create/update/upsert on these models has a `// dual write - prisma and bulldozer` comment and a call to the corresponding function. For `update` calls (which don't return full rows), a `findUniqueOrThrow` re-reads the row before passing to the bulldozer write. The conversion functions are also reused by the ingress script (`bulldozer-payments-init.ts`).
+Q: Why can a docs-mintlify snippet fail validation when importing React?
+A: `mint validate` rejects non-local imports in `/snippets/*.jsx` (for example `import { useState } from "react"`), so snippets must avoid package imports and rely on zero-import component code.
 
-Q: Does `ManualItemQuantityChangeRow` have a `paymentProvider` field?
-A: No. It was removed because item quantity changes have nothing to do with payment providers. The `manualItemQuantityChangeTxns` mapper in `transactions.ts` emits `'null'::jsonb AS "paymentProvider"`, and `TransactionRow.paymentProvider` is typed as `PaymentProvider | null` to accommodate this.
+Q: Where was the docs homepage Quick Start block defined?
+A: The Quick Start section on the docs-mintlify homepage lived directly in `docs-mintlify/index.mdx` right after `<HomePromptIsland />`, so removing that full `<div className="mx-auto mt-16 ...">` block removes the entire Quick Start UI.
 
-Q: Are Bulldozer table `init()` calls idempotent?
-A: No. They use plain `INSERT INTO "BulldozerStorageEngine"` without `ON CONFLICT DO NOTHING`, so calling `init()` twice crashes with a unique constraint violation. The ingress script (`bulldozer-payments-init.ts`) checks `table.isInitialized()` per-table before calling `init()` to handle this safely.
+Q: How is the docs homepage "Explore Apps" step now rendered?
+A: It is embedded inside the "Navigate Through Our Docs" timeline as a single step via `DocsAppsHomeGrid` from `docs-mintlify/snippets/docs-apps-home-grid.jsx`, using app icon SVGs in a dashboard-style quick-access grid.
 
-Q: How does the Bulldozer `verifyDataIntegrity()` method work?
-A: Each `Table` has a `verifyDataIntegrity()` method returning a `SqlQuery` that produces error rows (empty = healthy). For derived tables (flat-map, sort, group-by, left-join, compact), it re-derives expected rows from input tables and does a FULL OUTER JOIN with actual materialized rows. For stored/concat tables (leaf/virtual), it returns empty. For reduce/l-fold/time-fold, it does structural group-correspondence checks. All derived-table queries are gated on `isInitialized` so uninitialized tables are silently skipped. The helper `verifyAllTablesIntegrity(tables)` UNION ALLs all tables' queries with a `tableid` column. Filter and map tables delegate to their internal nested flat-map table's verifyDataIntegrity via the `pick()` spread.
+Q: Why did docs-mintlify throw `ReferenceError: agentSetupPromptPlaceholder is not defined` on the homepage?
+A: In snippet components (`/snippets/*.jsx`), top-level constants can fail to resolve in the runtime-compiled output; moving constants like `agentSetupPromptPlaceholder` and `appLinks` inside the exported component function avoids the reference error.
 
-Q: How are Bulldozer table implementations structured when they need self-referencing methods?
-A: When a table method (like `verifyDataIntegrity`) needs to call another method on the same table (like `listRowsInGroup`), the `declare*Table` function assigns the result object to a `const table` variable first, then returns it: `const table: ReturnType<typeof declare*Table<...>> = { ... }; return table;`. This lets closures reference `table` by the time they execute.
+Q: How was the docs homepage prompt island restyled for stronger contrast?
+A: `docs-mintlify/snippets/home-prompt-island.jsx` now uses an inverted minimal palette (`bg-[#0b0b0d]` in light mode and `dark:bg-zinc-50` in dark mode) with simplified borders, reduced visual effects, and custom button styles for cleaner contrast.
+
+Q: Why did `DocsAppsHomeGrid` throw `ReferenceError` for helper functions despite passing lint?
+A: In docs-mintlify snippets, top-level helper function references can disappear in the runtime-compiled output even when `mint validate` passes; keep helper functions/constants inside the exported component body to avoid runtime `ReferenceError`s.
+
+Q: How to ensure the manual-installation CTA remains visible on the inverted dark-mode hero?
+A: In `docs-mintlify/snippets/home-prompt-island.jsx`, force explicit dark-mode button contrast with strong dark variant classes (for example `dark:bg-zinc-100` and `dark:!text-zinc-900`) so Mintlify base link styles cannot wash out label text.
+
+Q: How can the docs homepage prompt feel compact while still implying multi-line content?
+A: In `docs-mintlify/snippets/home-prompt-island.jsx`, use a low-height read-only textarea (`h-28`) with `overflow-hidden`, place the copy button as an absolute suffix inside the field, and add a bottom gradient overlay to hint hidden lines.
+
+Q: Where is the docs homepage recommended-order timeline controlled?
+A: The ordered step blocks are authored directly in `docs-mintlify/index.mdx` inside the "Navigate Through Our Docs" section, so adding steps like `SDK Reference` and `REST API` is done by inserting new timeline `<div className="relative ...">` blocks there.
+
+Q: Why can the docs copy button throw `Cannot set properties of null (setting 'textContent')`?
+A: In `docs-mintlify/snippets/home-prompt-island.jsx`, reading `event.currentTarget` after `await navigator.clipboard.writeText(...)` can produce null in runtime event wrappers. Capture `const button = event.currentTarget` before awaiting.
+
+Q: How should the docs Explore Apps grid support both light and dark themes?
+A: In `docs-mintlify/snippets/docs-apps-home-grid.jsx`, use light-first container/tile styles with explicit `dark:*` overrides (including `dark:invert` for icons) so light mode remains readable while dark mode keeps the neon tile look.
+
+Q: How can docs-mintlify add an Apps sidebar filter without React hooks?
+A: In `docs-mintlify/snippets/docs-apps-home-grid.jsx`, inject a compact `<input>` under the sidebar "Apps" header via DOM (`#navigation-items` + `.sidebar-group-header` text match), filter that group's `<ul>` rows on `input`, and observe `document.documentElement.classList` with `MutationObserver` to swap light/dark inline styles when `html` toggles between `light` and `dark`.
+
+Q: Why did Explore Apps look light in dark mode even with `dark:bg` set on the container?
+A: `bg-gradient-to-b` applies a background image, and `dark:bg-[#...]` only changes background color, so the light gradient image stays visible. Use `dark:from[...] dark:to[...]` (or a full dark gradient/image override) so dark mode replaces the gradient itself.
+
+Q: What should we do when changing docs sidebar search injection from block to inline?
+A: Remove legacy `div[data-apps-sidebar-search='true']` nodes before adding the new inline header input; otherwise old and new filters can coexist after hot reload and render duplicate search boxes.
+
+Q: What caused the Explore Apps hover layout shift?
+A: The app link wrapper in `docs-mintlify/snippets/docs-apps-home-grid.jsx` used `hover:-translate-y-0.5`, which makes tiles physically move on hover and looks like layout jank. Removing the translate/transform from the wrapper keeps hover effects without perceived shifting.
+
+Q: How should the sidebar Apps filter behave when there are no matches?
+A: In `docs-mintlify/snippets/docs-apps-home-grid.jsx`, track visible rows while filtering and show a small inline empty state (`No more results. Clear filter`) when query is non-empty and visible count is zero; wire `Clear filter` to reset the input, rerun filtering, and refocus the input.
+
+Q: Why did internal feedback E2E tests expect 1 Inbucket message but get 2?
+A: Inbucket persists mail across runs. `Mailbox.waitForMessagesWithSubject` waits until at least one match then returns **all** messages whose subject includes the string. Fixed subjects like `[Support] devtool-user@example.com` accumulate, so assertions should use a unique subject per run (e.g. `randomUUID()` in the sender email) or a baseline count before/after.
+
+Q: Why does `@typescript-eslint/no-unnecessary-condition` fire on `props.reset` in Next.js `ErrorBoundary` `errorComponent`?
+A: Next’s typings treat `reset` as always present on the error component props, so `props.reset &&` is redundant; render the reload control unconditionally and call `props.reset()` directly.
+
+Q: Why do E2E payment tests fail when run in parallel but pass individually?
+A: The Bulldozer advisory lock (`pg_advisory_xact_lock` in `toExecutableSqlTransaction`) serializes ALL Bulldozer writes globally. Each dual-write triggers an 848KB SQL cascade that holds the lock. When dozens of E2E tests run concurrently, each creating users/products/purchases, the lock contention causes tokens to expire and requests to timeout. Running payment tests independently avoids this.
+
+Q: Why did we remove `type` and `subscription` from the list products API response?
+A: Product ownership is independent of how you acquired the product (subscription vs OTP). A customer could own the same product via both. The old response conflated "what do I own" with "how did I get it." The simplified response returns just `{ id, quantity, product, switch_options }`. Subscription management info (cancel, period end) is a separate concern.
+
+Q: How does validatePurchaseSession work now?
+A: It reads from Bulldozer-backed functions: `getOwnedProductsForCustomer` (LFold), `getSubscriptionMapForCustomer` (subscription LFold). Steps: 1) ensureCustomerExists, 2) resolve price, 3) stackability check, 4) fetch owned products once, 5) duplicate check via `customerOwnsProduct`, 6) add-on prerequisite check, 7) product-line conflict detection + find cancelable subscriptions. If conflict exists but no subscription to cancel, throws "already has OTP in product line."
+
+Q: When does syncStripeSubscriptions set endedAt?
+A: When `subscription.status === "canceled"` and `sanitizedDates.end <= new Date()` (period has already ended). This triggers TimeFold to emit subscription-end events which revoke the product and expire items.
+

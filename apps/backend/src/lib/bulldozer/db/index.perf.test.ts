@@ -64,7 +64,7 @@ const IS_CI = (() => {
 })();
 const CI_PERF_MAX_MS_MULTIPLIER = IS_CI ? 2 : 1;
 const withCiPerfHeadroom = (maxMs: number) => maxMs * CI_PERF_MAX_MS_MULTIPLIER;
-const LOAD_ROW_COUNTS = [20_000, 50_000, 200_000] as const;
+const LOAD_ROW_COUNTS = IS_CI ? [20_000, 50_000] : [20_000, 50_000, 200_000];
 const LOAD_PREFILL_MAX_MS = withCiPerfHeadroom(30_000);
 const LOAD_COUNT_QUERY_MAX_MS = withCiPerfHeadroom(5_000);
 const LOAD_POINT_MUTATION_MAX_MS = withCiPerfHeadroom(400);

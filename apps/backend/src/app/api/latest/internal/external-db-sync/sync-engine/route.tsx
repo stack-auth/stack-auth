@@ -5,7 +5,6 @@ import { ensureUpstashSignature } from "@/lib/upstash";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { getExternalDbSyncFusebox } from "@/lib/external-db-sync-metadata";
 import { yupNumber, yupObject, yupString, yupTuple } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { traceSpan } from "@/utils/telemetry";
 
 export const POST = createSmartRouteHandler({
@@ -45,7 +44,11 @@ export const POST = createSmartRouteHandler({
       });
       if (!tenancy) {
         console.warn(`[sync-engine] Tenancy ${tenancyId} in queue but not found, assuming it was deleted.`);
-        throw new StatusError(400, `Tenancy ${tenancyId} not found.`);
+        span.setAttribute("stack.external-db-sync.ignored-missing-tenancy", true);
+        return {
+          statusCode: 200,
+          bodyType: "success",
+        };
       }
 
       const needsResync = await traceSpan("external-db-sync.sync-engine.syncExternalDatabases", async (syncSpan) => {

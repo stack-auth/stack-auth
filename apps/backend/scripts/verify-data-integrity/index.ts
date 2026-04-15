@@ -1,5 +1,6 @@
 import { toQueryableSqlQuery } from "@/lib/bulldozer/db/index";
 import { tableIdToDebugString } from "@/lib/bulldozer/db/utilities";
+import { syncExternalDatabases } from "@/lib/external-db-sync";
 import { createPaymentsSchema } from "@/lib/payments/schema/index";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
@@ -12,6 +13,7 @@ import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import fs from "fs";
 
 import { createApiHelpers, loadOutputData, type OutputData } from "./api";
+import { verifyClickhouseSync } from "./clickhouse-sync-verifier";
 import { createPaymentsVerifier } from "./payments-verifier";
 import { createRecurse } from "./recurse";
 import { verifyStripePayoutIntegrity } from "./stripe-payout-integrity";
@@ -81,6 +83,7 @@ async function main() {
   const shouldSkipNeon = flags.includes("--skip-neon");
   const recentFirst = flags.includes("--recent-first");
   const noBail = flags.includes("--no-bail");
+  const shouldSkipClickhouse = flags.includes("--skip-clickhouse");
   const maxUsersPerProjectFlag = flags.find(f => f.startsWith("--max-users-per-project="));
   const maxUsersPerProject = maxUsersPerProjectFlag
     ? parseInt(maxUsersPerProjectFlag.split("=")[1], 10)
@@ -155,6 +158,13 @@ async function main() {
   }
   if (USE_MOCK_STRIPE_API) {
     console.warn("Using mock Stripe server (STACK_STRIPE_SECRET_KEY=sk_test_mockstripekey); skipping Stripe payout integrity checks.");
+  }
+
+  const clickhouseAvailable = getEnvVariable("STACK_CLICKHOUSE_URL", "") !== "";
+  if (shouldSkipClickhouse) {
+    console.log(`Will skip ClickHouse sync verification.`);
+  } else if (!clickhouseAvailable) {
+    console.log(`STACK_CLICKHOUSE_URL not set; skipping ClickHouse sync verification.`);
   }
 
   if (maxUsersPerProject !== Infinity) {
@@ -232,6 +242,21 @@ async function main() {
           tenancy,
           stripeAccountId,
           expectStatusCode,
+        });
+      }
+
+      if (!shouldSkipClickhouse && clickhouseAvailable && tenancy) {
+        await recurse("[clickhouse sync]", async (recurse) => {
+          // Flush any pending ClickHouse syncs by running a direct sync before verifying.
+          // This avoids race conditions where QStash hasn't delivered all sync callbacks yet.
+          await syncExternalDatabases(tenancy);
+
+          await verifyClickhouseSync({
+            tenancy,
+            projectId,
+            branchId: DEFAULT_BRANCH_ID,
+            recurse,
+          });
         });
       }
 

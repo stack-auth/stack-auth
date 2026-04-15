@@ -1,5 +1,14 @@
 import { ProviderType } from "@stackframe/stack-shared/dist/utils/oauth";
 import type { GenericQueryCtx, UserIdentity } from "convex/server";
+export type {
+  DefaultHandlerUrlTarget,
+  HandlerPageUrls,
+  HandlerRedirectUrls,
+  HandlerUrlOptions,
+  HandlerUrlTarget,
+  HandlerUrls,
+  ResolvedHandlerUrls,
+} from "@stackframe/stack-shared/dist/interface/handler-urls";
 
 export type RedirectToOptions = {
   replace?: boolean,
@@ -52,7 +61,7 @@ export type ConvexCtx =
 
 export type GetCurrentPartialUserOptions<HasTokenStore> =
   & {
-    or?: 'return-null' | 'anonymous',  // note: unlike normal getUser, 'anonymous' still returns null sometimes (eg. if no token is present)
+    or?: 'return-null' | 'anonymous-if-exists',  // note: unlike normal getUser, 'anonymous' still returns null sometimes (eg. if no token is present)
     tokenStore?: TokenStoreInit,
   }
   & (
@@ -84,38 +93,6 @@ export type TokenStoreInit<HasTokenStore extends boolean = boolean> =
   )
   : HasTokenStore extends false ? null
   : TokenStoreInit<true> | TokenStoreInit<false>;
-
-export type HandlerPageUrls = Record<
-  | "handler"
-  | "signIn"
-  | "signUp"
-  | "signOut"
-  | "emailVerification"
-  | "passwordReset"
-  | "forgotPassword"
-  | "oauthCallback"
-  | "magicLinkCallback"
-  | "accountSettings"
-  | "teamInvitation"
-  | "mfa"
-  | "error"
-  | "onboarding",
-  string | { type: "custom", url: string, version: number } | { type: "hosted" | "handler-component" }
->;
-export type HandlerRedirectUrls = Record<
-  | "afterSignIn"
-  | "afterSignUp"
-  | "afterSignOut"
-  | "home",
-  string
->;
-export type HandlerUrls = HandlerPageUrls & HandlerRedirectUrls;
-export type HandlerUrlTarget = HandlerUrls[keyof HandlerUrls];
-export type DefaultHandlerUrlTarget = string | { type: "hosted" | "handler-component" };
-export type HandlerUrlOptions = Partial<HandlerUrls> & { default?: DefaultHandlerUrlTarget };
-export type ResolvedHandlerUrls = {
-  [K in keyof HandlerUrls]: string;
-};
 
 export type OAuthScopesOnSignIn = {
   [key in ProviderType]: string[];

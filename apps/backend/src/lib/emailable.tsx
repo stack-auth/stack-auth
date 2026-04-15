@@ -43,7 +43,7 @@ async function verifyWithRetries(verifyFn: () => Promise<unknown>, maxAttempts: 
   for (let i = 0; i < maxAttempts; i++) {
     const res: any = await verifyFn();
     if (!("state" in res)) {
-      if ("message" in res && res.message.includes("Your request is taking longer than normal")) {
+      if ("message" in res && (res.message.includes("Your request is taking longer than normal") || res.message.includes("Your email is still being verified"))) {
         await wait((Math.random() + 0.5) * delayBaseMs * (2 ** i));
         continue;
       }

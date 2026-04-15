@@ -1,6 +1,8 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import type { Table } from "..";
-import type { Json, RowData, RowIdentifier, SqlExpression, SqlMapper, SqlStatement, TableId, Timestamp } from "../utilities";
+import type { RegisteredRowChangeTrigger } from "../row-change-trigger-dispatch";
+import { attachRowChangeTriggerMetadata, normalizeRowChangeTrigger } from "../row-change-trigger-dispatch";
+import type { Json, RowData, RowIdentifier, SqlExpression, SqlMapper, TableId, Timestamp } from "../utilities";
 import {
   getStorageEnginePath,
   getTablePath,
@@ -43,7 +45,7 @@ export function declareTimeFoldTable<
   initialState: SqlExpression<S>,
   reducer: SqlMapper<{ oldState: S, oldRowData: OldRD, timestamp: Timestamp | null }, { newState: S, newRowsData: NewRD[], nextTimestamp: Timestamp | null }>,
 }): Table<GK, null, NewRD> {
-  const triggers = new Map<string, (changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => SqlStatement[]>();
+  const triggers = new Map<string, RegisteredRowChangeTrigger>();
   const reducerSqlLiteral = quoteSqlStringLiteral(options.reducer.sql);
   const tableStoragePath = getStorageEnginePath(options.tableId, []);
   const groupsPath = getStorageEnginePath(options.tableId, ["groups"]);
@@ -67,7 +69,7 @@ export function declareTimeFoldTable<
         FROM "BulldozerTimeFoldMetadata"
         WHERE "key" = 'singleton'
       ),
-      now()
+      '2000-01-01T00:00:00Z'::timestamptz
     )
   `;
   const createApplyChangesStatements = (normalizedChangesTable: SqlExpression<string>) => {
@@ -378,7 +380,6 @@ export function declareTimeFoldTable<
           AND "oldRows"."rowIdentifier" = "newRows"."rowIdentifier"
         WHERE "oldRows"."rowData" IS DISTINCT FROM "newRows"."rowData"
       `.toStatement(timeFoldChangesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb'),
-      ...[...triggers.values()].flatMap((trigger) => trigger(quoteSqlIdentifier(timeFoldChangesTableName))),
     ];
   };
   const createFromTableTriggerStatements = (fromChangesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => {
@@ -410,17 +411,14 @@ export function declareTimeFoldTable<
       ...createApplyChangesStatements(quoteSqlIdentifier(normalizedChangesTableName)),
     ];
   };
-  let fromTableTriggerRegistration: null | { deregister: () => void } = null;
-  const ensureFromTableTriggerRegistration = () => {
-    if (fromTableTriggerRegistration != null) return;
-    fromTableTriggerRegistration = options.fromTable.registerRowChangeTrigger((fromChangesTable) => {
-      return createFromTableTriggerStatements(fromChangesTable);
-    });
-  };
-  const deregisterFromTableTrigger = () => {
-    fromTableTriggerRegistration?.deregister();
-    fromTableTriggerRegistration = null;
-  };
+  const fromTableTrigger = attachRowChangeTriggerMetadata(
+    (fromChangesTable) => createFromTableTriggerStatements(fromChangesTable),
+    {
+      targetTableId: tableIdToDebugString(options.tableId),
+      targetTableTriggers: triggers,
+    },
+  );
+  options.fromTable.registerRowChangeTrigger(fromTableTrigger);
 
   const table: ReturnType<typeof declareTimeFoldTable<GK, OldRD, NewRD, S>> = {
     tableId: options.tableId,
@@ -435,7 +433,6 @@ export function declareTimeFoldTable<
     compareGroupKeys: options.fromTable.compareGroupKeys,
     compareSortKeys: (_a, _b) => sqlExpression`0`,
     init: () => {
-      ensureFromTableTriggerRegistration();
       const fromGroupsTableName = `from_groups_${generateSecureRandomString()}`;
       const fromRowsTableName = `from_rows_${generateSecureRandomString()}`;
       const initChangesTableName = `init_changes_${generateSecureRandomString()}`;
@@ -485,7 +482,6 @@ export function declareTimeFoldTable<
       ];
     },
     delete: () => {
-      deregisterFromTableTrigger();
       return [
         sqlStatement`
           DELETE FROM "BulldozerTimeFoldQueue"
@@ -561,7 +557,7 @@ export function declareTimeFoldTable<
     `,
     registerRowChangeTrigger: (trigger) => {
       const id = generateSecureRandomString();
-      triggers.set(id, trigger);
+      triggers.set(id, normalizeRowChangeTrigger(trigger));
       return { deregister: () => triggers.delete(id) };
     },
     verifyDataIntegrity: () => {

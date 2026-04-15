@@ -11,7 +11,7 @@ import { quoteSqlStringLiteral } from "@/lib/bulldozer/db/utilities";
 import { ensureCustomerExists } from "@/lib/payments";
 import type { PrismaClientTransaction } from "@/prisma-client";
 import { createPaymentsSchema } from "./schema/index";
-import type { CustomerType, ItemQuantityRow, OwnedProductsRow } from "./schema/types";
+import type { CustomerType, ItemQuantityRow, OwnedProductsRow, SubscriptionMapRow, SubscriptionRow } from "./schema/types";
 
 const schema = createPaymentsSchema();
 
@@ -44,7 +44,8 @@ async function getLatestRow<T>(
     ORDER BY "__all_rows"."rowsortkey" DESC NULLS LAST, "__all_rows"."rowidentifier" DESC
     LIMIT 1
   `;
-  const rows = await prisma.$queryRaw`${Prisma.raw(sql)}` as any[];
+  const replicaClient = '$replica' in prisma ? (prisma as any).$replica() : prisma;
+  const rows = await replicaClient.$queryRaw`${Prisma.raw(sql)}` as any[];
   if (rows.length === 0) return null;
   return rows[0].rowdata as T;
 }
@@ -121,4 +122,27 @@ export async function getItemQuantityForCustomer(options: {
     customerId: options.customerId,
   });
   return quantities[options.itemId] ?? 0;
+}
+
+
+// ── Per-customer subscription map ─────────────────────────────────────
+
+/**
+ * Returns a map of subscriptionId → SubscriptionRow for a customer.
+ * Reads from the subscriptions LFold (O(1) per customer, no full table scan).
+ */
+export async function getSubscriptionMapForCustomer(options: {
+  prisma: PrismaClientTransaction,
+  tenancyId: string,
+  customerType: CustomerType,
+  customerId: string,
+}): Promise<Record<string, SubscriptionRow>> {
+  const row = await getLatestRow<SubscriptionMapRow>(
+    options.prisma,
+    schema.subscriptionMapByCustomer,
+    options.tenancyId,
+    options.customerType,
+    options.customerId,
+  );
+  return row?.subscriptions ?? {};
 }

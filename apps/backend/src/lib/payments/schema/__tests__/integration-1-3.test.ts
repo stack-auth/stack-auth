@@ -884,4 +884,109 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
       expect(latest.itemQuantities.energy).toBe(0);
     });
   });
+
+
+  // ============================================================
+  // Subscription map LFold
+  // ============================================================
+
+  describe("subscription map by customer", () => {
+    const getSubMap = async (customerType: string, customerId: string) => {
+      const groupKey = JSON.stringify({ tenancyId: "t1", customerType, customerId });
+      const rows = await readRows(schema.subscriptionMapByCustomer.listRowsInGroup({
+        groupKey: { type: "expression", sql: `'${groupKey}'::jsonb` },
+        start: "start",
+        end: "end",
+        startInclusive: true,
+        endInclusive: true,
+      }));
+      if (rows.length === 0) return {};
+      const latest = rows.sort((a: any, b: any) =>
+        Number(String(b.rowsortkey)) - Number(String(a.rowsortkey))
+      )[0];
+      return (latest.rowdata as any).subscriptions as Record<string, any>;
+    };
+
+    it("should contain the subscription created in earlier tests", async () => {
+      const subMap = await getSubMap("user", "u1");
+      expect(subMap["sub-int"]).toBeDefined();
+      expect(subMap["sub-int"].productId).toBe("prod-pro");
+      expect(subMap["sub-int"].status).toBe("active");
+      expect(subMap["sub-int"].stripeSubscriptionId).toBeNull();
+    });
+
+    it("should contain all subscriptions for a customer with multiple subs", async () => {
+      const subMap = await getSubMap("user", "u4");
+      expect(subMap["sub-repeat-e2e"]).toBeDefined();
+      expect(subMap["sub-repeat-e2e"].productId).toBe("prod-repeat");
+    });
+
+    it("should return empty map for customer with no subscriptions", async () => {
+      const subMap = await getSubMap("user", "nonexistent-user");
+      expect(subMap).toEqual({});
+    });
+
+    it("should update when a subscription is modified", async () => {
+      await runStatements(schema.subscriptions.setRow("sub-map-test", jsonbExpr({
+        id: "sub-map-test",
+        tenancyId: "t1",
+        customerId: "u-map-test",
+        customerType: "user",
+        productId: "prod-map",
+        priceId: "p1",
+        product: {
+          displayName: "Map Test",
+          customerType: "user",
+          productLineId: null,
+          prices: { p1: { USD: "10" } },
+          includedItems: {},
+        },
+        quantity: 1,
+        stripeSubscriptionId: "stripe-sub-map",
+        status: "active",
+        currentPeriodStartMillis: 1000,
+        currentPeriodEndMillis: 1000 + MONTH_MS,
+        cancelAtPeriodEnd: false,
+        endedAtMillis: null,
+        refundedAtMillis: null,
+        creationSource: "TEST_MODE",
+        createdAtMillis: 1000,
+      })));
+
+      let subMap = await getSubMap("user", "u-map-test");
+      expect(subMap["sub-map-test"]).toBeDefined();
+      expect(subMap["sub-map-test"].status).toBe("active");
+
+      // Update the subscription to canceled
+      await runStatements(schema.subscriptions.setRow("sub-map-test", jsonbExpr({
+        id: "sub-map-test",
+        tenancyId: "t1",
+        customerId: "u-map-test",
+        customerType: "user",
+        productId: "prod-map",
+        priceId: "p1",
+        product: {
+          displayName: "Map Test",
+          customerType: "user",
+          productLineId: null,
+          prices: { p1: { USD: "10" } },
+          includedItems: {},
+        },
+        quantity: 1,
+        stripeSubscriptionId: "stripe-sub-map",
+        status: "canceled",
+        currentPeriodStartMillis: 1000,
+        currentPeriodEndMillis: 1000 + MONTH_MS,
+        cancelAtPeriodEnd: true,
+        endedAtMillis: 2000,
+        refundedAtMillis: null,
+        creationSource: "TEST_MODE",
+        createdAtMillis: 1000,
+      })));
+
+      subMap = await getSubMap("user", "u-map-test");
+      expect(subMap["sub-map-test"].status).toBe("canceled");
+      expect(subMap["sub-map-test"].cancelAtPeriodEnd).toBe(true);
+    });
+  });
 });

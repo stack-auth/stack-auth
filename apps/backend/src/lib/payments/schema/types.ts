@@ -481,3 +481,11 @@ export type ItemQuantityRow = {
   customerId: string,
   tenancyId: string,
 };
+
+/** LFold output: map of subscriptionId → full SubscriptionRow per customer. */
+export type SubscriptionMapRow = {
+  subscriptions: Record<string, SubscriptionRow>,
+  tenancyId: string,
+  customerType: CustomerType,
+  customerId: string,
+};

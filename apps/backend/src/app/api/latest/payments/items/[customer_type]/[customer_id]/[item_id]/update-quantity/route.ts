@@ -95,7 +95,7 @@ export const POST = createSmartRouteHandler({
       customerId: req.params.customer_id,
     });
 
-    await retryTransaction(prisma, async (tx) => {
+    const change = await retryTransaction(prisma, async (tx) => {
       const totalQuantity = await getItemQuantityForCustomer({
         prisma: tx,
         tenancyId: tenancy.id,
@@ -118,8 +118,9 @@ export const POST = createSmartRouteHandler({
           expiresAt: req.body.expires_at ? new Date(req.body.expires_at) : null,
         },
       });
-      await bulldozerWriteItemQuantityChange(tx, change);
+      return change;
     });
+    await bulldozerWriteItemQuantityChange(prisma, change);
 
     return {
       statusCode: 200,

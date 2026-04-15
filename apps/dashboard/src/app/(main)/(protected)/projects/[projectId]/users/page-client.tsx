@@ -45,7 +45,8 @@ export default function PageClient() {
     search?: string,
     includeRestricted: boolean,
     includeAnonymous: boolean,
-  }>({ includeRestricted: false, includeAnonymous: false });
+    onlyAnonymous: boolean,
+  }>({ includeRestricted: false, includeAnonymous: false, onlyAnonymous: false });
   const [refreshKey, setRefreshKey] = useState(0);
 
   const handleRefresh = async () => {
@@ -92,7 +93,9 @@ export default function PageClient() {
           </Alert>
         )}
 
-        <UserTable key={refreshKey} onFilterChange={setExportOptions} />
+        <div data-walkthrough="users-table">
+          <UserTable key={refreshKey} onFilterChange={setExportOptions} />
+        </div>
       </PageLayout>
     </AppEnabledGuard>
   );

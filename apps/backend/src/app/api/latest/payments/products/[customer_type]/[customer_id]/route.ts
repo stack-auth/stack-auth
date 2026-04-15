@@ -1,10 +1,11 @@
-import { ensureClientCanAccessCustomer, ensureProductIdOrInlineProduct, getOwnedProductsForCustomerLegacy, grantProductToCustomer, productToInlineProduct } from "@/lib/payments";
+import { ensureClientCanAccessCustomer, ensureProductIdOrInlineProduct, grantProductToCustomer, productToInlineProduct } from "@/lib/payments";
+import { getOwnedProductsForCustomer } from "@/lib/payments/customer-data";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { adaptSchema, clientOrHigherAuthTypeSchema, inlineProductSchema, serverOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { customerProductsListResponseSchema } from "@stackframe/stack-shared/dist/interface/crud/products";
+import { adaptSchema, clientOrHigherAuthTypeSchema, inlineProductSchema, serverOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { typedEntries, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
 
 export const GET = createSmartRouteHandler({
@@ -43,20 +44,15 @@ export const GET = createSmartRouteHandler({
       });
     }
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
-    const ownedProducts = await getOwnedProductsForCustomerLegacy({
+    const ownedProducts = await getOwnedProductsForCustomer({
       prisma,
-      tenancy: auth.tenancy,
+      tenancyId: auth.tenancy.id,
       customerType: params.customer_type,
       customerId: params.customer_id,
     });
 
-    const visibleProducts =
-      auth.type === "client"
-        ? ownedProducts.filter(({ product }) => !product.serverOnly)
-        : ownedProducts;
-
+    // Build switch options per product line (available plan upgrades/downgrades)
     const switchOptionsByProductLineId = new Map<string, Array<{ product_id: string, product: ReturnType<typeof productToInlineProduct> }>>();
-
     const configuredProducts = auth.tenancy.config.payments.products;
     for (const [productId, product] of typedEntries(configuredProducts)) {
       if (product.customerType !== params.customer_type) continue;
@@ -78,29 +74,22 @@ export const GET = createSmartRouteHandler({
       switchOptionsByProductLineId.set(product.productLineId, existing);
     }
 
-    const sorted = visibleProducts
-      .slice()
-      .sort((a, b) => a.createdAt.getTime() - b.createdAt.getTime())
-      .map((product) => {
-        const productLineId = product.product.productLineId;
-        const switchOptions =
-          product.type === "subscription" && product.id && productLineId
-            ? (switchOptionsByProductLineId.get(productLineId) ?? []).filter((option) => option.product_id !== product.id)
-            : undefined;
+    const entries = Object.entries(ownedProducts)
+      .filter(([, p]) => p.quantity > 0)
+      .filter(([, p]) => auth.type !== "client" || !p.product.serverOnly)
+      .map(([productId, p]) => {
+        const productLineId = p.productLineId;
+        const switchOptions = productLineId
+          ? (switchOptionsByProductLineId.get(productLineId) ?? []).filter((option) => option.product_id !== productId)
+          : undefined;
 
         return {
-          cursor: product.sourceId,
+          cursor: productId,
           item: {
-            id: product.id,
-            quantity: product.quantity,
-            product: productToInlineProduct(product.product),
-            type: product.type,
-            subscription: product.subscription ? {
-              subscription_id: product.subscription.subscriptionId,
-              current_period_end: product.subscription.currentPeriodEnd ? product.subscription.currentPeriodEnd.toISOString() : null,
-              cancel_at_period_end: product.subscription.cancelAtPeriodEnd,
-              is_cancelable: product.subscription.isCancelable,
-            } : null,
+            id: productId,
+            quantity: p.quantity,
+            // ProductSnapshot uses null where the Yup productSchema uses undefined; the data is equivalent
+            product: productToInlineProduct(p.product as Parameters<typeof productToInlineProduct>[0]),
             switch_options: switchOptions,
           },
         };
@@ -108,15 +97,15 @@ export const GET = createSmartRouteHandler({
 
     let startIndex = 0;
     if (query.cursor) {
-      startIndex = sorted.findIndex((entry) => entry.cursor === query.cursor);
+      startIndex = entries.findIndex((entry) => entry.cursor === query.cursor);
       if (startIndex === -1) {
         throw new StatusError(400, "Invalid cursor");
       }
     }
 
     const limit = yupNumber().min(1).max(100).optional().default(10).validateSync(query.limit);
-    const pageEntries = sorted.slice(startIndex, startIndex + limit);
-    const nextCursor = startIndex + limit < sorted.length ? sorted[startIndex + limit].cursor : null;
+    const pageEntries = entries.slice(startIndex, startIndex + limit);
+    const nextCursor = startIndex + limit < entries.length ? entries[startIndex + limit].cursor : null;
 
     return {
       statusCode: 200,
@@ -159,6 +148,7 @@ export const POST = createSmartRouteHandler({
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
       success: yupBoolean().oneOf([true]).defined(),
+      subscription_id: yupString().optional(),
     }).defined(),
   }),
   handler: async ({ auth, params, body }) => {
@@ -180,7 +170,7 @@ export const POST = createSmartRouteHandler({
       );
     }
 
-    await grantProductToCustomer({
+    const result = await grantProductToCustomer({
       prisma,
       tenancy,
       customerType: params.customer_type,
@@ -197,6 +187,7 @@ export const POST = createSmartRouteHandler({
       bodyType: "json",
       body: {
         success: true,
+        ...(result.type === "subscription" ? { subscription_id: result.subscriptionId } : {}),
       },
     };
   },

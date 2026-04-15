@@ -1,5 +1,6 @@
 import { getExternalDbSyncFusebox } from "@/lib/external-db-sync-metadata";
 import { enqueueExternalDbSyncBatch } from "@/lib/external-db-sync-queue";
+import { Prisma } from "@/generated/prisma/client";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { traceSpan } from "@/utils/telemetry";
@@ -109,6 +110,282 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
       didUpdate = true;
     }
 
+    const teamTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string, teamId: string }[]>`
+      WITH rows_to_update AS (
+        SELECT "tenancyId", "teamId"
+        FROM "Team"
+        WHERE "shouldUpdateSequenceId" = TRUE
+        ORDER BY "tenancyId"
+        LIMIT ${batchSize}
+        FOR UPDATE SKIP LOCKED
+      ),
+      updated_rows AS (
+        UPDATE "Team" t
+        SET "sequenceId" = nextval('global_seq_id'),
+            "shouldUpdateSequenceId" = FALSE
+        FROM rows_to_update r
+        WHERE t."tenancyId" = r."tenancyId"
+          AND t."teamId"    = r."teamId"
+        RETURNING t."tenancyId", t."teamId"
+      )
+      SELECT DISTINCT "tenancyId", "teamId" FROM updated_rows
+    `;
+
+    span.setAttribute("stack.external-db-sync.team-tenants", teamTenants.length);
+
+    if (teamTenants.length > 0) {
+      await enqueueExternalDbSyncBatch(teamTenants.map(t => t.tenancyId));
+      didUpdate = true;
+
+      // Cascade: when a team changes, mark related TEAM_INVITATION verification codes for re-sync
+      // so the team_display_name in team_invitations stays fresh
+      await globalPrismaClient.$executeRaw`
+        UPDATE "VerificationCode"
+        SET "shouldUpdateSequenceId" = TRUE
+        FROM (
+          SELECT DISTINCT "Tenancy"."projectId", "Tenancy"."branchId", "Team"."teamId"
+          FROM "Team"
+          JOIN "Tenancy" ON "Tenancy"."id" = "Team"."tenancyId"
+          WHERE "Team"."tenancyId" IN (${Prisma.join(teamTenants.map(t => t.tenancyId))})
+            AND "Team"."shouldUpdateSequenceId" = FALSE
+            AND "Team"."sequenceId" IS NOT NULL
+        ) AS changed_teams
+        WHERE "VerificationCode"."projectId" = changed_teams."projectId"
+          AND "VerificationCode"."branchId" = changed_teams."branchId"
+          AND "VerificationCode"."type" = 'TEAM_INVITATION'
+          AND "VerificationCode"."data"->>'team_id' = changed_teams."teamId"::text
+          AND "VerificationCode"."shouldUpdateSequenceId" = FALSE
+      `;
+    }
+
+    const teamMemberTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
+      WITH rows_to_update AS (
+        SELECT "tenancyId", "projectUserId", "teamId"
+        FROM "TeamMember"
+        WHERE "shouldUpdateSequenceId" = TRUE
+        ORDER BY "tenancyId"
+        LIMIT ${batchSize}
+        FOR UPDATE SKIP LOCKED
+      ),
+      updated_rows AS (
+        UPDATE "TeamMember" tm
+        SET "sequenceId" = nextval('global_seq_id'),
+            "shouldUpdateSequenceId" = FALSE
+        FROM rows_to_update r
+        WHERE tm."tenancyId"     = r."tenancyId"
+          AND tm."projectUserId" = r."projectUserId"
+          AND tm."teamId"        = r."teamId"
+        RETURNING tm."tenancyId"
+      )
+      SELECT DISTINCT "tenancyId" FROM updated_rows
+    `;
+
+    span.setAttribute("stack.external-db-sync.team-member-tenants", teamMemberTenants.length);
+
+    if (teamMemberTenants.length > 0) {
+      await enqueueExternalDbSyncBatch(teamMemberTenants.map(t => t.tenancyId));
+      didUpdate = true;
+    }
+
+    const teamPermissionTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
+      WITH rows_to_update AS (
+        SELECT "id"
+        FROM "TeamMemberDirectPermission"
+        WHERE "shouldUpdateSequenceId" = TRUE
+        ORDER BY "tenancyId"
+        LIMIT ${batchSize}
+        FOR UPDATE SKIP LOCKED
+      ),
+      updated_rows AS (
+        UPDATE "TeamMemberDirectPermission" tp
+        SET "sequenceId" = nextval('global_seq_id'),
+            "shouldUpdateSequenceId" = FALSE
+        FROM rows_to_update r
+        WHERE tp."id" = r."id"
+        RETURNING tp."tenancyId"
+      )
+      SELECT DISTINCT "tenancyId" FROM updated_rows
+    `;
+
+    span.setAttribute("stack.external-db-sync.team-permission-tenants", teamPermissionTenants.length);
+
+    if (teamPermissionTenants.length > 0) {
+      await enqueueExternalDbSyncBatch(teamPermissionTenants.map(t => t.tenancyId));
+      didUpdate = true;
+    }
+
+    const teamInvitationTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
+      WITH rows_to_update AS (
+        SELECT "projectId", "branchId", "id"
+        FROM "VerificationCode"
+        WHERE "shouldUpdateSequenceId" = TRUE
+          AND "type" = 'TEAM_INVITATION'
+        ORDER BY "projectId", "branchId"
+        LIMIT ${batchSize}
+        FOR UPDATE SKIP LOCKED
+      ),
+      updated_rows AS (
+        UPDATE "VerificationCode" vc
+        SET "sequenceId" = nextval('global_seq_id'),
+            "shouldUpdateSequenceId" = FALSE
+        FROM rows_to_update r
+        WHERE vc."projectId" = r."projectId"
+          AND vc."branchId"  = r."branchId"
+          AND vc."id"        = r."id"
+        RETURNING vc."projectId", vc."branchId"
+      )
+      SELECT DISTINCT "Tenancy"."id" AS "tenancyId"
+      FROM updated_rows
+      JOIN "Tenancy" ON "Tenancy"."projectId" = updated_rows."projectId"
+        AND "Tenancy"."branchId" = updated_rows."branchId"
+    `;
+
+    span.setAttribute("stack.external-db-sync.team-invitation-tenants", teamInvitationTenants.length);
+
+    if (teamInvitationTenants.length > 0) {
+      await enqueueExternalDbSyncBatch(teamInvitationTenants.map(t => t.tenancyId));
+      didUpdate = true;
+    }
+
+    const emailOutboxTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
+      WITH rows_to_update AS (
+        SELECT "tenancyId", "id"
+        FROM "EmailOutbox"
+        WHERE "shouldUpdateSequenceId" = TRUE
+        ORDER BY "tenancyId"
+        LIMIT ${batchSize}
+        FOR UPDATE SKIP LOCKED
+      ),
+      updated_rows AS (
+        UPDATE "EmailOutbox" eo
+        SET "sequenceId" = nextval('global_seq_id'),
+            "shouldUpdateSequenceId" = FALSE
+        FROM rows_to_update r
+        WHERE eo."tenancyId" = r."tenancyId"
+          AND eo."id"        = r."id"
+        RETURNING eo."tenancyId"
+      )
+      SELECT DISTINCT "tenancyId" FROM updated_rows
+    `;
+
+    span.setAttribute("stack.external-db-sync.email-outbox-tenants", emailOutboxTenants.length);
+
+    if (emailOutboxTenants.length > 0) {
+      await enqueueExternalDbSyncBatch(emailOutboxTenants.map(t => t.tenancyId));
+      didUpdate = true;
+    }
+
+    const projectPermissionTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
+      WITH rows_to_update AS (
+        SELECT "id"
+        FROM "ProjectUserDirectPermission"
+        WHERE "shouldUpdateSequenceId" = TRUE
+        ORDER BY "tenancyId"
+        LIMIT ${batchSize}
+        FOR UPDATE SKIP LOCKED
+      ),
+      updated_rows AS (
+        UPDATE "ProjectUserDirectPermission" pp
+        SET "sequenceId" = nextval('global_seq_id'),
+            "shouldUpdateSequenceId" = FALSE
+        FROM rows_to_update r
+        WHERE pp."id" = r."id"
+        RETURNING pp."tenancyId"
+      )
+      SELECT DISTINCT "tenancyId" FROM updated_rows
+    `;
+
+    span.setAttribute("stack.external-db-sync.project-permission-tenants", projectPermissionTenants.length);
+
+    if (projectPermissionTenants.length > 0) {
+      await enqueueExternalDbSyncBatch(projectPermissionTenants.map(t => t.tenancyId));
+      didUpdate = true;
+    }
+
+    const notificationPreferenceTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
+      WITH rows_to_update AS (
+        SELECT "tenancyId", "id"
+        FROM "UserNotificationPreference"
+        WHERE "shouldUpdateSequenceId" = TRUE
+        ORDER BY "tenancyId"
+        LIMIT ${batchSize}
+        FOR UPDATE SKIP LOCKED
+      ),
+      updated_rows AS (
+        UPDATE "UserNotificationPreference" np
+        SET "sequenceId" = nextval('global_seq_id'),
+            "shouldUpdateSequenceId" = FALSE
+        FROM rows_to_update r
+        WHERE np."tenancyId" = r."tenancyId"
+          AND np."id"        = r."id"
+        RETURNING np."tenancyId"
+      )
+      SELECT DISTINCT "tenancyId" FROM updated_rows
+    `;
+
+    span.setAttribute("stack.external-db-sync.notification-preference-tenants", notificationPreferenceTenants.length);
+
+    if (notificationPreferenceTenants.length > 0) {
+      await enqueueExternalDbSyncBatch(notificationPreferenceTenants.map(t => t.tenancyId));
+      didUpdate = true;
+    }
+
+    const refreshTokenTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
+      WITH rows_to_update AS (
+        SELECT "tenancyId", "id"
+        FROM "ProjectUserRefreshToken"
+        WHERE "shouldUpdateSequenceId" = TRUE
+        ORDER BY "tenancyId"
+        LIMIT ${batchSize}
+        FOR UPDATE SKIP LOCKED
+      ),
+      updated_rows AS (
+        UPDATE "ProjectUserRefreshToken" rt
+        SET "sequenceId" = nextval('global_seq_id'),
+            "shouldUpdateSequenceId" = FALSE
+        FROM rows_to_update r
+        WHERE rt."tenancyId" = r."tenancyId"
+          AND rt."id"        = r."id"
+        RETURNING rt."tenancyId"
+      )
+      SELECT DISTINCT "tenancyId" FROM updated_rows
+    `;
+
+    span.setAttribute("stack.external-db-sync.refresh-token-tenants", refreshTokenTenants.length);
+
+    if (refreshTokenTenants.length > 0) {
+      await enqueueExternalDbSyncBatch(refreshTokenTenants.map(t => t.tenancyId));
+      didUpdate = true;
+    }
+
+    const oauthAccountTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
+      WITH rows_to_update AS (
+        SELECT "tenancyId", "id"
+        FROM "ProjectUserOAuthAccount"
+        WHERE "shouldUpdateSequenceId" = TRUE
+        ORDER BY "tenancyId"
+        LIMIT ${batchSize}
+        FOR UPDATE SKIP LOCKED
+      ),
+      updated_rows AS (
+        UPDATE "ProjectUserOAuthAccount" oa
+        SET "sequenceId" = nextval('global_seq_id'),
+            "shouldUpdateSequenceId" = FALSE
+        FROM rows_to_update r
+        WHERE oa."tenancyId" = r."tenancyId"
+          AND oa."id"        = r."id"
+        RETURNING oa."tenancyId"
+      )
+      SELECT DISTINCT "tenancyId" FROM updated_rows
+    `;
+
+    span.setAttribute("stack.external-db-sync.oauth-account-tenants", oauthAccountTenants.length);
+
+    if (oauthAccountTenants.length > 0) {
+      await enqueueExternalDbSyncBatch(oauthAccountTenants.map(t => t.tenancyId));
+      didUpdate = true;
+    }
+
     const deletedRowTenants = await globalPrismaClient.$queryRaw<{ tenancyId: string }[]>`
       WITH rows_to_update AS (
         SELECT "id", "tenancyId"
@@ -138,7 +415,7 @@ async function backfillSequenceIds(batchSize: number): Promise<boolean> {
 
     span.setAttribute("stack.external-db-sync.did-update", didUpdate);
     if (didUpdate) {
-      console.log(`[Sequencer] Backfilled sequence IDs: USR=${projectUserTenants.length}, CC=${contactChannelTenants.length}, DR=${deletedRowTenants.length}`);
+      console.log(`[Sequencer] Backfilled sequence IDs: USR=${projectUserTenants.length}, CC=${contactChannelTenants.length}, TM=${teamTenants.length}, TMB=${teamMemberTenants.length}, TP=${teamPermissionTenants.length}, TI=${teamInvitationTenants.length}, EO=${emailOutboxTenants.length}, PP=${projectPermissionTenants.length}, NP=${notificationPreferenceTenants.length}, RT=${refreshTokenTenants.length}, CA=${oauthAccountTenants.length}, DR=${deletedRowTenants.length}`);
     }
 
     return didUpdate;

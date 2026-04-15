@@ -84,9 +84,13 @@ export default function PageClient() {
           description: "Vercel Integration",
         });
 
+        const publishableClientKey = requirePublishableClientKey
+          ? (newKey.publishableClientKey ?? throwErr("Expected publishableClientKey when project.requirePublishableClientKey is true"))
+          : undefined;
+
         setKeys({
           projectId: adminApp.projectId,
-          publishableClientKey: newKey.publishableClientKey ?? throwErr("Expected publishableClientKey after creating an API key with hasPublishableClientKey: true"),
+          publishableClientKey,
           secretServerKey: newKey.secretServerKey ?? throwErr("Expected secretServerKey after creating an API key with hasSecretServerKey: true"),
         });
       } finally {
@@ -160,7 +164,9 @@ export default function PageClient() {
             </div>
           ) : (
             <p className="text-xs text-muted-foreground">
-              You&apos;ll receive a publishable client key and a secret server key for this project.
+              {requirePublishableClientKey
+                ? "You&apos;ll receive a publishable client key and a secret server key for this project."
+                : "You&apos;ll receive a secret server key for this project."}
             </p>
           ),
         },

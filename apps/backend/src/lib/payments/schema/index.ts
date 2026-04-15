@@ -5,6 +5,7 @@
  * Data flows: StoredTables → Events → Transactions → CompactedEntries → OwnedProducts / ItemQuantities
  */
 
+import { declareGroupByTable, declareLFoldTable, declareSortTable } from "@/lib/bulldozer/db/index";
 import { createEventTables } from "./phase-1/events";
 import { createSeedEventsStoredTables } from "./phase-1/stored-tables";
 import { createTransactionsTable } from "./phase-1/transactions";
@@ -21,6 +22,48 @@ export function createPaymentsSchema() {
   const events = createEventTables(seedEventsStoredTables);
   const txnTables = createTransactionsTable(events, seedEventsStoredTables.manualTransactions);
 
+  // Per-customer subscription map: GroupBy → Sort → LFold.
+  // The LFold maintains a map of { subscriptionId → full SubscriptionRow }
+  // per customer. Reading the latest LFold row gives O(1) access to all
+  // current subscriptions for a customer without loading all stored rows.
+  const mapper = (sql: string) => ({ type: "mapper" as const, sql });
+  const subscriptionsByCustomer = declareGroupByTable({
+    tableId: "payments-subscriptions-by-customer",
+    fromTable: seedEventsStoredTables.subscriptions,
+    groupBy: mapper(`
+      jsonb_build_object(
+        'tenancyId', "rowData"->'tenancyId',
+        'customerType', "rowData"->'customerType',
+        'customerId', "rowData"->'customerId'
+      ) AS "groupKey"
+    `),
+  });
+  const subscriptionsSorted = declareSortTable({
+    tableId: "payments-subscriptions-sorted",
+    fromTable: subscriptionsByCustomer,
+    getSortKey: mapper(`("rowData"->'createdAtMillis') AS "newSortKey"`),
+    compareSortKeys: (a, b) => ({
+      type: "expression",
+      sql: `(((${a.sql}) #>> '{}')::numeric > ((${b.sql}) #>> '{}')::numeric)::int - (((${a.sql}) #>> '{}')::numeric < ((${b.sql}) #>> '{}')::numeric)::int`,
+    }),
+  });
+  const subscriptionMapByCustomer = declareLFoldTable({
+    tableId: "payments-subscription-map-by-customer",
+    fromTable: subscriptionsSorted,
+    initialState: { type: "expression" as const, sql: "'{}'::jsonb" },
+    reducer: mapper(`
+      ("oldState" || jsonb_build_object("oldRowData"->>'id', "oldRowData")) AS "newState",
+      jsonb_build_array(
+        jsonb_build_object(
+          'subscriptions', ("oldState" || jsonb_build_object("oldRowData"->>'id', "oldRowData")),
+          'tenancyId', "oldRowData"->'tenancyId',
+          'customerType', "oldRowData"->'customerType',
+          'customerId', "oldRowData"->'customerId'
+        )
+      ) AS "newRowsData"
+    `),
+  });
+
   // Phase 2
   const entryTables = createCompactedTransactionEntries(txnTables);
 
@@ -34,6 +77,9 @@ export function createPaymentsSchema() {
   /** Phase 1 tables only: stored tables → events → transactions */
   const _allPhase1Tables = [
     ...seedStoredTablesArray,
+    subscriptionsByCustomer,
+    subscriptionsSorted,
+    subscriptionMapByCustomer,
     ...events._allEventTables,
     ...txnTables._allTransactionTables,
   ] as const;
@@ -64,6 +110,9 @@ export function createPaymentsSchema() {
 
   return {
     ...seedEventsStoredTables,
+    subscriptionsByCustomer,
+    subscriptionsSorted,
+    subscriptionMapByCustomer,
     ...events,
     ...txnTables,
     ...entryTables,

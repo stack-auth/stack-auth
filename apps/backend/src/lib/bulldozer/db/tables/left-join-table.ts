@@ -1,5 +1,7 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import type { Table } from "..";
+import { attachRowChangeTriggerMetadata, normalizeRowChangeTrigger } from "../row-change-trigger-dispatch";
+import type { RegisteredRowChangeTrigger } from "../row-change-trigger-dispatch";
 import type { Json, RowData, RowIdentifier, SqlExpression, SqlMapper, SqlStatement, TableId } from "../utilities";
 import {
   getStorageEnginePath,
@@ -24,7 +26,7 @@ export function declareLeftJoinTable<
   leftJoinKey: SqlMapper<{ rowIdentifier: RowIdentifier, rowData: OldRD }, { joinKey: JK }>,
   rightJoinKey: SqlMapper<{ rowIdentifier: RowIdentifier, rowData: NewRD }, { joinKey: JK }>,
 }): Table<GK, null, { leftRowData: OldRD, rightRowData: NewRD | null }> {
-  const triggers = new Map<string, (changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => SqlStatement[]>();
+  const triggers = new Map<string, RegisteredRowChangeTrigger>();
   const rawExpression = <T>(sql: string): SqlExpression<T> => ({ type: "expression", sql });
   const groupsPath = getStorageEnginePath(options.tableId, ["groups"]);
   const getGroupKeyPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey]);
@@ -86,7 +88,7 @@ export function declareLeftJoinTable<
       ${rawExpression<GK>(optionsForRows.groupKeySql)} AS "groupKey",
       "rows"."rowidentifier" AS "leftRowIdentifier",
       "rows"."rowdata" AS "leftRowData",
-      "mapped"."joinKey" AS "leftJoinKey"
+      to_jsonb("mapped"."joinKey") AS "leftJoinKey"
     FROM ${quoteSqlIdentifier(optionsForRows.groupsTableName)} AS "groups"
     CROSS JOIN LATERAL (
       ${options.leftTable.listRowsInGroup({
@@ -118,7 +120,7 @@ export function declareLeftJoinTable<
       ${rawExpression<GK>(optionsForRows.groupKeySql)} AS "groupKey",
       "rows"."rowidentifier" AS "rightRowIdentifier",
       "rows"."rowdata" AS "rightRowData",
-      "mapped"."joinKey" AS "rightJoinKey"
+      to_jsonb("mapped"."joinKey") AS "rightJoinKey"
     FROM ${quoteSqlIdentifier(optionsForRows.groupsTableName)} AS "groups"
     CROSS JOIN LATERAL (
       ${options.rightTable.listRowsInGroup({
@@ -146,7 +148,7 @@ export function declareLeftJoinTable<
     inputTable: Table<GK, any, InputRD>,
     changedSide: "left" | "right",
   }) => {
-    return optionsForTrigger.inputTable.registerRowChangeTrigger((inputChangesTable) => {
+    const inputTrigger = (inputChangesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => {
       const normalizedChangesTableName = `normalized_changes_${generateSecureRandomString()}`;
       const affectedGroupsTableName = `affected_groups_${generateSecureRandomString()}`;
       const oldLeftJoinRowsTableName = `old_left_join_rows_${generateSecureRandomString()}`;
@@ -212,7 +214,7 @@ export function declareLeftJoinTable<
             "changes"."groupKey" AS "groupKey",
             "changes"."rowIdentifier" AS "leftRowIdentifier",
             "changes"."newRowData" AS "leftRowData",
-            "mapped"."joinKey" AS "leftJoinKey"
+            to_jsonb("mapped"."joinKey") AS "leftJoinKey"
           FROM ${quoteSqlIdentifier(normalizedChangesTableName)} AS "changes"
           LEFT JOIN LATERAL (
             SELECT "mapped"."joinKey"
@@ -253,7 +255,7 @@ export function declareLeftJoinTable<
             "changes"."groupKey" AS "groupKey",
             "changes"."rowIdentifier" AS "rightRowIdentifier",
             "changes"."newRowData" AS "rightRowData",
-            "mapped"."joinKey" AS "rightJoinKey"
+            to_jsonb("mapped"."joinKey") AS "rightJoinKey"
           FROM ${quoteSqlIdentifier(normalizedChangesTableName)} AS "changes"
           LEFT JOIN LATERAL (
             SELECT "mapped"."joinKey"
@@ -344,30 +346,22 @@ export function declareLeftJoinTable<
             AND "oldRows"."rowIdentifier" = "newRows"."rowIdentifier"
           WHERE "oldRows"."rowData" IS DISTINCT FROM "newRows"."rowData"
         `.toStatement(leftJoinChangesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb'),
-        ...[...triggers.values()].flatMap((trigger) => trigger(quoteSqlIdentifier(leftJoinChangesTableName))),
       ];
+    };
+    const triggerWithMetadata = attachRowChangeTriggerMetadata(inputTrigger, {
+      targetTableId: tableIdToDebugString(options.tableId),
+      targetTableTriggers: triggers,
     });
+    return optionsForTrigger.inputTable.registerRowChangeTrigger(triggerWithMetadata);
   };
-  let inputTriggerRegistrations: Array<{ deregister: () => void }> = [];
-  const ensureInputTriggerRegistrations = () => {
-    if (inputTriggerRegistrations.length > 0) return;
-    inputTriggerRegistrations = [
-      registerInputTrigger({
-        inputTable: options.leftTable,
-        changedSide: "left",
-      }),
-      registerInputTrigger({
-        inputTable: options.rightTable,
-        changedSide: "right",
-      }),
-    ];
-  };
-  const deregisterInputTriggers = () => {
-    for (const registration of inputTriggerRegistrations) {
-      registration.deregister();
-    }
-    inputTriggerRegistrations = [];
-  };
+  registerInputTrigger({
+    inputTable: options.leftTable,
+    changedSide: "left",
+  });
+  registerInputTrigger({
+    inputTable: options.rightTable,
+    changedSide: "right",
+  });
 
   const table: ReturnType<typeof declareLeftJoinTable<GK, JK, OldRD, NewRD>> = {
     tableId: options.tableId,
@@ -383,7 +377,6 @@ export function declareLeftJoinTable<
     compareGroupKeys: options.leftTable.compareGroupKeys,
     compareSortKeys: () => sqlExpression`0`,
     init: () => {
-      ensureInputTriggerRegistrations();
       const leftGroupsTableName = `left_groups_${generateSecureRandomString()}`;
       const leftRowsTableName = `left_rows_${generateSecureRandomString()}`;
       const rightRowsTableName = `right_rows_${generateSecureRandomString()}`;
@@ -448,7 +441,6 @@ export function declareLeftJoinTable<
       ];
     },
     delete: () => {
-      deregisterInputTriggers();
       return [sqlStatement`
         WITH RECURSIVE "pathsToDelete" AS (
           SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
@@ -516,7 +508,7 @@ export function declareLeftJoinTable<
     `,
     registerRowChangeTrigger: (trigger) => {
       const id = generateSecureRandomString();
-      triggers.set(id, trigger);
+      triggers.set(id, normalizeRowChangeTrigger(trigger));
       return { deregister: () => triggers.delete(id) };
     },
     verifyDataIntegrity: () => {

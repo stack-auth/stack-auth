@@ -1,0 +1,28 @@
+<clickhouse>
+    <logger>
+        <level>warning</level>
+        <console>1</console>
+    </logger>
+
+    <http_port>8123</http_port>
+    <tcp_port>9009</tcp_port>
+    <listen_host>0.0.0.0</listen_host>
+
+    <path>/data/clickhouse/</path>
+    <tmp_path>/data/clickhouse/tmp/</tmp_path>
+    <user_files_path>/data/clickhouse/user_files/</user_files_path>
+    <format_schema_path>/data/clickhouse/format_schemas/</format_schema_path>
+
+    <max_server_memory_usage_to_ram_ratio>0.5</max_server_memory_usage_to_ram_ratio>
+
+    <custom_settings_prefixes>SQL_</custom_settings_prefixes>
+
+    <user_directories>
+        <users_xml>
+            <path>users.xml</path>
+        </users_xml>
+        <local_directory>
+            <path>/data/clickhouse/access/</path>
+        </local_directory>
+    </user_directories>
+</clickhouse>

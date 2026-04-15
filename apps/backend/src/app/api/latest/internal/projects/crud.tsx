@@ -17,7 +17,7 @@ export const adminUserProjectsCrudHandlers = createLazyProxy(() => createCrudHan
   }),
   onPrepare: async ({ auth }) => {
     if (!auth.user) {
-      throw new KnownErrors.UserAuthenticationRequired;
+      throw new KnownErrors.UserAuthenticationRequired();
     }
     if (auth.project.id !== "internal") {
       throw new KnownErrors.ExpectedInternalProject();

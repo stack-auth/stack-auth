@@ -29,7 +29,6 @@ function hasHistoryMethods(value: unknown): value is { pushState: History["pushS
 
 export type EventTrackerDeps = {
   projectId: string,
-  getAccessToken: () => Promise<string | null>,
   sendBatch: (body: string, options: { keepalive: boolean }) => Promise<Result<Response, Error>>,
 };
 
@@ -46,7 +45,6 @@ export class EventTracker {
   private _flushTimer: ReturnType<typeof setInterval> | null = null;
   private _events: TrackedEvent[] = [];
   private _approxBytes = 0;
-  private _lastKnownAccessToken: string | null = null;
   private _lastUrl: string | null = null;
   private readonly _sessionReplaySegmentId: string;
   private readonly _deps: EventTrackerDeps;
@@ -62,13 +60,12 @@ export class EventTracker {
   start() {
     if (this._started) return;
     if (!isBrowserLike()) return;
-    const screenObject = Object.getOwnPropertyDescriptor(window, "screen")?.value;
     if (
       typeof window.addEventListener !== "function"
       || typeof window.removeEventListener !== "function"
       || typeof document.addEventListener !== "function"
       || typeof document.removeEventListener !== "function"
-      || !hasScreenDimensions(screenObject)
+      || !hasScreenDimensions(window.screen)
     ) {
       return;
     }
@@ -87,7 +84,7 @@ export class EventTracker {
       clearInterval(this._flushTimer);
       this._flushTimer = null;
     }
-    runAsynchronously(() => this._flush({ keepalive: true }), { noErrorLogging: true });
+    runAsynchronously(() => this._flush({ keepalive: true }));
     this._teardown();
   }
 
@@ -100,12 +97,12 @@ export class EventTracker {
     this._events.push(event);
     this._approxBytes += JSON.stringify(event).length;
     if (this._events.length >= MAX_EVENTS_PER_BATCH || this._approxBytes >= MAX_APPROX_BYTES_PER_BATCH) {
-      runAsynchronously(() => this._flush({ keepalive: false }), { noErrorLogging: true });
+      runAsynchronously(() => this._flush({ keepalive: false }));
     }
   }
 
   private _capturePageView(entryType: "initial" | "push" | "replace" | "pop") {
-    const screenObject = Object.getOwnPropertyDescriptor(window, "screen")?.value;
+    const screenObject = window.screen;
     if (!hasScreenDimensions(screenObject)) {
       return;
     }
@@ -134,7 +131,7 @@ export class EventTracker {
   private _setupPageViewCapture() {
     // Fire initial page-view
     this._capturePageView("initial");
-    const historyObject = Object.getOwnPropertyDescriptor(window, "history")?.value;
+    const historyObject = window.history;
     if (!hasHistoryMethods(historyObject)) {
       return;
     }
@@ -227,7 +224,7 @@ export class EventTracker {
   }
 
   private readonly _onPageHide = () => {
-    runAsynchronously(() => this._flush({ keepalive: true }), { noErrorLogging: true });
+    runAsynchronously(() => this._flush({ keepalive: true }));
   };
 
   private _setupPageHideListeners() {
@@ -246,7 +243,7 @@ export class EventTracker {
     }
 
     // Restore history methods
-    const historyObject = Object.getOwnPropertyDescriptor(window, "history")?.value;
+    const historyObject = window.history;
     if (hasHistoryMethods(historyObject)) {
       if (this._originalPushState) {
         historyObject.pushState = this._originalPushState;
@@ -266,7 +263,6 @@ export class EventTracker {
   }
 
   private async _flush(options: { keepalive: boolean }) {
-    if (!this._lastKnownAccessToken) return;
     if (this._events.length === 0) return;
 
     const nowMs = Date.now();
@@ -299,14 +295,8 @@ export class EventTracker {
 
   private _tick() {
     if (this._cancelled) return;
-
-    runAsynchronously(async () => {
-      this._lastKnownAccessToken = await this._deps.getAccessToken();
-    }, { noErrorLogging: true });
-
-    const hasAuth = !!this._lastKnownAccessToken;
-    if (hasAuth && this._events.length > 0) {
-      runAsynchronously(() => this._flush({ keepalive: false }), { noErrorLogging: true });
+    if (this._events.length > 0) {
+      runAsynchronously(() => this._flush({ keepalive: false }));
     }
   }
 }
