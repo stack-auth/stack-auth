@@ -1,6 +1,6 @@
-import { tool } from "ai";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { tool } from "ai";
 import { z } from "zod";
 
 type DocsToolHttpResult = {
@@ -15,37 +15,45 @@ function getDocsToolsBaseUrl(): string {
   }
   if (getNodeEnvironment() === "development") {
     const portPrefix = getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81");
-    return `http://localhost:${portPrefix}04`;
+    return `http://localhost:${portPrefix}26`;
   }
   return "https://mcp.stack-auth.com";
 }
 
 async function postDocsToolAction(action: Record<string, unknown>): Promise<string> {
   const base = getDocsToolsBaseUrl();
+  try {
+    const res = await fetch(`${base}/api/internal/docs-tools`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        // MCP-style JSON-RPC endpoint requires clients to advertise both JSON and SSE.
+        Accept: "application/json, text/event-stream",
+      },
+      body: JSON.stringify(action),
+    });
 
-  const res = await fetch(`${base}/api/internal/docs-tools`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(action),
-  });
+    if (!res.ok) {
+      const errBody = await res.text();
+      captureError("docs-tools-http-error", new Error(`Stack Auth docs tools error (${res.status}): ${errBody}`));
+      return "Stack Auth docs tools returned an error. Please try again later.";
+    }
 
-  if (!res.ok) {
-    const errBody = await res.text();
-    captureError("docs-tools-http-error", new Error(`Stack Auth docs tools error (${res.status}): ${errBody}`));
-    return `Stack Auth docs tools error (${res.status}): ${errBody}`;
+    const data = (await res.json()) as DocsToolHttpResult;
+    const text = data.content
+      ?.filter((c): c is { type: "text", text: string } => c.type === "text" && typeof c.text === "string")
+      .map((c) => c.text)
+      .join("\n") ?? "";
+
+    if (data.isError === true) {
+      return text || "Unknown docs tool error";
+    }
+
+    return text;
+  } catch (err) {
+    captureError("docs-tools-transport-error", err instanceof Error ? err : new Error(String(err)));
+    return "Stack Auth docs tools are temporarily unavailable. Please try again later.";
   }
-
-  const data = (await res.json()) as DocsToolHttpResult;
-  const text = data.content
-    ?.filter((c): c is { type: "text", text: string } => c.type === "text" && typeof c.text === "string")
-    .map((c) => c.text)
-    .join("\n") ?? "";
-
-  if (data.isError === true) {
-    return text || "Unknown docs tool error";
-  }
-
-  return text;
 }
 
 /**

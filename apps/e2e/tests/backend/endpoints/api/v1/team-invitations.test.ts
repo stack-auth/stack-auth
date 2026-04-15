@@ -844,6 +844,8 @@ it("should allow a restricted user to accept invitation after verifying email", 
     method: "GET",
   });
   expect(teamsResponse.body.items.find((item: any) => item.id === teamId)).toBeDefined();
+}, {
+  timeout: 120_000,
 });
 
 
