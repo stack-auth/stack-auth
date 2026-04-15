@@ -166,7 +166,7 @@ function HeaderCell<TRow>({
   return (
     <div
       className={cn(
-        "group/header relative flex items-center gap-1.5 px-3 select-none bg-transparent",
+        "group/header relative flex items-center gap-1.5 px-3 select-none bg-transparent overflow-hidden",
         "border-r border-black/[0.04] dark:border-white/[0.04] last:border-r-0",
         sortable && "cursor-pointer",
       )}
@@ -178,7 +178,7 @@ function HeaderCell<TRow>({
     >
       <span
         className={cn(
-          "flex-1 truncate text-xs font-semibold uppercase tracking-wider text-muted-foreground",
+          "flex-1 min-w-0 truncate text-xs font-semibold uppercase tracking-wider text-muted-foreground",
           col.align === "center" && "text-center",
           col.align === "right" && "text-right",
         )}
@@ -261,7 +261,7 @@ function DataCell<TRow>({
   return (
     <div
       className={cn(
-        "flex items-center px-3 truncate bg-transparent",
+        "flex items-center px-3 bg-transparent overflow-hidden",
         "border-r border-black/[0.04] dark:border-white/[0.04] last:border-r-0",
         "text-sm text-foreground",
         col.align === "center" && "justify-center",
@@ -280,7 +280,9 @@ function DataCell<TRow>({
         col.onCellDoubleClick!(ctx, e);
       } : undefined}
     >
-      {content}
+      <div className="min-w-0 flex-1 truncate">
+        {content}
+      </div>
     </div>
   );
 }
@@ -1173,7 +1175,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
                         : isOddRow
                           ? "bg-foreground/[0.02] dark:bg-foreground/[0.03] hover:bg-foreground/[0.04] dark:hover:bg-foreground/[0.06]"
                           : "hover:bg-foreground/[0.025] dark:hover:bg-foreground/[0.04]",
-                      selectionMode !== "none" && "cursor-pointer",
+                      (selectionMode !== "none" || onRowClick) && "cursor-pointer",
                     )}
                     style={{
                       height: rowHeight,

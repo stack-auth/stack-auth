@@ -1,11 +1,16 @@
 "use client";
 
-import { DesignDataTable } from "@/components/design-components";
 import { useRouter } from "@/components/router";
 import { Spinner, Typography } from "@/components/ui";
 import { AdminEmailOutbox, AdminEmailOutboxStatus } from "@stackframe/stack";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { ColumnDef } from "@tanstack/react-table";
+import {
+  createDefaultDataGridState,
+  DataGrid,
+  useDataSource,
+  type DataGridColumnDef,
+  type DataGridState,
+} from "@stackframe/dashboard-ui-components";
 import { useEffect, useMemo, useState } from "react";
 import { useAdminApp } from "../use-admin-app";
 import { StatsBar, StatsBarData } from "./stats-bar";
@@ -143,29 +148,34 @@ function groupEmails(
   return rows;
 }
 
-const groupedTableColumns: ColumnDef<GroupedEmailRow>[] = [
+const groupedEmailGridColumns: DataGridColumnDef<GroupedEmailRow>[] = [
   {
-    accessorKey: "displayName",
+    id: "displayName",
     header: "Template/Draft",
-    cell: ({ row }) => (
-      <span className="font-medium">{row.original.displayName}</span>
-    ),
+    accessor: "displayName",
+    width: 200,
+    flex: 1,
+    type: "string",
+    renderCell: ({ value }) => <span className="font-medium">{String(value)}</span>,
   },
   {
-    accessorKey: "recipientCount",
+    id: "recipientCount",
     header: "Recipients",
-    size: 100,
-    cell: ({ row }) => (
-      <span className="text-sm tabular-nums">{row.original.recipientCount.toLocaleString()}</span>
+    accessor: "recipientCount",
+    width: 120,
+    type: "number",
+    align: "right",
+    renderCell: ({ value }) => (
+      <span className="text-sm tabular-nums">{Number(value).toLocaleString()}</span>
     ),
   },
   {
-    accessorKey: "stats",
+    id: "stats",
     header: "Stats",
-    size: 200,
-    cell: ({ row }) => (
-      <StatsBar data={row.original.stats} />
-    ),
+    accessor: (row) => row.stats,
+    width: 220,
+    sortable: false,
+    renderCell: ({ row }) => <StatsBar data={row.stats} />,
   },
 ];
 
@@ -216,6 +226,21 @@ export function GroupedEmailTable() {
     [emails, draftsMap, templatesMap]
   );
 
+  const [gridState, setGridState] = useState<DataGridState>(() => ({
+    ...createDefaultDataGridState(groupedEmailGridColumns),
+    sorting: [{ columnId: "recipientCount", direction: "desc" }],
+  }));
+
+  const gridData = useDataSource({
+    data: groupedRows,
+    columns: groupedEmailGridColumns,
+    getRowId: (row) => row.groupKey,
+    sorting: gridState.sorting,
+    quickSearch: gridState.quickSearch,
+    pagination: gridState.pagination,
+    paginationMode: "infinite",
+  });
+
   if (loading) {
     return (
       <div className="flex items-center justify-center gap-2 py-8">
@@ -226,12 +251,21 @@ export function GroupedEmailTable() {
   }
 
   return (
-    <DesignDataTable
-      data={groupedRows}
-      defaultColumnFilters={[]}
-      columns={groupedTableColumns}
-      defaultSorting={[{ id: "recipientCount", desc: true }]}
-      onRowClick={(row) => {
+    <DataGrid
+      columns={groupedEmailGridColumns}
+      rows={gridData.rows}
+      getRowId={(row) => row.groupKey}
+      totalRowCount={gridData.totalRowCount}
+      isLoading={gridData.isLoading}
+      state={gridState}
+      onChange={setGridState}
+      paginationMode="infinite"
+      hasMore={gridData.hasMore}
+      isLoadingMore={gridData.isLoadingMore}
+      onLoadMore={gridData.loadMore}
+      footer={false}
+
+      onRowClick={(row, _rowId, _event) => {
         if (row.sourceType === "draft" && row.sourceId) {
           router.push(`email-drafts/${row.sourceId}?stage=sent`);
         } else if (row.sourceType === "template" && row.sourceId) {

@@ -2,7 +2,6 @@
 
 import { CodeBlock } from "@/components/code-block";
 import {
-  DesignDataTable,
   DesignEditableGrid,
   type DesignEditableGridItem,
   type DesignEditableGridSize,
@@ -12,7 +11,7 @@ import {
   DesignUserList,
 } from "@/components/design-components";
 import { DesignAnalyticsCard, DesignAnalyticsCardHeader, DesignChartLegend } from "@/components/design-components/analytics-card";
-import { DataTableColumnHeader, SearchToolbarItem, Typography } from "@/components/ui";
+import { Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import {
   CheckCircle,
@@ -47,7 +46,6 @@ import {
   DesignInput,
   DesignPillToggle,
 } from "@stackframe/dashboard-ui-components";
-import { ColumnDef } from "@tanstack/react-table";
 import { useMemo, useRef, useState } from "react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -204,6 +202,53 @@ const STATUS_BADGE: Record<DemoProduct["status"], { label: string, color: Design
   draft: { label: "Draft", color: "orange" },
   archived: { label: "Archived", color: "red" },
 };
+
+const DEMO_PRODUCT_COLUMNS: DataGridColumnDef<DemoProduct>[] = [
+  {
+    id: "name",
+    header: "Name",
+    accessor: "name",
+    width: 180,
+    type: "string",
+    renderCell: ({ value }) => <span className="text-sm font-medium text-foreground">{String(value)}</span>,
+  },
+  {
+    id: "category",
+    header: "Category",
+    accessor: "category",
+    width: 150,
+    type: "string",
+    renderCell: ({ value }) => <span className="text-sm text-muted-foreground">{String(value)}</span>,
+  },
+  {
+    id: "price",
+    header: "Price",
+    accessor: "price",
+    width: 120,
+    type: "number",
+    renderCell: ({ value }) => (
+      <span className="text-sm text-muted-foreground">
+        ${Number(value).toFixed(2)}
+      </span>
+    ),
+  },
+  {
+    id: "status",
+    header: "Status",
+    accessor: "status",
+    width: 120,
+    type: "singleSelect",
+    valueOptions: [
+      { value: "active", label: "Active" },
+      { value: "draft", label: "Draft" },
+      { value: "archived", label: "Archived" },
+    ],
+    renderCell: ({ value }) => {
+      const s = String(value) as DemoProduct["status"];
+      return <DesignBadge label={STATUS_BADGE[s].label} color={STATUS_BADGE[s].color} size="sm" />;
+    },
+  },
+];
 
 const DEMO_USERS = [
   { name: "Ada Lovelace", email: "ada@example.com", time: "Active 1h ago", color: "cyan" as const },
@@ -396,8 +441,9 @@ export default function PageClient() {
   // Data Table
   const [tableClickableRows, setTableClickableRows] = useState(false);
   const [tableLastRowClick, setTableLastRowClick] = useState("");
-  const [tableGlass, setTableGlass] = useState<boolean | undefined>(undefined);
-  const [tableShowToolbar, setTableShowToolbar] = useState(false);
+  const [tableShowToolbar, setTableShowToolbar] = useState(true);
+  const [dtState, setDtState] = useState(() => createDefaultDataGridState(DEMO_PRODUCT_COLUMNS));
+  const dtData = useDataSource({ data: DEMO_PRODUCTS, columns: DEMO_PRODUCT_COLUMNS, getRowId: (r: DemoProduct) => r.id, sorting: dtState.sorting, quickSearch: dtState.quickSearch, pagination: dtState.pagination, paginationMode: "client" });
 
   // Editable Grid
   const [gridCols, setGridCols] = useState<1 | 2>(2);
@@ -458,41 +504,6 @@ export default function PageClient() {
   const [userShowAvatar, setUserShowAvatar] = useState(true);
   const [userGradient, setUserGradient] = useState<"blue-purple" | "cyan-blue" | "none">("blue-purple");
   const [userLastClick, setUserLastClick] = useState("");
-
-  // ─── Demo table columns ──────────────────────────────────────────────────
-
-  const tableColumns = useMemo<ColumnDef<DemoProduct>[]>(
-    () => [
-      {
-        accessorKey: "name",
-        header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Name" />,
-        cell: ({ row }) => <span className="text-sm font-medium text-foreground">{row.getValue("name")}</span>,
-      },
-      {
-        accessorKey: "category",
-        header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Category" />,
-        cell: ({ row }) => <span className="text-sm text-muted-foreground">{row.getValue("category")}</span>,
-      },
-      {
-        accessorKey: "price",
-        header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Price" />,
-        cell: ({ row }) => (
-          <span className="text-sm text-muted-foreground">
-            ${(row.getValue("price") as number).toFixed(2)}
-          </span>
-        ),
-      },
-      {
-        accessorKey: "status",
-        header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Status" />,
-        cell: ({ row }) => {
-          const s = row.getValue("status") as DemoProduct["status"];
-          return <DesignBadge label={STATUS_BADGE[s].label} color={STATUS_BADGE[s].color} size="sm" />;
-        },
-      },
-    ],
-    []
-  );
 
   // ─── Demo editable grid items ────────────────────────────────────────────
 
@@ -903,13 +914,17 @@ export default function PageClient() {
     if (selected === "data-table") {
       return (
         <div className="w-full max-w-2xl">
-          <DesignDataTable
-            data={DEMO_PRODUCTS}
-            columns={tableColumns}
-            defaultSorting={[{ id: "name", desc: false }]}
-            glassmorphic={tableGlass}
-            toolbarRender={tableShowToolbar ? (table) => <SearchToolbarItem table={table} keyName="name" placeholder="Filter by name" /> : undefined}
+          <DataGrid
+            columns={DEMO_PRODUCT_COLUMNS}
+            rows={dtData.rows}
+            getRowId={(row) => row.id}
+            totalRowCount={dtData.totalRowCount}
+            isLoading={dtData.isLoading}
+            state={dtState}
+            onChange={setDtState}
+            toolbar={tableShowToolbar ? undefined : false}
             onRowClick={tableClickableRows ? (row) => setTableLastRowClick(row.name) : undefined}
+            maxHeight={400}
           />
           {tableLastRowClick && (
             <Typography variant="secondary" className="text-xs mt-2">
@@ -1586,9 +1601,6 @@ export default function PageClient() {
     if (selected === "data-table") {
       return (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 items-end">
-          <PropField label="Glassmorphic">
-            <GlassmorphicToggle value={tableGlass} onChange={setTableGlass} />
-          </PropField>
           <PropField label="Toolbar">
             <BoolToggle value={tableShowToolbar} onChange={setTableShowToolbar} on="Shown" off="Hidden" />
           </PropField>
@@ -2055,13 +2067,17 @@ export default function PageClient() {
 />`;
     }
     if (selected === "data-table") {
-      const glassProp = tableGlass === undefined ? "" : `\n  glassmorphic={${tableGlass}}`;
-      const toolbarProp = tableShowToolbar ? `\n  toolbarRender={(table) => <SearchToolbarItem table={table} keyName="name" placeholder="Filter by name" />}` : "";
-      return `<DesignDataTable
-  data={products}
+      return `<DataGrid
   columns={columns}
-  defaultSorting={[{ id: "name", desc: false }]}${glassProp}${toolbarProp}
+  rows={data.rows}
+  getRowId={(row) => row.id}
+  totalRowCount={data.totalRowCount}
+  isLoading={data.isLoading}
+  state={gridState}
+  onChange={setGridState}
+  toolbar={${tableShowToolbar}}
   onRowClick={${tableClickableRows ? "(row) => setLastClickedRow(row.name)" : "undefined"}}
+  maxHeight={400}
 />`;
     }
     if (selected === "editable-grid") {

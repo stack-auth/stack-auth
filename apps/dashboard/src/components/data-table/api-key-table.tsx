@@ -1,29 +1,24 @@
 'use client';
 import { InternalApiKey } from '@stackframe/stack';
-import { DesignCard, DesignDataTable } from "@/components/design-components";
-import { ActionCell, ActionDialog, BadgeCell, DataTableColumnHeader, DataTableFacetedFilter, DateCell, SearchToolbarItem, TextCell, standardFilterFn } from "@/components/ui";
-import { ColumnDef, Row, Table } from "@tanstack/react-table";
-import { useMemo, useState } from "react";
+import { ActionCell, ActionDialog, Badge } from "@/components/ui";
+import {
+  createDefaultDataGridState,
+  DataGrid,
+  useDataSource,
+  type DataGridColumnDef,
+} from "@stackframe/dashboard-ui-components";
+import { useEffect, useMemo, useState } from "react";
 
 type ExtendedInternalApiKey = InternalApiKey & {
   status: 'valid' | 'expired' | 'revoked',
 };
 
-function toolbarRender<TData>(table: Table<TData>) {
-  return (
-    <>
-      <SearchToolbarItem table={table} placeholder="Search table" />
-      <DataTableFacetedFilter
-        column={table.getColumn("status")}
-        title="Status"
-        options={[
-          { value: "valid", label: "Valid" },
-          { value: "expired", label: "Expired" },
-          { value: "revoked", label: "Revoked" },
-        ]}
-      />
-    </>
-  );
+/** Matches previous `DateCell` + `ignoreAfterYears={50}` behaviour. */
+function formatApiKeyDateDisplay(date: Date) {
+  const ignoreAfterYears = 50;
+  const ignore = new Date(new Date().setFullYear(new Date().getFullYear() + ignoreAfterYears)) < date;
+  const timeString = date.toLocaleTimeString([], { year: 'numeric', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
+  return ignore ? 'Never' : timeString;
 }
 
 function RevokeDialog(props: {
@@ -55,13 +50,13 @@ function RevokeDialog(props: {
   </ActionDialog>;
 }
 
-function Actions({ row }: { row: Row<ExtendedInternalApiKey> }) {
+function Actions({ apiKey }: { apiKey: ExtendedInternalApiKey }) {
   const [isRevokeModalOpen, setIsRevokeModalOpen] = useState(false);
   return (
     <>
-      <RevokeDialog apiKey={row.original} open={isRevokeModalOpen} onOpenChange={setIsRevokeModalOpen} />
+      <RevokeDialog apiKey={apiKey} open={isRevokeModalOpen} onOpenChange={setIsRevokeModalOpen} />
       <ActionCell
-        invisible={row.original.status !== 'valid'}
+        invisible={apiKey.status !== 'valid'}
         items={[{
           item: "Revoke",
           danger: true,
@@ -72,50 +67,90 @@ function Actions({ row }: { row: Row<ExtendedInternalApiKey> }) {
   );
 }
 
-const getColumns = (showPublishableClientKey: boolean): ColumnDef<ExtendedInternalApiKey>[] => {
-  const baseColumns: ColumnDef<ExtendedInternalApiKey>[] = [
+const getColumns = (showPublishableClientKey: boolean): DataGridColumnDef<ExtendedInternalApiKey>[] => {
+  const baseColumns: DataGridColumnDef<ExtendedInternalApiKey>[] = [
     {
-      accessorKey: "description",
-      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Description" />,
-      cell: ({ row }) => <TextCell size={300}>{row.original.description}</TextCell>,
+      id: "description",
+      header: "Description",
+      accessor: "description",
+      type: "string",
+      width: 300,
+      flex: 1,
+      renderCell: ({ row }) => (
+        <span className="block truncate" title={row.description}>{row.description}</span>
+      ),
     },
     {
-      accessorKey: "status",
-      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Status" />,
-      cell: ({ row }) => <BadgeCell badges={[row.original.status]} />,
-      filterFn: standardFilterFn,
+      id: "status",
+      header: "Status",
+      accessor: "status",
+      type: "string",
+      width: 120,
+      renderCell: ({ row }) => (
+        <Badge variant="secondary">{row.status}</Badge>
+      ),
     },
   ];
-  const clientKeyColumn: ColumnDef<ExtendedInternalApiKey> = {
+
+  const clientKeyColumn: DataGridColumnDef<ExtendedInternalApiKey> = {
     id: "clientKey",
-    accessorFn: (row) => row.publishableClientKey?.lastFour,
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Client Key" />,
-    cell: ({ row }) => (
-      <TextCell>{row.original.publishableClientKey?.lastFour ? `*******${row.original.publishableClientKey.lastFour}` : "—"}</TextCell>
+    header: "Client Key",
+    accessor: (row) => row.publishableClientKey?.lastFour,
+    type: "string",
+    sortable: false,
+    width: 160,
+    renderCell: ({ row }) => (
+      <span className="truncate">
+        {row.publishableClientKey?.lastFour ? `*******${row.publishableClientKey.lastFour}` : "—"}
+      </span>
     ),
-    enableSorting: false,
   };
-  const serverKeyColumn: ColumnDef<ExtendedInternalApiKey> = {
+
+  const serverKeyColumn: DataGridColumnDef<ExtendedInternalApiKey> = {
     id: "serverKey",
-    accessorFn: (row) => row.secretServerKey?.lastFour,
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Server Key" />,
-    cell: ({ row }) => <TextCell>{row.original.secretServerKey?.lastFour ? `*******${row.original.secretServerKey.lastFour}` : "—"}</TextCell>,
-    enableSorting: false,
+    header: "Server Key",
+    accessor: (row) => row.secretServerKey?.lastFour,
+    type: "string",
+    sortable: false,
+    width: 160,
+    renderCell: ({ row }) => (
+      <span className="truncate">
+        {row.secretServerKey?.lastFour ? `*******${row.secretServerKey.lastFour}` : "—"}
+      </span>
+    ),
   };
-  const tailColumns: ColumnDef<ExtendedInternalApiKey>[] = [
+
+  const tailColumns: DataGridColumnDef<ExtendedInternalApiKey>[] = [
     {
-      accessorKey: "expiresAt",
-      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Expires At" />,
-      cell: ({ row }) => <DateCell date={row.original.expiresAt} ignoreAfterYears={50} />,
+      id: "expiresAt",
+      header: "Expires At",
+      accessor: "expiresAt",
+      type: "custom",
+      width: 180,
+      renderCell: ({ row }) => (
+        <span className="truncate">{formatApiKeyDateDisplay(row.expiresAt)}</span>
+      ),
     },
     {
-      accessorKey: "createdAt",
-      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Created At" />,
-      cell: ({ row }) => <DateCell date={row.original.createdAt} ignoreAfterYears={50} />,
+      id: "createdAt",
+      header: "Created At",
+      accessor: "createdAt",
+      type: "custom",
+      width: 180,
+      renderCell: ({ row }) => (
+        <span className="truncate">{formatApiKeyDateDisplay(row.createdAt)}</span>
+      ),
     },
     {
       id: "actions",
-      cell: ({ row }) => <Actions row={row} />,
+      header: "",
+      sortable: false,
+      hideable: false,
+      resizable: false,
+      width: 50,
+      minWidth: 50,
+      maxWidth: 50,
+      renderCell: ({ row }) => <Actions apiKey={row} />,
     },
   ];
 
@@ -130,6 +165,13 @@ export function InternalApiKeyTable(props: { apiKeys: InternalApiKey[], showPubl
     () => getColumns(showPublishableClientKey),
     [showPublishableClientKey],
   );
+
+  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
+
+  useEffect(() => {
+    setGridState(createDefaultDataGridState(columns));
+  }, [columns]);
+
   const extendedApiKeys = useMemo(() => {
     const keys = props.apiKeys.map((apiKey) => ({
       ...apiKey,
@@ -144,13 +186,31 @@ export function InternalApiKeyTable(props: { apiKeys: InternalApiKey[], showPubl
     });
   }, [props.apiKeys]);
 
-  return <DesignCard glassmorphic>
-    <DesignDataTable
-      data={extendedApiKeys}
+  const gridData = useDataSource({
+    data: extendedApiKeys,
+    columns,
+    getRowId: (row) => row.id,
+    sorting: gridState.sorting,
+    quickSearch: gridState.quickSearch,
+    pagination: gridState.pagination,
+    paginationMode: "infinite",
+  });
+
+  return (
+    <DataGrid
       columns={columns}
-      toolbarRender={toolbarRender}
-      defaultColumnFilters={[{ id: 'status', value: ['valid'] }]}
-      defaultSorting={[]}
+      rows={gridData.rows}
+      getRowId={(row) => row.id}
+      totalRowCount={gridData.totalRowCount}
+      isLoading={gridData.isLoading}
+      state={gridState}
+      onChange={setGridState}
+      paginationMode="infinite"
+      hasMore={gridData.hasMore}
+      isLoadingMore={gridData.isLoadingMore}
+      onLoadMore={gridData.loadMore}
+      footer={false}
+
     />
-  </DesignCard>;
+  );
 }

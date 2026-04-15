@@ -1,11 +1,16 @@
 'use client';
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { ProductDialog } from "@/components/payments/product-dialog";
-import { ActionCell, ActionDialog, DataTable, DataTableColumnHeader, TextCell, toast } from "@/components/ui";
+import { ActionCell, ActionDialog, toast } from "@/components/ui";
 import { useUpdateConfig } from "@/lib/config-update";
 import { branchPaymentsSchema } from "@stackframe/stack-shared/dist/config/schema";
 import { typedEntries, typedFromEntries } from "@stackframe/stack-shared/dist/utils/objects";
-import { ColumnDef } from "@tanstack/react-table";
+import {
+  createDefaultDataGridState,
+  DataGrid,
+  useDataSource,
+  type DataGridColumnDef,
+} from "@stackframe/dashboard-ui-components";
 import { useState } from "react";
 import * as yup from "yup";
 
@@ -15,41 +20,65 @@ type PaymentProduct = {
   id: string,
 } & BranchPayments["products"][string];
 
-const columns: ColumnDef<PaymentProduct>[] = [
+const columns: DataGridColumnDef<PaymentProduct>[] = [
   {
-    accessorKey: "id",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Product ID" />,
-    cell: ({ row }) => <TextCell><span className="font-mono text-sm">{row.original.id}</span></TextCell>,
-    enableSorting: false,
+    id: "id",
+    header: "Product ID",
+    accessor: "id",
+    width: 160,
+    type: "string",
+    sortable: false,
+    renderCell: ({ value }) => (
+      <span className="font-mono text-sm">{String(value)}</span>
+    ),
   },
   {
-    accessorKey: "displayName",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Display Name" />,
-    cell: ({ row }) => <TextCell>{row.original.displayName}</TextCell>,
-    enableSorting: false,
+    id: "displayName",
+    header: "Display Name",
+    accessor: "displayName",
+    width: 180,
+    flex: 1,
+    type: "string",
+    sortable: false,
   },
   {
-    accessorKey: "customerType",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Customer Type" />,
-    cell: ({ row }) => <TextCell><span className="capitalize">{row.original.customerType}</span></TextCell>,
-    enableSorting: false,
+    id: "customerType",
+    header: "Customer Type",
+    accessor: "customerType",
+    width: 140,
+    type: "string",
+    sortable: false,
+    renderCell: ({ value }) => (
+      <span className="capitalize">{String(value)}</span>
+    ),
   },
   {
-    accessorKey: "freeTrial",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Free Trial" />,
-    cell: ({ row }) => <TextCell>{row.original.freeTrial?.join(" ") ?? ""}</TextCell>,
-    enableSorting: false,
+    id: "freeTrial",
+    header: "Free Trial",
+    accessor: (row) => row.freeTrial?.join(" ") ?? "",
+    width: 140,
+    type: "string",
+    sortable: false,
   },
   {
-    accessorKey: "stackable",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Stackable" />,
-    cell: ({ row }) => <TextCell>{row.original.stackable ? "Yes" : "No"}</TextCell>,
-    enableSorting: false,
+    id: "stackable",
+    header: "Stackable",
+    accessor: "stackable",
+    width: 100,
+    type: "boolean",
+    sortable: false,
   },
   {
     id: "actions",
-    cell: ({ row }) => <ActionsCell product={row.original} />,
-  }
+    header: "",
+    width: 50,
+    minWidth: 50,
+    maxWidth: 50,
+    sortable: false,
+    hideable: false,
+    resizable: false,
+    renderCell: ({ row }) => <ActionsCell product={row} />,
+  },
 ];
 
 export function PaymentProductTable({ products }: { products: Record<string, BranchPayments["products"][string]> }) {
@@ -59,13 +88,34 @@ export function PaymentProductTable({ products }: { products: Record<string, Bra
       ...product,
     }));
 
-  return <DataTable
-    data={data}
-    columns={columns}
-    defaultColumnFilters={[]}
-    defaultSorting={[]}
-    showDefaultToolbar={false}
-  />;
+  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
+  const gridData = useDataSource({
+    data,
+    columns,
+    getRowId: (row) => row.id,
+    sorting: gridState.sorting,
+    quickSearch: gridState.quickSearch,
+    pagination: gridState.pagination,
+    paginationMode: "infinite",
+  });
+
+  return (
+    <DataGrid
+      columns={columns}
+      rows={gridData.rows}
+      getRowId={(row) => row.id}
+      totalRowCount={gridData.totalRowCount}
+      state={gridState}
+      onChange={setGridState}
+      paginationMode="infinite"
+      hasMore={gridData.hasMore}
+      isLoadingMore={gridData.isLoadingMore}
+      onLoadMore={gridData.loadMore}
+      footer={false}
+      toolbar={false}
+
+    />
+  );
 }
 
 function ActionsCell({ product }: { product: PaymentProduct }) {

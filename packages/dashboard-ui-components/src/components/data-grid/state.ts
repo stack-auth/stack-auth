@@ -1,4 +1,5 @@
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { clampColumnWidth } from "./data-grid-sizing";
 import type {
   DataGridColumnDef,
   DataGridDateDisplay,
@@ -43,7 +44,8 @@ export function createDefaultDataGridState(
   const columnOrder: string[] = [];
 
   for (const col of columns) {
-    columnWidths[col.id] = col.width ?? 150;
+    const raw = col.width ?? 150;
+    columnWidths[col.id] = clampColumnWidth(col, raw);
     columnOrder.push(col.id);
   }
 
@@ -75,7 +77,8 @@ export function resolveColumnWidth(
   col: DataGridColumnDef<any>,
   storedWidth: number | undefined,
 ): number {
-  return storedWidth ?? col.width ?? 150;
+  const raw = storedWidth ?? col.width ?? 150;
+  return clampColumnWidth(col, raw);
 }
 
 export function isColumnVisible(

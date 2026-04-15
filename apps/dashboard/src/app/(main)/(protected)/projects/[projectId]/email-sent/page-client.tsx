@@ -3,13 +3,18 @@
 import { DesignBadge } from "@/components/design-components";
 import { DesignCard } from "@/components/design-components";
 import { DesignPillToggle } from "@/components/design-components";
-import { DesignDataTable } from "@/components/design-components";
 import { useRouter } from "@/components/router";
 import { Spinner, Typography } from "@/components/ui";
 import { Envelope } from "@phosphor-icons/react";
 import { AdminEmailOutbox } from "@stackframe/stack";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { ColumnDef } from "@tanstack/react-table";
+import {
+  createDefaultDataGridState,
+  DataGrid,
+  useDataSource,
+  type DataGridColumnDef,
+  type DataGridState,
+} from "@stackframe/dashboard-ui-components";
 import { useEffect, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
@@ -17,6 +22,22 @@ import { useAdminApp } from "../use-admin-app";
 import { DomainReputationCard } from "./domain-reputation-card";
 import { STATUS_LABELS, getStatusBadgeColor } from "./email-status-utils";
 import { GroupedEmailTable } from "./grouped-email-table";
+
+type EmailWithSubject = AdminEmailOutbox & {
+  subject?: string | null,
+};
+
+type EmailWithDeliveredAt = AdminEmailOutbox & {
+  deliveredAt?: Date | string | null,
+};
+
+function hasSubject(email: AdminEmailOutbox): email is EmailWithSubject {
+  return "subject" in email;
+}
+
+function hasDeliveredAt(email: AdminEmailOutbox): email is EmailWithDeliveredAt {
+  return "deliveredAt" in email;
+}
 
 function getRecipientDisplay(email: AdminEmailOutbox): string {
   const to = email.to;
@@ -30,20 +51,16 @@ function getRecipientDisplay(email: AdminEmailOutbox): string {
 }
 
 function getSubjectDisplay(email: AdminEmailOutbox): string {
-  // Subject is only available after rendering
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Safe access for display, subject may not exist on all status variants
-  const subject = (email as any).subject;
+  const subject = hasSubject(email) ? email.subject : undefined;
   return subject || "(Not yet rendered)";
 }
 
-function getTimeDisplay(email: AdminEmailOutbox): string {
-  // Show delivered time if available, otherwise scheduled time
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any -- Safe access for display, deliveredAt may not exist on all status variants
-  const deliveredAt = (email as any).deliveredAt;
+function getTimeValue(email: AdminEmailOutbox): Date {
+  const deliveredAt = hasDeliveredAt(email) ? email.deliveredAt : undefined;
   if (deliveredAt) {
-    return new Date(deliveredAt).toLocaleString();
+    return new Date(deliveredAt);
   }
-  return email.scheduledAt.toLocaleString();
+  return email.scheduledAt;
 }
 
 type ViewMode = "grouped" | "list";
@@ -53,27 +70,35 @@ const VIEW_MODE_OPTIONS = [
   { id: "list", label: "List all" },
 ] as const;
 
-const emailTableColumns: ColumnDef<AdminEmailOutbox>[] = [
+const emailTableColumns: DataGridColumnDef<AdminEmailOutbox>[] = [
   {
-    accessorKey: "recipient",
+    id: "recipient",
     header: "Recipient",
-    cell: ({ row }) => getRecipientDisplay(row.original),
+    width: 200,
+    type: "string",
+    accessor: (row) => getRecipientDisplay(row),
   },
   {
-    accessorKey: "subject",
+    id: "subject",
     header: "Subject",
-    cell: ({ row }) => getSubjectDisplay(row.original),
+    width: 220,
+    flex: 1,
+    type: "string",
+    accessor: (row) => getSubjectDisplay(row),
   },
   {
-    accessorKey: "scheduledAt",
+    id: "scheduledAt",
     header: "Time",
-    cell: ({ row }) => getTimeDisplay(row.original),
+    width: 180,
+    type: "dateTime",
+    accessor: (row) => getTimeValue(row),
   },
   {
-    accessorKey: "status",
+    id: "status",
     header: "Status",
-    cell: ({ row }) => {
-      const status = row.original.status;
+    width: 120,
+    renderCell: ({ row }) => {
+      const status = row.status;
       return (
         <DesignBadge
           label={STATUS_LABELS[status]}
@@ -103,6 +128,21 @@ function EmailSendDataTable() {
     });
   }, [stackAdminApp]);
 
+  const [gridState, setGridState] = useState<DataGridState>(() => ({
+    ...createDefaultDataGridState(emailTableColumns),
+    sorting: [{ columnId: "scheduledAt", direction: "desc" }],
+  }));
+
+  const gridData = useDataSource({
+    data: emailLogs,
+    columns: emailTableColumns,
+    getRowId: (row) => row.id,
+    sorting: gridState.sorting,
+    quickSearch: gridState.quickSearch,
+    pagination: gridState.pagination,
+    paginationMode: "infinite",
+  });
+
   if (loading) {
     return (
       <div className="flex items-center justify-center gap-2 py-8">
@@ -113,13 +153,22 @@ function EmailSendDataTable() {
   }
 
   return (
-    <DesignDataTable
-      data={emailLogs}
-      defaultColumnFilters={[]}
+    <DataGrid
       columns={emailTableColumns}
-      defaultSorting={[{ id: "scheduledAt", desc: true }]}
-      onRowClick={(email) => {
-        router.push(`email-viewer/${email.id}`);
+      rows={gridData.rows}
+      getRowId={(row) => row.id}
+      totalRowCount={gridData.totalRowCount}
+      isLoading={gridData.isLoading}
+      state={gridState}
+      onChange={setGridState}
+      paginationMode="infinite"
+      hasMore={gridData.hasMore}
+      isLoadingMore={gridData.isLoadingMore}
+      onLoadMore={gridData.loadMore}
+      footer={false}
+
+      onRowClick={(row) => {
+        router.push(`email-viewer/${row.id}`);
       }}
     />
   );

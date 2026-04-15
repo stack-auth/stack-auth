@@ -1,10 +1,15 @@
 'use client';
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
-import { DesignDataTable } from "@/components/design-components";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { ActionCell, ActionDialog, BadgeCell, DataTableColumnHeader, SearchToolbarItem, SimpleTooltip, TextCell } from "@/components/ui";
-import { ColumnDef, Row } from "@tanstack/react-table";
-import { useState } from "react";
+import { ActionCell, ActionDialog, SimpleTooltip } from "@/components/ui";
+import { Badge } from "@/components/ui/badge";
+import {
+  createDefaultDataGridState,
+  DataGrid,
+  useDataSource,
+  type DataGridColumnDef,
+} from "@stackframe/dashboard-ui-components";
+import { useMemo, useState } from "react";
 import * as yup from "yup";
 import { SmartFormDialog } from "../form-dialog";
 import { PermissionListField } from "../permission-field";
@@ -108,8 +113,8 @@ function DeleteDialog<T extends AdminPermissionDefinition>(props: {
   </ActionDialog>;
 }
 
-function Actions<T extends AdminPermissionDefinition>({ row, invisible, permissionType }: {
-  row: Row<T>,
+function Actions<T extends AdminPermissionDefinition>({ permission, invisible, permissionType }: {
+  permission: T,
   invisible: boolean,
   permissionType: PermissionType,
 }) {
@@ -118,8 +123,8 @@ function Actions<T extends AdminPermissionDefinition>({ row, invisible, permissi
 
   return (
     <div className={`flex items-center gap-2 ${invisible ? "invisible" : ""}`}>
-      <EditDialog selectedPermissionId={row.original.id} open={isEditModalOpen} onOpenChange={setIsEditModalOpen} permissionType={permissionType} />
-      <DeleteDialog permission={row.original} open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen} permissionType={permissionType} />
+      <EditDialog selectedPermissionId={permission.id} open={isEditModalOpen} onOpenChange={setIsEditModalOpen} permissionType={permissionType} />
+      <DeleteDialog permission={permission} open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen} permissionType={permissionType} />
       <ActionCell
         items={[
           {
@@ -138,39 +143,70 @@ function Actions<T extends AdminPermissionDefinition>({ row, invisible, permissi
   );
 }
 
-function createColumns<T extends AdminPermissionDefinition>(permissionType: PermissionType): ColumnDef<T>[] {
+function createColumns<T extends AdminPermissionDefinition>(permissionType: PermissionType): DataGridColumnDef<T>[] {
   return [
     {
-      accessorKey: "id",
-      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="ID" />,
-      cell: ({ row }) => <TextCell size={160}>
-        <div className="flex items-center gap-1">
-          {row.original.id}
-          {row.original.id.startsWith('$') ?
+      id: "id",
+      header: "ID",
+      accessor: "id",
+      width: 180,
+      type: "string",
+      renderCell: ({ row }) => (
+        <div className="flex max-w-[180px] items-center gap-1">
+          <span className="truncate font-mono text-xs text-muted-foreground">{row.id}</span>
+          {row.id.startsWith('$') ?
             <SimpleTooltip tooltip="Built-in system permissions are prefixed with $. They cannot be edited or deleted, but can be contained in other permissions." type='info'/>
             : null}
         </div>
-      </TextCell>,
+      ),
     },
     {
-      accessorKey: "description",
-      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Description" />,
-      cell: ({ row }) => <TextCell size={200}>{row.getValue("description")}</TextCell>,
+      id: "description",
+      header: "Description",
+      accessor: "description",
+      width: 200,
+      flex: 1,
+      type: "string",
+      renderCell: ({ value }) => (
+        <span className="truncate">{String(value ?? "")}</span>
+      ),
     },
     {
-      accessorKey: "containedPermissionIds",
-      header: ({ column }) => <DataTableColumnHeader
-        column={column}
-        columnTitle={<div className="flex items-center gap-1">
+      id: "containedPermissionIds",
+      header: () => (
+        <div className="flex items-center gap-1">
           Contained Permissions
           <SimpleTooltip tooltip="Only showing permissions that are contained directly (non-recursive)." type='info' />
-        </div>}
-      />,
-      cell: ({ row }) => <BadgeCell size={120} badges={row.original.containedPermissionIds} />,
+        </div>
+      ),
+      accessor: "containedPermissionIds",
+      width: 120,
+      type: "custom",
+      formatValue: (value) => (Array.isArray(value) ? value.join(", ") : String(value ?? "")),
+      renderCell: ({ row }) => (
+        <div className="flex max-w-[120px] flex-wrap items-center gap-1">
+          {row.containedPermissionIds.map((id) => (
+            <Badge key={id} variant="secondary">{id}</Badge>
+          ))}
+        </div>
+      ),
     },
     {
       id: "actions",
-      cell: ({ row }) => <Actions row={row} invisible={row.original.id.startsWith('$')} permissionType={permissionType} />,
+      header: "",
+      sortable: false,
+      hideable: false,
+      resizable: false,
+      width: 50,
+      minWidth: 50,
+      maxWidth: 50,
+      renderCell: ({ row }) => (
+        <Actions
+          permission={row}
+          invisible={row.id.startsWith('$')}
+          permissionType={permissionType}
+        />
+      ),
     },
   ];
 }
@@ -179,14 +215,37 @@ export function PermissionTable<T extends AdminPermissionDefinition>(props: {
   permissions: T[],
   permissionType: PermissionType,
 }) {
-  const columns = createColumns<T>(props.permissionType);
+  const columns = useMemo(
+    () => createColumns<T>(props.permissionType),
+    [props.permissionType],
+  );
+  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
 
-  return <DesignDataTable
-    data={props.permissions}
-    columns={columns}
-    toolbarRender={(table) => <SearchToolbarItem table={table} keyName="id" placeholder="Filter by ID" />}
-    defaultColumnFilters={[]}
-    defaultSorting={[]}
-    glassmorphic
-  />;
+  const gridData = useDataSource({
+    data: props.permissions,
+    columns,
+    getRowId: (row) => row.id,
+    sorting: gridState.sorting,
+    quickSearch: gridState.quickSearch,
+    pagination: gridState.pagination,
+    paginationMode: "infinite",
+  });
+
+  return (
+    <DataGrid<T>
+      columns={columns}
+      rows={gridData.rows}
+      getRowId={(row) => row.id}
+      totalRowCount={gridData.totalRowCount}
+      state={gridState}
+      onChange={setGridState}
+      paginationMode="infinite"
+      hasMore={gridData.hasMore}
+      isLoadingMore={gridData.isLoadingMore}
+      onLoadMore={gridData.loadMore}
+      footer={false}
+
+      strings={{ searchPlaceholder: "Filter by ID" }}
+    />
+  );
 }

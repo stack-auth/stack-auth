@@ -13,65 +13,53 @@ import {
   DropdownMenuItem,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
-  Input,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
   SimpleTooltip,
-  Skeleton,
   toast,
 } from "@/components/ui";
-import { ArrowDownIcon, ArrowUpIcon, CaretLeftIcon, CaretRightIcon, CheckCircleIcon, CopyIcon, DotsThreeIcon, MagnifyingGlassIcon, XCircleIcon, XIcon } from "@phosphor-icons/react";
+import { ArrowDownIcon, ArrowUpIcon, CheckCircleIcon, CopyIcon, DotsThreeIcon, MagnifyingGlassIcon, XCircleIcon } from "@phosphor-icons/react";
 import type { ServerUser } from "@stackframe/stack";
-import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
-import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import {
-  ColumnDef,
-  createColumnHelper,
-  getCoreRowModel,
-  useReactTable,
-} from "@tanstack/react-table";
-import { Suspense, useEffect, useMemo, useState } from "react";
-import * as yup from "yup";
+  createDefaultDataGridState,
+  DataGrid,
+  type DataGridColumnDef,
+  type DataGridState,
+} from "@stackframe/dashboard-ui-components";
+import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link } from "../link";
 import { CreateCheckoutDialog } from "../payments/create-checkout-dialog";
 import { DeleteUserDialog, ImpersonateUserDialog } from "../user-dialogs";
-import { useCursorPaginationCache } from "./common/cursor-pagination";
-import { PaginationControls } from "./common/pagination";
-import {
-  TableContent,
-  type ColumnLayout,
-  type ColumnMeta,
-} from "./common/table";
-import { TableSkeleton } from "./common/table-skeleton";
-import { usePaginatedData } from "./common/use-paginated-data";
-import { useUrlQueryState } from "./common/url-query-state";
 
-type QueryState = {
-  search?: string,
-  includeRestricted: boolean,
-  includeAnonymous: boolean,
-  onlyAnonymous: boolean,
-  page: number,
-  pageSize: number,
-  cursor?: string,
-  signedUpOrder: "asc" | "desc",
-};
-
-type QueryUpdater =
-  | Partial<QueryState>
-  | ((prev: QueryState) => Partial<QueryState>);
-
-const DEFAULT_PAGE_SIZE = 10;
-const PAGE_SIZE_OPTIONS = [10, 25, 50];
-const SEARCH_DEBOUNCE_MS = 250;
+// ─── Types ───────────────────────────────────────────────────────────
 
 export type ExtendedServerUser = ServerUser & {
   authTypes: string[],
   emailVerified: "verified" | "unverified",
+};
+
+type FilterState = {
+  search: string,
+  includeRestricted: boolean,
+  includeAnonymous: boolean,
+  onlyAnonymous: boolean,
+  signedUpOrder: "asc" | "desc",
+};
+
+const PAGE_SIZE = 25;
+const SEARCH_DEBOUNCE_MS = 300;
+const DEFAULT_FILTERS: FilterState = {
+  search: "",
+  includeRestricted: true,
+  includeAnonymous: false,
+  onlyAnonymous: false,
+  signedUpOrder: "desc",
 };
 
 const AUTH_TYPE_LABELS = new Map<string, string>([
@@ -80,533 +68,316 @@ const AUTH_TYPE_LABELS = new Map<string, string>([
   ["password", "Password"],
 ]);
 
-type ColumnKey =
-  | "user"
-  | "email"
-  | "userId"
-  | "emailStatus"
-  | "lastActiveAt"
-  | "auth"
-  | "signedUpAt"
-  | "actions";
+// ─── Helpers ─────────────────────────────────────────────────────────
 
-type ColumnLayoutMap = ColumnLayout<ColumnKey>;
-type ColumnMetaType = ColumnMeta<ColumnKey>;
-
-
-const COLUMN_LAYOUT: ColumnLayoutMap = {
-  user: { size: 160, minWidth: 110, maxWidth: 160, width: "clamp(110px, 22vw, 160px)" },
-  email: { size: 160, minWidth: 110, maxWidth: 160, width: "clamp(110px, 22vw, 160px)" },
-  userId: { size: 130, minWidth: 90, maxWidth: 130, width: "clamp(90px, 18vw, 130px)" },
-  emailStatus: { size: 110, minWidth: 80, maxWidth: 110, width: "clamp(80px, 16vw, 110px)" },
-  lastActiveAt: { size: 110, minWidth: 80, maxWidth: 110, width: "clamp(80px, 16vw, 110px)" },
-  auth: { size: 150, minWidth: 110, maxWidth: 150, width: "clamp(110px, 20vw, 150px)" },
-  signedUpAt: { size: 110, minWidth: 80, maxWidth: 110, width: "clamp(80px, 16vw, 110px)" },
-  actions: {
-    size: 40,
-    minWidth: 40,
-    maxWidth: 40,
-    width: "clamp(40px, 10vw, 40px)",
-    headerClassName: "text-right",
-    cellClassName: "text-right",
-  },
-};
-
-const DEFAULT_QUERY_STATE: QueryState = {
-  includeRestricted: true,
-  includeAnonymous: false,
-  onlyAnonymous: false,
-  page: 1,
-  pageSize: DEFAULT_PAGE_SIZE,
-  signedUpOrder: "desc",
-};
-
-const numberTransform = (_value: unknown, originalValue: unknown) => {
-  if (typeof originalValue === "number" && Number.isFinite(originalValue)) {
-    return originalValue;
-  }
-  if (typeof originalValue === "string") {
-    const trimmed = originalValue.trim();
-    if (trimmed.length === 0) {
-      return undefined;
-    }
-    const parsed = Number(trimmed);
-    return Number.isFinite(parsed) ? parsed : undefined;
-  }
-  return undefined;
-};
-
-const optionalStringTransform = (value: unknown) => {
-  if (typeof value !== "string") {
-    return undefined;
-  }
-  const trimmed = value.trim();
-  return trimmed.length > 0 ? trimmed : undefined;
-};
-
-const querySchema = yup.object({
-  search: yup
-    .string()
-    .transform((_, originalValue) => optionalStringTransform(originalValue))
-    .optional(),
-  includeRestricted: yup
-    .boolean()
-    .transform((_, originalValue) => (originalValue === "true" ? true : originalValue === "false" ? false : undefined))
-    .optional(),
-  includeAnonymous: yup
-    .boolean()
-    .transform((_, originalValue) => (originalValue === "true" ? true : undefined))
-    .optional(),
-  onlyAnonymous: yup
-    .boolean()
-    .transform((_, originalValue) => (originalValue === "true" ? true : undefined))
-    .optional(),
-  page: yup
-    .number()
-    .transform(numberTransform)
-    .integer()
-    .positive()
-    .optional(),
-  pageSize: yup
-    .number()
-    .transform(numberTransform)
-    .integer()
-    .positive()
-    .optional(),
-  cursor: yup
-    .string()
-    .transform((_, originalValue) => optionalStringTransform(originalValue))
-    .optional(),
-  signedUpOrder: yup
-    .mixed<"asc" | "desc">()
-    .transform((_, originalValue) => (originalValue === "asc" || originalValue === "desc" ? originalValue : undefined))
-    .optional(),
-});
-
-const columnHelper = createColumnHelper<ExtendedServerUser>();
-
-export function UserTable(props?: {
-  onFilterChange?: (filters: { search?: string, includeRestricted: boolean, includeAnonymous: boolean, onlyAnonymous: boolean }) => void,
-}) {
-  const { query, setQuery } = useUserTableQueryState();
-  const [searchInput, setSearchInput] = useState(query.search ?? "");
-  const cursorPaginationCache = useCursorPaginationCache();
-
-  useEffect(() => {
-    setSearchInput(query.search ?? "");
-  }, [query.search]);
-
-  useEffect(() => {
-    const trimmed = searchInput.trim();
-    const normalized = trimmed.length === 0 ? undefined : trimmed;
-    if (normalized === (query.search ?? undefined)) {
-      return;
-    }
-    const handle = setTimeout(() => {
-      setQuery((prev) => ({
-        ...prev,
-        page: 1,
-        cursor: undefined,
-        search: normalized,
-      }));
-    }, SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(handle);
-  }, [searchInput, query.search, setQuery]);
-
-  useEffect(() => {
-    cursorPaginationCache.resetCache();
-  }, [cursorPaginationCache, query.search, query.includeRestricted, query.includeAnonymous, query.onlyAnonymous, query.pageSize, query.signedUpOrder]);
-
-  useEffect(() => {
-    if (query.page > 1 && !query.cursor) {
-      setQuery((prev) => ({ ...prev, page: 1, cursor: undefined }));
-    }
-  }, [query.page, query.cursor, setQuery]);
-
-  const onFilterChange = props?.onFilterChange;
-
-  useEffect(() => {
-    onFilterChange?.({
-      search: query.search,
-      includeRestricted: query.includeRestricted,
-      includeAnonymous: query.includeAnonymous,
-      onlyAnonymous: query.onlyAnonymous,
-    });
-  }, [query.search, query.includeRestricted, query.includeAnonymous, query.onlyAnonymous, onFilterChange]);
-
-  return (
-    <section className="space-y-2">
-      <UserTableHeader
-        searchValue={searchInput}
-        onSearchChange={setSearchInput}
-        includeRestricted={query.includeRestricted}
-        includeAnonymous={query.includeAnonymous}
-        onlyAnonymous={query.onlyAnonymous}
-        onFilterModeChange={(value) => {
-          if (value === "anonymous-only") {
-            setQuery((prev) => ({ ...prev, includeRestricted: true, includeAnonymous: true, onlyAnonymous: true, page: 1, cursor: undefined }));
-          } else if (value === "anonymous") {
-            setQuery((prev) => ({ ...prev, includeRestricted: true, includeAnonymous: true, onlyAnonymous: false, page: 1, cursor: undefined }));
-          } else if (value === "restricted") {
-            setQuery((prev) => ({ ...prev, includeRestricted: true, includeAnonymous: false, onlyAnonymous: false, page: 1, cursor: undefined }));
-          } else {
-            setQuery((prev) => ({ ...prev, includeRestricted: false, includeAnonymous: false, onlyAnonymous: false, page: 1, cursor: undefined }));
-          }
-        }}
-      />
-      <div className="overflow-clip rounded-xl border border-border bg-card">
-        <Suspense fallback={<UserTableSkeleton pageSize={query.pageSize} />}>
-          <UserTableBody
-            query={query}
-            setQuery={setQuery}
-            cursorPaginationCache={cursorPaginationCache}
-          />
-        </Suspense>
-      </div>
-    </section>
-  );
-}
-
-function UserTableHeader(props: {
-  searchValue: string,
-  onSearchChange: (value: string) => void,
-  includeRestricted: boolean,
-  includeAnonymous: boolean,
-  onlyAnonymous: boolean,
-  onFilterModeChange: (value: "standard" | "restricted" | "anonymous" | "anonymous-only") => void,
-}) {
-  const {
-    searchValue,
-    onSearchChange,
-    includeRestricted,
-    includeAnonymous,
-    onlyAnonymous,
-    onFilterModeChange,
-  } = props;
-
-  // Determine the current filter state
-  // "standard" = only fully onboarded users
-  // "restricted" = include restricted users
-  // "anonymous" = include anonymous users (which also includes restricted)
-  // "anonymous-only" = include only anonymous users
-  const filterValue = onlyAnonymous ? "anonymous-only" : includeAnonymous ? "anonymous" : includeRestricted ? "restricted" : "standard";
-
-  return (
-    <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-      <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4 md:flex-1 justify-between">
-        <div className="relative flex-1 min-w-[220px] max-w-[320px]">
-          <Input
-            value={searchValue}
-            onChange={(event) => onSearchChange(event.target.value)}
-            placeholder="Search table"
-            className="!px-8"
-            autoComplete="off"
-          />
-          <MagnifyingGlassIcon className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          {searchValue.length > 0 && (
-            <button
-              type="button"
-              onClick={() => onSearchChange("")}
-              className="absolute right-2 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-full text-muted-foreground transition hover:bg-muted/60 hover:text-foreground"
-              aria-label="Clear search"
-            >
-              <XIcon className="h-4 w-4" />
-            </button>
-          )}
-        </div>
-        <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-          <Select
-            value={filterValue}
-            onValueChange={(value) => {
-              if (value === "standard" || value === "restricted" || value === "anonymous" || value === "anonymous-only") {
-                onFilterModeChange(value);
-                return;
-              }
-              throw new Error(`Unexpected user filter mode: ${value}`);
-            }}
-          >
-            <SelectTrigger className="w-[240px]" aria-label="User list filter">
-              <SelectValue placeholder="Signups" />
-            </SelectTrigger>
-            <SelectContent align="start">
-              <SelectItem value="standard">Exclude restricted users</SelectItem>
-              <SelectItem value="restricted">Signups</SelectItem>
-              <SelectItem value="anonymous">Signups & anonymous users</SelectItem>
-              <SelectItem value="anonymous-only">Only anonymous users</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-function UserTableBody(props: {
-  query: QueryState,
-  setQuery: (updater: QueryUpdater) => void,
-  cursorPaginationCache: ReturnType<typeof useCursorPaginationCache>,
-}) {
-  const stackAdminApp = useAdminApp();
-  const { query, setQuery } = props;
-  const { resetCache } = props.cursorPaginationCache;
-
-  const baseOptions = useMemo(
-    (): NonNullable<Parameters<typeof stackAdminApp.listUsers>[0]> => {
-      const common = {
-        limit: query.pageSize,
-        orderBy: "signedUpAt" as const,
-        desc: query.signedUpOrder === "desc",
-        query: query.search,
-        includeRestricted: query.includeRestricted,
-      };
-      if (query.onlyAnonymous) {
-        return { ...common, includeAnonymous: true, onlyAnonymous: true };
-      }
-      return { ...common, includeAnonymous: query.includeAnonymous };
-    },
-    [query.pageSize, query.search, query.includeRestricted, query.includeAnonymous, query.onlyAnonymous, query.signedUpOrder, stackAdminApp],
-  );
-
-  const rawUsers = stackAdminApp.useUsers({
-    ...baseOptions,
-    cursor: query.cursor,
+export function extendUsers(users: ServerUser[] & { nextCursor: string | null }): ExtendedServerUser[] & { nextCursor: string | null };
+export function extendUsers(users: ServerUser[]): ExtendedServerUser[];
+export function extendUsers(users: ServerUser[] & { nextCursor?: string | null }) {
+  const extended = users.map((user) => {
+    const authTypes = user.isAnonymous
+      ? ["anonymous"]
+      : [
+        ...(user.otpAuthEnabled ? ["otp"] : []),
+        ...(user.hasPassword ? ["password"] : []),
+        ...user.oauthProviders.map((provider) => provider.id),
+      ];
+    return {
+      ...user,
+      authTypes,
+      emailVerified: user.primaryEmailVerified ? "verified" : "unverified",
+    } satisfies ExtendedServerUser;
   });
-
-  const { data: users, nextCursor, hasNextPage, hasPreviousPage, cursorForPage } = usePaginatedData(
-    {
-      data: rawUsers,
-      nextCursor: rawUsers.nextCursor,
-      query,
-      getFingerprint: getUsersFingerprint,
-      extend: extendUsers,
-      onPrefetch: (nextCursor) => {
-        runAsynchronously(
-          stackAdminApp.listUsers({
-            ...baseOptions,
-            cursor: nextCursor,
-          }),
-        );
-      },
-    },
-    props.cursorPaginationCache,
-  );
-
-  const columns = useMemo<ColumnDef<ExtendedServerUser>[]>(
-    () => createUserColumns(setQuery, query.signedUpOrder === "desc"),
-    [setQuery, query.signedUpOrder],
-  );
-
-  const table = useReactTable({
-    data: users,
-    columns,
-    getCoreRowModel: getCoreRowModel(),
-  });
-
-  return (
-    <div className="flex flex-col">
-      <TableContent
-        table={table}
-        columnLayout={COLUMN_LAYOUT}
-        renderEmptyState={() => (
-          <div className="mx-auto flex max-w-md flex-col items-center gap-4">
-            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
-              <MagnifyingGlassIcon className="h-6 w-6 text-muted-foreground" />
-            </div>
-            <div className="text-base font-medium text-foreground">No users found</div>
-            <p className="text-sm text-muted-foreground">
-              Try adjusting your search or filters
-            </p>
-            <Button
-              variant="outline"
-              onClick={() => {
-                resetCache();
-                setQuery({ search: undefined, includeRestricted: true, includeAnonymous: false, onlyAnonymous: false, page: 1, cursor: undefined });
-              }}
-            >
-              Reset filters
-            </Button>
-          </div>
-        )}
-      />
-      <PaginationControls
-        page={query.page}
-        pageSize={query.pageSize}
-        pageSizeOptions={PAGE_SIZE_OPTIONS}
-        hasNextPage={hasNextPage}
-        hasPreviousPage={hasPreviousPage}
-        onPageSizeChange={(value) =>
-          setQuery((prev) => ({ ...prev, pageSize: value, page: 1, cursor: undefined }))
-        }
-        onPreviousPage={() => {
-          if (!hasPreviousPage) {
-            return;
-          }
-          const previousPage = query.page - 1;
-          const previousCursor = cursorForPage(previousPage);
-          setQuery({ page: previousPage, cursor: previousPage === 1 ? undefined : previousCursor ?? undefined });
-        }}
-        onNextPage={() => {
-          if (!hasNextPage || !nextCursor) {
-            return;
-          }
-          setQuery({ page: query.page + 1, cursor: nextCursor });
-        }}
-      />
-    </div>
-  );
+  return Object.assign(extended, { nextCursor: users.nextCursor ?? null });
 }
 
-function UserTableSkeleton(props: { pageSize: number }) {
-  const { pageSize } = props;
-  const columnOrder: ColumnKey[] = [
-    "user",
-    "email",
-    "userId",
-    "emailStatus",
-    "lastActiveAt",
-    "auth",
-    "signedUpAt",
-    "actions",
-  ];
-  const skeletonHeaders: Record<ColumnKey, string | null> = {
-    user: "User",
-    email: "Email",
-    userId: "User ID",
-    emailStatus: "Email Verified",
-    lastActiveAt: "Last active",
-    auth: "Auth methods",
-    signedUpAt: "Signed up",
-    actions: null,
-  };
-  const renderSkeletonCellContent = (columnKey: ColumnKey): JSX.Element => {
-    switch (columnKey) {
-      case "user": {
-        return (
-          <div className="flex items-center gap-3">
-            <Skeleton className="h-6 w-6 rounded-full" />
-            <div className="flex-1 space-y-2">
-              <Skeleton className="h-3 w-full max-w-[160px]" />
-            </div>
-          </div>
-        );
-      }
-      case "email": {
-        return <Skeleton className="h-3 w-full max-w-[160px]" />;
-      }
-      case "userId": {
-        return <Skeleton className="h-3 w-full max-w-[130px]" />;
-      }
-      case "emailStatus": {
-        return <Skeleton className="h-4 w-4 rounded-full" />;
-      }
-      case "lastActiveAt": {
-        return <Skeleton className="h-3 w-full max-w-[110px]" />;
-      }
-      case "auth": {
-        return (
-          <div className="flex flex-wrap gap-2">
-            <Skeleton className="h-5 w-full max-w-[150px] rounded-full" />
-          </div>
-        );
-      }
-      case "signedUpAt": {
-        return <Skeleton className="h-3 w-full max-w-[110px]" />;
-      }
-      case "actions": {
-        return <Skeleton className="ml-auto h-4 w-4" />;
-      }
-      default: {
-        throw new Error("Unhandled skeleton column");
-      }
-    }
-  };
-
-  return (
-    <div className="flex flex-col">
-      <TableSkeleton
-        columnOrder={columnOrder}
-        columnLayout={COLUMN_LAYOUT}
-        headerLabels={skeletonHeaders}
-        rowCount={pageSize}
-        renderCellSkeleton={(columnKey) => renderSkeletonCellContent(columnKey)}
-      />
-      <div className="flex flex-col gap-3 px-4 py-3 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <span>Rows per page</span>
-          <Select>
-            <SelectTrigger className="w-20" disabled>{props.pageSize}</SelectTrigger>
-          </Select>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" disabled>
-            <CaretLeftIcon className="mr-1 h-4 w-4" />
-            Previous
-          </Button>
-          <span className="rounded-md border border-border px-3 py-1 text-xs font-medium text-muted-foreground">
-            Page …
-          </span>
-          <Button variant="ghost" size="sm" disabled>
-            Next
-            <CaretRightIcon className="ml-1 h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-    </div>
-  );
+function titleCase(value: string) {
+  return value.charAt(0).toUpperCase() + value.slice(1);
 }
 
-function createUserColumns(
-  setQuery: (updater: QueryUpdater) => void,
+function formatUserId(id: string) {
+  if (id.length <= 10) return id;
+  return `${id.slice(0, 6)}…${id.slice(-4)}`;
+}
+
+// ─── Column definitions ──────────────────────────────────────────────
+
+function createColumns(
+  onToggleSort: () => void,
   isSignedUpDesc: boolean,
-): ColumnDef<ExtendedServerUser>[] {
-  const toggleSignedUpOrder = () =>
-    setQuery((prev) => ({
-      signedUpOrder: prev.signedUpOrder === "desc" ? "asc" : "desc",
-      page: 1,
-      cursor: undefined,
-    }));
-
+): DataGridColumnDef<ExtendedServerUser>[] {
   return [
-    ...getCommonUserColumns<ExtendedServerUser>(),
-    columnHelper.display({
+    {
+      id: "user",
+      header: "User",
+      width: 180,
+      flex: 1,
+      sortable: false,
+      renderCell: ({ row }) => <UserIdentityCell user={row} />,
+    },
+    {
+      id: "email",
+      header: "Email",
+      width: 180,
+      flex: 1,
+      sortable: false,
+      renderCell: ({ row }) => <UserEmailCell user={row} />,
+    },
+    {
+      id: "userId",
+      header: "User ID",
+      width: 130,
+      sortable: false,
+      renderCell: ({ row }) => <UserIdCell user={row} />,
+    },
+    {
+      id: "emailStatus",
+      header: "Email Verified",
+      width: 110,
+      sortable: false,
+      renderCell: ({ row }) => <EmailStatusCell user={row} />,
+    },
+    {
+      id: "lastActiveAt",
+      header: "Last active",
+      width: 110,
+      sortable: false,
+      renderCell: ({ row }) => <DateMetaCell value={row.lastActiveAt} emptyLabel="Never" />,
+    },
+    {
       id: "auth",
-      size: COLUMN_LAYOUT.auth.size,
-      minSize: COLUMN_LAYOUT.auth.minWidth,
-      maxSize: COLUMN_LAYOUT.auth.maxWidth,
-      meta: { columnKey: "auth" } as ColumnMetaType,
-      header: () => <span className="text-xs font-semibold tracking-wide">Auth methods</span>,
-      cell: ({ row }) => <AuthMethodsCell user={row.original} />,
-    }),
-    columnHelper.display({
+      header: "Auth methods",
+      width: 150,
+      sortable: false,
+      renderCell: ({ row }) => <AuthMethodsCell user={row} />,
+    },
+    {
       id: "signedUpAt",
-      size: COLUMN_LAYOUT.signedUpAt.size,
-      minSize: COLUMN_LAYOUT.signedUpAt.minWidth,
-      maxSize: COLUMN_LAYOUT.signedUpAt.maxWidth,
-      meta: { columnKey: "signedUpAt" } as ColumnMetaType,
       header: () => (
         <button
           type="button"
-          onClick={toggleSignedUpOrder}
-          className="inline-flex items-center gap-1 text-xs font-semibold tracking-wide text-muted-foreground transition hover:text-foreground focus:outline-none"
-          aria-label={`Sort by signed up (${isSignedUpDesc ? "newest first" : "oldest first"})`}
+          onClick={onToggleSort}
+          className="inline-flex items-center gap-1 text-xs font-semibold tracking-wide text-muted-foreground transition-colors hover:transition-none hover:text-foreground focus:outline-none"
         >
           <span>Signed up</span>
           {isSignedUpDesc ? <ArrowDownIcon className="h-3 w-3" /> : <ArrowUpIcon className="h-3 w-3" />}
         </button>
       ),
-      cell: ({ row }) => <DateMetaCell value={row.original.signedUpAt} emptyLabel="Unknown" />,
-    }),
-    columnHelper.display({
+      width: 110,
+      sortable: false,
+      renderCell: ({ row }) => <DateMetaCell value={row.signedUpAt} emptyLabel="Unknown" />,
+    },
+    {
       id: "actions",
-      size: COLUMN_LAYOUT.actions.size,
-      minSize: COLUMN_LAYOUT.actions.minWidth,
-      maxSize: COLUMN_LAYOUT.actions.maxWidth,
-      meta: { columnKey: "actions" } as ColumnMetaType,
-      header: () => <span className="sr-only">Actions</span>,
-      cell: ({ row }) => <UserActions user={row.original} />,
-    }),
+      header: "",
+      width: 44,
+      minWidth: 44,
+      maxWidth: 44,
+      sortable: false,
+      hideable: false,
+      resizable: false,
+      align: "right",
+      renderCell: ({ row }) => <UserActions user={row} />,
+    },
   ];
 }
+
+// ─── UserTable ───────────────────────────────────────────────────────
+
+export function UserTable(props?: {
+  onFilterChange?: (filters: { search?: string, includeRestricted: boolean, includeAnonymous: boolean, onlyAnonymous: boolean }) => void,
+}) {
+  const [filters, setFilters] = useState<FilterState>(DEFAULT_FILTERS);
+
+  const onFilterChange = props?.onFilterChange;
+  useEffect(() => {
+    onFilterChange?.({
+      search: filters.search || undefined,
+      includeRestricted: filters.includeRestricted,
+      includeAnonymous: filters.includeAnonymous,
+      onlyAnonymous: filters.onlyAnonymous,
+    });
+  }, [filters.search, filters.includeRestricted, filters.includeAnonymous, filters.onlyAnonymous, onFilterChange]);
+
+  return <UserTableBody filters={filters} setFilters={setFilters} />;
+}
+
+// ─── Body (imperative fetching — no Suspense flash) ──────────────────
+
+function UserTableBody(props: {
+  filters: FilterState,
+  setFilters: React.Dispatch<React.SetStateAction<FilterState>>,
+}) {
+  const { filters, setFilters } = props;
+  const stackAdminApp = useAdminApp();
+  const router = useRouter();
+
+  const [rows, setRows] = useState<ExtendedServerUser[]>([]);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [isLoading, setIsLoading] = useState(true);
+  const [isRefetching, setIsRefetching] = useState(false);
+  const [isLoadingMore, setIsLoadingMore] = useState(false);
+
+  const hasDataRef = useRef(false);
+  const abortRef = useRef<AbortController | null>(null);
+
+  const listOptions = useMemo((): NonNullable<Parameters<typeof stackAdminApp.listUsers>[0]> => {
+    const common = {
+      limit: PAGE_SIZE,
+      orderBy: "signedUpAt" as const,
+      desc: filters.signedUpOrder === "desc",
+      query: filters.search || undefined,
+      includeRestricted: filters.includeRestricted,
+    };
+    if (filters.onlyAnonymous) return { ...common, includeAnonymous: true, onlyAnonymous: true };
+    return { ...common, includeAnonymous: filters.includeAnonymous };
+  }, [filters, stackAdminApp]);
+
+  const listOptionsRef = useRef(listOptions);
+  listOptionsRef.current = listOptions;
+
+  useEffect(() => {
+    abortRef.current?.abort();
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    if (hasDataRef.current) {
+      setIsRefetching(true);
+    } else {
+      setIsLoading(true);
+    }
+
+    runAsynchronouslyWithAlert(async () => {
+      const result = await stackAdminApp.listUsers(listOptions);
+      if (controller.signal.aborted) return;
+      const extended = extendUsers(result);
+      setRows(extended);
+      setNextCursor(result.nextCursor);
+      hasDataRef.current = true;
+      setIsLoading(false);
+      setIsRefetching(false);
+    });
+
+    return () => controller.abort();
+  }, [listOptions, stackAdminApp]);
+
+  const loadMore = useCallback(async () => {
+    if (!nextCursor || isLoadingMore) return;
+    setIsLoadingMore(true);
+    try {
+      const result = await stackAdminApp.listUsers({ ...listOptionsRef.current, cursor: nextCursor });
+      const extended = extendUsers(result);
+      setRows((prev) => {
+        const existingIds = new Set(prev.map((r) => r.id));
+        const newRows = extended.filter((r) => !existingIds.has(r.id));
+        return [...prev, ...newRows];
+      });
+      setNextCursor(result.nextCursor);
+    } finally {
+      setIsLoadingMore(false);
+    }
+  }, [nextCursor, isLoadingMore, stackAdminApp]);
+
+  const columns = useMemo(
+    () => createColumns(
+      () => setFilters((prev) => ({ ...prev, signedUpOrder: prev.signedUpOrder === "desc" ? "asc" : "desc" })),
+      filters.signedUpOrder === "desc",
+    ),
+    [filters.signedUpOrder, setFilters],
+  );
+
+  const [gridState, setGridState] = useState<DataGridState>(() => createDefaultDataGridState(columns));
+  const trimmedQuickSearch = gridState.quickSearch.trim();
+
+  useEffect(() => {
+    const timeout = setTimeout(() => {
+      setFilters((prev) => (
+        prev.search === trimmedQuickSearch
+          ? prev
+          : { ...prev, search: trimmedQuickSearch }
+      ));
+    }, SEARCH_DEBOUNCE_MS);
+    return () => clearTimeout(timeout);
+  }, [trimmedQuickSearch, setFilters]);
+
+  const handleLoadMore = useCallback(() => {
+    runAsynchronouslyWithAlert(loadMore);
+  }, [loadMore]);
+
+  const handleResetFilters = useCallback(() => {
+    setFilters(DEFAULT_FILTERS);
+    setGridState((prev) => (
+      prev.quickSearch === ""
+        ? prev
+        : { ...prev, quickSearch: "" }
+    ));
+  }, [setFilters]);
+
+  const filterValue = filters.onlyAnonymous ? "anonymous-only" : filters.includeAnonymous ? "anonymous" : filters.includeRestricted ? "restricted" : "standard";
+
+  return (
+    <DataGrid
+      columns={columns}
+      rows={rows}
+      getRowId={(row) => row.id}
+      isLoading={isLoading}
+      isRefetching={isRefetching}
+      state={gridState}
+      onChange={setGridState}
+      paginationMode="infinite"
+      hasMore={nextCursor != null}
+      isLoadingMore={isLoadingMore}
+      onLoadMore={handleLoadMore}
+      footer={false}
+
+      toolbarExtra={
+        <Select
+          value={filterValue}
+          onValueChange={(value) => {
+            if (value === "anonymous-only") {
+              setFilters((prev) => ({ ...prev, includeRestricted: true, includeAnonymous: true, onlyAnonymous: true }));
+            } else if (value === "anonymous") {
+              setFilters((prev) => ({ ...prev, includeRestricted: true, includeAnonymous: true, onlyAnonymous: false }));
+            } else if (value === "restricted") {
+              setFilters((prev) => ({ ...prev, includeRestricted: true, includeAnonymous: false, onlyAnonymous: false }));
+            } else {
+              setFilters((prev) => ({ ...prev, includeRestricted: false, includeAnonymous: false, onlyAnonymous: false }));
+            }
+          }}
+        >
+          <SelectTrigger className="w-[180px] h-8 text-xs" aria-label="User list filter">
+            <SelectValue placeholder="Signups" />
+          </SelectTrigger>
+          <SelectContent align="start">
+            <SelectItem value="standard">Exclude restricted</SelectItem>
+            <SelectItem value="restricted">Signups</SelectItem>
+            <SelectItem value="anonymous">Signups & anonymous</SelectItem>
+            <SelectItem value="anonymous-only">Only anonymous</SelectItem>
+          </SelectContent>
+        </Select>
+      }
+      onRowClick={(row) => {
+        router.push(`/projects/${encodeURIComponent(stackAdminApp.projectId)}/users/${encodeURIComponent(row.id)}`);
+      }}
+      emptyState={
+        <div className="mx-auto flex max-w-md flex-col items-center gap-4 py-8">
+          <div className="flex h-12 w-12 items-center justify-center rounded-full bg-muted">
+            <MagnifyingGlassIcon className="h-6 w-6 text-muted-foreground" />
+          </div>
+          <div className="text-base font-medium text-foreground">No users found</div>
+          <p className="text-sm text-muted-foreground">Try adjusting your search or filters</p>
+          <Button
+            variant="outline"
+            onClick={handleResetFilters}
+          >
+            Reset filters
+          </Button>
+        </div>
+      }
+    />
+  );
+}
+
+// ─── Cell components ─────────────────────────────────────────────────
 
 function UserActions(props: { user: ExtendedServerUser }) {
   const { user } = props;
@@ -675,174 +446,6 @@ function UserActions(props: { user: ExtendedServerUser }) {
   );
 }
 
-function getUsersFingerprint(users: ServerUser[], nextCursor: string | null) {
-  const userSegments = users
-    .map((user) => [
-      user.id,
-      user.displayName ?? "",
-      user.primaryEmail ?? "",
-      user.primaryEmailVerified ? "1" : "0",
-      user.isAnonymous ? "1" : "0",
-      normalizeDateValue(user.lastActiveAt),
-      normalizeDateValue(user.signedUpAt),
-      user.otpAuthEnabled ? "1" : "0",
-      user.hasPassword ? "1" : "0",
-      user.profileImageUrl ?? "",
-      user.isMultiFactorRequired ? "1" : "0",
-      user.oauthProviders.map((provider) => provider.id).sort().join(","),
-    ].join("~"))
-    .join("||");
-  return `${nextCursor ?? ""}::${userSegments}`;
-}
-
-function normalizeDateValue(value: Date | string | null | undefined) {
-  if (!value) {
-    return "";
-  }
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return String(value);
-  }
-  return String(date.getTime());
-}
-
-function sanitizeQueryState(state: Partial<QueryState>): QueryState {
-  const search = state.search?.trim() ? state.search.trim() : undefined;
-  const onlyAnonymous = Boolean(state.onlyAnonymous);
-  const includeAnonymous = onlyAnonymous || Boolean(state.includeAnonymous);
-  // Default to including restricted users; also enforce that anonymous implies restricted
-  const includeRestricted = includeAnonymous || (state.includeRestricted ?? true);
-  const candidatePageSize = state.pageSize ?? DEFAULT_PAGE_SIZE;
-  const pageSize = PAGE_SIZE_OPTIONS.includes(candidatePageSize) ? candidatePageSize : DEFAULT_PAGE_SIZE;
-  const candidatePage = state.page ?? 1;
-  const page = Number.isFinite(candidatePage) ? Math.max(1, Math.floor(candidatePage)) : 1;
-  const cursor = page > 1 && state.cursor ? state.cursor : undefined;
-  const signedUpOrder = state.signedUpOrder === "asc" ? "asc" : "desc";
-  return { search, includeRestricted, includeAnonymous, onlyAnonymous, page, pageSize, cursor, signedUpOrder };
-}
-
-function serializeQueryState(state: QueryState) {
-  const params = new URLSearchParams();
-  if (state.search) {
-    params.set("search", state.search);
-  }
-  // Only write to URL if NOT including restricted (since true is the default)
-  if (!state.includeRestricted) {
-    params.set("includeRestricted", "false");
-  }
-  if (state.includeAnonymous) {
-    params.set("includeAnonymous", "true");
-  }
-  if (state.onlyAnonymous) {
-    params.set("onlyAnonymous", "true");
-  }
-  if (state.page > 1) {
-    params.set("page", String(state.page));
-  }
-  if (state.pageSize !== DEFAULT_PAGE_SIZE) {
-    params.set("pageSize", String(state.pageSize));
-  }
-  if (state.signedUpOrder !== "desc") {
-    params.set("signedUpOrder", state.signedUpOrder);
-  }
-  if (state.cursor) {
-    params.set("cursor", state.cursor);
-  }
-  return params;
-}
-
-function useUserTableQueryState() {
-  const { state, setState } = useUrlQueryState({
-    schema: querySchema,
-    defaultState: DEFAULT_QUERY_STATE,
-    sanitize: sanitizeQueryState,
-    serialize: serializeQueryState,
-  });
-  return { query: state, setQuery: setState };
-}
-
-function titleCase(value: string) {
-  return value.charAt(0).toUpperCase() + value.slice(1);
-}
-
-function formatUserId(id: string) {
-  if (id.length <= 10) {
-    return id;
-  }
-  return `${id.slice(0, 6)}…${id.slice(-4)}`;
-}
-
-export function extendUsers(users: ServerUser[] & { nextCursor: string | null }): ExtendedServerUser[] & { nextCursor: string | null };
-export function extendUsers(users: ServerUser[]): ExtendedServerUser[];
-export function extendUsers(users: ServerUser[] & { nextCursor?: string | null }) {
-  const extended = users.map((user) => {
-    const authTypes = user.isAnonymous
-      ? ["anonymous"]
-      : [
-        ...(user.otpAuthEnabled ? ["otp"] : []),
-        ...(user.hasPassword ? ["password"] : []),
-        ...user.oauthProviders.map((provider) => provider.id),
-      ];
-    return {
-      ...user,
-      authTypes,
-      emailVerified: user.primaryEmailVerified ? "verified" : "unverified",
-    } satisfies ExtendedServerUser;
-  });
-  return Object.assign(extended, { nextCursor: users.nextCursor ?? null });
-}
-
-export function getCommonUserColumns<T extends ExtendedServerUser>(): ColumnDef<T>[] {
-  const helper = createColumnHelper<T>();
-  return [
-    helper.display({
-      id: "user",
-      size: COLUMN_LAYOUT.user.size,
-      minSize: COLUMN_LAYOUT.user.minWidth,
-      maxSize: COLUMN_LAYOUT.user.maxWidth,
-      meta: { columnKey: "user" } as ColumnMetaType,
-      header: () => <span className="text-xs font-semibold tracking-wide">User</span>,
-      cell: ({ row }) => <UserIdentityCell user={row.original} />,
-    }),
-    helper.display({
-      id: "email",
-      size: COLUMN_LAYOUT.email.size,
-      minSize: COLUMN_LAYOUT.email.minWidth,
-      maxSize: COLUMN_LAYOUT.email.maxWidth,
-      meta: { columnKey: "email" } as ColumnMetaType,
-      header: () => <span className="text-xs font-semibold tracking-wide">Email</span>,
-      cell: ({ row }) => <UserEmailCell user={row.original} />,
-    }),
-    helper.display({
-      id: "userId",
-      size: COLUMN_LAYOUT.userId.size,
-      minSize: COLUMN_LAYOUT.userId.minWidth,
-      maxSize: COLUMN_LAYOUT.userId.maxWidth,
-      meta: { columnKey: "userId" } as ColumnMetaType,
-      header: () => <span className="text-xs font-semibold tracking-wide">User ID</span>,
-      cell: ({ row }) => <UserIdCell user={row.original} />,
-    }),
-    helper.display({
-      id: "emailStatus",
-      size: COLUMN_LAYOUT.emailStatus.size,
-      minSize: COLUMN_LAYOUT.emailStatus.minWidth,
-      maxSize: COLUMN_LAYOUT.emailStatus.maxWidth,
-      meta: { columnKey: "emailStatus" } as ColumnMetaType,
-      header: () => <span className="text-xs font-semibold tracking-wide">Email Verified</span>,
-      cell: ({ row }) => <EmailStatusCell user={row.original} />,
-    }),
-    helper.display({
-      id: "lastActiveAt",
-      size: COLUMN_LAYOUT.lastActiveAt.size,
-      minSize: COLUMN_LAYOUT.lastActiveAt.minWidth,
-      maxSize: COLUMN_LAYOUT.lastActiveAt.maxWidth,
-      meta: { columnKey: "lastActiveAt" } as ColumnMetaType,
-      header: () => <span className="text-xs font-semibold tracking-wide">Last active</span>,
-      cell: ({ row }) => <DateMetaCell value={row.original.lastActiveAt} emptyLabel="Never" />,
-    }),
-  ];
-}
-
 function UserIdentityCell(props: { user: ExtendedServerUser }) {
   const { user } = props;
   const stackAdminApp = useAdminApp();
@@ -852,74 +455,61 @@ function UserIdentityCell(props: { user: ExtendedServerUser }) {
 
   return (
     <div className="flex items-center gap-3">
-      <Link href={profileUrl} className="rounded-full">
+      <Link href={profileUrl} className="rounded-full shrink-0">
         <Avatar className="h-6 w-6">
           <AvatarImage src={user.profileImageUrl ?? undefined} alt={user.displayName ?? user.primaryEmail ?? "User avatar"} />
           <AvatarFallback>{fallback}</AvatarFallback>
         </Avatar>
       </Link>
-      <div className="min-w-0">
-        <div className="flex flex-wrap items-center gap-2">
-          <Link
-            href={profileUrl}
-            className="max-w-full text-sm font-semibold text-foreground hover:text-foreground"
-          >
-            <span className="block truncate" title={displayName}>
-              {displayName}
-            </span>
-          </Link>
-          {user.isAnonymous && (
-            <Badge variant="secondary" className="text-xs">
-              Anonymous
-            </Badge>
-          )}
-        </div>
+      <div className="min-w-0 flex-1">
+        <Link
+          href={profileUrl}
+          className="block truncate text-sm font-semibold text-foreground hover:text-foreground"
+          title={displayName}
+        >
+          {displayName}
+        </Link>
       </div>
+      {user.isAnonymous && (
+        <Badge variant="secondary" className="text-xs shrink-0">Anonymous</Badge>
+      )}
     </div>
   );
 }
 
 function UserIdCell(props: { user: ExtendedServerUser }) {
   const { user } = props;
-  const idLabel = formatUserId(user.id);
-
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(user.id);
-    toast({ title: "Copied to clipboard", variant: "success" });
-  };
-
   return (
     <SimpleTooltip tooltip="Copy user ID">
       <Button
         type="button"
-        onClick={handleCopy}
-        className="flex max-w-full px-1 py-0 h-min items-center gap-2 font-mono text-xs text-muted-foreground transition hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer bg-transparent hover:bg-transparent"
+        onClick={async () => {
+          await navigator.clipboard.writeText(user.id);
+          toast({ title: "Copied to clipboard", variant: "success" });
+        }}
+        className="flex max-w-full px-1 py-0 h-min items-center gap-2 font-mono text-xs text-muted-foreground transition-colors hover:transition-none hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer bg-transparent hover:bg-transparent"
         aria-label="Copy user ID"
         title={user.id}
       >
-        <span className="truncate">{idLabel}</span>
-        <CopyIcon className="h-3 w-3" />
+        <span className="truncate">{formatUserId(user.id)}</span>
+        <CopyIcon className="h-3 w-3 shrink-0" />
       </Button>
     </SimpleTooltip>
   );
 }
 
 function UserEmailCell(props: { user: ExtendedServerUser }) {
-  const { user } = props;
-  const email = user.primaryEmail ?? "No email";
-
   return (
-    <span className="block max-w-full truncate text-sm text-muted-foreground" title={user.primaryEmail ?? undefined}>
-      {email}
+    <span className="block max-w-full truncate text-sm text-muted-foreground" title={props.user.primaryEmail ?? undefined}>
+      {props.user.primaryEmail ?? "No email"}
     </span>
   );
 }
 
 function EmailStatusCell(props: { user: ExtendedServerUser }) {
-  const { user } = props;
-  const isVerified = user.emailVerified === "verified";
+  const isVerified = props.user.emailVerified === "verified";
   return (
-    <div className="flex items-center justify-start">
+    <div className="flex items-center">
       {isVerified ? (
         <CheckCircleIcon className="h-4 w-4 text-success" aria-label="Email verified" />
       ) : (
@@ -930,43 +520,26 @@ function EmailStatusCell(props: { user: ExtendedServerUser }) {
 }
 
 function AuthMethodsCell(props: { user: ExtendedServerUser }) {
-  const { user } = props;
-  const authLabels = user.authTypes.length > 0 ? user.authTypes : ["none"];
-
+  const authLabels = props.user.authTypes.length > 0 ? props.user.authTypes : ["none"];
   return (
-    <div className="flex flex-wrap gap-2">
-      {authLabels.map((type) => {
-        const label = type === "none" ? "None" : AUTH_TYPE_LABELS.get(type) ?? titleCase(type);
-        return (
-          <Badge key={type} variant="outline" className="bg-muted/60 text-xs text-muted-foreground">
-            {label}
-          </Badge>
-        );
-      })}
+    <div className="flex flex-wrap gap-1">
+      {authLabels.map((type) => (
+        <Badge key={type} variant="outline" className="bg-muted/60 text-[11px] text-muted-foreground px-1.5 py-0">
+          {type === "none" ? "None" : AUTH_TYPE_LABELS.get(type) ?? titleCase(type)}
+        </Badge>
+      ))}
     </div>
   );
 }
 
 function DateMetaCell(props: { value: Date | string | null | undefined, emptyLabel: string }) {
   const { value, emptyLabel } = props;
-  const meta = getDateMeta(value, emptyLabel);
+  if (!value) return <span className="text-sm text-muted-foreground">{emptyLabel}</span>;
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) return <span className="text-sm text-muted-foreground">{emptyLabel}</span>;
   return (
-    <span className="text-sm text-muted-foreground whitespace-nowrap" title={meta.tooltip}>
-      {meta.label}
+    <span className="text-sm text-muted-foreground whitespace-nowrap" title={date.toString()}>
+      {fromNow(date)}
     </span>
   );
-}
-
-function getDateMeta(value: Date | string | null | undefined, emptyLabel: string) {
-  if (!value) {
-    return { label: emptyLabel };
-  }
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) {
-    return { label: emptyLabel };
-  }
-  return {
-    label: fromNow(date),
-    tooltip: date.toString(),
-  };
 }

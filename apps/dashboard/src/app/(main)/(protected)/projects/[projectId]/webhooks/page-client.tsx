@@ -3,14 +3,14 @@
 import { SmartFormDialog } from "@/components/form-dialog";
 import { InputField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";
-import { DesignAlert, DesignBadge, DesignButton, DesignCard, DesignDataTable } from "@/components/design-components";
+import { DesignAlert, DesignBadge, DesignButton, DesignCard } from "@/components/design-components";
 import { getPublicEnvVar } from '@/lib/env';
 import { urlSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { yupResolver } from "@hookform/resolvers/yup";
 import { ActionCell, ActionDialog, Form, Typography } from "@/components/ui";
 import { useMemo, useState } from "react";
 import { useForm } from "react-hook-form";
-import { SvixProvider, useEndpoints, useSvix } from "svix-react";
+import { AppPortal, SvixProvider, useEndpoints, useSvix } from "svix-react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
@@ -18,10 +18,14 @@ import { useAdminApp } from "../use-admin-app";
 import { getSvixResult } from "./utils";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { useTheme } from "@/lib/theme";
-import { AppPortal } from "svix-react";
-import type { ColumnDef } from "@tanstack/react-table";
 import { GlobeHemisphereWestIcon } from "@phosphor-icons/react";
 import "svix-react/style.css";
+import {
+  createDefaultDataGridState,
+  DataGrid,
+  useDataSource,
+  type DataGridColumnDef,
+} from "@stackframe/dashboard-ui-components";
 
 
 export default function PageClient() {
@@ -399,81 +403,102 @@ function ActionMenu(props: { endpoint: Endpoint, updateFn: () => void, onTestEnd
 function Endpoints(props: { updateFn: () => void, onTestRequested: (endpoint: Endpoint) => void }) {
   const endpoints = getSvixResult(useEndpoints({ limit: 100 }));
 
-  if (!endpoints.loaded) {
-    return endpoints.rendered;
-  } else {
-    const columns: ColumnDef<Endpoint>[] = [
-      {
-        accessorKey: "url",
-        header: "Endpoint URL",
-        cell: ({ row }) => (
-          <span className="text-sm font-medium text-foreground">{row.original.url}</span>
-        ),
-      },
-      {
-        accessorKey: "description",
-        header: "Description",
-        cell: ({ row }) => (
-          row.original.description ? (
-            <span className="text-sm text-foreground/80">{row.original.description}</span>
-          ) : (
-            <span className="text-sm text-muted-foreground">-</span>
-          )
-        ),
-      },
-      {
-        id: "status",
-        header: "Status",
-        cell: ({ row }) => (
-          <DesignBadge
-            label={row.original.disabled ? "Disabled" : "Active"}
-            color={row.original.disabled ? "red" : "green"}
-            size="sm"
-          />
-        ),
-      },
-      {
-        id: "actions",
-        header: "",
-        cell: ({ row }) => (
-          <div className="flex justify-end">
-            <ActionMenu
-              endpoint={row.original}
-              updateFn={props.updateFn}
-              onTestEndpoint={props.onTestRequested}
-            />
-          </div>
-        ),
-      },
-    ];
+  const columns = useMemo((): DataGridColumnDef<Endpoint>[] => [
+    {
+      id: "url",
+      header: "Endpoint URL",
+      accessor: "url",
+      width: 280,
+      flex: 1,
+      type: "string",
+      renderCell: ({ value }) => <span className="text-sm font-medium text-foreground">{String(value)}</span>,
+    },
+    {
+      id: "description",
+      header: "Description",
+      accessor: "description",
+      width: 200,
+      type: "string",
+      renderCell: ({ value }) => value ? <span className="text-sm text-foreground/80">{String(value)}</span> : <span className="text-sm text-muted-foreground">-</span>,
+    },
+    {
+      id: "status",
+      header: "Status",
+      width: 100,
+      sortable: false,
+      renderCell: ({ row }) => <DesignBadge label={row.disabled ? "Disabled" : "Active"} color={row.disabled ? "red" : "green"} size="sm" />,
+    },
+    {
+      id: "actions",
+      header: "",
+      width: 50,
+      sortable: false,
+      hideable: false,
+      resizable: false,
+      renderCell: ({ row }) => (
+        <div className="flex justify-end">
+          <ActionMenu endpoint={row} updateFn={props.updateFn} onTestEndpoint={props.onTestRequested} />
+        </div>
+      ),
+    },
+  ], [props.updateFn, props.onTestRequested]);
 
-    const endpointRows: Endpoint[] = endpoints.data.map((endpoint) => ({
+  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
+
+  const endpointRows = useMemo((): Endpoint[] => {
+    if (!endpoints.loaded) {
+      return [];
+    }
+    return endpoints.data.map((endpoint) => ({
       ...endpoint,
       description: endpoint.description,
       disabled: endpoint.disabled ?? false,
     }));
+  }, [endpoints]);
 
-    return (
-      <DesignCard
-        title="Endpoints"
-        subtitle="Endpoints are the URLs that we will send events to. Please make sure you control these endpoints, as they can receive sensitive data."
-        icon={GlobeHemisphereWestIcon}
-        glassmorphic
-        actions={(
-          <CreateDialog
-            trigger={<DesignButton>Add new endpoint</DesignButton>}
-            updateFn={props.updateFn}
-            onTestRequested={props.onTestRequested}
-          />
-        )}
-      >
-        <DesignDataTable
-          data={endpointRows}
-          columns={columns}
-          defaultColumnFilters={[]}
-          defaultSorting={[]}
-        />
-      </DesignCard>
-    );
+  const gridData = useDataSource({
+    data: endpointRows,
+    columns,
+    getRowId: (row) => row.id,
+    sorting: gridState.sorting,
+    quickSearch: gridState.quickSearch,
+    pagination: gridState.pagination,
+    paginationMode: "infinite",
+  });
+
+  if (!endpoints.loaded) {
+    return endpoints.rendered;
   }
+
+  return (
+    <DesignCard
+      title="Endpoints"
+      subtitle="Endpoints are the URLs that we will send events to. Please make sure you control these endpoints, as they can receive sensitive data."
+      icon={GlobeHemisphereWestIcon}
+      glassmorphic
+      actions={(
+        <CreateDialog
+          trigger={<DesignButton>Add new endpoint</DesignButton>}
+          updateFn={props.updateFn}
+          onTestRequested={props.onTestRequested}
+        />
+      )}
+    >
+      <DataGrid
+        columns={columns}
+        rows={gridData.rows}
+        getRowId={(row) => row.id}
+        totalRowCount={gridData.totalRowCount}
+        isLoading={gridData.isLoading}
+        state={gridState}
+        onChange={setGridState}
+        paginationMode="infinite"
+        hasMore={gridData.hasMore}
+        isLoadingMore={gridData.isLoadingMore}
+        onLoadMore={gridData.loadMore}
+        footer={false}
+
+      />
+    </DesignCard>
+  );
 }
