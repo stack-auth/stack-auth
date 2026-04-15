@@ -18,7 +18,7 @@ import {
   NULL_TAB_KEY,
 } from "@/lib/session-replay-streams";
 import { cn } from "@/lib/utils";
-import { ArrowLeftIcon, ArrowsClockwiseIcon, CursorClickIcon, FastForwardIcon, FunnelSimpleIcon, GearIcon, LinkIcon, MonitorPlayIcon, PauseIcon, PlayIcon, XIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon, ArrowsClockwiseIcon, CheckIcon, CursorClickIcon, FastForwardIcon, FunnelSimpleIcon, GearIcon, LinkIcon, MonitorPlayIcon, PauseIcon, PlayIcon, XIcon } from "@phosphor-icons/react";
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -487,6 +487,7 @@ export default function PageClient({ initialReplayId }: PageClientProps) {
   const listBoxRef = useRef<HTMLDivElement | null>(null);
 
   const [selectedRecordingId, setSelectedRecordingId] = useState<string | null>(initialReplayId ?? null);
+  const [replayShareLinkCopied, setReplayShareLinkCopied] = useState(false);
   const selectedRecording = useMemo(
     () => recordings.find(r => r.id === selectedRecordingId)
       ?? (standaloneReplay?.id === selectedRecordingId ? standaloneReplay : null),
@@ -495,6 +496,16 @@ export default function PageClient({ initialReplayId }: PageClientProps) {
 
   const hasAutoSelectedRef = useRef(false);
   const loadingMoreRef = useRef(false);
+
+  useEffect(() => {
+    setReplayShareLinkCopied(false);
+  }, [selectedRecordingId]);
+
+  useEffect(() => {
+    if (!replayShareLinkCopied) return;
+    const timer = setTimeout(() => setReplayShareLinkCopied(false), 2000);
+    return () => clearTimeout(timer);
+  }, [replayShareLinkCopied]);
 
   const loadPage = useCallback(async (cursor: string | null) => {
     if (cursor !== null && loadingMoreRef.current) return;
@@ -1821,14 +1832,20 @@ export default function PageClient({ initialReplayId }: PageClientProps) {
                       variant="ghost"
                       size="icon"
                       className="h-7 w-7"
-                      aria-label="Copy link to replay"
+                      aria-label={replayShareLinkCopied ? "Link copied" : "Copy link to replay"}
+                      title={replayShareLinkCopied ? "Copied!" : "Copy link to replay"}
                       onClick={() => runAsynchronouslyWithAlert(async () => {
                         await navigator.clipboard.writeText(
                           `${window.location.origin}/projects/${encodeURIComponent(adminApp.projectId)}/analytics/replays/${encodeURIComponent(selectedRecordingId)}`,
                         );
+                        setReplayShareLinkCopied(true);
                       })}
                     >
-                      <LinkIcon className="h-4 w-4" />
+                      {replayShareLinkCopied ? (
+                        <CheckIcon className="h-4 w-4 text-emerald-600" weight="bold" />
+                      ) : (
+                        <LinkIcon className="h-4 w-4" />
+                      )}
                     </Button>
                   )}
                   <ReplaySettingsButton
