@@ -9,6 +9,7 @@ import { listManagedProjectIds } from "@/lib/projects";
 import { SmartResponse } from "@/route-handlers/smart-response";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
+import { validateImageAttachments } from "@stackframe/stack-shared/dist/ai/image-limits";
 import { yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Json } from "@stackframe/stack-shared/dist/utils/json";
@@ -35,7 +36,6 @@ export const POST = createSmartRouteHandler({
     const isAuthenticated = fullReq.auth != null;
     const { quality, speed, systemPrompt: systemPromptId, tools: toolNames, messages, projectId } = body;
 
-    // Verify user has access to the target project
     if (projectId != null) {
       if (fullReq.auth?.project.id !== "internal") {
         throw new StatusError(StatusError.Forbidden, "You do not have access to this project");
@@ -50,6 +50,11 @@ export const POST = createSmartRouteHandler({
       }
     }
 
+    const imageValidationResult = validateImageAttachments(messages);
+    if (!imageValidationResult.ok) {
+      throw new StatusError(StatusError.BadRequest, imageValidationResult.reason);
+    }
+
     const model = selectModel(quality, speed, isAuthenticated);
     const isDocsOrSearch = systemPromptId === "docs-ask-ai" || systemPromptId === "command-center-ask-ai";
     let systemPrompt = getFullSystemPrompt(systemPromptId);
@@ -58,7 +63,22 @@ export const POST = createSmartRouteHandler({
     }
     const tools = await getTools(toolNames, { auth: fullReq.auth, targetProjectId: projectId });
     const toolsArg = Object.keys(tools).length > 0 ? tools : undefined;
-    const stepLimit = toolsArg == null ? 1 : isDocsOrSearch ? 50 : 5;
+    const isDocsOrSearch = systemPromptId === "docs-ask-ai" || systemPromptId === "command-center-ask-ai";
+    // create-dashboard now does an inspection loop (queryAnalytics) before calling updateDashboard,
+    // so it needs room for ~3 exploratory queries + the final tool call + some retry slack.
+    const isCreateDashboard = systemPromptId === "create-dashboard";
+    // build-analytics-query aims for one-shot queries with complete schema
+    // knowledge, but needs a few steps for retries on errors or follow-ups.
+    const isBuildAnalyticsQuery = systemPromptId === "build-analytics-query";
+    const stepLimit = toolsArg == null
+      ? 1
+      : isDocsOrSearch
+        ? 50
+        : isCreateDashboard
+          ? 12
+          : isBuildAnalyticsQuery
+            ? 5
+            : 5;
 
     if (mode === "stream") {
       const result = streamText({
