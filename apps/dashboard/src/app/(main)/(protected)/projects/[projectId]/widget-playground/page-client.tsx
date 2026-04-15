@@ -1630,9 +1630,9 @@ function Draggable(props: {
                 <div className="text-red-500 text-sm p-2 bg-red-500/10 font-mono whitespace-pre-wrap">
                   A runtime error occured while rendering this widget.<br />
                   <br />
-                  <button className="text-blue-500 hover:underline" onClick={() => {
-                    props.reset();
-                  }}>Reload widget</button><br />
+                  {props.reset && <button className="text-blue-500 hover:underline" onClick={() => {
+                    props.reset!();
+                  }}>Reload widget</button>}<br />
                   <br />
                   {errorToNiceString(props.error)}
                 </div>
