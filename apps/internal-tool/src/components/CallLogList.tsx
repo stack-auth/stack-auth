@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { formatDistanceToNow, format } from "date-fns";
 import type { McpCallLogRow } from "../types";
 import { toDate } from "../utils";
@@ -12,6 +12,8 @@ type SortField = "time" | "tool" | "steps" | "duration" | "qa" | "status";
 type SortDir = "asc" | "desc";
 type StatusFilter = "all" | "ok" | "error";
 type QaFilter = "all" | "pending" | "pass" | "warn" | "fail" | "error" | "needs-review" | "human-reviewed" | "not-reviewed";
+const PAGE_SIZES = [25, 50, 100, 500] as const;
+type PageSize = typeof PAGE_SIZES[number];
 
 function getSortValue(row: McpCallLogRow, field: SortField): number | string {
   switch (field) {
@@ -56,6 +58,8 @@ export function CallLogList({
   }, [rows]);
 
   const [toolFilter, setToolFilter] = useState<string>("all");
+  const [page, setPage] = useState(0);
+  const [pageSize, setPageSize] = useState<PageSize>(50);
 
   const filteredAndSorted = useMemo(() => {
     let result = rows;
@@ -114,6 +118,14 @@ export function CallLogList({
 
     return result;
   }, [rows, textFilter, toolFilter, statusFilter, qaFilter, sortField, sortDir]);
+
+  const pageCount = Math.max(1, Math.ceil(filteredAndSorted.length / pageSize));
+  const currentPage = Math.min(page, pageCount - 1);
+  const pageRows = filteredAndSorted.slice(currentPage * pageSize, (currentPage + 1) * pageSize);
+
+  useEffect(() => {
+    setPage(0);
+  }, [textFilter, toolFilter, statusFilter, qaFilter, sortField, sortDir, pageSize]);
 
   if (connectionState === "connecting") {
     return <div className="text-gray-500 text-sm p-4">Connecting to SpacetimeDB...</div>;
@@ -241,7 +253,7 @@ export function CallLogList({
               </tr>
             </thead>
             <tbody>
-              {filteredAndSorted.map((row) => (
+              {pageRows.map((row) => (
                 <tr
                   key={String(row.id)}
                   onClick={() => onSelect(row)}
@@ -307,6 +319,45 @@ export function CallLogList({
               ))}
             </tbody>
           </table>
+          <div className="flex items-center justify-between px-4 py-2 border-t border-gray-200 text-xs text-gray-600 bg-gray-50">
+            <div className="flex items-center gap-2">
+              <span className="text-[10px] text-gray-400 uppercase tracking-wider">Page size</span>
+              {PAGE_SIZES.map(s => (
+                <button
+                  key={s}
+                  onClick={() => setPageSize(s)}
+                  className={clsx(
+                    "px-2 py-0.5 text-xs rounded",
+                    pageSize === s ? "bg-blue-600 text-white" : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-100"
+                  )}
+                >
+                  {s}
+                </button>
+              ))}
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="text-gray-500">
+                {filteredAndSorted.length === 0
+                  ? "No results"
+                  : `${currentPage * pageSize + 1}–${Math.min((currentPage + 1) * pageSize, filteredAndSorted.length)} of ${filteredAndSorted.length}`}
+              </span>
+              <button
+                onClick={() => setPage(Math.max(0, currentPage - 1))}
+                disabled={currentPage === 0}
+                className="px-2 py-0.5 text-xs rounded bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:hover:bg-white"
+              >
+                Prev
+              </button>
+              <span className="text-gray-500 font-mono">{currentPage + 1} / {pageCount}</span>
+              <button
+                onClick={() => setPage(Math.min(pageCount - 1, currentPage + 1))}
+                disabled={currentPage >= pageCount - 1}
+                className="px-2 py-0.5 text-xs rounded bg-white border border-gray-200 text-gray-600 hover:bg-gray-100 disabled:opacity-40 disabled:hover:bg-white"
+              >
+                Next
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>

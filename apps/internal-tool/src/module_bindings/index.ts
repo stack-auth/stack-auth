@@ -36,6 +36,7 @@ import {
 // Import all reducer arg schemas
 import AddManualQaReducer from "./add_manual_qa_reducer";
 import DeleteQaEntryReducer from "./delete_qa_entry_reducer";
+import LogAiQueryReducer from "./log_ai_query_reducer";
 import LogMcpCallReducer from "./log_mcp_call_reducer";
 import MarkHumanReviewedReducer from "./mark_human_reviewed_reducer";
 import UpdateHumanCorrectionReducer from "./update_human_correction_reducer";
@@ -44,12 +45,24 @@ import UpdateMcpQaReviewReducer from "./update_mcp_qa_review_reducer";
 // Import all procedure arg schemas
 
 // Import all table schema definitions
+import AiQueryLogRow from "./ai_query_log_table";
 import McpCallLogRow from "./mcp_call_log_table";
 
 /** Type-only namespace exports for generated type groups. */
 
 /** The schema information for all tables in this module. This is defined the same was as the tables would have been defined in the server. */
 const tablesSchema = __schema({
+  aiQueryLog: __table({
+    name: 'ai_query_log',
+    indexes: [
+      { accessor: 'id', name: 'ai_query_log_id_idx_btree', algorithm: 'btree', columns: [
+        'id',
+      ] },
+    ],
+    constraints: [
+      { name: 'ai_query_log_id_key', constraint: 'unique', columns: ['id'] },
+    ],
+  }, AiQueryLogRow),
   mcpCallLog: __table({
     name: 'mcp_call_log',
     indexes: [
@@ -67,6 +80,7 @@ const tablesSchema = __schema({
 const reducersSchema = __reducers(
   __reducerSchema("add_manual_qa", AddManualQaReducer),
   __reducerSchema("delete_qa_entry", DeleteQaEntryReducer),
+  __reducerSchema("log_ai_query", LogAiQueryReducer),
   __reducerSchema("log_mcp_call", LogMcpCallReducer),
   __reducerSchema("mark_human_reviewed", MarkHumanReviewedReducer),
   __reducerSchema("update_human_correction", UpdateHumanCorrectionReducer),

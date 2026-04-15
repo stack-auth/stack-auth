@@ -23,7 +23,7 @@ export async function getConnection(): Promise<DbConnection | null> {
             .onApplied(() => {
               resolve(connInstance);
             })
-            .subscribe("SELECT * FROM mcp_call_log");
+            .subscribe(["SELECT * FROM mcp_call_log", "SELECT * FROM ai_query_log"]);
         })
         .onConnectError((_: unknown, err: Error) => {
           captureError("mcp-logger", err);

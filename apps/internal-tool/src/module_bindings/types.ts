@@ -10,6 +10,34 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
+export const AiQueryLog = __t.object("AiQueryLog", {
+  id: __t.u64(),
+  correlationId: __t.string(),
+  createdAt: __t.timestamp(),
+  mode: __t.string(),
+  systemPromptId: __t.string(),
+  quality: __t.string(),
+  speed: __t.string(),
+  modelId: __t.string(),
+  isAuthenticated: __t.bool(),
+  projectId: __t.option(__t.string()),
+  userId: __t.option(__t.string()),
+  requestedToolsJson: __t.string(),
+  messagesJson: __t.string(),
+  stepsJson: __t.string(),
+  finalText: __t.string(),
+  inputTokens: __t.option(__t.u32()),
+  outputTokens: __t.option(__t.u32()),
+  cachedInputTokens: __t.option(__t.u32()),
+  costUsd: __t.option(__t.f64()),
+  stepCount: __t.u32(),
+  durationMs: __t.u64(),
+  errorMessage: __t.option(__t.string()),
+  mcpCorrelationId: __t.option(__t.string()),
+  conversationId: __t.option(__t.string()),
+});
+export type AiQueryLog = __Infer<typeof AiQueryLog>;
+
 export const McpCallLog = __t.object("McpCallLog", {
   id: __t.u64(),
   correlationId: __t.string(),

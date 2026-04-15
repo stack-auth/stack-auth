@@ -40,7 +40,7 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-function ToolCallCard({ call, accent = "purple" }: { call: { toolName: string; args: unknown; result: unknown }; accent?: "purple" | "indigo" }) {
+export function ToolCallCard({ call, accent = "purple" }: { call: { toolName: string; args: unknown; result: unknown }; accent?: "purple" | "indigo" }) {
   const [expanded, setExpanded] = useState(false);
   const colors = accent === "indigo"
     ? { dot: "text-indigo-500", name: "text-indigo-700", bg: "bg-indigo-50", ring: "ring-indigo-200", hover: "hover:bg-indigo-100" }
@@ -82,7 +82,7 @@ function ToolCallCard({ call, accent = "purple" }: { call: { toolName: string; a
   );
 }
 
-function UserBubble({ text }: { text: string }) {
+export function UserBubble({ text }: { text: string }) {
   return (
     <div className="flex gap-2.5 justify-end">
       <div className="rounded-xl px-3.5 py-2 max-w-[80%] bg-blue-50 text-gray-900">
@@ -95,7 +95,7 @@ function UserBubble({ text }: { text: string }) {
   );
 }
 
-function AssistantBubble({ content, toolCalls }: { content: string; toolCalls: ToolCall[] }) {
+export function AssistantBubble({ content, toolCalls }: { content: string; toolCalls: ToolCall[] }) {
   return (
     <div className="flex gap-2.5 justify-start">
       <div className="shrink-0 w-6 h-6 mt-0.5 rounded-full bg-purple-100 flex items-center justify-center">

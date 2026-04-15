@@ -6,18 +6,22 @@ import { Analytics } from "../components/Analytics";
 import { CallLogDetail } from "../components/CallLogDetail";
 import { CallLogList } from "../components/CallLogList";
 import { KnowledgeBase } from "../components/KnowledgeBase";
-import { useMcpCallLogs } from "../hooks/useSpacetimeDB";
+import { Usage } from "../components/Usage";
+import { UsageDetail } from "../components/UsageDetail";
+import { useAiQueryLogs, useMcpCallLogs } from "../hooks/useSpacetimeDB";
 import { makeMcpReviewApi } from "../lib/mcp-review-api";
-import type { McpCallLogRow } from "../types";
+import type { AiQueryLogRow, McpCallLogRow } from "../types";
 
-type Tab = "calls" | "knowledge" | "analytics";
+type Tab = "calls" | "knowledge" | "analytics" | "usage";
 
 export default function App() {
   const user = useUser({ or: process.env.NODE_ENV === "development" ? "redirect" : "return-null" });
   const [selectedRow, setSelectedRow] = useState<McpCallLogRow | null>(null);
+  const [selectedUsageRow, setSelectedUsageRow] = useState<AiQueryLogRow | null>(null);
   const [showAddQa, setShowAddQa] = useState(false);
   const [tab, setTab] = useState<Tab>("calls");
   const { rows, connectionState } = useMcpCallLogs();
+  const { rows: usageRows, connectionState: usageConnectionState } = useAiQueryLogs();
 
   if (!user) {
     return (
@@ -115,6 +119,18 @@ export default function App() {
             >
               Analytics
             </button>
+            <button
+              onClick={() => {
+                setTab("usage");
+                setSelectedRow(null);
+              }}
+              className={clsx(
+                "px-3 py-1 text-xs font-medium rounded-md transition-colors",
+                tab === "usage" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
+              )}
+            >
+              Unified AI Endpoint Analytics
+            </button>
           </div>
         </div>
         <div className="flex items-center gap-3">
@@ -192,6 +208,27 @@ export default function App() {
         <main className="p-6 max-w-6xl mx-auto">
           <Analytics rows={rows} />
         </main>
+      )}
+
+      {tab === "usage" && (
+        <div className="flex">
+          <main className="flex-1 p-6 max-w-6xl mx-auto">
+            <Usage
+              rows={usageRows}
+              connectionState={usageConnectionState}
+              onSelect={setSelectedUsageRow}
+              selectedId={selectedUsageRow?.id}
+            />
+          </main>
+          {selectedUsageRow && (
+            <aside className="w-[480px] border-l border-gray-200 bg-white overflow-hidden h-[calc(100vh-57px)]">
+              <UsageDetail
+                row={usageRows.find(r => r.id === selectedUsageRow.id) ?? selectedUsageRow}
+                onClose={() => setSelectedUsageRow(null)}
+              />
+            </aside>
+          )}
+        </div>
       )}
     </div>
   );
