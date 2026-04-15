@@ -465,6 +465,7 @@ export class StackClientInterface {
     session: InternalSession | null,
     requestType: "client" | "server" | "admin" = "client",
     apiUrlOverride?: string,
+    retryOptions?: { maxAttempts?: number, skipDiagnostics?: boolean },
   ) {
     session ??= this.createSession({
       refreshToken: null,
@@ -472,18 +473,19 @@ export class StackClientInterface {
 
     if (apiUrlOverride) {
       return await this._networkRetry(
-        () => this.sendClientRequestInner(path, requestOptions, session!, requestType, apiUrlOverride),
-        session,
-        requestType,
-      );
-    }
-
-    return await this._withFallback(async (apiUrl, retryOptions) => {
-      return await this._networkRetry(
-        () => this.sendClientRequestInner(path, requestOptions, session!, requestType, apiUrl),
+        () => this.sendClientRequestInner(path, requestOptions, session!, requestType, apiUrlOverride, retryOptions),
         session,
         requestType,
         retryOptions,
+      );
+    }
+
+    return await this._withFallback(async (apiUrl, fallbackRetryOptions) => {
+      return await this._networkRetry(
+        () => this.sendClientRequestInner(path, requestOptions, session!, requestType, apiUrl, retryOptions),
+        session,
+        requestType,
+        { ...fallbackRetryOptions, ...retryOptions },
       );
     });
   }
@@ -513,6 +515,7 @@ export class StackClientInterface {
         session,
         "client",
         this.getAnalyticsApiUrl(),
+        { maxAttempts: 1, skipDiagnostics: true },
       );
       return Result.ok(response);
     } catch (e) {
@@ -537,6 +540,7 @@ export class StackClientInterface {
         session,
         "client",
         this.getAnalyticsApiUrl(),
+        { maxAttempts: 1, skipDiagnostics: true },
       );
       return Result.ok(response);
     } catch (e) {
@@ -576,6 +580,7 @@ export class StackClientInterface {
     session: InternalSession,
     requestType: "client" | "server" | "admin",
     apiUrlOverride?: string,
+    innerOptions?: { skipDiagnostics?: boolean },
   ): Promise<Result<Response & {
     usedTokens: {
       accessToken: AccessToken,
@@ -682,6 +687,8 @@ export class StackClientInterface {
         // Likely to be a network error. Retry if the request is idempotent, throw network error otherwise.
         if (HTTP_METHODS[(params.method ?? "GET") as HttpMethod].idempotent) {
           return Result.error(e);
+        } else if (innerOptions?.skipDiagnostics) {
+          throw e;
         } else {
           throw await this._createNetworkError(e, session, requestType);
         }
