@@ -1,4 +1,5 @@
 import { recordExternalDbSyncDeletion, recordExternalDbSyncTeamInvitationDeletionsForTeam, recordExternalDbSyncTeamMemberDeletionsForTeam, recordExternalDbSyncTeamPermissionDeletionsForTeam, withExternalDbSyncUpdate } from "@/lib/external-db-sync";
+import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { ensureTeamExists, ensureTeamMembershipExists, ensureUserExists, ensureUserTeamPermissionExists } from "@/lib/request-checks";
 import { sendTeamCreatedWebhook, sendTeamDeletedWebhook, sendTeamUpdatedWebhook } from "@/lib/webhooks";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
@@ -10,7 +11,9 @@ import { KnownErrors } from "@stackframe/stack-shared";
 import { teamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { validateBase64Image } from "@stackframe/stack-shared/dist/utils/base64";
-import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { addInterval } from "@stackframe/stack-shared/dist/utils/dates";
+import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { addUserToTeam } from "../team-memberships/crud";
 
@@ -100,6 +103,45 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
     });
 
     const result = teamPrismaToCrud(db);
+
+    if (auth.project.id === "internal") {
+      const products = auth.tenancy.config.payments.products;
+      const freeProductEntry = typedEntries(products).find(([_, p]) =>
+        p.productLineId !== undefined
+        && p.customerType === "team"
+        && (
+          p.prices === "include-by-default"
+          || typedEntries(p.prices).some(([_, price]) => {
+            const usdAmount = "USD" in price ? (price as Record<string, unknown>).USD : undefined;
+            return usdAmount === "0";
+          })
+        )
+      );
+      if (freeProductEntry != null) {
+        const [productId, product] = freeProductEntry;
+        const prices = product.prices === "include-by-default" ? {} : product.prices;
+        const firstPriceEntry = typedEntries(prices)[0] as [string, Record<string, unknown>] | undefined;
+        const now = new Date();
+        const priceInterval = firstPriceEntry != null && "interval" in firstPriceEntry[1] ? firstPriceEntry[1].interval as [number, "day" | "week" | "month" | "year"] | undefined : undefined;
+        const subscription = await prisma.subscription.create({
+          data: {
+            tenancyId: auth.tenancy.id,
+            customerId: db.teamId,
+            customerType: "TEAM",
+            status: "active",
+            productId,
+            priceId: firstPriceEntry != null ? firstPriceEntry[0] : null,
+            product,
+            quantity: 1,
+            currentPeriodStart: now,
+            currentPeriodEnd: priceInterval != null ? addInterval(now, priceInterval) : new Date("2099-12-31T23:59:59Z"),
+            cancelAtPeriodEnd: false,
+            creationSource: "TEST_MODE",
+          },
+        });
+        await bulldozerWriteSubscription(prisma, subscription);
+      }
+    }
 
     runAsynchronouslyAndWaitUntil(sendTeamCreatedWebhook({
       projectId: auth.project.id,
