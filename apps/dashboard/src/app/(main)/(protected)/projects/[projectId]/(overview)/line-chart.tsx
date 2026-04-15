@@ -1,3 +1,11 @@
+import {
+  DesignAnalyticsCard,
+  DesignCategoryTabs,
+  DesignChartLegend,
+  DesignPillToggle,
+  useInfiniteListWindow,
+  type DesignAnalyticsChartConfig
+} from "@/components/design-components";
 import { useRouter } from "@/components/router";
 import {
   cn,
@@ -5,26 +13,17 @@ import {
 } from "@/components/ui";
 import { Calendar } from "@/components/ui/calendar";
 import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import {
-  DesignAnalyticsCard,
-  type DesignAnalyticsChartConfig,
-  DesignCardTint,
-  DesignCategoryTabs,
-  DesignChartLegend,
-  DesignPillToggle,
-  useInfiniteListWindow,
-} from "@/components/design-components";
+import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import {
   AnalyticsChart,
   DEFAULT_FORMAT_KIND,
   type AnalyticsChartPalette,
   type AnalyticsChartState,
 } from "@stackframe/dashboard-ui-components";
-import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { UserAvatar } from '@stackframe/stack';
 import { fromNow, isWeekend } from '@stackframe/stack-shared/dist/utils/dates';
 import { useId, useMemo, useState } from "react";
-import { Area, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Line, LineChart, Pie, PieChart, TooltipProps, XAxis, YAxis } from "recharts";
+import { Area, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Line, LineChart, TooltipProps, XAxis, YAxis } from "recharts";
 
 export type CustomDateRange = {
   from: Date,
