@@ -518,17 +518,13 @@ export function registerEmulatorCommand(program: Command) {
         }
         if (!existsSync(dest)) throw new CliError(`Expected image not found at ${dest} after download.`);
         console.log(`Downloaded: ${dest}`);
-        // Snapshot artifact is optional — older CI builds may not produce it.
-        let snapshotDownloaded = false;
-        try {
-          snapshotDownloaded = await downloadArtifactByName(repo, runId, `qemu-emulator-${arch}-savevm`, imageDir);
-        } catch (err) {
-          console.log(`Snapshot artifact unavailable for run ${runId}: ${err instanceof Error ? err.message : err}`);
-        }
-        if (snapshotDownloaded && existsSync(snapshotDest)) {
+        // CI publishes both files inside the single qemu-emulator-${arch}
+        // artifact, so the first download already extracts the snapshot when
+        // present. Older builds may not include it.
+        if (existsSync(snapshotDest)) {
           console.log(`Downloaded: ${snapshotDest}`);
-        } else if (!snapshotDownloaded) {
-          console.log(`Snapshot artifact not available for run ${runId}; fast-start disabled.`);
+        } else {
+          console.log(`Snapshot not present in artifact for run ${runId}; fast-start disabled.`);
         }
       } else {
         await pullRelease(arch, { repo, branch: opts.branch, tag: opts.tag });
