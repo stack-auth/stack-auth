@@ -1,6 +1,6 @@
 'use client';
 import { InternalApiKey } from '@stackframe/stack';
-import { DesignDataTable } from "@/components/design-components";
+import { DesignCard, DesignDataTable } from "@/components/design-components";
 import { ActionCell, ActionDialog, BadgeCell, DataTableColumnHeader, DataTableFacetedFilter, DateCell, SearchToolbarItem, TextCell, standardFilterFn } from "@/components/ui";
 import { ColumnDef, Row, Table } from "@tanstack/react-table";
 import { useMemo, useState } from "react";
@@ -144,12 +144,13 @@ export function InternalApiKeyTable(props: { apiKeys: InternalApiKey[], showPubl
     });
   }, [props.apiKeys]);
 
-  return <DesignDataTable
-    data={extendedApiKeys}
-    columns={columns}
-    toolbarRender={toolbarRender}
-    defaultColumnFilters={[{ id: 'status', value: ['valid'] }]}
-    defaultSorting={[]}
-    glassmorphic
-  />;
+  return <DesignCard glassmorphic>
+    <DesignDataTable
+      data={extendedApiKeys}
+      columns={columns}
+      toolbarRender={toolbarRender}
+      defaultColumnFilters={[{ id: 'status', value: ['valid'] }]}
+      defaultSorting={[]}
+    />
+  </DesignCard>;
 }

@@ -482,6 +482,9 @@ export default function PageClient() {
                         mockProject={{
                           config: {
                             ...project.config,
+                            credentialEnabled: passwordEnabled,
+                            magicLinkEnabled: otpEnabled,
+                            passkeyEnabled: passkeyEnabled,
                             oauthProviders: enabledProviders
                               .map(([, provider]) => provider)
                               .filter((provider): provider is AdminOAuthProviderConfig => !!provider),
