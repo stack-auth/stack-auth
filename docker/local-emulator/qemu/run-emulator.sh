@@ -5,8 +5,8 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 # shellcheck source=common.sh
 source "$SCRIPT_DIR/common.sh"
 
-IMAGE_DIR="$SCRIPT_DIR/images"
-RUN_DIR="${EMULATOR_RUN_DIR:-$SCRIPT_DIR/run}"
+IMAGE_DIR="${EMULATOR_IMAGE_DIR:-$HOME/.stack/emulator/images}"
+RUN_DIR="${EMULATOR_RUN_DIR:-$HOME/.stack/emulator/run}"
 
 VM_RAM="${EMULATOR_RAM:-4096}"
 VM_CPUS="${EMULATOR_CPUS:-4}"
@@ -89,6 +89,7 @@ prepare_runtime_config_iso() {
     printf "STACK_EMULATOR_BACKEND_HOST_PORT=%s\n" "$EMULATOR_BACKEND_PORT"
     printf "STACK_EMULATOR_MINIO_HOST_PORT=%s\n" "$EMULATOR_MINIO_PORT"
     printf "STACK_EMULATOR_INBUCKET_HOST_PORT=%s\n" "$EMULATOR_INBUCKET_PORT"
+    printf "STACK_EMULATOR_VM_DIR_HOST=%s\n" "$VM_DIR"
   } > "$cfg_dir/runtime.env"
   cp "$SCRIPT_DIR/../.env.development" "$cfg_dir/base.env"
   make_iso_from_dir "$cfg_iso" "STACKCFG" "$cfg_dir"
@@ -201,10 +202,16 @@ build_qemu_cmd() {
 
   local netdev="user,id=net0"
   # Only expose user-facing services; internal deps stay inside the VM.
-  netdev+=",hostfwd=tcp::${EMULATOR_DASHBOARD_PORT}-:${PORT_PREFIX}01"
-  netdev+=",hostfwd=tcp::${EMULATOR_BACKEND_PORT}-:${PORT_PREFIX}02"
-  netdev+=",hostfwd=tcp::${EMULATOR_MINIO_PORT}-:9090"
-  netdev+=",hostfwd=tcp::${EMULATOR_INBUCKET_PORT}-:9001"
+  # Bind to 127.0.0.1 so the emulator is not reachable from the LAN.
+  netdev+=",hostfwd=tcp:127.0.0.1:${EMULATOR_DASHBOARD_PORT}-:${PORT_PREFIX}01"
+  netdev+=",hostfwd=tcp:127.0.0.1:${EMULATOR_BACKEND_PORT}-:${PORT_PREFIX}02"
+  netdev+=",hostfwd=tcp:127.0.0.1:${EMULATOR_MINIO_PORT}-:9090"
+  netdev+=",hostfwd=tcp:127.0.0.1:${EMULATOR_INBUCKET_PORT}-:9001"
+  # Mock OAuth server: browser redirects land on `localhost:${PORT_PREFIX}14`
+  # (backend sets STACK_OAUTH_MOCK_URL to that value), so we forward host:port
+  # ↔ VM:port on the same number. Collides with pnpm dev, but the two modes
+  # are mutually exclusive.
+  netdev+=",hostfwd=tcp:127.0.0.1:${PORT_PREFIX}14-:${PORT_PREFIX}14"
 
   QEMU_CMD=(
     "$qemu_bin"
@@ -249,7 +256,7 @@ tail_vm_logs() {
 }
 
 ensure_ports_free() {
-  local ports=("$EMULATOR_DASHBOARD_PORT" "$EMULATOR_BACKEND_PORT" "$EMULATOR_MINIO_PORT" "$EMULATOR_INBUCKET_PORT")
+  local ports=("$EMULATOR_DASHBOARD_PORT" "$EMULATOR_BACKEND_PORT" "$EMULATOR_MINIO_PORT" "$EMULATOR_INBUCKET_PORT" "${PORT_PREFIX}14")
   local port
   for port in "${ports[@]}"; do
     if lsof -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
