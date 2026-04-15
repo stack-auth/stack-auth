@@ -1327,9 +1327,9 @@ model OutgoingRequest {
 }
 
 model BulldozerStorageEngine {
-  id            String                 @id @default(uuid()) @db.Uuid
+  id            String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   keyPath       Json[]
-  keyPathParent Unsupported("jsonb[]")
+  keyPathParent Unsupported("jsonb[]")?
   value         Json
 
   @@unique([keyPath], map: "BulldozerStorageEngine_keyPath_key")
@@ -1337,11 +1337,11 @@ model BulldozerStorageEngine {
 }
 
 model BulldozerTimeFoldQueue {
-  id               String   @id @default(uuid()) @db.Uuid
+  id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   tableStoragePath Json[]
   groupKey         Json
   rowIdentifier    String
-  scheduledAt      DateTime
+  scheduledAt      DateTime @db.Timestamptz
   stateAfter       Json
   rowData          Json
   reducerSql       String
@@ -1356,7 +1356,7 @@ model BulldozerTimeFoldMetadata {
   key             String   @id
   createdAt       DateTime @default(now())
   updatedAt       DateTime @default(now()) @updatedAt
-  lastProcessedAt DateTime
+  lastProcessedAt DateTime @db.Timestamptz
 }
 
 model DeletedRow {
