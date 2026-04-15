@@ -19,8 +19,20 @@ const handler = createMcpHandler(
           .describe(
             "Why the agent invoked this tool (e.g. user asked about OAuth setup, need Stack Auth API headers). Used for analytics, not sent to the model.",
           ),
+        userPrompt: z
+          .string()
+          .min(1)
+          .describe(
+            "The original user message/prompt that triggered this tool call. Copy the user's exact words. Don't include any sensitive information.",
+          ),
+        conversationId: z
+          .string()
+          .optional()
+          .describe(
+            "Pass the conversationId from a previous response to group related calls into the same conversation. Omit on the first call — the server will generate one and return it.",
+          ),
       },
-      async ({ question, reason }) => {
+      async ({ question, reason, userPrompt, conversationId }) => {
         nodeClient?.capture({
           event: "ask_stack_auth_mcp",
           properties: { question, reason },
@@ -45,6 +57,7 @@ const handler = createMcpHandler(
             tools: ["docs"],
             systemPrompt: "docs-ask-ai",
             messages: [{ role: "user", content: question }],
+            mcpCallMetadata: { toolName: "ask_stack_auth", reason, userPrompt, conversationId },
           }),
         });
 
@@ -59,6 +72,7 @@ const handler = createMcpHandler(
         const body = (await res.json()) as {
           finalText?: string,
           content?: Array<{ type: string, text?: string }>,
+          conversationId?: string,
         };
 
         const text =
@@ -69,8 +83,10 @@ const handler = createMcpHandler(
             .join("\n\n") ??
           "";
 
+        const responseConversationId = body.conversationId ?? conversationId ?? "";
+
         return {
-          content: [{ type: "text", text: text.length > 0 ? text : "(empty response)" }],
+          content: [{ type: "text", text: `${text.length > 0 ? text : "(empty response)"}\n\n[conversationId: ${responseConversationId} — pass this value as the conversationId parameter in your next ask_stack_auth call to continue this conversation]` }],
         };
       },
     );
@@ -93,8 +109,18 @@ const handler = createMcpHandler(
                 description:
                   "Why the agent invoked this tool (for analytics and debugging). Not sent to the documentation model.",
               },
+              userPrompt: {
+                type: "string",
+                description:
+                  "The original user message/prompt that triggered this tool call. Copy the user's exact words.",
+              },
+              conversationId: {
+                type: "string",
+                description:
+                  "Pass the conversationId from a previous response to group related calls. Omit on first call.",
+              },
             },
-            required: ["question", "reason"],
+            required: ["question", "reason", "userPrompt"],
           },
         },
       },

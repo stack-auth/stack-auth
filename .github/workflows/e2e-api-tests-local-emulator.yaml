@@ -86,6 +86,9 @@ jobs:
       - name: Create .env.test.local file for examples/convex
         run: cp examples/convex/.env.development examples/convex/.env.test.local
 
+      - name: Create .env.test.local file for apps/internal-tool
+        run: cp apps/internal-tool/.env.development apps/internal-tool/.env.test.local
+
       - name: Build
         run: pnpm build
 
