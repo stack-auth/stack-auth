@@ -144,8 +144,10 @@ fi
 # The full-tree sentinel scan is expensive (several seconds over the whole built
 # app tree). On a fast-restart — triggered by the emulator snapshot rotation
 # path — the placeholders have already been sed-replaced by rotate-secrets,
-# and no new sentinels need substitution. Skip the scan in that case.
-SENTINEL_MARKER=/var/run/stack-local-sentinels-replaced
+# and no new sentinels need substitution. Skip the scan in that case. Marker
+# lives in WORK_DIR because the docker/server image runs as the unprivileged
+# `node` user and cannot write to /var/run.
+SENTINEL_MARKER="$WORK_DIR/.stack-sentinels-replaced"
 if [ -f "$SENTINEL_MARKER" ]; then
   echo "Sentinels already replaced on a previous start; skipping scan."
 else
@@ -182,7 +184,7 @@ else
     # Now replace the sentinel with the (properly escaped) value in all files in the working directory.
     find $WORK_DIR/apps -type f -exec sed -i "s${delimiter}${escaped_sentinel}${delimiter}${escaped_value}${delimiter}g" {} +
   done
-  mkdir -p "$(dirname "$SENTINEL_MARKER")" && touch "$SENTINEL_MARKER"
+  touch "$SENTINEL_MARKER"
 fi
 
 # ============= START BACKEND AND DASHBOARD =============
