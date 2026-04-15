@@ -1,14 +1,548 @@
 ---
 title: Build a SaaS with Stack Auth
-description: End-to-end tutorial stub for building a SaaS app with Stack Auth.
+description: End-to-end path from project setup to teams, permissions, and production for a multi-tenant SaaS on Stack Auth.
 ---
 
-This tutorial is coming soon.
+This tutorial maps a typical SaaS build onto Stack Auth: bootstrap auth, model customers as teams, enforce access with permissions, and close the loop before production. A plain Markdown version with the same structure lives in the repo at `docs-mintlify/guides/other/tutorials/build-a-saas-with-stack-auth.md`.
 
-## Planned coverage
+## What you will have at the end
 
-- Project setup and auth bootstrapping
-- App onboarding, teams, and permissions
-- Production deployment checklist
+- A working sign-in and account flow using Stack Auth's handler routes (Next.js) or your framework’s equivalent.
+- A clear pattern for **who** is signed in and **what** they can access in the product.
+- A **multi-tenant** shape (usually **teams** as organizations) with a sensible **team selection** story.
+- A checklist mindset for **production** domains, OAuth, and email.
 
-If you want this prioritized, open a request in our community channels and include your stack details.
+## Prerequisites
+
+- A **Next.js** project using the **App Router** (Stack’s first-class path for hosted UI and handlers), or another stack supported in [Setup](/guides/getting-started/setup) (React, Express, or REST from any backend).
+- A Stack Auth account and a **project** in the [dashboard](https://app.stack-auth.com/projects).
+
+<Note>
+  Stack does not officially support the Next.js Pages Router. If you are on Pages Router, consider the React or JavaScript SDKs per the [FAQ](/guides/faq).
+</Note>
+
+The examples below focus on **Next.js (App Router)**. The same ideas apply on other stacks—swap in `StackClientApp` / REST calls as in [Setup](/guides/getting-started/setup).
+
+## 1. Install Stack and wire environment variables
+
+The fastest path for JavaScript and TypeScript is the **setup wizard**:
+
+```bash title="Terminal"
+npx @stackframe/stack-cli@latest init
+```
+
+Then create or open a project in the dashboard and copy **project ID**, **publishable client key** (if your project uses one), and **secret server key** into your app configuration. For Next.js, that usually means `.env.local`:
+
+```bash title=".env.local"
+NEXT_PUBLIC_STACK_PROJECT_ID=<your-project-id>
+NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>
+STACK_SECRET_SERVER_KEY=<your-secret-server-key>
+```
+
+### What the wizard sets up (Next.js)
+
+After `init`, you should see files similar to:
+
+- `app/handler/[...stack]/page.tsx` — hosted sign-in, sign-up, account settings, and more
+- `app/layout.tsx` — wraps the app with `StackProvider` and `StackTheme`
+- `app/loading.tsx` — Suspense boundary for Stack’s async hooks
+- `stack/server.ts` — `stackServerApp` for server components, actions, and route handlers
+- `stack/client.ts` — `stackClientApp` when you need the client app object explicitly
+
+If you ever need to align manually with the wizard output, the core pieces look like this:
+
+<Tabs>
+  <Tab title="stack/server.ts">
+    ```typescript title="stack/server.ts"
+    import "server-only";
+    import { StackServerApp } from "@stackframe/stack";
+
+    export const stackServerApp = new StackServerApp({
+      tokenStore: "nextjs-cookie",
+    });
+    ```
+  </Tab>
+  <Tab title="stack/client.ts">
+    ```typescript title="stack/client.ts"
+    import { StackClientApp } from "@stackframe/stack";
+
+    export const stackClientApp = new StackClientApp({
+      // Reads NEXT_PUBLIC_STACK_* from the environment by default
+    });
+    ```
+  </Tab>
+  <Tab title="app/handler/[...stack]/page.tsx">
+    ```tsx title="app/handler/[...stack]/page.tsx"
+    import { StackHandler } from "@stackframe/stack";
+    import { stackServerApp } from "@/stack/server";
+
+    export default function Handler(props: unknown) {
+      return <StackHandler fullPage app={stackServerApp} routeProps={props} />;
+    }
+    ```
+  </Tab>
+  <Tab title="app/layout.tsx">
+    ```tsx title="app/layout.tsx"
+    import { StackProvider, StackTheme } from "@stackframe/stack";
+    import { stackServerApp } from "@/stack/server";
+
+    export default function RootLayout({ children }: { children: React.ReactNode }) {
+      return (
+        <html lang="en">
+          <body>
+            <StackProvider app={stackServerApp}>
+              <StackTheme>{children}</StackTheme>
+            </StackProvider>
+          </body>
+        </html>
+      );
+    }
+    ```
+  </Tab>
+  <Tab title="app/loading.tsx">
+    ```tsx title="app/loading.tsx"
+    export default function Loading() {
+      return <>Loading...</>;
+    }
+    ```
+  </Tab>
+</Tabs>
+
+Full variants (React, Express, Python, manual install) are in [Setup](/guides/getting-started/setup).
+
+After setup, open the hosted auth UI (for example `/handler/sign-up`), create a test user, and confirm you land back in your app.
+
+### Marketing header: sign in / sign out
+
+Use `useStackApp()` so you do not hard-code handler URLs (they can be customized in the project):
+
+```tsx title="components/auth-header.tsx"
+"use client";
+
+import Link from "next/link";
+import { useStackApp, useUser } from "@stackframe/stack";
+
+export function AuthHeader() {
+  const app = useStackApp();
+  const user = useUser();
+
+  return (
+    <header style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
+      {user ? (
+        <>
+          <span>{user.displayName ?? user.primaryEmail ?? user.id}</span>
+          <Link href={app.urls.accountSettings}>Account</Link>
+          <Link href={app.urls.signOut}>Sign out</Link>
+        </>
+      ) : (
+        <>
+          <Link href={app.urls.signIn}>Sign in</Link>
+          <Link href={app.urls.signUp}>Sign up</Link>
+        </>
+      )}
+    </header>
+  );
+}
+```
+
+## 2. Resolve the signed-in user everywhere
+
+Almost every SaaS screen starts from the **current user**: profile, billing state, which teams they belong to, and admin vs member behavior.
+
+<Tabs>
+  <Tab title="Server Component">
+    ```tsx title="app/dashboard/page.tsx"
+    import { stackServerApp } from "@/stack/server";
+
+    export default async function DashboardPage() {
+      const user = await stackServerApp.getUser();
+
+      if (!user) {
+        return <p>You are not signed in.</p>;
+      }
+
+      return <p>Hello, {user.displayName ?? user.primaryEmail ?? user.id}</p>;
+    }
+    ```
+  </Tab>
+  <Tab title="Server Component (require auth)">
+    ```tsx title="app/app/page.tsx"
+    import { stackServerApp } from "@/stack/server";
+
+    export default async function AppHomePage() {
+      const user = await stackServerApp.getUser({ or: "redirect" });
+      return <p>Hello, {user.displayName ?? user.primaryEmail ?? user.id}</p>;
+    }
+    ```
+  </Tab>
+  <Tab title="Client Component">
+    ```tsx title="components/greeting.tsx"
+    "use client";
+
+    import { useUser } from "@stackframe/stack";
+
+    export function Greeting() {
+      const user = useUser();
+
+      if (!user) {
+        return <p>Please sign in.</p>;
+      }
+
+      return <p>Hello, {user.displayName ?? user.primaryEmail ?? user.id}</p>;
+    }
+    ```
+  </Tab>
+  <Tab title="Client Component (require auth)">
+    ```tsx title="components/greeting.tsx"
+    "use client";
+
+    import { useUser } from "@stackframe/stack";
+
+    export function Greeting() {
+      const user = useUser({ or: "redirect" });
+      return <p>Hello, {user.displayName ?? user.primaryEmail ?? user.id}</p>;
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Server action that requires a user
+
+`{ or: "throw" }` is useful when a redirect would be wrong (for example, from a form POST):
+
+```tsx title="app/actions/workspace.ts"
+"use server";
+
+import { stackServerApp } from "@/stack/server";
+
+export async function createWorkspaceAction(formData: FormData) {
+  const user = await stackServerApp.getUser({ or: "throw" });
+  const displayName = String(formData.get("displayName") ?? "").trim();
+  if (!displayName) {
+    throw new Error("Workspace name is required");
+  }
+
+  const team = await user.createTeam({ displayName });
+  return { teamId: team.id };
+}
+```
+
+### Route Handler (App Router API)
+
+```tsx title="app/api/me/route.ts"
+import { stackServerApp } from "@/stack/server";
+import { NextResponse } from "next/server";
+
+export async function GET() {
+  const user = await stackServerApp.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  return NextResponse.json({
+    id: user.id,
+    displayName: user.displayName,
+    primaryEmail: user.primaryEmail,
+  });
+}
+```
+
+### Middleware for a `/app` (or `/private`) section
+
+Match only the routes that should be gated, and **exclude** `/handler` so Stack’s auth pages keep working:
+
+```tsx title="middleware.ts"
+import { NextRequest, NextResponse } from "next/server";
+import { stackServerApp } from "@/stack/server";
+
+export async function middleware(request: NextRequest) {
+  const user = await stackServerApp.getUser();
+  if (!user) {
+    return NextResponse.redirect(new URL("/handler/sign-in", request.url));
+  }
+  return NextResponse.next();
+}
+
+export const config = {
+  matcher: "/app/:path*",
+};
+```
+
+More detail on protection patterns and sensitive HTML is in [User fundamentals](/guides/getting-started/user-fundamentals).
+
+<Info>
+  Treat **client-side** permission and role checks as **UX only**. Anything that mutates data or exposes another tenant’s data must be enforced again on the server (server components, server actions, route handlers, or your backend using the secret key or verified tokens).
+</Info>
+
+## 3. Model tenants with teams
+
+For B2B SaaS, a **team** is usually the right abstraction for an account, workspace, or organization. Users can belong to **multiple** teams; permissions are often evaluated **per team**.
+
+### List teams (client vs server)
+
+<Tabs>
+  <Tab title="Client Component">
+    ```tsx title="components/workspace-list.tsx"
+    "use client";
+
+    import Link from "next/link";
+    import { useUser } from "@stackframe/stack";
+
+    export function WorkspaceList() {
+      const user = useUser({ or: "redirect" });
+      const teams = user.useTeams();
+
+      return (
+        <ul>
+          {teams.map((team) => (
+            <li key={team.id}>
+              <Link href={`/team/${team.id}`}>{team.displayName}</Link>
+            </li>
+          ))}
+        </ul>
+      );
+    }
+    ```
+  </Tab>
+  <Tab title="Server Component">
+    ```tsx title="app/app/workspaces/page.tsx"
+    import Link from "next/link";
+    import { stackServerApp } from "@/stack/server";
+
+    export default async function WorkspacesPage() {
+      const user = await stackServerApp.getUser({ or: "redirect" });
+      const teams = await user.listTeams();
+
+      return (
+        <ul>
+          {teams.map((team) => (
+            <li key={team.id}>
+              <Link href={`/team/${team.id}`}>{team.displayName}</Link>
+            </li>
+          ))}
+        </ul>
+      );
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Create a workspace from the client
+
+Enable **client-side team creation** in the dashboard (Teams settings) if you call `createTeam` from the browser:
+
+```tsx title="components/create-workspace-button.tsx"
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useUser } from "@stackframe/stack";
+
+export function CreateWorkspaceButton() {
+  const user = useUser({ or: "redirect" });
+  const router = useRouter();
+
+  return (
+    <button
+      type="button"
+      onClick={async () => {
+        const team = await user.createTeam({ displayName: "My workspace" });
+        router.push(`/team/${team.id}`);
+      }}
+    >
+      New workspace
+    </button>
+  );
+}
+```
+
+### Create a workspace without tying it to the current user (server)
+
+Provisioning jobs (imports, admin tools) sometimes use the app-level API:
+
+```tsx title="scripts/provision-team.ts (example pattern)"
+import { stackServerApp } from "@/stack/server";
+
+export async function provisionEmptyTeam(displayName: string) {
+  return await stackServerApp.createTeam({ displayName });
+}
+```
+
+See [Teams](/guides/apps/teams/overview) for updates, metadata (`clientMetadata` / `serverMetadata`), and listing members.
+
+### Deep-link dashboard for one workspace
+
+Resolve the team **through the current user** so you only render data for workspaces they belong to:
+
+```tsx title="app/team/[teamId]/page.tsx"
+import { stackServerApp } from "@/stack/server";
+
+type PageProps = { params: { teamId: string } };
+
+export default async function TeamHomePage({ params }: PageProps) {
+  const user = await stackServerApp.getUser({ or: "redirect" });
+  const team = await user.getTeam(params.teamId);
+
+  if (!team) {
+    return <p>You are not a member of this workspace.</p>;
+  }
+
+  return (
+    <main>
+      <h1>{team.displayName}</h1>
+      <p>Workspace ID: {team.id}</p>
+    </main>
+  );
+}
+```
+
+### Team selection UI
+
+For a global “current team” switcher (often combined with deep links), use `SelectedTeamSwitcher` with the `Team` object from `useTeam`:
+
+```tsx title="components/team-switcher.tsx"
+"use client";
+
+import { SelectedTeamSwitcher, useUser } from "@stackframe/stack";
+
+type Props = { currentTeamId: string };
+
+export function TeamSwitcher({ currentTeamId }: Props) {
+  const user = useUser({ or: "redirect" });
+  const team = user.useTeam(currentTeamId);
+  if (!team) {
+    return null;
+  }
+
+  return (
+    <SelectedTeamSwitcher
+      urlMap={(t) => `/team/${t.id}`}
+      selectedTeam={team}
+    />
+  );
+}
+```
+
+See [Team selection](/guides/apps/teams/team-selection) for `noUpdateSelectedTeam` and combining deep links with “default workspace” behavior.
+
+## 4. Authorize with RBAC
+
+Define permissions in the dashboard (nested permissions = roles). Then gate UI and **re-check on the server** before mutations.
+
+Replace `export_customer_data` with a permission you create in your project.
+
+<Tabs>
+  <Tab title="Server Component">
+    ```tsx title="app/team/[teamId]/export/page.tsx"
+    import { stackServerApp } from "@/stack/server";
+
+    type PageProps = { params: { teamId: string } };
+
+    export default async function ExportPage({ params }: PageProps) {
+      const user = await stackServerApp.getUser({ or: "redirect" });
+      const team = await user.getTeam(params.teamId);
+      if (!team) {
+        return <p>Workspace not found.</p>;
+      }
+
+      const canExport = await user.getPermission(team, "export_customer_data");
+      if (!canExport) {
+        return <p>You do not have access to exports in this workspace.</p>;
+      }
+
+      return <button type="button">Download export</button>;
+    }
+    ```
+  </Tab>
+  <Tab title="Client Component (UX only)">
+    ```tsx title="components/export-button.tsx"
+    "use client";
+
+    import { useUser } from "@stackframe/stack";
+    import type { CurrentUser, Team } from "@stackframe/stack";
+
+    type Props = { teamId: string };
+
+    /** Split so `usePermission` only runs when `useTeam` returned a real team (Rules of Hooks). */
+    export function ExportButton({ teamId }: Props) {
+      const user = useUser({ or: "redirect" });
+      const team = user.useTeam(teamId);
+      if (!team) {
+        return <p>Workspace not found.</p>;
+      }
+      return <ExportButtonInner user={user} team={team} />;
+    }
+
+    function ExportButtonInner({ user, team }: { user: CurrentUser; team: Team }) {
+      const permission = user.usePermission(team, "export_customer_data");
+      if (!permission) {
+        return null;
+      }
+      return <button type="button">Download export</button>;
+    }
+    ```
+  </Tab>
+</Tabs>
+
+System permissions (IDs starting with `$`) ship with Stack—for example `$invite_members`. You can branch on those the same way:
+
+```tsx
+const canInvite = await user.getPermission(team, "$invite_members");
+```
+
+Full permission modeling is in [RBAC](/guides/apps/rbac/overview).
+
+## 5. Product polish: onboarding, email, and optional billing
+
+Hook flows to the guides—no extra Stack APIs are required at this layer:
+
+- **Onboarding and sign-up rules** — [User onboarding](/guides/apps/authentication/user-onboarding), [Sign-up rules](/guides/apps/authentication/sign-up-rules)
+- **Email** — [Emails](/guides/apps/emails/overview)
+- **Stripe / plans** — [Payments](/guides/apps/payments/overview)
+
+Example: after sign-up, send users to an onboarding route from your own `app/page.tsx` or a server layout once `getUser()` is non-null.
+
+## 6. Production checklist
+
+Before going live, tighten **callback domains**, replace shared **OAuth** keys with your own provider apps where needed, and review email and security defaults. Follow [Launch checklist](/guides/apps/launch-checklist/overview).
+
+## Related guides
+
+| Topic | Guide |
+|--------|--------|
+| Install and configure | [Setup](/guides/getting-started/setup) |
+| `StackApp` object | [Stack App](/guides/going-further/stack-app) |
+| Current user and page protection | [User fundamentals](/guides/getting-started/user-fundamentals) |
+| Teams and membership | [Teams](/guides/apps/teams/overview) |
+| Switching workspaces | [Team selection](/guides/apps/teams/team-selection) |
+| Permissions | [RBAC](/guides/apps/rbac/overview) |
+| Pre-launch hardening | [Launch checklist](/guides/apps/launch-checklist/overview) |
+| Billing (optional) | [Payments](/guides/apps/payments/overview) |
+| General questions | [FAQ](/guides/faq) |
+
+## FAQ
+
+<AccordionGroup>
+  <Accordion title="Do I have to use teams for a SaaS?">
+    No. Single-user B2C products can rely on **user permissions** and user-scoped data only. Teams become important when multiple people share one customer account or workspace.
+  </Accordion>
+
+  <Accordion title="Where should I enforce permissions?">
+    Use dashboard-defined permissions for **authorization**, but enforce **business rules** on the server: Server Components, server actions, route handlers, or your backend with the **secret server key** or validated access tokens. Client checks alone are not enough for sensitive operations.
+  </Accordion>
+
+  <Accordion title="Can I use Stack only as a backend API?">
+    Yes. Non-JS or custom frontends can use the [REST API](/api/overview) with the same project keys; the mental model (users, teams, permissions) stays the same.
+  </Accordion>
+
+  <Accordion title="How do I test locally with OAuth and redirects?">
+    Localhost callback behavior and production domain restrictions are covered under **Domains** in [Launch checklist](/guides/apps/launch-checklist/overview). Keep localhost allowances enabled only for development.
+  </Accordion>
+
+  <Accordion title="How does this relate to the team-focused tutorial?">
+    [Build a team-based app](/guides/other/tutorials/build-a-team-based-app) goes deeper on teams and RBAC modeling. This SaaS tutorial is the broader **product** path: auth bootstrap, tenant selection, optional billing, and launch.
+  </Accordion>
+
+  <Accordion title="Where do I get help or report doc gaps?">
+    See [FAQ](/guides/faq) for contribution and community pointers.
+  </Accordion>
+</AccordionGroup>
