@@ -477,6 +477,11 @@ build_one() {
       -device virtio-serial
       -device "virtserialport,chardev=qga0,name=org.qemu.guest_agent.0"
       -drive "file=$runtime_iso,format=raw,if=virtio,readonly=on"
+      # Empty PCIe root port reserved for runtime hot-plug of virtio-9p.
+      # The integrated pcie.0 bus on q35 / arm64-virt is static — hotplug
+      # only works through a root port. Must be present at snapshot capture
+      # so the resumed device tree matches.
+      -device "pcie-root-port,id=hostfs-port,bus=pcie.0,chassis=1"
     )
     # QEMU disallows migration when virtfs is mounted in the guest — virtfs
     # has guest-side state (open handles, mount table) that isn't migratable.

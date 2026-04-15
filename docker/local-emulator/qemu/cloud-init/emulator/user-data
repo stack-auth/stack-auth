@@ -166,15 +166,40 @@ write_files:
     permissions: '0755'
     content: |
       #!/bin/bash
+      # Mount the host filesystem at /host. Two modes:
+      #   (no args)       — cold-boot: bind /host on itself, make it a shared
+      #                     mount point, then mount virtio-9p on top. The
+      #                     bind+shared step is what lets the docker bind
+      #                     mount (-v /host:/host:rshared) receive later
+      #                     propagation events.
+      #   --post-resume   — snapshot-resume: /host is already shared (set up
+      #                     at build time and preserved across the snapshot,
+      #                     plus the docker bind mount has rshared
+      #                     propagation). The host has just hot-plugged
+      #                     virtio-9p; mount it on /host and the new mount
+      #                     propagates into the running container.
       set -uo pipefail
       mkdir -p /host
-      if mountpoint -q /host; then
-        exit 0
+
+      # Idempotent: bind /host on itself once so it becomes a mount point
+      # with its own propagation, then make it shared. mount --make-shared
+      # requires a mount point, hence the bind first.
+      if ! mountpoint -q /host; then
+        mount --bind /host /host
       fi
-      # In snapshot-build mode the host detaches virtfs (QEMU disallows
-      # migration while it's mounted), and at runtime we re-attach it. Tolerate
-      # both states: try to mount, fall through to an empty /host if no
-      # virtio-9p channel is available.
+      mount --make-shared /host
+
+      if [ "${1:-}" = "--post-resume" ]; then
+        if mount -t 9p -o trans=virtio,version=9p2000.L hostfs /host; then
+          exit 0
+        fi
+        echo "post-resume 9p mount failed" >&2
+        exit 1
+      fi
+
+      # Cold boot. In snapshot-build mode the host detaches virtfs (QEMU
+      # disallows migration while it's mounted), so the 9p mount may not be
+      # available — tolerate that and fall through to an empty /host.
       if mount -t 9p -o trans=virtio,version=9p2000.L hostfs /host 2>/dev/null; then
         exit 0
       fi
@@ -220,7 +245,7 @@ write_files:
           -v stack-clickhouse-data:/data/clickhouse \
           -v stack-minio-data:/data/minio \
           -v stack-inbucket-data:/data/inbucket \
-          -v /host:/host \
+          -v /host:/host:rshared \
           stack-local-emulator 2>&1 | tee -a "$host_log"
       else
         exec docker run \
@@ -234,7 +259,7 @@ write_files:
           -v stack-clickhouse-data:/data/clickhouse \
           -v stack-minio-data:/data/minio \
           -v stack-inbucket-data:/data/inbucket \
-          -v /host:/host \
+          -v /host:/host:rshared \
           stack-local-emulator
       fi
 

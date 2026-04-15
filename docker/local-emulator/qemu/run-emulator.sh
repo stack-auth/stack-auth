@@ -155,11 +155,34 @@ runtime_fingerprint() {
 ensure_runtime_config_iso() {
   local cfg_iso
   cfg_iso="$(runtime_iso_path)"
-  if [ ! -s "$cfg_iso" ]; then
-    err "Runtime config ISO missing at $cfg_iso."
-    err "The CLI normally generates this; if you're invoking run-emulator.sh directly, run via 'stack emulator start' instead."
+  if [ -s "$cfg_iso" ]; then
+    return 0
+  fi
+
+  # Fallback used when this script is invoked directly (e.g. `pnpm
+  # emulator:start`) rather than through the stack-cli, which generates the
+  # ISO via packages/stack-cli/src/lib/iso.ts. Mirrors the field set + volume
+  # label so the guest's render-stack-env mounts it the same way.
+  local base_env="$SCRIPT_DIR/../.env.development"
+  if [ ! -f "$base_env" ]; then
+    err "Cannot generate runtime config ISO: $base_env is missing."
+    err "Run 'pnpm run emulator:generate-env' first, or invoke via 'stack emulator start'."
     exit 1
   fi
+
+  local cfg_dir="$VM_DIR/runtime-config"
+  rm -rf "$cfg_dir"
+  mkdir -p "$cfg_dir"
+  {
+    printf "STACK_EMULATOR_PORT_PREFIX=%s\n" "$PORT_PREFIX"
+    printf "STACK_EMULATOR_DASHBOARD_HOST_PORT=%s\n" "$EMULATOR_DASHBOARD_PORT"
+    printf "STACK_EMULATOR_BACKEND_HOST_PORT=%s\n" "$EMULATOR_BACKEND_PORT"
+    printf "STACK_EMULATOR_MINIO_HOST_PORT=%s\n" "$EMULATOR_MINIO_PORT"
+    printf "STACK_EMULATOR_INBUCKET_HOST_PORT=%s\n" "$EMULATOR_INBUCKET_PORT"
+    printf "STACK_EMULATOR_VM_DIR_HOST=%s\n" "$VM_DIR"
+  } > "$cfg_dir/runtime.env"
+  cp "$base_env" "$cfg_dir/base.env"
+  make_iso_from_dir "$cfg_iso" "STACKCFG" "$cfg_dir"
 }
 
 service_is_up() {
@@ -371,6 +394,18 @@ build_qemu_cmd() {
       -chardev "socket,path=$VM_DIR/qga.sock,server=on,wait=off,id=qga0"
       -device virtio-serial
       -device "virtserialport,chardev=qga0,name=org.qemu.guest_agent.0"
+      # Empty PCIe root port reserved for runtime hot-plug of virtio-9p.
+      # MUST be the last explicit -device entry — slot order has to mirror
+      # build-image.sh exactly or migration replay stalls in inmigrate.
+      -device "pcie-root-port,id=hostfs-port,bus=pcie.0,chassis=1"
+      # Pre-create the host-side fsdev backend so the post-resume QMP
+      # device_add can attach to it by id. -fsdev is host-only state — not
+      # part of the migrated device tree — so it's safe to add here even
+      # though the snapshot was captured without it. Going through -fsdev
+      # avoids the HMP fsdev_add command, whose error path is invisible
+      # via human-monitor-command (errors come back as a return string,
+      # not a QMP error).
+      -fsdev "local,id=hostfs,path=/,security_model=none"
       "${snapshot_args[@]}"
       -serial "file:$VM_DIR/serial.log"
       -display none
@@ -552,6 +587,56 @@ qga_wait_ready() {
   return 1
 }
 
+# Hot-plug a virtio-9p device backed by host `/` after a snapshot resume.
+# The snapshot was captured WITHOUT virtfs (QEMU disallows migration while
+# 9p is mounted in the guest), so the resumed VM has no host filesystem
+# available until we add one here. The fsdev backend was pre-created by
+# the -fsdev option in build_qemu_cmd; we only need the device_add half.
+qmp_hotplug_9p() {
+  local resp
+  resp=$(printf '%s\n' \
+    '{"execute":"device_add","arguments":{"driver":"virtio-9p-pci","id":"hostfs-dev","fsdev":"hostfs","mount_tag":"hostfs","bus":"hostfs-port"}}' \
+    | qmp_send)
+  if printf '%s' "$resp" | grep -q '"error"'; then
+    err "QMP device_add virtio-9p-pci failed: $resp"
+    return 1
+  fi
+  return 0
+}
+
+# Run /usr/local/bin/mount-host-fs --post-resume in the guest. The script
+# mounts the freshly-hot-plugged 9p device on /host, which is a shared
+# mount point — so the new mount propagates into the running stack
+# container's `-v /host:/host:rshared` bind mount without a container
+# restart.
+qga_mount_host_fs() {
+  local cmd resp pid status_resp exited exitcode
+  cmd='{"execute":"guest-exec","arguments":{"path":"/usr/local/bin/mount-host-fs","arg":["--post-resume"],"capture-output":true}}'
+  resp=$(printf '%s\n' "$cmd" | qga_send || true)
+  pid=$(printf '%s' "$resp" | grep -o '"pid"[[:space:]]*:[[:space:]]*[0-9]*' | head -1 | sed -E 's/.*:[[:space:]]*([0-9]+).*/\1/')
+  if [ -z "$pid" ]; then
+    err "guest-exec mount-host-fs did not return a pid; response: $resp"
+    return 1
+  fi
+  local deadline=$((SECONDS + 20))
+  while [ "$SECONDS" -lt "$deadline" ]; do
+    status_resp=$(printf '%s\n' "{\"execute\":\"guest-exec-status\",\"arguments\":{\"pid\":${pid}}}" | qga_send || true)
+    exited=$(printf '%s' "$status_resp" | grep -o '"exited"[[:space:]]*:[[:space:]]*\(true\|false\)' | head -1 | sed -E 's/.*:[[:space:]]*(true|false).*/\1/')
+    if [ "$exited" = "true" ]; then
+      exitcode=$(printf '%s' "$status_resp" | grep -o '"exitcode"[[:space:]]*:[[:space:]]*-\{0,1\}[0-9]*' | head -1 | sed -E 's/.*:[[:space:]]*(-?[0-9]+).*/\1/')
+      if [ "${exitcode:-0}" = "0" ]; then
+        log "host fs mounted in guest"
+        return 0
+      fi
+      err "mount-host-fs exited with code ${exitcode:-unknown}; response: $status_resp"
+      return 1
+    fi
+    sleep 0.2
+  done
+  err "mount-host-fs did not complete within 20s"
+  return 1
+}
+
 qga_trigger_fast_rotate() {
   # guest-exec returns a pid; we then poll guest-exec-status until the
   # process exits, and surface its exit code. Capture output so a failure
@@ -664,6 +749,22 @@ cmd_start() {
     log "VM resumed; waiting for guest agent..."
     if ! qga_wait_ready; then
       warn "Guest agent did not respond — falling back to cold boot."
+      snapshot_fallback_to_cold_boot
+      return
+    fi
+
+    # Hot-plug the host filesystem. The snapshot was captured without
+    # virtfs, so the running container has an empty /host bind mount until
+    # we add the 9p device and mount it in the guest. Required for routes
+    # like /local-emulator/project that read user-supplied paths via /host.
+    log "Hot-plugging host filesystem..."
+    if ! qmp_hotplug_9p; then
+      warn "Failed to hot-plug 9p device — falling back to cold boot."
+      snapshot_fallback_to_cold_boot
+      return
+    fi
+    if ! qga_mount_host_fs; then
+      warn "Failed to mount host fs in guest — falling back to cold boot."
       snapshot_fallback_to_cold_boot
       return
     fi

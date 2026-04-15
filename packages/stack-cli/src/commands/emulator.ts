@@ -592,11 +592,17 @@ export function registerEmulatorCommand(program: Command) {
         const apiUrl = `http://127.0.0.1:${backendPort}`;
         childEnv.STACK_PROJECT_ID = creds.project_id;
         childEnv.NEXT_PUBLIC_STACK_PROJECT_ID = creds.project_id;
+        childEnv.VITE_STACK_PROJECT_ID = creds.project_id;
+        childEnv.EXPO_PUBLIC_STACK_PROJECT_ID = creds.project_id;
         childEnv.STACK_PUBLISHABLE_CLIENT_KEY = creds.publishable_client_key;
         childEnv.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY = creds.publishable_client_key;
+        childEnv.VITE_STACK_PUBLISHABLE_CLIENT_KEY = creds.publishable_client_key;
+        childEnv.EXPO_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY = creds.publishable_client_key;
         childEnv.STACK_SECRET_SERVER_KEY = creds.secret_server_key;
         childEnv.STACK_API_URL = apiUrl;
         childEnv.NEXT_PUBLIC_STACK_API_URL = apiUrl;
+        childEnv.VITE_STACK_API_URL = apiUrl;
+        childEnv.EXPO_PUBLIC_STACK_API_URL = apiUrl;
       }
 
       const child = spawn(cmd, { shell: true, stdio: "inherit", env: childEnv });
