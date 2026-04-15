@@ -75,7 +75,7 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
 
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
-    const db = await retryTransaction(prisma, async (tx) => {
+    const { db, freePlanSubscription } = await retryTransaction(prisma, async (tx) => {
       const db = await tx.team.create({
         data: withExternalDbSyncUpdate({
           displayName: data.display_name,
@@ -99,6 +99,7 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
         });
       }
 
+      let freePlanSubscription = null;
       if (auth.project.id === "internal") {
         const freePlanProduct = auth.tenancy.config.payments.products.free;
         if (freePlanProduct.customerType === "team" && freePlanProduct.productLineId != null) {
@@ -108,7 +109,7 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
           const priceInterval = firstPriceEntry != null && "interval" in firstPriceEntry[1]
             ? firstPriceEntry[1].interval as [number, "day" | "week" | "month" | "year"] | undefined
             : undefined;
-          const subscription = await tx.subscription.create({
+          freePlanSubscription = await tx.subscription.create({
             data: {
               tenancyId: auth.tenancy.id,
               customerId: db.teamId,
@@ -124,12 +125,20 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
               creationSource: "TEST_MODE",
             },
           });
-          await bulldozerWriteSubscription(tx, subscription);
         }
       }
 
-      return db;
+      return { db, freePlanSubscription };
     });
+
+    // Bulldozer write must happen outside retryTransaction because it issues its
+    // own BEGIN/COMMIT (for the advisory lock + sort helpers). If this fails after
+    // the Prisma transaction committed, the subscription exists in Prisma but not
+    // in Bulldozer — same trade-off as all other dual-write call sites. The next
+    // sync or webhook will reconcile.
+    if (freePlanSubscription != null) {
+      await bulldozerWriteSubscription(prisma, freePlanSubscription);
+    }
 
     const result = teamPrismaToCrud(db);
 
