@@ -1,0 +1,43 @@
+{
+  "name": "@stackframe/internal-tool",
+  "private": true,
+  "version": "2.8.80",
+  "type": "module",
+  "scripts": {
+    "dev": "node scripts/pre-dev.mjs && next dev --turbopack --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}41",
+    "build": "next build",
+    "start": "next start --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}41",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint --ext .ts,.tsx .",
+    "clean": "rimraf .next && rimraf node_modules",
+    "spacetime:generate": "spacetime generate --lang typescript --out-dir src/module_bindings --module-path spacetimedb",
+    "spacetime:inject-token": "node scripts/spacetime-token.mjs inject",
+    "spacetime:restore-token": "node scripts/spacetime-token.mjs restore",
+    "spacetime:publish:local": "node scripts/spacetime-publish.mjs local",
+    "spacetime:publish:prod": "node scripts/spacetime-publish.mjs prod"
+  },
+  "dependencies": {
+    "@stackframe/stack": "workspace:*",
+    "@stackframe/stack-shared": "workspace:*",
+    "clsx": "^2.1.1",
+    "date-fns": "^4.1.0",
+    "next": "16.1.5",
+    "react-markdown": "^10.1.0",
+    "zod": "^3.24.0",
+    "remark-gfm": "^4.0.1",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
+    "spacetimedb": "^2.1.0",
+    "tailwind-merge": "^3.3.1"
+  },
+  "devDependencies": {
+    "@types/react": "19.2.7",
+    "@types/react-dom": "19.2.3",
+    "autoprefixer": "^10.4.21",
+    "postcss": "^8.5.4",
+    "@tailwindcss/typography": "^0.5.16",
+    "tailwindcss": "^3.4.17",
+    "typescript": "5.9.3"
+  },
+  "packageManager": "pnpm@10.23.0"
+}
