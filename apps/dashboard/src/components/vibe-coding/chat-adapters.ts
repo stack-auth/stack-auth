@@ -4,12 +4,20 @@ import type { AppId } from "@/lib/apps-frontend";
 import {
   type ChatModelAdapter,
   type ChatModelRunOptions,
+  type ChatModelRunResult,
   type ExportedMessageRepository,
   type ThreadHistoryAdapter,
 } from "@assistant-ui/react";
 import { StackAdminApp } from "@stackframe/stack";
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
 import type { EditableMetadata } from "@stackframe/stack-shared/dist/utils/jsx-editable-transpiler";
+import {
+  parseJsonEventStream,
+  readUIMessageStream,
+  uiMessageChunkSchema,
+  type UIMessage,
+  type UIMessageChunk,
+} from "ai";
 
 export type ToolCallContent = Extract<ChatContent[number], { type: "tool-call" }>;
 
@@ -17,17 +25,30 @@ const isToolCall = (content: { type: string }): content is ToolCallContent => {
   return content.type === "tool-call";
 };
 
-/**
- * Sanitizes AI-generated JSX/TSX code before it is applied to the renderer.
- *
- * Handles four common model output issues:
- * 1. Markdown code fences (```tsx ... ```) wrapping the output despite instructions
- * 2. HTML-encoded angle brackets (&lt;Component&gt; instead of <Component>)
- * 3. Bare & in JSX text content (invalid JSX; must be &amp; or {"&"})
- * 4. Semicolons used as property separators in JS object literals instead of commas
- *    (the AI confuses TypeScript interface syntax with JS object syntax).
- *    TypeScript also accepts commas in interfaces/types, so replacing ; → , is always safe.
- */
+/** Maps thread messages to the backend wire format; merges `attachments` into `content`. */
+function formatThreadMessagesForBackend(
+  messages: readonly { role: string, content: readonly { type: string }[], attachments?: readonly { content?: readonly unknown[] }[] }[],
+): Array<{ role: string, content: unknown }> {
+  const formatted: Array<{ role: string, content: unknown }> = [];
+  for (const msg of messages) {
+    const textContent = msg.content.filter((c) => !isToolCall(c));
+    const attachmentContent: unknown[] = [];
+    if (msg.attachments) {
+      for (const attachment of msg.attachments) {
+        if (Array.isArray(attachment.content)) {
+          attachmentContent.push(...attachment.content);
+        }
+      }
+    }
+    const combined = [...textContent, ...attachmentContent];
+    if (combined.length > 0) {
+      formatted.push({ role: msg.role, content: combined });
+    }
+  }
+  return formatted;
+}
+
+/** Normalizes model JSX: strip fences, decode basic entities, fix `;` vs `,` between object props. */
 function sanitizeGeneratedCode(code: string): string {
   let result = code.trim();
 
@@ -72,6 +93,7 @@ async function sendAiRequest(
     systemPrompt: string,
     tools: string[],
     messages: Array<{ role: string, content: unknown }>,
+    projectId?: string,
   },
   abortSignal?: AbortSignal,
 ): Promise<ChatContent> {
@@ -105,6 +127,153 @@ function sanitizeAiContent(content: ChatContent): ChatContent {
 }
 
 /**
+ * Sends a request to the AI streaming endpoint and returns a stream of UIMessageChunks
+ * (as produced by the Vercel AI SDK's `streamText().toUIMessageStreamResponse()`).
+ */
+async function sendAiStreamRequest(
+  backendBaseUrl: string,
+  currentUser: CurrentUser | undefined,
+  body: {
+    quality: string,
+    speed: string,
+    systemPrompt: string,
+    tools: string[],
+    messages: Array<{ role: string, content: unknown }>,
+    projectId?: string,
+  },
+  abortSignal?: AbortSignal,
+): Promise<ReadableStream<UIMessageChunk>> {
+  const authHeaders = await buildStackAuthHeaders(currentUser);
+
+  const response = await fetch(`${backendBaseUrl}/api/latest/ai/query/stream`, {
+    method: "POST",
+    headers: {
+      "content-type": "application/json",
+      accept: "text/event-stream",
+      ...authHeaders,
+    },
+    ...(abortSignal ? { signal: abortSignal } : {}),
+    body: JSON.stringify(body),
+  });
+
+  if (!response.ok || !response.body) {
+    throw new Error(`AI stream request failed: ${response.status} ${response.statusText}`);
+  }
+
+  return parseJsonEventStream({
+    stream: response.body,
+    schema: uiMessageChunkSchema,
+  }).pipeThrough(
+    new TransformStream<
+      { success: true, value: UIMessageChunk, rawValue: unknown } | { success: false, error: unknown, rawValue: unknown },
+      UIMessageChunk
+    >({
+      transform(parseResult, controller) {
+        if (parseResult.success) {
+          controller.enqueue(parseResult.value);
+        }
+      },
+    }),
+  );
+}
+
+/**
+ * Converts a UIMessage's parts (as emitted by `readUIMessageStream`) into our
+ * ChatContent shape so the existing tool UI / sanitizer pipeline keeps working.
+ */
+function uiPartsToChatContent(parts: UIMessage["parts"]): ChatContent {
+  const result: ChatContent = [];
+  for (const part of parts) {
+    if (part.type === "text") {
+      if (part.text) {
+        result.push({ type: "text", text: part.text });
+      }
+      continue;
+    }
+
+    if (part.type === "dynamic-tool") {
+      const toolPart = part as { toolCallId: string, toolName: string, input?: unknown, output?: unknown };
+      const input = toolPart.input ?? {};
+      result.push({
+        type: "tool-call",
+        toolCallId: toolPart.toolCallId,
+        toolName: toolPart.toolName,
+        args: input,
+        argsText: typeof input === "string" ? input : JSON.stringify(input),
+        result: toolPart.output ?? null,
+      });
+      continue;
+    }
+
+    if (typeof part.type === "string" && part.type.startsWith("tool-")) {
+      const toolName = part.type.slice("tool-".length);
+      const toolPart = part as { toolCallId: string, input?: unknown, output?: unknown };
+      const input = toolPart.input ?? {};
+      result.push({
+        type: "tool-call",
+        toolCallId: toolPart.toolCallId,
+        toolName,
+        args: input,
+        argsText: typeof input === "string" ? input : JSON.stringify(input),
+        result: toolPart.output ?? null,
+      });
+      continue;
+    }
+  }
+  return result;
+}
+
+/**
+ * Streaming dashboard generation: yields progressively updated ChatContent as the AI
+ * streams text and tool-call input. Each yield represents the full current state of
+ * the assistant message (not an incremental delta).
+ */
+export async function* streamDashboardCode(
+  backendBaseUrl: string,
+  currentUser: CurrentUser | undefined,
+  messages: Array<{ role: string, content: unknown }>,
+  options?: {
+    currentTsxSource?: string,
+    abortSignal?: AbortSignal,
+    enabledAppIds?: AppId[],
+    projectId?: string,
+  },
+): AsyncGenerator<ChatContent, void, undefined> {
+  const contextMessages = await buildDashboardMessages(
+    backendBaseUrl,
+    currentUser,
+    messages,
+    options?.currentTsxSource,
+    options?.enabledAppIds,
+  );
+
+  // Only give the agent the sql-query tool when we know which project to scope it to.
+  // Without projectId, the tool would fall back to the internal project — wrong target.
+  const tools = options?.projectId
+    ? ["update-dashboard", "sql-query"]
+    : ["update-dashboard"];
+
+  const chunkStream = await sendAiStreamRequest(
+    backendBaseUrl,
+    currentUser,
+    {
+      quality: "smart",
+      speed: "slow",
+      systemPrompt: "create-dashboard",
+      tools,
+      messages: [...contextMessages, ...messages],
+      projectId: options?.projectId,
+    },
+    options?.abortSignal,
+  );
+
+  for await (const message of readUIMessageStream({ stream: chunkStream })) {
+    if (options?.abortSignal?.aborted) return;
+    yield sanitizeAiContent(uiPartsToChatContent(message.parts));
+  }
+}
+
+/**
  * One-shot dashboard generation: builds context, calls AI, returns the tool call content.
  * Used by both the cmd+K preview and the dashboard chat adapter.
  */
@@ -116,6 +285,7 @@ export async function generateDashboardCode(
     currentTsxSource?: string,
     abortSignal?: AbortSignal,
     enabledAppIds?: AppId[],
+    projectId?: string,
   },
 ): Promise<{ content: ChatContent, toolCall: ToolCallContent | undefined }> {
   const contextMessages = await buildDashboardMessages(
@@ -125,6 +295,9 @@ export async function generateDashboardCode(
     options?.currentTsxSource,
     options?.enabledAppIds,
   );
+  const tools = options?.projectId
+    ? ["update-dashboard", "sql-query"]
+    : ["update-dashboard"];
   const rawContent = await sendAiRequest(
     backendBaseUrl,
     currentUser,
@@ -132,8 +305,9 @@ export async function generateDashboardCode(
       quality: "smart",
       speed: "slow",
       systemPrompt: "create-dashboard",
-      tools: ["update-dashboard"],
+      tools,
       messages: [...contextMessages, ...messages],
+      projectId: options?.projectId,
     },
     options?.abortSignal,
   );
@@ -155,17 +329,14 @@ export function createChatAdapter(
   onToolCall: (toolCall: ToolCallContent) => void,
   getCurrentSource?: () => string,
   currentUser?: CurrentUser,
+  onRunStart?: () => void,
+  onRunEnd?: () => void,
 ): ChatModelAdapter {
   return {
     async run({ messages, abortSignal }: ChatModelRunOptions) {
+      onRunStart?.();
       try {
-        const formattedMessages: Array<{ role: string, content: unknown }> = [];
-        for (const msg of messages) {
-          const textContent = msg.content.filter(c => !isToolCall(c));
-          if (textContent.length > 0) {
-            formattedMessages.push({ role: msg.role, content: textContent });
-          }
-        }
+        const formattedMessages = formatThreadMessagesForBackend(messages);
 
         const { systemPrompt, tools } = CONTEXT_MAP[contextType];
 
@@ -204,6 +375,8 @@ export function createChatAdapter(
           return {};
         }
         throw new Error("Failed to get AI response. Please try again.");
+      } finally {
+        onRunEnd?.();
       }
     },
   };
@@ -215,19 +388,18 @@ export function createDashboardChatAdapter(
   onToolCall: (toolCall: ToolCallContent) => void,
   currentUser?: CurrentUser,
   enabledAppIds?: AppId[],
+  projectId?: string,
+  onRunStart?: () => void,
+  onRunEnd?: () => void,
 ): ChatModelAdapter {
   return {
-    async run({ messages, abortSignal }: ChatModelRunOptions) {
+    async *run({ messages, abortSignal }: ChatModelRunOptions): AsyncGenerator<ChatModelRunResult, void> {
+      onRunStart?.();
       try {
-        const formattedMessages: Array<{ role: string, content: unknown }> = [];
-        for (const msg of messages) {
-          const textContent = msg.content.filter(c => !isToolCall(c));
-          if (textContent.length > 0) {
-            formattedMessages.push({ role: msg.role, content: textContent });
-          }
-        }
+        const formattedMessages = formatThreadMessagesForBackend(messages);
 
-        const { content, toolCall } = await generateDashboardCode(
+        let latestContent: ChatContent = [];
+        for await (const content of streamDashboardCode(
           backendBaseUrl,
           currentUser,
           formattedMessages,
@@ -235,19 +407,26 @@ export function createDashboardChatAdapter(
             currentTsxSource,
             abortSignal,
             enabledAppIds,
+            projectId,
           },
-        );
-
-        if (toolCall) {
-          onToolCall(toolCall);
+        )) {
+          latestContent = content;
+          yield { content };
         }
 
-        return { content };
+        const finalToolCall = latestContent.find(
+          (item): item is ToolCallContent => isToolCall(item) && item.toolName === "updateDashboard",
+        );
+        if (finalToolCall) {
+          onToolCall(finalToolCall);
+        }
       } catch (error) {
         if (abortSignal.aborted) {
-          return {};
+          return;
         }
         throw new Error("Failed to get AI response. Please try again.");
+      } finally {
+        onRunEnd?.();
       }
     },
   };
