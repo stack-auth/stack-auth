@@ -49,9 +49,75 @@ const AVAILABLE_TABLES = new Map([
     defaultOrderBy: "event_at",
     defaultOrderDir: "DESC" as const,
   }],
+  ["users", {
+    displayName: "Users",
+    baseQuery: "SELECT * FROM default.users",
+    defaultOrderBy: "signed_up_at",
+    defaultOrderDir: "DESC" as const,
+  }],
+  ["contact_channels", {
+    displayName: "Contact Channels",
+    baseQuery: "SELECT * FROM default.contact_channels",
+    defaultOrderBy: "created_at",
+    defaultOrderDir: "DESC" as const,
+  }],
+  ["teams", {
+    displayName: "Teams",
+    baseQuery: "SELECT * FROM default.teams",
+    defaultOrderBy: "created_at",
+    defaultOrderDir: "DESC" as const,
+  }],
+  ["team_member_profiles", {
+    displayName: "Team Member Profiles",
+    baseQuery: "SELECT * FROM default.team_member_profiles",
+    defaultOrderBy: "created_at",
+    defaultOrderDir: "DESC" as const,
+  }],
+  ["team_permissions", {
+    displayName: "Team Permissions",
+    baseQuery: "SELECT * FROM default.team_permissions",
+    defaultOrderBy: "created_at",
+    defaultOrderDir: "DESC" as const,
+  }],
+  ["team_invitations", {
+    displayName: "Team Invitations",
+    baseQuery: "SELECT * FROM default.team_invitations",
+    defaultOrderBy: "created_at",
+    defaultOrderDir: "DESC" as const,
+  }],
+  ["email_outboxes", {
+    displayName: "Email Outboxes",
+    baseQuery: "SELECT * FROM default.email_outboxes",
+    defaultOrderBy: "created_at",
+    defaultOrderDir: "DESC" as const,
+  }],
+  ["project_permissions", {
+    displayName: "Project Permissions",
+    baseQuery: "SELECT * FROM default.project_permissions",
+    defaultOrderBy: "created_at",
+    defaultOrderDir: "DESC" as const,
+  }],
+  ["notification_preferences", {
+    displayName: "Notification Preferences",
+    baseQuery: "SELECT * FROM default.notification_preferences",
+    defaultOrderBy: "user_id",
+    defaultOrderDir: "DESC" as const,
+  }],
+  ["refresh_tokens", {
+    displayName: "Refresh Tokens",
+    baseQuery: "SELECT * FROM default.refresh_tokens",
+    defaultOrderBy: "created_at",
+    defaultOrderDir: "DESC" as const,
+  }],
+  ["connected_accounts", {
+    displayName: "Connected Accounts",
+    baseQuery: "SELECT * FROM default.connected_accounts",
+    defaultOrderBy: "created_at",
+    defaultOrderDir: "DESC" as const,
+  }],
 ]);
 
-type TableId = "events";
+type TableId = string;
 type SortDir = "ASC" | "DESC";
 
 const PAGE_SIZE = 50;
