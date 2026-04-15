@@ -259,6 +259,45 @@ export async function seed() {
     console.log('Internal team created');
   }
 
+  // Upsert the internal API key set before any flake-prone work (dummy-project
+  // seed, email/svix, clickhouse). The emulator CLI authenticates against the
+  // internal project using the pck stored here, so it must land before the rest
+  // of the seed even if something later fails.
+  const isLocalEmulator = process.env.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR === 'true';
+  const rawPck = process.env.STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY;
+  if (isLocalEmulator && !rawPck) {
+    // Emulator images build before a per-VM pck is available. Runtime boots set
+    // STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY from the VM-generated
+    // random value and re-run the seed, which upserts the internal key set then.
+    console.log('Skipping internal API key set (no pck provided; emulator mode).');
+  } else {
+    const keySet = {
+      publishableClientKey: rawPck || throwErr('STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY is not set'),
+      secretServerKey: isLocalEmulator
+        ? (process.env.STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY ?? null)
+        : (process.env.STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY || throwErr('STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY is not set')),
+      superSecretAdminKey: isLocalEmulator
+        ? (process.env.STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY ?? null)
+        : (process.env.STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY || throwErr('STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY is not set')),
+    };
+
+    await globalPrismaClient.apiKeySet.upsert({
+      where: { projectId_id: { projectId: 'internal', id: apiKeyId } },
+      update: {
+        ...keySet,
+      },
+      create: {
+        id: apiKeyId,
+        projectId: 'internal',
+        description: "Internal API key set",
+        expiresAt: new Date('2099-12-31T23:59:59Z'),
+        ...keySet,
+      }
+    });
+
+    console.log('Updated internal API key set');
+  }
+
   const shouldSeedDummyProject = process.env.STACK_SEED_ENABLE_DUMMY_PROJECT === 'true';
   if (shouldSeedDummyProject) {
     await seedDummyProject({
@@ -267,28 +306,6 @@ export async function seed() {
       oauthProviderIds,
     });
   }
-
-  const keySet = {
-    publishableClientKey: process.env.STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY || throwErr('STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY is not set'),
-    secretServerKey: process.env.STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY || throwErr('STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY is not set'),
-    superSecretAdminKey: process.env.STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY || throwErr('STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY is not set'),
-  };
-
-  await globalPrismaClient.apiKeySet.upsert({
-    where: { projectId_id: { projectId: 'internal', id: apiKeyId } },
-    update: {
-      ...keySet,
-    },
-    create: {
-      id: apiKeyId,
-      projectId: 'internal',
-      description: "Internal API key set",
-      expiresAt: new Date('2099-12-31T23:59:59Z'),
-      ...keySet,
-    }
-  });
-
-  console.log('Updated internal API key set');
 
   // Create optional default admin user if credentials are provided.
   // This user will be able to login to the dashboard with both email/password and magic link.
