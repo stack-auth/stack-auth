@@ -16,6 +16,7 @@ env:
 
 jobs:
   setup-tests-with-custom-base-port:
+    if: ${{ (github.head_ref || github.ref_name) == 'dev' }}
     runs-on: ubicloud-standard-16
     env:
       NEXT_PUBLIC_STACK_PORT_PREFIX: "69"
