@@ -208,11 +208,9 @@ describe.sequential("payments schema phase 3 (real postgres)", () => {
       expect(result).toEqual([[10, null]]);
     });
 
-    it("removals bypass the split CTE entirely (tested via FlatMap in integration tests)", () => {
-      // The split CTE is only called for grants (qty >= 0).
-      // Removals are handled by the CASE WHEN in the FlatMap, not the CTE.
-      expect(true).toBe(true);
-    });
+    // Removals bypass the split CTE entirely — they are handled by the
+    // CASE WHEN in the FlatMap. Covered by integration-2-3.test.ts
+    // "removal with no prior grants" and "removal after grant" cases.
   });
 
 

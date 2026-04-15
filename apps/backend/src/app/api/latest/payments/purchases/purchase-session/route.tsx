@@ -125,7 +125,7 @@ export const POST = createSmartRouteHandler({
           await stripe.subscriptions.cancel(conflicting.stripeSubscriptionId);
         }
       } else if (conflicting.id) {
-        await prisma.subscription.update({
+        const updatedConflicting = await prisma.subscription.update({
           where: {
             tenancyId_id: {
               tenancyId: tenancy.id,
@@ -135,10 +135,6 @@ export const POST = createSmartRouteHandler({
           data: {
             status: SubscriptionStatus.canceled,
           },
-        });
-        // dual write - prisma and bulldozer
-        const updatedConflicting = await prisma.subscription.findUniqueOrThrow({
-          where: { tenancyId_id: { tenancyId: tenancy.id, id: conflicting.id } },
         });
         await bulldozerWriteSubscription(prisma, updatedConflicting);
       }

@@ -102,6 +102,8 @@ export function createEventTables(stored: SeedEventsStoredTables) {
     filter: predicate(`
       "rowData"->'leftRowData' IS NOT NULL
       AND jsonb_typeof("rowData"->'leftRowData') = 'object'
+      AND "rowData"->'rightRowData' IS NOT NULL
+      AND jsonb_typeof("rowData"->'rightRowData') = 'object'
       AND "rowData"->'leftRowData'->'isSubscriptionCreationInvoice' = 'false'::jsonb
     `),
   });

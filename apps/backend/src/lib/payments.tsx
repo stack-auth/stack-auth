@@ -448,7 +448,7 @@ export async function grantProductToCustomer(options: {
       const stripe = await getStripeForAccount({ tenancy });
       await stripe.subscriptions.cancel(conflicting.stripeSubscriptionId);
     } else if (conflicting.id) {
-      await prisma.subscription.update({
+      const updatedConflicting = await prisma.subscription.update({
         where: {
           tenancyId_id: {
             tenancyId: tenancy.id,
@@ -461,10 +461,6 @@ export async function grantProductToCustomer(options: {
           endedAt: now,
           cancelAtPeriodEnd: true,
         },
-      });
-      // dual write - prisma and bulldozer
-      const updatedConflicting = await prisma.subscription.findUniqueOrThrow({
-        where: { tenancyId_id: { tenancyId: tenancy.id, id: conflicting.id } },
       });
       await bulldozerWriteSubscription(prisma, updatedConflicting);
     }

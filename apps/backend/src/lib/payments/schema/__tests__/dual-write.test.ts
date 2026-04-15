@@ -171,10 +171,31 @@ describe("setRow via dual-write conversion", () => {
   });
 
   it("overwrites an existing subscription row (no duplicates)", { timeout: 60_000 }, async () => {
+    // Seed the initial row so this test is self-contained
+    const seedRowData = subscriptionToStoredRow({
+      id: "dw-sub-overwrite",
+      tenancyId: "t1",
+      customerId: "u1",
+      customerType: "USER",
+      productId: "prod-1",
+      priceId: "p1",
+      product: { displayName: "Plan A", customerType: "user", prices: "include-by-default", includedItems: {} },
+      quantity: 1,
+      stripeSubscriptionId: null,
+      status: "active",
+      currentPeriodStart: new Date("2024-01-01T00:00:00Z"),
+      currentPeriodEnd: new Date("2024-02-01T00:00:00Z"),
+      cancelAtPeriodEnd: false,
+      endedAt: null,
+      refundedAt: null,
+      creationSource: "TEST_MODE",
+      createdAt: new Date("2024-01-01T00:00:00Z"),
+    });
+    await runStatements(schema.subscriptions.setRow("dw-sub-overwrite", jsonbExpr(seedRowData)));
     const countBefore = await countStoredRows("payments-subscriptions");
 
     const updatedRowData = subscriptionToStoredRow({
-      id: "dw-sub-1",
+      id: "dw-sub-overwrite",
       tenancyId: "t1",
       customerId: "u1",
       customerType: "USER",
@@ -193,12 +214,12 @@ describe("setRow via dual-write conversion", () => {
       createdAt: new Date("2024-01-01T00:00:00Z"),
     });
 
-    await runStatements(schema.subscriptions.setRow("dw-sub-1", jsonbExpr(updatedRowData)));
+    await runStatements(schema.subscriptions.setRow("dw-sub-overwrite", jsonbExpr(updatedRowData)));
 
     const countAfter = await countStoredRows("payments-subscriptions");
     expect(countAfter).toBe(countBefore);
 
-    const stored = await getStoredRowData("payments-subscriptions", "dw-sub-1") as any;
+    const stored = await getStoredRowData("payments-subscriptions", "dw-sub-overwrite") as any;
     expect(stored.status).toBe("canceled");
     expect(stored.cancelAtPeriodEnd).toBe(true);
     expect(stored.endedAtMillis).toBe(new Date("2024-01-15T00:00:00Z").getTime());
@@ -230,10 +251,27 @@ describe("setRow via dual-write conversion", () => {
   });
 
   it("overwrites OTP row on refund (refundedAt set)", async () => {
+    // Seed the initial row so this test is self-contained
+    const seedRowData = oneTimePurchaseToStoredRow({
+      id: "dw-otp-overwrite",
+      tenancyId: "t1",
+      customerId: "u1",
+      customerType: "USER",
+      productId: "prod-pack",
+      priceId: "p1",
+      product: { displayName: "Pack", customerType: "user", prices: { p1: { USD: "10" } }, includedItems: {} },
+      quantity: 1,
+      stripePaymentIntentId: null,
+      revokedAt: null,
+      refundedAt: null,
+      creationSource: "TEST_MODE",
+      createdAt: new Date("2024-02-01T00:00:00Z"),
+    });
+    await runStatements(schema.oneTimePurchases.setRow("dw-otp-overwrite", jsonbExpr(seedRowData)));
     const countBefore = await countStoredRows("payments-one-time-purchases");
 
     const refundedRowData = oneTimePurchaseToStoredRow({
-      id: "dw-otp-1",
+      id: "dw-otp-overwrite",
       tenancyId: "t1",
       customerId: "u1",
       customerType: "USER",
@@ -248,12 +286,12 @@ describe("setRow via dual-write conversion", () => {
       createdAt: new Date("2024-02-01T00:00:00Z"),
     });
 
-    await runStatements(schema.oneTimePurchases.setRow("dw-otp-1", jsonbExpr(refundedRowData)));
+    await runStatements(schema.oneTimePurchases.setRow("dw-otp-overwrite", jsonbExpr(refundedRowData)));
 
     const countAfter = await countStoredRows("payments-one-time-purchases");
     expect(countAfter).toBe(countBefore);
 
-    const stored = await getStoredRowData("payments-one-time-purchases", "dw-otp-1") as any;
+    const stored = await getStoredRowData("payments-one-time-purchases", "dw-otp-overwrite") as any;
     expect(stored.refundedAtMillis).toBe(new Date("2024-03-01T00:00:00Z").getTime());
   });
 
