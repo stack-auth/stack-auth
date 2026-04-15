@@ -214,7 +214,40 @@
 @layer base {
   * {
     @apply border-border;
+
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--foreground) / 0.22) transparent;
   }
+
+  .analytics-card-tooltip-escape .recharts-tooltip-wrapper {
+    z-index: 9999 !important;
+    overflow: visible !important;
+  }
+
+  .analytics-card-tooltip-escape .recharts-tooltip-wrapper > * {
+    overflow: visible !important;
+  }
+
+  *::-webkit-scrollbar {
+    width: 8px;
+    height: 8px;
+  }
+
+  *::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  *::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--foreground) / 0.18);
+    border-radius: 9999px;
+    border: 2px solid transparent;
+    background-clip: padding-box;
+  }
+
+  *::-webkit-scrollbar-thumb:hover {
+    background-color: hsl(var(--foreground) / 0.28);
+  }
+
   body {
     @apply bg-background text-foreground;
     background-image: var(--page-ambient);

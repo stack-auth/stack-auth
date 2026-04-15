@@ -1554,6 +1554,9 @@ importers:
       '@stackframe/stack-ui':
         specifier: workspace:*
         version: link:../stack-ui
+      '@tanstack/react-virtual':
+        specifier: ^3.13.0
+        version: 3.13.18(react-dom@19.2.3(react@19.2.3))(react@19.2.3)
       class-variance-authority:
         specifier: ^0.7.0
         version: 0.7.1

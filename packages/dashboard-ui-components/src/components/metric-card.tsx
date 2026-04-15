@@ -29,6 +29,30 @@ export type DesignMetricCardProps = {
   gradient?: DesignMetricCardGradient,
 } & Omit<React.ComponentProps<"div">, "children">;
 
+/**
+ * KPI card for big-number metrics (users, revenue, signups, etc.).
+ * Use this instead of a plain `DesignCard` when the value is the focal point.
+ *
+ * ```tsx
+ * <DesignMetricCard
+ *   label="Total Users"
+ *   value="1,234"
+ *   description="+12% from last month"
+ *   trend={{ direction: "up", value: 12, label: "vs. last period" }}
+ *   icon={UsersIcon}
+ *   gradient="blue"
+ * />
+ * ```
+ *
+ * Notes:
+ * - `label` is the short caption (NOT `title`).
+ * - `value` can be a pre-formatted string ("1,234") or a number — prefer
+ *   strings so you control the format.
+ * - `description` is the subline (NOT `subtitle`).
+ * - `trend.value` is a NUMBER, not a pre-formatted "12%" string. The card
+ *   renders the arrow and formatting.
+ * - `icon` is a component type (e.g. `UsersIcon`), not a rendered node.
+ */
 export function DesignMetricCard({
   label,
   value,

@@ -227,6 +227,39 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
       .dark { color-scheme: dark; }
       html, body, #root { scrollbar-width: none; }
       html::-webkit-scrollbar, body::-webkit-scrollbar, #root::-webkit-scrollbar { display: none; }
+
+      /* Widget selection overlay — active only when chat panel is open */
+      .widget-overlay {
+        position: fixed;
+        pointer-events: none;
+        border: 2px dashed hsl(var(--primary) / 0.35);
+        border-radius: 10px;
+        z-index: 9999;
+        transition: top 0.12s ease, left 0.12s ease, width 0.12s ease, height 0.12s ease;
+        display: none;
+        background: hsl(var(--primary) / 0.03);
+      }
+      .widget-overlay-btn {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        pointer-events: auto;
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+        background: hsl(var(--primary));
+        color: hsl(var(--primary-foreground));
+        border: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        transition: opacity 0.15s ease, transform 0.15s ease;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+      }
+      .widget-overlay-btn:hover { transform: scale(1.08); }
+      .widget-overlay.active .widget-overlay-btn { opacity: 1; }
     </style>
   </head>
   <body>
@@ -329,17 +362,37 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
         return stackServerApp;
       }
       
+      // Forward uncaught runtime errors (async throws, unhandled rejections) that never
+      // reach the React boundary. React ErrorBoundary alone misses these, so without this
+      // the parent has no way to observe e.g. a fetch() that rejected inside useEffect.
+      window.addEventListener('error', (event) => {
+        const err = event?.error;
+        window.parent.postMessage({
+          type: 'dashboard-error-boundary',
+          message: err?.message || event?.message || 'Unknown runtime error',
+          stack: err?.stack,
+        }, '*');
+      });
+      window.addEventListener('unhandledrejection', (event) => {
+        const reason = event?.reason;
+        window.parent.postMessage({
+          type: 'dashboard-error-boundary',
+          message: (reason && (reason.message || String(reason))) || 'Unhandled promise rejection',
+          stack: reason?.stack,
+        }, '*');
+      });
+
       // Error Boundary Component
       class ErrorBoundary extends React.Component {
         constructor(props) {
           super(props);
           this.state = { hasError: false, error: null };
         }
-        
+
         static getDerivedStateFromError(error) {
           return { hasError: true, error };
         }
-        
+
         componentDidCatch(error, errorInfo) {
           window.parent.postMessage({
             type: 'dashboard-error-boundary',
@@ -424,21 +477,157 @@ function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashbo
         );
       });
     </script>
+
+    <!-- Widget selection overlay — lets the user pick a widget and send it to the chat panel -->
+    <script>
+    (function () {
+      var overlay = document.createElement('div');
+      overlay.className = 'widget-overlay';
+      var btn = document.createElement('button');
+      btn.className = 'widget-overlay-btn';
+      btn.setAttribute('aria-label', 'Add to chat');
+      btn.title = 'Add to chat';
+      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 256 256" fill="currentColor"><path d="M216,48H40A16,16,0,0,0,24,64V176a16,16,0,0,0,16,16H96l32,32a8,8,0,0,0,11.31,0L171.31,192H216a16,16,0,0,0,16-16V64A16,16,0,0,0,216,48ZM160,136H96a8,8,0,0,1,0-16h64a8,8,0,0,1,0,16Zm0-32H96a8,8,0,0,1,0-16h64a8,8,0,0,1,0,16Z"/></svg>';
+      overlay.appendChild(btn);
+
+      var currentWidget = null;
+      var mounted = false;
+
+      function mount() {
+        if (mounted) return;
+        document.body.appendChild(overlay);
+        mounted = true;
+      }
+
+      /* ── Widget detection heuristic ── */
+      function findWidget(el) {
+        var current = el;
+        var root = document.getElementById('root');
+        while (current && current !== root && current !== document.body) {
+          if (current === overlay || overlay.contains(current)) {
+            current = current.parentElement;
+            continue;
+          }
+          var rect = current.getBoundingClientRect();
+          if (rect.width < 80 || rect.height < 50) { current = current.parentElement; continue; }
+          if (rect.width > window.innerWidth * 0.85 && rect.height > window.innerHeight * 0.85) {
+            current = current.parentElement; continue;
+          }
+          var hasContent = current.querySelector('svg, h1, h2, h3, h4, h5, h6, table, img, canvas');
+          var cls = typeof current.className === 'string' ? current.className : '';
+          var isCard = /rounded|shadow|border|card|bg-/.test(cls);
+          var parent = current.parentElement;
+          var isLayoutChild = false;
+          if (parent && parent !== root) {
+            var ps = getComputedStyle(parent).display;
+            isLayoutChild = ps === 'grid' || ps === 'flex';
+          }
+          if (hasContent || isCard || isLayoutChild) return current;
+          current = current.parentElement;
+        }
+        return null;
+      }
+
+      function showOverlay(widget) {
+        mount();
+        var rect = widget.getBoundingClientRect();
+        overlay.style.display = 'block';
+        overlay.style.top = rect.top - 2 + 'px';
+        overlay.style.left = rect.left - 2 + 'px';
+        overlay.style.width = rect.width + 4 + 'px';
+        overlay.style.height = rect.height + 4 + 'px';
+        overlay.classList.add('active');
+        currentWidget = widget;
+      }
+
+      function hideOverlay() {
+        overlay.style.display = 'none';
+        overlay.classList.remove('active');
+        currentWidget = null;
+      }
+
+      document.addEventListener('mousemove', function (e) {
+        if (!window.__chatOpen) return;
+        if (overlay.contains(e.target)) return;
+        var widget = findWidget(e.target);
+        if (widget && widget !== currentWidget) showOverlay(widget);
+        else if (!widget) hideOverlay();
+      });
+
+      document.addEventListener('mouseleave', function () { hideOverlay(); });
+      window.addEventListener('chat-state-change', function () { if (!window.__chatOpen) hideOverlay(); });
+
+      /* ── Send DOM metadata to parent ── */
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        e.preventDefault();
+        if (!currentWidget) return;
+
+        var heading = currentWidget.querySelector('h1,h2,h3,h4,h5,h6');
+        var widgetRect = currentWidget.getBoundingClientRect();
+        var metadata = {
+          heading: heading ? heading.textContent.trim() : null,
+          tagName: currentWidget.tagName.toLowerCase(),
+          classes: (typeof currentWidget.className === 'string' ? currentWidget.className : '').slice(0, 300),
+          textPreview: (currentWidget.textContent || '').trim().slice(0, 500),
+          rect: { width: Math.round(widgetRect.width), height: Math.round(widgetRect.height) },
+        };
+
+        window.parent.postMessage({ type: 'dashboard-widget-selected', metadata: metadata }, '*');
+        hideOverlay();
+      });
+    })();
+    </script>
   </body>
 </html>`;
 }
+
+/**
+ * Shape of a runtime error surfaced from the sandbox iframe. Covers three sources:
+ *   1. React ErrorBoundary catches (componentStack is present)
+ *   2. Uncaught window errors (sync throws outside render)
+ *   3. Unhandled promise rejections (async failures inside effects/handlers)
+ */
+export type DashboardRuntimeError = {
+  message: string,
+  stack?: string,
+  componentStack?: string,
+};
+
+/**
+ * Payload sent when the user clicks "Add to chat" on a widget in the iframe.
+ * `metadata` carries DOM info so the AI knows which part of the dashboard is targeted.
+ */
+export type WidgetSelection = {
+  metadata: {
+    heading: string | null,
+    tagName: string,
+    classes: string,
+    textPreview: string,
+    rect: { width: number, height: number },
+  },
+};
 
 export const DashboardSandboxHost = memo(function DashboardSandboxHost({
   artifact,
   onBack,
   onEditToggle,
   onNavigate,
+  onReady,
+  onRuntimeError,
+  onWidgetSelected,
   isChatOpen,
 }: {
   artifact: DashboardArtifact,
   onBack?: () => void,
   onEditToggle?: () => void,
   onNavigate?: (path: string) => void,
+  onReady?: () => void,
+  /** Fires whenever the sandbox reports a runtime error. Parent uses this to auto-insert
+      the crash into the assistant composer so the user can one-click fix it. */
+  onRuntimeError?: (err: DashboardRuntimeError) => void,
+  /** Fires when the user clicks "Add to chat" on a widget overlay in the iframe. */
+  onWidgetSelected?: (selection: WidgetSelection) => void,
   isChatOpen?: boolean,
 }) {
   const iframeRef = useRef<HTMLIFrameElement>(null);
@@ -448,6 +637,12 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
   onEditToggleRef.current = onEditToggle;
   const onNavigateRef = useRef(onNavigate);
   onNavigateRef.current = onNavigate;
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
+  const onRuntimeErrorRef = useRef(onRuntimeError);
+  onRuntimeErrorRef.current = onRuntimeError;
+  const onWidgetSelectedRef = useRef(onWidgetSelected);
+  onWidgetSelectedRef.current = onWidgetSelected;
   const user = useUser({ or: "redirect" });
   const { resolvedTheme } = useTheme();
 
@@ -544,10 +739,42 @@ export const DashboardSandboxHost = memo(function DashboardSandboxHost({
         const err = new Error(event.data.message ?? 'Unknown dashboard error');
         if (event.data.stack) err.stack = event.data.stack;
         captureError('dashboard-sandbox-error-boundary', err);
+        onRuntimeErrorRef.current?.({
+          message: typeof event.data.message === "string" ? event.data.message : "Unknown dashboard error",
+          stack: typeof event.data.stack === "string" ? event.data.stack : undefined,
+          componentStack: typeof event.data.componentStack === "string" ? event.data.componentStack : undefined,
+        });
         return;
       }
 
-      if (type === "stack-ai-dashboard-ready" || type === "stack-ai-dashboard-error") {
+      if (type === "stack-ai-dashboard-error") {
+        // Thrown during sandbox initialization (deps failed to load, Dashboard export missing, etc.)
+        // Surface it via the same channel so the UX is consistent with runtime errors.
+        onRuntimeErrorRef.current?.({
+          message: typeof event.data.message === "string" ? event.data.message : "Failed to initialize dashboard",
+          stack: typeof event.data.stack === "string" ? event.data.stack : undefined,
+        });
+        return;
+      }
+
+      if (type === "dashboard-widget-selected") {
+        onWidgetSelectedRef.current?.({
+          metadata: {
+            heading: typeof event.data.metadata?.heading === "string" ? event.data.metadata.heading : null,
+            tagName: typeof event.data.metadata?.tagName === "string" ? event.data.metadata.tagName : "div",
+            classes: typeof event.data.metadata?.classes === "string" ? event.data.metadata.classes : "",
+            textPreview: typeof event.data.metadata?.textPreview === "string" ? event.data.metadata.textPreview : "",
+            rect: {
+              width: typeof event.data.metadata?.rect?.width === "number" ? event.data.metadata.rect.width : 0,
+              height: typeof event.data.metadata?.rect?.height === "number" ? event.data.metadata.rect.height : 0,
+            },
+          },
+        });
+        return;
+      }
+
+      if (type === "stack-ai-dashboard-ready") {
+        onReadyRef.current?.();
         return;
       }
     };

@@ -3,6 +3,12 @@
 Q: How are the development ports derived now that NEXT_PUBLIC_STACK_PORT_PREFIX exists?
 A: Host ports use `${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}` plus the two-digit suffix (e.g., Postgres is `${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}28`, Inbucket SMTP `${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}29`, POP3 `${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}30`, and OTLP `${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}31` by default).
 
+Q: How do you expand the internal metrics endpoint to include cross-product aggregates?
+A: Extend the existing `/api/v1/internal/metrics` route (in `apps/backend/src/app/api/latest/internal/metrics/route.tsx`) by adding new parallel async queries for each product domain. Add `auth_overview`, `payments_overview`, `email_overview`, and `analytics_overview` to the response schema and the handler, loaded via dedicated helper functions that use Prisma (for payments/emails/teams/users) and ClickHouse (for page views, clicks). New response fields must also be added to the shared yup schemas in `packages/stack-shared/src/interface/admin-metrics.ts` so the dashboard `useMetrics` hook (typed via `yup.InferType<typeof MetricsResponseBodySchema>`) automatically picks up the new shape with full type safety. Never widen `useMetrics` (or `getMetrics`) to `any` — the schemas are the single source of truth and dashboard call sites should never need `as ...` casts.
+
+Q: How can duplicate Recharts keys like `rectangle-25-10-0` appear on overview pages with multiple charts?
+A: Recharts can generate colliding internal SVG IDs/keys across chart instances when they share default ID generation paths. Set explicit unique IDs (or instance-unique IDs) on chart roots and avoid duplicated chart-def namespaces to prevent repeated internal keys and console errors.
+
 Q: How can I show helper text beneath metadata text areas in the dashboard?
 A: Use the shared `TextAreaField` component's `helperText` prop in `apps/dashboard/src/components/form-fields.tsx`; it now renders the helper content in a secondary Typography line under the textarea.
 
@@ -78,6 +84,51 @@ Q: What is the reliable way to lint a single dashboard file in this monorepo?
 A: Run lint from `apps/dashboard` directly (for example `pnpm lint -- "src/app/(main)/(protected)/projects/[projectId]/(overview)/line-chart.tsx"`), because running root `pnpm lint -- <file>` fans out through Turbo packages where that path does not exist.
 Q: How should unsubscribe-link e2e tests avoid breakage from email theme/layout changes?
 A: In `apps/e2e/tests/backend/endpoints/api/v1/unsubscribe-link.test.ts`, avoid snapshotting the entire rendered HTML for transactional emails; assert stable behavior instead (email content present and `/api/v1/emails/unsubscribe-link` absent) so cosmetic wrapper/style changes do not fail the test.
+
+Q: How can overview Recharts on the dashboard dim non-hovered data while keeping the active day emphasized?
+A: In `apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/line-chart.tsx`, track `hoveredIndex` from Recharts' `activeTooltipIndex` via chart `onMouseMove`/`onMouseLeave`, then use that index to lower non-hovered `Cell` opacity for bar charts and reduce line/area `strokeOpacity`/`fillOpacity` while relying on `activeDot` plus a stronger tooltip cursor to keep the hovered point visually focused.
+
+Q: How do you add a hover-to-swap chart interaction to the analytics chart widget with fade transitions?
+A: In `metrics-page.tsx`, maintain `chartMode` (the hover intent) and `displayMode` (the chart currently rendered) as separate states. On pill mouse-enter, set chartMode immediately, then use a 120ms timer to set displayMode and clear a `fadingOut` flag. Fade is achieved via CSS opacity transitions on the chart container. The pill component uses `onMouseEnter`/`onMouseLeave` rather than `onClick` so hovering is enough to swap. Clear the timer ref when a new mode is requested to avoid flicker during rapid transitions.
+
+Q: How do you add a MAU (monthly active users) metric sourced from ClickHouse to the backend metrics endpoint?
+A: Add a `loadMonthlyActiveUsers` function in `route.tsx` that runs `uniqExact(user_id)` over `$token-refresh` events in the last 30 days on `analytics_internal.events`. Wrap the ClickHouse call in try/catch and return 0 on error. Add the result to `loadAuthOverview`'s return as `mau`, and in the dev fallback block set `mau: totalUsers * 0.3` when `mau === 0` to ensure the dashboard is usable in development.
+
+Q: How should overview dashboard charts support both preset ranges and calendar-picked custom ranges?
+A: In `apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/line-chart.tsx`, expand `TimeRange` to include presets (`7d`, `14d`, `30d`, `90d`, `all`) plus `custom`, add a `CustomDateRange` type, and route all date-series filtering through shared helpers (`filterDatapointsByTimeRange` and `filterStackedDatapointsByTimeRange`) that accept the optional custom range. Then pass `customDateRange` through `TimeRangeToggle`, `TabbedMetricsCard`, and metrics-page data derivations so charts and range-dependent totals stay synchronized when the user changes either preset pills or the calendar range.
+
+Q: How should the overview custom date picker behave to avoid runtime errors when `custom` is selected?
+A: Keep custom-range interaction inside the `Custom` pill flow in `TimeRangeToggle` (no separate "Pick date range" action button), seed a default range when none exists before switching to `custom`, and make range filters tolerate a temporarily missing custom range by returning unfiltered data instead of throwing.
+
+Q: How can a custom date-range panel anchored to a pill toggle stay visually consistent with dashboard design standards?
+A: Use shadcn primitives (`Popover`, `PopoverAnchor`, `PopoverContent`, `Calendar`) and style the content as a glassmorphic control surface (`rounded-2xl`, subtle border/ring, backdrop blur, compact spacing rhythm, muted header text), with customized `Calendar` classNames for range states so selection/readability stay balanced in dark mode.
+
+Q: How should overview charts parse `YYYY-MM-DD` analytics dates without shifting a day in some timezones?
+A: In `apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/line-chart.tsx`, do not use `new Date("YYYY-MM-DD")` for chart labels/tooltips because browsers interpret date-only strings as UTC. Parse those keys into local dates with `new Date(year, month - 1, day)` via a shared helper (for example `parseChartDate`) before formatting or weekend checks.
+
+Q: How should the overview custom date picker prevent invalid future selections?
+A: Normalize picker dates to local midnight and pass `disabled={{ after: latestSelectableDate }}` to the dashboard `Calendar` so users cannot select dates after today, while keeping the default seeded custom range capped at today as well.
+
+Q: How should overview dashboard rows handle fixed chart heights across breakpoints?
+A: In `apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/(overview)/metrics-page.tsx`, only apply fixed row heights like `h-[340px]` at the desktop layout breakpoint (`lg:`). When a two-column chart row collapses to one column, wrap each card in a `min-h-[340px]` container so stacked charts keep a usable height instead of being squeezed into the old shared row height.
+
+Q: How do we add Daily Active Users into the analytics chart modes while keeping the lower card focused on sign-ups?
+A: In `metrics-page.tsx`, keep DAU split data as `StackedDataPoint[]`, pass a time-filtered version to `AnalyticsChartWidget` as the first in-card mode, and aggregate DAU totals into the shared `composedData` points as a `dau` field so `ComposedAnalyticsChart` can render a third line. Then remove `stackedChartData` from the lower `TabbedMetricsCard` so that card displays plain Daily Sign-Ups behavior while DAU remains in the analytics chart widget.
+
+Q: Why can tuple corner radii on Recharts `Cell` fail TypeScript checks even though they work at runtime?
+A: In dashboard charts, `Cell` props are typed broadly from SVG attributes (`radius` as `string | number`), but Recharts bar rectangles accept tuple radii like `[4, 4, 0, 0]`. For stacked bars that need per-cell top-corner rounding, keep tuple `radius` on `Cell` and document it with `@ts-expect-error` at the specific line.
+
+Q: How can overview "recent" tabs support infinite lazy loading without adding new endpoints?
+A: Return a larger bounded page from `/api/v1/internal/metrics` (for example 100 recent sign-ups/emails), then implement client-side incremental rendering in the tab list views using an `IntersectionObserver` sentinel inside the scroll container (batching e.g. 12 items at a time). This gives infinite-scroll UX while keeping backend changes minimal.
+
+Q: How can the Top Referrers card on overview support infinite lazy loading?
+A: In `metrics-page.tsx`, make the referrers list container scrollable (`min-h-0 overflow-y-auto`) and append rows incrementally via an `IntersectionObserver` sentinel (e.g. 12 rows per batch). In `internal/metrics/route.tsx`, raise the ClickHouse referrer query limit (e.g. `TOP_REFERRERS_PAGE_SIZE = 100`) so the UI has enough rows to lazy-load.
+
+Q: Where does the shared glassmorphic chart-card shell live after the design-component refactor?
+A: In `apps/dashboard/src/components/design-components/analytics-card.tsx`. It exports `DesignAnalyticsCard` (the glass card with Recharts tooltip escape), `DesignAnalyticsCardHeader` (compact header row with divider), `DesignChartLegend` (dot+label legend strip), `useInfiniteListWindow` (IntersectionObserver-based incremental list hook), and `DesignInfiniteScrollList` (a scroll container that drives `useInfiniteListWindow`). The page-local `ChartCard` wrapper in `line-chart.tsx` and all `GlassCard` clones in emails/email-drafts/email-themes pages were replaced with `DesignAnalyticsCard`.
+
+Q: How do you fix "RefObject<HTMLDivElement | null> is not assignable to LegacyRef<HTMLDivElement>" TS errors when using useRef with JSX in React 19?
+A: In React 19 with TypeScript 5.x, `useRef<T>(null)` returns `RefObject<T | null>`, but JSX `ref` props still expect `RefObject<T>`. Cast the result: `const ref = useRef<HTMLDivElement>(null) as React.RefObject<HTMLDivElement>`. Then inside effects, cast `.current` back to `T | null` when doing null checks to avoid triggering `@typescript-eslint/no-unnecessary-condition`.
 
 Q: How do cross-domain auth handoffs avoid creating extra refresh-token sessions?
 A: The cross-domain authorize route must carry the current `refreshTokenId` through authorization-code exchange and OAuth token issuance must reuse that ID. Keep `afterCallbackRedirectUrl` URL-only and persist refresh-token linkage in `ProjectUserAuthorizationCode.grantedRefreshTokenId`; then return that as `user.refreshTokenId` in `getAuthorizationCode` so token issuance can reuse the same refresh-token row with ownership checks.
@@ -188,6 +239,12 @@ Q: What is the current `getCustomPagePrompts` API shape?
 A: `getCustomPagePrompts` now takes no arguments and returns all prompts directly; call it as `getCustomPagePrompts()` instead of passing an SDK package name.
 Q: Which port suffixes are assigned to the two local docs sites?
 A: `docs` (old docs app) uses suffix `26`, and `docs-mintlify` uses suffix `04`. Keep these in sync across `docs/package.json`, `docs-mintlify/package.json`, `apps/dev-launchpad/public/index.html`, and `apps/dashboard/.env.development` (`NEXT_PUBLIC_STACK_DOCS_BASE_URL` points to old docs on `26`).
+
+Q: Do analytics `$page-view` / `$click` rows in ClickHouse carry `is_anonymous` today?
+A: Not by default. The client event tracker in `packages/template/src/lib/stack-app/apps/implementations/event-tracker.ts` sends page-view and click payloads without `is_anonymous`, and `apps/backend/src/app/api/latest/analytics/events/batch/route.tsx` currently inserts `event.data` unchanged into `analytics_internal.events`. Any metrics code that wants anonymous filtering for page-view/click events must either enrich those rows at ingestion time or do a time-correct join against another source.
+
+Q: What does the current overview revenue logic count?
+A: The overview metrics queries in `apps/backend/src/app/api/latest/internal/metrics/route.tsx` currently derive `daily_revenue`, `payments_overview.revenue_cents`, `payments_overview.mrr_cents`, and `analytics_overview.total_revenue_cents` from `SubscriptionInvoice.amountTotal` only. `OneTimePurchase` rows do not have an `amountTotal` column in the Prisma schema, so one-time-purchase-only projects will show zero revenue unless that amount is derived from the stored product/price snapshot and added separately.
 
 Q: Why did the dashboard Vercel integration throw "Expected publishableClientKey" during key generation?
 A: In `apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/vercel/page-client.tsx`, the code always asserted `newKey.publishableClientKey` even when `project.requirePublishableClientKey` was false. Fix by only asserting/passing `publishableClientKey` when that project config flag is true.
