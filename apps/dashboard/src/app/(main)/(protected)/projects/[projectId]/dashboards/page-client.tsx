@@ -12,6 +12,7 @@ import {
   TrashIcon,
 } from "@phosphor-icons/react";
 import { DesignCard } from "@stackframe/dashboard-ui-components";
+import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { useMemo, useState } from "react";
 import * as yup from "yup";
@@ -32,10 +33,12 @@ export default function PageClient() {
   const [deleteDialogId, setDeleteDialogId] = useState<string | null>(null);
 
   const dashboards = useMemo((): DashboardEntry[] => {
-    return Object.entries(config.customDashboards).map(([id, dashboard]) => ({
-      id,
-      displayName: (dashboard as { displayName: string }).displayName,
-    }));
+    return Object.entries(config.customDashboards)
+      .map(([id, dashboard]) => ({
+        id,
+        displayName: (dashboard as { displayName: string }).displayName,
+      }))
+      .sort((a, b) => stringCompare(a.displayName, b.displayName) || stringCompare(a.id, b.id));
   }, [config.customDashboards]);
 
   const dashboardToDelete = deleteDialogId

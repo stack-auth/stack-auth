@@ -6,6 +6,7 @@ const config = {
     './src/**/*.{ts,tsx}',
     "./node_modules/@stackframe/stack-ui/src/**/*.{ts,tsx}",
     "./node_modules/@stackframe/stack-shared/src/**/*.{ts,tsx}",
+    "./node_modules/@stackframe/dashboard-ui-components/src/**/*.{ts,tsx}",
 	],
   prefix: "",
   theme: {

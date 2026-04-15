@@ -83,6 +83,7 @@
     "geist": "^1",
     "input-otp": "^1.4.1",
     "jose": "^6.1.3",
+    "libsodium-wrappers": "^0.8.2",
     "lodash": "^4.17.21",
     "next": "16.1.7",
     "next-themes": "^0.2.1",
