@@ -2,7 +2,7 @@ import { StackClientApp } from "@stackframe/js";
 import type { CurrentInternalUser, AdminOwnedProject } from "@stackframe/js";
 import { AuthError } from "./errors.js";
 import { DEFAULT_PUBLISHABLE_CLIENT_KEY } from "./auth.js";
-import type { SessionAuth, ProjectAuth } from "./auth.js";
+import type { SessionAuth, ProjectAuthWithRefreshToken } from "./auth.js";
 
 export function getInternalApp(auth: SessionAuth): StackClientApp<true, "internal"> {
   return new StackClientApp({
@@ -23,7 +23,7 @@ export async function getInternalUser(auth: SessionAuth): Promise<CurrentInterna
   return user as CurrentInternalUser;
 }
 
-export async function getAdminProject(auth: ProjectAuth): Promise<AdminOwnedProject> {
+export async function getAdminProject(auth: ProjectAuthWithRefreshToken): Promise<AdminOwnedProject> {
   const user = await getInternalUser(auth);
   const projects = await user.listOwnedProjects();
   const project = projects.find((p) => p.id === auth.projectId);

@@ -2054,29 +2054,31 @@ export default function PageClient() {
 />`;
     }
     if (selected === "data-grid") {
-      return `<DataGrid
-  columns={columns}
-  data={users}
+      return `<DataGrid<DemoGridUser>
+  columns={DEMO_GRID_COLUMNS}
+  rows={dgData.rows}
   getRowId={(row) => row.id}
-  state={gridState}
-  onChange={setGridState}
+  totalRowCount={dgData.totalRowCount}
+  isLoading={dgData.isLoading}
+  state={dgState}
+  onChange={setDgState}
   selectionMode="${dgSelectionMode}"
   rowHeight={${dgRowHeight}}
-  toolbar={${dgShowToolbar}}
+  toolbar={${dgShowToolbar ? "undefined" : "false"}}
   maxHeight={400}
 />`;
     }
     if (selected === "data-table") {
       return `<DataGrid
-  columns={columns}
-  rows={data.rows}
+  columns={DEMO_PRODUCT_COLUMNS}
+  rows={dtData.rows}
   getRowId={(row) => row.id}
-  totalRowCount={data.totalRowCount}
-  isLoading={data.isLoading}
-  state={gridState}
-  onChange={setGridState}
-  toolbar={${tableShowToolbar}}
-  onRowClick={${tableClickableRows ? "(row) => setLastClickedRow(row.name)" : "undefined"}}
+  totalRowCount={dtData.totalRowCount}
+  isLoading={dtData.isLoading}
+  state={dtState}
+  onChange={setDtState}
+  toolbar={${tableShowToolbar ? "undefined" : "false"}}
+  onRowClick={${tableClickableRows ? "(row) => setTableLastRowClick(row.name)" : "undefined"}}
   maxHeight={400}
 />`;
     }
