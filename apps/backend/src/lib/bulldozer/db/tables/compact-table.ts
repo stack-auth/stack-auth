@@ -121,8 +121,7 @@ export function declareCompactTable<
       SELECT
         "windowId",
         "rowData"->>` + partitionKeyLiteral.sql + ` AS "partitionVal",
-        SUM(("rowData"->>` + compactKeyLiteral.sql + `)::numeric) AS "totalCompactKey",
-        MIN("rowIdentifier") AS "rowIdentifier"
+        SUM(("rowData"->>` + compactKeyLiteral.sql + `)::numeric) AS "totalCompactKey"
       FROM "compactRows"
       GROUP BY "windowId", "rowData"->>` + partitionKeyLiteral.sql + `
     ),
@@ -130,9 +129,10 @@ export function declareCompactTable<
       SELECT DISTINCT ON ("windowId", "rowData"->>` + partitionKeyLiteral.sql + `)
         "windowId",
         "rowData"->>` + partitionKeyLiteral.sql + ` AS "partitionVal",
+        "rowIdentifier" AS "firstRowIdentifier",
         "rowData" AS "firstRowData"
       FROM "compactRows"
-      ORDER BY "windowId", "rowData"->>` + partitionKeyLiteral.sql + `, "orderVal" ASC
+      ORDER BY "windowId", "rowData"->>` + partitionKeyLiteral.sql + `, "orderVal" ASC, "rowIdentifier" ASC
     ),
     "compacted" AS (
       SELECT
@@ -142,7 +142,7 @@ export function declareCompactTable<
           ` + compactKeyLiteral.sql + `,
           to_jsonb("aggregated"."totalCompactKey")
         ) AS "rowData",
-        "aggregated"."rowIdentifier"
+        "firstRows"."firstRowIdentifier" AS "rowIdentifier"
       FROM "aggregated"
       INNER JOIN "firstRows"
         ON "aggregated"."windowId" = "firstRows"."windowId"
