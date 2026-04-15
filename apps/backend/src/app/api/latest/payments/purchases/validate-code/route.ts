@@ -82,8 +82,9 @@ export const POST = createSmartRouteHandler({
     if (productLineId) {
       const isSubscribable = product.prices !== "include-by-default" && Object.values(product.prices).some((p: any) => p && p.interval);
       if (isSubscribable) {
+        const addOnBaseProductIds = product.isAddOnTo ? new Set(Object.keys(product.isAddOnTo)) : new Set<string>();
         conflictingProductLineProducts = Object.entries(ownedProducts)
-          .filter(([, p]) => p.productLineId === productLineId && p.quantity > 0)
+          .filter(([productId, p]) => p.productLineId === productLineId && p.quantity > 0 && !addOnBaseProductIds.has(productId))
           .sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
           .map(([productId, p]) => ({
             product_id: productId,

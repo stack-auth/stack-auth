@@ -112,8 +112,10 @@ export const POST = createSmartRouteHandler({
         customerType: params.customer_type,
         customerId: params.customer_id,
       });
+      // ownedProducts keys use '__null__' for inline products (null productId),
+      // so we normalize subscription productIds to match.
       const activeSubProductIds = new Set(
-        Object.values(subMap).filter(s => isActiveSubscription(s)).map(s => s.productId)
+        Object.values(subMap).filter(s => isActiveSubscription(s)).map(s => s.productId ?? "__null__")
       );
       const hasOtpInProductLine = Object.entries(ownedProducts).some(
         ([productId, p]) => p.productLineId === fromProduct.productLineId

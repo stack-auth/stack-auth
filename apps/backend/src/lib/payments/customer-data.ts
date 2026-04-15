@@ -53,6 +53,7 @@ async function getLatestRow<T>(
  * Returns the owned products for a customer.
  *
  * Returns a map of productId → { quantity, product, productLineId }.
+ * Inline products (null productId) are keyed as '__null__'.
  */
 export async function getOwnedProductsForCustomer(options: {
   prisma: PrismaClientTransaction,

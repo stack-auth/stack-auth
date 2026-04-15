@@ -131,6 +131,37 @@ describe.sequential("payments schema integration phase 2→3 (real postgres)", (
     expect(afterRevoke.ownedProducts["prod-R2"].quantity).toBe(1);
   });
 
+  it("should key inline products (null productId) under '__null__' in ownedProducts", async () => {
+    const t = "t1";
+    await runStatements(schema.oneTimePurchases.setRow("otp-inline", jsonbExpr({
+      id: "otp-inline",
+      tenancyId: t,
+      customerId: "u1",
+      customerType: "user",
+      productId: null,
+      priceId: null,
+      product: {
+        displayName: "Inline Product",
+        customerType: "user",
+        prices: {},
+        includedItems: {},
+      },
+      quantity: 1,
+      stripePaymentIntentId: null,
+      revokedAtMillis: null,
+      refundedAtMillis: null,
+      creationSource: "TEST_MODE",
+      createdAtMillis: 500,
+    })));
+
+    const rows = await getRowsForTenancy(schema.ownedProducts, t);
+    const row = rows.find((r: any) => r.txnId === "otp:otp-inline");
+    expect(row).toBeDefined();
+    expect(row.ownedProducts["__null__"]).toBeDefined();
+    expect(row.ownedProducts["__null__"].quantity).toBe(1);
+    expect(row.ownedProducts["__null__"].product.displayName).toBe("Inline Product");
+  });
+
   it("should partially revoke: grant qty=3, revoke qty=1 → qty=2", async () => {
     const t = "t1";
     await runStatements(makeOtp("otp-partial", t, "u1", "prod-C", {

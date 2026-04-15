@@ -8,6 +8,11 @@
  * Each output row represents the owned-products state after a particular
  * transaction. Query the latest row with effectiveAtMillis <= currentTime
  * to get the customer's current owned products.
+ *
+ * NOTE: The ownedProducts map is keyed by productId. Inline products
+ * (null productId) use the sentinel key '__null__' because JSON object
+ * keys must be strings. Any code reading from this map must use '__null__'
+ * (not JS null) when looking up inline products.
  */
 
 import {

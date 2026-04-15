@@ -65,9 +65,11 @@ export const GET = createSmartRouteHandler({
         customerId: params.customer_id,
       }),
     ]);
-    // Deprecated: map productId → active subscription for backward-compat fields
+    // Deprecated: map productId → active subscription for backward-compat fields.
+    // ownedProducts keys use '__null__' for inline products (null productId),
+    // so we normalize subscription productIds to match.
     const activeSubByProductId = new Map(
-      Object.values(subMap).filter(s => isActiveSubscription(s)).map(s => [s.productId, s] as const)
+      Object.values(subMap).filter(s => isActiveSubscription(s)).map(s => [s.productId ?? "__null__", s] as const)
     );
 
     // Build switch options per product line (available plan upgrades/downgrades)

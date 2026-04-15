@@ -130,17 +130,6 @@ export function customerOwnsProduct(ownedProducts: OwnedProducts, productId: str
   return productId in ownedProducts && ownedProducts[productId].quantity > 0;
 }
 
-/**
- * Returns true if the customer currently owns ANY product in the given
- * product line (quantity > 0). Covers both subscriptions and one-time purchases
- * since the owned products LFold aggregates across all sources.
- */
-export function customerOwnsProductInProductLine(ownedProducts: OwnedProducts, productLineId: string): boolean {
-  return Object.values(ownedProducts).some(
-    p => p.productLineId === productLineId && p.quantity > 0
-  );
-}
-
 export async function ensureCustomerExists(options: {
   prisma: PrismaClientTransaction,
   tenancyId: string,
