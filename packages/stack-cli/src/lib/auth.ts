@@ -18,7 +18,16 @@ export type SessionAuth = LoginConfig & {
   refreshToken: string,
 };
 
-export type ProjectAuth = SessionAuth & {
+export type ProjectAuthWithRefreshToken = SessionAuth & {
+  projectId: string,
+};
+
+export type ProjectAuthWithSecretServerKey = LoginConfig & {
+  projectId: string,
+  secretServerKey: string,
+};
+
+export type ProjectAuth = (ProjectAuthWithRefreshToken | ProjectAuthWithSecretServerKey) & {
   projectId: string,
 };
 
@@ -41,6 +50,10 @@ function resolveRefreshToken(): string {
     throw new AuthError("Not logged in. Run `stack login` first.");
   }
   return token;
+}
+
+function resolveSecretServerKey(): string | null {
+  return process.env.STACK_SECRET_SERVER_KEY ?? null;
 }
 
 function resolveProjectId(flags: Flags): string {
@@ -66,8 +79,25 @@ export function resolveSessionAuth(flags: Flags): SessionAuth {
 }
 
 export function resolveAuth(flags: Flags): ProjectAuth {
+  const secretServerKey = resolveSecretServerKey();
+  if (secretServerKey) {
+    return {
+      ...resolveLoginConfig(flags),
+      projectId: resolveProjectId(flags),
+      secretServerKey,
+    };
+  }
+
   return {
     ...resolveSessionAuth(flags),
     projectId: resolveProjectId(flags),
   };
+}
+
+export function isProjectAuthWithSecretServerKey(auth: ProjectAuth): auth is ProjectAuthWithSecretServerKey {
+  return "secretServerKey" in auth;
+}
+
+export function isProjectAuthWithRefreshToken(auth: ProjectAuth): auth is ProjectAuthWithRefreshToken {
+  return "refreshToken" in auth;
 }

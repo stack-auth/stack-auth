@@ -565,6 +565,7 @@ export const projectOnboardingStatusValues = [
   "domain_setup",
   "email_theme_setup",
   "payments_setup",
+  "welcome",
   "completed",
 ] as const;
 export type ProjectOnboardingStatus = typeof projectOnboardingStatusValues[number];
