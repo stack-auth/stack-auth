@@ -127,6 +127,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
 
   constructor(options: StackAdminAppConstructorOptions<HasTokenStore, ProjectId>, extraOptions?: { uniqueIdentifier?: string, checkString?: string, interface?: StackAdminInterface }) {
     const resolvedOptions = resolveConstructorOptions(options);
+
     const publishableClientKey = resolvedOptions.publishableClientKey ?? getDefaultPublishableClientKey();
 
     super(resolvedOptions, {

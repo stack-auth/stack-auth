@@ -462,12 +462,10 @@ function NewDraftDropdown({
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="center">
-          <DropdownMenuItem onClick={onCreateFromScratch} className="gap-2">
-            <FileText className="h-4 w-4" />
+          <DropdownMenuItem onClick={onCreateFromScratch} icon={<FileText className="h-4 w-4" />}>
             Create from scratch
           </DropdownMenuItem>
-          <DropdownMenuItem onClick={onCreateFromTemplate} className="gap-2">
-            <Copy className="h-4 w-4" />
+          <DropdownMenuItem onClick={onCreateFromTemplate} icon={<Copy className="h-4 w-4" />}>
             Create from template
           </DropdownMenuItem>
         </DropdownMenuContent>
@@ -485,12 +483,10 @@ function NewDraftDropdown({
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-        <DropdownMenuItem onClick={onCreateFromScratch} className="gap-2">
-          <FileText className="h-4 w-4" />
+        <DropdownMenuItem onClick={onCreateFromScratch} icon={<FileText className="h-4 w-4" />}>
           Create from scratch
         </DropdownMenuItem>
-        <DropdownMenuItem onClick={onCreateFromTemplate} className="gap-2">
-          <Copy className="h-4 w-4" />
+        <DropdownMenuItem onClick={onCreateFromTemplate} icon={<Copy className="h-4 w-4" />}>
           Create from template
         </DropdownMenuItem>
       </DropdownMenuContent>

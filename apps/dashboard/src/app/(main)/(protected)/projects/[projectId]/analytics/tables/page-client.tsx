@@ -4,6 +4,7 @@ import { Link } from "@/components/link";
 import { Button, Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { ArrowClockwiseIcon, CodeIcon } from "@phosphor-icons/react";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { useCallback, useState } from "react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
@@ -17,14 +18,14 @@ import { useAiQueryChat } from "./use-ai-query-chat";
 
 // ─── Available tables ───────────────────────────────────────────────
 
-type TableId = "events";
-
 type TableConfig = {
   displayName: string,
   baseQuery: string,
   defaultOrderBy: string,
   defaultOrderDir: "asc" | "desc",
 };
+
+type TableId = string;
 
 const AVAILABLE_TABLES = new Map<TableId, TableConfig>([
   [
@@ -36,12 +37,111 @@ const AVAILABLE_TABLES = new Map<TableId, TableConfig>([
       defaultOrderDir: "desc",
     },
   ],
+  [
+    "users",
+    {
+      displayName: "Users",
+      baseQuery: "SELECT * FROM default.users",
+      defaultOrderBy: "signed_up_at",
+      defaultOrderDir: "desc",
+    },
+  ],
+  [
+    "contact_channels",
+    {
+      displayName: "Contact Channels",
+      baseQuery: "SELECT * FROM default.contact_channels",
+      defaultOrderBy: "created_at",
+      defaultOrderDir: "desc",
+    },
+  ],
+  [
+    "teams",
+    {
+      displayName: "Teams",
+      baseQuery: "SELECT * FROM default.teams",
+      defaultOrderBy: "created_at",
+      defaultOrderDir: "desc",
+    },
+  ],
+  [
+    "team_member_profiles",
+    {
+      displayName: "Team Member Profiles",
+      baseQuery: "SELECT * FROM default.team_member_profiles",
+      defaultOrderBy: "created_at",
+      defaultOrderDir: "desc",
+    },
+  ],
+  [
+    "team_permissions",
+    {
+      displayName: "Team Permissions",
+      baseQuery: "SELECT * FROM default.team_permissions",
+      defaultOrderBy: "created_at",
+      defaultOrderDir: "desc",
+    },
+  ],
+  [
+    "team_invitations",
+    {
+      displayName: "Team Invitations",
+      baseQuery: "SELECT * FROM default.team_invitations",
+      defaultOrderBy: "created_at",
+      defaultOrderDir: "desc",
+    },
+  ],
+  [
+    "email_outboxes",
+    {
+      displayName: "Email Outboxes",
+      baseQuery: "SELECT * FROM default.email_outboxes",
+      defaultOrderBy: "created_at",
+      defaultOrderDir: "desc",
+    },
+  ],
+  [
+    "project_permissions",
+    {
+      displayName: "Project Permissions",
+      baseQuery: "SELECT * FROM default.project_permissions",
+      defaultOrderBy: "created_at",
+      defaultOrderDir: "desc",
+    },
+  ],
+  [
+    "notification_preferences",
+    {
+      displayName: "Notification Preferences",
+      baseQuery: "SELECT * FROM default.notification_preferences",
+      defaultOrderBy: "user_id",
+      defaultOrderDir: "desc",
+    },
+  ],
+  [
+    "refresh_tokens",
+    {
+      displayName: "Refresh Tokens",
+      baseQuery: "SELECT * FROM default.refresh_tokens",
+      defaultOrderBy: "created_at",
+      defaultOrderDir: "desc",
+    },
+  ],
+  [
+    "connected_accounts",
+    {
+      displayName: "Connected Accounts",
+      baseQuery: "SELECT * FROM default.connected_accounts",
+      defaultOrderBy: "created_at",
+      defaultOrderDir: "desc",
+    },
+  ],
 ]);
 
 // ─── Per-table content ──────────────────────────────────────────────
 
 function TableContent({ tableId }: { tableId: TableId }) {
-  const tableConfig = AVAILABLE_TABLES.get(tableId)!;
+  const tableConfig = AVAILABLE_TABLES.get(tableId) ?? throwErr(`Unknown analytics table: ${tableId}`);
   const [dialogOpen, setDialogOpen] = useState(false);
 
   // Shared AI chat state — feeds both the search bar and the eye
