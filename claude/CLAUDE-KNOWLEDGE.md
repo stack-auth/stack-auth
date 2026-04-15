@@ -281,3 +281,6 @@ A: Use the workflow **file name** (e.g. `stack-auth-config-sync.yml`), not a pat
 
 Q: How should the dashboard load `stack.config` path suggestions after picking a GitHub branch without stale React state?
 A: Have `loadBranches` return the resolved branch string, then call `loadConfigSuggestions({ repository, branch })` from the Continue handler with those explicit values instead of relying on `setState` having flushed before the tree fetch runs.
+
+Q: How can PR review threads be resolved from the CLI when fixing bot comments?
+A: Use GitHub GraphQL via `gh api graphql` with `resolveReviewThread(input:{threadId: ...})`; list unresolved thread IDs first from `pullRequest.reviewThreads` and then resolve only the IDs tied to fixes you actually made.

@@ -16,6 +16,13 @@ import sodium from "libsodium-wrappers";
 import { useCallback, useMemo, useRef, useState } from "react";
 
 import { OnboardingPage } from "./components";
+import {
+  buildWorkflowYaml,
+  GITHUB_PROJECT_ID_SECRET_NAME,
+  GITHUB_SECRET_SERVER_KEY_SECRET_NAME,
+  WORKFLOW_FILE_NAME,
+  WORKFLOW_FILE_PATH,
+} from "./link-existing-onboarding-workflow";
 import type { TimelineStep } from "./shared";
 
 type LinkExistingStep = "choose-method" | "local" | "github-repository" | "github-config-path" | "github-logs";
@@ -91,10 +98,6 @@ function createRepositoryReference(fullName: string, defaultBranch: string): Git
 }
 
 const GITHUB_SCOPE_REQUIREMENTS = ["repo", "workflow"];
-const WORKFLOW_FILE_NAME = "stack-auth-config-sync.yml";
-const WORKFLOW_FILE_PATH = `.github/workflows/${WORKFLOW_FILE_NAME}`;
-const GITHUB_PROJECT_ID_SECRET_NAME = "STACK_AUTH_PROJECT_ID";
-const GITHUB_SECRET_SERVER_KEY_SECRET_NAME = "STACK_AUTH_SECRET_SERVER_KEY";
 const CONNECT_NEW_GITHUB_ACCOUNT_OPTION = "__connect-new-github-account__";
 const LINK_EXISTING_STEPS: LinkExistingStep[] = ["choose-method", "local", "github-repository", "github-config-path", "github-logs"];
 
@@ -394,34 +397,6 @@ async function encryptSecretValue(value: string, base64PublicKey: string): Promi
   const publicKeyBytes = sodium.from_base64(base64PublicKey, sodium.base64_variants.ORIGINAL);
   const encryptedBytes = sodium.crypto_box_seal(valueBytes, publicKeyBytes);
   return sodium.to_base64(encryptedBytes, sodium.base64_variants.ORIGINAL);
-}
-
-function buildWorkflowYaml(branch: string, configPath: string): string {
-  return `name: Stack Auth Config Sync
-
-on:
-  workflow_dispatch:
-  push:
-    branches:
-      - "${branch}"
-    paths:
-      - "${configPath}"
-      - "${WORKFLOW_FILE_PATH}"
-
-jobs:
-  push-stack-config:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-      - name: Push Stack Auth config
-        env:
-          STACK_PROJECT_ID: \${{ secrets.${GITHUB_PROJECT_ID_SECRET_NAME} }}
-          STACK_SECRET_SERVER_KEY: \${{ secrets.${GITHUB_SECRET_SERVER_KEY_SECRET_NAME} }}
-        run: pnpx @stackframe/stack-cli@latest config push --config-file "${configPath}"
-`;
 }
 
 function buildConfigPathSuggestions(paths: string[]): string[] {
