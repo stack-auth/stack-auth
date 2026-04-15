@@ -9,19 +9,21 @@ export const SQL_QUERY_RESULT_MAX_CHARS = 50_000;
 
 export function createSqlQueryTool(auth: SmartRequestAuth | null, targetProjectId?: string | null) {
   if (auth == null) {
-    // Return null or throw - analytics queries require authentication
     return null;
   }
 
   const projectId = targetProjectId ?? auth.tenancy.project.id;
   const branchId = targetProjectId ? "main" : auth.tenancy.branchId;
 
+  // Max rows returned to the model (backstop if LIMIT is missing).
+  const MAX_ROWS_FOR_AI = 50;
+
   return tool({
-    description: "Run a ClickHouse SQL query against the project's analytics database. Only SELECT queries are allowed. Project filtering is automatic.",
+    description: `Set and validate a ClickHouse SQL query for the analytics data grid. The grid runs the full query independently — you only receive a preview of the first ${MAX_ROWS_FOR_AI} rows to confirm correctness. Only SELECT queries are allowed. Project filtering is automatic. Always include a LIMIT clause.`,
     inputSchema: z.object({
       query: z
         .string()
-        .describe("The ClickHouse SQL query to execute. Only SELECT queries are allowed. Always include LIMIT clause."),
+        .describe("The ClickHouse SQL query to execute. Only SELECT queries are allowed. Always include a LIMIT clause unless the system prompt tells you to do otherwise."),
     }),
     execute: async ({ query }: { query: string }) => {
       const client = getClickhouseExternalClient();
@@ -41,7 +43,18 @@ export function createSqlQueryTool(auth: SmartRequestAuth | null, targetProjectI
           format: "JSONEachRow",
         });
         const rows = await resultSet.json<Record<string, unknown>[]>();
-        const response = { success: true as const, rowCount: rows.length, result: rows };
+        const truncated = rows.length > MAX_ROWS_FOR_AI;
+        const returnedRows = truncated ? rows.slice(0, MAX_ROWS_FOR_AI) : rows;
+        const response = {
+          success: true as const,
+          rowCount: returnedRows.length,
+          totalRows: rows.length,
+          truncated,
+          ...(truncated
+            ? { truncationNote: `Only the first ${MAX_ROWS_FOR_AI} of ${rows.length} rows are shown. Add LIMIT or aggregate to see the rest.` }
+            : {}),
+          result: returnedRows,
+        };
         const serialized = JSON.stringify(response);
         if (serialized.length > SQL_QUERY_RESULT_MAX_CHARS) {
           return {

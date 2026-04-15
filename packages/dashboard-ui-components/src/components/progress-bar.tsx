@@ -23,6 +23,16 @@ export type DesignProgressBarProps = {
   className?: string,
 };
 
+/**
+ * Horizontal progress bar for quota / fill-level indicators. Takes a
+ * `value` and optional `max` (defaults to 100 — pass raw values, the
+ * component computes the percentage). Optional label + percentage display.
+ *
+ * ```tsx
+ * <DesignProgressBar value={usedSeats} max={totalSeats} label="Seats used" showPercentage />
+ * <DesignProgressBar value={75} gradient="green" />
+ * ```
+ */
 export function DesignProgressBar({
   value,
   max = 100,
