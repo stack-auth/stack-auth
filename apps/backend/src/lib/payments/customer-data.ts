@@ -44,7 +44,8 @@ async function getLatestRow<T>(
     ORDER BY "__all_rows"."rowsortkey" DESC NULLS LAST, "__all_rows"."rowidentifier" DESC
     LIMIT 1
   `;
-  const rows = await prisma.$queryRaw`${Prisma.raw(sql)}` as any[];
+  const replicaClient = '$replica' in prisma ? (prisma as any).$replica() : prisma;
+  const rows = await replicaClient.$queryRaw`${Prisma.raw(sql)}` as any[];
   if (rows.length === 0) return null;
   return rows[0].rowdata as T;
 }
