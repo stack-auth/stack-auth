@@ -15,7 +15,7 @@ import {
 import { Link } from "../link";
 import { ServerTeam, ServerUser } from "@stackframe/stack";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import {
   createDefaultDataGridState,
   DataGrid,
@@ -106,9 +106,11 @@ function TeamMemberUserIdCell(props: { user: ExtendedServerUserForTeam }) {
   const { user } = props;
   const idLabel = formatUserId(user.id);
 
-  const handleCopy = async () => {
-    await navigator.clipboard.writeText(user.id);
-    toast({ title: "Copied to clipboard", variant: "success" });
+  const handleCopy = () => {
+    runAsynchronouslyWithAlert(async () => {
+      await navigator.clipboard.writeText(user.id);
+      toast({ title: "Copied to clipboard", variant: "success" });
+    });
   };
 
   return (
@@ -330,6 +332,7 @@ export function TeamMemberTable(props: { users: ServerUser[], team: ServerTeam }
       minWidth: 80,
       sortable: false,
       type: "string",
+      cellOverflow: "wrap",
       renderCell: ({ row }) => (
         <div className="flex items-center gap-1 flex-wrap">
           {row.permissions.map((permissionId) => (
@@ -365,6 +368,7 @@ export function TeamMemberTable(props: { users: ServerUser[], team: ServerTeam }
 
   const [users, setUsers] = useState<ServerUser[]>([]);
   const [userPermissions, setUserPermissions] = useState<Map<string, string[]>>(new Map());
+  const [isLoadingExtendedUsers, setIsLoadingExtendedUsers] = useState(true);
 
   const extendedUsers: ExtendedServerUserForTeam[] = useMemo(() => {
     return extendUsers(users).map((user) => ({
@@ -374,6 +378,7 @@ export function TeamMemberTable(props: { users: ServerUser[], team: ServerTeam }
   }, [users, userPermissions]);
 
   useEffect(() => {
+    let cancelled = false;
     async function load() {
       const promises = props.users.map(async user => {
         const permissions = await user.listPermissions(props.team, { recursive: false });
@@ -385,12 +390,21 @@ export function TeamMemberTable(props: { users: ServerUser[], team: ServerTeam }
       return await Promise.all(promises);
     }
 
+    setIsLoadingExtendedUsers(true);
     runAsynchronously(load().then((data) => {
+      if (cancelled) return;
       setUserPermissions(new Map(
         props.users.map((user, index) => [user.id, data[index].permissions.map(p => p.id)])
       ));
       setUsers(data.map(d => d.user));
+      setIsLoadingExtendedUsers(false);
+    }).catch(() => {
+      if (cancelled) return;
+      setIsLoadingExtendedUsers(false);
     }));
+    return () => {
+      cancelled = true;
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.users, props.team, updateCounter]);
 
@@ -410,14 +424,16 @@ export function TeamMemberTable(props: { users: ServerUser[], team: ServerTeam }
       rows={gridData.rows}
       getRowId={(row) => row.id}
       totalRowCount={gridData.totalRowCount}
+      isLoading={isLoadingExtendedUsers}
       state={gridState}
       onChange={setGridState}
       paginationMode="infinite"
       hasMore={gridData.hasMore}
       isLoadingMore={gridData.isLoadingMore}
       onLoadMore={gridData.loadMore}
+      rowHeight="auto"
+      estimatedRowHeight={44}
       footer={false}
-
     />
   );
 }

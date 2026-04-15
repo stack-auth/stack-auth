@@ -572,7 +572,7 @@ const gridData = useDataSource({
 
 Key props:
 
-- `columns` (`DataGridColumnDef[]`): column definitions with `id`, `header`, `accessor`, `type`, optional `renderCell`
+- `columns` (`DataGridColumnDef[]`): column definitions with `id`, `header`, `accessor`, `type`, optional `renderCell`, optional `cellOverflow`
 - `rows` (`TRow[]`): always `gridData.rows` from `useDataSource`, NEVER your raw array
 - `getRowId` (`(row) => string`): unique row identifier
 - `state` / `onChange`: fully controlled grid state (sorting, pagination, search, visibility)
@@ -580,6 +580,30 @@ Key props:
 - `toolbar`: `false` to hide, omit for default, or render function for custom
 - `onRowClick`: optional row click handler
 - `maxHeight`: max pixel height before scrolling
+- `rowHeight`: number (default 44) for fixed height, or `"auto"` for dynamic row measurement
+- `estimatedRowHeight`: estimated row height for the virtualizer when `rowHeight="auto"` (default 44)
+
+Cell overflow:
+
+- `cellOverflow: "truncate"` (default): single-line with text-overflow ellipsis
+- `cellOverflow: "wrap"`: content wraps naturally; rows grow when `rowHeight="auto"`
+- Use `cellOverflow: "wrap"` for badge lists, permission chips, multi-line text
+- Use default truncate for UUIDs, emails, dates, single-line text
+
+```tsx
+const columns: DataGridColumnDef<MyRow>[] = [
+  { id: "userId", header: "User ID", width: 130 },                            // truncates (default)
+  { id: "auth", header: "Auth methods", width: 150, cellOverflow: "wrap",     // badges wrap, row grows
+    renderCell: ({ row }) => (
+      <div className="flex flex-wrap gap-1">
+        {row.authTypes.map((t) => <Badge key={t}>{t}</Badge>)}
+      </div>
+    ),
+  },
+];
+
+<DataGrid columns={columns} rowHeight="auto" estimatedRowHeight={48} ... />
+```
 
 Rules:
 

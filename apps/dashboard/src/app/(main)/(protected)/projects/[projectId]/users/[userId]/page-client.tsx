@@ -916,7 +916,7 @@ function ContactChannelsDataGrid({
     sorting: gridState.sorting,
     quickSearch: gridState.quickSearch,
     pagination: gridState.pagination,
-    paginationMode: "infinite",
+    paginationMode: "client",
   });
 
   return (
@@ -1020,7 +1020,7 @@ function UserTeamsDataGrid({ teams, projectId }: { teams: Array<{ id: string, di
     sorting: gridState.sorting,
     quickSearch: gridState.quickSearch,
     pagination: gridState.pagination,
-    paginationMode: "infinite",
+    paginationMode: "client",
   });
 
   return (
@@ -1381,7 +1381,7 @@ function OAuthProvidersDataGrid({
     sorting: gridState.sorting,
     quickSearch: gridState.quickSearch,
     pagination: gridState.pagination,
-    paginationMode: "infinite",
+    paginationMode: "client",
   });
 
   return (

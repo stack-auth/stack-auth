@@ -14,6 +14,12 @@ import {
   DesignPillToggle,
   useInfiniteListWindow,
 } from "@/components/design-components";
+import {
+  AnalyticsChart,
+  DEFAULT_FORMAT_KIND,
+  type AnalyticsChartPalette,
+  type AnalyticsChartState,
+} from "@stackframe/dashboard-ui-components";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { UserAvatar } from '@stackframe/stack';
 import { fromNow, isWeekend } from '@stackframe/stack-shared/dist/utils/dates';
@@ -1900,7 +1906,6 @@ const BRAND_CONFIG_MAP = new Map(Object.entries(BRAND_CONFIG));
 export function DonutChartDisplay({
   datapoints,
   className,
-  height = 300,
   compact = false,
   gradientColor = "blue",
 }: {
@@ -1911,8 +1916,62 @@ export function DonutChartDisplay({
   gradientColor?: GradientColor,
 }) {
   const total = datapoints.reduce((sum, d) => sum + d.count, 0);
-  const innerRadius = compact ? 40 : 60;
-  const outerRadius = compact ? 55 : 85;
+  const hasData = datapoints.length > 0 && total > 0;
+
+  const explicitColors = useMemo(
+    () => datapoints.map((d) => BRAND_CONFIG_MAP.get(d.method)?.color ?? "#8B5CF6"),
+    [datapoints],
+  );
+
+  const pieState = useMemo<AnalyticsChartState>(() => ({
+    view: "pie",
+    xFormatKind: DEFAULT_FORMAT_KIND.datetime,
+    yFormatKind: { type: "numeric" },
+    layers: [
+      {
+        id: "primary",
+        kind: "primary",
+        label: "Auth Methods",
+        visible: true,
+        color: "#2563eb",
+        type: "area",
+        strokeStyle: "solid",
+        fillOpacity: 0.22,
+        segmented: true,
+        segments: [datapoints.map((d) => d.count)],
+        segmentSeries: datapoints.map((d) => {
+          const brand = BRAND_CONFIG_MAP.get(d.method);
+          const label = typeof brand?.label === "string" ? brand.label : d.method;
+          return { key: d.method, label };
+        }),
+        inProgressFromIndex: null,
+      },
+      {
+        id: "compare",
+        kind: "compare",
+        label: "Previous",
+        visible: false,
+        color: "#f59e0b",
+        type: "line",
+        strokeStyle: "dashed",
+        segmented: false,
+        inProgressFromIndex: null,
+      },
+      { id: "annotations", kind: "annotations", label: "Annotations", visible: false, color: "#f59e0b" },
+    ],
+  }), [datapoints]);
+
+  const palette = useMemo<Partial<AnalyticsChartPalette>>(() => ({
+    primary: { kind: "explicit", light: explicitColors, dark: explicitColors },
+    compare: { kind: "explicit", light: explicitColors, dark: explicitColors },
+  }), [explicitColors]);
+
+  const pieData = useMemo(
+    () => [{ ts: Date.now(), values: { primary: total } }],
+    [total],
+  );
+
+  const noop = () => {};
 
   return (
     <ChartCard
@@ -1935,98 +1994,27 @@ export function DonutChartDisplay({
         </div>
       </div>
       <div className={cn(compact ? "p-4 pt-0" : "p-5 pt-0", "flex-1 min-h-0 flex flex-col overflow-visible")}>
-        {datapoints.length === 0 || total === 0 ? (
+        {!hasData ? (
           <div className="flex-1 flex items-center justify-center">
             <Typography variant="secondary" className="text-xs text-center">
               No authentication data available
             </Typography>
           </div>
         ) : (
-          <div className="flex flex-col items-center w-full h-full justify-center flex-1 min-h-0 overflow-visible">
-            <ChartContainer
-              config={BRAND_CONFIG}
-              className="flex w-full items-center justify-center flex-1 min-h-0 pb-2 !overflow-visible [&_.recharts-wrapper]:!overflow-visible"
-              maxHeight={height}
-            >
-              <PieChart>
-                <ChartTooltip
-                  cursor={false}
-                  offset={20}
-                  allowEscapeViewBox={{ x: true, y: true }}
-                  wrapperStyle={{ zIndex: 9999, pointerEvents: 'none' }}
-                  content={
-                    <ChartTooltipContent
-                      className={`${tooltipSurfaceClass} px-3.5 py-2.5`}
-                      hideIndicator
-                      nameKey="method"
-                      formatter={(value, _name, item) => {
-                        const key = (item.payload as AuthMethodDatapoint | undefined)?.method;
-                        const brandConfig = key ? BRAND_CONFIG[key as keyof typeof BRAND_CONFIG] : undefined;
-                        const label = brandConfig?.label || _name;
-
-                        if (typeof value !== "number" || !key) {
-                          return null;
-                        }
-
-                        return (
-                          <div className="flex items-center gap-2.5">
-                            <span
-                              className="h-2 w-2 rounded-full ring-2 ring-white/20"
-                              style={{ backgroundColor: `var(--color-${key})` }}
-                            />
-                            <span className="text-[11px] font-medium">
-                              {label}
-                            </span>
-                            <span className="font-mono text-xs font-semibold tabular-nums">
-                              {value}
-                            </span>
-                          </div>
-                        );
-                      }}
-                    />
-                  }
-                />
-                <Pie
-                  data={datapoints.map(x => ({
-                    ...x,
-                    fill: `var(--color-${x.method})`
-                  }))}
-                  dataKey="count"
-                  nameKey="method"
-                  innerRadius={innerRadius}
-                  outerRadius={outerRadius}
-                  paddingAngle={3}
-                  labelLine={false}
-                  isAnimationActive={false}
-                />
-              </PieChart>
-            </ChartContainer>
-            <div className={cn("flex w-full flex-wrap justify-center gap-2 shrink-0", compact ? "mt-3" : "mt-4")}>
-              {datapoints.map((item) => {
-                const percentage = total > 0 ? ((item.count / total) * 100).toFixed(0) : 0;
-                return (
-                  <div
-                    key={item.method}
-                    className={cn(
-                      "flex items-center gap-1.5 rounded-full bg-foreground/[0.03] ring-1 ring-foreground/[0.06] transition-colors duration-150 hover:transition-none hover:bg-foreground/[0.05]",
-                      compact ? "px-2.5 py-1 text-[10px]" : "px-3 py-1.5 text-xs"
-                    )}
-                  >
-                    <span
-                      className="h-2 w-2 rounded-full shrink-0"
-                      style={{ backgroundColor: BRAND_CONFIG_MAP.get(item.method)?.color ?? "var(--color-other)" }}
-                    />
-                    <span className="font-medium text-foreground">
-                      {BRAND_CONFIG_MAP.get(item.method)?.label ?? item.method}
-                    </span>
-                    <span className="text-muted-foreground">
-                      {percentage}%
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
+          <AnalyticsChart
+            data={pieData}
+            state={pieState}
+            onChange={noop}
+            palette={palette}
+            pie={{
+              innerRadius: compact ? 40 : 60,
+              outerRadius: compact ? 55 : 85,
+              className: cn(
+                "aspect-square",
+                compact ? "h-[150px] w-[150px]" : "h-[200px] w-[200px]",
+              ),
+            }}
+          />
         )}
       </div>
     </ChartCard>

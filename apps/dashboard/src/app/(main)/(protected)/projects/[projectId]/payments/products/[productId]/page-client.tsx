@@ -1565,7 +1565,7 @@ function ProductCustomersSection({ productId, product }: ProductCustomersSection
     sorting: gridState.sorting,
     quickSearch: gridState.quickSearch,
     pagination: gridState.pagination,
-    paginationMode: "infinite",
+    paginationMode: "client",
   });
 
   return (

@@ -1057,6 +1057,7 @@ const emailTableColumns: DataGridColumnDef<AdminSentEmail>[] = [
     header: "Recipient",
     width: 200,
     type: "string",
+    accessor: (row) => row.to[0] ?? row.recipient,
     renderCell: ({ row }) => {
       const recipientEmail = row.to[0] ?? row.recipient;
       return recipientEmail || "No recipient";

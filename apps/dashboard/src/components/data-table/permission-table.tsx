@@ -1,6 +1,5 @@
 'use client';
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { ActionCell, ActionDialog, SimpleTooltip } from "@/components/ui";
 import { Badge } from "@/components/ui/badge";
 import {
@@ -32,7 +31,6 @@ function EditDialog(props: {
   const teamPermissions = stackAdminApp.useTeamPermissionDefinitions();
   const projectPermissions = stackAdminApp.useProjectPermissionDefinitions();
   const permissions = props.permissionType === 'project' ? projectPermissions : teamPermissions;
-  const combinedPermissions = [...teamPermissions, ...projectPermissions];
 
   const currentPermission = permissions.find((p) => p.id === props.selectedPermissionId);
   if (!currentPermission) {
@@ -73,14 +71,12 @@ function EditDialog(props: {
     title="Edit Permission"
     formSchema={formSchema}
     okButton={{ label: "Save" }}
-    onSubmit={(values) => {
-      runAsynchronously(async () => {
-        if (props.permissionType === 'project') {
-          await stackAdminApp.updateProjectPermissionDefinition(props.selectedPermissionId, values);
-        } else {
-          await stackAdminApp.updateTeamPermissionDefinition(props.selectedPermissionId, values);
-        }
-      });
+    onSubmit={async (values) => {
+      if (props.permissionType === 'project') {
+        await stackAdminApp.updateProjectPermissionDefinition(props.selectedPermissionId, values);
+      } else {
+        await stackAdminApp.updateTeamPermissionDefinition(props.selectedPermissionId, values);
+      }
     }}
     cancelButton
   />;
@@ -182,9 +178,10 @@ function createColumns<T extends AdminPermissionDefinition>(permissionType: Perm
       accessor: "containedPermissionIds",
       width: 120,
       type: "custom",
+      cellOverflow: "wrap",
       formatValue: (value) => (Array.isArray(value) ? value.join(", ") : String(value ?? "")),
       renderCell: ({ row }) => (
-        <div className="flex max-w-[120px] flex-wrap items-center gap-1">
+        <div className="flex flex-wrap items-center gap-1">
           {row.containedPermissionIds.map((id) => (
             <Badge key={id} variant="secondary">{id}</Badge>
           ))}
@@ -243,6 +240,8 @@ export function PermissionTable<T extends AdminPermissionDefinition>(props: {
       hasMore={gridData.hasMore}
       isLoadingMore={gridData.isLoadingMore}
       onLoadMore={gridData.loadMore}
+      rowHeight="auto"
+      estimatedRowHeight={44}
       footer={false}
 
       strings={{ searchPlaceholder: "Filter by ID" }}

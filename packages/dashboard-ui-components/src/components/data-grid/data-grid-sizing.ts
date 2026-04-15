@@ -15,6 +15,7 @@ function colVar(id: string): `--col-${string}` {
 // cached per unique label string.
 
 const MIN_COL_WIDTH = 20;
+const MIN_CUSTOM_HEADER_WIDTH = 50;
 // px-3 both sides + gap-1.5 + sort icon (h-3 w-3) + 2px rounding buffer
 const HEADER_CHROME_PX = 12 + 12 + 6 + 12 + 2;
 
@@ -55,7 +56,7 @@ export function getEffectiveMinWidth<TRow>(col: DataGridColumnDef<TRow>): number
   }
   const label = typeof col.header === "string" ? col.header : null;
   if (label == null) {
-    return MIN_COL_WIDTH;
+    return typeof col.header === "function" ? MIN_CUSTOM_HEADER_WIDTH : MIN_COL_WIDTH;
   }
   return Math.max(MIN_COL_WIDTH, measureHeaderLabelWidth(label) + HEADER_CHROME_PX);
 }

@@ -258,12 +258,15 @@ function DataCell<TRow>({
   }
   const hasCellClick = col.onCellClick || col.onCellDoubleClick;
 
+  const isWrap = col.cellOverflow === "wrap";
+
   return (
     <div
       className={cn(
-        "flex items-center px-3 bg-transparent overflow-hidden",
+        "flex px-3 bg-transparent overflow-hidden",
         "border-r border-black/[0.04] dark:border-white/[0.04] last:border-r-0",
         "text-sm text-foreground",
+        isWrap ? "items-start py-2" : "items-center",
         col.align === "center" && "justify-center",
         col.align === "right" && "justify-end",
         hasCellClick && "cursor-pointer",
@@ -280,7 +283,7 @@ function DataCell<TRow>({
         col.onCellDoubleClick!(ctx, e);
       } : undefined}
     >
-      <div className="min-w-0 flex-1 truncate">
+      <div className={cn("min-w-0", isWrap ? "flex-1" : "truncate")}>
         {content}
       </div>
     </div>
@@ -339,6 +342,14 @@ function renderDateCell<TRow>(
 
 // ─── Skeleton row ────────────────────────────────────────────────────
 
+function hashStringToInt(value: string): number {
+  let hash = 0;
+  for (let i = 0; i < value.length; i++) {
+    hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+
 function SkeletonRow({
   columns,
   height,
@@ -366,7 +377,7 @@ function SkeletonRow({
         >
           <DesignSkeleton
             className="h-3.5 rounded-md"
-            style={{ width: `${40 + Math.random() * 40}%` }}
+            style={{ width: `${40 + (hashStringToInt(col.id) % 40)}%` }}
           />
         </div>
       ))}
@@ -740,6 +751,39 @@ function DefaultFooter<TRow>({
  * and footer all call it for you. You do not need to wire any of this
  * manually.
  *
+ * ## Cell overflow and dynamic row heights
+ *
+ * By default every cell truncates its content with an ellipsis
+ * (`cellOverflow: "truncate"`). For columns whose content should wrap
+ * — badge lists, multi-line text, permission chips — set
+ * `cellOverflow: "wrap"` on the column definition.
+ *
+ * To let rows grow to fit their tallest cell, set `rowHeight="auto"`
+ * on the grid. The virtualizer will measure each row after render and
+ * adjust scroll positions accordingly. Pair with `estimatedRowHeight`
+ * (default 44) for better scroll-position estimates before measurement.
+ *
+ * ```tsx
+ * // Columns: UUIDs truncate, auth-method badges wrap
+ * const columns = [
+ *   { id: "userId", header: "User ID", width: 130 },                      // default truncate
+ *   { id: "auth", header: "Auth methods", width: 150, cellOverflow: "wrap",
+ *     renderCell: ({ row }) => (
+ *       <div className="flex flex-wrap gap-1">
+ *         {row.authTypes.map((t) => <Badge key={t}>{t}</Badge>)}
+ *       </div>
+ *     ),
+ *   },
+ * ];
+ *
+ * <DataGrid columns={columns} rowHeight="auto" estimatedRowHeight={48} ... />
+ * ```
+ *
+ * With a fixed numeric `rowHeight` (the default), `cellOverflow: "wrap"`
+ * still lets content wrap within the row, but anything exceeding the
+ * fixed height is clipped. This is useful when you want controlled
+ * wrapping without variable row heights.
+ *
  * ## Height and scrolling
  *
  * DataGrid is NOT a card. It has no border, rounded corners, or shadow of
@@ -795,7 +839,8 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
     paginationMode = "paginated",
     selectionMode = "none",
     resizable = true,
-    rowHeight = 44,
+    rowHeight: rowHeightProp = 44,
+    estimatedRowHeight: estimatedRowHeightProp,
     headerHeight = 44,
     overscan = 5,
     maxHeight,
@@ -815,6 +860,10 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
     onSelectionChange,
     onSortChange,
   } = props;
+
+  const isDynamicRowHeight = rowHeightProp === "auto";
+  const fixedRowHeight = isDynamicRowHeight ? undefined : rowHeightProp;
+  const estimatedRowHeight = estimatedRowHeightProp ?? (fixedRowHeight ?? 44);
 
   const strings = useMemo(
     () => resolveDataGridStrings(stringsOverride),
@@ -966,56 +1015,88 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const headerScrollRef = useRef<HTMLDivElement>(null);
   const stickyChromeRef = useRef<HTMLDivElement>(null);
-  const [shouldShowStickyBlur, setShouldShowStickyBlur] = React.useState(false);
+  const measureElementFn = useCallback(
+    (el: Element) => el.getBoundingClientRect().height,
+    [],
+  );
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollContainerRef.current,
-    estimateSize: () => rowHeight,
+    estimateSize: () => estimatedRowHeight,
     overscan,
+    ...(isDynamicRowHeight ? { measureElement: measureElementFn } : {}),
   });
 
-  // Apply expensive backdrop blur once the first data row has moved at least
-  // 75% under the header band. This keeps the trigger stable (no per-row
-  // pulsing) while still matching visual layering.
+  // Composite ancestor backgrounds into a single opaque color so the
+  // sticky header fully covers rows scrolling underneath. Handles
+  // semi-transparent layers like `bg-white/80` by alpha-blending the
+  // full ancestor chain. Re-runs on theme changes (class on <html>).
   useLayoutEffect(() => {
-    const stickyChrome = stickyChromeRef.current;
-    const scrollContainer = scrollContainerRef.current;
-    if (!stickyChrome || !scrollContainer) return;
-    const FIRST_ROW_HIDDEN_THRESHOLD = 0.75;
+    const grid = gridRef.current;
+    const stickyEl = stickyChromeRef.current;
+    if (!grid || !stickyEl) return;
 
-    const updateBlurState = () => {
-      if (rows.length === 0 || rowHeight <= 0) {
-        setShouldShowStickyBlur(false);
+    const parseRgba = (raw: string): [number, number, number, number] | null => {
+      const rgbaMatch = raw.match(/rgba?\(\s*([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\s*\)/) as (RegExpMatchArray & { [4]?: string }) | null;
+      if (!rgbaMatch) return null;
+      const alphaRaw = rgbaMatch[4];
+      return [
+        Number(rgbaMatch[1]),
+        Number(rgbaMatch[2]),
+        Number(rgbaMatch[3]),
+        alphaRaw === undefined ? 1 : Number(alphaRaw),
+      ];
+    };
+
+    const blendOver = (
+      base: [number, number, number, number],
+      top: [number, number, number, number],
+    ): [number, number, number, number] => {
+      const [tr, tg, tb, ta] = top;
+      const [br, bg, bb, ba] = base;
+      const outA = ta + ba * (1 - ta);
+      if (outA === 0) return [0, 0, 0, 0];
+      return [
+        (tr * ta + br * ba * (1 - ta)) / outA,
+        (tg * ta + bg * ba * (1 - ta)) / outA,
+        (tb * ta + bb * ba * (1 - ta)) / outA,
+        outA,
+      ];
+    };
+
+    const detect = () => {
+      const layers: [number, number, number, number][] = [];
+      let ancestor: HTMLElement | null = grid.parentElement;
+      while (ancestor) {
+        const parsed = parseRgba(getComputedStyle(ancestor).backgroundColor);
+        if (parsed && parsed[3] > 0) {
+          layers.push(parsed);
+          if (parsed[3] >= 1) break;
+        }
+        ancestor = ancestor.parentElement;
+      }
+
+      if (layers.length === 0) {
+        stickyEl.style.backgroundColor = "";
         return;
       }
 
-      const scrollTop = scrollContainer.scrollTop;
-      const stickyRect = stickyChrome.getBoundingClientRect();
-      const headerBandBottomPx = stickyRect.bottom;
-      const scrollContainerTopPx = scrollContainer.getBoundingClientRect().top;
-      const firstRowTopPx = scrollContainerTopPx - scrollTop;
-      const firstRowHiddenPx = headerBandBottomPx - firstRowTopPx;
-      const shouldShowBlur = firstRowHiddenPx >= rowHeight * FIRST_ROW_HIDDEN_THRESHOLD;
+      // Blend bottom-up (deepest ancestor is the base)
+      let result: [number, number, number, number] = layers[layers.length - 1]!;
+      for (let i = layers.length - 2; i >= 0; i--) {
+        result = blendOver(result, layers[i]!);
+      }
 
-      setShouldShowStickyBlur((prev) => (prev === shouldShowBlur ? prev : shouldShowBlur));
+      const [r, g, b] = result;
+      stickyEl.style.backgroundColor = `rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)})`;
     };
 
-    const resizeObserver = new ResizeObserver(updateBlurState);
-    resizeObserver.observe(stickyChrome);
-    resizeObserver.observe(scrollContainer);
+    detect();
 
-    updateBlurState();
-    window.addEventListener("scroll", updateBlurState, true);
-    window.addEventListener("resize", updateBlurState);
-    scrollContainer.addEventListener("scroll", updateBlurState, { passive: true });
-
-    return () => {
-      resizeObserver.disconnect();
-      window.removeEventListener("scroll", updateBlurState, true);
-      window.removeEventListener("resize", updateBlurState);
-      scrollContainer.removeEventListener("scroll", updateBlurState);
-    };
-  }, [stickyTop, rows.length, rowHeight]);
+    const observer = new MutationObserver(detect);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
 
   // Sync horizontal scroll from body to header
   const handleBodyScroll = useCallback(() => {
@@ -1086,17 +1167,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
           scroll ancestor so they remain visible while the body scrolls. */}
       <div
         ref={stickyChromeRef}
-        className={cn(
-          "sticky z-20 shrink-0 rounded-t-[calc(var(--radius)*2)]",
-          "bg-transparent",
-          shouldShowStickyBlur && [
-            "supports-[backdrop-filter]:backdrop-blur-2xl",
-            "dark:supports-[backdrop-filter]:backdrop-blur-3xl",
-            "dark:supports-[backdrop-filter]:backdrop-brightness-50",
-            "dark:supports-[backdrop-filter]:backdrop-saturate-150",
-            "dark:bg-black/75",
-          ],
-        )}
+        className="sticky z-20 shrink-0 rounded-t-[calc(var(--radius)*2)] bg-background"
         style={{ top: stickyTop ?? "var(--data-grid-sticky-top, 0px)" }}
       >
         {/* Toolbar */}
@@ -1186,7 +1257,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
                 <SkeletonRow
                   key={i}
                   columns={visibleColumns}
-                  height={rowHeight}
+                  height={estimatedRowHeight}
                   showCheckbox={selectionMode !== "none"}
                 />
               ))}
@@ -1222,6 +1293,8 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
               return (
                 <div
                   key={rowId}
+                  ref={isDynamicRowHeight ? rowVirtualizer.measureElement : undefined}
+                  data-index={virtualRow.index}
                   className={cn(
                     "absolute left-0 w-full flex",
                     "border-b border-black/[0.03] dark:border-white/[0.03]",
@@ -1234,7 +1307,9 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
                     (selectionMode !== "none" || onRowClick) && "cursor-pointer",
                   )}
                   style={{
-                    height: rowHeight,
+                    ...(isDynamicRowHeight
+                      ? { minHeight: estimatedRowHeight }
+                      : { height: fixedRowHeight }),
                     transform: `translateY(${virtualRow.start}px)`,
                   }}
                   onClick={(e) => handleRowClick(row, rowId, e)}

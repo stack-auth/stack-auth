@@ -144,6 +144,7 @@ const USER_TABLE_COLUMNS: DataGridColumnDef<ExtendedServerUser>[] = [
     header: "Auth methods",
     width: 150,
     sortable: false,
+    cellOverflow: "wrap",
     renderCell: ({ row }) => <AuthMethodsCell user={row} />,
   },
   {
@@ -232,14 +233,19 @@ function UserTableBody(props: {
     }
 
     runAsynchronouslyWithAlert(async () => {
-      const result = await stackAdminApp.listUsers(listOptions);
-      if (controller.signal.aborted) return;
-      const extended = extendUsers(result);
-      setRows(extended);
-      setNextCursor(result.nextCursor);
-      hasDataRef.current = true;
-      setIsLoading(false);
-      setIsRefetching(false);
+      try {
+        const result = await stackAdminApp.listUsers(listOptions);
+        if (controller.signal.aborted) return;
+        const extended = extendUsers(result);
+        setRows(extended);
+        setNextCursor(result.nextCursor);
+        hasDataRef.current = true;
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsLoading(false);
+          setIsRefetching(false);
+        }
+      }
     });
 
     return () => controller.abort();
@@ -248,8 +254,10 @@ function UserTableBody(props: {
   const loadMore = useCallback(async () => {
     if (!nextCursor || isLoadingMore) return;
     setIsLoadingMore(true);
+    const requestedOptions = listOptionsRef.current;
     try {
-      const result = await stackAdminApp.listUsers({ ...listOptionsRef.current, cursor: nextCursor });
+      const result = await stackAdminApp.listUsers({ ...requestedOptions, cursor: nextCursor });
+      if (listOptionsRef.current !== requestedOptions) return;
       const extended = extendUsers(result);
       setRows((prev) => {
         const existingIds = new Set(prev.map((r) => r.id));
@@ -316,6 +324,8 @@ function UserTableBody(props: {
       hasMore={nextCursor != null}
       isLoadingMore={isLoadingMore}
       onLoadMore={handleLoadMore}
+      rowHeight="auto"
+      estimatedRowHeight={44}
       footer={false}
 
       toolbarExtra={
@@ -472,10 +482,10 @@ function UserIdCell(props: { user: ExtendedServerUser }) {
     <SimpleTooltip tooltip="Copy user ID">
       <Button
         type="button"
-        onClick={async () => {
+        onClick={() => runAsynchronouslyWithAlert(async () => {
           await navigator.clipboard.writeText(user.id);
           toast({ title: "Copied to clipboard", variant: "success" });
-        }}
+        })}
         className="flex max-w-full px-1 py-0 h-min items-center gap-2 font-mono text-xs text-muted-foreground transition-colors hover:transition-none hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer bg-transparent hover:bg-transparent"
         aria-label="Copy user ID"
         title={user.id}

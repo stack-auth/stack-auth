@@ -322,7 +322,7 @@ function DeletedRowsDataGrid({ rows, loading }: { rows: DeletedRowEntry[], loadi
       onChange={setGridState}
       toolbar={false}
       footer={false}
-      emptyState="No deleted rows recorded yet."
+      emptyState={loading ? undefined : "No deleted rows recorded yet."}
     />
   );
 }
@@ -405,7 +405,7 @@ function SyncEngineDataGrid({ rows, loading }: { rows: MappingStats[], loading: 
       onChange={setGridState}
       toolbar={false}
       footer={false}
-      emptyState="No mappings configured."
+      emptyState={loading ? undefined : "No mappings configured."}
     />
   );
 }

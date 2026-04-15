@@ -2,7 +2,7 @@
 
 import { SettingCard } from "@/components/settings";
 import { ActionDialog, Badge, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SimpleTooltip, Switch, Typography, useToast } from "@/components/ui";
-import { createDefaultDataGridState, DataGrid, useDataSource, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
+import { createDefaultDataGridState, DataGrid, DataGridToolbar, useDataSource, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
 import { cn } from "@/lib/utils";
 import { DotsThreeIcon, PauseIcon, PlayIcon, XCircleIcon } from "@phosphor-icons/react";
 import { AdminEmailOutbox, AdminEmailOutboxSimpleStatus, AdminEmailOutboxStatus } from "@stackframe/stack";
@@ -812,6 +812,7 @@ export default function PageClient() {
             onLoadMore={handleLoadMore}
             footer={false}
             maxHeight={500}
+            toolbar={(ctx) => <DataGridToolbar ctx={ctx} hideQuickSearch />}
             onRowClick={(row) => {
               setSelectedEmail(row);
               setDetailSheetOpen(true);

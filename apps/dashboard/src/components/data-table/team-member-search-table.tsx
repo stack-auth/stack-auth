@@ -45,16 +45,21 @@ export function TeamMemberSearchTable(props: {
     }
 
     runAsynchronouslyWithAlert(async () => {
-      const result = await stackAdminApp.listUsers({
-        limit: PAGE_SIZE,
-        query: search || undefined,
-      });
-      if (controller.signal.aborted) return;
-      setRows(extendUsers(result));
-      setNextCursor(result.nextCursor);
-      hasDataRef.current = true;
-      setIsLoading(false);
-      setIsRefetching(false);
+      try {
+        const result = await stackAdminApp.listUsers({
+          limit: PAGE_SIZE,
+          query: search || undefined,
+        });
+        if (controller.signal.aborted) return;
+        setRows(extendUsers(result));
+        setNextCursor(result.nextCursor);
+        hasDataRef.current = true;
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsLoading(false);
+          setIsRefetching(false);
+        }
+      }
     });
 
     return () => controller.abort();
@@ -63,12 +68,15 @@ export function TeamMemberSearchTable(props: {
   const loadMore = useCallback(async () => {
     if (!nextCursor || isLoadingMore) return;
     setIsLoadingMore(true);
+    const activeSearch = search;
+    const activeCursor = nextCursor;
     try {
       const result = await stackAdminApp.listUsers({
         limit: PAGE_SIZE,
-        query: search || undefined,
-        cursor: nextCursor,
+        query: activeSearch || undefined,
+        cursor: activeCursor,
       });
+      if (search !== activeSearch || abortRef.current?.signal.aborted) return;
       setRows((prev) => {
         const existingIds = new Set(prev.map((r) => r.id));
         const newRows = extendUsers(result).filter((r) => !existingIds.has(r.id));

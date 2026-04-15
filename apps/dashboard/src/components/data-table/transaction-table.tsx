@@ -4,7 +4,7 @@ import { useAdminApp } from '@/app/(main)/(protected)/projects/[projectId]/use-a
 import { ActionCell, ActionDialog, Alert, AlertDescription, AvatarCell, Badge, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui';
 import type { Icon as PhosphorIcon } from '@phosphor-icons/react';
 import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, GearIcon, ProhibitIcon, QuestionIcon, ShoppingCartIcon, ShuffleIcon } from '@phosphor-icons/react';
-import { createDefaultDataGridState, DataGrid, type DataGridColumnDef, type DataGridState } from '@stackframe/dashboard-ui-components';
+import { createDefaultDataGridState, DataGrid, DataGridToolbar, type DataGridColumnDef, type DataGridState } from '@stackframe/dashboard-ui-components';
 import type { Transaction, TransactionEntry, TransactionType } from '@stackframe/stack-shared/dist/interface/crud/transactions';
 import { TRANSACTION_TYPES } from '@stackframe/stack-shared/dist/interface/crud/transactions';
 import { moneyAmountSchema } from '@stackframe/stack-shared/dist/schema-fields';
@@ -482,13 +482,18 @@ function TransactionTableBody(props: {
     }
 
     runAsynchronouslyWithAlert(async () => {
-      const result = await app.listTransactions(listParams);
-      if (controller.signal.aborted) return;
-      setTransactions(result.transactions);
-      setNextCursor(result.nextCursor);
-      hasDataRef.current = true;
-      setIsLoading(false);
-      setIsRefetching(false);
+      try {
+        const result = await app.listTransactions(listParams);
+        if (controller.signal.aborted) return;
+        setTransactions(result.transactions);
+        setNextCursor(result.nextCursor);
+        hasDataRef.current = true;
+      } finally {
+        if (!controller.signal.aborted) {
+          setIsLoading(false);
+          setIsRefetching(false);
+        }
+      }
     });
 
     return () => controller.abort();
@@ -497,8 +502,10 @@ function TransactionTableBody(props: {
   const loadMore = useCallback(async () => {
     if (!nextCursor || isLoadingMore) return;
     setIsLoadingMore(true);
+    const requestedParams = listParamsRef.current;
     try {
-      const result = await app.listTransactions({ ...listParamsRef.current, cursor: nextCursor });
+      const result = await app.listTransactions({ ...requestedParams, cursor: nextCursor });
+      if (listParamsRef.current !== requestedParams) return;
       setTransactions((prev) => {
         const existingIds = new Set(prev.map((t) => t.id));
         const newItems = result.transactions.filter((t) => !existingIds.has(t.id));
@@ -688,46 +695,52 @@ function TransactionTableBody(props: {
       footer={false}
       rowHeight={56}
 
-      toolbarExtra={
-        <div className="flex items-center gap-2">
-          <Select
-            value={filterTypeValue}
-            onValueChange={handleTypeChange}
-          >
-            <SelectTrigger className="h-8 w-[180px] text-xs">
-              <SelectValue placeholder="All types" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all">All types</SelectItem>
-              {TRANSACTION_TYPES.map((transactionType) => {
-                const { Icon: TypeIcon, label } = formatTransactionTypeLabel(transactionType);
-                return (
-                  <SelectItem key={transactionType} value={transactionType}>
-                    <div className="flex items-center gap-2">
-                      <TypeIcon className="h-4 w-4 text-muted-foreground" aria-hidden />
-                      <span className="truncate">{label}</span>
-                    </div>
-                  </SelectItem>
-                );
-              })}
-            </SelectContent>
-          </Select>
-          <Select
-            value={filterCustomerValue}
-            onValueChange={handleCustomerTypeChange}
-          >
-            <SelectTrigger className="h-8 w-[140px] text-xs">
-              <SelectValue placeholder="All customers" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="__all">All customers</SelectItem>
-              <SelectItem value="user">User</SelectItem>
-              <SelectItem value="team">Team</SelectItem>
-              <SelectItem value="custom">Custom</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      }
+      toolbar={(ctx) => (
+        <DataGridToolbar
+          ctx={ctx}
+          hideQuickSearch
+          extra={
+            <div className="flex items-center gap-2">
+              <Select
+                value={filterTypeValue}
+                onValueChange={handleTypeChange}
+              >
+                <SelectTrigger className="h-8 w-[180px] text-xs">
+                  <SelectValue placeholder="All types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all">All types</SelectItem>
+                  {TRANSACTION_TYPES.map((transactionType) => {
+                    const { Icon: TypeIcon, label } = formatTransactionTypeLabel(transactionType);
+                    return (
+                      <SelectItem key={transactionType} value={transactionType}>
+                        <div className="flex items-center gap-2">
+                          <TypeIcon className="h-4 w-4 text-muted-foreground" aria-hidden />
+                          <span className="truncate">{label}</span>
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+              <Select
+                value={filterCustomerValue}
+                onValueChange={handleCustomerTypeChange}
+              >
+                <SelectTrigger className="h-8 w-[140px] text-xs">
+                  <SelectValue placeholder="All customers" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all">All customers</SelectItem>
+                  <SelectItem value="user">User</SelectItem>
+                  <SelectItem value="team">Team</SelectItem>
+                  <SelectItem value="custom">Custom</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          }
+        />
+      )}
       emptyState={
         <div className="text-center py-8">
           <p className="text-sm text-muted-foreground">No transactions found</p>

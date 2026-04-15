@@ -106,7 +106,7 @@ function MessageTable(props: { endpointId: string }) {
     { id: "id", header: "ID", accessor: "id", width: 200, type: "string" },
     {
       id: "status",
-      header: "Message",
+      header: "Status",
       width: 100,
       renderCell: ({ row }) => (
         <DesignBadge

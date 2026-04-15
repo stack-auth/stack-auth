@@ -82,7 +82,7 @@ function TeamActions({ team }: { team: ServerTeam }) {
         items={[
           {
             item: "View Members",
-            onClick: () => router.push(`/projects/${adminApp.projectId}/teams/${team.id}`),
+            onClick: () => router.push(`/projects/${encodeURIComponent(adminApp.projectId)}/teams/${encodeURIComponent(team.id)}`),
           },
           {
             item: "Edit",
