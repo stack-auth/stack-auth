@@ -72,6 +72,7 @@ async function extractOpenApiDetails(
               text: errorText,
             },
           ],
+          isError: true,
         };
       }
     }
