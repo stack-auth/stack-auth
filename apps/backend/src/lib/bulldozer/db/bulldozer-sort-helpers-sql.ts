@@ -583,13 +583,13 @@ export const BULLDOZER_SORT_HELPERS_SQL = deindent`
     current_row jsonb;
   BEGIN
     FOR current_group_key IN EXECUTE format(
-      'SELECT DISTINCT r."groupKey" FROM "__bulldozer_seq" AS s, LATERAL jsonb_to_record(s."__output_row") AS r("groupKey" jsonb, "rowIdentifier" text, "rowSortKey" jsonb, "rowData" jsonb) WHERE s."__output_name" = %L',
+      'SELECT DISTINCT COALESCE(r."groupKey", ''null''::jsonb) FROM "__bulldozer_seq" AS s, LATERAL jsonb_to_record(s."__output_row") AS r("groupKey" jsonb, "rowIdentifier" text, "rowSortKey" jsonb, "rowData" jsonb) WHERE s."__output_name" = %L',
       source_table_name
     )
     LOOP
       PERFORM pg_temp.bulldozer_sort_ensure_group(groups_path, current_group_key);
       EXECUTE format(
-        'SELECT array_agg(jsonb_build_object(''rowIdentifier'', r."rowIdentifier", ''rowSortKey'', r."rowSortKey", ''rowData'', r."rowData") ORDER BY r."rowSortKey" ASC, r."rowIdentifier" ASC) FROM "__bulldozer_seq" AS s, LATERAL jsonb_to_record(s."__output_row") AS r("groupKey" jsonb, "rowIdentifier" text, "rowSortKey" jsonb, "rowData" jsonb) WHERE s."__output_name" = %L AND r."groupKey" IS NOT DISTINCT FROM $1',
+        'SELECT array_agg(jsonb_build_object(''rowIdentifier'', r."rowIdentifier", ''rowSortKey'', COALESCE(r."rowSortKey", ''null''::jsonb), ''rowData'', COALESCE(r."rowData", ''null''::jsonb)) ORDER BY COALESCE(r."rowSortKey", ''null''::jsonb) ASC, r."rowIdentifier" ASC) FROM "__bulldozer_seq" AS s, LATERAL jsonb_to_record(s."__output_row") AS r("groupKey" jsonb, "rowIdentifier" text, "rowSortKey" jsonb, "rowData" jsonb) WHERE s."__output_name" = %L AND COALESCE(r."groupKey", ''null''::jsonb) IS NOT DISTINCT FROM $1',
         source_table_name
       )
       INTO ordered_rows

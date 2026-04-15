@@ -65,11 +65,12 @@ export function attachRowChangeTriggerMetadata(
     targetTableTriggers: ReadonlyMap<string, RowChangeTriggerInput>,
   },
 ): RegisteredRowChangeTrigger {
+  const getTriggeredTables = () => [...metadata.targetTableTriggers.values()].map((rowChangeTrigger) =>
+    normalizeRowChangeTrigger(rowChangeTrigger)
+  );
   return {
     targetTableId: metadata.targetTableId,
-    listTriggeredTables: () => [...metadata.targetTableTriggers.values()].map((rowChangeTrigger) =>
-      normalizeRowChangeTrigger(rowChangeTrigger)
-    ),
+    listTriggeredTables: getTriggeredTables,
     execute: (changesTable) => {
       const statements = trigger(changesTable);
       const outputName = [...statements]
@@ -84,9 +85,7 @@ export function attachRowChangeTriggerMetadata(
       return {
         statements,
         outputChangesTable: quoteSqlIdentifier(outputName),
-        triggeredTables: [...metadata.targetTableTriggers.values()].map((rowChangeTrigger) =>
-          normalizeRowChangeTrigger(rowChangeTrigger)
-        ),
+        triggeredTables: getTriggeredTables(),
       };
     },
   };
@@ -201,7 +200,11 @@ export function collectRowChangeTriggerStatements(options: {
     const missing = [...discoveredTableIds]
       .filter((tableId) => !topologicalOrder.includes(tableId))
       .sort(stringCompare);
-    topologicalOrder.push(...missing);
+    throw new StackAssertionError("Cycle detected in trigger dependency graph — topological sort could not order all tables", {
+      sourceTableId: options.sourceTableId,
+      cyclicTableIds: missing,
+      orderedTableIds: topologicalOrder,
+    });
   }
 
   const pendingChangesByTableId = new Map<string, ChangesTableExpression[]>();

@@ -1324,6 +1324,8 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     expect(Number(reducedCountOnly.result[0].count)).toBeGreaterThan(0);
     expect(Number(reducedCountOnly.result[0].count)).toBeLessThanOrEqual(5);
 
+    allInitializedTables.length = 0;
+
     const bulkDelete = await measureMs("load full table delete", async () => {
       await runStatements(table.delete());
     });
