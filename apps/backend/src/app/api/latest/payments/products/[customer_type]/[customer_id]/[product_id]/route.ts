@@ -1,4 +1,4 @@
-import { customerOwnsProduct, ensureProductIdOrInlineProduct, isActiveSubscription } from "@/lib/payments";
+import { customerOwnsProduct, ensureCustomerExists, ensureProductIdOrInlineProduct, isActiveSubscription } from "@/lib/payments";
 import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { getOwnedProductsForCustomer, getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
 import { getPrismaClientForTenancy } from "@/prisma-client";
@@ -64,6 +64,12 @@ export const DELETE = createSmartRouteHandler({
     }
 
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    await ensureCustomerExists({
+      prisma,
+      tenancyId: auth.tenancy.id,
+      customerType: params.customer_type,
+      customerId: params.customer_id,
+    });
 
     // Fetch subscription map and owned products from Bulldozer
     const subMap = await getSubscriptionMapForCustomer({

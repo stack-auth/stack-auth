@@ -8,7 +8,6 @@
 import { Prisma } from "@/generated/prisma/client";
 import { toQueryableSqlQuery } from "@/lib/bulldozer/db/index";
 import { quoteSqlStringLiteral } from "@/lib/bulldozer/db/utilities";
-import { ensureCustomerExists } from "@/lib/payments";
 import type { PrismaClientTransaction } from "@/prisma-client";
 import { createPaymentsSchema } from "./schema/index";
 import type { CustomerType, ItemQuantityRow, OwnedProductsRow, SubscriptionMapRow, SubscriptionRow } from "./schema/types";
@@ -61,12 +60,6 @@ export async function getOwnedProductsForCustomer(options: {
   customerType: CustomerType,
   customerId: string,
 }): Promise<OwnedProductsRow["ownedProducts"]> {
-  await ensureCustomerExists({
-    prisma: options.prisma,
-    tenancyId: options.tenancyId,
-    customerType: options.customerType,
-    customerId: options.customerId,
-  });
   const row = await getLatestRow<OwnedProductsRow>(
     options.prisma,
     schema.ownedProducts,
@@ -88,12 +81,6 @@ export async function getItemQuantitiesForCustomer(options: {
   customerType: CustomerType,
   customerId: string,
 }): Promise<Record<string, number>> {
-  await ensureCustomerExists({
-    prisma: options.prisma,
-    tenancyId: options.tenancyId,
-    customerType: options.customerType,
-    customerId: options.customerId,
-  });
   const row = await getLatestRow<ItemQuantityRow>(
     options.prisma,
     schema.itemQuantities,

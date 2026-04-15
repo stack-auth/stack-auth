@@ -8,7 +8,7 @@ import { KnownErrors } from "@stackframe/stack-shared";
 import type { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import type { inlineProductSchema, productSchema, productSchemaWithMetadata } from "@stackframe/stack-shared/dist/schema-fields";
 import { SUPPORTED_CURRENCIES } from "@stackframe/stack-shared/dist/utils/currency-constants";
-import { addInterval, FAR_FUTURE_DATE, getIntervalsElapsed } from "@stackframe/stack-shared/dist/utils/dates";
+import { addInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { filterUndefined, getOrUndefined, has, typedEntries, typedFromEntries, typedKeys, typedValues } from "@stackframe/stack-shared/dist/utils/objects";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
@@ -141,7 +141,6 @@ export function customerOwnsProductInProductLine(ownedProducts: OwnedProducts, p
   );
 }
 
-/** @deprecated Legacy — only used by payments.test.tsx. Will be removed in phase 5 cleanup. */
 export async function ensureCustomerExists(options: {
   prisma: PrismaClientTransaction,
   tenancyId: string,
@@ -328,10 +327,7 @@ export async function validatePurchaseSession(options: {
 }> {
   const { prisma, tenancyId, customerType, customerId, product, productId, priceId, quantity } = options;
 
-  // Step 1: Verify the customer exists (user/team lookup, not payment tables)
-  await ensureCustomerExists({ prisma, tenancyId, customerType, customerId });
-
-  // Step 2: Resolve the selected price from the product config
+  // Step 1: Resolve the selected price from the product config
   // (include-by-default products have no prices — kept for compatibility but not currently supported)
   let selectedPrice: SelectedPrice | undefined = undefined;
   if (!priceId && product.prices !== "include-by-default") {
@@ -345,20 +341,20 @@ export async function validatePurchaseSession(options: {
     }
   }
 
-  // Step 3: Reject non-stackable products with quantity > 1
+  // Step 2: Reject non-stackable products with quantity > 1
   if (quantity !== 1 && product.stackable !== true) {
     throw new StatusError(400, "This product is not stackable; quantity must be 1");
   }
 
-  // Step 4: Fetch owned products once for all subsequent checks
+  // Step 3: Fetch owned products once for all subsequent checks
   const ownedProducts = await getOwnedProductsForCustomer({ prisma, tenancyId, customerType, customerId });
 
-  // Step 5: Check the customer doesn't already own this product
+  // Step 4: Check the customer doesn't already own this product
   if (productId && product.stackable !== true && customerOwnsProduct(ownedProducts, productId)) {
     throw new KnownErrors.ProductAlreadyGranted(productId, customerId);
   }
 
-  // Step 6: Verify add-on prerequisites (customer must own the base product)
+  // Step 5: Verify add-on prerequisites (customer must own the base product)
   if (product.isAddOnTo) {
     const baseProductIds = typedKeys(product.isAddOnTo);
     if (!baseProductIds.some(id => customerOwnsProduct(ownedProducts, id))) {
@@ -366,7 +362,7 @@ export async function validatePurchaseSession(options: {
     }
   }
 
-  // Step 7: Block purchase if customer already owns a product in the same product line.
+  // Step 6: Block purchase if customer already owns a product in the same product line.
   // If they do, find active subscriptions to cancel so the caller can replace them.
   let conflictingSubscriptions: SubscriptionRow[] = [];
   const productLineId = product.productLineId;

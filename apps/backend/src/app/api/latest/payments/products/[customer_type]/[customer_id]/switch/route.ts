@@ -1,5 +1,5 @@
 import { SubscriptionStatus } from "@/generated/prisma/client";
-import { ensureClientCanAccessCustomer, getDefaultCardPaymentMethodSummary, getStripeCustomerForCustomerOrNull, isActiveSubscription } from "@/lib/payments";
+import { ensureClientCanAccessCustomer, ensureCustomerExists, getDefaultCardPaymentMethodSummary, getStripeCustomerForCustomerOrNull, isActiveSubscription } from "@/lib/payments";
 import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { getOwnedProductsForCustomer, getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
 import { upsertProductVersion } from "@/lib/product-versions";
@@ -88,6 +88,12 @@ export const POST = createSmartRouteHandler({
     }
 
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    await ensureCustomerExists({
+      prisma,
+      tenancyId: auth.tenancy.id,
+      customerType: params.customer_type,
+      customerId: params.customer_id,
+    });
 
     // Fetch subscription map (used for both OTP guard and subscription lookup)
     const subMap = await getSubscriptionMapForCustomer({

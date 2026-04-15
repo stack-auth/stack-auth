@@ -1,4 +1,4 @@
-import { ensureClientCanAccessCustomer, ensureProductIdOrInlineProduct, grantProductToCustomer, isActiveSubscription, productToInlineProduct } from "@/lib/payments";
+import { ensureClientCanAccessCustomer, ensureCustomerExists, ensureProductIdOrInlineProduct, grantProductToCustomer, isActiveSubscription, productToInlineProduct } from "@/lib/payments";
 import { getOwnedProductsForCustomer, getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -45,6 +45,12 @@ export const GET = createSmartRouteHandler({
       });
     }
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
+    await ensureCustomerExists({
+      prisma,
+      tenancyId: auth.tenancy.id,
+      customerType: params.customer_type,
+      customerId: params.customer_id,
+    });
     const [ownedProducts, subMap] = await Promise.all([
       getOwnedProductsForCustomer({
         prisma,
@@ -178,6 +184,12 @@ export const POST = createSmartRouteHandler({
   handler: async ({ auth, params, body }) => {
     const { tenancy } = auth;
     const prisma = await getPrismaClientForTenancy(tenancy);
+    await ensureCustomerExists({
+      prisma,
+      tenancyId: tenancy.id,
+      customerType: params.customer_type,
+      customerId: params.customer_id,
+    });
     const product = await ensureProductIdOrInlineProduct(
       tenancy,
       auth.type,

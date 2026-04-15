@@ -5,7 +5,7 @@ import { bulldozerWriteOneTimePurchase, bulldozerWriteSubscription } from "@/lib
 import { globalPrismaClient } from "@/prisma-client";
 
 // Uses globalPrismaClient which connects to the real dev DB (with BulldozerStorageEngine).
-// customerType: 'custom' bypasses ensureCustomerExists (no ProjectUser/Team lookup).
+// customerType: 'custom' avoids needing a real ProjectUser/Team in the DB.
 // Each test writes data to Bulldozer stored tables via the dual-write functions,
 // then calls validatePurchaseSession which reads from the owned products LFold.
 describe.sequential('validatePurchaseSession - purchase guards (real DB)', () => {

@@ -2,7 +2,8 @@
  * Initializes the payments Bulldozer schema tables and ingresses existing
  * Prisma data into the stored tables.
  *
- * - Init: each table's init() is idempotent (ON CONFLICT DO NOTHING).
+ * - Init: each table's init() is NOT idempotent (no ON CONFLICT); we guard
+ *   with isInitialized() checks per-table to skip already-initialized tables.
  * - Ingress: converts Prisma rows to bulldozer stored table rows. Skipped
  *   if data already exists (checked via a sentinel row count).
  *

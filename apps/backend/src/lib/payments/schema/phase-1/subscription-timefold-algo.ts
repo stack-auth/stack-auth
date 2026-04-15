@@ -41,7 +41,7 @@ function repeatIntervalMsSql(intervalJsonb: string): string {
       WHEN 'week' THEN 604800000
       WHEN 'month' THEN 2592000000
       WHEN 'year' THEN 31536000000
-      ELSE 0
+      ELSE NULL
     END
   )`;
 }
@@ -262,8 +262,9 @@ export function getSubscriptionTimeFoldReducerSql(): string {
   const dueItems = `(
     SELECT jsonb_agg(jsonb_build_object('itemId', "sched"."key", 'schedule', "sched"."value"))
     FROM jsonb_each(${S}->'itemRepeatSchedule') AS "sched"
-    WHERE ("sched"."value"->>'nextRepeatMillis')::numeric <= ${currentMillis}
-      AND "sched"."value"->>'nextRepeatMillis' != 'null'
+    WHERE "sched"."value"->>'nextRepeatMillis' != 'null'
+      AND "sched"."value"->'nextRepeatMillis' IS NOT NULL
+      AND ("sched"."value"->>'nextRepeatMillis')::numeric <= ${currentMillis}
   )`;
 
   // Is this timestamp the end event?
@@ -363,8 +364,9 @@ export function getSubscriptionTimeFoldReducerSql(): string {
     SELECT jsonb_object_agg(
       "sched"."key",
       CASE
-        WHEN ("sched"."value"->>'nextRepeatMillis')::numeric <= ${currentMillis}
-          AND "sched"."value"->>'nextRepeatMillis' != 'null'
+        WHEN "sched"."value"->>'nextRepeatMillis' != 'null'
+          AND "sched"."value"->'nextRepeatMillis' IS NOT NULL
+          AND ("sched"."value"->>'nextRepeatMillis')::numeric <= ${currentMillis}
         THEN "sched"."value" || jsonb_build_object(
           'nextRepeatMillis', to_jsonb(
             ("sched"."value"->>'nextRepeatMillis')::numeric + ("sched"."value"->>'repeatIntervalMs')::numeric
