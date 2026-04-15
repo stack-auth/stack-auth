@@ -319,7 +319,6 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: Refres
     is_restricted: user.is_restricted,
     restricted_reason: user.restricted_reason,
     requires_totp_mfa: user.requires_totp_mfa,
-    signed_up_at: user.signed_up_at_millis,
   };
 
   // Validate the payload matches the accessTokenSchema before signing, to catch inconsistencies early
