@@ -138,8 +138,11 @@ jobs:
       - name: Build stack-cli (for emulator CLI)
         if: matrix.arch == 'amd64'
         run: |
-          pnpm install --frozen-lockfile --filter @stackframe/stack-cli...
-          pnpm --filter @stackframe/stack-cli run build
+          pnpm install --frozen-lockfile --filter '@stackframe/stack-cli...'
+          # Turbo's trailing `...` filter builds stack-cli AND its workspace
+          # deps (@stackframe/js, @stackframe/stack-shared, etc.) — stack-cli
+          # imports them at runtime from their dist/ outputs.
+          pnpm exec turbo run build --filter='@stackframe/stack-cli...'
 
       - name: Start emulator and verify
         if: matrix.arch == 'amd64'
@@ -249,8 +252,11 @@ jobs:
 
       - name: Install stack-cli deps + build
         run: |
-          pnpm install --frozen-lockfile --filter @stackframe/stack-cli...
-          pnpm --filter @stackframe/stack-cli run build
+          pnpm install --frozen-lockfile --filter '@stackframe/stack-cli...'
+          # Turbo's trailing `...` filter builds stack-cli AND its workspace
+          # deps (@stackframe/js, @stackframe/stack-shared, etc.) — stack-cli
+          # imports them at runtime from their dist/ outputs.
+          pnpm exec turbo run build --filter='@stackframe/stack-cli...'
 
       - name: Download built image
         uses: actions/download-artifact@v4
