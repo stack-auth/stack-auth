@@ -46,8 +46,8 @@ Use this when implementing a new dashboard UI quickly:
    - Use `DesignListItemRow` (or `DesignUserList` for user rows).
 9. Need settings/property grid editor?
    - Use `DesignEditableGrid`.
-10. Need data table with consistent dashboard style?
-   - Use `DesignDataTable`.
+10. Need interactive / sortable / searchable data table?
+   - Use `DataGrid` + `useDataSource` + `createDefaultDataGridState` from `@stackframe/dashboard-ui-components`.
 11. Need dropdown action/selector/toggle menu?
    - Use `DesignMenu`.
 
@@ -524,26 +524,70 @@ Rules:
 - prefer this for config forms that are row-based and editable inline
 - use deferred save mode when many fields should be committed together
 
-### 4.12 `DesignDataTable`
+### 4.12 `DataGrid` + `useDataSource` + `createDefaultDataGridState`
 
-File: `apps/dashboard/src/components/design-components/table.tsx`
+Package: `@stackframe/dashboard-ui-components`
 
 Use for:
 
-- dashboard data tables where shared table behavior is required
+- interactive, sortable, searchable data tables
+- any table with more than ~20 rows or that needs pagination, column visibility, quick search, or CSV export
 
-Props:
+Canonical pattern:
 
-- `columns`, `data`
-- `defaultColumnFilters`
-- `defaultSorting`
-- `showDefaultToolbar`
-- `showResetFilters`
-- `onRowClick`
+```tsx
+import { DataGrid, useDataSource, createDefaultDataGridState, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
+
+const columns: DataGridColumnDef<MyRow>[] = [
+  { id: "name", header: "Name", accessor: "name", width: 200, type: "string" },
+  { id: "status", header: "Status", accessor: "status", width: 120, type: "singleSelect",
+    valueOptions: [{ value: "active", label: "Active" }, { value: "inactive", label: "Inactive" }],
+    renderCell: ({ value }) => <DesignBadge label={String(value)} color={value === "active" ? "green" : "red"} size="sm" /> },
+];
+
+const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
+const gridData = useDataSource({
+  data: myRows,
+  columns,
+  getRowId: (row) => row.id,
+  sorting: gridState.sorting,
+  quickSearch: gridState.quickSearch,
+  pagination: gridState.pagination,
+  paginationMode: "client",
+});
+
+<DataGrid
+  columns={columns}
+  rows={gridData.rows}
+  getRowId={(row) => row.id}
+  totalRowCount={gridData.totalRowCount}
+  isLoading={gridData.isLoading}
+  state={gridState}
+  onChange={setGridState}
+  toolbar={false}       // set to false to hide; omit for default toolbar
+  onRowClick={(row) => handleClick(row)}
+  maxHeight={400}
+/>
+```
+
+Key props:
+
+- `columns` (`DataGridColumnDef[]`): column definitions with `id`, `header`, `accessor`, `type`, optional `renderCell`
+- `rows` (`TRow[]`): always `gridData.rows` from `useDataSource`, NEVER your raw array
+- `getRowId` (`(row) => string`): unique row identifier
+- `state` / `onChange`: fully controlled grid state (sorting, pagination, search, visibility)
+- `totalRowCount`: total rows for pagination display
+- `toolbar`: `false` to hide, omit for default, or render function for custom
+- `onRowClick`: optional row click handler
+- `maxHeight`: max pixel height before scrolling
 
 Rules:
 
-- use this wrapper instead of raw `DataTable` for consistency unless you need a custom table architecture
+- always initialize state with `createDefaultDataGridState(columns)` — never build the state object by hand
+- always use `useDataSource` to process data — the grid does not sort/filter/paginate on its own
+- columns must be stable across renders (define outside component or wrap in `useMemo`)
+- `renderCell` must be a pure function — no React hooks inside it
+- read the full JSDoc on the `DataGrid` component for iron rules and advanced usage
 
 ### 4.13 `CursorBlastEffect`
 
@@ -604,7 +648,7 @@ Use:
 - alerts: `DesignAlert` (`variant` by state)
 - status chips: `DesignBadge` (`green` for sent, `red` for failed)
 - actions: `DesignButton`
-- table: `DesignDataTable`
+- table: `DataGrid` + `useDataSource` + `createDefaultDataGridState`
 
 Avoid:
 
@@ -645,7 +689,7 @@ Use:
 - filters: `DesignSelectorDropdown`, `DesignInput`
 - status badges: `DesignBadge`
 - action buttons/menus: `DesignButton`, `DesignMenu`
-- data grid/list table: `DesignDataTable` when feasible
+- data grid/list table: `DataGrid` + `useDataSource` + `createDefaultDataGridState`
 
 Avoid:
 
@@ -743,7 +787,7 @@ Use this checklist before opening a dashboard UI PR:
 - [ ] Replaced ad-hoc row/list cards with `DesignListItemRow` or `DesignUserList`.
 - [ ] Used `DesignButton` for async actions.
 - [ ] Used `DesignSelectorDropdown`/`DesignInput` for standard field controls.
-- [ ] Used `DesignDataTable` for standard tables.
+- [ ] Used `DataGrid` + `useDataSource` + `createDefaultDataGridState` for interactive tables.
 - [ ] Did not introduce duplicate local wrappers for components already in design-components.
 - [ ] Kept hover/motion behavior aligned with this guide.
 
@@ -823,6 +867,7 @@ Use this checklist before opening a dashboard UI PR:
 - Creating local status pills instead of `DesignBadge`.
 - Creating local segmented/pill selectors instead of `DesignPillToggle`.
 - Using raw `Alert`/`Button` in standard dashboard surfaces where `DesignAlert`/`DesignButton` should be used.
+- Using `DesignDataTable` or raw `DataTable` instead of `DataGrid` + `useDataSource` + `createDefaultDataGridState`. `DesignDataTable` is deprecated; all new and migrated tables use `DataGrid`.
 - Repeating large inline class strings for common design-components patterns.
 
 ---
@@ -837,7 +882,7 @@ When touching existing email/project pages, migrate in this order:
 4. Toggles/tabs (`DesignPillToggle` / `DesignCategoryTabs`)
 5. Rows/lists (`DesignListItemRow`)
 6. Buttons/menus (`DesignButton` / `DesignMenu`)
-7. Tables/forms (`DesignDataTable`, `DesignInput`, `DesignSelectorDropdown`, `DesignEditableGrid`)
+7. Tables/forms (`DataGrid`, `DesignInput`, `DesignSelectorDropdown`, `DesignEditableGrid`)
 
 This order yields the biggest consistency win first.
 

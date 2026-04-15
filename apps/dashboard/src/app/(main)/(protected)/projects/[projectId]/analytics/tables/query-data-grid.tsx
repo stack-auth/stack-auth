@@ -646,6 +646,7 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
               onChange={setGridState}
               paginationMode="infinite"
               selectionMode="none"
+              stickyTop={0}
               toolbar={resolvedToolbar}
               toolbarExtra={resolvedToolbarExtra}
               footer={footer ? undefined : false}
