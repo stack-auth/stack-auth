@@ -84,6 +84,7 @@ export const POST = createSmartRouteHandler({
       if (isSubscribable) {
         conflictingProductLineProducts = Object.entries(ownedProducts)
           .filter(([, p]) => p.productLineId === productLineId && p.quantity > 0)
+          .sort(([a], [b]) => a < b ? -1 : a > b ? 1 : 0)
           .map(([productId, p]) => ({
             product_id: productId,
             display_name: p.product.displayName ?? productId,

@@ -1317,14 +1317,14 @@ it("listing products should support cursor pagination", async ({ expect }) => {
         "is_paginated": true,
         "items": [
           {
-            "id": "pro-addon",
+            "id": "lifetime-addon",
             "product": {
               "client_metadata": null,
               "client_read_only_metadata": null,
               "customer_type": "user",
-              "display_name": "Pro Add-on",
+              "display_name": "Lifetime Add-on",
               "included_items": {},
-              "prices": { "standard": { "USD": "7000" } },
+              "prices": { "lifetime": { "USD": "5000" } },
               "server_metadata": null,
               "server_only": false,
               "stackable": false,
@@ -1332,7 +1332,7 @@ it("listing products should support cursor pagination", async ({ expect }) => {
             "quantity": 1,
           },
         ],
-        "pagination": { "next_cursor": "lifetime-addon" },
+        "pagination": { "next_cursor": "pro-addon" },
       },
       "headers": Headers { <some fields may have been hidden> },
     }
@@ -1350,14 +1350,14 @@ it("listing products should support cursor pagination", async ({ expect }) => {
         "is_paginated": true,
         "items": [
           {
-            "id": "lifetime-addon",
+            "id": "pro-addon",
             "product": {
               "client_metadata": null,
               "client_read_only_metadata": null,
               "customer_type": "user",
-              "display_name": "Lifetime Add-on",
+              "display_name": "Pro Add-on",
               "included_items": {},
-              "prices": { "lifetime": { "USD": "5000" } },
+              "prices": { "standard": { "USD": "7000" } },
               "server_metadata": null,
               "server_only": false,
               "stackable": false,

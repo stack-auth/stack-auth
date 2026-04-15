@@ -7,6 +7,7 @@ import { customerProductsListResponseSchema } from "@stackframe/stack-shared/dis
 import { adaptSchema, clientOrHigherAuthTypeSchema, inlineProductSchema, serverOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { typedEntries, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
+import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 
 export const GET = createSmartRouteHandler({
   metadata: {
@@ -77,6 +78,7 @@ export const GET = createSmartRouteHandler({
     const entries = Object.entries(ownedProducts)
       .filter(([, p]) => p.quantity > 0)
       .filter(([, p]) => auth.type !== "client" || !p.product.serverOnly)
+      .sort(([a], [b]) => stringCompare(a, b))
       .map(([productId, p]) => {
         const productLineId = p.productLineId;
         const switchOptions = productLineId
