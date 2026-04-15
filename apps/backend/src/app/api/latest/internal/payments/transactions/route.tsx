@@ -538,7 +538,8 @@ function buildAdjustedByLookupFromRefundRows(rows: unknown[]): Map<string, Trans
     if (!Array.isArray(entries)) {
       throw new StackAssertionError("Refund transaction row has invalid entries", { rowData });
     }
-    for (const entry of entries) {
+    for (let entryIdx = 0; entryIdx < entries.length; entryIdx++) {
+      const entry = entries[entryIdx];
       if (!isRecord(entry)) {
         throw new StackAssertionError("Refund transaction entry is not an object", { entry, rowData });
       }
@@ -564,7 +565,7 @@ function buildAdjustedByLookupFromRefundRows(rows: unknown[]): Map<string, Trans
         ...existing,
         {
           transaction_id: refundTxnId,
-          entry_index: adjustedEntryIndex,
+          entry_index: entryIdx,
         },
       ]);
     }
