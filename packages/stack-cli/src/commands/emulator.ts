@@ -162,22 +162,44 @@ async function pullRelease(arch: "arm64" | "amd64", opts: { repo?: string, branc
   const repo = opts.repo ?? "stack-auth/stack-auth";
   const branch = opts.branch ?? "dev";
   const tag = opts.tag ?? `emulator-${branch}-latest`;
-  const asset = `stack-emulator-${arch}.qcow2`;
   const imageDir = emulatorImageDir();
   mkdirSync(imageDir, { recursive: true });
+
+  const diskAsset = `stack-emulator-${arch}.qcow2`;
+  // The savevm file enables the fast-resume path in run-emulator.sh. It's
+  // optional — older releases may not have it and the runtime cleanly falls
+  // back to a cold boot.
+  const snapshotAsset = `stack-emulator-${arch}.savevm.zst`;
+
+  const assets = JSON.parse(gh(["release", "view", tag, "--repo", repo, "--json", "assets"])) as {
+    assets: { name: string, apiUrl: string, size: number }[],
+  };
+  const diskMatch = assets.assets.find((a) => a.name === diskAsset);
+  if (!diskMatch) {
+    throw new CliError(`Asset ${diskAsset} not found in release ${tag}. Run 'stack emulator list-releases' to see available releases.`);
+  }
+  const snapshotMatch = assets.assets.find((a) => a.name === snapshotAsset);
+  const token = gh(["auth", "token"]);
+
+  await downloadAsset(diskMatch, imageDir, diskAsset, token, tag);
+  if (snapshotMatch) {
+    await downloadAsset(snapshotMatch, imageDir, snapshotAsset, token, tag);
+  } else {
+    console.log(`Snapshot asset ${snapshotAsset} not available in release ${tag}; fast-start disabled for this image.`);
+  }
+}
+
+async function downloadAsset(
+  match: { name: string, apiUrl: string, size: number },
+  imageDir: string,
+  asset: string,
+  token: string,
+  tag: string,
+): Promise<void> {
   const dest = join(imageDir, asset);
   const tmpDest = `${dest}.download`;
-
   console.log(`Pulling ${asset} from release ${tag}...`);
   try {
-    const assets = JSON.parse(gh(["release", "view", tag, "--repo", repo, "--json", "assets"])) as {
-      assets: { name: string, apiUrl: string, size: number }[],
-    };
-    const match = assets.assets.find((a) => a.name === asset);
-    if (!match) {
-      throw new CliError(`Asset ${asset} not found in release ${tag}. Run 'stack emulator list-releases' to see available releases.`);
-    }
-    const token = gh(["auth", "token"]);
     await downloadWithProgress(match.apiUrl, {
       Authorization: `Bearer ${token}`,
       Accept: "application/octet-stream",
@@ -185,7 +207,7 @@ async function pullRelease(arch: "arm64" | "amd64", opts: { repo?: string, branc
   } catch (err) {
     if (existsSync(tmpDest)) unlinkSync(tmpDest);
     if (err instanceof CliError) throw err;
-    throw new CliError(`Failed to download ${asset} from release ${tag}: ${err instanceof Error ? err.message : err}\nRun 'stack emulator list-releases' to see available releases.`);
+    throw new CliError(`Failed to download ${asset} from release ${tag}: ${err instanceof Error ? err.message : err}`);
   }
   renameSync(tmpDest, dest);
   console.log(`Downloaded: ${dest}`);
@@ -291,7 +313,9 @@ export function registerEmulatorCommand(program: Command) {
         const imageDir = emulatorImageDir();
         mkdirSync(imageDir, { recursive: true });
         const dest = join(imageDir, `stack-emulator-${arch}.qcow2`);
+        const snapshotDest = join(imageDir, `stack-emulator-${arch}.savevm.zst`);
         if (existsSync(dest)) unlinkSync(dest);
+        if (existsSync(snapshotDest)) unlinkSync(snapshotDest);
         console.log(`Downloading qemu-emulator-${arch} from workflow run ${runId}...`);
         try {
           execFileSync("gh", ["run", "download", runId, "--repo", repo, "--name", `qemu-emulator-${arch}`, "--dir", imageDir], { stdio: "inherit" });
@@ -300,6 +324,15 @@ export function registerEmulatorCommand(program: Command) {
         }
         if (!existsSync(dest)) throw new CliError(`Expected image not found at ${dest} after download.`);
         console.log(`Downloaded: ${dest}`);
+        // Snapshot artifact is optional — older CI builds may not produce it.
+        try {
+          execFileSync("gh", ["run", "download", runId, "--repo", repo, "--name", `qemu-emulator-${arch}-savevm`, "--dir", imageDir], { stdio: "pipe" });
+          if (existsSync(snapshotDest)) {
+            console.log(`Downloaded: ${snapshotDest}`);
+          }
+        } catch {
+          console.log(`Snapshot artifact not available for run ${runId}; fast-start disabled.`);
+        }
       } else {
         await pullRelease(arch, { repo, branch: opts.branch, tag: opts.tag });
       }

@@ -2,6 +2,17 @@
 
 set -e
 
+# ============= ROTATED SECRETS OVERLAY =============
+# On emulator snapshot resume, the host injects freshly-generated secrets into
+# /run/stack-auth/rotated-secrets.env before supervisorctl restarts us. Sourcing
+# here lets a fast-restart pick up new values without a full container restart.
+if [ -f /run/stack-auth/rotated-secrets.env ]; then
+  set -a
+  # shellcheck disable=SC1091
+  source /run/stack-auth/rotated-secrets.env
+  set +a
+fi
+
 # ============= FORWARD MOCK OAUTH SERVER =============
 
 # Start socat to forward port 32202 for mock-oauth-server if enabled
@@ -130,39 +141,49 @@ if [ "$WORK_DIR" != "/app" ]; then
   cp -r /app/. "$WORK_DIR"/.
 fi
 
-# Find all files in the apps directory that contain a STACK_ENV_VAR_SENTINEL and extract the unique sentinel strings.
-echo "Finding unhandled sentinels..."
-unhandled_sentinels=$(find "$WORK_DIR/apps" -type f -exec grep -l "STACK_ENV_VAR_SENTINEL" {} + | \
-  xargs grep -h "STACK_ENV_VAR_SENTINEL" | \
-  grep -o "STACK_ENV_VAR_SENTINEL[A-Z_]*" | \
-  sort -u | grep -v "^STACK_ENV_VAR_SENTINEL$")
+# The full-tree sentinel scan is expensive (several seconds over the whole built
+# app tree). On a fast-restart — triggered by the emulator snapshot rotation
+# path — the placeholders have already been sed-replaced by rotate-secrets,
+# and no new sentinels need substitution. Skip the scan in that case.
+SENTINEL_MARKER=/var/run/stack-local-sentinels-replaced
+if [ -f "$SENTINEL_MARKER" ]; then
+  echo "Sentinels already replaced on a previous start; skipping scan."
+else
+  # Find all files in the apps directory that contain a STACK_ENV_VAR_SENTINEL and extract the unique sentinel strings.
+  echo "Finding unhandled sentinels..."
+  unhandled_sentinels=$(find "$WORK_DIR/apps" -type f -exec grep -l "STACK_ENV_VAR_SENTINEL" {} + | \
+    xargs grep -h "STACK_ENV_VAR_SENTINEL" | \
+    grep -o "STACK_ENV_VAR_SENTINEL[A-Z_]*" | \
+    sort -u | grep -v "^STACK_ENV_VAR_SENTINEL$")
 
-# Choose an uncommon delimiter – here, we use the ASCII Unit Separator (0x1F)
-delimiter=$(printf '\037')
+  # Choose an uncommon delimiter – here, we use the ASCII Unit Separator (0x1F)
+  delimiter=$(printf '\037')
 
-echo "Replacing sentinels..."
-for sentinel in $unhandled_sentinels; do
-  # The sentinel is like "STACK_ENV_VAR_SENTINEL_MY_VAR", so extract the env var name.
-  env_var=${sentinel#STACK_ENV_VAR_SENTINEL_}
-  
-  # Get the corresponding environment variable value.
-  value="${!env_var}"
-  
-  # If the env var is not set, skip replacement.
-  if [ -z "$value" ]; then
-    continue
-  fi
+  echo "Replacing sentinels..."
+  for sentinel in $unhandled_sentinels; do
+    # The sentinel is like "STACK_ENV_VAR_SENTINEL_MY_VAR", so extract the env var name.
+    env_var=${sentinel#STACK_ENV_VAR_SENTINEL_}
 
-  # Although the sentinel only contains [A-Z_] we still escape it for any regex meta-characters.
-  escaped_sentinel=$(printf '%s\n' "$sentinel" | sed -e 's/\\/\\\\/g' -e 's/[][\/.^$*]/\\&/g')
+    # Get the corresponding environment variable value.
+    value="${!env_var}"
 
-  # For the replacement value, first escape backslashes, then escape any occurrence of
-  # the chosen delimiter and the '&' (which has special meaning in sed replacements).
-  escaped_value=$(printf '%s\n' "$value" | sed -e 's/\\/\\\\/g' -e "s/[${delimiter}&]/\\\\&/g")
+    # If the env var is not set, skip replacement.
+    if [ -z "$value" ]; then
+      continue
+    fi
 
-  # Now replace the sentinel with the (properly escaped) value in all files in the working directory.
-  find $WORK_DIR/apps -type f -exec sed -i "s${delimiter}${escaped_sentinel}${delimiter}${escaped_value}${delimiter}g" {} +
-done
+    # Although the sentinel only contains [A-Z_] we still escape it for any regex meta-characters.
+    escaped_sentinel=$(printf '%s\n' "$sentinel" | sed -e 's/\\/\\\\/g' -e 's/[][\/.^$*]/\\&/g')
+
+    # For the replacement value, first escape backslashes, then escape any occurrence of
+    # the chosen delimiter and the '&' (which has special meaning in sed replacements).
+    escaped_value=$(printf '%s\n' "$value" | sed -e 's/\\/\\\\/g' -e "s/[${delimiter}&]/\\\\&/g")
+
+    # Now replace the sentinel with the (properly escaped) value in all files in the working directory.
+    find $WORK_DIR/apps -type f -exec sed -i "s${delimiter}${escaped_sentinel}${delimiter}${escaped_value}${delimiter}g" {} +
+  done
+  mkdir -p "$(dirname "$SENTINEL_MARKER")" && touch "$SENTINEL_MARKER"
+fi
 
 # ============= START BACKEND AND DASHBOARD =============
 

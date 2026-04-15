@@ -262,10 +262,11 @@ COPY docker/local-emulator/run-cron-jobs.sh /run-cron-jobs.sh
 COPY docker/local-emulator/entrypoint.sh /entrypoint.sh
 COPY docker/local-emulator/init-services.sh /init-services.sh
 COPY docker/local-emulator/start-app.sh /start-app.sh
+COPY docker/local-emulator/rotate-secrets.sh /usr/local/bin/rotate-secrets
 COPY docker/local-emulator/clickhouse-config.xml /etc/clickhouse-server/config.xml
 COPY docker/local-emulator/clickhouse-users.xml /etc/clickhouse-server/users.xml
 COPY docker/server/entrypoint.sh /app-entrypoint.sh
-RUN chmod +x /entrypoint.sh /init-services.sh /start-app.sh /app-entrypoint.sh /run-cron-jobs.sh
+RUN chmod +x /entrypoint.sh /init-services.sh /start-app.sh /app-entrypoint.sh /run-cron-jobs.sh /usr/local/bin/rotate-secrets
 
 # PostgreSQL: 5432, Redis: 6379, Inbucket: 2500/9001/1100,
 # Svix: 8071, ClickHouse: 8123/9009, MinIO: 9090, QStash: 8080
