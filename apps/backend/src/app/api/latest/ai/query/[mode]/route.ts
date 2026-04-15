@@ -63,12 +63,7 @@ export const POST = createSmartRouteHandler({
     }
     const tools = await getTools(toolNames, { auth: fullReq.auth, targetProjectId: projectId });
     const toolsArg = Object.keys(tools).length > 0 ? tools : undefined;
-    const isDocsOrSearch = systemPromptId === "docs-ask-ai" || systemPromptId === "command-center-ask-ai";
-    // create-dashboard now does an inspection loop (queryAnalytics) before calling updateDashboard,
-    // so it needs room for ~3 exploratory queries + the final tool call + some retry slack.
     const isCreateDashboard = systemPromptId === "create-dashboard";
-    // build-analytics-query aims for one-shot queries with complete schema
-    // knowledge, but needs a few steps for retries on errors or follow-ups.
     const isBuildAnalyticsQuery = systemPromptId === "build-analytics-query";
     const stepLimit = toolsArg == null
       ? 1
