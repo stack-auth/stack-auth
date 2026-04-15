@@ -115,6 +115,18 @@ describe.sequential('validatePurchaseSession - purchase guards (real DB)', () =>
     expect(res.selectedPrice).toBeDefined();
   });
 
+  it('allows add-on in same product line as its base product', async () => {
+    const lineId = `line-addon-${testId}`;
+    const baseId = `base-sameline-${testId}`;
+    await grantOtp(`otp-sameline-${testId}`, baseId, makeProduct({ productLineId: lineId }));
+    const res = await callValidate(
+      makeProduct({ productLineId: lineId, isAddOnTo: { [baseId]: true } }),
+      { productId: `addon-sameline-${testId}` },
+    );
+    expect(res.selectedPrice).toBeDefined();
+    expect(res.conflictingSubscriptions).toHaveLength(0);
+  });
+
   // TODO: reconsider coupling — product-line blocking infers OTP vs subscription
   // ownership. OTPs can be refunded, so "blocked because OTP" is debatable.
 

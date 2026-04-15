@@ -364,16 +364,20 @@ export async function validatePurchaseSession(options: {
 
   // Step 6: Block purchase if customer already owns a product in the same product line.
   // If they do, find active subscriptions to cancel so the caller can replace them.
+  // Exception: add-on products are allowed even if the base product is in the same line.
   let conflictingSubscriptions: SubscriptionRow[] = [];
   const productLineId = product.productLineId;
-  if (productLineId && customerOwnsProductInProductLine(ownedProducts, productLineId)) {
+  const addOnBaseProductIds = product.isAddOnTo ? typedKeys(product.isAddOnTo) : [];
+  const hasConflictingProductLine = productLineId && Object.entries(ownedProducts).some(
+    ([pid, p]) => p.productLineId === productLineId && p.quantity > 0 && !addOnBaseProductIds.includes(pid)
+  );
+  if (hasConflictingProductLine) {
     // Find active subscriptions in this product line that can be canceled/replaced
     const subMap = await getSubscriptionMapForCustomer({ prisma, tenancyId, customerType, customerId });
-    const addOnProductIds = product.isAddOnTo ? typedKeys(product.isAddOnTo) : [];
     conflictingSubscriptions = Object.values(subMap).filter(s =>
       isActiveSubscription(s)
       && (s.product as Product).productLineId === productLineId
-      && (!product.isAddOnTo || !addOnProductIds.includes(s.productId ?? ""))
+      && !addOnBaseProductIds.includes(s.productId ?? "")
     );
 
     // If no cancelable subscriptions found, the customer owns via OTP — block the purchase.
