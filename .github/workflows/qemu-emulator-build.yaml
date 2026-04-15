@@ -66,10 +66,48 @@ jobs:
           node-version: 22
           cache: pnpm
 
-      - name: Install QEMU dependencies
+      - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y qemu-system-x86 qemu-system-arm qemu-kvm qemu-utils genisoimage socat qemu-efi-aarch64 zstd
+          # qemu-utils gives us qemu-img; qemu-efi-aarch64 provides the arm64
+          # UEFI firmware. The actual qemu-system-* binaries come from the
+          # source build below — Ubuntu 24.04 ships QEMU 8.2 which predates
+          # the mapped-ram migration capability we rely on.
+          sudo apt-get install -y qemu-utils qemu-efi-aarch64 socat genisoimage zstd \
+            ninja-build pkg-config python3-venv \
+            libglib2.0-dev libpixman-1-dev libslirp-dev libepoxy-dev libgbm-dev
+
+      # QEMU 10.2.2 is required for the mapped-ram + multifd migration path
+      # used by the fast-resume snapshot. Cache the compiled prefix so CI
+      # only pays the ~5-8 min build cost once per runner image.
+      - name: Restore QEMU 10.2.2 cache
+        id: qemu-cache
+        uses: actions/cache@v4
+        with:
+          path: /opt/qemu
+          key: qemu-10.2.2-${{ runner.os }}-${{ runner.arch }}-v1
+
+      - name: Build QEMU 10.2.2 from source
+        if: steps.qemu-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euxo pipefail
+          curl -fsSL https://download.qemu.org/qemu-10.2.2.tar.xz -o /tmp/qemu.tar.xz
+          mkdir -p /tmp/qemu-src
+          tar -xf /tmp/qemu.tar.xz -C /tmp/qemu-src --strip-components=1
+          cd /tmp/qemu-src
+          ./configure --prefix=/opt/qemu \
+            --target-list=x86_64-softmmu,aarch64-softmmu \
+            --enable-kvm --enable-slirp --enable-tcg \
+            --disable-docs --disable-gtk --disable-sdl --disable-vnc \
+            --disable-guest-agent --disable-tools
+          make -j"$(nproc)"
+          sudo make install
+
+      - name: Put QEMU 10.2.2 on PATH
+        run: |
+          echo "/opt/qemu/bin" >> "$GITHUB_PATH"
+          /opt/qemu/bin/qemu-system-x86_64 --version
+          /opt/qemu/bin/qemu-system-aarch64 --version
 
       - name: Enable KVM access
         run: |
@@ -165,10 +203,40 @@ jobs:
     steps:
       - uses: actions/checkout@v6
 
-      - name: Install QEMU dependencies
+      - name: Install system dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y qemu-system-x86 qemu-utils socat zstd
+          sudo apt-get install -y qemu-utils socat zstd \
+            ninja-build pkg-config python3-venv \
+            libglib2.0-dev libpixman-1-dev libslirp-dev libepoxy-dev libgbm-dev
+
+      - name: Restore QEMU 10.2.2 cache
+        id: qemu-cache
+        uses: actions/cache@v4
+        with:
+          path: /opt/qemu
+          key: qemu-10.2.2-${{ runner.os }}-${{ runner.arch }}-v1
+
+      - name: Build QEMU 10.2.2 from source
+        if: steps.qemu-cache.outputs.cache-hit != 'true'
+        run: |
+          set -euxo pipefail
+          curl -fsSL https://download.qemu.org/qemu-10.2.2.tar.xz -o /tmp/qemu.tar.xz
+          mkdir -p /tmp/qemu-src
+          tar -xf /tmp/qemu.tar.xz -C /tmp/qemu-src --strip-components=1
+          cd /tmp/qemu-src
+          ./configure --prefix=/opt/qemu \
+            --target-list=x86_64-softmmu,aarch64-softmmu \
+            --enable-kvm --enable-slirp --enable-tcg \
+            --disable-docs --disable-gtk --disable-sdl --disable-vnc \
+            --disable-guest-agent --disable-tools
+          make -j"$(nproc)"
+          sudo make install
+
+      - name: Put QEMU 10.2.2 on PATH
+        run: |
+          echo "/opt/qemu/bin" >> "$GITHUB_PATH"
+          /opt/qemu/bin/qemu-system-x86_64 --version
 
       - uses: pnpm/action-setup@v4
         with:
