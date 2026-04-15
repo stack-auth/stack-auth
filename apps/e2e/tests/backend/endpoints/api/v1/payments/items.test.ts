@@ -346,7 +346,7 @@ it("allows team admins to be added when item quantity is increased", async ({ ex
     method: "POST",
     accessType: "admin",
     body: {
-      delta: 3,  // TODO: set this back to 2 when default products are reintroduced
+      delta: 2,
     },
   });
 
