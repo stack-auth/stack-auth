@@ -11,7 +11,7 @@ If this guide conflicts with older examples in the codebase, follow this guide.
 
 Always prefer components from `apps/dashboard/src/components/design-components`.
 
-- Do not build new ad-hoc visual primitives (for example custom `GlassCard`, custom badge pills, custom pill toggles, custom list rows) if a design-components component exists.
+- Do not build new ad-hoc visual primitives (for example custom `GlassCard`, custom `ChartCard`, custom badge pills, custom pill toggles, custom list rows) if a design-components component exists.
 - If the desired UI can be achieved by tweaking/customizing/extending a design-components component, do that instead of creating a page-local alternative.
 - In all cases, default to design-components first; only use a non-design-components approach when there is absolutely no viable way to achieve the result with design-components.
 - Use `@/components/ui/*` primitives only when no design-components equivalent exists, or when the design-components component intentionally wraps the primitive.
@@ -29,6 +29,7 @@ Use this when implementing a new dashboard UI quickly:
 
 1. Need a section container/card?
    - Use `DesignCard`.
+   - For chart-heavy analytics surfaces (especially Recharts tooltips/overflow), use `DesignAnalyticsCard`.
 2. Need user-facing status/info/warning/error message?
    - Use `DesignAlert`.
 3. Need small semantic label (sent, failed, queued, active)?
@@ -252,6 +253,36 @@ Default recommendation:
 
 - for dashboard sections, use `glassmorphic` style (either explicit or via nesting context)
 - use `gradient="default"` unless there is semantic reason for colored tint
+
+### 4.1.1 `DesignAnalyticsCard` (and chart helpers)
+
+File: `apps/dashboard/src/components/design-components/analytics-card.tsx`
+
+Use for:
+
+- chart-heavy analytics shells on overview and metrics surfaces
+- cards where chart tooltips need to escape clipping/stacking issues
+- previously duplicated glass analytics wrappers (`ChartCard`, `GlassCard` clones)
+
+Exports:
+
+- `DesignAnalyticsCard`
+- `DesignAnalyticsCardHeader`
+- `DesignChartLegend`
+- `useInfiniteListWindow`
+- `DesignInfiniteScrollList`
+
+`DesignAnalyticsCard` props:
+
+- `gradient`: `"blue" | "cyan" | "purple" | "green" | "orange" | "slate"`
+- `className`
+
+Rules:
+
+- prefer `DesignAnalyticsCard` over local chart wrappers for overview/analytics cards
+- keep chart implementation local (Recharts config, data transforms), but keep shell/legend/list plumbing shared
+- use `DesignChartLegend` instead of hand-rolled dot/label legend rows when layout matches
+- use `useInfiniteListWindow` for incremental scrolling lists in analytics/list tabs
 
 ### 4.2 `DesignAlert`
 
@@ -551,6 +582,20 @@ Reference surfaces:
 
 Current pattern in these pages often uses custom card/header/pill components. New and refactored code should standardize to design-components primitives as follows.
 
+### 5.0 `/projects/[projectId]/(overview)` analytics surfaces
+
+Use:
+
+- chart/list shells: `DesignAnalyticsCard`
+- compact chart headers: `DesignAnalyticsCardHeader`
+- stacked chart legends: `DesignChartLegend`
+- incremental list rendering: `useInfiniteListWindow` (or `DesignInfiniteScrollList` where it fits)
+
+Avoid:
+
+- page-local `ChartCard` wrappers
+- duplicated `IntersectionObserver` list window logic per card
+
 ### 5.1 `/projects/[projectId]/emails`
 
 Use:
@@ -774,7 +819,7 @@ Use this checklist before opening a dashboard UI PR:
 
 ## 10) Anti-Patterns (Do Not Introduce)
 
-- Creating local `GlassCard` components instead of `DesignCard`.
+- Creating local `GlassCard`/`ChartCard` components instead of `DesignCard` or `DesignAnalyticsCard`.
 - Creating local status pills instead of `DesignBadge`.
 - Creating local segmented/pill selectors instead of `DesignPillToggle`.
 - Using raw `Alert`/`Button` in standard dashboard surfaces where `DesignAlert`/`DesignButton` should be used.
@@ -786,7 +831,7 @@ Use this checklist before opening a dashboard UI PR:
 
 When touching existing email/project pages, migrate in this order:
 
-1. Cards/surfaces (`DesignCard`)
+1. Cards/surfaces (`DesignCard` / `DesignAnalyticsCard` for chart-heavy shells)
 2. Alerts (`DesignAlert`)
 3. Badges (`DesignBadge`)
 4. Toggles/tabs (`DesignPillToggle` / `DesignCategoryTabs`)
@@ -805,4 +850,5 @@ Whenever a new reusable visual pattern is introduced in dashboard features:
 - add or extend a design-components component first
 - then document the component contract and preferred usage here
 - avoid introducing permanent page-local UI primitives that duplicate design-components behavior
+
 
