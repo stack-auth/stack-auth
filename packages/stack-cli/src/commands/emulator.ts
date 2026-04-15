@@ -1,8 +1,10 @@
 import { Command } from "commander";
 import { execFileSync, spawn } from "child_process";
-import { existsSync, mkdirSync, readFileSync, renameSync, unlinkSync } from "fs";
+import { createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync } from "fs";
 import { homedir } from "os";
 import { dirname, join, resolve } from "path";
+import { Readable } from "stream";
+import { pipeline } from "stream/promises";
 import { fileURLToPath } from "url";
 import { CliError } from "../lib/errors.js";
 
@@ -145,7 +147,7 @@ async function startEmulator(arch: "arm64" | "amd64"): Promise<void> {
   const img = join(emulatorImageDir(), `stack-emulator-${arch}.qcow2`);
   if (!existsSync(img)) {
     console.log("No emulator image found. Pulling latest...");
-    pullRelease(arch);
+    await pullRelease(arch);
   }
   await runEmulator("start", { EMULATOR_ARCH: arch });
 }
@@ -156,7 +158,7 @@ function resolveArch(raw?: string): "arm64" | "amd64" {
   throw new CliError(`Invalid architecture: ${raw ?? process.arch}. Expected arm64 or amd64.`);
 }
 
-function pullRelease(arch: "arm64" | "amd64", opts: { repo?: string; branch?: string; tag?: string } = {}) {
+async function pullRelease(arch: "arm64" | "amd64", opts: { repo?: string, branch?: string, tag?: string } = {}) {
   const repo = opts.repo ?? "stack-auth/stack-auth";
   const branch = opts.branch ?? "dev";
   const tag = opts.tag ?? `emulator-${branch}-latest`;
@@ -168,13 +170,96 @@ function pullRelease(arch: "arm64" | "amd64", opts: { repo?: string; branch?: st
 
   console.log(`Pulling ${asset} from release ${tag}...`);
   try {
-    execFileSync("gh", ["release", "download", tag, "--repo", repo, "--pattern", asset, "--output", tmpDest, "--clobber"], { stdio: "inherit" });
+    const assets = JSON.parse(gh(["release", "view", tag, "--repo", repo, "--json", "assets"])) as {
+      assets: { name: string, apiUrl: string, size: number }[],
+    };
+    const match = assets.assets.find((a) => a.name === asset);
+    if (!match) {
+      throw new CliError(`Asset ${asset} not found in release ${tag}. Run 'stack emulator list-releases' to see available releases.`);
+    }
+    const token = gh(["auth", "token"]);
+    await downloadWithProgress(match.apiUrl, {
+      Authorization: `Bearer ${token}`,
+      Accept: "application/octet-stream",
+    }, tmpDest, match.size);
   } catch (err) {
     if (existsSync(tmpDest)) unlinkSync(tmpDest);
+    if (err instanceof CliError) throw err;
     throw new CliError(`Failed to download ${asset} from release ${tag}: ${err instanceof Error ? err.message : err}\nRun 'stack emulator list-releases' to see available releases.`);
   }
   renameSync(tmpDest, dest);
   console.log(`Downloaded: ${dest}`);
+}
+
+async function downloadWithProgress(url: string, headers: Record<string, string>, dest: string, totalBytes?: number): Promise<void> {
+  const res = await fetch(url, { headers, redirect: "follow" });
+  if (!res.ok || !res.body) {
+    throw new CliError(`Download failed (${res.status} ${res.statusText}): ${url}`);
+  }
+  const total = totalBytes ?? (Number(res.headers.get("content-length")) || 0);
+  const isTty = Boolean(process.stderr.isTTY);
+  const startedAt = Date.now();
+  let downloaded = 0;
+  let lastRender = 0;
+
+  const render = (final: boolean) => {
+    const now = Date.now();
+    if (!final && now - lastRender < 100) return;
+    lastRender = now;
+    const elapsed = Math.max(0.001, (now - startedAt) / 1000);
+    const speed = downloaded / elapsed;
+    const line = renderProgressLine(downloaded, total, speed);
+    if (isTty) {
+      process.stderr.write(`\r\x1b[2K${line}`);
+    } else if (final) {
+      process.stderr.write(`${line}\n`);
+    }
+  };
+
+  const body = Readable.fromWeb(res.body as Parameters<typeof Readable.fromWeb>[0]);
+  body.on("data", (chunk: Buffer) => {
+    downloaded += chunk.byteLength;
+    render(false);
+  });
+  await pipeline(body, createWriteStream(dest));
+  render(true);
+  if (isTty) process.stderr.write("\n");
+}
+
+function renderProgressLine(downloaded: number, total: number, bytesPerSec: number): string {
+  const barWidth = 30;
+  const pct = total > 0 ? Math.min(100, (downloaded / total) * 100) : 0;
+  const filled = total > 0 ? Math.round((downloaded / total) * barWidth) : 0;
+  const bar = "█".repeat(filled) + "░".repeat(Math.max(0, barWidth - filled));
+  const pctStr = total > 0 ? `${pct.toFixed(1).padStart(5)}%` : "  ?  ";
+  const sizeStr = total > 0 ? `${formatBytes(downloaded)}/${formatBytes(total)}` : formatBytes(downloaded);
+  const speedStr = `${formatBytes(bytesPerSec)}/s`;
+  const etaStr = total > 0 && bytesPerSec > 0 ? `  eta ${formatDuration((total - downloaded) / bytesPerSec)}` : "";
+  return `  [${bar}] ${pctStr}  ${sizeStr}  ${speedStr}${etaStr}`;
+}
+
+function formatBytes(bytes: number): string {
+  if (!Number.isFinite(bytes) || bytes < 0) return "?";
+  const units = ["B", "KB", "MB", "GB", "TB"];
+  let v = bytes;
+  let i = 0;
+  while (v >= 1024 && i < units.length - 1) {
+    v /= 1024;
+    i++;
+  }
+  return `${v.toFixed(v < 10 && i > 0 ? 1 : 0)} ${units[i]}`;
+}
+
+function formatDuration(seconds: number): string {
+  if (!Number.isFinite(seconds) || seconds < 0) return "?";
+  const s = Math.round(seconds);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  const rs = s % 60;
+  if (m < 60) return `${m}m${rs.toString().padStart(2, "0")}s`;
+  const h = Math.floor(m / 60);
+  const rm = m % 60;
+  return `${h}h${rm.toString().padStart(2, "0")}m`;
 }
 
 export function registerEmulatorCommand(program: Command) {
@@ -216,7 +301,7 @@ export function registerEmulatorCommand(program: Command) {
         if (!existsSync(dest)) throw new CliError(`Expected image not found at ${dest} after download.`);
         console.log(`Downloaded: ${dest}`);
       } else {
-        pullRelease(arch, { repo, branch: opts.branch, tag: opts.tag });
+        await pullRelease(arch, { repo, branch: opts.branch, tag: opts.tag });
       }
     });
 
