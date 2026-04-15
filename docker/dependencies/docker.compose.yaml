@@ -289,6 +289,15 @@ services:
         soft: 262144
         hard: 262144
 
+  # ================= SpacetimeDB =================
+
+  spacetimedb:
+    image: clockworklabs/spacetime:v2.1.0
+    pull_policy: always
+    ports:
+      - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}39:3000"
+    command: start
+
   # ================= Drizzle Gateway =================
 
   drizzle-gateway:
