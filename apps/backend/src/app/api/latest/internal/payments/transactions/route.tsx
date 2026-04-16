@@ -213,7 +213,21 @@ function mapProductSnapshotToInlineProduct(product: unknown): InlineProduct {
 
   const customerType = readCustomerType(product.customerType, "product snapshot");
   const includedItemsRaw = product.includedItems;
+  // Legacy include-by-default products may have no includedItems in their snapshot
   if (!isRecord(includedItemsRaw)) {
+    if (product.prices === "include-by-default") {
+      return {
+        display_name: typeof product.displayName === "string" ? product.displayName : "Unknown Product",
+        customer_type: customerType,
+        server_only: product.serverOnly === true,
+        stackable: product.stackable === true,
+        prices: {},
+        included_items: {},
+        client_metadata: isRecord(product.clientMetadata) ? product.clientMetadata : null,
+        client_read_only_metadata: isRecord(product.clientReadOnlyMetadata) ? product.clientReadOnlyMetadata : null,
+        server_metadata: isRecord(product.serverMetadata) ? product.serverMetadata : null,
+      };
+    }
     throw new StackAssertionError("Invalid includedItems in product snapshot", { product });
   }
   const includedItems: InlineProduct["included_items"] = {};

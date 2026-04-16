@@ -52,6 +52,7 @@ type SubscriptionSnapshot = {
   currentPeriodStart: Date,
   currentPeriodEnd: Date | null,
   cancelAtPeriodEnd: boolean,
+  endedAt: Date | null,
   createdAt: Date,
   refundedAt: Date | null,
 };
@@ -368,12 +369,18 @@ function buildExpectedOwnedProductsForCustomer(options: {
       if (!subscription) {
         continue;
       }
-      if (subscription.status !== SubscriptionStatus.active && subscription.status !== SubscriptionStatus.trialing) {
+      // A subscription still grants ownership if it hasn't actually ended yet.
+      // Canceled subs keep granting until endedAt; only skip if endedAt is in the past.
+      if (subscription.endedAt != null && subscription.endedAt <= new Date()) {
         continue;
       }
+      // The API reports type based on whether an active subscription exists,
+      // not whether the product was originally granted via subscription.
+      const isActive = subscription.status === SubscriptionStatus.active
+        || subscription.status === SubscriptionStatus.trialing;
       expected.push({
         id: entry.product_id ?? null,
-        type: "subscription",
+        type: isActive ? "subscription" : "one_time",
         quantity: subscription.quantity,
       });
       continue;
@@ -460,12 +467,20 @@ function getIncludeByDefaultConflicts(paymentsConfig: PaymentsConfig) {
 }
 
 function normalizeOwnedProducts(list: ExpectedOwnedProduct[]) {
-  return list
-    .map((item) => ({
-      id: item.id ?? null,
-      type: item.type,
-      quantity: item.quantity,
-    }))
+  // Aggregate entries by (id, type) — the bulldozer LFold sums quantities per product
+  const merged = new Map<string, ExpectedOwnedProduct>();
+  for (const item of list) {
+    const id = item.id === "__null__" ? null : (item.id ?? null);
+    const key = `${id ?? "__null__"}:${item.type}`;
+    const existing = merged.get(key);
+    if (existing) {
+      existing.quantity += item.quantity;
+    } else {
+      merged.set(key, { id, type: item.type, quantity: item.quantity });
+    }
+  }
+  return Array.from(merged.values())
+    .filter((item) => item.quantity > 0)
     .sort((a, b) => {
       const aId = a.id ?? "";
       const bId = b.id ?? "";
@@ -586,6 +601,7 @@ export async function createPaymentsVerifier(options: {
         currentPeriodStart: true,
         currentPeriodEnd: true,
         cancelAtPeriodEnd: true,
+        endedAt: true,
         createdAt: true,
         refundedAt: true,
       },
@@ -666,12 +682,10 @@ export async function createPaymentsVerifier(options: {
       }
     }
 
-    const defaultProducts = getDefaultProductsForCustomer({
-      paymentsConfig,
-      customerType: customer.customerType,
-      subscribedProductLineIds,
-      subscribedProductIds,
-    });
+    // include-by-default products are no longer automatically granted.
+    // Old customers may still have them, but the bulldozer pipeline doesn't
+    // produce ownership for them. Skip default products in verification.
+    const defaultProducts: Array<{ productId: string, product: PaymentsProduct }> = [];
 
     const expectedItems = buildExpectedItemQuantitiesForCustomer({
       entries,
