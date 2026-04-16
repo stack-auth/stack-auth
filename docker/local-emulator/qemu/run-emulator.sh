@@ -174,7 +174,15 @@ ensure_runtime_config_iso() {
   # otherwise we'd fall through to make_iso_from_dir and require
   # hdiutil/mkisofs/genisoimage, which is exactly the host dep the CLI path
   # is designed to remove.
-  if [ "$STACK_EMULATOR_CLI_WROTE_ISO" = "1" ] && [ -s "$(runtime_iso_path)" ]; then
+  if [ "${STACK_EMULATOR_CLI_WROTE_ISO:-}" = "1" ] && [ -s "$(runtime_iso_path)" ]; then
+    return 0
+  fi
+  # In capture mode, cmd_capture already wrote a specialized ISO with an
+  # empty STACK_EMULATOR_VM_DIR_HOST — required because virtfs is detached
+  # for snapshot compatibility, and run-stack-container would otherwise
+  # try to publish internal-pck to /host/... and restart-loop
+  # stack.service. Trust that write and don't overwrite it.
+  if [ "${EMULATOR_CAPTURING_SNAPSHOT:-}" = "1" ] && [ -s "$(runtime_iso_path)" ]; then
     return 0
   fi
   # Direct-shell invocation path: regenerate unconditionally. Port env vars
