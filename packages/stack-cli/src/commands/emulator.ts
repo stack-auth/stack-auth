@@ -1,7 +1,7 @@
 import { Command } from "commander";
 import { execFileSync, spawn } from "child_process";
 import extract from "extract-zip";
-import { createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync } from "fs";
+import { chmodSync, createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync } from "fs";
 import { homedir } from "os";
 import { dirname, join, resolve } from "path";
 import { Readable } from "stream";
@@ -143,10 +143,16 @@ async function ghApi<T>(path: string): Promise<T> {
 function emulatorScriptsDir(): string {
   const here = dirname(fileURLToPath(import.meta.url));
   const bundled = join(here, "emulator");
-  if (existsSync(join(bundled, "run-emulator.sh"))) return bundled;
+  if (existsSync(join(bundled, "run-emulator.sh"))) return ensureExecutable(bundled);
   const repo = resolve(here, "../../../docker/local-emulator/qemu");
-  if (existsSync(join(repo, "run-emulator.sh"))) return repo;
+  if (existsSync(join(repo, "run-emulator.sh"))) return ensureExecutable(repo);
   throw new CliError("Emulator scripts not found in CLI bundle.");
+}
+
+// npm pack strips the execute bit from non-`bin` files, so restore it here.
+function ensureExecutable(scriptsDir: string): string {
+  try { chmodSync(join(scriptsDir, "run-emulator.sh"), 0o755); } catch { /* best-effort */ }
+  return scriptsDir;
 }
 
 function baseEnvPath(): string {
@@ -467,7 +473,7 @@ async function downloadArtifactByName(repo: string, runId: string, name: string,
   console.log(`Downloading artifact '${name}' from run ${runId}...`);
   await downloadWithProgress(
     `${GITHUB_API}/repos/${repo}/actions/artifacts/${match.id}/zip`,
-    { Accept: "application/octet-stream", Authorization: `Bearer ${token}` },
+    { Accept: "application/vnd.github+json", Authorization: `Bearer ${token}` },
     zipPath,
     match.size_in_bytes,
   );

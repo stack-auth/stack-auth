@@ -1,0 +1,134 @@
+name: Build QEMU Emulator Image (arm64 / macOS)
+
+# arm64 emulator images are built on a macOS Apple Silicon runner so the
+# snapshot is captured under HVF — the same accelerator developer Macs use.
+# KVM snapshots (from Linux runners) are NOT resumable under HVF because
+# `-cpu max` expands to different feature sets under each accelerator.
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    paths:
+      - 'docker/local-emulator/**'
+      - '.github/workflows/qemu-emulator-build-arm64.yaml'
+  workflow_dispatch:
+
+concurrency:
+  group: qemu-arm64-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
+
+env:
+  EMULATOR_IMAGE_NAME: stack-local-emulator
+  EMULATOR_IMAGE_DIR: ${{ github.workspace }}/docker/local-emulator/qemu/images
+  EMULATOR_RUN_DIR: ${{ github.workspace }}/docker/local-emulator/qemu/run
+
+jobs:
+  build:
+    name: Build QEMU Image (arm64)
+    runs-on: macos-15
+    timeout-minutes: 120
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10.23.0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install system dependencies
+        run: brew install qemu socat zstd
+
+      - name: Set up Docker via colima
+        run: |
+          brew install docker docker-buildx colima
+          mkdir -p ~/.docker/cli-plugins
+          ln -sfn "$(brew --prefix docker-buildx)/bin/docker-buildx" ~/.docker/cli-plugins/docker-buildx
+          colima start --cpu 4 --memory 6 --disk 60 --arch aarch64
+          docker info
+          docker buildx version
+
+      - name: Verify QEMU + HVF
+        run: |
+          qemu-system-aarch64 --version
+          if qemu-system-aarch64 -accel help 2>&1 | grep -q hvf; then
+            echo "HVF available — snapshot will be portable to developer Macs"
+          else
+            echo "::error::HVF not available on this runner"
+            exit 1
+          fi
+
+      - name: Build QEMU image
+        run: |
+          chmod +x docker/local-emulator/qemu/build-image.sh
+          EMULATOR_PROVISION_TIMEOUT=6000 \
+            docker/local-emulator/qemu/build-image.sh arm64
+
+      - name: Generate emulator env
+        run: node docker/local-emulator/generate-env-development.mjs
+
+      # HVF gives us native-speed arm64 — we can verify the image boots
+      # and services come up, unlike the old cross-arch TCG path.
+      - name: Build stack-cli
+        run: |
+          pnpm install --frozen-lockfile --filter '@stackframe/stack-cli...'
+          pnpm exec turbo run build --filter='@stackframe/stack-cli...'
+
+      - name: Start emulator and verify
+        env:
+          EMULATOR_ARCH: arm64
+          EMULATOR_READY_TIMEOUT: 3200
+          EMULATOR_IMAGE_DIR: ${{ env.EMULATOR_IMAGE_DIR }}
+          EMULATOR_RUN_DIR: ${{ env.EMULATOR_RUN_DIR }}
+        run: node packages/stack-cli/dist/index.js emulator start
+
+      - name: Verify services are healthy
+        env:
+          EMULATOR_ARCH: arm64
+          EMULATOR_IMAGE_DIR: ${{ env.EMULATOR_IMAGE_DIR }}
+          EMULATOR_RUN_DIR: ${{ env.EMULATOR_RUN_DIR }}
+        run: node packages/stack-cli/dist/index.js emulator status
+
+      - name: Stop emulator
+        if: always()
+        env:
+          EMULATOR_ARCH: arm64
+          EMULATOR_IMAGE_DIR: ${{ env.EMULATOR_IMAGE_DIR }}
+          EMULATOR_RUN_DIR: ${{ env.EMULATOR_RUN_DIR }}
+        run: node packages/stack-cli/dist/index.js emulator stop
+
+      - name: Print serial log on failure
+        if: failure()
+        run: |
+          tail -100 "$EMULATOR_RUN_DIR/vm/serial.log" 2>/dev/null || true
+
+      - name: Package image
+        run: |
+          BASE_IMG="docker/local-emulator/qemu/images/stack-emulator-arm64.qcow2"
+          SAVEVM="docker/local-emulator/qemu/images/stack-emulator-arm64.savevm.zst"
+          cp "$BASE_IMG" "stack-emulator-arm64.qcow2"
+          if [ -f "$SAVEVM" ]; then
+            cp "$SAVEVM" "stack-emulator-arm64.savevm.zst"
+            ls -lh "stack-emulator-arm64.savevm.zst"
+          else
+            echo "::error::Snapshot was not produced — fast-start will be unavailable"
+            exit 1
+          fi
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu-emulator-arm64
+          path: |
+            stack-emulator-arm64.qcow2
+            stack-emulator-arm64.savevm.zst
+          if-no-files-found: error
+          retention-days: 30
+          compression-level: 0

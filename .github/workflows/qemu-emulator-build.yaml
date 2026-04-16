@@ -35,15 +35,10 @@ jobs:
       matrix:
         include:
           # amd64 runs natively under KVM on ubicloud's amd64 runner.
+          # arm64 is built in a separate workflow on a macOS runner (HVF)
+          # so that the snapshot is portable to developer Macs.
+          # See qemu-emulator-build-arm64.yaml.
           - arch: amd64
-            runner: ubicloud-standard-8
-          # arm64 runs under cross-arch TCG on ubicloud's amd64 runner.
-          # No KVM for arm64 guests on an amd64 host; cortex-a72 + V8
-          # --jitless together sidestep the SIGTRAPs that cross-arch TCG
-          # hits on aggressive arm64 JIT code. Smoke test is still skipped
-          # because the backend can't come up reliably under cross-arch
-          # TCG within any sane window.
-          - arch: arm64
             runner: ubicloud-standard-8
 
     steps:
