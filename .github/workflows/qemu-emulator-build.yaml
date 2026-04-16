@@ -22,8 +22,14 @@ concurrency:
 
 env:
   EMULATOR_IMAGE_NAME: stack-local-emulator
+  # Shell scripts (build-image.sh, run-emulator.sh) read these directly.
   EMULATOR_IMAGE_DIR: ${{ github.workspace }}/docker/local-emulator/qemu/images
   EMULATOR_RUN_DIR: ${{ github.workspace }}/docker/local-emulator/qemu/run
+  # The stack-cli ignores EMULATOR_IMAGE_DIR/RUN_DIR and derives its own paths
+  # from STACK_EMULATOR_HOME. Point it at the same workspace so `emulator
+  # start` finds the freshly-built qcow2 + savevm from build-image.sh
+  # (snapshot-resume, fast) instead of auto-pulling from a prior release.
+  STACK_EMULATOR_HOME: ${{ github.workspace }}/docker/local-emulator/qemu
 
 jobs:
   build:
@@ -260,9 +266,9 @@ jobs:
 
       - name: Place qcow2 into STACK_EMULATOR_HOME layout
         run: |
-          mkdir -p "$HOME/.stack/emulator/images"
-          cp "${{ github.workspace }}/.stack-emulator-images/stack-emulator-${{ matrix.arch }}.qcow2" "$HOME/.stack/emulator/images/"
-          ls -lh "$HOME/.stack/emulator/images/"
+          mkdir -p "$STACK_EMULATOR_HOME/images"
+          cp "${{ github.workspace }}/.stack-emulator-images/stack-emulator-${{ matrix.arch }}.qcow2" "$STACK_EMULATOR_HOME/images/"
+          ls -lh "$STACK_EMULATOR_HOME/images/"
 
       # No savevm.zst artifact (users capture locally via `emulator pull`),
       # so `emulator start` cold-boots the qcow2. Budget accordingly.
@@ -293,7 +299,7 @@ jobs:
 
       - name: Print serial log on failure
         if: failure()
-        run: tail -100 $HOME/.stack/emulator/run/vm/serial.log 2>/dev/null || true
+        run: tail -100 "$STACK_EMULATOR_HOME/run/vm/serial.log" 2>/dev/null || true
 
   publish:
     name: Publish to GitHub Releases
