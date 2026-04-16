@@ -118,6 +118,9 @@ A: In `metrics-page.tsx`, keep DAU split data as `StackedDataPoint[]`, pass a ti
 Q: Why can tuple corner radii on Recharts `Cell` fail TypeScript checks even though they work at runtime?
 A: In dashboard charts, `Cell` props are typed broadly from SVG attributes (`radius` as `string | number`), but Recharts bar rectangles accept tuple radii like `[4, 4, 0, 0]`. For stacked bars that need per-cell top-corner rounding, keep tuple `radius` on `Cell` and document it with `@ts-expect-error` at the specific line.
 
+Q: Why can DataGrid rows still show above sticky toolbar/header in `fillHeight={false}` page-scroll mode even after adding a `clip-path` wrapper?
+A: In page-scroll mode the sticky chrome follows the nearest scrolling ancestor (for the dashboard tables, the scrolling `main`), not the inner `overflow-auto` body. The overlap math is fine, but the clip updater needs to listen to that actual vertical scroll ancestor and not just the body/window assumption. Also, virtualized rows use transforms, so pairing the inset `clip-path` with a matching `mask-image` on the rows wrapper makes the cut-out reliable.
+
 Q: How can overview "recent" tabs support infinite lazy loading without adding new endpoints?
 A: Return a larger bounded page from `/api/v1/internal/metrics` (for example 100 recent sign-ups/emails), then implement client-side incremental rendering in the tab list views using an `IntersectionObserver` sentinel inside the scroll container (batching e.g. 12 items at a time). This gives infinite-scroll UX while keeping backend changes minimal.
 

@@ -133,6 +133,26 @@ function ResizeHandle({
   );
 }
 
+function getNearestVerticalScrollElement(element: HTMLElement | null): HTMLElement | Window {
+  let current = element?.parentElement ?? null;
+
+  while (current) {
+    const style = window.getComputedStyle(current);
+    const overflowY = style.overflowY === "visible" ? style.overflow : style.overflowY;
+    const canScrollVertically =
+      (overflowY === "auto" || overflowY === "scroll" || overflowY === "overlay") &&
+      current.scrollHeight > current.clientHeight + 1;
+
+    if (canScrollVertically) {
+      return current;
+    }
+
+    current = current.parentElement;
+  }
+
+  return window;
+}
+
 // ─── Header cell ─────────────────────────────────────────────────────
 
 function HeaderCell<TRow>({
@@ -1016,6 +1036,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const headerScrollRef = useRef<HTMLDivElement>(null);
   const stickyChromeRef = useRef<HTMLDivElement>(null);
+  const rowsClipRef = useRef<HTMLDivElement>(null);
   const measureElementFn = useCallback(
     (el: Element) => el.getBoundingClientRect().height,
     [],
@@ -1098,6 +1119,71 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
     observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
     return () => observer.disconnect();
   }, []);
+
+  // Hide row content scrolling behind the sticky chrome by clipping the
+  // rows wrapper. Computes overlap = max(0, stickyBottom - wrapperTop)
+  // in viewport coords and writes `clip-path: inset(<overlap>px 0 0 0)`
+  // directly to the wrapper on every scroll/resize. Direct DOM writes
+  // (no React state, no rAF) keep clip in lockstep with scroll so no
+  // row content flashes through the sticky band for a frame.
+  useLayoutEffect(() => {
+    const gridEl = gridRef.current;
+    const stickyEl = stickyChromeRef.current;
+    const bodyEl = scrollContainerRef.current;
+    const clipEl = rowsClipRef.current;
+    if (!gridEl || !stickyEl || !bodyEl || !clipEl) return;
+
+    const verticalScrollEl = fillHeight
+      ? bodyEl
+      : getNearestVerticalScrollElement(gridEl);
+    let extraObservedScrollEl: HTMLElement | null = null;
+    if (verticalScrollEl instanceof HTMLElement && verticalScrollEl !== bodyEl) {
+      extraObservedScrollEl = verticalScrollEl;
+    }
+
+    const updateClip = () => {
+      const stickyRect = stickyEl.getBoundingClientRect();
+      const clipRect = clipEl.getBoundingClientRect();
+      const overlap = Math.max(0, stickyRect.bottom - clipRect.top);
+      const clipValue = overlap > 0 ? `inset(${overlap}px 0 0 0)` : "";
+      const maskValue = overlap > 0
+        ? `linear-gradient(to bottom, transparent 0px, transparent ${overlap}px, black ${overlap}px, black 100%)`
+        : "";
+      clipEl.style.clipPath = clipValue;
+      clipEl.style.setProperty("-webkit-clip-path", clipValue);
+      clipEl.style.maskImage = maskValue;
+      clipEl.style.setProperty("-webkit-mask-image", maskValue);
+    };
+
+    updateClip();
+
+    bodyEl.addEventListener("scroll", updateClip);
+    if (verticalScrollEl === window) {
+      window.addEventListener("scroll", updateClip, true);
+    } else if (extraObservedScrollEl) {
+      extraObservedScrollEl.addEventListener("scroll", updateClip);
+    }
+    window.addEventListener("resize", updateClip);
+    const ro = new ResizeObserver(updateClip);
+    ro.observe(gridEl);
+    ro.observe(stickyEl);
+    ro.observe(bodyEl);
+    ro.observe(clipEl);
+    if (extraObservedScrollEl) {
+      ro.observe(extraObservedScrollEl);
+    }
+
+    return () => {
+      bodyEl.removeEventListener("scroll", updateClip);
+      if (verticalScrollEl === window) {
+        window.removeEventListener("scroll", updateClip, true);
+      } else if (extraObservedScrollEl) {
+        extraObservedScrollEl.removeEventListener("scroll", updateClip);
+      }
+      window.removeEventListener("resize", updateClip);
+      ro.disconnect();
+    };
+  }, [fillHeight]);
 
   // Sync horizontal scroll from body to header
   const handleBodyScroll = useCallback(() => {
@@ -1254,117 +1340,122 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
         )}
         onScroll={handleBodyScroll}
       >
-        {/* Loading initial */}
-        {isLoading && (
-          <div style={{ minWidth: visibleColumnMetrics.totalWidth }}>
-            {loadingState ??
-              Array.from({ length: 8 }).map((_, i) => (
-                <SkeletonRow
-                  key={i}
-                  columns={visibleColumns}
-                  height={estimatedRowHeight}
-                  showCheckbox={selectionMode !== "none"}
-                />
-              ))}
-          </div>
-        )}
+        {/* Clip wrapper — `clip-path` updated on scroll/resize so row
+            content scrolling behind the sticky chrome is physically cut
+            out instead of bleeding through. */}
+        <div ref={rowsClipRef}>
+          {/* Loading initial */}
+          {isLoading && (
+            <div style={{ minWidth: visibleColumnMetrics.totalWidth }}>
+              {loadingState ??
+                Array.from({ length: 8 }).map((_, i) => (
+                  <SkeletonRow
+                    key={i}
+                    columns={visibleColumns}
+                    height={estimatedRowHeight}
+                    showCheckbox={selectionMode !== "none"}
+                  />
+                ))}
+            </div>
+          )}
 
-        {/* Empty state */}
-        {!isLoading && rows.length === 0 && (
-          <div
-            className="flex items-center justify-center py-16 text-sm text-muted-foreground"
-            style={{ minWidth: visibleColumnMetrics.totalWidth }}
-          >
-            {emptyState ?? strings.noData}
-          </div>
-        )}
+          {/* Empty state */}
+          {!isLoading && rows.length === 0 && (
+            <div
+              className="flex items-center justify-center py-16 text-sm text-muted-foreground"
+              style={{ minWidth: visibleColumnMetrics.totalWidth }}
+            >
+              {emptyState ?? strings.noData}
+            </div>
+          )}
 
-        {/* Virtualized rows */}
-        {!isLoading && rows.length > 0 && (
-          <div
-            style={{
-              height: rowVirtualizer.getTotalSize(),
-              width: "100%",
-              minWidth: visibleColumnMetrics.totalWidth,
-              position: "relative",
-            }}
-          >
-            {rowVirtualizer.getVirtualItems().map((virtualRow: VirtualItem) => {
-              const row = rows[virtualRow.index]!;
-              const rowId = getRowId(row);
-              const isSelected = state.selection.selectedIds.has(rowId);
+          {/* Virtualized rows */}
+          {!isLoading && rows.length > 0 && (
+            <div
+              style={{
+                height: rowVirtualizer.getTotalSize(),
+                width: "100%",
+                minWidth: visibleColumnMetrics.totalWidth,
+                position: "relative",
+              }}
+            >
+              {rowVirtualizer.getVirtualItems().map((virtualRow: VirtualItem) => {
+                const row = rows[virtualRow.index]!;
+                const rowId = getRowId(row);
+                const isSelected = state.selection.selectedIds.has(rowId);
 
-              const isOddRow = virtualRow.index % 2 === 1;
-              return (
-                <div
-                  key={rowId}
-                  ref={isDynamicRowHeight ? rowVirtualizer.measureElement : undefined}
-                  data-index={virtualRow.index}
-                  className={cn(
-                    "absolute left-0 w-full flex",
-                    "border-b border-black/[0.03] dark:border-white/[0.03]",
-                    "transition-colors duration-75",
-                    isSelected
-                      ? "bg-blue-500/[0.06] dark:bg-blue-400/[0.08] hover:bg-blue-500/[0.08] dark:hover:bg-blue-400/[0.1]"
-                      : isOddRow
-                        ? "bg-foreground/[0.02] dark:bg-foreground/[0.03] hover:bg-foreground/[0.04] dark:hover:bg-foreground/[0.06]"
-                        : "hover:bg-foreground/[0.025] dark:hover:bg-foreground/[0.04]",
-                    (selectionMode !== "none" || onRowClick) && "cursor-pointer",
-                  )}
-                  style={{
-                    ...(isDynamicRowHeight
-                      ? { minHeight: estimatedRowHeight }
-                      : { height: fixedRowHeight }),
-                    transform: `translateY(${virtualRow.start}px)`,
-                  }}
-                  onClick={(e) => handleRowClick(row, rowId, e)}
-                  onDoubleClick={(e) => onRowDoubleClick?.(row, rowId, e)}
-                  role="row"
-                  aria-rowindex={virtualRow.index + 2}
-                  aria-selected={isSelected}
-                  data-row-id={rowId}
-                  data-state={isSelected ? "selected" : undefined}
-                >
-                  {/* Selection checkbox */}
-                  {selectionMode !== "none" && (
-                    <div
-                      className="flex items-center justify-center border-r border-black/[0.04] dark:border-white/[0.04]"
-                      style={{ width: 44 }}
-                    >
-                      <SelectionCheckbox
-                        checked={isSelected}
-                        onChange={(event) => handleRowSelectionCheckboxClick(row, rowId, event)}
-                        ariaLabel={`Select row ${rowId}`}
+                const isOddRow = virtualRow.index % 2 === 1;
+                return (
+                  <div
+                    key={rowId}
+                    ref={isDynamicRowHeight ? rowVirtualizer.measureElement : undefined}
+                    data-index={virtualRow.index}
+                    className={cn(
+                      "absolute left-0 w-full flex",
+                      "border-b border-black/[0.03] dark:border-white/[0.03]",
+                      "transition-colors duration-75",
+                      isSelected
+                        ? "bg-blue-500/[0.06] dark:bg-blue-400/[0.08] hover:bg-blue-500/[0.08] dark:hover:bg-blue-400/[0.1]"
+                        : isOddRow
+                          ? "bg-foreground/[0.02] dark:bg-foreground/[0.03] hover:bg-foreground/[0.04] dark:hover:bg-foreground/[0.06]"
+                          : "hover:bg-foreground/[0.025] dark:hover:bg-foreground/[0.04]",
+                      (selectionMode !== "none" || onRowClick) && "cursor-pointer",
+                    )}
+                    style={{
+                      ...(isDynamicRowHeight
+                        ? { minHeight: estimatedRowHeight }
+                        : { height: fixedRowHeight }),
+                      transform: `translateY(${virtualRow.start}px)`,
+                    }}
+                    onClick={(e) => handleRowClick(row, rowId, e)}
+                    onDoubleClick={(e) => onRowDoubleClick?.(row, rowId, e)}
+                    role="row"
+                    aria-rowindex={virtualRow.index + 2}
+                    aria-selected={isSelected}
+                    data-row-id={rowId}
+                    data-state={isSelected ? "selected" : undefined}
+                  >
+                    {/* Selection checkbox */}
+                    {selectionMode !== "none" && (
+                      <div
+                        className="flex items-center justify-center border-r border-black/[0.04] dark:border-white/[0.04]"
+                        style={{ width: 44 }}
+                      >
+                        <SelectionCheckbox
+                          checked={isSelected}
+                          onChange={(event) => handleRowSelectionCheckboxClick(row, rowId, event)}
+                          ariaLabel={`Select row ${rowId}`}
+                        />
+                      </div>
+                    )}
+
+                    {/* Data cells */}
+                    {visibleColumns.map((col) => (
+                      <DataCell
+                        key={col.id}
+                        col={col}
+                        row={row}
+                        rowId={rowId}
+                        rowIndex={virtualRow.index}
+                        isSelected={isSelected}
+                        dateDisplay={state.dateDisplay}
                       />
-                    </div>
-                  )}
+                    ))}
+                  </div>
+                );
+              })}
+            </div>
+          )}
 
-                  {/* Data cells */}
-                  {visibleColumns.map((col) => (
-                    <DataCell
-                      key={col.id}
-                      col={col}
-                      row={row}
-                      rowId={rowId}
-                      rowIndex={virtualRow.index}
-                      isSelected={isSelected}
-                      dateDisplay={state.dateDisplay}
-                    />
-                  ))}
-                </div>
-              );
-            })}
-          </div>
-        )}
-
-        {/* Infinite scroll sentinel */}
-        {paginationMode === "infinite" && hasMore && !isLoading && (
-          <InfiniteScrollSentinel
-            onIntersect={onLoadMore ?? (() => {})}
-            isLoading={isLoadingMore}
-            strings={strings}
-          />
-        )}
+          {/* Infinite scroll sentinel */}
+          {paginationMode === "infinite" && hasMore && !isLoading && (
+            <InfiniteScrollSentinel
+              onIntersect={onLoadMore ?? (() => {})}
+              isLoading={isLoadingMore}
+              strings={strings}
+            />
+          )}
+        </div>
       </div>
 
       {/* Footer */}
