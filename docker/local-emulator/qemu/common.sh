@@ -193,8 +193,8 @@ capture_vm_state() {
   if [ "$waited" -ge "$migrate_timeout" ]; then
     err "QMP migrate timed out after ${migrate_timeout}s"
     err "Last query-migrate response: $({
-      printf '%s\n' '{\"execute\":\"qmp_capabilities\"}'
-      printf '%s\n' '{\"execute\":\"query-migrate\"}'
+      printf '%s\n' '{"execute":"qmp_capabilities"}'
+      printf '%s\n' '{"execute":"query-migrate"}'
     } | qmp_session "$sock" 2>/dev/null || true)"
     return 1
   fi

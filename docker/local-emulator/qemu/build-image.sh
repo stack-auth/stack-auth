@@ -333,19 +333,25 @@ build_one() {
   local monitor_sock="$tmp_dir/monitor.sock"
   local qga_sock="$tmp_dir/qga.sock"
   local snapshot_args=()
+  local runtime_disk_args=()
   local virtfs_args=(-virtfs "local,path=$tmp_dir,mount_tag=hostfs,security_model=none")
   if [ "$EMULATOR_BUILD_SNAPSHOT" = "1" ]; then
+    # STACKCFG runtime ISO lets stack.service start during the build — same
+    # disk shape render-stack-env expects at runtime. Placed before netdev
+    # so its virtio-blk PCI slot precedes virtio-net-pci, matching the
+    # resume argv order in run-emulator.sh (slots must line up or
+    # migrate-incoming fails the device-tree check).
+    runtime_disk_args=(
+      -drive "file=$runtime_iso,format=raw,if=virtio,readonly=on"
+    )
     # QMP for stop/migrate/quit; virtio-serial + QGA channel so we can exec
     # inside the guest post-resume (only needed at runtime but harmless here).
-    # STACKCFG runtime ISO lets stack.service start during the build — same
-    # disk shape render-stack-env expects at runtime.
     snapshot_args=(
       -chardev "socket,id=monitor,path=$monitor_sock,server=on,wait=off"
       -mon "chardev=monitor,mode=control"
       -chardev "socket,path=$qga_sock,server=on,wait=off,id=qga0"
       -device virtio-serial
       -device "virtserialport,chardev=qga0,name=org.qemu.guest_agent.0"
-      -drive "file=$runtime_iso,format=raw,if=virtio,readonly=on"
       # Empty PCIe root port reserved for runtime hot-plug of virtio-9p.
       # The integrated pcie.0 bus on q35 / arm64-virt is static — hotplug
       # only works through a root port. Must be present at snapshot capture
@@ -367,6 +373,7 @@ build_one() {
     -drive "file=$tmp_img,format=qcow2,if=virtio,discard=on,detect-zeroes=unmap" \
     -drive "file=$seed_iso,format=raw,if=virtio,readonly=on" \
     -drive "file=$bundle_iso,format=raw,if=virtio,readonly=on" \
+    ${runtime_disk_args[@]+"${runtime_disk_args[@]}"} \
     -netdev user,id=net0 \
     -device virtio-net-pci,netdev=net0 \
     ${virtfs_args[@]+"${virtfs_args[@]}"} \
