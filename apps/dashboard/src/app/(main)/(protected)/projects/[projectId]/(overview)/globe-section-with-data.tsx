@@ -1,7 +1,7 @@
 'use client';
 
-import { ErrorBoundary } from '@sentry/nextjs';
 import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
+import { ErrorBoundary } from '@sentry/nextjs';
 import { useAdminApp } from '../use-admin-app';
 import { GlobeSection } from './globe';
 

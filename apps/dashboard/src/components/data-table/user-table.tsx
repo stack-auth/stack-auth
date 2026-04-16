@@ -327,6 +327,7 @@ function UserTableBody(props: {
       rowHeight="auto"
       estimatedRowHeight={44}
       footer={false}
+      fillHeight={false}
 
       toolbarExtra={
         <Select

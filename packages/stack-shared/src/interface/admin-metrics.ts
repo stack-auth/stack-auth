@@ -98,11 +98,16 @@ export const MetricsAnalyticsOverviewSchema = yupObject({
   daily_page_views: MetricsDataPointsSchema,
   daily_clicks: MetricsDataPointsSchema,
   daily_visitors: MetricsDataPointsSchema,
+  // Token-refresh-based anonymous visitor fallback. Used by the dashboard when
+  // the analytics app isn't installed (no `$page-view` events). See
+  // `loadAnonymousVisitorsFromTokenRefresh` in the backend metrics route.
+  daily_visitors_fallback: MetricsDataPointsSchema,
   daily_revenue: yupArray(MetricsDailyRevenuePointSchema).defined(),
   total_revenue_cents: yupNumber().integer().defined(),
   total_replays: yupNumber().integer().defined(),
   recent_replays: yupNumber().integer().defined(),
   visitors: yupNumber().integer().defined(),
+  visitors_fallback: yupNumber().integer().defined(),
   avg_session_seconds: yupNumber().defined(),
   online_live: yupNumber().integer().defined(),
   revenue_per_visitor: yupNumber().defined(),

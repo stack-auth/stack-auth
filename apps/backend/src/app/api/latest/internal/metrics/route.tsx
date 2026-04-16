@@ -397,6 +397,82 @@ async function loadRecentlyActiveUsers(tenancy: Tenancy, includeAnonymous: boole
   return dbUsers.map((user) => userPrismaToCrud(user, tenancy.config));
 }
 
+// Fallback visitor counts derived purely from `$token-refresh` events so the
+// "Unique Visitors" card can render a number for projects without the analytics
+// app installed (no `$page-view` events). Always counts anonymous sessions only
+// — non-anon users are already represented by MAU/DAU, and the value here is to
+// surface anonymous traffic that otherwise wouldn't be visible.
+async function loadAnonymousVisitorsFromTokenRefresh(
+  tenancy: Tenancy,
+  now: Date,
+): Promise<{ dailyVisitors: DataPoints, visitors: number }> {
+  const { since, untilExclusive } = getMetricsWindowBounds(now);
+  const clickhouseClient = getClickhouseAdminClient();
+
+  try {
+    const result = await clickhouseClient.query({
+      query: `
+        SELECT
+          toDate(event_at) AS day,
+          assumeNotNull(user_id) AS user_id
+        FROM analytics_internal.events
+        WHERE event_type = '$token-refresh'
+          AND project_id = {projectId:String}
+          AND branch_id = {branchId:String}
+          AND user_id IS NOT NULL
+          AND event_at >= {since:DateTime}
+          AND event_at < {untilExclusive:DateTime}
+          AND JSONExtract(toJSONString(data), 'is_anonymous', 'UInt8') = 1
+        GROUP BY day, user_id
+      `,
+      query_params: {
+        projectId: tenancy.project.id,
+        branchId: tenancy.branchId,
+        since: formatClickhouseDateTimeParam(since),
+        untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
+      },
+      format: "JSONEachRow",
+    });
+    const rows: { day: string, user_id: string }[] = await result.json();
+
+    const idsByDay = new Map<string, Set<string>>();
+    const allIds = new Set<string>();
+    for (const row of rows) {
+      const userId = normalizeUuidFromEvent(row.user_id);
+      if (userId == null) continue;
+      const day = row.day.split('T')[0];
+      let set = idsByDay.get(day);
+      if (set == null) {
+        set = new Set<string>();
+        idsByDay.set(day, set);
+      }
+      set.add(userId);
+      allIds.add(userId);
+    }
+
+    const dailyVisitors: DataPoints = [];
+    for (let i = 0; i <= METRICS_WINDOW_DAYS; i += 1) {
+      const date = new Date(since.getTime() + i * ONE_DAY_MS).toISOString().split('T')[0];
+      dailyVisitors.push({ date, activity: idsByDay.get(date)?.size ?? 0 });
+    }
+
+    return { dailyVisitors, visitors: allIds.size };
+  } catch (error) {
+    if (!(error instanceof ClickHouseError)) {
+      throw error;
+    }
+    captureError("internal-metrics-load-anonymous-visitors-fallback-failed", new StackAssertionError(
+      "Failed to load anonymous visitors fallback for internal metrics.",
+      {
+        cause: error,
+        projectId: tenancy.project.id,
+        branchId: tenancy.branchId,
+      },
+    ));
+    return { dailyVisitors: [], visitors: 0 };
+  }
+}
+
 async function loadMonthlyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymous: boolean = false): Promise<number> {
   const { since, untilExclusive } = getMetricsWindowBounds(now);
 
@@ -820,6 +896,12 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
   // never gets misattributed to "analytics not enabled".
   const replayPromise = loadSessionReplayAggregates(tenancy, since);
 
+  // Token-refresh-based anon visitor fallback. Always computed so the frontend
+  // can swap it in when the analytics app isn't installed (no `$page-view`
+  // events). Has its own error handling so a failure here doesn't take down the
+  // primary analytics overview.
+  const anonymousVisitorsPromise = loadAnonymousVisitorsFromTokenRefresh(tenancy, now);
+
   let clickhouseAggregates: {
     dailyPageViews: DataPoints,
     dailyClicks: DataPoints,
@@ -1064,6 +1146,7 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
   // Postgres-backed session replay query has its own error surface — let it
   // propagate naturally so we don't conflate it with "clickhouse missing".
   const replayResult = await replayPromise;
+  const anonymousVisitorsResult = await anonymousVisitorsPromise;
 
   // daily_revenue is intentionally not populated here — it is owned by
   // payments_overview (real invoice data) and stitched into analytics_overview
@@ -1074,11 +1157,13 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
       daily_page_views: [] as DataPoints,
       daily_clicks: [] as DataPoints,
       daily_visitors: [] as DataPoints,
+      daily_visitors_fallback: anonymousVisitorsResult.dailyVisitors,
       daily_revenue: [] as Array<{ date: string, new_cents: number, refund_cents: number }>,
       total_revenue_cents: replayResult.totalRevenueCents,
       total_replays: replayResult.total,
       recent_replays: replayResult.recent,
       visitors: 0,
+      visitors_fallback: anonymousVisitorsResult.visitors,
       avg_session_seconds: replayResult.avgSessionSeconds,
       online_live: 0,
       revenue_per_visitor: 0,
@@ -1091,11 +1176,13 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
     daily_page_views: clickhouseAggregates.dailyPageViews,
     daily_clicks: clickhouseAggregates.dailyClicks,
     daily_visitors: clickhouseAggregates.dailyVisitors,
+    daily_visitors_fallback: anonymousVisitorsResult.dailyVisitors,
     daily_revenue: [] as Array<{ date: string, new_cents: number, refund_cents: number }>,
     total_revenue_cents: replayResult.totalRevenueCents,
     total_replays: replayResult.total,
     recent_replays: replayResult.recent,
     visitors: clickhouseAggregates.visitors,
+    visitors_fallback: anonymousVisitorsResult.visitors,
     avg_session_seconds: replayResult.avgSessionSeconds,
     online_live: clickhouseAggregates.onlineLive,
     revenue_per_visitor: clickhouseAggregates.visitors > 0

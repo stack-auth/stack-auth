@@ -844,6 +844,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
     headerHeight = 44,
     overscan = 5,
     maxHeight,
+    fillHeight = true,
     stickyTop,
     toolbar,
     toolbarExtra,
@@ -1151,11 +1152,14 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
   // - `maxHeight` is applied directly to the root; the scroll body never
   //   subtracts chrome sizes manually (that math breaks when the toolbar
   //   wraps, the footer grows, etc.).
+  // - `fillHeight={false}` uses `h-auto` and a non-growing scroll body so the grid
+  //   only occupies the height of its rows (no flex gap above sibling sections).
   return (
     <div
       ref={gridRef}
       className={cn(
-        "flex flex-col h-full min-h-0 bg-transparent rounded-[calc(var(--radius)*2)]",
+        "flex w-full min-w-0 max-w-full flex-col bg-transparent rounded-[calc(var(--radius)*2)]",
+        fillHeight ? "min-h-0 h-full" : "min-h-0 h-auto",
         className,
       )}
       style={maxHeight != null ? { ...gridSizingStyle, maxHeight } : gridSizingStyle}
@@ -1167,7 +1171,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
           scroll ancestor so they remain visible while the body scrolls. */}
       <div
         ref={stickyChromeRef}
-        className="sticky z-20 shrink-0 rounded-t-[calc(var(--radius)*2)] bg-background"
+        className="sticky z-20 w-full min-w-0 shrink-0 rounded-t-[calc(var(--radius)*2)] bg-background"
         style={{ top: stickyTop ?? "var(--data-grid-sticky-top, 0px)" }}
       >
         {/* Toolbar */}
@@ -1197,7 +1201,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
           )}
           <div
             ref={headerScrollRef}
-            className="overflow-hidden shrink-0 border-b border-foreground/[0.06]"
+            className="w-full min-w-0 shrink-0 overflow-hidden border-b border-foreground/[0.06]"
           >
             <div
               className="flex"
@@ -1236,12 +1240,13 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
         </div>
       </div>
 
-      {/* Scrollable body — flex-1 + min-h-0 makes it take the remaining
-          space inside the `flex flex-col` grid wrapper, no manual math. */}
+      {/* Scrollable body — flex-1 + min-h-0 when filling parent; flex-none when
+          `fillHeight` is false so row stack height drives the grid (page scroll). */}
       <div
         ref={scrollContainerRef}
         className={cn(
-          "min-h-0 overflow-auto flex-1 bg-transparent",
+          "w-full min-w-0 overflow-auto bg-transparent",
+          fillHeight ? "min-h-0 flex-1" : "flex-none",
           "[&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar]:h-1.5",
           "[&::-webkit-scrollbar-track]:bg-transparent",
           "[&::-webkit-scrollbar-thumb]:bg-foreground/[0.08] [&::-webkit-scrollbar-thumb]:rounded-full",

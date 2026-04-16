@@ -175,7 +175,7 @@ export function AnalyticsChartPie({
   return (
     <div
       ref={wrapperRef}
-      className="relative w-full select-none"
+      className="relative flex h-full min-h-0 w-full min-w-0 flex-1 flex-col select-none"
       onClick={(e) => e.stopPropagation()}
     >
       {zoomRange && (
@@ -191,7 +191,7 @@ export function AnalyticsChartPie({
         </div>
       )}
 
-      <div className="flex flex-wrap items-center justify-center gap-x-10 gap-y-6">
+      <div className="flex h-full min-h-0 w-full flex-1 flex-wrap content-center items-center justify-center gap-x-10 gap-y-6">
         <div className="flex shrink-0 flex-col items-center gap-3">
           <div className="relative">
             <DesignChartContainer config={chartConfig} className={containerClassName}>

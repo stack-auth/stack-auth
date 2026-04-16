@@ -293,8 +293,14 @@ export type DataGridProps<TRow> = {
   headerHeight?: number;
   /** Number of rows to render outside the visible area. Defaults to 5. */
   overscan?: number;
-  /** Grid max height. If omitted, grid takes available space. */
+  /** Grid max height. If omitted, grid takes available space (when `fillHeight`). */
   maxHeight?: number | string;
+  /**
+   * When `true` (default), the grid uses `h-full` and the row area scrolls inside the grid.
+   * When `false`, the grid is only as tall as toolbar + header + rows (`h-auto`), so sibling
+   * content (e.g. metadata) sits directly under the table without a large empty gap.
+   */
+  fillHeight?: boolean;
   /** Top offset for the sticky toolbar + header (px or CSS string).
    *  Set this to the page header height so the grid chrome sticks
    *  below it instead of overlapping. Defaults to 0. */

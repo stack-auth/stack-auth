@@ -434,6 +434,7 @@ export function TeamMemberTable(props: { users: ServerUser[], team: ServerTeam }
       rowHeight="auto"
       estimatedRowHeight={44}
       footer={false}
+      fillHeight={false}
     />
   );
 }

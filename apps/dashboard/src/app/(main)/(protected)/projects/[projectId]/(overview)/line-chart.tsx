@@ -456,7 +456,7 @@ export function StackedBarChartDisplay({
   return (
     <ChartContainer
       config={movingAvgConfig}
-      className="w-full flex-1 min-h-0 !overflow-visible [&_.recharts-wrapper]:!overflow-visible"
+      className="w-full aspect-auto flex-1 min-h-0 !overflow-visible [&_.recharts-wrapper]:!overflow-visible"
       maxHeight={height}
     >
       <ComposedChart
@@ -752,7 +752,7 @@ export function ComposedAnalyticsChart({
   return (
     <ChartContainer
       config={composedChartConfig}
-      className="w-full flex-1 min-h-0 !overflow-visible [&_.recharts-wrapper]:!overflow-visible"
+      className="w-full aspect-auto flex-1 min-h-0 !overflow-visible [&_.recharts-wrapper]:!overflow-visible"
       maxHeight={height}
     >
       <ComposedChart
@@ -1974,7 +1974,7 @@ export function DonutChartDisplay({
 
   return (
     <ChartCard
-      className={className}
+      className={cn("h-full min-h-0", className)}
       gradientColor={gradientColor}
       chart={{ type: "donut", tooltipType: "donut", highlightMode: "dot-hover" }}
     >
@@ -2123,7 +2123,7 @@ export function EmailStackedBarChartDisplay({
   return (
     <ChartContainer
       config={movingAvgConfig}
-      className="w-full flex-1 min-h-0 !overflow-visible [&_.recharts-wrapper]:!overflow-visible"
+      className="w-full aspect-auto flex-1 min-h-0 !overflow-visible [&_.recharts-wrapper]:!overflow-visible"
       maxHeight={height}
     >
       <ComposedChart
@@ -2343,7 +2343,7 @@ export function VisitorsHoverChart({
   return (
     <ChartContainer
       config={visitorsHoverChartConfig}
-      className="w-full flex-1 min-h-0 !overflow-visible [&_.recharts-wrapper]:!overflow-visible"
+      className="w-full aspect-auto flex-1 min-h-0 !overflow-visible [&_.recharts-wrapper]:!overflow-visible"
       maxHeight={height}
     >
       <ComposedChart
@@ -2556,7 +2556,7 @@ export function RevenueHoverChart({
   return (
     <ChartContainer
       config={revenueHoverChartConfig}
-      className="w-full flex-1 min-h-0 !overflow-visible [&_.recharts-wrapper]:!overflow-visible"
+      className="w-full aspect-auto flex-1 min-h-0 !overflow-visible [&_.recharts-wrapper]:!overflow-visible"
       maxHeight={height}
     >
       <ComposedChart

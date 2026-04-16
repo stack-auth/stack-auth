@@ -328,45 +328,46 @@ export function DataGridToolbar<TRow>({
   );
 
   return (
-    <div className="flex items-center gap-2 px-2.5 py-2.5 border-b border-foreground/[0.06]">
-      {!hideQuickSearch && (
-        <QuickSearch
-          value={state.quickSearch}
-          onChange={updateQuickSearch}
-          placeholder={strings.searchPlaceholder}
-        />
-      )}
-      {extraLeading}
-      <div className="flex-1 min-w-0" />
-
-      {extra}
-
-      <div className="relative shrink-0" ref={columnPopover.ref}>
-        <ToolbarButton
-          onClick={() => columnPopover.setOpen(!columnPopover.open)}
-          active={columnPopover.open}
-          title={strings.columns}
-        >
-          <Eye className="h-3.5 w-3.5" />
-        </ToolbarButton>
-        {columnPopover.open && (
-          <PopoverPanel popoverRef={columnPopover.ref} className="right-0 left-auto">
-            <ColumnManager
-              columns={columns}
-              visibility={state.columnVisibility}
-              onChange={updateVisibility}
-              strings={strings}
-              dateDisplay={state.dateDisplay}
-              onDateDisplayChange={updateDateDisplay}
-              hasDateColumns={hasDateColumns}
-            />
-          </PopoverPanel>
+    <div className="flex w-full min-w-0 flex-col gap-2 px-2.5 py-2.5 border-b border-foreground/[0.06] sm:flex-row sm:items-center sm:gap-2">
+      <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+        {!hideQuickSearch && (
+          <QuickSearch
+            value={state.quickSearch}
+            onChange={updateQuickSearch}
+            placeholder={strings.searchPlaceholder}
+          />
         )}
+        {extraLeading}
+        {extra}
       </div>
+      <div className="flex shrink-0 items-center justify-end gap-2">
+        <div className="relative shrink-0" ref={columnPopover.ref}>
+          <ToolbarButton
+            onClick={() => columnPopover.setOpen(!columnPopover.open)}
+            active={columnPopover.open}
+            title={strings.columns}
+          >
+            <Eye className="h-3.5 w-3.5" />
+          </ToolbarButton>
+          {columnPopover.open && (
+            <PopoverPanel popoverRef={columnPopover.ref} className="right-0 left-auto">
+              <ColumnManager
+                columns={columns}
+                visibility={state.columnVisibility}
+                onChange={updateVisibility}
+                strings={strings}
+                dateDisplay={state.dateDisplay}
+                onDateDisplayChange={updateDateDisplay}
+                hasDateColumns={hasDateColumns}
+              />
+            </PopoverPanel>
+          )}
+        </div>
 
-      <ToolbarButton onClick={exportCsv} title={strings.export}>
-        <DownloadSimple className="h-3.5 w-3.5" />
-      </ToolbarButton>
+        <ToolbarButton onClick={exportCsv} title={strings.export}>
+          <DownloadSimple className="h-3.5 w-3.5" />
+        </ToolbarButton>
+      </div>
     </div>
   );
 }

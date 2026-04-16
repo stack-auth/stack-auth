@@ -294,31 +294,36 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
   }, [cameraDistance, shouldShowGlobe, globeSize]);
 
 
-  // calculate color values for each country
-  const totalUsersInCountries = Object.values(countryData).reduce((acc, curr) => acc + curr, 0);
-  const totalPopulationInCountries = countries.features.reduce((acc, curr) => acc + curr.properties.POP_EST, 0);
+  // Heatmap-style coloring: log-scaled user counts, normalized with a steeper curve so neighboring
+  // countries with different volumes (e.g. US vs Canada vs Mexico) don't all land in the same band.
+  const numericColorValues = countries.features
+    .map((country) => {
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+      const countryUsers = countryData[country.properties.ISO_A2_EH] ?? 0;
+      if (countryUsers === 0) return null;
+      return Math.log1p(countryUsers);
+    })
+    .filter((v): v is number => v !== null)
+    .sort((a, b) => a - b);
+
+  const percentileCap =
+    numericColorValues.length === 0
+      ? 0
+      : numericColorValues[Math.min(numericColorValues.length - 1, Math.floor(0.985 * (numericColorValues.length - 1)))] ?? 0;
+
+  const rawMaxColorValue = numericColorValues.length === 0 ? 0 : numericColorValues[numericColorValues.length - 1] ?? 0;
+  // Blend toward the 98.5th percentile so a single outlier country doesn't flatten everyone else.
+  const spreadMax = Math.max(0.001, 0.85 * rawMaxColorValue + 0.15 * percentileCap);
+
   const colorValues = new Map(countries.features.map((country) => {
     // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
     const countryUsers = countryData[country.properties.ISO_A2_EH] ?? 0;
-    const countryPopulation = country.properties.POP_EST;
     if (countryUsers === 0) return [country.properties.ISO_A2_EH, null] as const;
 
-    // we want to get the lowest proportion such that there's a 95% chance that it's higher than the actual
-    // proportion (given enough samples)
-    // my math sucks, someone please correct me if I'm wrong (but the colors look nice)
-    const observedProportion = countryUsers / totalUsersInCountries;
-    const standardError = Math.sqrt(observedProportion * (1 - observedProportion) / totalUsersInCountries);
-    const zScore = 1.645; // one-sided 95% confidence interval
-
-    const proportionLowerBound = Math.max(0, observedProportion - zScore * standardError);  // how likely is it that a random user is in this country? (with 95% confidence lower bound from above)
-    const populationProportion = countryPopulation / totalPopulationInCountries;  // how likely is it that a random person is in this country?
-    const likelihoodRatio = proportionLowerBound / populationProportion;  // how much more likely is it for a random user to be in this country than a random person?
-
-    const colorValue = Math.max(0, Math.log(100 * likelihoodRatio));
-
+    const colorValue = Math.log1p(countryUsers);
     return [country.properties.ISO_A2_EH, colorValue] as const;
   }));
-  const maxColorValue = Math.max(0.001, ...[...colorValues.values()].filter((v): v is number => v !== null));
+  const maxColorValue = spreadMax;
 
   // There is a react-globe error that we haven't been able to track down, so we refresh it whenever it occurs
   // TODO fix it without a workaround
@@ -533,16 +538,14 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
                         return theme === 'dark' ? "#7d93bc" : "#64748b";
                       }
 
-                      const scaled = value / maxColorValue;
+                      const linear = Math.min(1, value / maxColorValue);
+                      // Gamma > 1 pulls mid values apart (more contrast between similar counts)
+                      const scaled = Math.pow(linear, 1.18);
                       if (theme === 'dark') {
-                        // Dark mode: gradient from cyan (low) to bright green (high)
-                        // Hue goes from 190 (cyan) to 140 (green) - 50 degree range for visibility
-                        // Saturation and lightness also increase for more vibrancy at high values
-                        return `hsl(${190 - 50 * scaled}, ${60 + 30 * scaled}%, ${50 + 25 * scaled}%)`;
+                        // Wider hue sweep + stronger saturation/lightness ramp for readable heat levels
+                        return `hsl(${202 - 72 * scaled}, ${48 + 42 * scaled}%, ${44 + 28 * scaled}%)`;
                       } else {
-                        // Light mode: gradient from teal (low) to vibrant green (high)
-                        // Hue goes from 190 (teal) to 140 (green) - matching dark mode range
-                        return `hsl(${190 - 50 * scaled}, ${50 + 40 * scaled}%, ${35 + 15 * scaled}%)`;
+                        return `hsl(${202 - 72 * scaled}, ${38 + 48 * scaled}%, ${30 + 22 * scaled}%)`;
                       }
                     }}
                     onHexPolygonHover={() => {
