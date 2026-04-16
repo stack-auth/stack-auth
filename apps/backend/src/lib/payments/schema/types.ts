@@ -88,6 +88,7 @@ export type SubscriptionRow = {
   currentPeriodStartMillis: number,
   currentPeriodEndMillis: number,
   cancelAtPeriodEnd: boolean,
+  canceledAtMillis: number | null,
   endedAtMillis: number | null,
   refundedAtMillis: number | null,
   creationSource: PurchaseCreationSource,

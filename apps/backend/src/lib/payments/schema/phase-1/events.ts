@@ -151,7 +151,7 @@ export function createEventTables(stored: SeedEventsStoredTables) {
       "rowData"->'customerType' AS "customerType",
       '"cancel"'::jsonb AS "changeType",
       ${paymentProviderFromCreationSourceSql(`"rowData"->>'creationSource'`)} AS "paymentProvider",
-      "rowData"->'createdAtMillis' AS "effectiveAtMillis",
+      "rowData"->'canceledAtMillis' AS "effectiveAtMillis",
       "rowData"->'createdAtMillis' AS "createdAtMillis"
     `),
   });

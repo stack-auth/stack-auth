@@ -134,6 +134,9 @@ export const POST = createSmartRouteHandler({
           },
           data: {
             status: SubscriptionStatus.canceled,
+            cancelAtPeriodEnd: true,
+            canceledAt: new Date(),
+            endedAt: new Date(),
           },
         });
         await bulldozerWriteSubscription(prisma, updatedConflicting);

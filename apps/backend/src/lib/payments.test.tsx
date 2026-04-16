@@ -40,7 +40,7 @@ describe.sequential('validatePurchaseSession - purchase guards (real DB)', () =>
       productId, priceId: null, product: product as any, quantity: 1,
       stripeSubscriptionId: `stripe-${id}`, status: 'active',
       currentPeriodStart: new Date(), currentPeriodEnd: new Date(Date.now() + 86400000),
-      cancelAtPeriodEnd: false, endedAt: null, refundedAt: null,
+      cancelAtPeriodEnd: false, canceledAt: null, endedAt: null, refundedAt: null,
       creationSource: 'TEST_MODE', createdAt: new Date(),
     });
   };

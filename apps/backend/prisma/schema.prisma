@@ -1208,6 +1208,7 @@ model Subscription {
   currentPeriodEnd       DateTime
   currentPeriodStart     DateTime
   cancelAtPeriodEnd      Boolean
+  canceledAt             DateTime?
   endedAt                DateTime?
 
   refundedAt DateTime?

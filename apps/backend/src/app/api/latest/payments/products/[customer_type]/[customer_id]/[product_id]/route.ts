@@ -138,8 +138,9 @@ export const DELETE = createSmartRouteHandler({
         },
         data: {
           status: SubscriptionStatus.canceled,
-          currentPeriodEnd: new Date(),
           cancelAtPeriodEnd: true,
+          canceledAt: new Date(),
+          endedAt: new Date(),
         },
       });
       // dual write - prisma and bulldozer

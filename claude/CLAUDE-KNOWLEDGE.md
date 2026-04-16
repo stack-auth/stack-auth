@@ -353,3 +353,15 @@ A: Have `loadBranches` return the resolved branch string, then call `loadConfigS
 
 Q: How can PR review threads be resolved from the CLI when fixing bot comments?
 A: Use GitHub GraphQL via `gh api graphql` with `resolveReviewThread(input:{threadId: ...})`; list unresolved thread IDs first from `pullRequest.reviewThreads` and then resolve only the IDs tied to fixes you actually made.
+
+Q: How does the payments bulldozer pipeline work end-to-end?
+A: Stored tables (subscriptions, OTPs, manual item changes, manual transactions, subscription invoices) are written via dual-write (`bulldozerWriteX` functions). Phase 1 derives events via TimeFold (subscription-start, subscription-end, item-grant-repeat) and filters (subscription-cancel, one-time-purchase). Phase 2 compacts transaction entries. Phase 3 produces owned products (LFold) and item quantities. The TimeFold initial run (T=null) is synchronous within the setRow transaction; only future events (item-grant-repeat at next billing cycle) are queued. Reads go through `customer-data.ts` which queries the Phase 3 LFold tables.
+
+Q: What is the difference between canceled and ended for subscriptions?
+A: Canceled (`cancelAtPeriodEnd: true`) means the subscription won't renew but still grants products until the period ends. Ended (`endedAt` is set) means the subscription has actually stopped providing access — the TimeFold emits `subscription-end` which generates `product-revocation` entries. For Stripe subs, only `syncStripeSubscriptions` should set `endedAt` (Stripe is the authority). For test-mode (non-Stripe) subs, `endedAt` is set directly in the route. Terminal Stripe statuses that also need `endedAt`: `incomplete_expired`, `unpaid`.
+
+Q: How does the BulldozerStorageEngine keyPathParent column work?
+A: Originally a `GENERATED ALWAYS AS` stored column with a self-referential FK. Migration `20260415100000` converted it to a trigger-maintained column (`bulldozer_key_path_parent_trigger`) to resolve Prisma schema drift (Prisma's `Unsupported` type can't represent generated columns). The trigger computes `keyPath[1:cardinality(keyPath)-1]` on INSERT/UPDATE. Test files still use the generated column DDL in their isolated DBs.
+
+Q: How does the migration runner handle multi-statement SQL?
+A: Non-single-statement migrations are wrapped in `DO $$ BEGIN ... END $$`. If your migration SQL contains dollar-quoted function bodies, use a different delimiter (e.g., `$func$` instead of `$$`) to avoid conflicts with the outer wrapper.

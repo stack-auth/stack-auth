@@ -140,6 +140,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         currentPeriodStartMillis: 2000,
         currentPeriodEndMillis: 2000 + MONTH_MS,
         cancelAtPeriodEnd: false,
+        canceledAtMillis: null,
         endedAtMillis: null,
         refundedAtMillis: null,
         creationSource: "PURCHASE_PAGE",
@@ -277,6 +278,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         currentPeriodStartMillis: 0,
         currentPeriodEndMillis: MONTH_MS,
         cancelAtPeriodEnd: true,
+        canceledAtMillis: 4000,
         endedAtMillis: 5000,
         refundedAtMillis: null,
         creationSource: "PURCHASE_PAGE",
@@ -389,12 +391,14 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         currentPeriodStartMillis: 0,
         currentPeriodEndMillis: MONTH_MS,
         cancelAtPeriodEnd: false,
+        canceledAtMillis: null,
         endedAtMillis: 25 * DAY_MS,
         refundedAtMillis: null,
         creationSource: "TEST_MODE",
         createdAtMillis: 0,
       })));
     });
+
 
     it("should generate item-grant-repeat transactions", async () => {
       const txns = (await getRowDatas(schema.transactions))
@@ -543,6 +547,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         currentPeriodStartMillis: 0,
         currentPeriodEndMillis: MONTH_MS,
         cancelAtPeriodEnd: false,
+        canceledAtMillis: null,
         endedAtMillis: null,
         refundedAtMillis: null,
         creationSource: "PURCHASE_PAGE",
@@ -791,6 +796,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         currentPeriodStartMillis: 0,
         currentPeriodEndMillis: MONTH_MS,
         cancelAtPeriodEnd: true,
+        canceledAtMillis: 5 * DAY_MS,
         endedAtMillis: 10 * DAY_MS,
         refundedAtMillis: null,
         creationSource: "TEST_MODE",
@@ -821,6 +827,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         currentPeriodStartMillis: 1000,
         currentPeriodEndMillis: 1000 + MONTH_MS,
         cancelAtPeriodEnd: true,
+        canceledAtMillis: 15 * DAY_MS,
         endedAtMillis: 30 * DAY_MS,
         refundedAtMillis: null,
         creationSource: "TEST_MODE",
@@ -947,6 +954,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         currentPeriodStartMillis: 1000,
         currentPeriodEndMillis: 1000 + MONTH_MS,
         cancelAtPeriodEnd: false,
+        canceledAtMillis: null,
         endedAtMillis: null,
         refundedAtMillis: null,
         creationSource: "TEST_MODE",
@@ -978,6 +986,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         currentPeriodStartMillis: 1000,
         currentPeriodEndMillis: 1000 + MONTH_MS,
         cancelAtPeriodEnd: true,
+        canceledAtMillis: 1500,
         endedAtMillis: 2000,
         refundedAtMillis: null,
         creationSource: "TEST_MODE",

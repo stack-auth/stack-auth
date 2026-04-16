@@ -50,6 +50,7 @@ describe.sequential("payments schema phase 1 (real postgres)", () => {
     currentPeriodStartMillis: 0,
     currentPeriodEndMillis: MONTH_MS,
     cancelAtPeriodEnd: false,
+    canceledAtMillis: null,
     endedAtMillis: null,
     refundedAtMillis: null,
     creationSource: "TEST_MODE",

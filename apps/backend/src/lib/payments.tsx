@@ -446,9 +446,9 @@ export async function grantProductToCustomer(options: {
         },
         data: {
           status: SubscriptionStatus.canceled,
-          currentPeriodEnd: now,
-          endedAt: now,
           cancelAtPeriodEnd: true,
+          canceledAt: now,
+          endedAt: now,
         },
       });
       await bulldozerWriteSubscription(prisma, updatedConflicting);

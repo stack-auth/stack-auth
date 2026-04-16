@@ -236,6 +236,25 @@ const getTenancyFromStripeAccountIdOrThrow = async (stripe: Stripe, stripeAccoun
   return tenancy;
 };
 
+const TERMINAL_STRIPE_STATUSES = ["incomplete_expired", "unpaid"] as const;
+
+function getEndedAtForSync(subscription: Stripe.Subscription, sanitizedEnd: Date): { endedAt: Date } | {} {
+  if (TERMINAL_STRIPE_STATUSES.includes(subscription.status as typeof TERMINAL_STRIPE_STATUSES[number])) {
+    return { endedAt: subscription.ended_at ? new Date(subscription.ended_at * 1000) : new Date() };
+  }
+  if (subscription.status === "canceled" && sanitizedEnd <= new Date()) {
+    return { endedAt: sanitizedEnd };
+  }
+  return {};
+}
+
+function getCanceledAtForSync(subscription: Stripe.Subscription): { canceledAt: Date } | {} {
+  if (subscription.canceled_at) {
+    return { canceledAt: new Date(subscription.canceled_at * 1000) };
+  }
+  return {};
+}
+
 export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: string, stripeCustomerId: string) {
   const tenancy = await getTenancyFromStripeAccountIdOrThrow(stripe, stripeAccountId);
   const stripeCustomer = await stripe.customers.retrieve(stripeCustomerId);
@@ -292,10 +311,8 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
         currentPeriodStart: sanitizedDates.start,
         cancelAtPeriodEnd: subscription.cancel_at_period_end,
         priceId: priceId ?? null,
-        // Set endedAt when subscription is no longer active and period has ended
-        ...(subscription.status === "canceled" && sanitizedDates.end <= new Date()
-          ? { endedAt: sanitizedDates.end }
-          : {}),
+        ...getEndedAtForSync(subscription, sanitizedDates.end),
+        ...getCanceledAtForSync(subscription),
       },
       create: {
         tenancyId: tenancy.id,
