@@ -657,8 +657,12 @@ BUILD_ENV_FILE="$REPO_ROOT/docker/local-emulator/.env.development"
 for arch in "${TARGET_ARCHS[@]}"; do
   local_base="$IMAGE_DIR/debian-${DEBIAN_VERSION}-base-${arch}.qcow2"
   download_cloud_image "$arch" "$local_base"
-  build_local_emulator_image "$arch"
-  prepare_bundle_artifacts "$arch"
+  if [ "${SKIP_DOCKER_BUILD:-0}" = "1" ]; then
+    log "SKIP_DOCKER_BUILD=1: reusing pre-built Docker bundle"
+  else
+    build_local_emulator_image "$arch"
+    prepare_bundle_artifacts "$arch"
+  fi
   build_one "$arch"
 done
 
