@@ -49,9 +49,11 @@ jobs:
       - name: Set up Docker via colima
         run: |
           brew install docker docker-buildx colima
-          mkdir -p ~/.docker/cli-plugins
-          ln -sfn "$(brew --prefix docker-buildx)/bin/docker-buildx" ~/.docker/cli-plugins/docker-buildx
-          colima start --cpu 4 --memory 6 --disk 60 --arch aarch64
+          # Wire up buildx as a CLI plugin
+          mkdir -p ~/.docker
+          echo '{"cliPluginsExtraDirs":["/opt/homebrew/lib/docker/cli-plugins"]}' > ~/.docker/config.json
+          # VZ driver doesn't work on GHA macOS runners — use QEMU backend
+          colima start --vm-type=qemu --cpu 4 --memory 6 --disk 60 --arch aarch64
           docker info
           docker buildx version
 
