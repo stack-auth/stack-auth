@@ -168,12 +168,18 @@ runtime_fingerprint() {
 }
 
 ensure_runtime_config_iso() {
-  # Regenerate unconditionally: port env vars (PORT_PREFIX, EMULATOR_*_PORT)
-  # may have changed since the last run, and an ISO cached from a prior
-  # invocation would silently override them. The stack-cli path writes the
-  # ISO first via packages/stack-cli/src/lib/iso.ts; this re-write produces
-  # the same content for that flow (same field set + volume label) and is
-  # cheap enough (~ms) to run on every start.
+  # When invoked via stack-cli, the CLI writes the runtime ISO natively
+  # (packages/stack-cli/src/lib/iso.ts) immediately before spawning us and
+  # sets STACK_EMULATOR_CLI_WROTE_ISO=1. Trust it and skip regeneration —
+  # otherwise we'd fall through to make_iso_from_dir and require
+  # hdiutil/mkisofs/genisoimage, which is exactly the host dep the CLI path
+  # is designed to remove.
+  if [ "$STACK_EMULATOR_CLI_WROTE_ISO" = "1" ] && [ -s "$(runtime_iso_path)" ]; then
+    return 0
+  fi
+  # Direct-shell invocation path: regenerate unconditionally. Port env vars
+  # (PORT_PREFIX, EMULATOR_*_PORT) may have changed since the last run, and
+  # an ISO cached from a prior invocation would silently override them.
   write_runtime_config_iso "$VM_DIR"
 }
 

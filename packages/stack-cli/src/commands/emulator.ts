@@ -244,7 +244,11 @@ async function startEmulator(arch: "arm64" | "amd64"): Promise<void> {
     await captureLocalSnapshot(arch);
   }
   prepareRuntimeConfigIso();
-  await runEmulator("start", { EMULATOR_ARCH: arch });
+  // Signal to run-emulator.sh that runtime-config.iso was written by the CLI
+  // via lib/iso.ts; the shell's ensure_runtime_config_iso should trust it and
+  // skip its own regeneration (which would otherwise require the
+  // hdiutil/mkisofs/genisoimage host dep the TS writer replaces).
+  await runEmulator("start", { EMULATOR_ARCH: arch, STACK_EMULATOR_CLI_WROTE_ISO: "1" });
 }
 
 export function resolveArch(raw?: string): "arm64" | "amd64" {
