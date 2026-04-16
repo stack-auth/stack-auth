@@ -60,9 +60,12 @@ check_deps() {
     command -v "$qemu_bin" >/dev/null 2>&1 || missing+=("$qemu_bin")
   done
 
-  for cmd in qemu-img curl docker gzip; do
+  for cmd in qemu-img curl gzip; do
     command -v "$cmd" >/dev/null 2>&1 || missing+=("$cmd")
   done
+  if [ "${SKIP_DOCKER_BUILD:-0}" != "1" ]; then
+    command -v docker >/dev/null 2>&1 || missing+=("docker")
+  fi
 
   if [ "$EMULATOR_BUILD_SNAPSHOT" = "1" ]; then
     for cmd in socat zstd; do
@@ -659,6 +662,11 @@ for arch in "${TARGET_ARCHS[@]}"; do
   download_cloud_image "$arch" "$local_base"
   if [ "${SKIP_DOCKER_BUILD:-0}" = "1" ]; then
     log "SKIP_DOCKER_BUILD=1: reusing pre-built Docker bundle"
+    local expected_bundle="$IMAGE_DIR/emulator-${arch}-docker-images.tar.gz"
+    if [ ! -f "$expected_bundle" ]; then
+      err "Pre-built bundle not found: $expected_bundle"
+      exit 1
+    fi
   else
     build_local_emulator_image "$arch"
     prepare_bundle_artifacts "$arch"
