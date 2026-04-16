@@ -1,12 +1,12 @@
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { deindent, stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import ELK from "elkjs/lib/elk.bundled.js";
 import http from "node:http";
 import { performance } from "node:perf_hooks";
 import { exampleFungibleLedgerSchema } from "../src/lib/bulldozer/db/example-schema";
-import { toExecutableSqlStatements, toQueryableSqlQuery } from "../src/lib/bulldozer/db/index";
-import { quoteSqlJsonbLiteral } from "../src/lib/bulldozer/db/utilities";
+import { toExecutableSqlTransaction, toQueryableSqlQuery } from "../src/lib/bulldozer/db/index";
+import { quoteSqlJsonbLiteral, quoteSqlStringLiteral } from "../src/lib/bulldozer/db/utilities";
 import { createPaymentsSchema } from "../src/lib/payments/schema/index";
 import { globalPrismaClient, retryTransaction } from "../src/prisma-client";
 
@@ -15,6 +15,17 @@ type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 type SqlExpression<T> = { type: "expression", sql: string };
 type SqlStatement = { type: "statement", sql: string, outputName?: string, requiresSequentialExecution?: boolean };
 type SqlQuery = { type: "query", sql: string, toStatement(outputName?: string): SqlStatement };
+type AutoExplainMetadata = {
+  enabled: boolean,
+  setupError: string | null,
+  logReadError: string | null,
+  logPath: string | null,
+  logReadBytes: number,
+  markerFound: boolean,
+  parsedEntryCount: number,
+  parseErrorCount: number,
+  rawLogExcerpt: string | null,
+};
 type StatementExecutionMetrics = {
   durationMs: number,
   statementCount: number,
@@ -31,6 +42,7 @@ type StatementExecutionMetrics = {
     statementWallMsTotal: number,
     totalPlanningMs: number,
     totalExecutionMs: number,
+    totalAutoExplainDurationMs: number,
     explainedStatementCount: number,
     notExplainedStatementCount: number,
   },
@@ -49,6 +61,7 @@ type StatementExecutionMetrics = {
     walBytes: number | null,
     sqlPreview: string,
   }>,
+  autoExplain: AutoExplainMetadata,
 };
 
 type StudioTable = {
@@ -88,6 +101,9 @@ const GRAPH_COLUMN_GAP_X = 320;
 const GRAPH_SCENE_MARGIN = 40;
 const STATEMENT_SQL_PREVIEW_CHARS = 260;
 const SLOW_STATEMENT_LIMIT = 20;
+const AUTO_EXPLAIN_LOG_SAMPLE_BYTES = 8 * 1024 * 1024;
+const AUTO_EXPLAIN_MAX_LOG_SAMPLE_BYTES = 24 * 1024 * 1024;
+const AUTO_EXPLAIN_LOG_EXCERPT_CHARS = 12_000;
 const elk = new ELK();
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -156,110 +172,205 @@ function keyPathSqlLiteral(pathSegments: string[]): string {
   return `ARRAY[${pathSegments.map((segment) => quoteSqlJsonbLiteral(segment).sql).join(", ")}]::jsonb[]`;
 }
 
-function splitSqlStatements(sqlScript: string): string[] {
-  const statements: string[] = [];
-  let statementStart = 0;
-  let index = 0;
-  let inSingleQuote = false;
-  let inDoubleQuote = false;
-  let inLineComment = false;
-  let blockCommentDepth = 0;
-  let dollarQuoteTag: null | string = null;
-  while (index < sqlScript.length) {
-    const current = sqlScript[index];
-    const next = sqlScript[index + 1];
+type AutoExplainParseResult = {
+  parsedEntries: StatementExecutionMetrics["slowestStatements"],
+  parseErrorCount: number,
+};
 
-    if (inLineComment) {
-      if (current === "\n") inLineComment = false;
-      index++;
-      continue;
-    }
-    if (blockCommentDepth > 0) {
-      if (current === "/" && next === "*") {
-        blockCommentDepth++;
-        index += 2;
-        continue;
-      }
-      if (current === "*" && next === "/") {
-        blockCommentDepth--;
-        index += 2;
-        continue;
-      }
-      index++;
-      continue;
-    }
-    if (dollarQuoteTag !== null) {
-      if (sqlScript.startsWith(dollarQuoteTag, index)) {
-        index += dollarQuoteTag.length;
-        dollarQuoteTag = null;
-      } else {
-        index++;
-      }
-      continue;
-    }
-    if (inSingleQuote) {
-      if (current === "'") {
-        if (next === "'") {
-          index += 2;
-          continue;
-        }
-        inSingleQuote = false;
-      }
-      index++;
-      continue;
-    }
-    if (inDoubleQuote) {
-      if (current === "\"") inDoubleQuote = false;
-      index++;
-      continue;
-    }
+type PostgresLogSnapshot = { path: string, size: number };
 
-    if (current === "-" && next === "-") {
-      inLineComment = true;
-      index += 2;
-      continue;
+function normalizeErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error);
+}
+
+function readFiniteNumber(value: unknown): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string" && value.trim() !== "") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  if (typeof value === "bigint") {
+    const parsed = Number(value);
+    return Number.isFinite(parsed) ? parsed : null;
+  }
+  return null;
+}
+
+function toSqlPreview(sql: string): string {
+  return sql.length <= STATEMENT_SQL_PREVIEW_CHARS
+    ? sql
+    : `${sql.slice(0, STATEMENT_SQL_PREVIEW_CHARS)}...`;
+}
+
+function statementKindFromSql(sql: string): string {
+  const withoutLeadingComments = sql.replace(/^(\s*--[^\n]*\n)+/g, "").trimStart();
+  const match = withoutLeadingComments.match(/^[A-Za-z]+/);
+  return (match?.[0] ?? "UNKNOWN").toUpperCase();
+}
+
+function toNonNegativeInteger(value: unknown): number | null {
+  const parsed = readFiniteNumber(value);
+  if (parsed == null || parsed < 0) return null;
+  return Math.floor(parsed);
+}
+
+async function getCurrentPostgresLogSnapshot(): Promise<{ snapshot: PostgresLogSnapshot | null, error: string | null }> {
+  try {
+    const logPathRows = await globalPrismaClient.$queryRawUnsafe<Array<Record<string, unknown>>>(`SELECT pg_current_logfile() AS "path"`);
+    const logPath = typeof logPathRows[0]?.path === "string" ? logPathRows[0].path : null;
+    if (logPath == null || logPath.trim() === "") {
+      return { snapshot: null, error: "pg_current_logfile returned no active log file" };
     }
-    if (current === "/" && next === "*") {
-      blockCommentDepth = 1;
-      index += 2;
-      continue;
+    const logPathLiteral = quoteSqlStringLiteral(logPath).sql;
+    const logSizeRows = await globalPrismaClient.$queryRawUnsafe<Array<Record<string, unknown>>>(`SELECT (pg_stat_file(${logPathLiteral})).size AS "size"`);
+    const logSize = toNonNegativeInteger(logSizeRows[0]?.size);
+    if (logSize == null) {
+      return { snapshot: null, error: "Unable to read PostgreSQL log file size" };
     }
-    if (current === "'") {
-      inSingleQuote = true;
-      index++;
+    return { snapshot: { path: logPath, size: logSize }, error: null };
+  } catch (error) {
+    return { snapshot: null, error: normalizeErrorMessage(error) };
+  }
+}
+
+async function readPostgresLogChunk(path: string, offset: number, length: number): Promise<{ content: string | null, error: string | null }> {
+  try {
+    const pathLiteral = quoteSqlStringLiteral(path).sql;
+    const safeOffset = Math.max(0, Math.floor(offset));
+    const safeLength = Math.max(0, Math.floor(length));
+    const rows = await globalPrismaClient.$queryRawUnsafe<Array<Record<string, unknown>>>(`SELECT pg_read_file(${pathLiteral}, ${safeOffset}, ${safeLength}) AS "content"`);
+    const content = typeof rows[0]?.content === "string" ? rows[0].content : null;
+    if (content == null) {
+      return { content: null, error: "pg_read_file returned no content" };
+    }
+    return { content, error: null };
+  } catch (error) {
+    return { content: null, error: normalizeErrorMessage(error) };
+  }
+}
+
+function extractTextBetweenMarkers(content: string, startMarker: string, endMarker: string): { text: string, markerFound: boolean, startIndex: number, endIndex: number } {
+  const startIndex = content.indexOf(startMarker);
+  if (startIndex < 0) {
+    return { text: content, markerFound: false, startIndex: -1, endIndex: -1 };
+  }
+  const endIndex = content.indexOf(endMarker, startIndex + startMarker.length);
+  if (endIndex < 0) {
+    return { text: content.slice(startIndex), markerFound: false, startIndex, endIndex: -1 };
+  }
+  return {
+    text: content.slice(startIndex, endIndex + endMarker.length),
+    markerFound: true,
+    startIndex,
+    endIndex,
+  };
+}
+
+function extractBalancedJsonValue(input: string, startIndex: number): { jsonText: string, endIndex: number } | null {
+  const opener = input[startIndex];
+  if (opener !== "{" && opener !== "[") return null;
+  const closer = opener === "{" ? "}" : "]";
+  let depth = 0;
+  let inString = false;
+  let isEscaped = false;
+  for (let index = startIndex; index < input.length; index++) {
+    const current = input[index];
+    if (inString) {
+      if (isEscaped) {
+        isEscaped = false;
+      } else if (current === "\\") {
+        isEscaped = true;
+      } else if (current === "\"") {
+        inString = false;
+      }
       continue;
     }
     if (current === "\"") {
-      inDoubleQuote = true;
-      index++;
+      inString = true;
       continue;
     }
-    if (current === "$") {
-      let tagEnd = index + 1;
-      while (tagEnd < sqlScript.length && /[a-zA-Z0-9_]/.test(sqlScript[tagEnd] ?? "")) {
-        tagEnd++;
+    if (current === opener) {
+      depth += 1;
+      continue;
+    }
+    if (current === closer) {
+      depth -= 1;
+      if (depth === 0) {
+        return {
+          jsonText: input.slice(startIndex, index + 1),
+          endIndex: index + 1,
+        };
       }
-      if (sqlScript[tagEnd] === "$") {
-        dollarQuoteTag = sqlScript.slice(index, tagEnd + 1);
-        index = tagEnd + 1;
+    }
+  }
+  return null;
+}
+
+function parseAutoExplainEntries(logChunk: string): AutoExplainParseResult {
+  const parsedEntries: StatementExecutionMetrics["slowestStatements"] = [];
+  let parseErrorCount = 0;
+  let searchIndex = 0;
+  while (searchIndex < logChunk.length) {
+    const planIndex = logChunk.indexOf("plan:", searchIndex);
+    if (planIndex < 0) break;
+    const durationFragment = logChunk.slice(Math.max(0, planIndex - 180), planIndex);
+    const durationMatch = durationFragment.match(/duration:\s*([0-9]+(?:\.[0-9]+)?)\s*ms/i);
+    const jsonStart = logChunk.slice(planIndex).search(/[\[{]/);
+    if (jsonStart < 0) {
+      searchIndex = planIndex + 5;
+      continue;
+    }
+    const jsonStartIndex = planIndex + jsonStart;
+    const extracted = extractBalancedJsonValue(logChunk, jsonStartIndex);
+    if (extracted == null) {
+      parseErrorCount += 1;
+      searchIndex = jsonStartIndex + 1;
+      continue;
+    }
+    try {
+      const parsed = JSON.parse(extracted.jsonText) as unknown;
+      const explainEntry = isRecord(parsed)
+        ? parsed
+        : (Array.isArray(parsed) ? parsed.find((entry) => isRecord(entry) && isRecord(entry.Plan)) as Record<string, unknown> | undefined : undefined) ?? null;
+      if (explainEntry == null) {
+        searchIndex = extracted.endIndex;
         continue;
       }
-    }
-    if (current === ";") {
-      const statement = sqlScript.slice(statementStart, index).trim();
-      if (statement.length > 0) {
-        statements.push(statement);
+      const plan = isRecord(explainEntry.Plan) ? explainEntry.Plan : null;
+      const queryText = typeof explainEntry["Query Text"] === "string"
+        ? explainEntry["Query Text"]
+        : "";
+      let executionMs = readFiniteNumber(explainEntry["Execution Time"]);
+      let planningMs = readFiniteNumber(explainEntry["Planning Time"]);
+      const durationMs = durationMatch == null ? null : Number(durationMatch[1]);
+      const actualTotalTimeMs = readFiniteNumber(plan?.["Actual Total Time"]);
+      if (executionMs == null && actualTotalTimeMs != null) {
+        executionMs = actualTotalTimeMs;
       }
-      statementStart = index + 1;
+      if (planningMs == null && durationMs != null && executionMs != null) {
+        planningMs = Math.max(0, Number((durationMs - executionMs).toFixed(3)));
+      }
+      parsedEntries.push({
+        index: parsedEntries.length,
+        kind: statementKindFromSql(queryText),
+        outputName: null,
+        wallMs: Number((durationMs ?? executionMs ?? planningMs ?? 0).toFixed(3)),
+        planningMs,
+        executionMs,
+        rootNodeType: typeof plan?.["Node Type"] === "string" ? plan["Node Type"] : null,
+        actualRows: readFiniteNumber(plan?.["Actual Rows"]),
+        sharedHitBlocks: readFiniteNumber(plan?.["Shared Hit Blocks"]),
+        sharedReadBlocks: readFiniteNumber(plan?.["Shared Read Blocks"]),
+        tempWrittenBlocks: readFiniteNumber(plan?.["Temp Written Blocks"]),
+        walBytes: readFiniteNumber(plan?.["WAL Bytes"]),
+        sqlPreview: toSqlPreview(queryText),
+      });
+    } catch {
+      parseErrorCount += 1;
     }
-    index++;
+    searchIndex = extracted.endIndex;
   }
-
-  const trailingStatement = sqlScript.slice(statementStart).trim();
-  if (trailingStatement.length > 0) {
-    statements.push(trailingStatement);
-  }
-  return statements;
+  return { parsedEntries, parseErrorCount };
 }
 
 function tableIdToString(tableId: unknown): string {
@@ -352,133 +463,136 @@ function switchSchema(name: string): void {
 
 async function executeStatements(statements: SqlStatement[]): Promise<StatementExecutionMetrics> {
   const startedAt = performance.now();
-  const sqlScript = toExecutableSqlStatements(statements);
-  const executableStatements = splitSqlStatements(sqlScript);
-  const statementExecutions: Array<{
-    index: number,
-    kind: string,
-    outputName: string | null,
-    wallMs: number,
-    planningMs: number | null,
-    executionMs: number | null,
-    rootNodeType: string | null,
-    actualRows: number | null,
-    sharedHitBlocks: number | null,
-    sharedReadBlocks: number | null,
-    tempWrittenBlocks: number | null,
-    walBytes: number | null,
-    sqlPreview: string,
-  }> = [];
-  const analyzableStatementKinds = new Set(["SELECT", "WITH", "INSERT", "UPDATE", "DELETE"]);
-  const readNumeric = (value: unknown): null | number => {
-    if (typeof value !== "number" || !Number.isFinite(value)) return null;
-    return value;
-  };
-  const readString = (value: unknown): null | string => {
-    return typeof value === "string" ? value : null;
-  };
-  const toSqlPreview = (sql: string): string => {
-    return sql.length <= STATEMENT_SQL_PREVIEW_CHARS
-      ? sql
-      : `${sql.slice(0, STATEMENT_SQL_PREVIEW_CHARS)}...`;
-  };
-  const getStatementKind = (sql: string): string => {
-    const withoutLeadingComments = sql.replace(/^(\s*--[^\n]*\n)+/g, "").trimStart();
-    const match = withoutLeadingComments.match(/^[A-Za-z]+/);
-    return (match?.[0] ?? "UNKNOWN").toUpperCase();
-  };
-  const parseExplainOutput = (rows: unknown): null | {
-    planningMs: number | null,
-    executionMs: number | null,
-    rootNodeType: string | null,
-    actualRows: number | null,
-    sharedHitBlocks: number | null,
-    sharedReadBlocks: number | null,
-    tempWrittenBlocks: number | null,
-    walBytes: number | null,
-  } => {
-    if (!Array.isArray(rows) || rows.length === 0 || !isRecord(rows[0])) return null;
-    const firstRow = rows[0];
-    const queryPlanValue = Reflect.get(firstRow, "QUERY PLAN");
-    if (!Array.isArray(queryPlanValue) || queryPlanValue.length === 0 || !isRecord(queryPlanValue[0])) return null;
-    const explainEntry = queryPlanValue[0];
-    const plan = isRecord(Reflect.get(explainEntry, "Plan")) ? Reflect.get(explainEntry, "Plan") : null;
-    return {
-      planningMs: readNumeric(Reflect.get(explainEntry, "Planning Time")),
-      executionMs: readNumeric(Reflect.get(explainEntry, "Execution Time")),
-      rootNodeType: readString(Reflect.get(plan ?? {}, "Node Type")),
-      actualRows: readNumeric(Reflect.get(plan ?? {}, "Actual Rows")),
-      sharedHitBlocks: readNumeric(Reflect.get(plan ?? {}, "Shared Hit Blocks")),
-      sharedReadBlocks: readNumeric(Reflect.get(plan ?? {}, "Shared Read Blocks")),
-      tempWrittenBlocks: readNumeric(Reflect.get(plan ?? {}, "Temp Written Blocks")),
-      walBytes: readNumeric(Reflect.get(plan ?? {}, "WAL Bytes")),
-    };
-  };
-  let totalPlanningMs = 0;
-  let totalExecutionMs = 0;
-  let explainedStatementCount = 0;
-  let notExplainedStatementCount = 0;
-  let statementWallMsTotal = 0;
-
-  await retryTransaction(globalPrismaClient, async (tx) => {
-    await tx.$executeRawUnsafe(`SET LOCAL jit = off`);
-    await tx.$executeRawUnsafe(`SELECT pg_advisory_xact_lock(${BULLDOZER_LOCK_ID})`);
-    for (let index = 0; index < executableStatements.length; index++) {
-      const statement = executableStatements[index];
-      const kind = getStatementKind(statement);
-      const shouldExplain = analyzableStatementKinds.has(kind);
-      const statementStart = performance.now();
-      let planningMs: null | number = null;
-      let executionMs: null | number = null;
-      let rootNodeType: null | string = null;
-      let actualRows: null | number = null;
-      let sharedHitBlocks: null | number = null;
-      let sharedReadBlocks: null | number = null;
-      let tempWrittenBlocks: null | number = null;
-      let walBytes: null | number = null;
-      if (shouldExplain) {
-        const explainRows = await tx.$queryRawUnsafe<unknown[]>(
-          `EXPLAIN (ANALYZE, BUFFERS, WAL, SETTINGS, FORMAT JSON) ${statement}`,
-        );
-        const parsedExplain = parseExplainOutput(explainRows);
-        if (parsedExplain == null) {
-          notExplainedStatementCount += 1;
-        } else {
-          explainedStatementCount += 1;
-          planningMs = parsedExplain.planningMs;
-          executionMs = parsedExplain.executionMs;
-          rootNodeType = parsedExplain.rootNodeType;
-          actualRows = parsedExplain.actualRows;
-          sharedHitBlocks = parsedExplain.sharedHitBlocks;
-          sharedReadBlocks = parsedExplain.sharedReadBlocks;
-          tempWrittenBlocks = parsedExplain.tempWrittenBlocks;
-          walBytes = parsedExplain.walBytes;
-          if (planningMs != null) totalPlanningMs += planningMs;
-          if (executionMs != null) totalExecutionMs += executionMs;
-        }
-      } else {
-        notExplainedStatementCount += 1;
-        await tx.$executeRawUnsafe(statement);
-      }
-      const wallMs = Number((performance.now() - statementStart).toFixed(3));
-      statementWallMsTotal += wallMs;
-      statementExecutions.push({
-        index,
-        kind,
-        outputName: null,
-        wallMs,
-        planningMs,
-        executionMs,
-        rootNodeType,
-        actualRows,
-        sharedHitBlocks,
-        sharedReadBlocks,
-        tempWrittenBlocks,
-        walBytes,
-        sqlPreview: toSqlPreview(statement),
-      });
+  const sqlScript = toExecutableSqlTransaction(statements);
+  const autoExplainStartMarker = `bulldozer_studio_auto_explain_start:${STUDIO_INSTANCE_ID}:${Math.random().toString(36).slice(2, 10)}`;
+  const autoExplainEndMarker = `bulldozer_studio_auto_explain_end:${STUDIO_INSTANCE_ID}:${Math.random().toString(36).slice(2, 10)}`;
+  const autoExplainSetupSql = deindent`
+    LOAD 'auto_explain';
+    SET LOCAL auto_explain.log_min_duration = 0;
+    SET LOCAL auto_explain.log_analyze = on;
+    SET LOCAL auto_explain.log_nested_statements = on;
+    SET LOCAL auto_explain.log_buffers = on;
+    SET LOCAL auto_explain.log_wal = on;
+    SET LOCAL auto_explain.log_timing = on;
+    SET LOCAL auto_explain.log_settings = on;
+    SET LOCAL auto_explain.log_format = 'json';
+    SET LOCAL auto_explain.log_level = 'log';
+  `;
+  const instrumentedSqlScript = sqlScript.includes("BEGIN;")
+    ? sqlScript.replace("BEGIN;", `BEGIN;\n${autoExplainSetupSql}`)
+    : sqlScript;
+  const wrappedInstrumentedSqlScript = deindent`
+    DO $$ BEGIN RAISE LOG ${quoteSqlStringLiteral(autoExplainStartMarker).sql}; END $$;
+    ${instrumentedSqlScript}
+    DO $$ BEGIN RAISE LOG ${quoteSqlStringLiteral(autoExplainEndMarker).sql}; END $$;
+  `;
+  const logSnapshotBefore = await getCurrentPostgresLogSnapshot();
+  const executionStartedAt = performance.now();
+  let autoExplainSetupError: string | null = null;
+  try {
+    await globalPrismaClient.$executeRawUnsafe(wrappedInstrumentedSqlScript);
+  } catch (error) {
+    const message = normalizeErrorMessage(error);
+    const autoExplainFailure = /auto_explain|unrecognized configuration parameter|could not access file|permission denied/i.test(message);
+    if (!autoExplainFailure) {
+      throw error;
     }
-  });
+    autoExplainSetupError = message;
+    await globalPrismaClient.$executeRawUnsafe(sqlScript);
+  }
+  const statementWallMsTotal = Number((performance.now() - executionStartedAt).toFixed(1));
+  const logSnapshotAfter = await getCurrentPostgresLogSnapshot();
+  let autoExplainLogPath: string | null = null;
+  let autoExplainLogReadBytes = 0;
+  const snapshotErrors = [...new Set([logSnapshotBefore.error, logSnapshotAfter.error].filter((value): value is string => value != null))];
+  let autoExplainLogReadError = snapshotErrors.length > 0 ? snapshotErrors.join("; ") : null;
+  let autoExplainMarkerFound = false;
+  let autoExplainParseErrorCount = 0;
+  let autoExplainEntries: StatementExecutionMetrics["slowestStatements"] = [];
+  let autoExplainRawLogExcerpt: string | null = null;
+  if (autoExplainSetupError == null && logSnapshotBefore.snapshot != null && logSnapshotAfter.snapshot != null) {
+    const requestedReadWindowBytes = Math.max(
+      AUTO_EXPLAIN_LOG_SAMPLE_BYTES,
+      Math.min(AUTO_EXPLAIN_MAX_LOG_SAMPLE_BYTES, Math.floor(sqlScript.length * 4)),
+    );
+    const logPathRotated = logSnapshotBefore.snapshot.path !== logSnapshotAfter.snapshot.path;
+    autoExplainLogPath = logPathRotated
+      ? `${logSnapshotBefore.snapshot.path} -> ${logSnapshotAfter.snapshot.path}`
+      : logSnapshotAfter.snapshot.path;
+
+    let logContent = "";
+    const chunkReadErrors: string[] = [];
+    const pushChunk = (chunk: { content: string | null, error: string | null }, context: string) => {
+      if (chunk.error != null) {
+        chunkReadErrors.push(`${context}: ${chunk.error}`);
+        return;
+      }
+      if (chunk.content != null) {
+        logContent += chunk.content;
+        autoExplainLogReadBytes += chunk.content.length;
+      }
+    };
+
+    if (!logPathRotated) {
+      const readStartOffset = Math.max(
+        logSnapshotBefore.snapshot.size,
+        logSnapshotAfter.snapshot.size - requestedReadWindowBytes,
+      );
+      const readLength = Math.max(logSnapshotAfter.snapshot.size - readStartOffset, 0);
+      const readLogChunkResult = await readPostgresLogChunk(logSnapshotAfter.snapshot.path, readStartOffset, readLength);
+      pushChunk(readLogChunkResult, "active-log");
+    } else {
+      const readFromOldFile = await readPostgresLogChunk(
+        logSnapshotBefore.snapshot.path,
+        logSnapshotBefore.snapshot.size,
+        requestedReadWindowBytes,
+      );
+      pushChunk(readFromOldFile, "rotated-old-log");
+      if (logContent.length > 0) {
+        logContent += "\n";
+      }
+      const readFromNewFile = await readPostgresLogChunk(
+        logSnapshotAfter.snapshot.path,
+        0,
+        Math.min(logSnapshotAfter.snapshot.size, requestedReadWindowBytes),
+      );
+      pushChunk(readFromNewFile, "rotated-new-log");
+    }
+
+    if (logContent.length === 0 && chunkReadErrors.length > 0) {
+      autoExplainLogReadError = chunkReadErrors.join("; ");
+    } else if (logContent.length > 0) {
+      if (chunkReadErrors.length > 0) {
+        console.warn(`[studio] partial auto_explain log read: ${chunkReadErrors.join("; ")}`);
+      }
+      const betweenMarkers = extractTextBetweenMarkers(
+        logContent,
+        autoExplainStartMarker,
+        autoExplainEndMarker,
+      );
+      autoExplainMarkerFound = betweenMarkers.markerFound;
+      const autoExplainLogSection = logContent;
+      const parsedAutoExplainEntries = parseAutoExplainEntries(autoExplainLogSection);
+      autoExplainEntries = parsedAutoExplainEntries.parsedEntries;
+      autoExplainParseErrorCount = parsedAutoExplainEntries.parseErrorCount;
+      const preferredExcerptSource = betweenMarkers.text.includes("plan:")
+        ? betweenMarkers.text
+        : autoExplainLogSection;
+      autoExplainRawLogExcerpt = preferredExcerptSource.length <= AUTO_EXPLAIN_LOG_EXCERPT_CHARS
+        ? preferredExcerptSource
+        : preferredExcerptSource.slice(-AUTO_EXPLAIN_LOG_EXCERPT_CHARS);
+    } else if (autoExplainLogReadError == null) {
+      autoExplainLogReadError = "PostgreSQL log chunk was empty";
+    }
+  } else if (autoExplainSetupError == null && autoExplainLogReadError == null) {
+    autoExplainLogReadError = "PostgreSQL log snapshot unavailable (pg_current_logfile / pg_stat_file returned no path/size)";
+  }
+
+  const autoExplainCaptureAvailable = autoExplainSetupError == null
+    && autoExplainLogReadError == null
+    && autoExplainLogPath != null
+    && autoExplainMarkerFound;
+
   const tableReferenceCounts = new Map<string, number>();
   for (const statement of statements) {
     const matches = statement.sql.match(/external:[A-Za-z0-9-]+/g) ?? [];
@@ -499,15 +613,20 @@ async function executeStatements(statements: SqlStatement[]): Promise<StatementE
       : `${statement.sql.slice(0, STATEMENT_SQL_PREVIEW_CHARS)}...`,
   });
   const lastPreviewStartIndex = Math.max(statements.length - 5, 0);
-  const slowestStatements = [...statementExecutions]
+  const slowestStatements = [...autoExplainEntries]
     .sort((a, b) => b.wallMs - a.wallMs)
     .slice(0, SLOW_STATEMENT_LIMIT);
+  const totalPlanningMs = autoExplainEntries.reduce((sum, entry) => sum + (entry.planningMs ?? 0), 0);
+  const totalExecutionMs = autoExplainEntries.reduce((sum, entry) => sum + (entry.executionMs ?? 0), 0);
+  const totalAutoExplainDurationMs = autoExplainEntries.reduce((sum, entry) => sum + entry.wallMs, 0);
+  const explainedStatementCount = autoExplainEntries.length;
+  const notExplainedStatementCount = Math.max(statements.length - explainedStatementCount, 0);
   const metrics: StatementExecutionMetrics = {
     durationMs: Number((performance.now() - startedAt).toFixed(1)),
     statementCount: statements.length,
     logicalStatementCount: statements.length,
-    executableStatementCount: executableStatements.length,
-    sequentialStatementCount: statements.filter((statement) => statement.requiresSequentialExecution === true).length,
+    executableStatementCount: statements.length,
+    sequentialStatementCount: statements.length,
     uniqueTableReferenceCount: tableReferenceCounts.size,
     sqlScriptLength: sqlScript.length,
     sqlScript,
@@ -515,20 +634,32 @@ async function executeStatements(statements: SqlStatement[]): Promise<StatementE
     lastStatementPreviews: statements.slice(lastPreviewStartIndex).map((statement, index) => toStatementPreview(statement, lastPreviewStartIndex + index)),
     topTableReferences,
     timingBreakdown: {
-      statementWallMsTotal: Number(statementWallMsTotal.toFixed(1)),
+      statementWallMsTotal,
       totalPlanningMs: Number(totalPlanningMs.toFixed(1)),
       totalExecutionMs: Number(totalExecutionMs.toFixed(1)),
+      totalAutoExplainDurationMs: Number(totalAutoExplainDurationMs.toFixed(1)),
       explainedStatementCount,
       notExplainedStatementCount,
     },
     slowestStatements,
+    autoExplain: {
+      enabled: autoExplainCaptureAvailable,
+      setupError: autoExplainSetupError,
+      logReadError: autoExplainLogReadError,
+      logPath: autoExplainLogPath,
+      logReadBytes: autoExplainLogReadBytes,
+      markerFound: autoExplainMarkerFound,
+      parsedEntryCount: autoExplainEntries.length,
+      parseErrorCount: autoExplainParseErrorCount,
+      rawLogExcerpt: autoExplainRawLogExcerpt,
+    },
   };
   if (metrics.durationMs >= 1000) {
     const topSummary = metrics.topTableReferences
       .slice(0, 3)
       .map((entry) => `${entry.tableId}(${entry.statementReferences})`)
       .join(", ");
-    const timingSummary = `planning=${metrics.timingBreakdown.totalPlanningMs}ms execution=${metrics.timingBreakdown.totalExecutionMs}ms explained=${metrics.timingBreakdown.explainedStatementCount}`;
+    const timingSummary = `auto_explain_duration=${metrics.timingBreakdown.totalAutoExplainDurationMs}ms planning=${metrics.timingBreakdown.totalPlanningMs}ms execution=${metrics.timingBreakdown.totalExecutionMs}ms entries=${metrics.timingBreakdown.explainedStatementCount}`;
     console.log(`[studio] slow mutation ${metrics.durationMs}ms (${metrics.statementCount} statements) ${timingSummary} topRefs=${topSummary}`);
   }
   return metrics;
@@ -1375,6 +1506,77 @@ function getStudioPageHtml(): string {
     .muted {
       color: var(--muted);
     }
+    .metrics-visual {
+      display: grid;
+      gap: 8px;
+      font-size: 12px;
+    }
+    .metrics-grid {
+      display: grid;
+      gap: 8px;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+    }
+    .metrics-card {
+      border: 1px solid var(--line);
+      background: var(--bg-alt);
+      padding: 8px;
+      display: grid;
+      gap: 6px;
+    }
+    .metrics-card-title {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+    }
+    .metrics-big-value {
+      font-size: 18px;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .metrics-kv {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .metrics-bar {
+      height: 8px;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      position: relative;
+      overflow: hidden;
+    }
+    .metrics-bar-fill {
+      position: absolute;
+      inset: 0 auto 0 0;
+      width: 0%;
+      background: var(--accent);
+    }
+    .metrics-bar-fill.good {
+      background: var(--ok);
+    }
+    .metrics-bar-fill.warn {
+      background: var(--filter);
+    }
+    .metrics-bar-fill.danger {
+      background: var(--danger);
+    }
+    .metrics-list {
+      margin: 0;
+      padding-left: 18px;
+      display: grid;
+      gap: 4px;
+    }
+    .metrics-list li {
+      color: var(--muted);
+      line-height: 1.35;
+    }
+    .metrics-empty {
+      color: var(--muted);
+      border: 1px dashed var(--line);
+      padding: 8px;
+      background: var(--bg-alt);
+    }
   </style>
 </head>
 <body data-theme="dark">
@@ -1423,6 +1625,7 @@ function getStudioPageHtml(): string {
     <div class="dialog-content">
       <div class="dialog-title" style="color:var(--text);" id="metricsDialogTitle">Execution details</div>
       <div id="metricsDialogMeta" class="mono muted"></div>
+      <div id="metricsDialogVisual" class="metrics-visual"></div>
       <pre id="metricsDialogText"></pre>
       <div class="row">
         <button id="metricsDialogCloseBtn" class="btn">Close</button>
@@ -1513,6 +1716,7 @@ function getStudioPageHtml(): string {
     const metricsDialog = document.getElementById("metricsDialog");
     const metricsDialogTitle = document.getElementById("metricsDialogTitle");
     const metricsDialogMeta = document.getElementById("metricsDialogMeta");
+    const metricsDialogVisual = document.getElementById("metricsDialogVisual");
     const metricsDialogText = document.getElementById("metricsDialogText");
     const metricsDialogCloseBtn = document.getElementById("metricsDialogCloseBtn");
     const modeTablesBtn = document.getElementById("modeTablesBtn");
@@ -1574,11 +1778,130 @@ function getStudioPageHtml(): string {
       return readFiniteNumber(metrics.executableStatementCount);
     }
 
+    function escapeHtml(value) {
+      return String(value)
+        .replaceAll("&", "&amp;")
+        .replaceAll("<", "&lt;")
+        .replaceAll(">", "&gt;")
+        .replaceAll('"', "&quot;")
+        .replaceAll("'", "&#39;");
+    }
+
+    function formatNumericValue(value, fractionDigits = 1) {
+      if (!Number.isFinite(value)) return "n/a";
+      return Number(value).toFixed(fractionDigits);
+    }
+
+    function percentage(value, total) {
+      if (!Number.isFinite(value) || !Number.isFinite(total) || total <= 0) return 0;
+      return Math.max(0, Math.min(100, (value / total) * 100));
+    }
+
+    function renderMetricsBarRow(label, valueText, widthPercent, tone = "good") {
+      const safeWidth = Number.isFinite(widthPercent) ? Math.max(0, Math.min(100, widthPercent)) : 0;
+      return ""
+        + "<div class='metrics-kv'><span>" + escapeHtml(label) + "</span><span>" + escapeHtml(valueText) + "</span></div>"
+        + "<div class='metrics-bar'><div class='metrics-bar-fill " + escapeHtml(tone) + "' style='width:" + safeWidth.toFixed(1) + "%'></div></div>";
+    }
+
+    function renderMetricsVisual(metrics) {
+      if (!metrics || typeof metrics !== "object") {
+        metricsDialogVisual.innerHTML = "<div class='metrics-empty'>No execution metrics available yet.</div>";
+        return;
+      }
+
+      const timing = (metrics.timingBreakdown && typeof metrics.timingBreakdown === "object") ? metrics.timingBreakdown : {};
+      const autoExplain = (metrics.autoExplain && typeof metrics.autoExplain === "object") ? metrics.autoExplain : {};
+      const logicalStatementCount = statementCountFromMetrics(metrics) ?? 0;
+      const explainedStatementCount = readFiniteNumber(timing.explainedStatementCount) ?? 0;
+      const notCapturedCount = readFiniteNumber(timing.notExplainedStatementCount) ?? Math.max(logicalStatementCount - explainedStatementCount, 0);
+      const captureRate = percentage(explainedStatementCount, logicalStatementCount);
+      const totalDurationMs = readFiniteNumber(metrics.durationMs) ?? 0;
+      const statementWallMsTotal = readFiniteNumber(timing.statementWallMsTotal) ?? 0;
+      const planningMs = readFiniteNumber(timing.totalPlanningMs) ?? 0;
+      const executionMs = readFiniteNumber(timing.totalExecutionMs) ?? 0;
+      const autoExplainDurationMs = readFiniteNumber(timing.totalAutoExplainDurationMs) ?? 0;
+      const parsedEntryCount = readFiniteNumber(autoExplain.parsedEntryCount) ?? 0;
+      const parseErrorCount = readFiniteNumber(autoExplain.parseErrorCount) ?? 0;
+      const topRefs = Array.isArray(metrics.topTableReferences) ? metrics.topTableReferences.slice(0, 5) : [];
+      const slowestStatements = Array.isArray(metrics.slowestStatements) ? metrics.slowestStatements.slice(0, 5) : [];
+      const maxTopRefCount = topRefs.reduce((maxValue, entry) => Math.max(maxValue, readFiniteNumber(entry?.statementReferences) ?? 0), 0);
+      const maxSlowStatementMs = slowestStatements.reduce((maxValue, entry) => Math.max(maxValue, readFiniteNumber(entry?.wallMs) ?? 0), 0);
+
+      const captureTone = captureRate >= 80 ? "good" : (captureRate >= 40 ? "warn" : "danger");
+      const parseTone = parseErrorCount > 0 ? "danger" : "good";
+      const markerTone = autoExplain.markerFound === true ? "good" : "warn";
+      const setupTone = autoExplain.enabled === true ? "good" : "warn";
+
+      const topRefsMarkup = topRefs.length === 0
+        ? "<div class='metrics-empty'>No table-reference distribution collected.</div>"
+        : topRefs.map((entry) => {
+          const tableId = typeof entry?.tableId === "string" ? entry.tableId : "unknown-table";
+          const referenceCount = readFiniteNumber(entry?.statementReferences) ?? 0;
+          return renderMetricsBarRow(
+            tableId,
+            String(referenceCount) + " refs",
+            percentage(referenceCount, maxTopRefCount),
+            "warn",
+          );
+        }).join("");
+
+      const slowestMarkup = slowestStatements.length === 0
+        ? "<div class='metrics-empty'>No auto-explain statement entries parsed yet.</div>"
+        : slowestStatements.map((entry) => {
+          const statementIndex = readFiniteNumber(entry?.index);
+          const wallMs = readFiniteNumber(entry?.wallMs) ?? 0;
+          const kind = typeof entry?.kind === "string" ? entry.kind : "UNKNOWN";
+          const label = "#" + (statementIndex == null ? "?" : String(statementIndex)) + " " + kind;
+          return renderMetricsBarRow(label, formatNumericValue(wallMs, 1) + "ms", percentage(wallMs, maxSlowStatementMs), "danger");
+        }).join("");
+
+      metricsDialogVisual.innerHTML = ""
+        + "<div class='metrics-grid'>"
+        +   "<div class='metrics-card'>"
+        +     "<div class='metrics-card-title'>Capture Health</div>"
+        +     "<div class='metrics-big-value'>" + formatNumericValue(captureRate, 1) + "%</div>"
+        +     renderMetricsBarRow("Captured statements", String(explainedStatementCount) + "/" + String(logicalStatementCount), captureRate, captureTone)
+        +     renderMetricsBarRow("Missing estimate", String(notCapturedCount), percentage(notCapturedCount, logicalStatementCount), "warn")
+        +     renderMetricsBarRow("Marker found", autoExplain.markerFound === true ? "yes" : "no", 100, markerTone)
+        +   "</div>"
+        +   "<div class='metrics-card'>"
+        +     "<div class='metrics-card-title'>Timing Composition</div>"
+        +     "<div class='metrics-big-value'>" + formatNumericValue(totalDurationMs, 1) + "ms</div>"
+        +     renderMetricsBarRow("Statement wall total", formatNumericValue(statementWallMsTotal, 1) + "ms", percentage(statementWallMsTotal, totalDurationMs), "good")
+        +     renderMetricsBarRow("auto_explain duration", formatNumericValue(autoExplainDurationMs, 1) + "ms", percentage(autoExplainDurationMs, totalDurationMs), "warn")
+        +     renderMetricsBarRow("Planning + execution", formatNumericValue(planningMs + executionMs, 1) + "ms", percentage(planningMs + executionMs, totalDurationMs), "danger")
+        +   "</div>"
+        +   "<div class='metrics-card'>"
+        +     "<div class='metrics-card-title'>Parser Status</div>"
+        +     "<div class='metrics-big-value'>" + String(parsedEntryCount) + " entries</div>"
+        +     renderMetricsBarRow("Capture enabled", autoExplain.enabled === true ? "yes" : "no", 100, setupTone)
+        +     renderMetricsBarRow("Parse errors", String(parseErrorCount), parseErrorCount > 0 ? 100 : 0, parseTone)
+        +     renderMetricsBarRow("Log bytes read", String(readFiniteNumber(autoExplain.logReadBytes) ?? 0), 100, "good")
+        +   "</div>"
+        + "</div>"
+        + "<div class='metrics-grid'>"
+        +   "<div class='metrics-card'><div class='metrics-card-title'>Top Referenced Tables</div>" + topRefsMarkup + "</div>"
+        +   "<div class='metrics-card'><div class='metrics-card-title'>Slowest Parsed Statements</div>" + slowestMarkup + "</div>"
+        + "</div>"
+        + "<div class='metrics-card'>"
+        +   "<div class='metrics-card-title'>What This Captures</div>"
+        +   "<ul class='metrics-list'>"
+        +     "<li><strong>Wall clock totals</strong>: end-to-end transaction time and cumulative SQL statement wall time.</li>"
+        +     "<li><strong>auto_explain timing</strong>: planner and executor time from PostgreSQL for statements that are actually captured.</li>"
+        +     "<li><strong>Plan-level IO stats</strong>: shared hits/reads, temp writes, WAL bytes, node type, and actual rows for slow statements.</li>"
+        +     "<li><strong>Coverage signals</strong>: marker detection, parsed entry count, and estimated uncaptured statements.</li>"
+        +     "<li><strong>Schema pressure hints</strong>: statement-reference frequency per table to identify hotspots in dependency graphs.</li>"
+        +   "</ul>"
+        + "</div>";
+    }
+
     function mutationDetailLines(metrics) {
       if (!metrics || typeof metrics !== "object") {
         return "No execution details available.";
       }
       const timing = (metrics.timingBreakdown && typeof metrics.timingBreakdown === "object") ? metrics.timingBreakdown : null;
+      const autoExplain = (metrics.autoExplain && typeof metrics.autoExplain === "object") ? metrics.autoExplain : null;
       const topRefs = Array.isArray(metrics.topTableReferences) ? metrics.topTableReferences : [];
       const firstPreviews = Array.isArray(metrics.firstStatementPreviews) ? metrics.firstStatementPreviews : [];
       const lastPreviews = Array.isArray(metrics.lastStatementPreviews) ? metrics.lastStatementPreviews : [];
@@ -1592,10 +1915,11 @@ function getStudioPageHtml(): string {
         "uniqueTableReferenceCount: " + (readFiniteNumber(metrics.uniqueTableReferenceCount) ?? "n/a"),
         "sqlScriptLengthChars: " + (readFiniteNumber(metrics.sqlScriptLength) ?? "n/a"),
         "statementWallMsTotal: " + (readFiniteNumber(timing?.statementWallMsTotal) ?? "n/a"),
-        "totalPlanningMs(explain): " + (readFiniteNumber(timing?.totalPlanningMs) ?? "n/a"),
-        "totalExecutionMs(explain): " + (readFiniteNumber(timing?.totalExecutionMs) ?? "n/a"),
-        "explainedStatementCount: " + (readFiniteNumber(timing?.explainedStatementCount) ?? "n/a"),
-        "notExplainedStatementCount: " + (readFiniteNumber(timing?.notExplainedStatementCount) ?? "n/a"),
+        "totalAutoExplainDurationMs: " + (readFiniteNumber(timing?.totalAutoExplainDurationMs) ?? "n/a"),
+        "totalPlanningMs(auto_explain): " + (readFiniteNumber(timing?.totalPlanningMs) ?? "n/a"),
+        "totalExecutionMs(auto_explain): " + (readFiniteNumber(timing?.totalExecutionMs) ?? "n/a"),
+        "autoExplainEntryCount: " + (readFiniteNumber(timing?.explainedStatementCount) ?? "n/a"),
+        "notCapturedStatementEstimate: " + (readFiniteNumber(timing?.notExplainedStatementCount) ?? "n/a"),
         "",
         "Top referenced tables",
       ];
@@ -1608,6 +1932,16 @@ function getStudioPageHtml(): string {
           lines.push("- " + tableId + ": " + (count ?? "?") + " statement references");
         }
       }
+
+      lines.push("", "Auto-explain capture");
+      lines.push("enabled: " + (autoExplain?.enabled === true ? "yes" : "no"));
+      lines.push("setupError: " + (typeof autoExplain?.setupError === "string" ? autoExplain.setupError : "none"));
+      lines.push("logReadError: " + (typeof autoExplain?.logReadError === "string" ? autoExplain.logReadError : "none"));
+      lines.push("logPath: " + (typeof autoExplain?.logPath === "string" ? autoExplain.logPath : "n/a"));
+      lines.push("logReadBytes: " + (readFiniteNumber(autoExplain?.logReadBytes) ?? "n/a"));
+      lines.push("markerFound: " + (autoExplain?.markerFound === true ? "yes" : "no"));
+      lines.push("parsedEntryCount: " + (readFiniteNumber(autoExplain?.parsedEntryCount) ?? "n/a"));
+      lines.push("parseErrorCount: " + (readFiniteNumber(autoExplain?.parseErrorCount) ?? "n/a"));
 
       lines.push("", "Slowest executable statements");
       if (slowestStatements.length === 0) {
@@ -1642,6 +1976,9 @@ function getStudioPageHtml(): string {
           lines.push("");
         }
       }
+
+      lines.push("", "Auto-explain log excerpt");
+      lines.push(typeof autoExplain?.rawLogExcerpt === "string" ? autoExplain.rawLogExcerpt : "(none)");
 
       lines.push("", "First generated statements");
       if (firstPreviews.length === 0) {
@@ -1682,9 +2019,10 @@ function getStudioPageHtml(): string {
         "duration=" + (durationMs == null ? "n/a" : formatDuration(durationMs)),
         "logicalStatements=" + (statementCount == null ? "n/a" : String(statementCount)),
         "executableStatements=" + (executableStatementCount == null ? "n/a" : String(executableStatementCount)),
-        "planningMs=" + (readFiniteNumber(timing?.totalPlanningMs) ?? "n/a"),
-        "executionMs=" + (readFiniteNumber(timing?.totalExecutionMs) ?? "n/a"),
+        "autoExplainPlanMs=" + (readFiniteNumber(timing?.totalPlanningMs) ?? "n/a"),
+        "autoExplainExecMs=" + (readFiniteNumber(timing?.totalExecutionMs) ?? "n/a"),
       ].join(" • ");
+      renderMetricsVisual(metrics);
       metricsDialogText.textContent = mutationDetailLines(metrics);
       if (metricsDialog.open) {
         metricsDialog.close();
@@ -1728,6 +2066,7 @@ function getStudioPageHtml(): string {
       const timing = (metrics.timingBreakdown && typeof metrics.timingBreakdown === "object") ? metrics.timingBreakdown : null;
       const planningMs = readFiniteNumber(timing?.totalPlanningMs);
       const executionMs = readFiniteNumber(timing?.totalExecutionMs);
+      const autoExplainDurationMs = readFiniteNumber(timing?.totalAutoExplainDurationMs);
       const topRefs = Array.isArray(metrics.topTableReferences) ? metrics.topTableReferences : [];
       const topSummary = topRefs
         .slice(0, 3)
@@ -1741,8 +2080,11 @@ function getStudioPageHtml(): string {
       const executableSuffix = executableStatementCount == null ? "" : " • " + executableStatementCount + " executable";
       const planExecSuffix = (planningMs == null && executionMs == null)
         ? ""
-        : " • plan/exec=" + (planningMs == null ? "n/a" : String(planningMs)) + "/" + (executionMs == null ? "n/a" : String(executionMs)) + "ms";
-      const base = formatDuration(durationMs ?? Number.NaN) + " • " + statementLabel + " logical" + executableSuffix + planExecSuffix;
+        : " • auto-explain plan/exec=" + (planningMs == null ? "n/a" : String(planningMs)) + "/" + (executionMs == null ? "n/a" : String(executionMs)) + "ms";
+      const durationSuffix = autoExplainDurationMs == null
+        ? ""
+        : " • auto-explain duration=" + autoExplainDurationMs + "ms";
+      const base = formatDuration(durationMs ?? Number.NaN) + " • " + statementLabel + " logical" + executableSuffix + planExecSuffix + durationSuffix;
       return topSummary ? base + " • top refs: " + topSummary : base;
     }
 

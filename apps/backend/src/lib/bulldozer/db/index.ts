@@ -1,10 +1,9 @@
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 
 import { BULLDOZER_SORT_HELPERS_SQL } from "./bulldozer-sort-helpers-sql";
 import type { RegisteredRowChangeTrigger, RowChangeTriggerInput } from "./row-change-trigger-dispatch";
 import type { Json, RowData, RowIdentifier, SqlExpression, SqlQuery, SqlStatement, TableId } from "./utilities";
-import { quoteSqlIdentifier } from "./utilities";
+import { quoteSqlIdentifier, quoteSqlStringLiteral } from "./utilities";
 
 // ====== Table implementations ======
 // IMPORTANT NOTE: For every new table implementation, we should also add tests (unit, fuzzing, & perf; including an entry in the "hundreds of thousands" perf test), an example in the example schema, and support in Bulldozer Studio.
@@ -60,86 +59,83 @@ export { declareStoredTable } from "./tables/stored-table";
 export { declareTimeFoldTable } from "./tables/time-fold-table";
 
 const BULLDOZER_LOCK_ID = 7857391;  // random number to avoid conflicts with other applications
+const BULLDOZER_SEQ_TABLE_NAME = "__bulldozer_seq";
+const BULLDOZER_SEQ_TABLE_SQL = `CREATE TEMP TABLE IF NOT EXISTS "${BULLDOZER_SEQ_TABLE_NAME}" ("__output_name" text NOT NULL, "__output_row" jsonb NOT NULL) ON COMMIT DROP;`;
 
 export function toQueryableSqlQuery(query: SqlQuery): string {
   return query.sql;
 }
-export function toExecutableSqlStatements(statements: SqlStatement[]): string {
-  const requiresSortHelpers = statements.some((statement) => statement.sql.includes("pg_temp.bulldozer_sort_"));
-  const requiresSequentialExecutor = requiresSortHelpers || statements.some((statement) => statement.requiresSequentialExecution === true);
-  if (!requiresSequentialExecutor) {
-    return deindent`
-      WITH __dummy_statement_1__ AS (SELECT 1),
-      ${statements.map(statement => deindent`
-        ${quoteSqlIdentifier(statement.outputName ?? `unnamed_statement_${generateSecureRandomString().slice(0, 8)}`).sql} AS (
-          ${statement.sql}
-        ),
-      `).join("\n")}
-      __dummy_statement_2__ AS (SELECT 1)
-      SELECT 1;
-    `;
-  }
 
-  const seqOutputs = new Map<string, string>();
-  const executableStatements = statements.map((statement) => {
-    let sql = statement.sql;
-    for (const [name, columns] of seqOutputs) {
-      const quotedName = `"${name}"`;
-      if (sql.includes(quotedName)) {
-        const colList = columns.split(",").map(c => {
-          const trimmed = c.trim();
-          const parts = trimmed.split(/\s+/);
-          const colName = parts[0];
-          const colType = parts.slice(1).join(" ");
-          if (colType === "jsonb") {
-            return `COALESCE(r.${colName}, 'null'::jsonb) AS ${colName}`;
-          }
-          return `r.${colName}`;
-        }).join(", ");
-        const subquery = `(SELECT ${colList} FROM "__bulldozer_seq" AS "__s", LATERAL jsonb_to_record("__s"."__output_row") AS r(${columns}) WHERE "__s"."__output_name" = '${name}')`;
-        sql = sql.replaceAll(`${quotedName} AS `, `${subquery} AS `);
-        sql = sql.replaceAll(quotedName, `${subquery} AS ${quotedName}`);
-      }
-    }
-    if (statement.outputName == null) {
-      return `${sql};`;
-    }
-    if (statement.outputColumns == null) {
-      return deindent`
-        CREATE TEMP TABLE ${quoteSqlIdentifier(statement.outputName).sql} ON COMMIT DROP AS
-        WITH "__statement_output" AS (
-          ${sql}
-        )
-        SELECT * FROM "__statement_output";
-      `;
-    }
-    seqOutputs.set(statement.outputName, statement.outputColumns);
-    return deindent`
-      INSERT INTO "__bulldozer_seq" ("__output_name", "__output_row")
-      SELECT '${statement.outputName}', to_jsonb("__statement_output")
-      FROM (
-        ${sql}
-      ) AS "__statement_output";
-    `;
-  }).join("\n\n");
-  return deindent`
-    ${requiresSortHelpers ? BULLDOZER_SORT_HELPERS_SQL : ""}
-
-    CREATE TEMP TABLE IF NOT EXISTS "__bulldozer_seq" ("__output_name" text NOT NULL, "__output_row" jsonb NOT NULL) ON COMMIT DROP;
-
-    ${executableStatements}
-  `;
-}
 export function toExecutableSqlTransaction(statements: SqlStatement[], options: { statementTimeout?: string } = {}): string {
+  const requiresSortHelpers = statements.some((statement) => statement.sql.includes("pg_temp.bulldozer_sort_"));
+  const seqOutputs = new Map<string, string>();
+  const executableStatementsInDoBlock = statements.map((statement) => {
+    let sql = statement.sql;
+    for (const [outputName, outputColumns] of seqOutputs) {
+      const quotedOutputName = `"${outputName}"`;
+      if (!sql.includes(quotedOutputName)) continue;
+      const outputColumnsSelectList = outputColumns.split(",").map((columnDefinition) => {
+        const trimmedColumnDefinition = columnDefinition.trim();
+        const parts = trimmedColumnDefinition.split(/\s+/);
+        const columnName = parts[0];
+        const columnType = parts.slice(1).join(" ");
+        if (columnType === "jsonb") {
+          return `COALESCE(r.${columnName}, 'null'::jsonb) AS ${columnName}`;
+        }
+        return `r.${columnName}`;
+      }).join(", ");
+      const outputNameLiteral = quoteSqlStringLiteral(outputName).sql;
+      const outputLookupSubquery = `(SELECT ${outputColumnsSelectList} FROM "${BULLDOZER_SEQ_TABLE_NAME}" AS "__s", LATERAL jsonb_to_record("__s"."__output_row") AS r(${outputColumns}) WHERE "__s"."__output_name" = ${outputNameLiteral})`;
+      sql = sql.replaceAll(`${quotedOutputName} AS `, `${outputLookupSubquery} AS `);
+      sql = sql.replaceAll(quotedOutputName, `${outputLookupSubquery} AS ${quotedOutputName}`);
+    }
+
+    const executableSql = statement.outputName == null
+      ? sql
+      : statement.outputColumns == null
+        ? deindent`
+            CREATE TEMP TABLE ${quoteSqlIdentifier(statement.outputName).sql} ON COMMIT DROP AS
+            WITH "__statement_output" AS (
+              ${sql}
+            )
+            SELECT * FROM "__statement_output"
+          `
+        : (() => {
+            seqOutputs.set(statement.outputName, statement.outputColumns);
+            const outputNameLiteral = quoteSqlStringLiteral(statement.outputName).sql;
+            return deindent`
+              INSERT INTO "${BULLDOZER_SEQ_TABLE_NAME}" ("__output_name", "__output_row")
+              SELECT ${outputNameLiteral}, to_jsonb("__statement_output")
+              FROM (
+                ${sql}
+              ) AS "__statement_output"
+            `;
+        })();
+
+    // Keep the outer DO block delimiter stable even when statements define $$ functions.
+    const normalizedSql = executableSql.replaceAll("$$", "$__bulldozer_do_inline$").trimEnd();
+    return normalizedSql.endsWith(";")
+      ? normalizedSql
+      : `${normalizedSql};`;
+  }).join("\n\n");
+
   return deindent`
     BEGIN;
 
     SET LOCAL jit = off;
-    ${options.statementTimeout ? `SET LOCAL statement_timeout = '${options.statementTimeout}';` : ""}
+    ${options.statementTimeout ? `SET LOCAL statement_timeout = ${quoteSqlStringLiteral(options.statementTimeout).sql};` : ""}
 
     SELECT pg_advisory_xact_lock(${BULLDOZER_LOCK_ID});
 
-    ${toExecutableSqlStatements(statements)}
+    ${requiresSortHelpers ? BULLDOZER_SORT_HELPERS_SQL : ""}
+
+    ${BULLDOZER_SEQ_TABLE_SQL}
+
+    DO $$
+    BEGIN
+      ${executableStatementsInDoBlock}
+    END;
+    $$ LANGUAGE plpgsql;
 
     COMMIT;
   `;

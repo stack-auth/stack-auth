@@ -52,15 +52,21 @@ export function createPaymentsSchema() {
     fromTable: subscriptionsSorted,
     initialState: { type: "expression" as const, sql: "'{}'::jsonb" },
     reducer: mapper(`
-      ("oldState" || jsonb_build_object("oldRowData"->>'id', "oldRowData")) AS "newState",
-      jsonb_build_array(
-        jsonb_build_object(
-          'subscriptions', ("oldState" || jsonb_build_object("oldRowData"->>'id', "oldRowData")),
-          'tenancyId', "oldRowData"->'tenancyId',
-          'customerType', "oldRowData"->'customerType',
-          'customerId', "oldRowData"->'customerId'
+      CASE
+        WHEN "oldRowData"->>'id' IS NULL THEN "oldState"
+        ELSE ("oldState" || jsonb_build_object("oldRowData"->>'id', "oldRowData"))
+      END AS "newState",
+      CASE
+        WHEN "oldRowData"->>'id' IS NULL THEN '[]'::jsonb
+        ELSE jsonb_build_array(
+          jsonb_build_object(
+            'subscriptions', ("oldState" || jsonb_build_object("oldRowData"->>'id', "oldRowData")),
+            'tenancyId', "oldRowData"->'tenancyId',
+            'customerType', "oldRowData"->'customerType',
+            'customerId', "oldRowData"->'customerId'
+          )
         )
-      ) AS "newRowsData"
+      END AS "newRowsData"
     `),
   });
 

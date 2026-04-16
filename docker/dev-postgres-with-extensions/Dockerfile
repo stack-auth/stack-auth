@@ -51,6 +51,11 @@ ENTRYPOINT ["sh", "-c", "\
     -c shared_preload_libraries='pg_stat_statements,pg_cron' \
     -c cron.database_name='stackframe' \
     -c pg_stat_statements.track=all \
+    -c logging_collector=on \
+    -c log_destination='stderr' \
+    -c log_min_messages=log \
+    -c log_directory='log' \
+    -c log_filename='postgresql-%Y-%m-%d_%H%M%S.log' \
     -c wal_level=logical \
     -c max_wal_senders=5 \
     -c max_replication_slots=5 \
