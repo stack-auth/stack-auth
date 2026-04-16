@@ -662,9 +662,8 @@ for arch in "${TARGET_ARCHS[@]}"; do
   download_cloud_image "$arch" "$local_base"
   if [ "${SKIP_DOCKER_BUILD:-0}" = "1" ]; then
     log "SKIP_DOCKER_BUILD=1: reusing pre-built Docker bundle"
-    local expected_bundle="$IMAGE_DIR/emulator-${arch}-docker-images.tar.gz"
-    if [ ! -f "$expected_bundle" ]; then
-      err "Pre-built bundle not found: $expected_bundle"
+    if [ ! -f "$IMAGE_DIR/emulator-${arch}-docker-images.tar.gz" ]; then
+      err "Pre-built bundle not found: $IMAGE_DIR/emulator-${arch}-docker-images.tar.gz"
       exit 1
     fi
   else

@@ -151,7 +151,11 @@ function emulatorScriptsDir(): string {
 
 // npm pack strips the execute bit from non-`bin` files, so restore it here.
 function ensureExecutable(scriptsDir: string): string {
-  try { chmodSync(join(scriptsDir, "run-emulator.sh"), 0o755); } catch { /* best-effort */ }
+  try {
+    chmodSync(join(scriptsDir, "run-emulator.sh"), 0o755);
+  } catch {
+    // best-effort
+  }
   return scriptsDir;
 }
 
