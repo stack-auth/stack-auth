@@ -33,18 +33,20 @@ For personalized support, complex issues, or help beyond documentation:
 - **Email Support**: team@stack-auth.com (for technical support and detailed inquiries)
 `;
 
-export type SystemPromptId =
-  | "command-center-ask-ai"
-  | "docs-ask-ai"
-  | "wysiwyg-edit"
-  | "email-wysiwyg-editor"
-  | "email-assistant-template"
-  | "email-assistant-theme"
-  | "email-assistant-draft"
-  | "create-dashboard"
-  | "run-query"
-  | "build-analytics-query"
-  | "rewrite-template-source";
+export const SYSTEM_PROMPT_IDS = [
+  "command-center-ask-ai",
+  "docs-ask-ai",
+  "wysiwyg-edit",
+  "email-wysiwyg-editor",
+  "email-assistant-template",
+  "email-assistant-theme",
+  "email-assistant-draft",
+  "create-dashboard",
+  "run-query",
+  "build-analytics-query",
+  "rewrite-template-source",
+] as const;
+export type SystemPromptId = typeof SYSTEM_PROMPT_IDS[number];
 
 /**
  * Context-specific system prompts that are appended to the base prompt.

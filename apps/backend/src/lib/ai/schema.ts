@@ -1,29 +1,16 @@
 import { yupArray, yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { ModelMessage } from "ai";
 import { InferType } from "yup";
+import { MODEL_QUALITIES, MODEL_SPEEDS } from "./models";
+import { SYSTEM_PROMPT_IDS } from "./prompts";
+import { TOOL_NAMES } from "./tools";
 
 export const requestBodySchema = yupObject({
-  quality: yupString().oneOf(["dumb", "smart", "smartest"]).defined(),
-  speed: yupString().oneOf(["slow", "fast"]).defined(),
-  tools: yupArray(yupString().defined()).defined(),
-  systemPrompt: yupString().oneOf([
-    "command-center-ask-ai",
-    "docs-ask-ai",
-    "wysiwyg-edit",
-    "email-wysiwyg-editor",
-    "email-assistant-template",
-    "email-assistant-theme",
-    "email-assistant-draft",
-    "create-dashboard",
-    "run-query",
-    "build-analytics-query",
-    "rewrite-template-source"
-  ]).defined(),
-  messages: yupArray(
-    yupObject({
-      role: yupString().oneOf(["user", "assistant", "tool"]).defined(),
-      content: yupMixed().defined(),
-    }).defined()
-  ).defined().min(1),
+  quality: yupString().oneOf(MODEL_QUALITIES).defined(),
+  speed: yupString().oneOf(MODEL_SPEEDS).defined(),
+  tools: yupArray(yupString().oneOf(TOOL_NAMES).defined()).defined(),
+  systemPrompt: yupString().oneOf(SYSTEM_PROMPT_IDS).defined(),
+  messages: yupArray(yupMixed<ModelMessage>().defined()).defined().min(1),
   projectId: yupString().optional().nullable(),
 });
 

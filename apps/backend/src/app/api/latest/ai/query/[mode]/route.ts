@@ -1,15 +1,16 @@
 import { selectModel } from "@/lib/ai/models";
 import { getFullSystemPrompt } from "@/lib/ai/prompts";
 import { requestBodySchema } from "@/lib/ai/schema";
-import { getTools, validateToolNames } from "@/lib/ai/tools";
+import { getTools } from "@/lib/ai/tools";
 import { listManagedProjectIds } from "@/lib/projects";
 import { SmartResponse } from "@/route-handlers/smart-response";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { validateImageAttachments } from "@stackframe/stack-shared/dist/ai/image-limits";
+import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
 import { yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Json } from "@stackframe/stack-shared/dist/utils/json";
-import { generateText, ModelMessage, stepCountIs, streamText } from "ai";
+import { generateText, stepCountIs, streamText } from "ai";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -24,11 +25,6 @@ export const POST = createSmartRouteHandler({
   response: yupMixed<SmartResponse>().defined(),
   async handler({ params, body }, fullReq) {
     const { mode } = params;
-
-    if (!validateToolNames(body.tools)) {
-      throw new StatusError(StatusError.BadRequest, `Invalid tool names in request.`);
-    }
-
     const isAuthenticated = fullReq.auth != null;
     const { quality, speed, systemPrompt: systemPromptId, tools: toolNames, messages, projectId } = body;
 
@@ -76,7 +72,7 @@ export const POST = createSmartRouteHandler({
       const result = streamText({
         model,
         system: systemPrompt,
-        messages: messages as ModelMessage[],
+        messages,
         tools: toolsArg,
         stopWhen: stepCountIs(stepLimit),
       });
@@ -91,53 +87,35 @@ export const POST = createSmartRouteHandler({
       const result = await generateText({
         model,
         system: systemPrompt,
-        messages: messages as ModelMessage[],
+        messages,
         tools: toolsArg,
         abortSignal: controller.signal,
         stopWhen: stepCountIs(stepLimit),
       }).finally(() => clearTimeout(timeoutId));
 
-      const contentBlocks: Array<
-        | { type: "text", text: string }
-        | {
-            type: "tool-call",
-            toolName: string,
-            toolCallId: string,
-            args: Json,
-            argsText: string,
-            result: Json,
-          }
-      > = [];
-
-      result.steps.forEach((step) => {
+      const content: ChatContent = result.steps.flatMap((step) => {
+        const blocks: ChatContent = [];
         if (step.text) {
-          contentBlocks.push({
-            type: "text",
-            text: step.text,
+          blocks.push({ type: "text", text: step.text });
+        }
+        const outById = new Map(step.toolResults.map((r) => [r.toolCallId, r.output as Json]));
+        for (const call of step.toolCalls) {
+          blocks.push({
+            type: "tool-call",
+            toolName: call.toolName,
+            toolCallId: call.toolCallId,
+            args: call.input as Json,
+            argsText: JSON.stringify(call.input),
+            result: outById.get(call.toolCallId) ?? null,
           });
         }
-
-        const toolResultsByCallId = new Map(
-          step.toolResults.map((r) => [r.toolCallId, r])
-        );
-
-        step.toolCalls.forEach((toolCall) => {
-          const toolResult = toolResultsByCallId.get(toolCall.toolCallId);
-          contentBlocks.push({
-            type: "tool-call",
-            toolName: toolCall.toolName,
-            toolCallId: toolCall.toolCallId,
-            args: toolCall.input,
-            argsText: JSON.stringify(toolCall.input),
-            result: (toolResult?.output ?? null) as Json,
-          });
-        });
+        return blocks;
       });
 
       return {
         statusCode: 200,
         bodyType: "json" as const,
-        body: { content: contentBlocks, finalText: result.text },
+        body: { content, finalText: result.text },
       };
     }
   },
