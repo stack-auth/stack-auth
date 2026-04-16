@@ -36,14 +36,14 @@ export const postMigration = async (sql: Sql) => {
   `;
   expect(indexRows).toHaveLength(1);
 
-  // Verify existing seeded rows still have correct keyPathParent
+  // Verify root row uses empty array (not NULL) for keyPathParent
   const rootRow = await sql`
     SELECT "keyPathParent"
     FROM "BulldozerStorageEngine"
     WHERE "keyPath" = ARRAY[]::jsonb[]
   `;
   expect(rootRow).toHaveLength(1);
-  expect(rootRow[0].keyPathParent).toBeNull();
+  expect(rootRow[0].keyPathParent).toEqual([]);
 
   const tableRow = await sql`
     SELECT "keyPathParent"
@@ -71,29 +71,19 @@ export const postMigration = async (sql: Sql) => {
   expect(insertedRow).toHaveLength(1);
   expect(insertedRow[0].keyPathParent).toEqual(["table"]);
 
-  // Without FK, inserts with missing parents should succeed
-  await sql`
-    INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
-    VALUES (
-      '00000000-0000-0000-0000-100000000002'::uuid,
-      ARRAY[to_jsonb('orphan-parent'::text), to_jsonb('orphan-child'::text)]::jsonb[],
-      '"orphan"'::jsonb
-    )
+  // Column is NOT NULL — verify constraint exists
+  const notNullRows = await sql`
+    SELECT attnotnull
+    FROM pg_attribute
+    WHERE attrelid = 'public."BulldozerStorageEngine"'::regclass
+      AND attname = 'keyPathParent'
   `;
-
-  const orphanRow = await sql`
-    SELECT "keyPathParent"
-    FROM "BulldozerStorageEngine"
-    WHERE "keyPath" = ARRAY[to_jsonb('orphan-parent'::text), to_jsonb('orphan-child'::text)]::jsonb[]
-  `;
-  expect(orphanRow).toHaveLength(1);
+  expect(notNullRows).toHaveLength(1);
+  expect(notNullRows[0].attnotnull).toBe(true);
 
   // Cleanup test rows
   await sql`
     DELETE FROM "BulldozerStorageEngine"
-    WHERE "id" IN (
-      '00000000-0000-0000-0000-100000000001'::uuid,
-      '00000000-0000-0000-0000-100000000002'::uuid
-    )
+    WHERE "id" = '00000000-0000-0000-0000-100000000001'::uuid
   `;
 };

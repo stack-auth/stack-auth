@@ -1330,7 +1330,7 @@ model OutgoingRequest {
 model BulldozerStorageEngine {
   id            String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   keyPath       Json[]
-  keyPathParent Unsupported("jsonb[]")?
+  keyPathParent Json[]  @default([])
   value         Json
 
   @@unique([keyPath], map: "BulldozerStorageEngine_keyPath_key")
