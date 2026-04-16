@@ -185,10 +185,16 @@ export function getSubscriptionTimeFoldReducerSql(): string {
         AND "sched"."value"->'nextRepeatMillis' IS NOT NULL
     )
   )`;
+  // Immediate-end shortcut: when endedAt is before the period end and there
+  // are no repeat schedules, we can emit start+end in one shot. This handles
+  // conflict replacements (endedAt=now) and terminal statuses (endedAt in the
+  // past). Cancel-at-period-end (endedAt=currentPeriodEnd) goes through the
+  // normal nextTimestamp path so the TimeFold clock controls when it fires.
   const initialShouldEmitImmediateEnd = `(
     ${initialState}->>'endedAtMillis' != 'null'
     AND ${initialState}->'endedAtMillis' IS NOT NULL
     AND NOT ${initialHasRepeatSchedule}
+    AND (${R}->>'endedAtMillis')::numeric < (${R}->>'currentPeriodEndMillis')::numeric
   )`;
 
   // ── subscription-start event row ──
