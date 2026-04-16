@@ -782,7 +782,7 @@ it("should grant inline product without needing configuration", async ({ expect 
         "is_paginated": true,
         "items": [
           {
-            "id": "__null__",
+            "id": null,
             "product": {
               "client_metadata": null,
               "client_read_only_metadata": null,
@@ -858,7 +858,7 @@ it("should allow canceling an inline product subscription via subscription_id", 
         "is_paginated": true,
         "items": [
           {
-            "id": "__null__",
+            "id": null,
             "product": {
               "client_metadata": null,
               "client_read_only_metadata": null,
@@ -919,7 +919,7 @@ it("should allow canceling an inline product subscription via subscription_id", 
         "is_paginated": true,
         "items": [
           {
-            "id": "__null__",
+            "id": null,
             "product": {
               "client_metadata": null,
               "client_read_only_metadata": null,

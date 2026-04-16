@@ -111,7 +111,8 @@ export const GET = createSmartRouteHandler({
         return {
           cursor: productId,
           item: {
-            id: productId,
+            //safety check - now onwards inline products have product id as "__null__", but API expects null
+            id: productId === "__null__" ? null : productId,
             quantity: p.quantity,
             // ProductSnapshot uses null where the Yup productSchema uses undefined; the data is equivalent
             product: productToInlineProduct(p.product as Parameters<typeof productToInlineProduct>[0]),
