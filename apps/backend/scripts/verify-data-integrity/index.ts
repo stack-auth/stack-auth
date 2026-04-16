@@ -224,7 +224,10 @@ async function main() {
 
       const tenancy = await getSoleTenancyFromProjectBranch(projectId, DEFAULT_BRANCH_ID, true);
       const paymentsConfig = tenancy ? (tenancy.config as OrganizationRenderedConfig).payments : undefined;
-      const paymentsVerifier = tenancy && paymentsConfig
+      // TODO: Re-enable payments verifier once we've reworked it
+      const PAYMENTS_VERIFIER_ENABLED: boolean = false;
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+      const paymentsVerifier = PAYMENTS_VERIFIER_ENABLED && tenancy && paymentsConfig
         ? await createPaymentsVerifier({
           projectId,
           tenancyId: tenancy.id,
