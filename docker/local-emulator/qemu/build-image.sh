@@ -503,8 +503,8 @@ build_one() {
     -drive "file=$bundle_iso,format=raw,if=virtio,readonly=on" \
     -netdev user,id=net0 \
     -device virtio-net-pci,netdev=net0 \
-    "${virtfs_args[@]}" \
-    "${snapshot_args[@]}" \
+    ${virtfs_args[@]+"${virtfs_args[@]}"} \
+    ${snapshot_args[@]+"${snapshot_args[@]}"} \
     -serial "file:$serial_log" \
     -display none \
     -daemonize \
