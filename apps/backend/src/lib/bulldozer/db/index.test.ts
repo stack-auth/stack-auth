@@ -4781,6 +4781,33 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     await runStatements([]);
   });
 
+  test("toExecutableSqlTransaction handles multi-command outputless statements with dollar-quoted function bodies", async () => {
+    await runStatements([{
+      type: "statement",
+      sql: `
+        CREATE OR REPLACE FUNCTION pg_temp.bulldozer_test_jsonb_get(input jsonb)
+        RETURNS text LANGUAGE sql AS $$
+          SELECT input->>'id'
+        $$;
+
+        CREATE TEMP TABLE IF NOT EXISTS "BulldozerTransactionProbe" (
+          "value" text NOT NULL
+        );
+
+        TRUNCATE TABLE "BulldozerTransactionProbe";
+
+        INSERT INTO "BulldozerTransactionProbe" ("value")
+        VALUES (pg_temp.bulldozer_test_jsonb_get('{"id":"abc"}'::jsonb));
+      `,
+    }]);
+
+    const rows = await sql.unsafe(`
+      SELECT "value"
+      FROM "BulldozerTransactionProbe"
+    `);
+    expect(rows).toEqual([{ value: "abc" }]);
+  });
+
   test("row-change dispatch stays below 1000 statements for 34-table mixed graph", () => {
     const source = declareStoredTable<{ team: string | null, value: number }>({
       tableId: "statement-budget-source",

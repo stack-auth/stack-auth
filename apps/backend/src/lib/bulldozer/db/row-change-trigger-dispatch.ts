@@ -2,10 +2,18 @@ import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import type { SqlExpression, SqlStatement } from "./utilities";
-import { quoteSqlIdentifier } from "./utilities";
+import { quoteSqlIdentifier, quoteSqlStringLiteral, sqlQuery } from "./utilities";
 
 const CHANGE_OUTPUT_COLUMNS = '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb';
+const ROW_CHANGE_DIAGNOSTIC_COLUMN_NAME = "__row_change_table_id";
 export type ChangesTableExpression = SqlExpression<{ __brand: "$SQL_Table" }>;
+export type RowChangeTriggerDiagnostics = {
+  tableIdsWithIncomingChanges: string[],
+};
+export type CollectedRowChangeTriggerStatements = {
+  statements: SqlStatement[],
+  diagnostics: RowChangeTriggerDiagnostics,
+};
 
 export type RowChangeTriggerExecution = {
   statements: SqlStatement[],
@@ -131,7 +139,7 @@ export function collectRowChangeTriggerStatements(options: {
   sourceTableId: string,
   sourceChangesTable: ChangesTableExpression,
   sourceTableTriggers: Map<string, RegisteredRowChangeTrigger>,
-}): SqlStatement[] {
+}): CollectedRowChangeTriggerStatements {
   const outgoingByTableId = new Map<string, RegisteredRowChangeTrigger[]>();
   const graphEdges = new Map<string, Set<string>>();
   const discoveredTableIds = new Set<string>([options.sourceTableId]);
@@ -210,10 +218,12 @@ export function collectRowChangeTriggerStatements(options: {
   const pendingChangesByTableId = new Map<string, ChangesTableExpression[]>();
   pendingChangesByTableId.set(options.sourceTableId, [options.sourceChangesTable]);
   const statements: SqlStatement[] = [];
+  const tableIdsWithIncomingChanges: string[] = [];
 
   for (const sourceTableId of topologicalOrder) {
     const incomingChangesTables = pendingChangesByTableId.get(sourceTableId) ?? [];
     if (incomingChangesTables.length === 0) continue;
+    tableIdsWithIncomingChanges.push(sourceTableId);
     const sourceChangesTable = incomingChangesTables.length === 1
       ? incomingChangesTables[0]
       : (() => {
@@ -221,6 +231,14 @@ export function collectRowChangeTriggerStatements(options: {
         statements.push(unionedSourceChanges.statement);
         return unionedSourceChanges.table;
       })();
+    const sourceTableIdLiteral = quoteSqlStringLiteral(sourceTableId);
+    statements.push(sqlQuery`
+      SELECT ${sourceTableIdLiteral}::text AS "__row_change_table_id"
+      FROM ${sourceChangesTable}
+    `.toStatement(
+      `row_change_diag_${generateSecureRandomString()}`,
+      `"${ROW_CHANGE_DIAGNOSTIC_COLUMN_NAME}" text`,
+    ));
 
     const outgoingTriggers = outgoingByTableId.get(sourceTableId) ?? [];
     for (const trigger of outgoingTriggers) {
@@ -242,5 +260,10 @@ export function collectRowChangeTriggerStatements(options: {
     }
   }
 
-  return statements;
+  return {
+    statements,
+    diagnostics: {
+      tableIdsWithIncomingChanges,
+    },
+  };
 }

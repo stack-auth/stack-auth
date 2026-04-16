@@ -87,6 +87,11 @@ export function declareStoredTable<RD extends RowData>(options: {
       const oldRowsTableName = `old_rows_${generateSecureRandomString()}`;
       const upsertedRowsTableName = `upserted_rows_${generateSecureRandomString()}`;
       const changesTableName = `changes_${generateSecureRandomString()}`;
+      const collectedTriggers = collectRowChangeTriggerStatements({
+        sourceTableId: tableIdToDebugString(options.tableId),
+        sourceChangesTable: quoteSqlIdentifier(changesTableName),
+        sourceTableTriggers: triggers,
+      });
       const rowIdentifierLiteral = quoteSqlStringLiteral(rowIdentifier);
       const rowValue = sqlExpression`
         jsonb_build_object(
@@ -121,16 +126,17 @@ export function declareStoredTable<RD extends RowData>(options: {
           FROM ${quoteSqlIdentifier(upsertedRowsTableName)}
           LEFT JOIN ${quoteSqlIdentifier(oldRowsTableName)} ON true
         `.toStatement(changesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb'),
-        ...collectRowChangeTriggerStatements({
-          sourceTableId: tableIdToDebugString(options.tableId),
-          sourceChangesTable: quoteSqlIdentifier(changesTableName),
-          sourceTableTriggers: triggers,
-        }),
+        ...collectedTriggers.statements,
       ];
     },
     deleteRow: (rowIdentifier) => {
       const deletedRowsTableName = `deleted_rows_${generateSecureRandomString()}`;
       const changesTableName = `changes_${generateSecureRandomString()}`;
+      const collectedTriggers = collectRowChangeTriggerStatements({
+        sourceTableId: tableIdToDebugString(options.tableId),
+        sourceChangesTable: quoteSqlIdentifier(changesTableName),
+        sourceTableTriggers: triggers,
+      });
       const rowIdentifierLiteral = quoteSqlStringLiteral(rowIdentifier);
       return [
         sqlQuery`
@@ -148,11 +154,7 @@ export function declareStoredTable<RD extends RowData>(options: {
             'null'::jsonb AS "newRowData"
           FROM ${quoteSqlIdentifier(deletedRowsTableName)}
         `.toStatement(changesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb'),
-        ...collectRowChangeTriggerStatements({
-          sourceTableId: tableIdToDebugString(options.tableId),
-          sourceChangesTable: quoteSqlIdentifier(changesTableName),
-          sourceTableTriggers: triggers,
-        }),
+        ...collectedTriggers.statements,
       ];
     },
   };

@@ -39,11 +39,26 @@ type StatementExecutionMetrics = {
   lastStatementPreviews: Array<{ index: number, outputName: string | null, sqlPreview: string }>,
   topTableReferences: Array<{ tableId: string, statementReferences: number }>,
   timingBreakdown: {
+    buildSqlScriptMs: number,
+    buildInstrumentationMs: number,
+    preExecutionSnapshotMs: number,
+    executePrimaryMs: number,
+    executeFallbackMs: number,
+    postExecutionSnapshotMs: number,
+    autoExplainReadParseMs: number,
+    metricsAssemblyMs: number,
+    preparationMs: number,
     statementWallMsTotal: number,
+    postProcessingMs: number,
+    uncategorizedMs: number,
     totalPlanningMs: number,
     totalExecutionMs: number,
     totalAutoExplainDurationMs: number,
+    capturedNonPlannerExecutionMs: number,
+    uncapturedExecutionMs: number,
     explainedStatementCount: number,
+    nestedAutoExplainEntryCount: number,
+    capturedExecutableStatementCount: number,
     notExplainedStatementCount: number,
   },
   slowestStatements: Array<{
@@ -60,6 +75,15 @@ type StatementExecutionMetrics = {
     tempWrittenBlocks: number | null,
     walBytes: number | null,
     sqlPreview: string,
+    rowChangeDiagnosticTableId: string | null,
+    rowChangeObservedRows: number | null,
+    rowChangeDiagnosticStatementKey: string | null,
+  }>,
+  rowChangeDiagnostics: Array<{
+    tableId: string,
+    changedRows: number | null,
+    capturedStatementCount: number,
+    expectedStatementCount: number,
   }>,
   autoExplain: AutoExplainMetadata,
 };
@@ -104,6 +128,9 @@ const SLOW_STATEMENT_LIMIT = 20;
 const AUTO_EXPLAIN_LOG_SAMPLE_BYTES = 8 * 1024 * 1024;
 const AUTO_EXPLAIN_MAX_LOG_SAMPLE_BYTES = 24 * 1024 * 1024;
 const AUTO_EXPLAIN_LOG_EXCERPT_CHARS = 12_000;
+const AUTO_EXPLAIN_CAPTURE_RETRY_ATTEMPTS = 4;
+const AUTO_EXPLAIN_CAPTURE_RETRY_DELAY_MS = 120;
+const ROW_CHANGE_DIAGNOSTIC_COLUMN_NAME = "__row_change_table_id";
 const elk = new ELK();
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -212,6 +239,46 @@ function toNonNegativeInteger(value: unknown): number | null {
   const parsed = readFiniteNumber(value);
   if (parsed == null || parsed < 0) return null;
   return Math.floor(parsed);
+}
+
+function maxActualRowsInPlanNode(planNode: unknown): number | null {
+  if (!isRecord(planNode)) return null;
+  let maxRows = readFiniteNumber(planNode["Actual Rows"]);
+  const childPlans = Array.isArray(planNode.Plans)
+    ? planNode.Plans
+    : [];
+  for (const childPlan of childPlans) {
+    const childRows = maxActualRowsInPlanNode(childPlan);
+    if (childRows == null) continue;
+    if (maxRows == null || childRows > maxRows) {
+      maxRows = childRows;
+    }
+  }
+  return maxRows;
+}
+
+function parseRowChangeDiagnosticTableId(sqlText: string): string | null {
+  const match = sqlText.match(new RegExp(`SELECT\\s+'((?:[^']|'')*)'::text\\s+AS\\s+"${ROW_CHANGE_DIAGNOSTIC_COLUMN_NAME}"`, "i"));
+  if (match == null) return null;
+  return match[1].replaceAll("''", "'");
+}
+
+function canonicalizeDiagnosticTableId(tableId: string): string {
+  if (!tableId.startsWith("{")) return tableId;
+  try {
+    const parsed = JSON.parse(tableId) as unknown;
+    if (!isRecord(parsed)) return tableId;
+    const parent = Reflect.get(parsed, "parent");
+    if (typeof parent === "string") return parent;
+    if (isRecord(parent)) return canonicalizeDiagnosticTableId(JSON.stringify(parent));
+    return tableId;
+  } catch {
+    return tableId;
+  }
+}
+
+async function sleepMs(durationMs: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, durationMs));
 }
 
 async function getCurrentPostgresLogSnapshot(): Promise<{ snapshot: PostgresLogSnapshot | null, error: string | null }> {
@@ -340,6 +407,17 @@ function parseAutoExplainEntries(logChunk: string): AutoExplainParseResult {
       const queryText = typeof explainEntry["Query Text"] === "string"
         ? explainEntry["Query Text"]
         : "";
+      const rawRowChangeDiagnosticTableId = parseRowChangeDiagnosticTableId(queryText);
+      const rowChangeDiagnosticTableId = rawRowChangeDiagnosticTableId == null
+        ? null
+        : canonicalizeDiagnosticTableId(rawRowChangeDiagnosticTableId);
+      const rowChangeDiagnosticStatementKeyMatch = queryText.match(/SELECT\s+'((?:[^']|'')*row_change_diag_[^']*)'\s*,\s*to_jsonb\("__statement_output"\)/i);
+      const rowChangeDiagnosticStatementKey = rowChangeDiagnosticStatementKeyMatch == null
+        ? null
+        : rowChangeDiagnosticStatementKeyMatch[1].replaceAll("''", "'");
+      const rowChangeObservedRows = rowChangeDiagnosticTableId == null
+        ? null
+        : maxActualRowsInPlanNode(plan);
       let executionMs = readFiniteNumber(explainEntry["Execution Time"]);
       let planningMs = readFiniteNumber(explainEntry["Planning Time"]);
       const durationMs = durationMatch == null ? null : Number(durationMatch[1]);
@@ -364,6 +442,9 @@ function parseAutoExplainEntries(logChunk: string): AutoExplainParseResult {
         tempWrittenBlocks: readFiniteNumber(plan?.["Temp Written Blocks"]),
         walBytes: readFiniteNumber(plan?.["WAL Bytes"]),
         sqlPreview: toSqlPreview(queryText),
+        rowChangeDiagnosticTableId,
+        rowChangeObservedRows,
+        rowChangeDiagnosticStatementKey,
       });
     } catch {
       parseErrorCount += 1;
@@ -463,7 +544,9 @@ function switchSchema(name: string): void {
 
 async function executeStatements(statements: SqlStatement[]): Promise<StatementExecutionMetrics> {
   const startedAt = performance.now();
+  const buildSqlScriptStartedAt = performance.now();
   const sqlScript = toExecutableSqlTransaction(statements);
+  const buildSqlScriptMsRaw = performance.now() - buildSqlScriptStartedAt;
   const autoExplainStartMarker = `bulldozer_studio_auto_explain_start:${STUDIO_INSTANCE_ID}:${Math.random().toString(36).slice(2, 10)}`;
   const autoExplainEndMarker = `bulldozer_studio_auto_explain_end:${STUDIO_INSTANCE_ID}:${Math.random().toString(36).slice(2, 10)}`;
   const autoExplainSetupSql = deindent`
@@ -478,6 +561,7 @@ async function executeStatements(statements: SqlStatement[]): Promise<StatementE
     SET LOCAL auto_explain.log_format = 'json';
     SET LOCAL auto_explain.log_level = 'log';
   `;
+  const buildInstrumentationStartedAt = performance.now();
   const instrumentedSqlScript = sqlScript.includes("BEGIN;")
     ? sqlScript.replace("BEGIN;", `BEGIN;\n${autoExplainSetupSql}`)
     : sqlScript;
@@ -486,22 +570,37 @@ async function executeStatements(statements: SqlStatement[]): Promise<StatementE
     ${instrumentedSqlScript}
     DO $$ BEGIN RAISE LOG ${quoteSqlStringLiteral(autoExplainEndMarker).sql}; END $$;
   `;
+  const buildInstrumentationMsRaw = performance.now() - buildInstrumentationStartedAt;
+  const preExecutionSnapshotStartedAt = performance.now();
   const logSnapshotBefore = await getCurrentPostgresLogSnapshot();
+  const preExecutionSnapshotMsRaw = performance.now() - preExecutionSnapshotStartedAt;
   const executionStartedAt = performance.now();
   let autoExplainSetupError: string | null = null;
+  let executePrimaryMsRaw = 0;
+  let executeFallbackMsRaw = 0;
+  const executePrimaryStartedAt = performance.now();
   try {
     await globalPrismaClient.$executeRawUnsafe(wrappedInstrumentedSqlScript);
+    executePrimaryMsRaw = performance.now() - executePrimaryStartedAt;
   } catch (error) {
+    executePrimaryMsRaw = performance.now() - executePrimaryStartedAt;
     const message = normalizeErrorMessage(error);
     const autoExplainFailure = /auto_explain|unrecognized configuration parameter|could not access file|permission denied/i.test(message);
     if (!autoExplainFailure) {
       throw error;
     }
     autoExplainSetupError = message;
+    const executeFallbackStartedAt = performance.now();
     await globalPrismaClient.$executeRawUnsafe(sqlScript);
+    executeFallbackMsRaw = performance.now() - executeFallbackStartedAt;
   }
-  const statementWallMsTotal = Number((performance.now() - executionStartedAt).toFixed(1));
+  const executionFinishedAt = performance.now();
+  const statementWallMsTotalRaw = executionFinishedAt - executionStartedAt;
+  const statementWallMsTotal = Number(statementWallMsTotalRaw.toFixed(1));
+  const postProcessingStartedAt = executionFinishedAt;
+  const postExecutionSnapshotStartedAt = performance.now();
   const logSnapshotAfter = await getCurrentPostgresLogSnapshot();
+  const postExecutionSnapshotMsRaw = performance.now() - postExecutionSnapshotStartedAt;
   let autoExplainLogPath: string | null = null;
   let autoExplainLogReadBytes = 0;
   const snapshotErrors = [...new Set([logSnapshotBefore.error, logSnapshotAfter.error].filter((value): value is string => value != null))];
@@ -510,89 +609,123 @@ async function executeStatements(statements: SqlStatement[]): Promise<StatementE
   let autoExplainParseErrorCount = 0;
   let autoExplainEntries: StatementExecutionMetrics["slowestStatements"] = [];
   let autoExplainRawLogExcerpt: string | null = null;
-  if (autoExplainSetupError == null && logSnapshotBefore.snapshot != null && logSnapshotAfter.snapshot != null) {
+  const autoExplainReadParseStartedAt = performance.now();
+  const snapshotBefore = logSnapshotBefore.snapshot;
+  const snapshotAfterInitial = logSnapshotAfter.snapshot;
+  if (autoExplainSetupError == null && snapshotBefore != null && snapshotAfterInitial != null) {
     const requestedReadWindowBytes = Math.max(
       AUTO_EXPLAIN_LOG_SAMPLE_BYTES,
       Math.min(AUTO_EXPLAIN_MAX_LOG_SAMPLE_BYTES, Math.floor(sqlScript.length * 4)),
     );
-    const logPathRotated = logSnapshotBefore.snapshot.path !== logSnapshotAfter.snapshot.path;
-    autoExplainLogPath = logPathRotated
-      ? `${logSnapshotBefore.snapshot.path} -> ${logSnapshotAfter.snapshot.path}`
-      : logSnapshotAfter.snapshot.path;
+    const readAutoExplainCapture = async (snapshotAfterCurrent: PostgresLogSnapshot) => {
+      const logPathRotated = snapshotBefore.path !== snapshotAfterCurrent.path;
+      const logPath = logPathRotated
+        ? `${snapshotBefore.path} -> ${snapshotAfterCurrent.path}`
+        : snapshotAfterCurrent.path;
 
-    let logContent = "";
-    const chunkReadErrors: string[] = [];
-    const pushChunk = (chunk: { content: string | null, error: string | null }, context: string) => {
-      if (chunk.error != null) {
-        chunkReadErrors.push(`${context}: ${chunk.error}`);
-        return;
-      }
-      if (chunk.content != null) {
-        logContent += chunk.content;
-        autoExplainLogReadBytes += chunk.content.length;
-      }
-    };
+      let logReadBytes = 0;
+      let logContent = "";
+      const chunkReadErrors: string[] = [];
+      const pushChunk = (chunk: { content: string | null, error: string | null }, context: string) => {
+        if (chunk.error != null) {
+          chunkReadErrors.push(`${context}: ${chunk.error}`);
+          return;
+        }
+        if (chunk.content != null) {
+          logContent += chunk.content;
+          logReadBytes += chunk.content.length;
+        }
+      };
 
-    if (!logPathRotated) {
-      const readStartOffset = Math.max(
-        logSnapshotBefore.snapshot.size,
-        logSnapshotAfter.snapshot.size - requestedReadWindowBytes,
-      );
-      const readLength = Math.max(logSnapshotAfter.snapshot.size - readStartOffset, 0);
-      const readLogChunkResult = await readPostgresLogChunk(logSnapshotAfter.snapshot.path, readStartOffset, readLength);
-      pushChunk(readLogChunkResult, "active-log");
-    } else {
-      const readFromOldFile = await readPostgresLogChunk(
-        logSnapshotBefore.snapshot.path,
-        logSnapshotBefore.snapshot.size,
-        requestedReadWindowBytes,
-      );
-      pushChunk(readFromOldFile, "rotated-old-log");
-      if (logContent.length > 0) {
-        logContent += "\n";
+      if (!logPathRotated) {
+        const readStartOffset = Math.max(
+          snapshotBefore.size,
+          snapshotAfterCurrent.size - requestedReadWindowBytes,
+        );
+        const readLength = Math.max(snapshotAfterCurrent.size - readStartOffset, 0);
+        const readLogChunkResult = await readPostgresLogChunk(snapshotAfterCurrent.path, readStartOffset, readLength);
+        pushChunk(readLogChunkResult, "active-log");
+      } else {
+        const readFromOldFile = await readPostgresLogChunk(
+          snapshotBefore.path,
+          snapshotBefore.size,
+          requestedReadWindowBytes,
+        );
+        pushChunk(readFromOldFile, "rotated-old-log");
+        if (logContent.length > 0) {
+          logContent += "\n";
+        }
+        const readFromNewFile = await readPostgresLogChunk(
+          snapshotAfterCurrent.path,
+          0,
+          Math.min(snapshotAfterCurrent.size, requestedReadWindowBytes),
+        );
+        pushChunk(readFromNewFile, "rotated-new-log");
       }
-      const readFromNewFile = await readPostgresLogChunk(
-        logSnapshotAfter.snapshot.path,
-        0,
-        Math.min(logSnapshotAfter.snapshot.size, requestedReadWindowBytes),
-      );
-      pushChunk(readFromNewFile, "rotated-new-log");
-    }
 
-    if (logContent.length === 0 && chunkReadErrors.length > 0) {
-      autoExplainLogReadError = chunkReadErrors.join("; ");
-    } else if (logContent.length > 0) {
-      if (chunkReadErrors.length > 0) {
-        console.warn(`[studio] partial auto_explain log read: ${chunkReadErrors.join("; ")}`);
-      }
       const betweenMarkers = extractTextBetweenMarkers(
         logContent,
         autoExplainStartMarker,
         autoExplainEndMarker,
       );
-      autoExplainMarkerFound = betweenMarkers.markerFound;
-      const autoExplainLogSection = logContent;
-      const parsedAutoExplainEntries = parseAutoExplainEntries(autoExplainLogSection);
-      autoExplainEntries = parsedAutoExplainEntries.parsedEntries;
-      autoExplainParseErrorCount = parsedAutoExplainEntries.parseErrorCount;
+      const parsedAutoExplainEntries = parseAutoExplainEntries(logContent);
       const preferredExcerptSource = betweenMarkers.text.includes("plan:")
         ? betweenMarkers.text
-        : autoExplainLogSection;
-      autoExplainRawLogExcerpt = preferredExcerptSource.length <= AUTO_EXPLAIN_LOG_EXCERPT_CHARS
-        ? preferredExcerptSource
-        : preferredExcerptSource.slice(-AUTO_EXPLAIN_LOG_EXCERPT_CHARS);
-    } else if (autoExplainLogReadError == null) {
-      autoExplainLogReadError = "PostgreSQL log chunk was empty";
+        : logContent;
+      const logReadError = logContent.length === 0
+        ? (
+          chunkReadErrors.length > 0
+            ? chunkReadErrors.join("; ")
+            : "PostgreSQL log chunk was empty"
+        )
+        : null;
+      return {
+        logPath,
+        logReadBytes,
+        logReadError,
+        markerFound: betweenMarkers.markerFound,
+        parsedEntries: parsedAutoExplainEntries.parsedEntries,
+        parseErrorCount: parsedAutoExplainEntries.parseErrorCount,
+        rawLogExcerpt: preferredExcerptSource.length <= AUTO_EXPLAIN_LOG_EXCERPT_CHARS
+          ? preferredExcerptSource
+          : preferredExcerptSource.slice(-AUTO_EXPLAIN_LOG_EXCERPT_CHARS),
+        partialErrors: chunkReadErrors,
+      };
+    };
+
+    let capture = await readAutoExplainCapture(snapshotAfterInitial);
+    for (let attempt = 1; attempt < AUTO_EXPLAIN_CAPTURE_RETRY_ATTEMPTS; attempt++) {
+      if (capture.parsedEntries.length >= statements.length) break;
+      await sleepMs(AUTO_EXPLAIN_CAPTURE_RETRY_DELAY_MS);
+      const retrySnapshotAfter = await getCurrentPostgresLogSnapshot();
+      if (retrySnapshotAfter.snapshot == null) continue;
+      const retryCapture = await readAutoExplainCapture(retrySnapshotAfter.snapshot);
+      if (retryCapture.parsedEntries.length > capture.parsedEntries.length) {
+        capture = retryCapture;
+      }
     }
+
+    if (capture.partialErrors.length > 0 && capture.logReadError == null) {
+      console.warn(`[studio] partial auto_explain log read: ${capture.partialErrors.join("; ")}`);
+    }
+    autoExplainLogPath = capture.logPath;
+    autoExplainLogReadBytes = capture.logReadBytes;
+    autoExplainLogReadError = capture.logReadError;
+    autoExplainMarkerFound = capture.markerFound;
+    autoExplainEntries = capture.parsedEntries;
+    autoExplainParseErrorCount = capture.parseErrorCount;
+    autoExplainRawLogExcerpt = capture.rawLogExcerpt;
   } else if (autoExplainSetupError == null && autoExplainLogReadError == null) {
     autoExplainLogReadError = "PostgreSQL log snapshot unavailable (pg_current_logfile / pg_stat_file returned no path/size)";
   }
+  const autoExplainReadParseMsRaw = performance.now() - autoExplainReadParseStartedAt;
 
   const autoExplainCaptureAvailable = autoExplainSetupError == null
     && autoExplainLogReadError == null
     && autoExplainLogPath != null
     && autoExplainMarkerFound;
 
+  const metricsAssemblyStartedAt = performance.now();
   const tableReferenceCounts = new Map<string, number>();
   for (const statement of statements) {
     const matches = statement.sql.match(/external:[A-Za-z0-9-]+/g) ?? [];
@@ -619,10 +752,77 @@ async function executeStatements(statements: SqlStatement[]): Promise<StatementE
   const totalPlanningMs = autoExplainEntries.reduce((sum, entry) => sum + (entry.planningMs ?? 0), 0);
   const totalExecutionMs = autoExplainEntries.reduce((sum, entry) => sum + (entry.executionMs ?? 0), 0);
   const totalAutoExplainDurationMs = autoExplainEntries.reduce((sum, entry) => sum + entry.wallMs, 0);
+  const capturedNonPlannerExecutionMsRaw = Math.max(0, totalAutoExplainDurationMs - (totalPlanningMs + totalExecutionMs));
+  const uncapturedExecutionMsRaw = Math.max(0, statementWallMsTotalRaw - totalAutoExplainDurationMs);
   const explainedStatementCount = autoExplainEntries.length;
-  const notExplainedStatementCount = Math.max(statements.length - explainedStatementCount, 0);
+  const nestedAutoExplainEntryCount = Math.max(explainedStatementCount - statements.length, 0);
+  const capturedExecutableStatementCount = Math.min(explainedStatementCount, statements.length);
+  const notExplainedStatementCount = Math.max(statements.length - capturedExecutableStatementCount, 0);
+  const expectedRowChangeStatementsByTableId = new Map<string, number>();
+  for (const statement of statements) {
+    const rawTableId = parseRowChangeDiagnosticTableId(statement.sql);
+    if (rawTableId == null) continue;
+    const tableId = canonicalizeDiagnosticTableId(rawTableId);
+    expectedRowChangeStatementsByTableId.set(
+      tableId,
+      (expectedRowChangeStatementsByTableId.get(tableId) ?? 0) + 1,
+    );
+  }
+  const capturedRowChangeStatsByTableId = new Map<string, {
+    changedRows: number,
+    capturedStatementCount: number,
+    seenStatementKeys: Set<string>,
+  }>();
+  for (const entry of autoExplainEntries) {
+    if (entry.rowChangeDiagnosticTableId == null) continue;
+    const changedRows = Math.max(0, Math.floor(entry.rowChangeObservedRows ?? 0));
+    const existing = capturedRowChangeStatsByTableId.get(entry.rowChangeDiagnosticTableId) ?? {
+      changedRows: 0,
+      capturedStatementCount: 0,
+      seenStatementKeys: new Set<string>(),
+    };
+    const statementKey = entry.rowChangeDiagnosticStatementKey ?? `fallback:${entry.index}`;
+    if (existing.seenStatementKeys.has(statementKey)) {
+      continue;
+    }
+    existing.seenStatementKeys.add(statementKey);
+    capturedRowChangeStatsByTableId.set(entry.rowChangeDiagnosticTableId, {
+      changedRows: existing.changedRows + changedRows,
+      capturedStatementCount: existing.capturedStatementCount + 1,
+      seenStatementKeys: existing.seenStatementKeys,
+    });
+  }
+  const rowChangeDiagnosticTableIds = [...new Set([
+    ...expectedRowChangeStatementsByTableId.keys(),
+    ...capturedRowChangeStatsByTableId.keys(),
+  ])];
+  const rowChangeDiagnostics = rowChangeDiagnosticTableIds
+    .map((tableId) => {
+      const expectedStatementCount = expectedRowChangeStatementsByTableId.get(tableId) ?? 0;
+      const capturedStats = capturedRowChangeStatsByTableId.get(tableId) ?? null;
+      return {
+        tableId,
+        changedRows: capturedStats == null ? null : capturedStats.changedRows,
+        capturedStatementCount: capturedStats?.capturedStatementCount ?? 0,
+        expectedStatementCount,
+      };
+    })
+    .sort((a, b) => {
+      const changedRowsA = a.changedRows ?? -1;
+      const changedRowsB = b.changedRows ?? -1;
+      return changedRowsB - changedRowsA || stringCompare(a.tableId, b.tableId);
+    });
+  const finishedAt = performance.now();
+  const metricsAssemblyMsRaw = finishedAt - metricsAssemblyStartedAt;
+  const durationMsRaw = finishedAt - startedAt;
+  const preparationMsRaw = executionStartedAt - startedAt;
+  const postProcessingMsRaw = finishedAt - postProcessingStartedAt;
+  const uncategorizedMsRaw = Math.max(
+    0,
+    durationMsRaw - preparationMsRaw - statementWallMsTotalRaw - postProcessingMsRaw,
+  );
   const metrics: StatementExecutionMetrics = {
-    durationMs: Number((performance.now() - startedAt).toFixed(1)),
+    durationMs: Number(durationMsRaw.toFixed(1)),
     statementCount: statements.length,
     logicalStatementCount: statements.length,
     executableStatementCount: statements.length,
@@ -634,14 +834,30 @@ async function executeStatements(statements: SqlStatement[]): Promise<StatementE
     lastStatementPreviews: statements.slice(lastPreviewStartIndex).map((statement, index) => toStatementPreview(statement, lastPreviewStartIndex + index)),
     topTableReferences,
     timingBreakdown: {
+      buildSqlScriptMs: Number(buildSqlScriptMsRaw.toFixed(1)),
+      buildInstrumentationMs: Number(buildInstrumentationMsRaw.toFixed(1)),
+      preExecutionSnapshotMs: Number(preExecutionSnapshotMsRaw.toFixed(1)),
+      executePrimaryMs: Number(executePrimaryMsRaw.toFixed(1)),
+      executeFallbackMs: Number(executeFallbackMsRaw.toFixed(1)),
+      postExecutionSnapshotMs: Number(postExecutionSnapshotMsRaw.toFixed(1)),
+      autoExplainReadParseMs: Number(autoExplainReadParseMsRaw.toFixed(1)),
+      metricsAssemblyMs: Number(metricsAssemblyMsRaw.toFixed(1)),
+      preparationMs: Number(preparationMsRaw.toFixed(1)),
       statementWallMsTotal,
+      postProcessingMs: Number(postProcessingMsRaw.toFixed(1)),
+      uncategorizedMs: Number(uncategorizedMsRaw.toFixed(1)),
       totalPlanningMs: Number(totalPlanningMs.toFixed(1)),
       totalExecutionMs: Number(totalExecutionMs.toFixed(1)),
       totalAutoExplainDurationMs: Number(totalAutoExplainDurationMs.toFixed(1)),
+      capturedNonPlannerExecutionMs: Number(capturedNonPlannerExecutionMsRaw.toFixed(1)),
+      uncapturedExecutionMs: Number(uncapturedExecutionMsRaw.toFixed(1)),
       explainedStatementCount,
+      nestedAutoExplainEntryCount,
+      capturedExecutableStatementCount,
       notExplainedStatementCount,
     },
     slowestStatements,
+    rowChangeDiagnostics,
     autoExplain: {
       enabled: autoExplainCaptureAvailable,
       setupError: autoExplainSetupError,
@@ -1246,6 +1462,38 @@ function getStudioPageHtml(): string {
       cursor: grab;
       user-select: none;
     }
+    .node-debug-chip-wrap {
+      position: absolute;
+      top: 6px;
+      right: 6px;
+      display: flex;
+      gap: 4px;
+      z-index: 2;
+      pointer-events: none;
+    }
+    .node-debug-chip {
+      border: 1px solid var(--line);
+      background: var(--bg-alt);
+      color: var(--text);
+      font-size: 10px;
+      line-height: 1;
+      padding: 3px 6px;
+      border-radius: 999px;
+      font-family: var(--mono);
+      letter-spacing: 0.01em;
+      opacity: 0.95;
+      pointer-events: auto;
+      cursor: help;
+    }
+    .node-debug-chip.warn {
+      border-color: var(--filter);
+      color: var(--filter);
+    }
+    .node-debug-chip.nonzero {
+      border-color: #e14a4a;
+      background: #e14a4a;
+      color: #ffffff;
+    }
     .node:hover {
       border-color: var(--accent);
     }
@@ -1577,6 +1825,106 @@ function getStudioPageHtml(): string {
       padding: 8px;
       background: var(--bg-alt);
     }
+    .metrics-timeline-shell {
+      display: grid;
+      gap: 8px;
+    }
+    .metrics-timeline-controls {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 11px;
+      color: var(--muted);
+    }
+    .metrics-timeline-controls input[type="range"] {
+      width: 140px;
+      padding: 0;
+      margin: 0;
+      background: transparent;
+      border: none;
+    }
+    .metrics-timeline-scroll {
+      overflow-x: auto;
+      overflow-y: hidden;
+      border: 1px solid var(--line);
+      background: var(--panel);
+      padding: 8px;
+    }
+    .metrics-timeline-track {
+      position: relative;
+      min-height: 62px;
+    }
+    .metrics-timeline-ruler {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      height: 16px;
+    }
+    .metrics-timeline-tick {
+      position: absolute;
+      top: 0;
+      width: 1px;
+      height: 16px;
+      background: var(--line);
+    }
+    .metrics-timeline-tick-label {
+      position: absolute;
+      top: 0;
+      transform: translateX(-50%);
+      font-size: 10px;
+      color: var(--muted);
+      white-space: nowrap;
+    }
+    .metrics-timeline-lane {
+      position: relative;
+      margin-top: 18px;
+      height: 18px;
+      border: 1px solid var(--line);
+      background: var(--bg-alt);
+    }
+    .metrics-timeline-lane-label {
+      margin-top: 4px;
+      font-size: 10px;
+      color: var(--muted);
+      font-family: var(--mono);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+    .metrics-timeline-segment {
+      position: absolute;
+      top: 1px;
+      height: 14px;
+      border: 1px solid color-mix(in srgb, var(--line) 50%, transparent);
+      background: color-mix(in srgb, var(--accent) 45%, transparent);
+      overflow: hidden;
+      white-space: nowrap;
+      text-overflow: ellipsis;
+      font-size: 10px;
+      line-height: 12px;
+      padding: 0 3px;
+      color: var(--text);
+    }
+    .metrics-timeline-segment.exec {
+      background: color-mix(in srgb, var(--ok) 40%, transparent);
+    }
+    .metrics-timeline-segment.post {
+      background: color-mix(in srgb, var(--filter) 42%, transparent);
+    }
+    .metrics-timeline-segment.planexec {
+      background: color-mix(in srgb, var(--danger) 45%, transparent);
+    }
+    .metrics-timeline-segment.warn {
+      background: color-mix(in srgb, var(--filter) 45%, transparent);
+    }
+    .metrics-timeline-segment.untracked {
+      background: color-mix(in srgb, var(--muted) 35%, transparent);
+    }
+    .metrics-timeline-note {
+      font-size: 11px;
+      color: var(--muted);
+      line-height: 1.35;
+    }
   </style>
 </head>
 <body data-theme="dark">
@@ -1675,6 +2023,8 @@ function getStudioPageHtml(): string {
       selectedTableId: null,
       selectedTableDetails: null,
       lastMutationMetrics: {},
+      lastRowChangeDiagnostics: new Map(),
+      metricsTimelineZoom: 1.5,
       rawNode: null,
       rawPath: [],
       timefoldDebug: null,
@@ -1778,6 +2128,67 @@ function getStudioPageHtml(): string {
       return readFiniteNumber(metrics.executableStatementCount);
     }
 
+    function canonicalizeDiagnosticTableId(tableId) {
+      if (typeof tableId !== "string") return tableId;
+      if (!tableId.startsWith("{")) return tableId;
+      try {
+        const parsed = JSON.parse(tableId);
+        if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return tableId;
+        const parent = parsed.parent;
+        if (typeof parent === "string") return parent;
+        if (parent && typeof parent === "object" && !Array.isArray(parent)) {
+          return canonicalizeDiagnosticTableId(JSON.stringify(parent));
+        }
+        return tableId;
+      } catch {
+        return tableId;
+      }
+    }
+
+    function updateRowChangeDiagnosticsFromMetrics(metrics) {
+      state.lastRowChangeDiagnostics.clear();
+      if (!metrics || typeof metrics !== "object") return;
+      const diagnostics = Array.isArray(metrics.rowChangeDiagnostics) ? metrics.rowChangeDiagnostics : [];
+      for (const entry of diagnostics) {
+        const tableId = typeof entry?.tableId === "string" ? entry.tableId : null;
+        if (tableId == null || tableId.trim() === "") continue;
+        const changedRowsRaw = readFiniteNumber(entry?.changedRows);
+        const capturedStatementCount = readFiniteNumber(entry?.capturedStatementCount);
+        const expectedStatementCount = readFiniteNumber(entry?.expectedStatementCount);
+        state.lastRowChangeDiagnostics.set(tableId, {
+          changedRows: changedRowsRaw == null ? null : Math.max(0, Math.floor(changedRowsRaw)),
+          capturedStatementCount: capturedStatementCount == null ? null : Math.max(0, Math.floor(capturedStatementCount)),
+          expectedStatementCount: expectedStatementCount == null ? null : Math.max(0, Math.floor(expectedStatementCount)),
+        });
+      }
+    }
+
+    function changedRowsForTable(table) {
+      if (!table || typeof table !== "object") return null;
+      const tableId = typeof table.tableId === "string" ? table.tableId : null;
+      if (tableId != null) {
+        const directMatch = state.lastRowChangeDiagnostics.get(tableId);
+        if (directMatch != null) return directMatch;
+        const canonicalTableId = canonicalizeDiagnosticTableId(tableId);
+        if (canonicalTableId !== tableId) {
+          const canonicalMatch = state.lastRowChangeDiagnostics.get(canonicalTableId);
+          if (canonicalMatch != null) return canonicalMatch;
+        }
+        const withExternalPrefix = state.lastRowChangeDiagnostics.get("external:" + tableId);
+        if (withExternalPrefix != null) return withExternalPrefix;
+        if (tableId.startsWith("external:")) {
+          const withoutPrefix = state.lastRowChangeDiagnostics.get(tableId.slice("external:".length));
+          if (withoutPrefix != null) return withoutPrefix;
+        }
+      }
+      const registryId = typeof table.id === "string" ? table.id : null;
+      if (registryId != null) {
+        const registryMatch = state.lastRowChangeDiagnostics.get(registryId);
+        if (registryMatch != null) return registryMatch;
+      }
+      return null;
+    }
+
     function escapeHtml(value) {
       return String(value)
         .replaceAll("&", "&amp;")
@@ -1804,6 +2215,40 @@ function getStudioPageHtml(): string {
         + "<div class='metrics-bar'><div class='metrics-bar-fill " + escapeHtml(tone) + "' style='width:" + safeWidth.toFixed(1) + "%'></div></div>";
     }
 
+    function clampNumber(value, minValue, maxValue) {
+      if (!Number.isFinite(value)) return minValue;
+      return Math.max(minValue, Math.min(maxValue, value));
+    }
+
+    function layoutMetricsTimeline(container, zoom) {
+      const safeZoom = clampNumber(zoom, 0.5, 12);
+      const zoomLabel = container.querySelector("[data-metrics-timeline-zoom-value]");
+      if (zoomLabel) {
+        zoomLabel.textContent = safeZoom.toFixed(1) + "x";
+      }
+      const tracks = container.querySelectorAll("[data-metrics-timeline-track]");
+      for (const track of tracks) {
+        const totalMs = Number(track.getAttribute("data-total-ms"));
+        if (!Number.isFinite(totalMs) || totalMs <= 0) continue;
+        const widthPx = Math.max(720, Math.round(totalMs * 1.4 * safeZoom));
+        track.style.width = widthPx + "px";
+        const ticks = track.querySelectorAll("[data-metrics-timeline-tick-ratio]");
+        for (const tick of ticks) {
+          const ratio = Number(tick.getAttribute("data-metrics-timeline-tick-ratio"));
+          tick.style.left = (ratio * widthPx).toFixed(1) + "px";
+        }
+        const segments = track.querySelectorAll("[data-metrics-timeline-segment]");
+        for (const segment of segments) {
+          const startMs = Number(segment.getAttribute("data-start-ms"));
+          const durationMs = Number(segment.getAttribute("data-duration-ms"));
+          const leftPx = (clampNumber(startMs, 0, totalMs) / totalMs) * widthPx;
+          const segmentWidthPx = Math.max(2, (clampNumber(durationMs, 0, totalMs) / totalMs) * widthPx);
+          segment.style.left = leftPx.toFixed(1) + "px";
+          segment.style.width = segmentWidthPx.toFixed(1) + "px";
+        }
+      }
+    }
+
     function renderMetricsVisual(metrics) {
       if (!metrics || typeof metrics !== "object") {
         metricsDialogVisual.innerHTML = "<div class='metrics-empty'>No execution metrics available yet.</div>";
@@ -1814,24 +2259,44 @@ function getStudioPageHtml(): string {
       const autoExplain = (metrics.autoExplain && typeof metrics.autoExplain === "object") ? metrics.autoExplain : {};
       const logicalStatementCount = statementCountFromMetrics(metrics) ?? 0;
       const explainedStatementCount = readFiniteNumber(timing.explainedStatementCount) ?? 0;
-      const notCapturedCount = readFiniteNumber(timing.notExplainedStatementCount) ?? Math.max(logicalStatementCount - explainedStatementCount, 0);
-      const captureRate = percentage(explainedStatementCount, logicalStatementCount);
+      const capturedExecutableStatementCount = readFiniteNumber(timing.capturedExecutableStatementCount) ?? Math.min(explainedStatementCount, logicalStatementCount);
+      const nestedAutoExplainEntryCount = readFiniteNumber(timing.nestedAutoExplainEntryCount) ?? Math.max(explainedStatementCount - logicalStatementCount, 0);
+      const notCapturedCount = readFiniteNumber(timing.notExplainedStatementCount) ?? Math.max(logicalStatementCount - capturedExecutableStatementCount, 0);
+      const captureRate = percentage(capturedExecutableStatementCount, logicalStatementCount);
       const totalDurationMs = readFiniteNumber(metrics.durationMs) ?? 0;
+      const buildSqlScriptMs = readFiniteNumber(timing.buildSqlScriptMs) ?? 0;
+      const buildInstrumentationMs = readFiniteNumber(timing.buildInstrumentationMs) ?? 0;
+      const preExecutionSnapshotMs = readFiniteNumber(timing.preExecutionSnapshotMs) ?? 0;
+      const executePrimaryMs = readFiniteNumber(timing.executePrimaryMs) ?? 0;
+      const executeFallbackMs = readFiniteNumber(timing.executeFallbackMs) ?? 0;
+      const postExecutionSnapshotMs = readFiniteNumber(timing.postExecutionSnapshotMs) ?? 0;
+      const autoExplainReadParseMs = readFiniteNumber(timing.autoExplainReadParseMs) ?? 0;
+      const metricsAssemblyMs = readFiniteNumber(timing.metricsAssemblyMs) ?? 0;
+      const preparationMs = readFiniteNumber(timing.preparationMs) ?? 0;
       const statementWallMsTotal = readFiniteNumber(timing.statementWallMsTotal) ?? 0;
+      const postProcessingMs = readFiniteNumber(timing.postProcessingMs) ?? 0;
+      const uncategorizedMs = readFiniteNumber(timing.uncategorizedMs) ?? 0;
       const planningMs = readFiniteNumber(timing.totalPlanningMs) ?? 0;
       const executionMs = readFiniteNumber(timing.totalExecutionMs) ?? 0;
       const autoExplainDurationMs = readFiniteNumber(timing.totalAutoExplainDurationMs) ?? 0;
+      const plannerExecutorMs = Math.max(0, planningMs + executionMs);
+      const capturedNonPlannerExecutionMs = readFiniteNumber(timing.capturedNonPlannerExecutionMs) ?? Math.max(0, autoExplainDurationMs - plannerExecutorMs);
+      const uncapturedExecutionMs = readFiniteNumber(timing.uncapturedExecutionMs) ?? Math.max(0, statementWallMsTotal - autoExplainDurationMs);
+      const otherExecutionOverheadMs = Math.max(0, capturedNonPlannerExecutionMs + uncapturedExecutionMs);
       const parsedEntryCount = readFiniteNumber(autoExplain.parsedEntryCount) ?? 0;
       const parseErrorCount = readFiniteNumber(autoExplain.parseErrorCount) ?? 0;
       const topRefs = Array.isArray(metrics.topTableReferences) ? metrics.topTableReferences.slice(0, 5) : [];
       const slowestStatements = Array.isArray(metrics.slowestStatements) ? metrics.slowestStatements.slice(0, 5) : [];
+      const rowChangeDiagnostics = Array.isArray(metrics.rowChangeDiagnostics) ? metrics.rowChangeDiagnostics.slice(0, 8) : [];
       const maxTopRefCount = topRefs.reduce((maxValue, entry) => Math.max(maxValue, readFiniteNumber(entry?.statementReferences) ?? 0), 0);
       const maxSlowStatementMs = slowestStatements.reduce((maxValue, entry) => Math.max(maxValue, readFiniteNumber(entry?.wallMs) ?? 0), 0);
+      const maxChangedRows = rowChangeDiagnostics.reduce((maxValue, entry) => Math.max(maxValue, readFiniteNumber(entry?.changedRows) ?? 0), 0);
 
       const captureTone = captureRate >= 80 ? "good" : (captureRate >= 40 ? "warn" : "danger");
       const parseTone = parseErrorCount > 0 ? "danger" : "good";
       const markerTone = autoExplain.markerFound === true ? "good" : "warn";
       const setupTone = autoExplain.enabled === true ? "good" : "warn";
+      const nestedTone = nestedAutoExplainEntryCount > 0 ? "warn" : "good";
 
       const topRefsMarkup = topRefs.length === 0
         ? "<div class='metrics-empty'>No table-reference distribution collected.</div>"
@@ -1856,12 +2321,165 @@ function getStudioPageHtml(): string {
           return renderMetricsBarRow(label, formatNumericValue(wallMs, 1) + "ms", percentage(wallMs, maxSlowStatementMs), "danger");
         }).join("");
 
+      const rowChangesMarkup = rowChangeDiagnostics.length === 0
+        ? "<div class='metrics-empty'>No propagated-row diagnostics captured.</div>"
+        : rowChangeDiagnostics.map((entry) => {
+          const tableId = typeof entry?.tableId === "string" ? entry.tableId : "unknown-table";
+          const changedRows = readFiniteNumber(entry?.changedRows);
+          const capturedStatementCount = readFiniteNumber(entry?.capturedStatementCount);
+          const expectedStatementCount = readFiniteNumber(entry?.expectedStatementCount);
+          const coverageSuffix = expectedStatementCount == null || expectedStatementCount <= 0
+            ? ""
+            : " (" + (capturedStatementCount == null ? "?" : String(capturedStatementCount))
+              + "/" + String(expectedStatementCount) + ")";
+          if (changedRows == null) {
+            return renderMetricsBarRow(tableId, "n/a" + coverageSuffix, 0, "warn");
+          }
+          return renderMetricsBarRow(tableId, String(changedRows) + " rows" + coverageSuffix, percentage(changedRows, maxChangedRows), "good");
+        }).join("");
+
+      const timelineTotalMs = Math.max(totalDurationMs, 1);
+      const timelineTickMarkup = new Array(11)
+        .fill(null)
+        .map((_, index) => {
+          const ratio = index / 10;
+          return ""
+            + "<div class='metrics-timeline-tick' data-metrics-timeline-tick-ratio='" + ratio.toFixed(4) + "'></div>"
+            + "<div class='metrics-timeline-tick-label' data-metrics-timeline-tick-ratio='" + ratio.toFixed(4) + "'>" + formatNumericValue(timelineTotalMs * ratio, 0) + "ms</div>";
+        })
+        .join("");
+      const lifecycleSegments = [];
+      let lifecycleCursorMs = 0;
+      const pushLifecycleSegment = (segment) => {
+        if ((segment.durationMs ?? 0) <= 0.05) return;
+        lifecycleSegments.push({
+          ...segment,
+          startMs: lifecycleCursorMs,
+        });
+        lifecycleCursorMs += segment.durationMs;
+      };
+      pushLifecycleSegment({
+        label: "Build SQL " + formatNumericValue(buildSqlScriptMs, 1) + "ms",
+        durationMs: buildSqlScriptMs,
+        className: "",
+        title: "Render executable SQL transaction script from table statements.",
+      });
+      pushLifecycleSegment({
+        label: "Inject auto_explain " + formatNumericValue(buildInstrumentationMs, 1) + "ms",
+        durationMs: buildInstrumentationMs,
+        className: "",
+        title: "Add auto_explain setup and log markers around transaction script.",
+      });
+      pushLifecycleSegment({
+        label: "Snapshot before " + formatNumericValue(preExecutionSnapshotMs, 1) + "ms",
+        durationMs: preExecutionSnapshotMs,
+        className: "",
+        title: "Read current PostgreSQL logfile path/size before executing SQL.",
+      });
+      pushLifecycleSegment({
+        label: "Execute (primary) " + formatNumericValue(executePrimaryMs, 1) + "ms",
+        durationMs: executePrimaryMs,
+        className: "exec",
+        title: "Primary SQL execution call (instrumented with auto_explain).",
+      });
+      pushLifecycleSegment({
+        label: "Execute (fallback) " + formatNumericValue(executeFallbackMs, 1) + "ms",
+        durationMs: executeFallbackMs,
+        className: "exec",
+        title: "Fallback SQL execution without auto_explain if setup fails.",
+      });
+      pushLifecycleSegment({
+        label: "Snapshot after " + formatNumericValue(postExecutionSnapshotMs, 1) + "ms",
+        durationMs: postExecutionSnapshotMs,
+        className: "post",
+        title: "Read PostgreSQL logfile path/size after SQL execution.",
+      });
+      pushLifecycleSegment({
+        label: "Read+parse logs " + formatNumericValue(autoExplainReadParseMs, 1) + "ms",
+        durationMs: autoExplainReadParseMs,
+        className: "post",
+        title: "Read logfile chunks, find markers, parse auto_explain JSON entries.",
+      });
+      pushLifecycleSegment({
+        label: "Assemble metrics " + formatNumericValue(metricsAssemblyMs, 1) + "ms",
+        durationMs: metricsAssemblyMs,
+        className: "post",
+        title: "Aggregate timings/table refs/row deltas and build response payload.",
+      });
+      pushLifecycleSegment({
+        label: "Untracked " + formatNumericValue(uncategorizedMs, 1) + "ms",
+        durationMs: uncategorizedMs,
+        className: "untracked",
+        title: "Remainder from timing precision and small unbucketed operations.",
+      });
+
+      const executionCompositionSegments = [];
+      let executionCompositionCursorMs = preparationMs;
+      const pushExecutionCompositionSegment = (segment) => {
+        if ((segment.durationMs ?? 0) <= 0.05) return;
+        executionCompositionSegments.push({
+          ...segment,
+          startMs: executionCompositionCursorMs,
+        });
+        executionCompositionCursorMs += segment.durationMs;
+      };
+      pushExecutionCompositionSegment({
+        label: "Planner+Executor " + formatNumericValue(plannerExecutorMs, 1) + "ms",
+        durationMs: plannerExecutorMs,
+        className: "planexec",
+        title: "Planning + execution time reported by auto_explain entries.",
+      });
+      pushExecutionCompositionSegment({
+        label: "Captured non-plan time " + formatNumericValue(capturedNonPlannerExecutionMs, 1) + "ms",
+        durationMs: capturedNonPlannerExecutionMs,
+        className: "warn",
+        title: "Captured SQL duration not attributed to planner/executor fields.",
+      });
+      pushExecutionCompositionSegment({
+        label: "Uncaptured SQL wall " + formatNumericValue(uncapturedExecutionMs, 1) + "ms",
+        durationMs: uncapturedExecutionMs,
+        className: "exec",
+        title: "Execution wall time outside captured auto_explain durations.",
+      });
+      const toTimelineSegmentsMarkup = (segments) => segments
+        .filter((segment) => (segment.durationMs ?? 0) > 0.05)
+        .map((segment) => {
+          return "<div class='metrics-timeline-segment " + escapeHtml(segment.className) + "' data-metrics-timeline-segment data-start-ms='" + String(segment.startMs) + "' data-duration-ms='" + String(segment.durationMs) + "' title='" + escapeHtml(segment.title) + "'>"
+            + escapeHtml(segment.label)
+            + "</div>";
+        })
+        .join("");
+      const timelineZoom = Number.isFinite(state.metricsTimelineZoom) ? state.metricsTimelineZoom : 1.5;
+      const timelineMarkup = ""
+        + "<div class='metrics-card'>"
+        +   "<div class='metrics-card-title'>Timeline</div>"
+        +   "<div class='metrics-timeline-shell'>"
+        +     "<div class='metrics-timeline-controls'>"
+        +       "<span>zoom</span>"
+        +       "<input type='range' min='0.5' max='12' step='0.1' value='" + String(timelineZoom) + "' data-metrics-timeline-zoom-slider />"
+        +       "<span data-metrics-timeline-zoom-value>" + timelineZoom.toFixed(1) + "x</span>"
+        +     "</div>"
+        +     "<div class='metrics-timeline-scroll'>"
+        +       "<div class='metrics-timeline-track' data-metrics-timeline-track data-total-ms='" + String(timelineTotalMs) + "'>"
+        +         "<div class='metrics-timeline-ruler'>" + timelineTickMarkup + "</div>"
+        +         "<div class='metrics-timeline-lane-label'>Lifecycle (chronological)</div>"
+        +         "<div class='metrics-timeline-lane'>" + toTimelineSegmentsMarkup(lifecycleSegments) + "</div>"
+        +         "<div class='metrics-timeline-lane-label'>Execute SQL breakdown</div>"
+        +         "<div class='metrics-timeline-lane'>" + toTimelineSegmentsMarkup(executionCompositionSegments) + "</div>"
+        +       "</div>"
+        +     "</div>"
+        +     "<div class='metrics-timeline-note'>Lane 1 is chronological and breaks prep/post into concrete measured operations. Lane 2 decomposes SQL wall time into planner+executor, captured non-plan time, and uncaptured SQL wall.</div>"
+        +   "</div>"
+        + "</div>";
+
       metricsDialogVisual.innerHTML = ""
         + "<div class='metrics-grid'>"
         +   "<div class='metrics-card'>"
         +     "<div class='metrics-card-title'>Capture Health</div>"
         +     "<div class='metrics-big-value'>" + formatNumericValue(captureRate, 1) + "%</div>"
-        +     renderMetricsBarRow("Captured statements", String(explainedStatementCount) + "/" + String(logicalStatementCount), captureRate, captureTone)
+        +     renderMetricsBarRow("Captured executable statements", String(capturedExecutableStatementCount) + "/" + String(logicalStatementCount), captureRate, captureTone)
+        +     renderMetricsBarRow("Captured entries (nested)", String(explainedStatementCount), 100, nestedTone)
+        +     renderMetricsBarRow("Nested entry overage", String(nestedAutoExplainEntryCount), nestedAutoExplainEntryCount > 0 ? 100 : 0, nestedTone)
         +     renderMetricsBarRow("Missing estimate", String(notCapturedCount), percentage(notCapturedCount, logicalStatementCount), "warn")
         +     renderMetricsBarRow("Marker found", autoExplain.markerFound === true ? "yes" : "no", 100, markerTone)
         +   "</div>"
@@ -1869,8 +2487,11 @@ function getStudioPageHtml(): string {
         +     "<div class='metrics-card-title'>Timing Composition</div>"
         +     "<div class='metrics-big-value'>" + formatNumericValue(totalDurationMs, 1) + "ms</div>"
         +     renderMetricsBarRow("Statement wall total", formatNumericValue(statementWallMsTotal, 1) + "ms", percentage(statementWallMsTotal, totalDurationMs), "good")
-        +     renderMetricsBarRow("auto_explain duration", formatNumericValue(autoExplainDurationMs, 1) + "ms", percentage(autoExplainDurationMs, totalDurationMs), "warn")
-        +     renderMetricsBarRow("Planning + execution", formatNumericValue(planningMs + executionMs, 1) + "ms", percentage(planningMs + executionMs, totalDurationMs), "danger")
+        +     renderMetricsBarRow("Planner + execution", formatNumericValue(plannerExecutorMs, 1) + "ms", percentage(plannerExecutorMs, totalDurationMs), "danger")
+        +     renderMetricsBarRow("Captured non-plan execution", formatNumericValue(capturedNonPlannerExecutionMs, 1) + "ms", percentage(capturedNonPlannerExecutionMs, totalDurationMs), "warn")
+        +     renderMetricsBarRow("Uncaptured SQL wall", formatNumericValue(uncapturedExecutionMs, 1) + "ms", percentage(uncapturedExecutionMs, totalDurationMs), "good")
+        +     renderMetricsBarRow("Other execution overhead", formatNumericValue(otherExecutionOverheadMs, 1) + "ms", percentage(otherExecutionOverheadMs, totalDurationMs), "warn")
+        +     renderMetricsBarRow("auto_explain duration", formatNumericValue(autoExplainDurationMs, 1) + "ms", percentage(autoExplainDurationMs, totalDurationMs), "good")
         +   "</div>"
         +   "<div class='metrics-card'>"
         +     "<div class='metrics-card-title'>Parser Status</div>"
@@ -1883,17 +2504,29 @@ function getStudioPageHtml(): string {
         + "<div class='metrics-grid'>"
         +   "<div class='metrics-card'><div class='metrics-card-title'>Top Referenced Tables</div>" + topRefsMarkup + "</div>"
         +   "<div class='metrics-card'><div class='metrics-card-title'>Slowest Parsed Statements</div>" + slowestMarkup + "</div>"
+        +   "<div class='metrics-card'><div class='metrics-card-title'>Rows Changed By Table</div>" + rowChangesMarkup + "</div>"
         + "</div>"
+        + timelineMarkup
         + "<div class='metrics-card'>"
         +   "<div class='metrics-card-title'>What This Captures</div>"
         +   "<ul class='metrics-list'>"
         +     "<li><strong>Wall clock totals</strong>: end-to-end transaction time and cumulative SQL statement wall time.</li>"
         +     "<li><strong>auto_explain timing</strong>: planner and executor time from PostgreSQL for statements that are actually captured.</li>"
+        +     "<li><strong>Captured entries can exceed executable statements</strong>: nested plans/logged sub-statements make entry counts larger than generated statement count.</li>"
         +     "<li><strong>Plan-level IO stats</strong>: shared hits/reads, temp writes, WAL bytes, node type, and actual rows for slow statements.</li>"
         +     "<li><strong>Coverage signals</strong>: marker detection, parsed entry count, and estimated uncaptured statements.</li>"
         +     "<li><strong>Schema pressure hints</strong>: statement-reference frequency per table to identify hotspots in dependency graphs.</li>"
         +   "</ul>"
         + "</div>";
+      const timelineSlider = metricsDialogVisual.querySelector("[data-metrics-timeline-zoom-slider]");
+      if (timelineSlider instanceof HTMLInputElement) {
+        timelineSlider.oninput = () => {
+          const nextZoom = Number(timelineSlider.value);
+          state.metricsTimelineZoom = Number.isFinite(nextZoom) ? nextZoom : 1.5;
+          layoutMetricsTimeline(metricsDialogVisual, state.metricsTimelineZoom);
+        };
+      }
+      layoutMetricsTimeline(metricsDialogVisual, timelineZoom);
     }
 
     function mutationDetailLines(metrics) {
@@ -1906,6 +2539,7 @@ function getStudioPageHtml(): string {
       const firstPreviews = Array.isArray(metrics.firstStatementPreviews) ? metrics.firstStatementPreviews : [];
       const lastPreviews = Array.isArray(metrics.lastStatementPreviews) ? metrics.lastStatementPreviews : [];
       const slowestStatements = Array.isArray(metrics.slowestStatements) ? metrics.slowestStatements : [];
+      const rowChangeDiagnostics = Array.isArray(metrics.rowChangeDiagnostics) ? metrics.rowChangeDiagnostics : [];
       const lines = [
         "Execution summary",
         "durationMs: " + (readFiniteNumber(metrics.durationMs) ?? "n/a"),
@@ -1914,11 +2548,26 @@ function getStudioPageHtml(): string {
         "sequentialStatementCount: " + (readFiniteNumber(metrics.sequentialStatementCount) ?? "n/a"),
         "uniqueTableReferenceCount: " + (readFiniteNumber(metrics.uniqueTableReferenceCount) ?? "n/a"),
         "sqlScriptLengthChars: " + (readFiniteNumber(metrics.sqlScriptLength) ?? "n/a"),
+        "buildSqlScriptMs: " + (readFiniteNumber(timing?.buildSqlScriptMs) ?? "n/a"),
+        "buildInstrumentationMs: " + (readFiniteNumber(timing?.buildInstrumentationMs) ?? "n/a"),
+        "preExecutionSnapshotMs: " + (readFiniteNumber(timing?.preExecutionSnapshotMs) ?? "n/a"),
+        "preparationMs: " + (readFiniteNumber(timing?.preparationMs) ?? "n/a"),
+        "executePrimaryMs: " + (readFiniteNumber(timing?.executePrimaryMs) ?? "n/a"),
+        "executeFallbackMs: " + (readFiniteNumber(timing?.executeFallbackMs) ?? "n/a"),
         "statementWallMsTotal: " + (readFiniteNumber(timing?.statementWallMsTotal) ?? "n/a"),
+        "postExecutionSnapshotMs: " + (readFiniteNumber(timing?.postExecutionSnapshotMs) ?? "n/a"),
+        "autoExplainReadParseMs: " + (readFiniteNumber(timing?.autoExplainReadParseMs) ?? "n/a"),
+        "metricsAssemblyMs: " + (readFiniteNumber(timing?.metricsAssemblyMs) ?? "n/a"),
+        "postProcessingMs: " + (readFiniteNumber(timing?.postProcessingMs) ?? "n/a"),
+        "uncategorizedMs: " + (readFiniteNumber(timing?.uncategorizedMs) ?? "n/a"),
         "totalAutoExplainDurationMs: " + (readFiniteNumber(timing?.totalAutoExplainDurationMs) ?? "n/a"),
         "totalPlanningMs(auto_explain): " + (readFiniteNumber(timing?.totalPlanningMs) ?? "n/a"),
         "totalExecutionMs(auto_explain): " + (readFiniteNumber(timing?.totalExecutionMs) ?? "n/a"),
+        "capturedNonPlannerExecutionMs: " + (readFiniteNumber(timing?.capturedNonPlannerExecutionMs) ?? "n/a"),
+        "uncapturedExecutionMs: " + (readFiniteNumber(timing?.uncapturedExecutionMs) ?? "n/a"),
+        "capturedExecutableStatementCount: " + (readFiniteNumber(timing?.capturedExecutableStatementCount) ?? "n/a"),
         "autoExplainEntryCount: " + (readFiniteNumber(timing?.explainedStatementCount) ?? "n/a"),
+        "nestedAutoExplainEntryCount: " + (readFiniteNumber(timing?.nestedAutoExplainEntryCount) ?? "n/a"),
         "notCapturedStatementEstimate: " + (readFiniteNumber(timing?.notExplainedStatementCount) ?? "n/a"),
         "",
         "Top referenced tables",
@@ -1942,6 +2591,27 @@ function getStudioPageHtml(): string {
       lines.push("markerFound: " + (autoExplain?.markerFound === true ? "yes" : "no"));
       lines.push("parsedEntryCount: " + (readFiniteNumber(autoExplain?.parsedEntryCount) ?? "n/a"));
       lines.push("parseErrorCount: " + (readFiniteNumber(autoExplain?.parseErrorCount) ?? "n/a"));
+
+      lines.push("", "Rows changed by table");
+      if (rowChangeDiagnostics.length === 0) {
+        lines.push("(none)");
+      } else {
+        for (const entry of rowChangeDiagnostics) {
+          const tableId = typeof entry?.tableId === "string" ? entry.tableId : "unknown-table";
+          const changedRows = readFiniteNumber(entry?.changedRows);
+          const capturedStatementCount = readFiniteNumber(entry?.capturedStatementCount);
+          const expectedStatementCount = readFiniteNumber(entry?.expectedStatementCount);
+          const coverageSuffix = expectedStatementCount == null || expectedStatementCount <= 0
+            ? ""
+            : " (captured " + (capturedStatementCount == null ? "?" : String(capturedStatementCount))
+              + "/" + String(expectedStatementCount) + " statements)";
+          lines.push(
+            "- " + tableId + ": "
+            + (changedRows == null ? "n/a (not captured)" : String(changedRows) + " changed rows")
+            + coverageSuffix,
+          );
+        }
+      }
 
       lines.push("", "Slowest executable statements");
       if (slowestStatements.length === 0) {
@@ -2068,12 +2738,21 @@ function getStudioPageHtml(): string {
       const executionMs = readFiniteNumber(timing?.totalExecutionMs);
       const autoExplainDurationMs = readFiniteNumber(timing?.totalAutoExplainDurationMs);
       const topRefs = Array.isArray(metrics.topTableReferences) ? metrics.topTableReferences : [];
+      const rowChangeDiagnostics = Array.isArray(metrics.rowChangeDiagnostics) ? metrics.rowChangeDiagnostics : [];
       const topSummary = topRefs
         .slice(0, 3)
         .map((entry) => {
           const tableId = typeof entry?.tableId === "string" ? entry.tableId : "unknown-table";
           const count = readFiniteNumber(entry?.statementReferences);
           return tableId + ":" + (count == null ? "?" : String(count));
+        })
+        .join(", ");
+      const rowChangeSummary = rowChangeDiagnostics
+        .slice(0, 3)
+        .map((entry) => {
+          const tableId = typeof entry?.tableId === "string" ? entry.tableId : "unknown-table";
+          const changedRows = readFiniteNumber(entry?.changedRows);
+          return tableId + ":" + (changedRows == null ? "n/a" : String(changedRows));
         })
         .join(", ");
       const statementLabel = statementCount == null ? "?" : String(statementCount);
@@ -2084,8 +2763,12 @@ function getStudioPageHtml(): string {
       const durationSuffix = autoExplainDurationMs == null
         ? ""
         : " • auto-explain duration=" + autoExplainDurationMs + "ms";
+      const rowChangeSuffix = rowChangeSummary === ""
+        ? ""
+        : " • changed rows: " + rowChangeSummary;
       const base = formatDuration(durationMs ?? Number.NaN) + " • " + statementLabel + " logical" + executableSuffix + planExecSuffix + durationSuffix;
-      return topSummary ? base + " • top refs: " + topSummary : base;
+      const withTopRefs = topSummary ? base + " • top refs: " + topSummary : base;
+      return withTopRefs + rowChangeSuffix;
     }
 
     function sortJsonValue(value) {
@@ -2617,6 +3300,7 @@ function getStudioPageHtml(): string {
 
         const meta = document.createElement("div");
         meta.className = "node-meta";
+        const changedRowsDiagnostics = changedRowsForTable(table);
         meta.textContent = (table.initialized ? "initialized" : "not initialized")
           + " | deps: " + (Array.isArray(table.dependencies) ? table.dependencies.length : 0);
 
@@ -2650,6 +3334,27 @@ function getStudioPageHtml(): string {
         };
         actions.appendChild(left);
         actions.appendChild(focusBtn);
+
+        if (changedRowsDiagnostics != null) {
+          const chipWrap = document.createElement("div");
+          chipWrap.className = "node-debug-chip-wrap";
+          const chip = document.createElement("div");
+          const hasMissingCoverage = changedRowsDiagnostics.expectedStatementCount != null
+            && changedRowsDiagnostics.capturedStatementCount != null
+            && changedRowsDiagnostics.capturedStatementCount < changedRowsDiagnostics.expectedStatementCount;
+          const changedRows = changedRowsDiagnostics.changedRows;
+          const isNonZeroDelta = changedRows != null && changedRows > 0;
+          chip.className = "node-debug-chip"
+            + (hasMissingCoverage ? " warn" : "")
+            + (isNonZeroDelta ? " nonzero" : "");
+          const changedRowsText = changedRows == null ? "?" : String(changedRows);
+          chip.textContent = "TMP Δ " + changedRowsText;
+          chip.title = hasMissingCoverage
+            ? "Temporary debug delta from auto_explain diagnostics. Orange means capture is partial for this table, so this value may be incomplete."
+            : "Temporary debug delta from auto_explain diagnostics. Red means non-zero changed rows were observed for this table.";
+          chipWrap.appendChild(chip);
+          node.appendChild(chipWrap);
+        }
 
         node.appendChild(type);
         node.appendChild(name);
@@ -2735,6 +3440,7 @@ function getStudioPageHtml(): string {
         if (metrics && typeof metrics === "object") {
           state.lastMutationMetrics[tableId + ":" + action] = metrics;
         }
+        updateRowChangeDiagnosticsFromMetrics(metrics);
       }
       await loadSchema();
       if (state.selectedTableId) {

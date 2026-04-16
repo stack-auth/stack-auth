@@ -124,7 +124,6 @@ export function declareTimeFoldTable<
             NULL::timestamptz AS "reducerTimestamp",
             "reduced"."newState" AS "newState",
             "reduced"."newRowsData" AS "newRowsData",
-            "reduced"."newRowsData" AS "emittedRowsData",
             "reduced"."nextTimestamp" AS "nextTimestamp"
           FROM ${normalizedChangesTable} AS "changes"
           CROSS JOIN LATERAL (
@@ -165,7 +164,6 @@ export function declareTimeFoldTable<
             "stateChain"."nextTimestamp" AS "reducerTimestamp",
             "reduced"."newState" AS "newState",
             "reduced"."newRowsData" AS "newRowsData",
-            ("stateChain"."emittedRowsData" || "reduced"."newRowsData") AS "emittedRowsData",
             "reduced"."nextTimestamp" AS "nextTimestamp"
           FROM "stateChain"
           CROSS JOIN LATERAL (
@@ -192,17 +190,50 @@ export function declareTimeFoldTable<
           WHERE "stateChain"."nextTimestamp" IS NOT NULL
             AND "stateChain"."nextTimestamp" <= "stateChain"."lastProcessedAt"
             AND "stateChain"."depth" < 10000
+        ),
+        "latestStateByRow" AS (
+          SELECT DISTINCT ON ("groupKey", "rowIdentifier")
+            "groupKey" AS "groupKey",
+            "rowIdentifier" AS "rowIdentifier",
+            "rowData" AS "rowData",
+            "lastProcessedAt" AS "lastProcessedAt",
+            "newState" AS "stateAfter",
+            "nextTimestamp" AS "nextTimestamp"
+          FROM "stateChain"
+          ORDER BY "groupKey", "rowIdentifier", "depth" DESC
+        ),
+        "emittedRowsByRow" AS (
+          SELECT
+            "stateChain"."groupKey" AS "groupKey",
+            "stateChain"."rowIdentifier" AS "rowIdentifier",
+            COALESCE(
+              jsonb_agg("emittedRows"."rowData" ORDER BY "stateChain"."depth", "emittedRows"."rowIndex")
+                FILTER (WHERE "emittedRows"."rowData" IS NOT NULL),
+              '[]'::jsonb
+            ) AS "emittedRowsData"
+          FROM "stateChain"
+          LEFT JOIN LATERAL jsonb_array_elements(
+            CASE
+              WHEN jsonb_typeof("stateChain"."newRowsData") = 'array' THEN "stateChain"."newRowsData"
+              ELSE '[]'::jsonb
+            END
+          ) WITH ORDINALITY AS "emittedRows"("rowData", "rowIndex") ON true
+          GROUP BY
+            "stateChain"."groupKey",
+            "stateChain"."rowIdentifier"
         )
-        SELECT DISTINCT ON ("groupKey", "rowIdentifier")
-          "groupKey" AS "groupKey",
-          "rowIdentifier" AS "rowIdentifier",
-          "rowData" AS "rowData",
-          "lastProcessedAt" AS "lastProcessedAt",
-          "newState" AS "stateAfter",
-          "emittedRowsData" AS "emittedRowsData",
-          "nextTimestamp" AS "nextTimestamp"
-        FROM "stateChain"
-        ORDER BY "groupKey", "rowIdentifier", "depth" DESC
+        SELECT
+          "latestStateByRow"."groupKey" AS "groupKey",
+          "latestStateByRow"."rowIdentifier" AS "rowIdentifier",
+          "latestStateByRow"."rowData" AS "rowData",
+          "latestStateByRow"."lastProcessedAt" AS "lastProcessedAt",
+          "latestStateByRow"."stateAfter" AS "stateAfter",
+          "emittedRowsByRow"."emittedRowsData" AS "emittedRowsData",
+          "latestStateByRow"."nextTimestamp" AS "nextTimestamp"
+        FROM "latestStateByRow"
+        INNER JOIN "emittedRowsByRow"
+          ON "emittedRowsByRow"."groupKey" IS NOT DISTINCT FROM "latestStateByRow"."groupKey"
+          AND "emittedRowsByRow"."rowIdentifier" = "latestStateByRow"."rowIdentifier"
       `.toStatement(recomputedStatesTableName, '"groupKey" jsonb, "rowIdentifier" text, "rowData" jsonb, "lastProcessedAt" timestamptz, "stateAfter" jsonb, "emittedRowsData" jsonb, "nextTimestamp" timestamptz'),
       sqlQuery`
         SELECT
