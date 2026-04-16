@@ -239,6 +239,9 @@ async function startEmulator(arch: "arm64" | "amd64"): Promise<void> {
   if (!existsSync(img)) {
     console.log("No emulator image found. Pulling latest...");
     await pullRelease(arch);
+    // Capture now so this and all subsequent starts resume fast. Skipping it
+    // would cold-boot today plus every future start (we never auto-capture).
+    await captureLocalSnapshot(arch);
   }
   prepareRuntimeConfigIso();
   await runEmulator("start", { EMULATOR_ARCH: arch });
@@ -261,25 +264,26 @@ async function pullRelease(arch: "arm64" | "amd64", opts: { repo?: string, branc
   mkdirSync(imageDir, { recursive: true });
 
   const diskAsset = `stack-emulator-${arch}.qcow2`;
-  // The savevm file enables the fast-resume path in run-emulator.sh. It's
-  // optional — older releases may not have it and the runtime cleanly falls
-  // back to a cold boot.
-  const snapshotAsset = `stack-emulator-${arch}.savevm.zst`;
 
   const release = await ghApi<ReleaseResponse>(`/repos/${repo}/releases/tags/${tag}`);
   const diskMatch = release.assets.find((a) => a.name === diskAsset);
   if (!diskMatch) {
     throw new CliError(`Asset ${diskAsset} not found in release ${tag}. Run 'stack emulator list-releases' to see available releases.`);
   }
-  const snapshotMatch = release.assets.find((a) => a.name === snapshotAsset);
   const token = githubToken();
-
   await downloadReleaseAsset(diskMatch, imageDir, diskAsset, token, tag);
-  if (snapshotMatch) {
-    await downloadReleaseAsset(snapshotMatch, imageDir, snapshotAsset, token, tag);
-  } else {
-    console.log(`Snapshot asset ${snapshotAsset} not available in release ${tag}; fast-start disabled for this image.`);
-  }
+}
+
+// Cold-boot the VM, wait for services, capture a snapshot via QMP, compress,
+// stop. Runs once per qcow2 download so subsequent `stack emulator start`s
+// resume in ~3-8s. Snapshots are always captured on the user's own machine
+// because QEMU migration state isn't portable across accelerators
+// (KVM/HVF/TCG) or `-cpu max` feature sets.
+async function captureLocalSnapshot(arch: "arm64" | "amd64"): Promise<void> {
+  preflightForVmStart("pull", arch);
+  prepareRuntimeConfigIso();
+  console.log("Capturing local snapshot (first-time, ~1-3 min cold boot + capture)...");
+  await runEmulator("capture", { EMULATOR_ARCH: arch });
 }
 
 async function downloadReleaseAsset(
@@ -491,19 +495,20 @@ export function registerEmulatorCommand(program: Command) {
 
   emulator
     .command("pull")
-    .description("Download an emulator image from GitHub Releases or a PR build")
+    .description("Download an emulator image from GitHub Releases or a PR build, then capture a local fast-start snapshot")
     .option("--arch <arch>", "Target architecture (default: current system arch)")
     .option("--branch <branch>", "Release branch (default: dev)")
     .option("--tag <tag>", "Specific release tag (default: latest)")
     .option("--repo <repo>", "GitHub repository (default: stack-auth/stack-auth)")
     .option("--pr <number>", "Pull from a PR's CI artifacts")
     .option("--run <id>", "Pull from a specific workflow run's artifacts")
-    .action(async (opts) => {
+    .option("--skip-snapshot", "Download only the qcow2; skip the one-time local snapshot capture")
+    .action(async (opts: { arch?: string, repo?: string, branch?: string, tag?: string, pr?: string, run?: string, skipSnapshot?: boolean }) => {
       const arch = resolveArch(opts.arch);
       const repo = opts.repo ?? DEFAULT_REPO;
 
       if (opts.run || opts.pr) {
-        let runId = opts.run as string | undefined;
+        let runId = opts.run;
         if (!runId) {
           console.log(`Finding latest successful build for PR #${opts.pr}...`);
           const pr = await ghApi<PullResponse>(`/repos/${repo}/pulls/${opts.pr}`);
@@ -521,21 +526,32 @@ export function registerEmulatorCommand(program: Command) {
         mkdirSync(imageDir, { recursive: true });
         const dest = join(imageDir, `stack-emulator-${arch}.qcow2`);
         const snapshotDest = join(imageDir, `stack-emulator-${arch}.savevm.zst`);
+        const snapshotRawDest = join(imageDir, `stack-emulator-${arch}.savevm.raw`);
         if (existsSync(dest)) unlinkSync(dest);
+        // Stale snapshots from a previous pull would resume against the new
+        // qcow2 and crash; wipe them so capture rebuilds cleanly.
         if (existsSync(snapshotDest)) unlinkSync(snapshotDest);
+        if (existsSync(snapshotRawDest)) unlinkSync(snapshotRawDest);
         const downloaded = await downloadArtifactByName(repo, runId, `qemu-emulator-${arch}`, imageDir);
         if (!downloaded) {
           throw new CliError(`Artifact qemu-emulator-${arch} not found in workflow run ${runId}.`);
         }
         if (!existsSync(dest)) throw new CliError(`Expected image not found at ${dest} after download.`);
         console.log(`Downloaded: ${dest}`);
-        if (existsSync(snapshotDest)) {
-          console.log(`Downloaded: ${snapshotDest}`);
-        } else {
-          console.log(`Snapshot not present in artifact for run ${runId}; fast-start disabled.`);
-        }
       } else {
+        // Same stale-snapshot concern as the PR branch above.
+        const imageDir = emulatorImageDir();
+        const snapshotDest = join(imageDir, `stack-emulator-${arch}.savevm.zst`);
+        const snapshotRawDest = join(imageDir, `stack-emulator-${arch}.savevm.raw`);
+        if (existsSync(snapshotDest)) unlinkSync(snapshotDest);
+        if (existsSync(snapshotRawDest)) unlinkSync(snapshotRawDest);
         await pullRelease(arch, { repo, branch: opts.branch, tag: opts.tag });
+      }
+
+      if (opts.skipSnapshot) {
+        console.log("--skip-snapshot: not capturing a local snapshot. First `stack emulator start` will cold-boot.");
+      } else {
+        await captureLocalSnapshot(arch);
       }
     });
 

@@ -21,6 +21,13 @@ EMULATOR_NO_SNAPSHOT="${EMULATOR_NO_SNAPSHOT:-0}"
 # in place — acceptable for tests and CI that don't reach the emulator over
 # a shared network. Shaves ~2-3s off `emulator start`.
 EMULATOR_NO_ROTATION="${EMULATOR_NO_ROTATION:-0}"
+# Internal: set to 1 by cmd_capture to build QEMU with the snapshot-compatible
+# device layout (phantom ISOs, no virtfs, pcie-root-port, pinned 4096MB/4CPU)
+# without the `-incoming defer` that resume mode adds. The captured snapshot
+# must be byte-compatible with what the resume path will later feed to QEMU.
+EMULATOR_CAPTURING_SNAPSHOT="${EMULATOR_CAPTURING_SNAPSHOT:-0}"
+# Force re-capture even if a .savevm.zst is already present.
+EMULATOR_FORCE_CAPTURE="${EMULATOR_FORCE_CAPTURE:-0}"
 
 # Fixed host-side ports for the QEMU emulator (267xx range).
 # Only user-facing services are exposed; internal deps stay inside the VM.
@@ -87,7 +94,15 @@ runtime_iso_path() {
 }
 
 snapshot_available() {
-  [ "$EMULATOR_NO_SNAPSHOT" != "1" ] && [ -s "$(savevm_path)" ]
+  [ "$EMULATOR_NO_SNAPSHOT" != "1" ] && [ "$EMULATOR_CAPTURING_SNAPSHOT" != "1" ] && [ -s "$(savevm_path)" ]
+}
+
+# True when QEMU must use the snapshot-compatible device layout — either to
+# resume from an existing snapshot or to capture a new one. Resume adds
+# `-incoming defer`; capture does not. Everything else (phantom ISOs, no
+# virtfs, pcie-root-port, pinned RAM/SMP) matches.
+snapshot_layout() {
+  snapshot_available || [ "$EMULATOR_CAPTURING_SNAPSHOT" = "1" ]
 }
 
 # Ensure the decompressed mapped-ram cache is up-to-date with the shipped
@@ -163,6 +178,16 @@ ensure_runtime_config_iso() {
   # emulator:start`) rather than through the stack-cli, which generates the
   # ISO via packages/stack-cli/src/lib/iso.ts. Mirrors the field set + volume
   # label so the guest's render-stack-env mounts it the same way.
+  write_runtime_config_iso "$VM_DIR"
+}
+
+# Write a STACKCFG runtime-config.iso containing runtime.env + base.env.
+# The VM_DIR_HOST arg is the path to publish internal-pck / stack.log to on
+# /host; pass empty string to suppress publication (used by capture mode
+# where /host isn't mounted — virtfs is detached for snapshot compatibility,
+# so any host-side write would fail and restart-loop stack.service).
+write_runtime_config_iso() {
+  local vm_dir_host="$1"
   local base_env="$SCRIPT_DIR/../.env.development"
   if [ ! -f "$base_env" ]; then
     err "Cannot generate runtime config ISO: $base_env is missing."
@@ -179,10 +204,10 @@ ensure_runtime_config_iso() {
     printf "STACK_EMULATOR_BACKEND_HOST_PORT=%s\n" "$EMULATOR_BACKEND_PORT"
     printf "STACK_EMULATOR_MINIO_HOST_PORT=%s\n" "$EMULATOR_MINIO_PORT"
     printf "STACK_EMULATOR_INBUCKET_HOST_PORT=%s\n" "$EMULATOR_INBUCKET_PORT"
-    printf "STACK_EMULATOR_VM_DIR_HOST=%s\n" "$VM_DIR"
+    printf "STACK_EMULATOR_VM_DIR_HOST=%s\n" "$vm_dir_host"
   } > "$cfg_dir/runtime.env"
   cp "$base_env" "$cfg_dir/base.env"
-  make_iso_from_dir "$cfg_iso" "STACKCFG" "$cfg_dir"
+  make_iso_from_dir "$(runtime_iso_path)" "STACKCFG" "$cfg_dir"
 }
 
 service_is_up() {
@@ -259,13 +284,14 @@ build_qemu_cmd() {
   local current_fp
   current_fp="$(runtime_fingerprint "$base_img" "$savevm_file")"
 
-  if snapshot_available; then
+  if snapshot_layout; then
     # The savevm RAM state was captured against the base image's exact disk
     # state. An overlay with writes from a previous session diverges from
     # that point, so -incoming would resume RAM against inconsistent disk.
     # Always start from a fresh overlay in the snapshot path; per-session
     # state is not preserved. Users who want persistence can opt out with
-    # EMULATOR_NO_SNAPSHOT=1.
+    # EMULATOR_NO_SNAPSHOT=1. Capture mode also needs a clean overlay so the
+    # snapshot we write is taken against the base's known disk state.
     if [ -f "$VM_DIR/disk.qcow2" ]; then
       rm -f "$VM_DIR/disk.qcow2" "$fingerprint_file"
     fi
@@ -332,12 +358,16 @@ build_qemu_cmd() {
   # exist so the migration replay matches device IDs. Runtime-only devices
   # (virtfs, balloon) live at higher slots — extra at destination is fine.
   local snapshot_args=() runtime_only_args=() snapshot_smp="$VM_CPUS" snapshot_ram="$VM_RAM"
-  if snapshot_available; then
-    log "Snapshot found at $savevm_file — fast-resume enabled."
-    # -incoming defer: QEMU starts, waits for a QMP migrate-incoming command.
-    # We use that to set mapped-ram + multifd capabilities before loading,
-    # which enables parallel RAM restore (~2-3x faster than streamed decode).
-    snapshot_args+=(-incoming defer)
+  if snapshot_layout; then
+    if snapshot_available; then
+      log "Snapshot found at $savevm_file — fast-resume enabled."
+      # -incoming defer: QEMU starts, waits for a QMP migrate-incoming command.
+      # We use that to set mapped-ram + multifd capabilities before loading,
+      # which enables parallel RAM restore (~2-3x faster than streamed decode).
+      snapshot_args+=(-incoming defer)
+    else
+      log "Capture mode: booting with snapshot-compatible layout (no -incoming)."
+    fi
     snapshot_smp="${EMULATOR_SNAPSHOT_CPUS:-4}"
     # RAM size is baked into the snapshot; migration replay requires an
     # identical -m value. Pin to the build-time RAM (4096) and ignore
@@ -374,7 +404,7 @@ build_qemu_cmd() {
     )
   fi
 
-  if snapshot_available; then
+  if snapshot_layout; then
     QEMU_CMD=(
       "$qemu_bin"
       -machine "$machine"
@@ -406,7 +436,7 @@ build_qemu_cmd() {
       # via human-monitor-command (errors come back as a return string,
       # not a QMP error).
       -fsdev "local,id=hostfs,path=/,security_model=none"
-      "${snapshot_args[@]}"
+      ${snapshot_args[@]+"${snapshot_args[@]}"}
       -serial "file:$VM_DIR/serial.log"
       -display none
       -daemonize
@@ -842,6 +872,100 @@ cmd_reset() {
   log "Emulator state reset. Next start will be a fresh boot."
 }
 
+# Cold-boot the VM with the snapshot-compatible device layout, wait for all
+# services to be healthy, then capture a snapshot via QMP migrate and compress
+# it to .savevm.zst. Called by `stack emulator pull` so first-run users get a
+# fast-resume snapshot that's guaranteed compatible with their host's QEMU
+# version + accelerator (which CI-built snapshots can't guarantee across
+# KVM/HVF/TCG).
+cmd_capture() {
+  if [ ! -f "$(image_path)" ]; then
+    err "Missing qcow2: $(image_path). Run 'stack emulator pull' first."
+    exit 1
+  fi
+  if [ -s "$(savevm_path)" ] && [ "$EMULATOR_FORCE_CAPTURE" != "1" ]; then
+    log "Snapshot already present at $(savevm_path); skipping capture."
+    log "Pass EMULATOR_FORCE_CAPTURE=1 to rebuild it."
+    return 0
+  fi
+  if is_running; then
+    err "Emulator is already running; stop it first (stack emulator stop)."
+    exit 1
+  fi
+
+  # Start with a clean slate if we're force-recapturing; stale raw/zst would
+  # otherwise make snapshot_available() return true and flip QEMU into
+  # -incoming defer mode.
+  rm -f "$(savevm_path)" "$(savevm_raw_path)"
+
+  ensure_ports_free
+  mkdir -p "$RUN_DIR" "$VM_DIR"
+  # Regenerate runtime-config.iso with STACK_EMULATOR_VM_DIR_HOST empty —
+  # virtfs is detached in capture mode, so run-stack-container's
+  # `install internal-pck → /host/$VM_DIR_HOST/...` would fail and restart-loop
+  # stack.service. Mirrors build-image.sh's CI runtime.env shape.
+  rm -f "$(runtime_iso_path)"
+  write_runtime_config_iso ""
+
+  info "Cold-booting VM to capture local snapshot (one-time, ~1-3 min)..."
+  EMULATOR_CAPTURING_SNAPSHOT=1
+  start_vm
+  info "VM: 4096MB / 4 CPUs (pinned for snapshot compatibility)"
+
+  # Cold boot with snapshot-compatible layout drops virtfs, so stack.service
+  # starts without /host mounted — fine for capture; hostfs is hot-plugged on
+  # resume via qmp_hotplug_9p.
+  if ! wait_for_condition "all services" "$READY_TIMEOUT" all_ready; then
+    tail_vm_logs
+    stop_vm
+    err "Services did not come up; capture aborted."
+    exit 1
+  fi
+
+  local raw tmp_raw zst tmp_zst
+  raw="$(savevm_raw_path)"
+  tmp_raw="${raw}.capture.tmp"
+  zst="$(savevm_path)"
+  tmp_zst="${zst}.capture.tmp"
+  rm -f "$tmp_raw" "$tmp_zst"
+
+  log "Capturing VM state via QMP (mapped-ram + multifd)..."
+  if ! capture_vm_state "$VM_DIR/monitor.sock" "$tmp_raw"; then
+    err "QMP capture failed."
+    stop_vm
+    exit 1
+  fi
+
+  # capture_vm_state sent QMP quit; wait for QEMU to exit, then clean sockets.
+  local waited=0
+  while [ "$waited" -lt 30 ] && is_running; do
+    sleep 1
+    waited=$((waited + 1))
+  done
+  if is_running; then
+    warn "QEMU did not exit after QMP quit; forcing."
+    stop_vm
+  fi
+  rm -f "$VM_DIR/qemu.pid" "$VM_DIR/monitor.sock" "$VM_DIR/qga.sock"
+
+  if [ ! -s "$tmp_raw" ]; then
+    err "Captured raw file is empty: $tmp_raw"
+    exit 1
+  fi
+
+  log "Compressing snapshot with zstd..."
+  zstd -1 -T0 -f -o "$tmp_zst" "$tmp_raw"
+  mv "$tmp_zst" "$zst"
+  # Keep the uncompressed file too — resume reads it directly via mapped-ram,
+  # and ensure_savevm_raw skips re-decompression when the raw's mtime >= zst's.
+  mv "$tmp_raw" "$raw"
+  touch -r "$zst" "$raw"
+
+  local size
+  size="$(du -h "$zst" | cut -f1)"
+  log "Snapshot captured: $zst (${size})"
+}
+
 STATUS_FAILED=0
 
 print_service_status() {
@@ -889,12 +1013,12 @@ ACTION="start"
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
-    start|stop|reset|status|bench)
+    start|stop|reset|status|bench|capture)
       ACTION="$1"
       shift
       ;;
     *)
-      echo "Usage: $0 [start|stop|reset|status|bench]"
+      echo "Usage: $0 [start|stop|reset|status|bench|capture]"
       exit 1
       ;;
   esac
@@ -906,4 +1030,5 @@ case "$ACTION" in
   reset) cmd_reset ;;
   status) cmd_status ;;
   bench) cmd_bench ;;
+  capture) cmd_capture ;;
 esac

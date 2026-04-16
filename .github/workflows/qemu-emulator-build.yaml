@@ -34,11 +34,17 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          # amd64 runs natively under KVM on ubicloud's amd64 runner.
-          # arm64 is built in a separate workflow on a macOS runner (HVF)
-          # so that the snapshot is portable to developer Macs.
-          # See qemu-emulator-build-arm64.yaml.
+          # Both arches build on ubicloud's amd64 runner. amd64 uses KVM;
+          # arm64 runs under cross-arch TCG (slow, but only cloud-init
+          # provisioning has to complete — the boot/verify smoke test below
+          # is gated to amd64 because TCG can't boot Next.js in any
+          # reasonable time). Snapshots are NOT published — `stack emulator
+          # pull` captures one locally on first run, which is the only way
+          # to guarantee KVM/HVF/TCG + `-cpu max` compatibility on the
+          # user's machine.
           - arch: amd64
+            runner: ubicloud-standard-8
+          - arch: arm64
             runner: ubicloud-standard-8
 
     steps:
@@ -168,29 +174,15 @@ jobs:
       - name: Package image
         run: |
           BASE_IMG="docker/local-emulator/qemu/images/stack-emulator-${{ matrix.arch }}.qcow2"
-          SAVEVM="docker/local-emulator/qemu/images/stack-emulator-${{ matrix.arch }}.savevm.zst"
           cp "$BASE_IMG" "stack-emulator-${{ matrix.arch }}.qcow2"
-          if [ -f "$SAVEVM" ]; then
-            cp "$SAVEVM" "stack-emulator-${{ matrix.arch }}.savevm.zst"
-            ls -lh "stack-emulator-${{ matrix.arch }}.savevm.zst"
-          elif [ "${{ matrix.arch }}" = "amd64" ]; then
-            # amd64 is the fast-resume contract: if the build didn't produce a
-            # snapshot, fail loudly rather than silently shipping a
-            # cold-boot-only release.
-            echo "ERROR: snapshot build expected to produce $SAVEVM for amd64." >&2
-            exit 1
-          else
-            echo "NOTE: no savevm snapshot was produced for ${{ matrix.arch }}; fast-start will be unavailable for this arch."
-          fi
+          ls -lh "stack-emulator-${{ matrix.arch }}.qcow2"
 
       - name: Upload image artifact
         uses: actions/upload-artifact@v4
         with:
           name: qemu-emulator-${{ matrix.arch }}
-          path: |
-            stack-emulator-${{ matrix.arch }}.qcow2
-            stack-emulator-${{ matrix.arch }}.savevm.zst
-          if-no-files-found: warn
+          path: stack-emulator-${{ matrix.arch }}.qcow2
+          if-no-files-found: error
           retention-days: 30
           compression-level: 0
 
@@ -266,18 +258,14 @@ jobs:
           name: qemu-emulator-${{ matrix.arch }}
           path: ${{ github.workspace }}/.stack-emulator-images/
 
-      - name: Place images into STACK_EMULATOR_HOME layout
+      - name: Place qcow2 into STACK_EMULATOR_HOME layout
         run: |
           mkdir -p "$HOME/.stack/emulator/images"
           cp "${{ github.workspace }}/.stack-emulator-images/stack-emulator-${{ matrix.arch }}.qcow2" "$HOME/.stack/emulator/images/"
-          if [ -f "${{ github.workspace }}/.stack-emulator-images/stack-emulator-${{ matrix.arch }}.savevm.zst" ]; then
-            cp "${{ github.workspace }}/.stack-emulator-images/stack-emulator-${{ matrix.arch }}.savevm.zst" "$HOME/.stack/emulator/images/"
-            echo "Snapshot present — will test snapshot-resume path."
-          else
-            echo "No snapshot — will test cold-boot path."
-          fi
           ls -lh "$HOME/.stack/emulator/images/"
 
+      # No savevm.zst artifact (users capture locally via `emulator pull`),
+      # so `emulator start` cold-boots the qcow2. Budget accordingly.
       - name: Start emulator via CLI
         run: |
           EMULATOR_ARCH=${{ matrix.arch }} \
@@ -336,11 +324,6 @@ jobs:
           for f in artifacts/qemu-emulator-*/*.qcow2; do
             cp "$f" release/
           done
-          # savevm.zst is optional — older branches may not produce it. Skip
-          # missing files rather than failing the publish.
-          for f in artifacts/qemu-emulator-*/*.savevm.zst; do
-            [ -f "$f" ] && cp "$f" release/
-          done
 
           cat > release-notes.md <<EOF
           ## QEMU Emulator Images
@@ -352,11 +335,12 @@ jobs:
           |------|-------------|
           | \`stack-emulator-arm64.qcow2\` | ARM64 disk image |
           | \`stack-emulator-amd64.qcow2\` | AMD64 disk image |
-          | \`stack-emulator-arm64.savevm.zst\` | ARM64 warm VM snapshot (fast-start) |
-          | \`stack-emulator-amd64.savevm.zst\` | AMD64 warm VM snapshot (fast-start) |
 
-          \`emulator pull\` downloads both; \`emulator start\` uses the snapshot
-          when present and falls back to cold-boot otherwise.
+          \`emulator pull\` downloads the qcow2 and captures a local fast-start
+          snapshot (~1-3 min). Subsequent \`emulator start\`s resume in ~3-8 s.
+          Snapshots are captured locally because QEMU migration state isn't
+          portable across accelerators (KVM / HVF / TCG) or \`-cpu max\`
+          feature sets.
 
           ### Usage
           \`\`\`bash
