@@ -18,7 +18,7 @@ import { useUser } from "@stackframe/stack";
 import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { Suspense, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ElementType } from "react";
+import { type ElementType, Suspense, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { PageLayout } from "../page-layout";
 import { useAdminApp, useProjectId } from "../use-admin-app";
 import { GlobeSectionWithData } from "./globe-section-with-data";
@@ -26,7 +26,6 @@ import {
   ComposedAnalyticsChart,
   ComposedDataPoint,
   CustomDateRange,
-  DataPoint,
   DonutChartDisplay,
   EmailStackedBarChartDisplay,
   EmailStackedDataPoint,
@@ -40,7 +39,7 @@ import {
   TimeRange,
   TimeRangeToggle,
   VisitorsHoverChart,
-  VisitorsHoverDataPoint,
+  VisitorsHoverDataPoint
 } from "./line-chart";
 import { MetricsLoadingFallback } from "./metrics-loading";
 
@@ -1196,11 +1195,11 @@ function MetricsContent({
       >
         {shouldShowGlobe && (
           <div className={cn(
-            "hidden lg:flex lg:flex-col lg:col-span-5 h-full relative",
+            "hidden lg:flex lg:col-span-5 h-full relative items-center justify-center overflow-hidden",
             "rounded-2xl bg-white/90 backdrop-blur-xl ring-1 ring-black/[0.06] shadow-sm",
             "dark:bg-transparent dark:backdrop-blur-none dark:ring-0 dark:shadow-none dark:rounded-none",
           )}>
-            <div className="px-5 pt-4 dark:px-1 dark:pt-0">
+            <div className="absolute top-0 left-0 z-10 px-5 pt-4 dark:px-1 dark:pt-0 pointer-events-none">
               <div className="flex items-center gap-2 mb-2">
                 <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
                   <GlobeIcon className="h-3.5 w-3.5 text-muted-foreground" />
@@ -1213,9 +1212,7 @@ function MetricsContent({
                 {data.total_users.toLocaleString()}
               </div>
             </div>
-            <div className="flex-1 min-h-0 px-3 pb-3 dark:px-0 dark:pb-0">
-              <GlobeSectionWithData includeAnonymous={includeAnonymous} />
-            </div>
+            <GlobeSectionWithData includeAnonymous={includeAnonymous} />
           </div>
         )}
 

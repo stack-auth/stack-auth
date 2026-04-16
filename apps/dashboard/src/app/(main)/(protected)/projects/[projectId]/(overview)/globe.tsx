@@ -7,6 +7,7 @@ import { use } from '@stackframe/stack-shared/dist/utils/react';
 import { getFlagEmoji } from '@stackframe/stack-shared/dist/utils/unicode';
 import dynamic from 'next/dynamic';
 import { RefObject, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { GlobeMethods } from 'react-globe.gl';
 import { FrontSide, MeshLambertMaterial, Vector3 } from 'three';
 
@@ -86,13 +87,13 @@ function GlobeLoading(props: { devReason: string, className?: string }) {
       <div className="relative w-[70%] aspect-square">
         {/* Main globe circle with gradient */}
         <div
-          className="absolute inset-0 rounded-full bg-gradient-to-br from-foreground/[0.06] via-foreground/[0.03] to-transparent animate-pulse"
+          className="absolute inset-0 rounded-full bg-gradient-to-br from-sky-500/[0.09] via-sky-400/[0.05] to-transparent animate-pulse dark:from-sky-400/[0.12] dark:via-sky-500/[0.06]"
           style={{ animationDelay: `${syncDelay}ms` }}
         />
 
         {/* Rotating orbit ring 1 */}
         <div
-          className="absolute inset-[-5%] rounded-full border border-foreground/[0.08] animate-spin"
+          className="absolute inset-[-5%] rounded-full border border-sky-400/15 dark:border-sky-400/20 animate-spin"
           style={{
             transform: 'rotateX(70deg)',
             ...syncedAnimation(2.5),
@@ -101,7 +102,7 @@ function GlobeLoading(props: { devReason: string, className?: string }) {
 
         {/* Rotating orbit ring 2 */}
         <div
-          className="absolute inset-[5%] rounded-full border border-dashed border-foreground/[0.06] animate-spin"
+          className="absolute inset-[5%] rounded-full border border-dashed border-sky-400/12 dark:border-sky-400/14 animate-spin"
           style={{
             transform: 'rotateX(70deg) rotateZ(30deg)',
             ...syncedAnimation(4, true),
@@ -110,27 +111,27 @@ function GlobeLoading(props: { devReason: string, className?: string }) {
 
         {/* Equator line */}
         <div
-          className="absolute inset-[10%] rounded-full border border-foreground/[0.05]"
+          className="absolute inset-[10%] rounded-full border border-sky-400/10 dark:border-sky-400/12"
           style={{ transform: 'rotateX(80deg)' }}
         />
 
         {/* Meridian lines */}
-        <div className="absolute inset-[15%] rounded-full border border-foreground/[0.04]" />
+        <div className="absolute inset-[15%] rounded-full border border-sky-400/10 dark:border-sky-400/11" />
         <div
-          className="absolute inset-[20%] rounded-full border border-foreground/[0.04]"
+          className="absolute inset-[20%] rounded-full border border-sky-400/10 dark:border-sky-400/11"
           style={{ transform: 'rotateY(60deg)' }}
         />
 
         {/* Center glow */}
         <div
-          className="absolute inset-[30%] rounded-full bg-foreground/[0.02] blur-xl animate-pulse"
+          className="absolute inset-[30%] rounded-full bg-sky-400/[0.06] dark:bg-sky-400/[0.08] blur-xl animate-pulse"
           style={{ animationDelay: `${syncDelay}ms` }}
         />
 
         {/* Shimmer effect */}
         <div className="absolute inset-0 rounded-full overflow-hidden">
           <div
-            className="absolute inset-0 bg-gradient-to-r from-transparent via-foreground/[0.03] to-transparent animate-[shimmer_0.8s_ease-in-out_infinite]"
+            className="absolute inset-0 bg-gradient-to-r from-transparent via-sky-400/[0.06] dark:via-sky-400/[0.05] to-transparent animate-[shimmer_0.8s_ease-in-out_infinite]"
             style={{
               transform: 'translateX(-100%)',
               animationDelay: `${syncDelay}ms`,
@@ -159,6 +160,24 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
   const sectionContainerRef = useRef<HTMLDivElement>(null);
   const sectionContainerSize = useSize(sectionContainerRef);
 
+  // Measure the parent element so the root can size itself to min(w, h) of
+  // the available space (container queries misfire here on initial layout).
+  const rootRef = useRef<HTMLDivElement>(null);
+  const [parentBox, setParentBox] = useState({ w: 0, h: 0 });
+  useLayoutEffect(() => {
+    const parent = rootRef.current?.parentElement;
+    if (!parent) return;
+    const update = () => {
+      const r = parent.getBoundingClientRect();
+      setParentBox({ w: r.width, h: r.height });
+    };
+    update();
+    const ro = new ResizeObserver(update);
+    ro.observe(parent);
+    return () => ro.disconnect();
+  }, []);
+  const squareSize = Math.min(parentBox.w, parentBox.h);
+
   // Simplified sizing for the new layout - only use width
   const globeSize = globeContainerSize?.width ?? 400;
 
@@ -179,10 +198,10 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
   // Calculate zoom based on width
   // For widths >= 355, use linear formula clamped to a minimum distance.
   // For widths between 350-355, use 360 (same as at 355px)
-  const MIN_CAMERA_DISTANCE = 309; // matches the value at width = 500
+  const MIN_CAMERA_DISTANCE = 261; // matches the value at width = 500
   const cameraDistance = canvasWidth >= 355
-    ? Math.max(MIN_CAMERA_DISTANCE, 484 - 0.35 * canvasWidth)
-    : 360; // For 350-355 range, use 360
+    ? Math.max(MIN_CAMERA_DISTANCE, 436 - 0.35 * canvasWidth)
+    : 325; // For 350-355 range
 
   // Calculate border size using exact same formula structure as cameraDistance
   // Uses same scale factor (0.35) but inverted direction (increases as width increases)
@@ -259,9 +278,8 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
   const globeMaterial = useMemo(() => {
     return new MeshLambertMaterial({
       emissive: theme === 'dark' ? 0x000000 : 0x000000,
-      // Dark mode: near-black opaque to properly occlude far-side objects
-      // Light mode: slate-200
-      color: theme === 'dark' ? 0x0a0a0f : 0xe2e8f0,
+      // Dark mode: deep blue-black; light mode: cool blue-gray (heat uses dark→light blue)
+      color: theme === 'dark' ? 0x0a1220 : 0xe8ecf4,
       transparent: false, // Keep opaque to properly write to depth buffer and occlude far-side hexagons
       opacity: 1,
       depthWrite: true,
@@ -357,7 +375,7 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
   }, []);
 
   return (
-    <div className='relative aspect-square w-full mx-auto'>
+    <div ref={rootRef} className='relative mx-auto' style={{ width: squareSize || '100%', height: squareSize || '100%' }}>
       <div inert className='absolute inset-0 pointer-events-none'>
         <GlobeLoading
           devReason="not ready"
@@ -436,11 +454,11 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
               onTouchMove={resumeRender}
             >
               {/* Subtle glow effect */}
-              <div className='absolute inset-0 bg-gradient-radial from-primary/10 via-transparent to-transparent blur-3xl opacity-30 pointer-events-none' />
+              <div className='absolute inset-0 bg-gradient-radial from-sky-500/15 via-sky-400/5 to-transparent dark:from-sky-400/12 dark:via-sky-500/5 blur-3xl opacity-40 pointer-events-none' />
 
 
               {mounted && isFastEngine !== null && (
-                <div className='w-full h-full flex justify-center'>
+                <div className='w-full h-full flex items-center justify-center'>
                   <Globe
                     key={`${errorRefreshCount}-${theme}`}
                     ref={globeRef}
@@ -466,6 +484,8 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
                         controls.enableZoom = false;
                         controls.enableRotate = true;
                         current.camera().position.z = cameraDistance;
+                        // Little Saint James Island, U.S. Virgin Islands
+                        current.pointOfView({ lat: 18.3076, lng: -64.8267 }, 0);
 
                         // Fix z-fighting: Enable proper depth testing
                         const renderer = current.renderer();
@@ -504,19 +524,21 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
                     }}
                     animateIn={isFastEngine}
 
+                    polygonStrokeColor={() => theme === 'light' ? "rgba(0, 20, 40, 0.05)" : "rgba(255, 255, 255, 0.1)"}
+
                     polygonsData={countries.features}
                     polygonCapColor={() => "transparent"}
                     polygonSideColor={() => "transparent"}
-                    polygonAltitude={0.03}
+                    polygonAltitude={0.001}
                     onPolygonHover={(d: any) => {
-                    resumeRender();
-                    // Polygons have no gaps, so use them for tooltip control
-                    if (d) {
-                      setPolygonSelectedCountry({ code: d.properties.ISO_A2_EH, name: d.properties.NAME });
-                    } else {
-                      // Clear immediately when hovering over ocean/non-land
-                      setPolygonSelectedCountry(null);
-                    }
+                      resumeRender();
+                      // Polygons have no gaps, so use them for tooltip control
+                      if (d) {
+                        setPolygonSelectedCountry({ code: d.properties.ISO_A2_EH, name: d.properties.NAME });
+                      } else {
+                        // Clear immediately when hovering over ocean/non-land
+                        setPolygonSelectedCountry(null);
+                      }
                     }}
 
                     hexPolygonsData={countries.features}
@@ -530,28 +552,37 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
                       const highlight = isFastEngine && country.properties.ISO_A2_EH === selectedCountryRef.current?.code;
                       const value = colorValues.get(country.properties.ISO_A2_EH) ?? null;
 
-                      if (highlight) return theme === 'dark' ? "#ffffff" : "#1e293b";
+                      if (highlight) return theme === 'dark' ? "#e0f2fe" : "#0c4a6e";
 
                       // Base color for countries with no users - theme-aware
                       if (Number.isNaN(value) || value === null || maxColorValue < 0.0001) {
                         // Dark mode: light slate, Light mode: darker slate for visibility
-                        return theme === 'dark' ? "#7d93bc" : "#64748b";
+                        return theme === 'dark' ? "#4d535c" : "#d4d4d4";
                       }
 
                       const linear = Math.min(1, value / maxColorValue);
                       // Gamma > 1 pulls mid values apart (more contrast between similar counts)
                       const scaled = Math.pow(linear, 1.18);
                       if (theme === 'dark') {
-                        // Wider hue sweep + stronger saturation/lightness ramp for readable heat levels
-                        return `hsl(${202 - 72 * scaled}, ${48 + 42 * scaled}%, ${44 + 28 * scaled}%)`;
-                      } else {
-                        return `hsl(${202 - 72 * scaled}, ${38 + 48 * scaled}%, ${30 + 22 * scaled}%)`;
+                        const h = 220 + 20 * scaled;
+                        const s = 50 + 50 * scaled;
+                        const l = 100 - 40 * scaled;
+                        return `hsl(${h}, ${s}%, ${l}%)`;
                       }
+                      const h = 200 + 40 * scaled;
+                      const s = 50 + 50 * scaled;
+                      const l = 90 - 40 * scaled;
+                      return `hsl(${h}, ${s}%, ${l}%)`;
                     }}
-                    onHexPolygonHover={() => {
+                    onHexPolygonHover={(p: any) => {
                       resumeRender();
-                      // Keep empty handler to prevent react-globe.gl internal errors
-                      // Actual hover logic handled by onPolygonHover to avoid gaps
+                      // Also have the hover code here so the hexes don't block the hover
+                      if (p) {
+                        setPolygonSelectedCountry({ code: p.properties.ISO_A2_EH, name: p.properties.NAME });
+                      } else {
+                        // Clear immediately when hovering over ocean/non-land
+                        setPolygonSelectedCountry(null);
+                      }
                     }}
                     onHexPolygonClick={(polygon: any, event: MouseEvent, coords: { lat: number, lng: number, altitude: number }) => {
                     resumeRender();
@@ -576,8 +607,9 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
           </div>
         )}
       </div>
-      {/* Tooltip */}
-      {lastSelectedCountry && (
+      {/* Tooltip — portal to body so card's backdrop-filter/overflow-hidden
+          doesn't create a containing block that clips it */}
+      {mounted && lastSelectedCountry && createPortal(
         <div
           ref={tooltipRef}
           className={cn(
@@ -607,7 +639,8 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
               </span>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );
