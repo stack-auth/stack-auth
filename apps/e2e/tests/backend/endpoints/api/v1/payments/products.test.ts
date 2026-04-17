@@ -1,6 +1,7 @@
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { it } from "../../../../../helpers";
-import { Auth, niceBackendFetch, Payments, Project, Team, User } from "../../../../backend-helpers";
+import { Auth, niceBackendFetch, Payments, Project, Team } from "../../../../backend-helpers";
 
 async function configureProduct(config: any) {
   await Project.updateConfig({
@@ -91,7 +92,10 @@ it("should grant configured subscription product and expose it via listing", asy
   expect(grantResponse).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "success": true },
+      "body": {
+        "subscription_id": "<stripped UUID>",
+        "success": true,
+      },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -194,7 +198,33 @@ it("should allow a signed-in user to cancel their own subscription product", asy
       "status": 200,
       "body": {
         "is_paginated": true,
-        "items": [],
+        "items": [
+          {
+            "id": "pro-plan",
+            "product": {
+              "client_metadata": null,
+              "client_read_only_metadata": null,
+              "customer_type": "user",
+              "display_name": "Pro Plan",
+              "included_items": {},
+              "prices": {
+                "monthly": {
+                  "USD": "1000",
+                  "interval": [
+                    1,
+                    "month",
+                  ],
+                },
+              },
+              "server_metadata": null,
+              "server_only": false,
+              "stackable": false,
+            },
+            "quantity": 1,
+            "subscription": null,
+            "type": "one_time",
+          },
+        ],
         "pagination": { "next_cursor": null },
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -348,7 +378,33 @@ it("should cancel all stackable subscription quantities", async ({ expect }) => 
       "status": 200,
       "body": {
         "is_paginated": true,
-        "items": [],
+        "items": [
+          {
+            "id": "seats-plan",
+            "product": {
+              "client_metadata": null,
+              "client_read_only_metadata": null,
+              "customer_type": "user",
+              "display_name": "Seats Plan",
+              "included_items": {},
+              "prices": {
+                "monthly": {
+                  "USD": "1000",
+                  "interval": [
+                    1,
+                    "month",
+                  ],
+                },
+              },
+              "server_metadata": null,
+              "server_only": false,
+              "stackable": true,
+            },
+            "quantity": 2,
+            "subscription": null,
+            "type": "one_time",
+          },
+        ],
         "pagination": { "next_cursor": null },
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -476,7 +532,10 @@ it("should hide server-only products from clients while exposing them to servers
   expect(grantResponse).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "success": true },
+      "body": {
+        "subscription_id": "<stripped UUID>",
+        "success": true,
+      },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -834,9 +893,8 @@ it("should allow canceling an inline product subscription via subscription_id", 
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
-  const items = listResponse.body.items;
-
-  const subscriptionId = items[0].subscription.subscription_id;
+  // The grant response returns the subscription_id for inline products
+  const subscriptionId = grantResponse.body.subscription_id;
   const cancelResponse = await niceBackendFetch(`/api/v1/payments/products/user/${userId}/_inline?subscription_id=${encodeURIComponent(subscriptionId)}`, {
     method: "DELETE",
     accessType: "client",
@@ -859,7 +917,33 @@ it("should allow canceling an inline product subscription via subscription_id", 
       "status": 200,
       "body": {
         "is_paginated": true,
-        "items": [],
+        "items": [
+          {
+            "id": null,
+            "product": {
+              "client_metadata": null,
+              "client_read_only_metadata": null,
+              "customer_type": "user",
+              "display_name": "Inline Sub",
+              "included_items": {},
+              "prices": {
+                "monthly": {
+                  "USD": "500",
+                  "interval": [
+                    1,
+                    "month",
+                  ],
+                },
+              },
+              "server_metadata": null,
+              "server_only": false,
+              "stackable": false,
+            },
+            "quantity": 1,
+            "subscription": null,
+            "type": "one_time",
+          },
+        ],
         "pagination": { "next_cursor": null },
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -1138,6 +1222,23 @@ it("listing products should list both subscription and one-time products", async
         "is_paginated": true,
         "items": [
           {
+            "id": "lifetime-addon",
+            "product": {
+              "client_metadata": null,
+              "client_read_only_metadata": null,
+              "customer_type": "user",
+              "display_name": "Lifetime Add-on",
+              "included_items": {},
+              "prices": { "lifetime": { "USD": "5000" } },
+              "server_metadata": null,
+              "server_only": false,
+              "stackable": false,
+            },
+            "quantity": 1,
+            "subscription": null,
+            "type": "one_time",
+          },
+          {
             "id": "subscription-plan",
             "product": {
               "client_metadata": null,
@@ -1166,23 +1267,6 @@ it("listing products should list both subscription and one-time products", async
               "subscription_id": "<stripped UUID>",
             },
             "type": "subscription",
-          },
-          {
-            "id": "lifetime-addon",
-            "product": {
-              "client_metadata": null,
-              "client_read_only_metadata": null,
-              "customer_type": "user",
-              "display_name": "Lifetime Add-on",
-              "included_items": {},
-              "prices": { "lifetime": { "USD": "5000" } },
-              "server_metadata": null,
-              "server_only": false,
-              "stackable": false,
-            },
-            "quantity": 1,
-            "subscription": null,
-            "type": "one_time",
           },
         ],
         "pagination": { "next_cursor": null },
@@ -1283,6 +1367,58 @@ it("listing products should support cursor pagination", async ({ expect }) => {
         "is_paginated": true,
         "items": [
           {
+            "id": "lifetime-addon",
+            "product": {
+              "client_metadata": null,
+              "client_read_only_metadata": null,
+              "customer_type": "user",
+              "display_name": "Lifetime Add-on",
+              "included_items": {},
+              "prices": { "lifetime": { "USD": "5000" } },
+              "server_metadata": null,
+              "server_only": false,
+              "stackable": false,
+            },
+            "quantity": 1,
+            "subscription": null,
+            "type": "one_time",
+          },
+        ],
+        "pagination": { "next_cursor": "pro-addon" },
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  const cursor = firstPage.body.pagination.next_cursor;
+  const secondPage = await niceBackendFetch(`${basePath}?limit=5&cursor=${encodeURIComponent(cursor)}`, {
+    accessType: "client",
+    userAuth: { accessToken, refreshToken },
+  });
+  expect(secondPage).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "is_paginated": true,
+        "items": [
+          {
+            "id": "pro-addon",
+            "product": {
+              "client_metadata": null,
+              "client_read_only_metadata": null,
+              "customer_type": "user",
+              "display_name": "Pro Add-on",
+              "included_items": {},
+              "prices": { "standard": { "USD": "7000" } },
+              "server_metadata": null,
+              "server_only": false,
+              "stackable": false,
+            },
+            "quantity": 1,
+            "subscription": null,
+            "type": "one_time",
+          },
+          {
             "id": "subscription-plan",
             "product": {
               "client_metadata": null,
@@ -1313,58 +1449,6 @@ it("listing products should support cursor pagination", async ({ expect }) => {
             "type": "subscription",
           },
         ],
-        "pagination": { "next_cursor": "<stripped UUID>" },
-      },
-      "headers": Headers { <some fields may have been hidden> },
-    }
-  `);
-
-  const cursor = firstPage.body.pagination.next_cursor;
-  const secondPage = await niceBackendFetch(`${basePath}?limit=5&cursor=${encodeURIComponent(cursor)}`, {
-    accessType: "client",
-    userAuth: { accessToken, refreshToken },
-  });
-  expect(secondPage).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 200,
-      "body": {
-        "is_paginated": true,
-        "items": [
-          {
-            "id": "lifetime-addon",
-            "product": {
-              "client_metadata": null,
-              "client_read_only_metadata": null,
-              "customer_type": "user",
-              "display_name": "Lifetime Add-on",
-              "included_items": {},
-              "prices": { "lifetime": { "USD": "5000" } },
-              "server_metadata": null,
-              "server_only": false,
-              "stackable": false,
-            },
-            "quantity": 1,
-            "subscription": null,
-            "type": "one_time",
-          },
-          {
-            "id": "pro-addon",
-            "product": {
-              "client_metadata": null,
-              "client_read_only_metadata": null,
-              "customer_type": "user",
-              "display_name": "Pro Add-on",
-              "included_items": {},
-              "prices": { "standard": { "USD": "7000" } },
-              "server_metadata": null,
-              "server_only": false,
-              "stackable": false,
-            },
-            "quantity": 1,
-            "subscription": null,
-            "type": "one_time",
-          },
-        ],
         "pagination": { "next_cursor": null },
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -1375,7 +1459,7 @@ it("listing products should support cursor pagination", async ({ expect }) => {
   expect(combinedItems).toEqual(allResponse.body.items);
 });
 
-it("should immediately cancel existing subscriptions when granting a product of same catalog", async ({ expect }) => {
+it("should cancel existing subscriptions immediately when granting a product of same catalog", async ({ expect }) => {
   await Project.createAndSwitch();
   await Payments.setup();
   await configureProduct({
@@ -1443,7 +1527,10 @@ it("should immediately cancel existing subscriptions when granting a product of 
   expect(grantBaseResponse).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "success": true },
+      "body": {
+        "subscription_id": "<stripped UUID>",
+        "success": true,
+      },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
@@ -1456,10 +1543,16 @@ it("should immediately cancel existing subscriptions when granting a product of 
   expect(grantPremiumResponse).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 200,
-      "body": { "success": true },
+      "body": {
+        "subscription_id": "<stripped UUID>",
+        "success": true,
+      },
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
+
+  // wait for timefold to process and catch up with lastProcessedAt; this usually takes <1 second
+  await wait(2000);
 
   const itemQuantities = await niceBackendFetch(`/api/v1/payments/items/user/${userId}/i1`, {
     accessType: "client",

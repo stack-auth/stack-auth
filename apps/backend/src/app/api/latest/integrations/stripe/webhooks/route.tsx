@@ -1,4 +1,5 @@
 import { sendEmailToMany, type EmailOutboxRecipient } from "@/lib/emails";
+import { bulldozerWriteOneTimePurchase } from "@/lib/payments/bulldozer-dual-write";
 import { listPermissions } from "@/lib/permissions";
 import { getStackStripe, getStripeForAccount, resolveProductFromStripeMetadata, syncStripeSubscriptions, upsertStripeInvoice } from "@/lib/stripe";
 import type { StripeOverridesMap } from "@/lib/stripe-proxy";
@@ -200,7 +201,8 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
     if (!customerType) {
       throw new StackAssertionError("Invalid customer type for one-time purchase", { event });
     }
-    await prisma.oneTimePurchase.upsert({
+    // dual write - prisma and bulldozer
+    const upsertedPurchase = await prisma.oneTimePurchase.upsert({
       where: {
         tenancyId_stripePaymentIntentId: {
           tenancyId: tenancy.id,
@@ -225,6 +227,7 @@ async function processStripeWebhookEvent(event: Stripe.Event): Promise<void> {
         quantity: qty,
       }
     });
+    await bulldozerWriteOneTimePurchase(prisma, upsertedPurchase);
 
     const recipients = await getPaymentRecipients({
       tenancy,
