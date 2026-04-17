@@ -522,7 +522,17 @@ it("has limited grants", async ({ expect }) => {
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "REVOKE TABLE ENGINE ON SQLite FROM limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "REVOKE TABLE ENGINE ON URL FROM limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW DATABASES ON default.* TO limited_user" },
+          { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.connected_accounts TO limited_user" },
+          { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.contact_channels TO limited_user" },
+          { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.email_outboxes TO limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.events TO limited_user" },
+          { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.notification_preferences TO limited_user" },
+          { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.project_permissions TO limited_user" },
+          { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.refresh_tokens TO limited_user" },
+          { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.team_invitations TO limited_user" },
+          { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.team_member_profiles TO limited_user" },
+          { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.team_permissions TO limited_user" },
+          { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.teams TO limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SHOW TABLES, SHOW COLUMNS, SELECT ON default.users TO limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SELECT ON system.aggregate_function_combinators TO limited_user" },
           { "GRANTS WITH IMPLICIT FINAL FORMAT JSONEachRow": "GRANT SELECT ON system.collations TO limited_user" },
@@ -563,7 +573,47 @@ it("can see only some tables", async ({ expect }) => {
         "result": [
           {
             "database": "default",
+            "name": "connected_accounts",
+          },
+          {
+            "database": "default",
+            "name": "contact_channels",
+          },
+          {
+            "database": "default",
+            "name": "email_outboxes",
+          },
+          {
+            "database": "default",
             "name": "events",
+          },
+          {
+            "database": "default",
+            "name": "notification_preferences",
+          },
+          {
+            "database": "default",
+            "name": "project_permissions",
+          },
+          {
+            "database": "default",
+            "name": "refresh_tokens",
+          },
+          {
+            "database": "default",
+            "name": "team_invitations",
+          },
+          {
+            "database": "default",
+            "name": "team_member_profiles",
+          },
+          {
+            "database": "default",
+            "name": "team_permissions",
+          },
+          {
+            "database": "default",
+            "name": "teams",
           },
           {
             "database": "default",
@@ -586,7 +636,17 @@ it("SHOW TABLES should have the correct tables", async ({ expect }) => {
       "status": 200,
       "body": {
         "result": [
+          { "name": "connected_accounts" },
+          { "name": "contact_channels" },
+          { "name": "email_outboxes" },
           { "name": "events" },
+          { "name": "notification_preferences" },
+          { "name": "project_permissions" },
+          { "name": "refresh_tokens" },
+          { "name": "team_invitations" },
+          { "name": "team_member_profiles" },
+          { "name": "team_permissions" },
+          { "name": "teams" },
           { "name": "users" },
         ],
       },
@@ -1068,7 +1128,17 @@ it("shows grants", async ({ expect }) => {
       "status": 200,
       "body": {
         "result": [
+          { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.connected_accounts TO limited_user" },
+          { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.contact_channels TO limited_user" },
+          { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.email_outboxes TO limited_user" },
           { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.events TO limited_user" },
+          { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.notification_preferences TO limited_user" },
+          { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.project_permissions TO limited_user" },
+          { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.refresh_tokens TO limited_user" },
+          { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.team_invitations TO limited_user" },
+          { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.team_member_profiles TO limited_user" },
+          { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.team_permissions TO limited_user" },
+          { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.teams TO limited_user" },
           { "GRANTS FORMAT JSONEachRow": "GRANT SELECT ON default.users TO limited_user" },
         ],
       },
@@ -1514,6 +1584,103 @@ it("does not allow input() function", async ({ expect }) => {
           Error during execution of this query.
           
           As you are in development mode, you can see the full error: 497 limited_user: Not enough privileges. To execute this query, it's necessary to have the grant CREATE TEMPORARY TABLE ON *.*. 
+        \`,
+      },
+      "headers": Headers {
+        "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("returns a safe error for illegal type of argument (code 43)", async ({ expect }) => {
+  const response = await runQuery({
+    query: "SELECT arrayJoin(123)",
+  });
+
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "ANALYTICS_QUERY_ERROR",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 43 Argument for function arrayJoin must be Array or Map: In scope SELECT arrayJoin(123). 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 43 Argument for function arrayJoin must be Array or Map: In scope SELECT arrayJoin(123). 
+        \`,
+      },
+      "headers": Headers {
+        "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("does not leak column names from restricted tables via illegal type of argument (code 43)", async ({ expect }) => {
+  // ClickHouse resolves identifiers and checks types before checking permissions,
+  // so a code 43 error referencing a restricted table column could leak its name/type
+  const response = await runQuery({
+    query: "SELECT arrayJoin(query) FROM system.query_log",
+  });
+
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "ANALYTICS_QUERY_ERROR",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 43 Argument for function arrayJoin must be Array or Map: In scope SELECT arrayJoin(query) FROM system.query_log. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 43 Argument for function arrayJoin must be Array or Map: In scope SELECT arrayJoin(query) FROM system.query_log. 
+        \`,
+      },
+      "headers": Headers {
+        "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("does not leak column names from restricted tables via unknown identifier (code 47)", async ({ expect }) => {
+  // ClickHouse resolves identifiers before checking permissions, and suggests
+  // real column names ("Maybe you meant: ..."), so code 47 must be unsafe
+  const response = await runQuery({
+    query: "SELECT qurey FROM system.query_log",
+  });
+
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "ANALYTICS_QUERY_ERROR",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 47 Unknown expression identifier \\\`qurey\\\` in scope SELECT qurey FROM system.query_log. Maybe you meant: ['query']. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 47 Unknown expression identifier \\\`qurey\\\` in scope SELECT qurey FROM system.query_log. Maybe you meant: ['query']. 
         \`,
       },
       "headers": Headers {

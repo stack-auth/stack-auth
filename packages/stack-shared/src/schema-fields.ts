@@ -8,11 +8,11 @@ import { decodeBasicAuthorizationHeader } from "./utils/http";
 import { allProviders } from "./utils/oauth";
 import { deepPlainClone, omit, typedFromEntries } from "./utils/objects";
 import { deindent } from "./utils/strings";
-import { ISO_3166_ALPHA_2_COUNTRY_CODES, isValidCountryCode, normalizeCountryCode } from "./utils/country-codes";
+import { isValidCountryCode, normalizeCountryCode } from "./utils/country-codes";
 import { isValidHostnameWithWildcards, isValidUrl } from "./utils/urls";
 import { isUuid } from "./utils/uuids";
 
-export { ISO_3166_ALPHA_2_COUNTRY_CODES, isValidCountryCode, normalizeCountryCode, validateCountryCode, validCountryCodeSet } from "./utils/country-codes";
+export { isValidCountryCode, normalizeCountryCode, validateCountryCode } from "./utils/country-codes";
 
 const MAX_IMAGE_SIZE_BASE64_BYTES = 1_000_000; // 1MB
 
@@ -436,12 +436,12 @@ export const base64Schema = yupString().test("is-base64", (params) => `${params.
 export const passwordSchema = yupString().max(70);
 export const countryCodeSchema = yupString().transform((value) => typeof value === "string" ? normalizeCountryCode(value) : value).test({
   name: "country-code",
-  message: (params) => `${params.path} must be a valid ISO 3166-1 alpha-2 country code`,
+  message: (params) => `${params.path} must be a 2-letter country code`,
   test: (value) => value == null || isValidCountryCode(value),
 });
 import.meta.vitest?.test("countryCodeSchema", async ({ expect }) => {
   await expect(countryCodeSchema.validate(" us ")).resolves.toBe("US");
-  await expect(countryCodeSchema.validate("usa")).rejects.toThrow("must be a valid ISO 3166-1 alpha-2 country code");
+  await expect(countryCodeSchema.validate("usa")).rejects.toThrow("must be a 2-letter country code");
 });
 export const intervalSchema = yupTuple<Interval>([yupNumber().min(0).integer().defined(), yupString().oneOf(['millisecond', 'second', 'minute', 'hour', 'day', 'week', 'month', 'year']).defined()]);
 export const dayIntervalSchema = yupTuple<DayInterval>([yupNumber().min(0).integer().defined(), yupString().oneOf(['day', 'week', 'month', 'year']).defined()]);
@@ -565,6 +565,7 @@ export const projectOnboardingStatusValues = [
   "domain_setup",
   "email_theme_setup",
   "payments_setup",
+  "welcome",
   "completed",
 ] as const;
 export type ProjectOnboardingStatus = typeof projectOnboardingStatusValues[number];
@@ -789,6 +790,7 @@ export const accessTokenPayloadSchema = yupObject({
   email: yupString().defined().nullable(),
   email_verified: yupBoolean().defined(),
   selected_team_id: yupString().defined().nullable(),
+  signed_up_at: yupNumber().defined(),
   is_anonymous: yupBoolean().defined(),
   is_restricted: yupBoolean().defined(),
   restricted_reason: restrictedReasonSchema.defined().nullable(),

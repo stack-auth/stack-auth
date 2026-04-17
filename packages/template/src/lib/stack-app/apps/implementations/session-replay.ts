@@ -130,7 +130,6 @@ export function getOrRotateSession(options: { key: string, nowMs: number }): Sto
 
 export type SessionRecorderDeps = {
   projectId: string,
-  getAccessToken: () => Promise<string | null>,
   sendBatch: (body: string, options: { keepalive: boolean }) => Promise<Result<Response, Error>>,
 };
 
@@ -148,7 +147,6 @@ export class SessionRecorder {
   private _lastBrowserSessionId: string | null = null;
   private _takingSnapshot = false;
   private _flushInProgress = false;
-  private _lastKnownAccessToken: string | null = null;
   private readonly _sessionReplaySegmentId: string;
   private readonly _storageKey: string;
   private readonly _deps: SessionRecorderDeps;
@@ -172,7 +170,7 @@ export class SessionRecorder {
     // Kick off rrweb recording
     runAsynchronously(() => this._startRecording(), { noErrorLogging: true });
 
-    // Periodic flush + token refresh
+    // Periodic flush
     this._flushTimer = setInterval(() => this._tick(), FLUSH_INTERVAL_MS);
   }
 
@@ -183,7 +181,7 @@ export class SessionRecorder {
       this._flushTimer = null;
     }
     // Flush remaining events before cleanup
-    runAsynchronously(() => this._flush({ keepalive: true }), { noErrorLogging: true });
+    runAsynchronously(() => this._flush({ keepalive: true }));
     this._stopCurrentRecording();
   }
 
@@ -202,7 +200,6 @@ export class SessionRecorder {
   }
 
   private async _flush(options: { keepalive: boolean }) {
-    if (!this._lastKnownAccessToken) return;
     if (this._events.length === 0) return;
     // Prevent concurrent in-flight HTTP requests. When a flush is already
     // in-flight, a second batch could race on the server (both call
@@ -287,7 +284,7 @@ export class SessionRecorder {
         this._events.push(event);
         this._approxBytes += JSON.stringify(event).length;
         if (this._events.length >= MAX_EVENTS_PER_BATCH || this._approxBytes >= MAX_APPROX_BYTES_PER_BATCH) {
-          runAsynchronously(() => this._flush({ keepalive: false }), { noErrorLogging: true });
+          runAsynchronously(() => this._flush({ keepalive: false }));
         }
       },
       maskAllInputs: this._replayOptions.maskAllInputs ?? true,
@@ -298,7 +295,7 @@ export class SessionRecorder {
     this._recording = true;
 
     const onPageHide = () => {
-      runAsynchronously(() => this._flush({ keepalive: true }), { noErrorLogging: true });
+      runAsynchronously(() => this._flush({ keepalive: true }));
     };
     window.addEventListener("pagehide", onPageHide);
     document.addEventListener("visibilitychange", onPageHide);
@@ -324,15 +321,8 @@ export class SessionRecorder {
 
   private _tick() {
     if (this._cancelled) return;
-
-    // Refresh the cached access token (async, fire-and-forget for this tick)
-    runAsynchronously(async () => {
-      this._lastKnownAccessToken = await this._deps.getAccessToken();
-    }, { noErrorLogging: true });
-
-    const hasAuth = !!this._lastKnownAccessToken;
-    if (hasAuth && this._events.length > 0) {
-      runAsynchronously(() => this._flush({ keepalive: false }), { noErrorLogging: true });
+    if (this._events.length > 0) {
+      runAsynchronously(() => this._flush({ keepalive: false }));
     }
   }
 }

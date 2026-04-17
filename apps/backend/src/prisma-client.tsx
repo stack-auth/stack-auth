@@ -9,7 +9,7 @@ import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dis
 import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { globalVar } from "@stackframe/stack-shared/dist/utils/globals";
 import { deepPlainEquals, filterUndefined, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
-import { concatStacktracesIfRejected, ignoreUnhandledRejection, wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { concatStacktracesIfRejected, ignoreUnhandledRejection, runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { throwingProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
@@ -20,6 +20,7 @@ import { isPromise } from "util/types";
 import { runMigrationNeeded } from "./auto-migrations";
 import { registerPgPool } from "./lib/dev-perf-stats";
 import { Tenancy } from "./lib/tenancies";
+import { drainInFlightPromises } from "./utils/background-tasks";
 import { ensurePolyfilled } from "./polyfills";
 
 // just ensure we're polyfilled because this file relies on envvars being expanded
@@ -85,6 +86,8 @@ function getPostgresPrismaClient(connectionString: string, poolLabel?: string) {
   if (!postgresPrismaClient) {
     const schema = getSchemaFromConnectionString(connectionString);
     const pool = new Pool({ connectionString, max: 25 });
+    // pg Pool emits 'error' on idle clients (e.g. TCP reset); unhandled = process crash
+    pool.on('error', (err) => captureError("pg-pool-error", err));
     registerPgPool(pool, poolLabel ?? connectionString); // Register pool for dev performance stats
     const adapter = new PrismaPg(pool, schema ? { schema } : undefined);
     postgresPrismaClient = {
@@ -94,6 +97,27 @@ function getPostgresPrismaClient(connectionString: string, poolLabel?: string) {
     postgresPrismaClientsStore.set(connectionString, postgresPrismaClient);
   }
   return postgresPrismaClient;
+}
+
+// Cloud Run sends SIGTERM before shutdown; drain background tasks and close DB connections.
+if (!getEnvVariable("VERCEL", "") && !globalVar.__stack_prisma_sigterm_registered) {
+  globalVar.__stack_prisma_sigterm_registered = true;
+  process.on("SIGTERM", () => {
+    const keepAlive = setTimeout(() => {}, 10_000);
+    runAsynchronously(async () => {
+      try {
+        await drainInFlightPromises(8000);
+        for (const [, entry] of postgresPrismaClientsStore) {
+          await entry.client.$disconnect();
+        }
+        for (const [, client] of prismaClientsStore.neon) {
+          await client.$disconnect();
+        }
+      } finally {
+        clearTimeout(keepAlive);
+      }
+    });
+  });
 }
 
 async function tcpPing(host: string, port: number, timeout = 2000) {

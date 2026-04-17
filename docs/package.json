@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-docs",
-  "version": "2.8.77",
+  "version": "2.8.84",
   "repository": "https://github.com/stack-auth/stack-auth",
   "description": "",
   "main": "index.js",
@@ -8,8 +8,8 @@
   "type": "module",
   "scripts": {
     "build": "next build",
-    "dev": "next dev --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}04",
-    "start": "next start --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}04",
+    "dev": "next dev --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}26",
+    "start": "next start --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}26",
     "typecheck": "tsc --noEmit",
     "lint": "next lint",
     "lint:fix": "next lint --fix",

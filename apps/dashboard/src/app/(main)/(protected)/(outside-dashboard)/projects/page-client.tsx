@@ -8,7 +8,7 @@ import { getPublicEnvVar } from "@/lib/env";
 import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
 import { GearIcon } from "@phosphor-icons/react";
 import { AdminOwnedProject, Team, useStackApp, useUser } from "@stackframe/stack";
-import { projectOnboardingStatusValues, strictEmailSchema, type ProjectOnboardingStatus, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
+import { projectOnboardingStatusValues, strictEmailSchema, yupObject, type ProjectOnboardingStatus } from "@stackframe/stack-shared/dist/schema-fields";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
 import { runAsynchronously, runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { useQueryState } from "@stackframe/stack-shared/dist/utils/react";
@@ -59,6 +59,7 @@ export default function PageClient() {
   const rawProjects = user.useOwnedProjects();
   const teams = user.useTeams();
   const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
+  const isPreview = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_PREVIEW") === "true";
   const [sort, setSort] = useState<"recency" | "name">("recency");
   const [search, setSearch] = useState<string>("");
   const [openConfigFileDialog, setOpenConfigFileDialog] = useState(false);
@@ -69,10 +70,10 @@ export default function PageClient() {
   const router = useRouter();
 
   useEffect(() => {
-    if (rawProjects.length === 0 && !isLocalEmulator) {
+    if (rawProjects.length === 0 && !isLocalEmulator && !isPreview) {
       router.push('/new-project');
     }
-  }, [isLocalEmulator, router, rawProjects]);
+  }, [isLocalEmulator, isPreview, router, rawProjects]);
 
   useEffect(() => {
     let cancelled = false;

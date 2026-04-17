@@ -55,7 +55,13 @@ export const POST = createSmartRouteHandler({
       timeout: REGISTRATION_TIMEOUT_MS,
     };
 
-    const registrationOptions = await generateRegistrationOptions(opts);
+    const registrationOptionsRaw = await generateRegistrationOptions(opts);
+    const registrationOptions = registrationOptionsRaw.hints != null && registrationOptionsRaw.hints.length === 0
+      ? (() => {
+        const { hints: _, ...rest } = registrationOptionsRaw;
+        return rest;
+      })()
+      : registrationOptionsRaw;
 
     const { code } = await registerVerificationCodeHandler.createCode({
       tenancy,

@@ -1,3 +1,4 @@
+-- Add the indexes needed for recent sign-up heuristics and sorting.
 -- SPLIT_STATEMENT_SENTINEL
 -- SINGLE_STATEMENT_SENTINEL
 -- RUN_OUTSIDE_TRANSACTION_SENTINEL
@@ -16,6 +17,7 @@ CREATE INDEX CONCURRENTLY IF NOT EXISTS "ProjectUser_signUpIp_recent_idx"
 CREATE INDEX CONCURRENTLY IF NOT EXISTS "ProjectUser_signUpEmailBase_recent_idx"
   ON "ProjectUser"("tenancyId", "isAnonymous", "signUpEmailBase", "signedUpAt");
 
+-- Validate the risk score bounds once every row has the new columns.
 -- SPLIT_STATEMENT_SENTINEL
 -- SINGLE_STATEMENT_SENTINEL
 -- RUN_OUTSIDE_TRANSACTION_SENTINEL
@@ -25,27 +27,6 @@ ALTER TABLE "ProjectUser" VALIDATE CONSTRAINT "ProjectUser_risk_score_bot_range"
 -- SINGLE_STATEMENT_SENTINEL
 -- RUN_OUTSIDE_TRANSACTION_SENTINEL
 ALTER TABLE "ProjectUser" VALIDATE CONSTRAINT "ProjectUser_risk_score_free_trial_abuse_range";
-
--- SPLIT_STATEMENT_SENTINEL
--- SINGLE_STATEMENT_SENTINEL
--- RUN_OUTSIDE_TRANSACTION_SENTINEL
-CREATE OR REPLACE FUNCTION "set_project_user_signed_up_at_from_created_at"()
-RETURNS TRIGGER AS $$
-BEGIN
-  IF NEW."signedUpAt" IS NULL THEN
-    NEW."signedUpAt" := NEW."createdAt";
-  END IF;
-  RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
--- SPLIT_STATEMENT_SENTINEL
--- SINGLE_STATEMENT_SENTINEL
--- RUN_OUTSIDE_TRANSACTION_SENTINEL
-CREATE TRIGGER "ProjectUser_set_signedUpAt_from_createdAt"
-BEFORE INSERT ON "ProjectUser"
-FOR EACH ROW
-EXECUTE FUNCTION "set_project_user_signed_up_at_from_created_at"();
 
 -- SPLIT_STATEMENT_SENTINEL
 -- SINGLE_STATEMENT_SENTINEL

@@ -39,7 +39,7 @@ function ClientComponent() {
 
 ## Client vs. server
 
-`StackClientApp` contains everything needed to build a frontend application, for example the currently authenticated user. It requires a publishable client key in its initialization (usually set by the `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY` environment variable).
+`StackClientApp` contains everything needed to build a frontend application, for example the currently authenticated user. It can use a publishable client key in its initialization (usually set by the `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY` environment variable), but that key is only required if the project is configured to require publishable client keys.
 
 `StackServerApp` has all the functionality of `StackClientApp`, but also some functions with elevated permissions, eg. listing or modifying ALL users. This requires a secret server key (usually set by the `STACK_SECRET_SERVER_KEY` environment variable), which **must always be kept secret**.
 

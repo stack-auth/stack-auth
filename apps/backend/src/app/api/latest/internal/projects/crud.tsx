@@ -1,9 +1,8 @@
 import { renderedOrganizationConfigToProjectCrud } from "@/lib/config";
-import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createOrUpdateProjectWithLegacyConfig, getProjectQuery, listManagedProjectIds } from "@/lib/projects";
 import { ensureTeamMembershipExists } from "@/lib/request-checks";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
-import { globalPrismaClient, rawQueryAll } from "@/prisma-client";
+import { getPrismaClientForTenancy, globalPrismaClient, rawQueryAll } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adminUserProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
@@ -18,7 +17,7 @@ export const adminUserProjectsCrudHandlers = createLazyProxy(() => createCrudHan
   }),
   onPrepare: async ({ auth }) => {
     if (!auth.user) {
-      throw new KnownErrors.UserAuthenticationRequired;
+      throw new KnownErrors.UserAuthenticationRequired();
     }
     if (auth.project.id !== "internal") {
       throw new KnownErrors.ExpectedInternalProject();
@@ -51,6 +50,9 @@ export const adminUserProjectsCrudHandlers = createLazyProxy(() => createCrudHan
     };
   },
   onList: async ({ auth }) => {
+    if (!auth.user) {
+      throw new KnownErrors.UserAuthenticationRequired();
+    }
     const projectIds = await listManagedProjectIds(auth.user ?? throwErr('auth.user is required'));
     const projectsRecord = await rawQueryAll(globalPrismaClient, typedFromEntries(projectIds.map((id, index) => [index, getProjectQuery(id)])));
     const projects = (await Promise.all(typedEntries(projectsRecord).map(async ([_, project]) => await project))).filter(isNotNull);

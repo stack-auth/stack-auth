@@ -1,11 +1,12 @@
 import { checkApiKeySet, throwCheckApiKeySetError } from "@/lib/internal-api-keys";
+import { isAcceptedNativeAppUrl, validateRedirectUrl } from "@/lib/redirect-urls";
 import { getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { decodeAccessToken, oauthCookieSchema } from "@/lib/tokens";
-import { getRequestContextAndBotChallengeAssessment, botChallengeFlowRequestSchemaFields } from "@/lib/turnstile";
+import { botChallengeFlowRequestSchemaFields, getRequestContextAndBotChallengeAssessment } from "@/lib/turnstile";
 import { getProjectBranchFromClientId, getProvider } from "@/oauth";
 import { globalPrismaClient } from "@/prisma-client";
-import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import type { SmartResponse } from "@/route-handlers/smart-response";
+import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { urlSchema, yupArray, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
@@ -37,7 +38,7 @@ export const GET = createSmartRouteHandler({
        */
       error_redirect_url: urlSchema.optional().meta({ openapiField: { hidden: true } }),
       error_redirect_uri: urlSchema.optional(),
-      after_callback_redirect_url: yupString().optional(),
+      after_callback_redirect_url: urlSchema.optional(),
       stack_response_mode: yupString().oneOf(["json", "redirect"]).default("redirect"),
       ...botChallengeFlowRequestSchemaFields,
 
@@ -92,6 +93,13 @@ export const GET = createSmartRouteHandler({
 
     if (query.type === "link" && !query.token) {
       throw new StatusError(StatusError.BadRequest, "?token= query parameter is required for link type");
+    }
+    if (
+      query.after_callback_redirect_url
+      && !validateRedirectUrl(query.after_callback_redirect_url, tenancy)
+      && !isAcceptedNativeAppUrl(query.after_callback_redirect_url)
+    ) {
+      throw new KnownErrors.RedirectUrlNotWhitelisted();
     }
 
     const { turnstileAssessment } = await getRequestContextAndBotChallengeAssessment(query, "oauth_authenticate", tenancy);

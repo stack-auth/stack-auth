@@ -1,6 +1,5 @@
 "use client";
 
-import { DesignCard } from "@/components/design-components";
 import EmailPreview, { DEVICE_VIEWPORTS, DeviceViewport } from "@/components/email-preview";
 import { FormDialog } from "@/components/form-dialog";
 import { InputField } from "@/components/form-fields";
@@ -12,11 +11,26 @@ import { CheckIcon, DeviceMobile, DeviceTablet, Monitor, Palette, Plus, Trash } 
 import { DEFAULT_EMAIL_THEMES, DEFAULT_EMAIL_THEME_ID, previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ElementType } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
+import { DesignAnalyticsCard } from "@/components/design-components";
+
+// Section header with icon following design guide
+function SectionHeader({ icon: Icon, title }: { icon: ElementType, title: string }) {
+  return (
+    <div className="flex items-center gap-2">
+      <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
+        <Icon className="h-3.5 w-3.5 text-muted-foreground" />
+      </div>
+      <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
+        {title}
+      </span>
+    </div>
+  );
+}
 
 // Device icon component
 function DeviceIcon({ type, className }: { type: DeviceViewport['type'], className?: string }) {
@@ -149,18 +163,15 @@ export default function PageClient() {
       >
         <div className="flex flex-col gap-5">
           {/* Active Theme Card */}
-          <DesignCard glassmorphic gradient="default">
-            <div className="flex items-center justify-between gap-4">
-              <div className="flex items-center gap-4">
-                <div className="p-1.5 rounded-lg bg-foreground/[0.06] dark:bg-foreground/[0.04]">
-                  <Palette className="h-3.5 w-3.5 text-foreground/70 dark:text-muted-foreground" />
+          <DesignAnalyticsCard chart={{ type: "none", tooltipType: "none", highlightMode: "none" }}>
+            <div className="p-5">
+              <div className="flex items-center justify-between gap-4">
+                <div className="flex items-center gap-4">
+                  <SectionHeader icon={Palette} title="Active Theme" />
+                  <span className="text-sm text-muted-foreground">
+                    Currently using <span className="font-medium text-foreground">{selectedThemeData.displayName}</span>
+                  </span>
                 </div>
-                <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
-                  Active Theme
-                </span>
-                <span className="text-sm text-muted-foreground">
-                  Currently using <span className="font-medium text-foreground">{selectedThemeData.displayName}</span>
-                </span>
               </div>
               <ActionDialog
                 trigger={
@@ -208,10 +219,10 @@ export default function PageClient() {
                 )}
               </ActionDialog>
             </div>
-          </DesignCard>
+          </DesignAnalyticsCard>
 
           {/* Device Preview Card */}
-          <DesignCard glassmorphic gradient="default" contentClassName="p-0">
+          <DesignAnalyticsCard className="overflow-hidden" chart={{ type: "none", tooltipType: "none", highlightMode: "none" }}>
             {/* Header with viewport selector */}
             <div className="p-5 flex items-center justify-between gap-4">
               <div className="flex items-center gap-4">
@@ -250,7 +261,7 @@ export default function PageClient() {
                 senderEmail={`noreply@${project.displayName.toLowerCase().replace(/[^a-z0-9]/g, '')}.com`}
               />
             </div>
-          </DesignCard>
+          </DesignAnalyticsCard>
         </div>
       </PageLayout>
     </AppEnabledGuard>

@@ -1,5 +1,5 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
-import { existsSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe } from "vitest";
 import { it } from "../../../../helpers";
@@ -7,8 +7,10 @@ import { Auth, InternalApiKey, Project, backendContext, mockTurnstileTokens, nic
 
 const ZERO_RISK_SCORES = { bot: 0, free_trial_abuse: 0 } as const;
 const EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN = "emailable-not-deliverable.example.com";
-const hasPrivateRiskEngine = existsSync(path.resolve(process.cwd(), "packages/private/src/sign-up-risk-engine.ts"))
-  || existsSync(path.resolve(process.cwd(), "packages/private/dist/sign-up-risk-engine.js"));
+const hasPrivateRiskEngine = readFileSync(
+  path.resolve(process.cwd(), "apps/backend/src/private/implementation.generated.ts"),
+  "utf8",
+).includes("../private/implementation/index");
 
 const TRUSTED_IP_FIXTURE = {
   ipAddress: "127.0.0.50",

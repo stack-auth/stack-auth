@@ -57,10 +57,6 @@ const nextConfig = {
     serverMinification: false,  // needs to be disabled for oidc-provider to work, which relies on the original constructor names
   },
 
-  outputFileTracingIncludes: {
-    "/api/**": ["../../packages/private/dist/**"],
-  },
-
   serverExternalPackages: [
     'oidc-provider',
   ],

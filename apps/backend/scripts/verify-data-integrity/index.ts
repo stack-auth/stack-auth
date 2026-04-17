@@ -1,14 +1,16 @@
+import { syncExternalDatabases } from "@/lib/external-db-sync";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import type { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { deepPlainEquals, omit } from "@stackframe/stack-shared/dist/utils/objects";
+import { omit } from "@stackframe/stack-shared/dist/utils/objects";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import fs from "fs";
 
-import { createApiHelpers, type OutputData } from "./api";
+import { createApiHelpers, loadOutputData, type OutputData } from "./api";
+import { verifyClickhouseSync } from "./clickhouse-sync-verifier";
 import { createPaymentsVerifier } from "./payments-verifier";
 import { createRecurse } from "./recurse";
 import { verifyStripePayoutIntegrity } from "./stripe-payout-integrity";
@@ -19,7 +21,6 @@ const STRIPE_SECRET_KEY = getEnvVariable("STACK_STRIPE_SECRET_KEY", "");
 const USE_MOCK_STRIPE_API = STRIPE_SECRET_KEY === "sk_test_mockstripekey";
 
 let targetOutputData: OutputData | undefined = undefined;
-const currentOutputData: OutputData = {};
 
 async function main() {
   console.log();
@@ -79,12 +80,16 @@ async function main() {
   const shouldSkipNeon = flags.includes("--skip-neon");
   const recentFirst = flags.includes("--recent-first");
   const noBail = flags.includes("--no-bail");
+  const shouldSkipClickhouse = flags.includes("--skip-clickhouse");
   const maxUsersPerProjectFlag = flags.find(f => f.startsWith("--max-users-per-project="));
   const maxUsersPerProject = maxUsersPerProjectFlag
     ? parseInt(maxUsersPerProjectFlag.split("=")[1], 10)
     : Infinity;
-
   const { recurse, collectedErrors } = createRecurse({ noBail });
+
+  if (shouldSaveOutput && shouldVerifyOutput) {
+    throw new Error("Cannot use --save-output and --verify-output at the same time.");
+  }
 
   if (noBail) {
     console.log(`Running in no-bail mode: will continue on errors and report all at the end.`);
@@ -102,11 +107,12 @@ async function main() {
       throw new Error(`Cannot verify output: ${OUTPUT_FILE_PATH} does not exist`);
     }
     try {
-      targetOutputData = JSON.parse(fs.readFileSync(OUTPUT_FILE_PATH, "utf8"));
+      targetOutputData = loadOutputData(OUTPUT_FILE_PATH);
 
       // TODO next-release these are hacks for the migration, delete them
-      if (targetOutputData) {
-        targetOutputData["/api/v1/internal/projects/current"] = targetOutputData["/api/v1/internal/projects/current"].map(output => {
+      const projectCurrentOutputs = targetOutputData.get("/api/v1/internal/projects/current");
+      if (projectCurrentOutputs) {
+        targetOutputData.set("/api/v1/internal/projects/current", projectCurrentOutputs.map(output => {
           if ("config" in output.responseJson) {
             delete output.responseJson.config.id;
             output.responseJson.config.oauth_providers = output.responseJson.config.oauth_providers
@@ -116,7 +122,7 @@ async function main() {
               .map((provider: any) => omit(provider, ["enabled"]));
           }
           return output;
-        });
+        }));
       }
 
       console.log(`Loaded previous output data for verification`);
@@ -125,9 +131,9 @@ async function main() {
     }
   }
 
-  const { expectStatusCode } = createApiHelpers({
-    currentOutputData,
+  const { expectStatusCode, verifyOutputCompleteness, finalizeOutput } = createApiHelpers({
     targetOutputData,
+    outputFilePath: shouldSaveOutput ? OUTPUT_FILE_PATH : undefined,
   });
 
   const projects = await prismaClient.project.findMany({
@@ -149,6 +155,13 @@ async function main() {
   }
   if (USE_MOCK_STRIPE_API) {
     console.warn("Using mock Stripe server (STACK_STRIPE_SECRET_KEY=sk_test_mockstripekey); skipping Stripe payout integrity checks.");
+  }
+
+  const clickhouseAvailable = getEnvVariable("STACK_CLICKHOUSE_URL", "") !== "";
+  if (shouldSkipClickhouse) {
+    console.log(`Will skip ClickHouse sync verification.`);
+  } else if (!clickhouseAvailable) {
+    console.log(`STACK_CLICKHOUSE_URL not set; skipping ClickHouse sync verification.`);
   }
 
   if (maxUsersPerProject !== Infinity) {
@@ -191,30 +204,6 @@ async function main() {
       ]);
       void currentProject;
 
-      // Fetch users with pagination
-      const PAGE_LIMIT = 1000;
-      const allUsers: any[] = [];
-      let cursor: string | undefined = undefined;
-      while (allUsers.length < maxUsersPerProject) {
-        const remainingToFetch = maxUsersPerProject - allUsers.length;
-        const limit = Math.min(PAGE_LIMIT, remainingToFetch);
-        const cursorParam: string = cursor ? `&cursor=${encodeURIComponent(cursor)}` : "";
-        const usersPage = await expectStatusCode(200, `/api/v1/users?limit=${limit}${cursorParam}`, {
-          method: "GET",
-          headers: {
-            "x-stack-project-id": projectId,
-            "x-stack-access-type": "admin",
-            "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
-          },
-        });
-        allUsers.push(...usersPage.items);
-        if (!usersPage.pagination?.next_cursor) {
-          break;
-        }
-        cursor = usersPage.pagination.next_cursor;
-      }
-      const users = { items: allUsers.slice(0, maxUsersPerProject) };
-
       const tenancy = await getSoleTenancyFromProjectBranch(projectId, DEFAULT_BRANCH_ID, true);
       const paymentsConfig = tenancy ? (tenancy.config as OrganizationRenderedConfig).payments : undefined;
       const paymentsVerifier = tenancy && paymentsConfig
@@ -238,89 +227,128 @@ async function main() {
         });
       }
 
+      if (!shouldSkipClickhouse && clickhouseAvailable && tenancy) {
+        await recurse("[clickhouse sync]", async (recurse) => {
+          // Flush any pending ClickHouse syncs by running a direct sync before verifying.
+          // This avoids race conditions where QStash hasn't delivered all sync callbacks yet.
+          await syncExternalDatabases(tenancy);
+
+          await verifyClickhouseSync({
+            tenancy,
+            projectId,
+            branchId: DEFAULT_BRANCH_ID,
+            recurse,
+          });
+        });
+      }
+
       const verifiedTeams = new Set<string>();
 
       if (!skipUsers) {
-        for (let j = 0; j < users.items.length; j++) {
-          const user = users.items[j];
-          await recurse(`[user ${j + 1}/${users.items.length}] ${user.display_name ?? user.primary_email}`, async (recurse) => {
-            // get user individually
-            await expectStatusCode(200, `/api/v1/users/${user.id}`, {
-              method: "GET",
-              headers: {
-                "x-stack-project-id": projectId,
-                "x-stack-access-type": "admin",
-                "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
-              },
-            });
+        const userCount = tenancy
+          ? await (await getPrismaClientForTenancy(tenancy)).projectUser.count({ where: { tenancyId: tenancy.id } })
+          : 0;
 
-            // list project permissions
-            const projectPermissions = await expectStatusCode(200, `/api/v1/project-permissions?user_id=${user.id}`, {
-              method: "GET",
-              headers: {
-                "x-stack-project-id": projectId,
-                "x-stack-access-type": "admin",
-                "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
-              },
-            });
-            for (const projectPermission of projectPermissions.items) {
-              // `any` because these endpoint response types aren't imported here,
-              // and this script is intentionally tolerant of response shape changes.
-              if (!projectPermissionDefinitions.items.some((p: any) => p.id === projectPermission.id)) {
-                throw new StackAssertionError(deindent`
-                  Project permission ${projectPermission.id} not found in project permission definitions.
-                `);
-              }
-            }
+        // Process users page-by-page to avoid holding all users in memory at once
+        const PAGE_LIMIT = 1000;
+        let userCursor: string | undefined = undefined;
+        let usersProcessed = 0;
+        let hasMore = true;
 
-            // list teams
-            const teams = await expectStatusCode(200, `/api/v1/teams?user_id=${user.id}`, {
-              method: "GET",
-              headers: {
-                "x-stack-project-id": projectId,
-                "x-stack-access-type": "admin",
-                "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
-              },
-            });
-
-            for (const team of teams.items) {
-              await recurse(`[team ${team.id}] ${team.name}`, async (recurse) => {
-                // list team permissions
-                const teamPermissions = await expectStatusCode(200, `/api/v1/team-permissions?team_id=${team.id}`, {
-                  method: "GET",
-                  headers: {
-                    "x-stack-project-id": projectId,
-                    "x-stack-access-type": "admin",
-                    "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
-                  },
-                });
-                for (const teamPermission of teamPermissions.items) {
-                  // `any` because these endpoint response types aren't imported here,
-                  // and this script is intentionally tolerant of response shape changes.
-                  if (!teamPermissionDefinitions.items.some((p: any) => p.id === teamPermission.id)) {
-                    throw new StackAssertionError(deindent`
-                      Team permission ${teamPermission.id} not found in team permission definitions.
-                    `);
-                  }
-                }
-              });
-
-              if (paymentsVerifier && !verifiedTeams.has(team.id)) {
-                await paymentsVerifier.verifyCustomerPayments({
-                  customerType: "team",
-                  customerId: team.id,
-                });
-                verifiedTeams.add(team.id);
-              }
-            }
-
-            if (paymentsVerifier) {
-              await paymentsVerifier.verifyCustomerPayments({
-                customerType: "user",
-                customerId: user.id,
-              });
-            }
+        while (hasMore && usersProcessed < maxUsersPerProject) {
+          const remainingToFetch = maxUsersPerProject - usersProcessed;
+          const limit = Math.min(PAGE_LIMIT, remainingToFetch);
+          const cursorParam: string = userCursor ? `&cursor=${encodeURIComponent(userCursor)}` : "";
+          const usersPage = await expectStatusCode(200, `/api/v1/users?limit=${limit}${cursorParam}`, {
+            method: "GET",
+            headers: {
+              "x-stack-project-id": projectId,
+              "x-stack-access-type": "admin",
+              "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
+            },
           });
+
+          for (const user of usersPage.items) {
+            if (usersProcessed >= maxUsersPerProject) break;
+            usersProcessed++;
+            await recurse(`[user ${usersProcessed}/${Math.min(userCount, maxUsersPerProject)}] ${user.display_name ?? user.primary_email}`, async (recurse) => {
+              await expectStatusCode(200, `/api/v1/users/${user.id}`, {
+                method: "GET",
+                headers: {
+                  "x-stack-project-id": projectId,
+                  "x-stack-access-type": "admin",
+                  "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
+                },
+              });
+
+              const projectPermissions = await expectStatusCode(200, `/api/v1/project-permissions?user_id=${user.id}`, {
+                method: "GET",
+                headers: {
+                  "x-stack-project-id": projectId,
+                  "x-stack-access-type": "admin",
+                  "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
+                },
+              });
+              for (const projectPermission of projectPermissions.items) {
+                // `any` because these endpoint response types aren't imported here,
+                // and this script is intentionally tolerant of response shape changes.
+                if (!projectPermissionDefinitions.items.some((p: any) => p.id === projectPermission.id)) {
+                  throw new StackAssertionError(deindent`
+                      Project permission ${projectPermission.id} not found in project permission definitions.
+                    `);
+                }
+              }
+
+              const teams = await expectStatusCode(200, `/api/v1/teams?user_id=${user.id}`, {
+                method: "GET",
+                headers: {
+                  "x-stack-project-id": projectId,
+                  "x-stack-access-type": "admin",
+                  "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
+                },
+              });
+
+              for (const team of teams.items) {
+                await recurse(`[team ${team.id}] ${team.name}`, async (recurse) => {
+                  const teamPermissions = await expectStatusCode(200, `/api/v1/team-permissions?team_id=${team.id}`, {
+                    method: "GET",
+                    headers: {
+                      "x-stack-project-id": projectId,
+                      "x-stack-access-type": "admin",
+                      "x-stack-development-override-key": getEnvVariable("STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY"),
+                    },
+                  });
+                  for (const teamPermission of teamPermissions.items) {
+                    // `any` because these endpoint response types aren't imported here,
+                    // and this script is intentionally tolerant of response shape changes.
+                    if (!teamPermissionDefinitions.items.some((p: any) => p.id === teamPermission.id)) {
+                      throw new StackAssertionError(deindent`
+                          Team permission ${teamPermission.id} not found in team permission definitions.
+                        `);
+                    }
+                  }
+                });
+
+                if (paymentsVerifier && !verifiedTeams.has(team.id)) {
+                  await paymentsVerifier.verifyCustomerPayments({
+                    customerType: "team",
+                    customerId: team.id,
+                  });
+                  verifiedTeams.add(team.id);
+                }
+              }
+
+              if (paymentsVerifier) {
+                await paymentsVerifier.verifyCustomerPayments({
+                  customerType: "user",
+                  customerId: user.id,
+                });
+              }
+            });
+          }
+
+          hasMore = !!usersPage.pagination?.next_cursor;
+          userCursor = usersPage.pagination?.next_cursor ?? undefined;
         }
 
         if (paymentsVerifier) {
@@ -335,13 +363,9 @@ async function main() {
     });
   }
 
-  if (targetOutputData && !deepPlainEquals(currentOutputData, targetOutputData)) {
-    throw new StackAssertionError(deindent`
-      Output data mismatch between final and target output data.
-    `);
-  }
+  verifyOutputCompleteness();
   if (shouldSaveOutput) {
-    fs.writeFileSync(OUTPUT_FILE_PATH, JSON.stringify(currentOutputData, null, 2));
+    finalizeOutput();
     console.log(`Output saved to ${OUTPUT_FILE_PATH}`);
   }
 
