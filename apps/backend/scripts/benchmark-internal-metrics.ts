@@ -1,29 +1,51 @@
 /**
- * Local-only benchmark + equivalence harness for the MAU ClickHouse query in
- * apps/backend/src/app/api/latest/internal/metrics/route.tsx (loadMonthlyActiveUsers).
+ * Local-only benchmark + equivalence harness for the ClickHouse queries in
+ * apps/backend/src/app/api/latest/internal/metrics/route.tsx.
  *
- * - Seeds synthetic $token-refresh events under a unique project_id so real
- *   data is never touched.
- * - Runs the current query ("old") and the proposed query ("new") with unique
- *   query_ids, then reads peak memory_usage / read_rows / read_bytes from
- *   system.query_log for each.
- * - Runs an edge-case matrix to prove both queries return identical MAU counts.
- * - Cleans up its rows on exit (even on failure).
+ * Three modes, selected via env flags (all run by default):
  *
- * Run: pnpm --filter @stackframe/backend run with-env:dev tsx scripts/benchmark-mau-query.ts
+ *   1. MAU equivalence matrix (default ON; set BENCH_SKIP_MATRIX=1 to skip)
+ *      Small-data test cases for loadMonthlyActiveUsers. Asserts that the
+ *      BEFORE (pre-fix) and AFTER (current) queries return the same MAU
+ *      count AND the same set of individual users across 13 edge cases:
+ *      empty, dedup, anonymous filter, window boundary, null user_id,
+ *      non-UUID user_id, case variation, project isolation, etc.
+ *
+ *   2. MAU perf run (default ON; set BENCH_SKIP_PERF=1 to skip)
+ *      Runs OLD vs NEW MAU query on the heavy seed. Reads
+ *      memory_usage/read_rows/result_bytes from system.query_log and prints
+ *      a comparison table plus all candidate variants (v1 uniqExact strings,
+ *      v2 inline regex, v3 UUID keys, v4 sipHash64 [shipped], v5-v7 HLL
+ *      sketches). Also includes a set-equality check so "same count,
+ *      different users" can't slip through.
+ *
+ *   3. Full-route benchmark (set BENCH_ROUTE_QUERIES=1)
+ *      Runs every ClickHouse query in the internal-metrics route
+ *      (loadUsersByCountry, loadDailyActiveUsers, the splits,
+ *      loadMonthlyActiveUsers, analyticsOverview:{dailyEvents,
+ *      totalVisitors, topReferrers, topRegion, online}) in three stages:
+ *      BEFORE (pre-fix), AFTER (current: fixes 1 + 3), and OPTIMIZED
+ *      (further candidate opts not yet shipped — e.g. dropping the
+ *      analyticsOverview LEFT JOIN, hashed split partition keys,
+ *      loadUsersByCountry time window). Prints ranked per-query deltas and
+ *      endpoint-level totals (sum peak memory, max duration).
+ *
+ * Seeds synthetic events under a unique project_id so real data is never
+ * touched; cleans up via ALTER TABLE ... DELETE on exit.
+ *
+ * Run: pnpm --filter @stackframe/backend run with-env:dev tsx scripts/benchmark-internal-metrics.ts
  * Env knobs:
- *   BENCH_USERS       (default 200_000) – distinct users in the perf seed
- *   BENCH_EVENTS_USER (default 5)       – events per user
- *   BENCH_ANON_RATIO  (default 0.1)     – fraction flagged is_anonymous
- *   BENCH_BATCH       (default 50_000)  – insert batch size
- *   BENCH_SKIP_PERF=1                   – skip the heavy perf run
- *   BENCH_SKIP_MATRIX=1                 – skip the equivalence matrix
- *   BENCH_ROUTE_QUERIES=1               – also benchmark every ClickHouse
- *                                         query in the /internal/metrics route
- *                                         (uses the same seed)
- *   BENCH_PAGE_VIEWS_USER (default 3)   – $page-view events per user
- *   BENCH_CLICKS_USER     (default 1)   – $click events per user
- *   BENCH_TEAM_RATIO      (default 0.3) – fraction of users with a team
+ *   BENCH_USERS           (default 200_000) – distinct users in the perf seed
+ *   BENCH_EVENTS_USER     (default 5)       – $token-refresh events per user
+ *   BENCH_ANON_RATIO      (default 0.1)     – fraction flagged is_anonymous
+ *   BENCH_BATCH           (default 50_000)  – insert batch size
+ *   BENCH_SKIP_PERF=1                       – skip the heavy MAU perf run
+ *   BENCH_SKIP_MATRIX=1                     – skip the equivalence matrix
+ *   BENCH_ROUTE_QUERIES=1                   – also run the full-route
+ *                                             BEFORE/AFTER/OPTIMIZED suite
+ *   BENCH_PAGE_VIEWS_USER (default 3)       – $page-view events per user
+ *   BENCH_CLICKS_USER     (default 1)       – $click events per user
+ *   BENCH_TEAM_RATIO      (default 0.3)     – fraction of users with a team
  */
 
 import { getClickhouseAdminClient } from "@/lib/clickhouse";
@@ -811,6 +833,210 @@ const ROUTE_QUERIES_AFTER: RouteQuery[] = [
   },
 ];
 
+// More aggressive optimizations stacked on top of fixes 1+3. Each entry is
+// paired with its BEFORE/AFTER counterpart by name (normalized) so the
+// comparator can line them up.
+const ROUTE_QUERIES_OPTIMIZED: RouteQuery[] = [
+  {
+    name: "loadUsersByCountry",
+    desc: "opt: add 30-day event_at window (was unbounded)",
+    sql: `
+      SELECT
+        country_code,
+        count() AS userCount
+      FROM (
+        SELECT
+          user_id,
+          argMax(cc, event_at) AS country_code
+        FROM (
+          SELECT
+            user_id,
+            event_at,
+            CAST(data.ip_info.country_code, 'Nullable(String)') AS cc,
+            CAST(data.is_anonymous, 'UInt8') AS is_anonymous
+          FROM analytics_internal.events
+          WHERE event_type = '$token-refresh'
+            AND project_id = {projectId:String}
+            AND branch_id = {branchId:String}
+            AND user_id IS NOT NULL
+            AND event_at >= {since:DateTime}
+            AND event_at < {untilExclusive:DateTime}
+        )
+        WHERE cc IS NOT NULL
+          AND ({includeAnonymous:UInt8} = 1 OR is_anonymous = 0)
+        GROUP BY user_id
+      )
+      WHERE country_code IS NOT NULL
+      GROUP BY country_code
+      ORDER BY userCount DESC
+    `,
+  },
+  {
+    name: "loadDailyActiveUsersSplit",
+    desc: "opt: sipHash64(user_id) as window partition key + join key",
+    sql: `
+      SELECT
+        toString(w.day) AS day,
+        count() AS total_count,
+        countIf(f.first_date = w.day) AS new_count,
+        countIf(f.first_date < w.day AND w.prev_day = addDays(w.day, -1)) AS retained_count,
+        countIf(f.first_date < w.day AND (isNull(w.prev_day) OR w.prev_day < addDays(w.day, -1))) AS reactivated_count
+      FROM (
+        SELECT
+          day,
+          user_hash,
+          lagInFrame(day, 1) OVER (PARTITION BY user_hash ORDER BY day) AS prev_day
+        FROM (
+          SELECT DISTINCT
+            toDate(event_at) AS day,
+            sipHash64(assumeNotNull(user_id)) AS user_hash
+          FROM analytics_internal.events
+          WHERE event_type = '$token-refresh'
+            AND project_id = {projectId:String}
+            AND branch_id = {branchId:String}
+            AND user_id IS NOT NULL
+            AND event_at >= {since:DateTime}
+            AND event_at < {untilExclusive:DateTime}
+            AND ({includeAnonymous:UInt8} = 1 OR coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0)
+        )
+      ) AS w
+      LEFT JOIN (
+        SELECT
+          sipHash64(assumeNotNull(user_id)) AS user_hash,
+          toDate(min(event_at)) AS first_date
+        FROM analytics_internal.events
+        WHERE event_type = '$token-refresh'
+          AND project_id = {projectId:String}
+          AND branch_id = {branchId:String}
+          AND user_id IS NOT NULL
+          AND event_at < {untilExclusive:DateTime}
+          AND ({includeAnonymous:UInt8} = 1 OR coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0)
+        GROUP BY user_hash
+      ) AS f USING (user_hash)
+      GROUP BY w.day
+      ORDER BY w.day ASC
+    `,
+  },
+  {
+    name: "loadDailyActiveTeamsSplit",
+    desc: "opt: sipHash64(team_id) as window partition key + join key",
+    sql: `
+      SELECT
+        toString(w.day) AS day,
+        count() AS total_count,
+        countIf(f.first_date = w.day) AS new_count,
+        countIf(f.first_date < w.day AND w.prev_day = addDays(w.day, -1)) AS retained_count,
+        countIf(f.first_date < w.day AND (isNull(w.prev_day) OR w.prev_day < addDays(w.day, -1))) AS reactivated_count
+      FROM (
+        SELECT
+          day,
+          team_hash,
+          lagInFrame(day, 1) OVER (PARTITION BY team_hash ORDER BY day) AS prev_day
+        FROM (
+          SELECT DISTINCT
+            toDate(event_at) AS day,
+            sipHash64(assumeNotNull(team_id)) AS team_hash
+          FROM analytics_internal.events
+          WHERE event_type = '$token-refresh'
+            AND project_id = {projectId:String}
+            AND branch_id = {branchId:String}
+            AND team_id IS NOT NULL
+            AND event_at >= {since:DateTime}
+            AND event_at < {untilExclusive:DateTime}
+        )
+      ) AS w
+      LEFT JOIN (
+        SELECT
+          sipHash64(assumeNotNull(team_id)) AS team_hash,
+          toDate(min(event_at)) AS first_date
+        FROM analytics_internal.events
+        WHERE event_type = '$token-refresh'
+          AND project_id = {projectId:String}
+          AND branch_id = {branchId:String}
+          AND team_id IS NOT NULL
+          AND event_at < {untilExclusive:DateTime}
+        GROUP BY team_hash
+      ) AS f USING (team_hash)
+      GROUP BY w.day
+      ORDER BY w.day ASC
+    `,
+  },
+  {
+    name: "analyticsOverview:dailyEvents",
+    desc: "opt: drop LEFT JOIN, trust e.data.is_anonymous",
+    sql: `
+      SELECT
+        toDate(e.event_at) AS day,
+        countIf(
+          e.event_type = '$page-view'
+            AND e.user_id IS NOT NULL
+            AND ({includeAnonymous:UInt8} = 1 OR coalesce(CAST(e.data.is_anonymous, 'Nullable(UInt8)'), 0) = 0)
+        ) AS pv,
+        countIf(
+          e.event_type = '$click'
+            AND e.user_id IS NOT NULL
+            AND ({includeAnonymous:UInt8} = 1 OR coalesce(CAST(e.data.is_anonymous, 'Nullable(UInt8)'), 0) = 0)
+        ) AS cl,
+        uniqExactIf(
+          assumeNotNull(e.user_id),
+          e.event_type = '$page-view'
+            AND e.user_id IS NOT NULL
+            AND ({includeAnonymous:UInt8} = 1 OR coalesce(CAST(e.data.is_anonymous, 'Nullable(UInt8)'), 0) = 0)
+        ) AS visitors
+      FROM analytics_internal.events AS e
+      WHERE e.event_type IN ('$page-view', '$click')
+        AND e.project_id = {projectId:String}
+        AND e.branch_id = {branchId:String}
+        AND e.event_at >= {since:DateTime}
+        AND e.event_at < {untilExclusive:DateTime}
+      GROUP BY day
+      ORDER BY day ASC
+    `,
+  },
+  {
+    name: "analyticsOverview:totalVisitors",
+    desc: "opt: drop LEFT JOIN, trust e.data.is_anonymous",
+    sql: `
+      SELECT
+        uniqExactIf(
+          assumeNotNull(e.user_id),
+          e.user_id IS NOT NULL
+            AND ({includeAnonymous:UInt8} = 1 OR coalesce(CAST(e.data.is_anonymous, 'Nullable(UInt8)'), 0) = 0)
+        ) AS visitors
+      FROM analytics_internal.events AS e
+      WHERE e.event_type = '$page-view'
+        AND e.project_id = {projectId:String}
+        AND e.branch_id = {branchId:String}
+        AND e.user_id IS NOT NULL
+        AND e.event_at >= {since:DateTime}
+        AND e.event_at < {untilExclusive:DateTime}
+    `,
+  },
+  {
+    name: "analyticsOverview:topReferrers",
+    desc: "opt: drop LEFT JOIN, trust e.data.is_anonymous",
+    sql: `
+      SELECT
+        nullIf(CAST(e.data.referrer, 'String'), '') AS referrer,
+        uniqExactIf(
+          assumeNotNull(e.user_id),
+          e.user_id IS NOT NULL
+            AND ({includeAnonymous:UInt8} = 1 OR coalesce(CAST(e.data.is_anonymous, 'Nullable(UInt8)'), 0) = 0)
+        ) AS visitors
+      FROM analytics_internal.events AS e
+      WHERE e.event_type = '$page-view'
+        AND e.project_id = {projectId:String}
+        AND e.branch_id = {branchId:String}
+        AND e.event_at >= {since:DateTime}
+        AND e.event_at < {untilExclusive:DateTime}
+      GROUP BY referrer
+      HAVING visitors > 0
+      ORDER BY visitors DESC
+      LIMIT 100
+    `,
+  },
+];
+
 async function runRouteQuery(rq: RouteQuery, p: QueryParams, now: Date): Promise<string> {
   const client = getClickhouseAdminClient();
   const queryId = `bench-route-${rq.name.replace(/[^a-z0-9]/gi, "-")}-${randomUUID()}`;
@@ -857,8 +1083,41 @@ async function benchmarkRouteQueries(now: Date): Promise<void> {
     return out;
   }
 
-  const beforeStats = await runAll(ROUTE_QUERIES_BEFORE);
-  const afterStats = await runAll(ROUTE_QUERIES_AFTER);
+  // Also capture the actual row payload so we can check correctness for OPT
+  // variants (e.g., dropping the LEFT JOIN on analyticsOverview must not change counts).
+  async function runAndCollect(list: RouteQuery[]): Promise<{ stats: Map<string, QueryStats>, payloads: Map<string, unknown[]> }> {
+    const stats = new Map<string, QueryStats>();
+    const payloads = new Map<string, unknown[]>();
+    for (const rq of list) {
+      const client = getClickhouseAdminClient();
+      const queryId = `bench-route-${rq.name.replace(/[^a-z0-9]/gi, "-")}-${randomUUID()}`;
+      const baseParams: Record<string, unknown> = {
+        projectId: params.projectId,
+        branchId: params.branchId,
+        since: formatCh(params.since),
+        untilExclusive: formatCh(params.untilExclusive),
+        includeAnonymous: params.includeAnonymous ? 1 : 0,
+        uuidRe: UUID_RE_CH,
+      };
+      const extra = rq.extraParams ? rq.extraParams(now, params.untilExclusive) : {};
+      const res = await client.query({
+        query: rq.sql,
+        query_params: { ...baseParams, ...extra },
+        query_id: queryId,
+        format: "JSONEachRow",
+      });
+      const rows = (await res.json()) as unknown[];
+      payloads.set(rq.name, rows);
+      stats.set(rq.name, await readStats(queryId));
+    }
+    return { stats, payloads };
+  }
+
+  const before = await runAndCollect(ROUTE_QUERIES_BEFORE);
+  const after = await runAndCollect(ROUTE_QUERIES_AFTER);
+  const opt = await runAndCollect(ROUTE_QUERIES_OPTIMIZED);
+  const beforeStats = before.stats;
+  const afterStats = after.stats;
 
   // Normalize query names for the comparison table. Some AFTER queries have
   // the same name as BEFORE so they line up; loadMonthlyActiveUsers's BEFORE
@@ -921,12 +1180,72 @@ async function benchmarkRouteQueries(now: Date): Promise<void> {
   const sumResultBefore = pairs.reduce((a, b) => a + b.before.result_bytes, 0);
   const sumResultAfter = pairs.reduce((a, b) => a + b.after.result_bytes, 0);
 
-  console.log("\n  Totals:");
+  console.log("\n  Totals (BEFORE → AFTER):");
   console.log(`    Sum peak memory:  ${fmtBytes(sumMemBefore)} → ${fmtBytes(sumMemAfter)}  (${fmtDelta(sumMemBefore, sumMemAfter)})`);
   console.log(`    Max query dur:    ${maxDurBefore} ms → ${maxDurAfter} ms  (${fmtDelta(maxDurBefore, maxDurAfter)})  [endpoint wall-clock floor]`);
   console.log(`    Sum query dur:    ${sumDurBefore} ms → ${sumDurAfter} ms  (${fmtDelta(sumDurBefore, sumDurAfter)})  [total CPU work]`);
   console.log(`    Sum bytes read:   ${fmtBytes(sumReadBefore)} → ${fmtBytes(sumReadAfter)}  (${fmtDelta(sumReadBefore, sumReadAfter)})`);
   console.log(`    Sum result ship:  ${fmtBytes(sumResultBefore)} → ${fmtBytes(sumResultAfter)}  (${fmtDelta(sumResultBefore, sumResultAfter)})`);
+
+  // ── AFTER vs OPTIMIZED (additional peak-memory work) ───────────────────────
+  console.log("\n  AFTER vs OPTIMIZED (stacked on top of fixes 1+3):");
+  console.log("  " + [
+    padL("query", 36),
+    padR("mem AFTER", 12),
+    padR("mem OPT", 12),
+    padR("Δ mem", 12),
+    padR("dur AFTER", 11),
+    padR("dur OPT", 11),
+    padR("Δ dur", 10),
+    padL("counts=", 10),
+  ].join("  "));
+  console.log("  " + "─".repeat(140));
+
+  type OptRow = { name: string, after: QueryStats, optStats: QueryStats, countsMatch: boolean | null };
+  const optRows: OptRow[] = [];
+  for (const rq of ROUTE_QUERIES_OPTIMIZED) {
+    const optStats = opt.stats.get(rq.name);
+    const afterS = after.stats.get(rq.name);
+    const optPayload = opt.payloads.get(rq.name);
+    const afterPayload = after.payloads.get(rq.name);
+    if (!optStats || !afterS || !optPayload || !afterPayload) continue;
+    // Deep-equal JSON of both sets (ordered matters for top-N, fine otherwise).
+    const countsMatch = JSON.stringify(optPayload) === JSON.stringify(afterPayload);
+    optRows.push({ name: rq.name, after: afterS, optStats, countsMatch });
+  }
+  optRows.sort((a, b) => b.after.memory_usage - a.after.memory_usage);
+  for (const r of optRows) {
+    console.log("  " + [
+      padL(r.name, 36),
+      padR(fmtBytes(r.after.memory_usage), 12),
+      padR(fmtBytes(r.optStats.memory_usage), 12),
+      padR(fmtDelta(r.after.memory_usage, r.optStats.memory_usage), 12),
+      padR(`${r.after.query_duration_ms} ms`, 11),
+      padR(`${r.optStats.query_duration_ms} ms`, 11),
+      padR(fmtDelta(r.after.query_duration_ms, r.optStats.query_duration_ms), 10),
+      padL(r.countsMatch ? "yes" : "NO", 10),
+    ].join("  "));
+  }
+
+  // Totals if we stack OPTIMIZED on top (using OPT for queries that have an
+  // OPT variant, AFTER for queries that don't).
+  const optByName = new Map(ROUTE_QUERIES_OPTIMIZED.map((q) => [q.name, q]));
+  let sumMemStacked = 0;
+  let maxDurStacked = 0;
+  let sumDurStacked = 0;
+  for (const rq of ROUTE_QUERIES_AFTER) {
+    const nm = rq.name;
+    const optHasIt = optByName.has(nm);
+    const s = optHasIt ? opt.stats.get(nm) : after.stats.get(nm);
+    if (!s) continue;
+    sumMemStacked += s.memory_usage;
+    sumDurStacked += s.query_duration_ms;
+    maxDurStacked = Math.max(maxDurStacked, s.query_duration_ms);
+  }
+  console.log("\n  Totals (AFTER → OPTIMIZED-stacked):");
+  console.log(`    Sum peak memory:  ${fmtBytes(sumMemAfter)} → ${fmtBytes(sumMemStacked)}  (${fmtDelta(sumMemAfter, sumMemStacked)})`);
+  console.log(`    Max query dur:    ${maxDurAfter} ms → ${maxDurStacked} ms  (${fmtDelta(maxDurAfter, maxDurStacked)})`);
+  console.log(`    Sum query dur:    ${sumDurAfter} ms → ${sumDurStacked} ms  (${fmtDelta(sumDurAfter, sumDurStacked)})`);
 }
 
 async function runVariant(v: Variant, p: QueryParams): Promise<{ count: number, queryId: string }> {
