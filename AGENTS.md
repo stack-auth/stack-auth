@@ -7,7 +7,7 @@ This file provides guidance to coding agents when working with code in this repo
 ### Essential Commands
 - **Install dependencies**: `pnpm install`
 - **Run tests**: `pnpm test run` (uses Vitest). You can filter with `pnpm test run <file-filters>`. The `run` is important to not trigger watch mode
-- **Lint code**: `pnpm lint`. `pnpm lint --fix` will fix some of the linting errors, prefer that over fixing them manually.
+- **Lint code**: `pnpm lint`. `pnpm lint --fix` will fix some of the linting errors, prefer that over fixing them manually. Use `pnpm -C <package> lint` to lint a specific package.
 - **Type check**: `pnpm typecheck`
 
 #### Extra commands
@@ -108,6 +108,7 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - Any design components you add or modify in the dashboard, update the Playground page accordingly to showcase the changes.
 - Unless very clearly equivalent from types, prefer explicit null/undefinedness checks over boolean checks, eg. `foo == null` instead of `!foo`.
 - Ensure **aggressively** that all code has low coupling and high cohesion. This is really important as it makes sure our code remains consistent and maintainable. Eagerly refactor things into better abstractions and look out for them actively.
+- Always let me know about the tradeoffs and decisions you make while implementing a non-trivial change.
 - Whenever you change the URL of a page in the docs (or remove one), add a redirect in the docs-mintlify/docs.json file to make sure we don't lose any SEO juice.
 - When you made frontend (or docs, dashboard, demo, etc.) changes, and you have a browser MCP in your list of MCP tools, make sure to test the changes in the browser MCP.
 

@@ -1,4 +1,7 @@
+import { toQueryableSqlQuery } from "@/lib/bulldozer/db/index";
+import { tableIdToDebugString } from "@/lib/bulldozer/db/utilities";
 import { syncExternalDatabases } from "@/lib/external-db-sync";
+import { createPaymentsSchema } from "@/lib/payments/schema/index";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import type { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
@@ -168,6 +171,21 @@ async function main() {
     console.log(`Will check at most ${maxUsersPerProject} users per project.`);
   }
 
+  await recurse(`[bulldozer] verifying data integrity across all payments tables`, async () => {
+    const schema = createPaymentsSchema();
+    for (const table of schema._allTables) {
+      const label = tableIdToDebugString(table.tableId);
+      await recurse(`[bulldozer table] ${label}`, async () => {
+        const errors = await prismaClient.$queryRawUnsafe<unknown[]>(toQueryableSqlQuery(table.verifyDataIntegrity()));
+        if (errors.length > 0) {
+          throw new StackAssertionError(deindent`
+            Bulldozer data integrity violation in table ${label}: found ${errors.length} error row(s).
+          `, { errors });
+        }
+      });
+    }
+  });
+
   const endAt = Math.min(startAt + count, projects.length);
   for (let i = startAt; i < endAt; i++) {
     const projectId = projects[i].id;
@@ -206,7 +224,10 @@ async function main() {
 
       const tenancy = await getSoleTenancyFromProjectBranch(projectId, DEFAULT_BRANCH_ID, true);
       const paymentsConfig = tenancy ? (tenancy.config as OrganizationRenderedConfig).payments : undefined;
-      const paymentsVerifier = tenancy && paymentsConfig
+      // TODO: Re-enable payments verifier once we've reworked it
+      const PAYMENTS_VERIFIER_ENABLED: boolean = false;
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+      const paymentsVerifier = PAYMENTS_VERIFIER_ENABLED && tenancy && paymentsConfig
         ? await createPaymentsVerifier({
           projectId,
           tenancyId: tenancy.id,

@@ -1,5 +1,4 @@
 import { Prisma, PrismaClient } from "@/generated/prisma/client";
-import { getStackServerApp } from "@/stack";
 import { PrismaNeon } from "@prisma/adapter-neon";
 import { PrismaPg } from '@prisma/adapter-pg';
 import { readReplicas } from '@prisma/extension-read-replicas';
@@ -61,6 +60,7 @@ async function resolveNeonConnectionString(entry: string): Promise<string> {
   if (!isUuid(entry)) {
     return entry;
   }
+  const { getStackServerApp } = await import("@/stack");
   const store = await getStackServerApp().getDataVaultStore('neon-connection-strings');
   const secret = "no client side encryption";
   const value = await store.getValue(entry, { secret });
