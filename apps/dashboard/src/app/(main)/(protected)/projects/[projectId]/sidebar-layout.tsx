@@ -188,7 +188,7 @@ function NavItem({
     isHighlighted
       ? "bg-white/70 text-foreground shadow-sm ring-1 ring-white/60 dark:bg-transparent dark:bg-gradient-to-r dark:from-blue-500/[0.15] dark:to-blue-500/[0.08] dark:shadow-[0_0_12px_rgba(59,130,246,0.15)] dark:ring-blue-500/20"
       : inactiveClasses,
-    isSection ? "cursor-default" : "cursor-pointer",
+    "cursor-pointer",
     isSection && isExpanded && !isHighlighted && "bg-white/20 dark:bg-background/30"
   );
 
@@ -262,20 +262,27 @@ function NavItem({
   return (
     <div className="transition-[margin] duration-200">
       {isSection ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={onToggle}
-          aria-expanded={isExpanded}
-          className={buttonClasses}
-        >
-          <span className="flex min-w-0 flex-1 items-center gap-3">
+        <div className={buttonClasses}>
+          <Link href={item.firstItemHref ?? href ?? "#"} onClick={onClick} className="flex min-w-0 flex-1 items-center gap-3">
             <IconComponent className={iconClasses} />
             <span className="truncate text-sm">{item.name}</span>
-          </span>
-          <CaretDownIcon weight="bold" className={caretClasses} />
-        </Button>
+          </Link>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onToggle?.();
+            }}
+            aria-expanded={isExpanded}
+            aria-label={isExpanded ? `Collapse ${item.name}` : `Expand ${item.name}`}
+            className="h-7 w-7 rounded-md p-0 text-muted-foreground transition-all duration-150 hover:bg-white/30 hover:text-foreground hover:transition-none dark:hover:bg-background/40"
+          >
+            <CaretDownIcon weight="bold" className={caretClasses} />
+          </Button>
+        </div>
       ) : (
         <Button
           asChild
