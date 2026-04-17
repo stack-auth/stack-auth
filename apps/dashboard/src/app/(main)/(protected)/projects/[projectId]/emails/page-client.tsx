@@ -472,7 +472,10 @@ function EmailLogCard() {
     sorting: gridState.sorting,
     quickSearch: gridState.quickSearch,
     pagination: gridState.pagination,
-    paginationMode: "infinite",
+    // `listSentEmails()` returns a flat array (no cursor support in the
+    // SDK), so client-mode paginate is the right fit until the server API
+    // grows cursor pagination.
+    paginationMode: "client",
   });
 
   // Fetch email logs when component mounts
@@ -593,12 +596,6 @@ function EmailLogCard() {
           isLoading={gridData.isLoading}
           state={gridState}
           onChange={setGridState}
-          paginationMode="infinite"
-          hasMore={gridData.hasMore}
-          isLoadingMore={gridData.isLoadingMore}
-          onLoadMore={gridData.loadMore}
-          footer={false}
-
           onRowClick={(row) => {
             router.push(`email-viewer/${row.id}`);
           }}

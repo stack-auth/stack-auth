@@ -64,7 +64,7 @@ export function TeamSearchTable(props: {
     sorting: gridState.sorting,
     quickSearch: gridState.quickSearch,
     pagination: gridState.pagination,
-    paginationMode: "infinite",
+    paginationMode: "client",
   });
 
   return (
@@ -75,12 +75,6 @@ export function TeamSearchTable(props: {
       totalRowCount={gridData.totalRowCount}
       state={gridState}
       onChange={setGridState}
-      paginationMode="infinite"
-      hasMore={gridData.hasMore}
-      isLoadingMore={gridData.isLoadingMore}
-      onLoadMore={gridData.loadMore}
-      footer={false}
-
     />
   );
 }

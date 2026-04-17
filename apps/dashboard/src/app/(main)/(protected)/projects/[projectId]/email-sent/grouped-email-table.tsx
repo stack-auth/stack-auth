@@ -206,18 +206,26 @@ export function GroupedEmailTable() {
     return map;
   }, [templates]);
 
-  // Fetch all emails
+  // Fetch all emails. Kept as a single bulk fetch (rather than
+  // cursor-paginated via `dataSource`) because grouping-by-template needs
+  // access to the full set — page boundaries would split groups.
+  // TODO: if the outbox grows past a few thousand rows this will need a
+  // server-side "group and count" endpoint instead.
   useEffect(() => {
+    let cancelled = false;
     runAsynchronouslyWithAlert(async () => {
       setLoading(true);
       try {
-        // Fetch all emails - TODO: Add pagination if needed for large datasets
         const result = await stackAdminApp.listOutboxEmails();
+        if (cancelled) return;
         setEmails(result.items);
       } finally {
-        setLoading(false);
+        if (!cancelled) setLoading(false);
       }
     });
+    return () => {
+      cancelled = true;
+    };
   }, [stackAdminApp]);
 
   // Group emails by template/draft
@@ -238,7 +246,8 @@ export function GroupedEmailTable() {
     sorting: gridState.sorting,
     quickSearch: gridState.quickSearch,
     pagination: gridState.pagination,
-    paginationMode: "infinite",
+    // Must stay client-mode: grouping needs the full data set in memory.
+    paginationMode: "client",
   });
 
   if (loading) {
@@ -259,12 +268,6 @@ export function GroupedEmailTable() {
       isLoading={gridData.isLoading}
       state={gridState}
       onChange={setGridState}
-      paginationMode="infinite"
-      hasMore={gridData.hasMore}
-      isLoadingMore={gridData.isLoadingMore}
-      onLoadMore={gridData.loadMore}
-      footer={false}
-
       onRowClick={(row, _rowId, _event) => {
         if (row.sourceType === "draft" && row.sourceId) {
           router.push(`email-drafts/${row.sourceId}?stage=sent`);

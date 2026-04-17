@@ -437,6 +437,14 @@ type ItemTableRow = {
   displayName: string,
 };
 
+// TODO(ui-fixes-minor): `ItemQuantityCell` and `ItemActionsCell` each call
+// `adminApp.useItem(...)` per row. For a customer with N items that's N
+// independent Suspense boundaries + N fetches. Fine at the typical row
+// counts on this page, but if the item list ever grows large, hoist the
+// lookups into the parent (fetch all items in one pass, pass a
+// `Map<itemId, item>` down, read synchronously in `renderCell`). Per the
+// DataGrid iron rules: hooks-in-components-inside-renderCell is legal but
+// expensive — prefer parent-level bulk fetch when feasible.
 function ItemTable(props: {
   items: Array<[string, { displayName?: string | null }]>,
   customer: SelectedCustomer | null,
@@ -495,7 +503,7 @@ function ItemTable(props: {
     sorting: gridState.sorting,
     quickSearch: gridState.quickSearch,
     pagination: gridState.pagination,
-    paginationMode: "infinite",
+    paginationMode: "client",
   });
 
   return (
@@ -742,7 +750,7 @@ function ItemTableSkeleton(props: { rows: number }) {
     sorting: gridState.sorting,
     quickSearch: gridState.quickSearch,
     pagination: gridState.pagination,
-    paginationMode: "infinite",
+    paginationMode: "client",
   });
 
   return (

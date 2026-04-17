@@ -2,13 +2,13 @@
 
 import { SettingCard } from "@/components/settings";
 import { ActionDialog, Badge, Button, DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SimpleTooltip, Switch, Typography, useToast } from "@/components/ui";
-import { createDefaultDataGridState, DataGrid, DataGridToolbar, useDataSource, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
+import { createDefaultDataGridState, DataGrid, DataGridToolbar, useDataSource, type DataGridColumnDef, type DataGridDataSource } from "@stackframe/dashboard-ui-components";
 import { cn } from "@/lib/utils";
 import { DotsThreeIcon, PauseIcon, PlayIcon, XCircleIcon } from "@phosphor-icons/react";
 import { AdminEmailOutbox, AdminEmailOutboxSimpleStatus, AdminEmailOutboxStatus } from "@stackframe/stack";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
@@ -587,76 +587,46 @@ function EmailDetailSheet({
   );
 }
 
+const EMAIL_PAGE_SIZE = 50;
+
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
-  const [emails, setEmails] = useState<AdminEmailOutbox[]>([]);
-  const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [simpleStatusFilter, setSimpleStatusFilter] = useState<string>("all");
   const [selectedEmail, setSelectedEmail] = useState<AdminEmailOutbox | null>(null);
   const [detailSheetOpen, setDetailSheetOpen] = useState(false);
 
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [loadingMore, setLoadingMore] = useState(false);
-
-  const EMAIL_PAGE_SIZE = 50;
-
-  const loadEmails = useCallback(async (opts?: { cursor?: string, append?: boolean }) => {
-    const append = opts?.append ?? false;
-    const limit = EMAIL_PAGE_SIZE;
-    if (append) {
-      setLoadingMore(true);
-    } else {
-      setLoading(true);
-    }
-    try {
+  // Server-side infinite data source — cursor pagination against
+  // `listOutboxEmails`. Closure captures `statusFilter`/`simpleStatusFilter`
+  // so a filter change produces a new `dataSource` identity, which
+  // `useDataSource` uses to refetch from scratch.
+  const dataSource = useMemo<DataGridDataSource<AdminEmailOutbox>>(
+    () => async function* (params) {
       const options: { status?: string, simpleStatus?: string, cursor?: string, limit?: number } = {
-        limit,
+        limit: EMAIL_PAGE_SIZE,
       };
-      if (statusFilter !== "all") {
-        options.status = statusFilter;
-      }
-      if (simpleStatusFilter !== "all") {
-        options.simpleStatus = simpleStatusFilter;
-      }
-      if (opts?.cursor) {
-        options.cursor = opts.cursor;
-      }
+      if (statusFilter !== "all") options.status = statusFilter;
+      if (simpleStatusFilter !== "all") options.simpleStatus = simpleStatusFilter;
+      if (typeof params.cursor === "string") options.cursor = params.cursor;
       const result = await stackAdminApp.listOutboxEmails(options);
-      setEmails((prev) => {
-        if (!append) {
-          return result.items;
-        }
-        const existingIds = new Set(prev.map((e) => e.id));
-        const newItems = result.items.filter((e) => !existingIds.has(e.id));
-        return [...prev, ...newItems];
-      });
-      setNextCursor(result.nextCursor);
-    } finally {
-      setLoading(false);
-      setLoadingMore(false);
-    }
-  }, [stackAdminApp, statusFilter, simpleStatusFilter]);
-
-  useEffect(() => {
-    runAsynchronouslyWithAlert(() => loadEmails());
-  }, [loadEmails]);
+      yield {
+        rows: result.items,
+        hasMore: result.nextCursor != null,
+        nextCursor: result.nextCursor ?? undefined,
+      };
+    },
+    [stackAdminApp, statusFilter, simpleStatusFilter],
+  );
 
   const handleFilterChange = (newStatusFilter: string, newSimpleStatusFilter: string) => {
     setStatusFilter(newStatusFilter);
     setSimpleStatusFilter(newSimpleStatusFilter);
   };
 
-  const handleLoadMore = useCallback(() => {
-    if (!nextCursor || loadingMore || loading) {
-      return;
-    }
-    runAsynchronouslyWithAlert(() => loadEmails({ cursor: nextCursor, append: true }));
-  }, [nextCursor, loadingMore, loading, loadEmails]);
-
-  const handleRefresh = useCallback(async () => {
-    await loadEmails();
-  }, [loadEmails]);
+  // Stable ref the `renderCell` closures reach through to trigger a
+  // refresh. Populated further below once `useDataSource` has returned its
+  // `reload` function.
+  const reloadRef = useRef<() => void>(() => {});
 
   const emailColumns = useMemo<DataGridColumnDef<AdminEmailOutbox>[]>(() => [
     {
@@ -726,20 +696,31 @@ export default function PageClient() {
       width: 60,
       sortable: false,
       resizable: false,
-      renderCell: ({ row }) => <EmailActions email={row} onRefresh={handleRefresh} />,
+      renderCell: ({ row }) => <EmailActions email={row} onRefresh={async () => { reloadRef.current(); }} />,
     },
-  ], [handleRefresh]);
+  ], []);
 
   const [emailGridState, setEmailGridState] = useState(() => createDefaultDataGridState(emailColumns));
+  const getRowId = useCallback((row: AdminEmailOutbox) => row.id, []);
   const emailGridData = useDataSource({
-    data: emails,
+    dataSource,
     columns: emailColumns,
-    getRowId: (row) => row.id,
+    getRowId,
     sorting: emailGridState.sorting,
     quickSearch: emailGridState.quickSearch,
     pagination: emailGridState.pagination,
     paginationMode: "infinite",
   });
+
+  // Keep the ref pointed at the current `reload` so column `renderCell`
+  // closures built once still trigger a fresh fetch.
+  reloadRef.current = emailGridData.reload;
+
+  const handleRefresh = useCallback(async () => {
+    emailGridData.reload();
+  }, [emailGridData]);
+
+  const emails = emailGridData.rows;
 
   return (
     <PageLayout
@@ -790,7 +771,7 @@ export default function PageClient() {
 
         </div>
 
-        {loading ? (
+        {emailGridData.isLoading ? (
           <div className="flex justify-center py-8">
             <Typography className="text-muted-foreground">Loading emails...</Typography>
           </div>
@@ -802,14 +783,14 @@ export default function PageClient() {
           <DataGrid
             columns={emailColumns}
             rows={emailGridData.rows}
-            getRowId={(row) => row.id}
+            getRowId={getRowId}
             totalRowCount={emailGridData.totalRowCount}
             state={emailGridState}
             onChange={setEmailGridState}
             paginationMode="infinite"
-            hasMore={nextCursor !== null}
-            isLoadingMore={loadingMore}
-            onLoadMore={handleLoadMore}
+            hasMore={emailGridData.hasMore}
+            isLoadingMore={emailGridData.isLoadingMore}
+            onLoadMore={emailGridData.loadMore}
             footer={false}
             maxHeight={500}
             toolbar={(ctx) => <DataGridToolbar ctx={ctx} hideQuickSearch />}

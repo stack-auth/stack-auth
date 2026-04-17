@@ -81,6 +81,12 @@ export function SentEmailsView({ filterFn, renderActions }: SentEmailsViewProps)
   const [emails, setEmails] = useState<AdminEmailOutbox[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Kept as a bulk fetch (rather than cursor-paginated via `dataSource`)
+  // because `filterFn` is an arbitrary client-side predicate — we can't
+  // translate it to backend query params, and `computeEmailStats` needs
+  // every filtered row to produce accurate totals. If the outbox grows
+  // too large for a single fetch, we'd need a server-side stats +
+  // paginated-list endpoint.
   const refreshEmails = useCallback(async () => {
     setLoading(true);
     try {
@@ -92,7 +98,14 @@ export function SentEmailsView({ filterFn, renderActions }: SentEmailsViewProps)
   }, [stackAdminApp]);
 
   useEffect(() => {
-    runAsynchronouslyWithAlert(refreshEmails);
+    let cancelled = false;
+    runAsynchronouslyWithAlert(async () => {
+      await refreshEmails();
+      if (cancelled) return;
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [refreshEmails]);
 
   const filtered = useMemo(() => emails.filter(filterFn), [emails, filterFn]);
@@ -110,7 +123,9 @@ export function SentEmailsView({ filterFn, renderActions }: SentEmailsViewProps)
     sorting: gridState.sorting,
     quickSearch: gridState.quickSearch,
     pagination: gridState.pagination,
-    paginationMode: "infinite",
+    // Client mode: arbitrary `filterFn` + client-computed stats require the
+    // full list. See comment above `refreshEmails`.
+    paginationMode: "client",
   });
 
   return (
@@ -153,12 +168,6 @@ export function SentEmailsView({ filterFn, renderActions }: SentEmailsViewProps)
               isLoading={gridData.isLoading}
               state={gridState}
               onChange={setGridState}
-              paginationMode="infinite"
-              hasMore={gridData.hasMore}
-              isLoadingMore={gridData.isLoadingMore}
-              onLoadMore={gridData.loadMore}
-              footer={false}
-
               onRowClick={(row) => {
                 router.push(`/projects/${projectId}/email-viewer/${row.id}`);
               }}

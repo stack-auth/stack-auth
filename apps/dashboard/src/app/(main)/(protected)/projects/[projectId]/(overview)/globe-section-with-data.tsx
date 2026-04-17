@@ -11,7 +11,11 @@ export function GlobeSectionWithData({ includeAnonymous }: { includeAnonymous: b
 
   return (
     <ErrorBoundary fallback={<div className='text-center text-sm text-red-500'>Error initializing globe visualization. Please try updating your browser or enabling WebGL.</div>}>
-      <GlobeSection countryData={data.users_by_country} totalUsers={data.total_users} />
+      <GlobeSection
+        countryData={data.users_by_country}
+        totalUsers={data.total_users}
+        activeUsersByCountry={data.active_users_by_country ?? {}}
+      />
     </ErrorBoundary>
   );
 }

@@ -324,11 +324,25 @@ const DIVISIONS: Array<{ amount: number; unit: Intl.RelativeTimeFormatUnit }> = 
   { amount: Number.POSITIVE_INFINITY, unit: "year" },
 ];
 
+// Memoized per-locale formatter. `Intl.RelativeTimeFormat` construction
+// shows up as a real cost in flamegraphs for grids with many date cells,
+// so cache one instance per locale ("undefined" = default).
+const relativeTimeFormatterCache = new Map<string, Intl.RelativeTimeFormat>();
+function getRelativeTimeFormatter(locale?: string): Intl.RelativeTimeFormat {
+  const key = locale ?? "__default__";
+  let cached = relativeTimeFormatterCache.get(key);
+  if (cached == null) {
+    cached = new Intl.RelativeTimeFormat(locale, { numeric: "auto" });
+    relativeTimeFormatterCache.set(key, cached);
+  }
+  return cached;
+}
+
 /** Default relative formatter — "1 day ago" / "in 2 hours" via
  * `Intl.RelativeTimeFormat`. Pure function of the date; does NOT
  * re-render as real time passes. */
 export function defaultFormatRelative(date: Date): string {
-  const rtf = new Intl.RelativeTimeFormat(undefined, { numeric: "auto" });
+  const rtf = getRelativeTimeFormatter();
   let duration = (date.getTime() - Date.now()) / 1000;
   for (const div of DIVISIONS) {
     if (Math.abs(duration) < div.amount) {
@@ -393,7 +407,13 @@ export function exportToCsv<TRow>(
   const csvRows = rows.map((row) =>
     columns.map((col) => {
       const val = resolveColumnValue(col, row);
-      const formatted = col.formatValue ? col.formatValue(val, row) : String(val ?? "");
+      // Coerce through `?? ""` so a `formatValue` that returns undefined/null
+      // (easy to do from a ternary) doesn't crash `.includes` below.
+      // The type says `formatValue` returns string, but a consumer can
+      // easily return undefined/null from a ternary. Guard at runtime.
+      const formatted = col.formatValue
+        ? String((col.formatValue(val, row) as string | null | undefined) ?? "")
+        : String(val ?? "");
       // Escape CSV special characters
       if (formatted.includes(",") || formatted.includes('"') || formatted.includes("\n")) {
         return `"${formatted.replace(/"/g, '""')}"`;
@@ -402,7 +422,10 @@ export function exportToCsv<TRow>(
     }),
   );
 
-  const csvContent = [
+  // Prepend a UTF-8 BOM so Excel (Windows) opens the CSV as UTF-8 instead of
+  // falling back to latin-1 and mangling every display name with a non-ascii
+  // character.
+  const csvContent = "\ufeff" + [
     header.join(","),
     ...csvRows.map((row) => row.join(",")),
   ].join("\n");
@@ -412,6 +435,12 @@ export function exportToCsv<TRow>(
   const link = document.createElement("a");
   link.href = url;
   link.download = `${filename}.csv`;
-  link.click();
-  URL.revokeObjectURL(url);
+  // Safari / older Firefox need the link in the DOM to honour `.click()`.
+  document.body.appendChild(link);
+  try {
+    link.click();
+  } finally {
+    link.remove();
+    URL.revokeObjectURL(url);
+  }
 }

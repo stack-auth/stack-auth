@@ -976,10 +976,14 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
 
   const handleRowClick = useCallback(
     (row: TRow, rowId: RowId, event: React.MouseEvent) => {
-      // Selection
+      // Selection. Capture `next` via a mutable box so TS doesn't widen it
+      // to `null` across the closure boundary. The reducer stays pure; the
+      // callback fires outside of it (fixes strict-mode double-invoke that
+      // the old `setTimeout` inside the reducer hit).
       if (selectionMode !== "none") {
+        const box: { next: DataGridState["selection"] | null } = { next: null };
         onChange((s) => {
-          const next = toggleRowSelection(
+          box.next = toggleRowSelection(
             s.selection,
             rowId,
             selectionMode,
@@ -987,15 +991,13 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
             event.metaKey || event.ctrlKey,
             rowIds,
           );
-          // Fire callback after state update
-          if (onSelectionChange) {
-            const selectedRows = rows.filter((r) =>
-              next.selectedIds.has(getRowId(r)),
-            );
-            setTimeout(() => onSelectionChange(next.selectedIds, selectedRows), 0);
-          }
-          return { ...s, selection: next };
+          return { ...s, selection: box.next };
         });
+        const resolved = box.next;
+        if (onSelectionChange && resolved != null) {
+          const selectedRows = rows.filter((r) => resolved.selectedIds.has(getRowId(r)));
+          onSelectionChange(resolved.selectedIds, selectedRows);
+        }
       }
 
       onRowClick?.(row, rowId, event);
@@ -1015,17 +1017,17 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
   );
 
   const handleSelectAll = useCallback(() => {
+    const box: { next: DataGridState["selection"] | null, rows: readonly TRow[] } = { next: null, rows: [] };
     onChange((s) => {
       const allSelected = rowIds.every((id) => s.selection.selectedIds.has(id));
-      const next = allSelected ? clearSelection() : selectAll(rowIds);
-      if (onSelectionChange) {
-        const selectedRows = allSelected
-          ? []
-          : rows;
-        setTimeout(() => onSelectionChange(next.selectedIds, [...selectedRows]), 0);
-      }
-      return { ...s, selection: next };
+      box.next = allSelected ? clearSelection() : selectAll(rowIds);
+      box.rows = allSelected ? [] : rows;
+      return { ...s, selection: box.next };
     });
+    const resolvedNext = box.next;
+    if (onSelectionChange && resolvedNext != null) {
+      onSelectionChange(resolvedNext.selectedIds, [...box.rows]);
+    }
   }, [onChange, rowIds, rows, onSelectionChange]);
 
   const handleExportCsv = useCallback(() => {
@@ -1041,11 +1043,20 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
     (el: Element) => el.getBoundingClientRect().height,
     [],
   );
+  // Key each virtual item by its row id (not index) so that when rows are
+  // sorted / filtered, the virtualizer's measurement cache follows the row
+  // rather than the slot. Matters specifically in dynamic-height mode —
+  // otherwise a heavy row scrolling into slot-5 inherits slot-5's old
+  // measurement until the browser re-measures.
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollContainerRef.current,
     estimateSize: () => estimatedRowHeight,
     overscan,
+    getItemKey: (index) => {
+      const row = rows[index];
+      return row != null ? String(getRowId(row)) : index;
+    },
     ...(isDynamicRowHeight ? { measureElement: measureElementFn } : {}),
   });
 
@@ -1059,9 +1070,11 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
     if (!grid || !stickyEl) return;
 
     const parseRgba = (raw: string): [number, number, number, number] | null => {
-      const rgbaMatch = raw.match(/rgba?\(\s*([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\s*\)/) as (RegExpMatchArray & { [4]?: string }) | null;
+      const rgbaMatch = raw.match(/rgba?\(\s*([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\s*\)/);
       if (!rgbaMatch) return null;
-      const alphaRaw = rgbaMatch[4];
+      // Alpha is an optional capture group so at runtime this may be
+      // undefined, even though TS's types for `RegExp.match` say otherwise.
+      const alphaRaw = rgbaMatch[4] as string | undefined;
       return [
         Number(rgbaMatch[1]),
         Number(rgbaMatch[2]),

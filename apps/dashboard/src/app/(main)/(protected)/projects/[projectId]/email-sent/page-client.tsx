@@ -7,15 +7,15 @@ import { useRouter } from "@/components/router";
 import { Spinner, Typography } from "@/components/ui";
 import { Envelope } from "@phosphor-icons/react";
 import { AdminEmailOutbox } from "@stackframe/stack";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import {
   createDefaultDataGridState,
   DataGrid,
   useDataSource,
   type DataGridColumnDef,
+  type DataGridDataSource,
   type DataGridState,
 } from "@stackframe/dashboard-ui-components";
-import { useEffect, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -110,40 +110,46 @@ const emailTableColumns: DataGridColumnDef<AdminEmailOutbox>[] = [
   },
 ];
 
+const OUTBOX_PAGE_SIZE = 50;
+
 function EmailSendDataTable() {
   const stackAdminApp = useAdminApp();
   const router = useRouter();
-  const [emailLogs, setEmailLogs] = useState<AdminEmailOutbox[]>([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    runAsynchronouslyWithAlert(async () => {
-      setLoading(true);
-      try {
-        const result = await stackAdminApp.listOutboxEmails();
-        setEmailLogs(result.items);
-      } finally {
-        setLoading(false);
-      }
-    });
-  }, [stackAdminApp]);
 
   const [gridState, setGridState] = useState<DataGridState>(() => ({
     ...createDefaultDataGridState(emailTableColumns),
     sorting: [{ columnId: "scheduledAt", direction: "desc" }],
   }));
 
+  const dataSource = useMemo<DataGridDataSource<AdminEmailOutbox>>(
+    () => async function* (params) {
+      const cursor = typeof params.cursor === "string" ? params.cursor : undefined;
+      const result = await stackAdminApp.listOutboxEmails({
+        limit: OUTBOX_PAGE_SIZE,
+        cursor,
+      });
+      yield {
+        rows: result.items,
+        hasMore: result.nextCursor != null,
+        nextCursor: result.nextCursor ?? undefined,
+      };
+    },
+    [stackAdminApp],
+  );
+
+  const getRowId = useCallback((row: AdminEmailOutbox) => row.id, []);
+
   const gridData = useDataSource({
-    data: emailLogs,
+    dataSource,
     columns: emailTableColumns,
-    getRowId: (row) => row.id,
+    getRowId,
     sorting: gridState.sorting,
     quickSearch: gridState.quickSearch,
     pagination: gridState.pagination,
     paginationMode: "infinite",
   });
 
-  if (loading) {
+  if (gridData.isLoading) {
     return (
       <div className="flex items-center justify-center gap-2 py-8">
         <Spinner size={16} />
@@ -156,9 +162,10 @@ function EmailSendDataTable() {
     <DataGrid
       columns={emailTableColumns}
       rows={gridData.rows}
-      getRowId={(row) => row.id}
+      getRowId={getRowId}
       totalRowCount={gridData.totalRowCount}
       isLoading={gridData.isLoading}
+      isRefetching={gridData.isRefetching}
       state={gridState}
       onChange={setGridState}
       paginationMode="infinite"

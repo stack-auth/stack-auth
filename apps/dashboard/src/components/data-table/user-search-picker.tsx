@@ -80,7 +80,7 @@ function UserSearchTable(props: {
     sorting: gridState.sorting,
     quickSearch: gridState.quickSearch,
     pagination: gridState.pagination,
-    paginationMode: "infinite",
+    paginationMode: "client",
   });
 
   return (
@@ -92,7 +92,6 @@ function UserSearchTable(props: {
       isLoading={gridData.isLoading}
       state={gridState}
       onChange={setGridState}
-      paginationMode="infinite"
       maxHeight={280}
       toolbar={false}
       footer={false}

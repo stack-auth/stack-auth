@@ -98,16 +98,20 @@ export const MetricsAnalyticsOverviewSchema = yupObject({
   daily_page_views: MetricsDataPointsSchema,
   daily_clicks: MetricsDataPointsSchema,
   daily_visitors: MetricsDataPointsSchema,
-  // Token-refresh-based anonymous visitor fallback. Used by the dashboard when
-  // the analytics app isn't installed (no `$page-view` events). See
+  // Token-refresh-derived anonymous-visitor fallback. Populated only when the
+  // analytics app isn't installed (no `$page-view` events) — counts DISTINCT
+  // anonymous users per day from the events table. See
   // `loadAnonymousVisitorsFromTokenRefresh` in the backend metrics route.
-  daily_visitors_fallback: MetricsDataPointsSchema,
+  //
+  // Optional for one release cycle so older clients/servers don't hard-fail
+  // validation during a staged rollout. Tighten to `.defined()` after.
+  daily_anonymous_visitors_fallback: yupArray(MetricsDataPointSchema).optional().default([]),
   daily_revenue: yupArray(MetricsDailyRevenuePointSchema).defined(),
   total_revenue_cents: yupNumber().integer().defined(),
   total_replays: yupNumber().integer().defined(),
   recent_replays: yupNumber().integer().defined(),
   visitors: yupNumber().integer().defined(),
-  visitors_fallback: yupNumber().integer().defined(),
+  anonymous_visitors_fallback: yupNumber().integer().optional().default(0),
   avg_session_seconds: yupNumber().defined(),
   online_live: yupNumber().integer().defined(),
   revenue_per_visitor: yupNumber().defined(),
@@ -141,11 +145,23 @@ export const MetricsRecentUserSchema = yupObject({
   last_active_at_millis: yupNumber().nullable().defined(),
 }).noUnknown(false).defined();
 
+// Sampled "currently live" users keyed by ISO country code. Populated by
+// joining a bounded ClickHouse sample (last N hours of `$token-refresh`
+// events grouped by country) with the corresponding Prisma profile rows, so
+// the overview globe can render real avatars of real users from each
+// country. Optional for one release cycle so clients talking to older
+// servers don't fail validation on the returned body.
+export const MetricsActiveUsersByCountrySchema = yupRecord(
+  yupString().defined(),
+  yupArray(MetricsRecentUserSchema).defined(),
+).optional().default({});
+
 export const MetricsResponseBodySchema = yupObject({
   total_users: yupNumber().integer().defined(),
   daily_users: MetricsDataPointsSchema,
   daily_active_users: MetricsDataPointsSchema,
   users_by_country: yupRecord(yupString().defined(), yupNumber().defined()).defined(),
+  active_users_by_country: MetricsActiveUsersByCountrySchema,
   // recently_registered/active are CRUD User objects passed through from the
   // backend. The schema only validates the fields the dashboard actually
   // reads — extra fields from UsersCrud["Admin"]["Read"] are allowed through.

@@ -96,7 +96,7 @@ export function PaymentProductTable({ products }: { products: Record<string, Bra
     sorting: gridState.sorting,
     quickSearch: gridState.quickSearch,
     pagination: gridState.pagination,
-    paginationMode: "infinite",
+    paginationMode: "client",
   });
 
   return (
@@ -107,13 +107,7 @@ export function PaymentProductTable({ products }: { products: Record<string, Bra
       totalRowCount={gridData.totalRowCount}
       state={gridState}
       onChange={setGridState}
-      paginationMode="infinite"
-      hasMore={gridData.hasMore}
-      isLoadingMore={gridData.isLoadingMore}
-      onLoadMore={gridData.loadMore}
-      footer={false}
       toolbar={false}
-
     />
   );
 }

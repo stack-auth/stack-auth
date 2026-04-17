@@ -1011,7 +1011,7 @@ function MetricsContent({
     // When the analytics app isn't installed there are no `$page-view` events,
     // so fall back to token-refresh-derived anonymous visitors so the card has
     // something meaningful to render instead of a flat zero line.
-    const dailyVis = analyticsEnabled ? analytics.daily_visitors : analytics.daily_visitors_fallback;
+    const dailyVis = analyticsEnabled ? analytics.daily_visitors : analytics.daily_anonymous_visitors_fallback;
 
     const visitorMap = new Map(dailyVis.map(d => [d.date, d.activity]));
     const revenueMap = new Map(dailyRev.map(d => [d.date, d]));
@@ -1031,7 +1031,7 @@ function MetricsContent({
     })).sort((a, b) => stringCompare(a.date, b.date));
 
     return points;
-  }, [analytics.daily_revenue, analytics.daily_visitors, analytics.daily_visitors_fallback, dauStackedData, dauTotalsByDate, analyticsEnabled, paymentsEnabled]);
+  }, [analytics.daily_revenue, analytics.daily_visitors, analytics.daily_anonymous_visitors_fallback, dauStackedData, dauTotalsByDate, analyticsEnabled, paymentsEnabled]);
   const composedData = useMemo<ComposedDataPoint[]>(
     () => filterStackedDatapointsByTimeRange(allComposedData, timeRange, customDateRange),
     [allComposedData, timeRange, customDateRange],
@@ -1279,7 +1279,6 @@ function MetricsContent({
         <DonutChartDisplay
           datapoints={data.login_methods}
           compact
-          height={180}
           gradientColor="blue"
         />
         <EmailBreakdownCard

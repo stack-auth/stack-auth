@@ -1,16 +1,19 @@
 'use client';
 import { InternalApiKey } from '@stackframe/stack';
-import { ActionCell, ActionDialog, Badge } from "@/components/ui";
+import { ActionCell, ActionDialog, Badge, Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui";
 import {
   createDefaultDataGridState,
   DataGrid,
   useDataSource,
   type DataGridColumnDef,
 } from "@stackframe/dashboard-ui-components";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
+
+type ApiKeyStatus = 'valid' | 'expired' | 'revoked';
+type ApiKeyStatusFilter = 'all' | ApiKeyStatus;
 
 type ExtendedInternalApiKey = InternalApiKey & {
-  status: 'valid' | 'expired' | 'revoked',
+  status: ApiKeyStatus,
 };
 
 /** Matches previous `DateCell` + `ignoreAfterYears={50}` behaviour. */
@@ -125,7 +128,7 @@ const getColumns = (showPublishableClientKey: boolean): DataGridColumnDef<Extend
       id: "expiresAt",
       header: "Expires At",
       accessor: "expiresAt",
-      type: "custom",
+      type: "dateTime",
       width: 180,
       renderCell: ({ row }) => (
         <span className="truncate">{formatApiKeyDateDisplay(row.expiresAt)}</span>
@@ -135,7 +138,7 @@ const getColumns = (showPublishableClientKey: boolean): DataGridColumnDef<Extend
       id: "createdAt",
       header: "Created At",
       accessor: "createdAt",
-      type: "custom",
+      type: "dateTime",
       width: 180,
       renderCell: ({ row }) => (
         <span className="truncate">{formatApiKeyDateDisplay(row.createdAt)}</span>
@@ -166,11 +169,14 @@ export function InternalApiKeyTable(props: { apiKeys: InternalApiKey[], showPubl
     [showPublishableClientKey],
   );
 
+  // Grid state is initialized lazily on first mount; DataGrid tolerates columns
+  // whose ids vanish (clientKey toggle) so we do NOT reinit state when columns
+  // change — that would wipe user-adjusted widths/sort/search.
   const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
 
-  useEffect(() => {
-    setGridState(createDefaultDataGridState(columns));
-  }, [columns]);
+  // Default to "valid" so the page looks the same as before the DataGrid
+  // migration (the old faceted filter defaulted to ['valid']).
+  const [statusFilter, setStatusFilter] = useState<ApiKeyStatusFilter>("valid");
 
   const extendedApiKeys = useMemo(() => {
     const keys = props.apiKeys.map((apiKey) => ({
@@ -186,14 +192,19 @@ export function InternalApiKeyTable(props: { apiKeys: InternalApiKey[], showPubl
     });
   }, [props.apiKeys]);
 
+  const filteredApiKeys = useMemo(
+    () => statusFilter === "all" ? extendedApiKeys : extendedApiKeys.filter((k) => k.status === statusFilter),
+    [extendedApiKeys, statusFilter],
+  );
+
   const gridData = useDataSource({
-    data: extendedApiKeys,
+    data: filteredApiKeys,
     columns,
     getRowId: (row) => row.id,
     sorting: gridState.sorting,
     quickSearch: gridState.quickSearch,
     pagination: gridState.pagination,
-    paginationMode: "infinite",
+    paginationMode: "client",
   });
 
   return (
@@ -205,12 +216,20 @@ export function InternalApiKeyTable(props: { apiKeys: InternalApiKey[], showPubl
       isLoading={gridData.isLoading}
       state={gridState}
       onChange={setGridState}
-      paginationMode="infinite"
-      hasMore={gridData.hasMore}
-      isLoadingMore={gridData.isLoadingMore}
-      onLoadMore={gridData.loadMore}
+      toolbarExtra={
+        <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v as ApiKeyStatusFilter)}>
+          <SelectTrigger className="h-8 w-[140px]">
+            <SelectValue placeholder="Status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All</SelectItem>
+            <SelectItem value="valid">Valid</SelectItem>
+            <SelectItem value="expired">Expired</SelectItem>
+            <SelectItem value="revoked">Revoked</SelectItem>
+          </SelectContent>
+        </Select>
+      }
       footer={false}
-
     />
   );
 }

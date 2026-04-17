@@ -225,7 +225,7 @@ export function PermissionTable<T extends AdminPermissionDefinition>(props: {
     sorting: gridState.sorting,
     quickSearch: gridState.quickSearch,
     pagination: gridState.pagination,
-    paginationMode: "infinite",
+    paginationMode: "client",
   });
 
   return (
@@ -236,15 +236,9 @@ export function PermissionTable<T extends AdminPermissionDefinition>(props: {
       totalRowCount={gridData.totalRowCount}
       state={gridState}
       onChange={setGridState}
-      paginationMode="infinite"
-      hasMore={gridData.hasMore}
-      isLoadingMore={gridData.isLoadingMore}
-      onLoadMore={gridData.loadMore}
       rowHeight="auto"
       estimatedRowHeight={44}
-      footer={false}
-
-      strings={{ searchPlaceholder: "Filter by ID" }}
+      strings={{ searchPlaceholder: "Filter" }}
     />
   );
 }

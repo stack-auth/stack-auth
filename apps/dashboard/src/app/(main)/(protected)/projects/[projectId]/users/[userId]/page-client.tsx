@@ -40,10 +40,12 @@ import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialo
 import { AtIcon, CalendarIcon, CheckIcon, DotsThreeIcon, EnvelopeIcon, GlobeIcon, HashIcon, ProhibitIcon, ShieldIcon, SquareIcon, XIcon } from "@phosphor-icons/react";
 import { ServerContactChannel, ServerOAuthProvider, ServerUser } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { isValidCountryCode, normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
+import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { captureError, StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+import { CountryCodeInput } from "@/components/country-code-select";
 import { useMemo, useState } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../../app-enabled-guard";
@@ -429,18 +431,17 @@ function UserDetails({ user }: UserDetailsProps) {
         }} />
       </UserInfo>
       <UserInfo icon={<GlobeIcon size={16}/>} name="Sign-up country code">
-        <EditableInput
-          value={user.countryCode ?? ""}
-          placeholder="-"
-          onUpdate={async (newValue) => {
-            const trimmed = newValue.trim();
-            if (trimmed !== "" && !isValidCountryCode(trimmed)) {
-              throw new StackAssertionError("Please enter a valid 2-letter country code (e.g. US, DE, JP)");
-            }
-            await user.update({
-              countryCode: trimmed ? normalizeCountryCode(trimmed) : null,
+        <CountryCodeInput
+          value={user.countryCode ?? null}
+          onChange={(newValue) => {
+            runAsynchronouslyWithAlert(async () => {
+              await user.update({
+                countryCode: newValue ? normalizeCountryCode(newValue) : null,
+              });
             });
           }}
+          placeholder="-"
+          className="w-full h-8 text-sm"
         />
       </UserInfo>
       <UserInfo icon={<ShieldIcon size={16}/>} name="Risk score: free trial abuse">

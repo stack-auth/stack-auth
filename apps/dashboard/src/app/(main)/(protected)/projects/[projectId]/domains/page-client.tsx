@@ -338,7 +338,7 @@ function DomainDataGrid({ domains }: { domains: DomainEntry[] }) {
     sorting: gridState.sorting,
     quickSearch: gridState.quickSearch,
     pagination: gridState.pagination,
-    paginationMode: "infinite",
+    paginationMode: "client",
   });
 
   return (

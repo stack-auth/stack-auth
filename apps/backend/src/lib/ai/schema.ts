@@ -10,7 +10,12 @@ export const requestBodySchema = yupObject({
   speed: yupString().oneOf(MODEL_SPEEDS).defined(),
   tools: yupArray(yupString().oneOf(TOOL_NAMES).defined()).defined(),
   systemPrompt: yupString().oneOf(SYSTEM_PROMPT_IDS).defined(),
-  messages: yupArray(yupMixed<ModelMessage>().defined()).defined().min(1),
+  messages: yupArray(
+    yupObject({
+      role: yupString().oneOf(["user", "assistant", "tool"]).defined(),
+      content: yupMixed<ModelMessage["content"]>().defined(),
+    }).defined()
+  ).defined().min(1),
   projectId: yupString().optional().nullable(),
 });
 

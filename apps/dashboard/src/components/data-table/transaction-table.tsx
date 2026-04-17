@@ -1,10 +1,14 @@
+// TODO(ui-fixes-minor): URL-synced cursor (page state) was dropped when this
+// table moved from the hand-rolled cursor cache to DataGrid infinite scroll.
+// Reload resets scroll position and re-fetches from scratch. Restore if
+// product cares about deep-linking to specific rows.
 'use client';
 
 import { useAdminApp } from '@/app/(main)/(protected)/projects/[projectId]/use-admin-app';
 import { ActionCell, ActionDialog, Alert, AlertDescription, AvatarCell, Badge, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui';
 import type { Icon as PhosphorIcon } from '@phosphor-icons/react';
 import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, GearIcon, ProhibitIcon, QuestionIcon, ShoppingCartIcon, ShuffleIcon } from '@phosphor-icons/react';
-import { createDefaultDataGridState, DataGrid, DataGridToolbar, type DataGridColumnDef, type DataGridState } from '@stackframe/dashboard-ui-components';
+import { createDefaultDataGridState, DataGrid, DataGridToolbar, useDataSource, type DataGridColumnDef, type DataGridDataSource, type DataGridState } from '@stackframe/dashboard-ui-components';
 import type { Transaction, TransactionEntry, TransactionType } from '@stackframe/stack-shared/dist/interface/crud/transactions';
 import { TRANSACTION_TYPES } from '@stackframe/stack-shared/dist/interface/crud/transactions';
 import { moneyAmountSchema } from '@stackframe/stack-shared/dist/schema-fields';
@@ -452,74 +456,31 @@ function TransactionTableBody(props: {
   const app = useAdminApp();
   const { filters, setFilters } = props;
 
-  const [transactions, setTransactions] = useState<Transaction[]>([]);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefetching, setIsRefetching] = useState(false);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-
-  const hasDataRef = useRef(false);
-  const abortRef = useRef<AbortController | null>(null);
-
-  const listParams = useMemo(() => ({
-    limit: PAGE_SIZE,
-    type: filters.type,
-    customerType: filters.customerType,
-  }), [filters.type, filters.customerType]);
-
-  const listParamsRef = useRef(listParams);
-  listParamsRef.current = listParams;
-
-  useEffect(() => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    if (hasDataRef.current) {
-      setIsRefetching(true);
-    } else {
-      setIsLoading(true);
-    }
-
-    runAsynchronouslyWithAlert(async () => {
-      try {
-        const result = await app.listTransactions(listParams);
-        if (controller.signal.aborted) return;
-        setTransactions(result.transactions);
-        setNextCursor(result.nextCursor);
-        hasDataRef.current = true;
-      } finally {
-        if (!controller.signal.aborted) {
-          setIsLoading(false);
-          setIsRefetching(false);
-        }
-      }
-    });
-
-    return () => controller.abort();
-  }, [listParams, app]);
-
-  const loadMore = useCallback(async () => {
-    if (!nextCursor || isLoadingMore) return;
-    setIsLoadingMore(true);
-    const requestedParams = listParamsRef.current;
-    try {
-      const result = await app.listTransactions({ ...requestedParams, cursor: nextCursor });
-      if (listParamsRef.current !== requestedParams) return;
-      setTransactions((prev) => {
-        const existingIds = new Set(prev.map((t) => t.id));
-        const newItems = result.transactions.filter((t) => !existingIds.has(t.id));
-        return [...prev, ...newItems];
+  const dataSource = useMemo<DataGridDataSource<Transaction>>(
+    () => async function* (params) {
+      const cursor = typeof params.cursor === "string" ? params.cursor : undefined;
+      const result = await app.listTransactions({
+        limit: PAGE_SIZE,
+        type: filters.type,
+        customerType: filters.customerType,
+        cursor,
       });
-      setNextCursor(result.nextCursor);
-    } finally {
-      setIsLoadingMore(false);
-    }
-  }, [nextCursor, isLoadingMore, app]);
+      yield {
+        rows: result.transactions,
+        hasMore: result.nextCursor != null,
+        nextCursor: result.nextCursor ?? undefined,
+      };
+    },
+    [app, filters.type, filters.customerType],
+  );
 
-  const summaryById = useMemo(() => {
-    return new Map(transactions.map((transaction) => [transaction.id, getTransactionSummary(transaction)]));
-  }, [transactions]);
+  const getRowId = useCallback((row: Transaction) => row.id, []);
+
+  // `summaryById` is populated AFTER useDataSource returns rows, but the
+  // column `renderCell` closures read it via ref so columns can be defined
+  // first and stay stable across paginate/append. Empty initially; filled
+  // below once we have rows.
+  const summaryByIdRef = useRef<Map<string, ReturnType<typeof getTransactionSummary>>>(new Map());
 
   const columns = useMemo<DataGridColumnDef<Transaction>[]>(() => [
     {
@@ -533,7 +494,7 @@ function TransactionTableBody(props: {
       resizable: false,
       hideable: false,
       renderCell: ({ row }) => {
-        const summary = summaryById.get(row.id);
+        const summary = summaryByIdRef.current.get(row.id);
         const displayType = summary?.displayType;
         if (!displayType) {
           return <span>—</span>;
@@ -560,7 +521,7 @@ function TransactionTableBody(props: {
       flex: 1,
       sortable: false,
       renderCell: ({ row }) => {
-        const summary = summaryById.get(row.id);
+        const summary = summaryByIdRef.current.get(row.id);
         if (summary?.customerType === 'user' && summary.customerId) {
           return <UserAvatarCell userId={summary.customerId} />;
         }
@@ -583,7 +544,7 @@ function TransactionTableBody(props: {
       maxWidth: 120,
       sortable: false,
       renderCell: ({ row }) => {
-        const summary = summaryById.get(row.id);
+        const summary = summaryByIdRef.current.get(row.id);
         return <span>{summary?.amountDisplay ?? '—'}</span>;
       },
     },
@@ -596,7 +557,7 @@ function TransactionTableBody(props: {
       flex: 1,
       sortable: false,
       renderCell: ({ row }) => {
-        const summary = summaryById.get(row.id);
+        const summary = summaryByIdRef.current.get(row.id);
         return (
           <div className="flex items-center gap-2">
             <span className="truncate">{summary?.detail ?? '—'}</span>
@@ -630,7 +591,7 @@ function TransactionTableBody(props: {
       hideable: false,
       resizable: false,
       renderCell: ({ row }) => {
-        const summary = summaryById.get(row.id);
+        const summary = summaryByIdRef.current.get(row.id);
         return (
           <RefundActionCell
             transaction={row}
@@ -639,17 +600,31 @@ function TransactionTableBody(props: {
         );
       },
     },
-  ], [summaryById]);
+  ], []);
 
   const [gridState, setGridState] = useState<DataGridState>(() =>
     createDefaultDataGridState(columns)
   );
 
+  const gridData = useDataSource({
+    dataSource,
+    columns,
+    getRowId,
+    sorting: gridState.sorting,
+    quickSearch: gridState.quickSearch,
+    pagination: gridState.pagination,
+    paginationMode: "infinite",
+  });
+
+  // Populate `summaryByIdRef` from the current rows — the `renderCell`
+  // closures read this on every render.
+  summaryByIdRef.current = useMemo(
+    () => new Map(gridData.rows.map((transaction) => [transaction.id, getTransactionSummary(transaction)])),
+    [gridData.rows],
+  );
+
   const filterTypeValue = filters.type ?? "__all";
   const filterCustomerValue = filters.customerType ?? "__all";
-  const handleLoadMore = useCallback(() => {
-    runAsynchronouslyWithAlert(loadMore);
-  }, [loadMore]);
   const handleTypeChange = useCallback((value: string) => {
     setFilters((prev) => {
       if (value === "__all") {
@@ -682,16 +657,16 @@ function TransactionTableBody(props: {
   return (
     <DataGrid
       columns={columns}
-      rows={transactions}
-      getRowId={(row) => row.id}
-      isLoading={isLoading}
-      isRefetching={isRefetching}
+      rows={gridData.rows}
+      getRowId={getRowId}
+      isLoading={gridData.isLoading}
+      isRefetching={gridData.isRefetching}
       state={gridState}
       onChange={setGridState}
       paginationMode="infinite"
-      hasMore={nextCursor != null}
-      isLoadingMore={isLoadingMore}
-      onLoadMore={handleLoadMore}
+      hasMore={gridData.hasMore}
+      isLoadingMore={gridData.isLoadingMore}
+      onLoadMore={gridData.loadMore}
       footer={false}
       rowHeight={56}
 

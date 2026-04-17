@@ -272,7 +272,7 @@ function SequencerDataGrid({ status, loading }: { status: ExternalDbSyncStatus |
     sorting: gridState.sorting,
     quickSearch: gridState.quickSearch,
     pagination: gridState.pagination,
-    paginationMode: "infinite",
+    paginationMode: "client",
   });
 
   return (
@@ -309,7 +309,7 @@ function DeletedRowsDataGrid({ rows, loading }: { rows: DeletedRowEntry[], loadi
     sorting: gridState.sorting,
     quickSearch: gridState.quickSearch,
     pagination: gridState.pagination,
-    paginationMode: "infinite",
+    paginationMode: "client",
   });
 
   return (
@@ -359,7 +359,7 @@ function PollerDataGrid({ status, loading }: { status: ExternalDbSyncStatus | nu
     sorting: gridState.sorting,
     quickSearch: gridState.quickSearch,
     pagination: gridState.pagination,
-    paginationMode: "infinite",
+    paginationMode: "client",
   });
 
   return (
@@ -392,7 +392,7 @@ function SyncEngineDataGrid({ rows, loading }: { rows: MappingStats[], loading: 
     sorting: gridState.sorting,
     quickSearch: gridState.quickSearch,
     pagination: gridState.pagination,
-    paginationMode: "infinite",
+    paginationMode: "client",
   });
 
   return (

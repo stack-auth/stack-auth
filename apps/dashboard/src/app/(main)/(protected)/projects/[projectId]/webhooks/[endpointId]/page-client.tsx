@@ -141,7 +141,7 @@ function MessageTable(props: { endpointId: string }) {
     sorting: gridState.sorting,
     quickSearch: gridState.quickSearch,
     pagination: gridState.pagination,
-    paginationMode: "infinite",
+    paginationMode: "client",
   });
 
   if (!messages.loaded) return messages.rendered;

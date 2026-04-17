@@ -14,16 +14,10 @@ import {
 import { Calendar } from "@/components/ui/calendar";
 import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
-import {
-  AnalyticsChart,
-  DEFAULT_FORMAT_KIND,
-  type AnalyticsChartPalette,
-  type AnalyticsChartState,
-} from "@stackframe/dashboard-ui-components";
 import { UserAvatar } from '@stackframe/stack';
 import { fromNow, isWeekend } from '@stackframe/stack-shared/dist/utils/dates';
 import { useId, useMemo, useState } from "react";
-import { Area, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Line, LineChart, TooltipProps, XAxis, YAxis } from "recharts";
+import { Area, Bar, BarChart, CartesianGrid, Cell, ComposedChart, Line, LineChart, Pie, PieChart, TooltipProps, XAxis, YAxis } from "recharts";
 
 export type CustomDateRange = {
   from: Date,
@@ -1910,67 +1904,29 @@ export function DonutChartDisplay({
 }: {
   datapoints: AuthMethodDatapoint[],
   className?: string,
-  height?: number,
   compact?: boolean,
   gradientColor?: GradientColor,
 }) {
   const total = datapoints.reduce((sum, d) => sum + d.count, 0);
   const hasData = datapoints.length > 0 && total > 0;
 
-  const explicitColors = useMemo(
-    () => datapoints.map((d) => BRAND_CONFIG_MAP.get(d.method)?.color ?? "#8B5CF6"),
+  // Static snapshot pie — uses Recharts directly rather than forcing a
+  // time-series chart (AnalyticsChart) to render a single "fake" bucket.
+  // Lightweight, no state, and the pieces of data we actually need here are
+  // just a color + label per slice.
+  const pieData = useMemo(
+    () => datapoints.map((d) => {
+      const brand = BRAND_CONFIG_MAP.get(d.method);
+      const label = typeof brand?.label === "string" ? brand.label : d.method;
+      const color = brand?.color ?? "#8B5CF6";
+      return { key: d.method, label, value: d.count, color };
+    }),
     [datapoints],
   );
 
-  const pieState = useMemo<AnalyticsChartState>(() => ({
-    view: "pie",
-    xFormatKind: DEFAULT_FORMAT_KIND.datetime,
-    yFormatKind: { type: "numeric" },
-    layers: [
-      {
-        id: "primary",
-        kind: "primary",
-        label: "Auth Methods",
-        visible: true,
-        color: "#2563eb",
-        type: "area",
-        strokeStyle: "solid",
-        fillOpacity: 0.22,
-        segmented: true,
-        segments: [datapoints.map((d) => d.count)],
-        segmentSeries: datapoints.map((d) => {
-          const brand = BRAND_CONFIG_MAP.get(d.method);
-          const label = typeof brand?.label === "string" ? brand.label : d.method;
-          return { key: d.method, label };
-        }),
-        inProgressFromIndex: null,
-      },
-      {
-        id: "compare",
-        kind: "compare",
-        label: "Previous",
-        visible: false,
-        color: "#f59e0b",
-        type: "line",
-        strokeStyle: "dashed",
-        segmented: false,
-        inProgressFromIndex: null,
-      },
-      { id: "annotations", kind: "annotations", label: "Annotations", visible: false, color: "#f59e0b" },
-    ],
-  }), [datapoints]);
-
-  const palette = useMemo<Partial<AnalyticsChartPalette>>(() => ({
-    primary: { kind: "explicit", light: explicitColors, dark: explicitColors },
-    compare: { kind: "explicit", light: explicitColors, dark: explicitColors },
-  }), [explicitColors]);
-
-  const pieData = useMemo(
-    () => [{ ts: Date.now(), values: { primary: total } }],
-    [total],
-  );
-
-  const noop = () => {};
+  const innerRadius = compact ? 40 : 60;
+  const outerRadius = compact ? 55 : 85;
+  const sizeClass = compact ? "h-[150px] w-[150px]" : "h-[200px] w-[200px]";
 
   return (
     <ChartCard
@@ -1992,7 +1948,7 @@ export function DonutChartDisplay({
           </div>
         </div>
       </div>
-      <div className={cn(compact ? "p-4 pt-0" : "p-5 pt-0", "flex-1 min-h-0 flex flex-col overflow-visible")}>
+      <div className={cn(compact ? "p-4 pt-0" : "p-5 pt-0", "flex-1 min-h-0 flex flex-col items-center justify-center gap-4 overflow-visible")}>
         {!hasData ? (
           <div className="flex-1 flex items-center justify-center">
             <Typography variant="secondary" className="text-xs text-center">
@@ -2000,20 +1956,47 @@ export function DonutChartDisplay({
             </Typography>
           </div>
         ) : (
-          <AnalyticsChart
-            data={pieData}
-            state={pieState}
-            onChange={noop}
-            palette={palette}
-            pie={{
-              innerRadius: compact ? 40 : 60,
-              outerRadius: compact ? 55 : 85,
-              className: cn(
-                "aspect-square",
-                compact ? "h-[150px] w-[150px]" : "h-[200px] w-[200px]",
-              ),
-            }}
-          />
+          <>
+            <div className={cn("relative aspect-square", sizeClass)}>
+              <PieChart width={compact ? 150 : 200} height={compact ? 150 : 200}>
+                <Pie
+                  data={pieData}
+                  dataKey="value"
+                  nameKey="label"
+                  innerRadius={innerRadius}
+                  outerRadius={outerRadius}
+                  paddingAngle={1}
+                  isAnimationActive={false}
+                  stroke="none"
+                >
+                  {pieData.map((slice) => (
+                    <Cell key={slice.key} fill={slice.color} />
+                  ))}
+                </Pie>
+              </PieChart>
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Total</span>
+                <span className="text-base font-semibold tabular-nums text-foreground">
+                  {total.toLocaleString()}
+                </span>
+              </div>
+            </div>
+            <ul className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs min-w-0 w-full">
+              {pieData.map((slice) => (
+                <li key={slice.key} className="flex items-center gap-2 min-w-0">
+                  <span
+                    className="h-2 w-2 rounded-full shrink-0"
+                    style={{ backgroundColor: slice.color }}
+                    aria-hidden
+                  />
+                  <span className="truncate text-muted-foreground">{slice.label}</span>
+                  <span className="ml-auto tabular-nums text-foreground">
+                    {slice.value.toLocaleString()}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
       </div>
     </ChartCard>

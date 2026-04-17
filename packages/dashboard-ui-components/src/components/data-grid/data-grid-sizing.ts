@@ -6,6 +6,15 @@ import type { DataGridColumnDef } from "./types";
 // resizes every cell in a column with zero React re-renders.
 
 function colVar(id: string): `--col-${string}` {
+  // Column ids flow into CSS custom-property names. Non-ident chars would
+  // break the cascade silently, so fail loud in dev. Consumers should stick
+  // to stable ascii-ident ids for every column.
+  if (process.env.NODE_ENV !== "production" && !/^[A-Za-z_][A-Za-z0-9_-]*$/.test(id)) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      `[DataGrid] column id ${JSON.stringify(id)} contains characters that are not safe in a CSS custom property name. Prefer ascii identifiers.`
+    );
+  }
   return `--col-${id}`;
 }
 
@@ -16,6 +25,9 @@ function colVar(id: string): `--col-${string}` {
 
 const MIN_COL_WIDTH = 20;
 const MIN_CUSTOM_HEADER_WIDTH = 50;
+// Default upper bound on column width (both initial sizing + resize clamp).
+// Kept generous because consumers can override per-column via `col.maxWidth`.
+const DEFAULT_MAX_COL_WIDTH = 800;
 // px-3 both sides + gap-1.5 + sort icon (h-3 w-3) + 2px rounding buffer
 const HEADER_CHROME_PX = 12 + 12 + 6 + 12 + 2;
 
@@ -68,7 +80,7 @@ export function getColumnSizingStyle<TRow>(col: DataGridColumnDef<TRow>): CSSPro
     flex: `${grow} 0 ${w}`,
     width: w,
     minWidth: getEffectiveMinWidth(col),
-    maxWidth: grow > 0 ? undefined : (col.maxWidth ?? 800),
+    maxWidth: grow > 0 ? undefined : (col.maxWidth ?? DEFAULT_MAX_COL_WIDTH),
   };
 }
 
@@ -95,6 +107,6 @@ export function applyDraggedColumnWidth(
 
 export function clampColumnWidth<TRow>(col: DataGridColumnDef<TRow>, width: number): number {
   const minWidth = getEffectiveMinWidth(col);
-  const maxWidth = col.maxWidth ?? 800;
+  const maxWidth = col.maxWidth ?? DEFAULT_MAX_COL_WIDTH;
   return Math.max(minWidth, Math.min(maxWidth, width));
 }

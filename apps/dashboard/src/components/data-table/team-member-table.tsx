@@ -415,7 +415,7 @@ export function TeamMemberTable(props: { users: ServerUser[], team: ServerTeam }
     sorting: gridState.sorting,
     quickSearch: gridState.quickSearch,
     pagination: gridState.pagination,
-    paginationMode: "infinite",
+    paginationMode: "client",
   });
 
   return (
@@ -427,13 +427,8 @@ export function TeamMemberTable(props: { users: ServerUser[], team: ServerTeam }
       isLoading={isLoadingExtendedUsers}
       state={gridState}
       onChange={setGridState}
-      paginationMode="infinite"
-      hasMore={gridData.hasMore}
-      isLoadingMore={gridData.isLoadingMore}
-      onLoadMore={gridData.loadMore}
       rowHeight="auto"
       estimatedRowHeight={44}
-      footer={false}
       fillHeight={false}
     />
   );

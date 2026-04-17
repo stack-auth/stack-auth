@@ -463,7 +463,7 @@ function Endpoints(props: { updateFn: () => void, onTestRequested: (endpoint: En
     sorting: gridState.sorting,
     quickSearch: gridState.quickSearch,
     pagination: gridState.pagination,
-    paginationMode: "infinite",
+    paginationMode: "client",
   });
 
   if (!endpoints.loaded) {

@@ -1,3 +1,7 @@
+// TODO(ui-fixes-minor): URL-synced search state was dropped in the DataGrid
+// migration — the debounced search routes to the server but the current
+// query is no longer reflected in the URL. Restore via `useUrlQueryState`
+// when product is ready to treat this as a regression.
 'use client';
 
 import { useAdminApp } from '@/app/(main)/(protected)/projects/[projectId]/use-admin-app';
@@ -6,11 +10,13 @@ import type { ServerUser } from '@stackframe/stack';
 import {
   createDefaultDataGridState,
   DataGrid,
+  useDataSource,
   type DataGridColumnDef,
+  type DataGridDataSource,
   type DataGridState,
 } from "@stackframe/dashboard-ui-components";
-import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useMemo, useRef, useState } from "react";
+import { useDebounce } from "use-debounce";
 import { extendUsers } from "./user-table";
 
 const PAGE_SIZE = 25;
@@ -22,71 +28,6 @@ export function TeamMemberSearchTable(props: {
   const stackAdminApp = useAdminApp();
   const actionRef = useRef(props.action);
   actionRef.current = props.action;
-
-  const [search, setSearch] = useState("");
-  const [rows, setRows] = useState<ServerUser[]>([]);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefetching, setIsRefetching] = useState(false);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-
-  const hasDataRef = useRef(false);
-  const abortRef = useRef<AbortController | null>(null);
-
-  useEffect(() => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    if (hasDataRef.current) {
-      setIsRefetching(true);
-    } else {
-      setIsLoading(true);
-    }
-
-    runAsynchronouslyWithAlert(async () => {
-      try {
-        const result = await stackAdminApp.listUsers({
-          limit: PAGE_SIZE,
-          query: search || undefined,
-        });
-        if (controller.signal.aborted) return;
-        setRows(extendUsers(result));
-        setNextCursor(result.nextCursor);
-        hasDataRef.current = true;
-      } finally {
-        if (!controller.signal.aborted) {
-          setIsLoading(false);
-          setIsRefetching(false);
-        }
-      }
-    });
-
-    return () => controller.abort();
-  }, [search, stackAdminApp]);
-
-  const loadMore = useCallback(async () => {
-    if (!nextCursor || isLoadingMore) return;
-    setIsLoadingMore(true);
-    const activeSearch = search;
-    const activeCursor = nextCursor;
-    try {
-      const result = await stackAdminApp.listUsers({
-        limit: PAGE_SIZE,
-        query: activeSearch || undefined,
-        cursor: activeCursor,
-      });
-      if (search !== activeSearch || abortRef.current?.signal.aborted) return;
-      setRows((prev) => {
-        const existingIds = new Set(prev.map((r) => r.id));
-        const newRows = extendUsers(result).filter((r) => !existingIds.has(r.id));
-        return [...prev, ...newRows];
-      });
-      setNextCursor(result.nextCursor);
-    } finally {
-      setIsLoadingMore(false);
-    }
-  }, [nextCursor, isLoadingMore, search, stackAdminApp]);
 
   const columns = useMemo<DataGridColumnDef<ServerUser>[]>(() => [
     {
@@ -150,34 +91,58 @@ export function TeamMemberSearchTable(props: {
     createDefaultDataGridState(columns)
   );
 
-  const trimmedQuickSearch = gridState.quickSearch.trim();
+  // Debounce the toolbar search so we don't hit `listUsers` on every keystroke.
+  const [debouncedQuickSearch] = useDebounce(gridState.quickSearch.trim(), SEARCH_DEBOUNCE_MS);
 
-  useEffect(() => {
-    const timeout = setTimeout(() => {
-      setSearch((prev) => (prev === trimmedQuickSearch ? prev : trimmedQuickSearch));
-    }, SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(timeout);
-  }, [trimmedQuickSearch]);
+  // Server-side infinite data source. Identity is stable (no closure state
+  // beyond `stackAdminApp`) so refetches are driven purely by the debounced
+  // `quickSearch` key inside `useDataSource`.
+  const dataSource = useMemo<DataGridDataSource<ServerUser>>(
+    () => async function* (params) {
+      const query = typeof params.quickSearch === "string" && params.quickSearch.trim().length > 0
+        ? params.quickSearch.trim()
+        : undefined;
+      const cursor = typeof params.cursor === "string" ? params.cursor : undefined;
+      const result = await stackAdminApp.listUsers({
+        limit: PAGE_SIZE,
+        query,
+        cursor,
+      });
+      yield {
+        rows: extendUsers(result),
+        hasMore: result.nextCursor != null,
+        nextCursor: result.nextCursor ?? undefined,
+      };
+    },
+    [stackAdminApp],
+  );
 
-  const handleLoadMore = useCallback(() => {
-    runAsynchronouslyWithAlert(loadMore);
-  }, [loadMore]);
+  const getRowId = useCallback((row: ServerUser) => row.id, []);
+
+  const gridData = useDataSource({
+    dataSource,
+    columns,
+    getRowId,
+    sorting: gridState.sorting,
+    quickSearch: debouncedQuickSearch,
+    pagination: gridState.pagination,
+    paginationMode: "infinite",
+  });
 
   return (
     <DataGrid
       columns={columns}
-      rows={rows}
-      getRowId={(row) => row.id}
-      isLoading={isLoading}
-      isRefetching={isRefetching}
+      rows={gridData.rows}
+      getRowId={getRowId}
+      isLoading={gridData.isLoading}
+      isRefetching={gridData.isRefetching}
       state={gridState}
       onChange={setGridState}
       paginationMode="infinite"
-      hasMore={nextCursor != null}
-      isLoadingMore={isLoadingMore}
-      onLoadMore={handleLoadMore}
+      hasMore={gridData.hasMore}
+      isLoadingMore={gridData.isLoadingMore}
+      onLoadMore={gridData.loadMore}
       footer={false}
-
       emptyState={
         <div className="text-center py-8">
           <p className="text-sm text-muted-foreground">No users found</p>

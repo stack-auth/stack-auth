@@ -2,14 +2,26 @@ import { useWaitForIdle } from '@/hooks/use-wait-for-idle';
 import { useThemeWatcher } from '@/lib/theme';
 import { cn } from '@/lib/utils';
 import useResizeObserver from '@react-hook/resize-observer';
-import { useUser } from '@stackframe/stack';
+import { UserAvatar, useUser } from '@stackframe/stack';
+import type { MetricsRecentUser } from '@stackframe/stack-shared/dist/interface/admin-metrics';
+import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { use } from '@stackframe/stack-shared/dist/utils/react';
 import { getFlagEmoji } from '@stackframe/stack-shared/dist/utils/unicode';
 import dynamic from 'next/dynamic';
 import { RefObject, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { GlobeMethods } from 'react-globe.gl';
-import { FrontSide, MeshLambertMaterial, Vector3 } from 'three';
+import {
+  BoxGeometry,
+  ConeGeometry,
+  CylinderGeometry,
+  FrontSide,
+  Group,
+  Mesh,
+  MeshLambertMaterial,
+  SphereGeometry,
+  Vector3,
+} from 'three';
 
 export const globeImages = {
   light: 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAAAXNSR0IArs4c6QAAAERlWElmTU0AKgAAAAgAAYdpAAQAAAABAAAAGgAAAAAAA6ABAAMAAAABAAEAAKACAAQAAAABAAAAAaADAAQAAAABAAAAAQAAAAD5Ip3+AAAADUlEQVQIHWO48vjffwAI+QO1AqIWWgAAAABJRU5ErkJggg==',
@@ -48,14 +60,323 @@ function calculateGlobeVisualDiameter(globeRef: RefObject<GlobeMethods | undefin
   return visualRadius * 1.065; // Return diameter
 }
 
-export function GlobeSection({ countryData, totalUsers, children }: {countryData: Record<string, number>, totalUsers: number, children?: React.ReactNode}) {
+// --- Country point-in-polygon (used by the orbiting satellites to detect
+// which country they're currently flying over). Ring coordinates are
+// [longitude, latitude] per GeoJSON spec.
+function pointInRing(lng: number, lat: number, ring: number[][]): boolean {
+  let inside = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const a = ring[i] ?? throwErr(`point-in-ring: missing vertex ${i} in ring of length ${ring.length}`);
+    const b = ring[j] ?? throwErr(`point-in-ring: missing vertex ${j} in ring of length ${ring.length}`);
+    const xi = a[0] ?? 0;
+    const yi = a[1] ?? 0;
+    const xj = b[0] ?? 0;
+    const yj = b[1] ?? 0;
+    const intersect = ((yi > lat) !== (yj > lat))
+      && (lng < ((xj - xi) * (lat - yi)) / ((yj - yi) || 1e-12) + xi);
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+function pointInFeature(lng: number, lat: number, feature: any): boolean {
+  const bbox = feature.bbox;
+  if (bbox && (lng < bbox[0] || lng > bbox[2] || lat < bbox[1] || lat > bbox[3])) {
+    return false;
+  }
+  const geometry = feature.geometry;
+  if (!geometry) return false;
+  const { type, coordinates } = geometry;
+  if (type === 'Polygon') {
+    if (!coordinates[0] || !pointInRing(lng, lat, coordinates[0])) return false;
+    for (let i = 1; i < coordinates.length; i++) {
+      if (pointInRing(lng, lat, coordinates[i])) return false;
+    }
+    return true;
+  }
+  if (type === 'MultiPolygon') {
+    for (const poly of coordinates) {
+      if (!poly[0] || !pointInRing(lng, lat, poly[0])) continue;
+      let inHole = false;
+      for (let i = 1; i < poly.length; i++) {
+        if (pointInRing(lng, lat, poly[i])) {
+          inHole = true;
+          break;
+        }
+      }
+      if (!inHole) return true;
+    }
+    return false;
+  }
+  return false;
+}
+
+function findCountryAt(
+  lat: number,
+  lng: number,
+  features: any[],
+): { code: string, name: string } | null {
+  for (const feature of features) {
+    if (pointInFeature(lng, lat, feature)) {
+      return {
+        code: feature.properties.ISO_A2_EH,
+        name: feature.properties.NAME,
+      };
+    }
+  }
+  return null;
+}
+
+// --- Build a small, cute satellite: chunky body + two solar panels +
+// a little yellow antenna. All sizes are relative to `size`.
+function createCuteSatelliteMesh(size: number, theme: 'light' | 'dark'): Group {
+  const group = new Group();
+
+  const bodyColor = theme === 'dark' ? 0xe2e8f0 : 0xf8fafc;
+  const bodyEmissive = theme === 'dark' ? 0x1e3a8a : 0x60a5fa;
+  const panelColor = theme === 'dark' ? 0x2563eb : 0x1d4ed8;
+  const panelEmissive = theme === 'dark' ? 0x1e40af : 0x60a5fa;
+  const antennaColor = 0xfacc15;
+  const antennaEmissive = 0xf59e0b;
+
+  const body = new Mesh(
+    new BoxGeometry(size, size * 0.7, size * 0.7),
+    new MeshLambertMaterial({
+      color: bodyColor,
+      emissive: bodyEmissive,
+      emissiveIntensity: theme === 'dark' ? 0.35 : 0.15,
+    }),
+  );
+  group.add(body);
+
+  const panelGeometry = new BoxGeometry(size * 2.2, size * 0.08, size * 0.9);
+  const panelMaterial = new MeshLambertMaterial({
+    color: panelColor,
+    emissive: panelEmissive,
+    emissiveIntensity: theme === 'dark' ? 0.4 : 0.2,
+  });
+  const leftPanel = new Mesh(panelGeometry, panelMaterial);
+  leftPanel.position.x = -(size * 1.55);
+  group.add(leftPanel);
+  const rightPanel = new Mesh(panelGeometry, panelMaterial);
+  rightPanel.position.x = size * 1.55;
+  group.add(rightPanel);
+
+  const panelStrut = new Mesh(
+    new CylinderGeometry(size * 0.05, size * 0.05, size * 1.2, 6),
+    new MeshLambertMaterial({ color: 0x94a3b8 }),
+  );
+  panelStrut.rotation.z = Math.PI / 2;
+  group.add(panelStrut);
+
+  const dish = new Mesh(
+    new SphereGeometry(size * 0.22, 10, 10, 0, Math.PI * 2, 0, Math.PI / 2),
+    new MeshLambertMaterial({
+      color: 0xf1f5f9,
+      emissive: 0xcbd5f5,
+      emissiveIntensity: 0.25,
+      side: FrontSide,
+    }),
+  );
+  dish.position.y = size * 0.45;
+  dish.rotation.x = Math.PI;
+  group.add(dish);
+
+  const antenna = new Mesh(
+    new ConeGeometry(size * 0.08, size * 0.45, 8),
+    new MeshLambertMaterial({
+      color: antennaColor,
+      emissive: antennaEmissive,
+      emissiveIntensity: 0.5,
+    }),
+  );
+  antenna.position.y = size * 0.75;
+  group.add(antenna);
+
+  return group;
+}
+
+// --- Country visualization data (centroid + rough visual area on the
+// sphere). Computed once from the GeoJSON features and memoised — driving
+// both live-user avatar placement and the per-country avatar-count scaling.
+type CountryVizData = {
+  code: string,
+  name: string,
+  centroid: { lat: number, lng: number },
+  bboxDegSize: number, // max(width, height) in degrees — used for spacing avatars
+  visualArea: number,  // rough relative area (deg² × cos(lat)); used for count + size
+};
+
+function computeLargestRingCentroid(geometry: any): { lat: number, lng: number } | null {
+  if (!geometry) return null;
+  const { type, coordinates } = geometry;
+  const rings: number[][][] = type === 'Polygon'
+    ? [coordinates[0]].filter(Boolean)
+    : type === 'MultiPolygon'
+      ? coordinates.map((poly: number[][][]) => poly[0]).filter(Boolean)
+      : [];
+  if (rings.length === 0) return null;
+
+  // Pick the largest ring by |signed area| so we don't get confused by tiny
+  // outlying islands when looking for a country's visual anchor.
+  let best: { ring: number[][], absArea: number, cx: number, cy: number } | null = null;
+  for (const ring of rings) {
+    if (ring.length < 3) continue;
+    let area = 0;
+    let cx = 0;
+    let cy = 0;
+    for (let i = 0; i < ring.length - 1; i++) {
+      const a = ring[i] ?? throwErr(`ring vertex ${i} missing`);
+      const b = ring[i + 1] ?? throwErr(`ring vertex ${i + 1} missing`);
+      const x0 = a[0] ?? 0;
+      const y0 = a[1] ?? 0;
+      const x1 = b[0] ?? 0;
+      const y1 = b[1] ?? 0;
+      const cross = x0 * y1 - x1 * y0;
+      area += cross;
+      cx += (x0 + x1) * cross;
+      cy += (y0 + y1) * cross;
+    }
+    area *= 0.5;
+    const absArea = Math.abs(area);
+    if (absArea < 1e-10) continue;
+    if (!best || absArea > best.absArea) {
+      best = { ring, absArea, cx: cx / (6 * area), cy: cy / (6 * area) };
+    }
+  }
+  if (!best) return null;
+  return { lng: best.cx, lat: best.cy };
+}
+
+function computeCountryVizData(features: any[]): Map<string, CountryVizData> {
+  const out = new Map<string, CountryVizData>();
+  for (const feature of features) {
+    const code = feature.properties.ISO_A2_EH;
+    const name = feature.properties.NAME;
+    if (!code || code.length < 2) continue;
+    const centroid = computeLargestRingCentroid(feature.geometry);
+    if (!centroid) continue;
+    const bbox = feature.bbox;
+    if (!bbox) continue;
+    const w = bbox[2] - bbox[0];
+    const h = bbox[3] - bbox[1];
+    const centerLat = (bbox[1] + bbox[3]) / 2;
+    const cosLat = Math.max(0.1, Math.cos((centerLat * Math.PI) / 180));
+    out.set(code, {
+      code,
+      name,
+      centroid,
+      bboxDegSize: Math.max(w, h),
+      visualArea: w * h * cosLat,
+    });
+  }
+  return out;
+}
+
+// How many live-user avatars to draw for a country, based on its visual
+// area on the globe. Capped at 4 so crowded continents don't turn into
+// confetti, and always <= number of sampled users for that country.
+function avatarCountForCountry(visualArea: number, availableUsers: number): number {
+  const ideal = Math.max(1, Math.min(4, Math.ceil(Math.sqrt(visualArea / 60))));
+  return Math.min(ideal, availableUsers);
+}
+
+// Avatar pixel size scales gently with the log of the country's visual
+// area so small nations still get a readable bubble but big ones feel
+// more "important".
+function avatarSizeForCountry(visualArea: number): number {
+  const size = 20 + Math.log(1 + Math.max(0, visualArea)) * 2;
+  return Math.min(34, Math.max(18, Math.round(size)));
+}
+
+// Distribute N avatars around a centroid in a small ring, scaled relative
+// to the country's bbox so they stay inside it on a zoomed-out globe.
+function avatarOffsets(n: number, bboxDegSize: number): Array<{ dLat: number, dLng: number }> {
+  if (n <= 1) return [{ dLat: 0, dLng: 0 }];
+  const radius = Math.min(6, bboxDegSize * 0.18);
+  const out: Array<{ dLat: number, dLng: number }> = [];
+  for (let i = 0; i < n; i++) {
+    const angle = (i / n) * Math.PI * 2 + (n === 2 ? Math.PI / 2 : 0);
+    // Latitude gets half the radius: globe foreshortening makes vertical
+    // offsets read stronger than horizontal ones.
+    out.push({
+      dLat: Math.sin(angle) * radius * 0.55,
+      dLng: Math.cos(angle) * radius,
+    });
+  }
+  return out;
+}
+
+type LiveAvatarPlacement = {
+  key: string,             // stable React key
+  user: MetricsRecentUser,
+  country: CountryVizData,
+  lat: number,
+  lng: number,
+  size: number,
+  ringDelayMs: number,     // stagger pings across avatars so they don't all pulse in lockstep
+};
+
+function buildLiveAvatarPlacements(
+  activeUsersByCountry: Record<string, MetricsRecentUser[]>,
+  vizData: Map<string, CountryVizData>,
+): LiveAvatarPlacement[] {
+  const out: LiveAvatarPlacement[] = [];
+  let avatarIndex = 0;
+  for (const [rawCode, users] of Object.entries(activeUsersByCountry)) {
+    if (users.length === 0) continue;
+    const code = rawCode.toUpperCase();
+    const country = vizData.get(code);
+    if (!country) continue;
+    const count = avatarCountForCountry(country.visualArea, users.length);
+    if (count <= 0) continue;
+    const size = avatarSizeForCountry(country.visualArea);
+    const offsets = avatarOffsets(count, country.bboxDegSize);
+    for (let i = 0; i < count; i++) {
+      const user = users[i] ?? throwErr(`avatar slot ${i} out of range for country ${code}`);
+      const offset = offsets[i] ?? throwErr(`offset slot ${i} out of range (count=${count})`);
+      out.push({
+        key: `${code}-${user.id}`,
+        user,
+        country,
+        lat: country.centroid.lat + offset.dLat,
+        lng: country.centroid.lng + offset.dLng,
+        size,
+        // staggered delay across all avatars (mod 1200 for 3 "phases")
+        ringDelayMs: (avatarIndex++ * 400) % 1200,
+      });
+    }
+  }
+  return out;
+}
+
+type SatelliteHandle = {
+  mesh: Group,
+  orbitNormal: Vector3,
+  orbitRight: Vector3,   // reference direction in orbit plane (phase 0 points here)
+  orbitUp: Vector3,      // orbitNormal × orbitRight
+  orbitRadius: number,
+  orbitAltitude: number,
+  angularSpeed: number,  // radians per millisecond
+  phase: number,         // radians, added to angularSpeed * t
+  currentCountry: { code: string, name: string } | null,
+  currentUser: MetricsRecentUser | null,
+  lastCountryCheckAt: number,
+};
+
+export function GlobeSection({ countryData, totalUsers, activeUsersByCountry, satelliteCount, children }: {countryData: Record<string, number>, totalUsers: number, activeUsersByCountry?: Record<string, MetricsRecentUser[]>, satelliteCount?: number, children?: React.ReactNode}) {
   const hasWaitedForIdle = useWaitForIdle(1000, 5000);
   if (!hasWaitedForIdle) {
     return <GlobeLoading devReason="waiting for cpu" />;
   }
   return (
     <Suspense fallback={<GlobeLoading devReason="suspended" />}>
-      <GlobeSectionInner countryData={countryData} totalUsers={totalUsers} />
+      <GlobeSectionInner
+        countryData={countryData}
+        totalUsers={totalUsers}
+        activeUsersByCountry={activeUsersByCountry ?? {}}
+        satelliteCount={satelliteCount ?? 2}
+      />
     </Suspense>
   );
 }
@@ -149,16 +470,23 @@ function GlobeLoading(props: { devReason: string, className?: string }) {
   );
 }
 
-function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: Record<string, number>, totalUsers: number, children?: React.ReactNode}) {
+function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, satelliteCount, children }: {countryData: Record<string, number>, totalUsers: number, activeUsersByCountry: Record<string, MetricsRecentUser[]>, satelliteCount: number, children?: React.ReactNode}) {
   const countries = use(countriesPromise);
   const globeRef = useRef<GlobeMethods | undefined>(undefined);
 
-  const globeWindowRef = useRef<HTMLDivElement>(null);
-  const globeWindowSize = useSize(globeWindowRef);
+  // Precompute per-country anchors/areas once — the GeoJSON is static across
+  // renders so this only recomputes on theme/refresh remounts (cheap either way).
+  const countryVizData = useMemo(() => computeCountryVizData(countries.features), [countries]);
+  const liveAvatars = useMemo(
+    () => buildLiveAvatarPlacements(activeUsersByCountry, countryVizData),
+    [activeUsersByCountry, countryVizData],
+  );
+
+  // Only `globeContainerSize` is actually consumed (drives zoom / border math
+  // further down). The other refs/useSize calls were leftovers from an earlier
+  // layout and each spawned a live ResizeObserver subscription for no reason.
   const globeContainerRef = useRef<HTMLDivElement>(null);
   const globeContainerSize = useSize(globeContainerRef);
-  const sectionContainerRef = useRef<HTMLDivElement>(null);
-  const sectionContainerSize = useSize(sectionContainerRef);
 
   // Measure the parent element so the root can size itself to min(w, h) of
   // the available space (container queries misfire here on initial layout).
@@ -347,24 +675,284 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
   // TODO fix it without a workaround
   const [errorRefreshCount, setErrorRefreshCount] = useState(0);
   useEffect(() => {
+    // Clear the deferred dev-only log if the component unmounts before it
+    // fires, otherwise it'd run on whatever page the user navigated to.
+    let devLogTimer: ReturnType<typeof setTimeout> | null = null;
     const handleError = (event: ErrorEvent) => {
       if (event.error?.message?.includes("Cannot read properties of undefined (reading 'count')")) {
         console.error("Globe rendering error — refreshing it", event);
         setErrorRefreshCount(e => e + 1);
         if (process.env.NODE_ENV === "development") {
-          setTimeout(() => {
-            alert("Globe rendering error — it has now been refreshed. TODO let's fix this");
+          devLogTimer = setTimeout(() => {
+            devLogTimer = null;
+            // eslint-disable-next-line no-console
+            console.warn("[globe] Rendering error was caught and the scene was remounted. TODO fix the underlying react-globe bug.");
           }, 1000);
         }
       }
     };
     window.addEventListener('error', handleError);
-    return () => window.removeEventListener('error', handleError);
+    return () => {
+      window.removeEventListener('error', handleError);
+      if (devLogTimer != null) {
+        clearTimeout(devLogTimer);
+      }
+    };
   }, []);
 
   const tooltipRef = useRef<HTMLDivElement>(null);
 
   const [globeReady, setGlobeReady] = useState(false);
+
+  // --- Satellites: cute 3D objects orbiting the globe. Positions are driven
+  // directly in Three.js (not through react-globe.gl's `objectsData`) to avoid
+  // the per-frame React re-renders that would otherwise cause, and the avatar
+  // HTML overlay is positioned via `getScreenCoords` in the same rAF loop.
+  const satelliteOverlayRef = useRef<HTMLDivElement>(null);
+  type SatelliteDisplay = {
+    country: { code: string, name: string },
+    user: MetricsRecentUser | null,
+  };
+  const [satelliteDisplays, setSatelliteDisplays] = useState<Array<SatelliteDisplay | null>>(
+    () => Array.from({ length: satelliteCount }, () => null),
+  );
+  // Refs to each satellite's avatar DOM node, registered by index.
+  const avatarRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const setAvatarRef = (index: number) => (el: HTMLDivElement | null) => {
+    avatarRefs.current[index] = el;
+  };
+
+  // Keep the latest per-country user pool in a ref so the satellite rAF loop
+  // picks fresh data without re-binding (it would otherwise restart the
+  // orbits every time the metrics refresh).
+  const activeUsersByCountryRef = useRef(activeUsersByCountry);
+  activeUsersByCountryRef.current = activeUsersByCountry;
+
+  // --- Live user avatar layer: one ref per placement, populated via a
+  // separate rAF loop that projects each avatar's lat/lng onto the canvas.
+  const liveAvatarRefs = useRef<Array<HTMLDivElement | null>>([]);
+  const setLiveAvatarRef = (index: number) => (el: HTMLDivElement | null) => {
+    liveAvatarRefs.current[index] = el;
+  };
+
+  useEffect(() => {
+    if (!globeReady || !mounted || satelliteCount <= 0) return;
+    const globe = globeRef.current;
+    if (!globe) return;
+
+    const scene = globe.scene();
+    const globeRadius = globe.getGlobeRadius();
+    const orbitAltitude = 0.22; // in globe-radius units (matches react-globe.gl's altitude convention)
+    const orbitRadius = globeRadius * (1 + orbitAltitude);
+    const satelliteSize = globeRadius * 0.045;
+
+    // Infer the globe's north-pole and prime-meridian axes via the globe's own
+    // projection so the satellite orbits match lat/lng correctly regardless of
+    // three-globe's internal orientation.
+    const toVec3 = (c: { x: number, y: number, z: number }) => new Vector3(c.x, c.y, c.z);
+    const northVec = toVec3(globe.getCoords(90, 0, 0)).normalize();
+    const primeVec = toVec3(globe.getCoords(0, 0, 0)).normalize();
+
+    const group = new Group();
+    group.name = 'stack-auth-satellites';
+    scene.add(group);
+
+    const satellites: SatelliteHandle[] = [];
+    for (let i = 0; i < satelliteCount; i++) {
+      const mesh = createCuteSatelliteMesh(satelliteSize, theme);
+      group.add(mesh);
+
+      // Distribute inclinations and ascending nodes so multiple satellites
+      // don't overlap paths. Alternate direction for visual interest.
+      const inclination = (28 + i * 37) * (Math.PI / 180);
+      const ascendingNode = (i * 118 + 40) * (Math.PI / 180);
+      // ~130s per orbit on the primary satellite, slower on the second so
+      // they visibly drift apart instead of moving in lockstep.
+      const angularSpeed = (i % 2 === 0 ? 1 : -1) * (0.000027 - i * 0.000004);
+      const phase = (i * Math.PI * 0.85);
+
+      // Build an orthonormal orbit basis (right, up, normal).
+      const orbitNormal = northVec.clone()
+        .applyAxisAngle(primeVec, inclination)
+        .applyAxisAngle(northVec, ascendingNode)
+        .normalize();
+      // Project primeVec onto the plane perpendicular to orbitNormal to get
+      // the in-plane "right" reference direction.
+      const orbitRight = primeVec.clone()
+        .sub(orbitNormal.clone().multiplyScalar(primeVec.dot(orbitNormal)));
+      // Fall back to a perpendicular axis if primeVec is (nearly) parallel to orbitNormal.
+      if (orbitRight.lengthSq() < 1e-6) {
+        orbitRight.copy(new Vector3(1, 0, 0)).sub(orbitNormal.clone().multiplyScalar(orbitNormal.x));
+      }
+      orbitRight.normalize();
+      const orbitUp = orbitNormal.clone().cross(orbitRight).normalize();
+
+      satellites.push({
+        mesh,
+        orbitNormal,
+        orbitRight,
+        orbitUp,
+        orbitRadius,
+        orbitAltitude,
+        angularSpeed,
+        phase,
+        currentCountry: null,
+        currentUser: null,
+        lastCountryCheckAt: 0,
+      });
+    }
+
+    const features = countries.features;
+    let rafId: number | null = null;
+    const tick = (time: number) => {
+      const g = globeRef.current;
+      if (!g) {
+        rafId = requestAnimationFrame(tick);
+        return;
+      }
+
+      // Keep the globe's render loop running while satellites are alive.
+      if (resumeRenderIntervalRef.current !== null) {
+        clearTimeout(resumeRenderIntervalRef.current);
+        resumeRenderIntervalRef.current = null;
+      }
+      g.resumeAnimation();
+
+      const camera = g.camera();
+      const camDir = camera.position.clone().normalize();
+
+      for (let i = 0; i < satellites.length; i++) {
+        const sat = satellites[i] ?? throwErr(`missing satellite handle at index ${i}`);
+        const angle = sat.phase + sat.angularSpeed * time;
+        // Parametric circle in orbit plane: pos = R*(cos(a)*right + sin(a)*up).
+        const pos = sat.orbitRight.clone().multiplyScalar(Math.cos(angle) * sat.orbitRadius)
+          .add(sat.orbitUp.clone().multiplyScalar(Math.sin(angle) * sat.orbitRadius));
+        sat.mesh.position.copy(pos);
+        // Orient the satellite along its velocity vector (tangent to the orbit).
+        const velocity = sat.orbitRight.clone().multiplyScalar(-Math.sin(angle))
+          .add(sat.orbitUp.clone().multiplyScalar(Math.cos(angle)));
+        sat.mesh.lookAt(pos.clone().add(velocity));
+
+        // Positional data for country detection + avatar overlay.
+        const geo = g.toGeoCoords({ x: pos.x, y: pos.y, z: pos.z });
+        // Visibility: hide when on the far hemisphere (occluded by the globe).
+        const satDir = pos.clone().normalize();
+        const visible = satDir.dot(camDir) > 0.08;
+
+        const avatarEl = avatarRefs.current[i];
+        if (avatarEl) {
+          if (visible) {
+            const screen = g.getScreenCoords(geo.lat, geo.lng, geo.altitude);
+            avatarEl.style.transform = `translate3d(${screen.x}px, ${screen.y}px, 0) translate(-50%, -140%)`;
+            avatarEl.style.opacity = sat.currentCountry ? '1' : '0';
+          } else {
+            avatarEl.style.opacity = '0';
+          }
+        }
+
+        // Country detection (throttled per satellite, 150ms).
+        if (time - sat.lastCountryCheckAt > 150) {
+          sat.lastCountryCheckAt = time;
+          const found = findCountryAt(geo.lat, geo.lng, features);
+          const prevCode = sat.currentCountry?.code ?? null;
+          const nextCode = found?.code ?? null;
+          if (prevCode !== nextCode) {
+            sat.currentCountry = found;
+            // Pick a random active user from that country for the bubble
+            // avatar. Skip picking if none are available — the bubble then
+            // just shows the country name/flag without a face.
+            let nextUser: MetricsRecentUser | null = null;
+            if (found) {
+              const pool = activeUsersByCountryRef.current[found.code] ?? [];
+              if (pool.length > 0) {
+                nextUser = pool[Math.floor(Math.random() * pool.length)] ?? null;
+              }
+            }
+            sat.currentUser = nextUser;
+            setSatelliteDisplays((prev) => {
+              const prevDisplay = prev[i] ?? null;
+              if ((prevDisplay?.country.code ?? null) === nextCode
+                && (prevDisplay?.user?.id ?? null) === (nextUser?.id ?? null)) {
+                return prev;
+              }
+              const next = prev.slice();
+              next[i] = found ? { country: found, user: nextUser } : null;
+              return next;
+            });
+          }
+        }
+      }
+
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+
+    return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+      scene.remove(group);
+      // Dispose geometries/materials to avoid GPU leaks on theme/remount.
+      group.traverse((obj: any) => {
+        if (obj.geometry) obj.geometry.dispose?.();
+        const mat = obj.material;
+        if (Array.isArray(mat)) mat.forEach((m) => m.dispose?.());
+        else mat?.dispose?.();
+      });
+    };
+  }, [globeReady, mounted, satelliteCount, theme, countries]);
+
+  // Keep satelliteDisplays length synced with satelliteCount (without
+  // clobbering existing entries — handy for dev-time tweaks of the count).
+  useEffect(() => {
+    setSatelliteDisplays((prev) => {
+      if (prev.length === satelliteCount) return prev;
+      const next = prev.slice(0, satelliteCount);
+      while (next.length < satelliteCount) next.push(null);
+      return next;
+    });
+  }, [satelliteCount]);
+
+  // --- Live-user avatar position loop: projects each placement's fixed
+  // lat/lng onto the canvas every frame so the bubbles track the globe as
+  // it rotates. Hides avatars on the far hemisphere. Also keeps the globe
+  // animating so avatars stay in sync if satelliteCount is 0.
+  useEffect(() => {
+    if (!globeReady || !mounted || liveAvatars.length === 0) return;
+    let rafId: number | null = null;
+    const tick = () => {
+      const g = globeRef.current;
+      if (!g) {
+        rafId = requestAnimationFrame(tick);
+        return;
+      }
+      if (resumeRenderIntervalRef.current !== null) {
+        clearTimeout(resumeRenderIntervalRef.current);
+        resumeRenderIntervalRef.current = null;
+      }
+      g.resumeAnimation();
+      const camDir = g.camera().position.clone().normalize();
+      for (let i = 0; i < liveAvatars.length; i++) {
+        const placement = liveAvatars[i] ?? throwErr(`live avatar placement ${i} missing`);
+        const el = liveAvatarRefs.current[i];
+        if (!el) continue;
+        const cart = g.getCoords(placement.lat, placement.lng, 0);
+        const dot = new Vector3(cart.x, cart.y, cart.z).normalize().dot(camDir);
+        if (dot <= 0.05) {
+          el.style.opacity = '0';
+          continue;
+        }
+        const screen = g.getScreenCoords(placement.lat, placement.lng, 0);
+        // Fade out near the silhouette edge for a smoother hand-off.
+        const edgeFade = Math.min(1, (dot - 0.05) * 6);
+        el.style.transform = `translate3d(${screen.x}px, ${screen.y}px, 0) translate(-50%, -50%)`;
+        el.style.opacity = `${edgeFade}`;
+      }
+      rafId = requestAnimationFrame(tick);
+    };
+    rafId = requestAnimationFrame(tick);
+    return () => {
+      if (rafId !== null) cancelAnimationFrame(rafId);
+    };
+  }, [globeReady, mounted, liveAvatars]);
 
   // set globeReady to true after a bit in case onGlobeReady was not called
   useEffect(() => {
@@ -386,7 +974,6 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
         />
       </div>
       <div
-        ref={sectionContainerRef}
         className={cn(
           'relative flex items-center justify-center w-full h-full transition-all duration-500',
           globeReady ? 'opacity-100' : 'opacity-0',
@@ -576,7 +1163,11 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
                     }}
                     onHexPolygonHover={(p: any) => {
                       resumeRender();
-                      // Also have the hover code here so the hexes don't block the hover
+                      // Mirror the polygon hover handler: hexes render on top of
+                      // polygons so pointer motion alternates between the two —
+                      // both must write to the same `polygonSelectedCountry`
+                      // state or the tooltip flickers as the pointer travels
+                      // hex → polygon → hex.
                       if (p) {
                         setPolygonSelectedCountry({ code: p.properties.ISO_A2_EH, name: p.properties.NAME });
                       } else {
@@ -601,8 +1192,107 @@ function GlobeSectionInner({ countryData, totalUsers, children }: {countryData: 
                   />
                 </div>
               )}
-              <div ref={globeWindowRef} className='absolute inset-0 pointer-events-none' />
 
+              {/* Live-user avatar layer: real profile images keyed by country,
+                  sized and counted based on the country's visible area on
+                  the globe. Each avatar has a layered `animate-ping` ring so
+                  it reads as a live "presence beacon". Positions are tracked
+                  by the live-avatar rAF effect. */}
+              <div
+                className='absolute inset-0 pointer-events-none overflow-hidden'
+                aria-hidden="true"
+              >
+                {liveAvatars.map((placement, i) => (
+                  <div
+                    key={placement.key}
+                    ref={setLiveAvatarRef(i)}
+                    className='absolute top-0 left-0 opacity-0 will-change-transform'
+                    style={{
+                      width: `${placement.size}px`,
+                      height: `${placement.size}px`,
+                      transform: 'translate3d(0px, 0px, 0) translate(-50%, -50%)',
+                      transition: 'opacity 200ms ease-out',
+                    }}
+                  >
+                    {/* Growing ring pings — staggered so neighboring avatars
+                        don't pulse in unison. */}
+                    <div
+                      className='absolute inset-0 rounded-full bg-emerald-400/40 dark:bg-emerald-300/45'
+                      style={{
+                        animation: 'ping 2s cubic-bezier(0, 0, 0.2, 1) infinite',
+                        animationDelay: `${placement.ringDelayMs}ms`,
+                      }}
+                    />
+                    <div
+                      className='absolute inset-0 rounded-full bg-emerald-400/20 dark:bg-emerald-300/25'
+                      style={{
+                        animation: 'ping 2s cubic-bezier(0, 0, 0.2, 1) infinite',
+                        animationDelay: `${placement.ringDelayMs + 700}ms`,
+                      }}
+                    />
+                    {/* Avatar core — real user profile image, falling back to
+                        initials via UserAvatar's AvatarFallback. */}
+                    <div className='relative w-full h-full rounded-full overflow-hidden ring-2 ring-emerald-400/90 dark:ring-emerald-300/90 shadow-[0_2px_8px_rgba(16,185,129,0.45)]'>
+                      <UserAvatar
+                        size={placement.size}
+                        user={{
+                          profileImageUrl: placement.user.profile_image_url,
+                          displayName: placement.user.display_name,
+                          primaryEmail: placement.user.primary_email,
+                        }}
+                      />
+                    </div>
+                    {/* Tiny solid "heart" dot as a secondary "live" signal. */}
+                    <div className='absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 dark:bg-emerald-300 ring-2 ring-background shadow' />
+                  </div>
+                ))}
+              </div>
+
+              {/* Satellite bubbles — transformed each frame by the satellite
+                  rAF loop so they track the orbiting meshes and fade in when
+                  over a country. Show a real user's avatar from that country
+                  when one is available. */}
+              <div
+                ref={satelliteOverlayRef}
+                className='absolute inset-0 pointer-events-none overflow-hidden'
+                aria-hidden="true"
+              >
+                {satelliteDisplays.map((display, i) => (
+                  <div
+                    key={i}
+                    ref={setAvatarRef(i)}
+                    className='absolute top-0 left-0 opacity-0 transition-opacity duration-300 ease-out will-change-transform'
+                    style={{ transform: 'translate3d(0px, 0px, 0) translate(-50%, -140%)' }}
+                  >
+                    <div className='flex flex-col items-center gap-1.5'>
+                      <div className='flex items-center gap-1.5 px-2 py-1 rounded-full bg-background/95 ring-1 ring-foreground/10 shadow-lg backdrop-blur-md'>
+                        {display?.user && (
+                          <div className='w-7 h-7 rounded-full overflow-hidden ring-2 ring-sky-400/60 dark:ring-sky-300/50'>
+                            <UserAvatar
+                              size={28}
+                              user={{
+                                profileImageUrl: display.user.profile_image_url,
+                                displayName: display.user.display_name,
+                                primaryEmail: display.user.primary_email,
+                              }}
+                            />
+                          </div>
+                        )}
+                        <div className='flex items-center gap-1 pr-1.5'>
+                          <span className='text-sm leading-none'>
+                            {display?.country.code.match(/^[a-zA-Z][a-zA-Z]$/) ? getFlagEmoji(display.country.code) : '🌍'}
+                          </span>
+                          <span className='text-[10px] font-medium text-foreground/80 max-w-[90px] truncate'>
+                            {display?.country.name ?? ''}
+                          </span>
+                        </div>
+                      </div>
+                      {/* Little thread connecting the bubble down to the satellite. */}
+                      <div className='w-px h-3 bg-gradient-to-b from-sky-400/60 to-transparent dark:from-sky-300/60' />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         )}

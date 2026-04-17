@@ -32,6 +32,12 @@ export type UseDataSourceResult<TRow> = {
   hasMore: boolean;
   /** Reload from scratch. */
   reload: () => void;
+  /**
+   * Error from the most recent async fetch, if any. Consumers should render
+   * an error UI and offer a `reload()` button when this is non-null. Client
+   * mode never sets this (no fetching). Cleared on next successful fetch.
+   */
+  error: Error | null;
 };
 
 // ─── Client-side hook ────────────────────────────────────────────────
@@ -81,6 +87,7 @@ function useClientDataSource<TRow>(opts: {
     loadMore: () => {},
     hasMore: false,
     reload: () => {},
+    error: null,
   }), [processed]);
 }
 
@@ -112,6 +119,7 @@ function useAsyncDataSource<TRow>(opts: {
   const [isRefetching, setIsRefetching] = useState(false);
   const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [hasMore, setHasMore] = useState(true);
+  const [error, setError] = useState<Error | null>(null);
 
   const cursorRef = useRef<unknown>(undefined);
   const abortRef = useRef<AbortController | null>(null);
@@ -157,6 +165,9 @@ function useAsyncDataSource<TRow>(opts: {
         cursorRef.current = undefined;
         pageIndexRef.current = 0;
       }
+      // Clear previous error at the start of a new attempt; we'll set it
+      // again if this attempt fails.
+      setError(null);
 
       try {
         const params: DataGridFetchParams = {
@@ -198,7 +209,12 @@ function useAsyncDataSource<TRow>(opts: {
         }
       } catch (err) {
         if (controller.signal.aborted) return;
+        // Surface the error on the result so consumers can render retry UI.
+        // Still log to console so it's visible in dev without forcing every
+        // consumer to wire up error rendering.
+        // eslint-disable-next-line no-console
         console.error("[DataGrid] Data source error:", err);
+        setError(err instanceof Error ? err : new Error(String(err)));
       } finally {
         if (!controller.signal.aborted) {
           setIsLoading(false);
@@ -213,7 +229,10 @@ function useAsyncDataSource<TRow>(opts: {
   useEffect(() => {
     fetchPage(false).catch(() => {});
     return () => abortRef.current?.abort();
-  }, [fetchPage, sortingKey, quickSearchKey, pagination.pageSize]);
+    // Also refetches when `dataSource` identity changes — consumers encode
+    // external filter state into the generator's closure, so a new
+    // generator reference is the signal that the query changed.
+  }, [fetchPage, dataSource, sortingKey, quickSearchKey, pagination.pageSize]);
 
   useEffect(() => {
     if (paginationMode !== "server") {
@@ -246,6 +265,7 @@ function useAsyncDataSource<TRow>(opts: {
     loadMore,
     hasMore,
     reload,
+    error,
   };
 }
 
@@ -338,6 +358,37 @@ export function useDataSource<TRow>(opts: {
   } = opts;
 
   const isClientMode = data != null && !dataSource;
+
+  if (process.env.NODE_ENV !== "production" && data == null && dataSource == null) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[useDataSource] neither `data` nor `dataSource` was provided — "
+      + "the grid will render empty indefinitely. Pass one or the other."
+    );
+  }
+
+  // Common footgun: consumers pass `data` as a fully-materialized array and
+  // set `paginationMode: "infinite"` expecting the grid to page through it.
+  // In client mode "infinite" skips `paginateRows` and returns every row;
+  // `hasMore` / `loadMore` on the result are always false/no-ops. If you
+  // want real paging, switch to `paginationMode: "server"` with a
+  // `dataSource` generator. If you want in-memory slicing, use `"client"`.
+  // If you're manually accumulating rows into `data` and driving the grid's
+  // sentinel via your own `hasMore`/`onLoadMore`, this warning is a hint —
+  // but current behavior (full list + external sentinel) is intentional.
+  if (
+    process.env.NODE_ENV !== "production"
+    && isClientMode
+    && paginationMode === "infinite"
+    && data.length > 0
+  ) {
+    // eslint-disable-next-line no-console
+    console.warn(
+      "[useDataSource] `paginationMode: \"infinite\"` with a `data` array "
+      + "skips pagination entirely. Prefer `\"client\"` for in-memory lists "
+      + "or `\"server\"` + a `dataSource` generator for real paging."
+    );
+  }
 
   const clientResult = useClientDataSource({
     data: data ?? [],

@@ -10,7 +10,7 @@ import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-inter
 import { yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Json } from "@stackframe/stack-shared/dist/utils/json";
-import { generateText, stepCountIs, streamText } from "ai";
+import { generateText, stepCountIs, streamText, type ModelMessage } from "ai";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -68,11 +68,17 @@ export const POST = createSmartRouteHandler({
             ? 5
             : 5;
 
+    // Cast: the schema narrows role and leaves content as unknown, but the
+    // AI SDK accepts a superset (role: "system" etc.). We've intentionally
+    // excluded `system` at the schema layer to prevent prompt-injection via
+    // client-supplied system messages — see schema.ts.
+    const modelMessages = messages as unknown as ModelMessage[];
+
     if (mode === "stream") {
       const result = streamText({
         model,
         system: systemPrompt,
-        messages,
+        messages: modelMessages,
         tools: toolsArg,
         stopWhen: stepCountIs(stepLimit),
       });
@@ -87,7 +93,7 @@ export const POST = createSmartRouteHandler({
       const result = await generateText({
         model,
         system: systemPrompt,
-        messages,
+        messages: modelMessages,
         tools: toolsArg,
         abortSignal: controller.signal,
         stopWhen: stepCountIs(stepLimit),

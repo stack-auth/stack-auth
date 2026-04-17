@@ -162,7 +162,7 @@ export function TeamTable(props: { teams: ServerTeam[] }) {
     sorting: gridState.sorting,
     quickSearch: gridState.quickSearch,
     pagination: gridState.pagination,
-    paginationMode: "infinite",
+    paginationMode: "client",
   });
 
   return (
@@ -174,12 +174,6 @@ export function TeamTable(props: { teams: ServerTeam[] }) {
       isLoading={gridData.isLoading}
       state={gridState}
       onChange={setGridState}
-      paginationMode="infinite"
-      hasMore={gridData.hasMore}
-      isLoadingMore={gridData.isLoadingMore}
-      onLoadMore={gridData.loadMore}
-      footer={false}
-
       onRowClick={(row) => {
         router.push(`/projects/${encodeURIComponent(stackAdminApp.projectId)}/teams/${encodeURIComponent(row.id)}`);
       }}

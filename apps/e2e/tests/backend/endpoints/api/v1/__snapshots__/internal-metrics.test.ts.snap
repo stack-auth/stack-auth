@@ -2287,6 +2287,7 @@ NiceResponse {
       "total_one_time_purchases": 0,
       "total_orders": 0,
     },
+    "active_users_by_country": {},
     "recently_active": [],
     "recently_registered": [],
     "total_users": 0,

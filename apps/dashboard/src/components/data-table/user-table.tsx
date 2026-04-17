@@ -1,3 +1,8 @@
+// TODO(ui-fixes-minor): URL-synced query state (filter / search / page) was
+// dropped when this table was migrated off `usePaginatedData` +
+// `useUrlQueryState` + `useCursorPaginationCache`. Back-button and reload no
+// longer restore the user's view. Restore via the same hooks (still in
+// `./common/`) or call out the regression in the PR description before ship.
 "use client";
 
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
@@ -26,13 +31,16 @@ import type { ServerUser } from "@stackframe/stack";
 import {
   createDefaultDataGridState,
   DataGrid,
+  useDataSource,
   type DataGridColumnDef,
+  type DataGridDataSource,
   type DataGridState,
 } from "@stackframe/dashboard-ui-components";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { useDebounce } from "use-debounce";
 import { Link } from "../link";
 import { CreateCheckoutDialog } from "../payments/create-checkout-dialog";
 import { DeleteUserDialog, ImpersonateUserDialog } from "../user-dialogs";
@@ -197,85 +205,12 @@ function UserTableBody(props: {
   const stackAdminApp = useAdminApp();
   const router = useRouter();
 
-  const [rows, setRows] = useState<ExtendedServerUser[]>([]);
-  const [nextCursor, setNextCursor] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isRefetching, setIsRefetching] = useState(false);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
-
-  const hasDataRef = useRef(false);
-  const abortRef = useRef<AbortController | null>(null);
-
-  const listOptions = useMemo((): NonNullable<Parameters<typeof stackAdminApp.listUsers>[0]> => {
-    const common = {
-      limit: PAGE_SIZE,
-      orderBy: "signedUpAt" as const,
-      desc: filters.signedUpOrder === "desc",
-      query: filters.search || undefined,
-      includeRestricted: filters.includeRestricted,
-    };
-    if (filters.onlyAnonymous) return { ...common, includeAnonymous: true, onlyAnonymous: true };
-    return { ...common, includeAnonymous: filters.includeAnonymous };
-  }, [filters, stackAdminApp]);
-
-  const listOptionsRef = useRef(listOptions);
-  listOptionsRef.current = listOptions;
-
-  useEffect(() => {
-    abortRef.current?.abort();
-    const controller = new AbortController();
-    abortRef.current = controller;
-
-    if (hasDataRef.current) {
-      setIsRefetching(true);
-    } else {
-      setIsLoading(true);
-    }
-
-    runAsynchronouslyWithAlert(async () => {
-      try {
-        const result = await stackAdminApp.listUsers(listOptions);
-        if (controller.signal.aborted) return;
-        const extended = extendUsers(result);
-        setRows(extended);
-        setNextCursor(result.nextCursor);
-        hasDataRef.current = true;
-      } finally {
-        if (!controller.signal.aborted) {
-          setIsLoading(false);
-          setIsRefetching(false);
-        }
-      }
-    });
-
-    return () => controller.abort();
-  }, [listOptions, stackAdminApp]);
-
-  const loadMore = useCallback(async () => {
-    if (!nextCursor || isLoadingMore) return;
-    setIsLoadingMore(true);
-    const requestedOptions = listOptionsRef.current;
-    try {
-      const result = await stackAdminApp.listUsers({ ...requestedOptions, cursor: nextCursor });
-      if (listOptionsRef.current !== requestedOptions) return;
-      const extended = extendUsers(result);
-      setRows((prev) => {
-        const existingIds = new Set(prev.map((r) => r.id));
-        const newRows = extended.filter((r) => !existingIds.has(r.id));
-        return [...prev, ...newRows];
-      });
-      setNextCursor(result.nextCursor);
-    } finally {
-      setIsLoadingMore(false);
-    }
-  }, [nextCursor, isLoadingMore, stackAdminApp]);
-
   const [gridState, setGridState] = useState<DataGridState>(() => ({
     ...createDefaultDataGridState(USER_TABLE_COLUMNS),
     sorting: [{ columnId: "signedUpAt", direction: filters.signedUpOrder }],
   }));
-  const trimmedQuickSearch = gridState.quickSearch.trim();
 
+  // Sync the sort header back into `filters` so the parent can persist it.
   const sortDirection = gridState.sorting.find((s) => s.columnId === "signedUpAt")?.direction ?? "desc";
   useEffect(() => {
     setFilters((prev) => (
@@ -285,20 +220,68 @@ function UserTableBody(props: {
     ));
   }, [sortDirection, setFilters]);
 
+  // Debounce the toolbar search input before it hits the server. The
+  // visible input still updates instantly (via `gridState.quickSearch`);
+  // only the fetch parameter is delayed.
+  const [debouncedQuickSearch] = useDebounce(gridState.quickSearch.trim(), SEARCH_DEBOUNCE_MS);
   useEffect(() => {
-    const timeout = setTimeout(() => {
-      setFilters((prev) => (
-        prev.search === trimmedQuickSearch
-          ? prev
-          : { ...prev, search: trimmedQuickSearch }
-      ));
-    }, SEARCH_DEBOUNCE_MS);
-    return () => clearTimeout(timeout);
-  }, [trimmedQuickSearch, setFilters]);
+    setFilters((prev) => (
+      prev.search === debouncedQuickSearch
+        ? prev
+        : { ...prev, search: debouncedQuickSearch }
+    ));
+  }, [debouncedQuickSearch, setFilters]);
 
-  const handleLoadMore = useCallback(() => {
-    runAsynchronouslyWithAlert(loadMore);
-  }, [loadMore]);
+  // Server-side infinite data source. Re-created whenever a filter that
+  // affects the query changes; useDataSource refetches from scratch on
+  // identity change and continues paginating via the yielded nextCursor.
+  const dataSource = useMemo<DataGridDataSource<ExtendedServerUser>>(
+    () => async function* (params) {
+      const search = typeof params.quickSearch === "string" && params.quickSearch.trim().length > 0
+        ? params.quickSearch.trim()
+        : undefined;
+      const sortDesc = params.sorting.find((s) => s.columnId === "signedUpAt")?.direction !== "asc";
+      const cursor = typeof params.cursor === "string" ? params.cursor : undefined;
+      const result = filters.onlyAnonymous
+        ? await stackAdminApp.listUsers({
+          limit: PAGE_SIZE,
+          orderBy: "signedUpAt",
+          desc: sortDesc,
+          query: search,
+          includeRestricted: filters.includeRestricted,
+          includeAnonymous: true,
+          onlyAnonymous: true,
+          cursor,
+        })
+        : await stackAdminApp.listUsers({
+          limit: PAGE_SIZE,
+          orderBy: "signedUpAt",
+          desc: sortDesc,
+          query: search,
+          includeRestricted: filters.includeRestricted,
+          includeAnonymous: filters.includeAnonymous,
+          cursor,
+        });
+      yield {
+        rows: extendUsers(result),
+        hasMore: result.nextCursor != null,
+        nextCursor: result.nextCursor ?? undefined,
+      };
+    },
+    [stackAdminApp, filters.includeRestricted, filters.includeAnonymous, filters.onlyAnonymous],
+  );
+
+  const getRowId = useCallback((row: ExtendedServerUser) => row.id, []);
+
+  const gridData = useDataSource({
+    dataSource,
+    columns: USER_TABLE_COLUMNS,
+    getRowId,
+    sorting: gridState.sorting,
+    quickSearch: debouncedQuickSearch,
+    pagination: gridState.pagination,
+    paginationMode: "infinite",
+  });
 
   const handleResetFilters = useCallback(() => {
     setFilters(DEFAULT_FILTERS);
@@ -314,16 +297,16 @@ function UserTableBody(props: {
   return (
     <DataGrid
       columns={USER_TABLE_COLUMNS}
-      rows={rows}
-      getRowId={(row) => row.id}
-      isLoading={isLoading}
-      isRefetching={isRefetching}
+      rows={gridData.rows}
+      getRowId={getRowId}
+      isLoading={gridData.isLoading}
+      isRefetching={gridData.isRefetching}
       state={gridState}
       onChange={setGridState}
       paginationMode="infinite"
-      hasMore={nextCursor != null}
-      isLoadingMore={isLoadingMore}
-      onLoadMore={handleLoadMore}
+      hasMore={gridData.hasMore}
+      isLoadingMore={gridData.isLoadingMore}
+      onLoadMore={gridData.loadMore}
       rowHeight="auto"
       estimatedRowHeight={44}
       footer={false}

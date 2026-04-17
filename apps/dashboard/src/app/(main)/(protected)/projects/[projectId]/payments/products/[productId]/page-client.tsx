@@ -1417,7 +1417,7 @@ function CustomersSkeleton() {
     sorting: gridState.sorting,
     quickSearch: gridState.quickSearch,
     pagination: gridState.pagination,
-    paginationMode: "infinite",
+    paginationMode: "client",
   });
 
   return (
@@ -1623,6 +1623,12 @@ function CustomerRowActions({ customerType, customerId }: { customerType: string
   );
 }
 
+// TODO(ui-fixes-minor): This component calls `adminApp.useUser(userId)` once
+// per row. With the customer grid capped at 100 rows via `useTransactions`,
+// that's 100 individual user fetches on the product detail page. Consider
+// hoisting to a parent-level `adminApp.useUsers({ ids: [...] })` (when the
+// SDK grows that capability) and passing a `Map<userId, user>` down so the
+// cell is a pure lookup. Same applies to `TeamCell` below.
 function UserCell({ userId }: { userId: string }) {
   const adminApp = useAdminApp();
   const user = adminApp.useUser(userId);
