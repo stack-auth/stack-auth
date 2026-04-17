@@ -77,7 +77,7 @@ export default function PageClient() {
             <div>
               <Typography className="font-semibold text-foreground">No dashboards yet</Typography>
               <Typography variant="secondary" className="text-sm mt-1">
-                Create a dashboard from the command palette (Cmd+K) or click &quot;New Dashboard&quot; above.
+                Create a dashboard from the command palette (⌘ K) or click &quot;New Dashboard&quot; above.
               </Typography>
             </div>
           </div>
