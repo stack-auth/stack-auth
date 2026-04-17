@@ -131,6 +131,7 @@
         { suffix: "24", label: "LocalStack Gateway (AWS mock)" },
         { suffix: "25", label: "QStash mock" },
         { suffix: "33", label: "ClickHouse native interface" },
+        { suffix: "39", label: "SpacetimeDB (MCP call log)" },
         { range: ["50", "99"], label: "Reserved for LocalStack (external services)" },
       ];
 
@@ -174,12 +175,29 @@
         },
         {
           name: "Docs",
-          portSuffix: "04",
+          portSuffix: "26",
           description: [
             "Src: ./docs",
             "Prod: https://docs.stack-auth.com",
           ],
           img: "https://www.svgrepo.com/show/448400/docs.svg",
+          importance: 2,
+        },
+        {
+          name: "Mintlify docs",
+          portSuffix: "04",
+          description: [
+            "Src: ./docs-mintlify",
+          ],
+          img: "https://www.svgrepo.com/show/448400/docs.svg",
+          importance: 2,
+        },
+        {
+          name: "Hosted Components",
+          portSuffix: "09",
+          description: [
+            "Src: ./apps/hosted-components",
+          ],
           importance: 2,
         },
         {
@@ -315,6 +333,25 @@
           ],
           importance: 1,
           img: "https://www.svgrepo.com/show/374002/replication.svg",
+        },
+        {
+          name: "Internal Tool",
+          portSuffix: "41",
+          description: [
+            "Src: ./apps/internal-tool",
+            "MCP call review tool",
+          ],
+          importance: 1,
+        },
+        {
+          name: "Bulldozer Studio",
+          portSuffix: "39",
+          description: [
+            "Bulldozer table graph and editor",
+            "Includes raw storage debug browser",
+          ],
+          importance: 1,
+          img: "https://www.svgrepo.com/show/349299/database.svg",
         },
         {
           name: "JS example",

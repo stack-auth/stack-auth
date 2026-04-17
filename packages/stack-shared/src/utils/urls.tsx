@@ -196,6 +196,24 @@ import.meta.vitest?.test("matchHostnamePattern", ({ expect }) => {
   expect(matchHostnamePattern("*.*.org", "example.org")).toBe(false);
 });
 
+export function getHardcodedFallbackUrls(primaryBaseUrl: string): string[] {
+  if (primaryBaseUrl === "https://api.stack-auth.com") {
+    return ["https://api1.stack-auth.com", "https://api2.stack-auth.com"];
+  }
+  if (primaryBaseUrl === "https://api.dev.stack-auth.com") {
+    return ["https://api1.dev.stack-auth.com", "https://api2.dev.stack-auth.com"];
+  }
+  const localhostMatch = primaryBaseUrl.match(/^http:\/\/localhost:(\d+)02$/);
+  if (localhostMatch) {
+    return [`http://localhost:${localhostMatch[1]}10`];
+  }
+  return [];
+}
+
+export function getDefaultApiUrls(primaryBaseUrl: string): string[] {
+  return [primaryBaseUrl, ...getHardcodedFallbackUrls(primaryBaseUrl)];
+}
+
 export function isLocalhost(urlOrString: string | URL) {
   const url = createUrlIfValid(urlOrString);
   if (!url) return false;

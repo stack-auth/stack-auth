@@ -1,8 +1,10 @@
 import { validateRedirectUrl } from "@/lib/redirect-urls";
+import { buildSignUpRuleOptions } from "@/lib/sign-up-context";
 import { createAuthTokens } from "@/lib/tokens";
+import { getRequestContextAndBotChallengeAssessment, botChallengeFlowRequestSchemaFields } from "@/lib/turnstile";
 import { createOrUpgradeAnonymousUserWithRules } from "@/lib/users";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
+import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { getPasswordError } from "@stackframe/stack-shared/dist/helpers/password";
 import { adaptSchema, clientOrHigherAuthTypeSchema, emailVerificationCallbackUrlSchema, passwordSchema, signInEmailSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -25,6 +27,7 @@ export const POST = createSmartRouteHandler({
       email: signInEmailSchema.defined(),
       password: passwordSchema.defined(),
       verification_callback_url: emailVerificationCallbackUrlSchema.optional(),
+      ...botChallengeFlowRequestSchemaFields,
     }).defined(),
   }),
   response: yupObject({
@@ -36,7 +39,7 @@ export const POST = createSmartRouteHandler({
       user_id: yupString().defined(),
     }).defined(),
   }),
-  async handler({ auth: { tenancy, user: currentUser }, body: { email, password, verification_callback_url: verificationCallbackUrl } }, fullReq) {
+  async handler({ auth: { tenancy, user: currentUser }, body: { email, password, verification_callback_url: verificationCallbackUrl, ...botChallenge } }) {
     if (!tenancy.config.auth.password.allowSignIn) {
       throw new KnownErrors.PasswordAuthenticationNotEnabled();
     }
@@ -54,6 +57,8 @@ export const POST = createSmartRouteHandler({
       throw passwordError;
     }
 
+    const { requestContext, turnstileAssessment } = await getRequestContextAndBotChallengeAssessment(botChallenge, "sign_up_with_credential", tenancy);
+
     const createdUser = await createOrUpgradeAnonymousUserWithRules(
       tenancy,
       currentUser ?? null,
@@ -64,9 +69,12 @@ export const POST = createSmartRouteHandler({
         password,
       },
       [KnownErrors.UserWithEmailAlreadyExists],
-      {
+      buildSignUpRuleOptions({
         authMethod: 'password',
-      }
+        oauthProvider: null,
+        requestContext,
+        turnstileAssessment,
+      })
     );
 
     if (verificationCallbackUrl) {

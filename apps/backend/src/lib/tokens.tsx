@@ -11,6 +11,7 @@ import { captureError, StackAssertionError, throwErr } from '@stackframe/stack-s
 import { getPrivateJwks, getPublicJwkSet, signJWT, verifyJWT } from '@stackframe/stack-shared/dist/utils/jwt';
 import { Result } from '@stackframe/stack-shared/dist/utils/results';
 import { traceSpan } from '@stackframe/stack-shared/dist/utils/telemetry';
+import { turnstileResultValues } from '@stackframe/stack-shared/dist/utils/turnstile';
 import * as jose from 'jose';
 import { JOSEError, JWTExpired } from 'jose/errors';
 import { getEndUserIpInfoForEvent, logEvent, SystemEventTypes } from './events';
@@ -45,6 +46,10 @@ export const oauthCookieSchema = yupObject({
   providerScope: yupString().optional(),
   errorRedirectUrl: yupString().optional(),
   afterCallbackRedirectUrl: yupString().optional(),
+  // TODO next-release: make these .defined() once all deployments write these fields into the cookie
+  turnstileResult: yupString().oneOf(turnstileResultValues).optional(),
+  turnstileVisibleChallengeResult: yupString().oneOf(turnstileResultValues).optional(),
+  responseMode: yupString().oneOf(['json', 'redirect']).optional(),
 });
 
 type UserType = 'normal' | 'restricted' | 'anonymous';
@@ -262,10 +267,10 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: Refres
           id: options.refreshTokenObj.id,
         },
       },
-      data: {
+      data: withExternalDbSyncUpdate({
         lastActiveAt: now,
         lastActiveAtIpInfo: ipInfo ?? undefined,
-      },
+      }),
     }),
   ]);
 
@@ -309,9 +314,11 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: Refres
     email: user.primary_email,
     email_verified: user.primary_email_verified,
     selected_team_id: user.selected_team_id,
+    signed_up_at: Math.floor(user.signed_up_at_millis / 1000),
     is_anonymous: user.is_anonymous,
     is_restricted: user.is_restricted,
     restricted_reason: user.restricted_reason,
+    requires_totp_mfa: user.requires_totp_mfa,
   };
 
   // Validate the payload matches the accessTokenSchema before signing, to catch inconsistencies early

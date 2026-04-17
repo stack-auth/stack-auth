@@ -1,0 +1,714 @@
+---
+title: Setup
+description: Install and configure Stack Auth for your project
+sidebarTitle: Setup
+---
+
+# Setup
+
+## Prerequisites
+
+Before getting started, make sure you have a project set up for your chosen platform:
+
+- **Next.js**: A [Next.js project](https://nextjs.org/docs/getting-started/installation) using the app router (Stack Auth does not support the pages router on Next.js)
+- **React**: A [React project](https://react.dev/learn/creating-a-react-app) (we show examples with Vite)
+- **JavaScript**: A Node.js project with Express
+- **Python**: A Python environment with your chosen framework (Django, FastAPI, or Flask)
+
+We recommend using our **setup wizard** for JavaScript frameworks for a seamless installation experience. For Python, we recommend using the REST API approach.
+
+## Setup Wizard / Manual Installation
+
+### Setup wizard (recommended for JS)
+
+#### Run installation wizard
+
+<Info>
+  The setup wizard is available for JavaScript/TypeScript frameworks. For Python projects, please use the manual installation method.
+</Info>
+
+Run Stack's installation wizard with the following command:
+
+```sh title="Terminal"
+npx @stackframe/stack-cli@latest init
+```
+
+#### Update API keys
+
+Create an account on [the Stack Auth dashboard](https://app.stack-auth.com/projects), create a new project, and copy its environment variables into the appropriate configuration file. If your project requires publishable client keys, create a project key that includes one and copy that as well.
+
+<Tabs>
+  <Tab title="Next.js">
+    ```bash title=".env.local"
+    NEXT_PUBLIC_STACK_PROJECT_ID=<your-project-id>
+    NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>
+    STACK_SECRET_SERVER_KEY=<your-secret-server-key>
+    ```
+  </Tab>
+  <Tab title="React">
+    ```typescript title="stack/client.ts"
+    // Update the values in stack/client.ts created by the wizard
+    export const stackClientApp = new StackClientApp({
+      projectId: "your-project-id",
+      publishableClientKey: "your-publishable-client-key",
+      tokenStore: "cookie",
+    });
+    ```
+  </Tab>
+  <Tab title="Vanilla JavaScript">
+    ```bash title=".env"
+    STACK_PROJECT_ID=<your-project-id>
+    STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>
+    STACK_SECRET_SERVER_KEY=<your-secret-server-key>
+    ```
+  </Tab>
+</Tabs>
+
+#### Done!
+
+That's it! The wizard should have created or updated the following files in your project:
+
+<Tabs>
+  <Tab title="Next.js">
+    - `app/handler/[...stack]/page.tsx`: Default pages for sign-in, sign-out, account settings, and more
+    - `app/layout.tsx`: Updated to wrap the entire body with `StackProvider` and `StackTheme`
+    - `app/loading.tsx`: Suspense boundary for Stack's async hooks
+    - `stack/server.ts`: Contains the `stackServerApp` for server-side usage
+    - `stack/client.ts`: Contains the `stackClientApp` for client-side usage
+  </Tab>
+  <Tab title="React">
+    - `stack/client.ts`: Contains the `stackClientApp` configuration
+    - Your app should be wrapped with `StackProvider` and `StackTheme`
+  </Tab>
+  <Tab title="Node.js/Express">
+    - `stack/server.ts`: Contains the `stackServerApp` configuration
+  </Tab>
+</Tabs>
+
+### Manual installation
+
+<Note>
+  The setup wizard also supports existing, complicated projects. Cases where manual installation is necessary are rare for JavaScript frameworks.
+</Note>
+
+<Steps>
+  <Step title="Install package">
+    First, install the appropriate Stack package:
+
+    <Tabs>
+      <Tab title="Next.js">
+        ```bash title="Terminal"
+        npm install @stackframe/stack
+        ```
+      </Tab>
+      <Tab title="React">
+        ```bash title="Terminal"
+        npm install @stackframe/react
+        ```
+      </Tab>
+      <Tab title="Express">
+        ```bash title="Terminal"
+        npm install @stackframe/js
+        ```
+      </Tab>
+      <Tab title="Node.js">
+        ```bash title="Terminal"
+        npm install @stackframe/js
+        ```
+      </Tab>
+      <Tab title="Django">
+        ```bash title="Terminal"
+        pip install requests
+        ```
+      </Tab>
+      <Tab title="FastAPI">
+        ```bash title="Terminal"
+        pip install requests
+        ```
+      </Tab>
+      <Tab title="Flask">
+        ```bash title="Terminal"
+        pip install requests
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Create API keys">
+    [Register a new account on Stack](https://app.stack-auth.com/handler/sign-up), create a project in the dashboard, and copy the project ID. If your project requires publishable client keys, also create a project key from the left sidebar and copy the publishable client key. For server-side setups, also copy the secret server key.
+  </Step>
+
+  <Step title="Configure environment variables">
+    Set up your environment variables or configuration:
+
+    <Tabs>
+      <Tab title="Next.js">
+        ```bash title=".env.local"
+        NEXT_PUBLIC_STACK_PROJECT_ID=<your-project-id>
+        NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>
+        STACK_SECRET_SERVER_KEY=<your-secret-server-key>
+        ```
+      </Tab>
+      <Tab title="React">
+        ```bash title=".env"
+        # Store these in environment variables or directly in the client file during development
+        VITE_STACK_PROJECT_ID=<your-project-id>
+        VITE_STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>
+        ```
+      </Tab>
+      <Tab title="Express">
+        ```bash title=".env"
+        STACK_PROJECT_ID=<your-project-id>
+        STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>
+        STACK_SECRET_SERVER_KEY=<your-secret-server-key>
+        ```
+      </Tab>
+      <Tab title="Node.js">
+        ```bash title=".env"
+        STACK_PROJECT_ID=<your-project-id>
+        STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>
+        STACK_SECRET_SERVER_KEY=<your-secret-server-key>
+        ```
+      </Tab>
+      <Tab title="Django">
+        ```python title="settings.py"
+        import os
+
+        stack_project_id = os.getenv("STACK_PROJECT_ID")
+        stack_publishable_client_key = os.getenv("STACK_PUBLISHABLE_CLIENT_KEY")
+        stack_secret_server_key = os.getenv("STACK_SECRET_SERVER_KEY")
+        ```
+      </Tab>
+      <Tab title="FastAPI">
+        ```python title="main.py"
+        import os
+
+        stack_project_id = os.getenv("STACK_PROJECT_ID")
+        stack_publishable_client_key = os.getenv("STACK_PUBLISHABLE_CLIENT_KEY")
+        stack_secret_server_key = os.getenv("STACK_SECRET_SERVER_KEY")
+        ```
+      </Tab>
+      <Tab title="Flask">
+        ```python title="app.py"
+        import os
+
+        stack_project_id = os.getenv("STACK_PROJECT_ID")
+        stack_publishable_client_key = os.getenv("STACK_PUBLISHABLE_CLIENT_KEY")
+        stack_secret_server_key = os.getenv("STACK_SECRET_SERVER_KEY")
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Create Stack configuration">
+    Create the Stack app configuration:
+
+    <Tabs>
+      <Tab title="Next.js (server)">
+        ```typescript title="stack/server.ts"
+        import "server-only";
+        import { StackServerApp } from "@stackframe/stack";
+
+        export const stackServerApp = new StackServerApp({
+          tokenStore: "nextjs-cookie", // storing auth tokens in cookies
+        });
+        ```
+      </Tab>
+      <Tab title="Next.js (client)">
+        ```typescript title="stack/client.ts"
+        import { StackClientApp } from "@stackframe/stack";
+
+        export const stackClientApp = new StackClientApp({
+          // Environment variables are automatically read
+        });
+        ```
+      </Tab>
+      <Tab title="React">
+        ```typescript title="stack/client.ts"
+        import { StackClientApp } from "@stackframe/react";
+        // If you use a router, uncomment the appropriate import and the redirectMethod below
+        // import { useNavigate } from "react-router-dom"; // React Router
+        // import { useNavigate } from "@tanstack/react-router"; // TanStack Router
+
+        export const stackClientApp = new StackClientApp({
+          projectId: process.env.VITE_STACK_PROJECT_ID || "your-project-id",
+          publishableClientKey: process.env.VITE_STACK_PUBLISHABLE_CLIENT_KEY || "your-publishable-client-key",
+          tokenStore: "cookie",
+          // redirectMethod: { useNavigate }, // Set this for non-Next.js frameworks
+        });
+        ```
+      </Tab>
+      <Tab title="Express">
+        ```typescript title="stack/server.ts"
+        import { StackServerApp } from "@stackframe/js";
+
+        export const stackServerApp = new StackServerApp({
+          projectId: process.env.STACK_PROJECT_ID,
+          publishableClientKey: process.env.STACK_PUBLISHABLE_CLIENT_KEY,
+          secretServerKey: process.env.STACK_SECRET_SERVER_KEY,
+          tokenStore: "memory",
+        });
+        ```
+      </Tab>
+      <Tab title="Node.js (server)">
+        ```javascript title="stack/server.js"
+        import { StackServerApp } from "@stackframe/js";
+
+        export const stackServerApp = new StackServerApp({
+          projectId: process.env.STACK_PROJECT_ID,
+          publishableClientKey: process.env.STACK_PUBLISHABLE_CLIENT_KEY,
+          secretServerKey: process.env.STACK_SECRET_SERVER_KEY,
+          tokenStore: "memory",
+        });
+        ```
+      </Tab>
+      <Tab title="Node.js (client)">
+        ```javascript title="stack/client.js"
+        import { StackClientApp } from "@stackframe/js";
+
+        export const stackClientApp = new StackClientApp({
+          projectId: process.env.STACK_PROJECT_ID,
+          publishableClientKey: process.env.STACK_PUBLISHABLE_CLIENT_KEY,
+          tokenStore: "cookie",
+        });
+        ```
+      </Tab>
+      <Tab title="Django">
+        ```python title="views.py"
+        import requests
+
+        def stack_auth_request(method, endpoint, **kwargs):
+            res = requests.request(
+                method,
+                f'https://api.stack-auth.com/{endpoint}',
+                headers={
+                    'x-stack-access-type': 'server',  # or 'client' if you're only accessing the client API
+                    'x-stack-project-id': stack_project_id,
+                    'x-stack-publishable-client-key': stack_publishable_client_key,
+                    'x-stack-secret-server-key': stack_secret_server_key,  # not necessary if access type is 'client'
+                    **kwargs.pop('headers', {}),
+                },
+                **kwargs,
+            )
+            if res.status_code >= 400:
+                raise Exception(f"Stack Auth API request failed with {res.status_code}: {res.text}")
+            return res.json()
+        ```
+      </Tab>
+      <Tab title="FastAPI">
+        ```python title="main.py"
+        import requests
+
+        def stack_auth_request(method, endpoint, **kwargs):
+            res = requests.request(
+                method,
+                f'https://api.stack-auth.com/{endpoint}',
+                headers={
+                    'x-stack-access-type': 'server',  # or 'client' if you're only accessing the client API
+                    'x-stack-project-id': stack_project_id,
+                    'x-stack-publishable-client-key': stack_publishable_client_key,
+                    'x-stack-secret-server-key': stack_secret_server_key,  # not necessary if access type is 'client'
+                    **kwargs.pop('headers', {}),
+                },
+                **kwargs,
+            )
+            if res.status_code >= 400:
+                raise Exception(f"Stack Auth API request failed with {res.status_code}: {res.text}")
+            return res.json()
+        ```
+      </Tab>
+      <Tab title="Flask">
+        ```python title="app.py"
+        import requests
+
+        def stack_auth_request(method, endpoint, **kwargs):
+            res = requests.request(
+                method,
+                f'https://api.stack-auth.com/{endpoint}',
+                headers={
+                    'x-stack-access-type': 'server',  # or 'client' if you're only accessing the client API
+                    'x-stack-project-id': stack_project_id,
+                    'x-stack-publishable-client-key': stack_publishable_client_key,
+                    'x-stack-secret-server-key': stack_secret_server_key,  # not necessary if access type is 'client'
+                    **kwargs.pop('headers', {}),
+                },
+                **kwargs,
+            )
+            if res.status_code >= 400:
+                raise Exception(f"Stack Auth API request failed with {res.status_code}: {res.text}")
+            return res.json()
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Set up authentication handlers (Frontend frameworks only)">
+    For JavaScript frameworks, create the authentication handler:
+
+    <Tabs>
+      <Tab title="Next.js">
+        ```typescript title="app/handler/[...stack]/page.tsx"
+        import { StackHandler } from "@stackframe/stack";
+        import { stackServerApp } from "@/stack/server";
+
+        export default function Handler(props: unknown) {
+          return <StackHandler fullPage app={stackServerApp} routeProps={props} />;
+        }
+        ```
+      </Tab>
+      <Tab title="React">
+        ```typescript title="App.tsx"
+        import { StackHandler, StackProvider, StackTheme } from "@stackframe/react";
+        import { Suspense } from "react";
+        import { BrowserRouter, Route, Routes, useLocation } from "react-router-dom";
+        import { stackClientApp } from "./stack/client";
+
+        function HandlerRoutes() {
+          const location = useLocation();
+          return (
+            <StackHandler app={stackClientApp} location={location.pathname} fullPage />
+          );
+        }
+
+        export default function App() {
+          return (
+            <Suspense fallback={null}>
+              <BrowserRouter>
+                <StackProvider app={stackClientApp}>
+                  <StackTheme>
+                    <Routes>
+                      <Route path="/handler/*" element={<HandlerRoutes />} />
+                      <Route path="/" element={<div>hello world</div>} />
+                    </Routes>
+                  </StackTheme>
+                </StackProvider>
+              </BrowserRouter>
+            </Suspense>
+          );
+        }
+        ```
+      </Tab>
+      <Tab title="Express">
+        ```typescript title="Note"
+        // Express doesn't use built-in handlers
+        // Use the REST API or integrate with your frontend
+        ```
+      </Tab>
+      <Tab title="Node.js">
+        ```javascript title="Note"
+        // Node.js doesn't use built-in handlers
+        // Use the REST API or integrate with your frontend
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Add providers (Next.js and React only)">
+    For Next.js and React, wrap your app with Stack providers:
+
+    <Tabs>
+      <Tab title="Next.js">
+        ```typescript title="app/layout.tsx"
+        import React from "react";
+        import { StackProvider, StackTheme } from "@stackframe/stack";
+        import { stackServerApp } from "@/stack/server";
+
+        export default function RootLayout({ children }: { children: React.ReactNode }) {
+          return (
+            <html lang="en">
+              <body>
+                <StackProvider app={stackServerApp}>
+                  <StackTheme>
+                    {children}
+                  </StackTheme>
+                </StackProvider>
+              </body>
+            </html>
+          );
+        }
+        ```
+      </Tab>
+      <Tab title="React">
+        ```typescript title="Note"
+        // Already shown in the App.tsx example above
+        // Make sure to wrap your app with StackProvider and StackTheme
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+
+  <Step title="Add loading boundary (Next.js only)">
+    For Next.js, add a Suspense boundary:
+
+    ```typescript title="app/loading.tsx"
+    export default function Loading() {
+      // You can use any loading indicator here
+      return <>Loading...</>;
+    }
+    ```
+  </Step>
+
+  <Step title="Add suspense boundary (React only)">
+    For React, add a suspense boundary:
+
+    ```typescript title="App.tsx"
+    import { Suspense } from "react";
+    import { StackProvider } from "@stackframe/react";
+    import { stackClientApp } from "./stack/client";
+
+    export default function App() {
+      return (
+        // Wrap your StackProvider with Suspense for async hooks to work
+        <Suspense fallback={<div>Loading...</div>}>
+          <StackProvider app={stackClientApp}>
+            {/* Your app content */}
+          </StackProvider>
+        </Suspense>
+      );
+    }
+    ```
+  </Step>
+</Steps>
+
+## Post-setup
+
+That's it! Stack is now configured in your project.
+
+### Testing your setup
+
+<Tabs>
+  <Tab title="Next.js">
+    ```bash title="Terminal"
+    # Start your Next.js app
+    npm run dev
+
+    # Navigate to the sign-up page
+    # http://localhost:3000/handler/sign-up
+    ```
+  </Tab>
+  <Tab title="React">
+    ```bash title="Terminal"
+    # Start your React app
+    npm run dev
+
+    # Navigate to the sign-up page
+    # http://localhost:5173/handler/sign-up
+    ```
+  </Tab>
+  <Tab title="Express">
+    ```bash title="Terminal"
+    # Start your Express server
+    npm start
+
+    # Use the REST API or integrate with your frontend
+    # Check the REST API documentation for endpoints
+    ```
+  </Tab>
+  <Tab title="Node.js">
+    ```bash title="Terminal"
+    # Start your Node.js app
+    node index.js
+
+    # Use the REST API or integrate with your frontend
+    # Check the REST API documentation for endpoints
+    ```
+  </Tab>
+  <Tab title="Django">
+    ```python title="Terminal"
+    # Test the Stack Auth API connection
+    print(stack_auth_request('GET', '/api/v1/projects/current'))
+
+    # Start your Django server
+    python manage.py runserver
+    ```
+  </Tab>
+  <Tab title="FastAPI">
+    ```python title="Terminal"
+    # Test the Stack Auth API connection
+    print(stack_auth_request('GET', '/api/v1/projects/current'))
+
+    # Start your FastAPI server
+    uvicorn main:app --reload
+    ```
+  </Tab>
+  <Tab title="Flask">
+    ```python title="Terminal"
+    # Test the Stack Auth API connection
+    print(stack_auth_request('GET', '/api/v1/projects/current'))
+
+    # Start your Flask server
+    flask run
+    ```
+  </Tab>
+</Tabs>
+
+### What you'll see
+
+For JavaScript frameworks with built-in UI components, you'll see the Stack Auth sign-up page:
+
+<Frame>
+  <img src="/images/sign-in.png" alt="Stack sign-in page" />
+</Frame>
+
+After signing up/in, you will be redirected back to the home page. You can also check out the account settings page.
+
+<Frame>
+  <img src="/images/account-settings.png" alt="Stack account settings page" />
+</Frame>
+
+For Python and backend-only JavaScript setups, you'll interact with Stack Auth through the REST API.
+
+## Example usage
+
+Here are some basic usage examples for each platform:
+
+<Tabs>
+  <Tab title="Server Component">
+    ```typescript title="Server Component"
+    import { stackServerApp } from "@/stack/server";
+
+    // In a Server Component or API route
+    const user = await stackServerApp.getUser();
+    if (user) {
+      console.log("User is signed in:", user.displayName);
+    } else {
+      console.log("User is not signed in");
+    }
+    ```
+  </Tab>
+  <Tab title="Client Component">
+    ```typescript title="Client Component"
+    'use client';
+    import { useUser } from "@stackframe/stack";
+
+    export default function MyComponent() {
+      const user = useUser();
+
+      if (user) {
+        return <div>Hello, {user.displayName}!</div>;
+      } else {
+        return <div>Please sign in</div>;
+      }
+    }
+    ```
+  </Tab>
+  <Tab title="React">
+    ```typescript title="Component"
+    import { useUser } from "@stackframe/react";
+
+    export default function MyComponent() {
+      const user = useUser();
+
+      if (user) {
+        return <div>Hello, {user.displayName}!</div>;
+      } else {
+        return <div>Please sign in</div>;
+      }
+    }
+    ```
+  </Tab>
+  <Tab title="Express">
+    ```typescript title="server.ts"
+    import { stackServerApp } from "./stack/server.js";
+
+    app.get('/profile', async (req, res) => {
+      try {
+        // Get access token from request headers
+        const accessToken = req.headers['x-stack-access-token'];
+        const user = await stackServerApp.getUser({ accessToken });
+
+        if (user) {
+          res.json({ message: `Hello, ${user.displayName}!` });
+        } else {
+          res.status(401).json({ error: 'Not authenticated' });
+        }
+      } catch (error) {
+        res.status(500).json({ error: 'Server error' });
+      }
+    });
+    ```
+  </Tab>
+  <Tab title="Node.js">
+    ```javascript title="index.js"
+    import { stackServerApp } from "./stack/server.js";
+
+    async function checkUser(accessToken) {
+      try {
+        const user = await stackServerApp.getUser({ accessToken });
+
+        if (user) {
+          console.log(`Hello, ${user.displayName}!`);
+        } else {
+          console.log('User not authenticated');
+        }
+      } catch (error) {
+        console.error('Error:', error);
+      }
+    }
+    ```
+  </Tab>
+  <Tab title="Django">
+    ```python title="views.py"
+    # In your views.py
+    def profile_view(request):
+        # Get access token from request headers
+        access_token = request.headers.get('X-Stack-Access-Token')
+
+        try:
+            user_data = stack_auth_request('GET', '/api/v1/users/me', headers={
+                'x-stack-access-token': access_token,
+            })
+            return JsonResponse({'message': f"Hello, {user_data['displayName']}!"})
+        except Exception as e:
+            return JsonResponse({'error': 'Not authenticated'}, status=401)
+    ```
+  </Tab>
+  <Tab title="FastAPI">
+    ```python title="main.py"
+    from fastapi import FastAPI, Header, HTTPException
+
+    app = FastAPI()
+
+    @app.get("/profile")
+    async def get_profile(x_stack_access_token: str = Header(None)):
+        if not x_stack_access_token:
+            raise HTTPException(status_code=401, detail="Access token required")
+
+        try:
+            user_data = stack_auth_request('GET', '/api/v1/users/me', headers={
+                'x-stack-access-token': x_stack_access_token,
+            })
+            return {"message": f"Hello, {user_data['displayName']}!"}
+        except Exception as e:
+            raise HTTPException(status_code=401, detail="Not authenticated")
+    ```
+  </Tab>
+  <Tab title="Flask">
+    ```python title="app.py"
+    from flask import Flask, request, jsonify
+
+    app = Flask(__name__)
+
+    @app.route('/profile')
+    def profile():
+        access_token = request.headers.get('X-Stack-Access-Token')
+
+        if not access_token:
+            return jsonify({'error': 'Access token required'}), 401
+
+        try:
+            user_data = stack_auth_request('GET', '/api/v1/users/me', headers={
+                'x-stack-access-token': access_token,
+            })
+            return jsonify({'message': f"Hello, {user_data['displayName']}!"})
+        except Exception as e:
+            return jsonify({'error': 'Not authenticated'}), 401
+    ```
+  </Tab>
+</Tabs>
+
+## Next steps
+
+Next up, we will show you how to [retrieve and update user information](/guides/getting-started/user-fundamentals), and how to [protect a page](/guides/getting-started/user-fundamentals#protecting-a-page) from unauthorized access.
+
+For Python developers, check out the [REST API documentation](/api/overview) to learn more about the available endpoints and how to use them in your Python application.

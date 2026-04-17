@@ -145,6 +145,37 @@ EmailTheme.PreviewProps = {
 `;
 
 
+const ColorfulEmailTheme = `import { Html, Head, Tailwind, Body, Container, Section } from '@react-email/components';
+import { ThemeProps, ProjectLogo } from "@stackframe/emails";
+
+export function EmailTheme({ children, unsubscribeLink, projectLogos }: ThemeProps) {
+  return (
+    <Html>
+      <Head />
+      <Tailwind>
+        <Body className="bg-[#f0eef6] font-sans text-base m-0 p-0" style={{ overflowX: 'hidden' }}>
+          <div className="py-8 px-4 flex justify-center">
+            <Container className="bg-white p-[45px] rounded-2xl mx-auto" style={{ width: '100%', maxWidth: '600px', borderTop: '4px solid #7c5ce0' }}>
+              <ProjectLogo data={projectLogos} mode="light" />
+              {children}
+            </Container>
+          </div>
+          {unsubscribeLink && (
+            <Section className="p-4 opacity-60 text-center" style={{ textAlign: 'center' }}>
+              <a href={unsubscribeLink} className="text-[#7c5ce0]" target="_blank" rel="noopener noreferrer">Click here</a> to unsubscribe from these emails
+            </Section>
+          )}
+        </Body>
+      </Tailwind>
+    </Html>
+  );
+}
+
+EmailTheme.PreviewProps = {
+  unsubscribeLink: "https://example.com",
+} satisfies Partial<ThemeProps>
+`;
+
 export const DEFAULT_EMAIL_THEME_ID = "1df07ae6-abf3-4a40-83a5-a1a2cbe336ac";
 
 export const DEFAULT_EMAIL_THEMES = {
@@ -155,6 +186,10 @@ export const DEFAULT_EMAIL_THEMES = {
   "a0172b5d-cff0-463b-83bb-85124697373a": {
     displayName: 'Default Dark',
     tsxSource: DarkEmailTheme,
+  },
+  "c7e2d94f-8a1b-4e6d-b3f5-9d0a2e7c1b8f": {
+    displayName: 'Default Colorful',
+    tsxSource: ColorfulEmailTheme,
   },
 };
 

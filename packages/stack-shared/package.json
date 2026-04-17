@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-shared",
-  "version": "2.8.71",
+  "version": "2.8.84",
   "repository": "https://github.com/stack-auth/stack-auth",
   "scripts": {
     "build": "rimraf dist && tsdown",
@@ -23,6 +23,13 @@
         "default": "./dist/index.js"
       },
       "default": "./dist/esm/index.js"
+    },
+    "./config": {
+      "types": "./dist/config-authoring.d.ts",
+      "require": {
+        "default": "./dist/config-authoring.js"
+      },
+      "default": "./dist/esm/config-authoring.js"
     },
     "./dist/*": {
       "types": "./dist/*.d.ts",
@@ -55,6 +62,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-kms": "^3.876.0",
+    "@aws-sdk/credential-provider-web-identity": "^3.972.27",
     "@babel/core": "^7.28.5",
     "@babel/generator": "^7.28.5",
     "@babel/parser": "^7.28.5",

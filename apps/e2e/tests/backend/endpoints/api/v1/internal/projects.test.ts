@@ -43,6 +43,18 @@ it("is not allowed to list all current projects without signing in", async ({ ex
   `);
 });
 
+it("is not allowed to list internal projects from a non-internal project context", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Auth.fastSignUp();
+  const response = await niceBackendFetch("/api/v1/internal/projects", { accessType: "admin" });
+  expect(response.status).toBe(401);
+  expect(response.headers.get("x-stack-known-error")).toBe("EXPECTED_INTERNAL_PROJECT");
+  expect(response.body).toMatchObject({
+    code: "EXPECTED_INTERNAL_PROJECT",
+    error: "The project ID is expected to be internal.",
+  });
+});
+
 it("lists all current projects (empty list)", async ({ expect }) => {
   await Auth.fastSignUp();
   const response = await niceBackendFetch("/api/v1/internal/projects", { accessType: "client" });
@@ -99,6 +111,7 @@ it("creates a new project", async ({ expect }) => {
         "logo_full_dark_mode_url": null,
         "logo_full_url": null,
         "logo_url": null,
+        "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -155,6 +168,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
         "logo_full_dark_mode_url": null,
         "logo_full_url": null,
         "logo_url": null,
+        "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -213,6 +227,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
         "logo_full_dark_mode_url": null,
         "logo_full_url": null,
         "logo_url": null,
+        "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -262,6 +277,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
         "logo_full_dark_mode_url": null,
         "logo_full_url": null,
         "logo_url": null,
+        "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -325,6 +341,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
         "logo_full_dark_mode_url": null,
         "logo_full_url": null,
         "logo_url": null,
+        "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -390,6 +407,7 @@ it("creates a new project with different configurations", async ({ expect }) => 
         "logo_full_dark_mode_url": null,
         "logo_full_url": null,
         "logo_url": null,
+        "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -438,6 +456,7 @@ it("lists the current projects after creating a new project", async ({ expect })
             "logo_full_dark_mode_url": null,
             "logo_full_url": null,
             "logo_url": null,
+            "onboarding_status": "completed",
             "owner_team_id": "<stripped UUID>",
           },
         ],
@@ -492,6 +511,7 @@ it("verifies email_theme update persists", async ({ expect }) => {
         "logo_full_dark_mode_url": null,
         "logo_full_url": null,
         "logo_url": null,
+        "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -535,6 +555,7 @@ it("verifies email_theme update persists", async ({ expect }) => {
         "logo_full_dark_mode_url": null,
         "logo_full_url": null,
         "logo_url": null,
+        "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -588,6 +609,7 @@ it("updates trusted domains without modifying allow_localhost", async ({ expect 
         "logo_full_dark_mode_url": null,
         "logo_full_url": null,
         "logo_url": null,
+        "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -644,6 +666,7 @@ it("updates trusted domains without modifying allow_localhost", async ({ expect 
         "logo_full_dark_mode_url": null,
         "logo_full_url": null,
         "logo_url": null,
+        "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
@@ -717,6 +740,7 @@ it("lets user update logo_url to a valid image", async ({ expect }) => {
         "logo_full_dark_mode_url": null,
         "logo_full_url": null,
         "logo_url": "http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>21/stack-storage/project-logos/<stripped UUID>.png",
+        "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },

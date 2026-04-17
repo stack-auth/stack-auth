@@ -2,7 +2,6 @@
 
 import "@assistant-ui/react-markdown/styles/dot.css";
 
-import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { cn } from "@/lib/utils";
 import {
   CodeHeaderProps,
@@ -10,8 +9,7 @@ import {
   unstable_memoizeMarkdownComponents as memoizeMarkdownComponents,
   useIsMarkdownCodeBlock,
 } from "@assistant-ui/react-markdown";
-import { CheckIcon, CopyIcon } from "@phosphor-icons/react";
-import { FC, memo, useState } from "react";
+import { FC, memo } from "react";
 import remarkGfm from "remark-gfm";
 
 const MarkdownTextImpl = () => {
@@ -26,43 +24,13 @@ const MarkdownTextImpl = () => {
 
 export const MarkdownText = memo(MarkdownTextImpl);
 
-const CodeHeader: FC<CodeHeaderProps> = ({ language, code }) => {
-  const { isCopied, copyToClipboard } = useCopyToClipboard();
-  const onCopy = () => {
-    if (!code || isCopied) return;
-    copyToClipboard(code);
-  };
-
+const CodeHeader: FC<CodeHeaderProps> = ({ language }) => {
+  if (!language) return null;
   return (
-    <div className="flex items-center justify-between gap-4 rounded-t-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white">
+    <div className="flex items-center rounded-t-lg bg-zinc-900 px-4 py-2 text-sm font-semibold text-white">
       <span className="lowercase [&>span]:text-xs">{language}</span>
-      <TooltipIconButton tooltip="Copy" onClick={onCopy}>
-        {!isCopied && <CopyIcon />}
-        {isCopied && <CheckIcon />}
-      </TooltipIconButton>
     </div>
   );
-};
-
-const useCopyToClipboard = ({
-  copiedDuration = 3000,
-}: {
-  copiedDuration?: number,
-} = {}) => {
-  const [isCopied, setIsCopied] = useState<boolean>(false);
-
-  const copyToClipboard = (value: string) => {
-    if (!value) return;
-
-    navigator.clipboard.writeText(value).then(() => {
-      setIsCopied(true);
-      setTimeout(() => setIsCopied(false), copiedDuration);
-    }).catch(() => {
-      setIsCopied(false);
-    });
-  };
-
-  return { isCopied, copyToClipboard };
 };
 
 const defaultComponents = memoizeMarkdownComponents({

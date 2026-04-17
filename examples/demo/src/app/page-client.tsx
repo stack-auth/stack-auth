@@ -4,12 +4,9 @@ import { UserAvatar, useStackApp, useUser } from '@stackframe/stack';
 import { Button, buttonVariants, Card, CardContent, CardFooter, CardHeader, Typography } from '@stackframe/stack-ui';
 import Image from 'next/image';
 import Link from 'next/link';
-import { useRouter } from 'next/navigation';
-
 
 export default function PageClient() {
-  const user = useUser();
-  const router = useRouter();
+  const user = useUser({ includeRestricted: true });
   const app = useStackApp();
 
   const authButtons = (
@@ -19,8 +16,8 @@ export default function PageClient() {
       <Typography>Try signing in/up with the buttons below!</Typography>
       <Typography>Also feel free to check out the things on the top right corner.</Typography>
       <div className='flex gap-2'>
-        <Button onClick={() => router.push(app.urls.signIn)}>Sign In</Button>
-        <Button onClick={() => router.push(app.urls.signUp)}>Sign Up</Button>
+        <Button onClick={async () => await app.redirectToSignIn()}>Sign In</Button>
+        <Button onClick={async () => await app.redirectToSignUp()}>Sign Up</Button>
       </div>
     </div>
   );
@@ -35,7 +32,14 @@ export default function PageClient() {
                 <UserAvatar user={user} size={100} />
                 <div>
                   <Typography className='text-sm'>logged in as</Typography>
-                  <Typography className='text-2xl font-semibold'>{user.displayName ?? user.primaryEmail}</Typography>
+                  <div className="flex items-center gap-2">
+                    <Typography className='text-2xl font-semibold'>{user.displayName ?? user.primaryEmail}</Typography>
+                    {user.isRestricted && (
+                      <span className="rounded bg-amber-100 dark:bg-amber-900/40 text-amber-800 dark:text-amber-200 px-2 py-0.5 text-sm font-medium">
+                        Restricted
+                      </span>
+                    )}
+                  </div>
                 </div>
               </div>
             </CardHeader>
@@ -54,6 +58,10 @@ export default function PageClient() {
                       <div>{user.primaryEmail}</div>
                     </div>
                   )}
+                  <div className="flex">
+                    <div className="w-32 font-semibold">Restricted:</div>
+                    <div>{user.isRestricted ? `Yes${user.restrictedReason ? ` (${user.restrictedReason.type})` : ''}` : 'No'}</div>
+                  </div>
                 </div>
               </div>
             </CardContent>
@@ -62,9 +70,9 @@ export default function PageClient() {
                 <Link href="https://app.stack-auth.com" className={buttonVariants()}>
                   Visit Stack Auth
                 </Link>
-                <Link href={app.urls.signOut} className={buttonVariants({ variant: 'destructive' })}>
+                <Button variant='destructive' onClick={async () => await app.redirectToSignOut()}>
                   Sign Out
-                </Link>
+                </Button>
               </div>
             </CardFooter>
           </Card>

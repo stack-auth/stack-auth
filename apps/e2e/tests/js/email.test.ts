@@ -187,17 +187,24 @@ it("should provide delivery statistics", async ({ expect }) => {
     subject: "Stats",
   });
 
-  // wait until the email is sent
-  // TODO: use the equivalent of waitForMessagesWithSubject
-  await wait(10_000);
-
-  const info = await serverApp.getEmailDeliveryStats();
+  let info;
+  for (let i = 0; ; i++) {
+    info = await serverApp.getEmailDeliveryStats();
+    if (info.stats.hour.sent >= 1) break;
+    if (i >= 50) {
+      throw new Error(`Timed out waiting for email delivery stats to reflect sent email: ${JSON.stringify(info)}`);
+    }
+    await wait(500);
+  }
 
   expect(info).toMatchInlineSnapshot(`
     {
       "capacity": {
+        "boost_expires_at": null,
+        "boost_multiplier": 1,
+        "is_boost_active": false,
         "penalty_factor": 1,
-        "rate_per_second": 2.7777793209876545,
+        "rate_per_second": 27.777779320987655,
       },
       "stats": {
         "day": {

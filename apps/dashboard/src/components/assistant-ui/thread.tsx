@@ -1,60 +1,123 @@
+import { MarkdownText } from "@/components/assistant-ui/markdown-text";
+import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
+import { Button, useToast } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import {
+  validateComposerImageByteLength,
+  validateComposerImageCount,
+} from "./image-attachment-validation";
+import {
+  type Attachment,
+  type AttachmentAdapter,
+  type CompleteAttachment,
   ActionBarPrimitive,
   BranchPickerPrimitive,
   ComposerPrimitive,
   MessagePrimitive,
   ThreadPrimitive,
+  useComposer,
+  useComposerRuntime,
+  useMessage,
+  useThreadRuntime,
+  type PendingAttachment,
 } from "@assistant-ui/react";
-import { ArrowClockwiseIcon, ArrowDownIcon, CaretLeftIcon, CaretRightIcon, CheckIcon, CopyIcon, PaperPlaneRightIcon, PencilSimpleIcon, WarningCircle } from "@phosphor-icons/react";
-import type { FC } from "react";
+import { ArrowClockwiseIcon, ArrowDownIcon, CaretLeftIcon, CaretRightIcon, CheckIcon, CopyIcon, ImageIcon, PaperPlaneRightIcon, PencilSimpleIcon, WarningCircle, XIcon } from "@phosphor-icons/react";
+import {
+  MAX_IMAGES_PER_MESSAGE,
+  MAX_IMAGE_MB_PER_FILE,
+} from "@stackframe/stack-shared/dist/ai/image-limits";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type FC } from "react";
 
-import { MarkdownText } from "@/components/assistant-ui/markdown-text";
-import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
-import { Button } from "@/components/ui";
+const HideMessageActionsContext = createContext(false);
+const HasRunningStatusContext = createContext(false);
 
-export const Thread: FC<{ useOffWhiteLightMode?: boolean }> = ({ useOffWhiteLightMode = false }) => {
+const ComposerAttachmentsEnabledContext = createContext(false);
+const ComposerAttachmentAdapterContext = createContext<AttachmentAdapter | null>(null);
+
+function useComposerAttachmentsEnabled() {
+  return useContext(ComposerAttachmentsEnabledContext);
+}
+
+function useComposerAttachmentAdapter() {
+  return useContext(ComposerAttachmentAdapterContext);
+}
+
+/** Static placeholder string, or config for the typing-animation input. */
+export type ComposerPlaceholder =
+  | string
+  | {
+      prefix: string,
+      suffixes: readonly string[],
+      typeSpeed?: number,
+      deleteSpeed?: number,
+      pauseAfterType?: number,
+      pauseAfterDelete?: number,
+    };
+
+export const Thread: FC<{
+  useOffWhiteLightMode?: boolean,
+  composerPlaceholder?: ComposerPlaceholder,
+  hideMessageActions?: boolean,
+  runningStatusMessages?: string[],
+  composerAttachments?: boolean,
+  attachmentAdapter?: AttachmentAdapter,
+}> = ({ useOffWhiteLightMode = false, composerPlaceholder, hideMessageActions = false, runningStatusMessages, composerAttachments = false, attachmentAdapter }) => {
   return (
-    <ThreadPrimitive.Root
-      className={cn(
-        "box-border flex h-0 flex-grow flex-col overflow-hidden",
-        useOffWhiteLightMode ? "bg-slate-50/90 dark:bg-background" : "bg-background",
-      )}
-      style={{
-        ["--thread-max-width" as string]: "100%",
-      }}
-    >
-      <ThreadPrimitive.Viewport
-        className={cn(
-          "flex h-full flex-col items-center overflow-y-auto scroll-smooth px-3",
-          useOffWhiteLightMode ? "bg-slate-50/90 dark:bg-inherit" : "bg-inherit",
+    <HideMessageActionsContext.Provider value={hideMessageActions}>
+      <HasRunningStatusContext.Provider value={!!runningStatusMessages}>
+        <ComposerAttachmentAdapterContext.Provider value={attachmentAdapter ?? null}>
+          <ComposerAttachmentsEnabledContext.Provider value={composerAttachments}>
+            <ThreadPrimitive.Root
+              className={cn(
+          "box-border flex h-0 flex-grow flex-col overflow-hidden",
+          useOffWhiteLightMode ? "bg-slate-50/90 dark:bg-background" : "bg-background",
         )}
-      >
-        <ThreadWelcome />
+              style={{
+                ["--thread-max-width" as string]: "100%",
+              }}
+            >
+              <ThreadPrimitive.Viewport
+                className={cn(
+            "flex h-full flex-col items-center overflow-y-auto scroll-smooth px-3",
+            useOffWhiteLightMode ? "bg-slate-50/90 dark:bg-inherit" : "bg-inherit",
+          )}
+              >
+                <ThreadWelcome />
 
-        <ThreadPrimitive.Messages
-          components={{
-            UserMessage: UserMessage,
-            EditComposer: EditComposer,
-            AssistantMessage: AssistantMessage,
-          }}
-        />
+                <ThreadPrimitive.Messages
+                  components={{
+                    UserMessage: UserMessage,
+                    EditComposer: EditComposer,
+                    AssistantMessage: AssistantMessage,
+                  }}
+                />
 
-        <ThreadPrimitive.If empty={false}>
-          <div className="min-h-6 flex-grow" />
-        </ThreadPrimitive.If>
+                {runningStatusMessages && (
+                  <ThreadPrimitive.If running>
+                    <ThreadRunningStatus messages={runningStatusMessages} />
+                  </ThreadPrimitive.If>
+                )}
 
-        <div className={cn(
-          "sticky bottom-0 mt-2 flex w-full max-w-[var(--thread-max-width)] flex-col items-center justify-end bg-gradient-to-t to-transparent pt-6 pb-3",
-          useOffWhiteLightMode
-            ? "from-slate-50/90 via-slate-50/90 dark:from-background dark:via-background"
-            : "from-background via-background",
-        )}>
-          <ThreadScrollToBottom />
-          <Composer />
-        </div>
-      </ThreadPrimitive.Viewport>
-    </ThreadPrimitive.Root>
+                <ThreadPrimitive.If empty={false}>
+                  <div className="min-h-6 flex-grow" />
+                </ThreadPrimitive.If>
+
+                <div className={cn(
+            "sticky bottom-0 mt-2 flex w-full max-w-[var(--thread-max-width)] flex-col items-center justify-end bg-gradient-to-t to-transparent pt-6 pb-3",
+            useOffWhiteLightMode
+              ? "from-slate-50/90 via-slate-50/90 dark:from-background dark:via-background"
+              : "from-background via-background",
+          )}>
+                  <ThreadScrollToBottom />
+                  <Composer placeholder={composerPlaceholder} />
+                </div>
+              </ThreadPrimitive.Viewport>
+            </ThreadPrimitive.Root>
+          </ComposerAttachmentsEnabledContext.Provider>
+        </ComposerAttachmentAdapterContext.Provider>
+      </HasRunningStatusContext.Provider>
+    </HideMessageActionsContext.Provider>
   );
 };
 
@@ -119,16 +182,382 @@ const ThreadWelcomeSuggestions: FC = () => {
   );
 };
 
-const Composer: FC = () => {
+type DisplayableAttachment = {
+  id: string,
+  name: string,
+  file?: File,
+  content?: readonly unknown[],
+};
+
+function extractImageUrlFromContent(content: readonly unknown[] | undefined): string | null {
+  if (!Array.isArray(content)) return null;
+  for (const part of content) {
+    if (part && typeof part === "object" && (part as { type?: unknown }).type === "image") {
+      const image = (part as { image?: unknown }).image;
+      if (typeof image === "string") return image;
+    }
+  }
+  return null;
+}
+
+function isCompleteAttachment(attachment: Attachment): attachment is CompleteAttachment {
+  return attachment.status.type === "complete";
+}
+
+function isPendingAttachment(attachment: Attachment): attachment is PendingAttachment {
+  return attachment.status.type !== "complete";
+}
+
+function getAttachmentIdentityKey(attachment: Attachment): string {
+  return attachment.id;
+}
+
+function haveAttachmentListsChanged(
+  currentAttachments: readonly Attachment[],
+  originalAttachments: readonly Attachment[],
+): boolean {
+  if (currentAttachments.length !== originalAttachments.length) {
+    return true;
+  }
+  return currentAttachments.some((attachment, index) => (
+    getAttachmentIdentityKey(attachment) !== getAttachmentIdentityKey(originalAttachments[index]!)
+  ));
+}
+
+function getTextContent(parts: readonly { type: string, text?: string }[]): string {
+  return parts
+    .filter((part) => part.type === "text" && typeof part.text === "string")
+    .map((part) => part.text ?? "")
+    .join("");
+}
+
+async function resolveComposerAttachments(
+  attachments: readonly Attachment[],
+  attachmentAdapter: AttachmentAdapter | null,
+): Promise<readonly CompleteAttachment[]> {
+  if (attachments.length === 0) {
+    return [];
+  }
+  if (attachmentAdapter == null) {
+    if (attachments.some(isPendingAttachment)) {
+      throw new Error("Image attachments are not available in this composer.");
+    }
+    return attachments.filter(isCompleteAttachment);
+  }
+
+  const resolved: CompleteAttachment[] = [];
+  for (const attachment of attachments) {
+    if (isCompleteAttachment(attachment)) {
+      resolved.push(attachment);
+      continue;
+    }
+    resolved.push(await attachmentAdapter.send(attachment));
+  }
+  return resolved;
+}
+
+const AttachmentThumb: FC<{
+  attachment: DisplayableAttachment,
+  onRemove?: () => void,
+}> = ({ attachment, onRemove }) => {
+  const { file, name, content } = attachment;
+
+  const liveFile = file instanceof Blob ? file : null;
+
+  const [objectUrl, setObjectUrl] = useState<string | null>(null);
+  useEffect(() => {
+    if (!liveFile) {
+      setObjectUrl(null);
+      return;
+    }
+    const url = URL.createObjectURL(liveFile);
+    setObjectUrl(url);
+    return () => {
+      URL.revokeObjectURL(url);
+    };
+  }, [liveFile]);
+
+  const contentUrl = useMemo(() => extractImageUrlFromContent(content), [content]);
+  const displayUrl = objectUrl ?? contentUrl;
+
+  return (
+    <div className="group/attachment relative h-14 w-14 overflow-hidden rounded-xl ring-1 ring-foreground/[0.08] bg-foreground/[0.03] shadow-sm">
+      {displayUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={displayUrl} alt={name} className="h-full w-full object-cover" draggable={false} />
+      ) : (
+        <div className="flex h-full w-full items-center justify-center text-muted-foreground">
+          <ImageIcon className="h-5 w-5" />
+        </div>
+      )}
+      {onRemove && (
+        <button
+          type="button"
+          aria-label={`Remove ${name}`}
+          onClick={onRemove}
+          className="absolute right-1 top-1 grid h-5 w-5 place-items-center rounded-full bg-background/95 text-foreground/80 ring-1 ring-foreground/[0.1] shadow opacity-0 group-hover/attachment:opacity-100 focus-visible:opacity-100 transition-opacity hover:text-foreground"
+        >
+          <XIcon className="h-3 w-3" weight="bold" />
+        </button>
+      )}
+    </div>
+  );
+};
+
+const ComposerAttachmentsRow: FC = () => {
+  const composerRuntime = useComposerRuntime();
+  const attachments = useComposer((s) => s.attachments);
+  if (attachments.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap items-center gap-2 px-3 pt-3 pb-1 border-b border-foreground/[0.04]">
+      {attachments.map((attachment, index) => (
+        <AttachmentThumb
+          key={attachment.id}
+          attachment={attachment as DisplayableAttachment}
+          onRemove={() =>
+            runAsynchronously(composerRuntime.getAttachmentByIndex(index).remove())
+          }
+        />
+      ))}
+    </div>
+  );
+};
+
+const UserMessageAttachmentsRow: FC = () => {
+  const attachments = useMessage((m) =>
+    m.role === "user" ? m.attachments : undefined,
+  );
+  if (!attachments || attachments.length === 0) return null;
+
+  return (
+    <div className="flex flex-wrap items-center justify-end gap-2 mb-1.5">
+      {attachments.map((attachment) => (
+        <AttachmentThumb
+          key={attachment.id}
+          attachment={attachment as DisplayableAttachment}
+        />
+      ))}
+    </div>
+  );
+};
+
+const ComposerAttachmentsAddButton: FC = () => {
+  const composerRuntime = useComposerRuntime();
+  const count = useComposer((s) => s.attachments.length);
+  const { toast } = useToast();
+  const atLimit = count >= MAX_IMAGES_PER_MESSAGE;
+
+  const handleClick = () => {
+    const countValidation = validateComposerImageCount(composerRuntime.getState().attachments.length + 1);
+    if (!countValidation.ok) {
+      toast({
+        variant: "destructive",
+        description: countValidation.reason,
+      });
+      return;
+    }
+
+    const input = document.createElement("input");
+    input.type = "file";
+    input.accept = "image/*";
+    input.multiple = true;
+    input.hidden = true;
+    document.body.appendChild(input);
+
+    input.onchange = (e) => {
+      const files = (e.target as HTMLInputElement).files;
+      if (files && files.length > 0) {
+        const liveCount = composerRuntime.getState().attachments.length;
+        const remaining = Math.max(0, MAX_IMAGES_PER_MESSAGE - liveCount);
+        const picked = Array.from(files);
+        const selected = picked.slice(0, remaining);
+        const valid: File[] = [];
+        const oversized: File[] = [];
+        for (const file of selected) {
+          const sizeValidation = validateComposerImageByteLength(file.size);
+          if (sizeValidation.ok) {
+            valid.push(file);
+          } else {
+            oversized.push(file);
+          }
+        }
+
+        const countValidation = validateComposerImageCount(liveCount + picked.length);
+        if (!countValidation.ok) {
+          toast({
+            variant: "destructive",
+            description: countValidation.reason,
+          });
+        }
+
+        if (oversized.length > 0) {
+          const firstOversizedValidation = validateComposerImageByteLength(oversized[0]!.size);
+          toast({
+            variant: "destructive",
+            description:
+              oversized.length === 1
+                ? `"${oversized[0]!.name}": ${firstOversizedValidation.ok ? `Image exceeds ${MAX_IMAGE_MB_PER_FILE}MB limit.` : firstOversizedValidation.reason}`
+                : `${oversized.length} images exceeded the ${MAX_IMAGE_MB_PER_FILE}MB limit and were skipped.`,
+          });
+        }
+
+        runAsynchronously(
+          (async () => {
+            for (const file of valid) {
+              if (composerRuntime.getState().attachments.length >= MAX_IMAGES_PER_MESSAGE) {
+                break;
+              }
+              try {
+                await composerRuntime.addAttachment(file);
+              } catch (err) {
+                toast({
+                  variant: "destructive",
+                  description:
+                    err instanceof Error ? err.message : `Failed to attach "${file.name}".`,
+                });
+              }
+            }
+          })(),
+        );
+      }
+      document.body.removeChild(input);
+    };
+
+    input.oncancel = () => {
+      if (!input.files || input.files.length === 0) {
+        if (input.parentNode) document.body.removeChild(input);
+      }
+    };
+    input.click();
+  };
+
+  const tooltipText = atLimit
+    ? `Limit reached (${MAX_IMAGES_PER_MESSAGE}/${MAX_IMAGES_PER_MESSAGE})`
+    : `Attach image (${count}/${MAX_IMAGES_PER_MESSAGE}, max ${MAX_IMAGE_MB_PER_FILE}MB)`;
+
+  return (
+    <TooltipIconButton
+      tooltip={tooltipText}
+      onClick={handleClick}
+      className={cn(
+        "h-7 w-7 rounded-lg text-muted-foreground hover:bg-foreground/[0.05] hover:text-foreground",
+        atLimit && "text-muted-foreground/70",
+      )}
+    >
+      <ImageIcon className="h-[15px] w-[15px]" weight="regular" />
+    </TooltipIconButton>
+  );
+};
+
+const COMPOSER_INPUT_CLASS =
+  "placeholder:text-muted-foreground/60 max-h-32 w-full resize-none border-none bg-transparent px-4 py-3 text-sm outline-none focus:ring-0 disabled:cursor-not-allowed leading-relaxed";
+
+const ComposerAnimatedInput: FC<{
+  prefix: string,
+  suffixes: readonly string[],
+  typeSpeed: number,
+  deleteSpeed: number,
+  pauseAfterType: number,
+  pauseAfterDelete: number,
+}> = ({ prefix, suffixes, typeSpeed, deleteSpeed, pauseAfterType, pauseAfterDelete }) => {
+  const [suffixText, setSuffixText] = useState("");
+  const stateRef = useRef({
+    suffixIndex: 0,
+    charIndex: 0,
+    phase: "typing" as "typing" | "pausing" | "deleting" | "waiting",
+  });
+
+  useEffect(() => {
+    let timeoutId: ReturnType<typeof setTimeout>;
+
+    function tick() {
+      const s = stateRef.current;
+      const target = suffixes[s.suffixIndex % suffixes.length];
+      switch (s.phase) {
+        case "typing": {
+          if (s.charIndex < target.length) {
+            s.charIndex++;
+            setSuffixText(target.slice(0, s.charIndex));
+            timeoutId = setTimeout(tick, typeSpeed);
+          } else {
+            s.phase = "pausing";
+            timeoutId = setTimeout(tick, pauseAfterType);
+          }
+          break;
+        }
+        case "pausing": {
+          s.phase = "deleting";
+          timeoutId = setTimeout(tick, deleteSpeed);
+          break;
+        }
+        case "deleting": {
+          if (s.charIndex > 0) {
+            s.charIndex--;
+            setSuffixText(target.slice(0, s.charIndex));
+            timeoutId = setTimeout(tick, deleteSpeed);
+          } else {
+            s.phase = "waiting";
+            timeoutId = setTimeout(tick, pauseAfterDelete);
+          }
+          break;
+        }
+        case "waiting": {
+          s.suffixIndex = (s.suffixIndex + 1) % suffixes.length;
+          s.charIndex = 0;
+          s.phase = "typing";
+          timeoutId = setTimeout(tick, typeSpeed);
+          break;
+        }
+      }
+    }
+
+    timeoutId = setTimeout(tick, 500);
+    return () => clearTimeout(timeoutId);
+  }, [suffixes, typeSpeed, deleteSpeed, pauseAfterType, pauseAfterDelete]);
+
+  return (
+    <ComposerPrimitive.Input
+      rows={1}
+      autoFocus
+      placeholder={prefix + suffixText}
+      className={COMPOSER_INPUT_CLASS}
+    />
+  );
+};
+
+const ComposerStaticInput: FC<{ placeholder?: string }> = ({ placeholder }) => {
+  return (
+    <ComposerPrimitive.Input
+      rows={1}
+      autoFocus
+      placeholder={placeholder ?? "Describe what you want..."}
+      className={COMPOSER_INPUT_CLASS}
+    />
+  );
+};
+
+const Composer: FC<{ placeholder?: ComposerPlaceholder }> = ({ placeholder }) => {
+  const attachmentsEnabled = useComposerAttachmentsEnabled();
   return (
     <ComposerPrimitive.Root className="group/composer relative flex w-full flex-col rounded-2xl border border-border/20 dark:border-foreground/[0.08] bg-white dark:bg-background/90 backdrop-blur-xl shadow-sm dark:shadow-lg ring-1 ring-foreground/[0.04] transition-all duration-150 hover:transition-none focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/30">
-      <ComposerPrimitive.Input
-        rows={1}
-        autoFocus
-        placeholder="Describe the email design you want..."
-        className="placeholder:text-muted-foreground/60 max-h-32 w-full resize-none border-none bg-transparent px-4 py-3 text-sm outline-none focus:ring-0 disabled:cursor-not-allowed leading-relaxed"
-      />
-      <div className="flex items-center justify-end px-3 pb-2.5">
+      {attachmentsEnabled && <ComposerAttachmentsRow />}
+      {typeof placeholder === "object" ? (
+        <ComposerAnimatedInput
+          prefix={placeholder.prefix}
+          suffixes={placeholder.suffixes}
+          typeSpeed={placeholder.typeSpeed ?? 70}
+          deleteSpeed={placeholder.deleteSpeed ?? 40}
+          pauseAfterType={placeholder.pauseAfterType ?? 2000}
+          pauseAfterDelete={placeholder.pauseAfterDelete ?? 400}
+        />
+      ) : (
+        <ComposerStaticInput placeholder={placeholder} />
+      )}
+      <div className="flex items-center justify-between px-3 pb-2.5 gap-2">
+        <div className="flex items-center gap-1">
+          {attachmentsEnabled && <ComposerAttachmentsAddButton />}
+        </div>
         <ComposerAction />
       </div>
     </ComposerPrimitive.Root>
@@ -168,11 +597,14 @@ const ComposerAction: FC = () => {
 const UserMessage: FC = () => {
   return (
     <MessagePrimitive.Root className="group flex flex-col items-end w-full max-w-[var(--thread-max-width)] py-3 gap-1.5">
+      <UserMessageAttachmentsRow />
       <div className="flex items-start gap-2 justify-end w-full">
         <UserActionBar />
-        <div className="bg-foreground/[0.05] text-foreground max-w-[90%] break-words rounded-2xl px-3.5 py-2.5 text-sm ring-1 ring-foreground/[0.06]">
-          <MessagePrimitive.Content />
-        </div>
+        <MessagePrimitive.If hasContent>
+          <div className="bg-foreground/[0.05] text-foreground max-w-[90%] break-words rounded-2xl px-3.5 py-2.5 text-sm ring-1 ring-foreground/[0.06]">
+            <MessagePrimitive.Content />
+          </div>
+        </MessagePrimitive.If>
       </div>
       <BranchPicker className="justify-end mr-1" />
     </MessagePrimitive.Root>
@@ -180,6 +612,8 @@ const UserMessage: FC = () => {
 };
 
 const UserActionBar: FC = () => {
+  const hidden = useContext(HideMessageActionsContext);
+  if (hidden) return null;
   return (
     <ActionBarPrimitive.Root
       hideWhenRunning
@@ -196,33 +630,96 @@ const UserActionBar: FC = () => {
 };
 
 const EditComposer: FC = () => {
+  const attachmentsEnabled = useComposerAttachmentsEnabled();
+  const attachmentAdapter = useComposerAttachmentAdapter();
+  const composerRuntime = useComposerRuntime();
+  const threadRuntime = useThreadRuntime();
+  const { toast } = useToast();
+  const messageId = useMessage((m) => m.id);
+  const parentId = useMessage((m) => m.parentId ?? null);
+  const role = useMessage((m) => m.role);
+  const originalContent = useMessage((m) => m.content);
+  const originalAttachments = useMessage((m) => m.attachments ?? []);
+  const composerText = useComposer((s) => s.text);
+  const composerAttachments = useComposer((s) => s.attachments);
+  const originalText = useMemo(() => getTextContent(originalContent), [originalContent]);
+  const hasChanges = composerText !== originalText
+    || haveAttachmentListsChanged(composerAttachments, originalAttachments);
+
+  const handleSend = async () => {
+    if (!hasChanges) {
+      return;
+    }
+
+    try {
+      const composerState = composerRuntime.getState();
+      const resolvedAttachments = await resolveComposerAttachments(
+        composerState.attachments,
+        attachmentAdapter,
+      );
+      threadRuntime.append({
+        parentId,
+        sourceId: messageId,
+        role,
+        content: composerState.text ? [{ type: "text", text: composerState.text }] : [],
+        attachments: resolvedAttachments,
+        metadata: { custom: {} },
+        runConfig: composerState.runConfig,
+      });
+      composerRuntime.cancel();
+    } catch (error) {
+      toast({
+        variant: "destructive",
+        description: error instanceof Error ? error.message : "Failed to send edited message.",
+      });
+    }
+  };
+
   return (
     <ComposerPrimitive.Root className="bg-foreground/[0.03] my-3 flex w-full max-w-[var(--thread-max-width)] flex-col gap-2 rounded-xl ring-1 ring-foreground/[0.08]">
+      {attachmentsEnabled && <ComposerAttachmentsRow />}
       <ComposerPrimitive.Input className="text-foreground flex min-h-[2.5rem] w-full resize-none bg-transparent p-3 pb-0 text-sm outline-none" />
 
-      <div className="px-3 pb-2.5 flex items-center justify-end gap-2">
-        <ComposerPrimitive.Cancel asChild>
-          <Button variant="ghost" size="sm" className="h-7 px-2.5 text-xs">Cancel</Button>
-        </ComposerPrimitive.Cancel>
-        <ComposerPrimitive.Send asChild>
-          <Button size="sm" className="h-7 px-3 text-xs bg-blue-600 hover:bg-blue-500">Send</Button>
-        </ComposerPrimitive.Send>
+      <div className="px-3 pb-2.5 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-1">
+          {attachmentsEnabled && <ComposerAttachmentsAddButton />}
+        </div>
+        <div className="flex items-center gap-2">
+          <ComposerPrimitive.Cancel asChild>
+            <Button variant="ghost" size="sm" className="h-7 px-2.5 text-xs">Cancel</Button>
+          </ComposerPrimitive.Cancel>
+          <Button
+            size="sm"
+            className="h-7 px-3 text-xs bg-blue-600 hover:bg-blue-500"
+            disabled={!hasChanges}
+            onClick={handleSend}
+          >
+            Send
+          </Button>
+        </div>
       </div>
     </ComposerPrimitive.Root>
   );
 };
 
 const AssistantMessage: FC = () => {
+  const hasRunningStatus = useContext(HasRunningStatusContext);
   return (
     <MessagePrimitive.Root className="flex flex-col relative w-full max-w-[var(--thread-max-width)] py-4 group">
       <div className="flex items-start gap-3">
         <div className="w-7 h-7 rounded-full bg-gradient-to-br from-blue-500/20 to-blue-600/10 flex items-center justify-center shrink-0 ring-1 ring-blue-500/20 shadow-sm">
-          <ThreadPrimitive.If running>
-            <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
-          </ThreadPrimitive.If>
-          <ThreadPrimitive.If running={false}>
+          {hasRunningStatus ? (
             <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
-          </ThreadPrimitive.If>
+          ) : (
+            <>
+              <ThreadPrimitive.If running>
+                <div className="w-2.5 h-2.5 rounded-full bg-blue-500 animate-pulse" />
+              </ThreadPrimitive.If>
+              <ThreadPrimitive.If running={false}>
+                <div className="w-2.5 h-2.5 rounded-full bg-blue-500" />
+              </ThreadPrimitive.If>
+            </>
+          )}
         </div>
         <div className="flex-1 min-w-0 space-y-2">
           <div className="text-foreground break-words leading-relaxed text-sm">
@@ -268,6 +765,11 @@ const MessageError: FC = () => {
 };
 
 const AssistantActionBar: FC = () => {
+  const hidden = useContext(HideMessageActionsContext);
+  if (hidden) {
+    return null;
+  }
+
   return (
     <ActionBarPrimitive.Root
       hideWhenRunning
@@ -276,7 +778,7 @@ const AssistantActionBar: FC = () => {
       className="text-muted-foreground flex gap-0.5 -ml-1 opacity-0 group-hover:opacity-100 transition-opacity duration-150 data-[floating]:bg-background/95 data-[floating]:backdrop-blur-sm data-[floating]:absolute data-[floating]:rounded-lg data-[floating]:ring-1 data-[floating]:ring-foreground/[0.06] data-[floating]:p-1 data-[floating]:shadow-md"
     >
       <ActionBarPrimitive.Copy asChild>
-        <TooltipIconButton tooltip="Copy" className="h-7 w-7 rounded-md hover:bg-foreground/[0.05]">
+        <TooltipIconButton tooltip="Copy" className="h-7 w-7 rounded-md !text-muted-foreground hover:bg-foreground/[0.05] hover:!text-foreground">
           <MessagePrimitive.If copied>
             <CheckIcon size={14} className="text-green-500" />
           </MessagePrimitive.If>
@@ -286,7 +788,7 @@ const AssistantActionBar: FC = () => {
         </TooltipIconButton>
       </ActionBarPrimitive.Copy>
       <ActionBarPrimitive.Reload asChild>
-        <TooltipIconButton tooltip="Regenerate" className="h-7 w-7 rounded-md hover:bg-foreground/[0.05]">
+        <TooltipIconButton tooltip="Regenerate" className="h-7 w-7 rounded-md !text-muted-foreground hover:bg-foreground/[0.05] hover:!text-foreground">
           <ArrowClockwiseIcon size={14} />
         </TooltipIconButton>
       </ActionBarPrimitive.Reload>
@@ -318,6 +820,40 @@ const BranchPicker: FC<BranchPickerPrimitive.Root.Props> = ({
         </TooltipIconButton>
       </BranchPickerPrimitive.Next>
     </BranchPickerPrimitive.Root>
+  );
+};
+
+const ThreadRunningStatus: FC<{ messages: string[] }> = ({ messages }) => {
+  const [index, setIndex] = useState(0);
+  const prevMessagesRef = useRef(messages);
+
+  useEffect(() => {
+    if (prevMessagesRef.current !== messages) {
+      prevMessagesRef.current = messages;
+      setIndex(0);
+    }
+  }, [messages]);
+
+  useEffect(() => {
+    const interval = setInterval(() => {
+      setIndex((prev) => (prev + 1) % messages.length);
+    }, 1200);
+    return () => clearInterval(interval);
+  }, [messages.length]);
+
+  return (
+    <div className="flex w-full max-w-[var(--thread-max-width)] py-3">
+      <div className="flex items-center gap-3 ml-10">
+        <div className="flex gap-1">
+          <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
+          <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" style={{ animationDelay: "150ms" }} />
+          <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" style={{ animationDelay: "300ms" }} />
+        </div>
+        <span className="text-xs text-muted-foreground transition-opacity duration-300">
+          {messages[index]}
+        </span>
+      </div>
+    </div>
   );
 };
 

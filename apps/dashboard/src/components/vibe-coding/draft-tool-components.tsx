@@ -11,7 +11,7 @@ export const EmailDraftUI = ({ setCurrentCode }: EmailDraftUIProps) => {
     { content: string },
     "success"
   >({
-    toolName: "createEmailTemplate",
+    toolName: "createEmailDraft",
     render: ({ args }) => {
       return (
         <Card className="flex items-center gap-2 p-4 justify-between">

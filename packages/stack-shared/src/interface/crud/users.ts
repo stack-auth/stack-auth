@@ -1,8 +1,45 @@
+import type { InferType } from "yup";
 import * as yup from "yup";
 import { CrudTypeOf, createCrud } from "../../crud";
 import * as fieldSchema from "../../schema-fields";
 import { WebhookEvent } from "../webhooks";
 import { teamsCrudServerReadSchema } from "./teams";
+
+const restrictedByAdminMeta = {
+  restricted_by_admin: { openapiField: { description: 'Whether the user is restricted by an administrator. Can be set manually or by sign-up rules.', exampleValue: false } },
+  restricted_by_admin_reason: { openapiField: { description: 'Public reason shown to the user explaining why they are restricted. Optional.', exampleValue: null } },
+  restricted_by_admin_private_details: { openapiField: { description: 'Private details about the restriction (e.g., which sign-up rule triggered). Only visible to server access and above.', exampleValue: null } },
+} as const;
+
+const countryCodeMeta = { openapiField: { description: 'Best-effort ISO country code captured at sign-up time from request geo headers.', exampleValue: "US" } } as const;
+
+export const riskScoreFieldSchema = fieldSchema.yupNumber().integer().min(0).max(100).defined();
+export const signUpRiskScoresSchema = fieldSchema.yupObject({
+  sign_up: fieldSchema.yupObject({
+    bot: riskScoreFieldSchema,
+    free_trial_abuse: riskScoreFieldSchema,
+  }).defined(),
+});
+export type SignUpRiskScoresCrud = InferType<typeof signUpRiskScoresSchema>["sign_up"];
+
+const oauthProviderBaseFields = {
+  id: fieldSchema.yupString().defined(),
+  account_id: fieldSchema.yupString().defined(),
+};
+const hiddenFieldMeta = { openapiField: { hidden: true } } as const;
+
+function restrictedByAdminConsistencyTest(this: yup.TestContext<any>, value: any) {
+  if (value == null) return true;
+  if (value.restricted_by_admin !== true) {
+    if (value.restricted_by_admin_reason != null) {
+      return this.createError({ message: "restricted_by_admin_reason must be null when restricted_by_admin is not true" });
+    }
+    if (value.restricted_by_admin_private_details != null) {
+      return this.createError({ message: "restricted_by_admin_private_details must be null when restricted_by_admin is not true" });
+    }
+  }
+  return true;
+}
 
 export const usersCrudServerUpdateSchema = fieldSchema.yupObject({
   display_name: fieldSchema.userDisplayNameSchema.optional(),
@@ -20,25 +57,15 @@ export const usersCrudServerUpdateSchema = fieldSchema.yupObject({
   totp_secret_base64: fieldSchema.userTotpSecretMutationSchema.optional(),
   selected_team_id: fieldSchema.selectedTeamIdSchema.nullable().optional(),
   is_anonymous: fieldSchema.yupBoolean().oneOf([false]).optional(),
-  restricted_by_admin: fieldSchema.yupBoolean().optional().meta({ openapiField: { description: 'Whether the user is restricted by an administrator. Can be set manually or by sign-up rules.', exampleValue: false } }),
-  restricted_by_admin_reason: fieldSchema.yupString().nullable().optional().meta({ openapiField: { description: 'Public reason shown to the user explaining why they are restricted. Optional.', exampleValue: null } }),
-  restricted_by_admin_private_details: fieldSchema.yupString().nullable().optional().meta({ openapiField: { description: 'Private details about the restriction (e.g., which sign-up rule triggered). Only visible to server access and above.', exampleValue: null } }),
+  restricted_by_admin: fieldSchema.yupBoolean().optional().meta(restrictedByAdminMeta.restricted_by_admin),
+  restricted_by_admin_reason: fieldSchema.yupString().nullable().optional().meta(restrictedByAdminMeta.restricted_by_admin_reason),
+  restricted_by_admin_private_details: fieldSchema.yupString().nullable().optional().meta(restrictedByAdminMeta.restricted_by_admin_private_details),
+  country_code: fieldSchema.countryCodeSchema.nullable().optional().meta(countryCodeMeta),
+  risk_scores: signUpRiskScoresSchema.optional(),
 }).defined().test(
   "restricted_by_admin_consistency",
   "When restricted_by_admin is not true, reason and private_details must be null",
-  function(this: yup.TestContext<any>, value: any) {
-    if (value == null) return true;
-    // If restricted_by_admin is false or missing, both reason and private_details must be null
-    if (value.restricted_by_admin !== true) {
-      if (value.restricted_by_admin_reason != null) {
-        return this.createError({ message: "restricted_by_admin_reason must be null when restricted_by_admin is not true" });
-      }
-      if (value.restricted_by_admin_private_details != null) {
-        return this.createError({ message: "restricted_by_admin_private_details must be null when restricted_by_admin is not true" });
-      }
-    }
-    return true;
-  }
+  restrictedByAdminConsistencyTest,
 );
 
 export const usersCrudServerReadSchema = fieldSchema.yupObject({
@@ -61,15 +88,16 @@ export const usersCrudServerReadSchema = fieldSchema.yupObject({
   is_anonymous: fieldSchema.yupBoolean().defined(),
   is_restricted: fieldSchema.yupBoolean().defined().meta({ openapiField: { description: 'Whether the user is in restricted state (has signed up but not completed onboarding requirements)', exampleValue: false } }),
   restricted_reason: fieldSchema.restrictedReasonSchema.nullable().defined().meta({ openapiField: { description: 'The reason why the user is restricted (e.g., type: "email_not_verified", "anonymous", or "restricted_by_administrator"), null if not restricted', exampleValue: null } }),
-  restricted_by_admin: fieldSchema.yupBoolean().defined().meta({ openapiField: { description: 'Whether the user is restricted by an administrator. Can be set manually or by sign-up rules.', exampleValue: false } }),
-  restricted_by_admin_reason: fieldSchema.yupString().nullable().defined().meta({ openapiField: { description: 'Public reason shown to the user explaining why they are restricted. Optional.', exampleValue: null } }),
-  restricted_by_admin_private_details: fieldSchema.yupString().nullable().defined().meta({ openapiField: { description: 'Private details about the restriction (e.g., which sign-up rule triggered). Only visible to server access and above.', exampleValue: null } }),
+  restricted_by_admin: fieldSchema.yupBoolean().defined().meta(restrictedByAdminMeta.restricted_by_admin),
+  restricted_by_admin_reason: fieldSchema.yupString().nullable().defined().meta(restrictedByAdminMeta.restricted_by_admin_reason),
+  restricted_by_admin_private_details: fieldSchema.yupString().nullable().defined().meta(restrictedByAdminMeta.restricted_by_admin_private_details),
+  country_code: fieldSchema.countryCodeSchema.nullable().defined().meta(countryCodeMeta),
+  risk_scores: signUpRiskScoresSchema.defined().meta({ openapiField: { description: 'User risk scores used for sign-up risk evaluation.', exampleValue: { sign_up: { bot: 0, free_trial_abuse: 0 } } } }),
 
   oauth_providers: fieldSchema.yupArray(fieldSchema.yupObject({
-    id: fieldSchema.yupString().defined(),
-    account_id: fieldSchema.yupString().defined(),
+    ...oauthProviderBaseFields,
     email: fieldSchema.yupString().nullable(),
-  }).defined()).defined().meta({ openapiField: { hidden: true } }),
+  }).defined()).defined().meta(hiddenFieldMeta),
 
   /**
    * @deprecated
@@ -85,27 +113,14 @@ export const usersCrudServerReadSchema = fieldSchema.yupObject({
 }).test(
   "restricted_by_admin_consistency",
   "When restricted_by_admin is not true, reason and private_details must be null",
-  function(this: yup.TestContext<any>, value: any) {
-    if (value == null) return true;
-    // If restricted_by_admin is false or missing, both reason and private_details must be null
-    if (value.restricted_by_admin !== true) {
-      if (value.restricted_by_admin_reason != null) {
-        return this.createError({ message: "restricted_by_admin_reason must be null when restricted_by_admin is not true" });
-      }
-      if (value.restricted_by_admin_private_details != null) {
-        return this.createError({ message: "restricted_by_admin_private_details must be null when restricted_by_admin is not true" });
-      }
-    }
-    return true;
-  }
+  restrictedByAdminConsistencyTest,
 );
 
 export const usersCrudServerCreateSchema = usersCrudServerUpdateSchema.omit(['selected_team_id']).concat(fieldSchema.yupObject({
   oauth_providers: fieldSchema.yupArray(fieldSchema.yupObject({
-    id: fieldSchema.yupString().defined(),
-    account_id: fieldSchema.yupString().defined(),
+    ...oauthProviderBaseFields,
     email: fieldSchema.yupString().nullable().defined().default(null),
-  }).defined()).optional().meta({ openapiField: { hidden: true } }),
+  }).defined()).optional().meta(hiddenFieldMeta),
   is_anonymous: fieldSchema.yupBoolean().optional(),
 }).defined());
 
@@ -146,25 +161,20 @@ export const usersCrud = createCrud({
 });
 export type UsersCrud = CrudTypeOf<typeof usersCrud>;
 
-export const userCreatedWebhookEvent = {
-  type: "user.created",
-  schema: usersCrud.server.readSchema,
-  metadata: {
-    summary: "User Created",
-    description: "This event is triggered when a user is created.",
-    tags: ["Users"],
-  },
-} satisfies WebhookEvent<typeof usersCrud.server.readSchema>;
+function userWebhookEvent<S extends yup.Schema>(action: string, schema: S): WebhookEvent<S> {
+  return {
+    type: `user.${action}`,
+    schema,
+    metadata: {
+      summary: `User ${action[0].toUpperCase()}${action.slice(1)}`,
+      description: `This event is triggered when a user is ${action}.`,
+      tags: ["Users"],
+    },
+  };
+}
 
-export const userUpdatedWebhookEvent = {
-  type: "user.updated",
-  schema: usersCrud.server.readSchema,
-  metadata: {
-    summary: "User Updated",
-    description: "This event is triggered when a user is updated.",
-    tags: ["Users"],
-  },
-} satisfies WebhookEvent<typeof usersCrud.server.readSchema>;
+export const userCreatedWebhookEvent = userWebhookEvent("created", usersCrud.server.readSchema);
+export const userUpdatedWebhookEvent = userWebhookEvent("updated", usersCrud.server.readSchema);
 
 const webhookUserDeletedSchema = fieldSchema.yupObject({
   id: fieldSchema.userIdSchema.defined(),
@@ -172,13 +182,4 @@ const webhookUserDeletedSchema = fieldSchema.yupObject({
     id: fieldSchema.yupString().defined(),
   })).defined(),
 }).defined();
-
-export const userDeletedWebhookEvent = {
-  type: "user.deleted",
-  schema: webhookUserDeletedSchema,
-  metadata: {
-    summary: "User Deleted",
-    description: "This event is triggered when a user is deleted.",
-    tags: ["Users"],
-  },
-} satisfies WebhookEvent<typeof webhookUserDeletedSchema>;
+export const userDeletedWebhookEvent = userWebhookEvent("deleted", webhookUserDeletedSchema);

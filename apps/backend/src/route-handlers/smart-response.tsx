@@ -36,6 +36,10 @@ export type SmartResponse = {
     bodyType: "success",
     body?: undefined,
   }
+  | {
+    bodyType: "response",
+    body: Response,
+  }
 );
 
 export async function validateSmartResponse<T>(req: NextRequest | null, smartReq: SmartRequest, obj: unknown, schema: yup.Schema<T>): Promise<T> {
@@ -60,6 +64,10 @@ function isBinaryBody(body: unknown): body is BodyInit {
     || ArrayBuffer.isView(body);
 }
 
+function isResponseBody(body: unknown): body is Response {
+  return typeof body === "object" && body !== null && body instanceof Response;
+}
+
 export async function createResponse<T extends SmartResponse>(req: NextRequest | null, requestId: string, obj: T): Promise<Response> {
   return await traceSpan("creating HTTP response from smart response", async () => {
     let status = obj.statusCode;
@@ -70,7 +78,13 @@ export async function createResponse<T extends SmartResponse>(req: NextRequest |
     // if we have something that resembles a browser, prettify JSON outputs
     const jsonIndent = req?.headers.get("Accept")?.includes("text/html") ? 2 : undefined;
 
-    const bodyType = obj.bodyType ?? (obj.body === undefined ? "empty" : isBinaryBody(obj.body) ? "binary" : "json");
+    const bodyType = obj.bodyType ?? (
+      obj.body === undefined ? "empty" :
+      isResponseBody(obj.body) ? "response" :
+      isBinaryBody(obj.body) ? "binary" :
+        "json"
+    );
+
     switch (bodyType) {
       case "empty": {
         arrayBufferBody = new ArrayBuffer(0);
@@ -93,6 +107,16 @@ export async function createResponse<T extends SmartResponse>(req: NextRequest |
       case "binary": {
         if (!isBinaryBody(obj.body)) throw new Error(`Invalid body, expected ArrayBuffer or Uint8Array, got ${obj.body}`);
         arrayBufferBody = obj.body;
+        break;
+      }
+      case "response": {
+        if (!isResponseBody(obj.body)) {
+          throw new Error(`Invalid body, expected Response, got ${obj.body}`);
+        }
+        for (const [key, value] of obj.body.headers.entries()) {
+          headers.set(key.toLowerCase(), [value]);
+        }
+        arrayBufferBody = obj.body.body;
         break;
       }
       case "success": {

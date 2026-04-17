@@ -1,5 +1,200 @@
 ---
 title: ConnectedAccount
+full: true
 ---
 
-## Placeholder
+`OAuthConnection` represents an OAuth connection to an external provider (like Google, GitHub, etc.) that is linked to a user. You can use connected accounts to access the user's data on those platforms, such as reading Google Drive files or sending emails via Gmail.
+
+For a guide on how to use connected accounts, see the [OAuth guide](../../apps/oauth).
+
+On this page:
+- [`Connection`](#connection)
+- [`OAuthConnection`](#oauthconnection)
+
+# `Connection`
+
+Basic information about a connected account. This is the base type that `OAuthConnection` extends.
+
+### Table of Contents
+
+<ClickableTableOfContents title="Connection Table of Contents" code={`type Connection = {
+    id: string;  //$stack-link-to:#connectionid
+    provider: string;  //$stack-link-to:#connectionprovider
+    providerAccountId: string;  //$stack-link-to:#connectionprovideraccountid
+};`} />
+
+<CollapsibleTypesSection type="connection" property="id" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The provider config ID. This is the same as `provider` and exists for backward compatibility.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const id: string;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="connection" property="provider" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The provider config ID (e.g., `"google"`, `"github"`).
+    </MethodContent>
+    <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const provider: string;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="connection" property="providerAccountId" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The account ID from the OAuth provider (e.g., the Google user ID).
+    </MethodContent>
+    <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const providerAccountId: string;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+---
+
+# `OAuthConnection`
+
+Extends `Connection` with methods to retrieve OAuth access tokens. Get it with:
+- [`user.getConnectedAccount({ provider, providerAccountId })`](../types/user.mdx#currentusergetconnectedaccount)
+- [`user.useConnectedAccount({ provider, providerAccountId })`](../types/user.mdx#currentuseruseconnectedaccount) {/* THIS_LINE_PLATFORM react-like */}
+- [`user.listConnectedAccounts()`](../types/user.mdx#currentuserlistconnectedaccounts)
+- [`user.useConnectedAccounts()`](../types/user.mdx#currentuseruseconnectedaccounts) {/* THIS_LINE_PLATFORM react-like */}
+- [`user.getOrLinkConnectedAccount(provider)`](../types/user.mdx#currentusergetorlinkconnectedaccount)
+- [`user.useOrLinkConnectedAccount(provider)`](../types/user.mdx#currentuseruseorlinkconnectedaccount) {/* THIS_LINE_PLATFORM react-like */}
+
+### Table of Contents
+
+<ClickableTableOfContents title="OAuthConnection Table of Contents" code={`type OAuthConnection =
+  // Inherits all properties from Connection
+  & Connection  //$stack-link-to:#connection
+  & {
+    getAccessToken(options?): Promise<Result>;  //$stack-link-to:#oauthconnectiongetaccesstokenoptions
+    useAccessToken(options?): Result;  //$stack-link-to:#oauthconnectionuseaccesstokenoptions
+  };`} />
+
+---
+
+<CollapsibleTypesSection type="oauthConnection" property="getAccessToken" signature="options?" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Gets an OAuth access token for this connected account. The token can be used to call the provider's APIs on the user's behalf.
+
+      Returns a `Result` object:
+      - On success: `{ status: "ok", data: { accessToken: string } }`
+      - On error: `{ status: "error", error: OAuthAccessTokenNotAvailable }` if the refresh token has been revoked/expired or the requested scopes are not available.
+
+      ### Parameters
+
+      <ParamField path="options" type="object">
+        <Accordion title="Show Properties">
+          <ParamField path="scopes" type="string[]">
+            If provided, only returns a token that has all of these scopes. If the current token doesn't have the required scopes, the result will be an error.
+          </ParamField>
+        </Accordion>
+      </ParamField>
+
+      ### Returns
+
+      `Promise<Result<{ accessToken: string }, OAuthAccessTokenNotAvailable>>`
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function getAccessToken(options?: {
+        scopes?: string[];
+      }): Promise<Result<
+        { accessToken: string },
+        OAuthAccessTokenNotAvailable
+      >>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Getting an access token
+      const result = await account.getAccessToken();
+      if (result.status === "ok") {
+        const { accessToken } = result.data;
+        // Use accessToken to call provider APIs
+      }
+      ```
+      ```typescript With scopes
+      const result = await account.getAccessToken({
+        scopes: ["https://www.googleapis.com/auth/drive.readonly"],
+      });
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="oauthConnection" property="useAccessToken" signature="options?" defaultOpen={false}>
+  {/* THIS_LINE_PLATFORM react-like */}
+  <MethodLayout>
+    <MethodContent>
+      React hook version of `getAccessToken`. Returns the access token result reactively.
+
+      Returns a `Result` object:
+      - On success: `{ status: "ok", data: { accessToken: string } }`
+      - On error: `{ status: "error", error: OAuthAccessTokenNotAvailable }` if the refresh token has been revoked/expired or the requested scopes are not available.
+
+      ### Parameters
+
+      <ParamField path="options" type="object">
+        <Accordion title="Show Properties">
+          <ParamField path="scopes" type="string[]">
+            If provided, only returns a token that has all of these scopes.
+          </ParamField>
+        </Accordion>
+      </ParamField>
+
+      ### Returns
+
+      `Result<{ accessToken: string }, OAuthAccessTokenNotAvailable>`
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function useAccessToken(options?: {
+        scopes?: string[];
+      }): Result<
+        { accessToken: string },
+        OAuthAccessTokenNotAvailable
+      >;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```tsx Using the access token hook
+      function MyComponent() {
+        const user = useUser({ or: "redirect" });
+        const accounts = user.useConnectedAccounts();
+        const googleAccount = accounts.find(
+          a => a.provider === "google"
+        );
+        const result = googleAccount?.useAccessToken();
+
+        if (result?.status === "ok") {
+          return <div>Token: {result.data.accessToken}</div>;
+        }
+        return <div>No Google token available</div>;
+      }
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>

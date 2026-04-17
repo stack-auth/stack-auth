@@ -2,22 +2,20 @@ import { Tenancy } from "@/lib/tenancies";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { CrudTypeOf, createCrud } from "@stackframe/stack-shared/dist/crud";
 import * as schemaFields from "@stackframe/stack-shared/dist/schema-fields";
-import { yupMixed, yupObject } from "@stackframe/stack-shared/dist/schema-fields";
+import { yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { projectsCrudHandlers } from "../../../internal/projects/current/crud";
 
-const domainSchema = schemaFields.wildcardProtocolAndDomainSchema.max(300).defined()
-  .matches(/^https?:\/\//, 'URL must start with http:// or https://')
-  .meta({ openapiField: { description: 'URL. Must start with http:// or https://', exampleValue: 'https://example.com' } });
-
 const domainReadSchema = yupObject({
-  domain: domainSchema.defined(),
+  domain: yupString().defined(),
 });
 
 const domainCreateSchema = yupObject({
-  domain: domainSchema.defined(),
+  domain: schemaFields.wildcardProtocolAndDomainSchema.max(300).defined()
+    .matches(/^https?:\/\//, 'URL must start with http:// or https://')
+    .meta({ openapiField: { description: 'URL. Must start with http:// or https://', exampleValue: 'https://example.com' } }),
 });
 
 export const domainDeleteSchema = yupMixed();
@@ -53,7 +51,7 @@ function domainConfigToLegacyConfig(domain: Tenancy['config']['domains']['truste
 
 export const domainCrudHandlers = createLazyProxy(() => createCrudHandlers(domainCrud, {
   paramsSchema: yupObject({
-    domain: domainSchema.optional(),
+    domain: yupString().optional(),
   }),
   onCreate: async ({ auth, data, params }) => {
     const oldDomains = auth.tenancy.config.domains.trustedDomains;

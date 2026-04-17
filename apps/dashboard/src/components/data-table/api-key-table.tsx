@@ -1,6 +1,7 @@
 'use client';
-import { ActionCell, ActionDialog, BadgeCell, DataTable, DataTableColumnHeader, DataTableFacetedFilter, DateCell, SearchToolbarItem, TextCell, standardFilterFn } from "@/components/ui";
 import { InternalApiKey } from '@stackframe/stack';
+import { DesignCard, DesignDataTable } from "@/components/design-components";
+import { ActionCell, ActionDialog, BadgeCell, DataTableColumnHeader, DataTableFacetedFilter, DateCell, SearchToolbarItem, TextCell, standardFilterFn } from "@/components/ui";
 import { ColumnDef, Row, Table } from "@tanstack/react-table";
 import { useMemo, useState } from "react";
 
@@ -15,10 +16,11 @@ function toolbarRender<TData>(table: Table<TData>) {
       <DataTableFacetedFilter
         column={table.getColumn("status")}
         title="Status"
-        options={['valid', 'expired', 'revoked'].map((provider) => ({
-          value: provider,
-          label: provider,
-        }))}
+        options={[
+          { value: "valid", label: "Valid" },
+          { value: "expired", label: "Expired" },
+          { value: "revoked", label: "Revoked" },
+        ]}
       />
     </>
   );
@@ -124,6 +126,10 @@ const getColumns = (showPublishableClientKey: boolean): ColumnDef<ExtendedIntern
 
 export function InternalApiKeyTable(props: { apiKeys: InternalApiKey[], showPublishableClientKey?: boolean }) {
   const showPublishableClientKey = props.showPublishableClientKey ?? true;
+  const columns = useMemo(
+    () => getColumns(showPublishableClientKey),
+    [showPublishableClientKey],
+  );
   const extendedApiKeys = useMemo(() => {
     const keys = props.apiKeys.map((apiKey) => ({
       ...apiKey,
@@ -138,13 +144,13 @@ export function InternalApiKeyTable(props: { apiKeys: InternalApiKey[], showPubl
     });
   }, [props.apiKeys]);
 
-  const columns = useMemo(() => getColumns(showPublishableClientKey), [showPublishableClientKey]);
-
-  return <DataTable
-    data={extendedApiKeys}
-    columns={columns}
-    toolbarRender={toolbarRender}
-    defaultColumnFilters={[{ id: 'status', value: ['valid'] }]}
-    defaultSorting={[]}
-  />;
+  return <DesignCard glassmorphic>
+    <DesignDataTable
+      data={extendedApiKeys}
+      columns={columns}
+      toolbarRender={toolbarRender}
+      defaultColumnFilters={[{ id: 'status', value: ['valid'] }]}
+      defaultSorting={[]}
+    />
+  </DesignCard>;
 }

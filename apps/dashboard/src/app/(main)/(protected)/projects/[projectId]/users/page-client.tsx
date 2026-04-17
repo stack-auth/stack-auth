@@ -1,12 +1,12 @@
 "use client";
 
-import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
 import { UserTable } from "@/components/data-table/user-table";
 import { ExportUsersDialog } from "@/components/export-users-dialog";
 import { StyledLink } from "@/components/link";
-import { Alert, Button, Skeleton } from "@/components/ui";
+import { Alert, Button, SimpleTooltip, Skeleton } from "@/components/ui";
 import { UserDialog } from "@/components/user-dialog";
-import { DownloadSimpleIcon } from "@phosphor-icons/react";
+import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
+import { ArrowsClockwiseIcon, DownloadSimpleIcon } from "@phosphor-icons/react";
 import { Suspense, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
@@ -24,7 +24,14 @@ function TotalUsersDisplay() {
       {metrics.total_users}
       {anonymousUsersCount > 0 ? (
         <>
-          {" "}(+ {anonymousUsersCount} anonymous)
+          {" "}(+ {anonymousUsersCount}{" "}
+          <SimpleTooltip
+            inline
+            tooltip="When analytics are enabled, visitors that have not signed up yet are counted as anonymous users."
+          >
+            <span className="underline decoration-dotted underline-offset-2">anonymous visitors</span>
+          </SimpleTooltip>
+          )
         </>
       ) : null}
     </>
@@ -38,7 +45,14 @@ export default function PageClient() {
     search?: string,
     includeRestricted: boolean,
     includeAnonymous: boolean,
-  }>({ includeRestricted: false, includeAnonymous: false });
+    onlyAnonymous: boolean,
+  }>({ includeRestricted: false, includeAnonymous: false, onlyAnonymous: false });
+  const [refreshKey, setRefreshKey] = useState(0);
+
+  const handleRefresh = async () => {
+    await (stackAdminApp as any)._refreshUsers();
+    setRefreshKey((k) => k + 1);
+  };
 
   return (
     <AppEnabledGuard appId="authentication">
@@ -47,11 +61,16 @@ export default function PageClient() {
         description={<>
           Total:{" "}
           <Suspense fallback={<Skeleton className="inline"><span>Calculating</span></Skeleton>}>
-            <TotalUsersDisplay />
+            <TotalUsersDisplay key={refreshKey} />
           </Suspense>
         </>}
         actions={
           <div className="flex gap-2">
+            <SimpleTooltip tooltip="Refresh">
+              <Button variant="outline" size="icon" onClick={handleRefresh}>
+                <ArrowsClockwiseIcon className="h-4 w-4" />
+              </Button>
+            </SimpleTooltip>
             <ExportUsersDialog
               trigger={
                 <Button variant="outline">
@@ -74,7 +93,9 @@ export default function PageClient() {
           </Alert>
         )}
 
-        <UserTable onFilterChange={setExportOptions} />
+        <div data-walkthrough="users-table">
+          <UserTable key={refreshKey} onFilterChange={setExportOptions} />
+        </div>
       </PageLayout>
     </AppEnabledGuard>
   );

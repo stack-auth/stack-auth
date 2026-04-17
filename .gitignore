@@ -13,6 +13,8 @@ debug.log
 
 
 .vercel
+.output
+.nitro
 
 # https://stackoverflow.com/questions/76510164/can-i-safely-delete-vite-config-ts-timestamp-files
 vite.config.ts.timestamp-*
@@ -22,6 +24,7 @@ vite.config.ts.timestamp-*
 .eslintcache
 .env.local
 .env.*.local
+docker/local-emulator/.env.development
 scratch/
 
 npm-debug.log*
@@ -49,6 +52,7 @@ dist
 .docusaurus
 .cache-loader
 **.tsbuildinfo
+implementation.generated.ts
 
 .xata*
 

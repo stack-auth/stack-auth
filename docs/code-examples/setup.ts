@@ -6,7 +6,7 @@ export const setupExamples = {
       {
         language: 'JavaScript',
         framework: 'Next.js',
-        code: `npx @stackframe/init-stack@latest`,
+        code: `npx @stackframe/stack-cli@latest init`,
         highlightLanguage: 'bash',
         filename: 'Terminal'
       }
@@ -167,14 +167,15 @@ export const stackClientApp = new StackClientApp({
         language: 'JavaScript',
         framework: 'React',
         code: `import { StackClientApp } from "@stackframe/react";
-// If you use React Router, uncomment the next line and the redirectMethod below
-// import { useNavigate } from "react-router-dom";
+// If you use a router, uncomment the appropriate import and the redirectMethod below
+// import { useNavigate } from "react-router-dom"; // React Router
+// import { useNavigate } from "@tanstack/react-router"; // TanStack Router
 
 export const stackClientApp = new StackClientApp({
   projectId: process.env.VITE_STACK_PROJECT_ID || "your-project-id",
   publishableClientKey: process.env.VITE_STACK_PUBLISHABLE_CLIENT_KEY || "your-publishable-client-key",
   tokenStore: "cookie",
-  // redirectMethod: { useNavigate }, // Optional: only if using react-router-dom
+  // redirectMethod: { useNavigate }, // Set this for non-Next.js frameworks
 });`,
         highlightLanguage: 'typescript',
         filename: 'stack/client.ts'

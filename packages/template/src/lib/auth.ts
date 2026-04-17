@@ -6,32 +6,6 @@ import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { constructRedirectUrl } from "../utils/url";
 import { consumeVerifierAndStateCookie, saveVerifierAndState } from "./cookie";
-
-export async function signInWithOAuth(
-  iface: StackClientInterface,
-  options: {
-    provider: string,
-    redirectUrl: string,
-    errorRedirectUrl: string,
-    providerScope?: string,
-  },
-  session: InternalSession,
-) {
-  const { codeChallenge, state } = await saveVerifierAndState();
-  const location = await iface.getOAuthUrl({
-    provider: options.provider,
-    redirectUrl: constructRedirectUrl(options.redirectUrl, "redirectUrl"),
-    errorRedirectUrl: constructRedirectUrl(options.errorRedirectUrl, "errorRedirectUrl"),
-    codeChallenge,
-    state,
-    type: "authenticate",
-    providerScope: options.providerScope,
-    session,
-  });
-  window.location.assign(location);
-  await neverResolve();
-}
-
 export async function addNewOAuthProviderOrScope(
   iface: StackClientInterface,
   options: {
@@ -63,9 +37,54 @@ export async function addNewOAuthProviderOrScope(
  *
  * Must be synchronous for the logic in callOAuthCallback to work without race conditions.
  */
-function consumeOAuthCallbackQueryParams() {
+type OAuthCallbackConsumptionResult =
+  | {
+    type: "oauth-response",
+    originalUrl: URL,
+    codeVerifier: string,
+    state: string,
+  }
+  | {
+    type: "known-error",
+    error: KnownError,
+  };
+
+function consumeOAuthCallbackQueryParams(): OAuthCallbackConsumptionResult | null {
+  const oauthErrorParams = ["error", "error_description", "errorCode", "message", "details"] as const;
   const requiredParams = ["code", "state"];
   const originalUrl = new URL(window.location.href);
+  const knownErrorCode = originalUrl.searchParams.get("errorCode");
+  const knownErrorMessage = originalUrl.searchParams.get("message");
+  if (knownErrorCode && knownErrorMessage) {
+    const details = originalUrl.searchParams.get("details");
+    let detailsJson = {};
+    if (details) {
+      try {
+        detailsJson = JSON.parse(details);
+      } catch (error) {
+        throw new StackAssertionError("OAuth callback returned malformed known-error details", {
+          details,
+          cause: error,
+        });
+      }
+    }
+
+    const newUrl = new URL(originalUrl);
+    for (const param of oauthErrorParams) {
+      newUrl.searchParams.delete(param);
+    }
+    window.history.replaceState({}, "", newUrl.toString());
+
+    return {
+      type: "known-error",
+      error: KnownError.fromJson({
+        code: knownErrorCode,
+        message: knownErrorMessage,
+        details: detailsJson,
+      }),
+    };
+  }
+
   for (const param of requiredParams) {
     if (!originalUrl.searchParams.has(param)) {
       console.warn(new Error(`Missing required query parameter on OAuth callback: ${param}. Maybe you opened or reloaded the oauth-callback page from your history?`));
@@ -81,7 +100,7 @@ function consumeOAuthCallbackQueryParams() {
     // Maybe the website uses another OAuth library?
     console.warn(deindent`
       Stack found an outer OAuth callback state in the query parameters, but not in cookies.
-      
+
       This could have multiple reasons:
         - The cookie expired, because the OAuth flow took too long.
         - The user's browser deleted the cookie, either manually or because of a very strict cookie policy.
@@ -109,6 +128,7 @@ function consumeOAuthCallbackQueryParams() {
   window.history.replaceState({}, "", newUrl.toString());
 
   return {
+    type: "oauth-response",
     originalUrl,
     codeVerifier: cookieResult.codeVerifier,
     state: expectedState,
@@ -124,6 +144,9 @@ export async function callOAuthCallback(
   // callOAuthCallback is called multiple times in parallel
   const consumed = consumeOAuthCallbackQueryParams();
   if (!consumed) return Result.ok(undefined);
+  if (consumed.type === "known-error") {
+    throw consumed.error;
+  }
 
   // the rest can be asynchronous (we now know that we are the
   // intended recipient of the callback, and the only instance

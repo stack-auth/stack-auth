@@ -161,6 +161,51 @@ it("accepts valid $click events", async ({ expect }) => {
   `);
 });
 
+it("handles click event data containing a truncated surrogate pair (lone high surrogate)", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  await Auth.Otp.signIn();
+
+  // Simulate what the client-side event tracker does: .substring(0, 200) can
+  // cut a string in the middle of a surrogate pair when emoji characters are
+  // near the boundary. For example, 🍉 is "\uD83C\uDF49" in UTF-16; cutting
+  // after the high surrogate leaves a lone "\uD83C" that ClickHouse cannot parse.
+  const paddedText = "a".repeat(199) + "\uD83C"; // lone high surrogate at position 199
+
+  const now = Date.now();
+  const res = await uploadEventBatch({
+    sessionReplaySegmentId: randomUUID(),
+    batchId: randomUUID(),
+    sentAtMs: now,
+    events: [
+      {
+        event_type: "$click",
+        event_at_ms: now - 50,
+        data: {
+          tag_name: "div",
+          text: paddedText,
+          href: null,
+          selector: "div.container",
+          x: 100,
+          y: 200,
+          page_x: 100,
+          page_y: 500,
+          viewport_width: 375,
+          viewport_height: 647,
+        },
+      },
+    ],
+  });
+
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "inserted": 1 },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
 it("rejects empty events array", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });

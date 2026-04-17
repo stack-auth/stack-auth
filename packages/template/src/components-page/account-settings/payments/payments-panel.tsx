@@ -7,6 +7,7 @@ import { CardElement, Elements, useElements, useStripe } from "@stripe/react-str
 import { loadStripe } from "@stripe/stripe-js";
 import { useMemo, useState } from "react";
 import { useStackApp } from "../../..";
+import { envVars } from "../../../lib/env";
 import { useTranslation } from "../../../lib/translations";
 import { Section } from "../section";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
@@ -89,7 +90,7 @@ type CustomerLike = {
     quantity: number,
     displayName: string,
     customerType: "user" | "team" | "custom",
-    type: "one_time" | "subscription",
+    type?: "one_time" | "subscription",
     switchOptions?: Array<{
       productId: string,
       displayName: string,
@@ -244,7 +245,7 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
 
   const stripePromise = useMemo(() => {
     if (!setupIntentStripeAccountId) return null;
-    const publishableKey = process.env.NEXT_PUBLIC_STACK_STRIPE_PUBLISHABLE_KEY;
+    const publishableKey = envVars.NEXT_PUBLIC_STACK_STRIPE_PUBLISHABLE_KEY;
     if (!publishableKey) return null;
     return loadStripe(publishableKey, { stripeAccount: setupIntentStripeAccountId });
   }, [setupIntentStripeAccountId]);
@@ -258,7 +259,7 @@ function RealPaymentsPanel(props: { title?: string, customer: CustomerLike, cust
       });
       return;
     }
-    alert(`An unhandled error occurred. Please ${process.env.NODE_ENV === "development" ? "check the browser console for the full error." : "report this to the developer."}\n\n${error}`);
+    alert(`An unhandled error occurred. Please ${envVars.NODE_ENV === "development" ? "check the browser console for the full error." : "report this to the developer."}\n\n${error}`);
   };
 
   const openPaymentDialog = () => {

@@ -232,13 +232,15 @@ const environmentSchemaFuzzerConfig = [{
     ...branchSchemaFuzzerConfig[0].emails[0],
     server: [{
       isShared: [true, false],
-      provider: ["resend", "smtp"] as const,
+      provider: ["resend", "smtp", "managed"] as const,
       host: ["example.com", "://super weird host that's not valid"],
       port: [1234, 0.12543, -100, Infinity],
       username: ["some-username", "some username with a space"],
       password: ["some-password", "some password with a space"],
       senderName: ["Some Sender"],
       senderEmail: ["some-sender@example.com", "some invalid email"],
+      managedSubdomain: ["mail.example.com", "invalid subdomain"],
+      managedSenderLocalPart: ["noreply", "some invalid local part"],
     }],
   }],
   payments: [{
@@ -258,6 +260,12 @@ const environmentSchemaFuzzerConfig = [{
           }],
         }],
       }],
+    }],
+  }],
+  customDashboards: [{
+    "12345678-1234-4234-9234-123456789012": [{
+      displayName: ["My Dashboard", "User Growth Dashboard"],
+      tsxSource: ["", "function Dashboard() { return <div>Hello</div>; }"],
     }],
   }],
 }] satisfies FuzzerConfig<EnvironmentConfigNormalizedOverride>;

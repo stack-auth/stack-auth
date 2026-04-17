@@ -1,7 +1,20 @@
-import { NextRequest, NextResponse } from 'next/server';
+import { trackVisit } from '2027-track';
+import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
+import { NextFetchEvent, NextRequest, NextResponse } from 'next/server';
 
-export function middleware(request: NextRequest) {
+export default function middleware(request: NextRequest, event: NextFetchEvent) {
   const { pathname } = request.nextUrl;
+
+  // Track AI agent visits
+  const trackPromise = trackVisit({
+    host: request.headers.get('host') ?? request.nextUrl.host,
+    path: pathname,
+    userAgent: request.headers.get('user-agent') ?? '',
+    accept: request.headers.get('accept') ?? '',
+    country: request.headers.get('x-vercel-ip-country') ?? undefined,
+  });
+  runAsynchronously(trackPromise);
+  event.waitUntil(trackPromise);
 
   // Redirect old concepts paths to new apps paths
   const movedToApps = [
@@ -28,16 +41,16 @@ export function middleware(request: NextRequest) {
   const isApiPath = pathname === '/api' || pathname.startsWith('/api/');
 
   if ((isDocsPath || isApiPath) && !pathname.endsWith('.mdx')) {
-    const acceptHeader = request.headers.get('accept') || '';
+    const acceptHeader = request.headers.get('accept') ?? '';
 
     // Parse Accept header by splitting on commas to properly handle MIME type ordering
-    const acceptTypes = acceptHeader.split(',').map(t => t.trim().split(';')[0]);
+    const acceptTypes = acceptHeader.split(',').map((t: string) => t.trim().split(';')[0]);
 
     // Find the index of each MIME type in the Accept header
     const plainIndex = acceptTypes.findIndex(
-      (t) => t === 'text/plain' || t === 'text/markdown'
+      (t: string) => t === 'text/plain' || t === 'text/markdown'
     );
-    const htmlIndex = acceptTypes.findIndex((t) => t === 'text/html');
+    const htmlIndex = acceptTypes.findIndex((t: string) => t === 'text/html');
 
     // Prefer markdown if text/plain or text/markdown appears before text/html (or text/html doesn't exist)
     const prefersMarkdown = plainIndex !== -1 && (htmlIndex === -1 || plainIndex < htmlIndex);

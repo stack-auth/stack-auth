@@ -88,6 +88,10 @@ function prismaModelToCrud(prismaModel: EmailOutbox): EmailOutboxCrud["Server"][
     variables: (prismaModel.extraRenderVariables ?? {}) as Record<string, any>,
     skip_deliverability_check: prismaModel.shouldSkipDeliverabilityCheck,
     scheduled_at_millis: prismaModel.scheduledAt.getTime(),
+    // Source tracking for grouping emails by template/draft
+    created_with: (prismaModel.createdWith === "DRAFT" ? "draft" : "programmatic-call") as "draft" | "programmatic-call",
+    email_draft_id: prismaModel.emailDraftId,
+    email_programmatic_call_template_id: prismaModel.emailProgrammaticCallTemplateId,
     send_retries: prismaModel.sendRetries,
     next_send_retry_at_millis: prismaModel.nextSendRetryAt?.getTime() ?? null,
     send_attempt_errors: sendAttemptErrors,
@@ -443,6 +447,9 @@ export const emailOutboxCrudHandlers = createLazyProxy(() => createCrudHandlers(
       set("updatedAt", Prisma.sql`NOW()`);
     }
 
+    // Mark for external DB sync
+    set("shouldUpdateSequenceId", Prisma.sql`TRUE`);
+
     const updateQuery: RawQuery<EmailOutbox | null> = {
       supportedPrismaClients: ["global"],
       readOnlyQuery: false,
@@ -539,6 +546,8 @@ function parseEmailOutboxFromJson(j: Record<string, unknown>): EmailOutbox {
     clickedAt: dateOrNull("clickedAt"),
     unsubscribedAt: dateOrNull("unsubscribedAt"),
     markedAsSpamAt: dateOrNull("markedAsSpamAt"),
+    sequenceId: j.sequenceId != null ? BigInt(j.sequenceId as string | number) : null,
+    shouldUpdateSequenceId: j.shouldUpdateSequenceId as boolean,
   };
 }
 

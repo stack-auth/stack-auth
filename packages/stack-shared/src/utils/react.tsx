@@ -2,6 +2,7 @@ import React, { SetStateAction } from "react";
 import { isBrowserLike } from "./env";
 import { neverResolve, runAsynchronously } from "./promises";
 import { AsyncResult } from "./results";
+import { ensureMonkeyPatch, NO_SUSPENSE_BOUNDARY_ERROR_SENTINEL } from "./monkey-patch";
 import { deindent } from "./strings";
 
 export function componentWrapper<
@@ -164,9 +165,18 @@ export type RefState<T> = ReadonlyRef<T> & {
  *
  * If you don't want this, you can wrap the result in a useMemo call.
  */
-export function useRefState<T>(initialValue: T): RefState<T> {
-  const [, setState] = React.useState(initialValue);
-  const ref = React.useRef(initialValue);
+export function useRefState<T>(initialValue: T | (() => T)): RefState<T> {
+  // Support lazy initialization like React.useState does: if initialValue is a function,
+  // call it once to get the actual initial value (React.useRef does NOT do this automatically).
+  const lazyInitRef = React.useRef<{ v: T } | null>(null);
+  if (lazyInitRef.current === null) {
+    lazyInitRef.current = {
+      v: typeof initialValue === "function" ? (initialValue as () => T)() : initialValue,
+    };
+  }
+  const resolvedInitialValue = lazyInitRef.current.v;
+  const [, setState] = React.useState<T>(() => resolvedInitialValue);
+  const ref = React.useRef(resolvedInitialValue);
   const setValue = React.useCallback((updater: SetStateAction<T>) => {
     const value: T = typeof updater === "function" ? (updater as any)(ref.current) : updater;
     ref.current = value;
@@ -233,14 +243,17 @@ export function shouldRethrowRenderingError(error: unknown): boolean {
 export class NoSuspenseBoundaryError extends Error {
   digest: string;
   reason: string;
+  __noSuspenseBoundarySentinel = NO_SUSPENSE_BOUNDARY_ERROR_SENTINEL;
 
   constructor(options: { caller?: string }) {
+    ensureMonkeyPatch();
+
     super(deindent`
-      Suspense boundary not found! Read the error message below carefully on how to fix it.
+      Suspense boundary not found! Read the error message below carefully (or paste it into your AI agent).
 
       ${options.caller ?? "This code path"} attempted to display a loading indicator, but didn't find a Suspense boundary above it. Please read the error message below carefully.
       
-      The fix depends on which of the 4 scenarios caused it:
+      There are several potential causes:
       
       1. [Next.js] You are missing a loading.tsx file in your app directory. Fix it by adding a loading.tsx file in your app directory.
 
@@ -259,6 +272,8 @@ export class NoSuspenseBoundaryError extends Error {
         For more information on this approach, see Next's documentation on route groups: https://nextjs.org/docs/app/building-your-application/routing/route-groups
       
       4. You caught this error with try-catch or a custom error boundary. Fix this by rethrowing the error or not catching it in the first place.
+
+      5. Your version of Stack Auth is too old. Upgrade to the latest version to see if that fixes the issue.
 
       See: https://nextjs.org/docs/messages/missing-suspense-with-csr-bailout
 

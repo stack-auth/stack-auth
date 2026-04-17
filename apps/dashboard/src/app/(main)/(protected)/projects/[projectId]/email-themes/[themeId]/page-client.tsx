@@ -5,19 +5,35 @@ import { useRouterConfirm } from "@/components/router";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui";
 import { AssistantChat, CodeEditor, EmailThemeUI, VibeCodeLayout, type ViewportMode, type WysiwygDebugInfo } from "@/components/vibe-coding";
 import {
+  applyWysiwygEdit,
   createChatAdapter,
   createHistoryAdapter,
   ToolCallContent
 } from "@/components/vibe-coding/chat-adapters";
+import { getPublicEnvVar } from "@/lib/env";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
+import { useUser } from "@stackframe/stack";
 import { useCallback, useEffect, useState } from "react";
+
+const BUILDER_STATUS_MESSAGES = [
+  "Reading your current theme...",
+  "Understanding your changes...",
+  "Planning the update...",
+  "Crafting components...",
+  "Refining the layout...",
+  "Polishing the details...",
+  "Almost there...",
+];
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { useAdminApp } from "../../use-admin-app";
 
 
 export default function PageClient({ themeId }: { themeId: string }) {
   const stackAdminApp = useAdminApp();
+  const currentUser = useUser({ or: "redirect" });
+  const backendBaseUrl = getPublicEnvVar("NEXT_PUBLIC_SERVER_STACK_API_URL") ?? getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? throwErr("NEXT_PUBLIC_SERVER_STACK_API_URL is not set");
   const theme = stackAdminApp.useEmailTheme(themeId);
   const { setNeedConfirm } = useRouterConfirm();
   const [currentCode, setCurrentCode] = useState(theme.tsxSource);
@@ -31,7 +47,8 @@ export default function PageClient({ themeId }: { themeId: string }) {
 
   // Handle WYSIWYG edit commits - calls the AI endpoint to update source code
   const handleWysiwygEditCommit: OnWysiwygEditCommit = useCallback(async (data) => {
-    const result = await stackAdminApp.applyWysiwygEdit({
+    const result = await applyWysiwygEdit(backendBaseUrl, {
+      currentUser,
       sourceType: 'theme',
       sourceCode: currentCode,
       oldText: data.oldText,
@@ -42,13 +59,17 @@ export default function PageClient({ themeId }: { themeId: string }) {
     });
     setCurrentCode(result.updatedSource);
     return result.updatedSource;
-  }, [stackAdminApp, currentCode]);
+  }, [backendBaseUrl, currentCode, currentUser]);
 
   useEffect(() => {
     if (theme.tsxSource === currentCode) return;
     setNeedConfirm(true);
     return () => setNeedConfirm(false);
   }, [setNeedConfirm, theme, currentCode]);
+
+  const [isRunning, setIsRunning] = useState(false);
+  const handleRunStart = useCallback(() => setIsRunning(true), []);
+  const handleRunEnd = useCallback(() => setIsRunning(false), []);
 
   const handleThemeUpdate = (toolCall: ToolCallContent) => {
     setCurrentCode(toolCall.args.content);
@@ -124,10 +145,11 @@ export default function PageClient({ themeId }: { themeId: string }) {
             }
             chatComponent={
               <AssistantChat
-                chatAdapter={createChatAdapter(stackAdminApp, themeId, "email-theme", handleThemeUpdate)}
+                chatAdapter={createChatAdapter(backendBaseUrl, "email-theme", handleThemeUpdate, () => currentCode, currentUser, handleRunStart, handleRunEnd)}
                 historyAdapter={createHistoryAdapter(stackAdminApp, themeId)}
                 toolComponents={<EmailThemeUI setCurrentCode={setCurrentCode} />}
                 useOffWhiteLightMode
+                runningStatusMessages={isRunning ? BUILDER_STATUS_MESSAGES : undefined}
               />
             }
           />

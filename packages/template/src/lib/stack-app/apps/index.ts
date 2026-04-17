@@ -20,6 +20,6 @@ export {
 } from "./interfaces/admin-app";
 export type {
   StackAdminAppConstructor,
-  StackAdminAppConstructorOptions
+  StackAdminAppConstructorOptions,
 } from "./interfaces/admin-app";
 

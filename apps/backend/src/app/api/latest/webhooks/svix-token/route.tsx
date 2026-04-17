@@ -1,4 +1,5 @@
 import { getSvixClient } from "@/lib/webhooks";
+import { isPreviewModeEnabled } from "@/lib/preview-mode";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { svixTokenCrud } from "@stackframe/stack-shared/dist/interface/crud/svix-token";
 import { yupObject } from "@stackframe/stack-shared/dist/schema-fields";
@@ -10,6 +11,9 @@ const svixServerUrl = getEnvVariable("STACK_SVIX_SERVER_URL", "");
 const appPortalCrudHandlers = createLazyProxy(() => createCrudHandlers(svixTokenCrud, {
   paramsSchema: yupObject({}),
   onCreate: async ({ auth }) => {
+    if (isPreviewModeEnabled()) {
+      return { token: "", url: undefined };
+    }
     const svix = getSvixClient();
     await svix.application.getOrCreate({ uid: auth.project.id, name: auth.project.id });
     const result = await svix.authentication.appPortalAccess(auth.project.id, {});

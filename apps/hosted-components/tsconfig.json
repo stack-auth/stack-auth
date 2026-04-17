@@ -1,0 +1,19 @@
+{
+  "compilerOptions": {
+    "jsx": "react-jsx",
+    "target": "ES2021",
+    "lib": ["DOM", "DOM.Iterable", "ES2021"],
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "strict": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "noEmit": true,
+    "resolveJsonModule": true,
+    "esModuleInterop": true,
+    "paths": {
+      "~/*": ["./src/*"]
+    }
+  },
+  "include": ["src", "vite.config.ts"]
+}

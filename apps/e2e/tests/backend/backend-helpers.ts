@@ -92,6 +92,23 @@ export const InternalProjectClientKeys = Object.freeze({
   publishableClientKey: STACK_INTERNAL_PROJECT_CLIENT_KEY,
 });
 
+// These prefixes must match getMockTurnstileVerificationResponse in apps/mock-oauth-server/src/index.ts
+export const mockTurnstileTokens = Object.freeze({
+  signUpOk: "mock-turnstile-ok:sign_up_with_credential",
+  magicLinkOk: "mock-turnstile-ok:send_magic_link_email",
+  oauthOk: "mock-turnstile-ok:oauth_authenticate",
+  invalid: "mock-turnstile-invalid",
+  error: "mock-turnstile-error",
+  visibleSignUpOk: "mock-turnstile-visible-ok:sign_up_with_credential",
+  visibleMagicLinkOk: "mock-turnstile-visible-ok:send_magic_link_email",
+  visibleOAuthOk: "mock-turnstile-visible-ok:oauth_authenticate",
+});
+
+type TurnstileTestOptions = {
+  turnstileToken?: string,
+  turnstilePhase?: "invisible" | "visible",
+};
+
 function expectSnakeCase(obj: unknown, path: string): void {
   if (typeof obj !== "object" || obj === null) return;
   if (Array.isArray(obj)) {
@@ -286,6 +303,8 @@ export namespace Auth {
         "iss": expectedIssuer,
         "branch_id": "main",
         "refresh_token_id": expect.any(String),
+        "signed_up_at": expect.any(Number),
+        "requires_totp_mfa": expect.any(Boolean),
         "aud": backendContext.value.projectKeys === "no-project" ? expect.any(String) : backendContext.value.projectKeys.projectId,
         "sub": expect.any(String),
         "role": "authenticated",
@@ -434,15 +453,17 @@ export namespace Auth {
   }
 
   export namespace Otp {
-    export async function sendSignInCode() {
+    export async function sendSignInCode(options: TurnstileTestOptions = {}) {
       const mailbox = backendContext.value.mailbox;
       const response = await niceBackendFetch("/api/v1/auth/otp/send-sign-in-code", {
         method: "POST",
         accessType: "client",
-        body: {
+        body: filterUndefined({
           email: mailbox.emailAddress,
           callback_url: "http://localhost:12345/some-callback-url",
-        },
+          bot_challenge_token: options.turnstileToken ?? mockTurnstileTokens.magicLinkOk,
+          bot_challenge_phase: options.turnstilePhase,
+        }),
       });
       expect(response).toMatchInlineSnapshot(`
         NiceResponse {
@@ -458,7 +479,7 @@ export namespace Auth {
           break;
         }
         await wait(100 + i * 20);
-        if (i >= 30) {
+        if (i >= 40) {
           throw new StackAssertionError(`Sign-in code message not found after ${i} attempts`, {
             response,
             messages: messages.map(m => ({ ...m, body: m.body && omit(m.body, ["html"]) })),
@@ -525,18 +546,19 @@ export namespace Auth {
   }
 
   export namespace Password {
-    export async function signUpWithEmail(options: { password?: string, noWaitForEmail?: boolean } = {}) {
+    export async function signUpWithEmail(options: { password?: string, noWaitForEmail?: boolean, turnstileToken?: string } = {}) {
       const mailbox = backendContext.value.mailbox;
       const email = mailbox.emailAddress;
       const password = options.password ?? generateSecureRandomString();
       const response = await niceBackendFetch("/api/v1/auth/password/sign-up", {
         method: "POST",
         accessType: "client",
-        body: {
+        body: filterUndefined({
           email,
           password,
           verification_callback_url: "http://localhost:12345/some-callback-url",
-        },
+          bot_challenge_token: options.turnstileToken ?? mockTurnstileTokens.signUpOk,
+        }),
       });
       expect(response).toMatchObject({
         status: 200,
@@ -710,7 +732,10 @@ export namespace Auth {
 
 
   export namespace OAuth {
-    export async function getAuthorizeQuery(options: { forceBranchId?: string, includeClientSecret?: boolean } = {}) {
+    export async function getAuthorizeQuery(options: TurnstileTestOptions & {
+      forceBranchId?: string,
+      includeClientSecret?: boolean,
+    } = {}) {
       const projectKeys = backendContext.value.projectKeys;
       if (projectKeys === "no-project") throw new Error("No project keys found in the backend context");
       const branchId = options.forceBranchId ?? backendContext.value.currentBranchId;
@@ -731,10 +756,18 @@ export namespace Auth {
         code_challenge: "some-code-challenge",
         code_challenge_method: "plain",
         token: userAuth?.accessToken ?? undefined,
+        bot_challenge_token: options.turnstileToken ?? mockTurnstileTokens.oauthOk,
+        bot_challenge_phase: options.turnstilePhase,
+
       });
     }
 
-    export async function authorize(options: { redirectUrl?: string, errorRedirectUrl?: string, forceBranchId?: string, includeClientSecret?: boolean } = {}) {
+    export async function authorize(options: TurnstileTestOptions & {
+      redirectUrl?: string,
+      errorRedirectUrl?: string,
+      forceBranchId?: string,
+      includeClientSecret?: boolean,
+    } = {}) {
       const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
         redirect: "manual",
         query: {
@@ -760,7 +793,11 @@ export namespace Auth {
       };
     }
 
-    export async function getInnerCallbackUrl(options: { authorizeResponse?: NiceResponse, forceBranchId?: string, includeClientSecret?: boolean } = {}) {
+    export async function getInnerCallbackUrl(options: TurnstileTestOptions & {
+      authorizeResponse?: NiceResponse,
+      forceBranchId?: string,
+      includeClientSecret?: boolean,
+    } = {}) {
       const authorizeResponse = options.authorizeResponse ?? (await Auth.OAuth.authorize(options)).authorizeResponse;
       const providerPassword = generateSecureRandomString();
       const authLocation = new URL(authorizeResponse.headers.get("location")!);
@@ -841,7 +878,12 @@ export namespace Auth {
       };
     }
 
-    export async function getMaybeFailingAuthorizationCode(options: { innerCallbackUrl?: URL, authorizeResponse?: NiceResponse, forceBranchId?: string, includeClientSecret?: boolean } = {}) {
+    export async function getMaybeFailingAuthorizationCode(options: TurnstileTestOptions & {
+      innerCallbackUrl?: URL,
+      authorizeResponse?: NiceResponse,
+      forceBranchId?: string,
+      includeClientSecret?: boolean,
+    } = {}) {
       let authorizeResponse, innerCallbackUrl;
       if (options.innerCallbackUrl && options.authorizeResponse) {
         innerCallbackUrl = options.innerCallbackUrl;
@@ -865,7 +907,12 @@ export namespace Auth {
       };
     }
 
-    export async function getAuthorizationCode(options: { innerCallbackUrl?: URL, authorizeResponse?: NiceResponse, forceBranchId?: string, includeClientSecret?: boolean } = {}) {
+    export async function getAuthorizationCode(options: TurnstileTestOptions & {
+      innerCallbackUrl?: URL,
+      authorizeResponse?: NiceResponse,
+      forceBranchId?: string,
+      includeClientSecret?: boolean,
+    } = {}) {
       const { response } = await Auth.OAuth.getMaybeFailingAuthorizationCode(options);
       expect(response).toMatchObject({
         status: 303,
@@ -887,7 +934,10 @@ export namespace Auth {
       };
     }
 
-    export async function signIn(options: { forceBranchId?: string, includeClientSecret?: boolean } = {}) {
+    export async function signIn(options: TurnstileTestOptions & {
+      forceBranchId?: string,
+      includeClientSecret?: boolean,
+    } = {}) {
       const getAuthorizationCodeResult = await Auth.OAuth.getAuthorizationCode(options);
 
       const projectKeys = backendContext.value.projectKeys;

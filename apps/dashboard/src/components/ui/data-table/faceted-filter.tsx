@@ -30,15 +30,19 @@ export function DataTableFacetedFilter<TData, TValue>({
   return (
     <Popover>
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" className="h-8 border">
-          <FunnelSimpleIcon className="mr-2 h-4 w-4 text-gray-500" />
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 rounded-xl border-black/[0.08] bg-white/85 px-3 text-xs shadow-sm ring-1 ring-black/[0.08] hover:bg-white dark:border-white/[0.06] dark:bg-foreground/[0.03] dark:ring-white/[0.06] dark:hover:bg-foreground/[0.06]"
+        >
+          <FunnelSimpleIcon className="mr-1.5 h-3.5 w-3.5 text-muted-foreground" />
           {title}
           {selectedValues.size > 0 && (
             <>
               <Separator orientation="vertical" className="mx-2 h-4" />
               <Badge
                 variant="secondary"
-                className="rounded-sm px-1 font-normal lg:hidden"
+                className="rounded-full px-1.5 py-0 text-[10px] font-medium lg:hidden"
               >
                 {selectedValues.size}
               </Badge>
@@ -46,7 +50,7 @@ export function DataTableFacetedFilter<TData, TValue>({
                 {selectedValues.size > 2 ? (
                   <Badge
                     variant="secondary"
-                    className="rounded-sm px-1 font-normal"
+                    className="rounded-full px-1.5 py-0 text-[10px] font-medium"
                   >
                     {selectedValues.size} selected
                   </Badge>
@@ -57,7 +61,7 @@ export function DataTableFacetedFilter<TData, TValue>({
                       <Badge
                         variant="secondary"
                         key={option.value}
-                        className="rounded-sm px-1 font-normal"
+                        className="rounded-full px-1.5 py-0 text-[10px] font-medium"
                       >
                         {option.label}
                       </Badge>
@@ -68,9 +72,12 @@ export function DataTableFacetedFilter<TData, TValue>({
           )}
         </Button>
       </PopoverTrigger>
-      <PopoverContent className="w-[200px] p-0" align="start">
-        <Command>
-          <CommandInput placeholder={title} />
+      <PopoverContent
+        className="w-[220px] rounded-xl border-black/[0.08] bg-white/95 p-0 shadow-md ring-1 ring-black/[0.08] backdrop-blur-xl dark:border-white/[0.06] dark:bg-background/95 dark:ring-white/[0.06]"
+        align="start"
+      >
+        <Command className="rounded-xl bg-transparent">
+          <CommandInput placeholder={`Filter ${title?.toLowerCase() ?? "values"}...`} />
           <CommandList>
             <CommandEmpty>No results found.</CommandEmpty>
             <CommandGroup>
@@ -93,9 +100,9 @@ export function DataTableFacetedFilter<TData, TValue>({
                   >
                     <div
                       className={cn(
-                        "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-primary",
+                        "mr-2 flex h-4 w-4 items-center justify-center rounded-sm border border-foreground/30",
                         isSelected
-                          ? "bg-primary text-primary-foreground"
+                          ? "bg-foreground text-background"
                           : "opacity-50 [&_svg]:invisible"
                       )}
                     >
@@ -115,7 +122,7 @@ export function DataTableFacetedFilter<TData, TValue>({
                 <CommandGroup>
                   <CommandItem
                     onSelect={() => column?.setFilterValue(undefined)}
-                    className="justify-center text-center"
+                    className="justify-center text-center text-muted-foreground"
                   >
                     Clear filters
                   </CommandItem>

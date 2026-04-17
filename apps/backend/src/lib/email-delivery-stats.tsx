@@ -30,7 +30,9 @@ if (!Number.isFinite(defaultEmailCapacityPerHour)) {
   throw new StackAssertionError(`Invalid STACK_DEFAULT_EMAIL_CAPACITY_PER_HOUR environment variable: ${getEnvVariable("STACK_DEFAULT_EMAIL_CAPACITY_PER_HOUR", "<not set>")}`);
 }
 
-export function calculateCapacityRate(stats: EmailDeliveryStats) {
+const BOOST_MULTIPLIER = 4;
+
+export function calculateCapacityRate(stats: EmailDeliveryStats, boostExpiresAt?: Date | null) {
   const penaltyFactor = Math.min(
     calculatePenaltyFactor(stats.week.sent, stats.week.bounced, stats.week.markedAsSpam),
     calculatePenaltyFactor(stats.day.sent, stats.day.bounced, stats.day.markedAsSpam),
@@ -38,8 +40,12 @@ export function calculateCapacityRate(stats: EmailDeliveryStats) {
   );
   const hourlyBaseline = defaultEmailCapacityPerHour + (4 * stats.month.sent / 30 / 24);  // default capacity + 4x the average throughput during the last month
   const ratePerHour = Math.max(hourlyBaseline * penaltyFactor, defaultEmailCapacityPerHour / 4);  // multiply by penalty factor, at least 1/4th of the default capacity
-  const ratePerSecond = ratePerHour / 60 / 60;
-  return { ratePerSecond, penaltyFactor };
+
+  const isBoostActive = boostExpiresAt != null && boostExpiresAt > new Date();
+  const boostMultiplier = isBoostActive ? BOOST_MULTIPLIER : 1;
+
+  const ratePerSecond = (ratePerHour / 60 / 60) * boostMultiplier;
+  return { ratePerSecond, boostMultiplier, penaltyFactor, isBoostActive };
 }
 
 const deliveryStatsQuery = (tenancyId: string): RawQuery<EmailDeliveryStats> => ({
@@ -106,4 +112,13 @@ const deliveryStatsQuery = (tenancyId: string): RawQuery<EmailDeliveryStats> => 
 export async function getEmailDeliveryStatsForTenancy(tenancyId: string, tx?: PrismaClientTransaction): Promise<EmailDeliveryStats> {
   const client = tx ?? globalPrismaClient;
   return await rawQuery(client, deliveryStatsQuery(tenancyId));
+}
+
+export async function getEmailCapacityBoostExpiresAt(tenancyId: string, tx?: PrismaClientTransaction): Promise<Date | null> {
+  const client = tx ?? globalPrismaClient;
+  const tenancy = await client.tenancy.findUniqueOrThrow({
+    where: { id: tenancyId },
+    select: { emailCapacityBoostExpiresAt: true },
+  });
+  return tenancy.emailCapacityBoostExpiresAt;
 }

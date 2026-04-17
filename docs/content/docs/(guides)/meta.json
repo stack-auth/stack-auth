@@ -20,6 +20,7 @@
     "apps/permissions",
     "apps/webhooks",
     "apps/payments",
+    "apps/analytics",
     "---Concepts---",
     "concepts/api-keys",
     "concepts/backend-integration",

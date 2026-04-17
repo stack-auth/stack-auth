@@ -1,3 +1,4 @@
+import { isPreviewModeEnabled } from "@/lib/preview-mode";
 import { getStackStripe } from "@/lib/stripe";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -33,6 +34,19 @@ export const GET = createSmartRouteHandler({
 
     if (!project?.stripeAccountId) {
       throw new KnownErrors.StripeAccountInfoNotFound();
+    }
+
+    if (isPreviewModeEnabled()) {
+      return {
+        statusCode: 200,
+        bodyType: "json",
+        body: {
+          account_id: project.stripeAccountId,
+          charges_enabled: true,
+          details_submitted: true,
+          payouts_enabled: true,
+        },
+      };
     }
 
     const stripe = getStackStripe();

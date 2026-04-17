@@ -138,6 +138,9 @@ jobs:
       - name: Create .env.test.local file for examples/convex
         run: cp examples/convex/.env.development examples/convex/.env.test.local
 
+      - name: Create .env.test.local file for apps/internal-tool
+        run: cp apps/internal-tool/.env.development apps/internal-tool/.env.test.local
+
       - name: Build
         run: pnpm build
 
@@ -145,13 +148,13 @@ jobs:
         run: pnpm run wait-until-postgres-is-ready:pg_isready
 
       - name: Wait on Inbucket
-        run: pnpx wait-on tcp:localhost:8129
+        run: pnpm exec wait-on tcp:localhost:8129
 
       - name: Wait on Svix
-        run: pnpx wait-on tcp:localhost:8113
+        run: pnpm exec wait-on tcp:localhost:8113
 
       - name: Wait on ClickHouse
-        run: pnpx wait-on http://localhost:8136/ping
+        run: pnpm exec wait-on http://localhost:8136/ping
 
       - name: Initialize database
         run: pnpm run db:init
@@ -200,7 +203,7 @@ jobs:
         uses: JarvusInnovations/background-action@v1.0.7
         if: ${{ hashFiles('apps/backend/scripts/run-cron-jobs.ts') != '' }}
         with:
-          run: pnpm -C apps/backend run with-env:dev tsx scripts/run-cron-jobs.ts --log-order=stream &
+          run: pnpm -C apps/backend run run-cron-jobs:test --log-order=stream &
           wait-on: |
             http://localhost:8102
           tail: true
@@ -332,6 +335,9 @@ jobs:
       - name: Create .env.test.local file for examples/convex
         run: cp examples/convex/.env.development examples/convex/.env.test.local
 
+      - name: Create .env.test.local file for apps/internal-tool
+        run: cp apps/internal-tool/.env.development apps/internal-tool/.env.test.local
+
       - name: Build
         run: pnpm build
 
@@ -339,13 +345,13 @@ jobs:
         run: pnpm run wait-until-postgres-is-ready:pg_isready
 
       - name: Wait on Inbucket
-        run: pnpx wait-on tcp:localhost:8129
+        run: pnpm exec wait-on tcp:localhost:8129
 
       - name: Wait on Svix
-        run: pnpx wait-on tcp:localhost:8113
+        run: pnpm exec wait-on tcp:localhost:8113
 
       - name: Wait on ClickHouse
-        run: pnpx wait-on http://localhost:8136/ping
+        run: pnpm exec wait-on http://localhost:8136/ping
 
       - name: Initialize database
         run: pnpm run db:init
@@ -394,7 +400,7 @@ jobs:
         uses: JarvusInnovations/background-action@v1.0.7
         if: ${{ hashFiles('apps/backend/scripts/run-cron-jobs.ts') != '' }}
         with:
-          run: pnpm -C apps/backend run with-env:dev tsx scripts/run-cron-jobs.ts --log-order=stream &
+          run: pnpm -C apps/backend run run-cron-jobs:test --log-order=stream &
           wait-on: |
             http://localhost:8102
           tail: true

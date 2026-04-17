@@ -1,6 +1,7 @@
 'use client';
 
 import { useRouter } from "@/components/router";
+import { isAppEnabled } from "@/lib/apps-utils";
 import { AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { Typography } from "@/components/ui";
 import type { ReactNode } from "react";
@@ -13,7 +14,7 @@ export function AppEnabledGuard(props: { appId: AppId, children: ReactNode }) {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
   const config = project.useConfig();
-  const isEnabled = config.apps.installed[props.appId]?.enabled;
+  const isEnabled = isAppEnabled(config.apps.installed, props.appId);
 
   useEffect(() => {
     if (!isEnabled) {

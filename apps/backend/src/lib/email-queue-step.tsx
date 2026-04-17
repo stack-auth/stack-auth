@@ -1,5 +1,5 @@
 import { EmailOutbox, EmailOutboxSkippedReason, Prisma } from "@/generated/prisma/client";
-import { calculateCapacityRate, getEmailDeliveryStatsForTenancy } from "@/lib/email-delivery-stats";
+import { calculateCapacityRate, getEmailCapacityBoostExpiresAt, getEmailDeliveryStatsForTenancy } from "@/lib/email-delivery-stats";
 import { getEmailThemeForThemeId, renderEmailsForTenancyBatched } from "@/lib/email-rendering";
 import { EmailOutboxRecipient, getEmailConfig, } from "@/lib/emails";
 import { generateUnsubscribeLink, getNotificationCategoryById, hasNotificationEnabled, listNotificationCategories } from "@/lib/notification-categories";
@@ -9,22 +9,28 @@ import { ITEM_IDS } from "@stackframe/stack-shared/dist/plans";
 import { getTenancy, Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient, PrismaClientTransaction } from "@/prisma-client";
 import { withTraceSpan } from "@/utils/telemetry";
-import { allPromisesAndWaitUntilEach } from "@/utils/vercel";
+import { allPromisesAndWaitUntilEach } from "@/utils/background-tasks";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
-import { getEnvBoolean, getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
+import { getEnvBoolean, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, errorToNiceString, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { Json } from "@stackframe/stack-shared/dist/utils/json";
 import { filterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
 import { randomUUID } from "node:crypto";
+import { checkEmailWithEmailable, type EmailableCheckResult } from "./emailable";
 import { lowLevelSendEmailDirectWithoutRetries } from "./emails-low-level";
 
 const MAX_RENDER_BATCH = 50;
 
 const MAX_SEND_ATTEMPTS = 5;
 
-const SEND_RETRY_BACKOFF_BASE_MS = 2000;
+const SEND_RETRY_BACKOFF_BASE_MS = 20000;
+
+/** Warn if the time between consecutive email queue steps exceeds this many seconds. */
+const DELTA_WARNING_THRESHOLD_SECONDS = 30;
+
+/** Consider an email stuck in rendering/sending if it started more than this many ms ago. */
+const STUCK_EMAIL_TIMEOUT_MS = 20 * 60 * 1000;
 
 const calculateRetryBackoffMs = (attemptCount: number): number => {
   return (Math.random() + 0.5) * SEND_RETRY_BACKOFF_BASE_MS * Math.pow(2, attemptCount);
@@ -55,95 +61,18 @@ const appendSendAttemptError =(
 // Track if email queue has run at least once since server start (used to suppress first-run delta warnings in dev)
 const emailQueueFirstRunKey = Symbol.for("__stack_email_queue_first_run_completed");
 
-type EmailableVerificationResult =
-  | { status: "ok" }
-  | { status: "not-deliverable", emailableResponse: Record<string, unknown> };
-
-/**
- * Verifies email deliverability using the Emailable API.
- *
- * If STACK_EMAILABLE_API_KEY is set, it calls the Emailable API to verify the email.
- * If the API key is not set, it falls back to a default behavior where emails
- * with the domain "emailable-not-deliverable.example.com" are rejected (for testing).
- */
 async function verifyEmailDeliverability(
   email: string,
   shouldSkipDeliverabilityCheck: boolean,
   emailConfigType: "shared" | "standard"
-): Promise<EmailableVerificationResult> {
+): Promise<EmailableCheckResult> {
   // Skip deliverability check if requested or using non-shared email config
   if (shouldSkipDeliverabilityCheck || emailConfigType !== "shared") {
-    return { status: "ok" };
+    return { status: "deliverable", emailableScore: null };
   }
 
-  const emailableApiKey = getEnvVariable("STACK_EMAILABLE_API_KEY", "");
-
-  if (emailableApiKey) {
-    // Use Emailable API for verification
-    return await traceSpan("verifying email address with Emailable", async () => {
-      try {
-        const emailableResponseResult = await Result.retry(async () => {
-          const res = await fetch(
-            `https://api.emailable.com/v1/verify?email=${encodeURIComponent(email)}&api_key=${emailableApiKey}`
-          );
-          if (res.status === 249) {
-            const text = await res.text();
-            console.log("Emailable is taking longer than expected, retrying...", text, { email });
-            return Result.error(
-              new Error(
-                `Emailable API returned a 249 error for ${email}. This means it takes some more time to verify the email address. Response body: ${text}`
-              )
-            );
-          }
-          return Result.ok(res);
-        }, 4, { exponentialDelayBase: 4000 });
-
-        if (emailableResponseResult.status === "error") {
-          throw new StackAssertionError("Timed out while verifying email address with Emailable", {
-            email,
-            emailableResponseResult,
-          });
-        }
-
-        const emailableResponse = emailableResponseResult.data;
-        if (!emailableResponse.ok) {
-          throw new StackAssertionError("Failed to verify email address with Emailable", {
-            email,
-            emailableResponse,
-            emailableResponseText: await emailableResponse.text(),
-          });
-        }
-
-        const json = await emailableResponse.json() as Record<string, unknown>;
-
-        if (json.state === "undeliverable" || json.disposable) {
-          console.log("email not deliverable", email, json);
-          return { status: "not-deliverable", emailableResponse: json };
-        }
-
-        return { status: "ok" };
-      } catch (error) {
-        // If something goes wrong with the Emailable API (eg. 500, ran out of credits, etc.), we just send the email anyway
-        captureError("emailable-api-error", error);
-        return { status: "ok" };
-      }
-    });
-  } else {
-    // Fallback behavior when no API key is set: reject test domain for testing purposes, and accept everything else
-    const EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN = "emailable-not-deliverable.example.com";
-    const emailDomain = email.split("@")[1]?.toLowerCase();
-    if (emailDomain === EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN) {
-      return {
-        status: "not-deliverable",
-        emailableResponse: {
-          state: "undeliverable",
-          reason: "test_domain_rejection",
-          message: `Emails to ${EMAILABLE_NOT_DELIVERABLE_TEST_DOMAIN} are rejected in test mode when STACK_EMAILABLE_API_KEY is not set`,
-        },
-      };
-    }
-    return { status: "ok" };
-  }
+  const result = await checkEmailWithEmailable(email);
+  return result;
 }
 
 type TenancySendBatch = {
@@ -189,7 +118,7 @@ async function retryEmailsStuckInRendering(): Promise<void> {
   const res = await globalPrismaClient.emailOutbox.updateManyAndReturn({
     where: {
       startedRenderingAt: {
-        lte: new Date(Date.now() - 1000 * 60 * 20),
+        lte: new Date(Date.now() - STUCK_EMAIL_TIMEOUT_MS),
       },
       finishedRenderingAt: null,
       skippedReason: null,
@@ -198,6 +127,7 @@ async function retryEmailsStuckInRendering(): Promise<void> {
     data: {
       renderedByWorkerId: null,
       startedRenderingAt: null,
+      shouldUpdateSequenceId: true,
     },
   });
   if (res.length > 0) {
@@ -211,7 +141,7 @@ async function logEmailsStuckInSending(): Promise<void> {
   const res = await globalPrismaClient.emailOutbox.findMany({
     where: {
       startedSendingAt: {
-        lte: new Date(Date.now() - 1000 * 60 * 20),
+        lte: new Date(Date.now() - STUCK_EMAIL_TIMEOUT_MS),
       },
       finishedSendingAt: null,
       skippedReason: null,
@@ -287,7 +217,7 @@ async function updateLastExecutionTime(): Promise<number> {
     return 0;
   }
 
-  if (delta > 30) {
+  if (delta > DELTA_WARNING_THRESHOLD_SECONDS) {
     const isFirstRun = !(globalThis as any)[emailQueueFirstRunKey];
     if (isFirstRun && getNodeEnvironment() === "development") {
       // In development, the first run after server start often has a large delta because the server wasn't running
@@ -315,7 +245,8 @@ async function claimEmailsForRendering(workerId: string): Promise<EmailOutbox[]>
     UPDATE "EmailOutbox" AS e
     SET
       "renderedByWorkerId" = ${workerId}::uuid,
-      "startedRenderingAt" = NOW()
+      "startedRenderingAt" = NOW(),
+      "shouldUpdateSequenceId" = TRUE
     FROM selected
     WHERE e."tenancyId" = selected."tenancyId" AND e."id" = selected."id"
     RETURNING e.*;
@@ -401,6 +332,7 @@ async function renderTenancyEmails(workerId: string, tenancyId: string, group: E
         renderErrorInternalMessage: error,
         renderErrorInternalDetails: { error },
         finishedRenderingAt: new Date(),
+        shouldUpdateSequenceId: true,
       },
     });
   };
@@ -421,6 +353,7 @@ async function renderTenancyEmails(workerId: string, tenancyId: string, group: E
         renderErrorInternalMessage: null,
         renderErrorInternalDetails: Prisma.DbNull,
         finishedRenderingAt: new Date(),
+        shouldUpdateSequenceId: true,
       },
     });
   };
@@ -511,7 +444,7 @@ async function queueReadyEmails(): Promise<{ queuedCount: number }> {
   // Query 1: Fresh emails (scheduledAt has passed, no retry pending)
   const freshEmails = await globalPrismaClient.$queryRaw<{ id: string }[]>`
     UPDATE "EmailOutbox"
-    SET "isQueued" = TRUE
+    SET "isQueued" = TRUE, "shouldUpdateSequenceId" = TRUE
     WHERE "isQueued" = FALSE
       AND "isPaused" = FALSE
       AND "skippedReason" IS NULL
@@ -526,7 +459,7 @@ async function queueReadyEmails(): Promise<{ queuedCount: number }> {
   // Clear nextSendRetryAt when queuing so the email is in a clean "queued" state.
   const retryEmails = await globalPrismaClient.$queryRaw<{ id: string }[]>`
     UPDATE "EmailOutbox"
-    SET "isQueued" = TRUE, "nextSendRetryAt" = NULL
+    SET "isQueued" = TRUE, "nextSendRetryAt" = NULL, "shouldUpdateSequenceId" = TRUE
     WHERE "isQueued" = FALSE
       AND "isPaused" = FALSE
       AND "skippedReason" IS NULL
@@ -558,13 +491,21 @@ async function prepareSendPlan(deltaSeconds: number): Promise<TenancySendBatch[]
 
   const plan: TenancySendBatch[] = [];
   for (const entry of tenancyIds) {
-    const stats = await getEmailDeliveryStatsForTenancy(entry.tenancyId);
-    const capacity = calculateCapacityRate(stats);
-    const quota = stochasticQuota(capacity.ratePerSecond * deltaSeconds);
-    if (quota <= 0) continue;
-    const rows = await claimEmailsForSending(globalPrismaClient, entry.tenancyId, quota);
-    if (rows.length === 0) continue;
-    plan.push({ tenancyId: entry.tenancyId, rows, capacityRatePerSecond: capacity.ratePerSecond });
+    try {
+      const [stats, boostExpiresAt] = await Promise.all([
+        getEmailDeliveryStatsForTenancy(entry.tenancyId),
+        getEmailCapacityBoostExpiresAt(entry.tenancyId),
+      ]);
+      const capacity = calculateCapacityRate(stats, boostExpiresAt);
+      const quota = stochasticQuota(capacity.ratePerSecond * deltaSeconds);
+      if (quota <= 0) continue;
+      const rows = await claimEmailsForSending(globalPrismaClient, entry.tenancyId, quota);
+      if (rows.length === 0) continue;
+      plan.push({ tenancyId: entry.tenancyId, rows, capacityRatePerSecond: capacity.ratePerSecond });
+    } catch (error) {
+      captureError("email-queue-step-prepare-send-plan-for-tenancy-error", error);
+      continue;
+    }
   }
   return plan;
 }
@@ -594,7 +535,8 @@ async function claimEmailsForSending(tx: PrismaClientTransaction, tenancyId: str
       FOR UPDATE SKIP LOCKED
     )
     UPDATE "EmailOutbox" AS e
-    SET "startedSendingAt" = NOW()
+    SET "startedSendingAt" = NOW(),
+        "shouldUpdateSequenceId" = TRUE
     FROM selected
     WHERE e."tenancyId" = selected."tenancyId" AND e."id" = selected."id"
     RETURNING e.*;
@@ -789,6 +731,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
             sendRetries: newAttemptCount,
             nextSendRetryAt: new Date(Date.now() + backoffMs),
             sendAttemptErrors: updatedErrors as Prisma.InputJsonArray,
+            shouldUpdateSequenceId: true,
           },
         });
       } else {
@@ -829,6 +772,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
               failureReason,
               allAttemptErrors: updatedErrors as Json[],
             },
+            shouldUpdateSequenceId: true,
           },
         });
       }
@@ -849,6 +793,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
           sendServerErrorExternalDetails: Prisma.DbNull,
           sendServerErrorInternalMessage: null,
           sendServerErrorInternalDetails: Prisma.DbNull,
+          shouldUpdateSequenceId: true,
         },
       });
 
@@ -870,6 +815,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
         sendServerErrorExternalDetails: {},
         sendServerErrorInternalMessage: errorToNiceString(error),
         sendServerErrorInternalDetails: {},
+        shouldUpdateSequenceId: true,
       },
     });
   }
@@ -955,6 +901,7 @@ async function markSkipped(row: EmailOutbox, reason: EmailOutboxSkippedReason, d
     data: {
       skippedReason: reason,
       skippedDetails: details as Prisma.InputJsonValue,
+      shouldUpdateSequenceId: true,
     },
   });
 }

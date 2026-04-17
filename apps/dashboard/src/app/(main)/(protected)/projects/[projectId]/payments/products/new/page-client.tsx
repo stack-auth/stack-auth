@@ -25,9 +25,10 @@ import {
   toast,
   Typography,
 } from "@/components/ui";
+import { SubpageHeader } from "@/components/design-components/subpage-header";
 import { useUpdateConfig } from "@/lib/config-update";
 import { cn } from "@/lib/utils";
-import { ArrowLeftIcon, ArrowSquareOutIcon, BuildingOfficeIcon, CaretDownIcon, ChatIcon, ClockIcon, CodeIcon, CopyIcon, GearIcon, HardDriveIcon, LightningIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TrashIcon, UserIcon } from "@phosphor-icons/react";
+import { ArrowSquareOutIcon, BuildingOfficeIcon, CaretDownIcon, ChatIcon, ClockIcon, CodeIcon, CopyIcon, GearIcon, HardDriveIcon, LightningIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TrashIcon, UserIcon } from "@phosphor-icons/react";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpecifiedId } from "@stackframe/stack-shared/dist/schema-fields";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
@@ -115,18 +116,7 @@ function CustomerTypeSelection({
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex items-center gap-4 px-6 py-4 border-b border-border/40">
-        <Button
-          variant="ghost"
-          size="sm"
-          onClick={onCancel}
-          className="gap-2"
-        >
-          <ArrowLeftIcon className="h-4 w-4" />
-          Back
-        </Button>
-        <Typography type="h3" className="font-semibold">Create Product</Typography>
-      </div>
+      <SubpageHeader title="Create Product" onBack={onCancel} />
       <div className="flex-1 flex items-center justify-center p-6">
         <div className="space-y-4 max-w-md mx-auto">
           <div className="text-center mb-8">
@@ -620,95 +610,86 @@ ${Object.entries(prices).map(([id, price]) => {
 
   return (
     <div className="flex flex-col h-full">
-      {/* Header */}
-      <div className="flex items-center justify-between gap-4 px-6 py-4 border-b border-border/40">
-        <div className="flex items-center gap-4">
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleBack}
-            className="gap-2"
-          >
-            <ArrowLeftIcon className="h-4 w-4" />
-            Back
-          </Button>
-          <Typography type="h3" className="font-semibold">Create Product</Typography>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" onClick={handleCancel}>
-            Cancel
-          </Button>
-          {isInlineProduct ? (
-            <Button
-              onClick={() => {
-                const prompt = generateInlineProductPrompt();
-                runAsynchronouslyWithAlert(async () => {
-                  await navigator.clipboard.writeText(prompt);
-                  toast({ title: "Prompt copied to clipboard" });
-                });
-              }}
-            >
-              <CopyIcon className="h-4 w-4 mr-2" />
-              Copy Checkout Prompt
+      <SubpageHeader
+        title="Create Product"
+        onBack={handleBack}
+        actions={
+          <>
+            <Button variant="outline" onClick={handleCancel}>
+              Cancel
             </Button>
-          ) : (
-            <DropdownMenu>
-              <div className="flex items-center">
-                <SimpleTooltip
-                  tooltip={!canSave ? "Fill in required fields and add at least one price" : undefined}
-                  disabled={canSave}
-                >
-                  <Button
-                    onClick={handleSave}
-                    disabled={!canSave || isSaving}
-                    className="!rounded-r-none"
+            {isInlineProduct ? (
+              <Button
+                onClick={() => {
+                  const prompt = generateInlineProductPrompt();
+                  runAsynchronouslyWithAlert(async () => {
+                    await navigator.clipboard.writeText(prompt);
+                    toast({ title: "Prompt copied to clipboard" });
+                  });
+                }}
+              >
+                <CopyIcon className="h-4 w-4 mr-2" />
+                Copy Checkout Prompt
+              </Button>
+            ) : (
+              <DropdownMenu>
+                <div className="flex items-center">
+                  <SimpleTooltip
+                    tooltip={!canSave ? "Fill in required fields and add at least one price" : undefined}
+                    disabled={canSave}
                   >
-                    {isSaving ? "Creating..." : "Create Product"}
-                  </Button>
-                </SimpleTooltip>
-                <div className="w-px h-6 bg-primary-foreground/20" />
-                <DropdownMenuTrigger asChild>
-                  <Button
-                    variant="default"
-                    disabled={!canSave || isSaving}
-                    className="!rounded-l-none px-2"
+                    <Button
+                      onClick={handleSave}
+                      disabled={!canSave || isSaving}
+                      className="!rounded-r-none"
+                    >
+                      {isSaving ? "Creating..." : "Create Product"}
+                    </Button>
+                  </SimpleTooltip>
+                  <div className="w-px h-6 bg-primary-foreground/20" />
+                  <DropdownMenuTrigger asChild>
+                    <Button
+                      variant="default"
+                      disabled={!canSave || isSaving}
+                      className="!rounded-l-none px-2"
+                    >
+                      <CaretDownIcon className="h-4 w-4" />
+                    </Button>
+                  </DropdownMenuTrigger>
+                </div>
+                <DropdownMenuContent align="end" className="min-w-[220px]">
+                  <DropdownMenuItem
+                    onClick={() => {
+                      const code = generateInlineProductCode();
+                      runAsynchronouslyWithAlert(async () => {
+                        await navigator.clipboard.writeText(code);
+                        toast({ title: "Code copied to clipboard" });
+                      });
+                    }}
+                    className="flex items-center gap-2"
                   >
-                    <CaretDownIcon className="h-4 w-4" />
-                  </Button>
-                </DropdownMenuTrigger>
-              </div>
-              <DropdownMenuContent align="end" className="min-w-[220px]">
-                <DropdownMenuItem
-                  onClick={() => {
-                    const code = generateInlineProductCode();
-                    runAsynchronouslyWithAlert(async () => {
-                      await navigator.clipboard.writeText(code);
-                      toast({ title: "Code copied to clipboard" });
-                    });
-                  }}
-                  className="flex items-center gap-2"
-                >
-                  <CodeIcon className="h-4 w-4" />
-                  <span>Copy inline product code</span>
-                </DropdownMenuItem>
-                <DropdownMenuItem
-                  onClick={() => {
-                    const prompt = generateInlineProductPrompt();
-                    runAsynchronouslyWithAlert(async () => {
-                      await navigator.clipboard.writeText(prompt);
-                      toast({ title: "Prompt copied to clipboard" });
-                    });
-                  }}
-                  className="flex items-center gap-2"
-                >
-                  <ChatIcon className="h-4 w-4" />
-                  <span>Copy prompt for inline product</span>
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
-          )}
-        </div>
-      </div>
+                    <CodeIcon className="h-4 w-4" />
+                    <span>Copy inline product code</span>
+                  </DropdownMenuItem>
+                  <DropdownMenuItem
+                    onClick={() => {
+                      const prompt = generateInlineProductPrompt();
+                      runAsynchronouslyWithAlert(async () => {
+                        await navigator.clipboard.writeText(prompt);
+                        toast({ title: "Prompt copied to clipboard" });
+                      });
+                    }}
+                    className="flex items-center gap-2"
+                  >
+                    <ChatIcon className="h-4 w-4" />
+                    <span>Copy prompt for inline product</span>
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            )}
+          </>
+        }
+      />
 
       {/* Main content - form on left, preview on right */}
       <div ref={mainContentRef} className="flex-1 flex overflow-hidden">

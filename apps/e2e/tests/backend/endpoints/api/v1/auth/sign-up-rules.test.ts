@@ -1,7 +1,40 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { describe } from "vitest";
 import { it } from "../../../../../helpers";
-import { Auth, InternalApiKey, Project, niceBackendFetch } from "../../../../backend-helpers";
+import { Auth, InternalApiKey, Project, backendContext, niceBackendFetch } from "../../../../backend-helpers";
+
+const expectOAuthSignUpRejectedRedirect = (
+  expect: typeof import("vitest").expect,
+  response: { status: number, headers: Headers },
+) => {
+  expect(response.status).toBe(307);
+
+  const location = response.headers.get("location");
+  expect(location).toBeTruthy();
+  if (location == null) {
+    throw new Error("OAuth callback rejection redirect location is missing");
+  }
+
+  const locationUrl = new URL(location);
+  expect(locationUrl.origin).toBe("http://stack-test.localhost");
+  expect(locationUrl.pathname).toBe("/some-callback-url");
+  expect(locationUrl.searchParams.get("error")).toBe("server_error");
+  expect(locationUrl.searchParams.get("errorCode")).toBe("SIGN_UP_REJECTED");
+  expect(locationUrl.searchParams.get("error_description")).toBe("Your sign up was rejected by an administrator's sign-up rule.");
+  expect(locationUrl.searchParams.get("message")).toBe("Your sign up was rejected by an administrator's sign-up rule.");
+
+  const detailsRaw = locationUrl.searchParams.get("details");
+  expect(detailsRaw).toBeTruthy();
+  if (detailsRaw == null) {
+    throw new Error("OAuth callback rejection redirect details are missing");
+  }
+  const details: unknown = JSON.parse(detailsRaw);
+  if (typeof details !== "object" || details == null || !("message" in details)) {
+    throw new Error("OAuth callback rejection redirect details are malformed");
+  }
+  expect(details.message).toBe("Your sign up was rejected by an administrator's sign-up rule.");
+  expect(response.headers.get("set-cookie")).toMatch(/stack-oauth-inner-/);
+};
 
 describe("sign-up rules", () => {
   // ==========================================
@@ -1181,10 +1214,7 @@ describe("sign-up rules", () => {
 
     // OAuth signup should be rejected
     const { response } = await Auth.OAuth.getMaybeFailingAuthorizationCode();
-    expect(response.status).toBe(403);
-    expect(response.body).toMatchObject({
-      code: 'SIGN_UP_REJECTED',
-    });
+    expectOAuthSignUpRejectedRedirect(expect, response);
   });
 
   it("should match oauthProvider condition for specific OAuth provider", async ({ expect }) => {
@@ -1211,10 +1241,7 @@ describe("sign-up rules", () => {
 
     // Spotify OAuth signup should be rejected
     const { response } = await Auth.OAuth.getMaybeFailingAuthorizationCode();
-    expect(response.status).toBe(403);
-    expect(response.body).toMatchObject({
-      code: 'SIGN_UP_REJECTED',
-    });
+    expectOAuthSignUpRejectedRedirect(expect, response);
   });
 
   it("should allow OAuth signup when rule blocks different provider", async ({ expect }) => {
@@ -1270,6 +1297,197 @@ describe("sign-up rules", () => {
     // OAuth signup should work (email from OAuth mock uses different domain)
     const response = await Auth.OAuth.signIn();
     expect(response.tokenResponse.status).toBe(200);
+  });
+
+  // ==========================================
+  // COUNTRY CODE CONDITIONS
+  // ==========================================
+
+  it("should reject password signup when countryCode reject rule matches", async ({ expect }) => {
+    await Project.createAndSwitch({
+      config: {
+        credential_enabled: true,
+      },
+    });
+
+    backendContext.set({
+      ipData: {
+        ipAddress: "127.0.0.1",
+        country: "US",
+        city: "New York",
+        region: "NY",
+        latitude: 40.7128,
+        longitude: -74.006,
+        tzIdentifier: "America/New_York",
+      },
+    });
+
+    await Project.updateConfig({
+      'auth.signUpRules.block-us': {
+        enabled: true,
+        displayName: 'Block US signups',
+        priority: 0,
+        condition: 'countryCode == "US"',
+        action: {
+          type: 'reject',
+          message: 'US signups are not allowed',
+        },
+      },
+      'auth.signUpRulesDefaultAction': 'allow',
+    });
+
+    const response = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        email: `user-${generateSecureRandomString(8)}@example.com`,
+        password: generateSecureRandomString(),
+      },
+    });
+
+    expect(response.status).toBe(403);
+    expect(response.body).toMatchObject({
+      code: 'SIGN_UP_REJECTED',
+    });
+  });
+
+  it("should restrict password signup when countryCode restrict rule matches", async ({ expect }) => {
+    await Project.createAndSwitch({
+      config: {
+        credential_enabled: true,
+      },
+    });
+
+    backendContext.set({
+      ipData: {
+        ipAddress: "127.0.0.1",
+        country: "CA",
+        city: "Toronto",
+        region: "ON",
+        latitude: 43.6532,
+        longitude: -79.3832,
+        tzIdentifier: "America/Toronto",
+      },
+    });
+
+    await Project.updateConfig({
+      'auth.signUpRules.restrict-canada': {
+        enabled: true,
+        displayName: 'Restrict Canada signups',
+        priority: 0,
+        condition: 'countryCode == "CA"',
+        action: {
+          type: 'restrict',
+        },
+      },
+      'auth.signUpRulesDefaultAction': 'allow',
+    });
+
+    const response = await niceBackendFetch("/api/v1/auth/password/sign-up", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        email: `user-${generateSecureRandomString(8)}@example.com`,
+        password: generateSecureRandomString(),
+      },
+    });
+
+    expect(response.status).toBe(200);
+
+    const userResponse = await niceBackendFetch(`/api/v1/users/${response.body.user_id}`, {
+      method: "GET",
+      accessType: "admin",
+    });
+
+    expect(userResponse.status).toBe(200);
+    expect(userResponse.body.restricted_by_admin).toBe(true);
+    expect(userResponse.body.restricted_by_admin_private_details).toContain("restrict-canada");
+  });
+
+  it("should reject OTP signup when countryCode rule matches the verification flow request", async ({ expect }) => {
+    await Project.createAndSwitch({
+      config: {
+        magic_link_enabled: true,
+      },
+    });
+
+    backendContext.set({
+      ipData: {
+        ipAddress: "127.0.0.1",
+        country: "DE",
+        city: "Berlin",
+        region: "BE",
+        latitude: 52.52,
+        longitude: 13.405,
+        tzIdentifier: "Europe/Berlin",
+      },
+    });
+
+    await Project.updateConfig({
+      'auth.signUpRules.block-germany': {
+        enabled: true,
+        displayName: 'Block Germany signups',
+        priority: 0,
+        condition: 'countryCode == "DE"',
+        action: {
+          type: 'reject',
+          message: 'Germany signups are not allowed',
+        },
+      },
+      'auth.signUpRulesDefaultAction': 'allow',
+    });
+
+    const { sendSignInCodeResponse } = await Auth.Otp.sendSignInCode();
+    const response = await niceBackendFetch("/api/v1/auth/otp/sign-in", {
+      method: "POST",
+      accessType: "client",
+      body: {
+        code: await Auth.Otp.getSignInCodeFromMailbox(sendSignInCodeResponse.body.nonce),
+      },
+    });
+
+    expect(response.status).toBe(403);
+    expect(response.body).toMatchObject({
+      code: 'SIGN_UP_REJECTED',
+    });
+  });
+
+  it("should reject OAuth signup when countryCode rule matches the callback request", async ({ expect }) => {
+    await Project.createAndSwitch({
+      config: {
+        oauth_providers: [{ id: "spotify", type: "shared" }],
+      },
+    });
+    await InternalApiKey.createAndSetProjectKeys();
+
+    backendContext.set({
+      ipData: {
+        ipAddress: "127.0.0.1",
+        country: "FR",
+        city: "Paris",
+        region: "IDF",
+        latitude: 48.8566,
+        longitude: 2.3522,
+        tzIdentifier: "Europe/Paris",
+      },
+    });
+
+    await Project.updateConfig({
+      'auth.signUpRules.block-france': {
+        enabled: true,
+        displayName: 'Block France signups',
+        priority: 0,
+        condition: 'countryCode == "FR"',
+        action: {
+          type: 'reject',
+          message: 'France signups are not allowed',
+        },
+      },
+      'auth.signUpRulesDefaultAction': 'allow',
+    });
+
+    const { response } = await Auth.OAuth.getMaybeFailingAuthorizationCode();
+    expectOAuthSignUpRejectedRedirect(expect, response);
   });
 
   // ==========================================

@@ -3,7 +3,7 @@ import { getRenderedOrganizationConfigQuery, getRenderedProjectConfigQuery } fro
 import { demoteAllContactChannelsToNonPrimary, setContactChannelAsPrimaryByValue } from "@/lib/contact-channel";
 import { normalizeEmail } from "@/lib/emails";
 import { getBillingTeamId, getTeamWideAuthUsersCapacity, getTeamWideNonAnonymousUserCount } from "@/lib/plan-entitlements";
-import { recordExternalDbSyncContactChannelDeletionsForUser, recordExternalDbSyncDeletion, withExternalDbSyncUpdate } from "@/lib/external-db-sync";
+import { recordExternalDbSyncContactChannelDeletionsForUser, recordExternalDbSyncDeletion, recordExternalDbSyncNotificationPreferenceDeletionsForUser, recordExternalDbSyncOAuthAccountDeletionsForUser, recordExternalDbSyncProjectPermissionDeletionsForUser, recordExternalDbSyncRefreshTokenDeletionsForUser, recordExternalDbSyncTeamMemberDeletionsForUser, recordExternalDbSyncTeamPermissionDeletionsForUser, withExternalDbSyncUpdate } from "@/lib/external-db-sync";
 import { grantDefaultProjectPermissions } from "@/lib/permissions";
 import { ensureTeamMembershipExists, ensureUserExists } from "@/lib/request-checks";
 import { Tenancy } from "@/lib/tenancies";
@@ -13,12 +13,12 @@ import { PrismaClientTransaction, RawQuery, getPrismaClientForSourceOfTruth, get
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { uploadAndGetUrl } from "@/s3";
 import { log } from "@/utils/telemetry";
-import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
+import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { currentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import { UsersCrud, usersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import { userIdOrMeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
+import { userIdOrMeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { validateBase64Image } from "@stackframe/stack-shared/dist/utils/base64";
 import { decodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { StackAssertionError, StatusError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
@@ -60,6 +60,10 @@ const getPersonalTeamDisplayName = (userDisplayName: string | null, userPrimaryE
 };
 
 const personalTeamDefaultDisplayName = "Personal Team";
+
+function getSignedUpAtMillis(signedUpAt: Date): number {
+  return signedUpAt.getTime();
+}
 
 async function createPersonalTeamIfEnabled(prisma: PrismaClientTransaction, tenancy: Tenancy, user: UsersCrud["Admin"]["Read"]) {
   if (tenancy.config.teams.createPersonalTeamOnSignUp) {
@@ -162,7 +166,7 @@ export const userPrismaToCrud = (
     primary_email_verified: primaryEmailVerified,
     primary_email_auth_enabled: !!primaryEmailContactChannel?.usedForAuth,
     profile_image_url: prisma.profileImageUrl,
-    signed_up_at_millis: prisma.createdAt.getTime(),
+    signed_up_at_millis: getSignedUpAtMillis(prisma.signedUpAt),
     client_metadata: prisma.clientMetadata,
     client_read_only_metadata: prisma.clientReadOnlyMetadata,
     server_metadata: prisma.serverMetadata,
@@ -185,6 +189,13 @@ export const userPrismaToCrud = (
     restricted_by_admin: prisma.restrictedByAdmin,
     restricted_by_admin_reason: prisma.restrictedByAdminReason,
     restricted_by_admin_private_details: prisma.restrictedByAdminPrivateDetails,
+    country_code: prisma.signUpCountryCode,
+    risk_scores: {
+      sign_up: {
+        bot: prisma.signUpRiskScoreBot,
+        free_trial_abuse: prisma.signUpRiskScoreFreeTrialAbuse,
+      },
+    },
   };
   return result;
 };
@@ -387,7 +398,7 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
         primary_email_verified: primaryEmailContactChannel?.isVerified || false,
         primary_email_auth_enabled: primaryEmailContactChannel?.usedForAuth === 'TRUE' ? true : false,
         profile_image_url: row.profileImageUrl,
-        signed_up_at_millis: new Date(row.createdAt + "Z").getTime(),
+        signed_up_at_millis: getSignedUpAtMillis(new Date((row.signedUpAt ?? throwErr("signedUpAt should never be null — anonymous users get createdAt, and the backfill migration ensures all existing rows are populated")) + "Z")),
         client_metadata: row.clientMetadata,
         client_read_only_metadata: row.clientReadOnlyMetadata,
         server_metadata: row.serverMetadata,
@@ -418,6 +429,13 @@ export function getUserQuery(projectId: string, branchId: string, userId: string
         restricted_by_admin: row.restrictedByAdmin,
         restricted_by_admin_reason: row.restrictedByAdminReason,
         restricted_by_admin_private_details: row.restrictedByAdminPrivateDetails,
+        country_code: row.signUpCountryCode,
+        risk_scores: {
+          sign_up: {
+            bot: row.signUpRiskScoreBot,
+            free_trial_abuse: row.signUpRiskScoreFreeTrialAbuse,
+          },
+        },
       };
     },
   };
@@ -496,6 +514,7 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     desc: yupString().oneOf(["true", "false"]).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Whether to sort the results in descending order. Defaults to false" } }),
     query: yupString().optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "A search query to filter the results by. This is a free-text search that is applied to the user's id (exact-match only), display name and primary email." } }),
     include_anonymous: yupString().oneOf(["true", "false"]).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Whether to include anonymous users in the results. When true, also includes restricted users. Defaults to false" } }),
+    only_anonymous: yupString().oneOf(["true", "false"]).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Whether to return only anonymous users. When true, implies include_anonymous=true. Defaults to false" } }),
     include_restricted: yupString().oneOf(["true", "false"]).optional().meta({ openapiField: { onlyShowInOperations: [ 'List' ], description: "Whether to include restricted users in the results. Defaults to false" } }),
   }),
   onRead: async ({ auth, params, query }) => {
@@ -513,7 +532,12 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
     // - No flags: only Normal users (not anonymous, not restricted)
     // - include_restricted=true: Restricted + Normal users (not anonymous)
     // - include_anonymous=true: Anonymous + Restricted + Normal users (everything)
+    // - only_anonymous=true with include_anonymous=true: only Anonymous users
+    const onlyAnonymous = query.only_anonymous === "true";
     const includeAnonymous = query.include_anonymous === "true";
+    if (onlyAnonymous && !includeAnonymous) {
+      throw new StatusError(StatusError.BadRequest, "only_anonymous=true requires include_anonymous=true");
+    }
     const includeRestricted = query.include_restricted === "true" || includeAnonymous; // include_anonymous also includes restricted
 
     // TODO: Instead of hardcoding this, we should use computeRestrictedStatus
@@ -529,10 +553,16 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           },
         },
       } : {},
-      ...includeAnonymous ? {} : {
-        // Don't return anonymous users unless explicitly requested
-        isAnonymous: false,
-      },
+      ...onlyAnonymous
+        ? {
+          isAnonymous: true,
+        }
+        : !includeAnonymous
+          ? {
+            // Don't return anonymous users unless explicitly requested
+            isAnonymous: false,
+          }
+          : {},
       // Filter out restricted users if needed (restricted = signed up but email not verified)
       ...shouldFilterRestrictedByEmail ? {
         // User must have a verified primary email to not be restricted
@@ -574,14 +604,18 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       } : {},
     };
 
+    const sortDirection = query.desc === 'true' ? 'desc' : 'asc';
     const db = await prisma.projectUser.findMany({
       where,
       include: userFullInclude,
-      orderBy: {
-        [({
-          signed_up_at: 'createdAt',
-        } as const)[query.order_by ?? 'signed_up_at']]: query.desc === 'true' ? 'desc' : 'asc',
-      },
+      orderBy: [
+        {
+          [({
+            signed_up_at: 'signedUpAt',
+          } as const)[query.order_by ?? 'signed_up_at']]: sortDirection,
+        },
+        { projectUserId: sortDirection },
+      ],
       // +1 because we need to know if there is a next page
       take: query.limit ? query.limit + 1 : undefined,
       ...query.cursor ? {
@@ -658,6 +692,10 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           restrictedByAdmin,
           restrictedByAdminReason,
           restrictedByAdminPrivateDetails,
+          signUpCountryCode: data.country_code,
+          signedUpAt: new Date(),
+          signUpRiskScoreBot: data.risk_scores?.sign_up.bot ?? 0,
+          signUpRiskScoreFreeTrialAbuse: data.risk_scores?.sign_up.free_trial_abuse ?? 0,
         },
         include: userFullInclude,
       });
@@ -1115,9 +1153,9 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
             },
             displayName: personalTeamDefaultDisplayName,
           },
-          data: {
+          data: withExternalDbSyncUpdate({
             displayName: getPersonalTeamDisplayName(data.display_name ?? null, data.primary_email ?? null),
-          },
+          }),
         });
       }
 
@@ -1160,10 +1198,18 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
           requiresTotpMfa: data.totp_secret_base64 === undefined ? undefined : (data.totp_secret_base64 !== null),
           totpSecret: data.totp_secret_base64 == null ? data.totp_secret_base64 : Buffer.from(decodeBase64(data.totp_secret_base64)),
           isAnonymous: data.is_anonymous ?? undefined,
+          // Set signedUpAt when upgrading anonymous → non-anonymous (first real sign-up).
+          // We intentionally do NOT clear signedUpAt on non-anonymous → anonymous because:
+          // (a) that transition is admin-only and rare, and (b) preserving the original
+          // sign-up timestamp keeps risk/audit data intact.
+          signedUpAt: oldUser.isAnonymous && data.is_anonymous === false ? new Date() : undefined,
           profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "user-profile-images"),
           restrictedByAdmin: data.restricted_by_admin ?? undefined,
           restrictedByAdminReason: restrictedByAdminReason,
           restrictedByAdminPrivateDetails: restrictedByAdminPrivateDetails,
+          signUpCountryCode: data.country_code,
+          signUpRiskScoreBot: data.risk_scores?.sign_up.bot,
+          signUpRiskScoreFreeTrialAbuse: data.risk_scores?.sign_up.free_trial_abuse,
         }),
         include: userFullInclude,
       });
@@ -1181,6 +1227,11 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
 
     // if user password changed, reset all refresh tokens
     if (passwordHash !== undefined) {
+      await recordExternalDbSyncRefreshTokenDeletionsForUser(globalPrismaClient, {
+        tenancyId: auth.tenancy.id,
+        projectUserId: params.user_id,
+      });
+
       await globalPrismaClient.projectUserRefreshToken.deleteMany({
         where: {
           tenancyId: auth.tenancy.id,
@@ -1225,6 +1276,43 @@ export const usersCrudHandlers = createLazyProxy(() => createCrudHandlers(usersC
       await recordExternalDbSyncContactChannelDeletionsForUser(tx, {
         tenancyId: auth.tenancy.id,
         projectUserId: params.user_id,
+      });
+
+      await recordExternalDbSyncTeamMemberDeletionsForUser(tx, {
+        tenancyId: auth.tenancy.id,
+        projectUserId: params.user_id,
+      });
+
+      await recordExternalDbSyncTeamPermissionDeletionsForUser(tx, {
+        tenancyId: auth.tenancy.id,
+        projectUserId: params.user_id,
+      });
+
+      await recordExternalDbSyncProjectPermissionDeletionsForUser(tx, {
+        tenancyId: auth.tenancy.id,
+        projectUserId: params.user_id,
+      });
+
+      await recordExternalDbSyncNotificationPreferenceDeletionsForUser(tx, {
+        tenancyId: auth.tenancy.id,
+        projectUserId: params.user_id,
+      });
+
+      await recordExternalDbSyncRefreshTokenDeletionsForUser(tx, {
+        tenancyId: auth.tenancy.id,
+        projectUserId: params.user_id,
+      });
+
+      await recordExternalDbSyncOAuthAccountDeletionsForUser(tx, {
+        tenancyId: auth.tenancy.id,
+        projectUserId: params.user_id,
+      });
+
+      await tx.projectUserRefreshToken.deleteMany({
+        where: {
+          tenancyId: auth.tenancy.id,
+          projectUserId: params.user_id,
+        },
       });
 
       await tx.projectUser.delete({

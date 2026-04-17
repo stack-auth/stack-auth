@@ -42,17 +42,21 @@ import {
   useToast
 } from "@/components/ui";
 import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialogs";
-import { AtIcon, CalendarIcon, CheckIcon, DotsThreeIcon, EnvelopeIcon, HashIcon, ProhibitIcon, ShieldIcon, SquareIcon, XIcon } from "@phosphor-icons/react";
+import { AtIcon, CalendarIcon, CheckIcon, DotsThreeIcon, EnvelopeIcon, GlobeIcon, HashIcon, ProhibitIcon, ShieldIcon, SquareIcon, XIcon } from "@phosphor-icons/react";
 import { ServerContactChannel, ServerOAuthProvider, ServerUser } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
+import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
+import { CountryCodeInput } from "@/components/country-code-select";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { captureError, StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { useState } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
+import { parseRiskScore } from "@/lib/risk-score-utils";
 
 const userMetadataDocsUrl = "https://docs.stack-auth.com/docs/concepts/custom-user-data";
 
@@ -388,6 +392,8 @@ type UserDetailsProps = {
 
 function UserDetails({ user }: UserDetailsProps) {
   const [newPassword, setNewPassword] = useState<string | null>(null);
+
+
   return (
     <div className="grid grid-cols-[min-content_1fr] lg:grid-cols-[min-content_1fr_min-content_1fr] gap-2 text-sm px-4">
       <UserInfo icon={<HashIcon size={16}/>} name="User ID">
@@ -416,6 +422,44 @@ function UserDetails({ user }: UserDetailsProps) {
       </UserInfo>
       <UserInfo icon={<CalendarIcon size={16}/>} name="Signed up at">
         <EditableInput value={user.signedUpAt.toDateString()} readOnly />
+      </UserInfo>
+      <UserInfo icon={<ShieldIcon size={16}/>} name="Risk score: bot">
+        <EditableInput value={String(user.riskScores.signUp.bot)} onUpdate={async (newValue) => {
+          await user.update({
+            riskScores: {
+              signUp: {
+                bot: parseRiskScore(newValue),
+                freeTrialAbuse: user.riskScores.signUp.freeTrialAbuse,
+              },
+            },
+          });
+        }} />
+      </UserInfo>
+      <UserInfo icon={<GlobeIcon size={16}/>} name="Sign-up country code">
+        <CountryCodeInput
+          value={user.countryCode ?? null}
+          onChange={(newValue) => {
+            runAsynchronouslyWithAlert(async () => {
+              await user.update({
+                countryCode: newValue ? normalizeCountryCode(newValue) : null,
+              });
+            });
+          }}
+          placeholder="-"
+          className="w-full h-8 text-sm"
+        />
+      </UserInfo>
+      <UserInfo icon={<ShieldIcon size={16}/>} name="Risk score: free trial abuse">
+        <EditableInput value={String(user.riskScores.signUp.freeTrialAbuse)} onUpdate={async (newValue) => {
+          await user.update({
+            riskScores: {
+              signUp: {
+                bot: user.riskScores.signUp.bot,
+                freeTrialAbuse: parseRiskScore(newValue),
+              },
+            },
+          });
+        }} />
       </UserInfo>
       <RestrictedStatusRow user={user} />
     </div>

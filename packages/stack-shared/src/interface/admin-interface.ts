@@ -3,8 +3,9 @@ import { KnownErrors } from "../known-errors";
 import { branchConfigSourceSchema, type RestrictedReason } from "../schema-fields";
 import { AccessToken, InternalSession, RefreshToken } from "../sessions";
 import type { MoneyAmount } from "../utils/currency-constants";
-import type { EditableMetadata } from "../utils/jsx-editable-transpiler";
+import type { Json } from "../utils/json";
 import { Result } from "../utils/results";
+import type { MetricsResponse } from "./admin-metrics";
 import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "./crud/analytics";
 import { EmailOutboxCrud } from "./crud/email-outbox";
 import { InternalEmailsCrud } from "./crud/emails";
@@ -25,7 +26,6 @@ import type { Transaction, TransactionType } from "./crud/transactions";
 import { ServerAuthApplicationOptions, StackServerInterface } from "./server-interface";
 
 type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
-
 
 export type ChatContent = Array<
   | { type: "text", text: string }
@@ -343,7 +343,7 @@ export class StackAdminInterface extends StackServerInterface {
     );
   }
 
-  async getMetrics(includeAnonymous: boolean = false): Promise<any> {
+  async getMetrics(includeAnonymous: boolean = false): Promise<MetricsResponse> {
     const params = new URLSearchParams();
     if (includeAnonymous) {
       params.append('include_anonymous', 'true');
@@ -356,7 +356,7 @@ export class StackAdminInterface extends StackServerInterface {
       },
       null,
     );
-    return await response.json();
+    return (await response.json()) as MetricsResponse;
   }
 
   async sendTestEmail(data: {
@@ -400,6 +400,69 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
+  async setupManagedEmailProvider(data: {
+    subdomain: string,
+    sender_local_part: string,
+  }): Promise<{
+      domain_id: string,
+      subdomain: string,
+      sender_local_part: string,
+      name_server_records: string[],
+      status: "pending_dns" | "pending_verification" | "verified" | "applied" | "failed",
+    }> {
+    const response = await this.sendAdminRequest("/internal/emails/managed-onboarding/setup", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(data),
+    }, null);
+    return await response.json();
+  }
+
+  async checkManagedEmailStatus(data: {
+    domain_id: string,
+    subdomain: string,
+    sender_local_part: string,
+  }): Promise<{ status: "pending_dns" | "pending_verification" | "verified" | "applied" | "failed" }> {
+    const response = await this.sendAdminRequest("/internal/emails/managed-onboarding/check", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(data),
+    }, null);
+    return await response.json();
+  }
+
+  async listManagedEmailDomains(): Promise<{
+      items: Array<{
+        domain_id: string,
+        subdomain: string,
+        sender_local_part: string,
+        status: "pending_dns" | "pending_verification" | "verified" | "applied" | "failed",
+        name_server_records: string[],
+      }>,
+    }> {
+    const response = await this.sendAdminRequest("/internal/emails/managed-onboarding/list", {
+      method: "GET",
+    }, null);
+    return await response.json();
+  }
+
+  async applyManagedEmailProvider(data: {
+    domain_id: string,
+  }): Promise<{ status: "applied" }> {
+    const response = await this.sendAdminRequest("/internal/emails/managed-onboarding/apply", {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(data),
+    }, null);
+    return await response.json();
+  }
+
   async sendSignInInvitationEmail(
     email: string,
     callbackUrl: string,
@@ -418,28 +481,6 @@ export class StackAdminInterface extends StackServerInterface {
       },
       null,
     );
-  }
-
-
-  async sendChatMessage(
-    threadId: string,
-    contextType: "email-theme" | "email-template" | "email-draft",
-    messages: Array<{ role: string, content: any }>,
-    abortSignal?: AbortSignal,
-  ): Promise<{ content: ChatContent }> {
-    const response = await this.sendAdminRequest(
-      `/internal/ai-chat/${threadId}`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({ context_type: contextType, messages }),
-        signal: abortSignal,
-      },
-      null,
-    );
-    return await response.json();
   }
 
   async saveChatMessage(threadId: string, message: any): Promise<void> {
@@ -465,38 +506,6 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async applyWysiwygEdit(options: {
-    sourceType: "template" | "theme" | "draft",
-    sourceCode: string,
-    oldText: string,
-    newText: string,
-    metadata: EditableMetadata,
-    domPath: Array<{ tagName: string, index: number }>,
-    htmlContext: string,
-  }): Promise<{ updatedSource: string }> {
-    const response = await this.sendAdminRequest(
-      `/internal/wysiwyg-edit`,
-      {
-        method: "POST",
-        headers: {
-          "content-type": "application/json",
-        },
-        body: JSON.stringify({
-          source_type: options.sourceType,
-          source_code: options.sourceCode,
-          old_text: options.oldText,
-          new_text: options.newText,
-          metadata: options.metadata,
-          dom_path: options.domPath.map(item => ({ tag_name: item.tagName, index: item.index })),
-          html_context: options.htmlContext,
-        }),
-      },
-      null,
-    );
-    const result = await response.json();
-    return { updatedSource: result.updated_source };
-  }
-
   async renderEmailPreview(options: {
     themeId?: string | null | false,
     themeTsxSource?: string,
@@ -517,6 +526,19 @@ export class StackAdminInterface extends StackServerInterface {
         template_tsx_source: options.templateTsxSource,
         editable_markers: options.editableMarkers,
         editable_source: options.editableSource,
+      }),
+    }, null);
+    return await response.json();
+  }
+
+  async rewriteTemplateSourceWithAI(templateTsxSource: string): Promise<{ tsx_source: string }> {
+    const response = await this.sendAdminRequest(`/internal/rewrite-template-source`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        template_tsx_source: templateTsxSource,
       }),
     }, null);
     return await response.json();

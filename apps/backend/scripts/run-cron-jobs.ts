@@ -9,6 +9,12 @@ const endpoints = [
 ];
 
 async function main() {
+  if (getEnvVariable("NEXT_PUBLIC_STACK_IS_PREVIEW", "") === "true") {
+    console.log("Preview mode is enabled, skipping cron jobs.");
+    // Keep alive — concurrently uses -k and would kill all other processes if this exits
+    setInterval(() => {}, 1 << 30);
+    return;
+  }
   console.log("Starting cron jobs...");
   const cronSecret = getEnvVariable('CRON_SECRET');
 
@@ -25,13 +31,13 @@ async function main() {
 
   for (const endpoint of endpoints) {
     runAsynchronously(async () => {
+      await wait(30_000); // Wait 30 seconds to make sure the server is fully started
       while (true) {
         const runResult = await Result.fromPromise(run(endpoint));
         if (runResult.status === "error") {
           captureError("run-cron-jobs", runResult.error);
         }
-        // Vercel only guarantees minute-granularity for cron jobs, so we randomize the interval
-        await wait(Math.random() * 120_000);
+        await wait(1000);
       }
     });
   }

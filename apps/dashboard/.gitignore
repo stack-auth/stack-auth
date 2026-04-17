@@ -34,3 +34,10 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local dev IIFE bundles (built locally, not committed)
+/public/dashboard-ui-components.iife.js
+/public/dashboard-ui-components.iife.js.map
+
+# auto-generated files (rebuilt at build time and in dev watch)
+/src/generated/bundled-type-definitions.ts

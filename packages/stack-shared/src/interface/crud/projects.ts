@@ -73,6 +73,7 @@ export const projectsCrudAdminReadSchema = yupObject({
   created_at_millis: schemaFields.projectCreatedAtMillisSchema.defined(),
   is_production_mode: schemaFields.projectIsProductionModeSchema.defined(),
   owner_team_id: schemaFields.yupString().nullable().defined(),
+  onboarding_status: schemaFields.projectOnboardingStatusSchema.defined(),
   /** @deprecated */
   config: yupObject({
     allow_localhost: schemaFields.projectAllowLocalhostSchema.defined(),
@@ -124,6 +125,7 @@ export const projectsCrudAdminUpdateSchema = yupObject({
   logo_dark_mode_url: schemaFields.projectLogoDarkModeUrlSchema.nullable().optional(),
   logo_full_dark_mode_url: schemaFields.projectLogoFullDarkModeUrlSchema.nullable().optional(),
   is_production_mode: schemaFields.projectIsProductionModeSchema.optional(),
+  onboarding_status: schemaFields.projectOnboardingStatusSchema.optional(),
   /** @deprecated */
   config: yupObject({
     sign_up_enabled: schemaFields.projectSignUpEnabledSchema.optional(),

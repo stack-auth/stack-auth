@@ -54,6 +54,12 @@ export const ALL_APPS = {
     tags: ["auth", "security"],
     stage: "stable",
   },
+  "fraud-protection": {
+    displayName: "Fraud Protection",
+    subtitle: "Protect your project from fraud and abuse",
+    tags: ["auth", "security"],
+    stage: "stable",
+  },
   "onboarding": {
     displayName: "Onboarding",
     subtitle: "Configure user onboarding requirements",
@@ -148,6 +154,6 @@ export const ALL_APPS = {
     displayName: "Analytics",
     subtitle: "View and explore analytics data",
     tags: ["developers", "operations"],
-    stage: "alpha",
+    stage: "beta",
   },
 } as const satisfies Record<string, App>;

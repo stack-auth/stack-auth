@@ -286,6 +286,10 @@ describe("create email theme", () => {
               "display_name": "Default Dark",
               "id": "<stripped UUID>",
             },
+            {
+              "display_name": "Default Colorful",
+              "id": "<stripped UUID>",
+            },
           ],
         },
         "headers": Headers { <some fields may have been hidden> },

@@ -33,11 +33,33 @@ import { TeamMemberProfilesCrud } from './crud/team-member-profiles';
 import { TeamPermissionsCrud } from './crud/team-permissions';
 import { TeamsCrud } from './crud/teams';
 
+export type RequestLogEntry = {
+  path: string,
+  method: string,
+  status?: number,
+  duration: number,
+  error?: string,
+};
+
+export type RequestListener = (entry: RequestLogEntry) => void;
+
 export type ClientInterfaceOptions = {
   clientVersion: string,
   // This is a function instead of a string because it might be different based on the environment (for example client vs server)
   getBaseUrl: () => string,
   getAnalyticsBaseUrl?: () => string,
+  /**
+   * Ordered list of base URLs for request routing with fallback.
+   * Index 0 = primary, index 1..N = fallbacks in priority order.
+   * A single-element array means no fallback occurs.
+   */
+  getApiUrls: () => string[],
+  /**
+   * When a fallback succeeds and becomes the active server, this is the initial probability
+   * (0–1) that any given request will probe the primary to check if it's back.
+   * Halves on each failed probe, resets on success. Default: 0.3 (30%).
+   */
+  probeRate?: number,
   extraRequestHeaders: Record<string, string>,
   projectId: string,
   prepareRequest?: () => Promise<void>,
@@ -47,11 +69,87 @@ export type ClientInterfaceOptions = {
   projectOwnerSession: InternalSession | (() => Promise<string | null>),
 });
 
+type BotChallengeInput = {
+  token?: string,
+  phase?: "invisible" | "visible",
+  unavailable?: true,
+};
+
+const botChallengeKnownErrors = [
+  KnownErrors.BotChallengeRequired,
+  KnownErrors.BotChallengeFailed,
+] as const;
+
+function isBotChallengeKnownError(error: unknown): error is KnownErrors["BotChallengeRequired"] | KnownErrors["BotChallengeFailed"] {
+  return KnownErrors.BotChallengeRequired.isInstance(error) || KnownErrors.BotChallengeFailed.isInstance(error);
+}
+
+function getBotChallengeRequestFields(botChallenge: BotChallengeInput | undefined, context: string) {
+  if (botChallenge?.unavailable) {
+    if (botChallenge.token != null || botChallenge.phase != null) {
+      throw new StackAssertionError(`${context} bot challenge unavailability cannot be combined with a token or phase.`);
+    }
+
+    return {
+      bot_challenge_unavailable: "true" as const,
+    };
+  }
+
+  const challengeToken = botChallenge?.token?.trim() || undefined;
+  if (botChallenge?.phase === "visible") {
+    if (challengeToken == null) {
+      // Backward-compatible fallback for older callers; prefer `unavailable: true`.
+      return {
+        bot_challenge_unavailable: "true",
+      };
+    }
+
+    return {
+      bot_challenge_token: challengeToken,
+      bot_challenge_phase: "visible" as const,
+    };
+  }
+
+  if (challengeToken == null) {
+    if (botChallenge?.phase != null) {
+      throw new StackAssertionError(`${context} bot challenge phase options require a token.`);
+    }
+
+    return {};
+  }
+
+  if (botChallenge?.phase == null) {
+    return {
+      bot_challenge_token: challengeToken,
+    };
+  }
+
+  return {
+    bot_challenge_token: challengeToken,
+    bot_challenge_phase: "invisible" as const,
+  };
+}
+
 export class StackClientInterface {
   private pendingNetworkDiagnostics?: ReturnType<StackClientInterface["_runNetworkDiagnosticsInner"]>;
+  private _requestListeners = new Set<RequestListener>();
+
+  /**
+   * Fallback state. When null, we're in normal mode (primary first).
+   * When set, we skip straight to `stickyIndex` and only probe primary occasionally.
+   */
+  private _sticky: { index: number, probeRate: number } | null = null;
+  private readonly _initialProbeRate: number;
 
   constructor(public readonly options: ClientInterfaceOptions) {
-    // nothing here
+    this._initialProbeRate = options.probeRate ?? 0.3;
+  }
+
+  addRequestListener(listener: RequestListener): () => void {
+    this._requestListeners.add(listener);
+    return () => {
+      this._requestListeners.delete(listener);
+    };
   }
 
   get projectId() {
@@ -60,6 +158,123 @@ export class StackClientInterface {
 
   getApiUrl() {
     return this.options.getBaseUrl() + "/api/v1";
+  }
+
+  getApiUrls(): string[] {
+    return this.options.getApiUrls().map(u => u + "/api/v1");
+  }
+
+  /**
+   * Returns the best-known-good API URL: the sticky fallback if we're in
+   * fallback mode, otherwise the primary. Use for browser-navigated URLs
+   * (e.g. OAuth authorize) where _withFallback can't help.
+   */
+  getBestApiUrl(): string {
+    const apiUrls = this.getApiUrls();
+    if (this._sticky && apiUrls[this._sticky.index]) {
+      return apiUrls[this._sticky.index];
+    }
+    return apiUrls[0];
+  }
+
+  /**
+   * Routes a request through an ordered URL list with automatic failover.
+   *
+   * The URL list is [primary, ...fallbacks]. The logic has two modes:
+   *
+   * **Normal mode** (`_sticky` is null) — try each URL in order. If a
+   * non-primary URL succeeds, enter sticky mode on that index.
+   *
+   * **Sticky mode** — a previous request already failed over. We remember
+   * which URL worked and go there directly. Occasionally (controlled by a
+   * decaying probe rate) we probe the primary to see if it recovered:
+   *   - Probe succeeds → exit sticky mode, use result.
+   *   - Probe fails → halve probe rate, use sticky URL.
+   *   - Sticky URL fails → exit sticky mode, do a full iteration.
+   *
+   * In both modes, a full iteration tries every URL once per pass for 2
+   * passes before giving up. KnownErrors are never retried (they're
+   * application-level, not network-level).
+   *
+   * Single-URL lists skip all of this and use 5-retry behavior directly.
+   */
+  protected async _withFallback<T>(cb: (apiUrl: string, retryOptions: { maxAttempts: number, skipDiagnostics: boolean }) => Promise<T>): Promise<T> {
+    const apiUrls = this.getApiUrls();
+
+    // Single URL — no fallback, just retry normally.
+    if (apiUrls.length <= 1) {
+      return await cb(apiUrls[0], { maxAttempts: 5, skipDiagnostics: false });
+    }
+
+    // If we're in sticky mode, try the remembered URL (with an optional primary probe first).
+    if (this._sticky) {
+      const result = await this._tryStickyUrl(apiUrls, cb);
+      if (result !== undefined) return result;
+      // Sticky URL failed — _sticky was cleared, fall through to full iteration.
+    }
+
+    // Full iteration: try every URL in order, 2 passes.
+    return await this._iterateUrls(apiUrls, cb);
+  }
+
+  /**
+   * Attempts the sticky URL, optionally probing primary first.
+   * Returns the result on success, or `undefined` if we should fall through to full iteration.
+   */
+  private async _tryStickyUrl<T>(
+    apiUrls: string[],
+    cb: (apiUrl: string, retryOptions: { maxAttempts: number, skipDiagnostics: boolean }) => Promise<T>,
+  ): Promise<T | undefined> {
+    const sticky = this._sticky!;
+
+    // Probabilistically probe primary to check if it's back.
+    if (Math.random() < sticky.probeRate) {
+      try {
+        const result = await cb(apiUrls[0], { maxAttempts: 1, skipDiagnostics: true });
+        this._sticky = null;
+        return result;
+      } catch (e) {
+        if (e instanceof KnownError) throw e;
+        sticky.probeRate = Math.max(sticky.probeRate * 0.5, 0.01);
+      }
+    }
+
+    // Try the sticky URL itself.
+    try {
+      return await cb(apiUrls[sticky.index], { maxAttempts: 1, skipDiagnostics: true });
+    } catch (e) {
+      if (e instanceof KnownError) throw e;
+      this._sticky = null;
+      return undefined;
+    }
+  }
+
+  /**
+   * Tries every URL in order for up to 2 passes.
+   * If a non-primary URL (index > 0) succeeds, enters sticky mode on it.
+   */
+  private async _iterateUrls<T>(
+    apiUrls: string[],
+    cb: (apiUrl: string, retryOptions: { maxAttempts: number, skipDiagnostics: boolean }) => Promise<T>,
+  ): Promise<T> {
+    let lastError: Error | undefined;
+
+    for (let pass = 0; pass < 2; pass++) {
+      for (let i = 0; i < apiUrls.length; i++) {
+        try {
+          const result = await cb(apiUrls[i], { maxAttempts: 1, skipDiagnostics: true });
+          if (i > 0) {
+            this._sticky = { index: i, probeRate: this._initialProbeRate };
+          }
+          return result;
+        } catch (e) {
+          if (e instanceof KnownError) throw e;
+          lastError = e instanceof Error ? e : new Error(String(e));
+        }
+      }
+    }
+
+    throw lastError!;
   }
 
   getAnalyticsApiUrl() {
@@ -133,10 +348,15 @@ export class StackClientInterface {
     `, { cause: cause });
   }
 
-  protected async _networkRetry<T>(cb: () => Promise<Result<T, any>>, session?: InternalSession | null, requestType?: "client" | "server" | "admin"): Promise<T> {
+  protected async _networkRetry<T>(
+    cb: () => Promise<Result<T, any>>,
+    session?: InternalSession | null,
+    requestType?: "client" | "server" | "admin",
+    options?: { maxAttempts?: number, skipDiagnostics?: boolean },
+  ): Promise<T> {
     const retriedResult = await Result.retry(
       cb,
-      5,
+      options?.maxAttempts ?? 5,
       { exponentialDelayBase: 1000 },
     );
 
@@ -145,13 +365,21 @@ export class StackClientInterface {
       if (globalVar.navigator && globalVar.navigator.onLine === false) {
         throw new Error("You are offline. Please check your internet connection and try again. (window.navigator.onLine is false)", { cause: retriedResult.error });
       }
+      if (options?.skipDiagnostics) {
+        throw retriedResult.error;
+      }
       throw await this._createNetworkError(retriedResult.error, session, requestType);
     }
     return retriedResult.data;
   }
 
-  protected async _networkRetryException<T>(cb: () => Promise<T>, session?: InternalSession | null, requestType?: "client" | "server" | "admin"): Promise<T> {
-    return await this._networkRetry(async () => await Result.fromThrowingAsync(cb), session, requestType);
+  protected async _networkRetryException<T>(
+    cb: () => Promise<T>,
+    session?: InternalSession | null,
+    requestType?: "client" | "server" | "admin",
+    options?: { maxAttempts?: number, skipDiagnostics?: boolean },
+  ): Promise<T> {
+    return await this._networkRetry(async () => await Result.fromThrowingAsync(cb), session, requestType, options);
   }
 
   public async fetchNewAccessToken(refreshToken: RefreshToken) {
@@ -161,7 +389,13 @@ export class StackClientInterface {
     }
 
     const clientSecret = this.options.publishableClientKey ?? publishableClientKeyNotNecessarySentinel;
-    const tokenEndpoint = this.getApiUrl() + '/auth/oauth/token';
+    return await this._withFallback(async (apiUrl, retryOptions) => {
+      return await this._fetchNewAccessTokenInner(refreshToken, clientSecret, apiUrl, retryOptions);
+    });
+  }
+
+  private async _fetchNewAccessTokenInner(refreshToken: RefreshToken, clientSecret: string, apiUrl: string, retryOptions?: { maxAttempts?: number, skipDiagnostics?: boolean }) {
+    const tokenEndpoint = apiUrl + '/auth/oauth/token';
     const as = {
       issuer: this.options.getBaseUrl(),
       algorithm: 'oauth2',
@@ -201,7 +435,7 @@ export class StackClientInterface {
       }
 
       return response.data;
-    });
+    }, undefined, undefined, retryOptions);
     if (!response) return null;
 
     let result: oauth.TokenEndpointResponse;
@@ -223,7 +457,6 @@ export class StackClientInterface {
     }
 
     return AccessToken.createIfValid(result.access_token) ?? throwErr("Access token in fetchNewAccessToken is invalid, looks like the backend is returning an invalid token!", { result });
-
   }
 
   public async sendClientRequest(
@@ -232,16 +465,29 @@ export class StackClientInterface {
     session: InternalSession | null,
     requestType: "client" | "server" | "admin" = "client",
     apiUrlOverride?: string,
+    retryOptions?: { maxAttempts?: number, skipDiagnostics?: boolean },
   ) {
     session ??= this.createSession({
       refreshToken: null,
     });
 
-    return await this._networkRetry(
-      () => this.sendClientRequestInner(path, requestOptions, session!, requestType, apiUrlOverride),
-      session,
-      requestType,
-    );
+    if (apiUrlOverride) {
+      return await this._networkRetry(
+        () => this.sendClientRequestInner(path, requestOptions, session!, requestType, apiUrlOverride, retryOptions),
+        session,
+        requestType,
+        retryOptions,
+      );
+    }
+
+    return await this._withFallback(async (apiUrl, fallbackRetryOptions) => {
+      return await this._networkRetry(
+        () => this.sendClientRequestInner(path, requestOptions, session!, requestType, apiUrl, retryOptions),
+        session,
+        requestType,
+        { ...fallbackRetryOptions, ...retryOptions },
+      );
+    });
   }
 
   public createSession(options: Omit<ConstructorParameters<typeof InternalSession>[0], "refreshAccessTokenCallback">): InternalSession {
@@ -269,6 +515,7 @@ export class StackClientInterface {
         session,
         "client",
         this.getAnalyticsApiUrl(),
+        { maxAttempts: 1, skipDiagnostics: true },
       );
       return Result.ok(response);
     } catch (e) {
@@ -293,6 +540,7 @@ export class StackClientInterface {
         session,
         "client",
         this.getAnalyticsApiUrl(),
+        { maxAttempts: 1, skipDiagnostics: true },
       );
       return Result.ok(response);
     } catch (e) {
@@ -332,6 +580,7 @@ export class StackClientInterface {
     session: InternalSession,
     requestType: "client" | "server" | "admin",
     apiUrlOverride?: string,
+    innerOptions?: { skipDiagnostics?: boolean },
   ): Promise<Result<Response & {
     usedTokens: {
       accessToken: AccessToken,
@@ -425,19 +674,31 @@ export class StackClientInterface {
       }),
     };
 
+    const startTime = performance.now();
     let rawRes;
     try {
       rawRes = await fetch(url, params);
     } catch (e) {
+      if (this._requestListeners.size > 0) {
+        const entry: RequestLogEntry = { path, method: (params.method ?? "GET").toUpperCase(), duration: Math.round(performance.now() - startTime), error: e instanceof Error ? e.message : "Network error" };
+        this._requestListeners.forEach((l) => l(entry));
+      }
       if (e instanceof TypeError) {
         // Likely to be a network error. Retry if the request is idempotent, throw network error otherwise.
         if (HTTP_METHODS[(params.method ?? "GET") as HttpMethod].idempotent) {
           return Result.error(e);
+        } else if (innerOptions?.skipDiagnostics) {
+          throw e;
         } else {
           throw await this._createNetworkError(e, session, requestType);
         }
       }
       throw e;
+    }
+
+    if (this._requestListeners.size > 0) {
+      const entry: RequestLogEntry = { path, method: (params.method ?? "GET").toUpperCase(), status: rawRes.status, duration: Math.round(performance.now() - startTime) };
+      this._requestListeners.forEach((l) => l(entry));
     }
 
     const processedRes = await this._processResponse(rawRes);
@@ -590,7 +851,8 @@ export class StackClientInterface {
   async sendMagicLinkEmail(
     email: string,
     callbackUrl: string,
-  ): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"]>> {
+    botChallenge?: BotChallengeInput,
+  ): Promise<Result<{ nonce: string }, KnownErrors["RedirectUrlNotWhitelisted"] | KnownErrors["BotChallengeRequired"] | KnownErrors["BotChallengeFailed"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       "/auth/otp/send-sign-in-code",
       {
@@ -601,10 +863,11 @@ export class StackClientInterface {
         body: JSON.stringify({
           email,
           callback_url: callbackUrl,
+          ...getBotChallengeRequestFields(botChallenge, "Magic link sign-in"),
         }),
       },
       null,
-      [KnownErrors.RedirectUrlNotWhitelisted]
+      [KnownErrors.RedirectUrlNotWhitelisted, ...botChallengeKnownErrors]
     );
 
     if (res.status === "error") {
@@ -906,7 +1169,8 @@ export class StackClientInterface {
     password: string,
     emailVerificationRedirectUrl: string | undefined,
     session: InternalSession,
-  ): Promise<Result<{ accessToken: string, refreshToken: string }, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"]>> {
+    botChallenge?: BotChallengeInput,
+  ): Promise<Result<{ accessToken: string, refreshToken: string }, KnownErrors["UserWithEmailAlreadyExists"] | KnownErrors["PasswordRequirementsNotMet"] | KnownErrors["BotChallengeRequired"] | KnownErrors["BotChallengeFailed"]>> {
     const res = await this.sendClientRequestAndCatchKnownError(
       "/auth/password/sign-up",
       {
@@ -918,10 +1182,11 @@ export class StackClientInterface {
           email,
           password,
           verification_callback_url: emailVerificationRedirectUrl,
+          ...getBotChallengeRequestFields(botChallenge, "Credential sign-up"),
         }),
       },
       session,
-      [KnownErrors.UserWithEmailAlreadyExists, KnownErrors.PasswordRequirementsNotMet]
+      [KnownErrors.UserWithEmailAlreadyExists, KnownErrors.PasswordRequirementsNotMet, ...botChallengeKnownErrors]
     );
 
     if (res.status === "error") {
@@ -1049,6 +1314,7 @@ export class StackClientInterface {
       state: string,
       type: "authenticate" | "link",
       providerScope?: string,
+      botChallenge?: BotChallengeInput,
       session: InternalSession,
     }
   ): Promise<string> {
@@ -1065,7 +1331,7 @@ export class StackClientInterface {
       throw new Error("Admin session token is currently not supported for OAuth");
     }
     const clientSecret = this.options.publishableClientKey ?? publishableClientKeyNotNecessarySentinel;
-    const url = new URL(this.getApiUrl() + "/auth/oauth/authorize/" + options.provider.toLowerCase());
+    const url = new URL(this.getBestApiUrl() + "/auth/oauth/authorize/" + options.provider.toLowerCase());
     url.searchParams.set("client_id", this.projectId);
     url.searchParams.set("client_secret", clientSecret);
     url.searchParams.set("redirect_uri", updatedRedirectUrl.toString());
@@ -1091,8 +1357,69 @@ export class StackClientInterface {
     if (options.providerScope) {
       url.searchParams.set("provider_scope", options.providerScope);
     }
+    for (const [key, value] of Object.entries(getBotChallengeRequestFields(options.botChallenge, `OAuth ${options.type}`))) {
+      url.searchParams.set(key, value);
+    }
 
     return url.toString();
+  }
+
+  async authorizeOAuth(options: {
+    provider: string,
+    redirectUrl: string,
+    errorRedirectUrl: string,
+    afterCallbackRedirectUrl?: string,
+    codeChallenge: string,
+    state: string,
+    type: "authenticate" | "link",
+    providerScope?: string,
+    botChallenge?: BotChallengeInput,
+    session: InternalSession,
+  }): Promise<Result<string, KnownErrors["BotChallengeRequired"] | KnownErrors["BotChallengeFailed"]>> {
+    if (typeof window === "undefined") {
+      throw new StackAssertionError("authorizeOAuth can currently only be called in a browser environment");
+    }
+
+    await this.options.prepareRequest?.();
+
+    const url = new URL(await this.getOAuthUrl(options));
+    url.searchParams.set("stack_response_mode", "json");
+
+    let rawRes;
+    try {
+      rawRes = await fetch(url, {
+        method: "GET",
+      });
+    } catch (error) {
+      if (error instanceof TypeError) {
+        throw await this._createNetworkError(error, options.session, "client");
+      }
+      throw error;
+    }
+
+    const processedResponse = await this._processResponse(rawRes);
+    if (processedResponse.status === "error") {
+      if (isBotChallengeKnownError(processedResponse.error)) {
+        return Result.error(processedResponse.error);
+      }
+      throw processedResponse.error;
+    }
+
+    if (processedResponse.data.status !== 200) {
+      throw new StackAssertionError(`OAuth authorize returned an unexpected status: ${processedResponse.data.status}`);
+    }
+
+    const body = await processedResponse.data.json();
+    if (body == null || typeof body !== "object" || Array.isArray(body)) {
+      throw new StackAssertionError("OAuth authorize response body must be an object", { body });
+    }
+
+    const location = body.location;
+    if (typeof location !== "string") {
+      throw new StackAssertionError("OAuth authorize response is missing a redirect location", { body });
+    }
+
+    return Result.ok(location);
   }
 
   async callOAuthCallback(options: {
@@ -1105,8 +1432,20 @@ export class StackClientInterface {
       // TODO fix
       throw new Error("Admin session token is currently not supported for OAuth");
     }
+
     const clientSecret = this.options.publishableClientKey ?? publishableClientKeyNotNecessarySentinel;
-    const tokenEndpoint = this.getApiUrl() + '/auth/oauth/token';
+    return await this._withFallback(async (apiUrl) => {
+      return await this._callOAuthCallbackInner(options, clientSecret, apiUrl);
+    });
+  }
+
+  private async _callOAuthCallbackInner(options: {
+    oauthParams: URLSearchParams,
+    redirectUri: string,
+    codeVerifier: string,
+    state: string,
+  }, clientSecret: string, apiUrl: string): Promise<{ newUser: boolean, afterCallbackRedirectUrl?: string, accessToken: string, refreshToken: string }> {
+    const tokenEndpoint = apiUrl + '/auth/oauth/token';
     const as = {
       issuer: this.options.getBaseUrl(),
       algorithm: 'oauth2',

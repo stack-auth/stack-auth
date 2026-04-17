@@ -61,8 +61,10 @@ export function parseWebhookOpenAPI(options: {
                 type: yupString().defined().meta({ openapiField: { description: webhook.type, exampleValue: webhook.type } }),
                 data: webhook.schema.defined(),
               }).describe()) || yupObject().describe(),
-              responseTypeDesc: yupString().oneOf(['json']).describe(),
-              statusCodeDesc: yupNumber().oneOf([200]).describe(),
+              responseVariants: [{
+                responseTypeDesc: yupString().oneOf(['json']).describe(),
+                statusCodeDesc: yupNumber().oneOf([200]).describe(),
+              }],
             }),
             operationId: webhook.type,
             summary: webhook.type,
@@ -117,22 +119,19 @@ function isMaybeRequestSchemaForAudience(requestDescribe: yup.SchemaObjectDescri
   return true;
 }
 
-
 function parseRouteHandler(options: {
   handler: SmartRouteHandler,
   path: string,
   method: HttpMethod,
   audience: 'client' | 'server' | 'admin',
 }) {
-  let result: any = undefined;
+  let result: ReturnType<typeof parseOverload> | undefined;
 
   for (const overload of options.handler.overloads.values()) {
     if (overload.metadata?.hidden) continue;
 
     const requestDescribe = overload.request.describe();
-    const responseDescribe = overload.response.describe();
     if (!isSchemaObjectDescription(requestDescribe)) throw new Error('Request schema must be a yup.ObjectSchema');
-    if (!isSchemaObjectDescription(responseDescribe)) throw new Error('Response schema must be a yup.ObjectSchema');
 
     // estimate whether this overload is the right one based on a heuristic
     if (!isMaybeRequestSchemaForAudience(requestDescribe, options.audience)) {
@@ -150,6 +149,9 @@ function parseRouteHandler(options: {
       `);
     }
 
+    const responseSchemaInfo = overload.response.meta()?.stackSchemaInfo;
+    const responseSchemas: yup.AnySchema[] = responseSchemaInfo?.type === "union" ? responseSchemaInfo.items : [overload.response];
+
     result = parseOverload({
       metadata: overload.metadata,
       method: options.method,
@@ -158,9 +160,17 @@ function parseRouteHandler(options: {
       parameterDesc: undefinedIfMixed(requestDescribe.fields.query),
       headerDesc: undefinedIfMixed(requestDescribe.fields.headers),
       requestBodyDesc: undefinedIfMixed(requestDescribe.fields.body),
-      responseDesc: undefinedIfMixed(responseDescribe.fields.body),
-      responseTypeDesc: undefinedIfMixed(responseDescribe.fields.bodyType) ?? throwErr('Response type must be defined and not mixed', { options, bodyTypeField: responseDescribe.fields.bodyType }),
-      statusCodeDesc: undefinedIfMixed(responseDescribe.fields.statusCode) ?? throwErr('Status code must be defined and not mixed', { options, statusCodeField: responseDescribe.fields.statusCode }),
+      responseVariants: responseSchemas.map((schema) => {
+        const responseDescribe = schema.describe();
+        if (!isSchemaObjectDescription(responseDescribe)) {
+          throw new Error('Response schema must be a yup.ObjectSchema');
+        }
+        return {
+          responseDesc: undefinedIfMixed(responseDescribe.fields.body),
+          responseTypeDesc: undefinedIfMixed(responseDescribe.fields.bodyType) ?? throwErr('Response type must be defined and not mixed', { options, bodyTypeField: responseDescribe.fields.bodyType }),
+          statusCodeDesc: undefinedIfMixed(responseDescribe.fields.statusCode) ?? throwErr('Status code must be defined and not mixed', { options, statusCodeField: responseDescribe.fields.statusCode }),
+        };
+      }),
     });
   }
 
@@ -264,7 +274,6 @@ function toHeaderParameters(description: yup.SchemaFieldDescription, crudOperati
     return {
       name: key,
       in: 'header',
-      type: 'string',
       schema,
       description: meta?.openapiField?.description,
       example: meta?.openapiField?.exampleValue,
@@ -327,9 +336,11 @@ export function parseOverload(options: {
   parameterDesc?: yup.SchemaFieldDescription,
   headerDesc?: yup.SchemaFieldDescription,
   requestBodyDesc?: yup.SchemaFieldDescription,
-  responseDesc?: yup.SchemaFieldDescription,
-  responseTypeDesc: yup.SchemaFieldDescription,
-  statusCodeDesc: yup.SchemaFieldDescription,
+  responseVariants: Array<{
+    responseDesc?: yup.SchemaFieldDescription,
+    responseTypeDesc: yup.SchemaFieldDescription,
+    statusCodeDesc: yup.SchemaFieldDescription,
+  }>,
 }) {
   const endpointDocumentation = options.metadata ?? {
     summary: `${options.method} ${options.path}`,
@@ -359,87 +370,61 @@ export function parseOverload(options: {
     };
   }
 
-  const exRes = {
-    summary: endpointDocumentation.summary,
-    description: endpointDocumentation.description,
-    parameters: [...queryParameters, ...pathParameters, ...headerParameters],
-    requestBody,
-    tags: endpointDocumentation.tags ?? ["Others"],
-    'x-full-url': `https://api.stack-auth.com/api/v1${options.path}`,
-  } as const;
+  const allResponses: Record<number, unknown> = {};
 
-  if (!isSchemaStringDescription(options.responseTypeDesc)) {
-    throw new StackAssertionError(`Expected response type to be a string`, { actual: options.responseTypeDesc, options });
-  }
-  if (options.responseTypeDesc.oneOf.length !== 1) {
-    throw new StackAssertionError(`Expected response type to have exactly one value`, { actual: options.responseTypeDesc, options });
-  }
-  const bodyType = options.responseTypeDesc.oneOf[0];
+  for (const { responseDesc, responseTypeDesc, statusCodeDesc } of options.responseVariants) {
+    if (!isSchemaStringDescription(responseTypeDesc)) {
+      throw new StackAssertionError(`Expected response type to be a string`, { actual: responseTypeDesc, options });
+    }
+    if (responseTypeDesc.oneOf.length !== 1) {
+      throw new StackAssertionError(`Expected response type to have exactly one value`, { actual: responseTypeDesc, options });
+    }
+    const bodyType = responseTypeDesc.oneOf[0];
 
-  if (!isSchemaNumberDescription(options.statusCodeDesc)) {
-    throw new StackAssertionError('Expected status code to be a number', { actual: options.statusCodeDesc, options });
-  }
+    if (!isSchemaNumberDescription(statusCodeDesc)) {
+      throw new StackAssertionError('Expected status code to be a number', { actual: statusCodeDesc, options });
+    }
 
-  // Get all status codes or use 200 as default if none specified
-  const statusCodes: number[] = options.statusCodeDesc.oneOf.length > 0
-    ? options.statusCodeDesc.oneOf as number[]
-    : [200]; // TODO HACK hardcoded, used in case all status codes may be returned, should be configurable per endpoint
+    // Get all status codes or use 200 as default if none specified
+    const statusCodes: number[] = statusCodeDesc.oneOf.length > 0
+      ? statusCodeDesc.oneOf as number[]
+      : [200]; // TODO HACK hardcoded, used in case all status codes may be returned, should be configurable per endpoint
 
-  switch (bodyType) {
-    case 'json': {
-      const responses = statusCodes.reduce((acc, status) => {
-        return {
-          ...acc,
-          [status]: {
+    for (const status of statusCodes) {
+      switch (bodyType) {
+        case 'json': {
+          allResponses[status] = {
             description: 'Successful response',
             content: {
               'application/json': {
                 schema: {
-                  ...options.responseDesc ? toSchema(options.responseDesc, endpointDocumentation.crudOperation) : {},
-                  required: options.responseDesc ? toRequired(options.responseDesc, endpointDocumentation.crudOperation) : undefined,
+                  ...responseDesc ? toSchema(responseDesc, endpointDocumentation.crudOperation) : {},
+                  required: responseDesc ? toRequired(responseDesc, endpointDocumentation.crudOperation) : undefined,
                 },
               },
             },
-          },
-        };
-      }, {});
-
-      return {
-        ...exRes,
-        responses,
-      };
-    }
-    case 'text': {
-      if (!options.responseDesc || !isSchemaStringDescription(options.responseDesc)) {
-        throw new StackAssertionError('Expected response body of bodyType=="text" to be a string schema', { actual: options.responseDesc });
-      }
-      const responses = statusCodes.reduce((acc, status) => {
-        return {
-          ...acc,
-          [status]: {
+          };
+          break;
+        }
+        case 'text': {
+          if (!responseDesc || !isSchemaStringDescription(responseDesc)) {
+            throw new StackAssertionError('Expected response body of bodyType=="text" to be a string schema', { actual: responseDesc });
+          }
+          allResponses[status] = {
             description: 'Successful response',
             content: {
               'text/plain': {
                 schema: {
                   type: 'string',
-                  example: options.responseDesc && isSchemaStringDescription(options.responseDesc) ? options.responseDesc.meta?.openapiField?.exampleValue : undefined,
+                  example: isSchemaStringDescription(responseDesc) ? responseDesc.meta?.openapiField?.exampleValue : undefined,
                 },
               },
             },
-          },
-        };
-      }, {});
-
-      return {
-        ...exRes,
-        responses,
-      };
-    }
-    case 'success': {
-      const responses = statusCodes.reduce((acc, status) => {
-        return {
-          ...acc,
-          [status]: {
+          };
+          break;
+        }
+        case 'success': {
+          allResponses[status] = {
             description: 'Successful response',
             content: {
               "application/json": {
@@ -456,32 +441,29 @@ export function parseOverload(options: {
                 },
               },
             },
-          },
-        };
-      }, {});
-
-      return {
-        ...exRes,
-        responses,
-      };
-    }
-    case 'empty': {
-      const responses = statusCodes.reduce((acc, status) => {
-        return {
-          ...acc,
-          [status]: {
+          };
+          break;
+        }
+        case 'empty': {
+          allResponses[status] = {
             description: 'No content',
-          },
-        };
-      }, {});
-
-      return {
-        ...exRes,
-        responses,
-      };
-    }
-    default: {
-      throw new StackAssertionError(`Unsupported body type: ${bodyType}`);
+          };
+          break;
+        }
+        default: {
+          throw new StackAssertionError(`Unsupported body type: ${bodyType}`);
+        }
+      }
     }
   }
+
+  return {
+    summary: endpointDocumentation.summary,
+    description: endpointDocumentation.description,
+    parameters: [...queryParameters, ...pathParameters, ...headerParameters],
+    requestBody,
+    tags: endpointDocumentation.tags ?? ["Others"],
+    'x-full-url': `https://api.stack-auth.com/api/v1${options.path}`,
+    responses: allResponses,
+  };
 }

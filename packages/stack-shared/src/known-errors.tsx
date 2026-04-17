@@ -752,6 +752,29 @@ const SignUpRejected = createKnownErrorConstructor(
   (json: any) => [json.message] as const,
 );
 
+const BotChallengeRequired = createKnownErrorConstructor(
+  KnownError,
+  "BOT_CHALLENGE_REQUIRED",
+  () => [
+    409,
+    "An additional bot challenge is required before sign-up can continue.",
+  ] as const,
+  () => [] as const,
+);
+
+const BotChallengeFailed = createKnownErrorConstructor(
+  KnownError,
+  "BOT_CHALLENGE_FAILED",
+  (message: string) => [
+    400,
+    message,
+    {
+      message,
+    },
+  ] as const,
+  (json: any) => [json.message] as const,
+);
+
 const PasswordAuthenticationNotEnabled = createKnownErrorConstructor(
   KnownError,
   "PASSWORD_AUTHENTICATION_NOT_ENABLED",
@@ -1400,6 +1423,16 @@ const OAuthProviderAccessDenied = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const OAuthProviderTemporarilyUnavailable = createKnownErrorConstructor(
+  KnownError,
+  "OAUTH_PROVIDER_TEMPORARILY_UNAVAILABLE",
+  () => [
+    503,
+    "The OAuth provider is temporarily unavailable. Please try signing in again.",
+  ] as const,
+  () => [] as const,
+);
+
 const ContactChannelAlreadyUsedForAuthBySomeoneElse = createKnownErrorConstructor(
   KnownError,
   "CONTACT_CHANNEL_ALREADY_USED_FOR_AUTH_BY_SOMEONE_ELSE",
@@ -1538,6 +1571,17 @@ const EmailRenderingError = createKnownErrorConstructor(
   (json: any) => [json.error] as const,
 );
 
+const TemplateSourceRewriteError = createKnownErrorConstructor(
+  KnownError,
+  "TEMPLATE_SOURCE_REWRITE_ERROR",
+  (error: string) => [
+    400,
+    `Failed to rewrite template source: ${error}`,
+    { error },
+  ] as const,
+  (json: any) => [json.error] as const,
+);
+
 const RequiresCustomEmailServer = createKnownErrorConstructor(
   KnownError,
   "REQUIRES_CUSTOM_EMAIL_SERVER",
@@ -1546,6 +1590,17 @@ const RequiresCustomEmailServer = createKnownErrorConstructor(
     `This action requires a custom SMTP server. Please edit your email server configuration and try again.`,
   ] as const,
   () => [] as const,
+);
+
+const EmailCapacityBoostAlreadyActive = createKnownErrorConstructor(
+  KnownError,
+  "EMAIL_CAPACITY_BOOST_ALREADY_ACTIVE",
+  (expiresAt: string) => [
+    409,
+    `Email capacity boost is already active until ${expiresAt}.`,
+    { expires_at: expiresAt },
+  ] as const,
+  (json: any) => [json.expires_at] as const,
 );
 
 const EmailNotEditable = createKnownErrorConstructor(
@@ -1857,6 +1912,8 @@ export const KnownErrors = {
   BranchDoesNotExist,
   SignUpNotEnabled,
   SignUpRejected,
+  BotChallengeRequired,
+  BotChallengeFailed,
   PasswordAuthenticationNotEnabled,
   PasskeyAuthenticationNotEnabled,
   AnonymousAccountsNotEnabled,
@@ -1911,6 +1968,7 @@ export const KnownErrors = {
   InvalidAppleCredentials,
   TeamPermissionNotFound,
   OAuthProviderAccessDenied,
+  OAuthProviderTemporarilyUnavailable,
   ContactChannelAlreadyUsedForAuthBySomeoneElse,
   InvalidPollingCodeError,
   ApiKeyNotValid,
@@ -1918,7 +1976,9 @@ export const KnownErrors = {
   ApiKeyRevoked,
   WrongApiKeyType,
   EmailRenderingError,
+  TemplateSourceRewriteError,
   RequiresCustomEmailServer,
+  EmailCapacityBoostAlreadyActive,
   EmailNotEditable,
   ItemNotFound,
   ItemCustomerTypeDoesNotMatch,

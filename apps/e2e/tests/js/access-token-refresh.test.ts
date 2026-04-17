@@ -252,6 +252,152 @@ describe("access token refresh on user property changes", () => {
     });
   });
 
+  describe("requires_totp_mfa changes", () => {
+    it("should have requires_totp_mfa=false for a new user without MFA", async ({ expect }) => {
+      const { clientApp } = await createApp({
+        config: {
+          credentialEnabled: true,
+        },
+      });
+
+      await clientApp.signUpWithCredential({
+        email: "test@example.com",
+        password: "password123",
+        verificationCallbackUrl: "http://localhost:3000",
+      });
+
+      const user = await clientApp.getUser({ or: "throw" });
+      const token = await user.getAccessToken();
+      expect(token).toBeDefined();
+
+      const payload = decodeAccessToken(token!);
+      expect(payload.requires_totp_mfa).toBe(false);
+    });
+
+    it("should return a new access token with requires_totp_mfa=true after enabling TOTP MFA", async ({ expect }) => {
+      const { clientApp } = await createApp({
+        config: {
+          credentialEnabled: true,
+        },
+      });
+
+      await clientApp.signUpWithCredential({
+        email: "test@example.com",
+        password: "password123",
+        verificationCallbackUrl: "http://localhost:3000",
+      });
+
+      const user = await clientApp.getUser({ or: "throw" });
+      const initialToken = await user.getAccessToken();
+      expect(decodeAccessToken(initialToken!).requires_totp_mfa).toBe(false);
+
+      const totpSecret = crypto.getRandomValues(new Uint8Array(20));
+      await user.update({ totpMultiFactorSecret: totpSecret });
+
+      const updatedToken = await user.getAccessToken();
+      expect(updatedToken).toBeDefined();
+
+      const updatedPayload = decodeAccessToken(updatedToken!);
+      expect(updatedPayload.requires_totp_mfa).toBe(true);
+
+      expect(updatedToken).not.toBe(initialToken);
+    });
+
+    it("should return a new access token with requires_totp_mfa=false after disabling TOTP MFA", async ({ expect }) => {
+      const { clientApp } = await createApp({
+        config: {
+          credentialEnabled: true,
+        },
+      });
+
+      await clientApp.signUpWithCredential({
+        email: "test@example.com",
+        password: "password123",
+        verificationCallbackUrl: "http://localhost:3000",
+      });
+
+      const user = await clientApp.getUser({ or: "throw" });
+
+      const totpSecret = crypto.getRandomValues(new Uint8Array(20));
+      await user.update({ totpMultiFactorSecret: totpSecret });
+
+      const mfaEnabledToken = await user.getAccessToken();
+      expect(decodeAccessToken(mfaEnabledToken!).requires_totp_mfa).toBe(true);
+
+      await user.update({ totpMultiFactorSecret: null });
+
+      const mfaDisabledToken = await user.getAccessToken();
+      expect(mfaDisabledToken).toBeDefined();
+
+      const disabledPayload = decodeAccessToken(mfaDisabledToken!);
+      expect(disabledPayload.requires_totp_mfa).toBe(false);
+
+      expect(mfaDisabledToken).not.toBe(mfaEnabledToken);
+    });
+
+    it("should update requires_totp_mfa in access token when admin enables MFA for a user", async ({ expect }) => {
+      const { clientApp, adminApp } = await createApp({
+        config: {
+          credentialEnabled: true,
+        },
+      });
+
+      await clientApp.signUpWithCredential({
+        email: "test@example.com",
+        password: "password123",
+        verificationCallbackUrl: "http://localhost:3000",
+      });
+
+      const user = await clientApp.getUser({ or: "throw" });
+      const initialToken = await user.getAccessToken();
+      expect(decodeAccessToken(initialToken!).requires_totp_mfa).toBe(false);
+
+      const adminUsers = await adminApp.listUsers({ query: "test@example.com" });
+      const totpSecret = crypto.getRandomValues(new Uint8Array(20));
+      await adminUsers[0].update({ totpMultiFactorSecret: totpSecret });
+
+      await user.update({});
+
+      const updatedToken = await user.getAccessToken();
+      expect(updatedToken).toBeDefined();
+
+      const updatedPayload = decodeAccessToken(updatedToken!);
+      expect(updatedPayload.requires_totp_mfa).toBe(true);
+    });
+  });
+
+  describe("signed_up_at claim", () => {
+    it("should include signed_up_at and keep it stable across token refreshes", async ({ expect }) => {
+      const { clientApp } = await createApp({
+        config: {
+          credentialEnabled: true,
+        },
+      });
+
+      await clientApp.signUpWithCredential({
+        email: "test@example.com",
+        password: "password123",
+        verificationCallbackUrl: "http://localhost:3000",
+      });
+
+      const user = await clientApp.getUser({ or: "throw" });
+      const initialToken = await user.getAccessToken();
+      expect(initialToken).toBeDefined();
+
+      const initialPayload = decodeAccessToken(initialToken!);
+      const signedUpAtSeconds = Math.floor(user.signedUpAt.getTime() / 1000);
+      expect(initialPayload.signed_up_at).toBe(signedUpAtSeconds);
+
+      await user.setDisplayName("Updated display name");
+
+      const refreshedToken = await user.getAccessToken();
+      expect(refreshedToken).toBeDefined();
+
+      const refreshedPayload = decodeAccessToken(refreshedToken!);
+      expect(refreshedPayload.signed_up_at).toBe(signedUpAtSeconds);
+    });
+  });
+
   describe("getAccessToken reflects current state", () => {
     it("should always return a token reflecting the current user state", async ({ expect }) => {
       const { clientApp, serverApp } = await createApp({

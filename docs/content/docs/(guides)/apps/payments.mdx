@@ -16,6 +16,51 @@ The Payments app enables you to:
 - **Track Products**: List products owned by users or teams
 - **View Transactions**: Monitor all payment activity in the dashboard
 
+## Quick Setup
+
+1. Enable the Payments app in your dashboard
+2. Connect Stripe in **Payments → Settings**
+3. Create a product line in **Payments → Product Lines**
+4. Create products and attach items in **Payments → Products & Items**
+5. Generate a checkout URL in your app with `createCheckoutUrl(...)`
+6. Turn on test mode in **Payments → Settings** and run test purchases
+7. Verify results in **Payments → Transactions** and **Payments → Customers**
+
+## How Payments Works
+
+At a high level, Payments combines your product catalog (what can be bought) with customer item balances (what each user/team currently has).
+
+<Mermaid chart={`
+sequenceDiagram
+    participant App as Your App
+    participant Stack as Stack Auth
+    participant Stripe as Stripe Checkout
+    participant DB as Item Balance
+
+    App->>Stack: createCheckoutUrl(customer, product)
+    Stack-->>App: checkout URL
+    App->>Stripe: redirect user to checkout
+    Stripe-->>Stack: payment/subscription success
+    Stack->>DB: grant product items
+    Stack-->>App: updated customer products/items
+`} />
+
+### Core Concepts
+
+- **Product**: A sellable offer (one-time or subscription)
+- **Product line**: A mutually exclusive set of products. A customer can only have one active product from the same product line at a time.
+- **Item**: A quantifiable entitlement (credits, seats, API calls, etc.)
+- **Customer**: The owner of purchases and item balances (`user`, `team`, or `custom`)
+- **Transaction**: A successful or failed billing event recorded in the dashboard
+
+### Typical Purchase Flow
+
+1. Define product lines, products, and attached items in **Payments → Product Lines** and **Payments → Products & Items**
+2. Create a checkout URL from your app for a specific customer
+3. User completes payment in Stripe Checkout
+4. Stack updates product ownership and item balances automatically
+5. Your app reads updated balances through `useItem()`, `getItem()`, or `listProducts()`
+
 ## Enabling the Payments App
 
 To use payments in your application:
@@ -36,7 +81,7 @@ Stack Auth Payments is currently only available for US-based businesses. Support
 
 Stack Auth uses Stripe Connect to securely integrate with your Stripe account:
 
-1. In the Payments app settings, click **Start Setup**
+1. Open **Payments** and start Stripe setup (from the setup prompt or **Payments → Settings**)
 2. Select your country of residence
 3. You'll be redirected to Stripe's onboarding flow
 4. Complete the required information:
@@ -45,7 +90,7 @@ Stack Auth uses Stripe Connect to securely integrate with your Stripe account:
    - Identity verification
 5. Once approved, payments will be enabled for your project
 
-You can also skip the Stripe onboarding and test payments in **test mode** first, where all purchases are free.
+You can turn on **test mode** to simulate purchases without charging real money while you validate your integration.
 
 ## SDK Usage
 
@@ -122,9 +167,17 @@ Grant products to users programmatically without requiring payment:
 
 ## Dashboard Management
 
-### Products
+### Product Lines
 
-Configure your products in the dashboard under **Payments → Products**:
+Configure product lines under **Payments → Product Lines**:
+
+- Group products into mutually exclusive plans/tiers
+- Move products between lines as your pricing model evolves
+- Keep products outside of lines when they should be independently purchasable
+
+### Products & Items
+
+Configure products and item entitlements in **Payments → Products & Items**:
 
 - Create products with display names and pricing
 - Configure items included with each product (e.g., 100 credits per purchase)
@@ -153,7 +206,20 @@ View all payment activity under **Payments → Transactions**:
 
 Click the refund button in a transaction row to issue a refund. Refunds are only available for non-test mode purchases with associated prices.
 
-For USD transactions, you can issue full or partial refunds—just specify an amount greater than zero and up to the original charge. Non-USD transactions only support full refunds.
+Refund support is centered on USD-denominated purchase entries.
+
+### Payouts
+
+View and manage payout information under **Payments → Payouts**.
+
+### Settings
+
+Configure payment infrastructure in **Payments → Settings**:
+
+- Connect or continue Stripe onboarding
+- Toggle test mode
+- Configure available payment methods
+- Optionally block new purchases
 
 ### Payment Emails
 
@@ -176,7 +242,7 @@ Stack Auth supports three types of payment customers:
 
 During development, you can use test mode:
 
-1. Enable test mode in your Payments settings (or skip Stripe onboarding)
+1. Connect Stripe for the project, then enable test mode in **Payments → Settings**
 2. All purchases will be free and no money will be deducted
 3. Test various scenarios before going live
 

@@ -7,7 +7,7 @@ This component is the official way to integrate Stack Auth with your Convex proj
 To get started, first install Stack Auth using the setup wizard:
 
 ```bash
-npx @stackframe/init-stack@latest
+npx @stackframe/stack-cli@latest init
 ```
 
 ## Get Started

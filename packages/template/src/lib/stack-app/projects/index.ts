@@ -1,5 +1,6 @@
 import { ProductionModeError } from "@stackframe/stack-shared/dist/helpers/production-mode";
 import { AdminUserProjectsCrud, ProjectsCrud } from "@stackframe/stack-shared/dist/interface/crud/projects";
+import { ProjectOnboardingStatus } from "@stackframe/stack-shared/dist/schema-fields";
 
 import { CompleteConfig, EnvironmentConfigNormalizedOverride, EnvironmentConfigOverrideOverride } from "@stackframe/stack-shared/dist/config/schema";
 import { StackAdminApp } from "../apps/interfaces/admin-app";
@@ -35,6 +36,7 @@ export type AdminProject = {
   readonly createdAt: Date,
   readonly isProductionMode: boolean,
   readonly ownerTeamId: string | null,
+  readonly onboardingStatus: ProjectOnboardingStatus,
   readonly logoUrl: string | null | undefined,
   readonly logoFullUrl: string | null | undefined,
   readonly logoDarkModeUrl: string | null | undefined,
@@ -143,6 +145,7 @@ export type AdminProjectUpdateOptions = {
   displayName?: string,
   description?: string,
   isProductionMode?: boolean,
+  onboardingStatus?: ProjectOnboardingStatus,
   /**
    * Updates `project.requirePublishableClientKey` in the project-level config override.
    */
@@ -158,6 +161,7 @@ export function adminProjectUpdateOptionsToCrud(options: AdminProjectUpdateOptio
     display_name: options.displayName,
     description: options.description,
     is_production_mode: options.isProductionMode,
+    onboarding_status: options.onboardingStatus,
     logo_url: options.logoUrl,
     logo_full_url: options.logoFullUrl,
     logo_dark_mode_url: options.logoDarkModeUrl,

@@ -1,4 +1,4 @@
-import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
+import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import type { SignUpRule, SignUpRuleAction } from "@stackframe/stack-shared/dist/interface/crud/sign-up-rules";
 import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
@@ -176,27 +176,29 @@ function evaluateSignUpRulesInternal(
         }
       }
       if (actionType === 'allow' || actionType === 'reject') {
+        const outcome = {
+          restrictedBecauseOfSignUpRuleId,
+          shouldAllow: actionType === 'allow',
+          decision: actionType,
+          decisionRuleId: ruleId,
+        };
         return {
           evaluations,
-          outcome: {
-            restrictedBecauseOfSignUpRuleId,
-            shouldAllow: actionType === 'allow',
-            decision: actionType,
-            decisionRuleId: ruleId,
-          },
+          outcome,
         };
       }
     }
   }
 
   const shouldAllow = config.auth.signUpRulesDefaultAction !== 'reject';
+  const outcome = {
+    restrictedBecauseOfSignUpRuleId,
+    shouldAllow,
+    decision: shouldAllow ? 'default-allow' as const : 'default-reject' as const,
+    decisionRuleId: null,
+  };
   return {
     evaluations,
-    outcome: {
-      restrictedBecauseOfSignUpRuleId,
-      shouldAllow,
-      decision: shouldAllow ? 'default-allow' : 'default-reject',
-      decisionRuleId: null,
-    },
+    outcome,
   };
 }

@@ -1,5 +1,5 @@
 import { globalPrismaClient } from '@/prisma-client';
-import { runAsynchronouslyAndWaitUntil } from '@/utils/vercel';
+import { runAsynchronouslyAndWaitUntil } from '@/utils/background-tasks';
 import { EmailOutboxCreatedWith } from '@/generated/prisma/client';
 import { DEFAULT_TEMPLATE_IDS } from '@stackframe/stack-shared/dist/helpers/emails';
 import { UsersCrud } from '@stackframe/stack-shared/dist/interface/crud/users';
@@ -104,6 +104,25 @@ export async function getEmailConfig(tenancy: Tenancy): Promise<LowLevelEmailCon
   if (projectEmailConfig.isShared) {
     return await getSharedEmailConfig(tenancy.project.display_name);
   } else {
+    if (projectEmailConfig.provider === "managed") {
+      if (!projectEmailConfig.password || !projectEmailConfig.managedSubdomain || !projectEmailConfig.managedSenderLocalPart) {
+        throw new StackAssertionError("Managed email config is incomplete despite provider being managed", {
+          projectId: tenancy.id,
+          emailConfig: projectEmailConfig,
+        });
+      }
+      return {
+        host: "smtp.resend.com",
+        port: 465,
+        username: "resend",
+        password: projectEmailConfig.password,
+        senderEmail: `${projectEmailConfig.managedSenderLocalPart}@${projectEmailConfig.managedSubdomain}`,
+        senderName: tenancy.project.display_name,
+        secure: true,
+        type: "standard",
+      };
+    }
+
     if (!projectEmailConfig.host || !projectEmailConfig.port || !projectEmailConfig.username || !projectEmailConfig.password || !projectEmailConfig.senderEmail || !projectEmailConfig.senderName) {
       throw new StackAssertionError("Email config is not complete despite not being shared. This should never happen?", { projectId: tenancy.id, emailConfig: projectEmailConfig });
     }

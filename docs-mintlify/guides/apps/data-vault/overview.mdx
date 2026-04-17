@@ -1,0 +1,99 @@
+---
+title: "Data Vault"
+description: "An encrypted key-value store for sensitive data, with zero-knowledge security"
+icon: "/images/app-icons/data-vault.svg"
+---
+
+Data Vault is an encrypted key-value store built into Stack Auth. It lets you securely store sensitive data — API tokens, connection strings, secrets, or any other values — without ever exposing plaintext to Stack Auth's database or operators.
+
+## How it works
+
+Data Vault uses a **double encryption** design:
+
+1. **Client-side encryption** — Your SDK encrypts values and hashes keys locally before they leave your server, using a secret that only you know. Stack Auth never sees your plaintext keys or values.
+2. **Server-side encryption** — Stack Auth adds a second layer of envelope encryption using a rotating master key, so even the encrypted data at rest is further protected.
+
+Because keys are hashed before storage, **you cannot list or enumerate keys** in a store. You must know the exact key to retrieve a value.
+
+<Warning>
+  If you lose your secret, your data is unrecoverable. Even Stack Auth cannot decrypt your values without it. Keep your secret safe and backed up.
+</Warning>
+
+## Setup
+
+### 1. Create a store
+
+Go to your project's **Data Vault** page in the [Stack Auth dashboard](https://app.stack-auth.com) and create a new store. Each store has a unique ID that you'll reference in your code.
+
+### 2. Generate a secret
+
+Your secret can be any string, but for strong security it should be at least 32 characters long and provide 256 bits of entropy. Store it as an environment variable:
+
+```bash title=".env"
+STACK_DATA_VAULT_SECRET=your-randomly-generated-secret-here
+```
+
+### 3. Use the SDK
+
+Data Vault is accessed through the **server app** only — it requires your secret server key.
+
+```typescript title="server-example.ts"
+const store = await stackServerApp.getDataVaultStore("my-store-id");
+
+const key = user.id;
+
+// Store a value
+await store.setValue(key, "my-sensitive-value", {
+  secret: process.env.STACK_DATA_VAULT_SECRET,
+});
+
+// Retrieve a value
+const value = await store.getValue(key, {
+  secret: process.env.STACK_DATA_VAULT_SECRET,
+});
+// value is the decrypted string, or null if the key doesn't exist
+```
+
+## API reference
+
+### `getDataVaultStore(id)`
+
+Returns a `DataVaultStore` object for the given store ID. The store must already exist in your project config (created via the dashboard).
+
+```typescript
+const store = await stackServerApp.getDataVaultStore("my-store-id");
+```
+
+### `store.getValue(key, { secret })`
+
+Retrieves the decrypted value for the given key, or `null` if the key doesn't exist.
+
+```typescript
+const value = await store.getValue("some-key", {
+  secret: process.env.STACK_DATA_VAULT_SECRET,
+});
+```
+
+### `store.setValue(key, value, { secret })`
+
+Stores an encrypted value for the given key. If the key already exists, it is overwritten.
+
+```typescript
+await store.setValue("some-key", "some-value", {
+  secret: process.env.STACK_DATA_VAULT_SECRET,
+});
+```
+
+## Security model
+
+- **Keys** are hashed with an iterated hash (100,000 iterations) derived from your secret and the logical key. The server only stores the hash.
+- **Values** are encrypted client-side using a derived key from the same secret + key pair, then re-encrypted server-side with KMS envelope encryption.
+- **Your secret** never leaves your server. Stack Auth's API only receives hashed keys and double-encrypted values.
+- **No enumeration** — since only hashed keys are stored, there is no way to list all keys in a store. This is a deliberate security property.
+
+## Use cases
+
+- **Storing third-party API tokens** — safely persist user-specific tokens for external services
+- **Connection strings** — store database or service connection strings per-tenant
+- **Encryption keys** — use Data Vault as a key store for your own application-level encryption
+- **Any sensitive per-user data** — anything you don't want in plaintext metadata fields

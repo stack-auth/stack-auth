@@ -3,7 +3,7 @@
 import { BrandIcons, Button, SimpleTooltip } from '@stackframe/stack-ui';
 import Color, { ColorInstance } from 'color';
 import { useEffect, useId, useState } from 'react';
-import { useStackApp } from '..';
+import { useStackApp } from '../lib/hooks';
 import { useTranslation } from '../lib/translations';
 import { useInIframe } from './use-in-iframe';
 
@@ -20,10 +20,12 @@ export function OAuthButton({
   provider,
   type,
   isMock = false,
+  onAuthenticate,
 }: {
   provider: string,
   type: 'sign-in' | 'sign-up',
   isMock?: boolean,
+  onAuthenticate?: () => Promise<void>,
 }) {
   const { t } = useTranslation();
   const stackApp = useStackApp();
@@ -186,7 +188,7 @@ export function OAuthButton({
         <Button
           onClick={async () => {
             localStorage.setItem('_STACK_AUTH.lastUsed', provider);
-            await stackApp.signInWithOAuth(provider);
+            await (onAuthenticate ? onAuthenticate() : stackApp.signInWithOAuth(provider));
           }}
           className={`stack-oauth-button-${styleId} stack-scope relative w-full`}
           disabled={isIframe}

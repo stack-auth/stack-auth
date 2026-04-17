@@ -1,6 +1,6 @@
 import { it } from "../../../../../../helpers";
 import { niceBackendFetch } from "../../../../../backend-helpers";
-import { provisionProject } from "./projects/provision.test";
+import { provisionProject } from "./projects/provision-helpers";
 
 
 it("should be able to create a webhook", async ({ expect }) => {

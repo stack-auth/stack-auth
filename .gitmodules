@@ -1,0 +1,4 @@
+[submodule "backend-private-repo"]
+	path = apps/backend/src/private/implementation
+	url = https://github.com/stack-auth/private.git
+	branch = main

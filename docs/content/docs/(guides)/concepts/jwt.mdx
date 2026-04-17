@@ -47,9 +47,11 @@ Stack Auth JWTs contain standardized headers and claims that power authenticatio
 - **`email`**: The user's primary email address (nullable)
 - **`email_verified`**: Whether the user's email has been verified
 - **`selected_team_id`**: The currently selected team ID (nullable)
+- **`signed_up_at`**: When this user signed up (Unix timestamp in seconds)
 - **`is_anonymous`**: Whether this is an anonymous user session
 - **`is_restricted`**: Whether the user is restricted (e.g., unverified email, anonymous, or restricted by an administrator)
 - **`restricted_reason`**: Why the user is restricted (nullable). The `type` field is `anonymous`, `email_not_verified`, or `restricted_by_administrator`
+- **`requires_totp_mfa`**: Whether the user requires multi-factor authentication
 
 ## Example JWT Payload
 
@@ -70,9 +72,11 @@ Here's what a typical Stack Auth JWT payload looks like:
   "email": "john@example.com",
   "email_verified": true,
   "selected_team_id": "team_789",
+  "signed_up_at": 1735000000,
   "is_anonymous": false,
   "is_restricted": false,
-  "restricted_reason": null
+  "restricted_reason": null,
+  "requires_totp_mfa": false
 }
 ```
 
@@ -89,14 +93,7 @@ Restricted user tokens (e.g., users who haven't verified their email when verifi
 - `iss` becomes `https://api.stack-auth.com/api/v1/projects-restricted-users/<project-id>`
 - `aud` becomes `<project-id>:restricted`
 - `is_restricted` is `true`
-- `restricted_reason` is `{ "type": "email_not_verified" }`
-
-Users restricted by an administrator (e.g., via [sign-up rules](/docs/concepts/sign-up-rules)) have the same structure:
-
-- `iss` becomes `https://api.stack-auth.com/api/v1/projects-restricted-users/<project-id>`
-- `aud` becomes `<project-id>:restricted`
-- `is_restricted` is `true`
-- `restricted_reason` is `{ "type": "restricted_by_administrator" }`
+- `restricted_reason` describes why the user account was restricted (e.g., `{ "type": "email_not_verified" }`)
 
 ## Working with JWTs
 
@@ -147,35 +144,15 @@ To support restricted users (e.g., users who haven't verified their email), add 
 - The JWKS currently exposes both the latest key pair and a legacy compatibility key. Verification libraries automatically pick the correct key by matching the `kid` provided in the JWT header.
 - Tokens are always signed server-side; client SDKs never receive the private keys.
 
-## Security Considerations
-
-### Token Storage
-
-- **Never store JWTs in localStorage** for sensitive applications
-- Use secure, httpOnly cookies when possible
-- Stack Auth handles secure token storage automatically
-
-### Token Expiration
-
-- JWTs have a limited lifetime (default is 10 minutes via `STACK_ACCESS_TOKEN_EXPIRATION_TIME`)
-- Stack Auth automatically refreshes tokens before they expire
-- Always check the `exp` claim when manually handling JWTs
-
-### Signature Verification
-
-- Always verify JWT signatures using the public key
-- Never trust the contents of a JWT without verification
-- Stack Auth SDKs handle verification automatically
-
 ## Troubleshooting
 
 ### Common Issues
 
-1. **"JWT is expired"**: The token has passed its expiration time. Stack Auth will automatically refresh it.
+1. **"JWT is expired"**: The token has passed its expiration time. The default expiration time can be quite low and you shouldn't expect it to be longer than a few minutes. Stack Auth will automatically refresh it on the client, but if you send your JWT to your own backend and use it in a long-running function, it may expire during execution of the function.
 
-2. **"Invalid signature"**: The token was tampered with or signed with a different key.
+2. **"Invalid signature"**: The token was tampered with or signed with a different key. Make sure you are passing the correct Stack Auth JWT. If this is happening in production, it may be a user attempting to workaround your JWT validation — this error is expected and means your authentication is working correctly.
 
-3. **"Invalid audience"**: The token was issued for a different project or environment.
+3. **"Invalid audience"**: The token was issued for a different project or environment. Make sure you are using the correct project ID.
 
 ### Debugging JWTs
 

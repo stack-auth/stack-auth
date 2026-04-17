@@ -1,4 +1,6 @@
 import { usersCrudHandlers } from "@/app/api/latest/users/crud";
+import { getBestEffortEndUserRequestContext } from "@/lib/end-users";
+import { buildSignUpRuleOptions, reconstructTurnstileAssessment } from "@/lib/sign-up-context";
 import { checkApiKeySet, throwCheckApiKeySetError } from "@/lib/internal-api-keys";
 import { createOAuthUserAndAccount, findExistingOAuthAccount, handleOAuthEmailMergeStrategy, linkOAuthAccountToUser } from "@/lib/oauth";
 import { isAcceptedNativeAppUrl, validateRedirectUrl } from "@/lib/redirect-urls";
@@ -24,7 +26,7 @@ async function createProjectUserOAuthAccountForLink(prisma: PrismaClientTransact
   tenancyId: string,
   providerId: string,
   providerAccountId: string,
-  email?: string | null,
+  email: string | null,
   projectUserId: string,
 }) {
   return await prisma.projectUserOAuthAccount.create({
@@ -44,17 +46,35 @@ async function createProjectUserOAuthAccountForLink(prisma: PrismaClientTransact
   });
 }
 
-const redirectOrThrowError = (error: KnownError, tenancy: Tenancy, errorRedirectUrl?: string) => {
-  if (!errorRedirectUrl || (!validateRedirectUrl(errorRedirectUrl, tenancy) && !isAcceptedNativeAppUrl(errorRedirectUrl))) {
+const redirectOrThrowError = (error: KnownError, tenancy: Tenancy, options: {
+  oauthCallbackRedirectUrl?: string,
+  errorRedirectUrl?: string,
+}) => {
+  const targetRedirectUrl =
+    options.oauthCallbackRedirectUrl && (validateRedirectUrl(options.oauthCallbackRedirectUrl, tenancy) || isAcceptedNativeAppUrl(options.oauthCallbackRedirectUrl))
+      ? options.oauthCallbackRedirectUrl
+      : options.errorRedirectUrl && (validateRedirectUrl(options.errorRedirectUrl, tenancy) || isAcceptedNativeAppUrl(options.errorRedirectUrl))
+        ? options.errorRedirectUrl
+        : null;
+  if (!targetRedirectUrl) {
     throw error;
   }
 
-  const url = new URL(errorRedirectUrl);
+  const url = new URL(targetRedirectUrl);
+  url.searchParams.set("error", "server_error");
+  url.searchParams.set("error_description", error.message);
   url.searchParams.set("errorCode", error.errorCode);
   url.searchParams.set("message", error.message);
   url.searchParams.set("details", error.details ? JSON.stringify(error.details) : JSON.stringify({}));
   redirect(url.toString());
 };
+
+const shouldRedirectOAuthCallbackKnownError = (error: KnownError) => (
+  KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse.isInstance(error)
+  || KnownErrors.OAuthConnectionAlreadyConnectedToAnotherUser.isInstance(error)
+  || KnownErrors.SignUpNotEnabled.isInstance(error)
+  || KnownErrors.SignUpRejected.isInstance(error)
+);
 
 const handler = createSmartRouteHandler({
   metadata: {
@@ -75,12 +95,6 @@ const handler = createSmartRouteHandler({
   }),
   async handler({ params, query, body }, fullReq) {
     const innerState = query.state ?? (body as any)?.state ?? "";
-    const cookieInfo = (await cookies()).get("stack-oauth-inner-" + innerState);
-    (await cookies()).delete("stack-oauth-inner-" + innerState);
-
-    if (cookieInfo?.value !== 'true') {
-      throw new StatusError(StatusError.BadRequest, "Inner OAuth cookie not found. This is likely because you refreshed the page during the OAuth sign in process. Please try signing in again");
-    }
 
     const outerInfoDB = await globalPrismaClient.oAuthOuterInfo.findUnique({
       where: {
@@ -89,7 +103,7 @@ const handler = createSmartRouteHandler({
     });
 
     if (!outerInfoDB) {
-      throw new StatusError(StatusError.BadRequest, "Invalid OAuth cookie. Please try signing in again.");
+      throw new StatusError(StatusError.BadRequest, "Invalid OAuth state. Please try signing in again.");
     }
 
     let outerInfo: Awaited<ReturnType<typeof oauthCookieSchema.validate>>;
@@ -99,6 +113,17 @@ const handler = createSmartRouteHandler({
       throw new StackAssertionError("Invalid outer info");
     }
 
+    // JSON-mode requests use PKCE for CSRF protection and don't set a cookie.
+    // Only check the CSRF cookie for browser-redirect mode requests.
+    if (outerInfo.responseMode !== 'json') {
+      const cookieInfo = (await cookies()).get("stack-oauth-inner-" + innerState);
+      (await cookies()).delete("stack-oauth-inner-" + innerState);
+
+      if (cookieInfo?.value !== 'true') {
+        throw new StatusError(StatusError.BadRequest, "Inner OAuth cookie not found. This is likely because you refreshed the page during the OAuth sign in process. Please try signing in again");
+      }
+    }
+
     const {
       tenancyId,
       innerCodeVerifier,
@@ -106,6 +131,7 @@ const handler = createSmartRouteHandler({
       projectUserId,
       providerScope,
       errorRedirectUrl,
+      redirectUri,
       afterCallbackRedirectUrl,
     } = outerInfo;
 
@@ -144,8 +170,11 @@ const handler = createSmartRouteHandler({
           },
         });
       } catch (error) {
-        if (KnownErrors['OAuthProviderAccessDenied'].isInstance(error)) {
-          redirectOrThrowError(error, tenancy, errorRedirectUrl);
+        if (
+          KnownErrors.OAuthProviderAccessDenied.isInstance(error) ||
+          KnownErrors.OAuthProviderTemporarilyUnavailable.isInstance(error)
+        ) {
+          redirectOrThrowError(error, tenancy, { oauthCallbackRedirectUrl: redirectUri, errorRedirectUrl });
         }
         throw error;
       }
@@ -221,134 +250,145 @@ const handler = createSmartRouteHandler({
           {
             authenticateHandler: {
               handle: async () => {
-                // Find existing OAuth account (used by both link and sign-in flows)
-                const oldAccount = await findExistingOAuthAccount(
-                  prisma,
-                  outerInfo.tenancyId,
-                  provider.id,
-                  userInfo.accountId
-                );
+                try {
+                  // Find existing OAuth account (used by both link and sign-in flows)
+                  const oldAccount = await findExistingOAuthAccount(
+                    prisma,
+                    outerInfo.tenancyId,
+                    provider.id,
+                    userInfo.accountId
+                  );
 
-                // ========================== link account with user ==========================
-                // This flow is when a signed-in user wants to connect an OAuth account
-                if (type === "link") {
-                  if (!projectUserId) {
-                    throw new StackAssertionError("projectUserId not found in cookie when authorizing signed in user");
+                  // ========================== link account with user ==========================
+                  // This flow is when a signed-in user wants to connect an OAuth account
+                  if (type === "link") {
+                    if (!projectUserId) {
+                      throw new StackAssertionError("projectUserId not found in cookie when authorizing signed in user");
+                    }
+
+                    if (oldAccount) {
+                      // ========================== account already connected ==========================
+                      if (oldAccount.projectUserId !== projectUserId) {
+                        throw new KnownErrors.OAuthConnectionAlreadyConnectedToAnotherUser();
+                      }
+                      await storeTokens(oldAccount.id);
+                    } else {
+                      // ========================== connect account with user ==========================
+                      const newOAuthAccount = await createProjectUserOAuthAccountForLink(prisma, {
+                        tenancyId: outerInfo.tenancyId,
+                        providerId: provider.id,
+                        providerAccountId: userInfo.accountId,
+                        email: userInfo.email ?? null,
+                        projectUserId,
+                      });
+
+                      await storeTokens(newOAuthAccount.id);
+                    }
+
+                    return {
+                      id: projectUserId,
+                      newUser: false,
+                      afterCallbackRedirectUrl,
+                    };
                   }
 
+                  // ========================== sign in / sign up flow ==========================
+
+                  // Check if user already exists with this OAuth account
                   if (oldAccount) {
-                    // ========================== account already connected ==========================
-                    if (oldAccount.projectUserId !== projectUserId) {
-                      throw new KnownErrors.OAuthConnectionAlreadyConnectedToAnotherUser();
-                    }
                     await storeTokens(oldAccount.id);
-                  } else {
-                    // ========================== connect account with user ==========================
-                    const newOAuthAccount = await createProjectUserOAuthAccountForLink(prisma, {
+
+                    return {
+                      id: oldAccount.projectUserId,
+                      newUser: false,
+                      afterCallbackRedirectUrl,
+                    };
+                  }
+
+                  // ========================== sign up user ==========================
+
+                  // Handle email merge strategy if email is provided
+                  const { linkedUserId, primaryEmailAuthEnabled } = userInfo.email
+                    ? await handleOAuthEmailMergeStrategy(prisma, tenancy, userInfo.email, userInfo.emailVerified)
+                    : { linkedUserId: null, primaryEmailAuthEnabled: false };
+
+                  if (linkedUserId) {
+                    // ========================== Link OAuth account to existing user via email ==========================
+                    const { oauthAccountId } = await linkOAuthAccountToUser(prisma, {
                       tenancyId: outerInfo.tenancyId,
                       providerId: provider.id,
                       providerAccountId: userInfo.accountId,
-                      email: userInfo.email,
-                      projectUserId,
+                      email: userInfo.email ?? null,
+                      projectUserId: linkedUserId,
                     });
 
-                    await storeTokens(newOAuthAccount.id);
+                    await storeTokens(oauthAccountId);
+                    return {
+                      id: linkedUserId,
+                      newUser: false,
+                      afterCallbackRedirectUrl,
+                    };
                   }
 
-                  return {
-                    id: projectUserId,
-                    newUser: false,
-                    afterCallbackRedirectUrl,
-                  };
-                }
+                  // ========================== Create new user ==========================
 
-                // ========================== sign in / sign up flow ==========================
-
-                // Check if user already exists with this OAuth account
-                if (oldAccount) {
-                  await storeTokens(oldAccount.id);
-
-                  return {
-                    id: oldAccount.projectUserId,
-                    newUser: false,
-                    afterCallbackRedirectUrl,
-                  };
-                }
-
-                // ========================== sign up user ==========================
-
-                // Handle email merge strategy if email is provided
-                const { linkedUserId, primaryEmailAuthEnabled } = userInfo.email
-                  ? await handleOAuthEmailMergeStrategy(prisma, tenancy, userInfo.email, userInfo.emailVerified)
-                  : { linkedUserId: null, primaryEmailAuthEnabled: false };
-
-                if (linkedUserId) {
-                  // ========================== Link OAuth account to existing user via email ==========================
-                  const { oauthAccountId } = await linkOAuthAccountToUser(prisma, {
-                    tenancyId: outerInfo.tenancyId,
-                    providerId: provider.id,
-                    providerAccountId: userInfo.accountId,
-                    email: userInfo.email ?? undefined,
-                    projectUserId: linkedUserId,
-                  });
-
-                  await storeTokens(oauthAccountId);
-                  return {
-                    id: linkedUserId,
-                    newUser: false,
-                    afterCallbackRedirectUrl,
-                  };
-                }
-
-                // ========================== Create new user ==========================
-
-                // Get currentUser for anonymous user upgrade (if they were signed in during /authorize)
-                let currentUser = null;
-                if (projectUserId) {
-                  // Note: it's possible that the user has been deleted, but the request is still
-                  // done with a token that was issued before the user was deleted (or the user was
-                  // deleted between the /authorize and /callback requests)
-                  try {
-                    currentUser = await usersCrudHandlers.adminRead({
-                      tenancy,
-                      user_id: projectUserId,
-                      allowedErrorTypes: [KnownErrors.UserNotFound],
-                    });
-                  } catch (error) {
-                    if (!KnownErrors.UserNotFound.isInstance(error)) {
-                      throw error;
+                  // Get currentUser for anonymous user upgrade (if they were signed in during /authorize)
+                  let currentUser = null;
+                  if (projectUserId) {
+                    // Note: it's possible that the user has been deleted, but the request is still
+                    // done with a token that was issued before the user was deleted (or the user was
+                    // deleted between the /authorize and /callback requests)
+                    try {
+                      currentUser = await usersCrudHandlers.adminRead({
+                        tenancy,
+                        user_id: projectUserId,
+                        allowedErrorTypes: [KnownErrors.UserNotFound],
+                      });
+                    } catch (error) {
+                      if (!KnownErrors.UserNotFound.isInstance(error)) {
+                        throw error;
+                      }
                     }
                   }
-                }
 
-                const { projectUserId: newUserId, oauthAccountId } = await createOAuthUserAndAccount(
-                  prisma,
-                  tenancy,
-                  {
-                    providerId: provider.id,
-                    providerAccountId: userInfo.accountId,
-                    email: userInfo.email ?? undefined,
-                    emailVerified: userInfo.emailVerified,
-                    primaryEmailAuthEnabled,
-                    currentUser,
-                    displayName: userInfo.displayName ?? undefined,
-                    profileImageUrl: userInfo.profileImageUrl ?? undefined,
-                    signUpRuleOptions: {
-                      authMethod: 'oauth',
-                      oauthProvider: provider.id,
-                      // Note: Request context not easily available in OAuth callback
-                      // TODO: Pass IP and user agent from stored OAuth state if needed
-                    },
+                  const requestContext = await getBestEffortEndUserRequestContext();
+                  const { projectUserId: newUserId, oauthAccountId } = await createOAuthUserAndAccount(
+                    prisma,
+                    tenancy,
+                    {
+                      providerId: provider.id,
+                      providerAccountId: userInfo.accountId,
+                      email: userInfo.email ?? null,
+                      emailVerified: userInfo.emailVerified,
+                      primaryEmailAuthEnabled,
+                      currentUser,
+                      displayName: userInfo.displayName ?? null,
+                      profileImageUrl: userInfo.profileImageUrl ?? null,
+                      signUpRuleOptions: buildSignUpRuleOptions({
+                        authMethod: 'oauth',
+                        oauthProvider: provider.id,
+                        requestContext,
+                        turnstileAssessment: reconstructTurnstileAssessment(
+                          outerInfo.turnstileResult ?? "invalid",
+                          outerInfo.turnstileVisibleChallengeResult,
+                        ),
+                      }),
+                    }
+                  );
+
+                  await storeTokens(oauthAccountId);
+
+                  return {
+                    id: newUserId,
+                    newUser: true,
+                    afterCallbackRedirectUrl,
+                  };
+                } catch (error) {
+                  if (KnownError.isKnownError(error) && shouldRedirectOAuthCallbackKnownError(error)) {
+                    redirectOrThrowError(error, tenancy, { oauthCallbackRedirectUrl: redirectUri, errorRedirectUrl });
                   }
-                );
-
-                await storeTokens(oauthAccountId);
-
-                return {
-                  id: newUserId,
-                  newUser: true,
-                  afterCallbackRedirectUrl,
-                };
+                  throw error;
+                }
               }
             }
           }
@@ -376,7 +416,7 @@ const handler = createSmartRouteHandler({
       return oauthResponseToSmartResponse(oauthResponse);
     } catch (error) {
       if (KnownError.isKnownError(error)) {
-        redirectOrThrowError(error, tenancy, errorRedirectUrl);
+        redirectOrThrowError(error, tenancy, { oauthCallbackRedirectUrl: redirectUri, errorRedirectUrl });
       }
       throw error;
     }

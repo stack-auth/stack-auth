@@ -1,0 +1,798 @@
+"use client";
+
+import { DashboardRuntimeCodegen } from "@/lib/ai-dashboard/contracts";
+import { getPublicEnvVar } from "@/lib/env";
+import { useTheme } from "@/lib/theme";
+import { useUser } from "@stackframe/stack";
+import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { memo, useEffect, useMemo, useRef } from "react";
+import packageJson from "../../../../package.json";
+
+type DashboardArtifact = {
+  prompt: string,
+  projectId: string,
+  runtimeCodegen: DashboardRuntimeCodegen,
+};
+
+function html(strings: TemplateStringsArray, ...values: unknown[]): string {
+  return strings.reduce<string>((result, str, i) => result + str + (values[i] ?? ''), '');
+}
+
+const isDev = process.env.NODE_ENV === "development";
+
+function getDependencyScripts(esmVersion: string, esmFallbackVersion: string, dashboardUrl: string): string {
+  if (isDev) {
+    return html`
+      <script type="module">
+        import React from 'https://esm.sh/react@19.2.3';
+        import * as ReactDOM from 'https://esm.sh/react-dom@19.2.3?deps=react@19.2.3';
+        import * as ReactDOMClient from 'https://esm.sh/react-dom@19.2.3/client?deps=react@19.2.3';
+        import * as Recharts from 'https://esm.sh/recharts@2.15.4?deps=react@19.2.3,react-dom@19.2.3';
+
+        window.React = React;
+        window.ReactDOM = { ...ReactDOM, ...ReactDOMClient };
+        window.Recharts = Recharts;
+
+        // Stack SDK may not be published at the current version — try with fallback
+        try {
+          const StackSDK = await import('https://esm.sh/@stackframe/js@${esmVersion}');
+          window.StackAdminApp = StackSDK.StackAdminApp;
+          window.StackServerApp = StackSDK.StackServerApp;
+          window.StackSDK = StackSDK;
+        } catch (e) {
+          window.parent.postMessage({ type: 'dashboard-error-boundary', message: '[sandbox] Stack SDK failed at version ${esmVersion}, trying fallback ${esmFallbackVersion}: ' + e?.message }, '*');
+          try {
+            const StackSDK = await import('https://esm.sh/@stackframe/js@${esmFallbackVersion}');
+            window.StackAdminApp = StackSDK.StackAdminApp;
+            window.StackServerApp = StackSDK.StackServerApp;
+            window.StackSDK = StackSDK;
+          } catch (e2) {
+            window.parent.postMessage({ type: 'dashboard-error-boundary', message: '[sandbox] Stack SDK fallback also failed: ' + e2?.message }, '*');
+          }
+        }
+        window.generateUuid = () => crypto.randomUUID();
+
+        // Load local IIFE for dashboard-ui-components (after globals are set)
+        const script = document.createElement('script');
+        script.src = '${dashboardUrl}/dashboard-ui-components.iife.js';
+        script.onload = () => {
+          window.__depsReady = true;
+          window.dispatchEvent(new Event('deps-ready'));
+        };
+        script.onerror = (e) => {
+          window.parent.postMessage({
+            type: 'dashboard-error-boundary',
+            message: 'Failed to load dashboard-ui-components IIFE bundle',
+          }, '*');
+        };
+        document.head.appendChild(script);
+      </script>`;
+  }
+
+  return html`
+    <script type="module">
+      import React from 'https://esm.sh/react@19.2.3';
+      import * as ReactDOM from 'https://esm.sh/react-dom@19.2.3?deps=react@19.2.3';
+      import * as ReactDOMClient from 'https://esm.sh/react-dom@19.2.3/client?deps=react@19.2.3';
+      import * as Recharts from 'https://esm.sh/recharts@2.15.4?deps=react@19.2.3,react-dom@19.2.3';
+
+      window.React = React;
+      window.ReactDOM = { ...ReactDOM, ...ReactDOMClient };
+      window.Recharts = Recharts;
+
+      // Try current version first, fall back to last known good version
+      let DashboardUIComponents, StackSDK;
+      try {
+        [DashboardUIComponents, StackSDK] = await Promise.all([
+          import('https://esm.sh/@stackframe/dashboard-ui-components@${esmVersion}?deps=react@19.2.3,react-dom@19.2.3'),
+          import('https://esm.sh/@stackframe/js@${esmVersion}'),
+        ]);
+      } catch (e) {
+        window.parent.postMessage({ type: 'dashboard-error-boundary', message: '[sandbox] Failed to load at version ${esmVersion}, trying fallback ${esmFallbackVersion}: ' + e?.message }, '*');
+        [DashboardUIComponents, StackSDK] = await Promise.all([
+          import('https://esm.sh/@stackframe/dashboard-ui-components@${esmFallbackVersion}?deps=react@19.2.3,react-dom@19.2.3'),
+          import('https://esm.sh/@stackframe/js@${esmFallbackVersion}'),
+        ]);
+      }
+
+      window.DashboardUI = DashboardUIComponents;
+      window.StackAdminApp = StackSDK.StackAdminApp;
+      window.StackServerApp = StackSDK.StackServerApp;
+      window.StackSDK = StackSDK;
+      window.generateUuid = () => crypto.randomUUID();
+
+      window.__depsReady = true;
+      window.dispatchEvent(new Event('deps-ready'));
+    </script>`;
+}
+
+function escapeScriptContent(code: string): string {
+  return code
+    .replace(/<\/script/gi, "<\\/script")
+    .replace(/<!--/g, "<\\!--")
+    .replace(/-->/g, "--\\>");
+}
+
+function getSandboxDocument(artifact: DashboardArtifact, baseUrl: string, dashboardUrl: string, initialTheme: "light" | "dark", showControls: boolean, initialChatOpen: boolean): string {
+  const sourceCode = escapeScriptContent(artifact.runtimeCodegen.uiRuntimeSourceCode);
+  const darkClass = initialTheme === "dark" ? "dark" : "";
+  const esmVersion = packageJson.version;
+  const esmFallbackVersion = "2.8.71";
+  const devScriptSrc = isDev ? ` ${dashboardUrl}` : '';
+  const devConnectSrc = isDev ? ` ${dashboardUrl}` : '';
+
+  return html`<!doctype html>
+<html class="${darkClass}">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' https://unpkg.com https://cdn.jsdelivr.net https://cdn.tailwindcss.com https://esm.sh https://js.stripe.com${devScriptSrc}; style-src 'unsafe-inline' https://cdn.jsdelivr.net; img-src data: https:; connect-src ${baseUrl} https://unpkg.com https://cdn.jsdelivr.net https://esm.sh https://api.stripe.com https://m.stripe.com https://m.stripe.network${devConnectSrc}; font-src 'none'; frame-src https://js.stripe.com https://hooks.stripe.com https://m.stripe.network; worker-src 'none';" />
+    
+    <!-- Tailwind CSS Play CDN (for on-the-fly processing) -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+      tailwind.config = {
+        darkMode: 'class',
+        theme: {
+          extend: {
+            colors: {
+              border: 'hsl(var(--border))',
+              input: 'hsl(var(--input))',
+              ring: 'hsl(var(--ring))',
+              background: 'hsl(var(--background))',
+              foreground: 'hsl(var(--foreground))',
+              primary: {
+                DEFAULT: 'hsl(var(--primary))',
+                foreground: 'hsl(var(--primary-foreground))',
+              },
+              secondary: {
+                DEFAULT: 'hsl(var(--secondary))',
+                foreground: 'hsl(var(--secondary-foreground))',
+              },
+              destructive: {
+                DEFAULT: 'hsl(var(--destructive))',
+                foreground: 'hsl(var(--destructive-foreground))',
+              },
+              muted: {
+                DEFAULT: 'hsl(var(--muted))',
+                foreground: 'hsl(var(--muted-foreground))',
+              },
+              accent: {
+                DEFAULT: 'hsl(var(--accent))',
+                foreground: 'hsl(var(--accent-foreground))',
+              },
+              card: {
+                DEFAULT: 'hsl(var(--card))',
+                foreground: 'hsl(var(--card-foreground))',
+              },
+            },
+          }
+        }
+      }
+    </script>
+    
+    <style>
+      :root {
+        --background: 0 0% 100%;
+        --foreground: 240 10% 3.9%;
+        --card: 0 0% 100%;
+        --card-foreground: 240 10% 3.9%;
+        --primary: 240 5.9% 10%;
+        --primary-foreground: 0 0% 98%;
+        --secondary: 240 4.8% 95.9%;
+        --secondary-foreground: 240 5.9% 10%;
+        --muted: 240 4.8% 95.9%;
+        --muted-foreground: 240 3.8% 46.1%;
+        --accent: 240 4.8% 95.9%;
+        --accent-foreground: 240 5.9% 10%;
+        --destructive: 0 84.2% 60.2%;
+        --destructive-foreground: 0 0% 98%;
+        --border: 240 5.9% 90%;
+        --input: 240 5.9% 90%;
+        --ring: 240 10% 3.9%;
+      }
+      .dark {
+        --background: 240 10% 3.9%;
+        --foreground: 0 0% 98%;
+        --card: 240 10% 9.4%;
+        --card-foreground: 0 0% 98%;
+        --primary: 0 0% 98%;
+        --primary-foreground: 240 5.9% 10%;
+        --secondary: 240 3.7% 15.9%;
+        --secondary-foreground: 0 0% 98%;
+        --muted: 240 3.7% 15.9%;
+        --muted-foreground: 240 5% 64.9%;
+        --accent: 240 3.7% 15.9%;
+        --accent-foreground: 0 0% 98%;
+        --destructive: 0 62.8% 50%;
+        --destructive-foreground: 0 0% 98%;
+        --border: 240 3.7% 35.9%;
+        --input: 240 3.7% 25.9%;
+        --ring: 240 4.9% 83.9%;
+      }
+      :root, .dark { --page-background: transparent; }
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow-x: hidden;
+        font-family: Inter, system-ui, -apple-system, Segoe UI, sans-serif;
+        background: var(--page-background);
+        color: hsl(var(--foreground));
+      }
+      #root { width: 100%; height: 100%; overflow-x: hidden; }
+      * { box-sizing: border-box; }
+      .dark { color-scheme: dark; }
+      html, body, #root { scrollbar-width: none; }
+      html::-webkit-scrollbar, body::-webkit-scrollbar, #root::-webkit-scrollbar { display: none; }
+
+      /* Widget selection overlay — active only when chat panel is open */
+      .widget-overlay {
+        position: fixed;
+        pointer-events: none;
+        border: 2px dashed hsl(var(--primary) / 0.35);
+        border-radius: 10px;
+        z-index: 9999;
+        transition: top 0.12s ease, left 0.12s ease, width 0.12s ease, height 0.12s ease;
+        display: none;
+        background: hsl(var(--primary) / 0.03);
+      }
+      .widget-overlay-btn {
+        position: absolute;
+        top: 6px;
+        right: 6px;
+        pointer-events: auto;
+        width: 28px;
+        height: 28px;
+        border-radius: 8px;
+        background: hsl(var(--primary));
+        color: hsl(var(--primary-foreground));
+        border: none;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        opacity: 0;
+        transition: opacity 0.15s ease, transform 0.15s ease;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.18);
+      }
+      .widget-overlay-btn:hover { transform: scale(1.08); }
+      .widget-overlay.active .widget-overlay-btn { opacity: 1; }
+    </style>
+  </head>
+  <body>
+    <div id="root"></div>
+    
+    <!-- Babel (for JSX transpilation) -->
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+    
+    ${getDependencyScripts(esmVersion, esmFallbackVersion, dashboardUrl)}
+    
+    <script type="text/babel">
+      // Navigation API for AI-generated code
+      window.dashboardNavigate = function(path) {
+        window.parent.postMessage({ type: 'dashboard-navigate', path: path }, '*');
+      };
+      window.dashboardBack = function() {
+        window.parent.postMessage({ type: 'dashboard-back' }, '*');
+      };
+      window.dashboardEdit = function() {
+        window.parent.postMessage({ type: 'dashboard-edit' }, '*');
+      };
+      // Controls visibility flag — only true in the full dashboard viewer (not cmd+K preview)
+      window.__showControls = ${showControls};
+      window.__chatOpen = ${initialChatOpen};
+
+      // Theme syncing and chat state from parent window
+      window.addEventListener('message', (event) => {
+        if (event.data?.type === 'stack-theme-change') {
+          const theme = event.data.theme;
+          if (theme === 'dark') {
+            document.documentElement.classList.add('dark');
+          } else {
+            document.documentElement.classList.remove('dark');
+          }
+        }
+        if (event.data?.type === 'dashboard-controls-update') {
+          window.__chatOpen = !!event.data.chatOpen;
+          window.dispatchEvent(new Event('chat-state-change'));
+        }
+      });
+
+      const STACK_CONFIG = {
+        baseUrl: ${JSON.stringify(baseUrl)},
+        projectId: ${JSON.stringify(artifact.projectId)},
+      };
+      
+      async function waitForDeps() {
+        if (window.__depsReady) return;
+        await new Promise(resolve => {
+          window.addEventListener('deps-ready', resolve, { once: true });
+        });
+      }
+
+      async function requestAccessToken() {
+        return new Promise((resolve, reject) => {
+          const requestId = window.generateUuid();
+          const timeout = setTimeout(() => {
+            window.removeEventListener('message', handler);
+            reject(new Error('Token request timeout'));
+          }, 5000);
+          
+          const handler = (event) => {
+            if (event.data?.type === 'stack-access-token-response' && event.data?.requestId === requestId) {
+              clearTimeout(timeout);
+              window.removeEventListener('message', handler);
+              
+              if (event.data.accessToken) {
+                resolve(event.data.accessToken);
+              } else {
+                reject(new Error('No access token received from parent'));
+              }
+            }
+          };
+          
+          window.addEventListener('message', handler);
+          window.parent.postMessage({ 
+            type: 'stack-access-token-request',
+            requestId 
+          }, '*');
+        });
+      }
+      
+      async function initializeStackApp() {
+        await waitForDeps();
+        
+        if (!window.StackAdminApp) {
+          throw new Error("Stack SDK failed to load. The SDK should expose window.StackAdminApp.");
+        }
+        
+        const stackServerApp = new window.StackAdminApp({
+          projectId: STACK_CONFIG.projectId,
+          baseUrl: STACK_CONFIG.baseUrl,
+          projectOwnerSession: async () => {
+            return await requestAccessToken();
+          },
+        });
+        
+        window.stackServerApp = stackServerApp;
+        
+        return stackServerApp;
+      }
+      
+      // Forward uncaught runtime errors (async throws, unhandled rejections) that never
+      // reach the React boundary. React ErrorBoundary alone misses these, so without this
+      // the parent has no way to observe e.g. a fetch() that rejected inside useEffect.
+      window.addEventListener('error', (event) => {
+        const err = event?.error;
+        window.parent.postMessage({
+          type: 'dashboard-error-boundary',
+          message: err?.message || event?.message || 'Unknown runtime error',
+          stack: err?.stack,
+        }, '*');
+      });
+      window.addEventListener('unhandledrejection', (event) => {
+        const reason = event?.reason;
+        window.parent.postMessage({
+          type: 'dashboard-error-boundary',
+          message: (reason && (reason.message || String(reason))) || 'Unhandled promise rejection',
+          stack: reason?.stack,
+        }, '*');
+      });
+
+      // Error Boundary Component
+      class ErrorBoundary extends React.Component {
+        constructor(props) {
+          super(props);
+          this.state = { hasError: false, error: null };
+        }
+
+        static getDerivedStateFromError(error) {
+          return { hasError: true, error };
+        }
+
+        componentDidCatch(error, errorInfo) {
+          window.parent.postMessage({
+            type: 'dashboard-error-boundary',
+            message: error?.message,
+            stack: error?.stack,
+            componentStack: errorInfo?.componentStack,
+          }, '*');
+        }
+        
+        render() {
+          if (this.state.hasError) {
+            return (
+              <div className="p-6 text-red-500">
+                <h2 className="text-xl font-bold mb-2">Dashboard Error</h2>
+                <pre className="text-sm bg-red-950/20 p-4 rounded overflow-auto">
+                  {this.state.error?.message || 'Unknown error'}
+                </pre>
+                {this.state.error?.stack && (
+                  <pre className="text-xs bg-red-950/10 p-4 rounded overflow-auto mt-2">
+                    {this.state.error.stack}
+                  </pre>
+                )}
+              </div>
+            );
+          }
+          return this.props.children;
+        }
+      }
+      
+      // Boot the dashboard
+      const rootElement = document.getElementById('root');
+      if (!rootElement) {
+        throw new Error('Root element not found');
+      }
+      
+      // Initialize deps and boot the dashboard
+      initializeStackApp().then(() => {
+        const DashboardUI = window.DashboardUI;
+        const Recharts = window.Recharts;
+        
+        if (!DashboardUI) {
+          throw new Error("Dashboard UI components failed to load in sandbox.");
+        }
+        if (!Recharts) {
+          throw new Error("Recharts failed to load in sandbox.");
+        }
+        
+        // Execute AI-generated code with DashboardUI and Recharts in scope
+        const Dashboard = (() => {
+          ${sourceCode}
+          return Dashboard;
+        })();
+        
+        if (typeof Dashboard !== 'function') {
+          throw new Error('Dashboard component not found in generated code');
+        }
+        
+        const root = ReactDOM.createRoot(rootElement);
+        root.render(
+          <ErrorBoundary>
+            <Dashboard />
+          </ErrorBoundary>
+        );
+        
+        parent.postMessage({ type: "stack-ai-dashboard-ready" }, "*");
+      }).catch(error => {
+        const message = error instanceof Error ? error.message : "Failed to initialize dashboard";
+        parent.postMessage({
+          type: "stack-ai-dashboard-error",
+          message: message,
+          stack: error instanceof Error ? error.stack : undefined,
+        }, "*");
+        
+        const root = ReactDOM.createRoot(rootElement);
+        root.render(
+          <div className="p-6 text-red-500">
+            <h2 className="text-xl font-bold mb-2">Failed to load dashboard</h2>
+            <pre className="text-sm bg-red-950/20 p-4 rounded">
+              {message}
+            </pre>
+          </div>
+        );
+      });
+    </script>
+
+    <!-- Widget selection overlay — lets the user pick a widget and send it to the chat panel -->
+    <script>
+    (function () {
+      var overlay = document.createElement('div');
+      overlay.className = 'widget-overlay';
+      var btn = document.createElement('button');
+      btn.className = 'widget-overlay-btn';
+      btn.setAttribute('aria-label', 'Add to chat');
+      btn.title = 'Add to chat';
+      btn.innerHTML = '<svg width="14" height="14" viewBox="0 0 256 256" fill="currentColor"><path d="M216,48H40A16,16,0,0,0,24,64V176a16,16,0,0,0,16,16H96l32,32a8,8,0,0,0,11.31,0L171.31,192H216a16,16,0,0,0,16-16V64A16,16,0,0,0,216,48ZM160,136H96a8,8,0,0,1,0-16h64a8,8,0,0,1,0,16Zm0-32H96a8,8,0,0,1,0-16h64a8,8,0,0,1,0,16Z"/></svg>';
+      overlay.appendChild(btn);
+
+      var currentWidget = null;
+      var mounted = false;
+
+      function mount() {
+        if (mounted) return;
+        document.body.appendChild(overlay);
+        mounted = true;
+      }
+
+      /* ── Widget detection heuristic ── */
+      function findWidget(el) {
+        var current = el;
+        var root = document.getElementById('root');
+        while (current && current !== root && current !== document.body) {
+          if (current === overlay || overlay.contains(current)) {
+            current = current.parentElement;
+            continue;
+          }
+          var rect = current.getBoundingClientRect();
+          if (rect.width < 80 || rect.height < 50) { current = current.parentElement; continue; }
+          if (rect.width > window.innerWidth * 0.85 && rect.height > window.innerHeight * 0.85) {
+            current = current.parentElement; continue;
+          }
+          var hasContent = current.querySelector('svg, h1, h2, h3, h4, h5, h6, table, img, canvas');
+          var cls = typeof current.className === 'string' ? current.className : '';
+          var isCard = /rounded|shadow|border|card|bg-/.test(cls);
+          var parent = current.parentElement;
+          var isLayoutChild = false;
+          if (parent && parent !== root) {
+            var ps = getComputedStyle(parent).display;
+            isLayoutChild = ps === 'grid' || ps === 'flex';
+          }
+          if (hasContent || isCard || isLayoutChild) return current;
+          current = current.parentElement;
+        }
+        return null;
+      }
+
+      function showOverlay(widget) {
+        mount();
+        var rect = widget.getBoundingClientRect();
+        overlay.style.display = 'block';
+        overlay.style.top = rect.top - 2 + 'px';
+        overlay.style.left = rect.left - 2 + 'px';
+        overlay.style.width = rect.width + 4 + 'px';
+        overlay.style.height = rect.height + 4 + 'px';
+        overlay.classList.add('active');
+        currentWidget = widget;
+      }
+
+      function hideOverlay() {
+        overlay.style.display = 'none';
+        overlay.classList.remove('active');
+        currentWidget = null;
+      }
+
+      document.addEventListener('mousemove', function (e) {
+        if (!window.__chatOpen) return;
+        if (overlay.contains(e.target)) return;
+        var widget = findWidget(e.target);
+        if (widget && widget !== currentWidget) showOverlay(widget);
+        else if (!widget) hideOverlay();
+      });
+
+      document.addEventListener('mouseleave', function () { hideOverlay(); });
+      window.addEventListener('chat-state-change', function () { if (!window.__chatOpen) hideOverlay(); });
+
+      /* ── Send DOM metadata to parent ── */
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        e.preventDefault();
+        if (!currentWidget) return;
+
+        var heading = currentWidget.querySelector('h1,h2,h3,h4,h5,h6');
+        var widgetRect = currentWidget.getBoundingClientRect();
+        var metadata = {
+          heading: heading ? heading.textContent.trim() : null,
+          tagName: currentWidget.tagName.toLowerCase(),
+          classes: (typeof currentWidget.className === 'string' ? currentWidget.className : '').slice(0, 300),
+          textPreview: (currentWidget.textContent || '').trim().slice(0, 500),
+          rect: { width: Math.round(widgetRect.width), height: Math.round(widgetRect.height) },
+        };
+
+        window.parent.postMessage({ type: 'dashboard-widget-selected', metadata: metadata }, '*');
+        hideOverlay();
+      });
+    })();
+    </script>
+  </body>
+</html>`;
+}
+
+/**
+ * Shape of a runtime error surfaced from the sandbox iframe. Covers three sources:
+ *   1. React ErrorBoundary catches (componentStack is present)
+ *   2. Uncaught window errors (sync throws outside render)
+ *   3. Unhandled promise rejections (async failures inside effects/handlers)
+ */
+export type DashboardRuntimeError = {
+  message: string,
+  stack?: string,
+  componentStack?: string,
+};
+
+/**
+ * Payload sent when the user clicks "Add to chat" on a widget in the iframe.
+ * `metadata` carries DOM info so the AI knows which part of the dashboard is targeted.
+ */
+export type WidgetSelection = {
+  metadata: {
+    heading: string | null,
+    tagName: string,
+    classes: string,
+    textPreview: string,
+    rect: { width: number, height: number },
+  },
+};
+
+export const DashboardSandboxHost = memo(function DashboardSandboxHost({
+  artifact,
+  onBack,
+  onEditToggle,
+  onNavigate,
+  onReady,
+  onRuntimeError,
+  onWidgetSelected,
+  isChatOpen,
+}: {
+  artifact: DashboardArtifact,
+  onBack?: () => void,
+  onEditToggle?: () => void,
+  onNavigate?: (path: string) => void,
+  onReady?: () => void,
+  /** Fires whenever the sandbox reports a runtime error. Parent uses this to auto-insert
+      the crash into the assistant composer so the user can one-click fix it. */
+  onRuntimeError?: (err: DashboardRuntimeError) => void,
+  /** Fires when the user clicks "Add to chat" on a widget overlay in the iframe. */
+  onWidgetSelected?: (selection: WidgetSelection) => void,
+  isChatOpen?: boolean,
+}) {
+  const iframeRef = useRef<HTMLIFrameElement>(null);
+  const onBackRef = useRef(onBack);
+  onBackRef.current = onBack;
+  const onEditToggleRef = useRef(onEditToggle);
+  onEditToggleRef.current = onEditToggle;
+  const onNavigateRef = useRef(onNavigate);
+  onNavigateRef.current = onNavigate;
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
+  const onRuntimeErrorRef = useRef(onRuntimeError);
+  onRuntimeErrorRef.current = onRuntimeError;
+  const onWidgetSelectedRef = useRef(onWidgetSelected);
+  onWidgetSelectedRef.current = onWidgetSelected;
+  const user = useUser({ or: "redirect" });
+  const { resolvedTheme } = useTheme();
+
+  const baseUrl = useMemo(() => {
+    const url = getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL");
+    if (!url) throw new Error("NEXT_PUBLIC_STACK_API_URL is not set");
+    return url;
+  }, []);
+
+  const dashboardUrl = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    return window.location.origin;
+  }, []);
+
+  const initialThemeRef = useRef<"light" | "dark">(resolvedTheme === "dark" ? "dark" : "light");
+  const initialChatOpenRef = useRef(!!isChatOpen);
+  const showControls = onBack != null || onEditToggle != null;
+  const srcDoc = useMemo(() => getSandboxDocument(artifact, baseUrl, dashboardUrl, initialThemeRef.current, showControls, initialChatOpenRef.current), [artifact, baseUrl, dashboardUrl, showControls]);
+
+  // Send theme changes to iframe dynamically (without full reload)
+  useEffect(() => {
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage({
+        type: 'stack-theme-change',
+        theme: resolvedTheme,
+      }, '*');
+    }
+  }, [resolvedTheme]);
+
+  useEffect(() => {
+    if (iframeRef.current?.contentWindow) {
+      iframeRef.current.contentWindow.postMessage({
+        type: 'dashboard-controls-update',
+        chatOpen: !!isChatOpen,
+      }, '*');
+    }
+  }, [isChatOpen]);
+
+
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (typeof event.data !== "object" || event.data === null) {
+        return;
+      }
+      if (event.origin !== "null") {
+        return;
+      }
+      if (!iframeRef.current?.contentWindow || event.source !== iframeRef.current.contentWindow) {
+        return;
+      }
+      const type = event.data.type;
+
+      if (type === "stack-access-token-request") {
+        const requestId = event.data.requestId;
+        runAsynchronously(async () => {
+          const accessToken = await user.getAccessToken();
+          if (!accessToken) {
+            const err = new Error('[DashboardSandboxHost] Failed to get access token: access token is null');
+            captureError('dashboard-sandbox-host', err);
+            event.source?.postMessage({
+              type: 'stack-access-token-response',
+              requestId,
+              accessToken: null,
+              error: err.message,
+            }, { targetOrigin: '*' });
+            return;
+          }
+
+          event.source?.postMessage({
+            type: 'stack-access-token-response',
+            requestId,
+            accessToken,
+          }, { targetOrigin: '*' });
+        });
+        return;
+      }
+
+      if (type === "dashboard-navigate") {
+        onNavigateRef.current?.(event.data.path);
+        return;
+      }
+
+      if (type === "dashboard-back") {
+        onBackRef.current?.();
+        return;
+      }
+
+      if (type === "dashboard-edit") {
+        onEditToggleRef.current?.();
+        return;
+      }
+
+      if (type === "dashboard-error-boundary") {
+        const err = new Error(event.data.message ?? 'Unknown dashboard error');
+        if (event.data.stack) err.stack = event.data.stack;
+        captureError('dashboard-sandbox-error-boundary', err);
+        onRuntimeErrorRef.current?.({
+          message: typeof event.data.message === "string" ? event.data.message : "Unknown dashboard error",
+          stack: typeof event.data.stack === "string" ? event.data.stack : undefined,
+          componentStack: typeof event.data.componentStack === "string" ? event.data.componentStack : undefined,
+        });
+        return;
+      }
+
+      if (type === "stack-ai-dashboard-error") {
+        // Thrown during sandbox initialization (deps failed to load, Dashboard export missing, etc.)
+        // Surface it via the same channel so the UX is consistent with runtime errors.
+        onRuntimeErrorRef.current?.({
+          message: typeof event.data.message === "string" ? event.data.message : "Failed to initialize dashboard",
+          stack: typeof event.data.stack === "string" ? event.data.stack : undefined,
+        });
+        return;
+      }
+
+      if (type === "dashboard-widget-selected") {
+        onWidgetSelectedRef.current?.({
+          metadata: {
+            heading: typeof event.data.metadata?.heading === "string" ? event.data.metadata.heading : null,
+            tagName: typeof event.data.metadata?.tagName === "string" ? event.data.metadata.tagName : "div",
+            classes: typeof event.data.metadata?.classes === "string" ? event.data.metadata.classes : "",
+            textPreview: typeof event.data.metadata?.textPreview === "string" ? event.data.metadata.textPreview : "",
+            rect: {
+              width: typeof event.data.metadata?.rect?.width === "number" ? event.data.metadata.rect.width : 0,
+              height: typeof event.data.metadata?.rect?.height === "number" ? event.data.metadata.rect.height : 0,
+            },
+          },
+        });
+        return;
+      }
+
+      if (type === "stack-ai-dashboard-ready") {
+        onReadyRef.current?.();
+        return;
+      }
+    };
+
+    window.addEventListener("message", onMessage);
+    return () => {
+      window.removeEventListener("message", onMessage);
+    };
+  }, [user]);
+
+  return (
+    <iframe
+      ref={iframeRef}
+      title="AI Dashboard Preview"
+      sandbox="allow-scripts"
+      srcDoc={srcDoc}
+      className="h-full w-full bg-transparent"
+
+    />
+  );
+});

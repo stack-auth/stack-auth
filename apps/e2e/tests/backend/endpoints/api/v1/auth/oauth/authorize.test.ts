@@ -1,4 +1,4 @@
-import { it } from "../../../../../../helpers";
+import { it, localRedirectUrl } from "../../../../../../helpers";
 import { localhostUrl } from "../../../../../../helpers/ports";
 import { Auth, Project, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
 
@@ -46,6 +46,25 @@ it("should redirect the user to the OAuth provider with the right arguments even
   expect(secondLocation).toBeTruthy();
   expect(secondLocation).toMatchInlineSnapshot(`"http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>14/auth?client_id=spotify&scope=openid+offline_access&response_type=code&redirect_uri=%3Cstripped+query+param%3E&code_challenge_method=S256&code_challenge=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&access_type=offline&prompt=consent"`);
   expect(response.authorizeResponse.headers.get("set-cookie")).toMatch(/^stack-oauth-inner-[^;]+=[^;]+; Path=\/; Expires=[^;]+; Max-Age=\d+;( Secure;)? HttpOnly$/);
+});
+
+it("should return the OAuth location as JSON when requested by the SDK flow", async ({ expect }) => {
+  const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
+    query: {
+      ...await Auth.OAuth.getAuthorizeQuery(),
+      stack_response_mode: "json",
+    },
+  });
+
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "location": "http://localhost:<$NEXT_PUBLIC_STACK_PORT_PREFIX>14/auth?client_id=spotify&scope=openid+offline_access&response_type=code&redirect_uri=%3Cstripped+query+param%3E&code_challenge_method=S256&code_challenge=%3Cstripped+query+param%3E&state=%3Cstripped+query+param%3E&access_type=offline&prompt=consent" },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+  // In JSON mode, PKCE prevents CSRF so no cookie is needed
+  expect(response.headers.get("set-cookie")).toBeNull();
 });
 
 it("should not redirect the user to the OAuth provider with the right arguments when forcing a branch id that does not exist", async ({ expect }) => {
@@ -193,6 +212,61 @@ it("should fail if an invalid redirect URL is provided", async ({ expect }) => {
       },
       "headers": Headers {
         "x-stack-known-error": "SCHEMA_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("should fail if an invalid after_callback_redirect_url is provided", async ({ expect }) => {
+  const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
+    redirect: "manual",
+    query: {
+      ...await Auth.OAuth.getAuthorizeQuery(),
+      after_callback_redirect_url: "not-a-valid-url",
+    },
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "SCHEMA_ERROR",
+        "details": {
+          "message": deindent\`
+            Request validation failed on GET /api/v1/auth/oauth/authorize/spotify:
+              - query.after_callback_redirect_url is not a valid URL
+          \`,
+        },
+        "error": deindent\`
+          Request validation failed on GET /api/v1/auth/oauth/authorize/spotify:
+            - query.after_callback_redirect_url is not a valid URL
+        \`,
+      },
+      "headers": Headers {
+        "x-stack-known-error": "SCHEMA_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("should fail if an untrusted after_callback_redirect_url is provided", async ({ expect }) => {
+  const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
+    redirect: "manual",
+    query: {
+      ...await Auth.OAuth.getAuthorizeQuery(),
+      after_callback_redirect_url: "https://evil.example.com/post-auth",
+    },
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "REDIRECT_URL_NOT_WHITELISTED",
+        "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "REDIRECT_URL_NOT_WHITELISTED",
         <some fields may have been hidden>,
       },
     }

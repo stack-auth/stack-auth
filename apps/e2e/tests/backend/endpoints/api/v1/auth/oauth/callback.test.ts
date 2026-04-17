@@ -48,20 +48,21 @@ it("should fail when account is new and sign ups are disabled", async ({ expect 
       cookie,
     },
   });
-  expect(response).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 400,
-      "body": {
-        "code": "SIGN_UP_NOT_ENABLED",
-        "error": "Creation of new accounts is not enabled for this project. Please ask the project owner to enable it.",
-      },
-      "headers": Headers {
-        "set-cookie": <deleting cookie 'stack-oauth-inner-<stripped cookie name key>' at path '/'>,
-        "x-stack-known-error": "SIGN_UP_NOT_ENABLED",
-        <some fields may have been hidden>,
-      },
-    }
-  `);
+  expect(response.status).toBe(307);
+  const location = response.headers.get("location");
+  expect(location).toBeTruthy();
+  if (location == null) {
+    throw new Error("OAuth callback error redirect location is missing");
+  }
+  const locationUrl = new URL(location);
+  expect(locationUrl.origin).toBe("http://stack-test.localhost");
+  expect(locationUrl.pathname).toBe("/some-callback-url");
+  expect(locationUrl.searchParams.get("error")).toBe("server_error");
+  expect(locationUrl.searchParams.get("errorCode")).toBe("SIGN_UP_NOT_ENABLED");
+  expect(locationUrl.searchParams.get("error_description")).toBe("Creation of new accounts is not enabled for this project. Please ask the project owner to enable it.");
+  expect(locationUrl.searchParams.get("message")).toBe("Creation of new accounts is not enabled for this project. Please ask the project owner to enable it.");
+  expect(locationUrl.searchParams.get("details")).toBe("{}");
+  expect(response.headers.get("set-cookie")).toMatch(/stack-oauth-inner-/);
 });
 
 it("should fail when cookies are missing", async ({ expect }) => {
@@ -166,11 +167,8 @@ it("should fail when inner callback has invalid state", async ({ expect }) => {
   expect(response).toMatchInlineSnapshot(`
     NiceResponse {
       "status": 400,
-      "body": "Inner OAuth cookie not found. This is likely because you refreshed the page during the OAuth sign in process. Please try signing in again",
-      "headers": Headers {
-        "set-cookie": <deleting cookie 'stack-oauth-inner-<stripped cookie name key>' at path '/'>,
-        <some fields may have been hidden>,
-      },
+      "body": "Invalid OAuth state. Please try signing in again.",
+      "headers": Headers { <some fields may have been hidden> },
     }
   `);
 });

@@ -61,7 +61,18 @@ code={`type CurrentUser = {
     listContactChannels(): Promise<ContactChannel[]>; //$stack-link-to:#currentuserlistcontactchannels
     // NEXT_LINE_PLATFORM react-like
     ⤷ useContactChannels(): ContactChannel[]; //$stack-link-to:#currentuserusecontactchannels
-    
+
+    getConnectedAccount(account): Promise<OAuthConnection | null>; //$stack-link-to:#currentusergetconnectedaccount
+    // NEXT_LINE_PLATFORM react-like
+    ⤷ useConnectedAccount(account): OAuthConnection | null; //$stack-link-to:#currentuseruseconnectedaccount
+    listConnectedAccounts(): Promise<OAuthConnection[]>; //$stack-link-to:#currentuserlistconnectedaccounts
+    // NEXT_LINE_PLATFORM react-like
+    ⤷ useConnectedAccounts(): OAuthConnection[]; //$stack-link-to:#currentuseruseconnectedaccounts
+    linkConnectedAccount(provider[, options]): Promise<void>; //$stack-link-to:#currentuserlinkconnectedaccount
+    getOrLinkConnectedAccount(provider[, options]): Promise<OAuthConnection>; //$stack-link-to:#currentusergetorlinkconnectedaccount
+    // NEXT_LINE_PLATFORM react-like
+    ⤷ useOrLinkConnectedAccount(provider[, options]): OAuthConnection; //$stack-link-to:#currentuseruseorlinkconnectedaccount
+
     createApiKey(options): Promise<UserApiKeyFirstView>; //$stack-link-to:#currentusercreateapikey
     listApiKeys(): Promise<UserApiKey[]>; //$stack-link-to:#currentuserlistapikeys
     // NEXT_LINE_PLATFORM react-like
@@ -818,6 +829,297 @@ code={`type CurrentUser = {
       <AsideSection title="Examples">
       ```typescript Using contact channels in React
       const contactChannels = user.useContactChannels();
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+{/* END_PLATFORM */}
+
+<CollapsibleTypesSection type="currentUser" property="getConnectedAccount" signature="account" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Gets a specific connected account by provider and provider account ID. Returns `null` if not found.
+
+      For more details on connected accounts, see the [ConnectedAccount type reference](../types/connected-account.mdx) and the [OAuth guide](../../apps/oauth).
+
+      ### Parameters
+
+      <ParamField path="account" type="object" required>
+        <Accordion title="Show Properties">
+          <ParamField path="provider" type="string" required>
+            The provider config ID (e.g., `"google"`, `"github"`).
+          </ParamField>
+          <ParamField path="providerAccountId" type="string" required>
+            The account ID from the OAuth provider.
+          </ParamField>
+        </Accordion>
+      </ParamField>
+
+      ### Returns
+
+      `Promise<OAuthConnection | null>`
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function getConnectedAccount(account: {
+        provider: string,
+        providerAccountId: string,
+      }): Promise<OAuthConnection | null>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Getting a connected account
+      const account = await user.getConnectedAccount({
+        provider: "google",
+        providerAccountId: "123456",
+      });
+      if (account) {
+        const result = await account.getAccessToken();
+      }
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+{/* IF_PLATFORM react-like */}
+<CollapsibleTypesSection type="currentUser" property="useConnectedAccount" signature="account" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      React hook version of `getConnectedAccount`. Returns a specific connected account by provider and provider account ID, or `null` if not found.
+
+      ### Parameters
+
+      <ParamField path="account" type="object" required>
+        <Accordion title="Show Properties">
+          <ParamField path="provider" type="string" required>
+            The provider config ID (e.g., `"google"`, `"github"`).
+          </ParamField>
+          <ParamField path="providerAccountId" type="string" required>
+            The account ID from the OAuth provider.
+          </ParamField>
+        </Accordion>
+      </ParamField>
+
+      ### Returns
+
+      `OAuthConnection | null`
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function useConnectedAccount(account: {
+        provider: string,
+        providerAccountId: string,
+      }): OAuthConnection | null;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```tsx Using a connected account in React
+      const account = user.useConnectedAccount({
+        provider: "google",
+        providerAccountId: "123456",
+      });
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+{/* END_PLATFORM */}
+
+<CollapsibleTypesSection type="currentUser" property="listConnectedAccounts" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Lists all connected accounts for this user. Only returns accounts for providers that have `allowConnectedAccounts` enabled.
+
+      ### Parameters
+
+      None.
+
+      ### Returns
+
+      `Promise<OAuthConnection[]>`
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function listConnectedAccounts(): Promise<OAuthConnection[]>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Listing connected accounts
+      const accounts = await user.listConnectedAccounts();
+      for (const account of accounts) {
+        console.log(account.provider, account.providerAccountId);
+      }
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+{/* IF_PLATFORM react-like */}
+<CollapsibleTypesSection type="currentUser" property="useConnectedAccounts" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      React hook to list all connected accounts for this user.
+
+      ### Parameters
+
+      None.
+
+      ### Returns
+
+      `OAuthConnection[]`
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function useConnectedAccounts(): OAuthConnection[];
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```tsx Using connected accounts in React
+      const accounts = user.useConnectedAccounts();
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+{/* END_PLATFORM */}
+
+<CollapsibleTypesSection type="currentUser" property="linkConnectedAccount" signature="provider, options?" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Redirects the user to the OAuth flow to link a new connected account. This function always redirects and never returns.
+
+      ### Parameters
+
+      <ParamField path="provider" type="string" required>
+        The provider to link (e.g., `"google"`, `"github"`).
+      </ParamField>
+      <ParamField path="options" type="object">
+        <Accordion title="Show Properties">
+          <ParamField path="scopes" type="string[]">
+            OAuth scopes to request during the linking flow.
+          </ParamField>
+        </Accordion>
+      </ParamField>
+
+      ### Returns
+
+      `Promise<void>` (always redirects)
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function linkConnectedAccount(
+        provider: string,
+        options?: { scopes?: string[] },
+      ): Promise<void>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Linking a Google account
+      await user.linkConnectedAccount("google", {
+        scopes: ["https://www.googleapis.com/auth/drive.readonly"],
+      });
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="currentUser" property="getOrLinkConnectedAccount" signature="provider, options?" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Gets a connected account for the given provider, or redirects the user to the OAuth flow to link one if none exists or the token/scopes are insufficient.
+
+      ### Parameters
+
+      <ParamField path="provider" type="string" required>
+        The provider to get or link (e.g., `"google"`, `"github"`).
+      </ParamField>
+      <ParamField path="options" type="object">
+        <Accordion title="Show Properties">
+          <ParamField path="scopes" type="string[]">
+            OAuth scopes to require. If the existing account doesn't have these scopes, the user will be redirected to re-authorize.
+          </ParamField>
+        </Accordion>
+      </ParamField>
+
+      ### Returns
+
+      `Promise<OAuthConnection>`
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function getOrLinkConnectedAccount(
+        provider: string,
+        options?: { scopes?: string[] },
+      ): Promise<OAuthConnection>;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```typescript Get or link a Google account with Drive access
+      const account = await user.getOrLinkConnectedAccount("google", {
+        scopes: ["https://www.googleapis.com/auth/drive.readonly"],
+      });
+      const result = await account.getAccessToken();
+      ```
+      </AsideSection>
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+{/* IF_PLATFORM react-like */}
+<CollapsibleTypesSection type="currentUser" property="useOrLinkConnectedAccount" signature="provider, options?" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      React hook version of `getOrLinkConnectedAccount`. Returns a connected account for the given provider, or redirects the user to link one if none exists or the token/scopes are insufficient.
+
+      ### Parameters
+
+      <ParamField path="provider" type="string" required>
+        The provider to get or link (e.g., `"google"`, `"github"`).
+      </ParamField>
+      <ParamField path="options" type="object">
+        <Accordion title="Show Properties">
+          <ParamField path="scopes" type="string[]">
+            OAuth scopes to require.
+          </ParamField>
+        </Accordion>
+      </ParamField>
+
+      ### Returns
+
+      `OAuthConnection`
+    </MethodContent>
+    <MethodAside>
+      <AsideSection title="Signature">
+
+      ```typescript
+      declare function useOrLinkConnectedAccount(
+        provider: string,
+        options?: { scopes?: string[] },
+      ): OAuthConnection;
+      ```
+      </AsideSection>
+      <AsideSection title="Examples">
+      ```tsx Using or linking a connected account in React
+      const account = user.useOrLinkConnectedAccount("google", {
+        scopes: ["https://www.googleapis.com/auth/drive.readonly"],
+      });
+      const result = account.useAccessToken();
       ```
       </AsideSection>
     </MethodAside>

@@ -1,12 +1,14 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { ServerUser } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { emailSchema, jsonStringOrEmptySchema, passwordSchema } from "@stackframe/stack-shared/dist/schema-fields";
+import { countryCodeSchema, emailSchema, jsonStringOrEmptySchema, passwordSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, Button, Typography, useToast } from "@/components/ui";
 import * as yup from "yup";
 import { FormDialog } from "./form-dialog";
+import { CountryCodeField } from "./country-code-select";
 import { DateField, InputField, SwitchField, TextAreaField } from "./form-fields";
 import { StyledLink } from "./link";
+import { validateRiskScore } from "@/lib/risk-score-utils";
 
 const metadataDocsUrl = "https://docs.stack-auth.com/docs/concepts/custom-user-data";
 
@@ -41,6 +43,9 @@ export function UserDialog(props: {
   } else {
     defaultValues = {
       signedUpAt: new Date(),
+      countryCode: null as string | null,
+      botRiskScore: "",
+      freeTrialAbuseRiskScore: "",
     };
   }
 
@@ -71,15 +76,48 @@ export function UserDialog(props: {
     }).optional(),
     passwordEnabled: yup.boolean().optional(),
     updatePassword: yup.boolean().optional(),
+    countryCode: countryCodeSchema.nullable().transform((value) => value === "" || value == null ? undefined : value).optional(),
+    botRiskScore: yup.string().test({
+      name: "bot-risk-score-format",
+      message: "Bot risk score must be an integer between 0 and 100",
+      test: (value) => validateRiskScore(value),
+    }).optional(),
+    freeTrialAbuseRiskScore: yup.string().test({
+      name: "free-trial-risk-score-format",
+      message: "Free trial abuse score must be an integer between 0 and 100",
+      test: (value) => validateRiskScore(value),
+    }).optional(),
+  }).test({
+    name: "risk-score-pair",
+    message: "Bot risk score and free trial abuse score must both be provided or both be empty",
+    test: (value) => {
+      const botRiskScore = value.botRiskScore?.trim() ?? "";
+      const freeTrialAbuseRiskScore = value.freeTrialAbuseRiskScore?.trim() ?? "";
+      return (botRiskScore === "") === (freeTrialAbuseRiskScore === "");
+    },
   });
 
   async function handleSubmit(values: yup.InferType<typeof formSchema>) {
+    const normalizedCountryCode = values.countryCode ?? "";
+    const normalizedBotRiskScore = values.botRiskScore?.trim() ?? "";
+    const normalizedFreeTrialAbuseRiskScore = values.freeTrialAbuseRiskScore?.trim() ?? "";
     const userValues = {
       ...values,
       primaryEmailAuthEnabled: true,
       clientMetadata: values.clientMetadata ? JSON.parse(values.clientMetadata) : undefined,
       clientReadOnlyMetadata: values.clientReadOnlyMetadata ? JSON.parse(values.clientReadOnlyMetadata) : undefined,
-      serverMetadata: values.serverMetadata ? JSON.parse(values.serverMetadata) : undefined
+      serverMetadata: values.serverMetadata ? JSON.parse(values.serverMetadata) : undefined,
+      ...(props.type === "create" ? {
+        countryCode: normalizedCountryCode === "" ? undefined : normalizedCountryCode,
+        riskScores: normalizedBotRiskScore === "" && normalizedFreeTrialAbuseRiskScore === ""
+          ? undefined
+          : {
+            signUp: {
+              bot: Number(normalizedBotRiskScore),
+              freeTrialAbuse: Number(normalizedFreeTrialAbuseRiskScore),
+            },
+          },
+      } : {}),
     };
 
     try {
@@ -147,6 +185,24 @@ export function UserDialog(props: {
           )
         )}
         {!form.watch("primaryEmailVerified") && form.watch("otpAuthEnabled") && <Typography variant="secondary">Primary email must be verified if OTP/magic link sign-in is enabled</Typography>}
+
+        {props.type === "create" && (
+          <Accordion type="single" collapsible>
+            <AccordionItem value="item-risk-and-geo">
+              <AccordionTrigger>Risk and Geo</AccordionTrigger>
+              <AccordionContent className="space-y-4">
+                <CountryCodeField control={form.control} label="Country code" name="countryCode" placeholder="Select country code..." />
+                <div className="grid gap-4 md:grid-cols-2">
+                  <InputField control={form.control} label="Risk score: bot" name="botRiskScore" placeholder="0-100" />
+                  <InputField control={form.control} label="Risk score: free trial abuse" name="freeTrialAbuseRiskScore" placeholder="0-100" />
+                </div>
+                <Typography variant="secondary">
+                  Optional admin-only values for imports or custom anti-abuse systems. Leave blank to use the defaults.
+                </Typography>
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
+        )}
 
         <Accordion type="single" collapsible>
           <AccordionItem value="item-1">

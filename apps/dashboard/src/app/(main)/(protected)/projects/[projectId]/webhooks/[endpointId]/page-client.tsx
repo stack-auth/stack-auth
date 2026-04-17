@@ -1,9 +1,9 @@
 "use client";
 
-import { SettingCard } from "@/components/settings";
-import { Alert, Badge, Button, CopyButton, Label, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from "@/components/ui";
+import { DesignAlert, DesignBadge, DesignButton, DesignCard, DesignEditableGrid, type DesignEditableGridItem } from "@/components/design-components";
+import { CopyButton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui";
 import { getPublicEnvVar } from '@/lib/env';
-import { CaretLeftIcon, CaretRightIcon } from "@phosphor-icons/react";
+import { CaretLeftIcon, CaretRightIcon, InfoIcon, KeyIcon, LinkIcon, TextAlignLeftIcon } from "@phosphor-icons/react";
 import { useMemo, useState } from "react";
 import { SvixProvider, useEndpoint, useEndpointMessageAttempts, useEndpointSecret } from "svix-react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
@@ -11,25 +11,35 @@ import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
 import { getSvixResult } from "../utils";
 
-const statusToString = {
-  0: "Success",
-  1: "Pending",
-  2: "Fail",
-  3: "Sending",
-};
+const statusToString = new Map<number, string>([
+  [0, "Success"],
+  [1, "Pending"],
+  [2, "Fail"],
+  [3, "Sending"],
+]);
 
 function PageInner(props: { endpointId: string }) {
   const endpoint = getSvixResult(useEndpoint(props.endpointId));
 
   return (
     <PageLayout title="Webhook Endpoint" description={endpoint.loaded ? endpoint.data.url : 'Loading...'}>
-      <SettingCard title="Details" description="The details of this endpoint">
+      <DesignCard
+        title="Details"
+        subtitle="The details of this endpoint"
+        icon={InfoIcon}
+        glassmorphic
+      >
         <EndpointDetails endpointId={props.endpointId} />
-      </SettingCard>
+      </DesignCard>
 
-      <SettingCard title="Events History" description="The log of events sent to this endpoint">
+      <DesignCard
+        title="Events History"
+        subtitle="The log of events sent to this endpoint"
+        icon={TextAlignLeftIcon}
+        glassmorphic
+      >
         <MessageTable endpointId={props.endpointId} />
-      </SettingCard>
+      </DesignCard>
     </PageLayout>
   );
 }
@@ -37,25 +47,48 @@ function PageInner(props: { endpointId: string }) {
 function EndpointDetails(props: { endpointId: string }) {
   const endpoint = getSvixResult(useEndpoint(props.endpointId));
   const secret = getSvixResult(useEndpointSecret(props.endpointId));
+  const detailsItems = useMemo<DesignEditableGridItem[]>(() => ([
+    {
+      type: "custom",
+      icon: <LinkIcon className="h-3.5 w-3.5" />,
+      name: "URL",
+      children: (
+        <span className="-ml-2 block rounded-xl border border-transparent px-2 py-1 text-sm text-foreground/90">
+          {endpoint.loaded ? endpoint.data.url : "Loading..."}
+        </span>
+      ),
+    },
+    {
+      type: "custom",
+      icon: <TextAlignLeftIcon className="h-3.5 w-3.5" />,
+      name: "Description",
+      children: (
+        <span className="-ml-2 block rounded-xl border border-transparent px-2 py-1 text-sm text-foreground/80">
+          {endpoint.loaded ? (endpoint.data.description || "-") : "Loading..."}
+        </span>
+      ),
+    },
+    {
+      type: "custom",
+      icon: <KeyIcon className="h-3.5 w-3.5" />,
+      name: "Verification Secret",
+      children: (
+        <div className="-ml-2 flex w-full items-center gap-2 rounded-xl border border-transparent px-2 py-1">
+          <code className="min-w-0 truncate rounded-md bg-foreground/[0.04] px-2 py-0.5 text-sm">
+            {secret.loaded ? secret.data.key : "Loading..."}
+          </code>
+          <CopyButton content={secret.loaded ? secret.data.key : ''} className={secret.loaded ? 'shrink-0' : 'hidden'} />
+        </div>
+      ),
+    },
+  ]), [endpoint, secret]);
 
   return (
-    <>
-      <div>
-        <Label>URL</Label>
-        <Typography>{endpoint.loaded ? endpoint.data.url : 'Loading...'}</Typography>
-      </div>
-      <div>
-        <Label>Description</Label>
-        <Typography>{endpoint.loaded ? endpoint.data.description || "" : 'Loading...'}</Typography>
-      </div>
-      <div>
-        <Label>Verification secret</Label>
-        <div className="flex items-center space-x-2">
-          <Typography type='label'> {secret.loaded ? secret.data.key : 'Loading...'} </Typography>
-          <CopyButton content={secret.loaded ? secret.data.key : ''} className={secret.loaded ? '' : 'hidden'} />
-        </div>
-      </div>
-    </>
+    <DesignEditableGrid
+      items={detailsItems}
+      columns={1}
+      deferredSave={false}
+    />
   );
 }
 
@@ -65,7 +98,12 @@ function MessageTable(props: { endpointId: string }) {
   if (!messages.loaded) return messages.rendered;
 
   if (messages.data.length === 0) {
-    return <Alert>No events sent</Alert>;
+    return (
+      <DesignAlert
+        variant="info"
+        description="No events sent yet."
+      />
+    );
   }
 
   return (
@@ -83,7 +121,21 @@ function MessageTable(props: { endpointId: string }) {
             {messages.data.map(message => (
               <TableRow key={message.id}>
                 <TableCell>{message.id}</TableCell>
-                <TableCell><Badge variant={'secondary'}>{statusToString[message.status]}</Badge></TableCell>
+                <TableCell>
+                  <DesignBadge
+                    label={statusToString.get(message.status) ?? "Unknown"}
+                    color={
+                      message.status === 0
+                        ? "green"
+                        : message.status === 2
+                          ? "red"
+                          : message.status === 1
+                            ? "orange"
+                            : "blue"
+                    }
+                    size="sm"
+                  />
+                </TableCell>
                 <TableCell>{message.timestamp.toLocaleString()}</TableCell>
               </TableRow>
             ))}
@@ -92,13 +144,13 @@ function MessageTable(props: { endpointId: string }) {
       </div>
 
       <div className="flex justify-end gap-4">
-        <Button size='icon' variant={'outline'} disabled={!messages.hasPrevPage} onClick={messages.prevPage}>
+        <DesignButton size='sm' variant='secondary' disabled={!messages.hasPrevPage} onClick={messages.prevPage}>
           <CaretLeftIcon />
-        </Button>
+        </DesignButton>
 
-        <Button size='icon' variant={'outline'} disabled={!messages.hasNextPage} onClick={messages.nextPage}>
+        <DesignButton size='sm' variant='secondary' disabled={!messages.hasNextPage} onClick={messages.nextPage}>
           <CaretRightIcon />
-        </Button>
+        </DesignButton>
       </div>
     </div>
   );

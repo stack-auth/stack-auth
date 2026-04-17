@@ -296,15 +296,26 @@ export class StackServerInterface extends StackClientInterface {
     return result.items;
   }
 
-  async listServerUsers(options: {
-    cursor?: string,
-    limit?: number,
-    orderBy?: 'signedUpAt',
-    desc?: boolean,
-    query?: string,
-    includeRestricted?: boolean,
-    includeAnonymous?: boolean,
-  }): Promise<UsersCrud['Server']['List']> {
+  async listServerUsers(options: (
+    & {
+      cursor?: string,
+      limit?: number,
+      orderBy?: 'signedUpAt',
+      desc?: boolean,
+      query?: string,
+      includeRestricted?: boolean,
+    }
+    & (
+      {
+        includeAnonymous?: boolean,
+        onlyAnonymous?: false,
+      }
+      | {
+        includeAnonymous: true,
+        onlyAnonymous: true,
+      }
+    )
+  )): Promise<UsersCrud['Server']['List']> {
     const searchParams = new URLSearchParams(filterUndefined({
       cursor: options.cursor,
       limit: options.limit?.toString(),
@@ -322,6 +333,9 @@ export class StackServerInterface extends StackClientInterface {
       } : {},
       ...options.includeAnonymous ? {
         include_anonymous: 'true',
+      } : {},
+      ...options.onlyAnonymous ? {
+        only_anonymous: 'true',
       } : {},
     }));
     const response = await this.sendServerRequest("/users?" + searchParams.toString(), {}, null);
@@ -917,6 +931,7 @@ export class StackServerInterface extends StackClientInterface {
     templateId?: string,
     variables?: Record<string, any>,
     draftId?: string,
+    scheduledAt?: Date,
   }): Promise<Result<void, KnownErrors["RequiresCustomEmailServer"] | KnownErrors["SchemaError"] | KnownErrors["UserIdDoesNotExist"]>> {
     const res = await this.sendServerRequest(
       "/emails/send-email",
@@ -935,6 +950,7 @@ export class StackServerInterface extends StackClientInterface {
           template_id: options.templateId,
           variables: options.variables,
           draft_id: options.draftId,
+          scheduled_at_millis: options.scheduledAt?.getTime(),
         }),
       },
       null,
@@ -951,7 +967,10 @@ export class StackServerInterface extends StackClientInterface {
     },
     capacity: {
       rate_per_second: number,
+      boost_multiplier: number,
       penalty_factor: number,
+      is_boost_active: boolean,
+      boost_expires_at: string | null,
     },
   }> {
     const res = await this.sendServerRequest(
@@ -961,6 +980,21 @@ export class StackServerInterface extends StackClientInterface {
         headers: {
           "Content-Type": "application/json"
         },
+      },
+      null,
+    );
+    return await res.json();
+  }
+
+  async activateEmailCapacityBoost(): Promise<{ expires_at: string }> {
+    const res = await this.sendServerRequest(
+      "/emails/capacity-boost",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({}),
       },
       null,
     );

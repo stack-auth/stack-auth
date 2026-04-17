@@ -378,6 +378,7 @@ TokenPartialUser:
   primaryEmail: string | null
   primaryEmailVerified: bool
   isAnonymous: bool
+  isMultiFactorRequired: bool
   isRestricted: bool
   restrictedReason: { type: "anonymous" | "email_not_verified" | "restricted_by_administrator" } | null
 
@@ -837,23 +838,24 @@ Arguments:
   options.expiresInMillis: number? - how long the login attempt is valid
   options.maxAttempts: number? - max polling attempts (default: Infinity)
   options.waitTimeMillis: number? - time between poll attempts (default: 2000ms)
-  options.promptLink: function(url: string)? - callback to display login URL to user
+  options.promptLink: function(url: string, loginCode: string)? - callback to display login URL and verification code to user
+  options.anonRefreshToken: string? - anonymous refresh token to associate with this login attempt
 
 Returns: string - the refresh token for the authenticated session
 
 Implementation:
 1. Initiate CLI auth:
    POST /api/v1/auth/cli
-   Body: { expires_in_millis?: number }
+   Body: { expires_in_millis?: number, anon_refresh_token?: string }
    Response: { polling_code: string, login_code: string }
 
-2. Build login URL: {appUrl}/handler/cli?code={login_code}
-3. Call promptLink(url) if provided, or open browser to URL
+2. Build login URL: {appUrl}/handler/cli-auth-confirm?login_code={login_code}
+3. Call promptLink(url, loginCode) if provided, or print login code and URL
 
 4. Poll for completion:
    POST /api/v1/auth/cli/poll
    Body: { polling_code: string }
-   Response on pending: { status: "pending" }
+   Response on pending: { status: "waiting" }
    Response on success: { status: "success", refresh_token: string }
    
    Poll every waitTimeMillis until success, error, or maxAttempts reached.

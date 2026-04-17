@@ -14,9 +14,7 @@ import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { ArrowCounterClockwise, FloppyDisk } from "@phosphor-icons/react";
 import { useState } from "react";
-import { DesignButton } from "./button";
-import { useDesignEditMode } from "./edit-mode";
-import { DesignInput } from "./input";
+import { DesignButton, useDesignEditMode, DesignInput } from "@stackframe/dashboard-ui-components";
 
 export type DesignEditableGridSize = "sm" | "md";
 

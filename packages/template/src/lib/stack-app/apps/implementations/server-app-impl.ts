@@ -35,7 +35,7 @@ import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, 
 import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackServerAppConstructorOptions } from "../interfaces/server-app";
 import { _StackClientAppImplIncomplete } from "./client-app-impl";
-import { clientVersion, createCache, createCacheBySession, getBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, resolveConstructorOptions } from "./common";
+import { clientVersion, createCache, createCacheBySession, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getDefaultSecretServerKey, resolveApiUrls, resolveConstructorOptions } from "./common";
 
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
@@ -58,7 +58,14 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     query?: string,
     includeRestricted?: boolean,
     includeAnonymous?: boolean,
-  ], UsersCrud['Server']['List']>(async ([cursor, limit, orderBy, desc, query, includeRestricted, includeAnonymous]) => {
+    onlyAnonymous?: boolean,
+  ], UsersCrud['Server']['List']>(async ([cursor, limit, orderBy, desc, query, includeRestricted, includeAnonymous, onlyAnonymous]) => {
+    if (onlyAnonymous && !includeAnonymous) {
+      throw new StackAssertionError("onlyAnonymous=true requires includeAnonymous=true");
+    }
+    if (onlyAnonymous) {
+      return await this._interface.listServerUsers({ cursor, limit, orderBy, desc, query, includeRestricted, includeAnonymous: true, onlyAnonymous: true });
+    }
     return await this._interface.listServerUsers({ cursor, limit, orderBy, desc, query, includeRestricted, includeAnonymous });
   });
   private readonly _serverUserCache = createCache<string[], UsersCrud['Server']['Read'] | null>(async ([userId]) => {
@@ -414,14 +421,18 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
     super(resolvedOptions, {
       ...extraOptions,
-      interface: extraOptions?.interface ?? new StackServerInterface({
-        getBaseUrl: () => getBaseUrl(resolvedOptions.baseUrl),
-        projectId: resolvedOptions.projectId ?? getDefaultProjectId(),
-        extraRequestHeaders: resolvedOptions.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
-        clientVersion,
-        ...(publishableClientKey != null ? { publishableClientKey } : {}),
-        secretServerKey: resolvedOptions.secretServerKey ?? getDefaultSecretServerKey(),
-      }),
+      interface: extraOptions?.interface ?? (() => {
+        const apiUrls = resolveApiUrls(resolvedOptions.baseUrl);
+        return new StackServerInterface({
+          getBaseUrl: () => apiUrls()[0],
+          getApiUrls: apiUrls,
+          projectId: resolvedOptions.projectId ?? getDefaultProjectId(),
+          extraRequestHeaders: resolvedOptions.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
+          clientVersion,
+          ...(publishableClientKey != null ? { publishableClientKey } : {}),
+          secretServerKey: resolvedOptions.secretServerKey ?? getDefaultSecretServerKey(),
+        });
+      })(),
     });
   }
 
@@ -562,6 +573,13 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       restrictedByAdmin: crudWithAdminRestriction.restricted_by_admin,
       restrictedByAdminReason: crudWithAdminRestriction.restricted_by_admin_reason,
       restrictedByAdminPrivateDetails: crudWithAdminRestriction.restricted_by_admin_private_details,
+      countryCode: crud.country_code,
+      riskScores: {
+        signUp: {
+          bot: crud.risk_scores.sign_up.bot,
+          freeTrialAbuse: crud.risk_scores.sign_up.free_trial_abuse,
+        },
+      },
       async setPrimaryEmail(email: string | null, options?: { verified?: boolean }) {
         await app._updateServerUser(crud.id, { primaryEmail: email, primaryEmailVerified: options?.verified });
       },
@@ -1335,7 +1353,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
   // END_PLATFORM
 
   async listUsers(options?: ServerListUsersOptions): Promise<ServerUser[] & { nextCursor: string | null }> {
-    const crud = Result.orThrow(await this._serverUsersCache.getOrWait([options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query, options?.includeRestricted, options?.includeAnonymous], "write-only"));
+    const crud = Result.orThrow(await this._serverUsersCache.getOrWait([options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query, options?.includeRestricted, options?.includeAnonymous, options?.onlyAnonymous], "write-only"));
     const result: any = crud.items.map((j) => this._serverUserFromCrud(j));
     result.nextCursor = crud.pagination?.next_cursor ?? null;
     return result as any;
@@ -1343,7 +1361,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   // IF_PLATFORM react-like
   useUsers(options?: ServerListUsersOptions): ServerUser[] & { nextCursor: string | null } {
-    const crud = useAsyncCache(this._serverUsersCache, [options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query, options?.includeRestricted, options?.includeAnonymous] as const, "serverApp.useUsers()");
+    const crud = useAsyncCache(this._serverUsersCache, [options?.cursor, options?.limit, options?.orderBy, options?.desc, options?.query, options?.includeRestricted, options?.includeAnonymous, options?.onlyAnonymous] as const, "serverApp.useUsers()");
     const result: any = crud.items.map((j) => this._serverUserFromCrud(j));
     result.nextCursor = crud.pagination?.next_cursor ?? null;
     return result as any;
@@ -1539,6 +1557,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   async sendEmail(options: SendEmailOptions): Promise<void> {
     await this._interface.sendEmail(options);
+    await this._emailDeliveryInfoCache.refresh([]);
   }
 
   async getEmailDeliveryStats(): Promise<EmailDeliveryInfo> {
@@ -1550,6 +1569,12 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
     return useAsyncCache(this._emailDeliveryInfoCache, [], "stackServerApp.useEmailDeliveryStats()");
   }
   // END_PLATFORM
+
+  async activateEmailCapacityBoost(): Promise<void> {
+    await this._interface.activateEmailCapacityBoost();
+    // Refresh the cache so UI updates immediately
+    await this._emailDeliveryInfoCache.refresh([]);
+  }
 
   protected override async _refreshSession(session: InternalSession) {
     await Promise.all([

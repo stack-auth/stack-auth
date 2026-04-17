@@ -132,6 +132,7 @@ it("lists oauth providers", async ({ expect }) => {
         "logo_full_dark_mode_url": null,
         "logo_full_url": null,
         "logo_url": null,
+        "onboarding_status": "completed",
         "owner_team_id": "<stripped UUID>",
       },
       "headers": Headers { <some fields may have been hidden> },
