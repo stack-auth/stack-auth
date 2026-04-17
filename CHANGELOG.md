@@ -2,6 +2,14 @@
 
 ---
 
+## 4/17/26
+
+### Payments
+- Improved item ledger algorithm: credit consumption now applies to the soonest-expiring grants first, ensuring customers use expiring credits before longer-lived ones
+- Enhanced payment processing pipeline with improved data consistency
+
+---
+
 ## 1/23/26
 
 ### Payments

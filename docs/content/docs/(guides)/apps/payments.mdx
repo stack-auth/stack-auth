@@ -2,6 +2,7 @@
 title: Payments
 description: Accept payments and manage billing with Stack Auth's Stripe integration
 icon: CreditCard
+lastModified: "2026-04-17"
 ---
 
 Stack Auth provides a Payments app that integrates with Stripe to handle billing, subscriptions, and one-time purchases. The SDK provides methods for users and teams to create checkout URLs and manage items like credits, seats, or API quotas.
@@ -146,6 +147,23 @@ Use `tryDecreaseQuantity` for race-condition-safe credit consumption:
 <Info>
 Use `tryDecreaseQuantity()` instead of checking the balance and then decreasing. This prevents race conditions where multiple requests could consume more credits than available.
 </Info>
+
+#### Item Grants and Expiration
+
+Items can have optional expiration dates. When a customer has multiple grants of the same item type with different expiration dates, Stack Auth uses a customer-friendly ledger algorithm:
+
+- **Credit consumption order**: Credits are consumed from the grant that expires soonest first. This ensures customers use expiring credits before touching longer-lived ones.
+- **Expiration behavior**: When a grant expires, any remaining quantity is removed from the customer's balance.
+
+For example, if a customer has:
+- 50 credits expiring January 31
+- 100 credits expiring March 31
+
+When they consume 30 credits, those 30 are deducted from the January grant first, leaving 20 credits (January) + 100 credits (March).
+
+<Tip>
+To give new customers a starting balance of items without requiring a purchase, create a $0 product in your product line and grant it programmatically during signup using `grantProduct()`.
+</Tip>
 
 ### Listing Products
 
