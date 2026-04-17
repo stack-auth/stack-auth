@@ -43,6 +43,7 @@ model Project {
   branchConfigOverrides      BranchConfigOverride[]
   environmentConfigOverrides EnvironmentConfigOverride[]
   localEmulatorProject       LocalEmulatorProject?
+  aiConversations            AiConversation[]
 
   @@index([ownerTeamId], map: "Project_ownerTeamId_idx")
 }
@@ -69,10 +70,10 @@ model Tenancy {
   branchId String
 
   // If organizationId is NULL, hasNoOrganization must be TRUE. If organizationId is not NULL, hasNoOrganization must be NULL.
-  organizationId    String?       @db.Uuid
-  hasNoOrganization BooleanTrue?
-  emailOutboxes     EmailOutbox[]
-  sessionReplays SessionReplay[]
+  organizationId      String?              @db.Uuid
+  hasNoOrganization   BooleanTrue?
+  emailOutboxes       EmailOutbox[]
+  sessionReplays      SessionReplay[]
   sessionReplayChunks SessionReplayChunk[]
   managedEmailDomains ManagedEmailDomain[]
 
@@ -94,24 +95,24 @@ enum ManagedEmailDomainStatus {
 model ManagedEmailDomain {
   id String @id @default(uuid()) @db.Uuid
 
-  tenancyId String @db.Uuid
-  tenancy Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  tenancyId String  @db.Uuid
+  tenancy   Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
 
   projectId String
-  branchId String
+  branchId  String
 
-  subdomain String
-  senderLocalPart String
-  resendDomainId String @unique
+  subdomain         String
+  senderLocalPart   String
+  resendDomainId    String @unique
   nameServerRecords Json
 
-  status ManagedEmailDomainStatus @default(PENDING_VERIFICATION)
+  status            ManagedEmailDomainStatus @default(PENDING_VERIFICATION)
   providerStatusRaw String?
-  isActive Boolean @default(true)
-  lastError String?
-  verifiedAt DateTime?
-  appliedAt DateTime?
-  lastWebhookAt DateTime?
+  isActive          Boolean                  @default(true)
+  lastError         String?
+  verifiedAt        DateTime?
+  appliedAt         DateTime?
+  lastWebhookAt     DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -179,11 +180,16 @@ model Team {
   serverMetadata         Json?
   profileImageUrl        String?
 
+  sequenceId             BigInt? @unique
+  shouldUpdateSequenceId Boolean @default(true)
+
   teamMembers   TeamMember[]
   projectApiKey ProjectApiKey[]
 
   @@id([tenancyId, teamId])
   @@unique([mirroredProjectId, mirroredBranchId, teamId])
+  @@index([tenancyId, sequenceId], name: "Team_tenancyId_sequenceId_idx")
+  @@index([shouldUpdateSequenceId, tenancyId], name: "Team_shouldUpdateSequenceId_idx")
 }
 
 // This is used for fields that are boolean but only the true value is part of a unique constraint.
@@ -205,6 +211,9 @@ model TeamMember {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  sequenceId             BigInt? @unique
+  shouldUpdateSequenceId Boolean @default(true)
+
   projectUser                 ProjectUser                  @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
   team                        Team                         @relation(fields: [tenancyId, teamId], references: [tenancyId, teamId], onDelete: Cascade)
   isSelected                  BooleanTrue?
@@ -213,6 +222,8 @@ model TeamMember {
   @@id([tenancyId, projectUserId, teamId])
   @@unique([tenancyId, projectUserId, isSelected])
   @@index([tenancyId, projectUserId, isSelected], map: "TeamMember_projectUserId_isSelected_idx")
+  @@index([tenancyId, sequenceId], name: "TeamMember_tenancyId_sequenceId_idx")
+  @@index([shouldUpdateSequenceId, tenancyId], name: "TeamMember_shouldUpdateSequenceId_idx")
 }
 
 model ProjectUserDirectPermission {
@@ -226,7 +237,12 @@ model ProjectUserDirectPermission {
 
   projectUser ProjectUser @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
 
+  sequenceId             BigInt?  @unique
+  shouldUpdateSequenceId Boolean  @default(true)
+
   @@unique([tenancyId, projectUserId, permissionId])
+  @@index([shouldUpdateSequenceId, tenancyId], name: "ProjectUserDirectPermission_shouldUpdateSequenceId_idx")
+  @@index([tenancyId, sequenceId], name: "ProjectUserDirectPermission_tenancyId_sequenceId_idx")
 }
 
 model TeamMemberDirectPermission {
@@ -241,7 +257,12 @@ model TeamMemberDirectPermission {
 
   teamMember TeamMember @relation(fields: [tenancyId, projectUserId, teamId], references: [tenancyId, projectUserId, teamId], onDelete: Cascade)
 
+  sequenceId             BigInt?  @unique
+  shouldUpdateSequenceId Boolean  @default(true)
+
   @@unique([tenancyId, projectUserId, teamId, permissionId])
+  @@index([shouldUpdateSequenceId, tenancyId], name: "TeamMemberDirectPermission_shouldUpdateSequenceId_idx")
+  @@index([tenancyId, sequenceId], name: "TeamMemberDirectPermission_tenancyId_sequenceId_idx")
 }
 
 model ProjectUser {
@@ -276,7 +297,7 @@ model ProjectUser {
   restrictedByAdminPrivateDetails String? // Private details (server access only)
 
   // Sign-up metadata
-  signedUpAt                      DateTime
+  signedUpAt                      DateTime @default(now())
   signUpIp                        String?
   signUpIpTrusted                 Boolean?
   signUpEmailNormalized           String?
@@ -312,6 +333,7 @@ model ProjectUser {
   @@index([tenancyId, createdAt(sort: Desc)], name: "ProjectUser_createdAt_desc")
   @@index([tenancyId, isAnonymous, signedUpAt(sort: Asc)], name: "ProjectUser_signedUpAt_asc")
   @@index([tenancyId, isAnonymous, signUpIp, signedUpAt], name: "ProjectUser_signUpIp_recent_idx")
+  @@index([tenancyId, isAnonymous, signUpEmailNormalized, signedUpAt], name: "ProjectUser_signUpEmailNormalized_recent_idx")
   @@index([tenancyId, isAnonymous, signUpEmailBase, signedUpAt], name: "ProjectUser_signUpEmailBase_recent_idx")
   @@index([tenancyId, sequenceId], name: "ProjectUser_tenancyId_sequenceId_idx")
   @@index([shouldUpdateSequenceId, tenancyId], name: "ProjectUser_shouldUpdateSequenceId_idx")
@@ -343,9 +365,14 @@ model ProjectUserOAuthAccount {
   allowConnectedAccounts Boolean          @default(true)
   allowSignIn            Boolean          @default(true)
 
+  sequenceId             BigInt?  @unique
+  shouldUpdateSequenceId Boolean  @default(true)
+
   @@id([tenancyId, id])
   @@unique([tenancyId, configOAuthProviderId, projectUserId, providerAccountId])
   @@index([tenancyId, projectUserId])
+  @@index([tenancyId, sequenceId], name: "ProjectUserOAuthAccount_tenancyId_sequenceId_idx")
+  @@index([shouldUpdateSequenceId, tenancyId], name: "ProjectUserOAuthAccount_shouldUpdateSequenceId_idx")
 }
 
 model SessionReplay {
@@ -361,24 +388,29 @@ model SessionReplay {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  sequenceId             BigInt? @unique
+  shouldUpdateSequenceId Boolean @default(true)
+
   projectUser ProjectUser @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
   tenancy     Tenancy     @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
 
   chunks SessionReplayChunk[]
 
   @@id([tenancyId, id])
-  @@map("SessionReplay")
   @@index([tenancyId, projectUserId, startedAt])
   @@index([tenancyId, lastEventAt])
   // index by updatedAt instead of lastEventAt because event timing can be spoofed
   @@index([tenancyId, refreshTokenId, updatedAt])
+  @@index([tenancyId, sequenceId], name: "SessionReplay_tenancyId_sequenceId_idx")
+  @@index([shouldUpdateSequenceId, tenancyId], name: "SessionReplay_shouldUpdateSequenceId_idx")
+  @@map("SessionReplay")
 }
 
 model SessionReplayChunk {
   id String @id @default(uuid()) @db.Uuid
 
-  tenancyId        String @db.Uuid
-  sessionReplayId  String @db.Uuid @map("sessionReplayId")
+  tenancyId       String @db.Uuid
+  sessionReplayId String @map("sessionReplayId") @db.Uuid
 
   // Unique per uploaded batch for a given session id.
   batchId String @db.Uuid
@@ -402,8 +434,8 @@ model SessionReplayChunk {
   tenancy       Tenancy       @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
 
   @@unique([tenancyId, sessionReplayId, batchId])
-  @@map("SessionReplayChunk")
   @@index([tenancyId, sessionReplayId, createdAt])
+  @@map("SessionReplayChunk")
 }
 
 enum ContactChannelType {
@@ -612,7 +644,12 @@ model ProjectUserRefreshToken {
   expiresAt       DateTime?
   isImpersonation Boolean   @default(false)
 
+  sequenceId             BigInt?  @unique
+  shouldUpdateSequenceId Boolean  @default(true)
+
   @@id([tenancyId, id])
+  @@index([tenancyId, sequenceId], name: "ProjectUserRefreshToken_tenancyId_sequenceId_idx")
+  @@index([shouldUpdateSequenceId, tenancyId], name: "ProjectUserRefreshToken_shouldUpdateSequenceId_idx")
 }
 
 model ProjectUserAuthorizationCode {
@@ -631,6 +668,9 @@ model ProjectUserAuthorizationCode {
 
   newUser                  Boolean
   afterCallbackRedirectUrl String?
+  /// Refresh token ID that should be granted when this authorization code is exchanged.
+  /// NULL means no specific refresh token is preselected, so the token endpoint follows normal issuance/reuse logic.
+  grantedRefreshTokenId    String? @db.Uuid
 
   @@id([tenancyId, authorizationCode])
 }
@@ -652,9 +692,13 @@ model VerificationCode {
   data         Json
   attemptCount Int                  @default(0)
 
+  sequenceId             BigInt?  @unique
+  shouldUpdateSequenceId Boolean  @default(true)
+
   @@id([projectId, branchId, id])
   @@unique([projectId, branchId, code])
   @@index([data(ops: JsonbPathOps)], type: Gin)
+  @@index([shouldUpdateSequenceId, type], name: "VerificationCode_shouldUpdateSequenceId_type_idx")
 }
 
 enum VerificationCodeType {
@@ -1009,6 +1053,9 @@ model EmailOutbox {
   unsubscribedAt DateTime?
   markedAsSpamAt DateTime?
 
+  sequenceId             BigInt? @unique
+  shouldUpdateSequenceId Boolean @default(true)
+
   tenancy Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
 
   @@id([tenancyId, id])
@@ -1016,6 +1063,8 @@ model EmailOutbox {
   @@index([tenancyId, simpleStatus], map: "EmailOutbox_simple_status_tenancy_idx")
   @@index([tenancyId, status], map: "EmailOutbox_status_tenancy_idx")
   @@index([isQueued], map: "EmailOutbox_isQueued_idx")
+  @@index([tenancyId, sequenceId], name: "EmailOutbox_tenancyId_sequenceId_idx")
+  @@index([shouldUpdateSequenceId, tenancyId], name: "EmailOutbox_shouldUpdateSequenceId_idx")
 }
 
 model EmailOutboxProcessingMetadata {
@@ -1054,11 +1103,12 @@ model CliAuthAttempt {
   tenancyId String @db.Uuid
 
   id           String    @default(uuid()) @db.Uuid
-  pollingCode  String    @unique
-  loginCode    String    @unique
-  refreshToken String?
-  expiresAt    DateTime
-  usedAt       DateTime?
+  pollingCode      String    @unique
+  loginCode        String    @unique
+  refreshToken     String?
+  anonRefreshToken String?
+  expiresAt        DateTime
+  usedAt           DateTime?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -1075,8 +1125,13 @@ model UserNotificationPreference {
   enabled     Boolean
   projectUser ProjectUser @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
 
+  sequenceId             BigInt?  @unique
+  shouldUpdateSequenceId Boolean  @default(true)
+
   @@id([tenancyId, id])
   @@unique([tenancyId, projectUserId, notificationCategoryId])
+  @@index([shouldUpdateSequenceId, tenancyId], name: "UserNotificationPreference_shouldUpdateSequenceId_idx")
+  @@index([tenancyId, sequenceId], name: "UserNotificationPreference_tenancyId_sequenceId_idx")
 }
 
 model ThreadMessage {
@@ -1088,6 +1143,31 @@ model ThreadMessage {
   createdAt DateTime @default(now())
 
   @@id([tenancyId, id])
+}
+
+model AiConversation {
+  id            String   @id @default(uuid()) @db.Uuid
+  projectUserId String   @db.Uuid
+  projectId     String
+  project       Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  title         String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  messages      AiMessage[]
+
+  @@index([projectUserId, projectId, updatedAt(sort: Desc)])
+}
+
+model AiMessage {
+  id             String         @id @default(uuid()) @db.Uuid
+  conversationId String         @db.Uuid
+  position       Int
+  role           String
+  content        Json
+  createdAt      DateTime       @default(now())
+  conversation   AiConversation @relation(fields: [conversationId], references: [id], onDelete: Cascade)
+
+  @@index([conversationId, position])
 }
 
 enum CustomerType {

@@ -1,3 +1,4 @@
+import { recordExternalDbSyncRefreshTokenDeletionsForUser } from "@/lib/external-db-sync";
 import { getPrismaClientForTenancy, globalPrismaClient, retryTransaction } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -78,6 +79,12 @@ export const POST = createSmartRouteHandler({
     });
 
     // reset all other refresh tokens
+    await recordExternalDbSyncRefreshTokenDeletionsForUser(globalPrismaClient, {
+      tenancyId: tenancy.id,
+      projectUserId: user.id,
+      excludeRefreshToken: refreshToken?.[0],
+    });
+
     await globalPrismaClient.projectUserRefreshToken.deleteMany({
       where: {
         tenancyId: tenancy.id,

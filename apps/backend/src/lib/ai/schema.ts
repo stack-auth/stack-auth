@@ -15,6 +15,7 @@ export const requestBodySchema = yupObject({
     "email-assistant-draft",
     "create-dashboard",
     "run-query",
+    "build-analytics-query",
     "rewrite-template-source"
   ]).defined(),
   messages: yupArray(
@@ -24,6 +25,12 @@ export const requestBodySchema = yupObject({
     }).defined()
   ).defined().min(1),
   projectId: yupString().optional().nullable(),
+  mcpCallMetadata: yupObject({
+    toolName: yupString().defined(),
+    reason: yupString().defined(),
+    userPrompt: yupString().defined(),
+    conversationId: yupString().optional().nullable(),
+  }).optional().nullable(),
 });
 
 export type RequestBody = InferType<typeof requestBodySchema>;

@@ -1,5 +1,6 @@
+import { isLocalEmulatorEnabled } from "@/lib/local-emulator";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 
 export type ModelQuality = "dumb" | "smart" | "smartest";
 export type ModelSpeed = "slow" | "fast";
@@ -48,9 +49,24 @@ const MODEL_SELECTION_MATRIX: Record<
   },
 };
 
+// All unique model IDs referenced in the selection matrix, plus sonnet as the proxy default
+export const ALLOWED_MODEL_IDS: ReadonlySet<string> = new Set([
+  "anthropic/claude-sonnet-4.6",
+  ...Object.values(MODEL_SELECTION_MATRIX).flatMap(quality =>
+    Object.values(quality).flatMap(speed =>
+      Object.values(speed).map(config => config.modelId)
+    )
+  ),
+]);
+
 export function createOpenRouterProvider() {
-  const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY");
-  return createOpenRouter({ apiKey });
+  const baseURL = (getNodeEnvironment() === "development" || isLocalEmulatorEnabled())
+    ? "http://localhost:8102/api/latest/integrations/ai-proxy/v1"
+    : "https://api.stack-auth.com/api/latest/integrations/ai-proxy/v1";
+  return createOpenRouter({
+    apiKey: "forwarded",
+    baseURL,
+  });
 }
 
 export function selectModel(

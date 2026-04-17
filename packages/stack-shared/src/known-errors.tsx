@@ -1423,6 +1423,16 @@ const OAuthProviderAccessDenied = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const OAuthProviderTemporarilyUnavailable = createKnownErrorConstructor(
+  KnownError,
+  "OAUTH_PROVIDER_TEMPORARILY_UNAVAILABLE",
+  () => [
+    503,
+    "The OAuth provider is temporarily unavailable. Please try signing in again.",
+  ] as const,
+  () => [] as const,
+);
+
 const ContactChannelAlreadyUsedForAuthBySomeoneElse = createKnownErrorConstructor(
   KnownError,
   "CONTACT_CHANNEL_ALREADY_USED_FOR_AUTH_BY_SOMEONE_ELSE",
@@ -1958,6 +1968,7 @@ export const KnownErrors = {
   InvalidAppleCredentials,
   TeamPermissionNotFound,
   OAuthProviderAccessDenied,
+  OAuthProviderTemporarilyUnavailable,
   ContactChannelAlreadyUsedForAuthBySomeoneElse,
   InvalidPollingCodeError,
   ApiKeyNotValid,

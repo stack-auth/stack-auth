@@ -11,14 +11,28 @@ fi
 
 # ============= ENV VARS =============
 
-export STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY=${STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY:-$(openssl rand -base64 32)}
-export STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY=${STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY:-$(openssl rand -base64 32)}
-export STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY=${STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY:-$(openssl rand -base64 32)}
+if [ "$NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR" = "true" ]; then
+  for v in STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY; do
+    if [ -z "${!v:-}" ]; then
+      echo "$v must be set in local-emulator mode (injected by the QEMU VM)." >&2
+      exit 1
+    fi
+  done
+  export STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY
+else
+  export STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY=${STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY:-$(openssl rand -base64 32)}
+  export STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY=${STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY:-$(openssl rand -base64 32)}
+  export STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY=${STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY:-$(openssl rand -base64 32)}
+fi
 
 export NEXT_PUBLIC_STACK_PROJECT_ID=internal
 export NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=${STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY}
-export STACK_SECRET_SERVER_KEY=${STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY}
-export STACK_SUPER_SECRET_ADMIN_KEY=${STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY}
+if [ -n "${STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY:-}" ]; then
+  export STACK_SECRET_SERVER_KEY=${STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY}
+fi
+if [ -n "${STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY:-}" ]; then
+  export STACK_SUPER_SECRET_ADMIN_KEY=${STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY}
+fi
 
 export NEXT_PUBLIC_BROWSER_STACK_DASHBOARD_URL=${NEXT_PUBLIC_STACK_DASHBOARD_URL}
 export NEXT_PUBLIC_STACK_PORT_PREFIX=${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}
@@ -65,15 +79,56 @@ else
   cd ../..
 fi
 
+# ============= LOCAL EMULATOR: BOOTSTRAP INTERNAL API KEY SET =============
+# The build-time seed ran without any keys (the VM generates random ones on
+# first boot). The slim image strips apps/backend/dist so we can't re-run the
+# full seed here. Instead, targeted-upsert the internal api key set with the
+# VM-supplied keys:
+#   - pck: used by stack-cli to auth against /api/v1/internal/local-emulator/project
+#   - ssk/sak: required by the emulator's own dashboard (StackServerApp ctor
+#     throws without ssk). User-app flows don't use these — per-project
+#     credentials come from the /local-emulator/project route.
+if [ "$NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR" = "true" ] && [ -n "${STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY:-}" ] && [ -n "${STACK_DATABASE_CONNECTION_STRING:-}" ]; then
+  # Validate the keys are hex-only to defuse any SQL-injection risk (the VM
+  # generates them via `openssl rand -hex 32`, so this is an assert, not a filter).
+  for varname in STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY; do
+    val="${!varname:-}"
+    if [ -z "$val" ]; then
+      echo "ERROR: $varname is not set; refusing to bootstrap internal api key set." >&2
+      exit 1
+    fi
+    if ! printf '%s' "$val" | grep -Eq '^[0-9a-fA-F]+$'; then
+      echo "ERROR: $varname is not hex-only; refusing to bootstrap internal api key set." >&2
+      exit 1
+    fi
+  done
+  echo "Bootstrapping internal API key set (emulator runtime)..."
+  psql "$STACK_DATABASE_CONNECTION_STRING" -v ON_ERROR_STOP=1 <<SQL
+INSERT INTO "ApiKeySet" ("projectId", id, description, "expiresAt", "createdAt", "updatedAt", "publishableClientKey", "secretServerKey", "superSecretAdminKey")
+VALUES ('internal', '3142e763-b230-44b5-8636-aa62f7489c26', 'Internal API key set', '2099-12-31T23:59:59Z', NOW(), NOW(),
+        '${STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY}',
+        '${STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY}',
+        '${STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY}')
+ON CONFLICT ("projectId", id) DO UPDATE SET
+  "publishableClientKey" = EXCLUDED."publishableClientKey",
+  "secretServerKey" = EXCLUDED."secretServerKey",
+  "superSecretAdminKey" = EXCLUDED."superSecretAdminKey",
+  "updatedAt" = NOW();
+SQL
+fi
+
 # ============= ENV VARS =============
 
-# Create a working directory for our processed files
-# This is necessary because we need to replace the env vars in all files and we might want to run the seed script multiple times with different env vars.
-WORK_DIR="/tmp/processed"
+# Create a working directory for our processed files.
+# Keep this off /tmp so local-emulator config sharing can bind-mount /tmp
+# without pushing the whole runtime copy step onto the host filesystem.
+WORK_DIR="${STACK_RUNTIME_WORK_DIR:-/var/tmp/stack-runtime}"
 mkdir -p "$WORK_DIR"
 
-echo "Copying files to working directory..."
-cp -vr /app/. "$WORK_DIR"/.
+if [ "$WORK_DIR" != "/app" ]; then
+  echo "Copying files to working directory..."
+  cp -r /app/. "$WORK_DIR"/.
+fi
 
 # Find all files in the apps directory that contain a STACK_ENV_VAR_SENTINEL and extract the unique sentinel strings.
 echo "Finding unhandled sentinels..."

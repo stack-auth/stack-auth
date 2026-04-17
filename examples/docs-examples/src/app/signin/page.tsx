@@ -42,7 +42,7 @@
 //       setError('Please enter your password');
 //       return;
 //     }
-//     // this will redirect to app.urls.afterSignIn if successful, you can customize it in the StackServerApp constructor
+//     // this redirects to your configured post-sign-in destination on success
 //     const result = await app.signInWithCredential({ email, password });
 //     // It is better to handle each error code separately, but we will just show the error code directly for simplicity here
 //     if (result.status === 'error') {
@@ -73,7 +73,7 @@ export default function CustomCredentialSignIn() {
   const app = useStackApp();
 
   const onSubmit = async () => {
-    // this will redirect to app.urls.afterSignIn if successful, you can customize it in the StackServerApp constructor
+    // this redirects to your configured post-sign-in destination on success
     const result = await app.sendMagicLinkEmail(email);
     // It is better to handle each error code separately, but we will just show the error code directly for simplicity here
     if (result.status === 'error') {

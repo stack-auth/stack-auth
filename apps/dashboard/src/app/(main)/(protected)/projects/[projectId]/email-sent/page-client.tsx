@@ -134,7 +134,7 @@ export default function PageClient() {
         title="Sent"
         description="View email logs and domain reputation"
       >
-        <div className="flex gap-6">
+        <div data-walkthrough="emails-sent" className="flex gap-6">
           {/* Left side: Email Log with toggle inside card */}
           <div className="flex-1 flex flex-col gap-4">
             <DesignCard

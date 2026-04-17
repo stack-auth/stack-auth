@@ -217,3 +217,58 @@ it("should fail if an invalid redirect URL is provided", async ({ expect }) => {
     }
   `);
 });
+
+it("should fail if an invalid after_callback_redirect_url is provided", async ({ expect }) => {
+  const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
+    redirect: "manual",
+    query: {
+      ...await Auth.OAuth.getAuthorizeQuery(),
+      after_callback_redirect_url: "not-a-valid-url",
+    },
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "SCHEMA_ERROR",
+        "details": {
+          "message": deindent\`
+            Request validation failed on GET /api/v1/auth/oauth/authorize/spotify:
+              - query.after_callback_redirect_url is not a valid URL
+          \`,
+        },
+        "error": deindent\`
+          Request validation failed on GET /api/v1/auth/oauth/authorize/spotify:
+            - query.after_callback_redirect_url is not a valid URL
+        \`,
+      },
+      "headers": Headers {
+        "x-stack-known-error": "SCHEMA_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("should fail if an untrusted after_callback_redirect_url is provided", async ({ expect }) => {
+  const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
+    redirect: "manual",
+    query: {
+      ...await Auth.OAuth.getAuthorizeQuery(),
+      after_callback_redirect_url: "https://evil.example.com/post-auth",
+    },
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "REDIRECT_URL_NOT_WHITELISTED",
+        "error": "Redirect URL not whitelisted. Did you forget to add this domain to the trusted domains list on the Stack Auth dashboard?",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "REDIRECT_URL_NOT_WHITELISTED",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});

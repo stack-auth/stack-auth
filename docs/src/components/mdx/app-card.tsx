@@ -2,7 +2,7 @@
 
 import { ALL_APPS, AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { AppIcon, appSquarePaddingExpression, appSquareWidthExpression } from "@stackframe/stack-shared/dist/apps/apps-ui";
-import { BarChart3, ClipboardList, CreditCard, KeyRound, Mail, Mails, Rocket, ShieldEllipsis, Sparkles, Triangle, Tv, UserCog, Users, Vault, Webhook } from "lucide-react";
+import { BarChart3, ClipboardList, CreditCard, KeyRound, Mail, Mails, Rocket, ShieldCheck, ShieldEllipsis, Sparkles, Triangle, Tv, UserCog, Users, Vault, Webhook } from "lucide-react";
 import Link from "next/link";
 import { cn } from "../../lib/cn";
 
@@ -25,6 +25,7 @@ const APP_ICONS: Record<AppId, React.FunctionComponent<React.SVGProps<SVGSVGElem
   webhooks: Webhook,
   "tv-mode": Tv,
   "launch-checklist": Rocket,
+  "fraud-protection": ShieldCheck,
   catalyst: Sparkles,
   neon: createSvgIcon(() => (
     <path d="M 21.9999 3.6667 L 21.9999 16.1666 A 1.6667 1.6667 90 0 1 20.3333 17.8333 A 2.5 2.5 90 0 1 18.6666 16.9999 L 12.8333 10.3333 L 12.8333 20.3333 A 1.6667 1.6667 90 0 1 11.1666 21.9999 L 3.6667 21.9999 A 1.6667 1.6667 90 0 1 2 20.3333 L 2 3.6667 A 1.6667 1.6667 90 0 1 3.6667 2 L 20.3333 2 A 1.6667 1.6667 90 0 1 21.9999 3.6667 Z" />

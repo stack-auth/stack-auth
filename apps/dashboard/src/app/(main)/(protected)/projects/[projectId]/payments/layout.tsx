@@ -7,6 +7,7 @@ import { StripeConnectProvider } from "@/components/payments/stripe-connect-prov
 import { ActionDialog, Button, Card, CardContent, Typography } from "@/components/ui";
 import { useUpdateConfig } from "@/lib/config-update";
 import { cn } from "@/lib/utils";
+import { getPublicEnvVar } from "@/lib/env";
 import { ArrowRightIcon, ArrowsClockwiseIcon, ChartBarIcon, FlaskIcon, ShieldIcon, WalletIcon, WarningIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { ConnectNotificationBanner } from "@stripe/react-connect-js";
@@ -60,7 +61,9 @@ function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
     });
   };
 
-  if (!stripeAccountInfo) {
+  const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
+
+  if (!stripeAccountInfo && !isLocalEmulator) {
     return (
       <div className="mx-auto max-w-sm h-full flex items-center">
         <Card className="w-full">
@@ -171,7 +174,7 @@ function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
             </div>
           </div>
         </div>
-      ) : !stripeAccountInfo.details_submitted && (
+      ) : stripeAccountInfo && !stripeAccountInfo.details_submitted && (
         <div className="flex justify-center px-4 pt-4 sm:px-6 sm:pt-6">
           <div className={cn(
             "w-full max-w-[1250px] rounded-2xl p-4 sm:p-5",
@@ -235,16 +238,18 @@ function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
           </div>
         </div>
       )}
-      <div className={cn(bannerHasItems && "p-4", "flex justify-center")}>
-        <div style={{ maxWidth: 1250, width: '100%' }}>
-          <ConnectNotificationBanner
-            onNotificationsChange={({ total }) => setBannerHasItems(total > 0)}
-            collectionOptions={{
-              fields: "eventually_due",
-            }}
-          />
+      {getPublicEnvVar("NEXT_PUBLIC_STACK_IS_PREVIEW") !== "true" && getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") !== "true" && (
+        <div className={cn(bannerHasItems && "p-4", "flex justify-center")}>
+          <div style={{ maxWidth: 1250, width: '100%' }}>
+            <ConnectNotificationBanner
+              onNotificationsChange={({ total }) => setBannerHasItems(total > 0)}
+              collectionOptions={{
+                fields: "eventually_due",
+              }}
+            />
+          </div>
         </div>
-      </div>
+      )}
       {children}
     </StripeConnectProvider>
   );

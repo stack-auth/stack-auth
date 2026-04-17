@@ -61,6 +61,8 @@ dist
 .docusaurus
 .cache-loader
 **.tsbuildinfo
+docker/local-emulator/qemu/images
+docker/local-emulator/qemu/run
 
 .xata*
 
@@ -149,4 +151,3 @@ packages/stack/*
 !packages/react/package.json
 !packages/next/package.json
 !packages/stack/package.json
-

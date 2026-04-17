@@ -116,6 +116,10 @@ export function CursorBlastEffect({
     };
 
     const onClick = (event: MouseEvent) => {
+      if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+        return;
+      }
+
       const cfg = configRef.current;
       const now = performance.now();
 

@@ -14,11 +14,16 @@ async function main() {
 
   // Create openapi directory in Fumadocs project
   const fumaDocsOpenApiDir = path.resolve("../../docs/openapi");
+  const mintlifyOpenApiDir = path.resolve("../../docs-mintlify/openapi");
 
   // Ensure the openapi directory exists
   if (!fs.existsSync(fumaDocsOpenApiDir)) {
     console.log('Creating OpenAPI directory...');
     fs.mkdirSync(fumaDocsOpenApiDir, { recursive: true });
+  }
+  if (!fs.existsSync(mintlifyOpenApiDir)) {
+    console.log('Creating Mintlify OpenAPI directory...');
+    fs.mkdirSync(mintlifyOpenApiDir, { recursive: true });
   }
 
   // Generate OpenAPI specs for each audience (let parseOpenAPI handle the filtering)
@@ -33,7 +38,9 @@ async function main() {
     const suffix = filePath.slice(filePathPrefix.length);
     const midfix = suffix.slice(0, suffix.lastIndexOf("/route."));
     const importPath = `${importPathPrefix}${suffix}`;
-    const urlPath = midfix.replaceAll("[", "{").replaceAll("]", "}").replaceAll(/\/\(.*\)/g, "");
+    const urlPathRaw = midfix.replaceAll("[", "{").replaceAll("]", "}").replaceAll(/\/\(.*\)/g, "");
+    // OpenAPI path keys must not be empty (Mintlify and other tooling reject `""`).
+    const urlPath = urlPathRaw === "" ? "/" : urlPathRaw;
     const myModule = await import(importPath);
     const handlersByMethod = new Map(
       typedKeys(HTTP_METHODS).map(method => [method, myModule[method]] as const)
@@ -59,10 +66,15 @@ async function main() {
 
     console.log(`Generated ${Object.keys(openApiSchemaObject.paths || {}).length} endpoints for ${audience} audience`);
 
+    const audienceJson = JSON.stringify(openApiSchemaObject, null, 2);
     // Write JSON files for Fumadocs (they prefer JSON over YAML)
     writeFileSyncIfChanged(
       path.join(fumaDocsOpenApiDir, `${audience}.json`),
-      JSON.stringify(openApiSchemaObject, null, 2)
+      audienceJson
+    );
+    writeFileSyncIfChanged(
+      path.join(mintlifyOpenApiDir, `${audience}.json`),
+      audienceJson
     );
   }
 
@@ -71,9 +83,14 @@ async function main() {
     webhooks: webhookEvents,
   });
 
+  const webhooksJson = JSON.stringify(webhookOpenAPISchema, null, 2);
   writeFileSyncIfChanged(
     path.join(fumaDocsOpenApiDir, 'webhooks.json'),
-    JSON.stringify(webhookOpenAPISchema, null, 2)
+    webhooksJson
+  );
+  writeFileSyncIfChanged(
+    path.join(mintlifyOpenApiDir, 'webhooks.json'),
+    webhooksJson
   );
 
   console.log("Successfully updated Fumadocs OpenAPI schemas with proper audience filtering");

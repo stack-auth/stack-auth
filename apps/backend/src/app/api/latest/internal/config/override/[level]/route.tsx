@@ -17,12 +17,18 @@ import { LOCAL_EMULATOR_ENV_CONFIG_BLOCKED_MESSAGE, isLocalEmulatorProject } fro
 import { globalPrismaClient, rawQuery } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, migrateConfigOverride, projectConfigSchema } from "@stackframe/stack-shared/dist/config/schema";
-import { adaptSchema, adminAuthTypeSchema, branchConfigSourceSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, branchConfigSourceSchema, serverOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import * as yup from "yup";
 type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
 
 const levelSchema = yupString().oneOf(["project", "branch", "environment"]).defined();
+
+function assertServerAccessAllowed(accessType: "server" | "admin", level: yup.InferType<typeof levelSchema>) {
+  if (accessType === "server" && level !== "branch") {
+    throw new StatusError(StatusError.Forbidden, "Server access can only manage branch config overrides.");
+  }
+}
 
 function shouldEnqueueExternalDbSync(config: unknown): boolean {
   if (!config || typeof config !== "object") return false;
@@ -124,7 +130,7 @@ export const GET = createSmartRouteHandler({
   },
   request: yupObject({
     auth: yupObject({
-      type: adminAuthTypeSchema,
+      type: serverOrHigherAuthTypeSchema,
       tenancy: adaptSchema,
     }).defined(),
     params: yupObject({
@@ -139,6 +145,8 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async (req) => {
+    assertServerAccessAllowed(req.auth.type, req.params.level);
+
     const levelConfig = levelConfigs[req.params.level];
     const config = await levelConfig.get({
       projectId: req.auth.tenancy.project.id,
@@ -194,7 +202,7 @@ async function warnOnValidationFailure(
       captureError("config-override-validation-warning", `Config override validation warning for project ${options.projectId} (this may not be a logic error, but rather a client/implementation issue — e.g. dot notation into non-existent record entries): ${validationResult.error}`);
     }
   } catch (e) {
-    captureError("config-override-validation-check-failed", new StackAssertionError("Config override validation check failed. This may be really bad! Make sure to check the error and the config.", { cause: e, options, levelConfig }));
+    captureError("config-override-validation-check-failed", new StackAssertionError("Config override validation check failed. This may be really bad! Make sure to check the error and the config.", { cause: e, options }));
   }
 }
 
@@ -207,7 +215,7 @@ export const PUT = createSmartRouteHandler({
   },
   request: yupObject({
     auth: yupObject({
-      type: adminAuthTypeSchema,
+      type: serverOrHigherAuthTypeSchema,
       tenancy: adaptSchema,
     }).defined(),
     params: yupObject({
@@ -221,6 +229,8 @@ export const PUT = createSmartRouteHandler({
   }),
   response: writeResponseSchema,
   handler: async (req) => {
+    assertServerAccessAllowed(req.auth.type, req.params.level);
+
     if (req.params.level === "environment" && await isLocalEmulatorProject(req.auth.tenancy.project.id)) {
       throw new StatusError(StatusError.BadRequest, LOCAL_EMULATOR_ENV_CONFIG_BLOCKED_MESSAGE);
     }
@@ -266,7 +276,7 @@ export const PATCH = createSmartRouteHandler({
   },
   request: yupObject({
     auth: yupObject({
-      type: adminAuthTypeSchema,
+      type: serverOrHigherAuthTypeSchema,
       tenancy: adaptSchema,
     }).defined(),
     params: yupObject({
@@ -278,6 +288,8 @@ export const PATCH = createSmartRouteHandler({
   }),
   response: writeResponseSchema,
   handler: async (req) => {
+    assertServerAccessAllowed(req.auth.type, req.params.level);
+
     if (req.params.level === "environment" && await isLocalEmulatorProject(req.auth.tenancy.project.id)) {
       throw new StatusError(StatusError.BadRequest, LOCAL_EMULATOR_ENV_CONFIG_BLOCKED_MESSAGE);
     }
