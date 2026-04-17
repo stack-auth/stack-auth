@@ -544,10 +544,7 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
       ? BORDER_BASE_SIZE
       : 0;
 
-  const [hexSelectedCountry, setHexSelectedCountry] = useState<{ code: string, name: string } | null>(null);
-  const [polygonSelectedCountry, setPolygonSelectedCountry] = useState<{ code: string, name: string } | null>(null);
-  // Use polygon for tooltip (no gaps), hex just for visual highlighting
-  const selectedCountry = polygonSelectedCountry;
+  const [selectedCountry, setSelectedCountry] = useState<{ code: string, name: string } | null>(null);
   const [previousSelectedCountry, setPreviousSelectedCountry] = useState<{ code: string, name: string } | null>(null);
   const lastSelectedCountry = selectedCountry ?? previousSelectedCountry;
   const [borderSizeFromGlobe, setBorderSizeFromGlobe] = useState<number>(0);
@@ -557,20 +554,76 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
   const selectedCountryRef = useRef(selectedCountry);
   selectedCountryRef.current = selectedCountry;
 
-  // Sync hex highlighting with polygon hover (for visual consistency)
-  useEffect(() => {
-    if (polygonSelectedCountry) {
-      setHexSelectedCountry(polygonSelectedCountry);
-    } else {
-      setHexSelectedCountry(null);
+  const pendingCountryClearTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const clearPendingCountryClear = () => {
+    if (pendingCountryClearTimeoutRef.current != null) {
+      clearTimeout(pendingCountryClearTimeoutRef.current);
+      pendingCountryClearTimeoutRef.current = null;
     }
-  }, [polygonSelectedCountry]);
+  };
+
+  const updateSelectedCountry = (
+    country: { code: string, name: string } | null,
+    options?: { immediateClear?: boolean },
+  ) => {
+    clearPendingCountryClear();
+
+    if (country != null) {
+      setSelectedCountry((current) => {
+        if (current?.code === country.code && current.name === country.name) {
+          return current;
+        }
+        return country;
+      });
+      return;
+    }
+
+    if (options?.immediateClear) {
+      setSelectedCountry((current) => current == null ? current : null);
+      return;
+    }
+
+    // The layered polygon + hex scene can momentarily report `null` while the
+    // pointer is still over the same country. Absorb those one-frame gaps so
+    // the highlight stays stable, but still clear immediately on mouse-leave.
+    pendingCountryClearTimeoutRef.current = setTimeout(() => {
+      pendingCountryClearTimeoutRef.current = null;
+      setSelectedCountry((current) => current == null ? current : null);
+    }, 48);
+  };
+
+  const updateSelectedCountryFromPointerPosition = (clientX: number, clientY: number) => {
+    const globe = globeRef.current;
+    if (!globe) {
+      return;
+    }
+
+    // Derive hover from the globe surface point under the pointer instead of
+    // the rendered polygon hit-test. That avoids dead spots from hex margins
+    // or mesh triangulation gaps inside large countries like Canada.
+    const canvasRect = globe.renderer().domElement.getBoundingClientRect();
+    const globeCoords = globe.toGlobeCoords(clientX - canvasRect.left, clientY - canvasRect.top);
+    if (globeCoords == null) {
+      updateSelectedCountry(null);
+      return;
+    }
+
+    updateSelectedCountry(findCountryAt(globeCoords.lat, globeCoords.lng, countries.features));
+  };
 
   useEffect(() => {
     if (selectedCountry) {
       setPreviousSelectedCountry(selectedCountry);
     }
   }, [selectedCountry]);
+
+  useEffect(() => {
+    return () => {
+      if (pendingCountryClearTimeoutRef.current != null) {
+        clearTimeout(pendingCountryClearTimeoutRef.current);
+      }
+    };
+  }, []);
 
   const resumeRenderIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const resumeRender = () => {
@@ -1026,14 +1079,14 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
               }}
               onMouseMoveCapture={(e) => {
                 resumeRender();
+                updateSelectedCountryFromPointerPosition(e.clientX, e.clientY);
                 if (tooltipRef.current) {
                   tooltipRef.current.style.transform = `translate(${e.clientX}px, ${e.clientY}px)`;
                 }
               }}
               onMouseLeave={() => {
                 // Only clear when leaving the entire globe area
-                setHexSelectedCountry(null);
-                setPolygonSelectedCountry(null);
+                updateSelectedCountry(null, { immediateClear: true });
                 if (globeRef.current) {
                   //globeRef.current.controls().autoRotate = true;
                 }
@@ -1117,16 +1170,6 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
                     polygonCapColor={() => "transparent"}
                     polygonSideColor={() => "transparent"}
                     polygonAltitude={0.001}
-                    onPolygonHover={(d: any) => {
-                      resumeRender();
-                      // Polygons have no gaps, so use them for tooltip control
-                      if (d) {
-                        setPolygonSelectedCountry({ code: d.properties.ISO_A2_EH, name: d.properties.NAME });
-                      } else {
-                        // Clear immediately when hovering over ocean/non-land
-                        setPolygonSelectedCountry(null);
-                      }
-                    }}
 
                     hexPolygonsData={countries.features}
                     hexPolygonResolution={3}
@@ -1160,20 +1203,6 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
                       const s = 50 + 50 * scaled;
                       const l = 90 - 40 * scaled;
                       return `hsl(${h}, ${s}%, ${l}%)`;
-                    }}
-                    onHexPolygonHover={(p: any) => {
-                      resumeRender();
-                      // Mirror the polygon hover handler: hexes render on top of
-                      // polygons so pointer motion alternates between the two —
-                      // both must write to the same `polygonSelectedCountry`
-                      // state or the tooltip flickers as the pointer travels
-                      // hex → polygon → hex.
-                      if (p) {
-                        setPolygonSelectedCountry({ code: p.properties.ISO_A2_EH, name: p.properties.NAME });
-                      } else {
-                        // Clear immediately when hovering over ocean/non-land
-                        setPolygonSelectedCountry(null);
-                      }
                     }}
                     onHexPolygonClick={(polygon: any, event: MouseEvent, coords: { lat: number, lng: number, altitude: number }) => {
                     resumeRender();
