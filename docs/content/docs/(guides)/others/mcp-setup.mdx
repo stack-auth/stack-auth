@@ -10,6 +10,8 @@ title: MCP Setup
 
 Set up Stack Auth's Model Context Protocol (MCP) server to get intelligent code assistance in your development environment.
 
+The MCP server exposes a single tool, **`ask_stack_auth`**, which sends your question to the same Stack Auth documentation AI used on [docs.stack-auth.com](https://docs.stack-auth.com).
+
 <Tabs defaultValue="cursor">
   <TabsList>
     <TabsTrigger value="cursor">Cursor</TabsTrigger>
@@ -231,10 +233,9 @@ by [![Hypr MCP](https://hyprmcp.com/hyprmcp_20px.svg)](https://hyprmcp.com/)`}</
 
 ## Features
 
-The Stack Auth MCP server provides:
+The Stack Auth MCP server exposes **`ask_stack_auth`**, which answers questions using live documentation retrieval and the docs-site AI assistant. It can help with:
 
-- **Authentication Flow Assistance**: Get help implementing sign-in, sign-up, and user management
-- **API Documentation**: Access Stack Auth API documentation and examples
-- **Code Generation**: Generate boilerplate code for common authentication patterns
-- **Best Practices**: Receive guidance on security best practices and implementation patterns
+- **Authentication flows**: Sign-in, sign-up, and user management
+- **APIs and SDKs**: Endpoints, examples, and framework integration
+- **Best practices**: Security and configuration guidance
 

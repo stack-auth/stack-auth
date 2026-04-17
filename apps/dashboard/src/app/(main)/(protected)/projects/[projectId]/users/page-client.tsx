@@ -24,7 +24,14 @@ function TotalUsersDisplay() {
       {metrics.total_users}
       {anonymousUsersCount > 0 ? (
         <>
-          {" "}(+ {anonymousUsersCount} anonymous)
+          {" "}(+ {anonymousUsersCount}{" "}
+          <SimpleTooltip
+            inline
+            tooltip="When analytics are enabled, visitors that have not signed up yet are counted as anonymous users."
+          >
+            <span className="underline decoration-dotted underline-offset-2">anonymous visitors</span>
+          </SimpleTooltip>
+          )
         </>
       ) : null}
     </>
@@ -38,7 +45,8 @@ export default function PageClient() {
     search?: string,
     includeRestricted: boolean,
     includeAnonymous: boolean,
-  }>({ includeRestricted: false, includeAnonymous: false });
+    onlyAnonymous: boolean,
+  }>({ includeRestricted: false, includeAnonymous: false, onlyAnonymous: false });
   const [refreshKey, setRefreshKey] = useState(0);
 
   const handleRefresh = async () => {
@@ -85,7 +93,9 @@ export default function PageClient() {
           </Alert>
         )}
 
-        <UserTable key={refreshKey} onFilterChange={setExportOptions} />
+        <div data-walkthrough="users-table">
+          <UserTable key={refreshKey} onFilterChange={setExportOptions} />
+        </div>
       </PageLayout>
     </AppEnabledGuard>
   );

@@ -1,5 +1,14 @@
 import { ProviderType } from "@stackframe/stack-shared/dist/utils/oauth";
 import type { GenericQueryCtx, UserIdentity } from "convex/server";
+export type {
+  DefaultHandlerUrlTarget,
+  HandlerPageUrls,
+  HandlerRedirectUrls,
+  HandlerUrlOptions,
+  HandlerUrlTarget,
+  HandlerUrls,
+  ResolvedHandlerUrls,
+} from "@stackframe/stack-shared/dist/interface/handler-urls";
 
 export type RedirectToOptions = {
   replace?: boolean,
@@ -52,7 +61,7 @@ export type ConvexCtx =
 
 export type GetCurrentPartialUserOptions<HasTokenStore> =
   & {
-    or?: 'return-null' | 'anonymous',  // note: unlike normal getUser, 'anonymous' still returns null sometimes (eg. if no token is present)
+    or?: 'return-null' | 'anonymous-if-exists',  // note: unlike normal getUser, 'anonymous' still returns null sometimes (eg. if no token is present)
     tokenStore?: TokenStoreInit,
   }
   & (
@@ -84,27 +93,6 @@ export type TokenStoreInit<HasTokenStore extends boolean = boolean> =
   )
   : HasTokenStore extends false ? null
   : TokenStoreInit<true> | TokenStoreInit<false>;
-
-export type HandlerUrls = {
-  handler: string,
-  signIn: string,
-  signUp: string,
-  afterSignIn: string,
-  afterSignUp: string,
-  signOut: string,
-  afterSignOut: string,
-  emailVerification: string,
-  passwordReset: string,
-  forgotPassword: string,
-  home: string,
-  oauthCallback: string,
-  magicLinkCallback: string,
-  accountSettings: string,
-  teamInvitation: string,
-  mfa: string,
-  error: string,
-  onboarding: string,
-}
 
 export type OAuthScopesOnSignIn = {
   [key in ProviderType]: string[];

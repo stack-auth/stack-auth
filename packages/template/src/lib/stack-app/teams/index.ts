@@ -126,7 +126,7 @@ export type ServerTeam = {
   removeUser(userId: string): Promise<void>,
 } & Team;
 
-export type ServerListUsersOptions = {
+type ServerListUsersOptionsBase = {
   cursor?: string,
   limit?: number,
   orderBy?: 'signedUpAt',
@@ -143,6 +143,20 @@ export type ServerListUsersOptions = {
    */
   includeAnonymous?: boolean,
 };
+
+export type ServerListUsersOptions = ServerListUsersOptionsBase & (
+  {
+    onlyAnonymous?: false,
+  } | {
+  /**
+   * Whether to return only anonymous users.
+   * Requires includeAnonymous=true.
+   * Defaults to false.
+   */
+    onlyAnonymous: true,
+    includeAnonymous: true,
+  }
+);
 
 export type ServerTeamCreateOptions = TeamCreateOptions & {
   creatorUserId?: string,

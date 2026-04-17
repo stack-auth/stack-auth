@@ -1,4 +1,6 @@
 import { Button } from "@/components/ui";
+import { SelectField } from "@/components/form-fields";
+import { getPublicEnvVar } from "@/lib/env";
 import { CheckCircleIcon, EnvelopeIcon, GithubLogoIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { useUser } from "@stackframe/stack";
 import { emailSchema } from "@stackframe/stack-shared/dist/schema-fields";
@@ -13,10 +15,12 @@ export function FeedbackForm() {
   const [submitting, setSubmitting] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState<string>('');
+  const baseUrl = getPublicEnvVar('NEXT_PUBLIC_STACK_API_URL') || '';
 
   const domainFormSchema = yup.object({
     name: yup.string()
       .optional()
+      .max(100)
       .label("Your name")
       .default(user?.displayName),
     email: emailSchema
@@ -27,8 +31,25 @@ export function FeedbackForm() {
     message: yup.string()
       .defined()
       .nonEmpty("Message is required")
+      .max(5000)
       .label("Message")
       .meta({ type: "textarea" }),
+    feedback_type: yup.string()
+      .oneOf(["feedback", "bug"] as const)
+      .defined()
+      .label("Type")
+      .default("feedback")
+      .meta({
+        stackFormFieldRender: (props: any) => (
+          <SelectField
+            {...props}
+            options={[
+              { value: "feedback", label: "Feedback" },
+              { value: "bug", label: "Bug Report" },
+            ]}
+          />
+        ),
+      }),
   });
 
   const handleSubmit = async (values: yup.InferType<typeof domainFormSchema>) => {
@@ -36,26 +57,31 @@ export function FeedbackForm() {
     setErrorMessage('');
 
     try {
-      const response = await fetch("https://api.web3forms.com/submit", {
+      // Auth headers are sent when available so the backend can include user
+      // context in the email, but the endpoint accepts unauthenticated requests.
+      const headers: Record<string, string> = { "Content-Type": "application/json" };
+      if (user) {
+        const authJson = await user.getAuthJson();
+        headers["X-Stack-Access-Type"] = "client";
+        headers["X-Stack-Project-Id"] = "internal";
+        headers["X-Stack-Publishable-Client-Key"] = getPublicEnvVar("NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY") ?? "";
+        if (authJson.accessToken) {
+          headers["X-Stack-Access-Token"] = authJson.accessToken;
+        }
+      }
+      const response = await fetch(`${baseUrl}/api/v1/internal/feedback`, {
         method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Accept: "application/json",
-        },
-        body: JSON.stringify({
-          ...values,
-          type: "feedback",
-          // This is the public access key, so no worries
-          access_key: '4f0fc468-c066-4e45-95c1-546fd652a44a',
-        }, null, 2),
+        headers,
+        body: JSON.stringify(values),
       });
 
       if (!response.ok) {
-        throw new Error(`Failed to send feedback: ${response.status} ${response.statusText}`);
+        const responseText = await response.text();
+        throw new Error(responseText || `Failed to send feedback: ${response.status} ${response.statusText}`);
       }
 
-      const result = await response.json();
-      if (!result.success) {
+      const result: { success?: boolean, message?: string } = await response.json();
+      if (result.success !== true) {
         throw new Error(result.message || 'Failed to send feedback');
       }
 

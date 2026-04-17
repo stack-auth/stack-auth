@@ -1,0 +1,286 @@
+name: Build & Publish QEMU Emulator Images
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+    paths:
+      - 'docker/local-emulator/**'
+      - '.github/workflows/qemu-emulator-build.yaml'
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish images to GitHub Releases'
+        type: boolean
+        default: false
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
+
+env:
+  EMULATOR_IMAGE_NAME: stack-local-emulator
+  EMULATOR_IMAGE_DIR: ${{ github.workspace }}/docker/local-emulator/qemu/images
+  EMULATOR_RUN_DIR: ${{ github.workspace }}/docker/local-emulator/qemu/run
+
+jobs:
+  build:
+    name: Build QEMU Image (${{ matrix.arch }})
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # amd64 runs natively under KVM on ubicloud's amd64 runner.
+          - arch: amd64
+            runner: ubicloud-standard-8
+          # arm64 runs under cross-arch TCG on ubicloud's amd64 runner.
+          # No KVM for arm64 guests on an amd64 host; cortex-a72 + V8
+          # --jitless together sidestep the SIGTRAPs that cross-arch TCG
+          # hits on aggressive arm64 JIT code. Smoke test is still skipped
+          # because the backend can't come up reliably under cross-arch
+          # TCG within any sane window.
+          - arch: arm64
+            runner: ubicloud-standard-8
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Set up QEMU user-mode emulation
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install QEMU dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 qemu-system-arm qemu-kvm qemu-utils genisoimage socat qemu-efi-aarch64
+
+      - name: Enable KVM access
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' \
+            | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm || true
+          ls -la /dev/kvm || echo "no /dev/kvm present"
+          if [ -w /dev/kvm ]; then
+            echo "KVM is writable — hardware acceleration will be used"
+          else
+            echo "WARNING: /dev/kvm is not writable — will fall back to TCG (very slow)"
+          fi
+
+      - name: Build QEMU image
+        run: |
+          chmod +x docker/local-emulator/qemu/build-image.sh
+          EMULATOR_PROVISION_TIMEOUT=6000 \
+            docker/local-emulator/qemu/build-image.sh ${{ matrix.arch }}
+
+      - name: Generate emulator env
+        run: node docker/local-emulator/generate-env-development.mjs
+
+      # arm64 runs under cross-arch TCG on an amd64 runner; the backend's
+      # V8 TurboFan JIT re-triggers the SIGTRAPs we dodge in migrations
+      # with --no-opt, and even if it didn't, boot is too slow under TCG
+      # to verify in any sane window. amd64 KVM already exercises the
+      # service stack; real arm64 hosts have KVM for end-users.
+      - name: Start emulator and verify
+        if: matrix.arch == 'amd64'
+        run: |
+          chmod +x docker/local-emulator/qemu/run-emulator.sh
+          EMULATOR_ARCH=${{ matrix.arch }} \
+          EMULATOR_READY_TIMEOUT=3200 \
+            docker/local-emulator/qemu/run-emulator.sh start
+
+      - name: Verify services are healthy
+        if: matrix.arch == 'amd64'
+        run: |
+          EMULATOR_ARCH=${{ matrix.arch }} \
+            docker/local-emulator/qemu/run-emulator.sh status
+
+      - name: Stop emulator
+        if: always() && matrix.arch == 'amd64'
+        run: |
+          EMULATOR_ARCH=${{ matrix.arch }} \
+            docker/local-emulator/qemu/run-emulator.sh stop
+
+      - name: Package image
+        run: |
+          BASE_IMG="docker/local-emulator/qemu/images/stack-emulator-${{ matrix.arch }}.qcow2"
+          cp "$BASE_IMG" "stack-emulator-${{ matrix.arch }}.qcow2"
+
+      - name: Upload image artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: qemu-emulator-${{ matrix.arch }}
+          path: stack-emulator-${{ matrix.arch }}.qcow2
+          retention-days: 30
+          compression-level: 0
+
+  test:
+    name: Smoke Test (${{ matrix.arch }})
+    needs: build
+    runs-on: ubicloud-standard-8
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Install QEMU dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y qemu-system-x86 qemu-utils genisoimage socat
+
+      - name: Download built image
+        uses: actions/download-artifact@v4
+        with:
+          name: qemu-emulator-${{ matrix.arch }}
+          path: docker/local-emulator/qemu/images/
+
+      - name: Generate emulator env
+        run: node docker/local-emulator/generate-env-development.mjs
+
+      - name: Start emulator from artifact
+        run: |
+          chmod +x docker/local-emulator/qemu/run-emulator.sh docker/local-emulator/qemu/common.sh
+          EMULATOR_ARCH=${{ matrix.arch }} \
+          EMULATOR_READY_TIMEOUT=600 \
+            docker/local-emulator/qemu/run-emulator.sh start
+
+      - name: Verify services are healthy
+        run: |
+          EMULATOR_ARCH=${{ matrix.arch }} \
+            docker/local-emulator/qemu/run-emulator.sh status
+
+      - name: Smoke test — backend health
+        run: curl -sf http://localhost:26701/health?db=1
+
+      - name: Smoke test — dashboard reachable
+        run: curl -sf -o /dev/null -w "HTTP %{http_code}\n" http://localhost:26700/handler/sign-in
+
+      - name: Smoke test — MinIO health
+        run: curl -sf http://localhost:26702/minio/health/live
+
+      - name: Smoke test — Inbucket reachable
+        run: curl -sf -o /dev/null -w "HTTP %{http_code}\n" http://localhost:26703/
+
+      - name: Stop emulator
+        if: always()
+        run: |
+          EMULATOR_ARCH=${{ matrix.arch }} \
+            docker/local-emulator/qemu/run-emulator.sh stop
+
+      - name: Print serial log on failure
+        if: failure()
+        run: tail -100 docker/local-emulator/qemu/run/vm/serial.log 2>/dev/null || true
+
+  publish:
+    name: Publish to GitHub Releases
+    needs: [build, test]
+    if: github.ref == 'refs/heads/main' || github.ref == 'refs/heads/dev' || (github.event_name == 'workflow_dispatch' && inputs.publish)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release
+          SHORT_SHA="${GITHUB_SHA:0:8}"
+          BRANCH="${GITHUB_REF_NAME}"
+          DATE="$(date -u +%Y%m%d)"
+          TAG="emulator-${BRANCH}-${DATE}-${SHORT_SHA}"
+          echo "RELEASE_TAG=${TAG}" >> "$GITHUB_ENV"
+          echo "SHORT_SHA=${SHORT_SHA}" >> "$GITHUB_ENV"
+
+          for f in artifacts/qemu-emulator-*/*.qcow2; do
+            cp "$f" release/
+          done
+
+          cat > release-notes.md <<EOF
+          ## QEMU Emulator Images
+
+          Built from \`${BRANCH}\` @ \`${GITHUB_SHA}\`
+
+          ### Images
+          | File | Description |
+          |------|-------------|
+          | \`stack-emulator-arm64.qcow2\` | ARM64 emulator image |
+          | \`stack-emulator-amd64.qcow2\` | AMD64 emulator image |
+
+          ### Usage
+          \`\`\`bash
+          stack emulator pull
+          stack emulator start
+          \`\`\`
+          EOF
+
+          ls -lh release/
+
+      - name: Create or update GitHub Release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TITLE="QEMU Emulator — ${{ github.ref_name }} ($SHORT_SHA)"
+
+          if gh release view "$RELEASE_TAG" >/dev/null 2>&1; then
+            gh release edit "$RELEASE_TAG" \
+              --title "$TITLE" \
+              --notes-file release-notes.md \
+              --prerelease
+            gh release upload "$RELEASE_TAG" release/* --clobber
+          else
+            gh release create "$RELEASE_TAG" \
+              --title "$TITLE" \
+              --notes-file release-notes.md \
+              --prerelease \
+              release/*
+          fi
+
+      - name: Update latest tag for branch
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          LATEST_TAG="emulator-${{ github.ref_name }}-latest"
+          TITLE="QEMU Emulator — ${{ github.ref_name }} (latest)"
+          NOTES="Latest emulator images from \`${{ github.ref_name }}\`. Auto-updated on each build."
+
+          if gh release view "$LATEST_TAG" >/dev/null 2>&1; then
+            gh release edit "$LATEST_TAG" \
+              --draft \
+              --prerelease \
+              --target "${{ github.sha }}" \
+              --title "$TITLE" \
+              --notes "$NOTES"
+          else
+            gh release create "$LATEST_TAG" \
+              --draft \
+              --prerelease \
+              --target "${{ github.sha }}" \
+              --title "$TITLE" \
+              --notes "$NOTES" \
+            || gh release edit "$LATEST_TAG" \
+              --draft \
+              --prerelease \
+              --target "${{ github.sha }}" \
+              --title "$TITLE" \
+              --notes "$NOTES"
+          fi
+
+          gh release upload "$LATEST_TAG" release/* --clobber
+          gh release edit "$LATEST_TAG" --draft=false --prerelease

@@ -1016,6 +1016,7 @@ export function CmdKTrigger() {
   return (
     <div className="hidden sm:block">
       <button
+        data-walkthrough-nav="cmdk-trigger"
         onClick={() => window.dispatchEvent(new CustomEvent("spotlight-toggle"))}
         className={cn(
           "group relative flex items-center gap-3 h-9 px-4 min-w-[240px]",

@@ -1,5 +1,5 @@
 import { it } from "../../../../../../helpers";
-import { niceBackendFetch } from "../../../../../backend-helpers";
+import { Auth, niceBackendFetch } from "../../../../../backend-helpers";
 
 it("should return 'waiting' status when polling for a new CLI auth attempt", async ({ expect }) => {
   // First, create a new CLI auth attempt
@@ -78,4 +78,71 @@ it("should return 'expired' status when polling for an expired CLI auth attempt"
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
+});
+
+it("should work with client access type for polling", async ({ expect }) => {
+  const createResponse = await niceBackendFetch("/api/latest/auth/cli", {
+    method: "POST",
+    accessType: "client",
+    body: {},
+  });
+
+  const pollResponse = await niceBackendFetch("/api/latest/auth/cli/poll", {
+    method: "POST",
+    accessType: "client",
+    body: { polling_code: createResponse.body.polling_code },
+  });
+
+  expect(pollResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "status": "waiting" },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("should complete the full initiate → poll → complete → poll cycle with client access type", async ({ expect }) => {
+  const createResponse = await niceBackendFetch("/api/latest/auth/cli", {
+    method: "POST",
+    accessType: "client",
+    body: {},
+  });
+  expect(createResponse.status).toBe(200);
+
+  const poll1 = await niceBackendFetch("/api/latest/auth/cli/poll", {
+    method: "POST",
+    accessType: "client",
+    body: { polling_code: createResponse.body.polling_code },
+  });
+  expect(poll1.body.status).toBe("waiting");
+
+  const user = await Auth.fastSignUp();
+  const completeResponse = await niceBackendFetch("/api/latest/auth/cli/complete", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      login_code: createResponse.body.login_code,
+      mode: "complete",
+      refresh_token: user.refreshToken,
+    },
+  });
+  expect(completeResponse.status).toBe(200);
+  expect(completeResponse.body.success).toBe(true);
+
+  const poll2 = await niceBackendFetch("/api/latest/auth/cli/poll", {
+    method: "POST",
+    accessType: "client",
+    body: { polling_code: createResponse.body.polling_code },
+  });
+  expect(poll2.status).toBe(201);
+  expect(poll2.body.status).toBe("success");
+  expect(poll2.body.refresh_token).toBe(user.refreshToken);
+
+  const poll3 = await niceBackendFetch("/api/latest/auth/cli/poll", {
+    method: "POST",
+    accessType: "client",
+    body: { polling_code: createResponse.body.polling_code },
+  });
+  expect(poll3.body.status).toBe("used");
 });

@@ -41,6 +41,49 @@ type ExternalDbSyncTarget =
     tenancyId: string,
     projectUserId: string,
     contactChannelId: string,
+  }
+  | {
+    tableName: "Team",
+    tenancyId: string,
+    teamId: string,
+  }
+  | {
+    tableName: "TeamMember",
+    tenancyId: string,
+    projectUserId: string,
+    teamId: string,
+  }
+  | {
+    tableName: "TeamMemberDirectPermission",
+    tenancyId: string,
+    permissionDbId: string,
+  }
+  | {
+    tableName: "ProjectUserDirectPermission",
+    tenancyId: string,
+    permissionDbId: string,
+  }
+  | {
+    tableName: "UserNotificationPreference",
+    tenancyId: string,
+    notificationPreferenceId: string,
+  }
+  | {
+    tableName: "VerificationCode_TEAM_INVITATION",
+    tenancyId: string,
+    verificationCodeProjectId: string,
+    verificationCodeBranchId: string,
+    verificationCodeId: string,
+  }
+  | {
+    tableName: "ProjectUserRefreshToken",
+    tenancyId: string,
+    refreshTokenId: string,
+  }
+  | {
+    tableName: "ProjectUserOAuthAccount",
+    tenancyId: string,
+    oauthAccountId: string,
   };
 
 type ExternalDbType = NonNullable<NonNullable<CompleteConfig["dbSync"]["externalDatabases"][string]>["type"]>;
@@ -80,9 +123,9 @@ export async function recordExternalDbSyncDeletion(
   target: ExternalDbSyncTarget,
 ): Promise<void> {
   assertUuid(target.tenancyId, "tenancyId");
-  assertUuid(target.projectUserId, "projectUserId");
 
   if (target.tableName === "ProjectUser") {
+    assertUuid(target.projectUserId, "projectUserId");
     const insertedCount = await tx.$executeRaw(Prisma.sql`
       INSERT INTO "DeletedRow" (
         "id",
@@ -115,43 +158,341 @@ export async function recordExternalDbSyncDeletion(
     return;
   }
 
-  assertUuid(target.contactChannelId, "contactChannelId");
-  const insertedCount = await tx.$executeRaw(Prisma.sql`
-    INSERT INTO "DeletedRow" (
-      "id",
-      "tenancyId",
-      "tableName",
-      "primaryKey",
-      "data",
-      "deletedAt",
-      "shouldUpdateSequenceId"
-    )
-    SELECT
-      gen_random_uuid(),
-      "tenancyId",
-      'ContactChannel',
-      jsonb_build_object(
-        'tenancyId',
+  if (target.tableName === "ContactChannel") {
+    assertUuid(target.projectUserId, "projectUserId");
+    assertUuid(target.contactChannelId, "contactChannelId");
+    const insertedCount = await tx.$executeRaw(Prisma.sql`
+      INSERT INTO "DeletedRow" (
+        "id",
         "tenancyId",
-        'projectUserId',
-        "projectUserId",
-        'id',
-        "id"
-      ),
-      to_jsonb("ContactChannel".*),
-      NOW(),
-      TRUE
-    FROM "ContactChannel"
-    WHERE "tenancyId" = ${target.tenancyId}::uuid
-      AND "projectUserId" = ${target.projectUserId}::uuid
-      AND "id" = ${target.contactChannelId}::uuid
-    FOR UPDATE
-  `);
+        "tableName",
+        "primaryKey",
+        "data",
+        "deletedAt",
+        "shouldUpdateSequenceId"
+      )
+      SELECT
+        gen_random_uuid(),
+        "tenancyId",
+        'ContactChannel',
+        jsonb_build_object(
+          'tenancyId',
+          "tenancyId",
+          'projectUserId',
+          "projectUserId",
+          'id',
+          "id"
+        ),
+        to_jsonb("ContactChannel".*),
+        NOW(),
+        TRUE
+      FROM "ContactChannel"
+      WHERE "tenancyId" = ${target.tenancyId}::uuid
+        AND "projectUserId" = ${target.projectUserId}::uuid
+        AND "id" = ${target.contactChannelId}::uuid
+      FOR UPDATE
+    `);
 
-  if (insertedCount !== 1) {
-    throw new StackAssertionError(
-      `Expected to insert 1 DeletedRow entry for ContactChannel, got ${insertedCount}.`
-    );
+    if (insertedCount !== 1) {
+      throw new StackAssertionError(
+        `Expected to insert 1 DeletedRow entry for ContactChannel, got ${insertedCount}.`
+      );
+    }
+    return;
+  }
+
+  if (target.tableName === "Team") {
+    assertUuid(target.teamId, "teamId");
+    const insertedCount = await tx.$executeRaw(Prisma.sql`
+      INSERT INTO "DeletedRow" (
+        "id",
+        "tenancyId",
+        "tableName",
+        "primaryKey",
+        "data",
+        "deletedAt",
+        "shouldUpdateSequenceId"
+      )
+      SELECT
+        gen_random_uuid(),
+        "tenancyId",
+        'Team',
+        jsonb_build_object('tenancyId', "tenancyId", 'teamId', "teamId"),
+        to_jsonb("Team".*),
+        NOW(),
+        TRUE
+      FROM "Team"
+      WHERE "tenancyId" = ${target.tenancyId}::uuid
+        AND "teamId" = ${target.teamId}::uuid
+      FOR UPDATE
+    `);
+
+    if (insertedCount !== 1) {
+      throw new StackAssertionError(
+        `Expected to insert 1 DeletedRow entry for Team, got ${insertedCount}.`
+      );
+    }
+    return;
+  }
+
+  if (target.tableName === "TeamMember") {
+    assertUuid(target.projectUserId, "projectUserId");
+    assertUuid(target.teamId, "teamId");
+    const insertedCount = await tx.$executeRaw(Prisma.sql`
+      INSERT INTO "DeletedRow" (
+        "id",
+        "tenancyId",
+        "tableName",
+        "primaryKey",
+        "data",
+        "deletedAt",
+        "shouldUpdateSequenceId"
+      )
+      SELECT
+        gen_random_uuid(),
+        "tenancyId",
+        'TeamMember',
+        jsonb_build_object('tenancyId', "tenancyId", 'projectUserId', "projectUserId", 'teamId', "teamId"),
+        to_jsonb("TeamMember".*),
+        NOW(),
+        TRUE
+      FROM "TeamMember"
+      WHERE "tenancyId" = ${target.tenancyId}::uuid
+        AND "projectUserId" = ${target.projectUserId}::uuid
+        AND "teamId" = ${target.teamId}::uuid
+      FOR UPDATE
+    `);
+
+    if (insertedCount !== 1) {
+      throw new StackAssertionError(
+        `Expected to insert 1 DeletedRow entry for TeamMember, got ${insertedCount}.`
+      );
+    }
+    return;
+  }
+
+  if (target.tableName === "TeamMemberDirectPermission") {
+    assertUuid(target.permissionDbId, "permissionDbId");
+    const insertedCount = await tx.$executeRaw(Prisma.sql`
+      INSERT INTO "DeletedRow" (
+        "id",
+        "tenancyId",
+        "tableName",
+        "primaryKey",
+        "data",
+        "deletedAt",
+        "shouldUpdateSequenceId"
+      )
+      SELECT
+        gen_random_uuid(),
+        "tenancyId",
+        'TeamMemberDirectPermission',
+        jsonb_build_object(
+          'tenancyId', "tenancyId",
+          'projectUserId', "projectUserId",
+          'teamId', "teamId",
+          'permissionId', "permissionId"
+        ),
+        to_jsonb("TeamMemberDirectPermission".*),
+        NOW(),
+        TRUE
+      FROM "TeamMemberDirectPermission"
+      WHERE "id" = ${target.permissionDbId}::uuid
+        AND "tenancyId" = ${target.tenancyId}::uuid
+      FOR UPDATE
+    `);
+
+    if (insertedCount !== 1) {
+      throw new StackAssertionError(
+        `Expected to insert 1 DeletedRow entry for TeamMemberDirectPermission, got ${insertedCount}.`
+      );
+    }
+    return;
+  }
+
+  if (target.tableName === "ProjectUserDirectPermission") {
+    assertUuid(target.permissionDbId, "permissionDbId");
+    const insertedCount = await tx.$executeRaw(Prisma.sql`
+      INSERT INTO "DeletedRow" (
+        "id",
+        "tenancyId",
+        "tableName",
+        "primaryKey",
+        "data",
+        "deletedAt",
+        "shouldUpdateSequenceId"
+      )
+      SELECT
+        gen_random_uuid(),
+        "tenancyId",
+        'ProjectUserDirectPermission',
+        jsonb_build_object(
+          'tenancyId', "tenancyId",
+          'projectUserId', "projectUserId",
+          'permissionId', "permissionId"
+        ),
+        to_jsonb("ProjectUserDirectPermission".*),
+        NOW(),
+        TRUE
+      FROM "ProjectUserDirectPermission"
+      WHERE "id" = ${target.permissionDbId}::uuid
+        AND "tenancyId" = ${target.tenancyId}::uuid
+      FOR UPDATE
+    `);
+
+    if (insertedCount !== 1) {
+      throw new StackAssertionError(
+        `Expected to insert 1 DeletedRow entry for ProjectUserDirectPermission, got ${insertedCount}.`
+      );
+    }
+    return;
+  }
+
+  if (target.tableName === "UserNotificationPreference") {
+    assertUuid(target.notificationPreferenceId, "notificationPreferenceId");
+    const insertedCount = await tx.$executeRaw(Prisma.sql`
+      INSERT INTO "DeletedRow" (
+        "id",
+        "tenancyId",
+        "tableName",
+        "primaryKey",
+        "data",
+        "deletedAt",
+        "shouldUpdateSequenceId"
+      )
+      SELECT
+        gen_random_uuid(),
+        "tenancyId",
+        'UserNotificationPreference',
+        jsonb_build_object(
+          'tenancyId', "tenancyId",
+          'id', "id"
+        ),
+        to_jsonb("UserNotificationPreference".*),
+        NOW(),
+        TRUE
+      FROM "UserNotificationPreference"
+      WHERE "id" = ${target.notificationPreferenceId}::uuid
+        AND "tenancyId" = ${target.tenancyId}::uuid
+      FOR UPDATE
+    `);
+
+    if (insertedCount !== 1) {
+      throw new StackAssertionError(
+        `Expected to insert 1 DeletedRow entry for UserNotificationPreference, got ${insertedCount}.`
+      );
+    }
+    return;
+  }
+
+  if (target.tableName === "ProjectUserRefreshToken") {
+    assertUuid(target.refreshTokenId, "refreshTokenId");
+    const insertedCount = await tx.$executeRaw(Prisma.sql`
+      INSERT INTO "DeletedRow" (
+        "id",
+        "tenancyId",
+        "tableName",
+        "primaryKey",
+        "data",
+        "deletedAt",
+        "shouldUpdateSequenceId"
+      )
+      SELECT
+        gen_random_uuid(),
+        "tenancyId",
+        'ProjectUserRefreshToken',
+        jsonb_build_object('tenancyId', "tenancyId", 'id', "id"),
+        to_jsonb("ProjectUserRefreshToken".*),
+        NOW(),
+        TRUE
+      FROM "ProjectUserRefreshToken"
+      WHERE "tenancyId" = ${target.tenancyId}::uuid
+        AND "id" = ${target.refreshTokenId}::uuid
+      FOR UPDATE
+    `);
+
+    if (insertedCount !== 1) {
+      throw new StackAssertionError(
+        `Expected to insert 1 DeletedRow entry for ProjectUserRefreshToken, got ${insertedCount}.`
+      );
+    }
+    return;
+  }
+
+  if (target.tableName === "ProjectUserOAuthAccount") {
+    assertUuid(target.oauthAccountId, "oauthAccountId");
+    const insertedCount = await tx.$executeRaw(Prisma.sql`
+      INSERT INTO "DeletedRow" (
+        "id",
+        "tenancyId",
+        "tableName",
+        "primaryKey",
+        "data",
+        "deletedAt",
+        "shouldUpdateSequenceId"
+      )
+      SELECT
+        gen_random_uuid(),
+        "tenancyId",
+        'ProjectUserOAuthAccount',
+        jsonb_build_object('tenancyId', "tenancyId", 'id', "id"),
+        to_jsonb("ProjectUserOAuthAccount".*),
+        NOW(),
+        TRUE
+      FROM "ProjectUserOAuthAccount"
+      WHERE "tenancyId" = ${target.tenancyId}::uuid
+        AND "id" = ${target.oauthAccountId}::uuid
+      FOR UPDATE
+    `);
+
+    if (insertedCount !== 1) {
+      throw new StackAssertionError(
+        `Expected to insert 1 DeletedRow entry for ProjectUserOAuthAccount, got ${insertedCount}.`
+      );
+    }
+    return;
+  }
+
+  {
+    const _verificationCodeTarget: { tableName: "VerificationCode_TEAM_INVITATION" } = target;
+    assertNonEmptyString(target.verificationCodeProjectId, "verificationCodeProjectId");
+    assertNonEmptyString(target.verificationCodeBranchId, "verificationCodeBranchId");
+    assertUuid(target.verificationCodeId, "verificationCodeId");
+    const insertedCount = await tx.$executeRaw(Prisma.sql`
+      INSERT INTO "DeletedRow" (
+        "id",
+        "tenancyId",
+        "tableName",
+        "primaryKey",
+        "data",
+        "deletedAt",
+        "shouldUpdateSequenceId"
+      )
+      SELECT
+        gen_random_uuid(),
+        "Tenancy"."id",
+        'VerificationCode_TEAM_INVITATION',
+        jsonb_build_object('id', "VerificationCode"."id"),
+        to_jsonb("VerificationCode".*),
+        NOW(),
+        TRUE
+      FROM "VerificationCode"
+      JOIN "Tenancy" ON "Tenancy"."projectId" = "VerificationCode"."projectId"
+        AND "Tenancy"."branchId" = "VerificationCode"."branchId"
+      WHERE "Tenancy"."id" = ${target.tenancyId}::uuid
+        AND "VerificationCode"."projectId" = ${target.verificationCodeProjectId}
+        AND "VerificationCode"."branchId" = ${target.verificationCodeBranchId}
+        AND "VerificationCode"."id" = ${target.verificationCodeId}::uuid
+        AND "VerificationCode"."type" = 'TEAM_INVITATION'
+      FOR UPDATE OF "VerificationCode"
+    `);
+
+    if (insertedCount !== 1) {
+      throw new StackAssertionError(
+        `Expected to insert 1 DeletedRow entry for VerificationCode_TEAM_INVITATION, got ${insertedCount}.`
+      );
+    }
+    return;
   }
 }
 
@@ -191,6 +532,390 @@ export async function recordExternalDbSyncContactChannelDeletionsForUser(
       NOW(),
       TRUE
     FROM "ContactChannel"
+    WHERE "tenancyId" = ${options.tenancyId}::uuid
+      AND "projectUserId" = ${options.projectUserId}::uuid
+    FOR UPDATE
+  `);
+}
+
+export async function recordExternalDbSyncTeamMemberDeletionsForTeam(
+  tx: ExternalDbSyncClient,
+  options: {
+    tenancyId: string,
+    teamId: string,
+  },
+): Promise<void> {
+  assertUuid(options.tenancyId, "tenancyId");
+  assertUuid(options.teamId, "teamId");
+
+  await tx.$executeRaw(Prisma.sql`
+    INSERT INTO "DeletedRow" (
+      "id",
+      "tenancyId",
+      "tableName",
+      "primaryKey",
+      "data",
+      "deletedAt",
+      "shouldUpdateSequenceId"
+    )
+    SELECT
+      gen_random_uuid(),
+      "tenancyId",
+      'TeamMember',
+      jsonb_build_object('tenancyId', "tenancyId", 'projectUserId', "projectUserId", 'teamId', "teamId"),
+      to_jsonb("TeamMember".*),
+      NOW(),
+      TRUE
+    FROM "TeamMember"
+    WHERE "tenancyId" = ${options.tenancyId}::uuid
+      AND "teamId" = ${options.teamId}::uuid
+    FOR UPDATE
+  `);
+}
+
+export async function recordExternalDbSyncTeamPermissionDeletionsForTeamMember(
+  tx: ExternalDbSyncClient,
+  options: {
+    tenancyId: string,
+    projectUserId: string,
+    teamId: string,
+  },
+): Promise<void> {
+  assertUuid(options.tenancyId, "tenancyId");
+  assertUuid(options.projectUserId, "projectUserId");
+  assertUuid(options.teamId, "teamId");
+
+  await tx.$executeRaw(Prisma.sql`
+    INSERT INTO "DeletedRow" (
+      "id",
+      "tenancyId",
+      "tableName",
+      "primaryKey",
+      "data",
+      "deletedAt",
+      "shouldUpdateSequenceId"
+    )
+    SELECT
+      gen_random_uuid(),
+      "tenancyId",
+      'TeamMemberDirectPermission',
+      jsonb_build_object(
+        'tenancyId', "tenancyId",
+        'projectUserId', "projectUserId",
+        'teamId', "teamId",
+        'permissionId', "permissionId"
+      ),
+      to_jsonb("TeamMemberDirectPermission".*),
+      NOW(),
+      TRUE
+    FROM "TeamMemberDirectPermission"
+    WHERE "tenancyId" = ${options.tenancyId}::uuid
+      AND "projectUserId" = ${options.projectUserId}::uuid
+      AND "teamId" = ${options.teamId}::uuid
+    FOR UPDATE
+  `);
+}
+
+export async function recordExternalDbSyncTeamPermissionDeletionsForTeam(
+  tx: ExternalDbSyncClient,
+  options: {
+    tenancyId: string,
+    teamId: string,
+  },
+): Promise<void> {
+  assertUuid(options.tenancyId, "tenancyId");
+  assertUuid(options.teamId, "teamId");
+
+  await tx.$executeRaw(Prisma.sql`
+    INSERT INTO "DeletedRow" (
+      "id",
+      "tenancyId",
+      "tableName",
+      "primaryKey",
+      "data",
+      "deletedAt",
+      "shouldUpdateSequenceId"
+    )
+    SELECT
+      gen_random_uuid(),
+      "tenancyId",
+      'TeamMemberDirectPermission',
+      jsonb_build_object(
+        'tenancyId', "tenancyId",
+        'projectUserId', "projectUserId",
+        'teamId', "teamId",
+        'permissionId', "permissionId"
+      ),
+      to_jsonb("TeamMemberDirectPermission".*),
+      NOW(),
+      TRUE
+    FROM "TeamMemberDirectPermission"
+    WHERE "tenancyId" = ${options.tenancyId}::uuid
+      AND "teamId" = ${options.teamId}::uuid
+    FOR UPDATE
+  `);
+}
+
+export async function recordExternalDbSyncTeamPermissionDeletionsForUser(
+  tx: ExternalDbSyncClient,
+  options: {
+    tenancyId: string,
+    projectUserId: string,
+  },
+): Promise<void> {
+  assertUuid(options.tenancyId, "tenancyId");
+  assertUuid(options.projectUserId, "projectUserId");
+
+  await tx.$executeRaw(Prisma.sql`
+    INSERT INTO "DeletedRow" (
+      "id",
+      "tenancyId",
+      "tableName",
+      "primaryKey",
+      "data",
+      "deletedAt",
+      "shouldUpdateSequenceId"
+    )
+    SELECT
+      gen_random_uuid(),
+      "tenancyId",
+      'TeamMemberDirectPermission',
+      jsonb_build_object(
+        'tenancyId', "tenancyId",
+        'projectUserId', "projectUserId",
+        'teamId', "teamId",
+        'permissionId', "permissionId"
+      ),
+      to_jsonb("TeamMemberDirectPermission".*),
+      NOW(),
+      TRUE
+    FROM "TeamMemberDirectPermission"
+    WHERE "tenancyId" = ${options.tenancyId}::uuid
+      AND "projectUserId" = ${options.projectUserId}::uuid
+    FOR UPDATE
+  `);
+}
+
+export async function recordExternalDbSyncTeamInvitationDeletionsForTeam(
+  tx: ExternalDbSyncClient,
+  options: {
+    tenancyId: string,
+    teamId: string,
+  },
+): Promise<void> {
+  assertUuid(options.tenancyId, "tenancyId");
+  assertUuid(options.teamId, "teamId");
+
+  await tx.$executeRaw(Prisma.sql`
+    INSERT INTO "DeletedRow" (
+      "id",
+      "tenancyId",
+      "tableName",
+      "primaryKey",
+      "data",
+      "deletedAt",
+      "shouldUpdateSequenceId"
+    )
+    SELECT
+      gen_random_uuid(),
+      "Tenancy"."id",
+      'VerificationCode_TEAM_INVITATION',
+      jsonb_build_object('id', "VerificationCode"."id"),
+      to_jsonb("VerificationCode".*),
+      NOW(),
+      TRUE
+    FROM "VerificationCode"
+    JOIN "Tenancy" ON "Tenancy"."projectId" = "VerificationCode"."projectId"
+      AND "Tenancy"."branchId" = "VerificationCode"."branchId"
+    WHERE "Tenancy"."id" = ${options.tenancyId}::uuid
+      AND "VerificationCode"."type" = 'TEAM_INVITATION'
+      AND "VerificationCode"."data"->>'team_id' = ${options.teamId}
+    FOR UPDATE OF "VerificationCode"
+  `);
+}
+
+export async function recordExternalDbSyncTeamMemberDeletionsForUser(
+  tx: ExternalDbSyncClient,
+  options: {
+    tenancyId: string,
+    projectUserId: string,
+  },
+): Promise<void> {
+  assertUuid(options.tenancyId, "tenancyId");
+  assertUuid(options.projectUserId, "projectUserId");
+
+  await tx.$executeRaw(Prisma.sql`
+    INSERT INTO "DeletedRow" (
+      "id",
+      "tenancyId",
+      "tableName",
+      "primaryKey",
+      "data",
+      "deletedAt",
+      "shouldUpdateSequenceId"
+    )
+    SELECT
+      gen_random_uuid(),
+      "tenancyId",
+      'TeamMember',
+      jsonb_build_object('tenancyId', "tenancyId", 'projectUserId', "projectUserId", 'teamId', "teamId"),
+      to_jsonb("TeamMember".*),
+      NOW(),
+      TRUE
+    FROM "TeamMember"
+    WHERE "tenancyId" = ${options.tenancyId}::uuid
+      AND "projectUserId" = ${options.projectUserId}::uuid
+    FOR UPDATE
+  `);
+}
+
+export async function recordExternalDbSyncProjectPermissionDeletionsForUser(
+  tx: ExternalDbSyncClient,
+  options: {
+    tenancyId: string,
+    projectUserId: string,
+  },
+): Promise<void> {
+  assertUuid(options.tenancyId, "tenancyId");
+  assertUuid(options.projectUserId, "projectUserId");
+
+  await tx.$executeRaw(Prisma.sql`
+    INSERT INTO "DeletedRow" (
+      "id",
+      "tenancyId",
+      "tableName",
+      "primaryKey",
+      "data",
+      "deletedAt",
+      "shouldUpdateSequenceId"
+    )
+    SELECT
+      gen_random_uuid(),
+      "tenancyId",
+      'ProjectUserDirectPermission',
+      jsonb_build_object(
+        'tenancyId', "tenancyId",
+        'projectUserId', "projectUserId",
+        'permissionId', "permissionId"
+      ),
+      to_jsonb("ProjectUserDirectPermission".*),
+      NOW(),
+      TRUE
+    FROM "ProjectUserDirectPermission"
+    WHERE "tenancyId" = ${options.tenancyId}::uuid
+      AND "projectUserId" = ${options.projectUserId}::uuid
+    FOR UPDATE
+  `);
+}
+
+export async function recordExternalDbSyncNotificationPreferenceDeletionsForUser(
+  tx: ExternalDbSyncClient,
+  options: {
+    tenancyId: string,
+    projectUserId: string,
+  },
+): Promise<void> {
+  assertUuid(options.tenancyId, "tenancyId");
+  assertUuid(options.projectUserId, "projectUserId");
+
+  await tx.$executeRaw(Prisma.sql`
+    INSERT INTO "DeletedRow" (
+      "id",
+      "tenancyId",
+      "tableName",
+      "primaryKey",
+      "data",
+      "deletedAt",
+      "shouldUpdateSequenceId"
+    )
+    SELECT
+      gen_random_uuid(),
+      "tenancyId",
+      'UserNotificationPreference',
+      jsonb_build_object(
+        'tenancyId', "tenancyId",
+        'id', "id"
+      ),
+      to_jsonb("UserNotificationPreference".*),
+      NOW(),
+      TRUE
+    FROM "UserNotificationPreference"
+    WHERE "tenancyId" = ${options.tenancyId}::uuid
+      AND "projectUserId" = ${options.projectUserId}::uuid
+    FOR UPDATE
+  `);
+}
+
+export async function recordExternalDbSyncRefreshTokenDeletionsForUser(
+  tx: ExternalDbSyncClient,
+  options: {
+    tenancyId: string,
+    projectUserId: string,
+    excludeRefreshToken?: string,
+  },
+): Promise<void> {
+  assertUuid(options.tenancyId, "tenancyId");
+  assertUuid(options.projectUserId, "projectUserId");
+
+  const excludeCondition = options.excludeRefreshToken
+    ? Prisma.sql`AND "refreshToken" != ${options.excludeRefreshToken}`
+    : Prisma.sql``;
+
+  await tx.$executeRaw(Prisma.sql`
+    INSERT INTO "DeletedRow" (
+      "id",
+      "tenancyId",
+      "tableName",
+      "primaryKey",
+      "data",
+      "deletedAt",
+      "shouldUpdateSequenceId"
+    )
+    SELECT
+      gen_random_uuid(),
+      "tenancyId",
+      'ProjectUserRefreshToken',
+      jsonb_build_object('tenancyId', "tenancyId", 'id', "id"),
+      to_jsonb("ProjectUserRefreshToken".*),
+      NOW(),
+      TRUE
+    FROM "ProjectUserRefreshToken"
+    WHERE "tenancyId" = ${options.tenancyId}::uuid
+      AND "projectUserId" = ${options.projectUserId}::uuid
+      ${excludeCondition}
+    FOR UPDATE
+  `);
+}
+
+export async function recordExternalDbSyncOAuthAccountDeletionsForUser(
+  tx: ExternalDbSyncClient,
+  options: {
+    tenancyId: string,
+    projectUserId: string,
+  },
+): Promise<void> {
+  assertUuid(options.tenancyId, "tenancyId");
+  assertUuid(options.projectUserId, "projectUserId");
+
+  await tx.$executeRaw(Prisma.sql`
+    INSERT INTO "DeletedRow" (
+      "id",
+      "tenancyId",
+      "tableName",
+      "primaryKey",
+      "data",
+      "deletedAt",
+      "shouldUpdateSequenceId"
+    )
+    SELECT
+      gen_random_uuid(),
+      "tenancyId",
+      'ProjectUserOAuthAccount',
+      jsonb_build_object('tenancyId', "tenancyId", 'id', "id"),
+      to_jsonb("ProjectUserOAuthAccount".*),
+      NOW(),
+      TRUE
+    FROM "ProjectUserOAuthAccount"
     WHERE "tenancyId" = ${options.tenancyId}::uuid
       AND "projectUserId" = ${options.projectUserId}::uuid
     FOR UPDATE
@@ -325,7 +1050,7 @@ async function pushRowsToExternalDb(
   }
 }
 
-function getInternalDbFetchQuery(mapping: DbSyncMapping, dbType: ExternalDbType) {
+function getInternalDbFetchQuery(mapping: DbSyncMapping) {
   return mapping.internalDbFetchQuery;
 }
 
@@ -343,11 +1068,18 @@ function normalizeClickhouseBoolean(value: unknown, label: string): number {
   throw new StackAssertionError(`${label} must be a boolean or 0/1. Received: ${JSON.stringify(value)}`);
 }
 
+function normalizeClickhouseNullableBoolean(value: unknown, label: string): number | null {
+  if (value === null || value === undefined) {
+    return null;
+  }
+  return normalizeClickhouseBoolean(value, label);
+}
+
 function parseSequenceId(value: unknown, mappingId: string): number | null {
   if (value == null) {
     return null;
   }
-  const seqNum = typeof value === "bigint" ? Number(value) : Number(value);
+  const seqNum = Number(value);
   if (!Number.isFinite(seqNum)) {
     throw new StackAssertionError(
       `Invalid sequence_id for mapping ${mappingId}: ${JSON.stringify(value)}`
@@ -372,6 +1104,64 @@ async function ensureClickhouseSchema(
   }
 }
 
+// Map of target table name -> column normalizers for ClickHouse
+// 'json' columns get JSON.stringify, 'boolean' columns get normalizeClickhouseBoolean, 'bigint' columns get Number()
+export const CLICKHOUSE_COLUMN_NORMALIZERS: Record<string, Record<string, 'json' | 'boolean' | 'nullable_boolean' | 'bigint'>> = {
+  users: {
+    client_metadata: 'json',
+    client_read_only_metadata: 'json',
+    server_metadata: 'json',
+    primary_email_verified: 'boolean',
+    is_anonymous: 'boolean',
+    restricted_by_admin: 'boolean',
+    sync_is_deleted: 'boolean',
+  },
+  contact_channels: {
+    is_primary: 'boolean',
+    is_verified: 'boolean',
+    used_for_auth: 'boolean',
+    sync_is_deleted: 'boolean',
+  },
+  teams: {
+    client_metadata: 'json',
+    client_read_only_metadata: 'json',
+    server_metadata: 'json',
+    sync_is_deleted: 'boolean',
+  },
+  team_member_profiles: {
+    sync_is_deleted: 'boolean',
+  },
+  team_permissions: {
+    sync_is_deleted: 'boolean',
+  },
+  team_invitations: {
+    expires_at_millis: 'bigint',
+    sync_is_deleted: 'boolean',
+  },
+  email_outboxes: {
+    is_high_priority: 'boolean',
+    is_transactional: 'nullable_boolean',
+    can_have_delivery_info: 'nullable_boolean',
+    skipped_details: 'json',
+    is_paused: 'boolean',
+    sync_is_deleted: 'boolean',
+  },
+  project_permissions: {
+    sync_is_deleted: 'boolean',
+  },
+  notification_preferences: {
+    enabled: 'boolean',
+    sync_is_deleted: 'boolean',
+  },
+  refresh_tokens: {
+    is_impersonation: 'boolean',
+    sync_is_deleted: 'boolean',
+  },
+  connected_accounts: {
+    sync_is_deleted: 'boolean',
+  },
+};
+
 async function pushRowsToClickhouse(
   client: ClickHouseClient,
   tableName: string,
@@ -389,6 +1179,10 @@ async function pushRowsToClickhouse(
 
   const sampleRow = newRows[0] ?? throwErr("Expected at least one row for ClickHouse sync.");
   const orderedKeys = Object.keys(omit(sampleRow, ["tenancyId"]));
+
+  // Derive the target table name from the full tableName (e.g. "analytics_internal.users" -> "users")
+  const targetTable = tableName.includes('.') ? tableName.split('.').pop()! : tableName;
+  const normalizers = CLICKHOUSE_COLUMN_NORMALIZERS[targetTable] ?? {};
 
   const normalizedRows = newRows.map((row) => {
     const tenancyIdValue = row.tenancyId;
@@ -427,17 +1221,27 @@ async function pushRowsToClickhouse(
         `sync_sequence_id must be defined for ClickHouse sync. Mapping: ${mappingId}`
       );
     }
-    return {
+
+    const normalized: Record<string, unknown> = {
       ...rest,
       sync_sequence_id: sequenceId,
-      client_metadata: JSON.stringify(rest.client_metadata),
-      client_read_only_metadata: JSON.stringify(rest.client_read_only_metadata),
-      server_metadata: JSON.stringify(rest.server_metadata),
-      primary_email_verified: normalizeClickhouseBoolean(rest.primary_email_verified, "primary_email_verified"),
-      is_anonymous: normalizeClickhouseBoolean(rest.is_anonymous, "is_anonymous"),
-      restricted_by_admin: normalizeClickhouseBoolean(rest.restricted_by_admin, "restricted_by_admin"),
-      sync_is_deleted: normalizeClickhouseBoolean(rest.sync_is_deleted, "sync_is_deleted"),
     };
+
+    for (const [col, type] of Object.entries(normalizers)) {
+      if (col in normalized) {
+        if (type === 'json') {
+          normalized[col] = JSON.stringify(normalized[col]);
+        } else if (type === 'nullable_boolean') {
+          normalized[col] = normalizeClickhouseNullableBoolean(normalized[col], col);
+        } else if (type === 'bigint') {
+          normalized[col] = Number(normalized[col]);
+        } else {
+          normalized[col] = normalizeClickhouseBoolean(normalized[col], col);
+        }
+      }
+    }
+
+    return normalized;
   });
 
   await client.insert({
@@ -523,7 +1327,7 @@ async function syncPostgresMapping(
   assertNonEmptyString(mappingId, "mappingId");
   assertNonEmptyString(mapping.targetTable, "mapping.targetTable");
   assertUuid(tenancyId, "tenancyId");
-  const fetchQuery = getInternalDbFetchQuery(mapping, "postgres");
+  const fetchQuery = getInternalDbFetchQuery(mapping);
   const updateQuery = mapping.externalDbUpdateQueries.postgres;
   const tableName = mapping.targetTable;
   assertNonEmptyString(fetchQuery, "internalDbFetchQuery");
@@ -628,8 +1432,6 @@ async function syncClickhouseMapping(
   }
 
   const clickhouseTableName = `analytics_internal.${mapping.targetTable}`;
-  await ensureClickhouseSchema(client, tableSchema, clickhouseTableName);
-
   let lastSequenceId = await getClickhouseLastSyncedSequenceId(client, tenancyId, mappingId);
 
   const BATCH_LIMIT = 1000;

@@ -1,3 +1,4 @@
+import { MAX_IMAGE_BYTES_PER_FILE, MAX_IMAGES_PER_MESSAGE } from "@stackframe/stack-shared/dist/ai/image-limits";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { describe } from "vitest";
 import { it } from "../../../../helpers";
@@ -132,6 +133,26 @@ describe("AI Query Endpoint - Validation", () => {
     expect(response.body).toEqual(expect.stringContaining("Invalid tool names"));
   });
 
+  it("rejects project-scoped AI requests outside internal project auth context", async ({ expect }) => {
+    const { projectId } = await Project.createAndSwitch();
+
+    const response = await niceBackendFetch("/api/v1/ai/query/generate", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        quality: "smart",
+        speed: "fast",
+        tools: [],
+        systemPrompt: "command-center-ask-ai",
+        messages: [{ role: "user", content: "test" }],
+        projectId,
+      },
+    });
+
+    expect(response.status).toBe(403);
+    expect(response.body).toEqual(expect.stringContaining("You do not have access to this project"));
+  });
+
   it("rejects missing systemPrompt field", async ({ expect }) => {
     const response = await niceBackendFetch("/api/v1/ai/query/generate", {
       method: "POST",
@@ -196,6 +217,59 @@ describe("AI Query Endpoint - Validation", () => {
 
     expect(response.status).toBe(400);
     expect(response.body).toMatchObject({ code: "SCHEMA_ERROR", error: expect.stringContaining("messages") });
+  });
+
+  it("rejects user messages with too many image attachments", async ({ expect }) => {
+    const response = await niceBackendFetch("/api/v1/ai/query/generate", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        quality: "smart",
+        speed: "fast",
+        tools: [],
+        systemPrompt: "command-center-ask-ai",
+        messages: [
+          {
+            role: "user",
+            content: new Array(MAX_IMAGES_PER_MESSAGE + 1).fill(null).map(() => ({
+              type: "image",
+              image: "data:image/png;base64,AA==",
+            })),
+          },
+        ],
+      },
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual(expect.stringContaining(`Maximum ${MAX_IMAGES_PER_MESSAGE} images per message.`));
+  });
+
+  it("rejects user messages with oversized image attachments", async ({ expect }) => {
+    const oversizedBase64 = "A".repeat(Math.ceil(((MAX_IMAGE_BYTES_PER_FILE + 1) * 4) / 3));
+    const response = await niceBackendFetch("/api/v1/ai/query/generate", {
+      method: "POST",
+      accessType: "admin",
+      body: {
+        quality: "smart",
+        speed: "fast",
+        tools: [],
+        systemPrompt: "command-center-ask-ai",
+        messages: [
+          {
+            role: "user",
+            content: [
+              {
+                type: "image",
+                image: `data:image/png;base64,${oversizedBase64}`,
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    expect(response.status).toBe(400);
+    expect(response.body).toEqual(expect.stringContaining("Image exceeds"));
   });
 
 });

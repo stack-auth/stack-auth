@@ -1,0 +1,381 @@
+---
+title: "ApiKey"
+description: "Reference for the ApiKey type for programmatic backend access."
+sidebarTitle: "ApiKey"
+mode: "wide"
+---
+
+import {
+  AsideSection,
+  ClickableTableOfContents,
+  CollapsibleTypesSection,
+  ContentSection,
+  MethodAside,
+  MethodContent,
+  MethodLayout,
+  MethodReturns,
+} from "/snippets/sdk-type-components.jsx";
+
+export const ApiKeySection = (props) => (
+  <CollapsibleTypesSection
+    badge={
+      <Badge color="green" size="sm" shape="pill">
+        apiKey
+      </Badge>
+    }
+    {...props}
+  />
+);
+
+`ApiKey` represents an authentication token that allows programmatic access to your application's backend. API keys can be associated with individual users or teams.
+
+On this page:
+
+- [`ApiKey`](#apikey)
+- Types:
+  - [`UserApiKey`](#userapikey)
+  - [`TeamApiKey`](#teamapikey)
+
+---
+
+# `ApiKey`
+
+API keys provide a way for users to authenticate with your backend services without using their primary credentials. They can be created for individual users or for teams, allowing programmatic access to your application.
+
+API keys can be obtained through:
+
+- [`user.createApiKey()`](/sdk/types/user#currentusercreateapikeyoptions)
+- [`user.listApiKeys()`](/sdk/types/user#currentuserlistapikeys)
+- [`user.useApiKeys()`](/sdk/types/user#currentuseruseapikeys) (React hook)
+- [`team.createApiKey()`](/sdk/types/team#teamcreateapikeyoptions)
+- [`team.listApiKeys()`](/sdk/types/team#teamlistapikeys)
+- [`team.useApiKeys()`](/sdk/types/team#teamuseapikeys) (React hook)
+
+## Table of Contents
+
+<ClickableTableOfContents
+  title="ApiKey Table of Contents"
+  code={`type ApiKey = {
+  id: string; //$stack-link-to:#apikeyid
+  description: string; //$stack-link-to:#apikeydescription
+  expiresAt?: Date; //$stack-link-to:#apikeyexpiresat
+  manuallyRevokedAt?: Date | null; //$stack-link-to:#apikeymanuallyrevokedat
+  createdAt: Date; //$stack-link-to:#apikeycreatedat
+  value: string | { lastFour: string }; //$stack-link-to:#apikeyvalue
+  type: "user" | "team"; //$stack-link-to:#apikeytype
+  userId?: string; //$stack-link-to:#apikeyuserid
+  teamId?: string; //$stack-link-to:#apikeyteamid
+
+  isValid(): boolean; //$stack-link-to:#apikeyisvalid
+  whyInvalid(): string | null; //$stack-link-to:#apikeywhyinvalid
+  revoke(): Promise<void>; //$stack-link-to:#apikeyrevoke
+  update(options): Promise<void>; //$stack-link-to:#apikeyupdate
+};`}
+/>
+
+## Properties
+
+<ApiKeySection type="apiKey" property="id" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The unique identifier for this API key.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const id: string; ```
+    </MethodAside>
+  </MethodLayout>
+</ApiKeySection>
+
+<ApiKeySection type="apiKey" property="description" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      A human-readable description of the API key's purpose.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const description: string; ```
+    </MethodAside>
+  </MethodLayout>
+</ApiKeySection>
+
+<ApiKeySection type="apiKey" property="expiresAt" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The date and time when this API key will expire. If not set, the key does not expire.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const expiresAt: Date | undefined; ```
+    </MethodAside>
+  </MethodLayout>
+</ApiKeySection>
+
+<ApiKeySection type="apiKey" property="manuallyRevokedAt" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The date and time when this API key was manually revoked. If `null`, the key has not been revoked. May be `undefined` if the information is not available.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const manuallyRevokedAt: Date | null | undefined; ```
+    </MethodAside>
+  </MethodLayout>
+</ApiKeySection>
+
+<ApiKeySection type="apiKey" property="createdAt" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The date and time when this API key was created.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const createdAt: Date; ```
+    </MethodAside>
+  </MethodLayout>
+</ApiKeySection>
+
+<ApiKeySection type="apiKey" property="value" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The full API key string on first creation; subsequently returns `{ lastFour: string }` for security.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const value: string | { lastFour: string }; ```
+    </MethodAside>
+  </MethodLayout>
+</ApiKeySection>
+
+<ApiKeySection type="apiKey" property="type" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Whether this is a `"user"` or `"team"` API key.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const type: "user" | "team"; ```
+    </MethodAside>
+  </MethodLayout>
+</ApiKeySection>
+
+<ApiKeySection type="apiKey" property="userId" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      For user API keys, the ID of the user that owns this API key.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const userId: string | undefined; ```
+    </MethodAside>
+  </MethodLayout>
+</ApiKeySection>
+
+<ApiKeySection type="apiKey" property="teamId" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      For team API keys, the ID of the team that owns this API key.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const teamId: string | undefined; ```
+    </MethodAside>
+  </MethodLayout>
+</ApiKeySection>
+
+## Methods
+
+<ApiKeySection type="apiKey" property="isValid" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Checks if the API key is still valid, meaning it is neither expired nor revoked.
+
+      <MethodReturns type="boolean" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function isValid(): boolean;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        if (apiKey.isValid()) {
+          console.log("API key is still valid");
+        } else {
+          console.log("API key is invalid");
+        }
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</ApiKeySection>
+
+<ApiKeySection type="apiKey" property="whyInvalid" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Returns the reason why the API key is invalid, or `null` if it is valid.
+
+      <MethodReturns type='"manually-revoked" | "expired" | null' />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function whyInvalid(): "manually-revoked" | "expired" | null;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        const reason = apiKey.whyInvalid();
+        if (reason) {
+          console.log(`API key is invalid because it was ${reason}`);
+        } else {
+          console.log("API key is valid");
+        }
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</ApiKeySection>
+
+<ApiKeySection type="apiKey" property="revoke" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Revokes the API key, preventing it from being used for authentication.
+
+      <MethodReturns type="Promise<void>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function revoke(): Promise<void>;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        await apiKey.revoke();
+        console.log("API key has been revoked");
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</ApiKeySection>
+
+<ApiKeySection type="apiKey" property="update" signature="options" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Updates the API key properties.
+
+      <ContentSection title="Parameters">
+        <ParamField body="options.description" type="string">
+          A new description for the API key.
+        </ParamField>
+
+        <ParamField body="options.expiresAt" type="Date | null">
+          A new expiration date, or `null` to remove the expiration.
+        </ParamField>
+
+        <ParamField body="options.revoked" type="boolean">
+          Set to `true` to revoke the API key.
+        </ParamField>
+      </ContentSection>
+
+      <MethodReturns type="Promise<void>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function update(options: {
+          description?: string;
+          expiresAt?: Date | null;
+          revoked?: boolean;
+        }): Promise<void>;
+        ```
+      </AsideSection>
+
+      <AsideSection title="Examples">
+        ```typescript
+        await apiKey.update({
+          description: "Updated description",
+          expiresAt: new Date(Date.now() + 60 * 24 * 60 * 60 * 1000),
+        });
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</ApiKeySection>
+
+---
+
+# Types
+
+### `UserApiKey`
+
+A type alias for an API key owned by a user.
+
+```typescript
+type UserApiKey = ApiKey<"user", false>;
+```
+
+### `UserApiKeyFirstView`
+
+A type alias for a newly created user API key, which includes the full key value instead of just the last four characters.
+
+```typescript
+type UserApiKeyFirstView = ApiKey<"user", true>;
+```
+
+### `TeamApiKey`
+
+A type alias for an API key owned by a team.
+
+```typescript
+type TeamApiKey = ApiKey<"team", false>;
+```
+
+### `TeamApiKeyFirstView`
+
+A type alias for a newly created team API key, which includes the full key value instead of just the last four characters.
+
+```typescript
+type TeamApiKeyFirstView = ApiKey<"team", true>;
+```
+
+---
+
+# Creation Options
+
+When creating an API key using [`user.createApiKey()`](/sdk/types/user#currentusercreateapikeyoptions) or [`team.createApiKey()`](/sdk/types/team#teamcreateapikeyoptions), you need to provide an options object.
+
+<ParamField body="description" type="string" required>
+  A human-readable description of the API key's purpose.
+</ParamField>
+
+<ParamField body="expiresAt" type="Date | null" required>
+  The date when the API key will expire. Use `null` for keys that don't expire.
+</ParamField>
+
+<ParamField body="isPublic" type="boolean">
+  Whether the API key is public. Defaults to `false`. **Secret API Keys** are
+  monitored by Stack Auth's secret scanner, which can revoke them if detected in
+  public code repositories. **Public API Keys** are designed for client-side
+  code where exposure is not a concern.
+</ParamField>
+
+```typescript
+const user = await stackApp.getUser();
+
+const secretKey = await user.createApiKey({
+  description: "Backend integration",
+  expiresAt: new Date(Date.now() + 90 * 24 * 60 * 60 * 1000),
+  isPublic: false,
+});
+
+const publicKey = await user.createApiKey({
+  description: "Client-side access",
+  expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+  isPublic: true,
+});
+```

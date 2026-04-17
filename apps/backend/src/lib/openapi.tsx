@@ -274,7 +274,6 @@ function toHeaderParameters(description: yup.SchemaFieldDescription, crudOperati
     return {
       name: key,
       in: 'header',
-      type: 'string',
       schema,
       description: meta?.openapiField?.description,
       example: meta?.openapiField?.exampleValue,

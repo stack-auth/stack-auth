@@ -9,6 +9,7 @@ import { registerExecCommand } from "./commands/exec.js";
 import { registerConfigCommand } from "./commands/config-file.js";
 import { registerInitCommand } from "./commands/init.js";
 import { registerProjectCommand } from "./commands/project.js";
+import { registerEmulatorCommand } from "./commands/emulator.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -29,6 +30,7 @@ registerExecCommand(program);
 registerConfigCommand(program);
 registerInitCommand(program);
 registerProjectCommand(program);
+registerEmulatorCommand(program);
 
 async function main() {
   try {
