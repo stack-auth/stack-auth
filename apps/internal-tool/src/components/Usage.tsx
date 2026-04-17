@@ -45,7 +45,11 @@ export function Usage({ rows, connectionState, onSelect, selectedId }: Props) {
   const [page, setPage] = useState(0);
   const [pageSize, setPageSize] = useState<PageSize>(50);
 
-  const now = Date.now();
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const id = setInterval(() => setNow(Date.now()), 60_000);
+    return () => clearInterval(id);
+  }, []);
   const rangeStart = useMemo(() => {
     switch (timeRange) {
       case "24h": {

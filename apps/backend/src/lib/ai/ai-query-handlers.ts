@@ -119,7 +119,7 @@ function logSuccess(args: {
     cachedInputTokens: extractCachedTokens(providerMetadata),
     costUsd: extractOpenRouterCost(providerMetadata),
     stepCount: steps.length,
-    durationMs: BigInt(Date.now() - startedAt),
+    durationMs: BigInt(Math.round(performance.now() - startedAt)),
     errorMessage: undefined,
   }));
 }
@@ -140,7 +140,7 @@ function logFailure(args: {
     cachedInputTokens: undefined,
     costUsd: undefined,
     stepCount: 0,
-    durationMs: BigInt(Date.now() - startedAt),
+    durationMs: BigInt(Math.round(performance.now() - startedAt)),
     errorMessage: err instanceof Error ? err.message : String(err),
   }));
 }
@@ -183,7 +183,7 @@ function logMcpCallAndReview(args: {
     response: finalText,
     stepCount,
     innerToolCallsJson,
-    durationMs: BigInt(Date.now() - startedAt),
+    durationMs: BigInt(Math.round(performance.now() - startedAt)),
     modelId,
     errorMessage: undefined,
   });

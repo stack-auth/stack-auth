@@ -86,7 +86,7 @@ export const POST = createSmartRouteHandler({
       mcpCorrelationId: body.mcpCallMetadata ? correlationId : undefined,
       conversationId: conversationIdForLog,
     };
-    const startedAt = Date.now();
+    const startedAt = performance.now();
 
     const isAnthropic = model.modelId.startsWith("anthropic/");
     const systemMessage: ModelMessage = {
