@@ -1,5 +1,4 @@
 import { ALLOWED_MODEL_IDS } from "@/lib/ai/models";
-import { collectAllowedProxyReferences } from "@/lib/ai/proxy-preprocessing";
 import { preprocessProxyBody } from "@/private";
 import { handleApiRequest } from "@/route-handlers/smart-route-handler";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
@@ -34,7 +33,6 @@ function sanitizeBody(raw: ArrayBuffer): Uint8Array {
 
   parsed = preprocessProxyBody({
     parsedBody: parsed,
-    allowedReferences: collectAllowedProxyReferences(),
   });
 
   return new TextEncoder().encode(JSON.stringify(parsed));
