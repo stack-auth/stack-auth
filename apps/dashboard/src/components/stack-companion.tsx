@@ -5,11 +5,12 @@ import { ChangelogEntry } from '@/lib/changelog';
 import { getPublicEnvVar } from '@/lib/env';
 import { cn } from '@/lib/utils';
 import { checkVersion, VersionCheckResult } from '@/lib/version-check';
-import { BookOpenIcon, ClockClockwiseIcon, LightbulbIcon, QuestionIcon, XIcon } from '@phosphor-icons/react';
+import { BookOpenIcon, ClockClockwiseIcon, LightbulbIcon, QuestionIcon, SparkleIcon, XIcon } from '@phosphor-icons/react';
 import { runAsynchronously } from '@stackframe/stack-shared/dist/utils/promises';
 import React, { createContext, useCallback, useContext, useEffect, useRef, useState } from 'react';
 import packageJson from '../../package.json';
 import { FeedbackForm } from './feedback-form';
+import { AIChatWidget } from './stack-companion/ai-chat-widget';
 import { ChangelogWidget } from './stack-companion/changelog-widget';
 import { FeatureRequestBoard } from './stack-companion/feature-request-board';
 import { UnifiedDocsWidget } from './stack-companion/unified-docs-widget';
@@ -58,6 +59,13 @@ type SidebarItem = {
 };
 
 const sidebarItems: SidebarItem[] = [
+  {
+    id: 'ask-ai',
+    label: 'Ask AI',
+    icon: SparkleIcon,
+    color: 'text-purple-600 dark:text-purple-400',
+    hoverBg: 'hover:bg-purple-500/10',
+  },
   {
     id: 'docs',
     label: 'Docs',
@@ -421,7 +429,11 @@ export function StackCompanion({ className, glassBg = false }: { className?: str
       </div>
 
       {/* Content */}
-      <div className="flex-1 overflow-y-auto p-5 overflow-x-hidden no-drag cursor-auto">
+      <div className={cn(
+        "flex-1 overflow-x-hidden no-drag cursor-auto",
+        activeItem === 'ask-ai' ? "overflow-hidden p-0 flex flex-col" : "overflow-y-auto p-5"
+      )}>
+        {activeItem === 'ask-ai' && <AIChatWidget />}
         {activeItem === 'docs' && <UnifiedDocsWidget isActive={true} />}
         {activeItem === 'feedback' && <FeatureRequestBoard isActive={true} />}
         {activeItem === 'changelog' && <ChangelogWidget isActive={true} initialData={changelogData} />}

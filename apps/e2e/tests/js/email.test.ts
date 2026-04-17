@@ -204,7 +204,7 @@ it("should provide delivery statistics", async ({ expect }) => {
         "boost_multiplier": 1,
         "is_boost_active": false,
         "penalty_factor": 1,
-        "rate_per_second": 2.7777793209876545,
+        "rate_per_second": 27.777779320987655,
       },
       "stats": {
         "day": {

@@ -2,7 +2,6 @@
 
 import { createSupabaseClient } from "@/utils/supabase-client";
 import { useStackApp, useUser } from "@stackframe/stack";
-import Link from "next/link";
 import { useEffect, useState } from "react";
 
 export default function Page() {
@@ -28,9 +27,9 @@ export default function Page() {
         <>
           <p>You are signed in</p>
           <p>User ID: {user.id}</p>
-          <Link href={app.urls.signOut}>Sign Out</Link>
+          <button onClick={async () => await app.redirectToSignOut()}>Sign Out</button>
         </> : 
-        <Link href={app.urls.signIn}>Sign In</Link>
+        <button onClick={async () => await app.redirectToSignIn()}>Sign In</button>
       }
       <h3>Supabase data</h3>
       <ul>{listContent}</ul>

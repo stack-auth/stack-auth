@@ -50,3 +50,25 @@ it("should default to excluding anonymous users when includeAnonymous is not spe
   // Verify anonymous user is NOT included by default
   expect(users.map(u => u.id)).not.toContain(anonymousUser.id);
 });
+
+it("should list only anonymous users when onlyAnonymous is true", async ({ expect }) => {
+  const { serverApp, clientApp } = await createApp();
+
+  const regularUser = await serverApp.createUser({
+    primaryEmail: "regular3@test.com",
+    password: "password",
+    primaryEmailAuthEnabled: true,
+    primaryEmailVerified: true,
+  });
+
+  const anonymousUser1 = await clientApp.getUser({ or: "anonymous", tokenStore: { headers: new Headers() } });
+  await anonymousUser1.signOut();
+  const anonymousUser2 = await clientApp.getUser({ or: "anonymous", tokenStore: { headers: new Headers() } });
+
+  const anonymousOnlyUsers = await serverApp.listUsers({ onlyAnonymous: true, includeAnonymous: true, orderBy: "signedUpAt" });
+  const anonymousOnlyUserIds = anonymousOnlyUsers.map((u) => u.id);
+
+  expect(anonymousOnlyUserIds).toContain(anonymousUser1.id);
+  expect(anonymousOnlyUserIds).toContain(anonymousUser2.id);
+  expect(anonymousOnlyUserIds).not.toContain(regularUser.id);
+});

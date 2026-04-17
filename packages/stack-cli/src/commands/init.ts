@@ -11,6 +11,7 @@ import { CliError, AuthError } from "../lib/errors.js";
 import { isNonInteractiveEnv } from "../lib/interactive.js";
 import { createInitPrompt } from "../lib/init-prompt.js";
 import { runClaudeAgent } from "../lib/claude-agent.js";
+import { detectImportPackageFromDir, renderConfigFileContent } from "@stackframe/stack-shared/dist/config-rendering";
 
 type InitOptions = {
   mode?: "create" | "link-config" | "link-cloud",
@@ -294,7 +295,8 @@ async function handleCreate(opts: InitOptions, outputDir: string): Promise<{ con
     },
   };
 
-  const content = `export const config = ${JSON.stringify(config, null, 2)};\n`;
+  const importPackage = detectImportPackageFromDir(path.dirname(configPath));
+  const content = renderConfigFileContent(config, importPackage);
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
   fs.writeFileSync(configPath, content);
 

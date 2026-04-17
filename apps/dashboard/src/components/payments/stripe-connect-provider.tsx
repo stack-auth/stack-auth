@@ -12,6 +12,9 @@ import { useTheme } from "@/lib/theme";
 import { useEffect } from "react";
 import { appearanceVariablesForTheme } from "./stripe-theme-variables";
 
+const isPreview = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_PREVIEW") === "true";
+const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
+
 type StripeConnectProviderProps = {
   children: React.ReactNode,
 };
@@ -34,15 +37,21 @@ export function StripeConnectProvider({ children }: StripeConnectProviderProps) 
   const adminApp = useAdminApp();
   const { resolvedTheme } = useTheme();
 
-  const stripeConnectInstance = getStripeConnectInstance(adminApp);
+  const stripeConnectInstance = isPreview || isLocalEmulator ? null : getStripeConnectInstance(adminApp);
 
   useEffect(() => {
+    if (!stripeConnectInstance) return;
     stripeConnectInstance.update({
       appearance: {
         variables: appearanceVariablesForTheme(resolvedTheme),
       },
     });
   }, [resolvedTheme, stripeConnectInstance]);
+
+  // In preview/emulator mode, skip Stripe Connect initialization entirely
+  if (!stripeConnectInstance) {
+    return <>{children}</>;
+  }
 
   return (
     <ConnectComponentsProvider connectInstance={stripeConnectInstance}>

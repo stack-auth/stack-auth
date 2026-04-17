@@ -75,7 +75,7 @@ export const registerVerificationCodeHandler = createVerificationCodeHandler({
     });
 
 
-    if (!verification.verified || !verification.registrationInfo) {
+    if (!verification.verified) {
       throw new KnownErrors.PasskeyRegistrationFailed("Passkey registration failed because the verification response is invalid");
     }
 

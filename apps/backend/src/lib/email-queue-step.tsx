@@ -6,14 +6,13 @@ import { generateUnsubscribeLink, getNotificationCategoryById, hasNotificationEn
 import { getTenancy, Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient, PrismaClientTransaction } from "@/prisma-client";
 import { withTraceSpan } from "@/utils/telemetry";
-import { allPromisesAndWaitUntilEach } from "@/utils/vercel";
+import { allPromisesAndWaitUntilEach } from "@/utils/background-tasks";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
-import { getEnvBoolean, getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
+import { getEnvBoolean, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, errorToNiceString, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { Json } from "@stackframe/stack-shared/dist/utils/json";
 import { filterUndefined } from "@stackframe/stack-shared/dist/utils/objects";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
 import { randomUUID } from "node:crypto";
 import { checkEmailWithEmailable, type EmailableCheckResult } from "./emailable";
 import { lowLevelSendEmailDirectWithoutRetries } from "./emails-low-level";
@@ -66,14 +65,10 @@ async function verifyEmailDeliverability(
 ): Promise<EmailableCheckResult> {
   // Skip deliverability check if requested or using non-shared email config
   if (shouldSkipDeliverabilityCheck || emailConfigType !== "shared") {
-    return { status: "ok", emailableScore: null };
+    return { status: "deliverable", emailableScore: null };
   }
 
   const result = await checkEmailWithEmailable(email);
-  // Email queue should not block on emailable failures — treat errors as deliverable
-  if (result.status === "error") {
-    return { status: "ok", emailableScore: null };
-  }
   return result;
 }
 
@@ -129,6 +124,7 @@ async function retryEmailsStuckInRendering(): Promise<void> {
     data: {
       renderedByWorkerId: null,
       startedRenderingAt: null,
+      shouldUpdateSequenceId: true,
     },
   });
   if (res.length > 0) {
@@ -246,7 +242,8 @@ async function claimEmailsForRendering(workerId: string): Promise<EmailOutbox[]>
     UPDATE "EmailOutbox" AS e
     SET
       "renderedByWorkerId" = ${workerId}::uuid,
-      "startedRenderingAt" = NOW()
+      "startedRenderingAt" = NOW(),
+      "shouldUpdateSequenceId" = TRUE
     FROM selected
     WHERE e."tenancyId" = selected."tenancyId" AND e."id" = selected."id"
     RETURNING e.*;
@@ -332,6 +329,7 @@ async function renderTenancyEmails(workerId: string, tenancyId: string, group: E
         renderErrorInternalMessage: error,
         renderErrorInternalDetails: { error },
         finishedRenderingAt: new Date(),
+        shouldUpdateSequenceId: true,
       },
     });
   };
@@ -352,6 +350,7 @@ async function renderTenancyEmails(workerId: string, tenancyId: string, group: E
         renderErrorInternalMessage: null,
         renderErrorInternalDetails: Prisma.DbNull,
         finishedRenderingAt: new Date(),
+        shouldUpdateSequenceId: true,
       },
     });
   };
@@ -442,7 +441,7 @@ async function queueReadyEmails(): Promise<{ queuedCount: number }> {
   // Query 1: Fresh emails (scheduledAt has passed, no retry pending)
   const freshEmails = await globalPrismaClient.$queryRaw<{ id: string }[]>`
     UPDATE "EmailOutbox"
-    SET "isQueued" = TRUE
+    SET "isQueued" = TRUE, "shouldUpdateSequenceId" = TRUE
     WHERE "isQueued" = FALSE
       AND "isPaused" = FALSE
       AND "skippedReason" IS NULL
@@ -457,7 +456,7 @@ async function queueReadyEmails(): Promise<{ queuedCount: number }> {
   // Clear nextSendRetryAt when queuing so the email is in a clean "queued" state.
   const retryEmails = await globalPrismaClient.$queryRaw<{ id: string }[]>`
     UPDATE "EmailOutbox"
-    SET "isQueued" = TRUE, "nextSendRetryAt" = NULL
+    SET "isQueued" = TRUE, "nextSendRetryAt" = NULL, "shouldUpdateSequenceId" = TRUE
     WHERE "isQueued" = FALSE
       AND "isPaused" = FALSE
       AND "skippedReason" IS NULL
@@ -533,7 +532,8 @@ async function claimEmailsForSending(tx: PrismaClientTransaction, tenancyId: str
       FOR UPDATE SKIP LOCKED
     )
     UPDATE "EmailOutbox" AS e
-    SET "startedSendingAt" = NOW()
+    SET "startedSendingAt" = NOW(),
+        "shouldUpdateSequenceId" = TRUE
     FROM selected
     WHERE e."tenancyId" = selected."tenancyId" AND e."id" = selected."id"
     RETURNING e.*;
@@ -683,6 +683,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
             sendRetries: newAttemptCount,
             nextSendRetryAt: new Date(Date.now() + backoffMs),
             sendAttemptErrors: updatedErrors as Prisma.InputJsonArray,
+            shouldUpdateSequenceId: true,
           },
         });
       } else {
@@ -723,6 +724,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
               failureReason,
               allAttemptErrors: updatedErrors as Json[],
             },
+            shouldUpdateSequenceId: true,
           },
         });
       }
@@ -743,6 +745,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
           sendServerErrorExternalDetails: Prisma.DbNull,
           sendServerErrorInternalMessage: null,
           sendServerErrorInternalDetails: Prisma.DbNull,
+          shouldUpdateSequenceId: true,
         },
       });
     }
@@ -763,6 +766,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
         sendServerErrorExternalDetails: {},
         sendServerErrorInternalMessage: errorToNiceString(error),
         sendServerErrorInternalDetails: {},
+        shouldUpdateSequenceId: true,
       },
     });
   }
@@ -848,6 +852,7 @@ async function markSkipped(row: EmailOutbox, reason: EmailOutboxSkippedReason, d
     data: {
       skippedReason: reason,
       skippedDetails: details as Prisma.InputJsonValue,
+      shouldUpdateSequenceId: true,
     },
   });
 }
