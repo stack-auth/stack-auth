@@ -191,17 +191,6 @@ async function loadDailyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymou
   return out;
 }
 
-// Builds a 30-day activity split (new/retained/reactivated) purely from
-// ClickHouse events — no Postgres round-trip, no per-(day, user_id) rows
-// shipped back. Trade-off: "new" now means "user's first-ever $token-refresh
-// was on this day" rather than "user's Postgres sign-up date is this day".
-// These agree for users whose first activity follows immediately after
-// account creation (the common case). They differ for the rare edge case of
-// an account that existed before the metrics window but never generated a
-// $token-refresh until this window — old code counted those as "reactivated",
-// new code counts them as "new" on their first-activity day. We accept that
-// shift because (a) it produces a simpler, bounded-memory query and (b) for
-// active projects it's <<1% of daily activity.
 async function loadDailyActiveSplitFromClickhouse(options: {
   tenancy: Tenancy,
   now: Date,
@@ -354,15 +343,6 @@ async function loadMonthlyActiveUsers(tenancy: Tenancy, now: Date, includeAnonym
 
   const clickhouseClient = getClickhouseAdminClient();
   try {
-    // Count on the server via uniqExact(sipHash64(...)) so we never ship the
-    // full set of user_ids back to Node (the old query's ~20 MiB result was
-    // what blew past the ClickHouse memory cap on large projects). Direct
-    // `data.is_anonymous` access skips the per-row `toJSONString(data)` cost.
-    // Hashing to 8-byte keys halves uniqExact's hash-set state vs. the raw
-    // 36-byte normalized strings. Behavior (including the isUuid
-    // normalization the JS layer used to do) is covered by
-    // scripts/benchmark-mau-query.ts (equivalence matrix + set-equality perf).
-    // sipHash64 collision probability at tens of millions of MAU is <10⁻⁴.
     const result = await clickhouseClient.query({
       query: `
         SELECT uniqExact(sipHash64(normalized_user_id)) AS mau
