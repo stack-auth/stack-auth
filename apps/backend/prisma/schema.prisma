@@ -1327,15 +1327,11 @@ model OutgoingRequest {
   @@index([startedFulfillingAt, deduplicationKey])
 }
 
-model BulldozerStorageEngine {
-  id            String                  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  keyPath       Json[]
-  keyPathParent Json[]  @default([])
-  value         Json
-
-  @@unique([keyPath], map: "BulldozerStorageEngine_keyPath_key")
-  @@index([keyPathParent], map: "BulldozerStorageEngine_keyPathParent_idx")
-}
+// BulldozerStorageEngine is managed externally (see prisma.config.ts
+// `tables.external`). It's created by migrations and interacted with
+// via raw SQL — not through the Prisma client. Keeping it out of the
+// Prisma schema avoids drift warnings for features Prisma can't represent
+// (generated columns, self-referential FKs on jsonb[] columns, etc.).
 
 model BulldozerTimeFoldQueue {
   id               String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
