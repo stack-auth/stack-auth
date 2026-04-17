@@ -285,11 +285,11 @@ function UserTableBody(props: {
 
   const handleResetFilters = useCallback(() => {
     setFilters(DEFAULT_FILTERS);
-    setGridState((prev) => (
-      prev.quickSearch === ""
-        ? prev
-        : { ...prev, quickSearch: "" }
-    ));
+    setGridState((prev) => ({
+      ...prev,
+      quickSearch: "",
+      sorting: [{ columnId: "signedUpAt", direction: DEFAULT_FILTERS.signedUpOrder }],
+    }));
   }, [setFilters]);
 
   const filterValue = filters.onlyAnonymous ? "anonymous-only" : filters.includeAnonymous ? "anonymous" : filters.includeRestricted ? "restricted" : "standard";

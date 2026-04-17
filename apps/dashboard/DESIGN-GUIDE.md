@@ -574,7 +574,7 @@ Key props:
 
 - `columns` (`DataGridColumnDef[]`): column definitions with `id`, `header`, `accessor`, `type`, optional `renderCell`, optional `cellOverflow`
 - `rows` (`TRow[]`): always `gridData.rows` from `useDataSource`, NEVER your raw array
-- `getRowId` (`(row) => string`): unique row identifier
+- `getRowId` (`(row) => RowId`): unique row identifier (`RowId` is `string`)
 - `state` / `onChange`: fully controlled grid state (sorting, pagination, search, visibility)
 - `totalRowCount`: total rows for pagination display
 - `toolbar`: `false` to hide, omit for default, or render function for custom

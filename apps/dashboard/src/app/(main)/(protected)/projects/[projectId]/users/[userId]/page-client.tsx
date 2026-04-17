@@ -1004,7 +1004,7 @@ function UserTeamsDataGrid({ teams, projectId }: { teams: Array<{ id: string, di
             {
               item: "View Team",
               onClick: () => {
-                window.open(`/projects/${projectId}/teams/${row.id}`, '_blank', 'noopener');
+                window.open(`/projects/${encodeURIComponent(projectId)}/teams/${encodeURIComponent(row.id)}`, '_blank', 'noopener');
               },
             },
           ]}

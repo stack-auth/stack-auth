@@ -218,6 +218,7 @@ A: In `apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project
 Q: How can onboarding CTA buttons stay visible without leaving bottom-of-page actions on every step?
 A: In the current onboarding implementation, step actions are rendered by the shared `OnboardingPage` layout rather than a dedicated `OnboardingStickyTop` component in `apps/dashboard/src/app/(main)/(protected)/(outside-dashboard)/new-project/page-client.tsx`. Keep the page body focused on step content and rely on that shared layout for visible `Continue` / `Do This Later` actions instead of adding duplicated footer CTAs.
 Q: How should user signup time be exposed in JWT claims before production rollout?
+A: The local dashboard's `DEV` overlay includes `Quick Sign In` and `Switch to email...` shortcuts, which are useful for browser smoke tests without going through the full external OAuth flow.
 A: Use `signed_up_at` (OIDC-style naming) in access tokens and encode it as Unix seconds in `apps/backend/src/lib/tokens.tsx` (`Math.floor(user.signed_up_at_millis / 1000)`). Since this is pre-prod, the payload schema can require `signed_up_at` directly without a backward-compat optional shim.
 
 Q: Where should new globally searchable Cmd+K destinations be added in the dashboard?
@@ -344,3 +345,6 @@ A: Have `loadBranches` return the resolved branch string, then call `loadConfigS
 
 Q: How can PR review threads be resolved from the CLI when fixing bot comments?
 A: Use GitHub GraphQL via `gh api graphql` with `resolveReviewThread(input:{threadId: ...})`; list unresolved thread IDs first from `pullRequest.reviewThreads` and then resolve only the IDs tied to fixes you actually made.
+
+Q: Why can DataGrid sticky headers show extra top gap in dashboard dark mode?
+A: In `apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/sidebar-layout.tsx`, if dark mode uses an inner `overflow-auto` content wrapper, `DataGrid` sticks relative to that inner scroller, so the global dark `--data-grid-sticky-top: 5rem` becomes wrong and leaves a gap. The shared grid offset must match the actual scroll ancestor: either keep the older outer-page scroll shell with `5rem`, or if using the inner dark scroller, reset the dark sticky top to `0px`.

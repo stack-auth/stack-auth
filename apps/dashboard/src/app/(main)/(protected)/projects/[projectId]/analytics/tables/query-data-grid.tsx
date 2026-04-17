@@ -129,6 +129,10 @@ export type QueryDataGridProps = {
   emptyState?: ReactNode,
   /** Show the default footer. Defaults to `false`. */
   footer?: boolean,
+  /** Whether the grid should fill a bounded parent or let the page own scrolling. */
+  fillHeight?: boolean,
+  /** Sticky top offset forwarded to the underlying DataGrid. */
+  stickyTop?: number | string,
 };
 
 export type QueryDataGridHandle = {
@@ -323,6 +327,8 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
       exportFilename,
       emptyState,
       footer = false,
+      fillHeight = true,
+      stickyTop,
     },
     ref,
   ) {
@@ -613,7 +619,7 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
     }, [toolbar, searchBar, toolbarExtra, extendCtx]);
 
     return (
-      <div className="flex flex-1 min-h-0 flex-col">
+      <div className={fillHeight ? "flex flex-1 min-h-0 flex-col" : "flex flex-col"}>
         {error != null && !showEmptyError && (
           <div className="shrink-0 px-4 pt-3">
             <Alert variant="destructive">{error}</Alert>
@@ -631,7 +637,7 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
         )}
 
         {!showEmptyError && (
-          <div className="flex-1 min-h-0 pr-0 lg:pr-8">
+          <div className={fillHeight ? "flex-1 min-h-0 pr-0 lg:pr-8" : "pr-0 lg:pr-8"}>
             <DataGrid<RowData>
               columns={columns}
               rows={gridData.rows}
@@ -646,7 +652,8 @@ export const QueryDataGrid = forwardRef<QueryDataGridHandle, QueryDataGridProps>
               onChange={setGridState}
               paginationMode="infinite"
               selectionMode="none"
-              stickyTop={0}
+              fillHeight={fillHeight}
+              stickyTop={stickyTop}
               toolbar={resolvedToolbar}
               toolbarExtra={resolvedToolbarExtra}
               footer={footer ? undefined : false}

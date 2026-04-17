@@ -446,10 +446,12 @@ function SelectionCheckbox({
 function InfiniteScrollSentinel({
   onIntersect,
   isLoading,
+  rootRef,
   strings,
 }: {
   onIntersect: () => void;
   isLoading: boolean;
+  rootRef?: React.RefObject<Element | null>;
   strings: DataGridStrings;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -464,11 +466,14 @@ function InfiniteScrollSentinel({
           onIntersect();
         }
       },
-      { rootMargin: "200px" },
+      {
+        root: rootRef?.current ?? null,
+        rootMargin: "200px",
+      },
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [onIntersect]);
+  }, [onIntersect, rootRef]);
 
   return (
     <div ref={ref} className="flex items-center justify-center py-4">
@@ -1238,6 +1243,10 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
   // ── Selection state for header checkbox ──────────────────────
   const allSelected = rowIds.length > 0 && rowIds.every((id) => state.selection.selectedIds.has(id));
   const someSelected = !allSelected && rowIds.some((id) => state.selection.selectedIds.has(id));
+  const infiniteScrollRootRef =
+    paginationMode === "infinite" && (fillHeight || maxHeight != null)
+      ? scrollContainerRef
+      : undefined;
 
   // ── Render ───────────────────────────────────────────────────
   //
@@ -1465,6 +1474,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
             <InfiniteScrollSentinel
               onIntersect={onLoadMore ?? (() => {})}
               isLoading={isLoadingMore}
+              rootRef={infiniteScrollRootRef}
               strings={strings}
             />
           )}
