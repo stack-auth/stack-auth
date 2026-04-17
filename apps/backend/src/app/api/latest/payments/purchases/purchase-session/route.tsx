@@ -1,5 +1,6 @@
 import { SubscriptionStatus } from "@/generated/prisma/client";
 import { getClientSecretFromStripeSubscription, validatePurchaseSession } from "@/lib/payments";
+import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { upsertProductVersion } from "@/lib/product-versions";
 import { getStripeForAccount } from "@/lib/stripe";
 import { getTenancy } from "@/lib/tenancies";
@@ -63,10 +64,13 @@ export const POST = createSmartRouteHandler({
     }
     const stripe = await getStripeForAccount({ accountId: data.stripeAccountId });
     const prisma = await getPrismaClientForTenancy(tenancy);
-    const { selectedPrice, conflictingProductLineSubscriptions } = await validatePurchaseSession({
+    const { selectedPrice, conflictingSubscriptions } = await validatePurchaseSession({
       prisma,
-      tenancy,
-      codeData: data,
+      tenancyId: tenancy.id,
+      customerType: data.product.customerType,
+      customerId: data.customerId,
+      product: data.product,
+      productId: data.productId,
       priceId: price_id,
       quantity,
     });
@@ -81,8 +85,8 @@ export const POST = createSmartRouteHandler({
       productJson: data.product,
     });
 
-    if (conflictingProductLineSubscriptions.length > 0) {
-      const conflicting = conflictingProductLineSubscriptions[0];
+    if (conflictingSubscriptions.length > 0) {
+      const conflicting = conflictingSubscriptions[0];
       if (conflicting.stripeSubscriptionId) {
         const existingStripeSub = await stripe.subscriptions.retrieve(conflicting.stripeSubscriptionId);
         const existingItem = existingStripeSub.items.data[0];
@@ -121,7 +125,7 @@ export const POST = createSmartRouteHandler({
           await stripe.subscriptions.cancel(conflicting.stripeSubscriptionId);
         }
       } else if (conflicting.id) {
-        await prisma.subscription.update({
+        const updatedConflicting = await prisma.subscription.update({
           where: {
             tenancyId_id: {
               tenancyId: tenancy.id,
@@ -130,8 +134,12 @@ export const POST = createSmartRouteHandler({
           },
           data: {
             status: SubscriptionStatus.canceled,
+            cancelAtPeriodEnd: true,
+            canceledAt: new Date(),
+            endedAt: new Date(),
           },
         });
+        await bulldozerWriteSubscription(prisma, updatedConflicting);
       }
     }
     // One-time payment path after conflicts handled
