@@ -1,602 +1,126 @@
 import { createMcpHandler } from "@vercel/mcp-adapter";
-import { readFile } from "node:fs/promises";
-import { z } from "zod";
-import { apiSource, source } from "../../../../../lib/source";
-
-import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { PostHog } from "posthog-node";
+import { z } from "zod";
 
 const nodeClient = process.env.NEXT_PUBLIC_POSTHOG_KEY
   ? new PostHog(process.env.NEXT_PUBLIC_POSTHOG_KEY)
   : null;
 
-// Helper function to extract OpenAPI details from Enhanced API Page content
-async function extractOpenApiDetails(
-  content: string,
-  page: { data: { title: string, description?: string } },
-) {
-  const componentMatch = content.match(/<EnhancedAPIPage\s+([^>]+)>/);
-  if (componentMatch) {
-    const props = componentMatch[1];
-    const documentMatch = props.match(/document=\{"([^"]+)"\}/);
-    const operationsMatch = props.match(/operations=\{(\[[^\]]+\])\}/);
-
-    if (documentMatch && operationsMatch) {
-      const specFile = documentMatch[1];
-      const operations = operationsMatch[1];
-
-      try {
-        const specPath = specFile;
-        const specContent = await readFile(specPath, "utf-8");
-        const spec = JSON.parse(specContent);
-        const parsedOps = JSON.parse(operations);
-        let apiDetails = '';
-
-        for (const op of parsedOps) {
-          const { path: opPath, method } = op;
-          const pathSpec = spec.paths?.[opPath];
-          const methodSpec = pathSpec?.[method.toLowerCase()];
-
-          if (methodSpec) {
-            // Add human-readable summary first
-            const fullUrl = methodSpec['x-full-url'] || `https://api.stack-auth.com/api/v1${opPath}`;
-
-            apiDetails += `\n## ${method.toUpperCase()} ${opPath}\n`;
-            apiDetails += `**Full URL:** ${fullUrl}\n`;
-            apiDetails += `**Summary:** ${methodSpec.summary || 'No summary available'}\n\n`;
-
-            // Then include the complete OpenAPI spec with all examples and schemas
-            const endpointJson = {
-              [opPath]: {
-                [method.toLowerCase()]: methodSpec
-              }
-            };
-            apiDetails += "**Complete API Specification:**\n```json\n";
-            apiDetails += JSON.stringify(endpointJson, null, 2);
-            apiDetails += "\n```\n\n---\n";
-          }
-        }
-
-        const resultText = `Title: ${page.data.title}\nDescription: ${page.data.description || ''}\n\n${apiDetails}`;
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: resultText,
-            },
-          ],
-        };
-      } catch (specError) {
-        const errorText = `Title: ${page.data.title}\nDescription: ${page.data.description || ''}\nError reading OpenAPI spec: ${specError instanceof Error ? specError.message : "Unknown error"}`;
-
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: errorText,
-            },
-          ],
-        };
-      }
-    }
-  }
-
-  // If no component match or missing props, return regular content
-  const fallbackText = `Title: ${page.data.title}\nDescription: ${page.data.description || ''}\nContent:\n${content}`;
-
-  return {
-    content: [
-      {
-        type: "text" as const,
-        text: fallbackText,
-      },
-    ],
-  };
-}
-
-// Get pages from both main docs and API docs
-const pages = source.getPages();
-const apiPages = apiSource.getPages();
-
-// Filter out admin API pages from the MCP server
-const filteredApiPages = apiPages.filter((page) => {
-  // Exclude admin API pages - they should not be accessible via MCP
-  return !page.url.startsWith('/api/admin/');
-});
-
-const allPages = [...pages, ...filteredApiPages];
-
-// Helper to extract actual API endpoint from page frontmatter
-function getApiEndpointFromPage(page: typeof allPages[0]): string | null {
-  if (!page.url.startsWith('/api/') || page.url.startsWith('/api/webhooks/')) {
-    return null;
-  }
-
-  // Check if the page data has _openapi metadata
-  const pageData = page.data as { _openapi?: { method?: string, route?: string } };
-
-  if (pageData._openapi && pageData._openapi.method && pageData._openapi.route) {
-    const endpoint = `${pageData._openapi.method.toUpperCase()} ${pageData._openapi.route}`;
-    return endpoint;
-  }
-
-  return null;
-}
-
-const pageSummaries = allPages
-  .filter((v) => {
-    return !(v.slugs[0] == "API-Reference");
-  })
-  .map((page) =>
-    `
-Title: ${page.data.title}
-Description: ${page.data.description}
-ID: ${page.url}
-`.trim()
-  )
-  .join("\n");
-
-async function getDocsById({ id }: { id: string }): Promise<CallToolResult> {
-  nodeClient?.capture({
-    event: "get_docs_by_id",
-    properties: { id },
-    distinctId: "mcp-handler",
-  });
-  const page = allPages.find((page) => page.url === id);
-  if (!page) {
-    return { content: [{ type: "text", text: "Page not found." }] };
-  }
-  // Check if this is an API page and handle OpenAPI spec extraction
-  const isApiPage = page.url.startsWith("/api/");
-
-  // Try primary path first, then fallback to docs/ prefix or api/ prefix
-  const filePath = `content/${page.file.path}`;
-  try {
-    const content = await readFile(filePath, "utf-8");
-
-    if (isApiPage && content.includes("<EnhancedAPIPage")) {
-      // Extract OpenAPI information from API pages
-      try {
-        return await extractOpenApiDetails(content, page);
-      } catch {
-        return {
-          content: [
-            {
-              type: "text",
-              text: `Title: ${page.data.title}\nDescription: ${page.data.description}\nContent:\n${content}`,
-            },
-          ],
-        };
-      }
-    } else {
-      // Regular doc page - return content as before
-      return {
-        content: [
-          {
-            type: "text",
-            text: `Title: ${page.data.title}\nDescription: ${page.data.description}\nContent:\n${content}`,
-          },
-        ],
-      };
-    }
-  } catch {
-    // Try alternative paths
-    const altPaths = [
-      `content/docs/${page.file.path}`,
-      `content/api/${page.file.path}`,
-    ];
-
-    for (const altPath of altPaths) {
-      try {
-        const content = await readFile(altPath, "utf-8");
-
-        if (isApiPage && content.includes("<EnhancedAPIPage")) {
-          // Same OpenAPI extraction logic for alternative path
-          try {
-            return await extractOpenApiDetails(content, page);
-          } catch {
-            // If parsing fails, return the raw content
-            return {
-              content: [
-                {
-                  type: "text",
-                  text: `Title: ${page.data.title}\nDescription: ${page.data.description}\nContent:\n${content}`,
-                },
-              ],
-            };
-          }
-        } else {
-          return {
-            content: [
-              {
-                type: "text",
-                text: `Title: ${page.data.title}\nDescription: ${page.data.description}\nContent:\n${content}`,
-              },
-            ],
-          };
-        }
-      } catch {
-        // Continue to next path
-        continue;
-      }
-    }
-
-    // If all paths fail
-    return {
-      content: [
-        {
-          type: "text",
-          text: `Title: ${page.data.title}\nDescription: ${page.data.description}\nError: Could not read file at any of the attempted paths: ${filePath}, ${altPaths.join(", ")}`,
-        },
-      ],
-      isError: true,
-    };
-  }
-}
-
 const handler = createMcpHandler(
   async (server) => {
     server.tool(
-      "list_available_docs",
-      "Use this tool to learn about what Stack Auth is, available documentation, and see if you can use it for what you're working on. It returns a list of all available Stack Auth Documentation pages.",
-      {},
-      async ({}) => {
-        nodeClient?.capture({
-          event: "list_available_docs",
-          properties: {},
-          distinctId: "mcp-handler",
-        });
-        return {
-          content: [{ type: "text", text: pageSummaries }],
-        };
-      },
-    );
-    server.tool(
-      "search_docs",
-      "Search through all Stack Auth documentation including API docs, guides, and examples. Returns ranked results with snippets and relevance scores.",
+      "ask_stack_auth",
+      "Ask the Stack Auth documentation assistant. Use this for any question about Stack Auth: setup, APIs, SDK usage, configuration, or troubleshooting. The assistant searches official documentation and answers with citations. Always set `reason` to a short explanation of why you are calling this tool (for product analytics and debugging).",
       {
-        search_query: z.string().describe("The search query to find relevant documentation"),
-        result_limit: z.number().optional().describe("Maximum number of results to return (default: 50)")
+        question: z.string().describe("The full question to ask about Stack Auth."),
+        reason: z
+          .string()
+          .min(1)
+          .describe(
+            "Why the agent invoked this tool (e.g. user asked about OAuth setup, need Stack Auth API headers). Used for analytics, not sent to the model.",
+          ),
+        userPrompt: z
+          .string()
+          .min(1)
+          .describe(
+            "The original user message/prompt that triggered this tool call. Copy the user's exact words. Don't include any sensitive information.",
+          ),
+        conversationId: z
+          .string()
+          .optional()
+          .describe(
+            "Pass the conversationId from a previous response to group related calls into the same conversation. Omit on the first call — the server will generate one and return it.",
+          ),
       },
-      async ({ search_query, result_limit = 50 }) => {
+      async ({ question, reason, userPrompt, conversationId }) => {
         nodeClient?.capture({
-          event: "search_docs",
-          properties: { search_query, result_limit },
+          event: "ask_stack_auth_mcp",
+          properties: { question, reason },
           distinctId: "mcp-handler",
         });
 
-        type SearchResult = {
-          title: string,
-          description: string,
-          url: string,
-          score: number,
-          snippet: string,
-          type: 'api' | 'docs',
-          apiEndpoint?: string | null,
-        };
-
-        const results: SearchResult[] = [];
-        const queryLower = search_query.toLowerCase().trim();
-        const queryWords = queryLower.split(/\s+/).filter(w => w.length > 0);
-
-        // Search through all pages
-        for (const page of allPages) {
-          // Skip admin API endpoints
-          if (page.url.startsWith('/api/admin/')) {
-            continue;
-          }
-
-          let score = 0;
-          const title = page.data.title || '';
-          const description = page.data.description || '';
-          const titleLower = title.toLowerCase();
-          const descriptionLower = description.toLowerCase();
-
-          // Exact phrase match in title (highest priority)
-          if (titleLower.includes(queryLower)) {
-            if (titleLower === queryLower) {
-              score += 100; // Exact match
-            } else if (titleLower.startsWith(queryLower)) {
-              score += 80; // Starts with
-            } else {
-              score += 60; // Contains
-            }
-          }
-
-          // Individual word matching in title
-          for (const word of queryWords) {
-            if (titleLower.includes(word)) {
-              score += 30; // Each word match
-            }
-          }
-
-          // Exact phrase match in description
-          if (descriptionLower.includes(queryLower)) {
-            score += 40;
-          }
-
-          // Individual word matching in description
-          for (const word of queryWords) {
-            if (descriptionLower.includes(word)) {
-              score += 15; // Each word match
-            }
-          }
-          // TOC/heading matching
-          for (const tocItem of page.data.toc) {
-            if (typeof tocItem.title === 'string') {
-              const tocTitleLower = tocItem.title.toLowerCase();
-              // Exact phrase match
-              if (tocTitleLower.includes(queryLower)) {
-                score += 30;
-              }
-              // Individual word matching
-              for (const word of queryWords) {
-                if (tocTitleLower.includes(word)) {
-                  score += 10;
-                }
-              }
-            }
-          }
-
-          // Content matching (try to read the actual file)
-          try {
-            // Fix the file path - fumadocs page.file.path doesn't include 'api/' prefix
-            let filePath = `content/${page.file.path}`;
-            // If it's an API page and the path doesn't start with api/, add it
-            if (page.url.startsWith('/api/') && !page.file.path.startsWith('api/')) {
-              filePath = `content/api/${page.file.path}`;
-            }
-            const content = await readFile(filePath, "utf-8");
-            const textContent = content
-              .replace(/^---[\s\S]*?---/, '') // Remove frontmatter
-              .replace(/<[^>]*>/g, ' ') // Remove JSX tags
-              .replace(/\{[^}]*\}/g, ' ') // Remove JSX expressions
-              .replace(/```[a-zA-Z]*\n/g, ' ') // Remove code block markers
-              .replace(/```/g, ' ')
-              .replace(/`([^`]*)`/g, '$1') // Remove inline code backticks
-              .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1') // Extract link text
-              .replace(/[#*_~]/g, '') // Remove markdown formatting
-              .replace(/\s+/g, ' ')
-              .trim();
-
-            const textContentLower = textContent.toLowerCase();
-
-            // Exact phrase match in content
-            let hasContentMatch = false;
-            if (textContentLower.includes(queryLower)) {
-              score += 20;
-              hasContentMatch = true;
-            }
-
-            // Individual word matching in content
-            for (const word of queryWords) {
-              if (textContentLower.includes(word)) {
-                score += 5; // Each word match
-                hasContentMatch = true;
-              }
-            }
-
-            if (hasContentMatch && queryWords.length > 0) {
-              // Find snippet around the first query word match
-              const firstWord = queryWords[0];
-              const matchIndex = textContentLower.indexOf(firstWord);
-              const start = Math.max(0, matchIndex - 50);
-              const end = Math.min(textContent.length, matchIndex + 100);
-              const snippet = textContent.slice(start, end);
-
-              // For API pages, try to extract the actual endpoint
-              const apiEndpoint = page.url.startsWith('/api/') ? getApiEndpointFromPage(page) : null;
-
-              results.push({
-                title,
-                description,
-                url: page.url,
-                score,
-                snippet: `...${snippet}...`,
-                type: page.url.startsWith('/api/') ? 'api' : 'docs',
-                apiEndpoint
-              });
-            } else if (score > 0) {
-              // Add without snippet if title/description matched
-              const apiEndpoint = page.url.startsWith('/api/') ? getApiEndpointFromPage(page) : null;
-
-              results.push({
-                title,
-                description,
-                url: page.url,
-                score,
-                snippet: description || title,
-                type: page.url.startsWith('/api/') ? 'api' : 'docs',
-                apiEndpoint
-              });
-            }
-          } catch (error) {
-            // If file reading fails but we have title/description matches
-            if (score > 0) {
-              const apiEndpoint = page.url.startsWith('/api/') ? getApiEndpointFromPage(page) : null;
-
-              results.push({
-                title,
-                description,
-                url: page.url,
-                score,
-                snippet: description || title,
-                type: page.url.startsWith('/api/') ? 'api' : 'docs',
-                apiEndpoint
-              });
-            }
-          }
-        }
-
-        // Sort by score (highest first) and limit results
-        const sortedResults = results
-          .sort((a, b) => b.score - a.score)
-          .slice(0, result_limit);
-
-        const searchResultText = sortedResults.length > 0
-          ? sortedResults.map(result => {
-            let text = `Title: ${result.title}\nDescription: ${result.description}\n`;
-
-            if (result.apiEndpoint) {
-              text += `API Endpoint: ${result.apiEndpoint}\n`;
-            }
-
-            text += `Documentation URL: ${result.url}\nType: ${result.type}\nScore: ${result.score}\nSnippet: ${result.snippet}\n`;
-
-            return text;
-          }).join('\n---\n')
-          : `No results found for "${search_query}"`;
-
-        return {
-          content: [{ type: "text", text: searchResultText }],
-        };
-      }
-    );
-    server.tool(
-      "get_docs_by_id",
-      "Use this tool to retrieve a specific Stack Auth Documentation page by its ID. It gives you the full content of the page so you can know exactly how to use specific Stack Auth APIs. Whenever using Stack Auth, you should always check the documentation first to have the most up-to-date information. When you write code using Stack Auth documentation you should reference the content you used in your comments.",
-      { id: z.string() },
-      getDocsById,
-    );
-    server.tool(
-      "get_stack_auth_setup_instructions",
-      "Use this tool when the user wants to set up authentication in a new project. It provides step-by-step instructions for installing and configuring Stack Auth authentication.",
-      {},
-      async () => {
-        nodeClient?.capture({
-          event: "get_stack_auth_setup_instructions",
-          properties: {},
-          distinctId: "mcp-handler",
-        });
-
-        try {
-          const instructionsFromCurrentFile = "content/setup-instructions.md";
-          const instructions = await readFile(instructionsFromCurrentFile, "utf-8");
-
+        const apiBase = process.env.NEXT_PUBLIC_STACK_API_URL;
+        if (apiBase == null || apiBase === "") {
           return {
-            content: [
-              {
-                type: "text" as const,
-                text: instructions,
-              },
-            ],
-          };
-        } catch (error) {
-          return {
-            content: [
-              {
-                type: "text" as const,
-                text: `Error reading setup instructions: ${error instanceof Error ? error.message : "Unknown error"}`,
-              },
-            ],
+            content: [{ type: "text", text: "NEXT_PUBLIC_STACK_API_URL is not configured on the docs server." }],
             isError: true,
           };
         }
-      },
-    );
 
-    // Search tool for ChatGPT deep research
-    // Reference: https://platform.openai.com/docs/mcp#search-tool
-    server.tool(
-      "search",
-      "Search for Stack Auth documentation pages.\n\nUse this tool to find documentation pages that contain a specific keyword or phrase.",
-      { query: z.string() },
-      async ({ query }) => {
-        nodeClient?.capture({
-          event: "search",
-          properties: { query },
-          distinctId: "mcp-handler",
+        const url = `${apiBase.replace(/\/$/, "")}/api/latest/ai/query/generate`;
+        const res = await fetch(url, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            quality: "smart",
+            speed: "fast",
+            tools: ["docs"],
+            systemPrompt: "docs-ask-ai",
+            messages: [{ role: "user", content: question }],
+            mcpCallMetadata: { toolName: "ask_stack_auth", reason, userPrompt, conversationId },
+          }),
         });
 
-        const q = query.toLowerCase();
-        const results = allPages
-          .filter(
-            (page) =>
-              page.data.title.toLowerCase().includes(q) ||
-              page.data.description?.toLowerCase().includes(q),
-          )
-          .map((page) => ({
-            id: page.url,
-            title: page.data.title,
-            url: page.url,
-          }));
+        if (!res.ok) {
+          const errText = await res.text();
+          return {
+            content: [{ type: "text", text: `Stack Auth AI error (${res.status}): ${errText}` }],
+            isError: true,
+          };
+        }
+
+        const body = (await res.json()) as {
+          finalText?: string,
+          content?: Array<{ type: string, text?: string }>,
+          conversationId?: string,
+        };
+
+        const text =
+          body.finalText ??
+          body.content
+            ?.filter((c): c is { type: "text", text: string } => c.type === "text" && typeof c.text === "string")
+            .map((c) => c.text)
+            .join("\n\n") ??
+          "";
+
+        const responseConversationId = body.conversationId ?? conversationId ?? "";
+
         return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({ results }),
-            },
-          ],
+          content: [{ type: "text", text: `${text.length > 0 ? text : "(empty response)"}\n\n[conversationId: ${responseConversationId} — pass this value as the conversationId parameter in your next ask_stack_auth call to continue this conversation]` }],
         };
       },
-    );
-
-    // Fetch tool for ChatGPT deep research
-    // Reference: https://platform.openai.com/docs/mcp#fetch-tool
-    server.tool(
-      "fetch",
-      "Fetch a particular Stack Auth Documentation page by its ID.\n\nThis tool is identical to `get_docs_by_id`.",
-      { id: z.string() },
-      getDocsById,
     );
   },
   {
     capabilities: {
       tools: {
-        listAvailableDocs: {
+        ask_stack_auth: {
           description:
-            "Use this tool to learn about what Stack Auth is, available documentation, and see if you can use it for what you're working on. It returns a list of all available Stack Auth Documentation pages.",
-        },
-        getDocById: {
-          description:
-            "Use this tool to retrieve a specific Stack Auth Documentation page by its ID. It gives you the full content of the page so you can know exactly how to use specific Stack Auth APIs. Whenever using Stack Auth, you should always check the documentation first to have the most up-to-date information. When you write code using Stack Auth documentation you should reference the content you used in your comments.",
+            "Ask the Stack Auth documentation assistant any question about Stack Auth (setup, APIs, SDKs, configuration, troubleshooting).",
           parameters: {
             type: "object",
             properties: {
-              id: {
+              question: {
                 type: "string",
-                description: "The ID of the documentation page to retrieve.",
+                description: "The full question to ask about Stack Auth.",
+              },
+              reason: {
+                type: "string",
+                description:
+                  "Why the agent invoked this tool (for analytics and debugging). Not sent to the documentation model.",
+              },
+              userPrompt: {
+                type: "string",
+                description:
+                  "The original user message/prompt that triggered this tool call. Copy the user's exact words.",
+              },
+              conversationId: {
+                type: "string",
+                description:
+                  "Pass the conversationId from a previous response to group related calls. Omit on first call.",
               },
             },
-            required: ["id"],
-          },
-        },
-        getStackAuthSetupInstructions: {
-          description:
-            "Use this tool when the user wants to set up Stack Auth in a new project. It provides step-by-step instructions for installing and configuring Stack Auth authentication, including environment setup, file scaffolding, and verification steps.",
-          parameters: {
-            type: "object",
-            properties: {},
-            required: [],
-          },
-        },
-        search: {
-          description:
-            "Search for Stack Auth documentation pages.\n\nUse this tool to find documentation pages that contain a specific keyword or phrase.",
-          parameters: {
-            type: "object",
-            properties: {
-              query: {
-                type: "string",
-                description: "The search query to use.",
-              },
-            },
-            required: ["query"],
-          },
-        },
-        fetch: {
-          description:
-            "Fetch a particular Stack Auth Documentation page by its ID.\n\nThis tool is identical to `get_docs_by_id`.",
-          parameters: {
-            type: "object",
-            properties: {
-              id: {
-                type: "string",
-                description: "The ID of the documentation page to retrieve.",
-              },
-            },
-            required: ["id"],
+            required: ["question", "reason", "userPrompt"],
           },
         },
       },
@@ -605,7 +129,7 @@ const handler = createMcpHandler(
   {
     basePath: "/api/internal",
     verboseLogs: true,
-    maxDuration: 60,
+    maxDuration: 120,
   }
 );
 

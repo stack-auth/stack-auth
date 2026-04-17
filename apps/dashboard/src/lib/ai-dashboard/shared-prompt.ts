@@ -1,5 +1,5 @@
 import { BUNDLED_DASHBOARD_UI_TYPES, BUNDLED_TYPE_DEFINITIONS } from "@/generated/bundled-type-definitions";
-import { ALL_APPS_FRONTEND, type AppId, getItemPath } from "@/lib/apps-frontend";
+import { ALL_APPS_FRONTEND, type AppId, getItemPath, hasNavigationItems } from "@/lib/apps-frontend";
 import { buildStackAuthHeaders, type CurrentUser } from "@/lib/api-headers";
 
 /**
@@ -19,6 +19,9 @@ export function buildAvailableRoutes(enabledAppIds: AppId[]): string {
   // Dynamic routes from enabled apps
   for (const appId of enabledAppIds) {
     const appFrontend = ALL_APPS_FRONTEND[appId as keyof typeof ALL_APPS_FRONTEND];
+    if (!hasNavigationItems(appFrontend)) {
+      continue;
+    }
     for (const item of appFrontend.navigationItems) {
       // Use a placeholder project ID — we only need the path relative to /projects/[id]/
       const fullPath = getItemPath("__PROJECT__", appFrontend, item);
@@ -94,7 +97,7 @@ No markdown, no explanation — just the JSON.`;
     }
 
     const selected = parsed.selectedFiles.filter((f) => availableFiles.includes(f));
-    console.log("[selectRelevantFiles] selected:", selected);
+
     return selected;
   } catch (e) {
     console.log("[selectRelevantFiles] failed, returning all files:", e);
@@ -155,27 +158,37 @@ export async function buildDashboardMessages(
   const typeDefinitions = loadSelectedTypeDefinitions(selectedFiles);
 
   const availableRoutes = enabledAppIds ? buildAvailableRoutes(enabledAppIds) : "";
-  console.log("[buildDashboardMessages] enabledAppIds:", enabledAppIds?.length, "availableRoutes:", availableRoutes.slice(0, 200));
 
   const contextMessages: Array<{ role: string, content: string }> = [];
+
+  const dashboardUiDocsHeader = [
+    "DashboardUI component documentation (READ THIS BEFORE USING ANY COMPONENT):",
+    "",
+    "The block below is not just TypeScript types — each component carries a JSDoc block",
+    "with its mental model, canonical pattern, prop rules, runnable examples, and common",
+    "mistakes. Before you write code against DataGrid, AnalyticsChart, DesignMetricCard,",
+    "DesignCard, DesignBadge, DesignButton, or any other DashboardUI.* component, read the",
+    "JSDoc on that specific component in the block below. The JSDoc is load-bearing — the",
+    "bare type signatures are NOT enough to use the components correctly.",
+  ].join("\n");
 
   if (currentSource != null && currentSource.length > 0) {
     contextMessages.push({
       role: "user",
-      content: `Here is the current dashboard source code:\n\`\`\`tsx\n${currentSource}\n\`\`\`\n\nHere are the type definitions:\n${typeDefinitions}\n\nHere are the dashboard UI component types:\n${BUNDLED_DASHBOARD_UI_TYPES}${availableRoutes}`,
+      content: `Here is the current dashboard source code:\n\`\`\`tsx\n${currentSource}\n\`\`\`\n\nHere are the type definitions:\n${typeDefinitions}\n\n${dashboardUiDocsHeader}\n${BUNDLED_DASHBOARD_UI_TYPES}${availableRoutes}`,
     });
     contextMessages.push({
       role: "assistant",
-      content: "I understand the current dashboard code, type definitions, available UI components, and available routes. What changes would you like to make?",
+      content: "I understand the current dashboard code, type definitions, and available routes. I've also read the JSDoc on every DashboardUI component I plan to use and will follow each component's canonical pattern. What changes would you like to make?",
     });
   } else {
     contextMessages.push({
       role: "user",
-      content: `Here are the type definitions for the Stack SDK:\n${typeDefinitions}\n\nHere are the dashboard UI component types:\n${BUNDLED_DASHBOARD_UI_TYPES}${availableRoutes}`,
+      content: `Here are the type definitions for the Stack SDK:\n${typeDefinitions}\n\n${dashboardUiDocsHeader}\n${BUNDLED_DASHBOARD_UI_TYPES}${availableRoutes}`,
     });
     contextMessages.push({
       role: "assistant",
-      content: "I have the type definitions, available UI components, and available routes. What dashboard would you like me to create?",
+      content: "I have the type definitions and available routes. I've also read the JSDoc on every DashboardUI component I plan to use and will follow each component's canonical pattern. What dashboard would you like me to create?",
     });
   }
 

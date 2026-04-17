@@ -1,0 +1,41 @@
+ul#sidebar-group > li > button > div:first-child,
+ul#sidebar-group > li > a > div:first-child {
+  background: transparent !important;
+  border: 0 !important;
+  box-shadow: none !important;
+  padding: 0 !important;
+}
+
+ul#sidebar-group > li > button > img,
+ul#sidebar-group > li > button > div:first-child > img,
+ul#sidebar-group > li > a > div:first-child > img {
+  /* AppIcon-like shell */
+  border: 1px solid transparent !important;
+  border-radius: 30% !important;
+  padding: 2px;
+  display: block;
+  box-sizing: content-box;
+  background:
+    linear-gradient(135deg, #f1f5f9 0%, #e2e8f0 100%) padding-box,
+    linear-gradient(135deg, #cbd5e1 0%, #94a3b8 52%, #cbd5e1 100%) border-box !important;
+  box-shadow:
+    0 2px 6px rgba(15, 23, 42, 0.18),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.55);
+}
+
+html.dark ul#sidebar-group > li > button > img,
+html.dark ul#sidebar-group > li > button > div:first-child > img,
+html.dark ul#sidebar-group > li > a > div:first-child > img,
+:root[data-theme="dark"] ul#sidebar-group > li > button > img,
+:root[data-theme="dark"] ul#sidebar-group > li > button > div:first-child > img,
+:root[data-theme="dark"] ul#sidebar-group > li > a > div:first-child > img {
+  border: 1px solid transparent !important;
+  /* Use inverted shell colors so post-filter background stays blue */
+  background:
+    linear-gradient(135deg, #e9cfaf 0%, #f6f3ee 100%) padding-box,
+    linear-gradient(135deg, #b18a67 0%, #f2dcc2 52%, #b18a67 100%) border-box !important;
+  box-shadow:
+    0 6px 14px rgba(245, 186, 104, 0.22),
+    inset 0 0 0 1px rgba(0, 0, 0, 0.1);
+  filter: invert(1);
+}

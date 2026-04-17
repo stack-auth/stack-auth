@@ -89,7 +89,10 @@ export default function RootLayout({
         })}
 
         {/* eslint-disable-next-line @next/next/no-sync-scripts */}
-        <script dangerouslySetInnerHTML={{ __html: "(function(){try{var t=localStorage.getItem('theme');var d=document.documentElement;var r=t==='dark'||t==='light'?t:window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';d.classList.add(r);d.style.colorScheme=r}catch(e){}})()" }} />
+        <script dangerouslySetInnerHTML={{ __html: getPublicEnvVar("NEXT_PUBLIC_STACK_IS_PREVIEW") === "true"
+          ? "(function(){try{var t=localStorage.getItem('theme');var d=document.documentElement;var r=t==='dark'||t==='light'?t:'light';d.classList.add(r);d.style.colorScheme=r}catch(e){}})()"
+          : "(function(){try{var t=localStorage.getItem('theme');var d=document.documentElement;var r=t==='dark'||t==='light'?t:window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light';d.classList.add(r);d.style.colorScheme=r}catch(e){}})()"
+        }} />
       </head>
       <body
         className={cn(

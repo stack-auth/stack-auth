@@ -4,7 +4,8 @@ import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-a
 import { AppStoreEntry } from "@/components/app-store-entry";
 import { useRouter } from "@/components/router";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui";
-import { ALL_APPS_FRONTEND, getAppPath } from "@/lib/apps-frontend";
+import { ALL_APPS_FRONTEND, getAppPath, isSubApp } from "@/lib/apps-frontend";
+import { isAppEnabled } from "@/lib/apps-utils";
 import { useUpdateConfig } from "@/lib/config-update";
 import { AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { usePathname } from "next/navigation";
@@ -20,7 +21,16 @@ export default function AppDetailsModalPageClient({ appId }: { appId: AppId }) {
   const config = project.useConfig();
   const updateConfig = useUpdateConfig();
 
-  const isEnabled = config.apps.installed[appId]?.enabled ?? false;
+  const isEnabled = isAppEnabled(config.apps.installed, appId);
+  const appFrontend = ALL_APPS_FRONTEND[appId];
+  const appPath = getAppPath(project.id, appFrontend);
+  const parentAppId = isSubApp(appFrontend) ? appFrontend.parentAppId : null;
+  const parentAppEnabled = parentAppId == null ? false : isAppEnabled(config.apps.installed, parentAppId);
+  const subAppDestinationPath = parentAppId == null
+    ? null
+    : parentAppEnabled
+      ? appPath
+      : `/projects/${project.id}/apps/${parentAppId}`;
 
   // Control modal visibility based on whether we're on a modal route.
   // This ensures the modal only closes when navigation actually succeeds,
@@ -47,9 +57,8 @@ export default function AppDetailsModalPageClient({ appId }: { appId: AppId }) {
   };
 
   const handleOpen = () => {
-    const path = getAppPath(project.id, ALL_APPS_FRONTEND[appId]);
     // Navigate to the app page. Modal stays open until pathname changes.
-    router.replace(path);
+    router.replace(subAppDestinationPath ?? appPath);
   };
 
   const handleOpenChange = (open: boolean) => {

@@ -21,6 +21,11 @@ const testKeys = {
 };
 
 const authReturnStorageKey = "turnstile-auth-demo-last-redirect";
+const handlerRoutes = {
+  oauthCallback: "/handler/oauth-callback",
+  magicLinkCallback: "/handler/magic-link-callback",
+  error: "/handler/error",
+};
 
 type FlowResult = {
   status: "success" | "error" | "info",
@@ -317,7 +322,7 @@ export default function TurnstileSignupPageClient() {
   }
 
   function getOAuthCallbackUrlForTurnstileLab() {
-    const callbackUrl = new URL(getAppAbsoluteUrl(app.urls.oauthCallback));
+    const callbackUrl = new URL(getAppAbsoluteUrl(handlerRoutes.oauthCallback));
     callbackUrl.searchParams.set("after_auth_return_to", getCurrentRelativeUrl());
     return callbackUrl.toString();
   }
@@ -409,7 +414,7 @@ export default function TurnstileSignupPageClient() {
 
   async function handleMagicLinkVisibleDrill(): Promise<FlowResult> {
     const drillEmail = freshEmail();
-    const callbackUrl = getAppAbsoluteUrl(app.urls.magicLinkCallback);
+    const callbackUrl = getAppAbsoluteUrl(handlerRoutes.magicLinkCallback);
 
     const firstRes = await debugMagicLinkSend(sendRequest, {
       email: drillEmail,
@@ -451,7 +456,7 @@ export default function TurnstileSignupPageClient() {
       codeChallenge: oauthDebugState.codeChallenge,
       state: oauthDebugState.state,
       redirectUrl: getOAuthCallbackUrlForTurnstileLab(),
-      errorRedirectUrl: getAppAbsoluteUrl(app.urls.error),
+      errorRedirectUrl: getAppAbsoluteUrl(handlerRoutes.error),
       turnstileToken: "mock-turnstile-invalid",
       turnstilePhase: "invisible",
     });
@@ -469,7 +474,7 @@ export default function TurnstileSignupPageClient() {
       codeChallenge: oauthDebugState.codeChallenge,
       state: oauthDebugState.state,
       redirectUrl: getOAuthCallbackUrlForTurnstileLab(),
-      errorRedirectUrl: getAppAbsoluteUrl(app.urls.error),
+      errorRedirectUrl: getAppAbsoluteUrl(handlerRoutes.error),
       turnstileToken: visibleToken,
       turnstilePhase: "visible",
     });
@@ -820,12 +825,12 @@ export default function TurnstileSignupPageClient() {
                 </Typography>
               </CardContent>
               <CardFooter className="flex gap-2">
-                <Link href={app.urls.signUp} className="inline-flex items-center rounded-md border px-4 py-2 text-sm font-medium">
+                <Button variant="secondary" onClick={async () => await app.redirectToSignUp()}>
                   Hosted sign-up
-                </Link>
-                <Link href={app.urls.signIn} className="inline-flex items-center rounded-md border px-4 py-2 text-sm font-medium">
+                </Button>
+                <Button variant="secondary" onClick={async () => await app.redirectToSignIn()}>
                   Hosted sign-in
-                </Link>
+                </Button>
               </CardFooter>
             </Card>
 
@@ -1052,12 +1057,12 @@ export default function TurnstileSignupPageClient() {
           <Link href="/" className="inline-flex items-center rounded-md border px-4 py-2 text-sm font-medium">
             Back to home
           </Link>
-          <Link href={app.urls.signUp} className="inline-flex items-center rounded-md border px-4 py-2 text-sm font-medium">
+          <Button variant="secondary" onClick={async () => await app.redirectToSignUp()}>
             Open hosted sign-up
-          </Link>
-          <Link href={app.urls.signIn} className="inline-flex items-center rounded-md border px-4 py-2 text-sm font-medium">
+          </Button>
+          <Button variant="secondary" onClick={async () => await app.redirectToSignIn()}>
             Open hosted sign-in
-          </Link>
+          </Button>
         </CardFooter>
       </Card>
     </div>

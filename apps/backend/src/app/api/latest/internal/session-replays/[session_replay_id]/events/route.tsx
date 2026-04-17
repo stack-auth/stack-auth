@@ -1,3 +1,4 @@
+import { generatePreviewReplayEvents, isPreviewModeEnabled } from "@/lib/preview-mode";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { downloadBytes } from "@/s3";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -94,39 +95,47 @@ export const GET = createSmartRouteHandler({
         const idx = nextIndex++;
         const chunk = chunksToDownload[idx];
 
-        let bytes: Uint8Array;
-        try {
-          bytes = await downloadBytes({ key: chunk.s3Key, private: true });
-        } catch (e: any) {
-          const status = e?.$metadata?.httpStatusCode;
-          if (status === 404) {
-            throw new KnownErrors.ItemNotFound(chunk.id);
+        let events: any[];
+
+        if (isPreviewModeEnabled() && chunk.s3Key.startsWith("preview://")) {
+          // In preview mode, return canned replay events instead of downloading from S3
+          events = generatePreviewReplayEvents(chunk.firstEventAt.getTime());
+        } else {
+          let bytes: Uint8Array;
+          try {
+            bytes = await downloadBytes({ key: chunk.s3Key, private: true });
+          } catch (e: any) {
+            const status = e?.$metadata?.httpStatusCode;
+            if (status === 404) {
+              throw new KnownErrors.ItemNotFound(chunk.id);
+            }
+            throw e;
           }
-          throw e;
-        }
-        const unzipped = new Uint8Array(await gunzip(bytes));
+          const unzipped = new Uint8Array(await gunzip(bytes));
 
-        let parsed: any;
-        try {
-          parsed = JSON.parse(new TextDecoder().decode(unzipped));
-        } catch (e) {
-          throw new StackAssertionError("Failed to decode session replay chunk JSON", { cause: e });
+          let parsed: any;
+          try {
+            parsed = JSON.parse(new TextDecoder().decode(unzipped));
+          } catch (e) {
+            throw new StackAssertionError("Failed to decode session replay chunk JSON", { cause: e });
+          }
+
+          if (typeof parsed !== "object" || parsed === null) {
+            throw new StackAssertionError("Decoded session replay chunk is not an object");
+          }
+          if (parsed.session_replay_id !== sessionReplayId) {
+            throw new StackAssertionError("Decoded session replay chunk session_replay_id mismatch", {
+              expected: sessionReplayId,
+              actual: parsed.session_replay_id,
+            });
+          }
+          if (!Array.isArray(parsed.events)) {
+            throw new StackAssertionError("Decoded session replay chunk events is not an array");
+          }
+          events = parsed.events as any[];
         }
 
-        if (typeof parsed !== "object" || parsed === null) {
-          throw new StackAssertionError("Decoded session replay chunk is not an object");
-        }
-        if (parsed.session_replay_id !== sessionReplayId) {
-          throw new StackAssertionError("Decoded session replay chunk session_replay_id mismatch", {
-            expected: sessionReplayId,
-            actual: parsed.session_replay_id,
-          });
-        }
-        if (!Array.isArray(parsed.events)) {
-          throw new StackAssertionError("Decoded session replay chunk events is not an array");
-        }
-
-        chunkEvents[idx] = { chunk_id: chunk.id, events: parsed.events as any[] };
+        chunkEvents[idx] = { chunk_id: chunk.id, events };
       }
     }
 

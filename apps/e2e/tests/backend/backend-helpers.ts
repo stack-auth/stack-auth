@@ -299,6 +299,7 @@ export namespace Auth {
         "iss": expectedIssuer,
         "branch_id": "main",
         "refresh_token_id": expect.any(String),
+        "signed_up_at": expect.any(Number),
         "requires_totp_mfa": expect.any(Boolean),
         "aud": backendContext.value.projectKeys === "no-project" ? expect.any(String) : backendContext.value.projectKeys.projectId,
         "sub": expect.any(String),

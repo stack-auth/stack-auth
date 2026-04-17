@@ -1,7 +1,7 @@
 {
   "//": "THIS FILE IS AUTO-GENERATED FROM TEMPLATE. DO NOT EDIT IT DIRECTLY, INSTEAD EDIT THE CORRESPONDING FILE IN packages/template (FOR package.json FILES, PLEASE EDIT package-template.json)",
   "name": "@stackframe/stack",
-  "version": "2.8.77",
+  "version": "2.8.84",
   "repository": "https://github.com/stack-auth/stack-auth",
   "sideEffects": false,
   "main": "./dist/index.js",
@@ -58,6 +58,8 @@
     "LICENSE"
   ],
   "dependencies": {
+    "@ai-sdk/react": "^3.0.72",
+    "ai": "^6.0.0",
     "@hookform/resolvers": "^5.2.2",
     "@stripe/react-stripe-js": "^3.8.1",
     "@stripe/stripe-js": "^7.7.0",

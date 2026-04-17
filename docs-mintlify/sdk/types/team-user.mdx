@@ -1,0 +1,120 @@
+---
+title: "TeamUser"
+description: "Reference for TeamUser and ServerTeamUser types representing team members."
+sidebarTitle: "TeamUser"
+mode: "wide"
+---
+
+import {
+  ClickableTableOfContents,
+  CollapsibleTypesSection,
+  MethodAside,
+  MethodContent,
+  MethodLayout,
+} from "/snippets/sdk-type-components.jsx";
+
+export const TeamUserSection = (props) => (
+  <CollapsibleTypesSection
+    badge={
+      <Badge color="green" size="sm" shape="pill">
+        teamUser
+      </Badge>
+    }
+    {...props}
+  />
+);
+
+export const ServerTeamUserSection = (props) => (
+  <CollapsibleTypesSection
+    badge={
+      <Badge color="blue" size="sm" shape="pill">
+        serverTeamUser
+      </Badge>
+    }
+    {...props}
+  />
+);
+
+On this page:
+
+- [TeamUser](#teamuser)
+- [ServerTeamUser](#serverteamuser)
+
+---
+
+# `TeamUser`
+
+The `TeamUser` object is used on the client side to represent a user in the context of a team, providing minimal information about the user, including their ID and team-specific profile.
+
+It is usually obtained by calling `team.useUsers()` or `team.listUsers()` on a [`Team` object](/sdk/types/team#team).
+
+## Table of Contents
+
+<ClickableTableOfContents
+  title="TeamUser Table of Contents"
+  code={`type TeamUser = {
+  id: string; //$stack-link-to:#teamuserid
+  teamProfile: TeamMemberProfile; //$stack-link-to:#teamuserteamprofile
+};`}
+/>
+
+## Properties
+
+<TeamUserSection type="teamUser" property="id" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The user's identifier.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const id: string; ```
+    </MethodAside>
+  </MethodLayout>
+</TeamUserSection>
+
+<TeamUserSection type="teamUser" property="teamProfile" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Team-specific profile information.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const teamProfile: TeamMemberProfile; ```
+    </MethodAside>
+  </MethodLayout>
+</TeamUserSection>
+
+---
+
+# `ServerTeamUser`
+
+The `ServerTeamUser` object is used on the server side to represent a user within a team. Besides the team profile, it also includes all the functionality of a [`ServerUser`](/sdk/types/user#serveruser).
+
+It is usually obtained by calling `serverTeam.listUsers()` on a [`ServerTeam` object](/sdk/types/team#serverteam).
+
+## Table of Contents
+
+<ClickableTableOfContents
+  title="ServerTeamUser Table of Contents"
+  code={`type ServerTeamUser =
+  // Inherits all functionality from TeamUser
+  & TeamUser; //$stack-link-to:#teamuser
+  // Inherits all functionality from ServerUser
+  & ServerUser; //$stack-link-to:/docs/sdk/types/user#serveruser
+  & {
+    teamProfile: ServerTeamMemberProfile; //$stack-link-to:#serverteamuserteamprofile
+};`}
+/>
+
+## Properties
+
+<ServerTeamUserSection type="serverTeamUser" property="teamProfile" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Server-side team-specific profile information.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+      ```typescript declare const teamProfile: ServerTeamMemberProfile; ```
+    </MethodAside>
+  </MethodLayout>
+</ServerTeamUserSection>
+
+In addition to the above, `ServerTeamUser` inherits all properties and methods from [ServerUser](/sdk/types/user#serveruser).

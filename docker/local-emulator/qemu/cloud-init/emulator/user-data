@@ -1,0 +1,615 @@
+#cloud-config
+
+hostname: stack-emulator
+manage_etc_hosts: true
+
+users:
+  - name: stack
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    lock_passwd: false
+
+chpasswd:
+  list: |
+    root:stack-emulator
+    stack:stack-emulator
+  expire: false
+
+ssh_pwauth: false
+
+package_update: true
+package_upgrade: false
+
+packages:
+  - docker.io
+  - ca-certificates
+  - curl
+  - netcat-openbsd
+  - qemu-guest-agent
+
+write_files:
+  - path: /usr/local/bin/install-emulator-containers
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      mkdir -p /mnt/stack-bundle
+      bundle_device="$(readlink -f /dev/disk/by-label/STACKBUNDLE)"
+      mount -o ro "$bundle_device" /mnt/stack-bundle
+
+      systemctl enable --now docker
+      until docker info >/dev/null 2>&1; do sleep 1; done
+
+      gzip -dc /mnt/stack-bundle/img.tgz | docker load
+
+      if [ -f /mnt/stack-bundle/build.env ]; then
+        cp /mnt/stack-bundle/build.env /etc/stack-build.env
+      fi
+
+      # build-arch.env lets the guest skip the smoke test on cross-arch TCG.
+      if [ -f /mnt/stack-bundle/build-arch.env ]; then
+        cp /mnt/stack-bundle/build-arch.env /etc/stack-build-arch.env
+      fi
+
+  - path: /usr/local/bin/render-stack-env
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      mkdir -p /mnt/stack-runtime /run/stack-auth /var/lib/stack-auth
+      runtime_device="$(readlink -f /dev/disk/by-label/STACKCFG)"
+      mountpoint -q /mnt/stack-runtime || mount -o ro "$runtime_device" /mnt/stack-runtime
+
+      set -a
+      source /mnt/stack-runtime/runtime.env
+      source /mnt/stack-runtime/base.env
+      set +a
+
+      # Generate and persist the internal-project keys on first boot; reuse
+      # across container restarts so the dashboard keeps its internal-project
+      # session. Reset via `stack emulator reset`.
+      #
+      # pck: used by stack-cli to auth against /api/v1/internal/local-emulator/project
+      # ssk/sak: required by the emulator's own dashboard (StackServerApp
+      #   construction throws without them). Not used by user-app flows; the
+      #   /local-emulator/project route mints separate per-project credentials.
+      umask 077
+      for key in internal-pck internal-ssk internal-sak; do
+        if [ ! -s "/var/lib/stack-auth/$key" ]; then
+          openssl rand -hex 32 > "/var/lib/stack-auth/$key"
+        fi
+      done
+      INTERNAL_PCK="$(cat /var/lib/stack-auth/internal-pck)"
+      INTERNAL_SSK="$(cat /var/lib/stack-auth/internal-ssk)"
+      INTERNAL_SAK="$(cat /var/lib/stack-auth/internal-sak)"
+
+      # Container-local dependencies run on localhost. Host-only development
+      # services (such as the OAuth mock server) are reachable via the QEMU
+      # user-network host alias.
+      DEPS_HOST=127.0.0.1
+      HOST_SERVICES_HOST=10.0.2.2
+      P="$STACK_EMULATOR_PORT_PREFIX"
+
+      {
+        # Static vars from base config and runtime (e.g. API keys, feature flags)
+        cat /mnt/stack-runtime/base.env
+        cat /mnt/stack-runtime/runtime.env
+        printf 'STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY=%s\n' "$INTERNAL_PCK"
+        printf 'STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY=%s\n' "$INTERNAL_SSK"
+        printf 'STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY=%s\n' "$INTERNAL_SAK"
+
+        # Computed vars — depend on port prefix or deps host
+        # Host-side ports (for browser URLs — browser runs on host, not in VM)
+        HP_BACKEND="$STACK_EMULATOR_BACKEND_HOST_PORT"
+        HP_DASHBOARD="$STACK_EMULATOR_DASHBOARD_HOST_PORT"
+        HP_MINIO="$STACK_EMULATOR_MINIO_HOST_PORT"
+        HP_INBUCKET="$STACK_EMULATOR_INBUCKET_HOST_PORT"
+
+        cat <<COMPUTED
+      STACK_SKIP_MIGRATIONS=true
+      STACK_SKIP_SEED_SCRIPT=true
+      NEXT_PUBLIC_STACK_PORT_PREFIX=${P}
+      STACK_RUNTIME_WORK_DIR=/app
+      STACK_LOCAL_EMULATOR_HOST_MOUNT_ROOT=/host
+      NEXT_PUBLIC_STACK_API_URL=http://localhost:${HP_BACKEND}
+      NEXT_PUBLIC_STACK_DASHBOARD_URL=http://localhost:${HP_DASHBOARD}
+      NEXT_PUBLIC_BROWSER_STACK_API_URL=http://localhost:${HP_BACKEND}
+      NEXT_PUBLIC_BROWSER_STACK_DASHBOARD_URL=http://localhost:${HP_DASHBOARD}
+      NEXT_PUBLIC_SERVER_STACK_API_URL=http://127.0.0.1:${P}02
+      NEXT_PUBLIC_SERVER_STACK_DASHBOARD_URL=http://127.0.0.1:${P}01
+      NEXT_PUBLIC_STACK_SVIX_SERVER_URL=http://localhost:${HP_BACKEND}
+      STACK_DATABASE_CONNECTION_STRING=postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@${DEPS_HOST}:5432/stackframe
+      STACK_EMAIL_HOST=${DEPS_HOST}
+      STACK_SVIX_SERVER_URL=http://${DEPS_HOST}:8071
+      STACK_S3_ENDPOINT=http://${DEPS_HOST}:9090
+      STACK_S3_PUBLIC_ENDPOINT=http://localhost:${HP_MINIO}/stack-storage
+      STACK_QSTASH_URL=http://${DEPS_HOST}:8080
+      STACK_CLICKHOUSE_URL=http://${DEPS_HOST}:8123
+      STACK_EMAIL_MONITOR_VERIFICATION_CALLBACK_URL=http://localhost:${HP_DASHBOARD}/handler/email-verification
+      STACK_EMAIL_MONITOR_INBUCKET_API_URL=http://${DEPS_HOST}:9001
+      STACK_OAUTH_MOCK_URL=http://localhost:${P}14
+      STACK_FREESTYLE_API_ENDPOINT=http://${DEPS_HOST}:8180
+      STACK_STRIPE_MOCK_PORT=12111
+      NEXT_PUBLIC_STACK_STRIPE_PUBLISHABLE_KEY=pk_test_mock_publishable_key_for_local_emulator
+      BACKEND_PORT=${P}02
+      DASHBOARD_PORT=${P}01
+      COMPUTED
+      } > /run/stack-auth/local-emulator.env
+
+  - path: /usr/local/bin/mount-host-fs
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+      mkdir -p /host
+      if ! mountpoint -q /host; then
+        if ! mount -t 9p -o trans=virtio,version=9p2000.L hostfs /host; then
+          echo "Failed to mount host filesystem at /host" >&2
+          exit 1
+        fi
+      fi
+
+  - path: /usr/local/bin/run-stack-container
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      /usr/local/bin/mount-host-fs
+      /usr/local/bin/render-stack-env
+
+      # Publish the internal publishable client key to the host via 9p so the
+      # stack-cli can authenticate its bootstrap call to
+      # /api/v1/internal/local-emulator/project.
+      set -a
+      source /mnt/stack-runtime/runtime.env
+      set +a
+      if [ -n "${STACK_EMULATOR_VM_DIR_HOST:-}" ] && [ -s /var/lib/stack-auth/internal-pck ]; then
+        install -m 0600 /var/lib/stack-auth/internal-pck \
+          "/host${STACK_EMULATOR_VM_DIR_HOST}/internal-pck"
+      fi
+
+      docker rm -f stack >/dev/null 2>&1 || true
+
+      # Mirror container stdout/stderr to a host-visible log for debugging.
+      # The container already bind-mounts /host:/host, so we reuse that path.
+      # Falls back to stdout (captured by systemd-journald) when no host log is set.
+      if [ -n "${STACK_EMULATOR_VM_DIR_HOST:-}" ]; then
+        host_log="/host${STACK_EMULATOR_VM_DIR_HOST}/stack.log"
+        : > "$host_log" 2>/dev/null || true
+        exec docker run \
+          --rm \
+          --name stack \
+          --network host \
+          --add-host host.docker.internal:host-gateway \
+          --env-file /run/stack-auth/local-emulator.env \
+          -v stack-postgres-data:/data/postgres \
+          -v stack-redis-data:/data/redis \
+          -v stack-clickhouse-data:/data/clickhouse \
+          -v stack-minio-data:/data/minio \
+          -v stack-inbucket-data:/data/inbucket \
+          -v /host:/host \
+          stack-local-emulator 2>&1 | tee -a "$host_log"
+      else
+        exec docker run \
+          --rm \
+          --name stack \
+          --network host \
+          --add-host host.docker.internal:host-gateway \
+          --env-file /run/stack-auth/local-emulator.env \
+          -v stack-postgres-data:/data/postgres \
+          -v stack-redis-data:/data/redis \
+          -v stack-clickhouse-data:/data/clickhouse \
+          -v stack-minio-data:/data/minio \
+          -v stack-inbucket-data:/data/inbucket \
+          -v /host:/host \
+          stack-local-emulator
+      fi
+
+  - path: /usr/local/bin/wait-for-deps
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -uo pipefail
+
+      # Hard upper bound across the whole dep wait. Under TCG every service
+      # init is 5-20x slower than native, so we allow a generous budget, but
+      # if we cross it something is genuinely stuck and we need to surface it.
+      DEPS_TIMEOUT="${STACK_DEPS_TIMEOUT:-1500}"
+      DEPS_CONTAINER="${STACK_DEPS_CONTAINER:-stack-build-init}"
+      start=$SECONDS
+      log() { /usr/local/bin/log-provision "wait-for-deps: $*"; }
+
+      # name|probe pairs — probe runs through `eval` and must exit 0 when ready.
+      # No --max-time on these: under slow TCG a service may take >3s to
+      # respond; let curl wait, outer DEPS_TIMEOUT bounds the whole dep wait.
+      SERVICES=(
+        'postgres|nc -z 127.0.0.1 5432'
+        'clickhouse|curl -sf http://127.0.0.1:8123/ping'
+        'svix|curl -sf http://127.0.0.1:8071/api/v1/health/'
+        'minio|curl -sf http://127.0.0.1:9090/minio/health/live'
+        'qstash|[ "$(curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:8080/ 2>/dev/null || true)" = "401" ]'
+      )
+
+      dump_diagnostics() {
+        log "dumping diagnostics for stuck dep wait..."
+        log "--- docker ps -a ---"
+        docker ps -a 2>&1 | /usr/local/bin/log-provision-stream "wait-for-deps: ps" || true
+        log "--- docker logs ${DEPS_CONTAINER} (last 300 lines) ---"
+        docker logs --tail 300 "$DEPS_CONTAINER" 2>&1 | /usr/local/bin/log-provision-stream "wait-for-deps: deps" || true
+        log "--- per-service probes (3s timeout) ---"
+        nc -z -w 3 127.0.0.1 5432 >/dev/null 2>&1 && log "postgres:5432 reachable" || log "postgres:5432 NOT reachable"
+        curl -sf --max-time 3 http://127.0.0.1:8123/ping >/dev/null 2>&1 && log "clickhouse:8123 reachable" || log "clickhouse:8123 NOT reachable"
+        curl -sf --max-time 3 http://127.0.0.1:8071/api/v1/health/ >/dev/null 2>&1 && log "svix:8071 reachable" || log "svix:8071 NOT reachable"
+        curl -sf --max-time 3 http://127.0.0.1:9090/minio/health/live >/dev/null 2>&1 && log "minio:9090 reachable" || log "minio:9090 NOT reachable"
+        code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 http://127.0.0.1:8080/ 2>/dev/null || true)
+        [ "$code" = "401" ] && log "qstash:8080 reachable (401)" || log "qstash:8080 NOT reachable (code=${code:-none})"
+      }
+
+      wait_for() {
+        local name="$1" probe="$2" elapsed
+        local svc_start=$SECONDS
+        local next_heartbeat=$((svc_start + 30))
+        while true; do
+          if eval "$probe" >/dev/null 2>&1; then
+            elapsed=$((SECONDS - svc_start))
+            log "${name} ready (${elapsed}s)"
+            return 0
+          fi
+          if [ "$SECONDS" -ge "$next_heartbeat" ]; then
+            log "still waiting for ${name} ($((SECONDS - svc_start))s elapsed)"
+            next_heartbeat=$((SECONDS + 30))
+          fi
+          if [ "$((SECONDS - start))" -ge "$DEPS_TIMEOUT" ]; then
+            elapsed=$((SECONDS - start))
+            log "TIMEOUT waiting for ${name} after ${elapsed}s (hard cap ${DEPS_TIMEOUT}s)"
+            dump_diagnostics
+            exit 1
+          fi
+          sleep 2
+        done
+      }
+
+      log "starting dep wait (timeout=${DEPS_TIMEOUT}s)"
+      for entry in "${SERVICES[@]}"; do
+        wait_for "${entry%%|*}" "${entry#*|}"
+      done
+      log "all deps ready ($((SECONDS - start))s total)"
+
+  - path: /etc/stack-build-computed.env
+    content: |
+      USE_INLINE_ENV_VARS=true
+      NEXT_PUBLIC_STACK_API_URL=http://localhost:8102
+      NEXT_PUBLIC_STACK_DASHBOARD_URL=http://localhost:8101
+      NEXT_PUBLIC_BROWSER_STACK_API_URL=http://localhost:8102
+      NEXT_PUBLIC_BROWSER_STACK_DASHBOARD_URL=http://localhost:8101
+      NEXT_PUBLIC_SERVER_STACK_API_URL=http://127.0.0.1:8102
+      NEXT_PUBLIC_SERVER_STACK_DASHBOARD_URL=http://127.0.0.1:8101
+      NEXT_PUBLIC_STACK_SVIX_SERVER_URL=http://localhost:8071
+      NEXT_PUBLIC_STACK_PORT_PREFIX=81
+      STACK_CLICKHOUSE_DATABASE=default
+      BACKEND_PORT=8102
+      DASHBOARD_PORT=8101
+
+  - path: /usr/local/bin/log-provision
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      msg="$*"
+      echo "STACK_PROVISION: $msg"
+      if [ -n "${STACK_PROVISION_LOG_FILE:-}" ]; then
+        printf '%s\n' "$msg" >> "$STACK_PROVISION_LOG_FILE"
+      fi
+
+  - path: /usr/local/bin/log-provision-stream
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -uo pipefail
+
+      prefix="${1:-}"
+      while IFS= read -r line; do
+        /usr/local/bin/log-provision "${prefix}: ${line}"
+      done
+
+  - path: /usr/local/bin/run-build-migrations
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      log() { /usr/local/bin/log-provision "$*"; }
+
+      log "Starting deps container..."
+      docker run --rm --name stack-build-init \
+        --network host \
+        -e STACK_DEPS_ONLY=true \
+        -v stack-postgres-data:/data/postgres \
+        -v stack-redis-data:/data/redis \
+        -v stack-clickhouse-data:/data/clickhouse \
+        -v stack-minio-data:/data/minio \
+        -v stack-inbucket-data:/data/inbucket \
+        -d stack-local-emulator
+
+      log "Waiting for deps (postgres, redis, clickhouse, minio, qstash)..."
+      /usr/local/bin/wait-for-deps
+      log "Deps ready."
+
+      # Wait for init-services.sh (MinIO buckets, ClickHouse DB creation)
+      log "Waiting for init-services.sh..."
+      timeout=120
+      elapsed=0
+      while [ "$elapsed" -lt "$timeout" ]; do
+        if docker exec stack-build-init test -f /var/run/stack-local-init-services.done 2>/dev/null; then
+          break
+        fi
+        sleep 1
+        elapsed=$((elapsed + 1))
+      done
+      if [ "$elapsed" -ge "$timeout" ]; then
+        log "ERROR: init-services.sh did not finish within ${timeout}s"
+        exit 1
+      fi
+      log "init-services done (${elapsed}s)."
+
+      log "Running migrations..."
+      # Cross-arch TCG mistranslates V8's JIT-emitted arm64, and V8's wasm
+      # tier-up path trips an InnerPointerToCodeCache check deep in the heap
+      # (Runtime_WasmTriggerTierUp → StackFrameIterator::Advance crashes
+      # when Wasm code has been freed while a frame still references it).
+      # --no-opt            keeps JS off TurboFan/Maglev
+      # --no-wasm-tier-up   keeps Wasm on Liftoff (no TurboFan)
+      # --no-wasm-dynamic-tiering suppresses the tier-up decision runtime call
+      # --no-wasm-code-gc   keeps Wasm code alive across stack walks
+      # All four are no-ops under KVM, and must be passed on node's CLI
+      # (NODE_OPTIONS rejects them).
+      migrate_log="$(mktemp)"
+      set +e
+      docker exec \
+        --env-file /etc/stack-build.env \
+        --env-file /etc/stack-build-computed.env \
+        stack-build-init \
+        sh -c 'cd /app/apps/backend && node --no-opt --no-wasm-tier-up --no-wasm-dynamic-tiering --no-wasm-code-gc dist/db-migrations.mjs migrate && node --no-opt --no-wasm-tier-up --no-wasm-dynamic-tiering --no-wasm-code-gc dist/db-migrations.mjs seed' \
+        > "$migrate_log" 2>&1
+      migrate_status=$?
+      set -e
+      if [ "$migrate_status" -ne 0 ]; then
+        log "MIGRATIONS FAILED (exit ${migrate_status}) — last 200 lines of migration output:"
+        tail -200 "$migrate_log" | /usr/local/bin/log-provision-stream "migrate" || true
+        rm -f "$migrate_log"
+        exit "$migrate_status"
+      fi
+      rm -f "$migrate_log"
+      log "Migrations + seed complete."
+
+      log "Stopping deps container..."
+      docker stop stack-build-init || true
+      log "run-build-migrations done."
+
+  - path: /usr/local/bin/slim-docker-image
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      log() { /usr/local/bin/log-provision "$*"; }
+
+      log "Building slim Docker image..."
+      docker build -t stack-local-emulator-slim - <<'DOCKERFILE'
+      FROM stack-local-emulator
+      RUN rm -rf /app/node_modules /app/apps/backend/dist && \
+          mv /app/node_modules.standalone /app/node_modules && \
+          for entry in /app/node_modules/.pnpm/node_modules/*; do \
+            name="$(basename "$entry")"; \
+            [ "$name" = ".bin" ] && continue; \
+            ln -sf ".pnpm/node_modules/$name" "/app/node_modules/$name" 2>/dev/null || true; \
+          done
+      DOCKERFILE
+      log "Slim image built."
+
+      # Determine build arch to decide whether to run the smoke test. Cross-arch
+      # (TCG) builds can't reliably run the Next.js backend inside the smoke
+      # test container: V8 JIT ↔ QEMU TCG mistranslations crash the process,
+      # and even with --jitless the backend is too slow to respond within any
+      # sane timeout. amd64 builds run under KVM and are unaffected.
+      BUILD_ARCH=""
+      if [ -f /etc/stack-build-arch.env ]; then
+        # shellcheck disable=SC1091
+        . /etc/stack-build-arch.env
+        BUILD_ARCH="${STACK_EMULATOR_BUILD_ARCH:-}"
+      fi
+
+      if [ "$BUILD_ARCH" = "arm64" ]; then
+        log "Skipping smoke test: build arch is arm64 and cross-arch TCG can't reliably run the backend."
+      else
+        log "Running smoke test on slim image..."
+        # build.env sets NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR=true, which makes
+        # docker/server/entrypoint.sh require the three internal SEED keys.
+        # At real-VM boot those come from render-stack-env via
+        # /run/stack-auth/local-emulator.env, but that path doesn't run during
+        # the build-time smoke test. Mint throwaway hex keys for this container
+        # only; they must be hex because entrypoint.sh also validates that
+        # before the internal ApiKeySet bootstrap SQL.
+        SMOKE_PCK="$(openssl rand -hex 32)"
+        SMOKE_SSK="$(openssl rand -hex 32)"
+        SMOKE_SAK="$(openssl rand -hex 32)"
+        docker run --rm --name smoke-test \
+          --network host \
+          --env-file /etc/stack-build.env \
+          --env-file /etc/stack-build-computed.env \
+          -e STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY="$SMOKE_PCK" \
+          -e STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY="$SMOKE_SSK" \
+          -e STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY="$SMOKE_SAK" \
+          -e STACK_SKIP_MIGRATIONS=true \
+          -e STACK_SKIP_SEED_SCRIPT=true \
+          -e STACK_RUNTIME_WORK_DIR=/app \
+          -v stack-postgres-data:/data/postgres \
+          -v stack-redis-data:/data/redis \
+          -v stack-clickhouse-data:/data/clickhouse \
+          -v stack-minio-data:/data/minio \
+          -v stack-inbucket-data:/data/inbucket \
+          -d stack-local-emulator-slim
+
+        smoke_timeout=300
+        smoke_elapsed=0
+        smoke_passed=false
+        while [ "$smoke_elapsed" -lt "$smoke_timeout" ]; do
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 3 http://127.0.0.1:8102/health?db=1 2>/dev/null || true)
+          if [ "$code" = "200" ]; then
+            smoke_passed=true
+            break
+          fi
+          sleep 2
+          smoke_elapsed=$((smoke_elapsed + 2))
+        done
+
+        if [ "$smoke_passed" = "false" ]; then
+          log "SMOKE TEST FAILED: backend /health?db=1 did not return 200 within ${smoke_timeout}s"
+          log "--- docker ps -a ---"
+          docker ps -a 2>&1 | /usr/local/bin/log-provision-stream "ps" || true
+          log "--- smoke-test container logs (last 200 lines) ---"
+          docker logs --tail 200 smoke-test 2>&1 | /usr/local/bin/log-provision-stream "smoke-test" || true
+          log "--- free -m ---"
+          free -m 2>&1 | /usr/local/bin/log-provision-stream "mem" || true
+          log "--- curl -v /health?db=1 ---"
+          curl -v --max-time 5 http://127.0.0.1:8102/health?db=1 2>&1 | /usr/local/bin/log-provision-stream "curl" || true
+          docker stop smoke-test 2>/dev/null || true
+          exit 1
+        fi
+
+        docker stop smoke-test 2>/dev/null || true
+        sleep 2
+        log "Smoke test passed (${smoke_elapsed}s)."
+      fi
+
+      log "Flattening image (docker export/import)..."
+      docker create --name flatten stack-local-emulator-slim /bin/true
+      docker export flatten | docker import \
+        --change 'WORKDIR /app' \
+        --change 'ENTRYPOINT ["/entrypoint.sh"]' \
+        --change 'EXPOSE 5432 6379 2500 9001 1100 8071 8123 9009 9090 8080 8101 8102' \
+        --change 'ENV DEBIAN_FRONTEND=noninteractive' \
+        - stack-local-emulator:final
+      log "Flatten done."
+
+      log "Saving final image to /var/tmp..."
+      docker rm flatten
+      docker save stack-local-emulator:final -o /var/tmp/final-image.tar
+      mv /var/lib/docker/volumes /var/tmp/volumes-backup
+      log "Nuking Docker storage and reloading..."
+      systemctl stop docker containerd
+      rm -rf /var/lib/docker /var/lib/containerd
+      systemctl start docker containerd
+      until docker info >/dev/null 2>&1; do sleep 1; done
+      docker load -i /var/tmp/final-image.tar
+      docker tag stack-local-emulator:final stack-local-emulator
+      docker rmi stack-local-emulator:final || true
+      rm -f /var/tmp/final-image.tar
+      systemctl stop docker
+      rm -rf /var/lib/docker/volumes
+      mv /var/tmp/volumes-backup /var/lib/docker/volumes
+      systemctl start docker
+      log "Docker storage rebuilt."
+
+      log "Zeroing free space for qcow2 compression..."
+      dd if=/dev/zero of=/zero.fill bs=1M 2>/dev/null || true
+      rm -f /zero.fill
+      sync
+      fstrim -av 2>/dev/null || true
+      log "slim-docker-image done."
+
+  - path: /etc/systemd/system/stack.service
+    content: |
+      [Unit]
+      Description=Stack Auth local emulator
+      Wants=network-online.target docker.service
+      After=network-online.target docker.service
+
+      [Service]
+      Restart=always
+      RestartSec=5
+      TimeoutStartSec=0
+      ExecStart=/usr/local/bin/run-stack-container
+      ExecStop=/usr/bin/docker stop stack
+
+      [Install]
+      WantedBy=multi-user.target
+
+  - path: /usr/local/bin/provision-build
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      set -euo pipefail
+
+      if bash /usr/local/bin/mount-host-fs 2>/dev/null; then
+        export STACK_PROVISION_LOG_FILE=/host/provision.log
+        : > "$STACK_PROVISION_LOG_FILE"
+      else
+        export STACK_PROVISION_LOG_FILE=""
+      fi
+
+      write_marker_to_consoles() {
+        local marker="$1"
+        for dev in /dev/console /dev/ttyAMA0 /dev/ttyS0; do
+          echo "$marker" > "$dev" 2>/dev/null || true
+        done
+      }
+
+      cleanup() {
+        local status=$?
+        if [ "$status" -ne 0 ]; then
+          if [ -n "${STACK_PROVISION_LOG_FILE:-}" ]; then
+            printf 'ERROR: provision-build exited with code %s\n' "$status" >> "$STACK_PROVISION_LOG_FILE"
+            printf '%s\n' "STACK_CLOUD_INIT_FAILED" >> "$STACK_PROVISION_LOG_FILE"
+          fi
+          write_marker_to_consoles "STACK_CLOUD_INIT_FAILED"
+          sync || true
+          (sleep 2 && shutdown -P now) &
+          (sleep 15 && poweroff -f) &
+        fi
+      }
+      trap cleanup EXIT
+
+      SERIAL=""
+      for d in /dev/ttyAMA0 /dev/ttyS0; do
+        [ -c "$d" ] && SERIAL="$d" && break
+      done
+      if [ -n "$SERIAL" ]; then
+        exec > >(tee -a "$SERIAL") 2>&1
+      fi
+
+      log_provision() {
+        /usr/local/bin/log-provision "$*"
+      }
+
+      log_provision "runcmd starting"
+
+      systemctl disable --now ssh || true
+      systemctl mask ssh || true
+
+      log_provision "installing emulator containers"
+      bash /usr/local/bin/install-emulator-containers
+
+      systemctl daemon-reload
+      systemctl enable stack.service
+
+      log_provision "starting build migrations"
+      bash /usr/local/bin/run-build-migrations
+
+      log_provision "starting slim-docker-image"
+      bash /usr/local/bin/slim-docker-image
+
+      log_provision "build pipeline complete"
+      if [ -n "${STACK_PROVISION_LOG_FILE:-}" ]; then
+        printf '%s\n' "STACK_CLOUD_INIT_DONE" >> "$STACK_PROVISION_LOG_FILE"
+      fi
+      write_marker_to_consoles "STACK_CLOUD_INIT_DONE"
+
+      shutdown -P now
+
+runcmd:
+  - [bash, /usr/local/bin/provision-build]

@@ -1,4 +1,5 @@
 import { getEmailThemeForThemeId, renderEmailWithTemplate } from "@/lib/email-rendering";
+import { isPreviewModeEnabled } from "@/lib/preview-mode";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { adaptSchema, templateThemeIdSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
@@ -77,6 +78,17 @@ export const POST = createSmartRouteHandler({
       contentSource = template.tsxSource;
     } else {
       throw new KnownErrors.SchemaError("Either template_id or template_tsx_source must be provided");
+    }
+
+    if (isPreviewModeEnabled()) {
+      return {
+        statusCode: 200,
+        bodyType: "json",
+        body: {
+          html: "<html><body><p>Email preview unavailable in preview mode.</p></body></html>",
+          subject: "Preview",
+        },
+      };
     }
 
     const editableMarkers = 'editable_markers' in body && body.editable_markers === true;
