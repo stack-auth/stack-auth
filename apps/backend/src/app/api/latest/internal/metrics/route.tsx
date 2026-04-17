@@ -210,6 +210,10 @@ async function loadDailyActiveSplitFromClickhouse(options: {
     : "";
 
   const clickhouseClient = getClickhouseAdminClient();
+  // Note: the inner `assumeNotNull(${idCol}) AS entity_id` must not reuse the
+  // column name, or ClickHouse re-resolves `WHERE ${idCol} IS NOT NULL`
+  // against the alias (assumeNotNull returns '' for NULLs, which passes the
+  // not-null test) and phantom rows slip through.
   const result = await clickhouseClient.query({
     query: `
       SELECT
@@ -221,12 +225,12 @@ async function loadDailyActiveSplitFromClickhouse(options: {
       FROM (
         SELECT
           day,
-          ${idCol},
-          lagInFrame(day, 1) OVER (PARTITION BY ${idCol} ORDER BY day) AS prev_day
+          entity_id,
+          lagInFrame(day, 1) OVER (PARTITION BY entity_id ORDER BY day) AS prev_day
         FROM (
           SELECT DISTINCT
             toDate(event_at) AS day,
-            assumeNotNull(${idCol}) AS ${idCol}
+            assumeNotNull(${idCol}) AS entity_id
           FROM analytics_internal.events
           WHERE event_type = '$token-refresh'
             AND project_id = {projectId:String}
@@ -239,7 +243,7 @@ async function loadDailyActiveSplitFromClickhouse(options: {
       ) AS w
       LEFT JOIN (
         SELECT
-          assumeNotNull(${idCol}) AS ${idCol},
+          assumeNotNull(${idCol}) AS entity_id,
           toDate(min(event_at)) AS first_date
         FROM analytics_internal.events
         WHERE event_type = '$token-refresh'
@@ -248,8 +252,8 @@ async function loadDailyActiveSplitFromClickhouse(options: {
           AND ${idCol} IS NOT NULL
           AND event_at < {untilExclusive:DateTime}
           ${anonFilter}
-        GROUP BY ${idCol}
-      ) AS f USING (${idCol})
+        GROUP BY entity_id
+      ) AS f USING (entity_id)
       GROUP BY w.day
       ORDER BY w.day ASC
     `,
