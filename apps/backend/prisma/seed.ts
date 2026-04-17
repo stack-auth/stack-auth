@@ -122,7 +122,12 @@ export async function seed() {
             customerType: "team",
             serverOnly: false,
             stackable: false,
-            prices: "include-by-default",
+            prices: {
+              "free-monthly": {
+                USD: "0",
+                interval: [1, "month"] as any,
+              },
+            },
             includedItems: {
               [ITEM_IDS.seats]: { quantity: PLAN_LIMITS.free.seats, repeat: "never" as const, expires: "when-purchase-expires" as const },
               [ITEM_IDS.authUsers]: { quantity: PLAN_LIMITS.free.authUsers, repeat: "never" as const, expires: "when-purchase-expires" as const },

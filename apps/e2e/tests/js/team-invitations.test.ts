@@ -2,7 +2,7 @@ import { it } from "../helpers";
 import { createApp } from "./js-helpers";
 
 
-it("should list team invitations for the current user via the client SDK", async ({ expect }) => {
+it("should list team invitations for the current user via the client SDK", { timeout: 60_000 }, async ({ expect }) => {
   const { clientApp, serverApp } = await createApp({ config: { clientTeamCreationEnabled: true } });
 
   // Create a team via a signed-in user

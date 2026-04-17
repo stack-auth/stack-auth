@@ -8,6 +8,7 @@ import fs from "fs";
 import path from "path";
 import * as readline from "readline";
 import { seed } from "../prisma/seed";
+import { runBulldozerPaymentsInit } from "./bulldozer-payments-init";
 import { runClickhouseMigrations } from "./clickhouse-migrations";
 
 const getClickhouseClient = () => getClickhouseAdminClient();
@@ -213,15 +214,18 @@ const main = async () => {
     }
     case 'seed': {
       await seed();
+      await runBulldozerPaymentsInit(globalPrismaClient);
       break;
     }
     case 'init': {
       await migrate(undefined, { interactive });
       await seed();
+      await runBulldozerPaymentsInit(globalPrismaClient);
       break;
     }
     case 'migrate': {
       await migrate(undefined, { interactive });
+      await runBulldozerPaymentsInit(globalPrismaClient);
       break;
     }
     case 'help': {
