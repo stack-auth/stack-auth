@@ -10,5 +10,13 @@ export default defineConfig({
   datasource: {
     url: env('STACK_DATABASE_CONNECTION_STRING'),
   },
+  experimental: {
+    externalTables: true,
+  },
+  tables: {
+    external: [
+      "public.BulldozerStorageEngine",
+    ],
+  },
 })
 
