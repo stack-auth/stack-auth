@@ -1,3 +1,5 @@
+import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 
 import { BULLDOZER_SORT_HELPERS_SQL } from "./bulldozer-sort-helpers-sql";
@@ -66,10 +68,23 @@ export function toQueryableSqlQuery(query: SqlQuery): string {
   return query.sql;
 }
 
-export function toExecutableSqlTransaction(statements: SqlStatement[], options: { statementTimeout?: string } = {}): string {
-  const requiresSortHelpers = statements.some((statement) => statement.sql.includes("pg_temp.bulldozer_sort_"));
-  const seqOutputs = new Map<string, string>();
-  const executableStatementsInDoBlock = statements.map((statement) => {
+/**
+ * Core body-builder shared by `toExecutableSqlTransaction` and
+ * `toCascadeSqlBlock`. Serializes a list of `SqlStatement`s into a single
+ * string suitable to drop into a plpgsql DO block, rewriting references to
+ * named outputs into `__bulldozer_seq` subqueries.
+ *
+ * `seededSeqOutputs` lets callers pretend a given `__output_name` has
+ * already been produced by an upstream statement. Used by the timefold
+ * queue-drain cascade, which pre-populates `__bulldozer_seq` in plpgsql
+ * BEFORE executing the stored cascade template.
+ */
+function buildExecutableStatementsBlock(
+  statements: SqlStatement[],
+  seededSeqOutputs: Map<string, string>,
+): string {
+  const seqOutputs = new Map<string, string>(seededSeqOutputs);
+  return statements.map((statement) => {
     let sql = statement.sql;
     for (const [outputName, outputColumns] of seqOutputs) {
       const quotedOutputName = `"${outputName}"`;
@@ -112,12 +127,22 @@ export function toExecutableSqlTransaction(statements: SqlStatement[], options: 
             `;
         })();
 
-    // Keep the outer DO block delimiter stable even when statements define $$ functions.
-    const normalizedSql = executableSql.replaceAll("$$", "$__bulldozer_do_inline$").trimEnd();
+    const normalizedSql = executableSql.trimEnd();
     return normalizedSql.endsWith(";")
       ? normalizedSql
       : `${normalizedSql};`;
   }).join("\n\n");
+}
+
+export function toExecutableSqlTransaction(statements: SqlStatement[], options: { statementTimeout?: string } = {}): string {
+  const requiresSortHelpers = statements.some((statement) => statement.sql.includes("pg_temp.bulldozer_sort_"));
+  const executableStatementsInDoBlock = buildExecutableStatementsBlock(statements, new Map());
+  // Randomize the outer DO-block delimiter so nested `$$` that individual
+  // statements legitimately use (e.g. `CREATE FUNCTION ... AS $$ ... $$`
+  // in `reduce-table.ts`) don't collide with it, and so user-provided SQL
+  // containing a literal `'$$'` string doesn't need to be rewritten. Same
+  // approach as `toCascadeSqlBlock` below.
+  const outerTag = chooseSafeDollarQuoteTag(executableStatementsInDoBlock, "bulldozer_tx");
 
   return deindent`
     BEGIN;
@@ -131,12 +156,84 @@ export function toExecutableSqlTransaction(statements: SqlStatement[], options: 
 
     ${BULLDOZER_SEQ_TABLE_SQL}
 
-    DO $$
+    DO $${outerTag}$
     BEGIN
       ${executableStatementsInDoBlock}
     END;
-    $$ LANGUAGE plpgsql;
+    $${outerTag}$ LANGUAGE plpgsql;
 
     COMMIT;
+  `;
+}
+
+/**
+ * Picks a plpgsql dollar-quote tag that is guaranteed not to appear
+ * verbatim inside `bodyContents`.
+ *
+ * We need this for any `DO $tag$ ... $tag$` block whose body is
+ * concatenated from caller-supplied SQL: a naive fixed `$tag$` would
+ * close the outer block prematurely if any embedded statement happened
+ * to include the same literal `$tag$` (e.g. a user filter predicate
+ * that references the string, or a comment, or a CASE branch).
+ *
+ * A cryptographically-random 224-bit suffix makes accidental collision
+ * astronomically unlikely. We still assert (rather than silently
+ * retrying) because a collision here would almost certainly mean the
+ * caller is constructing the body adversarially, and we'd rather fail
+ * loud.
+ */
+function chooseSafeDollarQuoteTag(bodyContents: string, tagPrefix: string): string {
+  const tag = `${tagPrefix}_${generateSecureRandomString()}`;
+  if (bodyContents.includes(`$${tag}$`)) {
+    throw new StackAssertionError(
+      "Randomly generated dollar-quote tag collided with body contents; this is astronomically unlikely with a 224-bit suffix and almost certainly indicates adversarial input",
+      { tag, tagPrefix },
+    );
+  }
+  return tag;
+}
+
+/**
+ * Compiles a downstream-trigger cascade into a plpgsql `DO` block body that
+ * can be stored in `BulldozerTimeFoldDownstreamCascade.cascadeTemplate` and
+ * EXECUTEd by `bulldozer_timefold_process_queue()` at runtime.
+ *
+ * The generated body:
+ *  - Assumes the caller has already populated `__bulldozer_seq` under
+ *    `cascadeInputName` with rows matching `cascadeInputColumns`.
+ *  - Does NOT acquire the advisory lock or SET LOCAL settings — that
+ *    responsibility belongs to the function wrapping the cascade.
+ *  - Wraps the statement sequence in a `DO $<random-tag>$ ... $<random-tag>$`
+ *    block so `EXECUTE` in plpgsql can run it as a single dispatch. The
+ *    tag is randomized per-call to ensure user-supplied SQL can never
+ *    contain a literal copy of it and close the outer DO block early
+ *    (see `chooseSafeDollarQuoteTag`).
+ *
+ * If the downstream trigger graph is empty (no filters/maps/etc. registered),
+ * returns `null`. Callers should skip the EXECUTE in that case.
+ */
+export function toCascadeSqlBlock(options: {
+  cascadeInputName: string,
+  cascadeInputColumns: string,
+  statements: SqlStatement[],
+}): string | null {
+  if (options.statements.length === 0) return null;
+  const seeded = new Map<string, string>([[options.cascadeInputName, options.cascadeInputColumns]]);
+  const body = buildExecutableStatementsBlock(options.statements, seeded);
+  const requiresSortHelpers = options.statements.some((statement) => statement.sql.includes("pg_temp.bulldozer_sort_"));
+  // Sort helpers use their own $$ dollar quoting inside `CREATE OR REPLACE
+  // FUNCTION` bodies. They live inside the outer DO so they share the
+  // enclosing transaction's pg_temp scope with the cascade statements. The
+  // outer tag is randomized below so nested $$ (or any other fixed tag in
+  // user SQL) can't close it.
+  const prelude = requiresSortHelpers ? BULLDOZER_SORT_HELPERS_SQL : "";
+  const outerTag = chooseSafeDollarQuoteTag(`${prelude}\n${body}`, "tf_cascade");
+  return deindent`
+    DO $${outerTag}$
+    BEGIN
+      ${prelude}
+      ${body}
+    END;
+    $${outerTag}$ LANGUAGE plpgsql;
   `;
 }
