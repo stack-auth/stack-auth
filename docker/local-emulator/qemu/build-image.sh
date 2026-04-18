@@ -12,9 +12,22 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 DEBIAN_VERSION="${DEBIAN_VERSION:-13}"
 DISK_SIZE="${EMULATOR_DISK_SIZE:-12G}"
 RAM="${EMULATOR_BUILD_RAM:-4096}"
-CPUS="${EMULATOR_BUILD_CPUS:-$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)}"
+# Snapshot mode pins SMP to a fixed value so the runtime QEMU command (which
+# uses EMULATOR_CPUS, default 4) can match the source device topology — RAM
+# migration replay requires identical vCPU count.
+if [ "${EMULATOR_BUILD_SNAPSHOT:-1}" = "1" ]; then
+  CPUS="${EMULATOR_BUILD_CPUS:-4}"
+else
+  CPUS="${EMULATOR_BUILD_CPUS:-$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)}"
+fi
 PROVISION_TIMEOUT="${EMULATOR_PROVISION_TIMEOUT:-3200}"
 EMULATOR_IMAGE_NAME="${EMULATOR_IMAGE_NAME:-stack-local-emulator}"
+# Snapshot build mode: bring the VM to a fully-warm state (backend + dashboard
+# responding), then capture RAM/device state via QMP so that `emulator start`
+# can -incoming from it and return in ~3-8s. Enabled by default; set
+# EMULATOR_BUILD_SNAPSHOT=0 to fall back to the legacy "shutdown after
+# provisioning" flow.
+EMULATOR_BUILD_SNAPSHOT="${EMULATOR_BUILD_SNAPSHOT:-1}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -47,9 +60,18 @@ check_deps() {
     command -v "$qemu_bin" >/dev/null 2>&1 || missing+=("$qemu_bin")
   done
 
-  for cmd in qemu-img curl docker gzip; do
+  for cmd in qemu-img curl gzip; do
     command -v "$cmd" >/dev/null 2>&1 || missing+=("$cmd")
   done
+  if [ "${SKIP_DOCKER_BUILD:-0}" != "1" ]; then
+    command -v docker >/dev/null 2>&1 || missing+=("docker")
+  fi
+
+  if [ "$EMULATOR_BUILD_SNAPSHOT" = "1" ]; then
+    for cmd in socat zstd; do
+      command -v "$cmd" >/dev/null 2>&1 || missing+=("$cmd")
+    done
+  fi
 
   if ! command -v mkisofs >/dev/null 2>&1 && ! command -v genisoimage >/dev/null 2>&1 && ! command -v hdiutil >/dev/null 2>&1; then
     missing+=("mkisofs/genisoimage/hdiutil")
@@ -231,6 +253,9 @@ persist_provision_logs() {
   cp "$provision_log" "$IMAGE_DIR/provision-emulator-${arch}.progress.log" 2>/dev/null || true
 }
 
+# qmp_session() and capture_vm_state() live in common.sh; both build-image.sh
+# (CI) and run-emulator.sh (stack emulator pull local capture) call them.
+
 build_one() {
   local arch="$1"
   local base_img="$IMAGE_DIR/debian-${DEBIAN_VERSION}-base-${arch}.qcow2"
@@ -245,7 +270,9 @@ build_one() {
   local tmp_img="$tmp_dir/disk.qcow2"
   local seed_iso="$tmp_dir/seed.iso"
   local bundle_iso="$tmp_dir/bundle.iso"
+  local runtime_iso="$tmp_dir/runtime.iso"
   local bundle_dir="$tmp_dir/bundle"
+  local runtime_cfg_dir="$tmp_dir/runtime"
   local serial_log="$tmp_dir/serial.log"
   local provision_log="$tmp_dir/provision.log"
   local pidfile="$tmp_dir/qemu.pid"
@@ -269,15 +296,74 @@ build_one() {
   mkdir -p "$bundle_dir"
   cp "$bundle_tgz" "$bundle_dir/img.tgz"
   cp "$BUILD_ENV_FILE" "$bundle_dir/build.env"
+  if [ "$EMULATOR_BUILD_SNAPSHOT" = "1" ]; then
+    # Guest reads this flag to use placeholder secrets and to wait at the end
+    # of provision-build for the host to snapshot the RAM state.
+    printf 'STACK_EMULATOR_BUILD_SNAPSHOT=1\n' >> "$bundle_dir/build.env"
+  fi
   # Tell the guest which arch it's being built for so cross-arch (TCG) builds
   # can skip the smoke test, which isn't reliable under software emulation.
   printf 'STACK_EMULATOR_BUILD_ARCH=%s\n' "$arch" > "$bundle_dir/build-arch.env"
   make_iso_from_dir "$bundle_iso" "STACKBUNDLE" "$bundle_dir"
 
+  # render-stack-env (inside the guest) mounts a STACKCFG disk containing
+  # runtime.env + base.env. At runtime the host-side run-emulator.sh builds
+  # this ISO; at build time stack.service also starts the container, so we
+  # must provide the same shape here. Values mirror the defaults the runtime
+  # would supply — port-prefix 81 and matching host-port numbers (unused at
+  # build time since nothing is port-forwarded, but render-stack-env embeds
+  # them into /run/stack-auth/local-emulator.env).
+  mkdir -p "$runtime_cfg_dir"
+  {
+    printf 'STACK_EMULATOR_PORT_PREFIX=81\n'
+    printf 'STACK_EMULATOR_DASHBOARD_HOST_PORT=26700\n'
+    printf 'STACK_EMULATOR_BACKEND_HOST_PORT=26701\n'
+    printf 'STACK_EMULATOR_MINIO_HOST_PORT=26702\n'
+    printf 'STACK_EMULATOR_INBUCKET_HOST_PORT=26703\n'
+    printf 'STACK_EMULATOR_VM_DIR_HOST=\n'
+  } > "$runtime_cfg_dir/runtime.env"
+  cp "$BUILD_ENV_FILE" "$runtime_cfg_dir/base.env"
+  make_iso_from_dir "$runtime_iso" "STACKCFG" "$runtime_cfg_dir"
+
   : > "$serial_log"
   : > "$provision_log"
   qemu_base="$(qemu_cmd_prefix_for_arch "$arch")"
   log "QEMU command prefix (${arch}): $qemu_base"
+
+  local monitor_sock="$tmp_dir/monitor.sock"
+  local qga_sock="$tmp_dir/qga.sock"
+  local snapshot_args=()
+  local runtime_disk_args=()
+  local virtfs_args=(-virtfs "local,path=$tmp_dir,mount_tag=hostfs,security_model=none")
+  if [ "$EMULATOR_BUILD_SNAPSHOT" = "1" ]; then
+    # STACKCFG runtime ISO lets stack.service start during the build — same
+    # disk shape render-stack-env expects at runtime. Placed before netdev
+    # so its virtio-blk PCI slot precedes virtio-net-pci, matching the
+    # resume argv order in run-emulator.sh (slots must line up or
+    # migrate-incoming fails the device-tree check).
+    runtime_disk_args=(
+      -drive "file=$runtime_iso,format=raw,if=virtio,readonly=on"
+    )
+    # QMP for stop/migrate/quit; virtio-serial + QGA channel so we can exec
+    # inside the guest post-resume (only needed at runtime but harmless here).
+    snapshot_args=(
+      -chardev "socket,id=monitor,path=$monitor_sock,server=on,wait=off"
+      -mon "chardev=monitor,mode=control"
+      -chardev "socket,path=$qga_sock,server=on,wait=off,id=qga0"
+      -device virtio-serial
+      -device "virtserialport,chardev=qga0,name=org.qemu.guest_agent.0"
+      # Empty PCIe root port reserved for runtime hot-plug of virtio-9p.
+      # The integrated pcie.0 bus on q35 / arm64-virt is static — hotplug
+      # only works through a root port. Must be present at snapshot capture
+      # so the resumed device tree matches.
+      -device "pcie-root-port,id=hostfs-port,bus=pcie.0,chassis=1"
+    )
+    # QEMU disallows migration when virtfs is mounted in the guest — virtfs
+    # has guest-side state (open handles, mount table) that isn't migratable.
+    # Drop the host fs mount in snapshot mode; STACK_SERVICES_READY still
+    # arrives on the serial log so contains_provision_marker can detect it.
+    virtfs_args=()
+  fi
 
   # shellcheck disable=SC2086
   $qemu_base \
@@ -287,18 +373,24 @@ build_one() {
     -drive "file=$tmp_img,format=qcow2,if=virtio,discard=on,detect-zeroes=unmap" \
     -drive "file=$seed_iso,format=raw,if=virtio,readonly=on" \
     -drive "file=$bundle_iso,format=raw,if=virtio,readonly=on" \
+    ${runtime_disk_args[@]+"${runtime_disk_args[@]}"} \
     -netdev user,id=net0 \
     -device virtio-net-pci,netdev=net0 \
-    -virtfs "local,path=$tmp_dir,mount_tag=hostfs,security_model=none" \
+    ${virtfs_args[@]+"${virtfs_args[@]}"} \
+    ${snapshot_args[@]+"${snapshot_args[@]}"} \
     -serial "file:$serial_log" \
     -display none \
     -daemonize \
     -pidfile "$pidfile"
 
   pid="$(cat "$pidfile")"
+  local ready_marker="STACK_CLOUD_INIT_DONE"
+  if [ "$EMULATOR_BUILD_SNAPSHOT" = "1" ]; then
+    ready_marker="STACK_SERVICES_READY"
+  fi
   elapsed=0
   while [ "$elapsed" -lt "$PROVISION_TIMEOUT" ]; do
-    if contains_provision_marker "$provision_log" "$serial_log" "STACK_CLOUD_INIT_DONE"; then
+    if contains_provision_marker "$provision_log" "$serial_log" "$ready_marker"; then
       break
     fi
 
@@ -312,7 +404,7 @@ build_one() {
       if [ "$total_build_lines" -gt "$last_build_lines" ]; then
         echo ""
         sed -n "$((last_build_lines + 1)),${total_build_lines}p" "$provision_log" 2>/dev/null | while IFS= read -r msg; do
-          if [ "$msg" = "STACK_CLOUD_INIT_DONE" ]; then
+          if [ "$msg" = "STACK_CLOUD_INIT_DONE" ] || [ "$msg" = "STACK_SERVICES_READY" ]; then
             continue
           fi
           printf "  [%3ds] %s\n" "$elapsed" "$msg"
@@ -332,7 +424,7 @@ build_one() {
   done
   echo ""
 
-  if ! contains_provision_marker "$provision_log" "$serial_log" "STACK_CLOUD_INIT_DONE"; then
+  if ! contains_provision_marker "$provision_log" "$serial_log" "$ready_marker"; then
     if [ "$guest_failed" = true ]; then
       err "Guest provisioning reported failure for emulator (${arch})"
     elif [ "$guest_exited" = true ]; then
@@ -358,17 +450,69 @@ build_one() {
     exit 1
   fi
 
-  local shutdown_wait=0
-  while [ "$shutdown_wait" -lt 90 ] && kill -0 "$pid" 2>/dev/null; do
-    sleep 1
-    shutdown_wait=$((shutdown_wait + 1))
-  done
+  if [ "$EMULATOR_BUILD_SNAPSHOT" = "1" ]; then
+    local savevm_file="$IMAGE_DIR/stack-emulator-${arch}.savevm.zst"
+    local savevm_raw="$tmp_dir/state.raw"
+    local savevm_tmp="$tmp_dir/state.zst"
 
-  if kill -0 "$pid" 2>/dev/null; then
-    warn "Guest did not power off cleanly; forcing shutdown."
-    kill "$pid" 2>/dev/null || true
-    sleep 2
-    kill -9 "$pid" 2>/dev/null || true
+    # Capture raw RAM/device state via QEMU's native file: migration; then
+    # compress on the host side. Avoids any reliance on QEMU spawning a shell
+    # that has zstd in PATH.
+    log "Capturing VM state via QMP (${arch})..."
+    if ! capture_vm_state "$monitor_sock" "$savevm_raw"; then
+      err "Failed to capture VM state for ${arch}"
+      if kill -0 "$pid" 2>/dev/null; then
+        kill "$pid" 2>/dev/null || true
+        sleep 1
+        kill -9 "$pid" 2>/dev/null || true
+      fi
+      persist_provision_logs "$arch" "$serial_log" "$provision_log"
+      rm -rf "$tmp_dir"
+      exit 1
+    fi
+
+    # QEMU exited cleanly via `quit`. Wait briefly to release the pid file.
+    local shutdown_wait=0
+    while [ "$shutdown_wait" -lt 30 ] && kill -0 "$pid" 2>/dev/null; do
+      sleep 1
+      shutdown_wait=$((shutdown_wait + 1))
+    done
+    if kill -0 "$pid" 2>/dev/null; then
+      warn "QEMU did not exit after quit; forcing."
+      kill "$pid" 2>/dev/null || true
+      sleep 2
+      kill -9 "$pid" 2>/dev/null || true
+    fi
+
+    if [ ! -s "$savevm_raw" ]; then
+      err "VM state file missing or empty at $savevm_raw"
+      persist_provision_logs "$arch" "$serial_log" "$provision_log"
+      rm -rf "$tmp_dir"
+      exit 1
+    fi
+
+    # zstd -1 trades ~30% larger file for ~40% faster decompression at resume.
+    # For shipping-and-decompress-once-per-start, that's the right balance.
+    log "Compressing VM state with zstd..."
+    zstd -1 -T0 --rm -o "$savevm_tmp" "$savevm_raw"
+
+    mv "$savevm_tmp" "$savevm_file"
+    local savevm_size
+    savevm_size="$(du -h "$savevm_file" | cut -f1)"
+    log "Saved VM state: $savevm_file (${savevm_size})"
+  else
+    local shutdown_wait=0
+    while [ "$shutdown_wait" -lt 90 ] && kill -0 "$pid" 2>/dev/null; do
+      sleep 1
+      shutdown_wait=$((shutdown_wait + 1))
+    done
+
+    if kill -0 "$pid" 2>/dev/null; then
+      warn "Guest did not power off cleanly; forcing shutdown."
+      kill "$pid" 2>/dev/null || true
+      sleep 2
+      kill -9 "$pid" 2>/dev/null || true
+    fi
   fi
 
   persist_provision_logs "$arch" "$serial_log" "$provision_log"
@@ -389,8 +533,16 @@ BUILD_ENV_FILE="$REPO_ROOT/docker/local-emulator/.env.development"
 for arch in "${TARGET_ARCHS[@]}"; do
   local_base="$IMAGE_DIR/debian-${DEBIAN_VERSION}-base-${arch}.qcow2"
   download_cloud_image "$arch" "$local_base"
-  build_local_emulator_image "$arch"
-  prepare_bundle_artifacts "$arch"
+  if [ "${SKIP_DOCKER_BUILD:-0}" = "1" ]; then
+    log "SKIP_DOCKER_BUILD=1: reusing pre-built Docker bundle"
+    if [ ! -f "$IMAGE_DIR/emulator-${arch}-docker-images.tar.gz" ]; then
+      err "Pre-built bundle not found: $IMAGE_DIR/emulator-${arch}-docker-images.tar.gz"
+      exit 1
+    fi
+  else
+    build_local_emulator_image "$arch"
+    prepare_bundle_artifacts "$arch"
+  fi
   build_one "$arch"
 done
 

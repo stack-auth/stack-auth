@@ -75,12 +75,24 @@ write_files:
       # ssk/sak: required by the emulator's own dashboard (StackServerApp
       #   construction throws without them). Not used by user-app flows; the
       #   /local-emulator/project route mints separate per-project credentials.
+      #
+      # Snapshot-build mode (STACK_EMULATOR_BUILD_SNAPSHOT=1 in /etc/stack-build.env):
+      # use deterministic placeholder hex strings instead of random values. The
+      # built image then contains these placeholders; at every `emulator start`
+      # resume the host generates fresh per-install secrets and
+      # /usr/local/bin/rotate-secrets (inside the stack container) swaps them in.
       umask 077
-      for key in internal-pck internal-ssk internal-sak; do
-        if [ ! -s "/var/lib/stack-auth/$key" ]; then
-          openssl rand -hex 32 > "/var/lib/stack-auth/$key"
-        fi
-      done
+      if [ -f /etc/stack-build.env ] && grep -q '^STACK_EMULATOR_BUILD_SNAPSHOT=1' /etc/stack-build.env 2>/dev/null; then
+        printf '%s' '00000000000000000000000000000000ffffffffffffffffffffffffffffffff' > /var/lib/stack-auth/internal-pck
+        printf '%s' '00000000000000000000000000000000eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee' > /var/lib/stack-auth/internal-ssk
+        printf '%s' '00000000000000000000000000000000dddddddddddddddddddddddddddddddd' > /var/lib/stack-auth/internal-sak
+      else
+        for key in internal-pck internal-ssk internal-sak; do
+          if [ ! -s "/var/lib/stack-auth/$key" ]; then
+            openssl rand -hex 32 > "/var/lib/stack-auth/$key"
+          fi
+        done
+      fi
       INTERNAL_PCK="$(cat /var/lib/stack-auth/internal-pck)"
       INTERNAL_SSK="$(cat /var/lib/stack-auth/internal-ssk)"
       INTERNAL_SAK="$(cat /var/lib/stack-auth/internal-sak)"
@@ -92,6 +104,15 @@ write_files:
       HOST_SERVICES_HOST=10.0.2.2
       P="$STACK_EMULATOR_PORT_PREFIX"
 
+      # Snapshot-build mode: ship a deterministic placeholder CRON_SECRET so the
+      # baked VM contains a known-public value that rotate-secrets swaps out on
+      # every resume. Outside snapshot-build mode, leave CRON_SECRET unset so
+      # docker/local-emulator/entrypoint.sh generates a fresh random one.
+      EMULATOR_CRON_SECRET=""
+      if [ -f /etc/stack-build.env ] && grep -q '^STACK_EMULATOR_BUILD_SNAPSHOT=1' /etc/stack-build.env 2>/dev/null; then
+        EMULATOR_CRON_SECRET="00000000000000000000000000000000cccccccccccccccccccccccccccccccc"
+      fi
+
       {
         # Static vars from base config and runtime (e.g. API keys, feature flags)
         cat /mnt/stack-runtime/base.env
@@ -99,6 +120,9 @@ write_files:
         printf 'STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY=%s\n' "$INTERNAL_PCK"
         printf 'STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY=%s\n' "$INTERNAL_SSK"
         printf 'STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY=%s\n' "$INTERNAL_SAK"
+        if [ -n "$EMULATOR_CRON_SECRET" ]; then
+          printf 'CRON_SECRET=%s\n' "$EMULATOR_CRON_SECRET"
+        fi
 
         # Computed vars — depend on port prefix or deps host
         # Host-side ports (for browser URLs — browser runs on host, not in VM)
@@ -142,14 +166,45 @@ write_files:
     permissions: '0755'
     content: |
       #!/bin/bash
-      set -euo pipefail
+      # Mount the host filesystem at /host. Two modes:
+      #   (no args)       — cold-boot: bind /host on itself, make it a shared
+      #                     mount point, then mount virtio-9p on top. The
+      #                     bind+shared step is what lets the docker bind
+      #                     mount (-v /host:/host:rshared) receive later
+      #                     propagation events.
+      #   --post-resume   — snapshot-resume: /host is already shared (set up
+      #                     at build time and preserved across the snapshot,
+      #                     plus the docker bind mount has rshared
+      #                     propagation). The host has just hot-plugged
+      #                     virtio-9p; mount it on /host and the new mount
+      #                     propagates into the running container.
+      set -uo pipefail
       mkdir -p /host
+
+      # Idempotent: bind /host on itself once so it becomes a mount point
+      # with its own propagation, then make it shared. mount --make-shared
+      # requires a mount point, hence the bind first.
       if ! mountpoint -q /host; then
-        if ! mount -t 9p -o trans=virtio,version=9p2000.L hostfs /host; then
-          echo "Failed to mount host filesystem at /host" >&2
-          exit 1
-        fi
+        mount --bind /host /host
       fi
+      mount --make-shared /host
+
+      if [ "${1:-}" = "--post-resume" ]; then
+        if mount -t 9p -o trans=virtio,version=9p2000.L hostfs /host; then
+          exit 0
+        fi
+        echo "post-resume 9p mount failed" >&2
+        exit 1
+      fi
+
+      # Cold boot. In snapshot-build mode the host detaches virtfs (QEMU
+      # disallows migration while it's mounted), so the 9p mount may not be
+      # available — tolerate that and fall through to an empty /host.
+      if mount -t 9p -o trans=virtio,version=9p2000.L hostfs /host 2>/dev/null; then
+        exit 0
+      fi
+      echo "host filesystem unavailable; continuing with empty /host" >&2
+      exit 0
 
   - path: /usr/local/bin/run-stack-container
     permissions: '0755'
@@ -190,7 +245,7 @@ write_files:
           -v stack-clickhouse-data:/data/clickhouse \
           -v stack-minio-data:/data/minio \
           -v stack-inbucket-data:/data/inbucket \
-          -v /host:/host \
+          -v /host:/host:rshared \
           stack-local-emulator 2>&1 | tee -a "$host_log"
       else
         exec docker run \
@@ -204,7 +259,7 @@ write_files:
           -v stack-clickhouse-data:/data/clickhouse \
           -v stack-minio-data:/data/minio \
           -v stack-inbucket-data:/data/inbucket \
-          -v /host:/host \
+          -v /host:/host:rshared \
           stack-local-emulator
       fi
 
@@ -522,6 +577,74 @@ write_files:
       fstrim -av 2>/dev/null || true
       log "slim-docker-image done."
 
+  - path: /usr/local/bin/wait-for-stack-ready
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      # Poll the stack container's backend + dashboard on the guest's own
+      # localhost until both respond healthy. Used at snapshot-build time to
+      # gate "emit STACK_SERVICES_READY" on the app actually being warm.
+      set -uo pipefail
+
+      TIMEOUT="${STACK_READY_TIMEOUT:-600}"
+      BACKEND_PORT="${STACK_READY_BACKEND_PORT:-8102}"
+      DASHBOARD_PORT="${STACK_READY_DASHBOARD_PORT:-8101}"
+
+      log() { /usr/local/bin/log-provision "wait-for-stack-ready: $*"; }
+
+      start=$SECONDS
+      next_heartbeat=$((start + 30))
+      log "waiting for backend:$BACKEND_PORT and dashboard:$DASHBOARD_PORT (timeout=${TIMEOUT}s)"
+      while true; do
+        backend_code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://127.0.0.1:${BACKEND_PORT}/health?db=1" 2>/dev/null || true)
+        dashboard_code=$(curl -s -o /dev/null -w '%{http_code}' --max-time 3 "http://127.0.0.1:${DASHBOARD_PORT}/handler/sign-in" 2>/dev/null || true)
+        if [ "$backend_code" = "200" ] && [ "$dashboard_code" = "200" ]; then
+          log "ready ($((SECONDS - start))s)"
+          exit 0
+        fi
+        if [ "$SECONDS" -ge "$next_heartbeat" ]; then
+          log "still waiting (backend=$backend_code dashboard=$dashboard_code, $((SECONDS - start))s elapsed)"
+          next_heartbeat=$((SECONDS + 30))
+        fi
+        if [ "$((SECONDS - start))" -ge "$TIMEOUT" ]; then
+          log "TIMEOUT after $((SECONDS - start))s (backend=$backend_code dashboard=$dashboard_code)"
+          docker ps -a 2>&1 | /usr/local/bin/log-provision-stream "wait-for-stack-ready: ps" || true
+          docker logs --tail 200 stack 2>&1 | /usr/local/bin/log-provision-stream "wait-for-stack-ready: stack" || true
+          systemctl status stack.service --no-pager -l 2>&1 | /usr/local/bin/log-provision-stream "wait-for-stack-ready: svc" || true
+          journalctl -u stack.service --no-pager -n 100 2>&1 | /usr/local/bin/log-provision-stream "wait-for-stack-ready: jrnl" || true
+          docker image ls 2>&1 | /usr/local/bin/log-provision-stream "wait-for-stack-ready: img" || true
+          exit 1
+        fi
+        sleep 2
+      done
+
+  - path: /usr/local/bin/trigger-fast-rotate
+    permissions: '0755'
+    content: |
+      #!/bin/bash
+      # Called via qemu-guest-agent on every snapshot resume. Reads fresh
+      # secrets from stdin (key=value lines, written by the host via QGA's
+      # guest-exec input-data) and execs rotate-secrets inside the stack
+      # container with those values exported.
+      set -euo pipefail
+
+      tmp="$(mktemp /var/run/stack-fresh-XXXXXX.env)"
+      cat > "$tmp"
+      chmod 0600 "$tmp"
+
+      # shellcheck disable=SC1090
+      set -a
+      source "$tmp"
+      set +a
+      rm -f "$tmp"
+
+      exec docker exec \
+        -e STACK_SEED_INTERNAL_PROJECT_PUBLISHABLE_CLIENT_KEY \
+        -e STACK_SEED_INTERNAL_PROJECT_SECRET_SERVER_KEY \
+        -e STACK_SEED_INTERNAL_PROJECT_SUPER_SECRET_ADMIN_KEY \
+        -e CRON_SECRET \
+        stack /usr/local/bin/rotate-secrets
+
   - path: /etc/systemd/system/stack.service
     content: |
       [Unit]
@@ -591,6 +714,14 @@ write_files:
       systemctl disable --now ssh || true
       systemctl mask ssh || true
 
+      # qemu-guest-agent: used by the host to inject fresh secrets + trigger
+      # rotate-secrets after a snapshot resume. Must be running INSIDE the VM
+      # at snapshot capture time — the virtio-serial port's "open" state is
+      # part of the migrated device state. If QGA wasn't connected at capture,
+      # the resumed VM's port stays closed and the host can't reach it.
+      systemctl enable qemu-guest-agent || true
+      systemctl start qemu-guest-agent || true
+
       log_provision "installing emulator containers"
       bash /usr/local/bin/install-emulator-containers
 
@@ -602,6 +733,48 @@ write_files:
 
       log_provision "starting slim-docker-image"
       bash /usr/local/bin/slim-docker-image
+
+      # Snapshot-build mode: bring the stack container up, wait for full
+      # readiness, emit STACK_SERVICES_READY, then wait indefinitely for the
+      # host build script to capture VM state over QMP (stop + migrate + quit).
+      # The VM never shuts itself down in this path — the host tears it down
+      # once the savevm file has been written.
+      if [ -f /etc/stack-build.env ] && grep -q '^STACK_EMULATOR_BUILD_SNAPSHOT=1' /etc/stack-build.env 2>/dev/null; then
+        log_provision "snapshot-build mode: starting stack.service"
+        systemctl start stack.service || true
+
+        log_provision "waiting for backend + dashboard to be ready"
+        if ! /usr/local/bin/wait-for-stack-ready; then
+          log_provision "ERROR: stack services did not become ready"
+          exit 1
+        fi
+
+        # Ensure qemu-guest-agent is running so its virtio-serial port stays
+        # "open" in the snapshot — the host needs that port at runtime to
+        # trigger rotate-secrets.
+        log_provision "ensuring qemu-guest-agent is up"
+        systemctl restart qemu-guest-agent || true
+        sleep 2
+        if ! systemctl is-active --quiet qemu-guest-agent; then
+          log_provision "ERROR: qemu-guest-agent failed to start"
+          systemctl status qemu-guest-agent --no-pager -l 2>&1 | /usr/local/bin/log-provision-stream "qga"
+          exit 1
+        fi
+        log_provision "qemu-guest-agent active"
+
+        log_provision "services ready; signalling STACK_SERVICES_READY"
+        if [ -n "${STACK_PROVISION_LOG_FILE:-}" ]; then
+          printf '%s\n' "STACK_SERVICES_READY" >> "$STACK_PROVISION_LOG_FILE"
+        fi
+        write_marker_to_consoles "STACK_SERVICES_READY"
+        sync || true
+
+        # Clear the EXIT trap so the cleanup path doesn't mark this as failed
+        # when the host powers us off via QMP quit.
+        trap - EXIT
+        # Block forever; host will issue qmp quit after migrate completes.
+        while true; do sleep 3600; done
+      fi
 
       log_provision "build pipeline complete"
       if [ -n "${STACK_PROVISION_LOG_FILE:-}" ]; then
