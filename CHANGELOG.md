@@ -2,6 +2,12 @@
 
 ---
 
+## 4/18/26
+
+### Payments
+- Fixed an issue where subscription item quantities with "expire when repeated" settings weren't properly expiring when subscriptions ended
+- Fixed scheduled payment events (like subscription cancellation at period end and recurring item grants) not being processed correctly
+
 ## 1/23/26
 
 ### Payments
