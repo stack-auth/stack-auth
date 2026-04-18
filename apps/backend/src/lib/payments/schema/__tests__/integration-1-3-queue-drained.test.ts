@@ -13,7 +13,8 @@
  * function — mirroring real pg_cron behaviour.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { createBulldozerExecutionContext, type BulldozerExecutionContext } from "@/lib/bulldozer/db/index";
 import { createPaymentsSchema } from "../index";
 import { createTestDb, jsonbExpr } from "./test-helpers";
 
@@ -32,18 +33,23 @@ describe.sequential("payments schema integration phase 1→3, queue-drained path
   });
   const { runStatements, readRows, setLastProcessedAt, processQueue, countQueueRows } = db;
   const schema = createPaymentsSchema();
+  let executionContext = createBulldozerExecutionContext();
 
-  const getRowDatas = async (table: { listRowsInGroup: (opts: any) => any }) => {
-    const rows = await readRows(table.listRowsInGroup({
+  const getRowDatas = async (table: { listRowsInGroup: (ctx: BulldozerExecutionContext, opts: any) => any }) => {
+    const rows = await readRows(table.listRowsInGroup(executionContext, {
       start: "start", end: "end", startInclusive: true, endInclusive: true,
     }));
     return rows.map((r: any) => r.rowdata);
   };
 
+  beforeEach(() => {
+    executionContext = createBulldozerExecutionContext();
+  });
+
   beforeAll(async () => {
     await db.setup();
     for (const table of schema._allTables) {
-      await runStatements(table.init());
+      await runStatements(table.init(executionContext));
     }
   }, 120_000);
 
@@ -69,7 +75,7 @@ describe.sequential("payments schema integration phase 1→3, queue-drained path
       // we set lastProcessedAt to pre-epoch.
       await setLastProcessedAt(`'1969-01-01T00:00:00Z'`);
 
-      await runStatements(schema.subscriptions.setRow("sub-q-free", jsonbExpr({
+      await runStatements(schema.subscriptions.setRow(executionContext, "sub-q-free", jsonbExpr({
         id: "sub-q-free",
         tenancyId: "t1",
         customerId: "u-q-upgrade",
@@ -111,7 +117,7 @@ describe.sequential("payments schema integration phase 1→3, queue-drained path
 
     it("after drain, end event fires AND downstream cascade runs; upgrade does not stack", async () => {
       // Now bring the team sub online.
-      await runStatements(schema.subscriptions.setRow("sub-q-team", jsonbExpr({
+      await runStatements(schema.subscriptions.setRow(executionContext, "sub-q-team", jsonbExpr({
         id: "sub-q-team",
         tenancyId: "t1",
         customerId: "u-q-upgrade",
@@ -181,7 +187,7 @@ describe.sequential("payments schema integration phase 1→3, queue-drained path
     it("repeat tick is queued until the clock is advanced past it", async () => {
       await setLastProcessedAt(`'1969-01-01T00:00:00Z'`);
 
-      await runStatements(schema.subscriptions.setRow("sub-q-repeat", jsonbExpr({
+      await runStatements(schema.subscriptions.setRow(executionContext, "sub-q-repeat", jsonbExpr({
         id: "sub-q-repeat",
         tenancyId: "t1",
         customerId: "u-q-repeat",
