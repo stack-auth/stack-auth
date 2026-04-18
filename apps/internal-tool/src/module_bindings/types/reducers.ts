@@ -8,6 +8,7 @@ import { type Infer as __Infer } from "spacetimedb";
 // Import all reducer arg schemas
 import AddManualQaReducer from "../add_manual_qa_reducer";
 import DeleteQaEntryReducer from "../delete_qa_entry_reducer";
+import LogAiQueryReducer from "../log_ai_query_reducer";
 import LogMcpCallReducer from "../log_mcp_call_reducer";
 import MarkHumanReviewedReducer from "../mark_human_reviewed_reducer";
 import UpdateHumanCorrectionReducer from "../update_human_correction_reducer";
@@ -15,6 +16,7 @@ import UpdateMcpQaReviewReducer from "../update_mcp_qa_review_reducer";
 
 export type AddManualQaParams = __Infer<typeof AddManualQaReducer>;
 export type DeleteQaEntryParams = __Infer<typeof DeleteQaEntryReducer>;
+export type LogAiQueryParams = __Infer<typeof LogAiQueryReducer>;
 export type LogMcpCallParams = __Infer<typeof LogMcpCallReducer>;
 export type MarkHumanReviewedParams = __Infer<typeof MarkHumanReviewedReducer>;
 export type UpdateHumanCorrectionParams = __Infer<typeof UpdateHumanCorrectionReducer>;

@@ -43,7 +43,37 @@ const mcpCallLog = table(
   }
 );
 
-const spacetimedb = schema({ mcpCallLog });
+const aiQueryLog = table(
+  { name: 'ai_query_log', public: true },
+  {
+    id: t.u64().primaryKey().autoInc(),
+    correlationId: t.string(),
+    createdAt: t.timestamp(),
+    mode: t.string(),
+    systemPromptId: t.string(),
+    quality: t.string(),
+    speed: t.string(),
+    modelId: t.string(),
+    isAuthenticated: t.bool(),
+    projectId: t.string().optional(),
+    userId: t.string().optional(),
+    requestedToolsJson: t.string(),
+    messagesJson: t.string(),
+    stepsJson: t.string(),
+    finalText: t.string(),
+    inputTokens: t.u32().optional(),
+    outputTokens: t.u32().optional(),
+    cachedInputTokens: t.u32().optional(),
+    costUsd: t.f64().optional(),
+    stepCount: t.u32(),
+    durationMs: t.u64(),
+    errorMessage: t.string().optional(),
+    mcpCorrelationId: t.string().optional(),
+    conversationId: t.string().optional(),
+  }
+);
+
+const spacetimedb = schema({ mcpCallLog, aiQueryLog });
 export default spacetimedb;
 
 export const log_mcp_call = spacetimedb.reducer(
@@ -234,6 +264,65 @@ export const delete_qa_entry = spacetimedb.reducer(
       }
     }
     throw new SenderError('Call log not found for correlationId: ' + args.correlationId);
+  }
+);
+
+export const log_ai_query = spacetimedb.reducer(
+  {
+    token: t.string(),
+    correlationId: t.string(),
+    mode: t.string(),
+    systemPromptId: t.string(),
+    quality: t.string(),
+    speed: t.string(),
+    modelId: t.string(),
+    isAuthenticated: t.bool(),
+    projectId: t.string().optional(),
+    userId: t.string().optional(),
+    requestedToolsJson: t.string(),
+    messagesJson: t.string(),
+    stepsJson: t.string(),
+    finalText: t.string(),
+    inputTokens: t.u32().optional(),
+    outputTokens: t.u32().optional(),
+    cachedInputTokens: t.u32().optional(),
+    costUsd: t.f64().optional(),
+    stepCount: t.u32(),
+    durationMs: t.u64(),
+    errorMessage: t.string().optional(),
+    mcpCorrelationId: t.string().optional(),
+    conversationId: t.string().optional(),
+  },
+  (ctx, args) => {
+    if (args.token !== EXPECTED_LOG_TOKEN) {
+      throw new SenderError('Invalid log token');
+    }
+    ctx.db.aiQueryLog.insert({
+      id: 0n,
+      correlationId: args.correlationId,
+      createdAt: ctx.timestamp,
+      mode: args.mode,
+      systemPromptId: args.systemPromptId,
+      quality: args.quality,
+      speed: args.speed,
+      modelId: args.modelId,
+      isAuthenticated: args.isAuthenticated,
+      projectId: args.projectId,
+      userId: args.userId,
+      requestedToolsJson: args.requestedToolsJson,
+      messagesJson: args.messagesJson,
+      stepsJson: args.stepsJson,
+      finalText: args.finalText,
+      inputTokens: args.inputTokens,
+      outputTokens: args.outputTokens,
+      cachedInputTokens: args.cachedInputTokens,
+      costUsd: args.costUsd,
+      stepCount: args.stepCount,
+      durationMs: args.durationMs,
+      errorMessage: args.errorMessage,
+      mcpCorrelationId: args.mcpCorrelationId,
+      conversationId: args.conversationId,
+    } as Parameters<typeof ctx.db.aiQueryLog.insert>[0]);
   }
 );
 
