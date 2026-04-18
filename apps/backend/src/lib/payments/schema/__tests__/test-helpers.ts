@@ -7,7 +7,11 @@
  */
 
 import postgres from "postgres";
-import { toExecutableSqlTransaction, toQueryableSqlQuery } from "@/lib/bulldozer/db/index";
+import {
+  createBulldozerExecutionContext,
+  toExecutableSqlTransaction,
+  toQueryableSqlQuery,
+} from "@/lib/bulldozer/db/index";
 import { loadProcessQueueFunctionSql } from "@/lib/bulldozer/db/test-sql-loaders";
 
 type SqlStatement = { type: "statement", sql: string, outputName?: string };
@@ -70,7 +74,7 @@ export function createTestDb(options: CreateTestDbOptions = {}) {
     get sql() { return getSql(); },
 
     runStatements: async (statements: SqlStatement[]) => {
-      await getSql().unsafe(toExecutableSqlTransaction(statements));
+      await getSql().unsafe(toExecutableSqlTransaction(createBulldozerExecutionContext(), statements));
     },
 
     readRows: async (query: SqlQuery) => {

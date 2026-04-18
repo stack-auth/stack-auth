@@ -1,5 +1,5 @@
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import type { Table } from "..";
+import { getBulldozerExecutionContext } from "../execution-context";
 import { attachRowChangeTriggerMetadata, normalizeRowChangeTrigger } from "../row-change-trigger-dispatch";
 import type { RegisteredRowChangeTrigger } from "../row-change-trigger-dispatch";
 import type { Json, RowData, SqlExpression, SqlStatement, TableId } from "../utilities";
@@ -23,6 +23,7 @@ export function declareLimitTable<
   limit: SqlExpression<number>,
 }): Table<GK, SK, RD> {
   const triggers = new Map<string, RegisteredRowChangeTrigger>();
+  let triggerRegistrationCount = 0;
   const getGroupKeyPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey]);
   const getGroupRowsPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey, "rows"]);
   const getGroupRowPath = (groupKey: SqlExpression<Json>, rowIdentifier: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey, "rows", rowIdentifier]);
@@ -35,12 +36,15 @@ export function declareLimitTable<
   `;
 
   // TODO: Currently, we recompute the entire limit table when a particular group changes. In the future, we should use an ordered tree to do this incrementally
-  const createFromTableTriggerStatements = (fromChangesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => {
-    const normalizedChangesTableName = `normalized_changes_${generateSecureRandomString()}`;
-    const affectedGroupsTableName = `affected_groups_${generateSecureRandomString()}`;
-    const oldLimitedRowsTableName = `old_limited_rows_${generateSecureRandomString()}`;
-    const newLimitedRowsTableName = `new_limited_rows_${generateSecureRandomString()}`;
-    const limitChangesTableName = `limit_changes_${generateSecureRandomString()}`;
+  const createFromTableTriggerStatements = (
+    fromChangesTable: SqlExpression<{ __brand: "$SQL_Table" }>,
+    ctx: { generateDeterministicUniqueString: () => string },
+  ) => {
+    const normalizedChangesTableName = `normalized_changes_${ctx.generateDeterministicUniqueString()}`;
+    const affectedGroupsTableName = `affected_groups_${ctx.generateDeterministicUniqueString()}`;
+    const oldLimitedRowsTableName = `old_limited_rows_${ctx.generateDeterministicUniqueString()}`;
+    const newLimitedRowsTableName = `new_limited_rows_${ctx.generateDeterministicUniqueString()}`;
+    const limitChangesTableName = `limit_changes_${ctx.generateDeterministicUniqueString()}`;
     return [
       {
         ...sqlQuery`
@@ -89,7 +93,7 @@ export function declareLimitTable<
               "sourceRows"."rowsortkey" AS "rowsortkey",
               "sourceRows"."rowdata" AS "rowdata"
             FROM (
-              ${options.fromTable.listRowsInGroup({
+              ${options.fromTable.listRowsInGroup(ctx, {
                 groupKey: sqlExpression`"groups"."groupKey"`,
                 start: "start",
                 end: "end",
@@ -209,7 +213,7 @@ export function declareLimitTable<
     ];
   };
   const fromTableTrigger = attachRowChangeTriggerMetadata(
-    (fromChangesTable) => createFromTableTriggerStatements(fromChangesTable),
+    (ctx, fromChangesTable) => createFromTableTriggerStatements(fromChangesTable, getBulldozerExecutionContext(ctx)),
     {
       targetTableId: tableIdToDebugString(options.tableId),
       targetTableTriggers: triggers,
@@ -228,9 +232,10 @@ export function declareLimitTable<
     },
     compareGroupKeys: options.fromTable.compareGroupKeys,
     compareSortKeys: options.fromTable.compareSortKeys,
-    init: () => {
-      const fromGroupsTableName = `from_groups_${generateSecureRandomString()}`;
-      const limitedRowsTableName = `limited_rows_${generateSecureRandomString()}`;
+    init: (ctx) => {
+      const executionCtx = getBulldozerExecutionContext(ctx);
+      const fromGroupsTableName = `from_groups_${executionCtx.generateDeterministicUniqueString()}`;
+      const limitedRowsTableName = `limited_rows_${executionCtx.generateDeterministicUniqueString()}`;
       return [
         sqlStatement`
           INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
@@ -240,7 +245,7 @@ export function declareLimitTable<
           (gen_random_uuid(), ${getStorageEnginePath(options.tableId, ["groups"])}, 'null'::jsonb),
           (gen_random_uuid(), ${getStorageEnginePath(options.tableId, ["metadata"])}, '{ "version": 1 }'::jsonb)
         `,
-        options.fromTable.listGroups({
+        options.fromTable.listGroups(executionCtx, {
           start: "start",
           end: "end",
           startInclusive: true,
@@ -260,7 +265,7 @@ export function declareLimitTable<
                 "sourceRows"."rowsortkey" AS "rowsortkey",
                 "sourceRows"."rowdata" AS "rowdata"
               FROM (
-                ${options.fromTable.listRowsInGroup({
+                ${options.fromTable.listRowsInGroup(executionCtx, {
                   groupKey: sqlExpression`"groups"."groupkey"`,
                   start: "start",
                   end: "end",
@@ -340,7 +345,7 @@ export function declareLimitTable<
         `,
       ];
     },
-    delete: () => {
+    delete: (_ctx) => {
       return [sqlStatement`
         WITH RECURSIVE "pathsToDelete" AS (
           SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
@@ -353,8 +358,8 @@ export function declareLimitTable<
         WHERE "keyPath" IN (SELECT "path" FROM "pathsToDelete")
       `];
     },
-    isInitialized: () => isInitializedExpression,
-    listGroups: ({ start, end, startInclusive, endInclusive }) => sqlQuery`
+    isInitialized: (_ctx) => isInitializedExpression,
+    listGroups: (_ctx, { start, end, startInclusive, endInclusive }) => sqlQuery`
       SELECT "groupPath"."keyPath"[cardinality("groupPath"."keyPath")] AS groupKey
       FROM "BulldozerStorageEngine" AS "groupPath"
       WHERE "groupPath"."keyPathParent" = ${getStorageEnginePath(options.tableId, ["groups"])}::jsonb[]
@@ -381,7 +386,7 @@ export function declareLimitTable<
               : sqlExpression`${options.fromTable.compareGroupKeys(sqlExpression`"groupPath"."keyPath"[cardinality("groupPath"."keyPath")]`, end)} < 0`
         }
     `,
-    listRowsInGroup: ({ groupKey, start, end, startInclusive, endInclusive }) => groupKey
+    listRowsInGroup: (ctx, { groupKey, start, end, startInclusive, endInclusive }) => groupKey
       ? sqlQuery`
         WITH "limitedRows" AS (
           SELECT
@@ -407,7 +412,7 @@ export function declareLimitTable<
             0::int AS "branchOrder",
             row_number() OVER () AS "rowOrder"
           FROM (
-            ${options.fromTable.listRowsInGroup({
+            ${options.fromTable.listRowsInGroup(ctx, {
               groupKey,
               start,
               end,
@@ -485,15 +490,17 @@ export function declareLimitTable<
         }
     `,
     registerRowChangeTrigger: (trigger) => {
-      const id = generateSecureRandomString();
+      const id = `trigger_registration_${triggerRegistrationCount.toString(36).padStart(10, "0")}`;
+      triggerRegistrationCount++;
       triggers.set(id, normalizeRowChangeTrigger(trigger));
       return { deregister: () => triggers.delete(id) };
     },
-    verifyDataIntegrity: () => {
-      const allInputRows = options.fromTable.listRowsInGroup({
+    verifyDataIntegrity: (ctx) => {
+      const executionCtx = getBulldozerExecutionContext(ctx);
+      const allInputRows = options.fromTable.listRowsInGroup(executionCtx, {
         start: "start", end: "end", startInclusive: true, endInclusive: true,
       });
-      const allActualRows = table.listRowsInGroup({
+      const allActualRows = table.listRowsInGroup(executionCtx, {
         start: "start", end: "end", startInclusive: true, endInclusive: true,
       });
       return sqlQuery`
