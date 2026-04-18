@@ -140,6 +140,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   beforeEach(async () => {
     await sql`CREATE EXTENSION IF NOT EXISTS pgcrypto`;
+    await sql`DROP TABLE IF EXISTS "BulldozerTimeFoldDownstreamCascade"`;
     await sql`DROP TABLE IF EXISTS "BulldozerTimeFoldQueue"`;
     await sql`DROP TABLE IF EXISTS "BulldozerTimeFoldMetadata"`;
     await sql`DROP TABLE IF EXISTS "BulldozerMapTriggerAudit"`;
@@ -232,6 +233,16 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     await sql`
       INSERT INTO "BulldozerTimeFoldMetadata" ("key", "lastProcessedAt")
       VALUES ('singleton', now())
+    `;
+    await sql`
+      CREATE TABLE "BulldozerTimeFoldDownstreamCascade" (
+        "tableStoragePath" JSONB[] NOT NULL,
+        "cascadeInputName" TEXT NOT NULL,
+        "cascadeTemplate" TEXT,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "BulldozerTimeFoldDownstreamCascade_pkey" PRIMARY KEY ("tableStoragePath")
+      )
     `;
   });
 

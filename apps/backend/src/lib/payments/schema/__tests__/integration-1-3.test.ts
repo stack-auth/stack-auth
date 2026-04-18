@@ -894,6 +894,371 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
 
 
   // ============================================================
+  // Full when-repeated lifecycle: sub-start → item-grant-repeat → sub-end.
+  // item-quantity-expire entries in the sub-end transaction reference the
+  // preceding item-grant-repeat by txn id. Both the id text and the
+  // reference text must match byte-for-byte or the expire silently fails
+  // to resolve the grant and the `when-repeated` balance stays at the
+  // last-granted quantity instead of dropping to 0.
+  // ============================================================
+
+  describe("item-quantity-expire resolves across item-grant-repeat → sub-end", () => {
+    const DAY_MS = 86400000;
+
+    beforeAll(async () => {
+      await runStatements(schema.subscriptions.setRow("sub-repeat-to-end", jsonbExpr({
+        id: "sub-repeat-to-end",
+        tenancyId: "t1",
+        customerId: "u-repeat-to-end",
+        customerType: "user",
+        productId: "prod-repeat-to-end",
+        priceId: "p1",
+        product: {
+          displayName: "Repeat Then End Plan",
+          customerType: "user",
+          productLineId: "line-repeat-to-end",
+          prices: { p1: { USD: "10" } },
+          includedItems: {
+            // 7-day repeat interval is an exact whole-second epoch offset,
+            // which is where subtle NUMERIC-vs-bigint mismatches around
+            // `->>effectiveAtMillis` tend to surface.
+            quota: { quantity: 100, repeat: [7, "day"], expires: "when-repeated" },
+          },
+        },
+        quantity: 1,
+        stripeSubscriptionId: null,
+        status: "canceled",
+        currentPeriodStartMillis: 0,
+        currentPeriodEndMillis: MONTH_MS,
+        cancelAtPeriodEnd: true,
+        // Ends at 14d: fires one repeat at 7d, then sub-end at 14d.
+        canceledAtMillis: 14 * DAY_MS,
+        endedAtMillis: 14 * DAY_MS,
+        refundedAtMillis: null,
+        creationSource: "TEST_MODE",
+        createdAtMillis: 0,
+      })));
+    });
+
+    it("item-grant-repeat transaction id has no trailing decimals", async () => {
+      const txns = (await getRowDatas(schema.transactions))
+        .filter((t: any) => t.customerId === "u-repeat-to-end");
+      const igr = txns.find((t: any) =>
+        typeof t.txnId === "string" && t.txnId.startsWith("igr:sub-repeat-to-end:")
+      );
+      expect(igr).toBeDefined();
+      // transactions.ts derives this id from the event's effectiveAtMillis
+      // via `->>`. If that value was stored in JSONB as a NUMERIC with
+      // fractional scale (e.g. "604800000.000000") the id text picks up
+      // the trailing zeros and no longer matches references built via
+      // `::bigint::text` elsewhere in the reducer.
+      expect(igr.txnId).toMatch(/^igr:sub-repeat-to-end:\d+$/);
+      expect(igr.txnId).not.toContain(".");
+    });
+
+    it("sub-end's item-quantity-expire adjustedTransactionId matches the igr txn id", async () => {
+      const txns = (await getRowDatas(schema.transactions))
+        .filter((t: any) => t.customerId === "u-repeat-to-end");
+
+      const igr = txns.find((t: any) =>
+        typeof t.txnId === "string" && t.txnId.startsWith("igr:sub-repeat-to-end:")
+      );
+      const subEnd = txns.find((t: any) => t.txnId === "sub-end:sub-repeat-to-end");
+      expect(igr).toBeDefined();
+      expect(subEnd).toBeDefined();
+
+      const expireEntry = (subEnd.entries as any[]).find((e: any) =>
+        e.type === "item-quantity-expire" && e.itemId === "quota"
+      );
+      expect(expireEntry).toBeDefined();
+      // The two texts must be byte-identical for the expire to resolve
+      // the grant. Same value in different representations (e.g.
+      // "604800000" vs "604800000.000000") is the failure mode this
+      // guards against.
+      expect(expireEntry.adjustedTransactionId).toBe(igr.txnId);
+    });
+
+    it("quota balance drops to 0 after sub-end resolves the igr's grant", async () => {
+      const rows = (await getRowDatas(schema.itemQuantities))
+        .filter((r: any) => r.customerId === "u-repeat-to-end")
+        .sort((a: any, b: any) => a.txnEffectiveAtMillis - b.txnEffectiveAtMillis);
+      expect(rows.length).toBeGreaterThan(0);
+
+      const latest = rows[rows.length - 1];
+      // If the expire ref mismatches the igr txn id, the expire silently
+      // becomes a no-op and quota stays at the last igr-granted quantity
+      // (100). When the ids match, sub-end's expire resolves and the
+      // ledger drops to 0.
+      expect(latest.itemQuantities.quota).toBe(0);
+    });
+  });
+
+
+  // ============================================================
+  // Same bigint-vs-NUMERIC txn-id fingerprint as the subscription test
+  // above, but on the one-time-purchase algo (no sub-end analog). A
+  // one-time purchase with a repeating `when-repeated` item relies on
+  // each IGR expiring the previous IGR's grant by referencing its
+  // `txnId` inside `item-quantity-expire.adjustedTransactionId`. If the
+  // reducer-internal reference (decimal-free via `::text`) doesn't
+  // match the downstream-materialized txn id (built from
+  // `->>effectiveAtMillis` stored in JSONB), consecutive IGRs stack
+  // instead of refreshing and `quota` climbs without bound.
+  // ============================================================
+
+  describe("item-quantity-expire resolves across consecutive one-time-purchase item-grant-repeats", () => {
+    const DAY_MS = 86400000;
+
+    beforeAll(async () => {
+      // OTP has no terminating event (unlike subscriptions with endedAt),
+      // so the inline reducer would otherwise try to fire ~6700 repeats
+      // between createdAtMillis=0 and the test-helpers default
+      // lastProcessedAt=2099 and time out the hook. Cap the clock to 16d
+      // post-epoch for this describe so exactly 2 IGRs fire inline (at
+      // +7d and +14d) — the minimum needed to exercise the IGR-N expiring
+      // IGR-(N-1)'s grant path. Restored to the default in afterAll so
+      // later tests in this file still run under inline recursion.
+      await db.setLastProcessedAt(`'1970-01-17T00:00:00Z'`);
+      await runStatements(schema.oneTimePurchases.setRow("otp-repeat-bigint", jsonbExpr({
+        id: "otp-repeat-bigint",
+        tenancyId: "t1",
+        customerId: "u-otp-repeat-bigint",
+        customerType: "user",
+        productId: "prod-otp-repeat-bigint",
+        priceId: "p1",
+        product: {
+          displayName: "Repeating OTP (bigint regression)",
+          customerType: "user",
+          productLineId: "line-otp-repeat-bigint",
+          prices: { p1: { USD: "5" } },
+          includedItems: {
+            // 7-day repeat: same whole-second epoch offset the subscription
+            // test uses to surface NUMERIC-vs-bigint mismatches. Two IGRs
+            // fire inline under the clock-cap above — enough to exercise
+            // the second IGR's `previousGrantsToExpire` referencing the
+            // first's outstandingGrants[].txnId.
+            quota: { quantity: 100, repeat: [7, "day"], expires: "when-repeated" },
+          },
+        },
+        quantity: 1,
+        stripePaymentIntentId: null,
+        revokedAtMillis: null,
+        refundedAtMillis: null,
+        creationSource: "TEST_MODE",
+        createdAtMillis: 0,
+      })));
+    });
+
+    afterAll(async () => {
+      // Restore the default so subsequent describes in this file still
+      // fire their reducer recursion inline (the payments suite relies
+      // on this).
+      await db.setLastProcessedAt(`'2099-01-01T00:00:00Z'`);
+    });
+
+    it("every item-grant-repeat txn id is decimal-free", async () => {
+      const txns = (await getRowDatas(schema.transactions))
+        .filter((t: any) => t.customerId === "u-otp-repeat-bigint");
+      const igrs = txns.filter((t: any) =>
+        typeof t.txnId === "string" && t.txnId.startsWith("igr:otp-repeat-bigint:")
+      );
+      expect(igrs.length).toBeGreaterThan(0);
+      for (const igr of igrs) {
+        expect(igr.txnId).toMatch(/^igr:otp-repeat-bigint:\d+$/);
+        expect(igr.txnId).not.toContain(".");
+      }
+    });
+
+    it("every IGR after the first carries an item-quantity-expire whose adjustedTransactionId matches the prior IGR's txnId", async () => {
+      const txns = (await getRowDatas(schema.transactions))
+        .filter((t: any) => t.customerId === "u-otp-repeat-bigint")
+        .sort((a: any, b: any) => a.effectiveAtMillis - b.effectiveAtMillis);
+      const igrs = txns.filter((t: any) =>
+        typeof t.txnId === "string" && t.txnId.startsWith("igr:otp-repeat-bigint:")
+      );
+      // Need ≥ 2 IGRs for the expire reference path to fire. Any fewer
+      // means the test setup isn't exercising the bug's surface area —
+      // fail loud rather than silently passing.
+      expect(igrs.length).toBeGreaterThanOrEqual(2);
+
+      for (let i = 1; i < igrs.length; i++) {
+        const priorIgr = igrs[i - 1];
+        const currentIgr = igrs[i];
+        const expireEntry = (currentIgr.entries as any[]).find((e: any) =>
+          e.type === "item-quantity-expire" && e.itemId === "quota"
+        );
+        expect(expireEntry, `IGR ${currentIgr.txnId} missing item-quantity-expire for quota`).toBeDefined();
+        // Byte-identical match is the invariant: if the prior IGR's
+        // downstream txnId picked up a `.000000` tail and this expire
+        // built its adjustedTransactionId via `::text` on a bigint, the
+        // two strings diverge and the expire silently no-ops.
+        expect(expireEntry.adjustedTransactionId).toBe(priorIgr.txnId);
+      }
+    });
+
+    it("quota balance stays at exactly the per-repeat grant, never stacks", async () => {
+      const rows = (await getRowDatas(schema.itemQuantities))
+        .filter((r: any) => r.customerId === "u-otp-repeat-bigint")
+        .sort((a: any, b: any) => a.txnEffectiveAtMillis - b.txnEffectiveAtMillis);
+      expect(rows.length).toBeGreaterThan(0);
+
+      // Without the fix, each IGR adds 100 without expiring the previous
+      // grant, so quota climbs monotonically (100, 200, 300, …). With
+      // the fix, each IGR expires the prior grant before adding its own,
+      // and quota stays at exactly 100.
+      const latest = rows[rows.length - 1];
+      expect(latest.itemQuantities.quota).toBe(100);
+    });
+  });
+
+
+  // ============================================================
+  // when-repeated grants must expire at subscription-end
+  // (regression: they were previously left stacked in the ledger)
+  // ============================================================
+
+  describe("when-repeated grants expire at subscription-end", () => {
+    const DAY_MS = 86400000;
+
+    beforeAll(async () => {
+      await runStatements(schema.subscriptions.setRow("sub-repeat-end", jsonbExpr({
+        id: "sub-repeat-end",
+        tenancyId: "t1",
+        customerId: "u-repeat-end",
+        customerType: "user",
+        productId: "prod-repeat-end",
+        priceId: "p1",
+        product: {
+          displayName: "Repeat End Plan",
+          customerType: "user",
+          productLineId: "line-repeat-end",
+          prices: { p1: { USD: "10" } },
+          includedItems: {
+            quota: { quantity: 100, repeat: [7, "day"], expires: "when-repeated" },
+            permanent: { quantity: 25, expires: "never" },
+          },
+        },
+        quantity: 1,
+        stripeSubscriptionId: null,
+        status: "canceled",
+        currentPeriodStartMillis: 0,
+        currentPeriodEndMillis: MONTH_MS,
+        cancelAtPeriodEnd: true,
+        canceledAtMillis: 2 * DAY_MS,
+        endedAtMillis: 5 * DAY_MS,
+        refundedAtMillis: null,
+        creationSource: "TEST_MODE",
+        createdAtMillis: 0,
+      })));
+    });
+
+    it("should drop when-repeated item balance to 0 after subscription-end", async () => {
+      const rows = (await getRowDatas(schema.itemQuantities))
+        .filter((r: any) => r.customerId === "u-repeat-end")
+        .sort((a: any, b: any) => a.txnEffectiveAtMillis - b.txnEffectiveAtMillis);
+
+      const latest = rows[rows.length - 1];
+      expect(latest.itemQuantities.quota).toBe(0);
+      // Permanent grants must not be touched.
+      expect(latest.itemQuantities.permanent).toBe(25);
+    });
+
+    it("should revoke owned product at subscription-end", async () => {
+      const rows = (await getRowDatas(schema.ownedProducts))
+        .filter((r: any) => r.customerId === "u-repeat-end")
+        .sort((a: any, b: any) => a.txnEffectiveAtMillis - b.txnEffectiveAtMillis);
+
+      const afterEnd = rows.find((r: any) => r.txnId === "sub-end:sub-repeat-end");
+      expect(afterEnd).toBeDefined();
+      expect(afterEnd.ownedProducts["prod-repeat-end"].quantity).toBe(0);
+    });
+  });
+
+
+  // ============================================================
+  // Upgrade stacking regression: free → team mid-period must not
+  // leave the outgoing sub's monthly allowance stacked on top of
+  // the incoming sub's allowance.
+  // ============================================================
+
+  describe("mid-period upgrade does not stack when-repeated balances", () => {
+    const DAY_MS = 86400000;
+
+    beforeAll(async () => {
+      await runStatements(schema.subscriptions.setRow("sub-upgrade-free", jsonbExpr({
+        id: "sub-upgrade-free",
+        tenancyId: "t1",
+        customerId: "u-upgrade",
+        customerType: "user",
+        productId: "prod-upgrade-free",
+        priceId: "p-free",
+        product: {
+          displayName: "Free",
+          customerType: "user",
+          productLineId: "line-upgrade",
+          prices: { "p-free": { USD: "0" } },
+          includedItems: {
+            emails: { quantity: 100, repeat: [1, "month"], expires: "when-repeated" },
+          },
+        },
+        quantity: 1,
+        stripeSubscriptionId: null,
+        status: "canceled",
+        currentPeriodStartMillis: 0,
+        currentPeriodEndMillis: MONTH_MS,
+        cancelAtPeriodEnd: false,
+        canceledAtMillis: 10 * DAY_MS,
+        endedAtMillis: 10 * DAY_MS,
+        refundedAtMillis: null,
+        creationSource: "TEST_MODE",
+        createdAtMillis: 0,
+      })));
+
+      await runStatements(schema.subscriptions.setRow("sub-upgrade-team", jsonbExpr({
+        id: "sub-upgrade-team",
+        tenancyId: "t1",
+        customerId: "u-upgrade",
+        customerType: "user",
+        productId: "prod-upgrade-team",
+        priceId: "p-team",
+        product: {
+          displayName: "Team",
+          customerType: "user",
+          productLineId: "line-upgrade",
+          prices: { "p-team": { USD: "30" } },
+          includedItems: {
+            emails: { quantity: 500, repeat: [1, "month"], expires: "when-repeated" },
+          },
+        },
+        quantity: 1,
+        stripeSubscriptionId: null,
+        status: "canceled",
+        currentPeriodStartMillis: 11 * DAY_MS,
+        currentPeriodEndMillis: 11 * DAY_MS + MONTH_MS,
+        cancelAtPeriodEnd: true,
+        canceledAtMillis: 20 * DAY_MS,
+        endedAtMillis: 20 * DAY_MS,
+        refundedAtMillis: null,
+        creationSource: "TEST_MODE",
+        createdAtMillis: 11 * DAY_MS,
+      })));
+    });
+
+    it("should show only the incoming sub's allowance right after the upgrade", async () => {
+      const rows = (await getRowDatas(schema.itemQuantities))
+        .filter((r: any) => r.customerId === "u-upgrade")
+        .sort((a: any, b: any) => a.txnEffectiveAtMillis - b.txnEffectiveAtMillis);
+
+      const atUpgrade = rows.find((r: any) => r.txnId === "sub-start:sub-upgrade-team");
+      expect(atUpgrade).toBeDefined();
+      // Before the fix this was 100 (free) + 500 (team) = 600 because the
+      // free sub's when-repeated grant was not expired at subscription-end.
+      expect(atUpgrade.itemQuantities.emails).toBe(500);
+    });
+  });
+
+
+  // ============================================================
   // Subscription map LFold
   // ============================================================
 
