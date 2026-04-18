@@ -1356,6 +1356,14 @@ model BulldozerTimeFoldMetadata {
   lastProcessedAt DateTime @db.Timestamptz
 }
 
+// BulldozerTimeFoldDownstreamCascade is managed externally (see
+// prisma.config.ts `tables.external`). Same reason as BulldozerStorageEngine
+// above: its primary key is on a JSONB[] column, which Prisma's @id
+// attribute rejects ("fields that are marked as id must be required"; list
+// types are treated as non-required). It's written only by bulldozer
+// internals (declareTimeFoldTable.init()/.delete()) and read by
+// public.bulldozer_timefold_process_queue() — never via the Prisma client.
+
 model DeletedRow {
   id        String @id @default(uuid()) @db.Uuid
   tenancyId String @db.Uuid
