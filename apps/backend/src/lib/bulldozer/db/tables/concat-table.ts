@@ -1,7 +1,7 @@
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import type { Table } from "..";
+import { getBulldozerExecutionContext } from "../execution-context";
 import { attachRowChangeTriggerMetadata, normalizeRowChangeTrigger } from "../row-change-trigger-dispatch";
 import type { RegisteredRowChangeTrigger } from "../row-change-trigger-dispatch";
 import type { Json, RowData, RowIdentifier, SqlExpression, SqlStatement, TableId } from "../utilities";
@@ -42,6 +42,7 @@ export function declareConcatTable<
     }
   }
   const triggers = new Map<string, RegisteredRowChangeTrigger>();
+  let triggerRegistrationCount = 0;
   const rawExpression = <T>(sql: string): SqlExpression<T> => ({ type: "expression", sql });
   const isInitializedExpression = sqlExpression`
     EXISTS (
@@ -51,17 +52,23 @@ export function declareConcatTable<
   `;
   const createConcatenatedRowIdentifierSql = (tableIndex: number, rowIdentifierSql: string) =>
     `${quoteSqlStringLiteral(`${tableIndex}:`).sql} || ${rowIdentifierSql}`;
-  const getInputInitializedSql = (table: Table<GK, any, RD>) => table.isInitialized().sql;
-  const getUnionedListGroupsSql = (queryOptions: Parameters<typeof firstTable.listGroups>[0]) => {
+  const getInputInitializedSql = (table: Table<GK, any, RD>, ctx: Parameters<typeof table.isInitialized>[0]) => table.isInitialized(ctx).sql;
+  const getUnionedListGroupsSql = (
+    queryOptions: Parameters<typeof firstTable.listGroups>[1],
+    ctx: Parameters<typeof firstTable.listGroups>[0],
+  ) => {
     return tables
       .map((table) => deindent`
         SELECT "sourceGroups"."groupkey" AS "groupKey"
-        FROM (${table.listGroups(queryOptions).sql}) AS "sourceGroups"
-        WHERE ${getInputInitializedSql(table)}
+        FROM (${table.listGroups(ctx, queryOptions).sql}) AS "sourceGroups"
+        WHERE ${getInputInitializedSql(table, ctx)}
       `)
       .join("\nUNION ALL\n");
   };
-  const getUnionedListRowsSql = (queryOptions: Parameters<typeof firstTable.listRowsInGroup>[0] & { allGroups: boolean }) => {
+  const getUnionedListRowsSql = (
+    queryOptions: Parameters<typeof firstTable.listRowsInGroup>[1] & { allGroups: boolean },
+    ctx: Parameters<typeof firstTable.listRowsInGroup>[0],
+  ) => {
     return tables.map((table, tableIndex) => {
       if (queryOptions.allGroups) {
         return deindent`
@@ -70,13 +77,13 @@ export function declareConcatTable<
             ${createConcatenatedRowIdentifierSql(tableIndex, `"sourceRows"."rowidentifier"`)} AS "rowIdentifier",
             'null'::jsonb AS "rowSortKey",
             "sourceRows"."rowdata" AS "rowData"
-          FROM (${table.listRowsInGroup({
+          FROM (${table.listRowsInGroup(ctx, {
             start: "start",
             end: "end",
             startInclusive: true,
             endInclusive: true,
           }).sql}) AS "sourceRows"
-          WHERE ${getInputInitializedSql(table)}
+          WHERE ${getInputInitializedSql(table, ctx)}
         `;
       }
       const groupKey = queryOptions.groupKey ?? (() => {
@@ -87,14 +94,14 @@ export function declareConcatTable<
           ${createConcatenatedRowIdentifierSql(tableIndex, `"sourceRows"."rowidentifier"`)} AS "rowIdentifier",
           'null'::jsonb AS "rowSortKey",
           "sourceRows"."rowdata" AS "rowData"
-        FROM (${table.listRowsInGroup({
+        FROM (${table.listRowsInGroup(ctx, {
           groupKey,
           start: "start",
           end: "end",
           startInclusive: true,
           endInclusive: true,
         }).sql}) AS "sourceRows"
-        WHERE ${getInputInitializedSql(table)}
+        WHERE ${getInputInitializedSql(table, ctx)}
       `;
     }).join("\nUNION ALL\n");
   };
@@ -102,8 +109,9 @@ export function declareConcatTable<
     table: Table<GK, any, RD>,
     tableIndex: number,
     changesTable: SqlExpression<{ __brand: "$SQL_Table" }>,
+    ctx: { generateDeterministicUniqueString: () => string },
   ) => {
-    const concatChangesTableName = `concat_changes_${generateSecureRandomString()}`;
+    const concatChangesTableName = `concat_changes_${ctx.generateDeterministicUniqueString()}`;
     return [
       sqlQuery`
         SELECT
@@ -115,19 +123,19 @@ export function declareConcatTable<
           "changes"."newRowData" AS "newRowData"
         FROM ${changesTable} AS "changes"
         WHERE ${isInitializedExpression}
-          AND ${rawExpression<boolean>(getInputInitializedSql(table))}
+          AND ${rawExpression<boolean>(getInputInitializedSql(table, ctx))}
       `.toStatement(concatChangesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb'),
     ];
   };
   tables.forEach((table, tableIndex) => {
-    const fromTableTrigger = attachRowChangeTriggerMetadata(
-      (changesTable) => createInputTriggerStatements(table, tableIndex, changesTable),
+    const withCtxTrigger = attachRowChangeTriggerMetadata(
+      (ctx, changesTable) => createInputTriggerStatements(table, tableIndex, changesTable, getBulldozerExecutionContext(ctx)),
       {
         targetTableId: tableIdToDebugString(options.tableId),
         targetTableTriggers: triggers,
       },
     );
-    table.registerRowChangeTrigger(fromTableTrigger);
+    table.registerRowChangeTrigger(withCtxTrigger);
   });
 
   return {
@@ -138,12 +146,12 @@ export function declareConcatTable<
       tableId: tableIdToDebugString(options.tableId),
       inputTableIds: tables.map((table) => tableIdToDebugString(table.tableId)),
     },
-    listGroups: ({ start, end, startInclusive, endInclusive }) => sqlQuery`
+    listGroups: (ctx, { start, end, startInclusive, endInclusive }) => sqlQuery`
       SELECT DISTINCT "concatGroups"."groupKey" AS groupKey
-      FROM (${rawExpression(getUnionedListGroupsSql({ start, end, startInclusive, endInclusive }))}) AS "concatGroups"
+      FROM (${rawExpression(getUnionedListGroupsSql({ start, end, startInclusive, endInclusive }, ctx))}) AS "concatGroups"
       WHERE ${isInitializedExpression}
     `,
-    listRowsInGroup: ({ groupKey, start, end, startInclusive, endInclusive }) => groupKey != null ? sqlQuery`
+    listRowsInGroup: (ctx, { groupKey, start, end, startInclusive, endInclusive }) => groupKey != null ? sqlQuery`
       SELECT
         "concatRows"."rowIdentifier" AS rowIdentifier,
         "concatRows"."rowSortKey" AS rowSortKey,
@@ -155,7 +163,7 @@ export function declareConcatTable<
         startInclusive,
         endInclusive,
         allGroups: false,
-      }))}) AS "concatRows"
+      }, ctx))}) AS "concatRows"
       WHERE ${isInitializedExpression}
         AND ${singleNullSortKeyRangePredicate({ start, end, startInclusive, endInclusive })}
     ` : sqlQuery`
@@ -170,13 +178,13 @@ export function declareConcatTable<
         startInclusive,
         endInclusive,
         allGroups: true,
-      }))}) AS "concatRows"
+      }, ctx))}) AS "concatRows"
       WHERE ${isInitializedExpression}
         AND ${singleNullSortKeyRangePredicate({ start, end, startInclusive, endInclusive })}
     `,
     compareGroupKeys: firstTable.compareGroupKeys,
     compareSortKeys: () => sqlExpression`0`,
-    init: () => {
+    init: (_ctx) => {
       return [sqlStatement`
         INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
         VALUES
@@ -186,7 +194,7 @@ export function declareConcatTable<
         (gen_random_uuid(), ${getStorageEnginePath(options.tableId, ["metadata"])}::jsonb[], '{ "version": 1 }'::jsonb)
       `];
     },
-    delete: () => {
+    delete: (_ctx) => {
       return [sqlStatement`
         WITH RECURSIVE "pathsToDelete" AS (
           SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
@@ -199,13 +207,14 @@ export function declareConcatTable<
         WHERE "keyPath" IN (SELECT "path" FROM "pathsToDelete")
       `];
     },
-    isInitialized: () => isInitializedExpression,
+    isInitialized: (_ctx) => isInitializedExpression,
     registerRowChangeTrigger: (trigger) => {
-      const id = generateSecureRandomString();
+      const id = `trigger_registration_${triggerRegistrationCount.toString(36).padStart(10, "0")}`;
+      triggerRegistrationCount++;
       triggers.set(id, normalizeRowChangeTrigger(trigger));
       return { deregister: () => triggers.delete(id) };
     },
-    verifyDataIntegrity: () => sqlQuery`
+    verifyDataIntegrity: (_ctx) => sqlQuery`
       SELECT NULL::text AS errortype, NULL::jsonb AS groupkey, NULL::text AS rowidentifier, NULL::jsonb AS expected, NULL::jsonb AS actual
       WHERE false
     `,
