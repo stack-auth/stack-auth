@@ -1,5 +1,6 @@
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import type { Table } from "..";
+import type { BulldozerExecutionContext } from "../execution-context";
+import { getBulldozerExecutionContext } from "../execution-context";
 import { collectRowChangeTriggerStatements, normalizeRowChangeTrigger } from "../row-change-trigger-dispatch";
 import type { RegisteredRowChangeTrigger } from "../row-change-trigger-dispatch";
 import type { RowData, RowIdentifier, SqlExpression, SqlStatement, TableId } from "../utilities";
@@ -18,10 +19,11 @@ import {
 export function declareStoredTable<RD extends RowData>(options: {
   tableId: TableId,
 }): Table<null, null, RD> & {
-  setRow(rowIdentifier: RowIdentifier, rowData: SqlExpression<RD>): SqlStatement[],
-  deleteRow(rowIdentifier: RowIdentifier): SqlStatement[],
+  setRow(ctx: BulldozerExecutionContext, rowIdentifier: RowIdentifier, rowData: SqlExpression<RD>): SqlStatement[],
+  deleteRow(ctx: BulldozerExecutionContext, rowIdentifier: RowIdentifier): SqlStatement[],
 } {
   const triggers = new Map<string, RegisteredRowChangeTrigger>();
+  let triggerRegistrationCount = 0;
 
   // Note that this table has only one group and sort key (null), so all groups and rows are always returned by every filter.
   return {
@@ -33,7 +35,7 @@ export function declareStoredTable<RD extends RowData>(options: {
     },
     compareGroupKeys: (a, b) => sqlExpression` 0 `,
     compareSortKeys: (a, b) => sqlExpression` 0 `,
-    init: () => [sqlStatement`
+    init: (_ctx) => [sqlStatement`
       INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
       VALUES
       (gen_random_uuid(), ${getTablePath(options.tableId)}, 'null'::jsonb),
@@ -41,21 +43,21 @@ export function declareStoredTable<RD extends RowData>(options: {
       (gen_random_uuid(), ${getStorageEnginePath(options.tableId, ["rows"])}, 'null'::jsonb),
       (gen_random_uuid(), ${getStorageEnginePath(options.tableId, ["metadata"])}, '{ "version": 1 }'::jsonb)
     `],
-    delete: () => [sqlStatement`
+    delete: (_ctx) => [sqlStatement`
       DELETE FROM "BulldozerStorageEngine"
       WHERE "keyPath" = ${getTablePath(options.tableId)}::jsonb[]
     `],
-    isInitialized: () => sqlExpression`
+    isInitialized: (_ctx) => sqlExpression`
       EXISTS (
         SELECT 1 FROM "BulldozerStorageEngine"
         WHERE "keyPath" = ${getStorageEnginePath(options.tableId, ["metadata"])}::jsonb[]
       )
     `,
-    listGroups: ({ start, end, startInclusive, endInclusive }) => sqlQuery`
+    listGroups: (_ctx, { start, end, startInclusive, endInclusive }) => sqlQuery`
       SELECT 'null'::jsonb AS groupKey
       WHERE ${singleNullSortKeyRangePredicate({ start, end, startInclusive, endInclusive })}
     `,
-    listRowsInGroup: ({ groupKey, start, end, startInclusive, endInclusive }) => groupKey == null ? sqlQuery`
+    listRowsInGroup: (_ctx, { groupKey, start, end, startInclusive, endInclusive }) => groupKey == null ? sqlQuery`
       SELECT
         'null'::jsonb AS groupKey,
         ("keyPath"[cardinality("keyPath")] #>> '{}') AS rowIdentifier,
@@ -75,19 +77,21 @@ export function declareStoredTable<RD extends RowData>(options: {
         AND ${singleNullSortKeyRangePredicate({ start, end, startInclusive, endInclusive })}
     `,
     registerRowChangeTrigger: (trigger) => {
-      const id = generateSecureRandomString();
+      const id = `trigger_registration_${triggerRegistrationCount.toString(36).padStart(10, "0")}`;
+      triggerRegistrationCount++;
       triggers.set(id, normalizeRowChangeTrigger(trigger));
       return { deregister: () => triggers.delete(id) };
     },
-    verifyDataIntegrity: () => sqlQuery`
+    verifyDataIntegrity: (_ctx) => sqlQuery`
       SELECT NULL::text AS errortype, NULL::jsonb AS groupkey, NULL::text AS rowidentifier, NULL::jsonb AS expected, NULL::jsonb AS actual
       WHERE false
     `,
-    setRow: (rowIdentifier, rowData) => {
-      const oldRowsTableName = `old_rows_${generateSecureRandomString()}`;
-      const upsertedRowsTableName = `upserted_rows_${generateSecureRandomString()}`;
-      const changesTableName = `changes_${generateSecureRandomString()}`;
-      const collectedTriggers = collectRowChangeTriggerStatements({
+    setRow: (ctx, rowIdentifier, rowData) => {
+      const executionCtx = getBulldozerExecutionContext(ctx);
+      const oldRowsTableName = `old_rows_${executionCtx.generateDeterministicUniqueString()}`;
+      const upsertedRowsTableName = `upserted_rows_${executionCtx.generateDeterministicUniqueString()}`;
+      const changesTableName = `changes_${executionCtx.generateDeterministicUniqueString()}`;
+      const collectedTriggers = collectRowChangeTriggerStatements(executionCtx, {
         sourceTableId: tableIdToDebugString(options.tableId),
         sourceChangesTable: quoteSqlIdentifier(changesTableName),
         sourceTableTriggers: triggers,
@@ -129,10 +133,11 @@ export function declareStoredTable<RD extends RowData>(options: {
         ...collectedTriggers.statements,
       ];
     },
-    deleteRow: (rowIdentifier) => {
-      const deletedRowsTableName = `deleted_rows_${generateSecureRandomString()}`;
-      const changesTableName = `changes_${generateSecureRandomString()}`;
-      const collectedTriggers = collectRowChangeTriggerStatements({
+    deleteRow: (ctx, rowIdentifier) => {
+      const executionCtx = getBulldozerExecutionContext(ctx);
+      const deletedRowsTableName = `deleted_rows_${executionCtx.generateDeterministicUniqueString()}`;
+      const changesTableName = `changes_${executionCtx.generateDeterministicUniqueString()}`;
+      const collectedTriggers = collectRowChangeTriggerStatements(executionCtx, {
         sourceTableId: tableIdToDebugString(options.tableId),
         sourceChangesTable: quoteSqlIdentifier(changesTableName),
         sourceTableTriggers: triggers,

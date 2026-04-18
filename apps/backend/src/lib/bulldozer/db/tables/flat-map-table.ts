@@ -1,5 +1,6 @@
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import type { Table } from "..";
+import type { BulldozerExecutionContext } from "../execution-context";
+import { getBulldozerExecutionContext } from "../execution-context";
 import { createTableRowChangeTrigger, normalizeRowChangeTrigger } from "../row-change-trigger-dispatch";
 import type { RegisteredRowChangeTrigger } from "../row-change-trigger-dispatch";
 import type { Json, RowData, RowIdentifier, SqlExpression, SqlMapper, SqlStatement, TableId } from "../utilities";
@@ -24,6 +25,7 @@ export function declareFlatMapTable<
   mapper: SqlMapper<OldRD, { rows: NewRD[] }>,
 }): Table<GK, null, NewRD> {
   const triggers = new Map<string, RegisteredRowChangeTrigger>();
+  let triggerRegistrationCount = 0;
   const getGroupKeyPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey]);
   const getGroupRowsPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey, "rows"]);
   const getGroupRowPath = (groupKey: SqlExpression<Json>, rowIdentifier: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey, "rows", rowIdentifier]);
@@ -36,12 +38,13 @@ export function declareFlatMapTable<
     )
   `;
   const createFromTableTriggerStatements = (
+    ctx: BulldozerExecutionContext,
     fromChangesTable: SqlExpression<{ __brand: "$SQL_Table" }>,
     outputChangesTableName: string,
   ) => {
-    const mappedChangesTableName = `mapped_changes_${generateSecureRandomString()}`;
-    const oldFlatRowsTableName = `old_flat_rows_${generateSecureRandomString()}`;
-    const newFlatRowsTableName = `new_flat_rows_${generateSecureRandomString()}`;
+    const mappedChangesTableName = `mapped_changes_${ctx.generateDeterministicUniqueString()}`;
+    const oldFlatRowsTableName = `old_flat_rows_${ctx.generateDeterministicUniqueString()}`;
+    const newFlatRowsTableName = `new_flat_rows_${ctx.generateDeterministicUniqueString()}`;
     return [
       sqlQuery`
         SELECT
@@ -209,8 +212,8 @@ export function declareFlatMapTable<
   };
   const fromTableTrigger = createTableRowChangeTrigger({
     targetTableId: tableIdToDebugString(options.tableId),
-    createStatements: (fromChangesTable, outputChangesTableName) =>
-      createFromTableTriggerStatements(fromChangesTable, outputChangesTableName),
+    createStatements: (ctx, fromChangesTable, outputChangesTableName) =>
+      createFromTableTriggerStatements(ctx, fromChangesTable, outputChangesTableName),
     getTriggeredTables: () => [...triggers.values()],
   });
   options.fromTable.registerRowChangeTrigger(fromTableTrigger);
@@ -226,11 +229,12 @@ export function declareFlatMapTable<
     },
     compareGroupKeys: options.fromTable.compareGroupKeys,
     compareSortKeys: (a, b) => sqlExpression` 0 `,
-    init: () => {
-      const fromGroupsTableName = `from_groups_${generateSecureRandomString()}`;
-      const fromRowsTableName = `from_rows_${generateSecureRandomString()}`;
-      const mappedRowsTableName = `mapped_rows_${generateSecureRandomString()}`;
-      const flatRowsTableName = `flat_rows_${generateSecureRandomString()}`;
+    init: (ctx) => {
+      const executionCtx = getBulldozerExecutionContext(ctx);
+      const fromGroupsTableName = `from_groups_${executionCtx.generateDeterministicUniqueString()}`;
+      const fromRowsTableName = `from_rows_${executionCtx.generateDeterministicUniqueString()}`;
+      const mappedRowsTableName = `mapped_rows_${executionCtx.generateDeterministicUniqueString()}`;
+      const flatRowsTableName = `flat_rows_${executionCtx.generateDeterministicUniqueString()}`;
 
       return [
         sqlStatement`
@@ -241,7 +245,7 @@ export function declareFlatMapTable<
           (gen_random_uuid(), ${getStorageEnginePath(options.tableId, ["groups"])}, 'null'::jsonb),
           (gen_random_uuid(), ${getStorageEnginePath(options.tableId, ["metadata"])}, '{ "version": 1 }'::jsonb)
         `,
-        options.fromTable.listGroups({
+        options.fromTable.listGroups(executionCtx, {
           start: "start",
           end: "end",
           startInclusive: true,
@@ -254,7 +258,7 @@ export function declareFlatMapTable<
             "rows"."rowdata" AS "rowData"
           FROM ${quoteSqlIdentifier(fromGroupsTableName)} AS "groups"
           CROSS JOIN LATERAL (
-            ${options.fromTable.listRowsInGroup({
+            ${options.fromTable.listRowsInGroup(executionCtx, {
               groupKey: sqlExpression`"groups"."groupkey"`,
               start: "start",
               end: "end",
@@ -333,7 +337,7 @@ export function declareFlatMapTable<
         `,
       ];
     },
-    delete: () => {
+    delete: (_ctx) => {
       return [sqlStatement`
         WITH RECURSIVE "pathsToDelete" AS (
           SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
@@ -346,8 +350,8 @@ export function declareFlatMapTable<
         WHERE "keyPath" IN (SELECT "path" FROM "pathsToDelete")
       `];
     },
-    isInitialized: () => isInitializedExpression,
-    listGroups: ({ start, end, startInclusive, endInclusive }) => sqlQuery`
+    isInitialized: (_ctx) => isInitializedExpression,
+    listGroups: (_ctx, { start, end, startInclusive, endInclusive }) => sqlQuery`
       SELECT "groupPath"."keyPath"[cardinality("groupPath"."keyPath")] AS groupKey
       FROM "BulldozerStorageEngine" AS "groupPath"
       WHERE "groupPath"."keyPathParent" = ${getStorageEnginePath(options.tableId, ["groups"])}::jsonb[]
@@ -374,7 +378,7 @@ export function declareFlatMapTable<
               : sqlExpression`${options.fromTable.compareGroupKeys(sqlExpression`"groupPath"."keyPath"[cardinality("groupPath"."keyPath")]`, end)} < 0`
         }
     `,
-    listRowsInGroup: ({ groupKey, start, end, startInclusive, endInclusive }) => groupKey ? sqlQuery`
+    listRowsInGroup: (_ctx, { groupKey, start, end, startInclusive, endInclusive }) => groupKey ? sqlQuery`
       SELECT
         ("keyPath"[cardinality("keyPath")] #>> '{}') AS rowIdentifier,
         'null'::jsonb AS rowSortKey,
@@ -398,15 +402,17 @@ export function declareFlatMapTable<
         AND ${singleNullSortKeyRangePredicate({ start, end, startInclusive, endInclusive })}
     `,
     registerRowChangeTrigger: (trigger) => {
-      const id = generateSecureRandomString();
+      const id = `trigger_registration_${triggerRegistrationCount.toString(36).padStart(10, "0")}`;
+      triggerRegistrationCount++;
       triggers.set(id, normalizeRowChangeTrigger(trigger));
       return { deregister: () => triggers.delete(id) };
     },
-    verifyDataIntegrity: () => {
-      const allInputRows = options.fromTable.listRowsInGroup({
+    verifyDataIntegrity: (ctx) => {
+      const executionCtx = getBulldozerExecutionContext(ctx);
+      const allInputRows = options.fromTable.listRowsInGroup(executionCtx, {
         start: "start", end: "end", startInclusive: true, endInclusive: true,
       });
-      const allActualRows = table.listRowsInGroup({
+      const allActualRows = table.listRowsInGroup(executionCtx, {
         start: "start", end: "end", startInclusive: true, endInclusive: true,
       });
       return sqlQuery`
