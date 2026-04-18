@@ -143,7 +143,14 @@ export function getOtpTimeFoldReducerSql(): string {
   )`;
 
   // ── item-grant-repeat event (same logic as subscription but with sourceType=one_time_purchase) ──
-  const currentMillis = `(EXTRACT(EPOCH FROM ${T}) * 1000)::numeric`;
+  // Keep currentMillis as bigint at the root (not NUMERIC) for the same
+  // reason as `subscription-timefold-algo.ts` — see the comment there for
+  // the full failure mode. Explicit ROUND before the cast is defensive:
+  // NUMERIC::bigint already rounds on PG 12+, but explicit rounding makes
+  // intent clear at the callsite and stays stable if `EXTRACT(EPOCH ...)`
+  // ever comes back typed as DOUBLE PRECISION (older PG, or a future
+  // regression) where implicit casts use half-to-even.
+  const currentMillis = `(ROUND(EXTRACT(EPOCH FROM ${T}) * 1000)::bigint)`;
 
   const dueItems = `(
     SELECT jsonb_agg(jsonb_build_object('itemId', "sched"."key", 'schedule', "sched"."value"))
@@ -153,7 +160,8 @@ export function getOtpTimeFoldReducerSql(): string {
       AND ("sched"."value"->>'nextRepeatMillis')::numeric <= ${currentMillis}
   )`;
 
-  const igrTxnId = `('igr:' || (${S}->>'purchaseId') || ':' || ${currentMillis}::bigint::text)`;
+  // currentMillis is already ::bigint (see above) so plain ::text is enough.
+  const igrTxnId = `('igr:' || (${S}->>'purchaseId') || ':' || ${currentMillis}::text)`;
 
   const previousGrantsToExpire = `(
     SELECT COALESCE(jsonb_agg(
