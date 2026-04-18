@@ -714,6 +714,17 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
       INSERT INTO "BulldozerTimeFoldMetadata" ("key", "lastProcessedAt")
       VALUES ('singleton', now())
     `;
+    await sql`DROP TABLE IF EXISTS "BulldozerTimeFoldDownstreamCascade"`;
+    await sql`
+      CREATE TABLE "BulldozerTimeFoldDownstreamCascade" (
+        "tableStoragePath" JSONB[] NOT NULL,
+        "cascadeInputName" TEXT NOT NULL,
+        "cascadeTemplate" TEXT,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "BulldozerTimeFoldDownstreamCascade_pkey" PRIMARY KEY ("tableStoragePath")
+      )
+    `;
   });
 
   afterEach(async () => {
