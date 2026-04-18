@@ -13,7 +13,8 @@
  * and manual item quantity changes.
  */
 
-import { describe, beforeAll, afterAll, it, expect } from "vitest";
+import { describe, beforeAll, beforeEach, afterAll, it, expect } from "vitest";
+import { createBulldozerExecutionContext, type BulldozerExecutionContext } from "@/lib/bulldozer/db/index";
 import { createPaymentsSchema } from "../index";
 import { createTestDb, jsonbExpr } from "./test-helpers";
 
@@ -23,22 +24,27 @@ describe.sequential("payments schema phase 2 (real postgres)", () => {
   const db = createTestDb();
   const { runStatements, readRows } = db;
   const schema = createPaymentsSchema();
+  let executionContext = createBulldozerExecutionContext();
 
-  const getRowDatas = async (table: { listRowsInGroup: (opts: any) => any }) => {
-    const rows = await readRows(table.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+  const getRowDatas = async (table: { listRowsInGroup: (ctx: BulldozerExecutionContext, opts: any) => any }) => {
+    const rows = await readRows(table.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true }));
     return rows.map((r: any) => r.rowdata);
   };
+
+  beforeEach(() => {
+    executionContext = createBulldozerExecutionContext();
+  });
 
   beforeAll(async () => {
     await db.setup();
     for (const table of schema._allPhase1And2Tables) {
-      await runStatements(table.init());
+      await runStatements(table.init(executionContext));
     }
 
     // Subscription with 2 items: credits (compactable, expiresWhen=null)
     // and bonus (non-compactable, expiresWhen="when-purchase-expires").
     // endedAt is set so we get a subscription-end event (creates expire boundary).
-    await runStatements(schema.subscriptions.setRow("sub-p2", jsonbExpr({
+    await runStatements(schema.subscriptions.setRow(executionContext, "sub-p2", jsonbExpr({
       id: "sub-p2",
       tenancyId: "t1",
       customerId: "u1",
@@ -69,7 +75,7 @@ describe.sequential("payments schema phase 2 (real postgres)", () => {
     })));
 
     // Manual item changes (compactable, expiresWhen=null) before the expire boundary
-    await runStatements(schema.manualItemQuantityChanges.setRow("iqc-p2-1", jsonbExpr({
+    await runStatements(schema.manualItemQuantityChanges.setRow(executionContext, "iqc-p2-1", jsonbExpr({
       id: "iqc-p2-1",
       tenancyId: "t1",
       customerId: "u1",
@@ -81,7 +87,7 @@ describe.sequential("payments schema phase 2 (real postgres)", () => {
       createdAtMillis: 2000,
     })));
 
-    await runStatements(schema.manualItemQuantityChanges.setRow("iqc-p2-2", jsonbExpr({
+    await runStatements(schema.manualItemQuantityChanges.setRow(executionContext, "iqc-p2-2", jsonbExpr({
       id: "iqc-p2-2",
       tenancyId: "t1",
       customerId: "u1",
@@ -94,7 +100,7 @@ describe.sequential("payments schema phase 2 (real postgres)", () => {
     })));
 
     // Another manual change after the expiry boundary (t=4000)
-    await runStatements(schema.manualItemQuantityChanges.setRow("iqc-p2-3", jsonbExpr({
+    await runStatements(schema.manualItemQuantityChanges.setRow(executionContext, "iqc-p2-3", jsonbExpr({
       id: "iqc-p2-3",
       tenancyId: "t1",
       customerId: "u1",
