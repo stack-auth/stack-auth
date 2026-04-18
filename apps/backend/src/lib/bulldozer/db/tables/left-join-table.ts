@@ -1,5 +1,5 @@
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import type { Table } from "..";
+import { getBulldozerExecutionContext } from "../execution-context";
 import { attachRowChangeTriggerMetadata, normalizeRowChangeTrigger } from "../row-change-trigger-dispatch";
 import type { RegisteredRowChangeTrigger } from "../row-change-trigger-dispatch";
 import type { Json, RowData, RowIdentifier, SqlExpression, SqlMapper, SqlStatement, TableId } from "../utilities";
@@ -27,6 +27,7 @@ export function declareLeftJoinTable<
   rightJoinKey: SqlMapper<{ rowIdentifier: RowIdentifier, rowData: NewRD }, { joinKey: JK }>,
 }): Table<GK, null, { leftRowData: OldRD, rightRowData: NewRD | null }> {
   const triggers = new Map<string, RegisteredRowChangeTrigger>();
+  let triggerRegistrationCount = 0;
   const rawExpression = <T>(sql: string): SqlExpression<T> => ({ type: "expression", sql });
   const groupsPath = getStorageEnginePath(options.tableId, ["groups"]);
   const getGroupKeyPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey]);
@@ -83,6 +84,7 @@ export function declareLeftJoinTable<
     groupsTableName: string,
     groupKeySql: string,
     outputTableName: string,
+    ctx: Parameters<typeof options.leftTable.listRowsInGroup>[0],
   }): SqlStatement => sqlQuery`
     SELECT
       ${rawExpression<GK>(optionsForRows.groupKeySql)} AS "groupKey",
@@ -91,7 +93,7 @@ export function declareLeftJoinTable<
       to_jsonb("mapped"."joinKey") AS "leftJoinKey"
     FROM ${quoteSqlIdentifier(optionsForRows.groupsTableName)} AS "groups"
     CROSS JOIN LATERAL (
-      ${options.leftTable.listRowsInGroup({
+      ${options.leftTable.listRowsInGroup(optionsForRows.ctx, {
         groupKey: rawExpression<GK>(optionsForRows.groupKeySql),
         start: "start",
         end: "end",
@@ -115,6 +117,7 @@ export function declareLeftJoinTable<
     groupsTableName: string,
     groupKeySql: string,
     outputTableName: string,
+    ctx: Parameters<typeof options.rightTable.listRowsInGroup>[0],
   }): SqlStatement => sqlQuery`
     SELECT
       ${rawExpression<GK>(optionsForRows.groupKeySql)} AS "groupKey",
@@ -123,7 +126,7 @@ export function declareLeftJoinTable<
       to_jsonb("mapped"."joinKey") AS "rightJoinKey"
     FROM ${quoteSqlIdentifier(optionsForRows.groupsTableName)} AS "groups"
     CROSS JOIN LATERAL (
-      ${options.rightTable.listRowsInGroup({
+      ${options.rightTable.listRowsInGroup(optionsForRows.ctx, {
         groupKey: rawExpression<GK>(optionsForRows.groupKeySql),
         start: "start",
         end: "end",
@@ -148,16 +151,20 @@ export function declareLeftJoinTable<
     inputTable: Table<GK, any, InputRD>,
     changedSide: "left" | "right",
   }) => {
-    const inputTrigger = (inputChangesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => {
-      const normalizedChangesTableName = `normalized_changes_${generateSecureRandomString()}`;
-      const affectedGroupsTableName = `affected_groups_${generateSecureRandomString()}`;
-      const oldLeftJoinRowsTableName = `old_left_join_rows_${generateSecureRandomString()}`;
-      const oldLeftRowsTableName = `old_left_rows_${generateSecureRandomString()}`;
-      const oldRightRowsTableName = `old_right_rows_${generateSecureRandomString()}`;
-      const newLeftRowsTableName = `new_left_rows_${generateSecureRandomString()}`;
-      const newRightRowsTableName = `new_right_rows_${generateSecureRandomString()}`;
-      const newLeftJoinRowsTableName = `new_left_join_rows_${generateSecureRandomString()}`;
-      const leftJoinChangesTableName = `left_join_changes_${generateSecureRandomString()}`;
+    const inputTrigger = (
+      ctx: Parameters<typeof getBulldozerExecutionContext>[0],
+      inputChangesTable: SqlExpression<{ __brand: "$SQL_Table" }>,
+    ) => {
+      const executionCtx = getBulldozerExecutionContext(ctx);
+      const normalizedChangesTableName = `normalized_changes_${executionCtx.generateDeterministicUniqueString()}`;
+      const affectedGroupsTableName = `affected_groups_${executionCtx.generateDeterministicUniqueString()}`;
+      const oldLeftJoinRowsTableName = `old_left_join_rows_${executionCtx.generateDeterministicUniqueString()}`;
+      const oldLeftRowsTableName = `old_left_rows_${executionCtx.generateDeterministicUniqueString()}`;
+      const oldRightRowsTableName = `old_right_rows_${executionCtx.generateDeterministicUniqueString()}`;
+      const newLeftRowsTableName = `new_left_rows_${executionCtx.generateDeterministicUniqueString()}`;
+      const newRightRowsTableName = `new_right_rows_${executionCtx.generateDeterministicUniqueString()}`;
+      const newLeftJoinRowsTableName = `new_left_join_rows_${executionCtx.generateDeterministicUniqueString()}`;
+      const leftJoinChangesTableName = `left_join_changes_${executionCtx.generateDeterministicUniqueString()}`;
 
       return [
         sqlQuery`
@@ -189,11 +196,13 @@ export function declareLeftJoinTable<
           groupsTableName: affectedGroupsTableName,
           groupKeySql: `"groups"."groupKey"`,
           outputTableName: oldLeftRowsTableName,
+          ctx: executionCtx,
         }),
         createRightRowsStatement({
           groupsTableName: affectedGroupsTableName,
           groupKeySql: `"groups"."groupKey"`,
           outputTableName: oldRightRowsTableName,
+          ctx: executionCtx,
         }),
         optionsForTrigger.changedSide === "left" ? sqlQuery`
           SELECT
@@ -376,11 +385,12 @@ export function declareLeftJoinTable<
     },
     compareGroupKeys: options.leftTable.compareGroupKeys,
     compareSortKeys: () => sqlExpression`0`,
-    init: () => {
-      const leftGroupsTableName = `left_groups_${generateSecureRandomString()}`;
-      const leftRowsTableName = `left_rows_${generateSecureRandomString()}`;
-      const rightRowsTableName = `right_rows_${generateSecureRandomString()}`;
-      const leftJoinedRowsTableName = `left_joined_rows_${generateSecureRandomString()}`;
+    init: (ctx) => {
+      const executionCtx = getBulldozerExecutionContext(ctx);
+      const leftGroupsTableName = `left_groups_${executionCtx.generateDeterministicUniqueString()}`;
+      const leftRowsTableName = `left_rows_${executionCtx.generateDeterministicUniqueString()}`;
+      const rightRowsTableName = `right_rows_${executionCtx.generateDeterministicUniqueString()}`;
+      const leftJoinedRowsTableName = `left_joined_rows_${executionCtx.generateDeterministicUniqueString()}`;
 
       return [
         sqlStatement`
@@ -391,7 +401,7 @@ export function declareLeftJoinTable<
           (gen_random_uuid(), ${groupsPath}, 'null'::jsonb),
           (gen_random_uuid(), ${getStorageEnginePath(options.tableId, ["metadata"])}, '{ "version": 1 }'::jsonb)
         `,
-        options.leftTable.listGroups({
+        options.leftTable.listGroups(executionCtx, {
           start: "start",
           end: "end",
           startInclusive: true,
@@ -401,11 +411,13 @@ export function declareLeftJoinTable<
           groupsTableName: leftGroupsTableName,
           groupKeySql: `"groups"."groupkey"`,
           outputTableName: leftRowsTableName,
+          ctx: executionCtx,
         }),
         createRightRowsStatement({
           groupsTableName: leftGroupsTableName,
           groupKeySql: `"groups"."groupkey"`,
           outputTableName: rightRowsTableName,
+          ctx: executionCtx,
         }),
         createJoinedRowsStatement({
           leftRowsTableName,
@@ -440,7 +452,7 @@ export function declareLeftJoinTable<
         `,
       ];
     },
-    delete: () => {
+    delete: (_ctx) => {
       return [sqlStatement`
         WITH RECURSIVE "pathsToDelete" AS (
           SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
@@ -453,8 +465,8 @@ export function declareLeftJoinTable<
         WHERE "keyPath" IN (SELECT "path" FROM "pathsToDelete")
       `];
     },
-    isInitialized: () => isInitializedExpression,
-    listGroups: ({ start, end, startInclusive, endInclusive }) => sqlQuery`
+    isInitialized: (_ctx) => isInitializedExpression,
+    listGroups: (_ctx, { start, end, startInclusive, endInclusive }) => sqlQuery`
       SELECT "groupPath"."keyPath"[cardinality("groupPath"."keyPath")] AS groupKey
       FROM "BulldozerStorageEngine" AS "groupPath"
       WHERE "groupPath"."keyPathParent" = ${groupsPath}::jsonb[]
@@ -481,7 +493,7 @@ export function declareLeftJoinTable<
               : sqlExpression`${options.leftTable.compareGroupKeys(sqlExpression`"groupPath"."keyPath"[cardinality("groupPath"."keyPath")]`, end)} < 0`
         }
     `,
-    listRowsInGroup: ({ groupKey, start, end, startInclusive, endInclusive }) => groupKey ? sqlQuery`
+    listRowsInGroup: (_ctx, { groupKey, start, end, startInclusive, endInclusive }) => groupKey ? sqlQuery`
       SELECT
         ("row"."keyPath"[cardinality("row"."keyPath")] #>> '{}') AS rowIdentifier,
         'null'::jsonb AS rowSortKey,
@@ -507,18 +519,20 @@ export function declareLeftJoinTable<
       ORDER BY groupKey ASC, rowIdentifier ASC
     `,
     registerRowChangeTrigger: (trigger) => {
-      const id = generateSecureRandomString();
+      const id = `trigger_registration_${triggerRegistrationCount.toString(36).padStart(10, "0")}`;
+      triggerRegistrationCount++;
       triggers.set(id, normalizeRowChangeTrigger(trigger));
       return { deregister: () => triggers.delete(id) };
     },
-    verifyDataIntegrity: () => {
-      const allLeftRows = options.leftTable.listRowsInGroup({
+    verifyDataIntegrity: (ctx) => {
+      const executionCtx = getBulldozerExecutionContext(ctx);
+      const allLeftRows = options.leftTable.listRowsInGroup(executionCtx, {
         start: "start", end: "end", startInclusive: true, endInclusive: true,
       });
-      const allRightRows = options.rightTable.listRowsInGroup({
+      const allRightRows = options.rightTable.listRowsInGroup(executionCtx, {
         start: "start", end: "end", startInclusive: true, endInclusive: true,
       });
-      const allActualRows = table.listRowsInGroup({
+      const allActualRows = table.listRowsInGroup(executionCtx, {
         start: "start", end: "end", startInclusive: true, endInclusive: true,
       });
       return sqlQuery`

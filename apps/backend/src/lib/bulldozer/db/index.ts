@@ -1,8 +1,9 @@
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 
 import { BULLDOZER_SORT_HELPERS_SQL } from "./bulldozer-sort-helpers-sql";
+import type { BulldozerExecutionContext } from "./execution-context";
+import { getBulldozerExecutionContext } from "./execution-context";
 import type { RegisteredRowChangeTrigger, RowChangeTriggerInput } from "./row-change-trigger-dispatch";
 import type { Json, RowData, RowIdentifier, SqlExpression, SqlQuery, SqlStatement, TableId } from "./utilities";
 import { quoteSqlIdentifier, quoteSqlStringLiteral } from "./utilities";
@@ -16,12 +17,18 @@ export type Table<GK extends Json, SK extends Json, RD extends RowData> = {
   debugArgs: Record<string, unknown>,
 
   // Query groups and rows
-  listGroups(options: { start: SqlExpression<GK> | "start", end: SqlExpression<GK> | "end", startInclusive: boolean, endInclusive: boolean }): SqlQuery<Iterable<{ groupKey: GK }>>,
+  listGroups(
+    ctx: BulldozerExecutionContext,
+    options: { start: SqlExpression<GK> | "start", end: SqlExpression<GK> | "end", startInclusive: boolean, endInclusive: boolean },
+  ): SqlQuery<Iterable<{ groupKey: GK }>>,
   /**
    * Rows queried across all groups may include `groupKey`; rows queried for a specific `groupKey`
    * may omit it.
    */
-  listRowsInGroup(options: { groupKey?: SqlExpression<GK>, start: SqlExpression<SK> | "start", end: SqlExpression<SK> | "end", startInclusive: boolean, endInclusive: boolean }): SqlQuery<Iterable<{ groupKey?: GK, rowIdentifier: RowIdentifier, rowSortKey: SK, rowData: RD }>>,
+  listRowsInGroup(
+    ctx: BulldozerExecutionContext,
+    options: { groupKey?: SqlExpression<GK>, start: SqlExpression<SK> | "start", end: SqlExpression<SK> | "end", startInclusive: boolean, endInclusive: boolean },
+  ): SqlQuery<Iterable<{ groupKey?: GK, rowIdentifier: RowIdentifier, rowSortKey: SK, rowData: RD }>>,
 
   // Sorting and grouping
   compareGroupKeys(a: SqlExpression<GK>, b: SqlExpression<GK>): SqlExpression<number>,
@@ -29,10 +36,10 @@ export type Table<GK extends Json, SK extends Json, RD extends RowData> = {
 
   // Lifecycle/migration methods
   /** Called when the table should be created on the storage engine. */
-  init(): SqlStatement[],
+  init(ctx: BulldozerExecutionContext): SqlStatement[],
   /** Called when the table should be deleted from the storage engine. */
-  delete(): SqlStatement[],
-  isInitialized(): SqlExpression<boolean>,
+  delete(ctx: BulldozerExecutionContext): SqlStatement[],
+  isInitialized(ctx: BulldozerExecutionContext): SqlExpression<boolean>,
 
   // Internal methods, used only by table constructors to create relationships between them
   /**
@@ -41,10 +48,12 @@ export type Table<GK extends Json, SK extends Json, RD extends RowData> = {
   registerRowChangeTrigger(trigger: RowChangeTriggerInput): { deregister: () => void },
 
   /** Returns a query producing error rows if materialized data differs from re-derivation from inputs. Empty result = healthy. */
-  verifyDataIntegrity(): SqlQuery<Iterable<{ errorType: string, groupKey: GK | null, rowIdentifier: RowIdentifier | null, expected: Json | null, actual: Json | null }>>,
+  verifyDataIntegrity(ctx: BulldozerExecutionContext): SqlQuery<Iterable<{ errorType: string, groupKey: GK | null, rowIdentifier: RowIdentifier | null, expected: Json | null, actual: Json | null }>>,
 };
 
 export type { RegisteredRowChangeTrigger };
+export type { BulldozerExecutionContext } from "./execution-context";
+export { createBulldozerExecutionContext, getBulldozerExecutionContext } from "./execution-context";
 
 export { declareCompactTable } from "./tables/compact-table";
 export { declareConcatTable } from "./tables/concat-table";
@@ -134,15 +143,20 @@ function buildExecutableStatementsBlock(
   }).join("\n\n");
 }
 
-export function toExecutableSqlTransaction(statements: SqlStatement[], options: { statementTimeout?: string } = {}): string {
+export function toExecutableSqlTransaction(
+  ctx: BulldozerExecutionContext,
+  statements: SqlStatement[],
+  options: { statementTimeout?: string } = {},
+): string {
   const requiresSortHelpers = statements.some((statement) => statement.sql.includes("pg_temp.bulldozer_sort_"));
   const executableStatementsInDoBlock = buildExecutableStatementsBlock(statements, new Map());
-  // Randomize the outer DO-block delimiter so nested `$$` that individual
+  // Derive the outer DO-block delimiter from the execution context so nested `$$` that individual
   // statements legitimately use (e.g. `CREATE FUNCTION ... AS $$ ... $$`
   // in `reduce-table.ts`) don't collide with it, and so user-provided SQL
-  // containing a literal `'$$'` string doesn't need to be rewritten. Same
-  // approach as `toCascadeSqlBlock` below.
-  const outerTag = chooseSafeDollarQuoteTag(executableStatementsInDoBlock, "bulldozer_tx");
+  // containing a literal `'$$'` string doesn't need to be rewritten. The helper
+  // retries deterministically until it finds a safe tag. Same approach as
+  // `toCascadeSqlBlock` below.
+  const outerTag = chooseSafeDollarQuoteTag(ctx, executableStatementsInDoBlock, "bulldozer_tx");
 
   return deindent`
     BEGIN;
@@ -176,21 +190,23 @@ export function toExecutableSqlTransaction(statements: SqlStatement[], options: 
  * to include the same literal `$tag$` (e.g. a user filter predicate
  * that references the string, or a comment, or a CASE branch).
  *
- * A cryptographically-random 224-bit suffix makes accidental collision
- * astronomically unlikely. We still assert (rather than silently
- * retrying) because a collision here would almost certainly mean the
- * caller is constructing the body adversarially, and we'd rather fail
- * loud.
+ * We derive suffixes deterministically from the execution context and
+ * retry on collision with the body contents. This preserves deterministic
+ * SQL generation while still ensuring the chosen tag is safe.
  */
-function chooseSafeDollarQuoteTag(bodyContents: string, tagPrefix: string): string {
-  const tag = `${tagPrefix}_${generateSecureRandomString()}`;
-  if (bodyContents.includes(`$${tag}$`)) {
-    throw new StackAssertionError(
-      "Randomly generated dollar-quote tag collided with body contents; this is astronomically unlikely with a 224-bit suffix and almost certainly indicates adversarial input",
-      { tag, tagPrefix },
-    );
+function chooseSafeDollarQuoteTag(
+  ctx: BulldozerExecutionContext,
+  bodyContents: string,
+  tagPrefix: string,
+): string {
+  const executionCtx = getBulldozerExecutionContext(ctx);
+  for (let attempt = 0; attempt < 10_000; attempt++) {
+    const tag = `${tagPrefix}_${executionCtx.generateDeterministicUniqueString()}`;
+    if (!bodyContents.includes(`$${tag}$`)) {
+      return tag;
+    }
   }
-  return tag;
+  throw new StackAssertionError("Could not find a safe deterministic dollar-quote tag", { tagPrefix });
 }
 
 /**
@@ -203,16 +219,17 @@ function chooseSafeDollarQuoteTag(bodyContents: string, tagPrefix: string): stri
  *    `cascadeInputName` with rows matching `cascadeInputColumns`.
  *  - Does NOT acquire the advisory lock or SET LOCAL settings — that
  *    responsibility belongs to the function wrapping the cascade.
- *  - Wraps the statement sequence in a `DO $<random-tag>$ ... $<random-tag>$`
+ *  - Wraps the statement sequence in a `DO $<safe-tag>$ ... $<safe-tag>$`
  *    block so `EXECUTE` in plpgsql can run it as a single dispatch. The
- *    tag is randomized per-call to ensure user-supplied SQL can never
- *    contain a literal copy of it and close the outer DO block early
+ *    tag is deterministically derived from the execution context and retried
+ *    until safe, so user-supplied SQL can never contain a literal copy of it
+ *    and close the outer DO block early
  *    (see `chooseSafeDollarQuoteTag`).
  *
  * If the downstream trigger graph is empty (no filters/maps/etc. registered),
  * returns `null`. Callers should skip the EXECUTE in that case.
  */
-export function toCascadeSqlBlock(options: {
+export function toCascadeSqlBlock(ctx: BulldozerExecutionContext, options: {
   cascadeInputName: string,
   cascadeInputColumns: string,
   statements: SqlStatement[],
@@ -224,10 +241,10 @@ export function toCascadeSqlBlock(options: {
   // Sort helpers use their own $$ dollar quoting inside `CREATE OR REPLACE
   // FUNCTION` bodies. They live inside the outer DO so they share the
   // enclosing transaction's pg_temp scope with the cascade statements. The
-  // outer tag is randomized below so nested $$ (or any other fixed tag in
+  // outer tag is generated deterministically below so nested $$ (or any other fixed tag in
   // user SQL) can't close it.
   const prelude = requiresSortHelpers ? BULLDOZER_SORT_HELPERS_SQL : "";
-  const outerTag = chooseSafeDollarQuoteTag(`${prelude}\n${body}`, "tf_cascade");
+  const outerTag = chooseSafeDollarQuoteTag(ctx, `${prelude}\n${body}`, "tf_cascade");
   return deindent`
     DO $${outerTag}$
     BEGIN

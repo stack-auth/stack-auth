@@ -1,5 +1,5 @@
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import type { Table } from "..";
+import { getBulldozerExecutionContext } from "../execution-context";
 import { attachRowChangeTriggerMetadata, normalizeRowChangeTrigger } from "../row-change-trigger-dispatch";
 import type { RegisteredRowChangeTrigger } from "../row-change-trigger-dispatch";
 import type { Json, RowData, RowIdentifier, SqlExpression, SqlMapper, SqlStatement, TableId } from "../utilities";
@@ -26,6 +26,7 @@ export function declareSortTable<
   compareSortKeys: (a: SqlExpression<NewSK>, b: SqlExpression<NewSK>) => SqlExpression<number>,
 }): Table<GK, NewSK, RD> {
   const triggers = new Map<string, RegisteredRowChangeTrigger>();
+  let triggerRegistrationCount = 0;
   const groupsPath = getStorageEnginePath(options.tableId, ["groups"]);
   const getGroupKeyPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey]);
   const getGroupRowsPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey, "rows"]);
@@ -59,9 +60,12 @@ export function declareSortTable<
           : sqlExpression`${options.compareSortKeys(rowSortKey, optionsForRange.end)} < 0`
     }
   `;
-  const createFromTableTriggerStatements = (fromChangesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => {
-    const normalizedChangesTableName = `normalized_changes_${generateSecureRandomString()}`;
-    const sortChangesTableName = `sort_changes_${generateSecureRandomString()}`;
+  const createFromTableTriggerStatements = (
+    fromChangesTable: SqlExpression<{ __brand: "$SQL_Table" }>,
+    ctx: { generateDeterministicUniqueString: () => string },
+  ) => {
+    const normalizedChangesTableName = `normalized_changes_${ctx.generateDeterministicUniqueString()}`;
+    const sortChangesTableName = `sort_changes_${ctx.generateDeterministicUniqueString()}`;
     return [
       sqlQuery`
         SELECT
@@ -165,7 +169,7 @@ export function declareSortTable<
     ];
   };
   const fromTableTrigger = attachRowChangeTriggerMetadata(
-    (fromChangesTable) => createFromTableTriggerStatements(fromChangesTable),
+    (ctx, fromChangesTable) => createFromTableTriggerStatements(fromChangesTable, getBulldozerExecutionContext(ctx)),
     {
       targetTableId: tableIdToDebugString(options.tableId),
       targetTableTriggers: triggers,
@@ -185,10 +189,11 @@ export function declareSortTable<
     },
     compareGroupKeys: options.fromTable.compareGroupKeys,
     compareSortKeys: options.compareSortKeys,
-    init: () => {
-      const fromGroupsTableName = `from_groups_${generateSecureRandomString()}`;
-      const fromRowsTableName = `from_rows_${generateSecureRandomString()}`;
-      const sortedRowsTableName = `sorted_rows_${generateSecureRandomString()}`;
+    init: (ctx) => {
+      const executionCtx = getBulldozerExecutionContext(ctx);
+      const fromGroupsTableName = `from_groups_${executionCtx.generateDeterministicUniqueString()}`;
+      const fromRowsTableName = `from_rows_${executionCtx.generateDeterministicUniqueString()}`;
+      const sortedRowsTableName = `sorted_rows_${executionCtx.generateDeterministicUniqueString()}`;
       return [
         sqlStatement`
           INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
@@ -199,7 +204,7 @@ export function declareSortTable<
           (gen_random_uuid(), ${getStorageEnginePath(options.tableId, ["metadata"])}, '{ "version": 1 }'::jsonb)
           ON CONFLICT ("keyPath") DO NOTHING
         `,
-        options.fromTable.listGroups({
+        options.fromTable.listGroups(executionCtx, {
           start: "start",
           end: "end",
           startInclusive: true,
@@ -213,7 +218,7 @@ export function declareSortTable<
             "rows"."rowdata" AS "rowData"
           FROM ${quoteSqlIdentifier(fromGroupsTableName)} AS "groups"
           CROSS JOIN LATERAL (
-            ${options.fromTable.listRowsInGroup({
+            ${options.fromTable.listRowsInGroup(executionCtx, {
               groupKey: sqlExpression`"groups"."groupkey"`,
               start: "start",
               end: "end",
@@ -252,7 +257,7 @@ export function declareSortTable<
         `,
       ];
     },
-    delete: () => {
+    delete: (_ctx) => {
       return [sqlStatement`
         WITH RECURSIVE "pathsToDelete" AS (
           SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
@@ -265,8 +270,8 @@ export function declareSortTable<
         WHERE "keyPath" IN (SELECT "path" FROM "pathsToDelete")
       `];
     },
-    isInitialized: () => isInitializedExpression,
-    listGroups: ({ start, end, startInclusive, endInclusive }) => sqlQuery`
+    isInitialized: (_ctx) => isInitializedExpression,
+    listGroups: (_ctx, { start, end, startInclusive, endInclusive }) => sqlQuery`
       SELECT "groupPath"."keyPath"[cardinality("groupPath"."keyPath")] AS groupKey
       FROM "BulldozerStorageEngine" AS "groupPath"
       INNER JOIN "BulldozerStorageEngine" AS "groupMetadata"
@@ -288,7 +293,7 @@ export function declareSortTable<
               : sqlExpression`${options.fromTable.compareGroupKeys(sqlExpression`"groupPath"."keyPath"[cardinality("groupPath"."keyPath")]`, end)} < 0`
         }
     `,
-    listRowsInGroup: ({ groupKey, start, end, startInclusive, endInclusive }) => groupKey != null ? sqlQuery`
+    listRowsInGroup: (_ctx, { groupKey, start, end, startInclusive, endInclusive }) => groupKey != null ? sqlQuery`
       WITH RECURSIVE "orderedRows" AS (
         SELECT
           0 AS "rowIndex",
@@ -406,15 +411,17 @@ export function declareSortTable<
       ORDER BY "orderedRows"."groupKey" ASC, "orderedRows"."rowIndex" ASC
     `,
     registerRowChangeTrigger: (trigger) => {
-      const id = generateSecureRandomString();
+      const id = `trigger_registration_${triggerRegistrationCount.toString(36).padStart(10, "0")}`;
+      triggerRegistrationCount++;
       triggers.set(id, normalizeRowChangeTrigger(trigger));
       return { deregister: () => triggers.delete(id) };
     },
-    verifyDataIntegrity: () => {
-      const allInputRows = options.fromTable.listRowsInGroup({
+    verifyDataIntegrity: (ctx) => {
+      const executionCtx = getBulldozerExecutionContext(ctx);
+      const allInputRows = options.fromTable.listRowsInGroup(executionCtx, {
         start: "start", end: "end", startInclusive: true, endInclusive: true,
       });
-      const allActualRows = table.listRowsInGroup({
+      const allActualRows = table.listRowsInGroup(executionCtx, {
         start: "start", end: "end", startInclusive: true, endInclusive: true,
       });
       return sqlQuery`
