@@ -261,8 +261,26 @@ export function getSubscriptionTimeFoldReducerSql(): string {
   )`;
 
   // ── item-grant-repeat event ──
-  // Emitted when timestamp matches an item's nextRepeatMillis
-  const currentMillis = `(EXTRACT(EPOCH FROM ${T}) * 1000)::numeric`;
+  // Emitted when timestamp matches an item's nextRepeatMillis.
+  //
+  // PG 12+ returns EXTRACT(EPOCH ...) as NUMERIC with scale 6 (microsecond
+  // precision), so if we left currentMillis as NUMERIC it would serialize
+  // into JSONB with trailing ".000000". That round-trips fine for our own
+  // comparisons but leaks into txn IDs built by downstream tables via
+  // `->>effectiveAtMillis`, producing e.g. `igr:<sub>:2592000000.000000`,
+  // while references built inline in this algo via `::text` would produce
+  // the decimal-free `igr:<sub>:2592000000`. The two wouldn't match →
+  // `item-quantity-expire` entries would fail to resolve the grant they're
+  // meant to expire, leaving `when-repeated` balances stuck after a
+  // subscription-end that follows an item-grant-repeat.
+  //
+  // Explicit ROUND before the bigint cast: NUMERIC::bigint rounds
+  // half-away-from-zero on PG 12+, which happens to match what we want,
+  // but if `T` ever comes from a path that returns DOUBLE PRECISION (older
+  // PG, or a future regression) the implicit cast rounds half-to-even and
+  // could disagree on midpoint values. Being explicit about the rounding
+  // intent is both self-documenting and stable across numeric types.
+  const currentMillis = `(ROUND(EXTRACT(EPOCH FROM ${T}) * 1000)::bigint)`;
 
   // Items due at current timestamp
   const dueItems = `(
@@ -279,8 +297,10 @@ export function getSubscriptionTimeFoldReducerSql(): string {
     AND (${S}->>'endedAtMillis')::numeric <= ${currentMillis}
   )`;
 
-  // item-grant-repeat: txnId uses sourceId + effectiveAtMillis
-  const igrTxnId = `('igr:' || (${S}->>'subscriptionId') || ':' || ${currentMillis}::bigint::text)`;
+  // item-grant-repeat: txnId uses sourceId + effectiveAtMillis. currentMillis
+  // is already ::bigint (see above) so plain ::text is enough — no decimal
+  // tail, no redundant double-cast.
+  const igrTxnId = `('igr:' || (${S}->>'subscriptionId') || ':' || ${currentMillis}::text)`;
   const repeatCount = `(${S}->>'repeatCount')::int`;
 
   // Build previousGrantsToExpire: outstanding grants with expiresWhen="when-repeated" that match due items
