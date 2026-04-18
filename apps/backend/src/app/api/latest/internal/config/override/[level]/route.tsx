@@ -188,7 +188,47 @@ async function parseAndValidateConfig(
     throw new StatusError(StatusError.BadRequest, overrideError.error);
   }
 
+  rejectNewIncludeByDefaultProducts(migratedConfig);
+
   return migratedConfig;
+}
+
+/**
+ * Soft-close of the `include-by-default` product feature (deprecated in the
+ * bulldozer payments rework — see PR #1315). The config schema still accepts
+ * the value so that pre-existing configs continue to load, but new writes
+ * are rejected here. Any dashboard or SDK caller that tries to set
+ * `payments.products.<id>.prices` to `"include-by-default"` — whether via the
+ * nested form or the dot-notation form — will get a 400.
+ */
+function rejectNewIncludeByDefaultProducts(parsedConfig: unknown): void {
+  if (!parsedConfig || typeof parsedConfig !== "object") return;
+  const err = () => new StatusError(
+    StatusError.BadRequest,
+    "`include-by-default` product prices are no longer supported. Use an explicit $0 price instead.",
+  );
+  const obj = parsedConfig as Record<string, unknown>;
+  for (const [key, value] of Object.entries(obj)) {
+    const m = /^payments\.products\.([^.]+)(?:\.(.*))?$/.exec(key);
+    if (!m) continue;
+    const rest = m[2];
+    if (!rest) {
+      if (value && typeof value === "object" && (value as Record<string, unknown>).prices === "include-by-default") {
+        throw err();
+      }
+    } else if (rest === "prices") {
+      if (value === "include-by-default") throw err();
+    }
+  }
+  const payments = obj.payments as Record<string, unknown> | undefined;
+  const products = payments?.products as Record<string, unknown> | undefined;
+  if (products && typeof products === "object") {
+    for (const product of Object.values(products)) {
+      if (product && typeof product === "object" && (product as Record<string, unknown>).prices === "include-by-default") {
+        throw err();
+      }
+    }
+  }
 }
 
 async function warnOnValidationFailure(

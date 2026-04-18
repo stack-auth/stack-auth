@@ -37,18 +37,22 @@ function LabelWithInfo({ children, tooltip }: { children: React.ReactNode, toolt
 type ProductPriceRowProps = {
   priceId: string,
   price: (Product['prices'] & object)[string],
+  /**
+   * Legacy display-only flag. `include-by-default` products can no longer be
+   * created (see the soft close in the config override route), but existing
+   * ones in prod configs still render with this label in view mode.
+   */
   includeByDefault: boolean,
   isFree: boolean,
   readOnly?: boolean,
   startEditing?: boolean,
-  onSave: (newId: string | undefined, price: "include-by-default" | (Product['prices'] & object)[string]) => void,
+  onSave: (newId: string | undefined, price: (Product['prices'] & object)[string]) => void,
   onRemove?: () => void,
   existingPriceIds: string[],
 };
 
 /**
- * Displays and edits a single price for a product
- * Handles both free prices (with include-by-default option) and paid prices
+ * Displays and edits a single price for a product.
  */
 export function ProductPriceRow({
   priceId,
@@ -132,30 +136,8 @@ export function ProductPriceRow({
         <>
           <div className="grid gap-4">
             {isFree ? (
-              // Free price - show include by default option
               <div className="flex flex-col gap-4">
                 <span className="text-xl font-semibold">Free</span>
-                <div className="flex flex-col gap-1">
-                  <div className="flex items-center space-x-2 rounded-xl">
-                    <Checkbox
-                      id={`include-by-default-${priceId}`}
-                      checked={includeByDefault}
-                      onCheckedChange={(checked) => {
-                        if (readOnly) return;
-                        onSave(undefined, checked ? "include-by-default" : price);
-                      }}
-                    />
-                    <label
-                      htmlFor={`include-by-default-${priceId}`}
-                      className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
-                    >
-                      Include by default
-                    </label>
-                  </div>
-                  <div className="text-xs text-muted-foreground mt-1">
-                    If enabled, customers get this product automatically when created
-                  </div>
-                </div>
               </div>
             ) : (
               // Paid price - show full editor
