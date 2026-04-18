@@ -33,7 +33,6 @@ import { PushedConfigSource } from "../../projects";
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
 type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
-
 /**
  * Converts a PushedConfigSource (SDK camelCase) to BranchConfigSourceApi (API snake_case).
  */
@@ -1136,6 +1135,22 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return {
       items,
       nextCursor: response.pagination.next_cursor,
+    };
+  }
+
+  async getSessionReplay(sessionReplayId: string): Promise<AdminSessionReplay> {
+    const response = await this._interface.getSessionReplay(sessionReplayId);
+    return {
+      id: response.id,
+      projectUser: {
+        id: response.project_user.id,
+        displayName: response.project_user.display_name,
+        primaryEmail: response.project_user.primary_email,
+      },
+      startedAt: new Date(response.started_at_millis),
+      lastEventAt: new Date(response.last_event_at_millis),
+      chunkCount: response.chunk_count,
+      eventCount: response.event_count,
     };
   }
 
