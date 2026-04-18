@@ -1,4 +1,4 @@
-import { toQueryableSqlQuery } from "@/lib/bulldozer/db/index";
+import { createBulldozerExecutionContext, toQueryableSqlQuery } from "@/lib/bulldozer/db/index";
 import { tableIdToDebugString } from "@/lib/bulldozer/db/utilities";
 import { syncExternalDatabases } from "@/lib/external-db-sync";
 import { createPaymentsSchema } from "@/lib/payments/schema/index";
@@ -172,11 +172,12 @@ async function main() {
   }
 
   await recurse(`[bulldozer] verifying data integrity across all payments tables`, async () => {
+    const executionContext = createBulldozerExecutionContext();
     const schema = createPaymentsSchema();
     for (const table of schema._allTables) {
       const label = tableIdToDebugString(table.tableId);
       await recurse(`[bulldozer table] ${label}`, async () => {
-        const errors = await prismaClient.$queryRawUnsafe<unknown[]>(toQueryableSqlQuery(table.verifyDataIntegrity()));
+        const errors = await prismaClient.$queryRawUnsafe<unknown[]>(toQueryableSqlQuery(table.verifyDataIntegrity(executionContext)));
         if (errors.length > 0) {
           throw new StackAssertionError(deindent`
             Bulldozer data integrity violation in table ${label}: found ${errors.length} error row(s).

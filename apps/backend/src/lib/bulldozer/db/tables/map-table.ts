@@ -50,7 +50,7 @@ export function declareMapTable<
       fromTableId: tableIdToDebugString(options.fromTable.tableId),
       mapperSql: options.mapper.sql,
     },
-    init: () => [
+    init: (ctx) => [
       sqlStatement`
         INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
         VALUES
@@ -59,9 +59,9 @@ export function declareMapTable<
         (gen_random_uuid(), ${getStorageEnginePath(options.tableId, [])}::jsonb[], 'null'::jsonb),
         (gen_random_uuid(), ${getStorageEnginePath(options.tableId, ["metadata"])}::jsonb[], '{ "version": 1 }'::jsonb)
       `,
-      ...nestedFlatMapTable.init(),
+      ...nestedFlatMapTable.init(ctx),
     ],
-    delete: () => [sqlStatement`
+    delete: (_ctx) => [sqlStatement`
       WITH RECURSIVE "pathsToDelete" AS (
         SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
         UNION ALL
@@ -72,7 +72,7 @@ export function declareMapTable<
       DELETE FROM "BulldozerStorageEngine"
       WHERE "keyPath" IN (SELECT "path" FROM "pathsToDelete")
     `],
-    isInitialized: () => sqlExpression`
+    isInitialized: (_ctx) => sqlExpression`
       EXISTS (
         SELECT 1 FROM "BulldozerStorageEngine"
         WHERE "keyPath" = ${getStorageEnginePath(options.tableId, ["metadata"])}::jsonb[]
