@@ -365,3 +365,12 @@ A: Originally a `GENERATED ALWAYS AS` stored column with a self-referential FK. 
 
 Q: How does the migration runner handle multi-statement SQL?
 A: Non-single-statement migrations are wrapped in `DO $$ BEGIN ... END $$`. If your migration SQL contains dollar-quoted function bodies, use a different delimiter (e.g., `$func$` instead of `$$`) to avoid conflicts with the outer wrapper.
+
+Q: How can I run a single backend Bulldozer Vitest case when the default threads pool errors with `options.minThreads and options.maxThreads must not conflict`?
+A: Run the test from the monorepo root with forks pool, for example: `pnpm test run apps/backend/src/lib/bulldozer/db/index.test.ts -t "setRow/init/delete SQL generation is deterministic on a mixed schema" --pool=forks`.
+
+Q: Why can payments schema tests fail typecheck after switching to explicit `executionContext` arguments in `listRowsInGroup` helpers?
+A: Function parameter types are checked contravariantly, so helper signatures like `(ctx: unknown, opts: any)` are too wide and not assignable to table methods that require `BulldozerExecutionContext`. Type helper tables as `listRowsInGroup: (ctx: BulldozerExecutionContext, opts: any) => any` and pass the same `executionContext` variable through all calls.
+
+Q: What breaks when bulldozer tests stop using `bindTableToExecutionContext` wrappers?
+A: Any trigger callbacks written as `(changesTable) => ...` can fail against the strict `RowChangeTriggerInput` signature once wrappers are removed. Update those callbacks to explicit two-arg form like `(_ctx, changesTable) => ...`, and make helper types (for example table facades and lifecycle instrumentation helpers) use ctx-first method signatures so all table API calls pass `executionContext` explicitly.

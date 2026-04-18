@@ -1,5 +1,5 @@
 import { Prisma } from "@/generated/prisma/client";
-import { toQueryableSqlQuery } from "@/lib/bulldozer/db/index";
+import { createBulldozerExecutionContext, toQueryableSqlQuery } from "@/lib/bulldozer/db/index";
 import { quoteSqlStringLiteral } from "@/lib/bulldozer/db/utilities";
 import { paymentsSchema } from "@/lib/payments/schema/singleton";
 import { getPrismaClientForTenancy } from "@/prisma-client";
@@ -601,7 +601,8 @@ async function getTransactions(options: {
   }
 
   const decodedCursor = options.cursor ? parseCursor(options.cursor) : null;
-  const baseSql = toQueryableSqlQuery(schema.transactions.listRowsInGroup({
+  const executionContext = createBulldozerExecutionContext();
+  const baseSql = toQueryableSqlQuery(schema.transactions.listRowsInGroup(executionContext, {
     start: "start",
     end: "end",
     startInclusive: true,
