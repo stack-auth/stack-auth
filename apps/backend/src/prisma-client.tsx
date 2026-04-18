@@ -251,9 +251,12 @@ async function waitForReplication(replicas: PrismaClient[], target: string, time
             FROM aurora_replica_status()
             WHERE server_id = aurora_db_instance_identifier()
           `;
-          span.setAttribute('stack.db-replication.replica-status', JSON.stringify(replicaStatus));
-          const currentLsn = replicaStatus[0].current_read_lsn;
-          span.setAttribute('stack.db-replication.current-lsn', currentLsn.toString());
+          span.setAttribute(
+            'stack.db-replication.replica-status',
+            JSON.stringify(replicaStatus, (_key, value) => typeof value === "bigint" ? value.toString() : value),
+          );
+          const currentLsn = replicaStatus[0]?.current_read_lsn ?? null;
+          span.setAttribute('stack.db-replication.current-lsn', currentLsn === null ? "null" : currentLsn.toString());
           return currentLsn === null || currentLsn >= targetBigInt;
         });
       };
