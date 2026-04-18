@@ -22,7 +22,12 @@ it("rejects switches across different product lines", async ({ expect }) => {
       serverOnly: false,
       stackable: false,
       productLineId: "catalogA",
-      prices: "include-by-default",
+      prices: {
+        monthly: {
+          USD: "1000",
+          interval: [1, "month"],
+        },
+      },
       includedItems: {},
     },
     planB: {
@@ -63,47 +68,33 @@ it("rejects switches across different product lines", async ({ expect }) => {
   `);
 });
 
-it("rejects switching to include-by-default plans", async ({ expect }) => {
-  await setupProducts({
-    planA: {
-      displayName: "Plan A",
-      customerType: "user",
-      serverOnly: false,
-      stackable: false,
-      productLineId: "catalog",
-      prices: "include-by-default",
-      includedItems: {},
-    },
-    planB: {
-      displayName: "Plan B",
-      customerType: "user",
-      serverOnly: false,
-      stackable: false,
-      productLineId: "catalog",
-      prices: "include-by-default",
-      includedItems: {},
-    },
-  }, {
-    catalog: { displayName: "Plans" },
-  });
-
-  const { userId } = await Auth.fastSignUp();
-
-  const switchResponse = await niceBackendFetch(`/api/latest/payments/products/user/${userId}/switch`, {
-    method: "POST",
-    accessType: "client",
+it("rejects creating products with the deprecated include-by-default price", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  const response = await niceBackendFetch(`/api/latest/internal/config/override/environment`, {
+    accessType: "admin",
+    method: "PATCH",
     body: {
-      from_product_id: "planA",
-      to_product_id: "planB",
+      config_override_string: JSON.stringify({
+        payments: {
+          productLines: { catalog: { displayName: "Plans" } },
+          products: {
+            legacyDefault: {
+              displayName: "Legacy Default",
+              customerType: "user",
+              serverOnly: false,
+              stackable: false,
+              productLineId: "catalog",
+              prices: "include-by-default",
+              includedItems: {},
+            },
+          },
+        },
+      }),
     },
   });
-  expect(switchResponse).toMatchInlineSnapshot(`
-    NiceResponse {
-      "status": 400,
-      "body": "Include-by-default products cannot be selected for plan switching.",
-      "headers": Headers { <some fields may have been hidden> },
-    }
-  `);
+  expect(response.status).toBe(400);
+  expect(response.body).toContain("include-by-default");
 });
 
 it("successfully switches a Stripe-backed subscription to another product", async ({ expect }) => {

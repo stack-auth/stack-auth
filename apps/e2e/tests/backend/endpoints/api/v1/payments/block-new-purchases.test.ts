@@ -205,7 +205,12 @@ it("should block switch endpoint when blockNewPurchases is enabled", async ({ ex
           serverOnly: false,
           stackable: false,
           catalogId: "catalog",
-          prices: "include-by-default",
+          prices: {
+            monthly: {
+              USD: "1000",
+              interval: [1, "month"],
+            },
+          },
           includedItems: {},
         },
         planB: {
