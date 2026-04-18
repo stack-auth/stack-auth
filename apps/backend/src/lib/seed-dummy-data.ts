@@ -7,7 +7,7 @@ import { getClickhouseAdminClient } from '@/lib/clickhouse';
 import { overrideBranchConfigOverride, overrideEnvironmentConfigOverride, setBranchConfigOverrideSource } from '@/lib/config';
 import { createOrUpdateProjectWithLegacyConfig, getProject } from '@/lib/projects';
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from '@/lib/tenancies';
-import { type PrismaClientTransaction, getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
+import { getPrismaClientForTenancy, globalPrismaClient, type PrismaClientTransaction } from '@/prisma-client';
 import { ALL_APPS } from '@stackframe/stack-shared/dist/apps/apps-config';
 import { DEFAULT_EMAIL_THEME_ID } from '@stackframe/stack-shared/dist/helpers/emails';
 import { type AdminUserProjectsCrud, type ProjectsCrud } from '@stackframe/stack-shared/dist/interface/crud/projects';
