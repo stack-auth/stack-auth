@@ -894,44 +894,34 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
 
 
   // ============================================================
-  // Regression: the subscription-timefold reducer built `currentMillis` as
-  // NUMERIC. PG 12+ `EXTRACT(EPOCH ...)` returns NUMERIC with scale 6, so
-  // the value serialized into JSONB as e.g. "604800000.000000". Downstream
-  // transactions.ts builds igr txn IDs via `->>effectiveAtMillis` → the
-  // decimal-tailed form. The same reducer, when producing
-  // `item-quantity-expire.adjustedTransactionId`, used `::bigint::text` →
-  // the decimal-free form. Mismatch → a subscription-end that follows an
-  // item-grant-repeat could not find the igr's grant to expire, so the
-  // customer's `when-repeated` balance silently stayed at the last-granted
-  // quantity instead of dropping to 0.
-  //
-  // Fix: cast `currentMillis` to bigint at the root so both paths produce
-  // byte-identical references. This test exercises the full inline
-  // lifecycle: sub-start → item-grant-repeat → subscription-end, and
-  // asserts the final itemQuantities row drops to 0 and the txn-ID formats
-  // match on both sides of the reference.
+  // Full when-repeated lifecycle: sub-start → item-grant-repeat → sub-end.
+  // item-quantity-expire entries in the sub-end transaction reference the
+  // preceding item-grant-repeat by txn id. Both the id text and the
+  // reference text must match byte-for-byte or the expire silently fails
+  // to resolve the grant and the `when-repeated` balance stays at the
+  // last-granted quantity instead of dropping to 0.
   // ============================================================
 
   describe("item-quantity-expire resolves across item-grant-repeat → sub-end", () => {
     const DAY_MS = 86400000;
 
     beforeAll(async () => {
-      await runStatements(schema.subscriptions.setRow("sub-bigint-repeat", jsonbExpr({
-        id: "sub-bigint-repeat",
+      await runStatements(schema.subscriptions.setRow("sub-repeat-to-end", jsonbExpr({
+        id: "sub-repeat-to-end",
         tenancyId: "t1",
-        customerId: "u-bigint",
+        customerId: "u-repeat-to-end",
         customerType: "user",
-        productId: "prod-bigint-repeat",
+        productId: "prod-repeat-to-end",
         priceId: "p1",
         product: {
-          displayName: "Bigint Repeat Plan",
+          displayName: "Repeat Then End Plan",
           customerType: "user",
-          productLineId: "line-bigint-repeat",
+          productLineId: "line-repeat-to-end",
           prices: { p1: { USD: "10" } },
           includedItems: {
-            // Repeat at exactly 7 days — a whole-second epoch offset that
-            // amplifies the NUMERIC scale-6 artifact (604800000 vs
-            // 604800000.000000 in JSONB).
+            // 7-day repeat interval is an exact whole-second epoch offset,
+            // which is where subtle NUMERIC-vs-bigint mismatches around
+            // `->>effectiveAtMillis` tend to surface.
             quota: { quantity: 100, repeat: [7, "day"], expires: "when-repeated" },
           },
         },
@@ -952,27 +942,28 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
 
     it("item-grant-repeat transaction id has no trailing decimals", async () => {
       const txns = (await getRowDatas(schema.transactions))
-        .filter((t: any) => t.customerId === "u-bigint");
+        .filter((t: any) => t.customerId === "u-repeat-to-end");
       const igr = txns.find((t: any) =>
-        typeof t.txnId === "string" && t.txnId.startsWith("igr:sub-bigint-repeat:")
+        typeof t.txnId === "string" && t.txnId.startsWith("igr:sub-repeat-to-end:")
       );
       expect(igr).toBeDefined();
-      // The txn id is built by transactions.ts from the event's
-      // effectiveAtMillis (which flows through JSONB as the NUMERIC value
-      // from the reducer's currentMillis). Any trailing ".000000" here is
-      // the bug 3 fingerprint.
-      expect(igr.txnId).toMatch(/^igr:sub-bigint-repeat:\d+$/);
+      // transactions.ts derives this id from the event's effectiveAtMillis
+      // via `->>`. If that value was stored in JSONB as a NUMERIC with
+      // fractional scale (e.g. "604800000.000000") the id text picks up
+      // the trailing zeros and no longer matches references built via
+      // `::bigint::text` elsewhere in the reducer.
+      expect(igr.txnId).toMatch(/^igr:sub-repeat-to-end:\d+$/);
       expect(igr.txnId).not.toContain(".");
     });
 
     it("sub-end's item-quantity-expire adjustedTransactionId matches the igr txn id", async () => {
       const txns = (await getRowDatas(schema.transactions))
-        .filter((t: any) => t.customerId === "u-bigint");
+        .filter((t: any) => t.customerId === "u-repeat-to-end");
 
       const igr = txns.find((t: any) =>
-        typeof t.txnId === "string" && t.txnId.startsWith("igr:sub-bigint-repeat:")
+        typeof t.txnId === "string" && t.txnId.startsWith("igr:sub-repeat-to-end:")
       );
-      const subEnd = txns.find((t: any) => t.txnId === "sub-end:sub-bigint-repeat");
+      const subEnd = txns.find((t: any) => t.txnId === "sub-end:sub-repeat-to-end");
       expect(igr).toBeDefined();
       expect(subEnd).toBeDefined();
 
@@ -980,22 +971,24 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         e.type === "item-quantity-expire" && e.itemId === "quota"
       );
       expect(expireEntry).toBeDefined();
-      // Before the fix the expire referenced `igr:sub-bigint-repeat:604800000`
-      // while the actual igr txn was `igr:sub-bigint-repeat:604800000.000000`
-      // — same value, different text → no match → quota stuck.
+      // The two texts must be byte-identical for the expire to resolve
+      // the grant. Same value in different representations (e.g.
+      // "604800000" vs "604800000.000000") is the failure mode this
+      // guards against.
       expect(expireEntry.adjustedTransactionId).toBe(igr.txnId);
     });
 
     it("quota balance drops to 0 after sub-end resolves the igr's grant", async () => {
       const rows = (await getRowDatas(schema.itemQuantities))
-        .filter((r: any) => r.customerId === "u-bigint")
+        .filter((r: any) => r.customerId === "u-repeat-to-end")
         .sort((a: any, b: any) => a.txnEffectiveAtMillis - b.txnEffectiveAtMillis);
       expect(rows.length).toBeGreaterThan(0);
 
       const latest = rows[rows.length - 1];
-      // With bug 3 present, expire can't find the grant and quota stays at
-      // 100 (the last igr-granted quantity). With the fix, the expire
-      // resolves and quota drops to 0.
+      // If the expire ref mismatches the igr txn id, the expire silently
+      // becomes a no-op and quota stays at the last igr-granted quantity
+      // (100). When the ids match, sub-end's expire resolves and the
+      // ledger drops to 0.
       expect(latest.itemQuantities.quota).toBe(0);
     });
   });

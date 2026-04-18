@@ -1,7 +1,8 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import type { Table } from "..";
+import { toCascadeSqlBlock } from "..";
 import type { RegisteredRowChangeTrigger } from "../row-change-trigger-dispatch";
-import { attachRowChangeTriggerMetadata, normalizeRowChangeTrigger } from "../row-change-trigger-dispatch";
+import { attachRowChangeTriggerMetadata, collectRowChangeTriggerStatements, normalizeRowChangeTrigger } from "../row-change-trigger-dispatch";
 import type { Json, RowData, RowIdentifier, SqlExpression, SqlMapper, TableId, Timestamp } from "../utilities";
 import {
   getStorageEnginePath,
@@ -14,6 +15,15 @@ import {
   sqlStatement,
   tableIdToDebugString,
 } from "../utilities";
+
+/**
+ * Column shape matching `timeFoldChangesTableName` in
+ * `createApplyChangesStatements` below. Used both by the inline
+ * trigger (which produces this shape directly) and by the queue-drain
+ * cascade (which synthesizes this shape in plpgsql from newly-emitted
+ * rows).
+ */
+const TIMEFOLD_OUTPUT_CHANGE_COLUMNS = '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb';
 
 /**
  * Materialized time-aware fold with queue-backed future reprocessing.
@@ -467,6 +477,30 @@ export function declareTimeFoldTable<
       const fromGroupsTableName = `from_groups_${generateSecureRandomString()}`;
       const fromRowsTableName = `from_rows_${generateSecureRandomString()}`;
       const initChangesTableName = `init_changes_${generateSecureRandomString()}`;
+
+      // Compile the downstream trigger cascade into a plpgsql DO block and
+      // persist it in BulldozerTimeFoldDownstreamCascade, keyed by this
+      // timefold's tableStoragePath. bulldozer_timefold_process_queue()
+      // reads and EXECUTEs it after each batch of queue-drained emissions.
+      //
+      // This mirrors, on the queue-drain path, what collectRowChangeTriggerStatements
+      // does on the inline setRow path (see row-change-trigger-dispatch.ts's
+      // use by the outer runStatements pipeline). Without this, pg_cron-
+      // drained emissions update the timefold's own rows but never propagate
+      // to filters/maps/LFolds above — see apps/backend/src/lib/bulldozer/db/
+      // timefold-queue-downstream.test.ts.
+      const cascadeInputName = `tf_cascade_input_${generateSecureRandomString()}`;
+      const cascadeCollected = collectRowChangeTriggerStatements({
+        sourceTableId: tableIdToDebugString(options.tableId),
+        sourceChangesTable: quoteSqlIdentifier(cascadeInputName),
+        sourceTableTriggers: triggers,
+      });
+      const cascadeTemplate = toCascadeSqlBlock({
+        cascadeInputName,
+        cascadeInputColumns: TIMEFOLD_OUTPUT_CHANGE_COLUMNS,
+        statements: cascadeCollected.statements,
+      });
+
       return [
         sqlStatement`
           INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
@@ -476,6 +510,24 @@ export function declareTimeFoldTable<
             (gen_random_uuid(), ${groupsPath}, 'null'::jsonb),
             (gen_random_uuid(), ${getStorageEnginePath(options.tableId, ["metadata"])}, '{ "version": 1 }'::jsonb)
           ON CONFLICT ("keyPath") DO NOTHING
+        `,
+        // Upsert the cascade registry row. A null template means "no
+        // downstream triggers registered" — process_queue will skip the
+        // EXECUTE in that case, matching the no-op semantics of the inline
+        // path when no triggers are attached.
+        sqlStatement`
+          INSERT INTO "BulldozerTimeFoldDownstreamCascade"
+            ("tableStoragePath", "cascadeInputName", "cascadeTemplate")
+          VALUES (
+            ${tableStoragePath}::jsonb[],
+            ${quoteSqlStringLiteral(cascadeInputName)},
+            ${cascadeTemplate == null ? sqlExpression`NULL::text` : quoteSqlStringLiteral(cascadeTemplate)}
+          )
+          ON CONFLICT ("tableStoragePath") DO UPDATE
+          SET
+            "cascadeInputName" = EXCLUDED."cascadeInputName",
+            "cascadeTemplate" = EXCLUDED."cascadeTemplate",
+            "updatedAt" = now()
         `,
         options.fromTable.listGroups({
           start: "start",
@@ -516,6 +568,10 @@ export function declareTimeFoldTable<
       return [
         sqlStatement`
           DELETE FROM "BulldozerTimeFoldQueue"
+          WHERE "tableStoragePath" = ${tableStoragePath}::jsonb[]
+        `,
+        sqlStatement`
+          DELETE FROM "BulldozerTimeFoldDownstreamCascade"
           WHERE "tableStoragePath" = ${tableStoragePath}::jsonb[]
         `,
         sqlStatement`
