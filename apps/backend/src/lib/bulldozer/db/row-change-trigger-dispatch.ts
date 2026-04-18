@@ -4,7 +4,15 @@ import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import type { SqlExpression, SqlStatement } from "./utilities";
 import { quoteSqlIdentifier, quoteSqlStringLiteral, sqlQuery } from "./utilities";
 
-const CHANGE_OUTPUT_COLUMNS = '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb';
+/**
+ * Column shape of every row-change changes-table flowing between tables
+ * in the bulldozer graph. One canonical source of truth for both the
+ * inline trigger dispatch (here), the queue-drain cascade (whose input
+ * is seeded to this same shape in `declareTimeFoldTable.init()`), and
+ * any downstream consumer that needs to describe a changes-table's
+ * columns for `jsonb_to_record(...)` etc.
+ */
+export const CHANGE_OUTPUT_COLUMNS = '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb';
 const ROW_CHANGE_DIAGNOSTIC_COLUMN_NAME = "__row_change_table_id";
 export type ChangesTableExpression = SqlExpression<{ __brand: "$SQL_Table" }>;
 export type RowChangeTriggerDiagnostics = {
