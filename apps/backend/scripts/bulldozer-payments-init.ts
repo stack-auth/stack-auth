@@ -11,7 +11,7 @@
  */
 
 import { Prisma } from "@/generated/prisma/client";
-import { toExecutableSqlTransaction } from "@/lib/bulldozer/db/index";
+import { createBulldozerExecutionContext, toExecutableSqlTransaction, type BulldozerExecutionContext } from "@/lib/bulldozer/db/index";
 import type { SqlStatement, TableId } from "@/lib/bulldozer/db/utilities";
 import {
   itemQuantityChangeToStoredRow,
@@ -27,17 +27,38 @@ const schema = createPaymentsSchema();
 
 const BATCH_SIZE = 100;
 
-async function initTables(prisma: PrismaClientTransaction) {
+type LogMetaValue = string | number | boolean | null | undefined;
+
+function formatLogMeta(meta: Record<string, LogMetaValue>): string {
+  const parts: string[] = [];
+  for (const [key, value] of Object.entries(meta)) {
+    if (value === undefined) {
+      continue;
+    }
+    parts.push(`${key}=${String(value)}`);
+  }
+  return parts.length > 0 ? ` (${parts.join(", ")})` : "";
+}
+
+function logIngressStep(tableName: string, step: string, meta: Record<string, LogMetaValue> = {}) {
+  console.log(`[Bulldozer][Ingress][${tableName}] ${step}${formatLogMeta(meta)}`);
+}
+
+function logRowIngressStep(tableName: string, rowId: string, step: string, meta: Record<string, LogMetaValue> = {}) {
+  console.log(`[Bulldozer][Ingress][${tableName}][row=${rowId}] ${step}${formatLogMeta(meta)}`);
+}
+
+async function initTables(prisma: PrismaClientTransaction, ctx: BulldozerExecutionContext) {
   let initialized = 0;
   for (const table of schema._allTables) {
     const [{ isInit }] = await prisma.$queryRaw`
-      SELECT ${Prisma.raw(table.isInitialized().sql)} AS "isInit"
+      SELECT ${Prisma.raw(table.isInitialized(ctx).sql)} AS "isInit"
     ` as [{ isInit: boolean }];
     if (isInit) {
       initialized++;
       continue;
     }
-    const sql = toExecutableSqlTransaction(table.init());
+    const sql = toExecutableSqlTransaction(ctx, table.init(ctx));
     await prisma.$executeRaw`${Prisma.raw(sql)}`;
   }
   if (initialized > 0) {
@@ -173,28 +194,39 @@ type RefundManualIngressState = {
 };
 
 async function createRefundManualIngressState(prisma: PrismaClientTransaction): Promise<RefundManualIngressState> {
-  return {
+  const state = {
     existingRowIds: await getExistingRowIds(prisma, schema.manualTransactions.tableId),
     existingTxnIds: await getExistingRefundTxnIds(prisma),
     ingressed: 0,
     skipped: 0,
   };
+  logIngressStep("ManualTransactions(refund)", "loaded existing refund ingress state", {
+    existingRowIds: state.existingRowIds.size,
+    existingTxnIds: state.existingTxnIds.size,
+  });
+  return state;
 }
 
 async function writeBackfilledRefundManualTransaction(
   prisma: PrismaClientTransaction,
+  ctx: BulldozerExecutionContext,
   transaction: { rowId: string, rowData: ManualTransactionRow },
   state: RefundManualIngressState,
 ) {
-  if (state.existingRowIds.has(transaction.rowId) || state.existingTxnIds.has(transaction.rowData.txnId)) {
+  const rowAlreadyExists = state.existingRowIds.has(transaction.rowId);
+  const txnAlreadyExists = state.existingTxnIds.has(transaction.rowData.txnId);
+  if (rowAlreadyExists || txnAlreadyExists) {
     state.skipped++;
     return;
   }
+
   const rowDataJson = JSON.stringify(transaction.rowData).replaceAll("'", "''");
   const sql = toExecutableSqlTransaction(
-    schema.manualTransactions.setRow(transaction.rowId, { type: "expression", sql: `'${rowDataJson}'::jsonb` })
+    ctx,
+    schema.manualTransactions.setRow(ctx, transaction.rowId, { type: "expression", sql: `'${rowDataJson}'::jsonb` }),
   );
   await prisma.$executeRaw`${Prisma.raw(sql)}`;
+
   state.existingRowIds.add(transaction.rowId);
   state.existingTxnIds.add(transaction.rowData.txnId);
   state.ingressed++;
@@ -208,21 +240,32 @@ async function writeBackfilledRefundManualTransaction(
  */
 async function paginatedIngress(
   prisma: PrismaClientTransaction,
+  ctx: BulldozerExecutionContext,
   tableName: string,
-  storedTable: { tableId: TableId, setRow(id: string, data: { type: "expression", sql: string }): SqlStatement[] },
+  storedTable: { tableId: TableId, setRow(ctx: BulldozerExecutionContext, id: string, data: { type: "expression", sql: string }): SqlStatement[] },
   toRowData: (row: any) => Record<string, unknown>,
   options: {
     afterEachRow?: (row: any) => Promise<void>,
   } = {},
 ) {
+  logIngressStep(tableName, "starting paginated ingress", {
+    batchSize: BATCH_SIZE,
+  });
   const existingIds = await getExistingRowIds(prisma, storedTable.tableId);
+  logIngressStep(tableName, "loaded existing row IDs", {
+    existingCount: existingIds.size,
+  });
+
   let ingressed = 0;
   let skipped = 0;
+  let processed = 0;
+  let batchNumber = 0;
   let cursorTenancyId: string | null = null;
   let cursorId: string | null = null;
 
   // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition -- cursor-based pagination loop
   while (true) {
+    batchNumber++;
     // any[] because Prisma $queryRaw returns unknown and we destructure dynamically
     const batch: any[] = cursorTenancyId != null
       ? await prisma.$queryRawUnsafe(
@@ -233,33 +276,82 @@ async function paginatedIngress(
       : await prisma.$queryRawUnsafe(
         `SELECT * FROM "${tableName}" ORDER BY "tenancyId", "id" LIMIT ${BATCH_SIZE}`,
       );
-    if (batch.length === 0) break;
+
+    if (batch.length === 0) {
+      break;
+    }
+
     const lastRow = batch[batch.length - 1];
     cursorTenancyId = lastRow.tenancyId;
     cursorId = lastRow.id;
 
-    for (const row of batch) {
-      if (existingIds.has(row.id)) {
-        skipped++;
-      } else {
-        const rowData = JSON.stringify(toRowData(row)).replaceAll("'", "''");
-        const sql = toExecutableSqlTransaction(
-          storedTable.setRow(row.id, { type: "expression", sql: `'${rowData}'::jsonb` })
-        );
-        await prisma.$executeRaw`${Prisma.raw(sql)}`;
-        ingressed++;
+    for (let batchRowIndex = 0; batchRowIndex < batch.length; batchRowIndex++) {
+      const row = batch[batchRowIndex];
+      const rowId = typeof row.id === "string" ? row.id : String(row.id);
+      processed++;
+      const rowStartMs = performance.now();
+      let rowStatus: "ingressed" | "skipped" | "failed" = "failed";
+      let rowError: string | undefined = undefined;
+      logRowIngressStep(tableName, rowId, "start processing row", {
+        batchNumber,
+        batchRowIndex,
+        processedCount: processed,
+      });
+
+      try {
+        const rowAlreadyExists = existingIds.has(row.id);
+
+        if (rowAlreadyExists) {
+          skipped++;
+          rowStatus = "skipped";
+        } else {
+          const rowDataObject = toRowData(row);
+          const rowData = JSON.stringify(rowDataObject).replaceAll("'", "''");
+          const sql = toExecutableSqlTransaction(
+            ctx,
+            storedTable.setRow(ctx, row.id, { type: "expression", sql: `'${rowData}'::jsonb` }),
+          );
+          await prisma.$executeRaw`${Prisma.raw(sql)}`;
+          ingressed++;
+          rowStatus = "ingressed";
+        }
+
+        if (options.afterEachRow) {
+          await options.afterEachRow(row);
+        }
+      } catch (error) {
+        rowStatus = "failed";
+        rowError = error instanceof Error ? error.message : String(error);
+        throw error;
+      } finally {
+        const elapsedMs = Number((performance.now() - rowStartMs).toFixed(2));
+        logRowIngressStep(tableName, rowId, "end processing row", {
+          status: rowStatus,
+          elapsedMs,
+          batchNumber,
+          batchRowIndex,
+          processedCount: processed,
+          ingressedCount: ingressed,
+          skippedCount: skipped,
+          error: rowError,
+        });
       }
-      if (options.afterEachRow) {
-        await options.afterEachRow(row);
-      }
+
     }
   }
+
+  logIngressStep(tableName, "paginated ingress complete", {
+    processedCount: processed,
+    ingressedCount: ingressed,
+    skippedCount: skipped,
+  });
   console.log(`[Bulldozer] Ingressed ${ingressed} ${tableName} rows (${skipped} already present).`);
 }
 
 export async function runBulldozerPaymentsInit(prisma: PrismaClientTransaction) {
+  const ctx = createBulldozerExecutionContext();
   console.log("[Bulldozer] Initializing payments schema tables...");
-  await initTables(prisma);
+  await initTables(prisma, ctx);
   console.log(`[Bulldozer] Initialized ${schema._allTables.length} payments tables.`);
 
   console.log("[Bulldozer] Syncing Prisma data into bulldozer stored tables...");
@@ -267,6 +359,7 @@ export async function runBulldozerPaymentsInit(prisma: PrismaClientTransaction) 
 
   await paginatedIngress(
     prisma,
+    ctx,
     "Subscription",
     schema.subscriptions,
     subscriptionToStoredRow,
@@ -282,13 +375,14 @@ export async function runBulldozerPaymentsInit(prisma: PrismaClientTransaction) 
           adjustedTransactionId: `sub-start:${row.id}`,
           adjustedEntryIndex: 1,
         });
-        await writeBackfilledRefundManualTransaction(prisma, refundManualTransaction, refundManualIngressState);
+        await writeBackfilledRefundManualTransaction(prisma, ctx, refundManualTransaction, refundManualIngressState);
       },
     }
   );
-  await paginatedIngress(prisma, "SubscriptionInvoice", schema.subscriptionInvoices, subscriptionInvoiceToStoredRow);
+  await paginatedIngress(prisma, ctx, "SubscriptionInvoice", schema.subscriptionInvoices, subscriptionInvoiceToStoredRow);
   await paginatedIngress(
     prisma,
+    ctx,
     "OneTimePurchase",
     schema.oneTimePurchases,
     oneTimePurchaseToStoredRow,
@@ -304,11 +398,11 @@ export async function runBulldozerPaymentsInit(prisma: PrismaClientTransaction) 
           adjustedTransactionId: `otp:${row.id}`,
           adjustedEntryIndex: 0,
         });
-        await writeBackfilledRefundManualTransaction(prisma, refundManualTransaction, refundManualIngressState);
+        await writeBackfilledRefundManualTransaction(prisma, ctx, refundManualTransaction, refundManualIngressState);
       },
     }
   );
-  await paginatedIngress(prisma, "ItemQuantityChange", schema.manualItemQuantityChanges, itemQuantityChangeToStoredRow);
+  await paginatedIngress(prisma, ctx, "ItemQuantityChange", schema.manualItemQuantityChanges, itemQuantityChangeToStoredRow);
   console.log(`[Bulldozer] Ingressed ${refundManualIngressState.ingressed} refund manual transactions (${refundManualIngressState.skipped} already present).`);
 
   console.log("[Bulldozer] Payments data ingress complete.");
