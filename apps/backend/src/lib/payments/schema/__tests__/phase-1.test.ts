@@ -345,6 +345,107 @@ describe.sequential("payments schema phase 1 (real postgres)", () => {
         .filter((e: any) => e.subscriptionId === "sub-tf-start");
       expect(endEvents).toHaveLength(0);
     });
+
+    it("should expire when-repeated grants alongside when-purchase-expires when ending before any repeat", async () => {
+      await runStatements(schema.subscriptions.setRow("sub-tf-end-mix-pre", jsonbExpr(makeSubscription("sub-tf-end-mix-pre", {
+        product: {
+          displayName: "Mix Pre-Repeat Plan",
+          customerType: "user",
+          productLineId: "line-tf-end-mix-pre",
+          prices: { p1: { USD: "10" } },
+          includedItems: {
+            storage: { quantity: 100, expires: "when-purchase-expires" },
+            quota: { quantity: 500, repeat: [7, "day"], expires: "when-repeated" },
+          },
+        },
+        endedAtMillis: 3 * DAY_MS,
+        createdAtMillis: 0,
+      }))));
+
+      const endEvents = (await getRowDatas(schema.subscriptionEndEvents))
+        .filter((e: any) => e.subscriptionId === "sub-tf-end-mix-pre");
+      expect(endEvents).toHaveLength(1);
+
+      const expiredByItem = new Map<string, any>();
+      for (const expiry of endEvents[0].itemQuantityChangesToExpire) {
+        expiredByItem.set(expiry.itemId, expiry);
+      }
+      expect([...expiredByItem.keys()].sort()).toEqual(["quota", "storage"]);
+      expect(expiredByItem.get("storage").transactionId).toBe("sub-start:sub-tf-end-mix-pre");
+      expect(expiredByItem.get("quota").transactionId).toBe("sub-start:sub-tf-end-mix-pre");
+      expect(expiredByItem.get("quota").quantity).toBe(500);
+
+      const repeats = (await getRowDatas(schema.itemGrantRepeatEvents))
+        .filter((e: any) => e.sourceId === "sub-tf-end-mix-pre");
+      expect(repeats).toHaveLength(0);
+    });
+
+    it("should reference the latest igr txnId for when-repeated grants when ending after repeats", async () => {
+      await runStatements(schema.subscriptions.setRow("sub-tf-end-mix-post", jsonbExpr(makeSubscription("sub-tf-end-mix-post", {
+        product: {
+          displayName: "Mix Post-Repeat Plan",
+          customerType: "user",
+          productLineId: "line-tf-end-mix-post",
+          prices: { p1: { USD: "10" } },
+          includedItems: {
+            storage: { quantity: 100, expires: "when-purchase-expires" },
+            quota: { quantity: 500, repeat: [7, "day"], expires: "when-repeated" },
+          },
+        },
+        endedAtMillis: 17 * DAY_MS,
+        createdAtMillis: 0,
+      }))));
+
+      const endEvents = (await getRowDatas(schema.subscriptionEndEvents))
+        .filter((e: any) => e.subscriptionId === "sub-tf-end-mix-post");
+      expect(endEvents).toHaveLength(1);
+
+      const expiredByItem = new Map<string, any>();
+      for (const expiry of endEvents[0].itemQuantityChangesToExpire) {
+        expiredByItem.set(expiry.itemId, expiry);
+      }
+      expect([...expiredByItem.keys()].sort()).toEqual(["quota", "storage"]);
+
+      // storage never repeated; still points at sub-start
+      expect(expiredByItem.get("storage").transactionId).toBe("sub-start:sub-tf-end-mix-post");
+
+      // quota last repeated at 14d; should point at that igr txn
+      const latestRepeatMillis = 14 * DAY_MS;
+      expect(expiredByItem.get("quota").transactionId).toBe(`igr:sub-tf-end-mix-post:${latestRepeatMillis}`);
+      expect(expiredByItem.get("quota").quantity).toBe(500);
+
+      const repeats = (await getRowDatas(schema.itemGrantRepeatEvents))
+        .filter((e: any) => e.sourceId === "sub-tf-end-mix-post")
+        .sort((a: any, b: any) => a.effectiveAtMillis - b.effectiveAtMillis);
+      expect(repeats.map((r: any) => r.effectiveAtMillis)).toEqual([7 * DAY_MS, 14 * DAY_MS]);
+    });
+
+    it("should NOT expire permanent grants (expires=never, absent, or invalid)", async () => {
+      await runStatements(schema.subscriptions.setRow("sub-tf-end-permanent", jsonbExpr(makeSubscription("sub-tf-end-permanent", {
+        product: {
+          displayName: "Permanent Grants Plan",
+          customerType: "user",
+          productLineId: "line-tf-end-permanent",
+          prices: { p1: { USD: "10" } },
+          includedItems: {
+            expiring: { quantity: 50, expires: "when-purchase-expires" },
+            repeating: { quantity: 10, repeat: [1, "day"], expires: "when-repeated" },
+            permanent_never: { quantity: 20, expires: "never" },
+            permanent_absent: { quantity: 30 },
+            permanent_invalid: { quantity: 40, expires: "not-a-real-value" },
+          },
+        },
+        endedAtMillis: 2 * MONTH_MS,
+        createdAtMillis: 0,
+      }))));
+
+      const endEvents = (await getRowDatas(schema.subscriptionEndEvents))
+        .filter((e: any) => e.subscriptionId === "sub-tf-end-permanent");
+      expect(endEvents).toHaveLength(1);
+
+      const expiredItemIds = endEvents[0].itemQuantityChangesToExpire.map((e: any) => e.itemId).sort();
+      expect(expiredItemIds).toEqual(["expiring", "repeating"]);
+    });
   });
 
 

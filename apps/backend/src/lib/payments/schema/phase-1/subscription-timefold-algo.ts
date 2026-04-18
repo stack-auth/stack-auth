@@ -391,7 +391,22 @@ export function getSubscriptionTimeFoldReducerSql(): string {
   )`;
 
   // ── subscription-end event ──
-  // Expire all outstanding grants with expiresWhen="when-purchase-expires"
+  // Expire all outstanding grants that are tied to the subscription's
+  // lifetime — both 'when-purchase-expires' and 'when-repeated'. The latter
+  // must be expired here too: otherwise the last-granted monthly quota
+  // (emails_per_month, analytics_events, …) persists in the item-quantity
+  // ledger after the subscription is gone and stacks on top of any
+  // replacement subscription for the remainder of the period.
+  //
+  // Permanent grants (item has no `expires` configured, or an unrecognized
+  // value) were normalized to JSONB null at subscription-start time, so
+  // `"g"->>'expiresWhen'` returns SQL NULL for them and the IN predicate
+  // correctly excludes them.
+  //
+  // outstandingGrants always carries the *current* grant ref for each item:
+  // initially { txnId: 'sub-start:<sub>' }, and each item-grant-repeat tick
+  // replaces the matching when-repeated entries with fresh ones keyed by
+  // the igr txnId, so iterating here works identically pre- and post-repeat.
   const endItemQuantityChangesToExpire = (stateSql: string) => `(
     SELECT COALESCE(jsonb_agg(
       jsonb_build_object(
@@ -402,7 +417,7 @@ export function getSubscriptionTimeFoldReducerSql(): string {
       )
     ), '[]'::jsonb)
     FROM jsonb_array_elements(${stateSql}->'outstandingGrants') AS "g"
-    WHERE "g"->>'expiresWhen' = 'when-purchase-expires'
+    WHERE "g"->>'expiresWhen' IN ('when-purchase-expires', 'when-repeated')
   )`;
 
   const endEventRowFromState = (stateSql: string) => `jsonb_build_object(

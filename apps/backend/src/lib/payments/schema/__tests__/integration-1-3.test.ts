@@ -894,6 +894,152 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
 
 
   // ============================================================
+  // when-repeated grants must expire at subscription-end
+  // (regression: they were previously left stacked in the ledger)
+  // ============================================================
+
+  describe("when-repeated grants expire at subscription-end", () => {
+    const DAY_MS = 86400000;
+
+    beforeAll(async () => {
+      await runStatements(schema.subscriptions.setRow("sub-repeat-end", jsonbExpr({
+        id: "sub-repeat-end",
+        tenancyId: "t1",
+        customerId: "u-repeat-end",
+        customerType: "user",
+        productId: "prod-repeat-end",
+        priceId: "p1",
+        product: {
+          displayName: "Repeat End Plan",
+          customerType: "user",
+          productLineId: "line-repeat-end",
+          prices: { p1: { USD: "10" } },
+          includedItems: {
+            quota: { quantity: 100, repeat: [7, "day"], expires: "when-repeated" },
+            permanent: { quantity: 25, expires: "never" },
+          },
+        },
+        quantity: 1,
+        stripeSubscriptionId: null,
+        status: "canceled",
+        currentPeriodStartMillis: 0,
+        currentPeriodEndMillis: MONTH_MS,
+        cancelAtPeriodEnd: true,
+        canceledAtMillis: 2 * DAY_MS,
+        endedAtMillis: 5 * DAY_MS,
+        refundedAtMillis: null,
+        creationSource: "TEST_MODE",
+        createdAtMillis: 0,
+      })));
+    });
+
+    it("should drop when-repeated item balance to 0 after subscription-end", async () => {
+      const rows = (await getRowDatas(schema.itemQuantities))
+        .filter((r: any) => r.customerId === "u-repeat-end")
+        .sort((a: any, b: any) => a.txnEffectiveAtMillis - b.txnEffectiveAtMillis);
+
+      const latest = rows[rows.length - 1];
+      expect(latest.itemQuantities.quota).toBe(0);
+      // Permanent grants must not be touched.
+      expect(latest.itemQuantities.permanent).toBe(25);
+    });
+
+    it("should revoke owned product at subscription-end", async () => {
+      const rows = (await getRowDatas(schema.ownedProducts))
+        .filter((r: any) => r.customerId === "u-repeat-end")
+        .sort((a: any, b: any) => a.txnEffectiveAtMillis - b.txnEffectiveAtMillis);
+
+      const afterEnd = rows.find((r: any) => r.txnId === "sub-end:sub-repeat-end");
+      expect(afterEnd).toBeDefined();
+      expect(afterEnd.ownedProducts["prod-repeat-end"].quantity).toBe(0);
+    });
+  });
+
+
+  // ============================================================
+  // Upgrade stacking regression: free → team mid-period must not
+  // leave the outgoing sub's monthly allowance stacked on top of
+  // the incoming sub's allowance.
+  // ============================================================
+
+  describe("mid-period upgrade does not stack when-repeated balances", () => {
+    const DAY_MS = 86400000;
+
+    beforeAll(async () => {
+      await runStatements(schema.subscriptions.setRow("sub-upgrade-free", jsonbExpr({
+        id: "sub-upgrade-free",
+        tenancyId: "t1",
+        customerId: "u-upgrade",
+        customerType: "user",
+        productId: "prod-upgrade-free",
+        priceId: "p-free",
+        product: {
+          displayName: "Free",
+          customerType: "user",
+          productLineId: "line-upgrade",
+          prices: { "p-free": { USD: "0" } },
+          includedItems: {
+            emails: { quantity: 100, repeat: [1, "month"], expires: "when-repeated" },
+          },
+        },
+        quantity: 1,
+        stripeSubscriptionId: null,
+        status: "canceled",
+        currentPeriodStartMillis: 0,
+        currentPeriodEndMillis: MONTH_MS,
+        cancelAtPeriodEnd: false,
+        canceledAtMillis: 10 * DAY_MS,
+        endedAtMillis: 10 * DAY_MS,
+        refundedAtMillis: null,
+        creationSource: "TEST_MODE",
+        createdAtMillis: 0,
+      })));
+
+      await runStatements(schema.subscriptions.setRow("sub-upgrade-team", jsonbExpr({
+        id: "sub-upgrade-team",
+        tenancyId: "t1",
+        customerId: "u-upgrade",
+        customerType: "user",
+        productId: "prod-upgrade-team",
+        priceId: "p-team",
+        product: {
+          displayName: "Team",
+          customerType: "user",
+          productLineId: "line-upgrade",
+          prices: { "p-team": { USD: "30" } },
+          includedItems: {
+            emails: { quantity: 500, repeat: [1, "month"], expires: "when-repeated" },
+          },
+        },
+        quantity: 1,
+        stripeSubscriptionId: null,
+        status: "canceled",
+        currentPeriodStartMillis: 11 * DAY_MS,
+        currentPeriodEndMillis: 11 * DAY_MS + MONTH_MS,
+        cancelAtPeriodEnd: true,
+        canceledAtMillis: 20 * DAY_MS,
+        endedAtMillis: 20 * DAY_MS,
+        refundedAtMillis: null,
+        creationSource: "TEST_MODE",
+        createdAtMillis: 11 * DAY_MS,
+      })));
+    });
+
+    it("should show only the incoming sub's allowance right after the upgrade", async () => {
+      const rows = (await getRowDatas(schema.itemQuantities))
+        .filter((r: any) => r.customerId === "u-upgrade")
+        .sort((a: any, b: any) => a.txnEffectiveAtMillis - b.txnEffectiveAtMillis);
+
+      const atUpgrade = rows.find((r: any) => r.txnId === "sub-start:sub-upgrade-team");
+      expect(atUpgrade).toBeDefined();
+      // Before the fix this was 100 (free) + 500 (team) = 600 because the
+      // free sub's when-repeated grant was not expired at subscription-end.
+      expect(atUpgrade.itemQuantities.emails).toBe(500);
+    });
+  });
+
+
+  // ============================================================
   // Subscription map LFold
   // ============================================================
 
