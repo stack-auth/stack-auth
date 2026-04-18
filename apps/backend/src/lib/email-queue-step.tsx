@@ -730,6 +730,8 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
       }
     } else {
       // Success - mark as sent (don't increment sendRetries since this wasn't a failure)
+      // Resend delivers async webhook events (email.delivered/bounced/...); everything else is fire-and-forget.
+      const providerCanDeliverInfo = context.emailConfig.host.includes("resend");
       await globalPrismaClient.emailOutbox.update({
         where: {
           tenancyId_id: {
@@ -740,7 +742,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
         },
         data: {
           finishedSendingAt: new Date(),
-          canHaveDeliveryInfo: false,
+          canHaveDeliveryInfo: providerCanDeliverInfo,
           sendServerErrorExternalMessage: null,
           sendServerErrorExternalDetails: Prisma.DbNull,
           sendServerErrorInternalMessage: null,
