@@ -67,7 +67,6 @@ export function ProductDialog({
   const [isAddOn, setIsAddOn] = useState(!!editingProduct?.isAddOnTo);
   const [isAddOnTo, setIsAddOnTo] = useState<string[]>(editingProduct?.isAddOnTo !== false ? Object.keys(editingProduct?.isAddOnTo || {}) : []);
   const [stackable, setStackable] = useState(editingProduct?.stackable || false);
-  const [freeByDefault, setFreeByDefault] = useState(editingProduct?.prices === "include-by-default" || false);
   const [prices, setPrices] = useState<Record<string, Price>>(editingProduct?.prices === "include-by-default" ? {} : editingProduct?.prices || {});
   const [includedItems, setIncludedItems] = useState<Product['includedItems']>(editingProduct?.includedItems || {});
   const [freeTrial, setFreeTrial] = useState<Product['freeTrial']>(editingProduct?.freeTrial || undefined);
@@ -168,7 +167,7 @@ export function ProductDialog({
       productLineId: productLineId || undefined,
       isAddOnTo: isAddOn ? Object.fromEntries(isAddOnTo.map(id => [id, true])) : false,
       stackable,
-      prices: freeByDefault ? "include-by-default" : prices,
+      prices,
       includedItems,
       serverOnly,
       freeTrial,
@@ -189,7 +188,6 @@ export function ProductDialog({
       setIsAddOn(false);
       setIsAddOnTo([]);
       setStackable(false);
-      setFreeByDefault(false);
       setPrices({});
       setIncludedItems({});
     }
@@ -608,38 +606,15 @@ export function ProductDialog({
                 </div>
 
                 <div className="space-y-4 mt-6">
-                  {/* Free by default */}
-                  <div className="flex items-center space-x-2">
-                    <Checkbox
-                      id="free-default"
-                      checked={freeByDefault}
-                      onCheckedChange={(checked) => {
-                        setFreeByDefault(checked as boolean);
-                        if (checked) {
-                          setPrices({});
-                        }
-                      }}
-                    />
-                    <Label htmlFor="free-default" className="cursor-pointer">
-                      Free & included by default
-                    </Label>
+                  <div className="border rounded-lg">
+                    <ListSection title="Prices">
+                      <PricingSection
+                        prices={prices}
+                        onPricesChange={setPrices}
+                        variant="dialog"
+                      />
+                    </ListSection>
                   </div>
-                  <Typography type="label" className="text-muted-foreground -mt-2">
-                    This product will be automatically included for all customers at no cost
-                  </Typography>
-
-                  {/* Prices list */}
-                  {!freeByDefault && (
-                    <div className="border rounded-lg">
-                      <ListSection title="Prices">
-                        <PricingSection
-                          prices={prices}
-                          onPricesChange={setPrices}
-                          variant="dialog"
-                        />
-                      </ListSection>
-                    </div>
-                  )}
                 </div>
               </div>
             </StepperPage>
