@@ -6,7 +6,7 @@
  */
 
 import { Prisma } from "@/generated/prisma/client";
-import { toQueryableSqlQuery } from "@/lib/bulldozer/db/index";
+import { createBulldozerExecutionContext, type BulldozerExecutionContext, toQueryableSqlQuery } from "@/lib/bulldozer/db/index";
 import { quoteSqlStringLiteral } from "@/lib/bulldozer/db/utilities";
 import type { PrismaClientTransaction } from "@/prisma-client";
 import { createPaymentsSchema } from "./schema/index";
@@ -25,12 +25,13 @@ function customerGroupKeySql(tenancyId: string, customerType: CustomerType, cust
  */
 async function getLatestRow<T>(
   prisma: PrismaClientTransaction,
-  table: { listRowsInGroup: (opts: any) => any },
+  table: { listRowsInGroup: (ctx: BulldozerExecutionContext, opts: any) => any },
   tenancyId: string,
   customerType: CustomerType,
   customerId: string,
 ): Promise<T | null> {
-  const innerSql = toQueryableSqlQuery(table.listRowsInGroup({
+  const executionContext = createBulldozerExecutionContext();
+  const innerSql = toQueryableSqlQuery(table.listRowsInGroup(executionContext, {
     groupKey: { type: "expression", sql: customerGroupKeySql(tenancyId, customerType, customerId) },
     start: "start",
     end: "end",

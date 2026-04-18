@@ -1,5 +1,6 @@
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import type { Table } from "..";
+import type { BulldozerExecutionContext } from "../execution-context";
+import { getBulldozerExecutionContext } from "../execution-context";
 import { attachRowChangeTriggerMetadata, normalizeRowChangeTrigger } from "../row-change-trigger-dispatch";
 import type { RegisteredRowChangeTrigger } from "../row-change-trigger-dispatch";
 import type { Json, RowData, RowIdentifier, SqlExpression, SqlMapper, SqlStatement, TableId } from "../utilities";
@@ -63,6 +64,7 @@ export function declareReduceTable<
   finalize: SqlMapper<{ state: S, groupKey: GK }, NewRD>,
 }): Table<GK, null, NewRD> {
   const triggers = new Map<string, RegisteredRowChangeTrigger>();
+  let triggerRegistrationCount = 0;
   const groupsPath = getStorageEnginePath(options.tableId, ["groups"]);
   const getGroupKeyPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey]);
   const getGroupRowsPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey, "rows"]);
@@ -74,86 +76,95 @@ export function declareReduceTable<
     )
   `;
 
-  const funcSuffix = generateSecureRandomString().replace(/[^a-z0-9]/g, "");
-  const sfuncName = `pg_temp.bulldozer_reduce_sfunc_${funcSuffix}`;
-  const aggName = `pg_temp.bulldozer_reduce_agg_${funcSuffix}`;
-
-  const createAggSql = `
-    CREATE OR REPLACE FUNCTION ${sfuncName}("rawState" jsonb, "oldRowData" jsonb)
-    RETURNS jsonb AS $$
-      SELECT (
-        SELECT "reduced"."newState"
-        FROM (
-          SELECT ${options.reducer.sql}
-          FROM (SELECT COALESCE("rawState", ${options.initialState.sql}) AS "oldState", "oldRowData" AS "oldRowData") AS "stateInput"
-        ) AS "reduced"
-      )
-    $$ LANGUAGE sql IMMUTABLE;
-
-    DROP AGGREGATE IF EXISTS ${aggName}(jsonb);
-    CREATE AGGREGATE ${aggName}(jsonb) (
-      sfunc = ${sfuncName},
-      stype = jsonb
-    );
-  `;
-
-  /**
-   * SQL that computes reduced output rows for a set of groups.
-   * Expects a "targetGroups" CTE with column "groupKey".
-   * Uses the custom aggregate for fast folding.
-   */
-  const computeReducedRowsSql: { sql: string } = { sql: `
-    "groupRows" AS (
-      SELECT
-        "r"."groupkey" AS "groupKey",
-        "r"."rowidentifier" AS "rowIdentifier",
-        "r"."rowdata" AS "rowData"
-      FROM (
-        ${options.fromTable.listRowsInGroup({
-          start: "start",
-          end: "end",
-          startInclusive: true,
-          endInclusive: true,
-        }).sql}
-      ) AS "r"
-      WHERE EXISTS (
-        SELECT 1 FROM "targetGroups" AS "g"
-        WHERE "g"."groupKey"::text = "r"."groupkey"::text
-      )
-    ),
-    "aggregated" AS (
-      SELECT
-        "groupKey",
-        ${aggName}("rowData" ORDER BY "rowIdentifier" ASC) AS "state"
-      FROM "groupRows"
-      GROUP BY "groupKey"
-    ),
-    "reducedRows" AS (
-      SELECT
-        "aggregated"."groupKey" AS "groupKey",
-        ("aggregated"."groupKey" #>> '{}') AS "rowIdentifier",
-        'null'::jsonb AS "rowSortKey",
-        (
-          SELECT to_jsonb("finalized")
+  const createReduceSqlArtifacts = (ctx: BulldozerExecutionContext) => {
+    const funcSuffix = ctx.generateDeterministicUniqueString().replace(/[^a-z0-9]/g, "");
+    const sfuncName = `pg_temp.bulldozer_reduce_sfunc_${funcSuffix}`;
+    const aggName = `pg_temp.bulldozer_reduce_agg_${funcSuffix}`;
+    const createAggSql = `
+      CREATE OR REPLACE FUNCTION ${sfuncName}("rawState" jsonb, "oldRowData" jsonb)
+      RETURNS jsonb AS $$
+        SELECT (
+          SELECT "reduced"."newState"
           FROM (
-            SELECT ${options.finalize.sql}
-            FROM (
-              SELECT
-                COALESCE("aggregated"."state", ${options.initialState.sql}) AS "state",
-                "aggregated"."groupKey" AS "groupKey"
-            ) AS "finalizeInput"
-          ) AS "finalized"
-        ) AS "rowData"
-      FROM "aggregated"
-    )
-  ` };
+            SELECT ${options.reducer.sql}
+            FROM (SELECT COALESCE("rawState", ${options.initialState.sql}) AS "oldState", "oldRowData" AS "oldRowData") AS "stateInput"
+          ) AS "reduced"
+        )
+      $$ LANGUAGE sql IMMUTABLE;
 
-  const createTriggerStatements = (fromChangesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => {
-    const normalizedChangesTableName = `normalized_changes_${generateSecureRandomString()}`;
-    const affectedGroupsTableName = `affected_groups_${generateSecureRandomString()}`;
-    const oldRowsTableName = `old_reduced_rows_${generateSecureRandomString()}`;
-    const newRowsTableName = `new_reduced_rows_${generateSecureRandomString()}`;
-    const reduceChangesTableName = `reduce_changes_${generateSecureRandomString()}`;
+      DROP AGGREGATE IF EXISTS ${aggName}(jsonb);
+      CREATE AGGREGATE ${aggName}(jsonb) (
+        sfunc = ${sfuncName},
+        stype = jsonb
+      );
+    `;
+
+    /**
+     * SQL that computes reduced output rows for a set of groups.
+     * Expects a "targetGroups" CTE with column "groupKey".
+     * Uses the custom aggregate for fast folding.
+     */
+    const computeReducedRowsSql: { sql: string } = { sql: `
+      "groupRows" AS (
+        SELECT
+          "r"."groupkey" AS "groupKey",
+          "r"."rowidentifier" AS "rowIdentifier",
+          "r"."rowdata" AS "rowData"
+        FROM (
+          ${options.fromTable.listRowsInGroup(ctx, {
+            start: "start",
+            end: "end",
+            startInclusive: true,
+            endInclusive: true,
+          }).sql}
+        ) AS "r"
+        WHERE EXISTS (
+          SELECT 1 FROM "targetGroups" AS "g"
+          WHERE "g"."groupKey"::text = "r"."groupkey"::text
+        )
+      ),
+      "aggregated" AS (
+        SELECT
+          "groupKey",
+          ${aggName}("rowData" ORDER BY "rowIdentifier" ASC) AS "state"
+        FROM "groupRows"
+        GROUP BY "groupKey"
+      ),
+      "reducedRows" AS (
+        SELECT
+          "aggregated"."groupKey" AS "groupKey",
+          ("aggregated"."groupKey" #>> '{}') AS "rowIdentifier",
+          'null'::jsonb AS "rowSortKey",
+          (
+            SELECT to_jsonb("finalized")
+            FROM (
+              SELECT ${options.finalize.sql}
+              FROM (
+                SELECT
+                  COALESCE("aggregated"."state", ${options.initialState.sql}) AS "state",
+                  "aggregated"."groupKey" AS "groupKey"
+              ) AS "finalizeInput"
+            ) AS "finalized"
+          ) AS "rowData"
+        FROM "aggregated"
+      )
+    ` };
+    return {
+      createAggSql,
+      computeReducedRowsSql,
+    };
+  };
+
+  const createTriggerStatements = (
+    fromChangesTable: SqlExpression<{ __brand: "$SQL_Table" }>,
+    ctx: BulldozerExecutionContext,
+  ) => {
+    const normalizedChangesTableName = `normalized_changes_${ctx.generateDeterministicUniqueString()}`;
+    const affectedGroupsTableName = `affected_groups_${ctx.generateDeterministicUniqueString()}`;
+    const oldRowsTableName = `old_reduced_rows_${ctx.generateDeterministicUniqueString()}`;
+    const newRowsTableName = `new_reduced_rows_${ctx.generateDeterministicUniqueString()}`;
+    const reduceChangesTableName = `reduce_changes_${ctx.generateDeterministicUniqueString()}`;
+    const { createAggSql, computeReducedRowsSql } = createReduceSqlArtifacts(ctx);
     return [
       {
         type: "statement" as const,
@@ -276,7 +287,7 @@ export function declareReduceTable<
   };
 
   const fromTableTrigger = attachRowChangeTriggerMetadata(
-    (changesTable) => createTriggerStatements(changesTable),
+    (ctx, changesTable) => createTriggerStatements(changesTable, getBulldozerExecutionContext(ctx)),
     {
       targetTableId: tableIdToDebugString(options.tableId),
       targetTableTriggers: triggers,
@@ -294,9 +305,11 @@ export function declareReduceTable<
     },
     compareGroupKeys: options.fromTable.compareGroupKeys,
     compareSortKeys: () => sqlExpression` 0 `,
-    init: () => {
-      const allGroupsTableName = `all_groups_${generateSecureRandomString()}`;
-      const initRowsTableName = `init_reduced_rows_${generateSecureRandomString()}`;
+    init: (ctx) => {
+      const executionCtx = getBulldozerExecutionContext(ctx);
+      const allGroupsTableName = `all_groups_${executionCtx.generateDeterministicUniqueString()}`;
+      const initRowsTableName = `init_reduced_rows_${executionCtx.generateDeterministicUniqueString()}`;
+      const { createAggSql, computeReducedRowsSql } = createReduceSqlArtifacts(executionCtx);
       return [
         {
           type: "statement" as const,
@@ -313,7 +326,7 @@ export function declareReduceTable<
         `,
         sqlQuery`
           SELECT "groupkey" AS "groupKey" FROM (
-            ${options.fromTable.listGroups({ start: "start", end: "end", startInclusive: true, endInclusive: true })}
+            ${options.fromTable.listGroups(executionCtx, { start: "start", end: "end", startInclusive: true, endInclusive: true })}
           ) AS "g"
         `.toStatement(allGroupsTableName, '"groupKey" jsonb'),
         sqlQuery`
@@ -354,7 +367,7 @@ export function declareReduceTable<
         `,
       ];
     },
-    delete: () => {
+    delete: (_ctx) => {
       return [sqlStatement`
         WITH RECURSIVE "pathsToDelete" AS (
           SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
@@ -367,8 +380,8 @@ export function declareReduceTable<
         WHERE "keyPath" IN (SELECT "path" FROM "pathsToDelete")
       `];
     },
-    isInitialized: () => isInitializedExpression,
-    listGroups: ({ start, end, startInclusive, endInclusive }) => sqlQuery`
+    isInitialized: (_ctx) => isInitializedExpression,
+    listGroups: (_ctx, { start, end, startInclusive, endInclusive }) => sqlQuery`
       SELECT "groupPath"."keyPath"[cardinality("groupPath"."keyPath")] AS groupKey
       FROM "BulldozerStorageEngine" AS "groupPath"
       WHERE "groupPath"."keyPathParent" = ${groupsPath}::jsonb[]
@@ -396,7 +409,7 @@ export function declareReduceTable<
               : sqlExpression`${options.fromTable.compareGroupKeys(sqlExpression`"groupPath"."keyPath"[cardinality("groupPath"."keyPath")]`, end)} < 0`
         }
     `,
-    listRowsInGroup: ({ groupKey, start, end, startInclusive, endInclusive }) => groupKey ? sqlQuery`
+    listRowsInGroup: (_ctx, { groupKey, start, end, startInclusive, endInclusive }) => groupKey ? sqlQuery`
       SELECT
         ("row"."keyPath"[cardinality("row"."keyPath")] #>> '{}') AS rowIdentifier,
         'null'::jsonb AS rowSortKey,
@@ -424,15 +437,17 @@ export function declareReduceTable<
       ORDER BY groupKey ASC, rowIdentifier ASC
     `,
     registerRowChangeTrigger: (trigger) => {
-      const id = generateSecureRandomString();
+      const id = `trigger_registration_${triggerRegistrationCount.toString(36).padStart(10, "0")}`;
+      triggerRegistrationCount++;
       triggers.set(id, normalizeRowChangeTrigger(trigger));
       return { deregister: () => triggers.delete(id) };
     },
-    verifyDataIntegrity: () => {
-      const allInputGroups = options.fromTable.listGroups({
+    verifyDataIntegrity: (ctx) => {
+      const executionCtx = getBulldozerExecutionContext(ctx);
+      const allInputGroups = options.fromTable.listGroups(executionCtx, {
         start: "start", end: "end", startInclusive: true, endInclusive: true,
       });
-      const allActualRows = table.listRowsInGroup({
+      const allActualRows = table.listRowsInGroup(executionCtx, {
         start: "start", end: "end", startInclusive: true, endInclusive: true,
       });
       return sqlQuery`
