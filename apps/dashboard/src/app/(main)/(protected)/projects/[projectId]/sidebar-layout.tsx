@@ -184,7 +184,7 @@ function NavItem({
   );
 
   const buttonClasses = cn(
-    "group flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-semibold transition-all duration-150 hover:transition-none",
+    "group flex h-8 w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-semibold transition-all duration-150 hover:transition-none",
     isHighlighted
       ? "bg-white/70 text-foreground shadow-sm ring-1 ring-white/60 dark:bg-transparent dark:bg-gradient-to-r dark:from-blue-500/[0.15] dark:to-blue-500/[0.08] dark:shadow-[0_0_12px_rgba(59,130,246,0.15)] dark:ring-blue-500/20"
       : inactiveClasses,
@@ -263,7 +263,16 @@ function NavItem({
     <div className="transition-[margin] duration-200">
       {isSection ? (
         <div className={buttonClasses}>
-          <Link href={item.firstItemHref ?? href ?? "#"} onClick={onClick} className="flex min-w-0 flex-1 items-center gap-3">
+          <Link
+            href={item.firstItemHref ?? href ?? "#"}
+            onClick={() => {
+              if (!isExpanded) {
+                onToggle?.();
+              }
+              onClick?.();
+            }}
+            className="flex min-w-0 flex-1 items-center gap-3"
+          >
             <IconComponent className={iconClasses} />
             <span className="truncate text-sm">{item.name}</span>
           </Link>
