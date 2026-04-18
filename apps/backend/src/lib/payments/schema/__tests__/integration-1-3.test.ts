@@ -995,6 +995,124 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
 
 
   // ============================================================
+  // Same bigint-vs-NUMERIC txn-id fingerprint as the subscription test
+  // above, but on the one-time-purchase algo (no sub-end analog). A
+  // one-time purchase with a repeating `when-repeated` item relies on
+  // each IGR expiring the previous IGR's grant by referencing its
+  // `txnId` inside `item-quantity-expire.adjustedTransactionId`. If the
+  // reducer-internal reference (decimal-free via `::text`) doesn't
+  // match the downstream-materialized txn id (built from
+  // `->>effectiveAtMillis` stored in JSONB), consecutive IGRs stack
+  // instead of refreshing and `quota` climbs without bound.
+  // ============================================================
+
+  describe("item-quantity-expire resolves across consecutive one-time-purchase item-grant-repeats", () => {
+    const DAY_MS = 86400000;
+
+    beforeAll(async () => {
+      // OTP has no terminating event (unlike subscriptions with endedAt),
+      // so the inline reducer would otherwise try to fire ~6700 repeats
+      // between createdAtMillis=0 and the test-helpers default
+      // lastProcessedAt=2099 and time out the hook. Cap the clock to 16d
+      // post-epoch for this describe so exactly 2 IGRs fire inline (at
+      // +7d and +14d) — the minimum needed to exercise the IGR-N expiring
+      // IGR-(N-1)'s grant path. Restored to the default in afterAll so
+      // later tests in this file still run under inline recursion.
+      await db.setLastProcessedAt(`'1970-01-17T00:00:00Z'`);
+      await runStatements(schema.oneTimePurchases.setRow("otp-repeat-bigint", jsonbExpr({
+        id: "otp-repeat-bigint",
+        tenancyId: "t1",
+        customerId: "u-otp-repeat-bigint",
+        customerType: "user",
+        productId: "prod-otp-repeat-bigint",
+        priceId: "p1",
+        product: {
+          displayName: "Repeating OTP (bigint regression)",
+          customerType: "user",
+          productLineId: "line-otp-repeat-bigint",
+          prices: { p1: { USD: "5" } },
+          includedItems: {
+            // 7-day repeat: same whole-second epoch offset the subscription
+            // test uses to surface NUMERIC-vs-bigint mismatches. Two IGRs
+            // fire inline under the clock-cap above — enough to exercise
+            // the second IGR's `previousGrantsToExpire` referencing the
+            // first's outstandingGrants[].txnId.
+            quota: { quantity: 100, repeat: [7, "day"], expires: "when-repeated" },
+          },
+        },
+        quantity: 1,
+        stripePaymentIntentId: null,
+        revokedAtMillis: null,
+        refundedAtMillis: null,
+        creationSource: "TEST_MODE",
+        createdAtMillis: 0,
+      })));
+    });
+
+    afterAll(async () => {
+      // Restore the default so subsequent describes in this file still
+      // fire their reducer recursion inline (the payments suite relies
+      // on this).
+      await db.setLastProcessedAt(`'2099-01-01T00:00:00Z'`);
+    });
+
+    it("every item-grant-repeat txn id is decimal-free", async () => {
+      const txns = (await getRowDatas(schema.transactions))
+        .filter((t: any) => t.customerId === "u-otp-repeat-bigint");
+      const igrs = txns.filter((t: any) =>
+        typeof t.txnId === "string" && t.txnId.startsWith("igr:otp-repeat-bigint:")
+      );
+      expect(igrs.length).toBeGreaterThan(0);
+      for (const igr of igrs) {
+        expect(igr.txnId).toMatch(/^igr:otp-repeat-bigint:\d+$/);
+        expect(igr.txnId).not.toContain(".");
+      }
+    });
+
+    it("every IGR after the first carries an item-quantity-expire whose adjustedTransactionId matches the prior IGR's txnId", async () => {
+      const txns = (await getRowDatas(schema.transactions))
+        .filter((t: any) => t.customerId === "u-otp-repeat-bigint")
+        .sort((a: any, b: any) => a.effectiveAtMillis - b.effectiveAtMillis);
+      const igrs = txns.filter((t: any) =>
+        typeof t.txnId === "string" && t.txnId.startsWith("igr:otp-repeat-bigint:")
+      );
+      // Need ≥ 2 IGRs for the expire reference path to fire. Any fewer
+      // means the test setup isn't exercising the bug's surface area —
+      // fail loud rather than silently passing.
+      expect(igrs.length).toBeGreaterThanOrEqual(2);
+
+      for (let i = 1; i < igrs.length; i++) {
+        const priorIgr = igrs[i - 1];
+        const currentIgr = igrs[i];
+        const expireEntry = (currentIgr.entries as any[]).find((e: any) =>
+          e.type === "item-quantity-expire" && e.itemId === "quota"
+        );
+        expect(expireEntry, `IGR ${currentIgr.txnId} missing item-quantity-expire for quota`).toBeDefined();
+        // Byte-identical match is the invariant: if the prior IGR's
+        // downstream txnId picked up a `.000000` tail and this expire
+        // built its adjustedTransactionId via `::text` on a bigint, the
+        // two strings diverge and the expire silently no-ops.
+        expect(expireEntry.adjustedTransactionId).toBe(priorIgr.txnId);
+      }
+    });
+
+    it("quota balance stays at exactly the per-repeat grant, never stacks", async () => {
+      const rows = (await getRowDatas(schema.itemQuantities))
+        .filter((r: any) => r.customerId === "u-otp-repeat-bigint")
+        .sort((a: any, b: any) => a.txnEffectiveAtMillis - b.txnEffectiveAtMillis);
+      expect(rows.length).toBeGreaterThan(0);
+
+      // Without the fix, each IGR adds 100 without expiring the previous
+      // grant, so quota climbs monotonically (100, 200, 300, …). With
+      // the fix, each IGR expires the prior grant before adding its own,
+      // and quota stays at exactly 100.
+      const latest = rows[rows.length - 1];
+      expect(latest.itemQuantities.quota).toBe(100);
+    });
+  });
+
+
+  // ============================================================
   // when-repeated grants must expire at subscription-end
   // (regression: they were previously left stacked in the ledger)
   // ============================================================
