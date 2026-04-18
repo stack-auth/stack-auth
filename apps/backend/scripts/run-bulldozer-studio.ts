@@ -111,7 +111,7 @@ type StudioTableRecord = {
   table: StudioTable,
 };
 
-const STUDIO_PORT = Number(`${getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81")}39`);
+const STUDIO_PORT = Number(`${getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81")}40`);
 const STUDIO_HOST = "127.0.0.1";
 const BULLDOZER_LOCK_ID = 7857391;
 const STUDIO_INSTANCE_ID = `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
