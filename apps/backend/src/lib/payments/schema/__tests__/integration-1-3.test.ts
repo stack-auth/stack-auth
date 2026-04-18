@@ -8,7 +8,8 @@
  * all intermediate tables to the final output tables.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { createBulldozerExecutionContext, type BulldozerExecutionContext } from "@/lib/bulldozer/db/index";
 import { createPaymentsSchema } from "../index";
 import { createTestDb, jsonbExpr } from "./test-helpers";
 
@@ -18,16 +19,21 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
   const db = createTestDb();
   const { runStatements, readRows } = db;
   const schema = createPaymentsSchema();
+  let executionContext = createBulldozerExecutionContext();
 
-  const getRowDatas = async (table: { listRowsInGroup: (opts: any) => any }) => {
-    const rows = await readRows(table.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+  const getRowDatas = async (table: { listRowsInGroup: (ctx: BulldozerExecutionContext, opts: any) => any }) => {
+    const rows = await readRows(table.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true }));
     return rows.map((r: any) => r.rowdata);
   };
+
+  beforeEach(() => {
+    executionContext = createBulldozerExecutionContext();
+  });
 
   beforeAll(async () => {
     await db.setup();
     for (const table of schema._allTables) {
-      await runStatements(table.init());
+      await runStatements(table.init(executionContext));
     }
   }, 60_000);
 
@@ -42,7 +48,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
 
   describe("one-time purchase end-to-end", () => {
     beforeAll(async () => {
-      await runStatements(schema.oneTimePurchases.setRow("otp-int-1", jsonbExpr({
+      await runStatements(schema.oneTimePurchases.setRow(executionContext, "otp-int-1", jsonbExpr({
         id: "otp-int-1",
         tenancyId: "t1",
         customerId: "u1",
@@ -118,7 +124,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
 
   describe("subscription lifecycle end-to-end", () => {
     beforeAll(async () => {
-      await runStatements(schema.subscriptions.setRow("sub-int", jsonbExpr({
+      await runStatements(schema.subscriptions.setRow(executionContext, "sub-int", jsonbExpr({
         id: "sub-int",
         tenancyId: "t1",
         customerId: "u1",
@@ -147,7 +153,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         createdAtMillis: 2000,
       })));
 
-      await runStatements(schema.manualItemQuantityChanges.setRow("iqc-int-1", jsonbExpr({
+      await runStatements(schema.manualItemQuantityChanges.setRow(executionContext, "iqc-int-1", jsonbExpr({
         id: "iqc-int-1",
         tenancyId: "t1",
         customerId: "u1",
@@ -196,7 +202,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
 
   describe("multi-customer isolation", () => {
     beforeAll(async () => {
-      await runStatements(schema.oneTimePurchases.setRow("otp-int-u2", jsonbExpr({
+      await runStatements(schema.oneTimePurchases.setRow(executionContext, "otp-int-u2", jsonbExpr({
         id: "otp-int-u2",
         tenancyId: "t1",
         customerId: "u2",
@@ -255,7 +261,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
 
   describe("subscription end-to-end with expiry", () => {
     beforeAll(async () => {
-      await runStatements(schema.subscriptions.setRow("sub-ending", jsonbExpr({
+      await runStatements(schema.subscriptions.setRow(executionContext, "sub-ending", jsonbExpr({
         id: "sub-ending",
         tenancyId: "t1",
         customerId: "u3",
@@ -369,7 +375,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
     const DAY_MS = 86400000;
 
     beforeAll(async () => {
-      await runStatements(schema.subscriptions.setRow("sub-repeat-e2e", jsonbExpr({
+      await runStatements(schema.subscriptions.setRow(executionContext, "sub-repeat-e2e", jsonbExpr({
         id: "sub-repeat-e2e",
         tenancyId: "t1",
         customerId: "u4",
@@ -438,7 +444,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
   describe("refund end-to-end", () => {
     beforeAll(async () => {
       // First create an OTP to refund
-      await runStatements(schema.oneTimePurchases.setRow("otp-refundable", jsonbExpr({
+      await runStatements(schema.oneTimePurchases.setRow(executionContext, "otp-refundable", jsonbExpr({
         id: "otp-refundable",
         tenancyId: "t1",
         customerId: "u5",
@@ -463,7 +469,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
       })));
 
       // Then create a refund that revokes the product and returns money
-      await runStatements(schema.manualTransactions.setRow("refund-otp", jsonbExpr({
+      await runStatements(schema.manualTransactions.setRow(executionContext, "refund-otp", jsonbExpr({
         txnId: "refund:otp-refundable",
         tenancyId: "t1",
         effectiveAtMillis: 7000,
@@ -527,7 +533,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
 
   describe("subscription renewal end-to-end", () => {
     beforeAll(async () => {
-      await runStatements(schema.subscriptions.setRow("sub-renew-e2e", jsonbExpr({
+      await runStatements(schema.subscriptions.setRow(executionContext, "sub-renew-e2e", jsonbExpr({
         id: "sub-renew-e2e",
         tenancyId: "t1",
         customerId: "u6",
@@ -554,7 +560,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         createdAtMillis: 0,
       })));
 
-      await runStatements(schema.subscriptionInvoices.setRow("inv-renew-e2e", jsonbExpr({
+      await runStatements(schema.subscriptionInvoices.setRow(executionContext, "inv-renew-e2e", jsonbExpr({
         id: "inv-renew-e2e",
         tenancyId: "t1",
         stripeSubscriptionId: "stripe-sub-renew-e2e",
@@ -604,7 +610,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
 
   describe("multi-customer item quantity isolation", () => {
     beforeAll(async () => {
-      await runStatements(schema.oneTimePurchases.setRow("otp-iso-a", jsonbExpr({
+      await runStatements(schema.oneTimePurchases.setRow(executionContext, "otp-iso-a", jsonbExpr({
         id: "otp-iso-a",
         tenancyId: "t1",
         customerId: "u-iso-a",
@@ -626,7 +632,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         createdAtMillis: 10000,
       })));
 
-      await runStatements(schema.oneTimePurchases.setRow("otp-iso-b", jsonbExpr({
+      await runStatements(schema.oneTimePurchases.setRow(executionContext, "otp-iso-b", jsonbExpr({
         id: "otp-iso-b",
         tenancyId: "t1",
         customerId: "u-iso-b",
@@ -648,7 +654,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         createdAtMillis: 10000,
       })));
 
-      await runStatements(schema.manualItemQuantityChanges.setRow("iqc-iso-a", jsonbExpr({
+      await runStatements(schema.manualItemQuantityChanges.setRow(executionContext, "iqc-iso-a", jsonbExpr({
         id: "iqc-iso-a",
         tenancyId: "t1",
         customerId: "u-iso-a",
@@ -683,7 +689,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
   describe("complex owned products with partial revocation", () => {
     beforeAll(async () => {
       // Two OTPs for same product, quantity 1 each → net quantity 2
-      await runStatements(schema.oneTimePurchases.setRow("otp-complex-1", jsonbExpr({
+      await runStatements(schema.oneTimePurchases.setRow(executionContext, "otp-complex-1", jsonbExpr({
         id: "otp-complex-1",
         tenancyId: "t1",
         customerId: "u-complex",
@@ -705,7 +711,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         createdAtMillis: 20000,
       })));
 
-      await runStatements(schema.oneTimePurchases.setRow("otp-complex-2", jsonbExpr({
+      await runStatements(schema.oneTimePurchases.setRow(executionContext, "otp-complex-2", jsonbExpr({
         id: "otp-complex-2",
         tenancyId: "t1",
         customerId: "u-complex",
@@ -728,7 +734,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
       })));
 
       // Refund only the first purchase (revoke 1 of 2)
-      await runStatements(schema.manualTransactions.setRow("refund-complex", jsonbExpr({
+      await runStatements(schema.manualTransactions.setRow(executionContext, "refund-complex", jsonbExpr({
         txnId: "refund:otp-complex-1",
         tenancyId: "t1",
         effectiveAtMillis: 22000,
@@ -774,7 +780,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
       // Two subscriptions + manual change = 3 full cascades; needs extended timeout
       // Subscription grants itemA with expires=when-purchase-expires
       // endedAt = 10 days (e1)
-      await runStatements(schema.subscriptions.setRow("sub-ledger-a", jsonbExpr({
+      await runStatements(schema.subscriptions.setRow(executionContext, "sub-ledger-a", jsonbExpr({
         id: "sub-ledger-a",
         tenancyId: "t1",
         customerId: "u-ledger",
@@ -805,7 +811,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
 
       // Second subscription grants energy with later expiry
       // endedAt = 30 days (e2)
-      await runStatements(schema.subscriptions.setRow("sub-ledger-b", jsonbExpr({
+      await runStatements(schema.subscriptions.setRow(executionContext, "sub-ledger-b", jsonbExpr({
         id: "sub-ledger-b",
         tenancyId: "t1",
         customerId: "u-ledger",
@@ -835,7 +841,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
       })));
 
       // Manual consumption of 40 energy at day 5
-      await runStatements(schema.manualItemQuantityChanges.setRow("iqc-ledger-consume", jsonbExpr({
+      await runStatements(schema.manualItemQuantityChanges.setRow(executionContext, "iqc-ledger-consume", jsonbExpr({
         id: "iqc-ledger-consume",
         tenancyId: "t1",
         customerId: "u-ledger",
@@ -906,7 +912,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
     const DAY_MS = 86400000;
 
     beforeAll(async () => {
-      await runStatements(schema.subscriptions.setRow("sub-repeat-to-end", jsonbExpr({
+      await runStatements(schema.subscriptions.setRow(executionContext, "sub-repeat-to-end", jsonbExpr({
         id: "sub-repeat-to-end",
         tenancyId: "t1",
         customerId: "u-repeat-to-end",
@@ -1019,7 +1025,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
       // IGR-(N-1)'s grant path. Restored to the default in afterAll so
       // later tests in this file still run under inline recursion.
       await db.setLastProcessedAt(`'1970-01-17T00:00:00Z'`);
-      await runStatements(schema.oneTimePurchases.setRow("otp-repeat-bigint", jsonbExpr({
+      await runStatements(schema.oneTimePurchases.setRow(executionContext, "otp-repeat-bigint", jsonbExpr({
         id: "otp-repeat-bigint",
         tenancyId: "t1",
         customerId: "u-otp-repeat-bigint",
@@ -1121,7 +1127,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
     const DAY_MS = 86400000;
 
     beforeAll(async () => {
-      await runStatements(schema.subscriptions.setRow("sub-repeat-end", jsonbExpr({
+      await runStatements(schema.subscriptions.setRow(executionContext, "sub-repeat-end", jsonbExpr({
         id: "sub-repeat-end",
         tenancyId: "t1",
         customerId: "u-repeat-end",
@@ -1185,7 +1191,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
     const DAY_MS = 86400000;
 
     beforeAll(async () => {
-      await runStatements(schema.subscriptions.setRow("sub-upgrade-free", jsonbExpr({
+      await runStatements(schema.subscriptions.setRow(executionContext, "sub-upgrade-free", jsonbExpr({
         id: "sub-upgrade-free",
         tenancyId: "t1",
         customerId: "u-upgrade",
@@ -1214,7 +1220,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
         createdAtMillis: 0,
       })));
 
-      await runStatements(schema.subscriptions.setRow("sub-upgrade-team", jsonbExpr({
+      await runStatements(schema.subscriptions.setRow(executionContext, "sub-upgrade-team", jsonbExpr({
         id: "sub-upgrade-team",
         tenancyId: "t1",
         customerId: "u-upgrade",
@@ -1265,7 +1271,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
   describe("subscription map by customer", () => {
     const getSubMap = async (customerType: string, customerId: string) => {
       const groupKey = JSON.stringify({ tenancyId: "t1", customerType, customerId });
-      const rows = await readRows(schema.subscriptionMapByCustomer.listRowsInGroup({
+      const rows = await readRows(schema.subscriptionMapByCustomer.listRowsInGroup(executionContext, {
         groupKey: { type: "expression", sql: `'${groupKey}'::jsonb` },
         start: "start",
         end: "end",
@@ -1299,7 +1305,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
     });
 
     it("should update when a subscription is modified", async () => {
-      await runStatements(schema.subscriptions.setRow("sub-map-test", jsonbExpr({
+      await runStatements(schema.subscriptions.setRow(executionContext, "sub-map-test", jsonbExpr({
         id: "sub-map-test",
         tenancyId: "t1",
         customerId: "u-map-test",
@@ -1331,7 +1337,7 @@ describe.sequential("payments schema integration phase 1→3 (real postgres)", (
       expect(subMap["sub-map-test"].status).toBe("active");
 
       // Update the subscription to canceled
-      await runStatements(schema.subscriptions.setRow("sub-map-test", jsonbExpr({
+      await runStatements(schema.subscriptions.setRow(executionContext, "sub-map-test", jsonbExpr({
         id: "sub-map-test",
         tenancyId: "t1",
         customerId: "u-map-test",

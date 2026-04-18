@@ -1,5 +1,5 @@
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import type { Table } from "..";
+import { getBulldozerExecutionContext } from "../execution-context";
 import { attachRowChangeTriggerMetadata, normalizeRowChangeTrigger } from "../row-change-trigger-dispatch";
 import type { RegisteredRowChangeTrigger } from "../row-change-trigger-dispatch";
 import type { Json, RowData, RowIdentifier, SqlExpression, SqlMapper, SqlStatement, TableId } from "../utilities";
@@ -23,6 +23,7 @@ export function declareGroupByTable<
   groupBy: SqlMapper<{ rowIdentifier: RowIdentifier, rowData: RD }, { groupKey: GK }>,
 }): Table<GK, null, RD> {
   const triggers = new Map<string, RegisteredRowChangeTrigger>();
+  let triggerRegistrationCount = 0;
   const getGroupKeyPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey]);
   const getGroupRowsPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey, "rows"]);
   const getGroupRowPath = (groupKey: SqlExpression<Json>, rowIdentifier: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey, "rows", rowIdentifier]);
@@ -35,9 +36,12 @@ export function declareGroupByTable<
       WHERE "keyPath" = ${getStorageEnginePath(options.tableId, ["metadata"])}::jsonb[]
     )
   `;
-  const createFromTableTriggerStatements = (fromChangesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => {
-    const mappedChangesTableName = `mapped_changes_${generateSecureRandomString()}`;
-    const groupedChangesTableName = `grouped_changes_${generateSecureRandomString()}`;
+  const createFromTableTriggerStatements = (
+    fromChangesTable: SqlExpression<{ __brand: "$SQL_Table" }>,
+    ctx: { generateDeterministicUniqueString: () => string },
+  ) => {
+    const mappedChangesTableName = `mapped_changes_${ctx.generateDeterministicUniqueString()}`;
+    const groupedChangesTableName = `grouped_changes_${ctx.generateDeterministicUniqueString()}`;
 
     return [
       sqlQuery`
@@ -186,7 +190,7 @@ export function declareGroupByTable<
     ];
   };
   const fromTableTrigger = attachRowChangeTriggerMetadata(
-    (fromChangesTable) => createFromTableTriggerStatements(fromChangesTable),
+    (ctx, fromChangesTable) => createFromTableTriggerStatements(fromChangesTable, getBulldozerExecutionContext(ctx)),
     {
       targetTableId: tableIdToDebugString(options.tableId),
       targetTableTriggers: triggers,
@@ -205,9 +209,10 @@ export function declareGroupByTable<
     },
     compareGroupKeys,
     compareSortKeys: (a, b) => sqlExpression` 0 `,
-    init: () => {
-      const fromTableAllRowsTableName = `from_table_all_rows_${generateSecureRandomString()}`;
-      const fromTableRowsWithGroupKeyTableName = `from_table_rows_with_group_key_${generateSecureRandomString()}`;
+    init: (ctx) => {
+      const executionCtx = getBulldozerExecutionContext(ctx);
+      const fromTableAllRowsTableName = `from_table_all_rows_${executionCtx.generateDeterministicUniqueString()}`;
+      const fromTableRowsWithGroupKeyTableName = `from_table_rows_with_group_key_${executionCtx.generateDeterministicUniqueString()}`;
 
       return [
         sqlStatement`
@@ -218,7 +223,7 @@ export function declareGroupByTable<
           (gen_random_uuid(), ${getStorageEnginePath(options.tableId, ["groups"])}, 'null'::jsonb),
           (gen_random_uuid(), ${getStorageEnginePath(options.tableId, ["metadata"])}, '{ "version": 1 }'::jsonb)
         `,
-        options.fromTable.listRowsInGroup({
+        options.fromTable.listRowsInGroup(executionCtx, {
           start: "start",
           end: "end",
           startInclusive: true,
@@ -270,7 +275,7 @@ export function declareGroupByTable<
         `,
       ];
     },
-    delete: () => {
+    delete: (_ctx) => {
       return [sqlStatement`
         WITH RECURSIVE "pathsToDelete" AS (
           SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
@@ -283,13 +288,13 @@ export function declareGroupByTable<
         WHERE "keyPath" IN (SELECT "path" FROM "pathsToDelete")
       `];
     },
-    isInitialized: () => sqlExpression`
+    isInitialized: (_ctx) => sqlExpression`
       EXISTS (
         SELECT 1 FROM "BulldozerStorageEngine"
         WHERE "keyPath" = ${getStorageEnginePath(options.tableId, ["metadata"])}::jsonb[]
       )
     `,
-    listGroups: ({ start, end, startInclusive, endInclusive }) => sqlQuery`
+    listGroups: (_ctx, { start, end, startInclusive, endInclusive }) => sqlQuery`
       SELECT "groupPath"."keyPath"[cardinality("groupPath"."keyPath")] AS groupKey
       FROM "BulldozerStorageEngine" AS "groupPath"
       WHERE "groupPath"."keyPathParent" = ${getStorageEnginePath(options.tableId, ["groups"])}::jsonb[]
@@ -317,7 +322,7 @@ export function declareGroupByTable<
         }
       ORDER BY "groupPath"."keyPath"[cardinality("groupPath"."keyPath")] ASC
     `,
-    listRowsInGroup: ({ groupKey, start, end, startInclusive, endInclusive }) => groupKey ? sqlQuery`
+    listRowsInGroup: (_ctx, { groupKey, start, end, startInclusive, endInclusive }) => groupKey ? sqlQuery`
       SELECT
         ("keyPath"[cardinality("keyPath")] #>> '{}') AS rowIdentifier,
         'null'::jsonb AS rowSortKey,
@@ -342,15 +347,17 @@ export function declareGroupByTable<
         AND ${singleNullSortKeyRangePredicate({ start, end, startInclusive, endInclusive })}
     `,
     registerRowChangeTrigger: (trigger) => {
-      const id = generateSecureRandomString();
+      const id = `trigger_registration_${triggerRegistrationCount.toString(36).padStart(10, "0")}`;
+      triggerRegistrationCount++;
       triggers.set(id, normalizeRowChangeTrigger(trigger));
       return { deregister: () => triggers.delete(id) };
     },
-    verifyDataIntegrity: () => {
-      const allInputRows = options.fromTable.listRowsInGroup({
+    verifyDataIntegrity: (ctx) => {
+      const executionCtx = getBulldozerExecutionContext(ctx);
+      const allInputRows = options.fromTable.listRowsInGroup(executionCtx, {
         start: "start", end: "end", startInclusive: true, endInclusive: true,
       });
-      const allActualRows = table.listRowsInGroup({
+      const allActualRows = table.listRowsInGroup(executionCtx, {
         start: "start", end: "end", startInclusive: true, endInclusive: true,
       });
       return sqlQuery`
