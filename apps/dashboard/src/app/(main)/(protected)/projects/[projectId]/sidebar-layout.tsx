@@ -178,6 +178,8 @@ function NavItem({
 
   const isHighlighted = isDirectItemActive || isSectionActive;
 
+  const activeItemClasses = "bg-white/70 text-foreground shadow-sm ring-1 ring-white/60 dark:bg-transparent dark:bg-gradient-to-r dark:from-blue-500/[0.15] dark:to-blue-500/[0.08] dark:shadow-[0_0_12px_rgba(59,130,246,0.15)] dark:ring-blue-500/20";
+  const activeSectionClasses = "text-foreground hover:bg-white/55 dark:hover:bg-background/60";
   const inactiveClasses = cn(
     "hover:bg-white/55 dark:hover:bg-background/60",
     "text-muted-foreground hover:text-foreground"
@@ -185,11 +187,8 @@ function NavItem({
 
   const buttonClasses = cn(
     "group flex h-8 w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-semibold transition-all duration-150 hover:transition-none",
-    isHighlighted
-      ? "bg-white/70 text-foreground shadow-sm ring-1 ring-white/60 dark:bg-transparent dark:bg-gradient-to-r dark:from-blue-500/[0.15] dark:to-blue-500/[0.08] dark:shadow-[0_0_12px_rgba(59,130,246,0.15)] dark:ring-blue-500/20"
-      : inactiveClasses,
-    "cursor-pointer",
-    isSection && isExpanded && !isHighlighted && "bg-white/20 dark:bg-background/30"
+    isHighlighted ? (isSection ? activeSectionClasses : activeItemClasses) : inactiveClasses,
+    "cursor-pointer"
   );
 
   const iconClasses = cn(
@@ -223,7 +222,7 @@ function NavItem({
                 className={cn(
                   "h-9 w-9 p-0 justify-center rounded-lg transition-all duration-150 hover:transition-none",
                   isHighlighted
-                    ? "bg-white/70 shadow-sm ring-1 ring-white/60 dark:bg-blue-500/[0.12] dark:shadow-[0_0_12px_rgba(59,130,246,0.15)] dark:ring-blue-500/20"
+                    ? "text-foreground hover:bg-white/40 dark:hover:bg-background/60"
                     : "hover:bg-white/40 dark:hover:bg-background/60 text-muted-foreground hover:text-foreground"
                 )}
               >
