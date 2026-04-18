@@ -43,7 +43,7 @@ export function declareFilterTable<
       fromTableId: tableIdToDebugString(options.fromTable.tableId),
       filterSql: options.filter.sql,
     },
-    init: () => [
+    init: (ctx) => [
       sqlStatement`
         INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
         VALUES
@@ -52,9 +52,9 @@ export function declareFilterTable<
         (gen_random_uuid(), ${getStorageEnginePath(options.tableId, [])}::jsonb[], 'null'::jsonb),
         (gen_random_uuid(), ${getStorageEnginePath(options.tableId, ["metadata"])}::jsonb[], '{ "version": 1 }'::jsonb)
       `,
-      ...nestedFlatMapTable.init(),
+      ...nestedFlatMapTable.init(ctx),
     ],
-    delete: () => [sqlStatement`
+    delete: (_ctx) => [sqlStatement`
       WITH RECURSIVE "pathsToDelete" AS (
         SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
         UNION ALL
@@ -65,7 +65,7 @@ export function declareFilterTable<
       DELETE FROM "BulldozerStorageEngine"
       WHERE "keyPath" IN (SELECT "path" FROM "pathsToDelete")
     `],
-    isInitialized: () => sqlExpression`
+    isInitialized: (_ctx) => sqlExpression`
       EXISTS (
         SELECT 1 FROM "BulldozerStorageEngine"
         WHERE "keyPath" = ${getStorageEnginePath(options.tableId, ["metadata"])}::jsonb[]
