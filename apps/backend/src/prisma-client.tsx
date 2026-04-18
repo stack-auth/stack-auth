@@ -19,8 +19,8 @@ import { isPromise } from "util/types";
 import { runMigrationNeeded } from "./auto-migrations";
 import { registerPgPool } from "./lib/dev-perf-stats";
 import { Tenancy } from "./lib/tenancies";
-import { drainInFlightPromises } from "./utils/background-tasks";
 import { ensurePolyfilled } from "./polyfills";
+import { drainInFlightPromises } from "./utils/background-tasks";
 
 // just ensure we're polyfilled because this file relies on envvars being expanded
 ensurePolyfilled();
@@ -215,10 +215,21 @@ async function waitForReplication(replicas: PrismaClient[], target: string, time
         throw new StackAssertionError(`Invalid pg_lsn format: ${target}`);
       }
       checkCaughtUp = async (replica) => {
-        const [{ caught_up }] = await (replica as any).$queryRaw<[{ caught_up: boolean }]>`
-          SELECT pg_last_wal_replay_lsn() >= ${target}::pg_lsn AS caught_up
-        `;
-        return caught_up;
+        return await traceSpan({
+          description: 'checking replication status from replica',
+          attributes: {
+            'stack.db-replication.strategy': strategy,
+            'stack.db-replication.target': target,
+            'stack.db-replication.replica-count': replicas.length,
+            'stack.db-replication.timeout-ms': timeoutMs,
+          },
+        }, async (span) => {
+          const [{ caught_up }] = await (replica as any).$queryRaw<[{ caught_up: boolean }]>`
+            SELECT pg_last_wal_replay_lsn() >= ${target}::pg_lsn AS caught_up
+          `;
+          span.setAttribute('stack.db-replication.caught-up', caught_up);
+          return caught_up;
+        });
       };
     } else if (strategy === "aurora") {
       if (!/^\d+$/.test(target)) {
@@ -226,12 +237,25 @@ async function waitForReplication(replicas: PrismaClient[], target: string, time
       }
       const targetBigInt = BigInt(target);
       checkCaughtUp = async (replica) => {
-        const [{ current_lsn }] = await (replica as any).$queryRaw<[{ current_lsn: bigint | null }]>`
-          SELECT current_read_lsn AS current_lsn
-          FROM aurora_replica_status()
-          WHERE server_id = aurora_db_instance_identifier()
-        `;
-        return current_lsn === null || current_lsn >= targetBigInt;
+        return await traceSpan({
+          description: 'checking replication status from replica',
+          attributes: {
+            'stack.db-replication.strategy': strategy,
+            'stack.db-replication.target': target,
+            'stack.db-replication.replica-count': replicas.length,
+            'stack.db-replication.timeout-ms': timeoutMs,
+          },
+        }, async (span) => {
+          const replicaStatus = await (replica as any).$queryRaw<[{ current_lsn: bigint | null }]>`
+            SELECT *
+            FROM aurora_replica_status()
+            WHERE server_id = aurora_db_instance_identifier()
+          `;
+          span.setAttribute('stack.db-replication.replica-status', JSON.stringify(replicaStatus));
+          const currentLsn = replicaStatus[0].current_read_lsn;
+          span.setAttribute('stack.db-replication.current-lsn', currentLsn.toString());
+          return currentLsn === null || currentLsn >= targetBigInt;
+        });
       };
     } else {
       throw new StackAssertionError(`Unknown replication wait strategy: ${strategy}`);
