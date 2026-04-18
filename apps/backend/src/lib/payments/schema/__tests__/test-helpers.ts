@@ -6,11 +6,9 @@
  * with no leftover state.
  */
 
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import postgres from "postgres";
 import { toExecutableSqlTransaction, toQueryableSqlQuery } from "@/lib/bulldozer/db/index";
+import { loadProcessQueueFunctionSql } from "@/lib/bulldozer/db/test-sql-loaders";
 
 type SqlStatement = { type: "statement", sql: string, outputName?: string };
 type SqlQuery = { type: "query", sql: string, toStatement(outputName?: string): SqlStatement };
@@ -22,34 +20,6 @@ function getConnectionString(): string {
     throw new Error("Missing STACK_DATABASE_CONNECTION_STRING");
   }
   return connectionString;
-}
-
-/**
- * Extracts `CREATE OR REPLACE FUNCTION public.bulldozer_timefold_process_queue`
- * from the cascade migration file so tests can install the real prod
- * function body. Scoped here (rather than duplicated across test files)
- * so there's one place to update if the migration's comment markers
- * change.
- */
-function loadProcessQueueFunctionSql(): string {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const migrationPath = join(
-    here,
-    "..", "..", "..", "..", "..",
-    "prisma",
-    "migrations",
-    "20260417000000_bulldozer_timefold_downstream_cascade",
-    "migration.sql",
-  );
-  const raw = readFileSync(migrationPath, "utf8");
-  const block = raw
-    .split("-- SPLIT_STATEMENT_SENTINEL")
-    .map((s) => s.replaceAll("-- SINGLE_STATEMENT_SENTINEL", "").trim())
-    .find((s) => s.startsWith("CREATE OR REPLACE FUNCTION public.bulldozer_timefold_process_queue"));
-  if (block == null) {
-    throw new Error("could not locate bulldozer_timefold_process_queue function body in cascade migration");
-  }
-  return block.replace(/;$/, "");
 }
 
 export type CreateTestDbOptions = {

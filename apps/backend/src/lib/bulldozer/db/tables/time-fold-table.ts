@@ -1,8 +1,12 @@
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
-import type { Table } from "..";
-import { toCascadeSqlBlock } from "..";
-import type { RegisteredRowChangeTrigger } from "../row-change-trigger-dispatch";
-import { attachRowChangeTriggerMetadata, collectRowChangeTriggerStatements, normalizeRowChangeTrigger } from "../row-change-trigger-dispatch";
+import { toCascadeSqlBlock, type Table } from "..";
+import {
+  attachRowChangeTriggerMetadata,
+  CHANGE_OUTPUT_COLUMNS,
+  collectRowChangeTriggerStatements,
+  normalizeRowChangeTrigger,
+  type RegisteredRowChangeTrigger,
+} from "../row-change-trigger-dispatch";
 import type { Json, RowData, RowIdentifier, SqlExpression, SqlMapper, TableId, Timestamp } from "../utilities";
 import {
   getStorageEnginePath,
@@ -15,15 +19,6 @@ import {
   sqlStatement,
   tableIdToDebugString,
 } from "../utilities";
-
-/**
- * Column shape matching `timeFoldChangesTableName` in
- * `createApplyChangesStatements` below. Used both by the inline
- * trigger (which produces this shape directly) and by the queue-drain
- * cascade (which synthesizes this shape in plpgsql from newly-emitted
- * rows).
- */
-const TIMEFOLD_OUTPUT_CHANGE_COLUMNS = '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb';
 
 /**
  * Materialized time-aware fold with queue-backed future reprocessing.
@@ -420,7 +415,7 @@ export function declareTimeFoldTable<
           ON "oldRows"."groupKey" IS NOT DISTINCT FROM "newRows"."groupKey"
           AND "oldRows"."rowIdentifier" = "newRows"."rowIdentifier"
         WHERE "oldRows"."rowData" IS DISTINCT FROM "newRows"."rowData"
-      `.toStatement(timeFoldChangesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb'),
+      `.toStatement(timeFoldChangesTableName, CHANGE_OUTPUT_COLUMNS),
     ];
   };
   const createFromTableTriggerStatements = (fromChangesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => {
@@ -497,7 +492,7 @@ export function declareTimeFoldTable<
       });
       const cascadeTemplate = toCascadeSqlBlock({
         cascadeInputName,
-        cascadeInputColumns: TIMEFOLD_OUTPUT_CHANGE_COLUMNS,
+        cascadeInputColumns: CHANGE_OUTPUT_COLUMNS,
         statements: cascadeCollected.statements,
       });
 

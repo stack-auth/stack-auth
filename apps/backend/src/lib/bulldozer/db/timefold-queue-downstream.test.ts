@@ -9,9 +9,6 @@
  * input name and EXECUTEs the template.
  */
 
-import { readFileSync } from "node:fs";
-import { dirname, join } from "node:path";
-import { fileURLToPath } from "node:url";
 import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vitest";
 import {
@@ -23,6 +20,7 @@ import {
   toExecutableSqlTransaction,
   toQueryableSqlQuery,
 } from "./index";
+import { loadProcessQueueFunctionSql } from "./test-sql-loaders";
 
 type SqlExpression<T> = { type: "expression", sql: string };
 type SqlStatement = { type: "statement", sql: string, outputName?: string };
@@ -55,38 +53,6 @@ function getTestDbUrls() {
     full: query.length === 0 ? `${base}/${dbName}` : `${base}/${dbName}?${query}`,
     base,
   };
-}
-
-/**
- * Extracts the CREATE OR REPLACE FUNCTION body for
- * public.bulldozer_timefold_process_queue from the downstream-cascade
- * migration. The 20260323150000 migration creates the queue infrastructure;
- * the later 20260417000000 migration rewrites the process_queue function
- * body to run downstream cascades. We install the latter so tests exercise
- * the cascade behaviour.
- */
-function loadProcessQueueFunctionSql(): string {
-  const here = dirname(fileURLToPath(import.meta.url));
-  const migrationPath = join(
-    here,
-    "..",
-    "..",
-    "..",
-    "..",
-    "prisma",
-    "migrations",
-    "20260417000000_bulldozer_timefold_downstream_cascade",
-    "migration.sql",
-  );
-  const raw = readFileSync(migrationPath, "utf8");
-  const block = raw
-    .split("-- SPLIT_STATEMENT_SENTINEL")
-    .map((s) => s.replaceAll("-- SINGLE_STATEMENT_SENTINEL", "").trim())
-    .find((s) => s.startsWith("CREATE OR REPLACE FUNCTION public.bulldozer_timefold_process_queue"));
-  if (block == null) {
-    throw new Error("could not locate bulldozer_timefold_process_queue function body in cascade migration");
-  }
-  return block.replace(/;$/, "");
 }
 
 const PROCESS_QUEUE_FN_SQL = loadProcessQueueFunctionSql();
@@ -240,6 +206,31 @@ describe.sequential("timefold queue downstream cascade (real postgres)", () => {
       ELSE NULL::timestamptz
     END AS "nextTimestamp"
   `;
+
+  /**
+   * Reads the `phase` string out of a row's `rowdata` with runtime type
+   * checks. Used by the delete-before-drain and dollar-quote tests to
+   * assert which phases made it through the pipeline. Fails loud rather
+   * than silently returning `undefined` if the row shape is unexpected.
+   *
+   * Takes `unknown` (rather than a narrower row type) because the
+   * `postgres.js` driver's `Row` type doesn't statically guarantee a
+   * `rowdata` column.
+   */
+  function rowPhase(row: unknown): string {
+    if (row == null || typeof row !== "object") {
+      throw new Error(`Expected row object, got ${typeof row}`);
+    }
+    const rowData = Reflect.get(row, "rowdata");
+    if (rowData == null || typeof rowData !== "object") {
+      throw new Error(`Expected object rowdata, got ${typeof rowData}`);
+    }
+    const phase = Reflect.get(rowData, "phase");
+    if (typeof phase !== "string") {
+      throw new Error(`Expected string 'phase' field in rowdata, got ${typeof phase}: ${JSON.stringify(rowData)}`);
+    }
+    return phase;
+  }
 
   // ────────────────────────────────────────────────────────────────────
   // Test 1: single filter downstream
@@ -575,8 +566,7 @@ describe.sequential("timefold queue downstream cascade (real postgres)", () => {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start", end: "end", startInclusive: true, endInclusive: true,
     }));
-    const phases = timefoldRows.map((row) => (row.rowdata as { phase: string }).phase).sort();
-    expect(phases).toEqual(["initial", "scheduled"]);
+    expect(timefoldRows.map(rowPhase).sort()).toEqual(["initial", "scheduled"]);
   });
 
   // ────────────────────────────────────────────────────────────────────
@@ -642,8 +632,7 @@ describe.sequential("timefold queue downstream cascade (real postgres)", () => {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start", end: "end", startInclusive: true, endInclusive: true,
     }));
-    const phases = filteredRows.map((row) => (row.rowdata as { phase: string }).phase).sort();
-    expect(phases).toEqual(["initial", "scheduled"]);
+    expect(filteredRows.map(rowPhase).sort()).toEqual(["initial", "scheduled"]);
   });
 
   // ────────────────────────────────────────────────────────────────────
