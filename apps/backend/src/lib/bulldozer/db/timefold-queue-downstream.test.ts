@@ -12,6 +12,7 @@
 import postgres from "postgres";
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "vitest";
 import {
+  createBulldozerExecutionContext,
   declareFilterTable,
   declareGroupByTable,
   declareMapTable,
@@ -58,13 +59,15 @@ function getTestDbUrls() {
 const PROCESS_QUEUE_FN_SQL = loadProcessQueueFunctionSql();
 
 describe.sequential("timefold queue downstream cascade (real postgres)", () => {
+  let executionContext = createBulldozerExecutionContext();
+
   const dbUrls = getTestDbUrls();
   const dbName = dbUrls.full.replace(/^.*\//, "").replace(/\?.*$/, "");
   const adminSql = postgres(dbUrls.base, { onnotice: () => undefined });
   const sql = postgres(dbUrls.full, { onnotice: () => undefined, max: 1 });
 
   async function runStatements(statements: SqlStatement[]) {
-    await sql.unsafe(toExecutableSqlTransaction(statements));
+    await sql.unsafe(toExecutableSqlTransaction(executionContext, statements));
   }
   async function readRows(query: SqlQuery) {
     return await sql.unsafe(toQueryableSqlQuery(query));
@@ -97,6 +100,7 @@ describe.sequential("timefold queue downstream cascade (real postgres)", () => {
   const HOOK_TIMEOUT_MS = 60_000;
 
   beforeEach(async () => {
+    executionContext = createBulldozerExecutionContext();
     await sql`CREATE EXTENSION IF NOT EXISTS pgcrypto`;
     await sql`DROP FUNCTION IF EXISTS public.bulldozer_timefold_process_queue()`;
     await sql`DROP TABLE IF EXISTS "BulldozerTimeFoldDownstreamCascade"`;
@@ -254,19 +258,19 @@ describe.sequential("timefold queue downstream cascade (real postgres)", () => {
       filter: predicate(`"rowData"->>'phase' = 'scheduled'`),
     });
 
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
     // Back the clock up before any setRow so the inline recursion bails.
     // Use pre-epoch time so the reducer's scheduled tick (now()-1s) stays
     // ahead of lastProcessedAt regardless of wall-clock drift.
     await setLastProcessedAt(`'1969-01-01T00:00:00Z'`);
-    await runStatements(timeFoldTable.init());
-    await runStatements(filteredTable.init());
+    await runStatements(timeFoldTable.init(executionContext));
+    await runStatements(filteredTable.init(executionContext));
 
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":7}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":7}'::jsonb`)));
 
     expect(await countQueueRows()).toBe(1);
-    const filteredBeforeDrain = await readRows(filteredTable.listRowsInGroup({
+    const filteredBeforeDrain = await readRows(filteredTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start", end: "end", startInclusive: true, endInclusive: true,
     }));
@@ -275,7 +279,7 @@ describe.sequential("timefold queue downstream cascade (real postgres)", () => {
     await setLastProcessedAt(`now()`);
     await processQueue();
 
-    const filteredAfterDrain = await readRows(filteredTable.listRowsInGroup({
+    const filteredAfterDrain = await readRows(filteredTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start", end: "end", startInclusive: true, endInclusive: true,
     }));
@@ -327,20 +331,20 @@ describe.sequential("timefold queue downstream cascade (real postgres)", () => {
       `),
     });
 
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
     await setLastProcessedAt(`'1969-01-01T00:00:00Z'`);
-    await runStatements(timeFoldTable.init());
-    await runStatements(filteredTable.init());
-    await runStatements(mappedTable.init());
-    await runStatements(reMappedTable.init());
+    await runStatements(timeFoldTable.init(executionContext));
+    await runStatements(filteredTable.init(executionContext));
+    await runStatements(mappedTable.init(executionContext));
+    await runStatements(reMappedTable.init(executionContext));
 
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":3}'::jsonb`)));
-    await runStatements(fromTable.setRow("u2", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u2", expr(`'{"team":"alpha","value":5}'::jsonb`)));
 
     expect(await countQueueRows()).toBe(2);
     for (const table of [filteredTable, mappedTable, reMappedTable]) {
-      const rows = await readRows(table.listRowsInGroup({
+      const rows = await readRows(table.listRowsInGroup(executionContext, {
         groupKey: expr(`to_jsonb('alpha'::text)`),
         start: "start", end: "end", startInclusive: true, endInclusive: true,
       }));
@@ -350,7 +354,7 @@ describe.sequential("timefold queue downstream cascade (real postgres)", () => {
     await setLastProcessedAt(`now()`);
     await processQueue();
 
-    const filtered = await readRows(filteredTable.listRowsInGroup({
+    const filtered = await readRows(filteredTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start", end: "end", startInclusive: true, endInclusive: true,
     }));
@@ -361,7 +365,7 @@ describe.sequential("timefold queue downstream cascade (real postgres)", () => {
       { phase: "scheduled", team: "alpha", value: 5 },
     ]);
 
-    const mapped = await readRows(mappedTable.listRowsInGroup({
+    const mapped = await readRows(mappedTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start", end: "end", startInclusive: true, endInclusive: true,
     }));
@@ -372,7 +376,7 @@ describe.sequential("timefold queue downstream cascade (real postgres)", () => {
       { team: "alpha", valueTimesTen: 50 },
     ]);
 
-    const reMapped = await readRows(reMappedTable.listRowsInGroup({
+    const reMapped = await readRows(reMappedTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start", end: "end", startInclusive: true, endInclusive: true,
     }));
@@ -406,30 +410,30 @@ describe.sequential("timefold queue downstream cascade (real postgres)", () => {
       filter: predicate(`"rowData"->>'phase' = 'scheduled'`),
     });
 
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
 
     // Customer "inline": lastProcessedAt way ahead → tick fires inline.
     await setLastProcessedAt(`'2099-01-01T00:00:00Z'`);
-    await runStatements(timeFoldTable.init());
-    await runStatements(filteredTable.init());
-    await runStatements(fromTable.setRow("inline-u1", expr(`'{"team":"inline","value":9}'::jsonb`)));
+    await runStatements(timeFoldTable.init(executionContext));
+    await runStatements(filteredTable.init(executionContext));
+    await runStatements(fromTable.setRow(executionContext, "inline-u1", expr(`'{"team":"inline","value":9}'::jsonb`)));
     expect(await countQueueRows()).toBe(0);
 
     // Customer "queue": lastProcessedAt behind → tick queued.
     await setLastProcessedAt(`'1969-01-01T00:00:00Z'`);
-    await runStatements(fromTable.setRow("queue-u1", expr(`'{"team":"queue","value":9}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "queue-u1", expr(`'{"team":"queue","value":9}'::jsonb`)));
     expect(await countQueueRows()).toBe(1);
 
     await setLastProcessedAt(`now()`);
     await processQueue();
     expect(await countQueueRows()).toBe(0);
 
-    const inlineRows = await readRows(filteredTable.listRowsInGroup({
+    const inlineRows = await readRows(filteredTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('inline'::text)`),
       start: "start", end: "end", startInclusive: true, endInclusive: true,
     }));
-    const queueRows = await readRows(filteredTable.listRowsInGroup({
+    const queueRows = await readRows(filteredTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('queue'::text)`),
       start: "start", end: "end", startInclusive: true, endInclusive: true,
     }));
@@ -475,17 +479,17 @@ describe.sequential("timefold queue downstream cascade (real postgres)", () => {
       filter: predicate(`"rowData"->>'phase' = 'scheduled'`),
     });
 
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
     await setLastProcessedAt(`'1969-01-01T00:00:00Z'`);
-    await runStatements(timeFoldTable.init());
-    await runStatements(filteredTable.init());
+    await runStatements(timeFoldTable.init(executionContext));
+    await runStatements(filteredTable.init(executionContext));
 
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":4}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":4}'::jsonb`)));
     await setLastProcessedAt(`now()`);
 
     await processQueue();
-    const afterFirstDrain = await readRows(filteredTable.listRowsInGroup({
+    const afterFirstDrain = await readRows(filteredTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start", end: "end", startInclusive: true, endInclusive: true,
     }));
@@ -493,7 +497,7 @@ describe.sequential("timefold queue downstream cascade (real postgres)", () => {
 
     // Second drain: no due queue rows. No-op at every layer.
     await processQueue();
-    const afterSecondDrain = await readRows(filteredTable.listRowsInGroup({
+    const afterSecondDrain = await readRows(filteredTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start", end: "end", startInclusive: true, endInclusive: true,
     }));
@@ -506,7 +510,7 @@ describe.sequential("timefold queue downstream cascade (real postgres)", () => {
   //
   // The cascade template is compiled at upstream-init() time and
   // references the downstream's storage paths. If the downstream is
-  // .delete()d while the upstream still has queue rows pending, the
+  // .delete(executionContext)d while the upstream still has queue rows pending, the
   // drain must still succeed without a FK violation. The safety comes
   // from every trigger's first statement carrying a
   // `WHERE isInitializedExpression` clause that short-circuits the rest
@@ -533,22 +537,22 @@ describe.sequential("timefold queue downstream cascade (real postgres)", () => {
       filter: predicate(`"rowData"->>'phase' = 'scheduled'`),
     });
 
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
     await setLastProcessedAt(`'1969-01-01T00:00:00Z'`);
-    await runStatements(timeFoldTable.init());
-    await runStatements(filteredTable.init());
+    await runStatements(timeFoldTable.init(executionContext));
+    await runStatements(filteredTable.init(executionContext));
 
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":7}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":7}'::jsonb`)));
     expect(await countQueueRows()).toBe(1);
 
     // At this point the inline setRow path has already propagated the
     // {phase:initial} row all the way through to the filter's storage.
     // Blow the filter's storage away while the {phase:scheduled} tick
     // is still queued — the upstream's cascade template was compiled
-    // referencing the filter's paths and is NOT updated by .delete(),
+    // referencing the filter's paths and is NOT updated by .delete(executionContext),
     // so this is the delete-before-drain scenario.
-    await runStatements(filteredTable.delete());
+    await runStatements(filteredTable.delete(executionContext));
 
     await setLastProcessedAt(`now()`);
     // If the cascade template's WHERE-gated statements didn't no-op on
@@ -562,7 +566,7 @@ describe.sequential("timefold queue downstream cascade (real postgres)", () => {
     // {initial} from before the delete and the queue-drained {scheduled}
     // from after). A wedged drain would roll everything back and leave
     // the timefold with only the initial row.
-    const timefoldRows = await readRows(timeFoldTable.listRowsInGroup({
+    const timefoldRows = await readRows(timeFoldTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start", end: "end", startInclusive: true, endInclusive: true,
     }));
@@ -602,13 +606,13 @@ describe.sequential("timefold queue downstream cascade (real postgres)", () => {
       filter: predicate(`('$tf_cascade$' IS NOT NULL) OR ("rowData"->>'phase' = 'scheduled')`),
     });
 
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
     await setLastProcessedAt(`'1969-01-01T00:00:00Z'`);
-    await runStatements(timeFoldTable.init());
-    await runStatements(filteredTable.init());
+    await runStatements(timeFoldTable.init(executionContext));
+    await runStatements(filteredTable.init(executionContext));
 
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":11}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":11}'::jsonb`)));
     expect(await countQueueRows()).toBe(1);
 
     await setLastProcessedAt(`now()`);
@@ -628,7 +632,7 @@ describe.sequential("timefold queue downstream cascade (real postgres)", () => {
     // delimiter collision had broken the DO block, we'd see only
     // {initial} (written synchronously at setRow time, before the queue
     // drain).
-    const filteredRows = await readRows(filteredTable.listRowsInGroup({
+    const filteredRows = await readRows(filteredTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start", end: "end", startInclusive: true, endInclusive: true,
     }));
@@ -646,7 +650,7 @@ describe.sequential("timefold queue downstream cascade (real postgres)", () => {
   //   1. This migration (20260417000000) creates the registry table
   //      BulldozerTimeFoldDownstreamCascade. It's empty at first.
   //
-  //   2. The backend starts up. `declareTimeFoldTable.init()` runs for
+  //   2. The backend starts up. `declareTimeFoldTable.init(executionContext)` runs for
   //      every timefold and upserts one row per timefold into the
   //      registry, storing the pre-compiled cascade SQL template.
   //
@@ -704,15 +708,15 @@ describe.sequential("timefold queue downstream cascade (real postgres)", () => {
       filter: predicate(`"rowData"->>'phase' = 'scheduled'`),
     });
 
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
     // Backdate the "last processed" clock so any future tick the
     // reducer schedules looks like it's still in the future when
     // setRow fires. That way the {scheduled} emission gets QUEUED
     // instead of running inline.
     await setLastProcessedAt(`'1969-01-01T00:00:00Z'`);
-    await runStatements(timeFoldTable.init());
-    await runStatements(filteredTable.init());
+    await runStatements(timeFoldTable.init(executionContext));
+    await runStatements(filteredTable.init(executionContext));
 
     // ---- Generate one inline emission + one queued emission ----
     //
@@ -726,7 +730,7 @@ describe.sequential("timefold queue downstream cascade (real postgres)", () => {
     // `"rowData"->>'phase' = 'scheduled'` rejects {initial}, so the
     // filter stays empty. Meanwhile the scheduled tick lands in
     // BulldozerTimeFoldQueue for later.
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":7}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":7}'::jsonb`)));
     expect(await countQueueRows()).toBe(1);
 
     // ---- Simulate the deploy-window gap ----
@@ -762,7 +766,7 @@ describe.sequential("timefold queue downstream cascade (real postgres)", () => {
     //     Contrast with the buggy (pre-fix) behavior: the timefold
     //     would have had BOTH "initial" and "scheduled" here, with
     //     the filter permanently missing "scheduled".
-    const timefoldRows = await readRows(timeFoldTable.listRowsInGroup({
+    const timefoldRows = await readRows(timeFoldTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start", end: "end", startInclusive: true, endInclusive: true,
     }));
@@ -775,7 +779,7 @@ describe.sequential("timefold queue downstream cascade (real postgres)", () => {
     //     registry is populated, the next pg_cron tick will drain
     //     the queue row and propagate {scheduled} into this
     //     filter.
-    const filterRows = await readRows(filteredTable.listRowsInGroup({
+    const filterRows = await readRows(filteredTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start", end: "end", startInclusive: true, endInclusive: true,
     }));

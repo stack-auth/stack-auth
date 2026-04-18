@@ -5,7 +5,7 @@ import ELK from "elkjs/lib/elk.bundled.js";
 import http from "node:http";
 import { performance } from "node:perf_hooks";
 import { exampleFungibleLedgerSchema } from "../src/lib/bulldozer/db/example-schema";
-import { toExecutableSqlTransaction, toQueryableSqlQuery } from "../src/lib/bulldozer/db/index";
+import { createBulldozerExecutionContext, toExecutableSqlTransaction, toQueryableSqlQuery } from "../src/lib/bulldozer/db/index";
 import { quoteSqlJsonbLiteral, quoteSqlStringLiteral } from "../src/lib/bulldozer/db/utilities";
 import { createPaymentsSchema } from "../src/lib/payments/schema/index";
 import { globalPrismaClient, retryTransaction } from "../src/prisma-client";
@@ -92,17 +92,17 @@ type StudioTable = {
   tableId: unknown,
   inputTables?: StudioTable[],
   debugArgs?: Record<string, unknown>,
-  listGroups(options: { start: SqlExpression<unknown> | "start", end: SqlExpression<unknown> | "end", startInclusive: boolean, endInclusive: boolean }): SqlQuery,
-  listRowsInGroup(options: { groupKey?: SqlExpression<unknown>, start: SqlExpression<unknown> | "start", end: SqlExpression<unknown> | "end", startInclusive: boolean, endInclusive: boolean }): SqlQuery,
-  init(): SqlStatement[],
-  delete(): SqlStatement[],
-  isInitialized(): SqlExpression<boolean>,
-  registerRowChangeTrigger(trigger: (changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => SqlStatement[]): { deregister: () => void },
+  listGroups(executionContext: ReturnType<typeof createBulldozerExecutionContext>, options: { start: SqlExpression<unknown> | "start", end: SqlExpression<unknown> | "end", startInclusive: boolean, endInclusive: boolean }): SqlQuery,
+  listRowsInGroup(executionContext: ReturnType<typeof createBulldozerExecutionContext>, options: { groupKey?: SqlExpression<unknown>, start: SqlExpression<unknown> | "start", end: SqlExpression<unknown> | "end", startInclusive: boolean, endInclusive: boolean }): SqlQuery,
+  init(executionContext: ReturnType<typeof createBulldozerExecutionContext>): SqlStatement[],
+  delete(executionContext: ReturnType<typeof createBulldozerExecutionContext>): SqlStatement[],
+  isInitialized(executionContext: ReturnType<typeof createBulldozerExecutionContext>): SqlExpression<boolean>,
+  registerRowChangeTrigger(trigger: (executionContext: ReturnType<typeof createBulldozerExecutionContext>, changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => SqlStatement[]): { deregister: () => void },
 };
 
 type StudioStoredTable = StudioTable & {
-  setRow(rowIdentifier: string, rowData: SqlExpression<Record<string, JsonValue>>): SqlStatement[],
-  deleteRow(rowIdentifier: string): SqlStatement[],
+  setRow(executionContext: ReturnType<typeof createBulldozerExecutionContext>, rowIdentifier: string, rowData: SqlExpression<Record<string, JsonValue>>): SqlStatement[],
+  deleteRow(executionContext: ReturnType<typeof createBulldozerExecutionContext>, rowIdentifier: string): SqlStatement[],
 };
 
 type StudioTableRecord = {
@@ -543,9 +543,10 @@ function switchSchema(name: string): void {
 }
 
 async function executeStatements(statements: SqlStatement[]): Promise<StatementExecutionMetrics> {
+  const executionContext = createBulldozerExecutionContext();
   const startedAt = performance.now();
   const buildSqlScriptStartedAt = performance.now();
-  const sqlScript = toExecutableSqlTransaction(statements);
+  const sqlScript = toExecutableSqlTransaction(executionContext, statements);
   const buildSqlScriptMsRaw = performance.now() - buildSqlScriptStartedAt;
   const autoExplainStartMarker = `bulldozer_studio_auto_explain_start:${STUDIO_INSTANCE_ID}:${Math.random().toString(36).slice(2, 10)}`;
   const autoExplainEndMarker = `bulldozer_studio_auto_explain_end:${STUDIO_INSTANCE_ID}:${Math.random().toString(36).slice(2, 10)}`;
@@ -923,6 +924,7 @@ async function getTableSnapshot(record: StudioTableRecord): Promise<{
   const operatorValue = Reflect.get(debugArgs, "operator");
   const operator = typeof operatorValue === "string" ? operatorValue : "unknown";
 
+  const executionContext = createBulldozerExecutionContext();
   return {
     id: record.id,
     name: record.name,
@@ -932,7 +934,7 @@ async function getTableSnapshot(record: StudioTableRecord): Promise<{
     debugArgs,
     supportsSetRow: isStudioStoredTable(record.table),
     supportsDeleteRow: isStudioStoredTable(record.table),
-    initialized: await readBoolean(record.table.isInitialized()),
+    initialized: await readBoolean(record.table.isInitialized(executionContext)),
   };
 }
 
@@ -1008,10 +1010,12 @@ async function rebindInitializedDerivedTables(): Promise<void> {
     .filter((record): record is StudioTableRecord => record != null && initializedDerivedTableIds.has(record.id));
 
   for (const record of recordsToDelete) {
-    await executeStatements(record.table.delete());
+    const executionContext = createBulldozerExecutionContext();
+    await executeStatements(record.table.delete(executionContext));
   }
   for (const record of recordsToInit) {
-    await executeStatements(record.table.init());
+    const executionContext = createBulldozerExecutionContext();
+    await executeStatements(record.table.init(executionContext));
   }
 
   console.log(`[studio] rebound ${recordsToInit.length} initialized derived tables`);
@@ -1028,7 +1032,8 @@ async function initAllTablesInTopologicalOrder(): Promise<string[]> {
     if (snapshot == null || snapshot.initialized) continue;
     const record = registry.tableById.get(id);
     if (record == null) continue;
-    await executeStatements(record.table.init());
+    const executionContext = createBulldozerExecutionContext();
+    await executeStatements(record.table.init(executionContext));
     initializedIds.push(id);
   }
 
@@ -1094,13 +1099,14 @@ async function getTableDetails(record: StudioTableRecord): Promise<{
 }> {
   const table = record.table;
   const tableSnapshot = await getTableSnapshot(record);
-  const groupsRaw = await queryRows(table.listGroups({
+  const executionContext = createBulldozerExecutionContext();
+  const groupsRaw = await queryRows(table.listGroups(executionContext, {
     start: "start",
     end: "end",
     startInclusive: true,
     endInclusive: true,
   }));
-  const allRowsRaw = await queryRows(table.listRowsInGroup({
+  const allRowsRaw = await queryRows(table.listRowsInGroup(executionContext, {
     start: "start",
     end: "end",
     startInclusive: true,
@@ -4224,13 +4230,15 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
     }
 
     if (method === "POST" && pathParts[3] === "init") {
-      await executeStatements(record.table.init());
+      const executionContext = createBulldozerExecutionContext();
+      await executeStatements(record.table.init(executionContext));
       sendJson(response, 200, { ok: true });
       return;
     }
 
     if (method === "POST" && pathParts[3] === "delete") {
-      await executeStatements(record.table.delete());
+      const executionContext = createBulldozerExecutionContext();
+      await executeStatements(record.table.delete(executionContext));
       sendJson(response, 200, { ok: true });
       return;
     }
@@ -4246,7 +4254,9 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
       if (!isRecord(rowData)) {
         throw new StackAssertionError("rowData must be a JSON object.");
       }
+      const executionContext = createBulldozerExecutionContext();
       const metrics = await executeStatements(record.table.setRow(
+        executionContext,
         rowIdentifier,
         { type: "expression", sql: quoteSqlJsonbLiteral(rowData).sql },
       ));
@@ -4261,7 +4271,8 @@ async function handleRequest(request: http.IncomingMessage, response: http.Serve
       }
       const body = requireRecord(await readJsonBody(request), "delete-row body must be an object.");
       const rowIdentifier = requireString(Reflect.get(body, "rowIdentifier"), "rowIdentifier must be a string.");
-      const metrics = await executeStatements(record.table.deleteRow(rowIdentifier));
+      const executionContext = createBulldozerExecutionContext();
+      const metrics = await executeStatements(record.table.deleteRow(executionContext, rowIdentifier));
       sendJson(response, 200, { ok: true, metrics });
       return;
     }

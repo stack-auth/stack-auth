@@ -2,7 +2,9 @@ import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, test } from "vitest";
 import type { Table } from "./index";
+import type { RowData } from "./utilities";
 import {
+  createBulldozerExecutionContext,
   declareCompactTable as _declareCompactTable,
   declareConcatTable as _declareConcatTable,
   declareFilterTable as _declareFilterTable,
@@ -20,14 +22,16 @@ import {
   toQueryableSqlQuery,
 } from "./index";
 
-// any is used here because the verifier works with heterogeneous table types
-const allInitializedTables: Table<any, any, any>[] = [];
+let executionContext = createBulldozerExecutionContext();
+
+type TableExecutionContext = Parameters<Table<any, any, any>["verifyDataIntegrity"]>[0];
+const allInitializedTables: Array<{ verifyDataIntegrity: (executionContext: TableExecutionContext) => SqlQuery }> = [];
 function trackTable<T extends Table<any, any, any>>(table: T): T {
   allInitializedTables.push(table);
   return table;
 }
-function tracked<Fn extends (...args: any[]) => Table<any, any, any>>(fn: Fn): Fn {
-  return ((...args: unknown[]) => trackTable(fn(...args))) as Fn;
+function tracked<Fn extends (...args: any[]) => Table<any, any, any>>(fn: Fn): (...args: Parameters<Fn>) => ReturnType<Fn> {
+  return (...args) => trackTable(fn(...args)) as ReturnType<Fn>;
 }
 
 const declareCompactTable = tracked(_declareCompactTable);
@@ -41,7 +45,11 @@ const declareLimitTable = tracked(_declareLimitTable);
 const declareMapTable = tracked(_declareMapTable);
 const declareReduceTable = tracked(_declareReduceTable);
 const declareSortTable = tracked(_declareSortTable);
-const declareStoredTable = tracked(_declareStoredTable);
+function declareStoredTable<RD extends RowData>(
+  options: Parameters<typeof _declareStoredTable<RD>>[0],
+): ReturnType<typeof _declareStoredTable<RD>> {
+  return trackTable(_declareStoredTable<RD>(options));
+}
 const declareTimeFoldTable = tracked(_declareTimeFoldTable);
 
 type TestDb = { full: string, base: string };
@@ -68,8 +76,8 @@ type SqlStatement = { type: "statement", sql: string, outputName?: string };
 type SqlQuery = { type: "query", sql: string, toStatement(outputName?: string): SqlStatement };
 type SqlMapper = { type: "mapper", sql: string };
 type QueryableTable = {
-  listGroups(options: { start: "start", end: "end", startInclusive: boolean, endInclusive: boolean }): SqlQuery,
-  listRowsInGroup(options: { groupKey?: SqlExpression<unknown>, start: "start", end: "end", startInclusive: boolean, endInclusive: boolean }): SqlQuery,
+  listGroups(executionContext: TableExecutionContext, options: { start: "start", end: "end", startInclusive: boolean, endInclusive: boolean }): SqlQuery,
+  listRowsInGroup(executionContext: TableExecutionContext, options: { groupKey?: SqlExpression<unknown>, start: "start", end: "end", startInclusive: boolean, endInclusive: boolean }): SqlQuery,
 };
 type SourceRow = { team: string | null, value: number };
 type JoinRuleRow = { team: string | null, threshold: number, label: string };
@@ -480,7 +488,7 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
   const sql = postgres(dbUrls.full, { onnotice: () => undefined, max: 1 });
 
   async function runStatements(statements: SqlStatement[], traceSection?: string) {
-    const txSql = toExecutableSqlTransaction(statements);
+    const txSql = toExecutableSqlTransaction(executionContext, statements);
     const startedAt = performance.now();
     await sql.unsafe(txSql);
     const elapsedMs = performance.now() - startedAt;
@@ -546,7 +554,7 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
       .map((group) => group.groupKey)
       .sort(nullableStringCompare);
 
-    const actualGroups = (await readRows(table.listGroups({
+    const actualGroups = (await readRows(table.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -564,12 +572,12 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
         return byGroup !== 0 ? byGroup : stringCompare(a.rowIdentifier, b.rowIdentifier);
       });
 
-    const actualAllRows = (await readRows(table.listRowsInGroup({
+    const actualAllRows = (await readRows(table.listRowsInGroup(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
       endInclusive: true,
-    }), `${tableLabel}.listRowsInGroup(all)`))
+    }), `${tableLabel}.listRowsInGroup(executionContext, all)`))
       .map((row) => ({
         groupKey: row.groupkey as string | null,
         rowIdentifier: row.rowidentifier as string,
@@ -587,25 +595,25 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
       const expectedRows = [...expectedGroup.rows.entries()]
         .map(([rowIdentifier, rowData]) => ({ rowIdentifier, rowData }))
         .sort((a, b) => stringCompare(a.rowIdentifier, b.rowIdentifier));
-      const actualRows = (await readRows(table.listRowsInGroup({
+      const actualRows = (await readRows(table.listRowsInGroup(executionContext, {
         groupKey: groupKeyExpression(expectedGroup.groupKey),
         start: "start",
         end: "end",
         startInclusive: true,
         endInclusive: true,
-      }), `${tableLabel}.listRowsInGroup(group)`))
+      }), `${tableLabel}.listRowsInGroup(executionContext, group)`))
         .map((row) => ({ rowIdentifier: row.rowidentifier as string, rowData: row.rowdata as Record<string, unknown> }))
         .sort((a, b) => stringCompare(a.rowIdentifier, b.rowIdentifier));
       expect(actualRows).toEqual(expectedRows);
     }
 
-    const missingRows = await readRows(table.listRowsInGroup({
+    const missingRows = await readRows(table.listRowsInGroup(executionContext, {
       groupKey: groupKeyExpression("__missing_group__"),
       start: "start",
       end: "end",
       startInclusive: true,
       endInclusive: true,
-    }), `${tableLabel}.listRowsInGroup(missing)`);
+    }), `${tableLabel}.listRowsInGroup(executionContext, missing)`);
     expect(missingRows).toEqual([]);
   }
 
@@ -614,6 +622,7 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
   });
 
   beforeEach(async () => {
+    executionContext = createBulldozerExecutionContext();
     const createExtensionStartedAt = performance.now();
     await sql`CREATE EXTENSION IF NOT EXISTS pgcrypto`;
     traceOperation({
@@ -729,7 +738,7 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
 
   afterEach(async () => {
     for (const table of allInitializedTables) {
-      const errors = await readRows(table.verifyDataIntegrity(), "afterEach.verifyDataIntegrity");
+      const errors = await readRows(table.verifyDataIntegrity(executionContext), "afterEach.verifyDataIntegrity");
       expect(errors).toEqual([]);
     }
     allInitializedTables.length = 0;
@@ -814,11 +823,11 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
         groupBy: mapper(`"rowData"->'bucket' AS "groupKey"`),
       });
 
-      await runStatements(fromTable.init());
-      await runStatements(groupedTable.init());
-      await runStatements(mapTable1.init());
-      await runStatements(mapTable2.init());
-      await runStatements(groupedByBucket.init());
+      await runStatements(fromTable.init(executionContext));
+      await runStatements(groupedTable.init(executionContext));
+      await runStatements(mapTable1.init(executionContext));
+      await runStatements(mapTable2.init(executionContext));
+      await runStatements(groupedByBucket.init(executionContext));
 
       for (let step = 0; step < 24; step++) {
         const roll = rng();
@@ -829,25 +838,25 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
             value: Math.floor(rng() * 50),
           };
           sourceRows.set(rowIdentifier, rowData);
-          await runStatements(fromTable.setRow(rowIdentifier, expr(jsonbLiteral(rowData))));
+          await runStatements(fromTable.setRow(executionContext, rowIdentifier, expr(jsonbLiteral(rowData))));
         } else if (roll < 0.86) {
           const rowIdentifier = choose(rng, identifiers);
           sourceRows.delete(rowIdentifier);
-          await runStatements(fromTable.deleteRow(rowIdentifier));
+          await runStatements(fromTable.deleteRow(executionContext, rowIdentifier));
         } else if (roll < 0.94) {
-          await runStatements(groupedByBucket.delete());
-          await runStatements(mapTable2.delete());
-          await runStatements(mapTable1.delete());
-          await runStatements(mapTable1.init());
-          await runStatements(mapTable2.init());
-          await runStatements(groupedByBucket.init());
+          await runStatements(groupedByBucket.delete(executionContext));
+          await runStatements(mapTable2.delete(executionContext));
+          await runStatements(mapTable1.delete(executionContext));
+          await runStatements(mapTable1.init(executionContext));
+          await runStatements(mapTable2.init(executionContext));
+          await runStatements(groupedByBucket.init(executionContext));
         } else {
           const rowIdentifier = choose(rng, identifiers);
           const rowData = sourceRows.get(rowIdentifier);
           if (rowData != null) {
-            await runStatements(fromTable.setRow(rowIdentifier, expr(jsonbLiteral(rowData))));
+            await runStatements(fromTable.setRow(executionContext, rowIdentifier, expr(jsonbLiteral(rowData))));
           } else {
-            await runStatements(fromTable.deleteRow(rowIdentifier));
+            await runStatements(fromTable.deleteRow(executionContext, rowIdentifier));
           }
         }
 
@@ -927,11 +936,11 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
         groupBy: mapper(`"rowData"->'kind' AS "groupKey"`),
       });
 
-      await runStatements(fromTable.init());
-      await runStatements(groupedTable.init());
-      await runStatements(flatMapTable.init());
-      await runStatements(mapAfterFlat.init());
-      await runStatements(groupedByKind.init());
+      await runStatements(fromTable.init(executionContext));
+      await runStatements(groupedTable.init(executionContext));
+      await runStatements(flatMapTable.init(executionContext));
+      await runStatements(mapAfterFlat.init(executionContext));
+      await runStatements(groupedByKind.init(executionContext));
 
       for (let step = 0; step < 24; step++) {
         const roll = rng();
@@ -942,23 +951,23 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
             value: Math.floor(rng() * 80) - 20,
           };
           sourceRows.set(rowIdentifier, rowData);
-          await runStatements(fromTable.setRow(rowIdentifier, expr(jsonbLiteral(rowData))));
+          await runStatements(fromTable.setRow(executionContext, rowIdentifier, expr(jsonbLiteral(rowData))));
         } else if (roll < 0.84) {
           const rowIdentifier = choose(rng, identifiers);
           sourceRows.delete(rowIdentifier);
-          await runStatements(fromTable.deleteRow(rowIdentifier));
+          await runStatements(fromTable.deleteRow(executionContext, rowIdentifier));
         } else if (roll < 0.92) {
           if (pipelineInitialized) {
-            await runStatements(groupedByKind.delete());
-            await runStatements(mapAfterFlat.delete());
-            await runStatements(flatMapTable.delete());
+            await runStatements(groupedByKind.delete(executionContext));
+            await runStatements(mapAfterFlat.delete(executionContext));
+            await runStatements(flatMapTable.delete(executionContext));
             pipelineInitialized = false;
           }
         } else {
           if (!pipelineInitialized) {
-            await runStatements(flatMapTable.init());
-            await runStatements(mapAfterFlat.init());
-            await runStatements(groupedByKind.init());
+            await runStatements(flatMapTable.init(executionContext));
+            await runStatements(mapAfterFlat.init(executionContext));
+            await runStatements(groupedByKind.init(executionContext));
             pipelineInitialized = true;
           }
         }
@@ -989,30 +998,30 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
 
           await assertTableMatches(groupedTable, expectedGrouped);
           if (pipelineInitialized) {
-            expect(await readBoolean(flatMapTable.isInitialized())).toBe(true);
-            expect(await readBoolean(mapAfterFlat.isInitialized())).toBe(true);
-            expect(await readBoolean(groupedByKind.isInitialized())).toBe(true);
+            expect(await readBoolean(flatMapTable.isInitialized(executionContext))).toBe(true);
+            expect(await readBoolean(mapAfterFlat.isInitialized(executionContext))).toBe(true);
+            expect(await readBoolean(groupedByKind.isInitialized(executionContext))).toBe(true);
             await assertTableMatches(flatMapTable, expectedFlat);
             await assertTableMatches(mapAfterFlat, expectedMapped);
             await assertTableMatches(groupedByKind, expectedKind);
           } else {
-            expect(await readBoolean(flatMapTable.isInitialized())).toBe(false);
-            expect(await readBoolean(mapAfterFlat.isInitialized())).toBe(false);
-            expect(await readBoolean(groupedByKind.isInitialized())).toBe(false);
+            expect(await readBoolean(flatMapTable.isInitialized(executionContext))).toBe(false);
+            expect(await readBoolean(mapAfterFlat.isInitialized(executionContext))).toBe(false);
+            expect(await readBoolean(groupedByKind.isInitialized(executionContext))).toBe(false);
 
-            const flatGroups = await readRows(flatMapTable.listGroups({
+            const flatGroups = await readRows(flatMapTable.listGroups(executionContext, {
               start: "start",
               end: "end",
               startInclusive: true,
               endInclusive: true,
             }));
-            const mappedGroups = await readRows(mapAfterFlat.listGroups({
+            const mappedGroups = await readRows(mapAfterFlat.listGroups(executionContext, {
               start: "start",
               end: "end",
               startInclusive: true,
               endInclusive: true,
             }));
-            const kindGroups = await readRows(groupedByKind.listGroups({
+            const kindGroups = await readRows(groupedByKind.listGroups(executionContext, {
               start: "start",
               end: "end",
               startInclusive: true,
@@ -1056,10 +1065,10 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
         `),
       });
 
-      await runStatements(fromTable.init());
-      await runStatements(groupedTable.init());
-      await runStatements(filterTable.init());
-      await runStatements(mappedAfterFilter.init());
+      await runStatements(fromTable.init(executionContext));
+      await runStatements(groupedTable.init(executionContext));
+      await runStatements(filterTable.init(executionContext));
+      await runStatements(mappedAfterFilter.init(executionContext));
 
       for (let step = 0; step < 28; step++) {
         const roll = rng();
@@ -1070,21 +1079,21 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
             value: Math.floor(rng() * 35) - 5,
           };
           sourceRows.set(rowIdentifier, rowData);
-          await runStatements(fromTable.setRow(rowIdentifier, expr(jsonbLiteral(rowData))));
+          await runStatements(fromTable.setRow(executionContext, rowIdentifier, expr(jsonbLiteral(rowData))));
         } else if (roll < 0.82) {
           const rowIdentifier = choose(rng, identifiers);
           sourceRows.delete(rowIdentifier);
-          await runStatements(fromTable.deleteRow(rowIdentifier));
+          await runStatements(fromTable.deleteRow(executionContext, rowIdentifier));
         } else if (roll < 0.9) {
           if (filterPipelineInitialized) {
-            await runStatements(mappedAfterFilter.delete());
-            await runStatements(filterTable.delete());
+            await runStatements(mappedAfterFilter.delete(executionContext));
+            await runStatements(filterTable.delete(executionContext));
             filterPipelineInitialized = false;
           }
         } else {
           if (!filterPipelineInitialized) {
-            await runStatements(filterTable.init());
-            await runStatements(mappedAfterFilter.init());
+            await runStatements(filterTable.init(executionContext));
+            await runStatements(mappedAfterFilter.init(executionContext));
             filterPipelineInitialized = true;
           }
         }
@@ -1104,20 +1113,20 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
 
           await assertTableMatches(groupedTable, expectedGrouped);
           if (filterPipelineInitialized) {
-            expect(await readBoolean(filterTable.isInitialized())).toBe(true);
-            expect(await readBoolean(mappedAfterFilter.isInitialized())).toBe(true);
+            expect(await readBoolean(filterTable.isInitialized(executionContext))).toBe(true);
+            expect(await readBoolean(mappedAfterFilter.isInitialized(executionContext))).toBe(true);
             await assertTableMatches(filterTable, expectedFiltered);
             await assertTableMatches(mappedAfterFilter, expectedMapped);
           } else {
-            expect(await readBoolean(filterTable.isInitialized())).toBe(false);
-            expect(await readBoolean(mappedAfterFilter.isInitialized())).toBe(false);
-            expect(await readRows(filterTable.listGroups({
+            expect(await readBoolean(filterTable.isInitialized(executionContext))).toBe(false);
+            expect(await readBoolean(mappedAfterFilter.isInitialized(executionContext))).toBe(false);
+            expect(await readRows(filterTable.listGroups(executionContext, {
               start: "start",
               end: "end",
               startInclusive: true,
               endInclusive: true,
             }))).toEqual([]);
-            expect(await readRows(mappedAfterFilter.listGroups({
+            expect(await readRows(mappedAfterFilter.listGroups(executionContext, {
               start: "start",
               end: "end",
               startInclusive: true,
@@ -1150,9 +1159,9 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
         limit: expr(`2`),
       });
 
-      await runStatements(fromTable.init());
-      await runStatements(groupedTable.init());
-      await runStatements(limitedByTeam.init());
+      await runStatements(fromTable.init(executionContext));
+      await runStatements(groupedTable.init(executionContext));
+      await runStatements(limitedByTeam.init(executionContext));
 
       for (let step = 0; step < 36; step++) {
         const roll = rng();
@@ -1163,19 +1172,19 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
             value: Math.floor(rng() * 100),
           };
           sourceRows.set(rowIdentifier, rowData);
-          await runStatements(fromTable.setRow(rowIdentifier, expr(jsonbLiteral(rowData))));
+          await runStatements(fromTable.setRow(executionContext, rowIdentifier, expr(jsonbLiteral(rowData))));
         } else if (roll < 0.86) {
           const rowIdentifier = choose(rng, identifiers);
           sourceRows.delete(rowIdentifier);
-          await runStatements(fromTable.deleteRow(rowIdentifier));
+          await runStatements(fromTable.deleteRow(executionContext, rowIdentifier));
         } else if (roll < 0.93) {
           if (limitInitialized) {
-            await runStatements(limitedByTeam.delete());
+            await runStatements(limitedByTeam.delete(executionContext));
             limitInitialized = false;
           }
         } else {
           if (!limitInitialized) {
-            await runStatements(limitedByTeam.init());
+            await runStatements(limitedByTeam.init(executionContext));
             limitInitialized = true;
           }
         }
@@ -1185,11 +1194,11 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
           const expectedLimited = limitGroups(expectedGrouped, 2);
           await assertTableMatches(groupedTable, expectedGrouped);
           if (limitInitialized) {
-            expect(await readBoolean(limitedByTeam.isInitialized())).toBe(true);
+            expect(await readBoolean(limitedByTeam.isInitialized(executionContext))).toBe(true);
             await assertTableMatches(limitedByTeam, expectedLimited);
           } else {
-            expect(await readBoolean(limitedByTeam.isInitialized())).toBe(false);
-            expect(await readRows(limitedByTeam.listGroups({
+            expect(await readBoolean(limitedByTeam.isInitialized(executionContext))).toBe(false);
+            expect(await readRows(limitedByTeam.listGroups(executionContext, {
               start: "start",
               end: "end",
               startInclusive: true,
@@ -1229,11 +1238,11 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
         tables: [groupedTableA, groupedTableB],
       });
 
-      await runStatements(fromTableA.init());
-      await runStatements(fromTableB.init());
-      await runStatements(groupedTableA.init());
-      await runStatements(groupedTableB.init());
-      await runStatements(concatenatedTable.init());
+      await runStatements(fromTableA.init(executionContext));
+      await runStatements(fromTableB.init(executionContext));
+      await runStatements(groupedTableA.init(executionContext));
+      await runStatements(groupedTableB.init(executionContext));
+      await runStatements(concatenatedTable.init(executionContext));
 
       for (let step = 0; step < 24; step++) {
         const roll = rng();
@@ -1250,28 +1259,28 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
               value: Math.floor(rng() * 60),
             };
             targetRows.set(rowIdentifier, rowData);
-            await runStatements(targetTable.setRow(rowIdentifier, expr(jsonbLiteral(rowData))));
+            await runStatements(targetTable.setRow(executionContext, rowIdentifier, expr(jsonbLiteral(rowData))));
           } else {
             const rowIdentifier = choose(rng, identifiers);
             targetRows.delete(rowIdentifier);
-            await runStatements(targetTable.deleteRow(rowIdentifier));
+            await runStatements(targetTable.deleteRow(executionContext, rowIdentifier));
           }
         } else if (roll < 0.90) {
           if (secondInputInitialized) {
-            await runStatements(groupedTableB.delete());
+            await runStatements(groupedTableB.delete(executionContext));
             secondInputInitialized = false;
           }
         } else if (roll < 0.95) {
           if (concatInitialized) {
-            await runStatements(concatenatedTable.delete());
+            await runStatements(concatenatedTable.delete(executionContext));
             concatInitialized = false;
           }
         } else {
           if (!secondInputInitialized) {
-            await runStatements(groupedTableB.init());
+            await runStatements(groupedTableB.init(executionContext));
             secondInputInitialized = true;
           } else if (!concatInitialized) {
-            await runStatements(concatenatedTable.init());
+            await runStatements(concatenatedTable.init(executionContext));
             concatInitialized = true;
           }
         }
@@ -1280,8 +1289,8 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
           const expectedA = computeTeamGroups(sourceRowsA);
           const expectedB = computeTeamGroups(sourceRowsB);
           if (!concatInitialized) {
-            expect(await readBoolean(concatenatedTable.isInitialized())).toBe(false);
-            const groups = await readRows(concatenatedTable.listGroups({
+            expect(await readBoolean(concatenatedTable.isInitialized(executionContext))).toBe(false);
+            const groups = await readRows(concatenatedTable.listGroups(executionContext, {
               start: "start",
               end: "end",
               startInclusive: true,
@@ -1289,10 +1298,10 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
             }));
             expect(groups).toEqual([]);
           } else if (secondInputInitialized) {
-            expect(await readBoolean(concatenatedTable.isInitialized())).toBe(true);
+            expect(await readBoolean(concatenatedTable.isInitialized(executionContext))).toBe(true);
             await assertTableMatches(concatenatedTable, concatGroups([expectedA, expectedB]));
           } else {
-            expect(await readBoolean(concatenatedTable.isInitialized())).toBe(true);
+            expect(await readBoolean(concatenatedTable.isInitialized(executionContext))).toBe(true);
             await assertTableMatches(concatenatedTable, concatGroups([expectedA]));
           }
         }
@@ -1322,9 +1331,9 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
         compareSortKeys: (a, b) => expr(`(((${a.sql}) #>> '{}')::int) - (((${b.sql}) #>> '{}')::int)`),
       });
 
-      await runStatements(fromTable.init());
-      await runStatements(groupedTable.init());
-      await runStatements(sortedTable.init());
+      await runStatements(fromTable.init(executionContext));
+      await runStatements(groupedTable.init(executionContext));
+      await runStatements(sortedTable.init(executionContext));
 
       for (let step = 0; step < 24; step++) {
         const roll = rng();
@@ -1335,19 +1344,19 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
             value: Math.floor(rng() * 80),
           };
           sourceRows.set(rowIdentifier, rowData);
-          await runStatements(fromTable.setRow(rowIdentifier, expr(jsonbLiteral(rowData))));
+          await runStatements(fromTable.setRow(executionContext, rowIdentifier, expr(jsonbLiteral(rowData))));
         } else if (roll < 0.86) {
           const rowIdentifier = choose(rng, identifiers);
           sourceRows.delete(rowIdentifier);
-          await runStatements(fromTable.deleteRow(rowIdentifier));
+          await runStatements(fromTable.deleteRow(executionContext, rowIdentifier));
         } else if (roll < 0.93) {
           if (sortInitialized) {
-            await runStatements(sortedTable.delete());
+            await runStatements(sortedTable.delete(executionContext));
             sortInitialized = false;
           }
         } else {
           if (!sortInitialized) {
-            await runStatements(sortedTable.init());
+            await runStatements(sortedTable.init(executionContext));
             sortInitialized = true;
           }
         }
@@ -1357,8 +1366,8 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
           await assertTableMatches(groupedTable, expectedGrouped);
 
           if (!sortInitialized) {
-            expect(await readBoolean(sortedTable.isInitialized())).toBe(false);
-            expect(await readRows(sortedTable.listGroups({
+            expect(await readBoolean(sortedTable.isInitialized(executionContext))).toBe(false);
+            expect(await readRows(sortedTable.listGroups(executionContext, {
               start: "start",
               end: "end",
               startInclusive: true,
@@ -1367,8 +1376,8 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
             continue;
           }
 
-          expect(await readBoolean(sortedTable.isInitialized())).toBe(true);
-          const actualRows = (await readRows(sortedTable.listRowsInGroup({
+          expect(await readBoolean(sortedTable.isInitialized(executionContext))).toBe(true);
+          const actualRows = (await readRows(sortedTable.listRowsInGroup(executionContext, {
             start: "start",
             end: "end",
             startInclusive: true,
@@ -1440,10 +1449,10 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
         `),
       });
 
-      await runStatements(fromTable.init());
-      await runStatements(groupedTable.init());
-      await runStatements(sortedTable.init());
-      await runStatements(lFoldTable.init());
+      await runStatements(fromTable.init(executionContext));
+      await runStatements(groupedTable.init(executionContext));
+      await runStatements(sortedTable.init(executionContext));
+      await runStatements(lFoldTable.init(executionContext));
 
       for (let step = 0; step < 30; step++) {
         const roll = rng();
@@ -1454,18 +1463,18 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
             value: Math.floor(rng() * 90),
           };
           sourceRows.set(rowIdentifier, rowData);
-          await runStatements(fromTable.setRow(rowIdentifier, expr(jsonbLiteral(rowData))));
+          await runStatements(fromTable.setRow(executionContext, rowIdentifier, expr(jsonbLiteral(rowData))));
         } else if (roll < 0.86) {
           const rowIdentifier = choose(rng, identifiers);
           sourceRows.delete(rowIdentifier);
-          await runStatements(fromTable.deleteRow(rowIdentifier));
+          await runStatements(fromTable.deleteRow(executionContext, rowIdentifier));
         } else if (roll < 0.93) {
           if (lFoldInitialized) {
-            await runStatements(lFoldTable.delete());
+            await runStatements(lFoldTable.delete(executionContext));
             lFoldInitialized = false;
           }
         } else if (!lFoldInitialized) {
-          await runStatements(lFoldTable.init());
+          await runStatements(lFoldTable.init(executionContext));
           lFoldInitialized = true;
         }
 
@@ -1474,7 +1483,7 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
           await assertTableMatches(groupedTable, expectedGrouped);
 
           const expectedSortedRows = sortedRowsForGroups(expectedGrouped);
-          const actualSortedRows = (await readRows(sortedTable.listRowsInGroup({
+          const actualSortedRows = (await readRows(sortedTable.listRowsInGroup(executionContext, {
             start: "start",
             end: "end",
             startInclusive: true,
@@ -1501,8 +1510,8 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
           expect(actualSortedRows).toEqual(sortedExpectedRows);
 
           if (!lFoldInitialized) {
-            expect(await readBoolean(lFoldTable.isInitialized())).toBe(false);
-            expect(await readRows(lFoldTable.listGroups({
+            expect(await readBoolean(lFoldTable.isInitialized(executionContext))).toBe(false);
+            expect(await readRows(lFoldTable.listGroups(executionContext, {
               start: "start",
               end: "end",
               startInclusive: true,
@@ -1511,9 +1520,9 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
             continue;
           }
 
-          expect(await readBoolean(lFoldTable.isInitialized())).toBe(true);
+          expect(await readBoolean(lFoldTable.isInitialized(executionContext))).toBe(true);
           await assertTableMatches(lFoldTable, lFoldGroupsForSortedInput(expectedGrouped));
-          const actualFoldRows = (await readRows(lFoldTable.listRowsInGroup({
+          const actualFoldRows = (await readRows(lFoldTable.listRowsInGroup(executionContext, {
             start: "start",
             end: "end",
             startInclusive: true,
@@ -1571,9 +1580,9 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
         `),
       });
 
-      await runStatements(fromTable.init());
-      await runStatements(groupedTable.init());
-      await runStatements(timeFoldTable.init());
+      await runStatements(fromTable.init(executionContext));
+      await runStatements(groupedTable.init(executionContext));
+      await runStatements(timeFoldTable.init(executionContext));
 
       for (let step = 0; step < 32; step++) {
         const roll = rng();
@@ -1584,18 +1593,18 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
             value: Math.floor(rng() * 90),
           };
           sourceRows.set(rowIdentifier, rowData);
-          await runStatements(fromTable.setRow(rowIdentifier, expr(jsonbLiteral(rowData))));
+          await runStatements(fromTable.setRow(executionContext, rowIdentifier, expr(jsonbLiteral(rowData))));
         } else if (roll < 0.86) {
           const rowIdentifier = choose(rng, identifiers);
           sourceRows.delete(rowIdentifier);
-          await runStatements(fromTable.deleteRow(rowIdentifier));
+          await runStatements(fromTable.deleteRow(executionContext, rowIdentifier));
         } else if (roll < 0.93) {
           if (timeFoldInitialized) {
-            await runStatements(timeFoldTable.delete());
+            await runStatements(timeFoldTable.delete(executionContext));
             timeFoldInitialized = false;
           }
         } else if (!timeFoldInitialized) {
-          await runStatements(timeFoldTable.init());
+          await runStatements(timeFoldTable.init(executionContext));
           timeFoldInitialized = true;
         }
 
@@ -1604,8 +1613,8 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
           await assertTableMatches(groupedTable, expectedGrouped);
 
           if (!timeFoldInitialized) {
-            expect(await readBoolean(timeFoldTable.isInitialized())).toBe(false);
-            expect(await readRows(timeFoldTable.listGroups({
+            expect(await readBoolean(timeFoldTable.isInitialized(executionContext))).toBe(false);
+            expect(await readRows(timeFoldTable.listGroups(executionContext, {
               start: "start",
               end: "end",
               startInclusive: true,
@@ -1620,7 +1629,7 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
             continue;
           }
 
-          expect(await readBoolean(timeFoldTable.isInitialized())).toBe(true);
+          expect(await readBoolean(timeFoldTable.isInitialized(executionContext))).toBe(true);
           await assertTableMatches(timeFoldTable, timeFoldGroupsForSourceInput(expectedGrouped));
 
           const queueRowsRaw = await sql<Array<Record<string, unknown>>>`
@@ -1709,11 +1718,11 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
         rightJoinKey: { type: "mapper", sql: `(("rowData"->>'threshold')::int) AS "joinKey"` },
       });
 
-      await runStatements(fromTable.init());
-      await runStatements(joinTable.init());
-      await runStatements(groupedFromTable.init());
-      await runStatements(groupedJoinTable.init());
-      await runStatements(leftJoinedTable.init());
+      await runStatements(fromTable.init(executionContext));
+      await runStatements(joinTable.init(executionContext));
+      await runStatements(groupedFromTable.init(executionContext));
+      await runStatements(groupedJoinTable.init(executionContext));
+      await runStatements(leftJoinedTable.init(executionContext));
 
       for (let step = 0; step < 36; step++) {
         const roll = rng();
@@ -1724,11 +1733,11 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
             value: Math.floor(rng() * 90),
           };
           sourceRows.set(rowIdentifier, rowData);
-          await runStatements(fromTable.setRow(rowIdentifier, expr(jsonbLiteral(rowData))));
+          await runStatements(fromTable.setRow(executionContext, rowIdentifier, expr(jsonbLiteral(rowData))));
         } else if (roll < 0.56) {
           const rowIdentifier = choose(rng, userIdentifiers);
           sourceRows.delete(rowIdentifier);
-          await runStatements(fromTable.deleteRow(rowIdentifier));
+          await runStatements(fromTable.deleteRow(executionContext, rowIdentifier));
         } else if (roll < 0.82) {
           const rowIdentifier = choose(rng, ruleIdentifiers);
           const rowData: JoinRuleRow = {
@@ -1737,18 +1746,18 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
             label: choose(rng, labels),
           };
           ruleRows.set(rowIdentifier, rowData);
-          await runStatements(joinTable.setRow(rowIdentifier, expr(jsonbLiteral(rowData))));
+          await runStatements(joinTable.setRow(executionContext, rowIdentifier, expr(jsonbLiteral(rowData))));
         } else if (roll < 0.90) {
           const rowIdentifier = choose(rng, ruleIdentifiers);
           ruleRows.delete(rowIdentifier);
-          await runStatements(joinTable.deleteRow(rowIdentifier));
+          await runStatements(joinTable.deleteRow(executionContext, rowIdentifier));
         } else if (roll < 0.95) {
           if (leftJoinInitialized) {
-            await runStatements(leftJoinedTable.delete());
+            await runStatements(leftJoinedTable.delete(executionContext));
             leftJoinInitialized = false;
           }
         } else if (!leftJoinInitialized) {
-          await runStatements(leftJoinedTable.init());
+          await runStatements(leftJoinedTable.init(executionContext));
           leftJoinInitialized = true;
         }
 
@@ -1759,8 +1768,8 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
           await assertTableMatches(groupedJoinTable, expectedGroupedJoin);
 
           if (!leftJoinInitialized) {
-            expect(await readBoolean(leftJoinedTable.isInitialized())).toBe(false);
-            expect(await readRows(leftJoinedTable.listGroups({
+            expect(await readBoolean(leftJoinedTable.isInitialized(executionContext))).toBe(false);
+            expect(await readRows(leftJoinedTable.listGroups(executionContext, {
               start: "start",
               end: "end",
               startInclusive: true,
@@ -1769,7 +1778,7 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
             continue;
           }
 
-          expect(await readBoolean(leftJoinedTable.isInitialized())).toBe(true);
+          expect(await readBoolean(leftJoinedTable.isInitialized(executionContext))).toBe(true);
           const expectedLeftJoined = leftJoinGroups(
             expectedGroupedFrom,
             expectedGroupedJoin,
@@ -1815,10 +1824,10 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
         `),
       });
 
-      await runStatements(fromTable.init());
-      await runStatements(groupedTable.init());
-      await runStatements(mapTableA.init());
-      await runStatements(mapTableB.init());
+      await runStatements(fromTable.init(executionContext));
+      await runStatements(groupedTable.init(executionContext));
+      await runStatements(mapTableA.init(executionContext));
+      await runStatements(mapTableB.init(executionContext));
 
       for (let step = 0; step < 50; step++) {
         const roll = rng();
@@ -1829,29 +1838,29 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
             value: Math.floor(rng() * 40),
           };
           sourceRows.set(rowIdentifier, rowData);
-          await runStatements(fromTable.setRow(rowIdentifier, expr(jsonbLiteral(rowData))));
+          await runStatements(fromTable.setRow(executionContext, rowIdentifier, expr(jsonbLiteral(rowData))));
         } else if (roll < 0.82) {
           const rowIdentifier = choose(rng, identifiers);
           sourceRows.delete(rowIdentifier);
-          await runStatements(fromTable.deleteRow(rowIdentifier));
+          await runStatements(fromTable.deleteRow(executionContext, rowIdentifier));
         } else if (roll < 0.9) {
           if (mapAInitialized) {
-            await runStatements(mapTableA.delete());
+            await runStatements(mapTableA.delete(executionContext));
             mapAInitialized = false;
           }
         } else if (roll < 0.94) {
           if (!mapAInitialized) {
-            await runStatements(mapTableA.init());
+            await runStatements(mapTableA.init(executionContext));
             mapAInitialized = true;
           }
         } else if (roll < 0.98) {
           if (mapBInitialized) {
-            await runStatements(mapTableB.delete());
+            await runStatements(mapTableB.delete(executionContext));
             mapBInitialized = false;
           }
         } else {
           if (!mapBInitialized) {
-            await runStatements(mapTableB.init());
+            await runStatements(mapTableB.init(executionContext));
             mapBInitialized = true;
           }
         }
@@ -1869,11 +1878,11 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
         }));
 
         if (mapAInitialized) {
-          expect(await readBoolean(mapTableA.isInitialized())).toBe(true);
+          expect(await readBoolean(mapTableA.isInitialized(executionContext))).toBe(true);
           await assertTableMatches(mapTableA, expectedMapA);
         } else {
-          expect(await readBoolean(mapTableA.isInitialized())).toBe(false);
-          const groups = await readRows(mapTableA.listGroups({
+          expect(await readBoolean(mapTableA.isInitialized(executionContext))).toBe(false);
+          const groups = await readRows(mapTableA.listGroups(executionContext, {
             start: "start",
             end: "end",
             startInclusive: true,
@@ -1883,11 +1892,11 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
         }
 
         if (mapBInitialized) {
-          expect(await readBoolean(mapTableB.isInitialized())).toBe(true);
+          expect(await readBoolean(mapTableB.isInitialized(executionContext))).toBe(true);
           await assertTableMatches(mapTableB, expectedMapB);
         } else {
-          expect(await readBoolean(mapTableB.isInitialized())).toBe(false);
-          const groups = await readRows(mapTableB.listGroups({
+          expect(await readBoolean(mapTableB.isInitialized(executionContext))).toBe(false);
+          const groups = await readRows(mapTableB.listGroups(executionContext, {
             start: "start",
             end: "end",
             startInclusive: true,
@@ -1953,10 +1962,10 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
         `),
       });
 
-      await runStatements(fromTable.init());
-      await runStatements(groupedTable.init());
-      await runStatements(flatMapA.init());
-      await runStatements(flatMapB.init());
+      await runStatements(fromTable.init(executionContext));
+      await runStatements(groupedTable.init(executionContext));
+      await runStatements(flatMapA.init(executionContext));
+      await runStatements(flatMapB.init(executionContext));
 
       for (let step = 0; step < 55; step++) {
         const roll = rng();
@@ -1967,29 +1976,29 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
             value: Math.floor(rng() * 50) - 10,
           };
           sourceRows.set(rowIdentifier, rowData);
-          await runStatements(fromTable.setRow(rowIdentifier, expr(jsonbLiteral(rowData))));
+          await runStatements(fromTable.setRow(executionContext, rowIdentifier, expr(jsonbLiteral(rowData))));
         } else if (roll < 0.82) {
           const rowIdentifier = choose(rng, identifiers);
           sourceRows.delete(rowIdentifier);
-          await runStatements(fromTable.deleteRow(rowIdentifier));
+          await runStatements(fromTable.deleteRow(executionContext, rowIdentifier));
         } else if (roll < 0.9) {
           if (flatAInitialized) {
-            await runStatements(flatMapA.delete());
+            await runStatements(flatMapA.delete(executionContext));
             flatAInitialized = false;
           }
         } else if (roll < 0.94) {
           if (!flatAInitialized) {
-            await runStatements(flatMapA.init());
+            await runStatements(flatMapA.init(executionContext));
             flatAInitialized = true;
           }
         } else if (roll < 0.98) {
           if (flatBInitialized) {
-            await runStatements(flatMapB.delete());
+            await runStatements(flatMapB.delete(executionContext));
             flatBInitialized = false;
           }
         } else {
           if (!flatBInitialized) {
-            await runStatements(flatMapB.init());
+            await runStatements(flatMapB.init(executionContext));
             flatBInitialized = true;
           }
         }
@@ -2024,11 +2033,11 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
         });
 
         if (flatAInitialized) {
-          expect(await readBoolean(flatMapA.isInitialized())).toBe(true);
+          expect(await readBoolean(flatMapA.isInitialized(executionContext))).toBe(true);
           await assertTableMatches(flatMapA, expectedFlatA);
         } else {
-          expect(await readBoolean(flatMapA.isInitialized())).toBe(false);
-          const groups = await readRows(flatMapA.listGroups({
+          expect(await readBoolean(flatMapA.isInitialized(executionContext))).toBe(false);
+          const groups = await readRows(flatMapA.listGroups(executionContext, {
             start: "start",
             end: "end",
             startInclusive: true,
@@ -2038,11 +2047,11 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
         }
 
         if (flatBInitialized) {
-          expect(await readBoolean(flatMapB.isInitialized())).toBe(true);
+          expect(await readBoolean(flatMapB.isInitialized(executionContext))).toBe(true);
           await assertTableMatches(flatMapB, expectedFlatB);
         } else {
-          expect(await readBoolean(flatMapB.isInitialized())).toBe(false);
-          const groups = await readRows(flatMapB.listGroups({
+          expect(await readBoolean(flatMapB.isInitialized(executionContext))).toBe(false);
+          const groups = await readRows(flatMapB.listGroups(executionContext, {
             start: "start",
             end: "end",
             startInclusive: true,
@@ -2091,11 +2100,11 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
         partitionKey: "itemId",
       });
 
-      await runStatements(entriesTable.init());
-      await runStatements(boundariesTable.init());
-      await runStatements(entriesSorted.init());
-      await runStatements(boundariesSorted.init());
-      await runStatements(compacted.init());
+      await runStatements(entriesTable.init(executionContext));
+      await runStatements(boundariesTable.init(executionContext));
+      await runStatements(entriesSorted.init(executionContext));
+      await runStatements(boundariesSorted.init(executionContext));
+      await runStatements(compacted.init(executionContext));
 
       function computeExpectedCompaction(): Map<string, { itemId: string, quantity: number, t: number }> {
         const entryList = [...sourceEntries.values()].sort((a, b) => a.t - b.t);
@@ -2135,25 +2144,25 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
           const id = choose(rng, entryIds);
           const data = { itemId: choose(rng, items), quantity: Math.floor(rng() * 50) + 1, t: Math.floor(rng() * 100) };
           sourceEntries.set(id, data);
-          await runStatements(entriesTable.setRow(id, { type: "expression", sql: jsonbLiteral(data) }));
+          await runStatements(entriesTable.setRow(executionContext, id, { type: "expression", sql: jsonbLiteral(data) }));
         } else if (roll < 0.70) {
           const id = choose(rng, entryIds);
           sourceEntries.delete(id);
-          await runStatements(entriesTable.deleteRow(id));
+          await runStatements(entriesTable.deleteRow(executionContext, id));
         } else if (roll < 0.90) {
           const id = choose(rng, boundaryIds);
           const data = { t: Math.floor(rng() * 100) };
           sourceBoundaries.set(id, data);
-          await runStatements(boundariesTable.setRow(id, { type: "expression", sql: jsonbLiteral(data) }));
+          await runStatements(boundariesTable.setRow(executionContext, id, { type: "expression", sql: jsonbLiteral(data) }));
         } else {
           const id = choose(rng, boundaryIds);
           sourceBoundaries.delete(id);
-          await runStatements(boundariesTable.deleteRow(id));
+          await runStatements(boundariesTable.deleteRow(executionContext, id));
         }
 
         if (step % 5 === 0 || step === 39) {
           const expected = computeExpectedCompaction();
-          const actual = await readRows(compacted.listRowsInGroup({
+          const actual = await readRows(compacted.listRowsInGroup(executionContext, {
             start: "start",
             end: "end",
             startInclusive: true,
@@ -2202,9 +2211,9 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
         ` },
       });
 
-      await runStatements(fromTable.init());
-      await runStatements(groupedTable.init());
-      await runStatements(reducedTable.init());
+      await runStatements(fromTable.init(executionContext));
+      await runStatements(groupedTable.init(executionContext));
+      await runStatements(reducedTable.init(executionContext));
 
       function computeExpectedReduced(): Map<string, { team: string | null, total: number }> {
         const groups = new Map<string, { team: string | null, total: number }>();
@@ -2229,19 +2238,19 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
             value: Math.floor(rng() * 50) - 10,
           };
           sourceRows.set(rowIdentifier, rowData);
-          await runStatements(fromTable.setRow(rowIdentifier, { type: "expression", sql: jsonbLiteral(rowData) }));
+          await runStatements(fromTable.setRow(executionContext, rowIdentifier, { type: "expression", sql: jsonbLiteral(rowData) }));
         } else if (roll < 0.80) {
           const rowIdentifier = choose(rng, identifiers);
           sourceRows.delete(rowIdentifier);
-          await runStatements(fromTable.deleteRow(rowIdentifier));
+          await runStatements(fromTable.deleteRow(executionContext, rowIdentifier));
         } else if (roll < 0.90) {
           if (reduceInitialized) {
-            await runStatements(reducedTable.delete());
+            await runStatements(reducedTable.delete(executionContext));
             reduceInitialized = false;
           }
         } else {
           if (!reduceInitialized) {
-            await runStatements(reducedTable.init());
+            await runStatements(reducedTable.init(executionContext));
             reduceInitialized = true;
           }
         }
@@ -2249,7 +2258,7 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
         if (step % 5 === 0 || step === 49) {
           if (reduceInitialized) {
             const expected = computeExpectedReduced();
-            const actual = await readRows(reducedTable.listRowsInGroup({
+            const actual = await readRows(reducedTable.listRowsInGroup(executionContext, {
               start: "start",
               end: "end",
               startInclusive: true,
@@ -2263,8 +2272,8 @@ describe.sequential("bulldozer db fuzz composition (real postgres)", () => {
 
             expect(actualSorted).toEqual(expectedSorted);
           } else {
-            expect(await readBoolean(reducedTable.isInitialized())).toBe(false);
-            expect(await readRows(reducedTable.listGroups({
+            expect(await readBoolean(reducedTable.isInitialized(executionContext))).toBe(false);
+            expect(await readRows(reducedTable.listGroups(executionContext, {
               start: "start",
               end: "end",
               startInclusive: true,

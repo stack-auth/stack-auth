@@ -1,5 +1,5 @@
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import type { Table } from "..";
+import { getBulldozerExecutionContext } from "../execution-context";
 import { attachRowChangeTriggerMetadata, normalizeRowChangeTrigger } from "../row-change-trigger-dispatch";
 import type { RegisteredRowChangeTrigger } from "../row-change-trigger-dispatch";
 import type { Json, RowData, RowIdentifier, SqlExpression, SqlMapper, SqlStatement, TableId } from "../utilities";
@@ -53,6 +53,7 @@ export function declareLFoldTable<
   reducer: SqlMapper<{ oldState: S, oldRowData: OldRD }, { newState: S, newRowsData: NewRD[] }>,
 }): Table<GK, SK, NewRD> {
   const triggers = new Map<string, RegisteredRowChangeTrigger>();
+  let triggerRegistrationCount = 0;
   const fromTableOperator = (
     "operator" in options.fromTable.debugArgs
     && typeof options.fromTable.debugArgs.operator === "string"
@@ -109,19 +110,22 @@ export function declareLFoldTable<
     }
   `;
 
-  const createSourceSortTriggerStatements = (fromChangesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => {
-    const normalizedChangesTableName = `normalized_changes_${generateSecureRandomString()}`;
-    const boundaryCandidatesTableName = `boundary_candidates_${generateSecureRandomString()}`;
-    const earliestBoundaryCandidatesTableName = `earliest_boundary_candidates_${generateSecureRandomString()}`;
-    const touchedGroupsTableName = `touched_groups_${generateSecureRandomString()}`;
-    const currentSourceRowsTableName = `current_source_rows_${generateSecureRandomString()}`;
-    const affectedSourceRowsTableName = `affected_source_rows_${generateSecureRandomString()}`;
-    const firstAffectedRowsTableName = `first_affected_rows_${generateSecureRandomString()}`;
-    const rowsToClearTableName = `rows_to_clear_${generateSecureRandomString()}`;
-    const oldFoldRowsTableName = `old_fold_rows_${generateSecureRandomString()}`;
-    const recomputedSourceStatesTableName = `recomputed_source_states_${generateSecureRandomString()}`;
-    const newFoldRowsTableName = `new_fold_rows_${generateSecureRandomString()}`;
-    const lfoldChangesTableName = `lfold_changes_${generateSecureRandomString()}`;
+  const createSourceSortTriggerStatements = (
+    fromChangesTable: SqlExpression<{ __brand: "$SQL_Table" }>,
+    ctx: { generateDeterministicUniqueString: () => string },
+  ) => {
+    const normalizedChangesTableName = `normalized_changes_${ctx.generateDeterministicUniqueString()}`;
+    const boundaryCandidatesTableName = `boundary_candidates_${ctx.generateDeterministicUniqueString()}`;
+    const earliestBoundaryCandidatesTableName = `earliest_boundary_candidates_${ctx.generateDeterministicUniqueString()}`;
+    const touchedGroupsTableName = `touched_groups_${ctx.generateDeterministicUniqueString()}`;
+    const currentSourceRowsTableName = `current_source_rows_${ctx.generateDeterministicUniqueString()}`;
+    const affectedSourceRowsTableName = `affected_source_rows_${ctx.generateDeterministicUniqueString()}`;
+    const firstAffectedRowsTableName = `first_affected_rows_${ctx.generateDeterministicUniqueString()}`;
+    const rowsToClearTableName = `rows_to_clear_${ctx.generateDeterministicUniqueString()}`;
+    const oldFoldRowsTableName = `old_fold_rows_${ctx.generateDeterministicUniqueString()}`;
+    const recomputedSourceStatesTableName = `recomputed_source_states_${ctx.generateDeterministicUniqueString()}`;
+    const newFoldRowsTableName = `new_fold_rows_${ctx.generateDeterministicUniqueString()}`;
+    const lfoldChangesTableName = `lfold_changes_${ctx.generateDeterministicUniqueString()}`;
 
     return [
       sqlQuery`
@@ -493,7 +497,7 @@ export function declareLFoldTable<
     ];
   };
   const sourceSortTrigger = attachRowChangeTriggerMetadata(
-    (fromChangesTable) => createSourceSortTriggerStatements(fromChangesTable),
+    (ctx, fromChangesTable) => createSourceSortTriggerStatements(fromChangesTable, getBulldozerExecutionContext(ctx)),
     {
       targetTableId: tableIdToDebugString(options.tableId),
       targetTableTriggers: triggers,
@@ -513,10 +517,11 @@ export function declareLFoldTable<
     },
     compareGroupKeys: options.fromTable.compareGroupKeys,
     compareSortKeys: options.fromTable.compareSortKeys,
-    init: () => {
-      const firstSourceRowsTableName = `first_source_rows_${generateSecureRandomString()}`;
-      const recomputedSourceStatesTableName = `recomputed_source_states_${generateSecureRandomString()}`;
-      const newFoldRowsTableName = `new_fold_rows_${generateSecureRandomString()}`;
+    init: (ctx) => {
+      const executionCtx = getBulldozerExecutionContext(ctx);
+      const firstSourceRowsTableName = `first_source_rows_${executionCtx.generateDeterministicUniqueString()}`;
+      const recomputedSourceStatesTableName = `recomputed_source_states_${executionCtx.generateDeterministicUniqueString()}`;
+      const newFoldRowsTableName = `new_fold_rows_${executionCtx.generateDeterministicUniqueString()}`;
       return [
         sqlStatement`
           INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
@@ -527,7 +532,7 @@ export function declareLFoldTable<
           (gen_random_uuid(), ${groupsPath}, 'null'::jsonb),
           (gen_random_uuid(), ${getStorageEnginePath(options.tableId, ["metadata"])}, '{ "version": 1 }'::jsonb)
         `,
-        ...(reusesInputSortTable ? [] : sourceSortTable.init()),
+        ...(reusesInputSortTable ? [] : sourceSortTable.init(executionCtx)),
         sqlQuery`
           SELECT
             "groupPath"."keyPath"[cardinality("groupPath"."keyPath")] AS "groupKey",
@@ -698,7 +703,7 @@ export function declareLFoldTable<
         `,
       ];
     },
-    delete: () => {
+    delete: (_ctx) => {
       return [sqlStatement`
         WITH RECURSIVE "pathsToDelete" AS (
           SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
@@ -711,8 +716,8 @@ export function declareLFoldTable<
         WHERE "keyPath" IN (SELECT "path" FROM "pathsToDelete")
       `];
     },
-    isInitialized: () => isInitializedExpression,
-    listGroups: ({ start, end, startInclusive, endInclusive }) => sqlQuery`
+    isInitialized: (_ctx) => isInitializedExpression,
+    listGroups: (_ctx, { start, end, startInclusive, endInclusive }) => sqlQuery`
       SELECT "groupPath"."keyPath"[cardinality("groupPath"."keyPath")] AS groupKey
       FROM "BulldozerStorageEngine" AS "groupPath"
       WHERE "groupPath"."keyPathParent" = ${groupsPath}::jsonb[]
@@ -739,13 +744,13 @@ export function declareLFoldTable<
               : sqlExpression`${options.fromTable.compareGroupKeys(sqlExpression`"groupPath"."keyPath"[cardinality("groupPath"."keyPath")]`, end)} < 0`
         }
     `,
-    listRowsInGroup: ({ groupKey, start, end, startInclusive, endInclusive }) => groupKey ? sqlQuery`
+    listRowsInGroup: (ctx, { groupKey, start, end, startInclusive, endInclusive }) => groupKey ? sqlQuery`
       WITH "orderedSourceRows" AS (
         SELECT
           row_number() OVER () AS "rowOrder",
           "sourceRows"."rowidentifier" AS "rowIdentifier"
         FROM (
-          ${sourceSortTable.listRowsInGroup({
+          ${sourceSortTable.listRowsInGroup(ctx, {
             groupKey,
             start,
             end,
@@ -791,15 +796,17 @@ export function declareLFoldTable<
       ORDER BY groupKey ASC, rowSortKey ASC, rowIdentifier ASC
     `,
     registerRowChangeTrigger: (trigger) => {
-      const id = generateSecureRandomString();
+      const id = `trigger_registration_${triggerRegistrationCount.toString(36).padStart(10, "0")}`;
+      triggerRegistrationCount++;
       triggers.set(id, normalizeRowChangeTrigger(trigger));
       return { deregister: () => triggers.delete(id) };
     },
-    verifyDataIntegrity: () => {
-      const allInputGroups = options.fromTable.listGroups({
+    verifyDataIntegrity: (ctx) => {
+      const executionCtx = getBulldozerExecutionContext(ctx);
+      const allInputGroups = options.fromTable.listGroups(executionCtx, {
         start: "start", end: "end", startInclusive: true, endInclusive: true,
       });
-      const allActualGroups = table.listGroups({
+      const allActualGroups = table.listGroups(executionCtx, {
         start: "start", end: "end", startInclusive: true, endInclusive: true,
       });
       return sqlQuery`

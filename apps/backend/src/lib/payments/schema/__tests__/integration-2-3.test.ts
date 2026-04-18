@@ -11,7 +11,8 @@
  * per-customer LFold grouping — no beforeEach reinit needed.
  */
 
-import { describe, beforeAll, afterAll, it, expect } from "vitest";
+import { describe, beforeAll, beforeEach, afterAll, it, expect } from "vitest";
+import { createBulldozerExecutionContext, type BulldozerExecutionContext } from "@/lib/bulldozer/db/index";
 import { createPaymentsSchema } from "../index";
 import { createTestDb, jsonbExpr } from "./test-helpers";
 
@@ -19,9 +20,10 @@ describe.sequential("payments schema integration phase 2→3 (real postgres)", (
   const db = createTestDb();
   const { runStatements, readRows } = db;
   const schema = createPaymentsSchema();
+  let executionContext = createBulldozerExecutionContext();
 
-  const getRowsForTenancy = async (table: { listRowsInGroup: (opts: any) => any }, tenancyId: string) => {
-    const rows = await readRows(table.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+  const getRowsForTenancy = async (table: { listRowsInGroup: (ctx: BulldozerExecutionContext, opts: any) => any }, tenancyId: string) => {
+    const rows = await readRows(table.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true }));
     return rows.map((r: any) => r.rowdata).filter((r: any) => r.tenancyId === tenancyId);
   };
 
@@ -30,7 +32,7 @@ describe.sequential("payments schema integration phase 2→3 (real postgres)", (
     quantity?: number,
     includedItems?: Record<string, unknown>,
     createdAtMillis: number,
-  }) => schema.oneTimePurchases.setRow(id, jsonbExpr({
+  }) => schema.oneTimePurchases.setRow(executionContext, id, jsonbExpr({
     id,
     tenancyId,
     customerId,
@@ -53,7 +55,7 @@ describe.sequential("payments schema integration phase 2→3 (real postgres)", (
   }));
 
   const makeRefund = (id: string, tenancyId: string, customerId: string, entries: unknown[], effectiveAtMillis: number) =>
-    schema.manualTransactions.setRow(id, jsonbExpr({
+    schema.manualTransactions.setRow(executionContext, id, jsonbExpr({
       txnId: `refund:${id}`,
       tenancyId,
       type: "refund",
@@ -65,10 +67,14 @@ describe.sequential("payments schema integration phase 2→3 (real postgres)", (
       entries,
     }));
 
+  beforeEach(() => {
+    executionContext = createBulldozerExecutionContext();
+  });
+
   beforeAll(async () => {
     await db.setup();
     for (const table of schema._allTables) {
-      await runStatements(table.init());
+      await runStatements(table.init(executionContext));
     }
   }, 30_000);
 
@@ -133,7 +139,7 @@ describe.sequential("payments schema integration phase 2→3 (real postgres)", (
 
   it("should key inline products (null productId) under '__null__' in ownedProducts", async () => {
     const t = "t1";
-    await runStatements(schema.oneTimePurchases.setRow("otp-inline", jsonbExpr({
+    await runStatements(schema.oneTimePurchases.setRow(executionContext, "otp-inline", jsonbExpr({
       id: "otp-inline",
       tenancyId: t,
       customerId: "u1",
@@ -241,7 +247,7 @@ describe.sequential("payments schema integration phase 2→3 (real postgres)", (
       includedItems: { [item]: { quantity: 100, expires: "never" } },
       createdAtMillis: 1000,
     }));
-    await runStatements(schema.manualItemQuantityChanges.setRow(`iqc-${t}`, jsonbExpr({
+    await runStatements(schema.manualItemQuantityChanges.setRow(executionContext, `iqc-${t}`, jsonbExpr({
       id: `iqc-${t}`,
       tenancyId: t,
       customerId: "u1",
@@ -291,7 +297,7 @@ describe.sequential("payments schema integration phase 2→3 (real postgres)", (
       includedItems: { coins: { quantity: 100, expires: "never" } },
       createdAtMillis: 1000,
     }));
-    await runStatements(schema.manualItemQuantityChanges.setRow("iqc-iso-c1", jsonbExpr({
+    await runStatements(schema.manualItemQuantityChanges.setRow(executionContext, "iqc-iso-c1", jsonbExpr({
       id: "iqc-iso-c1",
       tenancyId: t,
       customerId: "customer-A",
@@ -302,7 +308,7 @@ describe.sequential("payments schema integration phase 2→3 (real postgres)", (
       expiresAtMillis: null,
       createdAtMillis: 1100,
     })));
-    await runStatements(schema.manualItemQuantityChanges.setRow("iqc-iso-c2", jsonbExpr({
+    await runStatements(schema.manualItemQuantityChanges.setRow(executionContext, "iqc-iso-c2", jsonbExpr({
       id: "iqc-iso-c2",
       tenancyId: t,
       customerId: "customer-B",
