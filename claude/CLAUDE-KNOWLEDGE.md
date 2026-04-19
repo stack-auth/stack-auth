@@ -374,3 +374,6 @@ A: Function parameter types are checked contravariantly, so helper signatures li
 
 Q: What breaks when bulldozer tests stop using `bindTableToExecutionContext` wrappers?
 A: Any trigger callbacks written as `(changesTable) => ...` can fail against the strict `RowChangeTriggerInput` signature once wrappers are removed. Update those callbacks to explicit two-arg form like `(_ctx, changesTable) => ...`, and make helper types (for example table facades and lifecycle instrumentation helpers) use ctx-first method signatures so all table API calls pass `executionContext` explicitly.
+
+Q: How should `x-stack-override-error-status` behave in backend smart responses?
+A: In `apps/backend/src/route-handlers/smart-response.tsx`, only override `4xx` responses to `200` with `x-stack-actual-status`. Do not override `5xx`, so infrastructure/runtime failures still surface as real server errors.
