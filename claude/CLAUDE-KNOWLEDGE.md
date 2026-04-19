@@ -383,3 +383,6 @@ A: Next.js dev app-page runtimes (`app-page*.runtime.dev.js`) include their own 
 
 Q: How can we replace the huge `next@16.1.7` patch file with a resilient install-time rewrite?
 A: Use a strict root `postinstall` script that rewrites only Next `>=16` app-page dev runtime bundles (`app-page*.runtime.dev.js`) from `doNotLimit=new WeakSet;async_hooks.createHook(` to the guarded `STACK_DISABLE_REACT_ASYNC_DEBUG_INFO` form. Guardrails should fail loud on marker mismatches, mixed guarded/unguarded states, replacement counts not equal to one, or missing runtime fingerprints; the script should also be idempotent (`patched=0, alreadyPatched>0` on second run).
+
+Q: Why can Turbo-pruned Docker builds fail with `Cannot find module /app/scripts/postinstall-patch-next-async-debug-info.mjs` during `pnpm install`?
+A: In pruned builder stages, we copy `/app/out/json` and run `pnpm install` before copying `/app/out/full`. The root `package.json` still runs `postinstall: node ./scripts/postinstall-patch-next-async-debug-info.mjs`, but that script is not present yet. Fix by copying `scripts/postinstall-patch-next-async-debug-info.mjs` into the builder stage before `pnpm install` (for all Dockerfiles using the prune pattern).
