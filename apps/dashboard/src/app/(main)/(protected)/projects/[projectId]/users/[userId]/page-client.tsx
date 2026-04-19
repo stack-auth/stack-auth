@@ -84,12 +84,12 @@ function UserHeader({ user }: UserHeaderProps) {
   const stackAdminApp = useAdminApp();
 
   return (
-    <div className="flex gap-4 items-center">
-      <Avatar className="w-20 h-20">
+    <div className="flex min-w-0 flex-1 gap-4 items-center">
+      <Avatar className="w-20 h-20 shrink-0">
         <AvatarImage src={user.profileImageUrl ?? undefined} alt={name} />
         <AvatarFallback>{name.slice(0, 2)}</AvatarFallback>
       </Avatar>
-      <div className="flex-grow">
+      <div className="min-w-0 flex-1">
         <EditableInput
           value={name}
           initialEditValue={user.displayName ?? ""}
@@ -881,10 +881,9 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
             Add E-mail
           </Button>
         }
-        contentClassName="p-0"
       >
         {contactChannels.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 p-5">
+          <div className="flex flex-col items-center gap-2 py-8">
             <p className='text-sm text-muted-foreground text-center'>
               No contact channels
             </p>
@@ -955,10 +954,9 @@ function UserTeamsSection({ user }: { user: ServerUser }) {
       subtitle="Teams this user belongs to"
       icon={UsersIcon}
       glassmorphic={false}
-      contentClassName="p-0"
     >
       {teams.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 p-5">
+        <div className="flex flex-col items-center gap-2 py-8">
           <p className='text-sm text-muted-foreground text-center'>
             No teams found
           </p>
@@ -1276,10 +1274,9 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
             Add Provider
           </Button>
         }
-        contentClassName="p-0"
       >
         {oauthProviders.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 p-5">
+          <div className="flex flex-col items-center gap-2 py-8">
             <p className='text-sm text-muted-foreground text-center'>
               No OAuth providers connected
             </p>
