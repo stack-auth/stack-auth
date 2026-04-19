@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { resolveAuth } from "../lib/auth.js";
+import { isProjectAuthWithRefreshToken, resolveAuth } from "../lib/auth.js";
 import { getAdminProject } from "../lib/app.js";
 import { CliError } from "../lib/errors.js";
 
@@ -29,6 +29,9 @@ export function registerExecCommand(program: Command) {
 
       const flags = program.opts();
       const auth = resolveAuth(flags);
+      if (!isProjectAuthWithRefreshToken(auth)) {
+        throw new CliError("`stack exec` requires `stack login`. Remove STACK_SECRET_SERVER_KEY and try again.");
+      }
       const project = await getAdminProject(auth);
 
       // eslint-disable-next-line @typescript-eslint/no-implied-eval

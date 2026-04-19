@@ -6,11 +6,23 @@ import { StyledLink } from "@/components/link";
 import { Alert, Button, SimpleTooltip, Skeleton } from "@/components/ui";
 import { UserDialog } from "@/components/user-dialog";
 import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
+import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { ArrowsClockwiseIcon, DownloadSimpleIcon } from "@phosphor-icons/react";
+import { ErrorBoundary } from "next/dist/client/components/error-boundary";
 import { Suspense, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
+
+const capturedUsersMetricsErrors = new WeakSet<Error>();
+
+function captureUsersMetricsErrorOnce(error: Error) {
+  if (capturedUsersMetricsErrors.has(error)) {
+    return;
+  }
+  capturedUsersMetricsErrors.add(error);
+  captureError("users-total-metrics-error-boundary", error);
+}
 
 function TotalUsersDisplay() {
   const stackAdminApp = useAdminApp();
@@ -38,6 +50,11 @@ function TotalUsersDisplay() {
   );
 }
 
+function TotalUsersErrorComponent(props: { error: Error }) {
+  captureUsersMetricsErrorOnce(props.error);
+  return <>Unavailable</>;
+}
+
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const firstUser = (stackAdminApp as any).useUsers({ limit: 1 });
@@ -45,7 +62,8 @@ export default function PageClient() {
     search?: string,
     includeRestricted: boolean,
     includeAnonymous: boolean,
-  }>({ includeRestricted: false, includeAnonymous: false });
+    onlyAnonymous: boolean,
+  }>({ includeRestricted: false, includeAnonymous: false, onlyAnonymous: false });
   const [refreshKey, setRefreshKey] = useState(0);
 
   const handleRefresh = async () => {
@@ -59,9 +77,11 @@ export default function PageClient() {
         title="Users"
         description={<>
           Total:{" "}
-          <Suspense fallback={<Skeleton className="inline"><span>Calculating</span></Skeleton>}>
-            <TotalUsersDisplay key={refreshKey} />
-          </Suspense>
+          <ErrorBoundary errorComponent={TotalUsersErrorComponent}>
+            <Suspense fallback={<Skeleton className="inline"><span>Calculating</span></Skeleton>}>
+              <TotalUsersDisplay key={refreshKey} />
+            </Suspense>
+          </ErrorBoundary>
         </>}
         actions={
           <div className="flex gap-2">
@@ -92,7 +112,9 @@ export default function PageClient() {
           </Alert>
         )}
 
-        <UserTable key={refreshKey} onFilterChange={setExportOptions} />
+        <div data-walkthrough="users-table">
+          <UserTable key={refreshKey} onFilterChange={setExportOptions} />
+        </div>
       </PageLayout>
     </AppEnabledGuard>
   );

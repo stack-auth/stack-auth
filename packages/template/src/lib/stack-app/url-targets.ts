@@ -1,5 +1,5 @@
+import { getCustomPagePrompts, type CustomPagePrompt } from "@stackframe/stack-shared/dist/interface/handler-urls";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { envVars } from "../env";
 import { DefaultHandlerUrlTarget, HandlerPageUrls, HandlerUrlOptions, HandlerUrlTarget, HandlerUrls, ResolvedHandlerUrls } from "./common";
 
@@ -9,82 +9,7 @@ const hostedHandlerPathPlaceholder = "{hostedPath}";
 const localUrlPlaceholderOrigin = "http://example.com";
 const schemePrefixRegex = /^[a-zA-Z][a-zA-Z\d+\-.]*:/;
 
-type CustomPagePrompt = {
-  title: string,
-  fullPrompt: string,
-  versions: Record<number, {
-    minSdkVersion: `${number}.${number}.${number}`,
-    upgradePrompt: string,
-  }>,
-};
-
-const customPagePrompts: Record<keyof Omit<HandlerPageUrls, "handler">, CustomPagePrompt> = {
-  signIn: {
-    title: "Sign In",
-    fullPrompt: deindent``,
-    versions: {},
-  },
-  signUp: {
-    title: "Sign Up",
-    fullPrompt: deindent``,
-    versions: {},
-  },
-  signOut: {
-    title: "Sign Out",
-    fullPrompt: deindent``,
-    versions: {},
-  },
-  emailVerification: {
-    title: "Email Verification",
-    fullPrompt: deindent``,
-    versions: {},
-  },
-  passwordReset: {
-    title: "Password Reset",
-    fullPrompt: deindent``,
-    versions: {},
-  },
-  forgotPassword: {
-    title: "Forgot Password",
-    fullPrompt: deindent``,
-    versions: {},
-  },
-  oauthCallback: {
-    title: "OAuth Callback",
-    fullPrompt: deindent``,
-    versions: {},
-  },
-  magicLinkCallback: {
-    title: "Magic Link Callback",
-    fullPrompt: deindent``,
-    versions: {},
-  },
-  accountSettings: {
-    title: "Account Settings",
-    fullPrompt: deindent``,
-    versions: {},
-  },
-  teamInvitation: {
-    title: "Team Invitation",
-    fullPrompt: deindent``,
-    versions: {},
-  },
-  mfa: {
-    title: "MFA",
-    fullPrompt: deindent``,
-    versions: {},
-  },
-  error: {
-    title: "Error",
-    fullPrompt: deindent``,
-    versions: {},
-  },
-  onboarding: {
-    title: "Onboarding",
-    fullPrompt: deindent``,
-    versions: {},
-  },
-};
+const customPagePrompts: Record<keyof Omit<HandlerPageUrls, "handler">, CustomPagePrompt> = getCustomPagePrompts();
 
 const replaceStackPortPrefix = <T extends string | undefined>(input: T): T => {
   if (!input) return input;
@@ -424,6 +349,29 @@ export const resolveUnknownHandlerPathFallbackUrl = (options: {
     }
   }
 };
+
+export function getPagePrompt(pageName: string, currentVersion?: number): { title: string; fullPrompt: string; upgradePrompt: string | null; latestVersion: number } | null {
+  if (!(pageName in customPagePrompts)) return null;
+  const prompt = customPagePrompts[pageName as keyof typeof customPagePrompts];
+  const versionKeys = Object.keys(prompt.versions).map(Number);
+  const latestVersion = versionKeys.length > 0 ? Math.max(...versionKeys) : 0;
+
+  let upgradePrompt: string | null = null;
+  if (currentVersion != null) {
+    const relevantVersions = versionKeys
+      .filter(v => v > currentVersion)
+      .sort((a, b) => a - b);
+    const prompts = relevantVersions
+      .map(v => prompt.versions[v].upgradePrompt)
+      .filter(p => p.length > 0);
+    upgradePrompt = prompts.length > 0 ? prompts.join("\n\n") : null;
+  } else {
+    const upgradeEntry = latestVersion > 0 ? prompt.versions[latestVersion] : undefined;
+    upgradePrompt = upgradeEntry?.upgradePrompt ?? null;
+  }
+
+  return { title: prompt.title, fullPrompt: prompt.fullPrompt, upgradePrompt, latestVersion };
+}
 
 export const isHostedHandlerUrlForProject = (options: { url: string, projectId: string }): boolean => {
   let parsedUrl: URL;

@@ -79,5 +79,22 @@ export function ErrorPage(props: { fullPage?: boolean, searchParams: Record<stri
     );
   }
 
+  if (KnownErrors.OAuthProviderTemporarilyUnavailable.isInstance(error)) {
+    return (
+      <MessageCard
+        title={t("OAuth provider is temporarily unavailable")}
+        fullPage={!!props.fullPage}
+        primaryButtonText={t("Try sign-in again")}
+        primaryAction={() => stackApp.redirectToSignIn()}
+        secondaryButtonText={t("Go Home")}
+        secondaryAction={() => stackApp.redirectToHome()}
+      >
+        <Typography>
+          {t("The OAuth provider could not complete sign-in right now. Please try again in a moment.")}
+        </Typography>
+      </MessageCard>
+    );
+  }
+
   return <KnownErrorMessageCard error={error} fullPage={!!props.fullPage} />;
 }

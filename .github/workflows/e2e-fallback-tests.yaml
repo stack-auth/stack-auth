@@ -1,0 +1,165 @@
+# TODO: keep in sync with e2e-tests.yaml — this is a near-copy with the backend
+# started on the fallback port (8110) only, so the SDK exercises fallback logic.
+name: Runs E2E Fallback Tests
+
+on:
+  push:
+    branches:
+      - main
+      - dev
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/dev' }}
+
+jobs:
+  build:
+    name: E2E Fallback Tests (Node ${{ matrix.node-version }})
+    runs-on: ubicloud-standard-8
+    env:
+      NODE_ENV: test
+      STACK_ENABLE_HARDCODED_PASSKEY_CHALLENGE_FOR_TESTING: yes
+      STACK_DATABASE_CONNECTION_STRING: "postgres://postgres:PASSWORD-PLACEHOLDER--uqfEC1hmmv@localhost:8128/stackframe"
+      STACK_EXTERNAL_DB_SYNC_MAX_DURATION_MS: "20000"
+      STACK_EXTERNAL_DB_SYNC_DIRECT: "false"
+      # SDK reads this as the primary URL, discovers hardcoded fallback to port 8110
+      NEXT_PUBLIC_STACK_API_URL: "http://localhost:8102"
+      # Tells js-helpers to omit explicit baseUrl so the SDK exercises fallback logic
+      STACK_TEST_SDK_FALLBACK: "true"
+
+    strategy:
+      matrix:
+        node-version: [22.x]
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - name: Setup Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v6
+        with:
+          node-version: ${{ matrix.node-version }}
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Start Docker Compose in background
+        uses: JarvusInnovations/background-action@v1.0.7
+        with:
+          run: docker compose -f docker/dependencies/docker.compose.yaml up --pull always -d &
+          wait-on: /dev/null
+          tail: true
+          wait-for: 3s
+          log-output-if: true
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Create .env.test.local files
+        run: |
+          cp apps/backend/.env.development apps/backend/.env.test.local
+          cp apps/dashboard/.env.development apps/dashboard/.env.test.local
+          cp apps/e2e/.env.development apps/e2e/.env.test.local
+          cp docs/.env.development docs/.env.test.local
+          cp examples/cjs-test/.env.development examples/cjs-test/.env.test.local
+          cp examples/demo/.env.development examples/demo/.env.test.local
+          cp examples/docs-examples/.env.development examples/docs-examples/.env.test.local
+          cp examples/e-commerce/.env.development examples/e-commerce/.env.test.local
+          cp examples/middleware/.env.development examples/middleware/.env.test.local
+          cp examples/supabase/.env.development examples/supabase/.env.test.local
+          cp examples/convex/.env.development examples/convex/.env.test.local
+          cp apps/internal-tool/.env.development apps/internal-tool/.env.test.local
+
+      - name: Build
+        run: pnpm build
+
+      - name: Wait on Postgres
+        run: pnpm run wait-until-postgres-is-ready:pg_isready
+
+      - name: Wait on Inbucket
+        run: pnpx wait-on tcp:localhost:8129
+
+      - name: Wait on Svix
+        run: pnpx wait-on tcp:localhost:8113
+
+      - name: Wait on QStash
+        run: pnpx wait-on tcp:localhost:8125
+
+      - name: Wait on ClickHouse
+        run: pnpx wait-on http://localhost:8136/ping
+
+      - name: Initialize database
+        run: pnpm run db:init
+
+      # Start backend ONLY on fallback port 8110 — primary port 8102 is intentionally left down
+      # so the SDK exercises its fallback logic for every request.
+      - name: Start stack-backend on fallback port (8110)
+        uses: JarvusInnovations/background-action@v1.0.7
+        with:
+          run: pnpm -C apps/backend run with-env:test next start --port 8110 &
+          wait-on: |
+            http://localhost:8110
+          tail: true
+          wait-for: 30s
+          log-output-if: true
+
+      - name: Start stack-dashboard in background
+        uses: JarvusInnovations/background-action@v1.0.7
+        with:
+          run: pnpm run start:dashboard --log-order=stream &
+          wait-on: |
+            http://localhost:8101
+          tail: true
+          wait-for: 30s
+          log-output-if: true
+
+      - name: Start mock-oauth-server in background
+        uses: JarvusInnovations/background-action@v1.0.7
+        with:
+          run: pnpm run start:mock-oauth-server --log-order=stream &
+          wait-on: |
+            http://localhost:8110
+          tail: true
+          wait-for: 30s
+          log-output-if: true
+
+      - name: Start run-email-queue in background
+        uses: JarvusInnovations/background-action@v1.0.7
+        with:
+          run: pnpm -C apps/backend run run-email-queue --log-order=stream &
+          wait-on: |
+            http://localhost:8110
+          tail: true
+          wait-for: 30s
+          log-output-if: true
+
+      - name: Start run-cron-jobs in background
+        uses: JarvusInnovations/background-action@v1.0.7
+        with:
+          run: pnpm -C apps/backend run run-cron-jobs:test --log-order=stream &
+          wait-on: |
+            http://localhost:8110
+          tail: true
+          wait-for: 30s
+          log-output-if: true
+
+      - name: Wait 10 seconds
+        run: sleep 10
+
+      - name: Verify primary port 8102 is NOT running
+        run: |
+          if curl -s -o /dev/null -w "%{http_code}" http://localhost:8102/health 2>/dev/null | grep -q "200"; then
+            echo "ERROR: Primary backend on port 8102 should NOT be running for fallback tests"
+            exit 1
+          fi
+          echo "Confirmed: primary port 8102 is down, fallback tests will exercise SDK fallback logic"
+
+      # Only run JS SDK tests — these exercise the SDK's fallback logic.
+      # Backend API tests use direct HTTP calls that don't go through fallback.
+      # Exclude cross-domain-auth which hardcodes the primary URL.
+      - name: Run SDK fallback tests
+        run: pnpm -w run pre && cd apps/e2e && npx vitest run tests/js/ --exclude '**/{cross-domain-auth,oauth,email-template-existing-project}*'
+
+      - name: Print Docker Compose logs
+        if: always()
+        run: docker compose -f docker/dependencies/docker.compose.yaml logs

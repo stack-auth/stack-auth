@@ -1,3 +1,4 @@
+import { isPreviewModeEnabled } from "@/lib/preview-mode";
 import { getStackStripe } from "@/lib/stripe";
 import { globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -44,6 +45,21 @@ export const GET = createSmartRouteHandler({
 
     if (!project?.stripeAccountId) {
       throw new KnownErrors.StripeAccountInfoNotFound();
+    }
+
+    if (isPreviewModeEnabled()) {
+      return {
+        statusCode: 200,
+        bodyType: "json",
+        body: {
+          config_id: "pmc_preview",
+          methods: [
+            { id: "card", name: getPaymentMethodName("card"), enabled: true, available: true, overridable: true },
+            { id: "link", name: getPaymentMethodName("link"), enabled: true, available: true, overridable: true },
+            { id: "us_bank_account", name: getPaymentMethodName("us_bank_account"), enabled: false, available: true, overridable: true },
+          ],
+        },
+      };
     }
 
     const stripe = getStackStripe();
@@ -118,7 +134,7 @@ export const PATCH = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ auth, body }) => {
-    if (Object.keys(body.updates).length === 0) {
+    if (Object.keys(body.updates).length === 0 || isPreviewModeEnabled()) {
       return { statusCode: 200, bodyType: "json", body: { success: true } };
     }
 

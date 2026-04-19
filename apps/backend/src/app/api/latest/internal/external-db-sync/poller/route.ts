@@ -130,7 +130,7 @@ export const GET = createSmartRouteHandler({
       async function processRequest(request: OutgoingRequest): Promise<void> {
         // Prisma JsonValue doesn't carry a precise shape for this JSON blob.
         const options = request.qstashOptions as any;
-        const baseUrl = getEnvVariable("NEXT_PUBLIC_STACK_API_URL");
+        const baseUrl = getEnvVariable("NEXT_PUBLIC_SERVER_STACK_API_URL", "") || getEnvVariable("NEXT_PUBLIC_STACK_API_URL");
 
         let fullUrl = new URL(options.url, baseUrl).toString();
 
@@ -157,7 +157,7 @@ export const GET = createSmartRouteHandler({
       function buildUpstashRequest(request: OutgoingRequest): UpstashRequest {
         // Prisma JsonValue doesn't carry a precise shape for this JSON blob.
         const options = request.qstashOptions as any;
-        const baseUrl = getEnvVariable("NEXT_PUBLIC_STACK_API_URL");
+        const baseUrl = getEnvVariable("NEXT_PUBLIC_SERVER_STACK_API_URL", "") || getEnvVariable("NEXT_PUBLIC_STACK_API_URL");
 
         let fullUrl = new URL(options.url, baseUrl).toString();
 

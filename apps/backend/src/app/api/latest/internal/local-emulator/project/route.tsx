@@ -1,10 +1,12 @@
 import { Prisma } from "@/generated/prisma/client";
+import { overrideEnvironmentConfigOverride } from "@/lib/config";
 import {
   LOCAL_EMULATOR_ADMIN_USER_ID,
   LOCAL_EMULATOR_ONLY_ENDPOINT_MESSAGE,
   LOCAL_EMULATOR_OWNER_TEAM_ID,
   isLocalEmulatorEnabled,
   readConfigFromFile,
+  resolveEmulatorPath,
   writeConfigToFile,
 } from "@/lib/local-emulator";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
@@ -57,14 +59,15 @@ async function assertLocalEmulatorOwnerTeamReadiness() {
   }
 }
 
-async function getOrCreateLocalEmulatorProjectId(absoluteFilePath: string): Promise<string> {
+async function getOrCreateLocalEmulatorProjectId(absoluteFilePath: string): Promise<{ projectId: string, created: boolean }> {
   const existingRows = await globalPrismaClient.$queryRaw<LocalEmulatorProjectMappingRow[]>(Prisma.sql`
     SELECT "projectId"
     FROM "LocalEmulatorProject"
     WHERE "absoluteFilePath" = ${absoluteFilePath}
     LIMIT 1
   `);
-  const projectId = existingRows[0] ? existingRows[0].projectId : generateUuid();
+  const existingRow = existingRows.length > 0 ? existingRows[0] : undefined;
+  const projectId = existingRow ? existingRow.projectId : generateUuid();
 
   await globalPrismaClient.project.upsert({
     where: {
@@ -97,6 +100,25 @@ async function getOrCreateLocalEmulatorProjectId(absoluteFilePath: string): Prom
     },
   });
 
+  const created = existingRow === undefined;
+
+  // Seed environment-level defaults BEFORE registering as a LocalEmulatorProject:
+  // once registered, setEnvironmentConfigOverride refuses to write.
+  //   - domains.allowLocalhost: fresh emulator projects allow localhost redirects
+  //     so developers don't hit "Redirect URL not whitelisted" before configuring
+  //     trustedDomains.
+  //   - payments.testMode: emulator payments always go through stripe-mock.
+  if (created) {
+    await overrideEnvironmentConfigOverride({
+      projectId,
+      branchId: DEFAULT_BRANCH_ID,
+      environmentConfigOverrideOverride: {
+        "domains.allowLocalhost": true,
+        "payments.testMode": true,
+      },
+    });
+  }
+
   await globalPrismaClient.$executeRaw(Prisma.sql`
     INSERT INTO "LocalEmulatorProject" ("absoluteFilePath", "projectId", "createdAt", "updatedAt")
     VALUES (${absoluteFilePath}, ${projectId}, NOW(), NOW())
@@ -106,7 +128,7 @@ async function getOrCreateLocalEmulatorProjectId(absoluteFilePath: string): Prom
       "updatedAt" = NOW()
   `);
 
-  return projectId;
+  return { projectId, created };
 }
 
 async function getOrCreateCredentials(projectId: string) {
@@ -141,7 +163,7 @@ async function getOrCreateCredentials(projectId: string) {
     },
   });
 
-  if (!keySet.secretServerKey || !keySet.superSecretAdminKey) {
+  if (!keySet.publishableClientKey || !keySet.secretServerKey || !keySet.superSecretAdminKey) {
     throw new StackAssertionError("Local emulator key set is missing required keys.", {
       projectId,
       keySetId: keySet.id,
@@ -149,6 +171,7 @@ async function getOrCreateCredentials(projectId: string) {
   }
 
   return {
+    publishableClientKey: keySet.publishableClientKey,
     secretServerKey: keySet.secretServerKey,
     superSecretAdminKey: keySet.superSecretAdminKey,
   };
@@ -178,6 +201,7 @@ export const POST = createSmartRouteHandler({
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
       project_id: yupString().defined(),
+      publishable_client_key: yupString().defined(),
       secret_server_key: yupString().defined(),
       super_secret_admin_key: yupString().defined(),
       branch_config_override_string: yupString().defined(),
@@ -192,11 +216,12 @@ export const POST = createSmartRouteHandler({
     }
 
     const absoluteFilePath = path.resolve(req.body.absolute_file_path);
+    const resolvedFilePath = resolveEmulatorPath(absoluteFilePath);
 
     // Validate file exists before creating a project
     let fileExists: boolean;
     try {
-      await fs.access(absoluteFilePath);
+      await fs.access(resolvedFilePath);
       fileExists = true;
     } catch {
       fileExists = false;
@@ -206,14 +231,14 @@ export const POST = createSmartRouteHandler({
     }
 
     // If the file is empty, write a default config
-    const fileContent = await fs.readFile(absoluteFilePath, "utf-8");
+    const fileContent = await fs.readFile(resolvedFilePath, "utf-8");
     if (fileContent.trim() === "") {
       await writeConfigToFile(absoluteFilePath, {});
     }
 
     await assertLocalEmulatorOwnerTeamReadiness();
 
-    const projectId = await getOrCreateLocalEmulatorProjectId(absoluteFilePath);
+    const { projectId } = await getOrCreateLocalEmulatorProjectId(absoluteFilePath);
     const credentials = await getOrCreateCredentials(projectId);
     const fileConfig = await readConfigFromFile(absoluteFilePath);
 
@@ -222,6 +247,7 @@ export const POST = createSmartRouteHandler({
       bodyType: "json" as const,
       body: {
         project_id: projectId,
+        publishable_client_key: credentials.publishableClientKey,
         secret_server_key: credentials.secretServerKey,
         super_secret_admin_key: credentials.superSecretAdminKey,
         branch_config_override_string: JSON.stringify(fileConfig),

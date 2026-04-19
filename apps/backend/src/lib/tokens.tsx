@@ -114,7 +114,7 @@ export async function decodeAccessToken(accessToken: string, { allowAnonymous, a
           decoded?.sub ?? undefined,
           (decoded?.refresh_token_id ?? decoded?.refreshTokenId) as string | undefined,
         );
-        console.warn(`[Token decode] Access token expired for project ${decoded?.aud?.toString().split(":")[0]}, user ${decoded?.sub}. This is most likely not an issue, but if it happens frequently, it may be a sign of a misconfiguration.`, error);
+        console.log(`[Token decode] Access token expired for project ${decoded?.aud?.toString().split(":")[0]}, user ${decoded?.sub}. This is most likely not an issue, but if it happens frequently, it may be a sign of a misconfiguration.`, error);
         return Result.error(error);
       } else if (error instanceof JOSEError) {
         console.warn("Unparsable access token. This might be a user error, but if it happens frequently, it's a sign of a misconfiguration.", { accessToken, error });
@@ -267,10 +267,10 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: Refres
           id: options.refreshTokenObj.id,
         },
       },
-      data: {
+      data: withExternalDbSyncUpdate({
         lastActiveAt: now,
         lastActiveAtIpInfo: ipInfo ?? undefined,
-      },
+      }),
     }),
   ]);
 

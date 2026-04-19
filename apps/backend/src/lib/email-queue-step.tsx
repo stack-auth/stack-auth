@@ -5,8 +5,8 @@ import { EmailOutboxRecipient, getEmailConfig, } from "@/lib/emails";
 import { generateUnsubscribeLink, getNotificationCategoryById, hasNotificationEnabled, listNotificationCategories } from "@/lib/notification-categories";
 import { getTenancy, Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient, PrismaClientTransaction } from "@/prisma-client";
+import { allPromisesAndWaitUntilEach } from "@/utils/background-tasks";
 import { withTraceSpan } from "@/utils/telemetry";
-import { allPromisesAndWaitUntilEach } from "@/utils/vercel";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
 import { getEnvBoolean, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, errorToNiceString, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
@@ -124,6 +124,7 @@ async function retryEmailsStuckInRendering(): Promise<void> {
     data: {
       renderedByWorkerId: null,
       startedRenderingAt: null,
+      shouldUpdateSequenceId: true,
     },
   });
   if (res.length > 0) {
@@ -143,11 +144,11 @@ async function logEmailsStuckInSending(): Promise<void> {
       skippedReason: null,
       isPaused: false,
     },
-    select: { id: true, tenancyId: true, startedSendingAt: true },
+    select: { id: true, tenancyId: true, startedSendingAt: true, to: true, sentAt: true, sendAttemptErrors: true },
   });
   if (res.length > 0) {
     captureError("email-queue-step-stuck-in-sending", new StackAssertionError(`${res.length} emails stuck in sending! This should never happen. It was NOT correctly marked as an error! Manual intervention is required.`, {
-      emails: res.map(e => ({ id: e.id, tenancyId: e.tenancyId, startedSendingAt: e.startedSendingAt })),
+      emails: res,
     }));
   }
 }
@@ -241,7 +242,8 @@ async function claimEmailsForRendering(workerId: string): Promise<EmailOutbox[]>
     UPDATE "EmailOutbox" AS e
     SET
       "renderedByWorkerId" = ${workerId}::uuid,
-      "startedRenderingAt" = NOW()
+      "startedRenderingAt" = NOW(),
+      "shouldUpdateSequenceId" = TRUE
     FROM selected
     WHERE e."tenancyId" = selected."tenancyId" AND e."id" = selected."id"
     RETURNING e.*;
@@ -327,6 +329,7 @@ async function renderTenancyEmails(workerId: string, tenancyId: string, group: E
         renderErrorInternalMessage: error,
         renderErrorInternalDetails: { error },
         finishedRenderingAt: new Date(),
+        shouldUpdateSequenceId: true,
       },
     });
   };
@@ -347,6 +350,7 @@ async function renderTenancyEmails(workerId: string, tenancyId: string, group: E
         renderErrorInternalMessage: null,
         renderErrorInternalDetails: Prisma.DbNull,
         finishedRenderingAt: new Date(),
+        shouldUpdateSequenceId: true,
       },
     });
   };
@@ -437,7 +441,7 @@ async function queueReadyEmails(): Promise<{ queuedCount: number }> {
   // Query 1: Fresh emails (scheduledAt has passed, no retry pending)
   const freshEmails = await globalPrismaClient.$queryRaw<{ id: string }[]>`
     UPDATE "EmailOutbox"
-    SET "isQueued" = TRUE
+    SET "isQueued" = TRUE, "shouldUpdateSequenceId" = TRUE
     WHERE "isQueued" = FALSE
       AND "isPaused" = FALSE
       AND "skippedReason" IS NULL
@@ -452,7 +456,7 @@ async function queueReadyEmails(): Promise<{ queuedCount: number }> {
   // Clear nextSendRetryAt when queuing so the email is in a clean "queued" state.
   const retryEmails = await globalPrismaClient.$queryRaw<{ id: string }[]>`
     UPDATE "EmailOutbox"
-    SET "isQueued" = TRUE, "nextSendRetryAt" = NULL
+    SET "isQueued" = TRUE, "nextSendRetryAt" = NULL, "shouldUpdateSequenceId" = TRUE
     WHERE "isQueued" = FALSE
       AND "isPaused" = FALSE
       AND "skippedReason" IS NULL
@@ -528,7 +532,8 @@ async function claimEmailsForSending(tx: PrismaClientTransaction, tenancyId: str
       FOR UPDATE SKIP LOCKED
     )
     UPDATE "EmailOutbox" AS e
-    SET "startedSendingAt" = NOW()
+    SET "startedSendingAt" = NOW(),
+        "shouldUpdateSequenceId" = TRUE
     FROM selected
     WHERE e."tenancyId" = selected."tenancyId" AND e."id" = selected."id"
     RETURNING e.*;
@@ -678,6 +683,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
             sendRetries: newAttemptCount,
             nextSendRetryAt: new Date(Date.now() + backoffMs),
             sendAttemptErrors: updatedErrors as Prisma.InputJsonArray,
+            shouldUpdateSequenceId: true,
           },
         });
       } else {
@@ -718,6 +724,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
               failureReason,
               allAttemptErrors: updatedErrors as Json[],
             },
+            shouldUpdateSequenceId: true,
           },
         });
       }
@@ -738,6 +745,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
           sendServerErrorExternalDetails: Prisma.DbNull,
           sendServerErrorInternalMessage: null,
           sendServerErrorInternalDetails: Prisma.DbNull,
+          shouldUpdateSequenceId: true,
         },
       });
     }
@@ -758,6 +766,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
         sendServerErrorExternalDetails: {},
         sendServerErrorInternalMessage: errorToNiceString(error),
         sendServerErrorInternalDetails: {},
+        shouldUpdateSequenceId: true,
       },
     });
   }
@@ -843,6 +852,7 @@ async function markSkipped(row: EmailOutbox, reason: EmailOutboxSkippedReason, d
     data: {
       skippedReason: reason,
       skippedDetails: details as Prisma.InputJsonValue,
+      shouldUpdateSequenceId: true,
     },
   });
 }

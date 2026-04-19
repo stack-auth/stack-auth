@@ -1,6 +1,6 @@
 "use client";
 
-import { CountryCodeSelect } from "@/components/country-code-select";
+import { CountryCodeInput } from "@/components/country-code-select";
 import { DesignCard, DesignCategoryTabs, DesignDataTable, DesignEditableGrid, type DesignEditableGridItem, DesignMenu, type DesignMenuActionItem } from "@/components/design-components";
 import { EditableInput } from "@/components/editable-input";
 import { FormDialog, SmartFormDialog } from "@/components/form-dialog";
@@ -408,7 +408,7 @@ function UserDetails({ user }: { user: ServerUser }) {
       icon: <GlobeIcon size={14} />,
       name: "Sign-up country code",
       children: (
-        <CountryCodeSelect
+        <CountryCodeInput
           value={user.countryCode ?? null}
           onChange={(newValue) => {
             runAsynchronouslyWithAlert(async () => {

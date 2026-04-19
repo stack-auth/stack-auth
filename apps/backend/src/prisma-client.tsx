@@ -1,5 +1,4 @@
 import { Prisma, PrismaClient } from "@/generated/prisma/client";
-import { getStackServerApp } from "@/stack";
 import { PrismaNeon } from "@prisma/adapter-neon";
 import { PrismaPg } from '@prisma/adapter-pg';
 import { readReplicas } from '@prisma/extension-read-replicas';
@@ -9,7 +8,7 @@ import { getEnvVariable, getNodeEnvironment } from '@stackframe/stack-shared/dis
 import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { globalVar } from "@stackframe/stack-shared/dist/utils/globals";
 import { deepPlainEquals, filterUndefined, typedFromEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
-import { concatStacktracesIfRejected, ignoreUnhandledRejection, wait } from "@stackframe/stack-shared/dist/utils/promises";
+import { concatStacktracesIfRejected, ignoreUnhandledRejection, runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { throwingProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
@@ -21,6 +20,7 @@ import { runMigrationNeeded } from "./auto-migrations";
 import { registerPgPool } from "./lib/dev-perf-stats";
 import { Tenancy } from "./lib/tenancies";
 import { ensurePolyfilled } from "./polyfills";
+import { drainInFlightPromises } from "./utils/background-tasks";
 
 // just ensure we're polyfilled because this file relies on envvars being expanded
 ensurePolyfilled();
@@ -60,6 +60,7 @@ async function resolveNeonConnectionString(entry: string): Promise<string> {
   if (!isUuid(entry)) {
     return entry;
   }
+  const { getStackServerApp } = await import("@/stack");
   const store = await getStackServerApp().getDataVaultStore('neon-connection-strings');
   const secret = "no client side encryption";
   const value = await store.getValue(entry, { secret });
@@ -85,6 +86,8 @@ function getPostgresPrismaClient(connectionString: string, poolLabel?: string) {
   if (!postgresPrismaClient) {
     const schema = getSchemaFromConnectionString(connectionString);
     const pool = new Pool({ connectionString, max: 25 });
+    // pg Pool emits 'error' on idle clients (e.g. TCP reset); unhandled = process crash
+    pool.on('error', (err) => captureError("pg-pool-error", err));
     registerPgPool(pool, poolLabel ?? connectionString); // Register pool for dev performance stats
     const adapter = new PrismaPg(pool, schema ? { schema } : undefined);
     postgresPrismaClient = {
@@ -94,6 +97,27 @@ function getPostgresPrismaClient(connectionString: string, poolLabel?: string) {
     postgresPrismaClientsStore.set(connectionString, postgresPrismaClient);
   }
   return postgresPrismaClient;
+}
+
+// Cloud Run sends SIGTERM before shutdown; drain background tasks and close DB connections.
+if (!getEnvVariable("VERCEL", "") && !globalVar.__stack_prisma_sigterm_registered) {
+  globalVar.__stack_prisma_sigterm_registered = true;
+  process.on("SIGTERM", () => {
+    const keepAlive = setTimeout(() => {}, 10_000);
+    runAsynchronously(async () => {
+      try {
+        await drainInFlightPromises(8000);
+        for (const [, entry] of postgresPrismaClientsStore) {
+          await entry.client.$disconnect();
+        }
+        for (const [, client] of prismaClientsStore.neon) {
+          await client.$disconnect();
+        }
+      } finally {
+        clearTimeout(keepAlive);
+      }
+    });
+  });
 }
 
 async function tcpPing(host: string, port: number, timeout = 2000) {
@@ -191,10 +215,21 @@ async function waitForReplication(replicas: PrismaClient[], target: string, time
         throw new StackAssertionError(`Invalid pg_lsn format: ${target}`);
       }
       checkCaughtUp = async (replica) => {
-        const [{ caught_up }] = await (replica as any).$queryRaw<[{ caught_up: boolean }]>`
-          SELECT pg_last_wal_replay_lsn() >= ${target}::pg_lsn AS caught_up
-        `;
-        return caught_up;
+        return await traceSpan({
+          description: 'checking replication status from replica',
+          attributes: {
+            'stack.db-replication.strategy': strategy,
+            'stack.db-replication.target': target,
+            'stack.db-replication.replica-count': replicas.length,
+            'stack.db-replication.timeout-ms': timeoutMs,
+          },
+        }, async (span) => {
+          const [{ caught_up }] = await (replica as any).$queryRaw<[{ caught_up: boolean }]>`
+            SELECT pg_last_wal_replay_lsn() >= ${target}::pg_lsn AS caught_up
+          `;
+          span.setAttribute('stack.db-replication.caught-up', caught_up);
+          return caught_up;
+        });
       };
     } else if (strategy === "aurora") {
       if (!/^\d+$/.test(target)) {
@@ -202,12 +237,28 @@ async function waitForReplication(replicas: PrismaClient[], target: string, time
       }
       const targetBigInt = BigInt(target);
       checkCaughtUp = async (replica) => {
-        const [{ current_lsn }] = await (replica as any).$queryRaw<[{ current_lsn: bigint | null }]>`
-          SELECT current_read_lsn AS current_lsn
-          FROM aurora_replica_status()
-          WHERE server_id = aurora_db_instance_identifier()
-        `;
-        return current_lsn === null || current_lsn >= targetBigInt;
+        return await traceSpan({
+          description: 'checking replication status from replica',
+          attributes: {
+            'stack.db-replication.strategy': strategy,
+            'stack.db-replication.target': target,
+            'stack.db-replication.replica-count': replicas.length,
+            'stack.db-replication.timeout-ms': timeoutMs,
+          },
+        }, async (span) => {
+          const replicaStatus = await (replica as any).$queryRaw<[{ current_lsn: bigint | null }]>`
+            SELECT *
+            FROM aurora_replica_status()
+            WHERE server_id = aurora_db_instance_identifier()
+          `;
+          span.setAttribute(
+            'stack.db-replication.replica-status',
+            JSON.stringify(replicaStatus, (_key, value) => typeof value === "bigint" ? value.toString() : value),
+          );
+          const currentLsn = replicaStatus[0]?.current_read_lsn ?? null;
+          span.setAttribute('stack.db-replication.current-lsn', currentLsn === null ? "null" : currentLsn.toString());
+          return currentLsn === null || currentLsn >= targetBigInt;
+        });
       };
     } else {
       throw new StackAssertionError(`Unknown replication wait strategy: ${strategy}`);

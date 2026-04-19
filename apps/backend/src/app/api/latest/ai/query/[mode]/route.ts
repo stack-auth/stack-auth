@@ -1,13 +1,16 @@
-import { forwardToProduction } from "@/lib/ai/forward";
+import { logMcpCall } from "@/lib/ai/mcp-logger";
 import { selectModel } from "@/lib/ai/models";
 import { getFullSystemPrompt } from "@/lib/ai/prompts";
+import { reviewMcpCall } from "@/lib/ai/qa-reviewer";
 import { requestBodySchema } from "@/lib/ai/schema";
 import { getTools, validateToolNames } from "@/lib/ai/tools";
+import { getVerifiedQaContext } from "@/lib/ai/verified-qa";
 import { listManagedProjectIds } from "@/lib/projects";
 import { SmartResponse } from "@/route-handlers/smart-response";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
+import { validateImageAttachments } from "@stackframe/stack-shared/dist/ai/image-limits";
 import { yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Json } from "@stackframe/stack-shared/dist/utils/json";
 import { generateText, ModelMessage, stepCountIs, streamText } from "ai";
@@ -30,22 +33,9 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(StatusError.BadRequest, `Invalid tool names in request.`);
     }
 
-    const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY");
-
-
-    if (apiKey === "FORWARD_TO_PRODUCTION") {
-      const prodResponse = await forwardToProduction(mode, body);
-      return {
-        statusCode: prodResponse.status,
-        bodyType: "response" as const,
-        body: prodResponse,
-      };
-    }
-
     const isAuthenticated = fullReq.auth != null;
     const { quality, speed, systemPrompt: systemPromptId, tools: toolNames, messages, projectId } = body;
 
-    // Verify user has access to the target project
     if (projectId != null) {
       if (fullReq.auth?.project.id !== "internal") {
         throw new StatusError(StatusError.Forbidden, "You do not have access to this project");
@@ -60,12 +50,30 @@ export const POST = createSmartRouteHandler({
       }
     }
 
+    const imageValidationResult = validateImageAttachments(messages);
+    if (!imageValidationResult.ok) {
+      throw new StatusError(StatusError.BadRequest, imageValidationResult.reason);
+    }
+
     const model = selectModel(quality, speed, isAuthenticated);
-    const systemPrompt = getFullSystemPrompt(systemPromptId);
+    const isDocsOrSearch = systemPromptId === "docs-ask-ai" || systemPromptId === "command-center-ask-ai";
+    let systemPrompt = getFullSystemPrompt(systemPromptId);
+    if (isDocsOrSearch) {
+      systemPrompt += await getVerifiedQaContext();
+    }
     const tools = await getTools(toolNames, { auth: fullReq.auth, targetProjectId: projectId });
     const toolsArg = Object.keys(tools).length > 0 ? tools : undefined;
-    const isDocsOrSearch = systemPromptId === "docs-ask-ai" || systemPromptId === "command-center-ask-ai";
-    const stepLimit = toolsArg == null ? 1 : isDocsOrSearch ? 50 : 5;
+    const isCreateDashboard = systemPromptId === "create-dashboard";
+    const isBuildAnalyticsQuery = systemPromptId === "build-analytics-query";
+    const stepLimit = toolsArg == null
+      ? 1
+      : isDocsOrSearch
+        ? 50
+        : isCreateDashboard
+          ? 12
+          : isBuildAnalyticsQuery
+            ? 5
+            : 5;
 
     if (mode === "stream") {
       const result = streamText({
@@ -81,6 +89,7 @@ export const POST = createSmartRouteHandler({
         body: result.toUIMessageStreamResponse(),
       };
     } else {
+      const startedAt = Date.now();
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 120_000);
       const result = await generateText({
@@ -129,10 +138,51 @@ export const POST = createSmartRouteHandler({
         });
       });
 
+      let responseConversationId: string | undefined;
+      if (body.mcpCallMetadata != null) {
+        const correlationId = crypto.randomUUID();
+        const conversationId = body.mcpCallMetadata.conversationId ?? crypto.randomUUID();
+        responseConversationId = conversationId;
+        const firstUserMessage = messages.find(m => m.role === "user");
+        const question = typeof firstUserMessage?.content === "string"
+          ? firstUserMessage.content
+          : JSON.stringify(firstUserMessage?.content ?? "");
+
+        const innerToolCallsJson = JSON.stringify(contentBlocks.filter(b => b.type === "tool-call"));
+
+        const logPromise = logMcpCall({
+          correlationId,
+          toolName: body.mcpCallMetadata.toolName,
+          reason: body.mcpCallMetadata.reason,
+          userPrompt: body.mcpCallMetadata.userPrompt,
+          conversationId,
+          question,
+          response: result.text,
+          stepCount: result.steps.length,
+          innerToolCallsJson,
+          durationMs: BigInt(Date.now() - startedAt),
+          modelId: String(model.modelId),
+          errorMessage: undefined,
+        });
+        runAsynchronouslyAndWaitUntil(logPromise);
+
+        runAsynchronouslyAndWaitUntil(reviewMcpCall({
+          logPromise,
+          correlationId,
+          question,
+          reason: body.mcpCallMetadata.reason,
+          response: result.text,
+        }));
+      }
+
       return {
         statusCode: 200,
         bodyType: "json" as const,
-        body: { content: contentBlocks },
+        body: {
+          content: contentBlocks,
+          finalText: result.text,
+          conversationId: responseConversationId ?? null,
+        },
       };
     }
   },

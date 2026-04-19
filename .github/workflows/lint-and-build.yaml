@@ -17,7 +17,7 @@ jobs:
 
     strategy:
       matrix:
-        node-version: [latest]
+        node-version: [24]
 
     steps:
       - uses: actions/checkout@v6
@@ -65,6 +65,9 @@ jobs:
 
       - name: Create .env.production.local file for examples/convex
         run: cp examples/convex/.env.development examples/convex/.env.production.local
+
+      - name: Create .env.production.local file for apps/internal-tool
+        run: cp apps/internal-tool/.env.development apps/internal-tool/.env.production.local
 
       - name: Build
         run: pnpm build

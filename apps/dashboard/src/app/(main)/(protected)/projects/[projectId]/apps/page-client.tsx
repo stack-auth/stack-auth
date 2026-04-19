@@ -4,6 +4,7 @@ import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-a
 import { AppSquare } from "@/components/app-square";
 import { DesignAlert, DesignCard, DesignCategoryTabs, DesignInput } from "@/components/design-components";
 import { type AppId } from "@/lib/apps-frontend";
+import { getEnabledAppIds } from "@/lib/apps-utils";
 import { CheckCircleIcon, MagnifyingGlassIcon, SquaresFourIcon } from "@phosphor-icons/react";
 import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
@@ -34,9 +35,7 @@ export default function PageClient() {
 
   // Get installed apps
   const installedApps = useMemo(() =>
-    (Object.entries(config.apps.installed) as [string, { enabled?: boolean } | undefined][])
-      .filter(([_, appConfig]) => appConfig?.enabled)
-      .map(([appId]) => appId as AppId),
+    getEnabledAppIds(config.apps.installed),
     [config.apps.installed]
   );
 

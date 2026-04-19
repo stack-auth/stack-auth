@@ -1,5 +1,5 @@
 import { globalPrismaClient } from '@/prisma-client';
-import { runAsynchronouslyAndWaitUntil } from '@/utils/vercel';
+import { runAsynchronouslyAndWaitUntil } from '@/utils/background-tasks';
 import { EmailOutboxCreatedWith } from '@/generated/prisma/client';
 import { DEFAULT_TEMPLATE_IDS } from '@stackframe/stack-shared/dist/helpers/emails';
 import { UsersCrud } from '@stackframe/stack-shared/dist/interface/crud/users';

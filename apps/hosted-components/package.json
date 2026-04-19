@@ -1,7 +1,7 @@
 {
   "name": "@stackframe/hosted-components",
   "private": true,
-  "version": "2.8.79",
+  "version": "2.8.85",
   "type": "module",
   "scripts": {
     "dev": "vite dev --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}09",

@@ -20,8 +20,7 @@ Before proceeding, you MUST identify the project framework:
 **IMPORTANT**: Only proceed with the installation if you can clearly identify the project as either Next.js or React.
 
 ### 1) Run the Stack Auth initializer
-- Use the `stack-auth` MCP server.
-- Call the tool or run the command:
+- Use the `stack-auth` MCP server (`ask_stack_auth` tool), or run the command:
   - **For Next.js projects**: 
     ```bash
     npx @stackframe/stack-cli@latest init

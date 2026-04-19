@@ -1,15 +1,19 @@
+import { recordExternalDbSyncDeletion, recordExternalDbSyncTeamInvitationDeletionsForTeam, recordExternalDbSyncTeamMemberDeletionsForTeam, recordExternalDbSyncTeamPermissionDeletionsForTeam, withExternalDbSyncUpdate } from "@/lib/external-db-sync";
+import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { ensureTeamExists, ensureTeamMembershipExists, ensureUserExists, ensureUserTeamPermissionExists } from "@/lib/request-checks";
 import { sendTeamCreatedWebhook, sendTeamDeletedWebhook, sendTeamUpdatedWebhook } from "@/lib/webhooks";
 import { getPrismaClientForTenancy, retryTransaction } from "@/prisma-client";
 import { createCrudHandlers } from "@/route-handlers/crud-handler";
 import { uploadAndGetUrl } from "@/s3";
-import { runAsynchronouslyAndWaitUntil } from "@/utils/vercel";
+import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { Prisma } from "@/generated/prisma/client";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { teamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { userIdOrMeSchema, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { validateBase64Image } from "@stackframe/stack-shared/dist/utils/base64";
+import { addInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { createLazyProxy } from "@stackframe/stack-shared/dist/utils/proxies";
 import { addUserToTeam } from "../team-memberships/crud";
 
@@ -71,9 +75,9 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
 
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
 
-    const db = await retryTransaction(prisma, async (tx) => {
+    const { db, freePlanSubscription } = await retryTransaction(prisma, async (tx) => {
       const db = await tx.team.create({
-        data: {
+        data: withExternalDbSyncUpdate({
           displayName: data.display_name,
           mirroredProjectId: auth.project.id,
           mirroredBranchId: auth.branchId,
@@ -81,8 +85,8 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
           clientMetadata: data.client_metadata === null ? Prisma.JsonNull : data.client_metadata,
           clientReadOnlyMetadata: data.client_read_only_metadata === null ? Prisma.JsonNull : data.client_read_only_metadata,
           serverMetadata: data.server_metadata === null ? Prisma.JsonNull : data.server_metadata,
-          profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "team-profile-images")
-        },
+          profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "team-profile-images"),
+        }),
       });
 
       if (addUserId) {
@@ -95,8 +99,46 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
         });
       }
 
-      return db;
+      let freePlanSubscription = null;
+      if (auth.project.id === "internal") {
+        const freePlanProduct = auth.tenancy.config.payments.products.free;
+        if (freePlanProduct.customerType === "team" && freePlanProduct.productLineId != null) {
+          const prices = freePlanProduct.prices === "include-by-default" ? {} : freePlanProduct.prices;
+          const firstPriceEntry = typedEntries(prices)[0] as [string, Record<string, unknown>] | undefined;
+          const now = new Date();
+          const priceInterval = firstPriceEntry != null && "interval" in firstPriceEntry[1]
+            ? firstPriceEntry[1].interval as [number, "day" | "week" | "month" | "year"] | undefined
+            : undefined;
+          freePlanSubscription = await tx.subscription.create({
+            data: {
+              tenancyId: auth.tenancy.id,
+              customerId: db.teamId,
+              customerType: "TEAM",
+              status: "active",
+              productId: "free",
+              priceId: firstPriceEntry != null ? firstPriceEntry[0] : null,
+              product: freePlanProduct,
+              quantity: 1,
+              currentPeriodStart: now,
+              currentPeriodEnd: priceInterval != null ? addInterval(now, priceInterval) : new Date("2099-12-31T23:59:59Z"),
+              cancelAtPeriodEnd: false,
+              creationSource: "TEST_MODE",
+            },
+          });
+        }
+      }
+
+      return { db, freePlanSubscription };
     });
+
+    // Bulldozer write must happen outside retryTransaction because it issues its
+    // own BEGIN/COMMIT (for the advisory lock + sort helpers). If this fails after
+    // the Prisma transaction committed, the subscription exists in Prisma but not
+    // in Bulldozer — same trade-off as all other dual-write call sites. The next
+    // sync or webhook will reconcile.
+    if (freePlanSubscription != null) {
+      await bulldozerWriteSubscription(prisma, freePlanSubscription);
+    }
 
     const result = teamPrismaToCrud(db);
 
@@ -160,13 +202,13 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
             teamId: params.team_id,
           },
         },
-        data: {
+        data: withExternalDbSyncUpdate({
           displayName: data.display_name,
           clientMetadata: data.client_metadata === null ? Prisma.JsonNull : data.client_metadata,
           clientReadOnlyMetadata: data.client_read_only_metadata === null ? Prisma.JsonNull : data.client_read_only_metadata,
           serverMetadata: data.server_metadata === null ? Prisma.JsonNull : data.server_metadata,
-          profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "team-profile-images")
-        },
+          profileImageUrl: await uploadAndGetUrl(data.profile_image_url, "team-profile-images"),
+        }),
       });
     });
 
@@ -193,6 +235,27 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
         });
       }
       await ensureTeamExists(tx, { tenancyId: auth.tenancy.id, teamId: params.team_id });
+
+      await recordExternalDbSyncTeamPermissionDeletionsForTeam(tx, {
+        tenancyId: auth.tenancy.id,
+        teamId: params.team_id,
+      });
+
+      await recordExternalDbSyncTeamInvitationDeletionsForTeam(tx, {
+        tenancyId: auth.tenancy.id,
+        teamId: params.team_id,
+      });
+
+      await recordExternalDbSyncTeamMemberDeletionsForTeam(tx, {
+        tenancyId: auth.tenancy.id,
+        teamId: params.team_id,
+      });
+
+      await recordExternalDbSyncDeletion(tx, {
+        tableName: "Team",
+        tenancyId: auth.tenancy.id,
+        teamId: params.team_id,
+      });
 
       await tx.team.delete({
         where: {

@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "@/components/router";
+import { getShortcutModifierKeyLabel } from "@/lib/keyboard-shortcuts";
 import { cn } from "@/lib/utils";
 import {
   LayoutIcon,
@@ -118,6 +119,8 @@ const CyclingPlaceholder = memo(function CyclingPlaceholder({
 }: {
   onSelectQuery?: (query: string) => void,
 }) {
+  const modifierKeyLabel = getShortcutModifierKeyLabel();
+
   return (
     <div className="h-full flex flex-col items-center select-none px-6">
       {/* Top spacer */}
@@ -149,7 +152,9 @@ const CyclingPlaceholder = memo(function CyclingPlaceholder({
         <div className="relative text-center mb-4">
           {/* Keybind reminder - like tape on the corner */}
           <span className="absolute -top-4 -right-8 rotate-[30deg] flex items-center gap-0.5 text-[10px] text-muted-foreground/40">
-            <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">⌘</kbd>
+            <kbd suppressHydrationWarning className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">
+              {modifierKeyLabel}
+            </kbd>
             +
             <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">K</kbd>
           </span>
@@ -204,7 +209,9 @@ const CyclingPlaceholder = memo(function CyclingPlaceholder({
         {/* Keyboard hints footer */}
         <div className="py-3 border-t border-foreground/[0.06] w-full flex items-center justify-center gap-5 text-[10px] text-muted-foreground/40">
           <div className="flex items-center gap-1.5">
-            <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">⌘</kbd>
+            <kbd suppressHydrationWarning className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">
+              {modifierKeyLabel}
+            </kbd>
             +
             <kbd className="px-1.5 py-0.5 rounded bg-foreground/[0.06] font-mono">K</kbd>
             <span>open</span>
@@ -999,6 +1006,7 @@ export function CmdKSearch({
 export function CmdKTrigger() {
   const mouseCursorRef = useRef<HTMLDivElement>(null);
   const mouseCursorParentRef = useRef<HTMLDivElement>(null);
+  const modifierKeyLabel = getShortcutModifierKeyLabel();
 
   useEffect(() => {
     const handleMouseMove = (e: MouseEvent) => {
@@ -1016,6 +1024,7 @@ export function CmdKTrigger() {
   return (
     <div className="hidden sm:block">
       <button
+        data-walkthrough-nav="cmdk-trigger"
         onClick={() => window.dispatchEvent(new CustomEvent("spotlight-toggle"))}
         className={cn(
           "group relative flex items-center gap-3 h-9 px-4 min-w-[240px]",
@@ -1057,8 +1066,11 @@ export function CmdKTrigger() {
           Control Center
         </span>
         <div className="pointer-events-none flex items-center gap-1">
-          <kbd className="flex h-5 min-w-[20px] select-none items-center justify-center rounded-md bg-foreground/[0.04] ring-1 ring-inset ring-foreground/[0.06] px-1.5 font-mono text-[10px] font-medium text-muted-foreground/50 group-hover:text-muted-foreground/70 transition-colors duration-300 group-hover:transition-none">
-            ⌘
+          <kbd
+            suppressHydrationWarning
+            className="flex h-5 min-w-[20px] select-none items-center justify-center rounded-md bg-foreground/[0.04] ring-1 ring-inset ring-foreground/[0.06] px-1.5 font-mono text-[10px] font-medium text-muted-foreground/50 group-hover:text-muted-foreground/70 transition-colors duration-300 group-hover:transition-none"
+          >
+            {modifierKeyLabel}
           </kbd>
           <kbd className="flex h-5 min-w-[20px] select-none items-center justify-center rounded-md bg-foreground/[0.04] ring-1 ring-inset ring-foreground/[0.06] px-1.5 font-mono text-[10px] font-medium text-muted-foreground/50 group-hover:text-muted-foreground/70 transition-colors duration-300 group-hover:transition-none">
             K

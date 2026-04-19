@@ -33,56 +33,21 @@ export default function McpBrowserPage() {
   const [docLoading, setDocLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // Function to call MCP tools
-  const callMcpTool = async (toolName: string, args: Record<string, string> = {}) => {
-    const response = await fetch('/api/internal/mcp', {
+  /** Same doc operations as the MCP-exposed `ask_stack_auth` backend path; list/get use the internal JSON API. */
+  const callDocsTool = async (body: Record<string, unknown>) => {
+    const response = await fetch('/api/internal/docs-tools', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'Accept': 'application/json, text/event-stream',
       },
-      body: JSON.stringify({
-        jsonrpc: '2.0',
-        method: 'tools/call',
-        params: {
-          name: toolName,
-          arguments: args,
-        },
-        id: Date.now(),
-      }),
+      body: JSON.stringify(body),
     });
 
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
 
-    // Parse Server-Sent Events format response
-    const text = await response.text();
-
-    // Look for the data line in the SSE response
-    const lines = text.split('\n');
-    let jsonData = null;
-
-    for (const line of lines) {
-      if (line.startsWith('data: ')) {
-        try {
-          jsonData = JSON.parse(line.substring(6));
-          break;
-        } catch (e) {
-          // Continue looking for valid JSON data
-        }
-      }
-    }
-
-    if (!jsonData) {
-      throw new Error('Invalid MCP response format');
-    }
-
-    if (jsonData.error) {
-      throw new Error(jsonData.error.message || 'MCP tool call failed');
-    }
-
-    return jsonData.result;
+    return await response.json() as { content: Array<{ type: string, text?: string }> };
   };
 
   // Parse the doc summaries from the text response
@@ -119,7 +84,7 @@ export default function McpBrowserPage() {
     const loadDocs = async () => {
       try {
         setLoading(true);
-        const result = await callMcpTool('list_available_docs');
+        const result = await callDocsTool({ action: 'list_available_docs' });
         const textContent = result.content[0]?.text || '';
         const parsedDocs = parseDocSummaries(textContent);
         setDocs(parsedDocs);
@@ -140,7 +105,7 @@ export default function McpBrowserPage() {
   const loadDoc = async (docId: string) => {
     try {
       setDocLoading(true);
-      const result = await callMcpTool('get_docs_by_id', { id: docId });
+      const result = await callDocsTool({ action: 'get_docs_by_id', id: docId });
       const textContent = result.content[0]?.text || '';
 
       // Parse the response which includes title, description, and content
@@ -235,7 +200,8 @@ export default function McpBrowserPage() {
         </div>
 
         <p className="text-muted-foreground">
-          Browse Stack Auth documentation through the Model Context Protocol server.
+          Browse Stack Auth documentation using the same sources as the public MCP server (the MCP surface exposes only the{' '}
+          <span className="font-mono text-foreground">ask_stack_auth</span> tool; this page uses the internal docs API for listing and viewing pages).
           Found <span className="font-medium text-foreground">{docs.length}</span> documentation pages.
         </p>
       </div>

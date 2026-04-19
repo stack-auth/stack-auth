@@ -1,3 +1,7 @@
+import { createBulldozerExecutionContext, toQueryableSqlQuery } from "@/lib/bulldozer/db/index";
+import { tableIdToDebugString } from "@/lib/bulldozer/db/utilities";
+import { syncExternalDatabases } from "@/lib/external-db-sync";
+import { createPaymentsSchema } from "@/lib/payments/schema/index";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import type { OrganizationRenderedConfig } from "@stackframe/stack-shared/dist/config/schema";
@@ -9,6 +13,7 @@ import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import fs from "fs";
 
 import { createApiHelpers, loadOutputData, type OutputData } from "./api";
+import { verifyClickhouseSync } from "./clickhouse-sync-verifier";
 import { createPaymentsVerifier } from "./payments-verifier";
 import { createRecurse } from "./recurse";
 import { verifyStripePayoutIntegrity } from "./stripe-payout-integrity";
@@ -78,6 +83,7 @@ async function main() {
   const shouldSkipNeon = flags.includes("--skip-neon");
   const recentFirst = flags.includes("--recent-first");
   const noBail = flags.includes("--no-bail");
+  const shouldSkipClickhouse = flags.includes("--skip-clickhouse");
   const maxUsersPerProjectFlag = flags.find(f => f.startsWith("--max-users-per-project="));
   const maxUsersPerProject = maxUsersPerProjectFlag
     ? parseInt(maxUsersPerProjectFlag.split("=")[1], 10)
@@ -154,9 +160,32 @@ async function main() {
     console.warn("Using mock Stripe server (STACK_STRIPE_SECRET_KEY=sk_test_mockstripekey); skipping Stripe payout integrity checks.");
   }
 
+  const clickhouseAvailable = getEnvVariable("STACK_CLICKHOUSE_URL", "") !== "";
+  if (shouldSkipClickhouse) {
+    console.log(`Will skip ClickHouse sync verification.`);
+  } else if (!clickhouseAvailable) {
+    console.log(`STACK_CLICKHOUSE_URL not set; skipping ClickHouse sync verification.`);
+  }
+
   if (maxUsersPerProject !== Infinity) {
     console.log(`Will check at most ${maxUsersPerProject} users per project.`);
   }
+
+  await recurse(`[bulldozer] verifying data integrity across all payments tables`, async () => {
+    const executionContext = createBulldozerExecutionContext();
+    const schema = createPaymentsSchema();
+    for (const table of schema._allTables) {
+      const label = tableIdToDebugString(table.tableId);
+      await recurse(`[bulldozer table] ${label}`, async () => {
+        const errors = await prismaClient.$queryRawUnsafe<unknown[]>(toQueryableSqlQuery(table.verifyDataIntegrity(executionContext)));
+        if (errors.length > 0) {
+          throw new StackAssertionError(deindent`
+            Bulldozer data integrity violation in table ${label}: found ${errors.length} error row(s).
+          `, { errors });
+        }
+      });
+    }
+  });
 
   const endAt = Math.min(startAt + count, projects.length);
   for (let i = startAt; i < endAt; i++) {
@@ -196,7 +225,10 @@ async function main() {
 
       const tenancy = await getSoleTenancyFromProjectBranch(projectId, DEFAULT_BRANCH_ID, true);
       const paymentsConfig = tenancy ? (tenancy.config as OrganizationRenderedConfig).payments : undefined;
-      const paymentsVerifier = tenancy && paymentsConfig
+      // TODO: Re-enable payments verifier once we've reworked it
+      const PAYMENTS_VERIFIER_ENABLED: boolean = false;
+      // eslint-disable-next-line @typescript-eslint/no-unnecessary-condition
+      const paymentsVerifier = PAYMENTS_VERIFIER_ENABLED && tenancy && paymentsConfig
         ? await createPaymentsVerifier({
           projectId,
           tenancyId: tenancy.id,
@@ -214,6 +246,21 @@ async function main() {
           tenancy,
           stripeAccountId,
           expectStatusCode,
+        });
+      }
+
+      if (!shouldSkipClickhouse && clickhouseAvailable && tenancy) {
+        await recurse("[clickhouse sync]", async (recurse) => {
+          // Flush any pending ClickHouse syncs by running a direct sync before verifying.
+          // This avoids race conditions where QStash hasn't delivered all sync callbacks yet.
+          await syncExternalDatabases(tenancy);
+
+          await verifyClickhouseSync({
+            tenancy,
+            projectId,
+            branchId: DEFAULT_BRANCH_ID,
+            recurse,
+          });
         });
       }
 
