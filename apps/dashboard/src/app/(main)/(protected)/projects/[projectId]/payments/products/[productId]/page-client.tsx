@@ -34,15 +34,10 @@ import {
   Separator,
   SimpleTooltip,
   Skeleton,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
   toast,
   Typography,
 } from "@/components/ui";
+import { createDefaultDataGridState, DataGrid, useDataSource, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
 import { useUpdateConfig } from "@/lib/config-update";
 import { ArrowLeftIcon, ClockIcon, CopyIcon, CurrencyDollarIcon, DotsThreeIcon, FolderOpenIcon, GiftIcon, HardDriveIcon, PackageIcon, PencilSimpleIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TagIcon, TrashIcon, UsersIcon, XIcon } from "@phosphor-icons/react";
 import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
@@ -1407,6 +1402,24 @@ function ProductItemsSection({ productId, product, items, onItemsChange, config,
 }
 
 function CustomersSkeleton() {
+  const skeletonColumns = useMemo<DataGridColumnDef<{ id: number }>[]>(() => [
+    { id: "customer", header: "Customer", width: 200, renderCell: () => <Skeleton className="h-8 w-32" /> },
+    { id: "type", header: "Type", width: 100, renderCell: () => <Skeleton className="h-4 w-16" /> },
+    { id: "purchased", header: "Purchased", width: 150, renderCell: () => <Skeleton className="h-4 w-24" /> },
+    { id: "actions", header: "", width: 80, renderCell: () => <Skeleton className="h-8 w-8" /> },
+  ], []);
+  const skeletonData = useMemo(() => [{ id: 0 }, { id: 1 }, { id: 2 }], []);
+  const [gridState, setGridState] = useState(() => createDefaultDataGridState(skeletonColumns));
+  const gridData = useDataSource({
+    data: skeletonData,
+    columns: skeletonColumns,
+    getRowId: (row) => String(row.id),
+    sorting: gridState.sorting,
+    quickSearch: gridState.quickSearch,
+    pagination: gridState.pagination,
+    paginationMode: "client",
+  });
+
   return (
     <div className="relative rounded-2xl bg-foreground/[0.04] ring-1 ring-foreground/[0.06]">
       <div className="px-5 pt-4 pb-3">
@@ -1416,28 +1429,16 @@ function CustomersSkeleton() {
         </p>
       </div>
       <div className="px-5 pb-5">
-        <div className="rounded-xl overflow-hidden bg-background/50 ring-1 ring-foreground/[0.06]">
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead>Customer</TableHead>
-                <TableHead>Type</TableHead>
-                <TableHead>Purchased</TableHead>
-                <TableHead className="w-[80px]"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {Array.from({ length: 3 }).map((_, i) => (
-                <TableRow key={i}>
-                  <TableCell><Skeleton className="h-8 w-32" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-16" /></TableCell>
-                  <TableCell><Skeleton className="h-4 w-24" /></TableCell>
-                  <TableCell><Skeleton className="h-8 w-8" /></TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        <DataGrid
+          columns={skeletonColumns}
+          rows={gridData.rows}
+          getRowId={(row) => String(row.id)}
+          totalRowCount={gridData.totalRowCount}
+          state={gridState}
+          onChange={setGridState}
+          toolbar={false}
+          footer={false}
+        />
       </div>
     </div>
   );
@@ -1452,12 +1453,17 @@ function isProductGrantEntry(entry: TransactionEntry): entry is Extract<Transact
   return entry.type === 'product_grant';
 }
 
+type CustomerGridRow = {
+  key: string,
+  customerType: string,
+  customerId: string,
+  purchasedAt: Date,
+};
+
 function ProductCustomersSection({ productId, product }: ProductCustomersSectionProps) {
   const adminApp = useAdminApp();
-  // Get transactions filtered by this product
   const { transactions } = adminApp.useTransactions({ limit: 100 });
 
-  // Filter transactions for this product and extract unique customers
   const customersWithTransactions = useMemo(() => {
     const customerMap = new Map<string, {
       customerType: string,
@@ -1466,7 +1472,6 @@ function ProductCustomersSection({ productId, product }: ProductCustomersSection
     }>();
 
     for (const transaction of transactions) {
-      // Only consider purchase transactions
       if (transaction.type !== 'purchase') continue;
 
       const productGrant = transaction.entries.find(isProductGrantEntry);
@@ -1478,7 +1483,6 @@ function ProductCustomersSection({ productId, product }: ProductCustomersSection
       const key = `${customerEntry.customer_type}:${customerEntry.customer_id}`;
       const existing = customerMap.get(key);
 
-      // Keep the latest transaction for each customer
       if (!existing || transaction.created_at_millis > existing.latestTransaction.created_at_millis) {
         customerMap.set(key, {
           customerType: customerEntry.customer_type,
@@ -1492,6 +1496,77 @@ function ProductCustomersSection({ productId, product }: ProductCustomersSection
       (a, b) => b.latestTransaction.created_at_millis - a.latestTransaction.created_at_millis
     );
   }, [transactions, productId]);
+
+  const gridRows = useMemo<CustomerGridRow[]>(
+    () => customersWithTransactions.map(({ customerType, customerId, latestTransaction }) => ({
+      key: `${customerType}:${customerId}`,
+      customerType,
+      customerId,
+      purchasedAt: new Date(latestTransaction.created_at_millis),
+    })),
+    [customersWithTransactions],
+  );
+
+  const columns = useMemo<DataGridColumnDef<CustomerGridRow>[]>(() => [
+    {
+      id: "customer",
+      header: "Customer",
+      width: 200,
+      renderCell: ({ row }) => (
+        row.customerType === 'user' ? (
+          <UserCell userId={row.customerId} />
+        ) : row.customerType === 'team' ? (
+          <TeamCell teamId={row.customerId} />
+        ) : (
+          <div className="flex items-center gap-2">
+            <AvatarCell fallback="?" />
+            <span className="font-mono text-xs">{row.customerId}</span>
+          </div>
+        )
+      ),
+    },
+    {
+      id: "type",
+      header: "Type",
+      width: 100,
+      accessor: "customerType",
+      renderCell: ({ row }) => (
+        <span className={cn(
+          "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ring-1",
+          CUSTOMER_TYPE_COLORS[row.customerType as keyof typeof CUSTOMER_TYPE_COLORS]
+        )}>
+          {row.customerType}
+        </span>
+      ),
+    },
+    {
+      id: "purchased",
+      header: "Purchased",
+      width: 150,
+      type: "dateTime",
+      accessor: "purchasedAt",
+    },
+    {
+      id: "actions",
+      header: "",
+      width: 80,
+      sortable: false,
+      renderCell: ({ row }) => (
+        <CustomerRowActions customerType={row.customerType} customerId={row.customerId} />
+      ),
+    },
+  ], []);
+
+  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
+  const gridData = useDataSource({
+    data: gridRows,
+    columns,
+    getRowId: (row) => row.key,
+    sorting: gridState.sorting,
+    quickSearch: gridState.quickSearch,
+    pagination: gridState.pagination,
+    paginationMode: "client",
+  });
 
   return (
     <div className="relative rounded-2xl bg-foreground/[0.04] ring-1 ring-foreground/[0.06]">
@@ -1510,90 +1585,50 @@ function ProductCustomersSection({ productId, product }: ProductCustomersSection
             </p>
           </div>
         ) : (
-          <div className="rounded-xl overflow-hidden bg-background/50 ring-1 ring-foreground/[0.06]">
-            <Table>
-              <TableHeader>
-                <TableRow className="hover:bg-transparent">
-                  <TableHead>Customer</TableHead>
-                  <TableHead>Type</TableHead>
-                  <TableHead>Purchased</TableHead>
-                  <TableHead className="w-[80px]"></TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {customersWithTransactions.map(({ customerType, customerId, latestTransaction }) => (
-                  <CustomerRow
-                    key={`${customerType}:${customerId}`}
-                    customerType={customerType}
-                    customerId={customerId}
-                    purchasedAt={new Date(latestTransaction.created_at_millis)}
-                  />
-                ))}
-              </TableBody>
-            </Table>
-          </div>
+          <DataGrid
+            columns={columns}
+            rows={gridData.rows}
+            getRowId={(row) => row.key}
+            totalRowCount={gridData.totalRowCount}
+            state={gridState}
+            onChange={setGridState}
+            toolbar={false}
+            footer={false}
+          />
         )}
       </div>
     </div>
   );
 }
 
-type CustomerRowProps = {
-  customerType: string,
-  customerId: string,
-  purchasedAt: Date,
-};
-
-function CustomerRow({ customerType, customerId, purchasedAt }: CustomerRowProps) {
+function CustomerRowActions({ customerType, customerId }: { customerType: string, customerId: string }) {
   const adminApp = useAdminApp();
-
   return (
-    <TableRow>
-      <TableCell>
-        {customerType === 'user' ? (
-          <UserCell userId={customerId} />
-        ) : customerType === 'team' ? (
-          <TeamCell teamId={customerId} />
-        ) : (
-          <div className="flex items-center gap-2">
-            <AvatarCell fallback="?" />
-            <span className="font-mono text-xs">{customerId}</span>
-          </div>
-        )}
-      </TableCell>
-      <TableCell>
-        <span className={cn(
-          "inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-semibold uppercase tracking-wide ring-1",
-          CUSTOMER_TYPE_COLORS[customerType as keyof typeof CUSTOMER_TYPE_COLORS]
-        )}>
-          {customerType}
-        </span>
-      </TableCell>
-      <TableCell className="text-muted-foreground">
-        {fromNow(purchasedAt)}
-      </TableCell>
-      <TableCell>
-        <ActionCell
-          items={[
-            ...(customerType === 'user' ? [{
-              item: "View User",
-              onClick: () => {
-                window.open(`/projects/${adminApp.projectId}/users/${customerId}`, '_blank', 'noopener');
-              },
-            }] : []),
-            ...(customerType === 'team' ? [{
-              item: "View Team",
-              onClick: () => {
-                window.open(`/projects/${adminApp.projectId}/teams/${customerId}`, '_blank', 'noopener');
-              },
-            }] : []),
-          ]}
-        />
-      </TableCell>
-    </TableRow>
+    <ActionCell
+      items={[
+        ...(customerType === 'user' ? [{
+          item: "View User",
+          onClick: () => {
+            window.open(`/projects/${adminApp.projectId}/users/${customerId}`, '_blank', 'noopener');
+          },
+        }] : []),
+        ...(customerType === 'team' ? [{
+          item: "View Team",
+          onClick: () => {
+            window.open(`/projects/${adminApp.projectId}/teams/${customerId}`, '_blank', 'noopener');
+          },
+        }] : []),
+      ]}
+    />
   );
 }
 
+// TODO(ui-fixes-minor): This component calls `adminApp.useUser(userId)` once
+// per row. With the customer grid capped at 100 rows via `useTransactions`,
+// that's 100 individual user fetches on the product detail page. Consider
+// hoisting to a parent-level `adminApp.useUsers({ ids: [...] })` (when the
+// SDK grows that capability) and passing a `Map<userId, user>` down so the
+// cell is a pure lookup. Same applies to `TeamCell` below.
 function UserCell({ userId }: { userId: string }) {
   const adminApp = useAdminApp();
   const user = adminApp.useUser(userId);

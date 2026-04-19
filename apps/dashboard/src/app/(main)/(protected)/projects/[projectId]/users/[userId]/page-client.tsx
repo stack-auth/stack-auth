@@ -31,27 +31,22 @@ import {
   DropdownMenuTrigger,
   Input,
   Separator,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
   Textarea,
   Typography,
   useToast
 } from "@/components/ui";
+import { createDefaultDataGridState, DataGrid, useDataSource, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
 import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialogs";
 import { AtIcon, CalendarIcon, CheckIcon, DotsThreeIcon, EnvelopeIcon, GlobeIcon, HashIcon, ProhibitIcon, ShieldIcon, SquareIcon, XIcon } from "@phosphor-icons/react";
 import { ServerContactChannel, ServerOAuthProvider, ServerUser } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
-import { CountryCodeInput } from "@/components/country-code-select";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { captureError, StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
-import { useState } from "react";
+import { CountryCodeInput } from "@/components/country-code-select";
+import { useMemo, useState } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
@@ -803,105 +798,139 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
           </p>
         </div>
       ) : (
-        <div className='border rounded-md'>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>E-Mail</TableHead>
-                <TableHead className="text-center">Primary</TableHead>
-                <TableHead className="text-center">Verified</TableHead>
-                <TableHead className="text-center">Used for sign-in</TableHead>
-                <TableHead className="w-[80px]"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {contactChannels.map((channel) => (
-                <TableRow key={channel.id}>
-                  <TableCell>
-                    <div className='flex flex-col md:flex-row gap-2 md:gap-4'>
-                      {channel.value}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {channel.isPrimary ? <CheckIcon className="mx-auto h-4 w-4 text-green-500" /> : null}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {channel.isVerified ?
-                      <CheckIcon className="mx-auto h-4 w-4 text-green-500" /> :
-                      <XIcon className="mx-auto h-4 w-4 text-muted-foreground" />
-                    }
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {channel.usedForAuth ?
-                      <CheckIcon className="mx-auto h-4 w-4 text-green-500" /> :
-                      <XIcon className="mx-auto h-4 w-4 text-muted-foreground" />
-                    }
-                  </TableCell>
-                  <TableCell align="right">
-                    <ActionCell
-                      items={[
-                        {
-                          item: "Send sign-in invitation",
-                          onClick: async () => {
-                            setSendSignInInvitationDialog({
-                              channel,
-                              isOpen: true,
-                            });
-                          },
-                        },
-                        ...(!channel.isVerified ? [{
-                          item: "Send verification email",
-                          onClick: async () => {
-                            setSendVerificationEmailDialog({
-                              channel,
-                              isOpen: true,
-                            });
-                          },
-                        }] : []),
-                        ...(project.config.credentialEnabled ? [{
-                          item: "Send reset password email",
-                          onClick: async () => {
-                            setSendResetPasswordEmailDialog({
-                              channel,
-                              isOpen: true,
-                            });
-                          },
-                        }] : []),
-                        {
-                          item: channel.isVerified ? "Mark as unverified" : "Mark as verified",
-                          onClick: async () => {
-                            await toggleVerified(channel);
-                          },
-                        },
-                        ...(!channel.isPrimary ? [{
-                          item: "Set as primary",
-                          onClick: async () => {
-                            await setPrimaryEmail(channel);
-                          },
-                        }] : []),
-                        {
-                          item: channel.usedForAuth ? "Disable for sign-in" : "Enable for sign-in",
-                          onClick: async () => {
-                            await toggleUsedForAuth(channel);
-                          },
-                        },
-                        {
-                          item: "Delete",
-                          danger: true,
-                          onClick: async () => {
-                            await channel.delete();
-                          },
-                        }
-                      ]}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        <ContactChannelsDataGrid
+          contactChannels={contactChannels}
+          project={project}
+          toggleVerified={toggleVerified}
+          toggleUsedForAuth={toggleUsedForAuth}
+          setPrimaryEmail={setPrimaryEmail}
+          onSendVerificationEmail={(channel) => setSendVerificationEmailDialog({ channel, isOpen: true })}
+          onSendResetPasswordEmail={(channel) => setSendResetPasswordEmailDialog({ channel, isOpen: true })}
+          onSendSignInInvitation={(channel) => setSendSignInInvitationDialog({ channel, isOpen: true })}
+        />
       )}
     </div>
+  );
+}
+
+function ContactChannelsDataGrid({
+  contactChannels,
+  project,
+  toggleVerified,
+  toggleUsedForAuth,
+  setPrimaryEmail,
+  onSendVerificationEmail,
+  onSendResetPasswordEmail,
+  onSendSignInInvitation,
+}: {
+  contactChannels: ServerContactChannel[],
+  project: ReturnType<ReturnType<typeof useAdminApp>["useProject"]>,
+  toggleVerified: (channel: ServerContactChannel) => Promise<void>,
+  toggleUsedForAuth: (channel: ServerContactChannel) => Promise<void>,
+  setPrimaryEmail: (channel: ServerContactChannel) => Promise<void>,
+  onSendVerificationEmail: (channel: ServerContactChannel) => void,
+  onSendResetPasswordEmail: (channel: ServerContactChannel) => void,
+  onSendSignInInvitation: (channel: ServerContactChannel) => void,
+}) {
+  const columns = useMemo<DataGridColumnDef<ServerContactChannel>[]>(() => [
+    {
+      id: "email",
+      header: "E-Mail",
+      width: 200,
+      type: "string",
+      accessor: "value",
+    },
+    {
+      id: "primary",
+      header: "Primary",
+      width: 80,
+      align: "center",
+      renderCell: ({ row }) => row.isPrimary ? <CheckIcon className="h-4 w-4 text-green-500" /> : null,
+    },
+    {
+      id: "verified",
+      header: "Verified",
+      width: 80,
+      align: "center",
+      renderCell: ({ row }) => row.isVerified
+        ? <CheckIcon className="h-4 w-4 text-green-500" />
+        : <XIcon className="h-4 w-4 text-muted-foreground" />,
+    },
+    {
+      id: "usedForAuth",
+      header: "Used for sign-in",
+      width: 120,
+      align: "center",
+      renderCell: ({ row }) => row.usedForAuth
+        ? <CheckIcon className="h-4 w-4 text-green-500" />
+        : <XIcon className="h-4 w-4 text-muted-foreground" />,
+    },
+    {
+      id: "actions",
+      header: "",
+      width: 80,
+      sortable: false,
+      resizable: false,
+      renderCell: ({ row: channel }) => (
+        <ActionCell
+          items={[
+            {
+              item: "Send sign-in invitation",
+              onClick: async () => onSendSignInInvitation(channel),
+            },
+            ...(!channel.isVerified ? [{
+              item: "Send verification email",
+              onClick: async () => onSendVerificationEmail(channel),
+            }] : []),
+            ...(project.config.credentialEnabled ? [{
+              item: "Send reset password email",
+              onClick: async () => onSendResetPasswordEmail(channel),
+            }] : []),
+            {
+              item: channel.isVerified ? "Mark as unverified" : "Mark as verified",
+              onClick: async () => { await toggleVerified(channel); },
+            },
+            ...(!channel.isPrimary ? [{
+              item: "Set as primary",
+              onClick: async () => { await setPrimaryEmail(channel); },
+            }] : []),
+            {
+              item: channel.usedForAuth ? "Disable for sign-in" : "Enable for sign-in",
+              onClick: async () => { await toggleUsedForAuth(channel); },
+            },
+            {
+              item: "Delete",
+              danger: true,
+              onClick: async () => { await channel.delete(); },
+            },
+          ]}
+        />
+      ),
+    },
+  ], [project.config.credentialEnabled, toggleVerified, toggleUsedForAuth, setPrimaryEmail, onSendVerificationEmail, onSendResetPasswordEmail, onSendSignInInvitation]);
+
+  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
+  const gridData = useDataSource({
+    data: contactChannels,
+    columns,
+    getRowId: (row) => row.id,
+    sorting: gridState.sorting,
+    quickSearch: gridState.quickSearch,
+    pagination: gridState.pagination,
+    paginationMode: "client",
+  });
+
+  return (
+    <DataGrid
+      columns={columns}
+      rows={gridData.rows}
+      getRowId={(row) => row.id}
+      totalRowCount={gridData.totalRowCount}
+      state={gridState}
+      onChange={setGridState}
+      toolbar={false}
+      footer={false}
+    />
   );
 }
 
@@ -929,53 +958,83 @@ function UserTeamsSection({ user }: UserTeamsSectionProps) {
           </p>
         </div>
       ) : (
-        <div className='border rounded-md'>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Team ID</TableHead>
-                <TableHead>Display Name</TableHead>
-                <TableHead>Created At</TableHead>
-                <TableHead className="w-[80px]"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {teams.map((team) => (
-                <TableRow key={team.id}>
-                  <TableCell>
-                    <div className="font-mono text-xs bg-muted px-2 py-1 rounded max-w-[120px] truncate">
-                      {team.id}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="font-medium">
-                      {team.displayName || '-'}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="text-sm text-muted-foreground">
-                      {team.createdAt.toLocaleDateString()}
-                    </div>
-                  </TableCell>
-                  <TableCell align="right">
-                    <ActionCell
-                      items={[
-                        {
-                          item: "View Team",
-                          onClick: () => {
-                            window.open(`/projects/${stackAdminApp.projectId}/teams/${team.id}`, '_blank', 'noopener');
-                          },
-                        },
-                      ]}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        <UserTeamsDataGrid teams={teams} projectId={stackAdminApp.projectId} />
       )}
     </div>
+  );
+}
+
+function UserTeamsDataGrid({ teams, projectId }: { teams: Array<{ id: string, displayName: string, createdAt: Date }>, projectId: string }) {
+  const columns = useMemo<DataGridColumnDef<{ id: string, displayName: string, createdAt: Date }>[]>(() => [
+    {
+      id: "teamId",
+      header: "Team ID",
+      width: 150,
+      accessor: "id",
+      renderCell: ({ row }) => (
+        <div className="font-mono text-xs bg-muted px-2 py-1 rounded max-w-[120px] truncate">
+          {row.id}
+        </div>
+      ),
+    },
+    {
+      id: "displayName",
+      header: "Display Name",
+      width: 200,
+      type: "string",
+      accessor: "displayName",
+      renderCell: ({ row }) => <div className="font-medium">{row.displayName || '-'}</div>,
+    },
+    {
+      id: "createdAt",
+      header: "Created At",
+      width: 150,
+      type: "date",
+      accessor: "createdAt",
+    },
+    {
+      id: "actions",
+      header: "",
+      width: 80,
+      sortable: false,
+      resizable: false,
+      renderCell: ({ row }) => (
+        <ActionCell
+          items={[
+            {
+              item: "View Team",
+              onClick: () => {
+                window.open(`/projects/${encodeURIComponent(projectId)}/teams/${encodeURIComponent(row.id)}`, '_blank', 'noopener');
+              },
+            },
+          ]}
+        />
+      ),
+    },
+  ], [projectId]);
+
+  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
+  const gridData = useDataSource({
+    data: teams,
+    columns,
+    getRowId: (row) => row.id,
+    sorting: gridState.sorting,
+    quickSearch: gridState.quickSearch,
+    pagination: gridState.pagination,
+    paginationMode: "client",
+  });
+
+  return (
+    <DataGrid
+      columns={columns}
+      rows={gridData.rows}
+      getRowId={(row) => row.id}
+      totalRowCount={gridData.totalRowCount}
+      state={gridState}
+      onChange={setGridState}
+      toolbar={false}
+      footer={false}
+    />
   );
 }
 
@@ -1223,86 +1282,120 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
           </p>
         </div>
       ) : (
-        <div className='border rounded-md'>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Provider</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Account ID</TableHead>
-                <TableHead className="text-center">Used for sign-in</TableHead>
-                <TableHead className="text-center">Used for connected accounts</TableHead>
-                <TableHead className="w-[80px]"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {oauthProviders.map((provider: ServerOAuthProvider) => (
-                <TableRow key={provider.id + '-' + provider.accountId}>
-                  <TableCell>
-                    <div className='flex items-center gap-2'>
-                      <div className="capitalize font-medium">
-                        {provider.type}
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className='flex flex-col md:flex-row gap-2 md:gap-4'>
-                      {provider.email}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="font-mono text-xs">
-                      {provider.accountId}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {provider.allowSignIn ?
-                      <CheckIcon className="mx-auto h-4 w-4 text-green-500" /> :
-                      <XIcon className="mx-auto h-4 w-4 text-muted-foreground" />
-                    }
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {provider.allowConnectedAccounts ?
-                      <CheckIcon className="mx-auto h-4 w-4 text-green-500" /> :
-                      <XIcon className="mx-auto h-4 w-4 text-muted-foreground" />
-                    }
-                  </TableCell>
-                  <TableCell align="right">
-                    <ActionCell
-                      items={[
-                        {
-                          item: "Edit",
-                          onClick: () => setEditingProvider(provider),
-                        },
-                        {
-                          item: provider.allowSignIn ? "Disable sign-in" : "Enable sign-in",
-                          onClick: async () => {
-                            await toggleAllowSignIn(provider);
-                          },
-                        },
-                        {
-                          item: provider.allowConnectedAccounts ? "Disable connected accounts" : "Enable connected accounts",
-                          onClick: async () => {
-                            await toggleAllowConnectedAccounts(provider);
-                          },
-                        },
-                        {
-                          item: "Delete",
-                          danger: true,
-                          onClick: async () => {
-                            await provider.delete();
-                          },
-                        }
-                      ]}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        <OAuthProvidersDataGrid
+          providers={oauthProviders}
+          onEdit={setEditingProvider}
+          onToggleSignIn={toggleAllowSignIn}
+          onToggleConnectedAccounts={toggleAllowConnectedAccounts}
+        />
       )}
     </div>
+  );
+}
+
+function OAuthProvidersDataGrid({
+  providers,
+  onEdit,
+  onToggleSignIn,
+  onToggleConnectedAccounts,
+}: {
+  providers: ServerOAuthProvider[],
+  onEdit: (provider: ServerOAuthProvider) => void,
+  onToggleSignIn: (provider: ServerOAuthProvider) => Promise<void>,
+  onToggleConnectedAccounts: (provider: ServerOAuthProvider) => Promise<void>,
+}) {
+  const columns = useMemo<DataGridColumnDef<ServerOAuthProvider>[]>(() => [
+    {
+      id: "provider",
+      header: "Provider",
+      width: 120,
+      type: "string",
+      accessor: "type",
+      renderCell: ({ row }) => <div className="capitalize font-medium">{row.type}</div>,
+    },
+    {
+      id: "email",
+      header: "Email",
+      width: 180,
+      type: "string",
+      accessor: "email",
+    },
+    {
+      id: "accountId",
+      header: "Account ID",
+      width: 150,
+      accessor: "accountId",
+      renderCell: ({ row }) => <div className="font-mono text-xs">{row.accountId}</div>,
+    },
+    {
+      id: "allowSignIn",
+      header: "Used for sign-in",
+      width: 130,
+      align: "center",
+      renderCell: ({ row }) => row.allowSignIn
+        ? <CheckIcon className="h-4 w-4 text-green-500" />
+        : <XIcon className="h-4 w-4 text-muted-foreground" />,
+    },
+    {
+      id: "allowConnectedAccounts",
+      header: "Used for connected accounts",
+      width: 180,
+      align: "center",
+      renderCell: ({ row }) => row.allowConnectedAccounts
+        ? <CheckIcon className="h-4 w-4 text-green-500" />
+        : <XIcon className="h-4 w-4 text-muted-foreground" />,
+    },
+    {
+      id: "actions",
+      header: "",
+      width: 80,
+      sortable: false,
+      resizable: false,
+      renderCell: ({ row: provider }) => (
+        <ActionCell
+          items={[
+            { item: "Edit", onClick: () => onEdit(provider) },
+            {
+              item: provider.allowSignIn ? "Disable sign-in" : "Enable sign-in",
+              onClick: async () => { await onToggleSignIn(provider); },
+            },
+            {
+              item: provider.allowConnectedAccounts ? "Disable connected accounts" : "Enable connected accounts",
+              onClick: async () => { await onToggleConnectedAccounts(provider); },
+            },
+            {
+              item: "Delete",
+              danger: true,
+              onClick: async () => { await provider.delete(); },
+            },
+          ]}
+        />
+      ),
+    },
+  ], [onEdit, onToggleSignIn, onToggleConnectedAccounts]);
+
+  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
+  const gridData = useDataSource({
+    data: providers,
+    columns,
+    getRowId: (row) => row.id + '-' + row.accountId,
+    sorting: gridState.sorting,
+    quickSearch: gridState.quickSearch,
+    pagination: gridState.pagination,
+    paginationMode: "client",
+  });
+
+  return (
+    <DataGrid
+      columns={columns}
+      rows={gridData.rows}
+      getRowId={(row) => row.id + '-' + row.accountId}
+      totalRowCount={gridData.totalRowCount}
+      state={gridState}
+      onChange={setGridState}
+      toolbar={false}
+      footer={false}
+    />
   );
 }
 

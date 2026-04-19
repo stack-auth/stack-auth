@@ -33,5 +33,11 @@ function GlobeSectionWithMetrics({ includeAnonymous }: { includeAnonymous: boole
   const adminApp = useAdminApp();
   const data = (adminApp as any)[stackAppInternalsSymbol].useMetrics(includeAnonymous);
 
-  return <GlobeSection countryData={data.users_by_country} totalUsers={data.total_users} />;
+  return (
+    <GlobeSection
+      countryData={data.users_by_country}
+      totalUsers={data.total_users}
+      activeUsersByCountry={data.active_users_by_country ?? {}}
+    />
+  );
 }

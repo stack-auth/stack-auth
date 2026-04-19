@@ -3,14 +3,15 @@ import { FormDialog } from "@/components/form-dialog";
 import { InputField, SwitchField } from "@/components/form-fields";
 import { InlineSaveDiscard } from "@/components/inline-save-discard";
 import { SettingCard, SettingSwitch } from "@/components/settings";
-import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ActionCell, ActionDialog, Alert, Button, Table, TableBody, TableCell, TableHead, TableHeader, TableRow, Typography } from "@/components/ui";
+import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, ActionCell, ActionDialog, Alert, Button, Typography } from "@/components/ui";
+import { createDefaultDataGridState, DataGrid, useDataSource, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
 import { useUpdateConfig } from "@/lib/config-update";
 import { yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { isValidHostnameWithWildcards, isValidUrl } from "@stackframe/stack-shared/dist/utils/urls";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
-import React, { useState } from "react";
+import React, { useMemo, useState } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
@@ -314,6 +315,50 @@ function ActionMenu(props: {
   );
 }
 
+function DomainDataGrid({ domains }: { domains: DomainEntry[] }) {
+  const columns = useMemo<DataGridColumnDef<DomainEntry>[]>(() => [
+    { id: "domain", header: "Domain", accessor: "baseUrl", width: 300, type: "string" },
+    {
+      id: "actions",
+      header: "",
+      width: 80,
+      sortable: false,
+      resizable: false,
+      renderCell: ({ row }) => (
+        <ActionMenu domains={domains} domain={row} />
+      ),
+    },
+  ], [domains]);
+
+  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
+  const gridData = useDataSource({
+    data: domains,
+    columns,
+    getRowId: (row) => row.id,
+    sorting: gridState.sorting,
+    quickSearch: gridState.quickSearch,
+    pagination: gridState.pagination,
+    paginationMode: "client",
+  });
+
+  return (
+    <DataGrid
+      columns={columns}
+      rows={gridData.rows}
+      getRowId={(row) => row.id}
+      totalRowCount={gridData.totalRowCount}
+      state={gridState}
+      onChange={setGridState}
+      paginationMode="infinite"
+      hasMore={gridData.hasMore}
+      isLoadingMore={gridData.isLoadingMore}
+      onLoadMore={gridData.loadMore}
+      footer={false}
+
+    />
+  );
+}
+
 export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
@@ -366,29 +411,7 @@ export default function PageClient() {
           }
         >
           {domains.length > 0 ? (
-            <div className="border rounded-md">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead className="w-[200px]">Domain</TableHead>
-                    <TableHead>&nbsp;</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {domains.map((domain) => (
-                    <TableRow key={domain.id}>
-                      <TableCell>{domain.baseUrl}</TableCell>
-                      <TableCell className="flex justify-end gap-4">
-                        <ActionMenu
-                          domains={domains}
-                          domain={domain}
-                        />
-                      </TableCell>
-                    </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
-            </div>
+            <DomainDataGrid domains={domains} />
           ) : (
             <Alert>
               No domains added yet.

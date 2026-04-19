@@ -1,9 +1,14 @@
 'use client';
+
 import { useAdminApp } from '@/app/(main)/(protected)/projects/[projectId]/use-admin-app';
-import { DesignDataTable } from "@/components/design-components";
-import { DataTableColumnHeader, Input, Skeleton, TextCell } from "@/components/ui";
+import { Input, Skeleton } from "@/components/ui";
 import { ServerUser } from '@stackframe/stack';
-import { ColumnDef } from "@tanstack/react-table";
+import {
+  createDefaultDataGridState,
+  DataGrid,
+  useDataSource,
+  type DataGridColumnDef,
+} from "@stackframe/dashboard-ui-components";
 import React, { Suspense, useEffect, useMemo, useState } from "react";
 import { extendUsers } from "./user-table";
 
@@ -27,32 +32,69 @@ function UserSearchTable(props: {
   const users = extendUsers(stackAdminApp.useUsers(filters));
 
   const { action } = props;
-  const columns: ColumnDef<ServerUser>[] = useMemo(() => [
+  const columns: DataGridColumnDef<ServerUser>[] = useMemo(() => [
     {
-      accessorKey: "displayName",
-      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Display Name" />,
-      cell: ({ row }) => <TextCell size={100}><span className={row.original.displayName === null ? 'text-slate-400' : ''}>{row.original.displayName ?? '–'}</span></TextCell>,
-      enableSorting: false,
+      id: "displayName",
+      header: "Display Name",
+      accessor: "displayName",
+      width: 100,
+      flex: 1,
+      type: "string",
+      sortable: false,
+      renderCell: ({ row }) => (
+        <span className={row.displayName == null ? "text-slate-400" : ""}>
+          {row.displayName ?? "–"}
+        </span>
+      ),
     },
     {
-      accessorKey: "primaryEmail",
-      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Primary Email" />,
-      cell: ({ row }) => <TextCell size={150}>{row.original.primaryEmail}</TextCell>,
-      enableSorting: false,
+      id: "primaryEmail",
+      header: "Primary Email",
+      accessor: "primaryEmail",
+      width: 150,
+      type: "string",
+      sortable: false,
+      renderCell: ({ row }) => (
+        <span className="truncate">{row.primaryEmail}</span>
+      ),
     },
     {
       id: "actions",
-      cell: ({ row }) => action(row.original),
+      header: "",
+      width: 50,
+      minWidth: 50,
+      maxWidth: 50,
+      sortable: false,
+      hideable: false,
+      resizable: false,
+      renderCell: ({ row }) => action(row),
     },
   ], [action]);
 
+  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
+
+  const gridData = useDataSource({
+    data: users,
+    columns,
+    getRowId: (row) => row.id,
+    sorting: gridState.sorting,
+    quickSearch: gridState.quickSearch,
+    pagination: gridState.pagination,
+    paginationMode: "client",
+  });
+
   return (
-    <DesignDataTable
-      showDefaultToolbar={false}
+    <DataGrid<ServerUser>
       columns={columns}
-      data={users}
-      defaultColumnFilters={[]}
-      defaultSorting={[]}
+      rows={gridData.rows}
+      getRowId={(row) => row.id}
+      totalRowCount={gridData.totalRowCount}
+      isLoading={gridData.isLoading}
+      state={gridState}
+      onChange={setGridState}
+      maxHeight={280}
+      toolbar={false}
+      footer={false}
     />
   );
 }

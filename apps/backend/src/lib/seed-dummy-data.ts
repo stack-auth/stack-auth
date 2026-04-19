@@ -171,6 +171,7 @@ const userSeeds: UserSeed[] = [
     isAnonymous: false,
     oauthProviders: [
       { providerId: 'github', accountId: 'amelia-chen-gh' },
+      { providerId: 'google', accountId: 'amelia-chen-google' },
     ],
     createdAt: daysAgo(28, 9),
   },
@@ -211,6 +212,7 @@ const userSeeds: UserSeed[] = [
     isAnonymous: false,
     oauthProviders: [
       { providerId: 'spotify', accountId: 'priya-narang-spotify' },
+      { providerId: 'github', accountId: 'priya-narang-gh' },
     ],
     createdAt: daysAgo(23, 8),
   },
@@ -233,6 +235,7 @@ const userSeeds: UserSeed[] = [
     isAnonymous: true,
     oauthProviders: [
       { providerId: 'google', accountId: 'chioma-mensah-google' },
+      { providerId: 'microsoft', accountId: 'chioma-mensah-msft' },
     ],
     createdAt: daysAgo(21, 17),
   },
@@ -253,6 +256,7 @@ const userSeeds: UserSeed[] = [
     isAnonymous: false,
     oauthProviders: [
       { providerId: 'github', accountId: 'mateo-silva-gh' },
+      { providerId: 'google', accountId: 'mateo-silva-google' },
     ],
     createdAt: daysAgo(15, 9),
   },
@@ -262,7 +266,10 @@ const userSeeds: UserSeed[] = [
     teamDisplayNames: ['Growth Loop', 'Customer Advisory Board'],
     primaryEmailVerified: true,
     isAnonymous: false,
-    oauthProviders: [],
+    oauthProviders: [
+      { providerId: 'google', accountId: 'harper-lin-google' },
+      { providerId: 'microsoft', accountId: 'harper-lin-msft' },
+    ],
     createdAt: daysAgo(12, 13),
   },
   {
@@ -272,7 +279,10 @@ const userSeeds: UserSeed[] = [
     teamDisplayNames: ['Prototype Garage', EXPLORATORY_TEAM_DISPLAY_NAME],
     primaryEmailVerified: true,
     isAnonymous: false,
-    oauthProviders: [],
+    oauthProviders: [
+      { providerId: 'github', accountId: 'zara-malik-gh' },
+      { providerId: 'spotify', accountId: 'zara-malik-spotify' },
+    ],
     createdAt: daysAgo(9, 10),
   },
   {
@@ -303,6 +313,7 @@ const userSeeds: UserSeed[] = [
     isAnonymous: false,
     oauthProviders: [
       { providerId: 'microsoft', accountId: 'theo-fischer-msft' },
+      { providerId: 'github', accountId: 'theo-fischer-gh' },
     ],
     createdAt: daysAgo(3, 11),
   },
@@ -511,10 +522,27 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
       const displayName = `${firstName} ${lastName}`;
       const hour = 8 + Math.floor(bulkRand() * 12);
       const bulkCreatedAt = daysAgo(dayBack, hour);
-      const hasOauth = bulkRand() > 0.6;
-      const oauthProvider = hasOauth
-        ? [{ providerId: bulkOauthProviders[Math.floor(bulkRand() * bulkOauthProviders.length)]!, accountId: `${email}-oauth` }]
-        : [];
+      // ~50% of users get multiple connected oauth accounts, ~30% get one, ~20% get none
+      const oauthRoll = bulkRand();
+      let numProviders: number;
+      if (oauthRoll < 0.5) {
+        numProviders = 2 + Math.floor(bulkRand() * (bulkOauthProviders.length - 1));
+      } else if (oauthRoll < 0.8) {
+        numProviders = 1;
+      } else {
+        numProviders = 0;
+      }
+      const providerPool = [...bulkOauthProviders];
+      const pickedProviders: string[] = [];
+      for (let p = 0; p < numProviders && providerPool.length > 0; p++) {
+        const idx = Math.floor(bulkRand() * providerPool.length);
+        pickedProviders.push(providerPool[idx]!);
+        providerPool.splice(idx, 1);
+      }
+      const oauthProvider = pickedProviders.map((id) => ({
+        providerId: id,
+        accountId: `${email}-${id}`,
+      }));
 
       const existing = await prisma.projectUser.findFirst({
         where: {

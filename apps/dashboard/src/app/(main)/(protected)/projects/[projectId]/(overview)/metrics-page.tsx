@@ -19,7 +19,7 @@ import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { ErrorBoundary } from "next/dist/client/components/error-boundary";
-import { Suspense, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ElementType } from "react";
+import { type ElementType, Suspense, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { PageLayout } from "../page-layout";
 import { useAdminApp, useProjectId } from "../use-admin-app";
 import { GlobeSectionWithData } from "./globe-section-with-data";
@@ -27,7 +27,6 @@ import {
   ComposedAnalyticsChart,
   ComposedDataPoint,
   CustomDateRange,
-  DataPoint,
   DonutChartDisplay,
   EmailStackedBarChartDisplay,
   EmailStackedDataPoint,
@@ -41,7 +40,7 @@ import {
   TimeRange,
   TimeRangeToggle,
   VisitorsHoverChart,
-  VisitorsHoverDataPoint,
+  VisitorsHoverDataPoint
 } from "./line-chart";
 import { MetricsErrorFallback, MetricsLoadingFallback } from "./metrics-loading";
 
@@ -503,9 +502,8 @@ function AnalyticsChartWidget({
                 ) : (
                   <ComposedAnalyticsChart
                     datapoints={composedData}
-                    showVisitors={analyticsEnabled}
+                    showVisitors
                     showRevenue={paymentsEnabled}
-                    height={chartViewportHeight}
                     compact={compact}
                   />
                 )
@@ -518,7 +516,6 @@ function AnalyticsChartWidget({
                 ) : (
                   <StackedBarChartDisplay
                     datapoints={dauStackedData}
-                    height={chartViewportHeight}
                     compact={compact}
                   />
                 )
@@ -535,7 +532,6 @@ function AnalyticsChartWidget({
                 ) : (
                   <VisitorsHoverChart
                     datapoints={visitorsData}
-                    height={chartViewportHeight}
                     compact={compact}
                   />
                 )
@@ -552,7 +548,6 @@ function AnalyticsChartWidget({
                 ) : (
                   <RevenueHoverChart
                     datapoints={revenueData}
-                    height={chartViewportHeight}
                     compact={compact}
                   />
                 )
@@ -1020,7 +1015,10 @@ function MetricsContent({
 
   const allComposedData = useMemo<ComposedDataPoint[]>(() => {
     const dailyRev = analytics.daily_revenue;
-    const dailyVis = analytics.daily_visitors;
+    // When the analytics app isn't installed there are no `$page-view` events,
+    // so fall back to token-refresh-derived anonymous visitors so the card has
+    // something meaningful to render instead of a flat zero line.
+    const dailyVis = analyticsEnabled ? analytics.daily_visitors : analytics.daily_anonymous_visitors_fallback;
 
     const visitorMap = new Map(dailyVis.map(d => [d.date, d.activity]));
     const revenueMap = new Map(dailyRev.map(d => [d.date, d]));
@@ -1033,14 +1031,14 @@ function MetricsContent({
 
     const points = [...allDates].map(date => ({
       date,
-      visitors: analyticsEnabled ? (visitorMap.get(date) ?? 0) : 0,
+      visitors: visitorMap.get(date) ?? 0,
       new_cents: paymentsEnabled ? (revenueMap.get(date)?.new_cents ?? 0) : 0,
       refund_cents: paymentsEnabled ? (revenueMap.get(date)?.refund_cents ?? 0) : 0,
       dau: dauTotalsByDate.get(date) ?? 0,
     })).sort((a, b) => stringCompare(a.date, b.date));
 
     return points;
-  }, [analytics.daily_revenue, analytics.daily_visitors, dauStackedData, dauTotalsByDate, analyticsEnabled, paymentsEnabled]);
+  }, [analytics.daily_revenue, analytics.daily_visitors, analytics.daily_anonymous_visitors_fallback, dauStackedData, dauTotalsByDate, analyticsEnabled, paymentsEnabled]);
   const composedData = useMemo<ComposedDataPoint[]>(
     () => filterStackedDatapointsByTimeRange(allComposedData, timeRange, customDateRange),
     [allComposedData, timeRange, customDateRange],
@@ -1139,16 +1137,16 @@ function MetricsContent({
       dauTotal: formatCompact(latestDau),
       dauLabel: "Daily Active Users",
       dauDelta: previousDau == null ? undefined : calculatePeriodDelta(latestDau, previousDau),
-      visitorsTotal: analyticsEnabled ? formatCompact(visitorsTotalInRange) : "—",
+      visitorsTotal: formatCompact(visitorsTotalInRange),
       visitorsLabel: "Unique Visitors",
-      visitorsDelta: analyticsEnabled && hasFullPreviousComposedWindow ? calculatePeriodDelta(visitorsTotalInRange, previousVisitorsTotal) : undefined,
+      visitorsDelta: hasFullPreviousComposedWindow ? calculatePeriodDelta(visitorsTotalInRange, previousVisitorsTotal) : undefined,
       revenueTotal: paymentsEnabled
         ? formatUsdFromCents(totalRevenueCentsInRange)
         : "—",
       revenueLabel: "Revenue",
       revenueDelta: paymentsEnabled && hasFullPreviousComposedWindow ? calculatePeriodDelta(totalRevenueCentsInRange, previousRevenueTotalCents) : undefined,
     };
-  }, [allComposedData, composedData, dauStackedData, analyticsEnabled, paymentsEnabled]);
+  }, [allComposedData, composedData, dauStackedData, paymentsEnabled]);
 
   const gridContainerRef = useRef<HTMLDivElement>(null);
   const [gridContainerWidth, setGridContainerWidth] = useState(0);
@@ -1200,20 +1198,15 @@ function MetricsContent({
         className={cn(
           "grid gap-4 sm:gap-5 grid-cols-1 lg:grid-cols-12",
         )}
-        style={shouldShowGlobe
-          ? { minHeight: Math.max(400, Math.round(globeColumnWidth)) }
-          : { minHeight: 400 }}
+        style={{ minHeight: 400 }}
       >
         {shouldShowGlobe && (
           <div className={cn(
-            "hidden lg:flex lg:col-span-5 h-full relative",
+            "hidden lg:flex lg:col-span-5 xl:col-span-4 h-full relative items-center justify-center overflow-hidden",
             "rounded-2xl bg-white/90 backdrop-blur-xl ring-1 ring-black/[0.06] shadow-sm",
             "dark:bg-transparent dark:backdrop-blur-none dark:ring-0 dark:shadow-none dark:rounded-none",
           )}>
-            <div className="absolute inset-0 flex items-start justify-center">
-              <GlobeSectionWithData includeAnonymous={includeAnonymous} />
-            </div>
-            <div className="absolute top-0 left-0 px-5 pt-4 z-10 dark:px-1 dark:pt-0">
+            <div className="absolute top-0 left-0 z-10 px-5 pt-4 dark:px-1 dark:pt-0 pointer-events-none">
               <div className="flex items-center gap-2 mb-2">
                 <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
                   <GlobeIcon className="h-3.5 w-3.5 text-muted-foreground" />
@@ -1226,12 +1219,13 @@ function MetricsContent({
                 {data.total_users.toLocaleString()}
               </div>
             </div>
+            <GlobeSectionWithData includeAnonymous={includeAnonymous} />
           </div>
         )}
 
         <div className={cn(
           "h-full",
-          shouldShowGlobe ? "lg:col-span-7" : "lg:col-span-12",
+          shouldShowGlobe ? "lg:col-span-7 xl:col-span-8" : "lg:col-span-12",
         )}>
           <AnalyticsChartWidget
             composedData={composedData}
@@ -1292,7 +1286,6 @@ function MetricsContent({
         <DonutChartDisplay
           datapoints={data.login_methods}
           compact
-          height={180}
           gradientColor="blue"
         />
         <EmailBreakdownCard

@@ -12,14 +12,9 @@ import {
   CardTitle,
   Skeleton,
   Switch,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
   Typography,
 } from "@/components/ui";
+import { createDefaultDataGridState, DataGrid, useDataSource, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
@@ -233,6 +228,186 @@ function DataDate(props: { value: number | null | undefined, loading: boolean })
     return <Skeleton className="h-5 w-32" />;
   }
   return <span>{formatMillis(props.value ?? null)}</span>;
+}
+
+type SequencerRow = {
+  name: string,
+  total?: string,
+  pending?: string,
+  null_sequence_id?: string,
+  min_sequence_id?: string | null,
+  max_sequence_id?: string | null,
+};
+
+function SequencerDataGrid({ status, loading }: { status: ExternalDbSyncStatus | null, loading: boolean }) {
+  const columns = useMemo<DataGridColumnDef<SequencerRow>[]>(() => [
+    { id: "name", header: "Table", width: 160, type: "string", accessor: "name", renderCell: ({ value }) => <span className="font-medium">{String(value)}</span> },
+    { id: "total", header: "Total", width: 100, accessor: "total", renderCell: ({ row }) => <DataValue value={row.total} loading={loading} /> },
+    { id: "pending", header: "Pending", width: 100, accessor: "pending", renderCell: ({ row }) => <DataValue value={row.pending} loading={loading} /> },
+    { id: "null_seq", header: "Null Seq", width: 100, accessor: "null_sequence_id", renderCell: ({ row }) => <DataValue value={row.null_sequence_id} loading={loading} /> },
+    { id: "min_seq", header: "Min Seq", width: 100, accessor: "min_sequence_id", renderCell: ({ row }) => <DataValue value={row.min_sequence_id} loading={loading} /> },
+    { id: "max_seq", header: "Max Seq", width: 100, accessor: "max_sequence_id", renderCell: ({ row }) => <DataValue value={row.max_sequence_id} loading={loading} /> },
+  ], [loading]);
+
+  const data = useMemo<SequencerRow[]>(() => ([
+    { name: "ProjectUser", ...status?.sequencer.project_users },
+    { name: "ContactChannel", ...status?.sequencer.contact_channels },
+    { name: "Team", ...status?.sequencer.teams },
+    { name: "TeamMember", ...status?.sequencer.team_members },
+    { name: "TeamPermission", ...status?.sequencer.team_permissions },
+    { name: "TeamInvitation", ...status?.sequencer.team_invitations },
+    { name: "EmailOutbox", ...status?.sequencer.email_outboxes },
+    { name: "ProjectPermission", ...status?.sequencer.project_permissions },
+    { name: "NotificationPref", ...status?.sequencer.notification_preferences },
+    { name: "RefreshToken", ...status?.sequencer.refresh_tokens },
+    { name: "ConnectedAccount", ...status?.sequencer.connected_accounts },
+    { name: "DeletedRow", ...status?.sequencer.deleted_rows },
+  ]), [status]);
+
+  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
+  const gridData = useDataSource({
+    data,
+    columns,
+    getRowId: (row) => row.name,
+    sorting: gridState.sorting,
+    quickSearch: gridState.quickSearch,
+    pagination: gridState.pagination,
+    paginationMode: "client",
+  });
+
+  return (
+    <DataGrid
+      columns={columns}
+      rows={gridData.rows}
+      getRowId={(row) => row.name}
+      totalRowCount={gridData.totalRowCount}
+      state={gridState}
+      onChange={setGridState}
+      toolbar={false}
+      footer={false}
+    />
+  );
+}
+
+type DeletedRowEntry = SequenceStats & { table_name: string };
+
+function DeletedRowsDataGrid({ rows, loading }: { rows: DeletedRowEntry[], loading: boolean }) {
+  const columns = useMemo<DataGridColumnDef<DeletedRowEntry>[]>(() => [
+    { id: "table_name", header: "Table", width: 160, type: "string", accessor: "table_name", renderCell: ({ value }) => <span className="font-medium">{String(value)}</span> },
+    { id: "total", header: "Total", width: 100, accessor: "total", renderCell: ({ row }) => <DataValue value={row.total} loading={loading} /> },
+    { id: "pending", header: "Pending", width: 100, accessor: "pending", renderCell: ({ row }) => <DataValue value={row.pending} loading={loading} /> },
+    { id: "null_seq", header: "Null Seq", width: 100, accessor: "null_sequence_id", renderCell: ({ row }) => <DataValue value={row.null_sequence_id} loading={loading} /> },
+    { id: "min_seq", header: "Min Seq", width: 100, accessor: "min_sequence_id", renderCell: ({ row }) => <DataValue value={row.min_sequence_id} loading={loading} /> },
+    { id: "max_seq", header: "Max Seq", width: 100, accessor: "max_sequence_id", renderCell: ({ row }) => <DataValue value={row.max_sequence_id} loading={loading} /> },
+  ], [loading]);
+
+  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
+  const gridData = useDataSource({
+    data: rows,
+    columns,
+    getRowId: (row) => row.table_name,
+    sorting: gridState.sorting,
+    quickSearch: gridState.quickSearch,
+    pagination: gridState.pagination,
+    paginationMode: "client",
+  });
+
+  return (
+    <DataGrid
+      columns={columns}
+      rows={gridData.rows}
+      getRowId={(row) => row.table_name}
+      totalRowCount={gridData.totalRowCount}
+      state={gridState}
+      onChange={setGridState}
+      toolbar={false}
+      footer={false}
+      emptyState={loading ? undefined : "No deleted rows recorded yet."}
+    />
+  );
+}
+
+type PollerRow = {
+  id: string,
+  total?: string,
+  pending?: string,
+  in_flight?: string,
+  stale?: string,
+};
+
+function PollerDataGrid({ status, loading }: { status: ExternalDbSyncStatus | null, loading: boolean }) {
+  const columns = useMemo<DataGridColumnDef<PollerRow>[]>(() => [
+    { id: "total", header: "Total", width: 120, accessor: "total", renderCell: ({ row }) => <DataValue value={row.total} loading={loading} /> },
+    { id: "pending", header: "Pending", width: 120, accessor: "pending", renderCell: ({ row }) => <DataValue value={row.pending} loading={loading} /> },
+    { id: "in_flight", header: "In Flight", width: 120, accessor: "in_flight", renderCell: ({ row }) => <DataValue value={row.in_flight} loading={loading} /> },
+    { id: "stale", header: "Stale", width: 120, accessor: "stale", renderCell: ({ row }) => <DataValue value={row.stale} loading={loading} /> },
+  ], [loading]);
+
+  const data = useMemo<PollerRow[]>(() => [{
+    id: "poller",
+    total: status?.poller.total,
+    pending: status?.poller.pending,
+    in_flight: status?.poller.in_flight,
+    stale: status?.poller.stale,
+  }], [status]);
+
+  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
+  const gridData = useDataSource({
+    data,
+    columns,
+    getRowId: (row) => row.id,
+    sorting: gridState.sorting,
+    quickSearch: gridState.quickSearch,
+    pagination: gridState.pagination,
+    paginationMode: "client",
+  });
+
+  return (
+    <DataGrid
+      columns={columns}
+      rows={gridData.rows}
+      getRowId={(row) => row.id}
+      totalRowCount={gridData.totalRowCount}
+      state={gridState}
+      onChange={setGridState}
+      toolbar={false}
+      footer={false}
+    />
+  );
+}
+
+function SyncEngineDataGrid({ rows, loading }: { rows: MappingStats[], loading: boolean }) {
+  const columns = useMemo<DataGridColumnDef<MappingStats>[]>(() => [
+    { id: "mapping_id", header: "Mapping", width: 200, type: "string", accessor: "mapping_id", renderCell: ({ value }) => <span className="font-medium">{String(value)}</span> },
+    { id: "min_seq", header: "Min Seq", width: 120, accessor: "internal_min_sequence_id", renderCell: ({ row }) => <DataValue value={row.internal_min_sequence_id} loading={loading} /> },
+    { id: "max_seq", header: "Max Seq", width: 120, accessor: "internal_max_sequence_id", renderCell: ({ row }) => <DataValue value={row.internal_max_sequence_id} loading={loading} /> },
+    { id: "pending", header: "Pending Rows", width: 120, accessor: "internal_pending_count", renderCell: ({ row }) => <DataValue value={row.internal_pending_count} loading={loading} /> },
+  ], [loading]);
+
+  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
+  const gridData = useDataSource({
+    data: rows,
+    columns,
+    getRowId: (row) => row.mapping_id,
+    sorting: gridState.sorting,
+    quickSearch: gridState.quickSearch,
+    pagination: gridState.pagination,
+    paginationMode: "client",
+  });
+
+  return (
+    <DataGrid
+      columns={columns}
+      rows={gridData.rows}
+      getRowId={(row) => row.mapping_id}
+      totalRowCount={gridData.totalRowCount}
+      state={gridState}
+      onChange={setGridState}
+      toolbar={false}
+      footer={false}
+      emptyState={loading ? undefined : "No mappings configured."}
+    />
+  );
 }
 
 export default function PageClient() {
@@ -593,79 +768,13 @@ export default function PageClient() {
             <CardDescription>Rows awaiting sequence ID backfill per table.</CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Table</TableHead>
-                  <TableHead>Total</TableHead>
-                  <TableHead>Pending</TableHead>
-                  <TableHead>Null Seq</TableHead>
-                  <TableHead>Min Seq</TableHead>
-                  <TableHead>Max Seq</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {([
-                  ["ProjectUser", status?.sequencer.project_users],
-                  ["ContactChannel", status?.sequencer.contact_channels],
-                  ["Team", status?.sequencer.teams],
-                  ["TeamMember", status?.sequencer.team_members],
-                  ["TeamPermission", status?.sequencer.team_permissions],
-                  ["TeamInvitation", status?.sequencer.team_invitations],
-                  ["EmailOutbox", status?.sequencer.email_outboxes],
-                  ["ProjectPermission", status?.sequencer.project_permissions],
-                  ["NotificationPref", status?.sequencer.notification_preferences],
-                  ["RefreshToken", status?.sequencer.refresh_tokens],
-                  ["ConnectedAccount", status?.sequencer.connected_accounts],
-                  ["DeletedRow", status?.sequencer.deleted_rows],
-                ] as const).map(([name, stats]) => (
-                  <TableRow key={name}>
-                    <TableCell className="font-medium">{name}</TableCell>
-                    <TableCell><DataValue value={stats?.total} loading={loadingState} /></TableCell>
-                    <TableCell><DataValue value={stats?.pending} loading={loadingState} /></TableCell>
-                    <TableCell><DataValue value={stats?.null_sequence_id} loading={loadingState} /></TableCell>
-                    <TableCell><DataValue value={stats?.min_sequence_id} loading={loadingState} /></TableCell>
-                    <TableCell><DataValue value={stats?.max_sequence_id} loading={loadingState} /></TableCell>
-                  </TableRow>
-                ))}
-              </TableBody>
-            </Table>
+            <SequencerDataGrid status={status} loading={loadingState} />
 
             <div className="mt-4">
               <Typography type="p" className="text-xs font-semibold uppercase text-muted-foreground">
                 Deleted rows by table
               </Typography>
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Table</TableHead>
-                    <TableHead>Total</TableHead>
-                    <TableHead>Pending</TableHead>
-                    <TableHead>Null Seq</TableHead>
-                    <TableHead>Min Seq</TableHead>
-                    <TableHead>Max Seq</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {deletedRowsByTable.map((row) => (
-                    <TableRow key={row.table_name}>
-                      <TableCell className="font-medium">{row.table_name}</TableCell>
-                      <TableCell><DataValue value={row.total} loading={loadingState} /></TableCell>
-                      <TableCell><DataValue value={row.pending} loading={loadingState} /></TableCell>
-                      <TableCell><DataValue value={row.null_sequence_id} loading={loadingState} /></TableCell>
-                      <TableCell><DataValue value={row.min_sequence_id} loading={loadingState} /></TableCell>
-                      <TableCell><DataValue value={row.max_sequence_id} loading={loadingState} /></TableCell>
-                    </TableRow>
-                  ))}
-                  {!loadingState && deletedRowsByTable.length === 0 && (
-                    <TableRow>
-                      <TableCell colSpan={6} className="text-center text-muted-foreground">
-                        No deleted rows recorded yet.
-                      </TableCell>
-                    </TableRow>
-                  )}
-                </TableBody>
-              </Table>
+              <DeletedRowsDataGrid rows={deletedRowsByTable} loading={loadingState} />
             </div>
           </CardContent>
         </Card>
@@ -676,24 +785,7 @@ export default function PageClient() {
             <CardDescription>OutgoingRequest queue and processing overview.</CardDescription>
           </CardHeader>
           <CardContent>
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>Total</TableHead>
-                  <TableHead>Pending</TableHead>
-                  <TableHead>In Flight</TableHead>
-                  <TableHead>Stale</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                <TableRow>
-                  <TableCell><DataValue value={status?.poller.total} loading={loadingState} /></TableCell>
-                  <TableCell><DataValue value={status?.poller.pending} loading={loadingState} /></TableCell>
-                  <TableCell><DataValue value={status?.poller.in_flight} loading={loadingState} /></TableCell>
-                  <TableCell><DataValue value={status?.poller.stale} loading={loadingState} /></TableCell>
-                </TableRow>
-              </TableBody>
-            </Table>
+            <PollerDataGrid status={status} loading={loadingState} />
 
             <div className="mt-4 grid gap-2 text-sm">
               <div className="flex items-center justify-between">
@@ -715,33 +807,7 @@ export default function PageClient() {
           <CardDescription>Internal mapping checkpoints before external sync.</CardDescription>
         </CardHeader>
         <CardContent>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Mapping</TableHead>
-                <TableHead>Min Seq</TableHead>
-                <TableHead>Max Seq</TableHead>
-                <TableHead>Pending Rows</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {mappingRows.map((mapping) => (
-                <TableRow key={mapping.mapping_id}>
-                  <TableCell className="font-medium">{mapping.mapping_id}</TableCell>
-                  <TableCell><DataValue value={mapping.internal_min_sequence_id} loading={loadingState} /></TableCell>
-                  <TableCell><DataValue value={mapping.internal_max_sequence_id} loading={loadingState} /></TableCell>
-                  <TableCell><DataValue value={mapping.internal_pending_count} loading={loadingState} /></TableCell>
-                </TableRow>
-              ))}
-              {!loadingState && mappingRows.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground">
-                    No mappings configured.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
+          <SyncEngineDataGrid rows={mappingRows} loading={loadingState} />
         </CardContent>
       </Card>
 

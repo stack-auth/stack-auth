@@ -20,13 +20,13 @@ import React, {
 } from "react";
 
 import { DesignSkeleton } from "../skeleton";
-import { DataGridToolbar } from "./data-grid-toolbar";
 import {
   applyDraggedColumnWidth,
   clampColumnWidth,
   createGridSizingStyle,
   getColumnSizingStyle,
 } from "./data-grid-sizing";
+import { DataGridToolbar } from "./data-grid-toolbar";
 import {
   clearSelection,
   exportToCsv,
@@ -133,6 +133,26 @@ function ResizeHandle({
   );
 }
 
+function getNearestVerticalScrollElement(element: HTMLElement | null): HTMLElement | Window {
+  let current = element?.parentElement ?? null;
+
+  while (current) {
+    const style = window.getComputedStyle(current);
+    const overflowY = style.overflowY === "visible" ? style.overflow : style.overflowY;
+    const canScrollVertically =
+      (overflowY === "auto" || overflowY === "scroll" || overflowY === "overlay") &&
+      current.scrollHeight > current.clientHeight + 1;
+
+    if (canScrollVertically) {
+      return current;
+    }
+
+    current = current.parentElement;
+  }
+
+  return window;
+}
+
 // ─── Header cell ─────────────────────────────────────────────────────
 
 function HeaderCell<TRow>({
@@ -166,7 +186,7 @@ function HeaderCell<TRow>({
   return (
     <div
       className={cn(
-        "group/header relative flex items-center gap-1.5 px-3 select-none bg-transparent",
+        "group/header relative flex items-center gap-1.5 px-3 select-none bg-transparent overflow-hidden",
         "border-r border-black/[0.04] dark:border-white/[0.04] last:border-r-0",
         sortable && "cursor-pointer",
       )}
@@ -178,7 +198,7 @@ function HeaderCell<TRow>({
     >
       <span
         className={cn(
-          "flex-1 truncate text-xs font-semibold uppercase tracking-wider text-muted-foreground",
+          "flex-1 min-w-0 truncate text-xs font-semibold uppercase tracking-wider text-muted-foreground",
           col.align === "center" && "text-center",
           col.align === "right" && "text-right",
         )}
@@ -258,12 +278,15 @@ function DataCell<TRow>({
   }
   const hasCellClick = col.onCellClick || col.onCellDoubleClick;
 
+  const isWrap = col.cellOverflow === "wrap";
+
   return (
     <div
       className={cn(
-        "flex items-center px-3 truncate bg-transparent",
+        "flex px-3 bg-transparent overflow-hidden",
         "border-r border-black/[0.04] dark:border-white/[0.04] last:border-r-0",
         "text-sm text-foreground",
+        isWrap ? "items-start py-2" : "items-center",
         col.align === "center" && "justify-center",
         col.align === "right" && "justify-end",
         hasCellClick && "cursor-pointer",
@@ -280,7 +303,9 @@ function DataCell<TRow>({
         col.onCellDoubleClick!(ctx, e);
       } : undefined}
     >
-      {content}
+      <div className={cn("min-w-0", isWrap ? "flex-1" : "truncate")}>
+        {content}
+      </div>
     </div>
   );
 }
@@ -337,6 +362,14 @@ function renderDateCell<TRow>(
 
 // ─── Skeleton row ────────────────────────────────────────────────────
 
+function hashStringToInt(value: string): number {
+  let hash = 0;
+  for (let i = 0; i < value.length; i++) {
+    hash = ((hash << 5) - hash + value.charCodeAt(i)) | 0;
+  }
+  return Math.abs(hash);
+}
+
 function SkeletonRow({
   columns,
   height,
@@ -364,7 +397,7 @@ function SkeletonRow({
         >
           <DesignSkeleton
             className="h-3.5 rounded-md"
-            style={{ width: `${40 + Math.random() * 40}%` }}
+            style={{ width: `${40 + (hashStringToInt(col.id) % 40)}%` }}
           />
         </div>
       ))}
@@ -413,10 +446,12 @@ function SelectionCheckbox({
 function InfiniteScrollSentinel({
   onIntersect,
   isLoading,
+  rootRef,
   strings,
 }: {
   onIntersect: () => void;
   isLoading: boolean;
+  rootRef?: React.RefObject<Element | null>;
   strings: DataGridStrings;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -431,11 +466,14 @@ function InfiniteScrollSentinel({
           onIntersect();
         }
       },
-      { rootMargin: "200px" },
+      {
+        root: rootRef?.current ?? null,
+        rootMargin: "200px",
+      },
     );
     observer.observe(el);
     return () => observer.disconnect();
-  }, [onIntersect]);
+  }, [onIntersect, rootRef]);
 
   return (
     <div ref={ref} className="flex items-center justify-center py-4">
@@ -738,6 +776,39 @@ function DefaultFooter<TRow>({
  * and footer all call it for you. You do not need to wire any of this
  * manually.
  *
+ * ## Cell overflow and dynamic row heights
+ *
+ * By default every cell truncates its content with an ellipsis
+ * (`cellOverflow: "truncate"`). For columns whose content should wrap
+ * — badge lists, multi-line text, permission chips — set
+ * `cellOverflow: "wrap"` on the column definition.
+ *
+ * To let rows grow to fit their tallest cell, set `rowHeight="auto"`
+ * on the grid. The virtualizer will measure each row after render and
+ * adjust scroll positions accordingly. Pair with `estimatedRowHeight`
+ * (default 44) for better scroll-position estimates before measurement.
+ *
+ * ```tsx
+ * // Columns: UUIDs truncate, auth-method badges wrap
+ * const columns = [
+ *   { id: "userId", header: "User ID", width: 130 },                      // default truncate
+ *   { id: "auth", header: "Auth methods", width: 150, cellOverflow: "wrap",
+ *     renderCell: ({ row }) => (
+ *       <div className="flex flex-wrap gap-1">
+ *         {row.authTypes.map((t) => <Badge key={t}>{t}</Badge>)}
+ *       </div>
+ *     ),
+ *   },
+ * ];
+ *
+ * <DataGrid columns={columns} rowHeight="auto" estimatedRowHeight={48} ... />
+ * ```
+ *
+ * With a fixed numeric `rowHeight` (the default), `cellOverflow: "wrap"`
+ * still lets content wrap within the row, but anything exceeding the
+ * fixed height is clipped. This is useful when you want controlled
+ * wrapping without variable row heights.
+ *
  * ## Height and scrolling
  *
  * DataGrid is NOT a card. It has no border, rounded corners, or shadow of
@@ -793,10 +864,13 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
     paginationMode = "paginated",
     selectionMode = "none",
     resizable = true,
-    rowHeight = 44,
+    rowHeight: rowHeightProp = 44,
+    estimatedRowHeight: estimatedRowHeightProp,
     headerHeight = 44,
     overscan = 5,
     maxHeight,
+    fillHeight = true,
+    stickyTop,
     toolbar,
     toolbarExtra,
     emptyState,
@@ -812,6 +886,10 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
     onSelectionChange,
     onSortChange,
   } = props;
+
+  const isDynamicRowHeight = rowHeightProp === "auto";
+  const fixedRowHeight = isDynamicRowHeight ? undefined : rowHeightProp;
+  const estimatedRowHeight = estimatedRowHeightProp ?? (fixedRowHeight ?? 44);
 
   const strings = useMemo(
     () => resolveDataGridStrings(stringsOverride),
@@ -903,10 +981,14 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
 
   const handleRowClick = useCallback(
     (row: TRow, rowId: RowId, event: React.MouseEvent) => {
-      // Selection
+      // Selection. Capture `next` via a mutable box so TS doesn't widen it
+      // to `null` across the closure boundary. The reducer stays pure; the
+      // callback fires outside of it (fixes strict-mode double-invoke that
+      // the old `setTimeout` inside the reducer hit).
       if (selectionMode !== "none") {
+        const box: { next: DataGridState["selection"] | null } = { next: null };
         onChange((s) => {
-          const next = toggleRowSelection(
+          box.next = toggleRowSelection(
             s.selection,
             rowId,
             selectionMode,
@@ -914,15 +996,13 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
             event.metaKey || event.ctrlKey,
             rowIds,
           );
-          // Fire callback after state update
-          if (onSelectionChange) {
-            const selectedRows = rows.filter((r) =>
-              next.selectedIds.has(getRowId(r)),
-            );
-            setTimeout(() => onSelectionChange(next.selectedIds, selectedRows), 0);
-          }
-          return { ...s, selection: next };
+          return { ...s, selection: box.next };
         });
+        const resolved = box.next;
+        if (onSelectionChange && resolved != null) {
+          const selectedRows = rows.filter((r) => resolved.selectedIds.has(getRowId(r)));
+          onSelectionChange(resolved.selectedIds, selectedRows);
+        }
       }
 
       onRowClick?.(row, rowId, event);
@@ -942,17 +1022,17 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
   );
 
   const handleSelectAll = useCallback(() => {
+    const box: { next: DataGridState["selection"] | null, rows: readonly TRow[] } = { next: null, rows: [] };
     onChange((s) => {
       const allSelected = rowIds.every((id) => s.selection.selectedIds.has(id));
-      const next = allSelected ? clearSelection() : selectAll(rowIds);
-      if (onSelectionChange) {
-        const selectedRows = allSelected
-          ? []
-          : rows;
-        setTimeout(() => onSelectionChange(next.selectedIds, [...selectedRows]), 0);
-      }
-      return { ...s, selection: next };
+      box.next = allSelected ? clearSelection() : selectAll(rowIds);
+      box.rows = allSelected ? [] : rows;
+      return { ...s, selection: box.next };
     });
+    const resolvedNext = box.next;
+    if (onSelectionChange && resolvedNext != null) {
+      onSelectionChange(resolvedNext.selectedIds, [...box.rows]);
+    }
   }, [onChange, rowIds, rows, onSelectionChange]);
 
   const handleExportCsv = useCallback(() => {
@@ -962,12 +1042,166 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
   // ── Virtualizer ──────────────────────────────────────────────
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const headerScrollRef = useRef<HTMLDivElement>(null);
+  const stickyChromeRef = useRef<HTMLDivElement>(null);
+  const rowsClipRef = useRef<HTMLDivElement>(null);
+  const measureElementFn = useCallback(
+    (el: Element) => el.getBoundingClientRect().height,
+    [],
+  );
+  // Key each virtual item by its row id (not index) so that when rows are
+  // sorted / filtered, the virtualizer's measurement cache follows the row
+  // rather than the slot. Matters specifically in dynamic-height mode —
+  // otherwise a heavy row scrolling into slot-5 inherits slot-5's old
+  // measurement until the browser re-measures.
   const rowVirtualizer = useVirtualizer({
     count: rows.length,
     getScrollElement: () => scrollContainerRef.current,
-    estimateSize: () => rowHeight,
+    estimateSize: () => estimatedRowHeight,
     overscan,
+    getItemKey: (index) => {
+      const row = rows[index];
+      return row != null ? String(getRowId(row)) : index;
+    },
+    ...(isDynamicRowHeight ? { measureElement: measureElementFn } : {}),
   });
+
+  // Composite ancestor backgrounds into a single opaque color so the
+  // sticky header fully covers rows scrolling underneath. Handles
+  // semi-transparent layers like `bg-white/80` by alpha-blending the
+  // full ancestor chain. Re-runs on theme changes (class on <html>).
+  useLayoutEffect(() => {
+    const grid = gridRef.current;
+    const stickyEl = stickyChromeRef.current;
+    if (!grid || !stickyEl) return;
+
+    const parseRgba = (raw: string): [number, number, number, number] | null => {
+      const rgbaMatch = raw.match(/rgba?\(\s*([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\s*\)/);
+      if (!rgbaMatch) return null;
+      // Alpha is an optional capture group so at runtime this may be
+      // undefined, even though TS's types for `RegExp.match` say otherwise.
+      const alphaRaw = rgbaMatch[4] as string | undefined;
+      return [
+        Number(rgbaMatch[1]),
+        Number(rgbaMatch[2]),
+        Number(rgbaMatch[3]),
+        alphaRaw === undefined ? 1 : Number(alphaRaw),
+      ];
+    };
+
+    const blendOver = (
+      base: [number, number, number, number],
+      top: [number, number, number, number],
+    ): [number, number, number, number] => {
+      const [tr, tg, tb, ta] = top;
+      const [br, bg, bb, ba] = base;
+      const outA = ta + ba * (1 - ta);
+      if (outA === 0) return [0, 0, 0, 0];
+      return [
+        (tr * ta + br * ba * (1 - ta)) / outA,
+        (tg * ta + bg * ba * (1 - ta)) / outA,
+        (tb * ta + bb * ba * (1 - ta)) / outA,
+        outA,
+      ];
+    };
+
+    const detect = () => {
+      const layers: [number, number, number, number][] = [];
+      let ancestor: HTMLElement | null = grid.parentElement;
+      while (ancestor) {
+        const parsed = parseRgba(getComputedStyle(ancestor).backgroundColor);
+        if (parsed && parsed[3] > 0) {
+          layers.push(parsed);
+          if (parsed[3] >= 1) break;
+        }
+        ancestor = ancestor.parentElement;
+      }
+
+      if (layers.length === 0) {
+        stickyEl.style.backgroundColor = "";
+        return;
+      }
+
+      // Blend bottom-up (deepest ancestor is the base)
+      let result: [number, number, number, number] = layers[layers.length - 1]!;
+      for (let i = layers.length - 2; i >= 0; i--) {
+        result = blendOver(result, layers[i]!);
+      }
+
+      const [r, g, b] = result;
+      stickyEl.style.backgroundColor = `rgb(${Math.round(r)}, ${Math.round(g)}, ${Math.round(b)})`;
+    };
+
+    detect();
+
+    const observer = new MutationObserver(detect);
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ["class"] });
+    return () => observer.disconnect();
+  }, []);
+
+  // Hide row content scrolling behind the sticky chrome by clipping the
+  // rows wrapper. Computes overlap = max(0, stickyBottom - wrapperTop)
+  // in viewport coords and writes `clip-path: inset(<overlap>px 0 0 0)`
+  // directly to the wrapper on every scroll/resize. Direct DOM writes
+  // (no React state, no rAF) keep clip in lockstep with scroll so no
+  // row content flashes through the sticky band for a frame.
+  useLayoutEffect(() => {
+    const gridEl = gridRef.current;
+    const stickyEl = stickyChromeRef.current;
+    const bodyEl = scrollContainerRef.current;
+    const clipEl = rowsClipRef.current;
+    if (!gridEl || !stickyEl || !bodyEl || !clipEl) return;
+
+    const verticalScrollEl = fillHeight
+      ? bodyEl
+      : getNearestVerticalScrollElement(gridEl);
+    let extraObservedScrollEl: HTMLElement | null = null;
+    if (verticalScrollEl instanceof HTMLElement && verticalScrollEl !== bodyEl) {
+      extraObservedScrollEl = verticalScrollEl;
+    }
+
+    const updateClip = () => {
+      const stickyRect = stickyEl.getBoundingClientRect();
+      const clipRect = clipEl.getBoundingClientRect();
+      const overlap = Math.max(0, stickyRect.bottom - clipRect.top);
+      const clipValue = overlap > 0 ? `inset(${overlap}px 0 0 0)` : "";
+      const maskValue = overlap > 0
+        ? `linear-gradient(to bottom, transparent 0px, transparent ${overlap}px, black ${overlap}px, black 100%)`
+        : "";
+      clipEl.style.clipPath = clipValue;
+      clipEl.style.setProperty("-webkit-clip-path", clipValue);
+      clipEl.style.maskImage = maskValue;
+      clipEl.style.setProperty("-webkit-mask-image", maskValue);
+    };
+
+    updateClip();
+
+    bodyEl.addEventListener("scroll", updateClip);
+    if (verticalScrollEl === window) {
+      window.addEventListener("scroll", updateClip, true);
+    } else if (extraObservedScrollEl) {
+      extraObservedScrollEl.addEventListener("scroll", updateClip);
+    }
+    window.addEventListener("resize", updateClip);
+    const ro = new ResizeObserver(updateClip);
+    ro.observe(gridEl);
+    ro.observe(stickyEl);
+    ro.observe(bodyEl);
+    ro.observe(clipEl);
+    if (extraObservedScrollEl) {
+      ro.observe(extraObservedScrollEl);
+    }
+
+    return () => {
+      bodyEl.removeEventListener("scroll", updateClip);
+      if (verticalScrollEl === window) {
+        window.removeEventListener("scroll", updateClip, true);
+      } else if (extraObservedScrollEl) {
+        extraObservedScrollEl.removeEventListener("scroll", updateClip);
+      }
+      window.removeEventListener("resize", updateClip);
+      ro.disconnect();
+    };
+  }, [fillHeight]);
 
   // Sync horizontal scroll from body to header
   const handleBodyScroll = useCallback(() => {
@@ -1009,6 +1243,10 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
   // ── Selection state for header checkbox ──────────────────────
   const allSelected = rowIds.length > 0 && rowIds.every((id) => state.selection.selectedIds.has(id));
   const someSelected = !allSelected && rowIds.some((id) => state.selection.selectedIds.has(id));
+  const infiniteScrollRootRef =
+    paginationMode === "infinite" && (fillHeight || maxHeight != null)
+      ? scrollContainerRef
+      : undefined;
 
   // ── Render ───────────────────────────────────────────────────
   //
@@ -1016,18 +1254,20 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
   // - Root is `flex flex-col h-full min-h-0 bg-transparent`. `h-full`
   //   makes the grid fill a bounded parent; in an unbounded parent it
   //   resolves to `auto` and the grid takes the content's intrinsic size.
-  // - Toolbar/header/footer are `shrink-0`; the scroll body is
-  //   `flex-1 min-h-0 overflow-auto`, so the scroll area naturally takes
-  //   whatever space remains after the fixed-size chrome — regardless of
-  //   toolbar/footer size.
+  // - Toolbar + header are wrapped in a single `sticky top-0` container
+  //   so they pin to the top of the nearest scroll ancestor. Footer is
+  //   `shrink-0`; the scroll body is `flex-1 min-h-0 overflow-auto`.
   // - `maxHeight` is applied directly to the root; the scroll body never
   //   subtracts chrome sizes manually (that math breaks when the toolbar
   //   wraps, the footer grows, etc.).
+  // - `fillHeight={false}` uses `h-auto` and a non-growing scroll body so the grid
+  //   only occupies the height of its rows (no flex gap above sibling sections).
   return (
     <div
       ref={gridRef}
       className={cn(
-        "flex flex-col h-full min-h-0 bg-transparent",
+        "flex w-full min-w-0 max-w-full flex-col bg-transparent rounded-[calc(var(--radius)*2)]",
+        fillHeight ? "min-h-0 h-full" : "min-h-0 h-auto",
         className,
       )}
       style={maxHeight != null ? { ...gridSizingStyle, maxHeight } : gridSizingStyle}
@@ -1035,91 +1275,97 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
       aria-rowcount={totalRowCount ?? rows.length}
       aria-colcount={visibleColumns.length}
     >
-      {/* Toolbar. When a custom `toolbar` render function is supplied,
-          it owns the whole row — `toolbarExtra` is ignored because the
-          custom render can consume `ctx` and include whatever it wants.
-          When the default toolbar is used, `toolbarExtra` is injected
-          into its row to the left of the columns / export actions. */}
-      {toolbar !== false && (
-        <div className="relative shrink-0 bg-transparent">
-          {toolbar ? (
-            toolbar(toolbarCtx)
-          ) : (
-            <DataGridToolbar
-              ctx={toolbarCtx}
-              extra={
-                typeof toolbarExtra === "function"
-                  ? toolbarExtra(toolbarCtx)
-                  : toolbarExtra
-              }
-            />
-          )}
-        </div>
-      )}
-
-      {/* Grid content */}
-      <div className="relative flex min-h-0 flex-1 flex-col">
-        {/* Refetch indicator — thin progress bar, no layout shift */}
-        {isRefetching && (
-          <div className="absolute top-0 left-0 right-0 h-0.5 z-30 bg-foreground/[0.04] overflow-hidden">
-            <div className="h-full w-1/3 bg-blue-500/60 rounded-full animate-pulse" />
+      {/* Sticky chrome: toolbar + header pin to the top of the nearest
+          scroll ancestor so they remain visible while the body scrolls. */}
+      <div
+        ref={stickyChromeRef}
+        className="sticky z-20 w-full min-w-0 shrink-0 rounded-t-[calc(var(--radius)*2)] bg-background"
+        style={{ top: stickyTop ?? "var(--data-grid-sticky-top, 0px)" }}
+      >
+        {/* Toolbar */}
+        {toolbar !== false && (
+          <div className="relative bg-transparent">
+            {toolbar ? (
+              toolbar(toolbarCtx)
+            ) : (
+              <DataGridToolbar
+                ctx={toolbarCtx}
+                extra={
+                  typeof toolbarExtra === "function"
+                    ? toolbarExtra(toolbarCtx)
+                    : toolbarExtra
+                }
+              />
+            )}
           </div>
         )}
 
-        {/* Header row — separate from scroll body, syncs horizontal scroll */}
-        <div
-          ref={headerScrollRef}
-          className="overflow-hidden shrink-0 border-b border-foreground/[0.06]"
-        >
+        {/* Header row — syncs horizontal scroll with the body */}
+        <div className="relative">
+          {isRefetching && (
+            <div className="absolute top-0 left-0 right-0 h-0.5 z-30 bg-foreground/[0.04] overflow-hidden">
+              <div className="h-full w-1/3 bg-blue-500/60 rounded-full animate-pulse" />
+            </div>
+          )}
           <div
-            className="flex"
-            style={{ height: headerHeight, minWidth: visibleColumnMetrics.totalWidth }}
-            role="row"
+            ref={headerScrollRef}
+            className="w-full min-w-0 shrink-0 overflow-hidden border-b border-foreground/[0.06]"
           >
-            {selectionMode !== "none" && (
-              <div
-                className="flex items-center justify-center border-r border-foreground/[0.04]"
-                style={{ width: 44 }}
-              >
-                {selectionMode === "multiple" && (
-                  <SelectionCheckbox
-                    checked={allSelected}
-                    indeterminate={someSelected}
-                    onChange={handleSelectAll}
-                    ariaLabel="Select all rows"
-                  />
-                )}
-              </div>
-            )}
-            {visibleColumns.map((col) => (
-              <HeaderCell
-                key={col.id}
-                col={col}
-                isSorted={getSortDirection(state.sorting, col.id)}
-                sortIndex={getSortIndex(state.sorting, col.id)}
-                resizable={resizable}
-                onSort={handleSort}
-                onResize={handleResize}
-                onResizeEnd={handleResizeEnd}
-              />
-            ))}
+            <div
+              className="flex"
+              style={{ height: headerHeight, minWidth: visibleColumnMetrics.totalWidth }}
+              role="row"
+            >
+              {selectionMode !== "none" && (
+                <div
+                  className="flex items-center justify-center border-r border-foreground/[0.04]"
+                  style={{ width: 44 }}
+                >
+                  {selectionMode === "multiple" && (
+                    <SelectionCheckbox
+                      checked={allSelected}
+                      indeterminate={someSelected}
+                      onChange={handleSelectAll}
+                      ariaLabel="Select all rows"
+                    />
+                  )}
+                </div>
+              )}
+              {visibleColumns.map((col) => (
+                <HeaderCell
+                  key={col.id}
+                  col={col}
+                  isSorted={getSortDirection(state.sorting, col.id)}
+                  sortIndex={getSortIndex(state.sorting, col.id)}
+                  resizable={resizable}
+                  onSort={handleSort}
+                  onResize={handleResize}
+                  onResizeEnd={handleResizeEnd}
+                />
+              ))}
+            </div>
           </div>
         </div>
+      </div>
 
-        {/* Scrollable body — flex-1 + min-h-0 makes it take the remaining
-            space inside the `flex flex-col` grid wrapper, no manual math. */}
-        <div
-          ref={scrollContainerRef}
-          className={cn(
-            "min-h-0 overflow-auto flex-1 bg-transparent",
-            // Custom scrollbar
-            "[&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar]:h-1.5",
-            "[&::-webkit-scrollbar-track]:bg-transparent",
-            "[&::-webkit-scrollbar-thumb]:bg-foreground/[0.08] [&::-webkit-scrollbar-thumb]:rounded-full",
-            "[&::-webkit-scrollbar-thumb]:hover:bg-foreground/[0.15]",
-          )}
-          onScroll={handleBodyScroll}
-        >
+      {/* Scrollable body — flex-1 + min-h-0 when filling parent; flex-none when
+          `fillHeight` is false so row stack height drives the grid (page scroll). */}
+      <div
+        ref={scrollContainerRef}
+        className={cn(
+          "w-full min-w-0 overflow-auto bg-transparent",
+          fillHeight ? "min-h-0 flex-1" : "flex-none",
+          "[&::-webkit-scrollbar]:w-1.5 [&::-webkit-scrollbar]:h-1.5",
+          "[&::-webkit-scrollbar-track]:bg-transparent",
+          "[&::-webkit-scrollbar-thumb]:bg-foreground/[0.08] [&::-webkit-scrollbar-thumb]:rounded-full",
+          "[&::-webkit-scrollbar-thumb]:hover:bg-foreground/[0.15]",
+        )}
+        onScroll={handleBodyScroll}
+      >
+        {/* Clip wrapper — `clip-path` updated on scroll/resize so row
+            content scrolling behind the sticky chrome is physically cut
+            out instead of bleeding through. */}
+        <div ref={rowsClipRef}>
           {/* Loading initial */}
           {isLoading && (
             <div style={{ minWidth: visibleColumnMetrics.totalWidth }}>
@@ -1128,7 +1374,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
                   <SkeletonRow
                     key={i}
                     columns={visibleColumns}
-                    height={rowHeight}
+                    height={estimatedRowHeight}
                     showCheckbox={selectionMode !== "none"}
                   />
                 ))}
@@ -1164,6 +1410,8 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
                 return (
                   <div
                     key={rowId}
+                    ref={isDynamicRowHeight ? rowVirtualizer.measureElement : undefined}
+                    data-index={virtualRow.index}
                     className={cn(
                       "absolute left-0 w-full flex",
                       "border-b border-black/[0.03] dark:border-white/[0.03]",
@@ -1173,10 +1421,12 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
                         : isOddRow
                           ? "bg-foreground/[0.02] dark:bg-foreground/[0.03] hover:bg-foreground/[0.04] dark:hover:bg-foreground/[0.06]"
                           : "hover:bg-foreground/[0.025] dark:hover:bg-foreground/[0.04]",
-                      selectionMode !== "none" && "cursor-pointer",
+                      (selectionMode !== "none" || onRowClick) && "cursor-pointer",
                     )}
                     style={{
-                      height: rowHeight,
+                      ...(isDynamicRowHeight
+                        ? { minHeight: estimatedRowHeight }
+                        : { height: fixedRowHeight }),
                       transform: `translateY(${virtualRow.start}px)`,
                     }}
                     onClick={(e) => handleRowClick(row, rowId, e)}
@@ -1224,6 +1474,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
             <InfiniteScrollSentinel
               onIntersect={onLoadMore ?? (() => {})}
               isLoading={isLoadingMore}
+              rootRef={infiniteScrollRootRef}
               strings={strings}
             />
           )}

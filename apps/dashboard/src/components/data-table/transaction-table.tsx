@@ -1,25 +1,24 @@
+// TODO(ui-fixes-minor): URL-synced cursor (page state) was dropped when this
+// table moved from the hand-rolled cursor cache to DataGrid infinite scroll.
+// Reload resets scroll position and re-fetches from scratch. Restore if
+// product cares about deep-linking to specific rows.
 'use client';
 
 import { useAdminApp } from '@/app/(main)/(protected)/projects/[projectId]/use-admin-app';
-import { ActionCell, ActionDialog, Alert, AlertDescription, AvatarCell, Badge, Button, DateCell, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Skeleton, TextCell, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui';
+import { ActionCell, ActionDialog, Alert, AlertDescription, AvatarCell, Badge, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui';
 import type { Icon as PhosphorIcon } from '@phosphor-icons/react';
-import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, CaretLeftIcon, CaretRightIcon, GearIcon, ProhibitIcon, QuestionIcon, ShoppingCartIcon, ShuffleIcon } from '@phosphor-icons/react';
+import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, GearIcon, ProhibitIcon, QuestionIcon, ShoppingCartIcon, ShuffleIcon } from '@phosphor-icons/react';
+import { createDefaultDataGridState, DataGrid, DataGridToolbar, useDataSource, type DataGridColumnDef, type DataGridDataSource, type DataGridState } from '@stackframe/dashboard-ui-components';
 import type { Transaction, TransactionEntry, TransactionType } from '@stackframe/stack-shared/dist/interface/crud/transactions';
 import { TRANSACTION_TYPES } from '@stackframe/stack-shared/dist/interface/crud/transactions';
+import { moneyAmountSchema } from '@stackframe/stack-shared/dist/schema-fields';
+import { moneyAmountToStripeUnits } from '@stackframe/stack-shared/dist/utils/currencies';
 import type { MoneyAmount } from '@stackframe/stack-shared/dist/utils/currency-constants';
 import { SUPPORTED_CURRENCIES } from '@stackframe/stack-shared/dist/utils/currency-constants';
-import { moneyAmountToStripeUnits } from '@stackframe/stack-shared/dist/utils/currencies';
-import { moneyAmountSchema } from '@stackframe/stack-shared/dist/schema-fields';
 import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
-import type { ColumnDef } from '@tanstack/react-table';
-import { getCoreRowModel, useReactTable } from "@tanstack/react-table";
-import React, { Suspense, useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { Link } from '../link';
-import { useCursorPaginationCache } from "./common/cursor-pagination";
-import { PaginationControls } from "./common/pagination";
-import { TableContent, type ColumnLayout, type ColumnMeta } from "./common/table";
-import { TableSkeleton } from "./common/table-skeleton";
-import { createSimpleFingerprint, usePaginatedData } from "./common/use-paginated-data";
 
 type SourceType = 'subscription' | 'one_time' | 'item_quantity_change' | 'other';
 
@@ -434,170 +433,95 @@ function RefundActionCell({ transaction, refundTarget }: { transaction: Transact
   );
 }
 
-type QueryState = {
-  page: number,
-  pageSize: number,
-  cursor?: string,
+type FilterState = {
   type?: TransactionType,
   customerType?: 'user' | 'team' | 'custom',
 };
 
-const DEFAULT_PAGE_SIZE = 10;
-
-type ColumnKey = "type" | "customer" | "amount" | "detail" | "created" | "actions";
-
-const COLUMN_LAYOUT: ColumnLayout<ColumnKey> = {
-  type: { size: 60, minWidth: 50, maxWidth: 70, width: "60px", headerClassName: "text-center", cellClassName: "text-center" },
-  customer: { size: 180, minWidth: 120, maxWidth: 200, width: "clamp(120px, 20vw, 200px)" },
-  amount: { size: 100, minWidth: 80, maxWidth: 120, width: "clamp(80px, 15vw, 120px)" },
-  detail: { size: 180, minWidth: 120, maxWidth: 220, width: "clamp(120px, 20vw, 220px)" },
-  created: { size: 120, minWidth: 100, maxWidth: 140, width: "clamp(100px, 15vw, 140px)" },
-  actions: { size: 60, minWidth: 50, maxWidth: 70, width: "60px", headerClassName: "text-right", cellClassName: "text-right" },
-};
+const PAGE_SIZE = 25;
+const CUSTOMER_TYPE_OPTIONS = ["user", "team", "custom"] as const satisfies ReadonlyArray<NonNullable<FilterState["customerType"]>>;
 
 export function TransactionTable() {
-  const [query, setQuery] = useState<QueryState>({ page: 1, pageSize: DEFAULT_PAGE_SIZE });
-  const cursorPaginationCache = useCursorPaginationCache();
-
-  useEffect(() => {
-    cursorPaginationCache.resetCache();
-  }, [cursorPaginationCache, query.type, query.customerType, query.pageSize]);
+  const [filters, setFilters] = useState<FilterState>({});
 
   return (
-    <div className="space-y-2">
-      <TransactionTableHeader
-        type={query.type}
-        onTypeChange={(type) => setQuery((prev) => ({ ...prev, type, page: 1, cursor: undefined }))}
-        customerType={query.customerType}
-        onCustomerTypeChange={(customerType) => setQuery((prev) => ({ ...prev, customerType, page: 1, cursor: undefined }))}
-      />
-      <div className="overflow-clip rounded-md border border-border bg-card">
-        <Suspense fallback={<TransactionTableSkeleton pageSize={query.pageSize} />}>
-          <TransactionTableBody
-            query={query}
-            setQuery={setQuery}
-            cursorPaginationCache={cursorPaginationCache}
-          />
-        </Suspense>
-      </div>
-    </div>
-  );
-}
-
-function TransactionTableHeader(props: {
-  type?: TransactionType,
-  onTypeChange: (type: TransactionType | undefined) => void,
-  customerType?: 'user' | 'team' | 'custom',
-  onCustomerTypeChange: (customerType: 'user' | 'team' | 'custom' | undefined) => void,
-}) {
-  const { type, onTypeChange, customerType, onCustomerTypeChange } = props;
-
-  return (
-    <div className="flex items-center gap-2">
-      <Select
-        value={type ?? ''}
-        onValueChange={(v) => onTypeChange(v === '__clear' ? undefined : v as TransactionType)}
-      >
-        <SelectTrigger className="h-8 w-[200px] overflow-x-clip">
-          <div className="flex items-center gap-2">
-            <SelectValue placeholder="Filter by type" />
-          </div>
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="__clear">All types</SelectItem>
-          {TRANSACTION_TYPES.map((transactionType) => {
-            const { Icon: TypeIcon, label } = formatTransactionTypeLabel(transactionType);
-            return (
-              <SelectItem key={transactionType} value={transactionType}>
-                <div className="flex items-center gap-2">
-                  <TypeIcon className="h-4 w-4 text-muted-foreground" aria-hidden />
-                  <span className="truncate">{label}</span>
-                </div>
-              </SelectItem>
-            );
-          })}
-        </SelectContent>
-      </Select>
-      <Select
-        value={customerType ?? ''}
-        onValueChange={(v) => onCustomerTypeChange(v === '__clear' ? undefined : v as 'user' | 'team' | 'custom')}
-      >
-        <SelectTrigger className="h-8 w-[180px]">
-          <SelectValue placeholder="Customer type" />
-        </SelectTrigger>
-        <SelectContent>
-          <SelectItem value="__clear">All customers</SelectItem>
-          <SelectItem value="user">User</SelectItem>
-          <SelectItem value="team">Team</SelectItem>
-          <SelectItem value="custom">Custom</SelectItem>
-        </SelectContent>
-      </Select>
-    </div>
+    <TransactionTableBody filters={filters} setFilters={setFilters} />
   );
 }
 
 function TransactionTableBody(props: {
-  query: QueryState,
-  setQuery: React.Dispatch<React.SetStateAction<QueryState>>,
-  cursorPaginationCache: ReturnType<typeof useCursorPaginationCache>,
+  filters: FilterState,
+  setFilters: React.Dispatch<React.SetStateAction<FilterState>>,
 }) {
   const app = useAdminApp();
-  const { query, setQuery } = props;
+  const { filters, setFilters } = props;
 
-  const { transactions: rawTransactions, nextCursor: rawNextCursor } = app.useTransactions({
-    limit: query.pageSize,
-    cursor: query.cursor,
-    type: query.type,
-    customerType: query.customerType,
-  });
-
-  const { data: transactions, nextCursor, hasNextPage, hasPreviousPage, cursorForPage } = usePaginatedData(
-    {
-      data: rawTransactions,
-      nextCursor: rawNextCursor,
-      query,
-      getFingerprint: createSimpleFingerprint,
+  const dataSource = useMemo<DataGridDataSource<Transaction>>(
+    () => async function* (params) {
+      const cursor = typeof params.cursor === "string" ? params.cursor : undefined;
+      const result = await app.listTransactions({
+        limit: PAGE_SIZE,
+        type: filters.type,
+        customerType: filters.customerType,
+        cursor,
+      });
+      yield {
+        rows: result.transactions,
+        hasMore: result.nextCursor != null,
+        nextCursor: result.nextCursor ?? undefined,
+      };
     },
-    props.cursorPaginationCache,
+    [app, filters.type, filters.customerType],
   );
 
-  const summaryById = useMemo(() => {
-    return new Map(transactions.map((transaction) => [transaction.id, getTransactionSummary(transaction)]));
-  }, [transactions]);
+  const getRowId = useCallback((row: Transaction) => row.id, []);
 
-  const columns = useMemo((): ColumnDef<Transaction>[] => [
+  // `summaryById` is populated AFTER useDataSource returns rows, but the
+  // column `renderCell` closures read it via ref so columns can be defined
+  // first and stay stable across paginate/append. Empty initially; filled
+  // below once we have rows.
+  const summaryByIdRef = useRef<Map<string, ReturnType<typeof getTransactionSummary>>>(new Map());
+
+  const columns = useMemo<DataGridColumnDef<Transaction>[]>(() => [
     {
       id: 'type',
-      accessorFn: (transaction) => summaryById.get(transaction.id)?.sourceType ?? 'other',
-      header: () => <span className="text-xs font-medium">Type</span>,
-      cell: ({ row }) => {
-        const summary = summaryById.get(row.original.id);
+      header: 'Type',
+      width: 60,
+      minWidth: 50,
+      maxWidth: 70,
+      align: 'center',
+      sortable: false,
+      resizable: false,
+      hideable: false,
+      renderCell: ({ row }) => {
+        const summary = summaryByIdRef.current.get(row.id);
         const displayType = summary?.displayType;
         if (!displayType) {
-          return <TextCell size={20}>—</TextCell>;
+          return <span>—</span>;
         }
         const { Icon, label } = displayType;
         return (
-          <TextCell size={20}>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span className="flex h-6 w-6 items-center justify-center rounded-md bg-muted">
-                  <Icon className="h-4 w-4" aria-hidden />
-                </span>
-              </TooltipTrigger>
-              <TooltipContent side="left">{label}</TooltipContent>
-            </Tooltip>
-          </TextCell>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="flex h-6 w-6 items-center justify-center rounded-md bg-muted">
+                <Icon className="h-4 w-4" aria-hidden />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent side="left">{label}</TooltipContent>
+          </Tooltip>
         );
       },
-      meta: { columnKey: "type" } satisfies ColumnMeta<ColumnKey>,
     },
     {
       id: 'customer',
-      accessorFn: (transaction) => summaryById.get(transaction.id)?.customerType ?? '',
-      header: () => <span className="text-xs font-medium">Customer</span>,
-      cell: ({ row }) => {
-        const summary = summaryById.get(row.original.id);
+      header: 'Customer',
+      width: 180,
+      minWidth: 120,
+      maxWidth: 200,
+      flex: 1,
+      sortable: false,
+      renderCell: ({ row }) => {
+        const summary = summaryByIdRef.current.get(row.id);
         if (summary?.customerType === 'user' && summary.customerId) {
           return <UserAvatarCell userId={summary.customerId} />;
         }
@@ -605,195 +529,198 @@ function TransactionTableBody(props: {
           return <TeamAvatarCell teamId={summary.customerId} />;
         }
         return (
-          <TextCell>
-            <>
-              <span className="capitalize">{summary?.customerType ?? '—'}</span>
-              : {summary?.customerId ?? '—'}
-            </>
-          </TextCell>
+          <span>
+            <span className="capitalize">{summary?.customerType ?? '—'}</span>
+            : {summary?.customerId ?? '—'}
+          </span>
         );
       },
-      meta: { columnKey: "customer" } satisfies ColumnMeta<ColumnKey>,
     },
     {
       id: 'amount',
-      header: () => <span className="text-xs font-medium">Amount</span>,
-      cell: ({ row }) => {
-        const summary = summaryById.get(row.original.id);
-        return <TextCell size={80}>{summary?.amountDisplay ?? '—'}</TextCell>;
+      header: 'Amount',
+      width: 100,
+      minWidth: 80,
+      maxWidth: 120,
+      sortable: false,
+      renderCell: ({ row }) => {
+        const summary = summaryByIdRef.current.get(row.id);
+        return <span>{summary?.amountDisplay ?? '—'}</span>;
       },
-      meta: { columnKey: "amount" } satisfies ColumnMeta<ColumnKey>,
     },
     {
       id: 'detail',
-      header: () => <span className="text-xs font-medium">Details</span>,
-      cell: ({ row }) => {
-        const summary = summaryById.get(row.original.id);
+      header: 'Details',
+      width: 180,
+      minWidth: 120,
+      maxWidth: 220,
+      flex: 1,
+      sortable: false,
+      renderCell: ({ row }) => {
+        const summary = summaryByIdRef.current.get(row.id);
         return (
-          <TextCell size={120}>
-            <div className="flex items-center gap-2">
-              <span className="truncate">{summary?.detail ?? '—'}</span>
-              {summary?.refunded ? (
-                <Badge variant="outline" className="text-xs">
-                  Refunded
-                </Badge>
-              ) : null}
-            </div>
-          </TextCell>
+          <div className="flex items-center gap-2">
+            <span className="truncate">{summary?.detail ?? '—'}</span>
+            {summary?.refunded ? (
+              <Badge variant="outline" className="text-xs">
+                Refunded
+              </Badge>
+            ) : null}
+          </div>
         );
       },
-      meta: { columnKey: "detail" } satisfies ColumnMeta<ColumnKey>,
     },
     {
       id: 'created',
-      accessorFn: (transaction) => transaction.created_at_millis,
-      header: () => <span className="text-xs font-medium">Created</span>,
-      cell: ({ row }) => (
-        <DateCell date={new Date(row.original.created_at_millis)} />
-      ),
-      meta: { columnKey: "created" } satisfies ColumnMeta<ColumnKey>,
+      header: 'Created',
+      accessor: (row: Transaction) => new Date(row.created_at_millis),
+      width: 120,
+      minWidth: 100,
+      maxWidth: 140,
+      type: 'dateTime',
+      sortable: false,
     },
     {
       id: 'actions',
-      header: () => null,
-      cell: ({ row }) => {
-        const summary = summaryById.get(row.original.id);
+      header: '',
+      width: 60,
+      minWidth: 50,
+      maxWidth: 70,
+      align: 'right',
+      sortable: false,
+      hideable: false,
+      resizable: false,
+      renderCell: ({ row }) => {
+        const summary = summaryByIdRef.current.get(row.id);
         return (
           <RefundActionCell
-            transaction={row.original}
+            transaction={row}
             refundTarget={summary?.refundTarget ?? null}
           />
         );
       },
-      meta: { columnKey: "actions" } satisfies ColumnMeta<ColumnKey>,
     },
-  ], [summaryById]);
+  ], []);
 
-  const table = useReactTable({
-    data: transactions,
+  const [gridState, setGridState] = useState<DataGridState>(() =>
+    createDefaultDataGridState(columns)
+  );
+
+  const gridData = useDataSource({
+    dataSource,
     columns,
-    getCoreRowModel: getCoreRowModel(),
+    getRowId,
+    sorting: gridState.sorting,
+    quickSearch: gridState.quickSearch,
+    pagination: gridState.pagination,
+    paginationMode: "infinite",
   });
 
-  return (
-    <div className="flex flex-col">
-      <TableContent
-        table={table}
-        columnLayout={COLUMN_LAYOUT}
-        renderEmptyState={() => (
-          <div className="text-center py-8">
-            <p className="text-sm text-muted-foreground">No transactions found</p>
-          </div>
-        )}
-        rowHeightPx={56}
-      />
-      <PaginationControls
-        page={query.page}
-        pageSize={query.pageSize}
-        hasNextPage={hasNextPage}
-        hasPreviousPage={hasPreviousPage}
-        onPageSizeChange={(value) =>
-          setQuery((prev) => ({ ...prev, pageSize: value, page: 1, cursor: undefined }))
-        }
-        onPreviousPage={() => {
-          if (!hasPreviousPage) {
-            return;
-          }
-          const previousPage = query.page - 1;
-          const previousCursor = cursorForPage(previousPage);
-          setQuery((prev) => ({
-            ...prev,
-            page: previousPage,
-            cursor: previousPage === 1 ? undefined : previousCursor ?? undefined,
-          }));
-        }}
-        onNextPage={() => {
-          if (!hasNextPage || !nextCursor) {
-            return;
-          }
-          setQuery((prev) => ({
-            ...prev,
-            page: query.page + 1,
-            cursor: nextCursor,
-          }));
-        }}
-        className="border-t border-border/70"
-      />
-    </div>
+  // Populate `summaryByIdRef` from the current rows — the `renderCell`
+  // closures read this on every render.
+  summaryByIdRef.current = useMemo(
+    () => new Map(gridData.rows.map((transaction) => [transaction.id, getTransactionSummary(transaction)])),
+    [gridData.rows],
   );
-}
 
-function TransactionTableSkeleton(props: { pageSize: number }) {
-  const columnOrder: ColumnKey[] = ["type", "customer", "amount", "detail", "created", "actions"];
-  const skeletonHeaders: Record<ColumnKey, string | null> = {
-    type: "Type",
-    customer: "Customer",
-    amount: "Amount",
-    detail: "Details",
-    created: "Created",
-    actions: null,
-  };
+  const filterTypeValue = filters.type ?? "__all";
+  const filterCustomerValue = filters.customerType ?? "__all";
+  const handleTypeChange = useCallback((value: string) => {
+    setFilters((prev) => {
+      if (value === "__all") {
+        return { ...prev, type: undefined };
+      }
 
-  const renderSkeletonCell = (columnKey: ColumnKey): JSX.Element => {
-    switch (columnKey) {
-      case "type": {
-        return <Skeleton className="h-6 w-6 rounded-md mx-auto" />;
+      const selectedType = TRANSACTION_TYPES.find((transactionType) => transactionType === value);
+      if (selectedType == null) {
+        return prev;
       }
-      case "customer": {
-        return (
-          <div className="flex items-center gap-2">
-            <Skeleton className="h-8 w-8 rounded-full" />
-            <Skeleton className="h-3 w-24" />
-          </div>
-        );
+
+      return { ...prev, type: selectedType };
+    });
+  }, [setFilters]);
+  const handleCustomerTypeChange = useCallback((value: string) => {
+    setFilters((prev) => {
+      if (value === "__all") {
+        return { ...prev, customerType: undefined };
       }
-      case "amount": {
-        return <Skeleton className="h-3 w-16" />;
+
+      const selectedType = CUSTOMER_TYPE_OPTIONS.find((customerType) => customerType === value);
+      if (selectedType == null) {
+        return prev;
       }
-      case "detail": {
-        return <Skeleton className="h-3 w-28" />;
-      }
-      case "created": {
-        return <Skeleton className="h-3 w-20" />;
-      }
-      case "actions": {
-        return <Skeleton className="h-4 w-4 ml-auto" />;
-      }
-      default: {
-        return <Skeleton className="h-3 w-20" />;
-      }
-    }
-  };
+
+      return { ...prev, customerType: selectedType };
+    });
+  }, [setFilters]);
 
   return (
-    <div className="flex flex-col">
-      <TableSkeleton
-        columnOrder={columnOrder}
-        columnLayout={COLUMN_LAYOUT}
-        headerLabels={skeletonHeaders}
-        rowCount={props.pageSize}
-        renderCellSkeleton={renderSkeletonCell}
-        rowHeightPx={56}
-      />
-      <div className="flex flex-col gap-3 border-t border-border/70 px-4 py-3 text-sm text-muted-foreground md:flex-row md:items-center md:justify-between">
-        <div className="flex items-center gap-2">
-          <span>Rows per page</span>
-          <Skeleton className="h-8 w-16" />
+    <DataGrid
+      columns={columns}
+      rows={gridData.rows}
+      getRowId={getRowId}
+      isLoading={gridData.isLoading}
+      isRefetching={gridData.isRefetching}
+      state={gridState}
+      onChange={setGridState}
+      paginationMode="infinite"
+      hasMore={gridData.hasMore}
+      isLoadingMore={gridData.isLoadingMore}
+      onLoadMore={gridData.loadMore}
+      footer={false}
+      rowHeight={56}
+
+      toolbar={(ctx) => (
+        <DataGridToolbar
+          ctx={ctx}
+          hideQuickSearch
+          extra={
+            <div className="flex items-center gap-2">
+              <Select
+                value={filterTypeValue}
+                onValueChange={handleTypeChange}
+              >
+                <SelectTrigger className="h-8 w-[180px] text-xs">
+                  <SelectValue placeholder="All types" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all">All types</SelectItem>
+                  {TRANSACTION_TYPES.map((transactionType) => {
+                    const { Icon: TypeIcon, label } = formatTransactionTypeLabel(transactionType);
+                    return (
+                      <SelectItem key={transactionType} value={transactionType}>
+                        <div className="flex items-center gap-2">
+                          <TypeIcon className="h-4 w-4 text-muted-foreground" aria-hidden />
+                          <span className="truncate">{label}</span>
+                        </div>
+                      </SelectItem>
+                    );
+                  })}
+                </SelectContent>
+              </Select>
+              <Select
+                value={filterCustomerValue}
+                onValueChange={handleCustomerTypeChange}
+              >
+                <SelectTrigger className="h-8 w-[140px] text-xs">
+                  <SelectValue placeholder="All customers" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="__all">All customers</SelectItem>
+                  <SelectItem value="user">User</SelectItem>
+                  <SelectItem value="team">Team</SelectItem>
+                  <SelectItem value="custom">Custom</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          }
+        />
+      )}
+      emptyState={
+        <div className="text-center py-8">
+          <p className="text-sm text-muted-foreground">No transactions found</p>
         </div>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" disabled>
-            <CaretLeftIcon className="mr-1 h-4 w-4" />
-            Previous
-          </Button>
-          <span className="rounded-md border border-border px-3 py-1 text-xs font-medium">
-            Page …
-          </span>
-          <Button variant="ghost" size="sm" disabled>
-            Next
-            <CaretRightIcon className="ml-1 h-4 w-4" />
-          </Button>
-        </div>
-      </div>
-    </div>
+      }
+    />
   );
 }

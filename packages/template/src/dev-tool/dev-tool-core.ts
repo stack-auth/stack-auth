@@ -2401,9 +2401,14 @@ export function createDevTool(app: StackClientApp<true>): () => void {
 
   let panel: { element: HTMLElement, cleanup: () => void } | null = null;
 
+  function closePanelAndPersistClosed() {
+    state.update({ isOpen: false });
+    closePanel();
+  }
+
   function openPanel() {
     if (panel) return;
-    panel = createPanel(app, state, logStore, closePanel);
+    panel = createPanel(app, state, logStore, closePanelAndPersistClosed);
     wrapper.appendChild(panel.element);
   }
 

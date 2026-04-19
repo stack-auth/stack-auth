@@ -94,6 +94,14 @@ export type DataGridColumnDef<TRow> = {
   /** For `singleSelect` type — available value options. */
   valueOptions?: readonly DataGridSelectOption[];
 
+  // ── Cell overflow ──────────────────────────────────────────
+  /** How cell content handles overflow.
+   * - `"truncate"` (default): single-line with text-overflow ellipsis.
+   * - `"wrap"`: content wraps naturally. When combined with
+   *   `rowHeight="auto"` on the grid, the row grows to fit. With a
+   *   fixed `rowHeight`, wrapped content is clipped at the row boundary. */
+  cellOverflow?: "truncate" | "wrap";
+
   // ── Overrides ──────────────────────────────────────────────
   /** Custom sort comparator. Receives two resolved cell values.
    * Return negative if a < b, positive if a > b, 0 if equal. */
@@ -265,14 +273,38 @@ export type DataGridProps<TRow> = {
   resizable?: boolean;
 
   // ── Layout ─────────────────────────────────────────────────────
-  /** Row height in pixels. Defaults to 44. */
-  rowHeight?: number;
+  /** Row height in pixels, or `"auto"` for dynamic measurement.
+   *
+   * - **number** (default `44`): every row is exactly this tall.
+   *   Fast and predictable; content that overflows is clipped.
+   * - **`"auto"`**: each row is measured by the browser after render
+   *   and the virtualizer adjusts positions accordingly. Columns
+   *   with `cellOverflow: "wrap"` will push the row taller; columns
+   *   with `cellOverflow: "truncate"` (or the default) stay
+   *   single-line. Use `estimatedRowHeight` to reduce scroll-jank
+   *   when rows haven't been measured yet. */
+  rowHeight?: number | "auto";
+  /** Estimated row height used by the virtualizer when
+   *  `rowHeight="auto"`. Better estimates = less scroll-position
+   *  jank before rows are measured. Defaults to 44. Ignored when
+   *  `rowHeight` is a number. */
+  estimatedRowHeight?: number;
   /** Header row height in pixels. Defaults to 44. */
   headerHeight?: number;
   /** Number of rows to render outside the visible area. Defaults to 5. */
   overscan?: number;
-  /** Grid max height. If omitted, grid takes available space. */
+  /** Grid max height. If omitted, grid takes available space (when `fillHeight`). */
   maxHeight?: number | string;
+  /**
+   * When `true` (default), the grid uses `h-full` and the row area scrolls inside the grid.
+   * When `false`, the grid is only as tall as toolbar + header + rows (`h-auto`), so sibling
+   * content (e.g. metadata) sits directly under the table without a large empty gap.
+   */
+  fillHeight?: boolean;
+  /** Top offset for the sticky toolbar + header (px or CSS string).
+   *  Set this to the page header height so the grid chrome sticks
+   *  below it instead of overlapping. Defaults to 0. */
+  stickyTop?: number | string;
 
   // ── Callbacks ──────────────────────────────────────────────────
 } & DataGridCallbacks<TRow> & {

@@ -2,8 +2,10 @@ import { isLocalEmulatorEnabled } from "@/lib/local-emulator";
 import { createOpenRouter } from "@openrouter/ai-sdk-provider";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 
-export type ModelQuality = "dumb" | "smart" | "smartest";
-export type ModelSpeed = "slow" | "fast";
+export const MODEL_QUALITIES = ["dumb", "smart", "smartest"] as const;
+export const MODEL_SPEEDS = ["slow", "fast"] as const;
+export type ModelQuality = typeof MODEL_QUALITIES[number];
+export type ModelSpeed = typeof MODEL_SPEEDS[number];
 
 type ModelConfig = {
   modelId: string,

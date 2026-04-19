@@ -16,7 +16,7 @@ import { PauseIcon, PlayIcon, XCircleIcon } from "@phosphor-icons/react";
 import { AdminEmailOutbox, AdminEmailOutboxStatus } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { ColumnDef } from "@tanstack/react-table";
+
 import { useSearchParams } from "next/navigation";
 import { useCallback, useEffect, useMemo, useState } from "react";
 

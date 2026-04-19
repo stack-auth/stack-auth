@@ -1,25 +1,155 @@
-'use client';
+"use client";
+
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
-import { ActionCell, ActionDialog, BadgeCell, DataTable, DataTableColumnHeader, SearchToolbarItem, SimpleTooltip } from "@/components/ui";
-import { ServerTeam, ServerUser } from '@stackframe/stack';
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { ColumnDef, Row, Table } from "@tanstack/react-table";
+import {
+  ActionCell,
+  ActionDialog,
+  Avatar,
+  AvatarFallback,
+  AvatarImage,
+  Badge,
+  Button,
+  SimpleTooltip,
+  toast,
+} from "@/components/ui";
+import { Link } from "../link";
+import { ServerTeam, ServerUser } from "@stackframe/stack";
+import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
+import {
+  createDefaultDataGridState,
+  DataGrid,
+  useDataSource,
+  type DataGridColumnDef,
+  type DataGridState,
+} from "@stackframe/dashboard-ui-components";
+import { CheckCircleIcon, CopyIcon, XCircleIcon } from "@phosphor-icons/react";
 import { useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
 import { SmartFormDialog } from "../form-dialog";
 import { PermissionListField } from "../permission-field";
-import { extendUsers, getCommonUserColumns, type ExtendedServerUser } from "./user-table";
-
+import { extendUsers, type ExtendedServerUser } from "./user-table";
 
 type ExtendedServerUserForTeam = ExtendedServerUser & {
   permissions: string[],
 };
 
-function teamMemberToolbarRender<TData>(table: Table<TData>) {
+function formatUserId(id: string) {
+  if (id.length <= 10) {
+    return id;
+  }
+  return `${id.slice(0, 6)}…${id.slice(-4)}`;
+}
+
+function getDateMeta(value: Date | string | null | undefined, emptyLabel: string) {
+  if (!value) {
+    return { label: emptyLabel };
+  }
+  const date = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return { label: emptyLabel };
+  }
+  return {
+    label: fromNow(date),
+    tooltip: date.toString(),
+  };
+}
+
+function TeamMemberUserCell(props: { user: ExtendedServerUserForTeam }) {
+  const { user } = props;
+  const stackAdminApp = useAdminApp();
+  const profileUrl = `/projects/${encodeURIComponent(stackAdminApp.projectId)}/users/${encodeURIComponent(user.id)}`;
+  const fallback = user.displayName?.charAt(0) ?? user.primaryEmail?.charAt(0) ?? "?";
+  const displayName = user.displayName ?? user.primaryEmail ?? "Unnamed user";
+
   return (
-    <>
-      <SearchToolbarItem table={table} placeholder="Search table" />
-    </>
+    <div className="flex items-center gap-3">
+      <Link href={profileUrl} className="rounded-full">
+        <Avatar className="h-6 w-6">
+          <AvatarImage src={user.profileImageUrl ?? undefined} alt={user.displayName ?? user.primaryEmail ?? "User avatar"} />
+          <AvatarFallback>{fallback}</AvatarFallback>
+        </Avatar>
+      </Link>
+      <div className="min-w-0">
+        <div className="flex flex-wrap items-center gap-2">
+          <Link
+            href={profileUrl}
+            className="max-w-full text-sm font-semibold text-foreground hover:text-foreground"
+          >
+            <span className="block truncate" title={displayName}>
+              {displayName}
+            </span>
+          </Link>
+          {user.isAnonymous && (
+            <Badge variant="secondary" className="text-xs">
+              Anonymous
+            </Badge>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function TeamMemberEmailCell(props: { user: ExtendedServerUserForTeam }) {
+  const { user } = props;
+  const email = user.primaryEmail ?? "No email";
+
+  return (
+    <span className="block max-w-full truncate text-sm text-muted-foreground" title={user.primaryEmail ?? undefined}>
+      {email}
+    </span>
+  );
+}
+
+function TeamMemberUserIdCell(props: { user: ExtendedServerUserForTeam }) {
+  const { user } = props;
+  const idLabel = formatUserId(user.id);
+
+  const handleCopy = () => {
+    runAsynchronouslyWithAlert(async () => {
+      await navigator.clipboard.writeText(user.id);
+      toast({ title: "Copied to clipboard", variant: "success" });
+    });
+  };
+
+  return (
+    <SimpleTooltip tooltip="Copy user ID">
+      <Button
+        type="button"
+        onClick={handleCopy}
+        className="flex max-w-full px-1 py-0 h-min items-center gap-2 font-mono text-xs text-muted-foreground transition hover:text-foreground focus:outline-none focus:ring-2 focus:ring-ring cursor-pointer bg-transparent hover:bg-transparent"
+        aria-label="Copy user ID"
+        title={user.id}
+      >
+        <span className="truncate">{idLabel}</span>
+        <CopyIcon className="h-3 w-3" />
+      </Button>
+    </SimpleTooltip>
+  );
+}
+
+function TeamMemberEmailStatusCell(props: { user: ExtendedServerUserForTeam }) {
+  const { user } = props;
+  const isVerified = user.emailVerified === "verified";
+  return (
+    <div className="flex items-center justify-start">
+      {isVerified ? (
+        <CheckCircleIcon className="h-4 w-4 text-success" aria-label="Email verified" />
+      ) : (
+        <XCircleIcon className="h-4 w-4 text-amber-500" aria-label="Email unverified" />
+      )}
+    </div>
+  );
+}
+
+function TeamMemberLastActiveCell(props: { user: ExtendedServerUserForTeam }) {
+  const { user } = props;
+  const meta = getDateMeta(user.lastActiveAt, "Never");
+  return (
+    <span className="text-sm text-muted-foreground whitespace-nowrap" title={meta.tooltip}>
+      {meta.label}
+    </span>
   );
 }
 
@@ -90,27 +220,28 @@ function EditPermissionDialog(props: {
 }
 
 
-function Actions(
-  { row, team, setUpdateCounter }:
-  { row: Row<ExtendedServerUserForTeam>, team: ServerTeam, setUpdateCounter: (c: (v: number) => number) => void }
-) {
+function Actions(props: {
+  user: ExtendedServerUserForTeam,
+  team: ServerTeam,
+  setUpdateCounter: (c: (v: number) => number) => void,
+}) {
   const [isRemoveModalOpen, setIsRemoveModalOpen] = useState(false);
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
 
   return (
     <>
       <RemoveUserDialog
-        user={row.original}
-        team={team}
+        user={props.user}
+        team={props.team}
         open={isRemoveModalOpen}
         onOpenChange={setIsRemoveModalOpen}
       />
       <EditPermissionDialog
-        user={row.original}
-        team={team}
+        user={props.user}
+        team={props.team}
         open={isEditModalOpen}
-        onOpenChange={(v) => setIsEditModalOpen(v)}
-        onSubmit={() => setUpdateCounter(c => c + 1)}
+        onOpenChange={setIsEditModalOpen}
+        onSubmit={() => props.setUpdateCounter(c => c + 1)}
       />
       <ActionCell
         items={[
@@ -131,30 +262,113 @@ function Actions(
 }
 
 export function TeamMemberTable(props: { users: ServerUser[], team: ServerTeam }) {
-  const teamMemberColumns: ColumnDef<ExtendedServerUserForTeam>[] = [
-    ...getCommonUserColumns<ExtendedServerUserForTeam>(),
+  const [updateCounter, setUpdateCounter] = useState(0);
+
+  const teamMemberColumns = useMemo<DataGridColumnDef<ExtendedServerUserForTeam>[]>(() => [
     {
-      accessorKey: "permissions",
-      header: ({ column }) => <DataTableColumnHeader
-        column={column}
-        columnTitle={<div className="flex items-center gap-1">
+      id: "user",
+      header: "User",
+      width: 160,
+      flex: 1,
+      minWidth: 110,
+      maxWidth: 220,
+      sortable: false,
+      type: "custom",
+      renderCell: ({ row }) => <TeamMemberUserCell user={row} />,
+    },
+    {
+      id: "email",
+      header: "Email",
+      accessor: (row) => row.primaryEmail ?? "",
+      width: 160,
+      flex: 1,
+      minWidth: 110,
+      maxWidth: 220,
+      sortable: false,
+      type: "string",
+      renderCell: ({ row }) => <TeamMemberEmailCell user={row} />,
+    },
+    {
+      id: "userId",
+      header: "User ID",
+      width: 130,
+      minWidth: 90,
+      maxWidth: 160,
+      sortable: false,
+      type: "custom",
+      renderCell: ({ row }) => <TeamMemberUserIdCell user={row} />,
+    },
+    {
+      id: "emailStatus",
+      header: "Email Verified",
+      width: 110,
+      minWidth: 80,
+      maxWidth: 130,
+      sortable: false,
+      type: "custom",
+      renderCell: ({ row }) => <TeamMemberEmailStatusCell user={row} />,
+    },
+    {
+      id: "lastActiveAt",
+      header: "Last active",
+      accessor: (row) => row.lastActiveAt,
+      width: 110,
+      minWidth: 80,
+      maxWidth: 130,
+      sortable: false,
+      type: "custom",
+      renderCell: ({ row }) => <TeamMemberLastActiveCell user={row} />,
+    },
+    {
+      id: "permissions",
+      header: () => (
+        <div className="flex items-center gap-1">
           Permissions
           <SimpleTooltip tooltip="Only showing direct permissions" type='info' />
-        </div>}
-      />,
-      cell: ({ row }) => <BadgeCell size={120} badges={row.getValue("permissions")} />,
-      enableSorting: false,
+        </div>
+      ),
+      accessor: (row) => row.permissions.join(", "),
+      width: 120,
+      minWidth: 80,
+      sortable: false,
+      type: "string",
+      cellOverflow: "wrap",
+      renderCell: ({ row }) => (
+        <div className="flex items-center gap-1 flex-wrap">
+          {row.permissions.map((permissionId) => (
+            <Badge key={permissionId} variant="secondary">{permissionId}</Badge>
+          ))}
+        </div>
+      ),
     },
     {
       id: "actions",
-      cell: ({ row }) => <Actions row={row} team={props.team} setUpdateCounter={setUpdateCounter} />,
+      header: "",
+      sortable: false,
+      hideable: false,
+      resizable: false,
+      width: 48,
+      type: "custom",
+      renderCell: ({ row }) => (
+        <Actions user={row} team={props.team} setUpdateCounter={setUpdateCounter} />
+      ),
     },
-  ];
+  ], [props.team]);
 
-  // TODO: Optimize this
+  const [gridState, setGridState] = useState<DataGridState>(() => {
+    const base = createDefaultDataGridState(teamMemberColumns);
+    return {
+      ...base,
+      columnVisibility: {
+        ...base.columnVisibility,
+        emailStatus: false,
+      },
+    };
+  });
+
   const [users, setUsers] = useState<ServerUser[]>([]);
   const [userPermissions, setUserPermissions] = useState<Map<string, string[]>>(new Map());
-  const [updateCounter, setUpdateCounter] = useState(0);
+  const [isLoadingExtendedUsers, setIsLoadingExtendedUsers] = useState(true);
 
   const extendedUsers: ExtendedServerUserForTeam[] = useMemo(() => {
     return extendUsers(users).map((user) => ({
@@ -164,6 +378,7 @@ export function TeamMemberTable(props: { users: ServerUser[], team: ServerTeam }
   }, [users, userPermissions]);
 
   useEffect(() => {
+    let cancelled = false;
     async function load() {
       const promises = props.users.map(async user => {
         const permissions = await user.listPermissions(props.team, { recursive: false });
@@ -175,21 +390,46 @@ export function TeamMemberTable(props: { users: ServerUser[], team: ServerTeam }
       return await Promise.all(promises);
     }
 
+    setIsLoadingExtendedUsers(true);
     runAsynchronously(load().then((data) => {
+      if (cancelled) return;
       setUserPermissions(new Map(
         props.users.map((user, index) => [user.id, data[index].permissions.map(p => p.id)])
       ));
       setUsers(data.map(d => d.user));
+      setIsLoadingExtendedUsers(false);
+    }).catch(() => {
+      if (cancelled) return;
+      setIsLoadingExtendedUsers(false);
     }));
+    return () => {
+      cancelled = true;
+    };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [props.users, props.team, updateCounter]);
 
-  return <DataTable
-    data={extendedUsers}
-    columns={teamMemberColumns}
-    toolbarRender={teamMemberToolbarRender}
-    defaultVisibility={{ emailVerified: false }}
-    defaultColumnFilters={[]}
-    defaultSorting={[]}
-  />;
+  const gridData = useDataSource({
+    data: extendedUsers,
+    columns: teamMemberColumns,
+    getRowId: (row) => row.id,
+    sorting: gridState.sorting,
+    quickSearch: gridState.quickSearch,
+    pagination: gridState.pagination,
+    paginationMode: "client",
+  });
+
+  return (
+    <DataGrid
+      columns={teamMemberColumns}
+      rows={gridData.rows}
+      getRowId={(row) => row.id}
+      totalRowCount={gridData.totalRowCount}
+      isLoading={isLoadingExtendedUsers}
+      state={gridState}
+      onChange={setGridState}
+      rowHeight="auto"
+      estimatedRowHeight={44}
+      fillHeight={false}
+    />
+  );
 }
