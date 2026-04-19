@@ -8,11 +8,12 @@ The Analytics app gives you direct access to your project's analytics dataset in
 
 ## Overview
 
-Analytics is organized into three areas in the dashboard:
+Analytics is organized into four areas in the dashboard:
 
 - **Tables**: Browse event rows with sorting, search, and incremental loading
 - **Queries**: Run and save reusable ClickHouse SQL queries
 - **Replays**: Watch session replays and filter by user, team, duration, activity window, and click count
+- **Dashboards**: Build custom data visualizations using natural language
 
 ## How Analytics Works
 
@@ -25,6 +26,7 @@ flowchart LR
     C --> D[Tables view]
     C --> E[SQL query runner]
     C --> F[Session replay UI]
+    C --> G[Custom dashboards]
 `} />
 
 ### What Gets Tracked
@@ -111,9 +113,42 @@ export const stackClientApp = new StackClientApp({
 
 `maskAllInputs` defaults to `true`, so form fields are masked unless you explicitly disable it.
 
+## Custom Dashboards
+
+Custom Dashboards let you build data visualizations using natural language. Describe what you want to see, and AI generates an interactive dashboard with charts, metrics, and tables.
+
+### Creating a Dashboard
+
+1. Go to **Dashboards** in the sidebar
+2. Click **New Dashboard** or use the command palette (Cmd+K / Ctrl+K)
+3. Describe what you want to visualize (e.g., "Show me user signups over the last 30 days with a breakdown by authentication method")
+4. The AI generates an interactive dashboard
+
+### Dashboard Features
+
+Custom dashboards support:
+
+- **Metric cards**: key numbers like total users, signups, or conversion rates
+- **Charts**: trends and distributions using bar charts, line charts, and more
+- **Tables**: detailed data rows with sorting and filtering
+- **Navigation**: links to other dashboard pages like Users or Teams
+
+### Editing Dashboards
+
+1. Open the dashboard you want to edit
+2. Click the **Edit** button
+3. Describe your changes in the chat panel (e.g., "Add a pie chart showing user distribution by country")
+4. The AI updates the dashboard while preserving parts you didn't change
+5. Click **Done** when finished
+
+Dashboards are automatically saved to your project. View and manage all saved dashboards from the **Dashboards** page.
+
+Use custom dashboards when you need quick, tailored visualizations without writing SQL.
+
 ## Best Practices
 
 1. **Use Tables for quick incident triage**: the Tables UI is the fastest way to inspect recent `events` rows without writing SQL.
 2. **Use Queries for repeatable analysis**: save important SQL in folders, and scope queries with filters/`LIMIT` so they stay within result and timeout limits.
 3. **Use Replays for behavioral debugging**: start from an event pattern, then inspect matching session replays to understand what users actually did.
-4. **Keep replay privacy defaults on**: leave `maskAllInputs` enabled unless you have a specific reason and a data-handling policy for unmasked inputs.
+4. **Use Custom Dashboards for quick visualizations**: describe what you want in plain language to generate charts and metrics without writing code.
+5. **Keep replay privacy defaults on**: leave `maskAllInputs` enabled unless you have a specific reason and a data-handling policy for unmasked inputs.
