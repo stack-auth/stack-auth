@@ -4,8 +4,136 @@ exports[`should return metrics data > metrics_result_no_users 1`] = `
 NiceResponse {
   "status": 200,
   "body": {
+    "active_users_by_country": {},
     "analytics_overview": {
+      "anonymous_visitors_fallback": 0,
       "avg_session_seconds": 0,
+      "daily_anonymous_visitors_fallback": [
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+      ],
       "daily_clicks": [
         {
           "activity": 0,
@@ -2287,7 +2415,6 @@ NiceResponse {
       "total_one_time_purchases": 0,
       "total_orders": 0,
     },
-    "active_users_by_country": {},
     "recently_active": [],
     "recently_registered": [],
     "total_users": 0,
@@ -2301,8 +2428,165 @@ exports[`should return metrics data with users > metrics_result_with_users 1`] =
 NiceResponse {
   "status": 200,
   "body": {
+    "active_users_by_country": {
+      "AQ": [
+        {
+          "display_name": null,
+          "id": "<stripped UUID>",
+          "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+          "primary_email": "mailbox-2--<stripped UUID>@stack-generated.example.com",
+          "profile_image_url": null,
+          "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+        },
+        {
+          "display_name": null,
+          "id": "<stripped UUID>",
+          "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+          "primary_email": "mailbox-1--<stripped UUID>@stack-generated.example.com",
+          "profile_image_url": null,
+          "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+        },
+      ],
+      "CH": [
+        {
+          "display_name": null,
+          "id": "<stripped UUID>",
+          "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+          "primary_email": "mailbox-3--<stripped UUID>@stack-generated.example.com",
+          "profile_image_url": null,
+          "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+        },
+      ],
+    },
     "analytics_overview": {
+      "anonymous_visitors_fallback": 0,
       "avg_session_seconds": 0,
+      "daily_anonymous_visitors_fallback": [
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+      ],
       "daily_clicks": [
         {
           "activity": 0,
@@ -4710,8 +4994,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 0,
-            "free_trial_abuse": 0,
+            "bot": 38,
+            "free_trial_abuse": 38,
           },
         },
         "selected_team": null,
@@ -4744,8 +5028,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 0,
-            "free_trial_abuse": 0,
+            "bot": 38,
+            "free_trial_abuse": 38,
           },
         },
         "selected_team": null,
@@ -4778,8 +5062,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 0,
-            "free_trial_abuse": 0,
+            "bot": 38,
+            "free_trial_abuse": 38,
           },
         },
         "selected_team": null,
@@ -4812,8 +5096,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 0,
-            "free_trial_abuse": 0,
+            "bot": 38,
+            "free_trial_abuse": 38,
           },
         },
         "selected_team": null,
@@ -4846,8 +5130,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 0,
-            "free_trial_abuse": 0,
+            "bot": 38,
+            "free_trial_abuse": 38,
           },
         },
         "selected_team": null,
@@ -4882,8 +5166,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 0,
-            "free_trial_abuse": 0,
+            "bot": 38,
+            "free_trial_abuse": 38,
           },
         },
         "selected_team": null,
@@ -4916,8 +5200,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 0,
-            "free_trial_abuse": 0,
+            "bot": 38,
+            "free_trial_abuse": 38,
           },
         },
         "selected_team": null,
@@ -4950,8 +5234,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 0,
-            "free_trial_abuse": 0,
+            "bot": 38,
+            "free_trial_abuse": 38,
           },
         },
         "selected_team": null,
@@ -4984,8 +5268,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 0,
-            "free_trial_abuse": 0,
+            "bot": 38,
+            "free_trial_abuse": 38,
           },
         },
         "selected_team": null,
@@ -5018,8 +5302,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 0,
-            "free_trial_abuse": 0,
+            "bot": 38,
+            "free_trial_abuse": 38,
           },
         },
         "selected_team": null,
@@ -5052,8 +5336,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 0,
-            "free_trial_abuse": 0,
+            "bot": 38,
+            "free_trial_abuse": 38,
           },
         },
         "selected_team": null,
@@ -5086,8 +5370,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 0,
-            "free_trial_abuse": 0,
+            "bot": 38,
+            "free_trial_abuse": 38,
           },
         },
         "selected_team": null,
@@ -5120,8 +5404,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 0,
-            "free_trial_abuse": 0,
+            "bot": 38,
+            "free_trial_abuse": 38,
           },
         },
         "selected_team": null,
@@ -5154,8 +5438,8 @@ NiceResponse {
         "restricted_reason": null,
         "risk_scores": {
           "sign_up": {
-            "bot": 0,
-            "free_trial_abuse": 0,
+            "bot": 38,
+            "free_trial_abuse": 38,
           },
         },
         "selected_team": null,
