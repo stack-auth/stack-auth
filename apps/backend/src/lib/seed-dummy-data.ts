@@ -7,7 +7,7 @@ import { getClickhouseAdminClient } from '@/lib/clickhouse';
 import { overrideBranchConfigOverride, overrideEnvironmentConfigOverride, setBranchConfigOverrideSource } from '@/lib/config';
 import { createOrUpdateProjectWithLegacyConfig, getProject } from '@/lib/projects';
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from '@/lib/tenancies';
-import { type PrismaClientTransaction, getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
+import { getPrismaClientForTenancy, globalPrismaClient, type PrismaClientTransaction } from '@/prisma-client';
 import { ALL_APPS } from '@stackframe/stack-shared/dist/apps/apps-config';
 import { DEFAULT_EMAIL_THEME_ID } from '@stackframe/stack-shared/dist/helpers/emails';
 import { type AdminUserProjectsCrud, type ProjectsCrud } from '@stackframe/stack-shared/dist/interface/crud/projects';
@@ -1320,8 +1320,6 @@ const BULK_LAST_NAMES = [
   'Moore', 'Hall', 'King', 'Wright', 'Green', 'Baker', 'Turner', 'Okafor',
   'Suzuki', 'Schneider', 'Dubois', 'Rossi', 'Nakamura', 'Silva', 'Ivanov',
 ];
-const BULK_OAUTH_PROVIDERS = ['google', 'github', 'microsoft'];
-
 const BULK_REFERRERS = [
   { url: 'https://www.google.com/', weight: 32 },
   { url: 'https://github.com/', weight: 18 },
@@ -1402,17 +1400,23 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
   twoMonthsAgo.setMonth(twoMonthsAgo.getMonth() - 2);
   const windowMs = todayUtc.getTime() - twoMonthsAgo.getTime();
 
-  const userEmails = Array.from(userEmailToId.keys());
+  const userIds = Array.from(userEmailToId.values());
+  const systemEventTypeIds = ['$session-activity', '$user-activity', '$project-activity', '$project'];
 
-  console.log(`Seeding session activity events for ${userEmails.length} users...`);
+  console.log(`Seeding session activity events for ${userIds.length} users...`);
 
-  for (const email of userEmails) {
-    const userId = userEmailToId.get(email);
-    if (!userId) continue;
+  const eventIpInfos: Prisma.EventIpInfoCreateManyInput[] = [];
+  const events: Prisma.EventCreateManyInput[] = [];
+  const clickhouseRows: Array<Record<string, unknown>> = [];
 
+  const clickhouseUrl = getEnvVariable('STACK_CLICKHOUSE_URL', '');
+  const shouldSeedClickhouse = clickhouseUrl !== '';
+  const clickhouseClient = shouldSeedClickhouse ? getClickhouseAdminClient() : null;
+
+  for (const userId of userIds) {
     // Per-user seeded PRNG so event count, timestamps, and locations are
-    // deterministic across re-runs. Deterministic IDs mean upserts hit the
-    // same rows instead of duplicating them.
+    // deterministic across re-runs. Deterministic IDs mean seeded rows can be
+    // replaced in bulk while staying idempotent across runs.
     const userRand = deterministicPrng(seedFromString(`session-events:${tenancyId}:${userId}`));
     const eventCount = 15 + Math.floor(userRand() * 11); // 15-25 events
 
@@ -1426,111 +1430,107 @@ async function seedDummySessionActivityEvents(options: SessionActivityEventSeedO
       const ipInfoId = deterministicUuid(`event-ip-info:${tenancyId}:${userId}:${i}`);
       const eventId = deterministicUuid(`event:${tenancyId}:${userId}:${i}`);
 
-      await globalPrismaClient.eventIpInfo.upsert({
-        where: { id: ipInfoId },
-        update: {
-          ip: ipAddress,
-          countryCode: location.countryCode,
-          regionCode: location.regionCode,
-          cityName: location.cityName,
-          latitude: location.latitude,
-          longitude: location.longitude,
-          tzIdentifier: location.tzIdentifier,
-          updatedAt: randomTime,
-        },
-        create: {
-          id: ipInfoId,
-          ip: ipAddress,
-          countryCode: location.countryCode,
-          regionCode: location.regionCode,
-          cityName: location.cityName,
-          latitude: location.latitude,
-          longitude: location.longitude,
-          tzIdentifier: location.tzIdentifier,
-          createdAt: randomTime,
-          updatedAt: randomTime,
-        },
+      eventIpInfos.push({
+        id: ipInfoId,
+        ip: ipAddress,
+        countryCode: location.countryCode,
+        regionCode: location.regionCode,
+        cityName: location.cityName,
+        latitude: location.latitude,
+        longitude: location.longitude,
+        tzIdentifier: location.tzIdentifier,
+        createdAt: randomTime,
+        updatedAt: randomTime,
       });
 
-      await globalPrismaClient.event.upsert({
-        where: { id: eventId },
-        update: {
-          systemEventTypeIds: ['$session-activity', '$user-activity', '$project-activity', '$project'],
-          data: {
-            projectId,
-            branchId: DEFAULT_BRANCH_ID,
-            userId,
-            sessionId,
-            isAnonymous: false,
-          },
-          isEndUserIpInfoGuessTrusted: true,
-          endUserIpInfoGuessId: ipInfoId,
-          isWide: false,
-          eventStartedAt: randomTime,
-          eventEndedAt: randomTime,
-          updatedAt: randomTime,
+      events.push({
+        id: eventId,
+        systemEventTypeIds,
+        data: {
+          projectId,
+          branchId: DEFAULT_BRANCH_ID,
+          userId,
+          sessionId,
+          isAnonymous: false,
         },
-        create: {
-          id: eventId,
-          systemEventTypeIds: ['$session-activity', '$user-activity', '$project-activity', '$project'],
-          data: {
-            projectId,
-            branchId: DEFAULT_BRANCH_ID,
-            userId,
-            sessionId,
-            isAnonymous: false,
-          },
-          isEndUserIpInfoGuessTrusted: true,
-          endUserIpInfoGuessId: ipInfoId,
-          isWide: false,
-          eventStartedAt: randomTime,
-          eventEndedAt: randomTime,
-          createdAt: randomTime,
-          updatedAt: randomTime,
-        },
+        isEndUserIpInfoGuessTrusted: true,
+        endUserIpInfoGuessId: ipInfoId,
+        isWide: false,
+        eventStartedAt: randomTime,
+        eventEndedAt: randomTime,
+        createdAt: randomTime,
+        updatedAt: randomTime,
       });
 
-      // Also create $token-refresh events for ClickHouse (used by globe + analytics)
-      const clickhouseUrl = getEnvVariable("STACK_CLICKHOUSE_URL", "");
-      if (clickhouseUrl) {
-        const clickhouseClient = getClickhouseAdminClient();
-        await clickhouseClient.insert({
-          table: "analytics_internal.events",
-          values: [{
-            event_type: '$token-refresh',
-            event_at: randomTime,
-            data: {
-              refresh_token_id: refreshTokenId,
-              is_anonymous: false,
-              ip_info: {
-                ip: ipAddress,
-                is_trusted: true,
-                country_code: location.countryCode,
-                region_code: location.regionCode,
-                city_name: location.cityName,
-                latitude: location.latitude,
-                longitude: location.longitude,
-                tz_identifier: location.tzIdentifier,
-              },
-            },
-            project_id: projectId,
-            branch_id: DEFAULT_BRANCH_ID,
-            user_id: userId,
-            team_id: null,
+      if (clickhouseClient) {
+        clickhouseRows.push({
+          event_type: '$token-refresh',
+          event_at: randomTime,
+          data: {
             refresh_token_id: refreshTokenId,
-            session_replay_id: null,
-            session_replay_segment_id: null,
-          }],
-          format: "JSONEachRow",
-          clickhouse_settings: {
-            date_time_input_format: "best_effort",
+            is_anonymous: false,
+            ip_info: {
+              ip: ipAddress,
+              is_trusted: true,
+              country_code: location.countryCode,
+              region_code: location.regionCode,
+              city_name: location.cityName,
+              latitude: location.latitude,
+              longitude: location.longitude,
+              tz_identifier: location.tzIdentifier,
+            },
           },
+          project_id: projectId,
+          branch_id: DEFAULT_BRANCH_ID,
+          user_id: userId,
+          team_id: null,
+          refresh_token_id: refreshTokenId,
+          session_replay_id: null,
+          session_replay_segment_id: null,
         });
       }
     }
   }
 
-  console.log('Finished seeding session activity events');
+  await globalPrismaClient.$transaction(async (tx) => {
+    const eventIds = events.map((event) => event.id ?? throwErr('Seeded event row is missing id'));
+    const ipInfoIds = eventIpInfos.map((info) => info.id ?? throwErr('Seeded event IP info row is missing id'));
+
+    await tx.event.deleteMany({
+      where: {
+        id: { in: eventIds },
+      },
+    });
+    await tx.eventIpInfo.deleteMany({
+      where: {
+        id: { in: ipInfoIds },
+      },
+    });
+
+    await tx.eventIpInfo.createMany({
+      data: eventIpInfos,
+    });
+    await tx.event.createMany({
+      data: events,
+    });
+  });
+
+  if (clickhouseClient && clickhouseRows.length > 0) {
+    const BATCH_SIZE = 500;
+    for (let i = 0; i < clickhouseRows.length; i += BATCH_SIZE) {
+      await clickhouseClient.insert({
+        table: 'analytics_internal.events',
+        values: clickhouseRows.slice(i, i + BATCH_SIZE),
+        format: 'JSONEachRow',
+        clickhouse_settings: {
+          date_time_input_format: 'best_effort',
+          async_insert: 1,
+        },
+      });
+    }
+  }
+
+  console.log(`Finished seeding session activity events (${events.length} events)`);
 }
 
 /**
@@ -1564,8 +1564,16 @@ async function seedBulkSignupsAndActivity(options: {
   let created = 0;
   let updated = 0;
 
-  const userActivity: Array<{ userId: string, signupDaysAgo: number, region: BulkActivityRegion }> = [];
-
+  const seedUsers: Array<{
+    index: number,
+    email: string,
+    displayName: string,
+    signedUpAt: Date,
+    signupDaysAgo: number,
+    region: BulkActivityRegion,
+    primaryEmailVerified: boolean,
+    projectUserId: string,
+  }> = [];
   for (let i = 0; i < count; i++) {
     const firstName = BULK_FIRST_NAMES[Math.floor(rand() * BULK_FIRST_NAMES.length)]!;
     const lastName = BULK_LAST_NAMES[Math.floor(rand() * BULK_LAST_NAMES.length)]!;
@@ -1573,80 +1581,100 @@ async function seedBulkSignupsAndActivity(options: {
     const email = `${firstName.toLowerCase()}.${lastName.toLowerCase()}.signupseed${i}@dummy.dev`;
     const signedUpAt = bulkRandomTimestampOnDay(now, dayOffsets[i]!, rand);
     const region = pickBulkActivityRegion(rand);
-    // ~50% of users get multiple connected oauth accounts, ~30% get one, ~20% get none
-    const oauthRoll = rand();
-    let numProviders: number;
-    if (oauthRoll < 0.5) {
-      numProviders = 2 + Math.floor(rand() * (BULK_OAUTH_PROVIDERS.length - 1));
-    } else if (oauthRoll < 0.8) {
-      numProviders = 1;
-    } else {
-      numProviders = 0;
-    }
-    const providerPool = [...BULK_OAUTH_PROVIDERS];
-    const pickedProviders: string[] = [];
-    for (let p = 0; p < numProviders && providerPool.length > 0; p++) {
-      const idx = Math.floor(rand() * providerPool.length);
-      pickedProviders.push(providerPool[idx]!);
-      providerPool.splice(idx, 1);
-    }
-    const oauthProvider = pickedProviders.map((id) => ({
-      id,
-      account_id: `${email}-${id}`,
+    const primaryEmailVerified = rand() > 0.25;
+    seedUsers.push({
+      index: i,
       email,
-    }));
-
-    const existing = await prisma.projectUser.findFirst({
-      where: {
-        tenancyId: tenancy.id,
-        contactChannels: { some: { type: 'EMAIL', value: email } },
-      },
-      select: { projectUserId: true },
+      displayName,
+      signedUpAt,
+      signupDaysAgo: dayOffsets[i]!,
+      region,
+      primaryEmailVerified,
+      projectUserId: deterministicUuid(`bulk-signup-user:${tenancy.id}:${email}`),
     });
+  }
 
-    let userId: string;
-    if (existing) {
-      userId = existing.projectUserId;
-      updated++;
-    } else {
-      const createdUser = await usersCrudHandlers.adminCreate({
-        tenancy,
-        data: {
-          display_name: displayName,
-          primary_email: email,
-          primary_email_auth_enabled: true,
-          primary_email_verified: rand() > 0.25,
-          otp_auth_enabled: false,
-          is_anonymous: false,
-          oauth_providers: oauthProvider,
-          profile_image_url: null,
-        },
-      });
-      userId = createdUser.id;
+  const existingContactChannels = await prisma.contactChannel.findMany({
+    where: {
+      tenancyId: tenancy.id,
+      type: 'EMAIL',
+      isPrimary: 'TRUE',
+      usedForAuth: 'TRUE',
+      value: { in: seedUsers.map((seedUser) => seedUser.email) },
+    },
+    select: {
+      value: true,
+      projectUserId: true,
+    },
+  });
+
+  const existingUserIdByEmail = new Map<string, string>();
+  for (const existingContactChannel of existingContactChannels) {
+    const existingUserId = existingUserIdByEmail.get(existingContactChannel.value);
+    if (existingUserId != null && existingUserId !== existingContactChannel.projectUserId) {
+      throwErr(`Expected one authenticated user per seed email (${existingContactChannel.value}), found multiple project users`);
+    }
+    existingUserIdByEmail.set(existingContactChannel.value, existingContactChannel.projectUserId);
+  }
+
+  const projectUsersToCreate: Prisma.ProjectUserCreateManyInput[] = [];
+  const contactChannelsToCreate: Prisma.ContactChannelCreateManyInput[] = [];
+  const userActivity: Array<{ userId: string, signupDaysAgo: number, region: BulkActivityRegion, signedUpAt: Date }> = [];
+
+  for (const seedUser of seedUsers) {
+    const userId = existingUserIdByEmail.get(seedUser.email) ?? seedUser.projectUserId;
+    const existingUserId = existingUserIdByEmail.get(seedUser.email);
+    if (existingUserId == null) {
       created++;
+      projectUsersToCreate.push({
+        tenancyId: tenancy.id,
+        projectUserId: userId,
+        mirroredProjectId: tenancy.project.id,
+        mirroredBranchId: tenancy.branchId,
+        displayName: seedUser.displayName,
+        isAnonymous: false,
+        createdAt: seedUser.signedUpAt,
+        lastActiveAt: seedUser.signedUpAt,
+        signedUpAt: seedUser.signedUpAt,
+        signUpRiskScoreBot: 0,
+        signUpRiskScoreFreeTrialAbuse: 0,
+      });
+      contactChannelsToCreate.push({
+        tenancyId: tenancy.id,
+        projectUserId: userId,
+        type: 'EMAIL',
+        isPrimary: 'TRUE',
+        usedForAuth: 'TRUE',
+        isVerified: seedUser.primaryEmailVerified,
+        value: seedUser.email,
+        createdAt: seedUser.signedUpAt,
+        updatedAt: seedUser.signedUpAt,
+      });
+    } else {
+      updated++;
     }
 
-    await prisma.projectUser.updateMany({
-      where: { tenancyId: tenancy.id, projectUserId: userId },
-      data: { createdAt: signedUpAt, signedUpAt },
+    userActivity.push({
+      userId,
+      signupDaysAgo: seedUser.signupDaysAgo,
+      region: seedUser.region,
+      signedUpAt: seedUser.signedUpAt,
     });
-
-    userActivity.push({ userId, signupDaysAgo: dayOffsets[i]!, region });
 
     const ipInfoForUser = {
-      ip: bulkFakeIp(region.ipPrefix, rand),
+      ip: bulkFakeIp(seedUser.region.ipPrefix, rand),
       is_trusted: true,
-      country_code: region.country,
-      region_code: region.region,
-      city_name: region.city,
-      latitude: region.lat,
-      longitude: region.lon,
-      tz_identifier: region.tz,
+      country_code: seedUser.region.country,
+      region_code: seedUser.region.region,
+      city_name: seedUser.region.city,
+      latitude: seedUser.region.lat,
+      longitude: seedUser.region.lon,
+      tz_identifier: seedUser.region.tz,
     };
 
     clickhouseRows.push({
       event_type: '$token-refresh',
-      event_at: formatClickhouseTimestamp(signedUpAt),
+      event_at: formatClickhouseTimestamp(seedUser.signedUpAt),
       data: {
         refresh_token_id: generateUuid(),
         is_anonymous: false,
@@ -1658,9 +1686,34 @@ async function seedBulkSignupsAndActivity(options: {
       team_id: null,
     });
 
-    if ((i + 1) % 100 === 0) {
-      console.log(`[seed-activity] ${i + 1}/${count} users processed (${created} new, ${updated} updated)`);
+    if ((seedUser.index + 1) % 100 === 0) {
+      console.log(`[seed-activity] ${seedUser.index + 1}/${count} users processed (${created} new, ${updated} updated)`);
     }
+  }
+
+  if (projectUsersToCreate.length > 0) {
+    await prisma.projectUser.createMany({
+      data: projectUsersToCreate,
+      skipDuplicates: true,
+    });
+  }
+  if (contactChannelsToCreate.length > 0) {
+    await prisma.contactChannel.createMany({
+      data: contactChannelsToCreate,
+      skipDuplicates: true,
+    });
+  }
+
+  if (userActivity.length > 0) {
+    const seededTimestampRows = userActivity.map((activity) => Prisma.sql`(${activity.userId}::uuid, ${activity.signedUpAt}::timestamptz)`);
+    await prisma.$executeRaw`
+      UPDATE "ProjectUser" AS pu
+      SET "createdAt" = seeded.signed_up_at,
+          "signedUpAt" = seeded.signed_up_at
+      FROM (VALUES ${Prisma.join(seededTimestampRows)}) AS seeded(project_user_id, signed_up_at)
+      WHERE pu."tenancyId" = ${tenancy.id}
+        AND pu."projectUserId" = seeded.project_user_id
+    `;
   }
 
   console.log(`[seed-activity] Generating multi-day activity events for ${userActivity.length} users...`);

@@ -331,6 +331,18 @@ A: Inbucket persists mail across runs. `Mailbox.waitForMessagesWithSubject` wait
 Q: Why does `@typescript-eslint/no-unnecessary-condition` fire on `props.reset` in Next.js `ErrorBoundary` `errorComponent`?
 A: Next’s typings treat `reset` as always present on the error component props, so `props.reset &&` is redundant; render the reload control unconditionally and call `props.reset()` directly.
 
+Q: Why do E2E payment tests fail when run in parallel but pass individually?
+A: The Bulldozer advisory lock (`pg_advisory_xact_lock` in `toExecutableSqlTransaction`) serializes ALL Bulldozer writes globally. Each dual-write triggers an 848KB SQL cascade that holds the lock. When dozens of E2E tests run concurrently, each creating users/products/purchases, the lock contention causes tokens to expire and requests to timeout. Running payment tests independently avoids this.
+
+Q: Why did we remove `type` and `subscription` from the list products API response?
+A: Product ownership is independent of how you acquired the product (subscription vs OTP). A customer could own the same product via both. The old response conflated "what do I own" with "how did I get it." The simplified response returns just `{ id, quantity, product, switch_options }`. Subscription management info (cancel, period end) is a separate concern.
+
+Q: How does validatePurchaseSession work now?
+A: It reads from Bulldozer-backed functions: `getOwnedProductsForCustomer` (LFold), `getSubscriptionMapForCustomer` (subscription LFold). Steps: 1) ensureCustomerExists, 2) resolve price, 3) stackability check, 4) fetch owned products once, 5) duplicate check via `customerOwnsProduct`, 6) add-on prerequisite check, 7) product-line conflict detection + find cancelable subscriptions. If conflict exists but no subscription to cancel, throws "already has OTP in product line."
+
+Q: When does syncStripeSubscriptions set endedAt?
+A: When `subscription.status === "canceled"` and `sanitizedDates.end <= new Date()` (period has already ended). This triggers TimeFold to emit subscription-end events which revoke the product and expire items.
+
 Q: Why can dashboard onboarding clicks trigger `Cannot call this function on a Stack app without a persistent token store` dev toasts?
 A: `useOwnedProjects()` creates each `AdminOwnedProject["app"]` with `tokenStore: null`, but `packages/template/src/lib/stack-app/apps/implementations/client-app-impl.ts` used to start browser `EventTracker` unconditionally. Clicking onboarding controls queued tracked events, and the flush later threw when analytics tried to resolve a session. Fix by only starting browser event/replay tracking when the app has a persistent token store.
 
@@ -348,3 +360,23 @@ A: Use GitHub GraphQL via `gh api graphql` with `resolveReviewThread(input:{thre
 
 Q: Why can DataGrid sticky headers show extra top gap in dashboard dark mode?
 A: In `apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/sidebar-layout.tsx`, if dark mode uses an inner `overflow-auto` content wrapper, `DataGrid` sticks relative to that inner scroller, so the global dark `--data-grid-sticky-top: 5rem` becomes wrong and leaves a gap. The shared grid offset must match the actual scroll ancestor: either keep the older outer-page scroll shell with `5rem`, or if using the inner dark scroller, reset the dark sticky top to `0px`.
+Q: How does the payments bulldozer pipeline work end-to-end?
+A: Stored tables (subscriptions, OTPs, manual item changes, manual transactions, subscription invoices) are written via dual-write (`bulldozerWriteX` functions). Phase 1 derives events via TimeFold (subscription-start, subscription-end, item-grant-repeat) and filters (subscription-cancel, one-time-purchase). Phase 2 compacts transaction entries. Phase 3 produces owned products (LFold) and item quantities. The TimeFold initial run (T=null) is synchronous within the setRow transaction; only future events (item-grant-repeat at next billing cycle) are queued. Reads go through `customer-data.ts` which queries the Phase 3 LFold tables.
+
+Q: What is the difference between canceled and ended for subscriptions?
+A: Canceled (`cancelAtPeriodEnd: true`) means the subscription won't renew but still grants products until the period ends. Ended (`endedAt` is set) means the subscription has actually stopped providing access — the TimeFold emits `subscription-end` which generates `product-revocation` entries. For Stripe subs, only `syncStripeSubscriptions` should set `endedAt` (Stripe is the authority). For test-mode (non-Stripe) subs, `endedAt` is set directly in the route. Terminal Stripe statuses that also need `endedAt`: `incomplete_expired`, `unpaid`.
+
+Q: How does the BulldozerStorageEngine keyPathParent column work?
+A: Originally a `GENERATED ALWAYS AS` stored column with a self-referential FK. Migration `20260415100000` converted it to a trigger-maintained column (`bulldozer_key_path_parent_trigger`) to resolve Prisma schema drift (Prisma's `Unsupported` type can't represent generated columns). The trigger computes `keyPath[1:cardinality(keyPath)-1]` on INSERT/UPDATE. Test files still use the generated column DDL in their isolated DBs.
+
+Q: How does the migration runner handle multi-statement SQL?
+A: Non-single-statement migrations are wrapped in `DO $$ BEGIN ... END $$`. If your migration SQL contains dollar-quoted function bodies, use a different delimiter (e.g., `$func$` instead of `$$`) to avoid conflicts with the outer wrapper.
+
+Q: How can I run a single backend Bulldozer Vitest case when the default threads pool errors with `options.minThreads and options.maxThreads must not conflict`?
+A: Run the test from the monorepo root with forks pool, for example: `pnpm test run apps/backend/src/lib/bulldozer/db/index.test.ts -t "setRow/init/delete SQL generation is deterministic on a mixed schema" --pool=forks`.
+
+Q: Why can payments schema tests fail typecheck after switching to explicit `executionContext` arguments in `listRowsInGroup` helpers?
+A: Function parameter types are checked contravariantly, so helper signatures like `(ctx: unknown, opts: any)` are too wide and not assignable to table methods that require `BulldozerExecutionContext`. Type helper tables as `listRowsInGroup: (ctx: BulldozerExecutionContext, opts: any) => any` and pass the same `executionContext` variable through all calls.
+
+Q: What breaks when bulldozer tests stop using `bindTableToExecutionContext` wrappers?
+A: Any trigger callbacks written as `(changesTable) => ...` can fail against the strict `RowChangeTriggerInput` signature once wrappers are removed. Update those callbacks to explicit two-arg form like `(_ctx, changesTable) => ...`, and make helper types (for example table facades and lifecycle instrumentation helpers) use ctx-first method signatures so all table API calls pass `executionContext` explicitly.

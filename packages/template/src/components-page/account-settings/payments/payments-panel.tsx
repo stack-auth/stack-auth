@@ -90,7 +90,7 @@ type CustomerLike = {
     quantity: number,
     displayName: string,
     customerType: "user" | "team" | "custom",
-    type: "one_time" | "subscription",
+    type?: "one_time" | "subscription",
     switchOptions?: Array<{
       productId: string,
       displayName: string,

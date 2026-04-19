@@ -20,7 +20,35 @@ import { typedEntries, typedFromEntries } from '@stackframe/stack-shared/dist/ut
 
 const DUMMY_PROJECT_ID = '6fbbf22e-f4b2-4c6e-95a1-beab6fa41063';
 
+let didEnableSeedLogTimestamps = false;
+
+function enableSeedLogTimestamps() {
+  if (didEnableSeedLogTimestamps) return;
+  didEnableSeedLogTimestamps = true;
+
+  const originalLog = console.log.bind(console);
+  const originalInfo = console.info.bind(console);
+  const originalWarn = console.warn.bind(console);
+  const originalError = console.error.bind(console);
+
+  const withTimestamp = (...data: unknown[]) => [`[${new Date().toISOString()}]`, ...data];
+
+  console.log = (...data: Parameters<typeof console.log>) => {
+    originalLog(...withTimestamp(...data));
+  };
+  console.info = (...data: Parameters<typeof console.info>) => {
+    originalInfo(...withTimestamp(...data));
+  };
+  console.warn = (...data: Parameters<typeof console.warn>) => {
+    originalWarn(...withTimestamp(...data));
+  };
+  console.error = (...data: Parameters<typeof console.error>) => {
+    originalError(...withTimestamp(...data));
+  };
+}
+
 export async function seed() {
+  enableSeedLogTimestamps();
   process.env.STACK_SEED_MODE = 'true';
   console.log('Seeding database...');
 
@@ -122,7 +150,12 @@ export async function seed() {
             customerType: "team",
             serverOnly: false,
             stackable: false,
-            prices: "include-by-default",
+            prices: {
+              "free-monthly": {
+                USD: "0",
+                interval: [1, "month"] as any,
+              },
+            },
             includedItems: {
               [ITEM_IDS.seats]: { quantity: PLAN_LIMITS.free.seats, repeat: "never" as const, expires: "when-purchase-expires" as const },
               [ITEM_IDS.authUsers]: { quantity: PLAN_LIMITS.free.authUsers, repeat: "never" as const, expires: "when-purchase-expires" as const },

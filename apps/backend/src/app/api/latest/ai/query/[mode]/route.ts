@@ -1,10 +1,14 @@
+import { logMcpCall } from "@/lib/ai/mcp-logger";
 import { selectModel } from "@/lib/ai/models";
 import { getFullSystemPrompt } from "@/lib/ai/prompts";
+import { reviewMcpCall } from "@/lib/ai/qa-reviewer";
 import { requestBodySchema } from "@/lib/ai/schema";
 import { getTools } from "@/lib/ai/tools";
+import { getVerifiedQaContext } from "@/lib/ai/verified-qa";
 import { listManagedProjectIds } from "@/lib/projects";
 import { SmartResponse } from "@/route-handlers/smart-response";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { validateImageAttachments } from "@stackframe/stack-shared/dist/ai/image-limits";
 import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
 import { yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -48,15 +52,14 @@ export const POST = createSmartRouteHandler({
     }
 
     const model = selectModel(quality, speed, isAuthenticated);
-    const systemPrompt = getFullSystemPrompt(systemPromptId);
+    const isDocsOrSearch = systemPromptId === "docs-ask-ai" || systemPromptId === "command-center-ask-ai";
+    let systemPrompt = getFullSystemPrompt(systemPromptId);
+    if (isDocsOrSearch) {
+      systemPrompt += await getVerifiedQaContext();
+    }
     const tools = await getTools(toolNames, { auth: fullReq.auth, targetProjectId: projectId });
     const toolsArg = Object.keys(tools).length > 0 ? tools : undefined;
-    const isDocsOrSearch = systemPromptId === "docs-ask-ai" || systemPromptId === "command-center-ask-ai";
-    // create-dashboard now does an inspection loop (queryAnalytics) before calling updateDashboard,
-    // so it needs room for ~3 exploratory queries + the final tool call + some retry slack.
     const isCreateDashboard = systemPromptId === "create-dashboard";
-    // build-analytics-query aims for one-shot queries with complete schema
-    // knowledge, but needs a few steps for retries on errors or follow-ups.
     const isBuildAnalyticsQuery = systemPromptId === "build-analytics-query";
     const stepLimit = toolsArg == null
       ? 1
@@ -88,6 +91,7 @@ export const POST = createSmartRouteHandler({
         body: result.toUIMessageStreamResponse(),
       };
     } else {
+      const startedAt = Date.now();
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 120_000);
       const result = await generateText({
@@ -118,10 +122,51 @@ export const POST = createSmartRouteHandler({
         return blocks;
       });
 
+      let responseConversationId: string | undefined;
+      if (body.mcpCallMetadata != null) {
+        const correlationId = crypto.randomUUID();
+        const conversationId = body.mcpCallMetadata.conversationId ?? crypto.randomUUID();
+        responseConversationId = conversationId;
+        const firstUserMessage = messages.find(m => m.role === "user");
+        const question = typeof firstUserMessage?.content === "string"
+          ? firstUserMessage.content
+          : JSON.stringify(firstUserMessage?.content ?? "");
+
+        const innerToolCallsJson = JSON.stringify(content.filter(b => b.type === "tool-call"));
+
+        const logPromise = logMcpCall({
+          correlationId,
+          toolName: body.mcpCallMetadata.toolName,
+          reason: body.mcpCallMetadata.reason,
+          userPrompt: body.mcpCallMetadata.userPrompt,
+          conversationId,
+          question,
+          response: result.text,
+          stepCount: result.steps.length,
+          innerToolCallsJson,
+          durationMs: BigInt(Date.now() - startedAt),
+          modelId: String(model.modelId),
+          errorMessage: undefined,
+        });
+        runAsynchronouslyAndWaitUntil(logPromise);
+
+        runAsynchronouslyAndWaitUntil(reviewMcpCall({
+          logPromise,
+          correlationId,
+          question,
+          reason: body.mcpCallMetadata.reason,
+          response: result.text,
+        }));
+      }
+
       return {
         statusCode: 200,
         bodyType: "json" as const,
-        body: { content, finalText: result.text },
+        body: {
+          content,
+          finalText: result.text,
+          conversationId: responseConversationId ?? null,
+        },
       };
     }
   },

@@ -1,4 +1,5 @@
 import { CustomerType } from "@/generated/prisma/client";
+import { bulldozerWriteSubscription, bulldozerWriteSubscriptionInvoice } from "@/lib/payments/bulldozer-dual-write";
 import { getProductVersion } from "@/lib/product-versions";
 import { getTenancy, Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
@@ -235,6 +236,25 @@ const getTenancyFromStripeAccountIdOrThrow = async (stripe: Stripe, stripeAccoun
   return tenancy;
 };
 
+const TERMINAL_STRIPE_STATUSES = ["incomplete_expired", "unpaid"] as const;
+
+function getEndedAtForSync(subscription: Stripe.Subscription, sanitizedEnd: Date): { endedAt: Date } | {} {
+  if (TERMINAL_STRIPE_STATUSES.includes(subscription.status as typeof TERMINAL_STRIPE_STATUSES[number])) {
+    return { endedAt: subscription.ended_at ? new Date(subscription.ended_at * 1000) : new Date() };
+  }
+  if (subscription.status === "canceled" && sanitizedEnd <= new Date()) {
+    return { endedAt: sanitizedEnd };
+  }
+  return {};
+}
+
+function getCanceledAtForSync(subscription: Stripe.Subscription): { canceledAt: Date } | {} {
+  if (subscription.canceled_at) {
+    return { canceledAt: new Date(subscription.canceled_at * 1000) };
+  }
+  return {};
+}
+
 export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: string, stripeCustomerId: string) {
   const tenancy = await getTenancyFromStripeAccountIdOrThrow(stripe, stripeAccountId);
   const stripeCustomer = await stripe.customers.retrieve(stripeCustomerId);
@@ -275,7 +295,8 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
       context: { subscriptionId: subscription.id },
     });
 
-    await prisma.subscription.upsert({
+    // dual write - prisma and bulldozer
+    const upsertedSub = await prisma.subscription.upsert({
       where: {
         tenancyId_stripeSubscriptionId: {
           tenancyId: tenancy.id,
@@ -290,6 +311,8 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
         currentPeriodStart: sanitizedDates.start,
         cancelAtPeriodEnd: subscription.cancel_at_period_end,
         priceId: priceId ?? null,
+        ...getEndedAtForSync(subscription, sanitizedDates.end),
+        ...getCanceledAtForSync(subscription),
       },
       create: {
         tenancyId: tenancy.id,
@@ -307,6 +330,7 @@ export async function syncStripeSubscriptions(stripe: Stripe, stripeAccountId: s
         creationSource: "PURCHASE_PAGE"
       },
     });
+    await bulldozerWriteSubscription(prisma, upsertedSub);
   }
 }
 
@@ -330,7 +354,8 @@ export async function upsertStripeInvoice(stripe: Stripe, stripeAccountId: strin
   const tenancy = await getTenancyFromStripeAccountIdOrThrow(stripe, stripeAccountId);
   const prisma = await getPrismaClientForTenancy(tenancy);
 
-  await prisma.subscriptionInvoice.upsert({
+  // dual write - prisma and bulldozer
+  const upsertedInvoice = await prisma.subscriptionInvoice.upsert({
     where: {
       tenancyId_stripeInvoiceId: {
         tenancyId: tenancy.id,
@@ -354,4 +379,5 @@ export async function upsertStripeInvoice(stripe: Stripe, stripeAccountId: strin
       hostedInvoiceUrl: invoice.hosted_invoice_url,
     },
   });
+  await bulldozerWriteSubscriptionInvoice(prisma, upsertedInvoice);
 }
