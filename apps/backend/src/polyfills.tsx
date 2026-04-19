@@ -2,6 +2,7 @@ import * as Sentry from "@sentry/nextjs";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, registerErrorSink } from "@stackframe/stack-shared/dist/utils/errors";
 import * as util from "util";
+import { runAsynchronouslyAndWaitUntil } from "./utils/background-tasks";
 
 function expandStackPortPrefix(value?: string | null) {
   if (!value) return value ?? undefined;
@@ -11,10 +12,12 @@ function expandStackPortPrefix(value?: string | null) {
 
 const sentryErrorSink = (location: string, error: unknown) => {
   if (!("captureException" in Sentry)) {
-    // this happens if somehow this is called outside of a Next.js script (eg. in the Prisma seed.ts), just ignore
+    // this happens if somehow this is called outside of a Next.js script (eg. in the Prisma seed.ts), just log and ignore
+    console.log("Attempted to capture Sentry error outside of Next.js script, ignoring");
     return;
   }
   Sentry.captureException(error, { extra: { location } });
+  runAsynchronouslyAndWaitUntil(Sentry.flush());
 };
 
 export function ensurePolyfilled() {
