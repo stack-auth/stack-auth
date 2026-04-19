@@ -44,6 +44,7 @@ COPY .gitignore .
 COPY pnpm-workspace.yaml .
 COPY turbo.json .
 COPY configs ./configs
+COPY --from=pruner /app/scripts/postinstall-patch-next-async-debug-info.mjs ./scripts/
 RUN STACK_SKIP_TEMPLATE_GENERATION=true pnpm install --frozen-lockfile
 
 COPY --from=pruner /app/out/full/ .
