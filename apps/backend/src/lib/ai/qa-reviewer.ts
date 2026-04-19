@@ -1,8 +1,8 @@
 import { createMCPClient } from "@ai-sdk/mcp";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { generateText, stepCountIs } from "ai";
-import { getConnection } from "./mcp-logger";
+import { callReducer, opt } from "./mcp-logger";
 import { createOpenRouterProvider } from "./models";
 import { getVerifiedQaContext } from "./verified-qa";
 
@@ -125,11 +125,10 @@ export async function reviewMcpCall(entry: {
       };
     });
 
-    const jsonMatch = result.text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      throw new Error("No JSON found in QA review response");
+    const raw = extractJsonObject(result.text);
+    if (raw == null) {
+      throw new StackAssertionError(`No valid JSON object found in QA review response: ${result.text.slice(0, 200)}`);
     }
-    const raw = JSON.parse(jsonMatch[0]);
     if (
       typeof raw.needsHumanReview !== "boolean" ||
       typeof raw.answerCorrect !== "boolean" ||
@@ -137,7 +136,7 @@ export async function reviewMcpCall(entry: {
       !Array.isArray(raw.flags) ||
       typeof raw.overallScore !== "number"
     ) {
-      throw new Error(`Invalid QA review response shape: ${JSON.stringify(raw).slice(0, 200)}`);
+      throw new StackAssertionError(`Invalid QA review response shape: ${JSON.stringify(raw).slice(0, 200)}`);
     }
     const parsed = raw as {
       needsHumanReview: boolean,
@@ -160,25 +159,106 @@ export async function reviewMcpCall(entry: {
       qaErrorMessage: undefined,
     };
   } catch (err) {
-    captureError("qa-reviewer", err instanceof Error ? err : new Error(String(err)));
+    captureError("qa-reviewer", err);
     update = failureUpdate(err);
   }
 
   if (devinClient) {
     await devinClient.close().catch((err: unknown) => {
-      captureError("qa-reviewer", err instanceof Error ? err : new Error(String(err)));
+      captureError("qa-reviewer", err);
     });
   }
 
-  const conn = await getConnection();
-  if (!conn) return;
-  const token = getEnvVariable("STACK_MCP_LOG_TOKEN");
-  await conn.reducers.updateMcpQaReview({
+  const token = getEnvVariable("STACK_MCP_LOG_TOKEN", "");
+  if (!token) return;
+  await callReducer("update_mcp_qa_review", [
     token,
-    correlationId: entry.correlationId,
-    qaReviewModelId: REVIEW_MODEL_ID,
-    ...update,
-  }).catch((err: unknown) => {
-    captureError("qa-reviewer", err instanceof Error ? err : new Error(String(err)));
+    entry.correlationId,
+    update.qaNeedsHumanReview,
+    update.qaAnswerCorrect,
+    update.qaAnswerRelevant,
+    update.qaFlagsJson,
+    update.qaImprovementSuggestions,
+    update.qaOverallScore,
+    REVIEW_MODEL_ID,
+    opt(update.qaConversationJson),
+    opt(update.qaErrorMessage),
+  ]).catch((err: unknown) => {
+    captureError("qa-reviewer", err);
   });
+}
+
+/**
+ * Best-effort JSON object extraction from an LLM response. Handles:
+ * - Pure JSON (whole response is the object).
+ * - JSON wrapped in a ```json ... ``` markdown fence.
+ * - JSON surrounded by prose, by finding the largest balanced { ... } block.
+ *
+ * Returns the parsed object, or null if no valid JSON can be recovered.
+ */
+function extractJsonObject(text: string): Record<string, unknown> | null {
+  const tryParse = (s: string): Record<string, unknown> | null => {
+    try {
+      const parsed = JSON.parse(s) as unknown;
+      return (typeof parsed === "object" && parsed !== null && !Array.isArray(parsed))
+        ? parsed as Record<string, unknown>
+        : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const trimmed = text.trim();
+
+  // 1. Whole response is JSON.
+  const direct = tryParse(trimmed);
+  if (direct) return direct;
+
+  // 2. Inside ```json ... ``` or ``` ... ``` fence.
+  const fenceMatch = trimmed.match(/```(?:json)?\s*([\s\S]*?)\s*```/);
+  if (fenceMatch) {
+    const fenced = tryParse(fenceMatch[1].trim());
+    if (fenced) return fenced;
+  }
+
+  // 3. Find every balanced { ... } and try them, longest first.
+  const candidates: string[] = [];
+  for (let i = 0; i < trimmed.length; i++) {
+    if (trimmed[i] !== "{") continue;
+    let depth = 0;
+    let inString = false;
+    let escape = false;
+    for (let j = i; j < trimmed.length; j++) {
+      const c = trimmed[j];
+      if (escape) {
+        escape = false;
+        continue;
+      }
+      if (c === "\\") {
+        escape = true;
+        continue;
+      }
+      if (c === '"') {
+        inString = !inString;
+        continue;
+      }
+      if (inString) continue;
+      if (c === "{") {
+        depth++;
+      } else if (c === "}") {
+        depth--;
+        if (depth === 0) {
+          candidates.push(trimmed.slice(i, j + 1));
+          break;
+        }
+      }
+    }
+  }
+  candidates.sort((a, b) => b.length - a.length);
+  for (const c of candidates) {
+    const parsed = tryParse(c);
+    if (parsed) return parsed;
+  }
+
+  return null;
 }

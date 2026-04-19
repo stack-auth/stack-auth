@@ -14,7 +14,7 @@ type PageSize = typeof PAGE_SIZES[number];
 
 type Props = {
   rows: AiQueryLogRow[],
-  connectionState: "connecting" | "connected" | "disconnected" | "error",
+  connectionState: "connecting" | "connected" | "error",
   onSelect: (row: AiQueryLogRow) => void,
   selectedId?: bigint,
 };

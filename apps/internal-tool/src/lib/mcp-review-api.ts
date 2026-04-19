@@ -39,6 +39,9 @@ export function makeMcpReviewApi(authHeaders: Record<string, string>) {
     markReviewed: (body: { correlationId: string }) =>
       post("mark-reviewed", body, authHeaders),
 
+    unmarkReviewed: (body: { correlationId: string }) =>
+      post("unmark-reviewed", body, authHeaders),
+
     updateCorrection: (body: {
       correlationId: string;
       correctedQuestion: string;
@@ -55,4 +58,25 @@ export function makeMcpReviewApi(authHeaders: Record<string, string>) {
     delete: (body: { correlationId: string }) =>
       post("delete", body, authHeaders),
   };
+}
+
+export async function enrollSpacetimeReviewer(
+  body: { identity: string },
+  authHeaders: Record<string, string>,
+): Promise<void> {
+  const res = await fetch(`${API_URL}/api/latest/internal/spacetimedb-enroll-reviewer`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "x-stack-access-type": "client",
+      "x-stack-project-id": PROJECT_ID,
+      "x-stack-publishable-client-key": PUBLISHABLE_CLIENT_KEY,
+      ...authHeaders,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(`SpacetimeDB enroll error (${res.status}): ${text}`);
+  }
 }

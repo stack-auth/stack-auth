@@ -4,21 +4,19 @@ import { useMemo } from "react";
 import Markdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { format } from "date-fns";
-import { useMcpCallLogs } from "../../hooks/useSpacetimeDB";
+import { usePublishedQa } from "../../hooks/useSpacetimeDB";
 import { toDate } from "../../utils";
 import { markdownComponents } from "../../components/markdown-components";
 
 export default function QuestionsPage() {
-  const { rows, connectionState } = useMcpCallLogs();
+  const { rows, connectionState } = usePublishedQa();
 
   const publishedQa = useMemo(() => {
-    return rows
-      .filter(r => r.publishedToQa)
-      .sort((a, b) => {
-        const aTime = a.publishedAt ? Number(toDate(a.publishedAt)) : 0;
-        const bTime = b.publishedAt ? Number(toDate(b.publishedAt)) : 0;
-        return bTime - aTime;
-      });
+    return [...rows].sort((a, b) => {
+      const aTime = a.publishedAt ? Number(toDate(a.publishedAt)) : 0;
+      const bTime = b.publishedAt ? Number(toDate(b.publishedAt)) : 0;
+      return bTime - aTime;
+    });
   }, [rows]);
 
   if (connectionState === "connecting") {
@@ -56,12 +54,11 @@ export default function QuestionsPage() {
                   {row.humanCorrectedAnswer ?? row.response}
                 </Markdown>
               </div>
-              <div className="mt-3 flex items-center gap-3 text-xs text-gray-400">
-                <span>{row.toolName}</span>
-                {row.publishedAt && (
-                  <span>{format(toDate(row.publishedAt), "MMM d, yyyy")}</span>
-                )}
-              </div>
+              {row.publishedAt && (
+                <div className="mt-3 text-xs text-gray-400">
+                  {format(toDate(row.publishedAt), "MMM d, yyyy")}
+                </div>
+              )}
             </article>
           ))}
         </div>

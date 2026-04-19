@@ -11,7 +11,8 @@ import {
 } from "spacetimedb";
 
 export default __t.row({
-  id: __t.u64().primaryKey(),
+  id: __t.u64(),
+  shard: __t.u8(),
   correlationId: __t.string().name("correlation_id"),
   conversationId: __t.option(__t.string()).name("conversation_id"),
   createdAt: __t.timestamp().name("created_at"),
@@ -39,6 +40,6 @@ export default __t.row({
   humanReviewedBy: __t.option(__t.string()).name("human_reviewed_by"),
   humanCorrectedQuestion: __t.option(__t.string()).name("human_corrected_question"),
   humanCorrectedAnswer: __t.option(__t.string()).name("human_corrected_answer"),
-  publishedToQa: __t.option(__t.bool()).name("published_to_qa"),
+  publishedToQa: __t.bool().name("published_to_qa"),
   publishedAt: __t.option(__t.timestamp()).name("published_at"),
 });

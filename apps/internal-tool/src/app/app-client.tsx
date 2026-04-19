@@ -1,6 +1,8 @@
 import { useUser } from "@stackframe/stack";
+import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { clsx } from "clsx";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import type { Identity } from "spacetimedb";
 import { AddManualQa } from "../components/AddManualQa";
 import { Analytics } from "../components/Analytics";
 import { CallLogDetail } from "../components/CallLogDetail";
@@ -9,12 +11,12 @@ import { KnowledgeBase } from "../components/KnowledgeBase";
 import { Usage } from "../components/Usage";
 import { UsageDetail } from "../components/UsageDetail";
 import { useAiQueryLogs, useMcpCallLogs } from "../hooks/useSpacetimeDB";
-import { makeMcpReviewApi } from "../lib/mcp-review-api";
+import { enrollSpacetimeReviewer, makeMcpReviewApi } from "../lib/mcp-review-api";
 import type { AiQueryLogRow, McpCallLogRow } from "../types";
 
-type Tab = "calls" | "knowledge" | "analytics" | "usage";
+type Tab = "calls" | "knowledge" | "usage";
 const TAB_STORAGE_KEY = "internal-tool-active-tab";
-const VALID_TABS: readonly Tab[] = ["calls", "knowledge", "analytics", "usage"];
+const VALID_TABS: readonly Tab[] = ["calls", "knowledge", "usage"];
 
 function readInitialTab(): Tab {
   // sessionStorage is per-tab: reload preserves the active tab, but a brand-new
@@ -38,8 +40,31 @@ export default function App() {
     if (typeof window === "undefined") return;
     window.sessionStorage.setItem(TAB_STORAGE_KEY, tab);
   }, [tab]);
-  const { rows, connectionState } = useMcpCallLogs();
-  const { rows: usageRows, connectionState: usageConnectionState } = useAiQueryLogs();
+  const enrolledRef = useRef<Map<string, Promise<void>>>(new Map());
+  const ensureEnrolled = useCallback(async (identity: Identity) => {
+    if (!user) throw new Error("Not authenticated");
+    const key = identity.toHexString();
+    const existing = enrolledRef.current.get(key);
+    if (existing) return await existing;
+    const promise = (async () => {
+      const { accessToken, refreshToken } = await user.getAuthJson();
+      const authHeaders: Record<string, string> = {};
+      if (accessToken) authHeaders["x-stack-access-token"] = accessToken;
+      if (refreshToken) authHeaders["x-stack-refresh-token"] = refreshToken;
+      try {
+        await enrollSpacetimeReviewer({ identity: key }, authHeaders);
+      } catch (err) {
+        enrolledRef.current.delete(key);
+        throw err;
+      }
+    })();
+    enrolledRef.current.set(key, promise);
+    return await promise;
+  }, [user]);
+  const memoizedEnsureEnrolled = useMemo(() => user ? ensureEnrolled : undefined, [user, ensureEnrolled]);
+
+  const { rows, connectionState } = useMcpCallLogs(memoizedEnsureEnrolled);
+  const { rows: usageRows, connectionState: usageConnectionState } = useAiQueryLogs(memoizedEnsureEnrolled);
 
   if (!user) {
     return (
@@ -64,20 +89,18 @@ export default function App() {
     );
   }
 
-  if (process.env.NODE_ENV !== "development") {
-    const metadata = user.clientReadOnlyMetadata as Record<string, unknown> | null;
-    if (!metadata?.isAiChatReviewer) {
-      return (
-        <div className="flex items-center justify-center h-screen bg-gray-50">
-          <div className="text-center">
-            <h1 className="text-lg font-semibold text-gray-900 mb-2">Access Denied</h1>
-            <p className="text-sm text-gray-500 mb-1">
-              You are signed in as {user.displayName ?? user.primaryEmail}, but your account is not approved.
-            </p>
-          </div>
+  const metadata = user.clientReadOnlyMetadata as Record<string, unknown> | null;
+  if (!metadata?.isAiChatReviewer) {
+    return (
+      <div className="flex items-center justify-center h-screen bg-gray-50">
+        <div className="text-center">
+          <h1 className="text-lg font-semibold text-gray-900 mb-2">Access Denied</h1>
+          <p className="text-sm text-gray-500 mb-1">
+            You are signed in as {user.displayName ?? user.primaryEmail}, but your account is not approved.
+          </p>
         </div>
-      );
-    }
+      </div>
+    );
   }
 
   const currentSelectedRow = selectedRow
@@ -96,10 +119,12 @@ export default function App() {
 
   return (
     <div className="h-screen flex flex-col bg-gray-50">
-      <header className="shrink-0 bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between">
-        <div className="flex items-center gap-4">
+      <header className="shrink-0 bg-white border-b border-gray-200 px-6 py-3 grid grid-cols-3 items-center">
+        <div className="flex items-center justify-start">
           <h1 className="text-lg font-semibold text-gray-900">MCP Review Tool</h1>
-          {/* Tabs */}
+        </div>
+        {/* Tabs — centered */}
+        <div className="flex justify-center">
           <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
             <button
               onClick={() => {
@@ -111,7 +136,7 @@ export default function App() {
                 tab === "calls" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
               )}
             >
-              Call Logs
+              MCP Review
             </button>
             <button
               onClick={() => {
@@ -127,18 +152,6 @@ export default function App() {
             </button>
             <button
               onClick={() => {
-                setTab("analytics");
-                setSelectedRow(null);
-              }}
-              className={clsx(
-                "px-3 py-1 text-xs font-medium rounded-md transition-colors",
-                tab === "analytics" ? "bg-white text-gray-900 shadow-sm" : "text-gray-500 hover:text-gray-700"
-              )}
-            >
-              Analytics
-            </button>
-            <button
-              onClick={() => {
                 setTab("usage");
                 setSelectedRow(null);
               }}
@@ -151,13 +164,15 @@ export default function App() {
             </button>
           </div>
         </div>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => setShowAddQa(true)}
-            className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
-          >
-            + Add Q&A
-          </button>
+        <div className="flex items-center gap-3 justify-end">
+          {tab === "knowledge" && (
+            <button
+              onClick={() => setShowAddQa(true)}
+              className="px-3 py-1.5 text-xs font-medium text-white bg-blue-600 rounded-md hover:bg-blue-700"
+            >
+              + Add Q&A
+            </button>
+          )}
           <span className="text-sm text-gray-500">{user.displayName ?? user.primaryEmail}</span>
         </div>
       </header>
@@ -175,7 +190,8 @@ export default function App() {
       <div className="flex-1 overflow-hidden flex">
         {tab === "calls" && (
           <>
-            <main className="flex-1 overflow-y-auto p-6">
+            <main className="flex-1 overflow-y-auto p-6 space-y-6">
+              <Analytics rows={rows} />
               <CallLogList
                 rows={rows}
                 connectionState={connectionState}
@@ -192,12 +208,17 @@ export default function App() {
                   onSaveCorrection={(correlationId, correctedQuestion, correctedAnswer, publish) => {
                     getApi()
                       .then(api => api.updateCorrection({ correlationId, correctedQuestion, correctedAnswer, publish }))
-                      .catch(() => { /* errors are surfaced by UI state */ });
+                      .catch(err => captureError("internal-tool-update-correction", err));
                   }}
                   onMarkReviewed={(correlationId) => {
                     getApi()
                       .then(api => api.markReviewed({ correlationId }))
-                      .catch(() => { /* errors are surfaced by UI state */ });
+                      .catch(err => captureError("internal-tool-mark-reviewed", err));
+                  }}
+                  onUnmarkReviewed={(correlationId) => {
+                    getApi()
+                      .then(api => api.unmarkReviewed({ correlationId }))
+                      .catch(err => captureError("internal-tool-unmark-reviewed", err));
                   }}
                 />
               </aside>
@@ -213,22 +234,14 @@ export default function App() {
                 onSave={(correlationId, question, answer, publish) => {
                   getApi()
                     .then(api => api.updateCorrection({ correlationId, correctedQuestion: question, correctedAnswer: answer, publish }))
-                    .catch(() => { /* errors are surfaced by UI state */ });
+                    .catch(err => captureError("internal-tool-kb-save", err));
                 }}
                 onDelete={(correlationId) => {
                   getApi()
                     .then(api => api.delete({ correlationId }))
-                    .catch(() => { /* errors are surfaced by UI state */ });
+                    .catch(err => captureError("internal-tool-kb-delete", err));
                 }}
               />
-            </div>
-          </main>
-        )}
-
-        {tab === "analytics" && (
-          <main className="flex-1 overflow-y-auto">
-            <div className="p-6 max-w-6xl mx-auto">
-              <Analytics rows={rows} />
             </div>
           </main>
         )}

@@ -14,7 +14,6 @@ import LogAiQueryReducer from "../log_ai_query_reducer";
 import LogMcpCallReducer from "../log_mcp_call_reducer";
 import MarkHumanReviewedReducer from "../mark_human_reviewed_reducer";
 import RemoveOperatorReducer from "../remove_operator_reducer";
-import UnmarkHumanReviewedReducer from "../unmark_human_reviewed_reducer";
 import UpdateHumanCorrectionReducer from "../update_human_correction_reducer";
 import UpdateMcpQaReviewReducer from "../update_mcp_qa_review_reducer";
 
@@ -26,7 +25,6 @@ export type LogAiQueryParams = __Infer<typeof LogAiQueryReducer>;
 export type LogMcpCallParams = __Infer<typeof LogMcpCallReducer>;
 export type MarkHumanReviewedParams = __Infer<typeof MarkHumanReviewedReducer>;
 export type RemoveOperatorParams = __Infer<typeof RemoveOperatorReducer>;
-export type UnmarkHumanReviewedParams = __Infer<typeof UnmarkHumanReviewedReducer>;
 export type UpdateHumanCorrectionParams = __Infer<typeof UpdateHumanCorrectionReducer>;
 export type UpdateMcpQaReviewParams = __Infer<typeof UpdateMcpQaReviewReducer>;
 

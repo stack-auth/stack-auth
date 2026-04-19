@@ -8,7 +8,7 @@ function truncate(str: string, max: number): string {
   return str.length > max ? str.slice(0, max) + "..." : str;
 }
 
-type SortField = "time" | "tool" | "steps" | "duration" | "qa" | "status";
+type SortField = "time" | "tool" | "steps" | "duration" | "qa" | "reviewed" | "status";
 type SortDir = "asc" | "desc";
 type StatusFilter = "all" | "ok" | "error";
 type QaFilter = "all" | "pending" | "pass" | "warn" | "fail" | "error" | "needs-review" | "human-reviewed" | "not-reviewed";
@@ -22,6 +22,7 @@ function getSortValue(row: McpCallLogRow, field: SortField): number | string {
     case "steps": { return row.stepCount; }
     case "duration": { return Number(row.durationMs); }
     case "qa": { return row.qaOverallScore ?? -1; }
+    case "reviewed": { return row.humanReviewedAt ? Number(toDate(row.humanReviewedAt).getTime()) : 0; }
     case "status": { return row.errorMessage ? 1 : 0; }
   }
 }
@@ -230,10 +231,6 @@ export function CallLogList({
           ) : (
             <>
               <p className="text-lg mb-2">No MCP calls logged yet</p>
-              <p className="text-sm">
-                Make sure <code className="bg-gray-100 px-1 rounded">STACK_MCP_LOG_TOKEN</code> is set
-                in the backend and the SpacetimeDB module is published.
-              </p>
             </>
           )}
         </div>
@@ -249,6 +246,7 @@ export function CallLogList({
                 <SortHeader field="steps">Steps</SortHeader>
                 <SortHeader field="duration">Duration</SortHeader>
                 <SortHeader field="qa">QA</SortHeader>
+                <SortHeader field="reviewed">Human Reviewed</SortHeader>
                 <SortHeader field="status">Status</SortHeader>
               </tr>
             </thead>
@@ -299,10 +297,19 @@ export function CallLogList({
                       ) : (
                         <span className="text-xs text-gray-300">--</span>
                       )}
-                      {row.humanReviewedAt && (
-                        <span className="text-green-600 text-xs" title={`Reviewed by ${row.humanReviewedBy}`}>&#10003;</span>
-                      )}
                     </span>
+                  </td>
+                  <td className="px-4 py-2 whitespace-nowrap">
+                    {row.humanReviewedAt ? (
+                      <span
+                        className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-xs font-medium bg-green-100 text-green-800"
+                        title={`Reviewed ${format(toDate(row.humanReviewedAt), "PPpp")}${row.humanReviewedBy ? ` by ${row.humanReviewedBy}` : ""}`}
+                      >
+                        &#10003; {formatDistanceToNow(toDate(row.humanReviewedAt), { addSuffix: true })}
+                      </span>
+                    ) : (
+                      <span className="text-xs text-gray-300">--</span>
+                    )}
                   </td>
                   <td className="px-4 py-2">
                     {row.errorMessage ? (

@@ -5,9 +5,10 @@ import { schema, t, table, SenderError } from 'spacetimedb/server';
 const EXPECTED_LOG_TOKEN = '__SPACETIMEDB_LOG_TOKEN__';
 
 const mcpCallLog = table(
-  { name: 'mcp_call_log', public: true },
+  { name: 'mcp_call_log', public: false },
   {
     id: t.u64().primaryKey().autoInc(),
+    shard: t.u8().index('btree'),
     correlationId: t.string(),
     conversationId: t.string().optional(),
     createdAt: t.timestamp(),
@@ -38,15 +39,16 @@ const mcpCallLog = table(
     // Human corrections & publishing
     humanCorrectedQuestion: t.string().optional(),
     humanCorrectedAnswer: t.string().optional(),
-    publishedToQa: t.bool().optional(),
+    publishedToQa: t.bool().index('btree'),
     publishedAt: t.timestamp().optional(),
   }
 );
 
 const aiQueryLog = table(
-  { name: 'ai_query_log', public: true },
+  { name: 'ai_query_log', public: false },
   {
     id: t.u64().primaryKey().autoInc(),
+    shard: t.u8().index('btree'),
     correlationId: t.string(),
     createdAt: t.timestamp(),
     mode: t.string(),
@@ -73,8 +75,127 @@ const aiQueryLog = table(
   }
 );
 
-const spacetimedb = schema({ mcpCallLog, aiQueryLog });
+const operators = table(
+  { name: 'operators', public: true },
+  {
+    identity: t.identity().primaryKey(),
+    addedAt: t.timestamp(),
+    stackUserId: t.string(),
+    displayName: t.string(),
+  }
+);
+
+const spacetimedb = schema({ mcpCallLog, aiQueryLog, operators });
 export default spacetimedb;
+
+// Operators can only see their own row in the operators table.
+export const operatorsVisibility = spacetimedb.clientVisibilityFilter.sql(
+  'SELECT * FROM operators WHERE identity = :sender'
+);
+
+// Reviewers subscribe to these views instead of the raw (private) log tables.
+// Each view gates on operator-table membership; non-operators see zero rows.
+// The `.shard.filter(0)` call returns every row — all rows have `shard = 0`
+// and the btree index on `shard` covers them. Views cannot use `.iter()` and
+// primary keys don't expose `.filter()`, so a sentinel non-primary index is
+// required for full-table traversal.
+export const myVisibleMcpCallLog = spacetimedb.view(
+  { name: 'my_visible_mcp_call_log', public: true },
+  t.array(mcpCallLog.rowType),
+  (ctx) => {
+    if (ctx.db.operators.identity.find(ctx.sender) == null) return [];
+    return Array.from(ctx.db.mcpCallLog.shard.filter(0));
+  }
+);
+export const myVisibleAiQueryLog = spacetimedb.view(
+  { name: 'my_visible_ai_query_log', public: true },
+  t.array(aiQueryLog.rowType),
+  (ctx) => {
+    if (ctx.db.operators.identity.find(ctx.sender) == null) return [];
+    return Array.from(ctx.db.aiQueryLog.shard.filter(0));
+  }
+);
+
+// Public view for the /questions page — returns rows reviewers have explicitly
+// published. Uses `anonymousView` so SpacetimeDB materializes once and shares
+// the result across all subscribers.
+export const publishedQa = spacetimedb.anonymousView(
+  { name: 'published_qa', public: true },
+  t.array(mcpCallLog.rowType),
+  (ctx) => Array.from(ctx.db.mcpCallLog.publishedToQa.filter(true)),
+);
+
+export const add_operator = spacetimedb.reducer(
+  {
+    token: t.string(),
+    identity: t.identity(),
+    stackUserId: t.string(),
+    displayName: t.string(),
+  },
+  (ctx, args) => {
+    if (args.token !== EXPECTED_LOG_TOKEN) {
+      throw new SenderError('Invalid log token');
+    }
+    const existing = ctx.db.operators.identity.find(args.identity);
+    if (existing != null) {
+      ctx.db.operators.identity.update({
+        identity: args.identity,
+        addedAt: existing.addedAt,
+        stackUserId: args.stackUserId,
+        displayName: args.displayName,
+      });
+      return;
+    }
+    const stale = [];
+    for (const row of ctx.db.operators.iter()) {
+      if (row.stackUserId === args.stackUserId) {
+        stale.push(row);
+      }
+    }
+    for (const row of stale) {
+      ctx.db.operators.identity.delete(row.identity);
+    }
+    ctx.db.operators.insert({
+      identity: args.identity,
+      addedAt: ctx.timestamp,
+      stackUserId: args.stackUserId,
+      displayName: args.displayName,
+    });
+  }
+);
+
+export const remove_operator = spacetimedb.reducer(
+  {
+    token: t.string(),
+    identity: t.identity(),
+  },
+  (ctx, args) => {
+    if (args.token !== EXPECTED_LOG_TOKEN) {
+      throw new SenderError('Invalid log token');
+    }
+    ctx.db.operators.identity.delete(args.identity);
+  }
+);
+
+export const enroll_service = spacetimedb.reducer(
+  {
+    token: t.string(),
+    displayName: t.string(),
+  },
+  (ctx, args) => {
+    if (args.token !== EXPECTED_LOG_TOKEN) {
+      throw new SenderError('Invalid log token');
+    }
+    const existing = ctx.db.operators.identity.find(ctx.sender);
+    if (existing != null) return;
+    ctx.db.operators.insert({
+      identity: ctx.sender,
+      addedAt: ctx.timestamp,
+      stackUserId: '__service__',
+      displayName: args.displayName,
+    });
+  }
+);
 
 export const log_mcp_call = spacetimedb.reducer(
   {
@@ -98,6 +219,7 @@ export const log_mcp_call = spacetimedb.reducer(
     }
     ctx.db.mcpCallLog.insert({
       id: 0n,
+      shard: 0,
       correlationId: args.correlationId,
       conversationId: args.conversationId,
       createdAt: ctx.timestamp,
@@ -111,6 +233,7 @@ export const log_mcp_call = spacetimedb.reducer(
       durationMs: args.durationMs,
       modelId: args.modelId,
       errorMessage: args.errorMessage,
+      publishedToQa: false,
     } as Parameters<typeof ctx.db.mcpCallLog.insert>[0]);
   }
 );
@@ -181,6 +304,30 @@ export const mark_human_reviewed = spacetimedb.reducer(
   }
 );
 
+export const unmark_human_reviewed = spacetimedb.reducer(
+  {
+    token: t.string(),
+    correlationId: t.string(),
+  },
+  (ctx, args) => {
+    if (args.token !== EXPECTED_LOG_TOKEN) {
+      throw new SenderError('Invalid log token');
+    }
+    for (const row of ctx.db.mcpCallLog.iter()) {
+      if (row.correlationId === args.correlationId) {
+        ctx.db.mcpCallLog.delete(row);
+        ctx.db.mcpCallLog.insert({
+          ...row,
+          humanReviewedAt: undefined,
+          humanReviewedBy: undefined,
+        });
+        return;
+      }
+    }
+    throw new SenderError('Call log not found for correlationId: ' + args.correlationId);
+  }
+);
+
 export const update_human_correction = spacetimedb.reducer(
   {
     token: t.string(),
@@ -227,6 +374,7 @@ export const add_manual_qa = spacetimedb.reducer(
     }
     ctx.db.mcpCallLog.insert({
       id: 0n,
+      shard: 0,
       correlationId: ctx.newUuidV4().toString(),
       createdAt: ctx.timestamp,
       toolName: "manual",
@@ -299,6 +447,7 @@ export const log_ai_query = spacetimedb.reducer(
     }
     ctx.db.aiQueryLog.insert({
       id: 0n,
+      shard: 0,
       correlationId: args.correlationId,
       createdAt: ctx.timestamp,
       mode: args.mode,

@@ -11,7 +11,8 @@ import {
 } from "spacetimedb";
 
 export default __t.row({
-  id: __t.u64().primaryKey(),
+  id: __t.u64(),
+  shard: __t.u8(),
   correlationId: __t.string().name("correlation_id"),
   createdAt: __t.timestamp().name("created_at"),
   mode: __t.string(),

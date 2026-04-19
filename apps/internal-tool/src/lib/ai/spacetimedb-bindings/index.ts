@@ -42,7 +42,6 @@ import LogAiQueryReducer from "./log_ai_query_reducer";
 import LogMcpCallReducer from "./log_mcp_call_reducer";
 import MarkHumanReviewedReducer from "./mark_human_reviewed_reducer";
 import RemoveOperatorReducer from "./remove_operator_reducer";
-import UnmarkHumanReviewedReducer from "./unmark_human_reviewed_reducer";
 import UpdateHumanCorrectionReducer from "./update_human_correction_reducer";
 import UpdateMcpQaReviewReducer from "./update_mcp_qa_review_reducer";
 
@@ -52,7 +51,6 @@ import UpdateMcpQaReviewReducer from "./update_mcp_qa_review_reducer";
 import MyVisibleAiQueryLogRow from "./my_visible_ai_query_log_table";
 import MyVisibleMcpCallLogRow from "./my_visible_mcp_call_log_table";
 import OperatorsRow from "./operators_table";
-import PublishedQaRow from "./published_qa_table";
 
 /** Type-only namespace exports for generated type groups. */
 
@@ -83,13 +81,6 @@ const tablesSchema = __schema({
     constraints: [
     ],
   }, MyVisibleMcpCallLogRow),
-  publishedQa: __table({
-    name: 'published_qa',
-    indexes: [
-    ],
-    constraints: [
-    ],
-  }, PublishedQaRow),
 });
 
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
@@ -102,7 +93,6 @@ const reducersSchema = __reducers(
   __reducerSchema("log_mcp_call", LogMcpCallReducer),
   __reducerSchema("mark_human_reviewed", MarkHumanReviewedReducer),
   __reducerSchema("remove_operator", RemoveOperatorReducer),
-  __reducerSchema("unmark_human_reviewed", UnmarkHumanReviewedReducer),
   __reducerSchema("update_human_correction", UpdateHumanCorrectionReducer),
   __reducerSchema("update_mcp_qa_review", UpdateMcpQaReviewReducer),
 );

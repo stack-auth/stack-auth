@@ -1,6 +1,10 @@
+import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { useEffect, useState, useRef } from "react";
-import { DbConnection, type EventContext, type SubscriptionEventContext } from "../module_bindings";
+import type { Identity } from "spacetimedb";
+import { DbConnection, type ErrorContext, type EventContext, type SubscriptionEventContext } from "../module_bindings";
 import type { AiQueryLogRow, McpCallLogRow } from "../types";
+
+export type EnsureEnrolled = (identity: Identity) => Promise<void>;
 
 const IS_DEV = process.env.NODE_ENV === "development";
 const PLACEHOLDER = "REPLACE_ME";
@@ -18,7 +22,7 @@ const TOKEN_KEY = `spacetimedb_${HOST}/${DB_NAME}/auth_token`;
 const MAX_RETRIES = 5;
 const RETRY_DELAY_MS = 2000;
 
-type ConnectionState = "connecting" | "connected" | "disconnected" | "error";
+type ConnectionState = "connecting" | "connected" | "error";
 
 type TableBinding<Row extends { id: bigint }> = {
   tableName: string,
@@ -27,12 +31,21 @@ type TableBinding<Row extends { id: bigint }> = {
   onDelete: (conn: DbConnection, cb: (row: Row) => void) => void,
 };
 
+// Each hook call opens its own DbConnection. With only two subscriptions
+// per reviewer (mcp_call_log + ai_query_log), the extra WS handshake is
+// negligible, and keeping hooks self-contained avoids a shared-connection
+// context with subscription refcounting. Revisit if subscription count grows.
 function useTableSubscription<Row extends { id: bigint }>(
   binding: TableBinding<Row>,
+  ensureEnrolled?: EnsureEnrolled,
 ) {
   const [rows, setRows] = useState<Row[]>([]);
   const [connectionState, setConnectionState] = useState<ConnectionState>("connecting");
   const connRef = useRef<DbConnection | null>(null);
+  const ensureEnrolledRef = useRef(ensureEnrolled);
+  useEffect(() => {
+    ensureEnrolledRef.current = ensureEnrolled;
+  }, [ensureEnrolled]);
 
   useEffect(() => {
     let cancelled = false;
@@ -40,17 +53,14 @@ function useTableSubscription<Row extends { id: bigint }>(
     let retryTimer: ReturnType<typeof setTimeout> | null = null;
     const query = `SELECT * FROM ${binding.tableName}`;
 
-    console.log("[SpacetimeDB]", query, "connecting to", HOST, "db:", DB_NAME);
-
     function retry() {
       if (cancelled) return;
       retryCount++;
       if (retryCount > MAX_RETRIES) {
-        console.error("[SpacetimeDB] Max retries reached for", query);
+        captureError("spacetimedb-connect-max-retries", new Error(`Gave up connecting to ${binding.tableName} after ${MAX_RETRIES} retries`));
         setConnectionState("error");
         return;
       }
-      console.log(`[SpacetimeDB] Retrying in ${RETRY_DELAY_MS}ms (attempt ${retryCount}/${MAX_RETRIES})...`);
       retryTimer = setTimeout(() => {
         retryTimer = null;
         if (!cancelled) {
@@ -64,25 +74,45 @@ function useTableSubscription<Row extends { id: bigint }>(
         .withUri(HOST)
         .withDatabaseName(DB_NAME)
         .withToken(localStorage.getItem(TOKEN_KEY) || undefined)
-        .onConnect((connInstance: DbConnection, _identity: unknown, token: string) => {
+        .onConnect((connInstance: DbConnection, identity: Identity, token: string) => {
           if (cancelled) return;
           retryCount = 0;
           localStorage.setItem(TOKEN_KEY, token);
           connRef.current = connInstance;
 
-          connInstance.subscriptionBuilder()
-            .onApplied((ctx: SubscriptionEventContext) => {
-              if (cancelled) return;
-              const initial: Row[] = [];
-              for (const row of binding.iter(ctx)) {
-                initial.push(row);
-              }
-              initial.sort((a, b) => Number(b.id - a.id));
-              console.log(`[SpacetimeDB] ${query} loaded ${initial.length} rows`);
-              setRows(initial);
-              setConnectionState("connected");
-            })
-            .subscribe(query);
+          const startSubscription = () => {
+            if (cancelled) return;
+            connInstance.subscriptionBuilder()
+              .onApplied((ctx: SubscriptionEventContext) => {
+                if (cancelled) return;
+                const initial: Row[] = [];
+                for (const row of binding.iter(ctx)) {
+                  initial.push(row);
+                }
+                initial.sort((a, b) => Number(b.id - a.id));
+                setRows(initial);
+                setConnectionState("connected");
+              })
+              .onError((ctx: ErrorContext) => {
+                if (cancelled) return;
+                captureError("spacetimedb-subscription", ctx);
+                setConnectionState("error");
+              })
+              .subscribe(query);
+          };
+
+          const enrollFn = ensureEnrolledRef.current;
+          if (enrollFn) {
+            enrollFn(identity).then(
+              () => startSubscription(),
+              (err) => {
+                captureError("spacetimedb-enroll", err);
+                setConnectionState("error");
+              },
+            );
+          } else {
+            startSubscription();
+          }
 
           binding.onInsert(connInstance, (row) => {
             if (cancelled) return;
@@ -103,10 +133,10 @@ function useTableSubscription<Row extends { id: bigint }>(
           });
         })
         .onConnectError((_ctx: unknown, err: unknown) => {
-          console.error("[SpacetimeDB] Connection error:", err);
-          const storedToken = localStorage.getItem(TOKEN_KEY);
-          if (storedToken) {
-            console.log("[SpacetimeDB] Clearing stale token");
+          if (cancelled) return;
+          const message = err instanceof Error ? err.message : "";
+          const looksLikeAuthFailure = /unauthor|verify token|401/i.test(message);
+          if (looksLikeAuthFailure) {
             localStorage.removeItem(TOKEN_KEY);
           }
           retry();
@@ -135,31 +165,51 @@ function useTableSubscription<Row extends { id: bigint }>(
 }
 
 const mcpBinding: TableBinding<McpCallLogRow> = {
-  tableName: "mcp_call_log",
-  iter: (ctx) => ctx.db.mcpCallLog.iter(),
+  tableName: "my_visible_mcp_call_log",
+  iter: (ctx) => ctx.db.myVisibleMcpCallLog.iter(),
   onInsert: (conn, cb) => {
-    conn.db.mcpCallLog.onInsert((_ctx: EventContext, row: McpCallLogRow) => cb(row));
+    conn.db.myVisibleMcpCallLog.onInsert((_ctx: EventContext, row: McpCallLogRow) => cb(row));
   },
   onDelete: (conn, cb) => {
-    conn.db.mcpCallLog.onDelete((_ctx: EventContext, row: McpCallLogRow) => cb(row));
+    conn.db.myVisibleMcpCallLog.onDelete((_ctx: EventContext, row: McpCallLogRow) => cb(row));
   },
 };
 
 const aiQueryBinding: TableBinding<AiQueryLogRow> = {
-  tableName: "ai_query_log",
-  iter: (ctx) => ctx.db.aiQueryLog.iter(),
+  tableName: "my_visible_ai_query_log",
+  iter: (ctx) => ctx.db.myVisibleAiQueryLog.iter(),
   onInsert: (conn, cb) => {
-    conn.db.aiQueryLog.onInsert((_ctx: EventContext, row: AiQueryLogRow) => cb(row));
+    conn.db.myVisibleAiQueryLog.onInsert((_ctx: EventContext, row: AiQueryLogRow) => cb(row));
   },
   onDelete: (conn, cb) => {
-    conn.db.aiQueryLog.onDelete((_ctx: EventContext, row: AiQueryLogRow) => cb(row));
+    conn.db.myVisibleAiQueryLog.onDelete((_ctx: EventContext, row: AiQueryLogRow) => cb(row));
   },
 };
 
-export function useMcpCallLogs() {
-  return useTableSubscription(mcpBinding);
+const publishedQaBinding: TableBinding<McpCallLogRow> = {
+  tableName: "published_qa",
+  iter: (ctx) => ctx.db.publishedQa.iter(),
+  onInsert: (conn, cb) => {
+    conn.db.publishedQa.onInsert((_ctx: EventContext, row: McpCallLogRow) => cb(row));
+  },
+  onDelete: (conn, cb) => {
+    conn.db.publishedQa.onDelete((_ctx: EventContext, row: McpCallLogRow) => cb(row));
+  },
+};
+
+export function useMcpCallLogs(ensureEnrolled?: EnsureEnrolled) {
+  return useTableSubscription(mcpBinding, ensureEnrolled);
 }
 
-export function useAiQueryLogs() {
-  return useTableSubscription(aiQueryBinding);
+export function useAiQueryLogs(ensureEnrolled?: EnsureEnrolled) {
+  return useTableSubscription(aiQueryBinding, ensureEnrolled);
+}
+
+/**
+ * Public — no enrollment required. Backed by the `published_qa` anonymousView,
+ * which returns only rows reviewers have explicitly published. Safe to call
+ * from unauthenticated pages.
+ */
+export function usePublishedQa() {
+  return useTableSubscription(publishedQaBinding);
 }

@@ -32,10 +32,9 @@ export const POST = createSmartRouteHandler({
     }
 
     const token = getEnvVariable("STACK_MCP_LOG_TOKEN");
-    await callReducer("mark_human_reviewed", [
+    await callReducer("unmark_human_reviewed", [
       token,
       body.correlationId,
-      user.display_name ?? user.primary_email ?? user.id,
     ]);
 
     return {

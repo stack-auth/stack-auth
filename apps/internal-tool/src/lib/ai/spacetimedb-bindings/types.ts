@@ -12,7 +12,6 @@ import {
 
 export const AiQueryLog = __t.object("AiQueryLog", {
   id: __t.u64(),
-  shard: __t.u8(),
   correlationId: __t.string(),
   createdAt: __t.timestamp(),
   mode: __t.string(),
@@ -41,7 +40,6 @@ export type AiQueryLog = __Infer<typeof AiQueryLog>;
 
 export const McpCallLog = __t.object("McpCallLog", {
   id: __t.u64(),
-  shard: __t.u8(),
   correlationId: __t.string(),
   conversationId: __t.option(__t.string()),
   createdAt: __t.timestamp(),
@@ -69,7 +67,7 @@ export const McpCallLog = __t.object("McpCallLog", {
   humanReviewedBy: __t.option(__t.string()),
   humanCorrectedQuestion: __t.option(__t.string()),
   humanCorrectedAnswer: __t.option(__t.string()),
-  publishedToQa: __t.bool(),
+  publishedToQa: __t.option(__t.bool()),
   publishedAt: __t.option(__t.timestamp()),
 });
 export type McpCallLog = __Infer<typeof McpCallLog>;
@@ -87,7 +85,4 @@ export const Operators = __t.object("Operators", {
   displayName: __t.string(),
 });
 export type Operators = __Infer<typeof Operators>;
-
-export const PublishedQa = __t.object("PublishedQa", {});
-export type PublishedQa = __Infer<typeof PublishedQa>;
 

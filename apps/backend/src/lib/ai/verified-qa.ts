@@ -1,31 +1,33 @@
 import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
-import { getConnection } from "./mcp-logger";
+import { callSql } from "./mcp-logger";
+
+type VerifiedRow = {
+  human_corrected_question: string | null,
+  human_corrected_answer: string | null,
+  question: string,
+  response: string,
+};
 
 export async function getVerifiedQaContext(): Promise<string> {
   const result = await Result.fromPromise(getVerifiedQaContextInner());
   if (result.status === "error") {
-    captureError("verified-qa", result.error instanceof Error ? result.error : new Error(String(result.error)));
+    captureError("verified-qa", result.error);
     return "";
   }
   return result.data;
 }
 
 async function getVerifiedQaContextInner(): Promise<string> {
-  const conn = await getConnection();
-  if (!conn) return "";
+  const rows = await callSql<VerifiedRow>(
+    "SELECT human_corrected_question, human_corrected_answer, question, response FROM published_qa"
+  );
+  if (rows.length === 0) return "";
 
-  const pairs: Array<{ question: string; answer: string }> = [];
-  for (const row of conn.db.mcpCallLog.iter()) {
-    if (row.publishedToQa) {
-      pairs.push({
-        question: row.humanCorrectedQuestion ?? row.question,
-        answer: row.humanCorrectedAnswer ?? row.response,
-      });
-    }
-  }
-
-  if (pairs.length === 0) return "";
+  const pairs = rows.map(row => ({
+    question: row.human_corrected_question ?? row.question,
+    answer: row.human_corrected_answer ?? row.response,
+  }));
 
   const formatted = pairs.map((p, i) =>
     `${i + 1}. Q: ${p.question}\n   A: ${p.answer}`

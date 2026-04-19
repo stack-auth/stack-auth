@@ -13,7 +13,7 @@ export const POST = createSmartRouteHandler({
       project: adaptSchema,
     }).defined(),
     body: yupObject({
-      correlationId: yupString().defined(),
+      identity: yupString().defined(),
     }).defined(),
     method: yupString().oneOf(["POST"]).defined(),
   }),
@@ -30,11 +30,15 @@ export const POST = createSmartRouteHandler({
     if (!(metadata && typeof metadata === "object" && "isAiChatReviewer" in metadata && metadata.isAiChatReviewer === true)) {
       throw new StatusError(StatusError.Forbidden, "You are not approved to perform MCP review operations.");
     }
+    if (!/^[0-9a-fA-F]{64}$/.test(body.identity)) {
+      throw new StatusError(StatusError.BadRequest, "Invalid identity.");
+    }
 
     const token = getEnvVariable("STACK_MCP_LOG_TOKEN");
-    await callReducer("mark_human_reviewed", [
+    await callReducer("add_operator", [
       token,
-      body.correlationId,
+      [`0x${body.identity}`],
+      user.id,
       user.display_name ?? user.primary_email ?? user.id,
     ]);
 
