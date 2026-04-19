@@ -8,6 +8,7 @@
     "pre-preinstall": "pnpx only-allow@1.2.2 pnpm && node -e \"if(process.env.STACK_SKIP_TEMPLATE_GENERATION !== 'true') require('child_process').execSync('pnpm exec tsx ./scripts/generate-sdks.ts', {stdio: 'inherit'})\"",
     "pre": "pnpm pre-preinstall",
     "preinstall": "pnpm pre-preinstall",
+    "postinstall": "node ./scripts/postinstall-patch-next-async-debug-info.mjs",
     "typecheck": "pnpm pre && turbo typecheck --",
     "build:dev": "pnpm pre && NODE_ENV=development pnpm run build",
     "build": "pnpm pre && turbo build",
