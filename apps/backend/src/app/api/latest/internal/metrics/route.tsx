@@ -21,6 +21,7 @@ import {
   MetricsRecentUserSchema,
 } from "@stackframe/stack-shared/dist/interface/admin-metrics";
 import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
+import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { userFullInclude, userPrismaToCrud, usersCrudHandlers } from "../../users/crud";
 
@@ -237,8 +238,8 @@ async function loadActiveUsersByCountry(
       // `id` is a tiebreaker for anonymous users where email is null. The
       // globe doesn't rely on any particular order.
       users.sort((a, b) => {
-        const emailCmp = (a.primary_email ?? "").localeCompare(b.primary_email ?? "");
-        return emailCmp !== 0 ? emailCmp : a.id.localeCompare(b.id);
+        const emailCmp = stringCompare(a.primary_email ?? "", b.primary_email ?? "");
+        return emailCmp !== 0 ? emailCmp : stringCompare(a.id, b.id);
       });
       result[country] = users;
     }
