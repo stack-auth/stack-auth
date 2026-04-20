@@ -22,12 +22,12 @@ async function buildOidcCookieKeys(): Promise<string[]> {
   ];
 }
 
-// `STACK_SERVER_SECRET_OLD` is a required env var in this codebase. To model a backend
-// that isn't mid-rotation, set both env vars to the same value — the derivation produces
-// duplicate kids which collapse when we treat the result as a set.
+// Steady state (not mid-rotation): primary is set, `_OLD` is unset. This is the code
+// path a deployment is in between rotations — exercises the early-return `""` branch in
+// `getOldStackServerSecret` and the falsy short-circuit in `getPrivateJwks`.
 function setSteadyStateEnv(secret: string) {
   process.env.STACK_SERVER_SECRET = secret;
-  process.env.STACK_SERVER_SECRET_OLD = secret;
+  delete process.env.STACK_SERVER_SECRET_OLD;
 }
 
 // During an active rotation, primary is the new secret and _OLD is the previous one.

@@ -50,23 +50,30 @@ it("JWKS publishes 2 entries in steady state or 4 during rotation, all ES256 P-2
   expect([2, 4]).toContain(kids.length);
 });
 
-it("a fresh sign-up's access token verifies against the live JWKS", async ({ expect }) => {
+it("a client that cached the JWKS before sign-up still validates the minted access token", async ({ expect }) => {
+  // Snapshot the JWKS first, as a client/relying-party would have.
+  const cachedJwks = await niceBackendFetch(INTERNAL_JWKS_PATH);
+  expect(cachedJwks.status).toBe(200);
+  const cachedJwkSet = jose.createLocalJWKSet(cachedJwks.body);
+  const cachedKids = cachedJwks.body.keys.map((k: { kid: string }) => k.kid);
+
+  // Now mint a token.
   await Auth.Password.signUpWithEmail();
   const accessToken = backendContext.value.userAuth?.accessToken;
   expect(accessToken).toBeDefined();
 
-  const jwks = await niceBackendFetch(INTERNAL_JWKS_PATH);
-  expect(jwks.status).toBe(200);
-
-  // Token's kid must be one of the published keys — proves signing used the
-  // in-memory JWK array that getPrivateJwks produced.
+  // The token's kid must already be in the cached set (signing cannot produce a kid
+  // outside the currently-published JWKS), and its signature must verify against the
+  // cached public keys — this is the invariant external verifiers rely on.
   const header = jose.decodeProtectedHeader(accessToken!);
-  const kids = jwks.body.keys.map((k: { kid: string }) => k.kid);
-  expect(kids).toContain(header.kid);
+  expect(cachedKids).toContain(header.kid);
+  await expect(jose.jwtVerify(accessToken!, cachedJwkSet)).resolves.toBeDefined();
 
-  // Full cryptographic verification against the public JWKS.
-  const jwkSet = jose.createLocalJWKSet(jwks.body);
-  await expect(jose.jwtVerify(accessToken!, jwkSet)).resolves.toBeDefined();
+  // Sanity: re-fetch the live JWKS; since no rotation occurred mid-test, it should
+  // match the cached snapshot (same kids). This also pins that sign-up doesn't rotate.
+  const liveJwks = await niceBackendFetch(INTERNAL_JWKS_PATH);
+  const liveKids = new Set(liveJwks.body.keys.map((k: { kid: string }) => k.kid));
+  expect(liveKids).toEqual(new Set(cachedKids));
 });
 
 it("refresh returns a verifiable access token", async ({ expect }) => {
