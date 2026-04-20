@@ -566,7 +566,7 @@ export function ConversationReplay({ row, allRows, onClose }: { row: McpCallLogR
         <div className="px-4 py-2 border-t border-gray-100 flex items-center justify-between text-xs text-gray-400">
           <span>
             {totalSteps} step{totalSteps !== 1 ? "s" : ""} &middot; {totalDuration.toLocaleString()}ms
-            {isMultiCall && ` &middot; ${conversationRows.length} calls`}
+            {isMultiCall && ` \u00B7 ${conversationRows.length} calls`}
           </span>
           <span>{currentRow.modelId}</span>
         </div>
