@@ -1,5 +1,6 @@
 /* eslint-disable no-restricted-syntax */
 import { usersCrudHandlers } from '@/app/api/latest/users/crud';
+import { CustomerType, Prisma, PurchaseCreationSource, SubscriptionStatus } from '@/generated/prisma/client';
 import { overrideBranchConfigOverride } from '@/lib/config';
 import {
   LOCAL_EMULATOR_ADMIN_EMAIL,
@@ -15,6 +16,7 @@ import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from '@/lib/tenanc
 import { getPrismaClientForTenancy, globalPrismaClient } from '@/prisma-client';
 import { ALL_APPS } from '@stackframe/stack-shared/dist/apps/apps-config';
 import { ITEM_IDS, PLAN_LIMITS } from '@stackframe/stack-shared/dist/plans';
+import { DayInterval } from '@stackframe/stack-shared/dist/utils/dates';
 import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { typedEntries, typedFromEntries } from '@stackframe/stack-shared/dist/utils/objects';
 
@@ -271,6 +273,55 @@ export async function seed() {
       },
     });
     console.log('Internal team created');
+  }
+
+  // The team-create CRUD path auto-grants the free plan to every team in the
+  // internal project, but the internal team itself is written directly above
+  // (bypassing that code path), so it would otherwise end up with zero
+  // entitlements and trip the plan-limit enforcement. Grant it the Growth plan
+  // so Stack Auth employees using the dashboard get full quotas. Idempotent —
+  // skipped if an active Growth subscription already exists.
+  //
+  // We create the subscription with raw Prisma (matching seed-dummy-data.ts)
+  // rather than grantProductToCustomer because bulldozer storage tables
+  // aren't initialized at this point in the seed yet. The Bulldozer init
+  // call right below this block ingresses the row into the ledger.
+  const growthProduct = updatedInternalTenancy.config.payments.products.growth;
+  if (growthProduct.customerType === 'team') {
+    const existingGrowthSub = await internalPrisma.subscription.findFirst({
+      where: {
+        tenancyId: internalTenancy.id,
+        customerId: internalTeamId,
+        customerType: CustomerType.TEAM,
+        productId: 'growth',
+        status: SubscriptionStatus.active,
+      },
+    });
+    if (!existingGrowthSub) {
+      const growthPrices = growthProduct.prices === 'include-by-default' ? {} : growthProduct.prices;
+      const firstPriceId = Object.keys(growthPrices)[0] ?? null;
+      const now = new Date();
+      // Clone to ensure the stored JSON snapshot is independent of the config object
+      // (mirrors the pattern used in seed-dummy-data.ts).
+      const storedProduct = JSON.parse(JSON.stringify(growthProduct)) as Prisma.InputJsonValue;
+      await internalPrisma.subscription.create({
+        data: {
+          tenancyId: internalTenancy.id,
+          customerId: internalTeamId,
+          customerType: CustomerType.TEAM,
+          status: SubscriptionStatus.active,
+          productId: 'growth',
+          priceId: firstPriceId,
+          product: storedProduct,
+          quantity: 1,
+          currentPeriodStart: now,
+          currentPeriodEnd: new Date('2099-12-31T23:59:59Z'),
+          cancelAtPeriodEnd: false,
+          creationSource: PurchaseCreationSource.TEST_MODE,
+        },
+      });
+      console.log('Granted Growth plan to internal team');
+    }
   }
 
   // Upsert the internal API key set before any flake-prone work (dummy-project

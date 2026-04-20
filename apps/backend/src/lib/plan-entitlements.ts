@@ -1,4 +1,4 @@
-import { getItemQuantityForCustomer } from "@/lib/payments";
+import { getItemQuantityForCustomer } from "@/lib/payments/customer-data";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { ITEM_IDS } from "@stackframe/stack-shared/dist/plans";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -20,7 +20,7 @@ type ItemCapacityReaders = {
   getPrismaForTenancy: (tenancy: Tenancy) => Promise<unknown>,
   getItemQuantityForCustomer: (options: {
     prisma: unknown,
-    tenancy: Tenancy,
+    tenancyId: string,
     customerId: string,
     customerType: "team",
     itemId: string,
@@ -121,7 +121,7 @@ async function getTeamWideItemCapacity(
   const billingPrisma = await readers.getPrismaForTenancy(internalBillingTenancy);
   return await readers.getItemQuantityForCustomer({
     prisma: billingPrisma,
-    tenancy: internalBillingTenancy,
+    tenancyId: internalBillingTenancy.id,
     customerId: billingTeamId,
     customerType: "team",
     itemId,

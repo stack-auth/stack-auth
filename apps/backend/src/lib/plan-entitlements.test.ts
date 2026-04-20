@@ -8,7 +8,6 @@ import {
   getTeamWideItemCapacityForTests,
   getTeamWideNonAnonymousUserCount,
 } from "./plan-entitlements";
-import type { Tenancy } from "./tenancies";
 
 type ProjectRow = { id: string, ownerTeamId: string | null };
 type TenancyRow = { id: string, projectId: string };
@@ -126,7 +125,7 @@ describe("capacity lookup helpers", () => {
     getPrismaForTenancy: async (): Promise<PrismaClientTransaction> => ({} as PrismaClientTransaction),
     getItemQuantityForCustomer: async (options: {
       prisma: unknown,
-      tenancy: Tenancy,
+      tenancyId: string,
       customerId: string,
       customerType: "team",
       itemId: string,

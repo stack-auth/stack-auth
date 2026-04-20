@@ -259,6 +259,14 @@ async function checkAuthData(
 }
 
 async function checkAuthUsersSoftLimit(tenancy: Tenancy) {
+  // Seed creates dummy-project users via raw Prisma before the bulldozer
+  // payments ledger has been ingressed, so every read here would see
+  // capacity=0 and flood logs. Bulldozer's seed-time invariant is that
+  // nothing reads the ledger until runBulldozerPaymentsInit runs post-seed;
+  // we honor that here rather than forcing seed to double-init.
+  if (process.env.STACK_SEED_MODE === 'true') {
+    return;
+  }
   const billingTeamId = getBillingTeamId(tenancy.project);
   if (billingTeamId == null) {
     return;
