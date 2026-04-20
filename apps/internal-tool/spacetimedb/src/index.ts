@@ -1,4 +1,5 @@
 import { schema, t, table, SenderError } from 'spacetimedb/server';
+import type { Timestamp } from 'spacetimedb';
 
 // Injected at publish time by the spacetime:inject-token pnpm script from STACK_MCP_LOG_TOKEN env var.
 // Must match STACK_MCP_LOG_TOKEN in the backend .env.
@@ -118,11 +119,36 @@ export const myVisibleAiQueryLog = spacetimedb.view(
 
 // Public view for the /questions page — returns rows reviewers have explicitly
 // published. Uses `anonymousView` so SpacetimeDB materializes once and shares
-// the result across all subscribers.
+// the result across all subscribers. Projected to only fields the public page
+// needs; everything else (reviewer attribution, QA internals, raw prompt,
+// tool-call metadata) stays private.
+const publishedQaRow = t.object('PublishedQaRow', {
+  id: t.u64(),
+  question: t.string(),
+  answer: t.string(),
+  publishedAt: t.timestamp().optional(),
+});
+
 export const publishedQa = spacetimedb.anonymousView(
   { name: 'published_qa', public: true },
-  t.array(mcpCallLog.rowType),
-  (ctx) => Array.from(ctx.db.mcpCallLog.publishedToQa.filter(true)),
+  t.array(publishedQaRow),
+  (ctx) => {
+    const out: Array<{
+      id: bigint,
+      question: string,
+      answer: string,
+      publishedAt: Timestamp | undefined,
+    }> = [];
+    for (const row of ctx.db.mcpCallLog.publishedToQa.filter(true)) {
+      out.push({
+        id: row.id,
+        question: row.humanCorrectedQuestion ?? row.question,
+        answer: row.humanCorrectedAnswer ?? row.response,
+        publishedAt: row.publishedAt,
+      });
+    }
+    return out;
+  },
 );
 
 export const add_operator = spacetimedb.reducer(
@@ -138,6 +164,9 @@ export const add_operator = spacetimedb.reducer(
     }
     const existing = ctx.db.operators.identity.find(args.identity);
     if (existing != null) {
+      if (existing.stackUserId !== args.stackUserId) {
+        throw new SenderError('Identity is bound to a different Stack user');
+      }
       ctx.db.operators.identity.update({
         identity: args.identity,
         addedAt: existing.addedAt,

@@ -48,10 +48,10 @@ export default function QuestionsPage() {
         <div className="space-y-8">
           {publishedQa.map(row => (
             <article key={String(row.id)} className="border-b border-gray-200 pb-8 last:border-b-0">
-              <h2 className="text-lg font-semibold text-gray-900 mb-3">{row.humanCorrectedQuestion ?? row.question}</h2>
+              <h2 className="text-lg font-semibold text-gray-900 mb-3">{row.question}</h2>
               <div className="prose prose-sm max-w-none text-gray-700">
                 <Markdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
-                  {row.humanCorrectedAnswer ?? row.response}
+                  {row.answer}
                 </Markdown>
               </div>
               {row.publishedAt && (

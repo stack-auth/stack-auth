@@ -88,6 +88,11 @@ export const Operators = __t.object("Operators", {
 });
 export type Operators = __Infer<typeof Operators>;
 
-export const PublishedQa = __t.object("PublishedQa", {});
+export const PublishedQa = __t.object("PublishedQa", {
+  id: __t.u64(),
+  question: __t.string(),
+  answer: __t.string(),
+  publishedAt: __t.option(__t.timestamp()),
+});
 export type PublishedQa = __Infer<typeof PublishedQa>;
 

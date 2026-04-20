@@ -2,7 +2,7 @@ import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { useEffect, useState, useRef } from "react";
 import type { Identity } from "spacetimedb";
 import { DbConnection, type ErrorContext, type EventContext, type SubscriptionEventContext } from "../module_bindings";
-import type { AiQueryLogRow, McpCallLogRow } from "../types";
+import type { AiQueryLogRow, McpCallLogRow, PublishedQaRow } from "../types";
 
 export type EnsureEnrolled = (identity: Identity) => Promise<void>;
 
@@ -16,6 +16,9 @@ function resolveEnv(raw: string | undefined, devDefault: string, name: string): 
   throw new Error(`${name} is not configured. Set it in .env.local or hosting platform env.`);
 }
 const HOST = resolveEnv(rawHost, "ws://localhost:8139", "NEXT_PUBLIC_SPACETIMEDB_HOST");
+if (!IS_DEV && !HOST.startsWith("wss://")) {
+  throw new Error("NEXT_PUBLIC_SPACETIMEDB_HOST must use wss:// in production");
+}
 const DB_NAME = resolveEnv(rawDbName, "stack-auth-llm", "NEXT_PUBLIC_SPACETIMEDB_DB_NAME");
 const TOKEN_KEY = `spacetimedb_${HOST}/${DB_NAME}/auth_token`;
 
@@ -186,14 +189,14 @@ const aiQueryBinding: TableBinding<AiQueryLogRow> = {
   },
 };
 
-const publishedQaBinding: TableBinding<McpCallLogRow> = {
+const publishedQaBinding: TableBinding<PublishedQaRow> = {
   tableName: "published_qa",
   iter: (ctx) => ctx.db.publishedQa.iter(),
   onInsert: (conn, cb) => {
-    conn.db.publishedQa.onInsert((_ctx: EventContext, row: McpCallLogRow) => cb(row));
+    conn.db.publishedQa.onInsert((_ctx: EventContext, row: PublishedQaRow) => cb(row));
   },
   onDelete: (conn, cb) => {
-    conn.db.publishedQa.onDelete((_ctx: EventContext, row: McpCallLogRow) => cb(row));
+    conn.db.publishedQa.onDelete((_ctx: EventContext, row: PublishedQaRow) => cb(row));
   },
 };
 
