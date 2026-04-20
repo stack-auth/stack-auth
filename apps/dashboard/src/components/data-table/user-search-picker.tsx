@@ -61,9 +61,9 @@ function UserSearchTable(props: {
     {
       id: "actions",
       header: "",
-      width: 50,
-      minWidth: 50,
-      maxWidth: 50,
+      width: 90,
+      minWidth: 90,
+      maxWidth: 90,
       sortable: false,
       hideable: false,
       resizable: false,

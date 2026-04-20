@@ -231,6 +231,15 @@ async function loadActiveUsersByCountry(
       if (user != null) users.push(user);
     }
     if (users.length > 0) {
+      // Sort so the response is stable — `groupArraySample()` returns users
+      // in random order, which is fine for the globe UI but flakes snapshot
+      // tests. Primary key is `primary_email` (stable across test runs);
+      // `id` is a tiebreaker for anonymous users where email is null. The
+      // globe doesn't rely on any particular order.
+      users.sort((a, b) => {
+        const emailCmp = (a.primary_email ?? "").localeCompare(b.primary_email ?? "");
+        return emailCmp !== 0 ? emailCmp : a.id.localeCompare(b.id);
+      });
       result[country] = users;
     }
   }
