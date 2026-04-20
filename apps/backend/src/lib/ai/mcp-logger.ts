@@ -50,7 +50,7 @@ async function rawCallReducer(token: string, reducer: string, args: unknown[]): 
   const base = httpBase();
   if (!base) throw new StackAssertionError("SpacetimeDB not configured");
   const dbName = getEnvVariable("STACK_SPACETIMEDB_DB_NAME");
-  const res = await fetch(`${base}/v1/database/${dbName}/call/${reducer}`, {
+  const res = await fetch(`${base}/v1/database/${encodeURIComponent(dbName)}/call/${encodeURIComponent(reducer)}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -105,7 +105,7 @@ export async function callSql<T = Record<string, unknown>>(sql: string): Promise
   const base = httpBase();
   if (!base) return [];
   const dbName = getEnvVariable("STACK_SPACETIMEDB_DB_NAME");
-  const res = await fetch(`${base}/v1/database/${dbName}/sql`, {
+  const res = await fetch(`${base}/v1/database/${encodeURIComponent(dbName)}/sql`, {
     method: "POST",
     headers: { "Authorization": `Bearer ${token}` },
     body: sql,

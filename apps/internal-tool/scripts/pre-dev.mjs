@@ -90,7 +90,7 @@ async function probeToken(spacetimeHttpUrl, dbName, token) {
   try {
     // Cheapest valid request: a SQL query that the module owner / any identity
     // can run. Returns HTTP 200 if token signature is valid, 401 if not.
-    const res = await fetch(`${spacetimeHttpUrl}/v1/database/${dbName}/sql`, {
+    const res = await fetch(`${spacetimeHttpUrl}/v1/database/${encodeURIComponent(dbName)}/sql`, {
       method: "POST",
       headers: { "Authorization": `Bearer ${token}` },
       body: "SELECT 1",

@@ -74,7 +74,7 @@ export async function callReducer(
   args: unknown[],
 ): Promise<ReducerCallResult> {
   const { baseUrl, dbName } = getSpacetimedbConfig();
-  const res = await fetch(`${baseUrl}/v1/database/${dbName}/call/${reducer}`, {
+  const res = await fetch(`${baseUrl}/v1/database/${encodeURIComponent(dbName)}/call/${encodeURIComponent(reducer)}`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -113,7 +113,7 @@ export async function findCorrelationIdByQuestion(
 
 export async function sqlQuery(token: string, sql: string): Promise<SqlQueryResult> {
   const { baseUrl, dbName } = getSpacetimedbConfig();
-  const res = await fetch(`${baseUrl}/v1/database/${dbName}/sql`, {
+  const res = await fetch(`${baseUrl}/v1/database/${encodeURIComponent(dbName)}/sql`, {
     method: "POST",
     headers: {
       "Content-Type": "text/plain",
