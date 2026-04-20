@@ -1,4 +1,4 @@
-import { callReducer } from "@/lib/ai/mcp-logger";
+import { callReducerStrict } from "@/lib/ai/mcp-logger";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
@@ -35,7 +35,7 @@ export const POST = createSmartRouteHandler({
     }
 
     const token = getEnvVariable("STACK_MCP_LOG_TOKEN");
-    await callReducer("update_human_correction", [
+    await callReducerStrict("update_human_correction", [
       token,
       body.correlationId,
       body.correctedQuestion,

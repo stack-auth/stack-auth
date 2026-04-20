@@ -80,6 +80,22 @@ export async function callReducer(reducer: string, args: unknown[]): Promise<voi
 }
 
 /**
+ * Like {@link callReducer} but throws when SpacetimeDB isn't configured, rather
+ * than no-opping. Use for endpoints where the client treats a 200 as proof the
+ * mutation actually ran (reviewer enrollment, human QA edits, deletions).
+ * Fire-and-forget logging paths should keep using the best-effort variant.
+ */
+export async function callReducerStrict(reducer: string, args: unknown[]): Promise<void> {
+  const token = await getServiceToken();
+  if (!token) {
+    throw new StackAssertionError(
+      `SpacetimeDB is not configured (STACK_SPACETIMEDB_URL is empty). Reducer ${reducer} cannot run.`
+    );
+  }
+  await rawCallReducer(token, reducer, args);
+}
+
+/**
  * Wraps a nullable value in the SpacetimeDB tagged-variant encoding expected
  * by HTTP reducer calls for `Option<T>` arguments. Use for every reducer arg
  * that's declared `.optional()` in the module source.
