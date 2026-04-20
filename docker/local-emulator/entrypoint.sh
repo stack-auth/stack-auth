@@ -33,6 +33,12 @@ fi
 # baked-in mock value from .env.development to be a usable credential against
 # a running emulator. Overriding here propagates to both the backend and the
 # run-cron-jobs.sh loop via supervisord's inherited environment.
-export CRON_SECRET="$(openssl rand -hex 32)"
+#
+# In snapshot-build mode the VM supplies a deterministic placeholder via the
+# --env-file so the baked snapshot doesn't contain a real secret; on resume,
+# /usr/local/bin/rotate-secrets swaps in a fresh per-install value.
+if [ -z "${CRON_SECRET:-}" ]; then
+  export CRON_SECRET="$(openssl rand -hex 32)"
+fi
 
 exec /usr/bin/supervisord -n -c /etc/supervisor/conf.d/supervisord.conf
