@@ -60,7 +60,13 @@ export default function App() {
     enrolledRef.current.set(key, promise);
     return await promise;
   }, [user]);
-  const memoizedEnsureEnrolled = useMemo(() => user ? ensureEnrolled : undefined, [user, ensureEnrolled]);
+  const isAiChatReviewer = Boolean(
+    (user?.clientReadOnlyMetadata as Record<string, unknown> | null)?.isAiChatReviewer,
+  );
+  const memoizedEnsureEnrolled = useMemo(
+    () => (user && isAiChatReviewer) ? ensureEnrolled : undefined,
+    [user, isAiChatReviewer, ensureEnrolled],
+  );
 
   const { rows, connectionState } = useMcpCallLogs(memoizedEnsureEnrolled);
   const { rows: usageRows, connectionState: usageConnectionState } = useAiQueryLogs(memoizedEnsureEnrolled);
@@ -88,8 +94,7 @@ export default function App() {
     );
   }
 
-  const metadata = user.clientReadOnlyMetadata as Record<string, unknown> | null;
-  if (!metadata?.isAiChatReviewer) {
+  if (!isAiChatReviewer) {
     return (
       <div className="flex items-center justify-center h-screen bg-gray-50">
         <div className="text-center">

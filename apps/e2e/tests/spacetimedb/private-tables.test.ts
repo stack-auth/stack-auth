@@ -66,14 +66,20 @@ describe.skipIf(!canRun)("private log tables and view gating", () => {
 
     // Private table: SpacetimeDB should either reject the query outright or return
     // zero rows to non-operators. Either outcome is acceptable — the invariant is
-    // "the caller does not see any private-table rows."
+    // "the caller does not see any private-table rows." If rejection, the error
+    // must come from our own sqlQuery helper's HTTP-4xx path against this exact
+    // table (not a network blip, not a helper regression).
     const stranger = await mintIdentity();
-    try {
-      const { rows } = await sqlQuery(stranger.token, "SELECT * FROM mcp_call_log");
-      expect(rows.length).toBe(0);
-    } catch (err) {
-      // Rejection path: the error confirms the table isn't publicly readable.
-      expect(err).toBeInstanceOf(Error);
+    const result = await sqlQuery(stranger.token, "SELECT * FROM mcp_call_log")
+      .then(r => ({ ok: true as const, rows: r.rows }))
+      .catch(err => ({ ok: false as const, err }));
+    if (result.ok) {
+      expect(result.rows.length).toBe(0);
+    } else {
+      expect(result.err).toBeInstanceOf(Error);
+      expect((result.err as Error).message).toMatch(
+        /SQL\s+"SELECT \* FROM mcp_call_log"\s+failed: HTTP 4\d\d/,
+      );
     }
   });
 
@@ -109,11 +115,16 @@ describe.skipIf(!canRun)("private log tables and view gating", () => {
       expect(seed.ok).toBe(true);
 
       const stranger = await mintIdentity();
-      try {
-        const { rows } = await sqlQuery(stranger.token, "SELECT * FROM ai_query_log");
-        expect(rows.length).toBe(0);
-      } catch (err) {
-        expect(err).toBeInstanceOf(Error);
+      const result = await sqlQuery(stranger.token, "SELECT * FROM ai_query_log")
+        .then(r => ({ ok: true as const, rows: r.rows }))
+        .catch(err => ({ ok: false as const, err }));
+      if (result.ok) {
+        expect(result.rows.length).toBe(0);
+      } else {
+        expect(result.err).toBeInstanceOf(Error);
+        expect((result.err as Error).message).toMatch(
+          /SQL\s+"SELECT \* FROM ai_query_log"\s+failed: HTTP 4\d\d/,
+        );
       }
     },
   );

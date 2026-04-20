@@ -36,8 +36,11 @@ export async function isSpacetimedbReachable(): Promise<boolean> {
       signal: controller.signal,
     });
     return res.ok;
-  } catch {
-    return false;
+  } catch (err) {
+    const isAbort = err instanceof DOMException && err.name === "AbortError";
+    const isNetwork = err instanceof TypeError;
+    if (isAbort || isNetwork) return false;
+    throw err;
   } finally {
     clearTimeout(timeout);
   }
