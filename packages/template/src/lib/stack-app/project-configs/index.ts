@@ -52,6 +52,9 @@ export type AdminEmailConfig = (
   }
   | {
     type: "shared",
+    senderEmail?: string,
+    host?: string,
+    port?: number,
   }
 );
 
