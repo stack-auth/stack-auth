@@ -1,4 +1,5 @@
 import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { clsx } from "clsx";
 import { format, formatDistanceToNow } from "date-fns";
 import { useState, useEffect } from "react";
@@ -53,12 +54,27 @@ export function CallLogDetail({ row, allRows, onClose, onSaveCorrection, onMarkR
   const isReviewed = optimisticReviewed ?? (row.humanReviewedAt != null);
 
   const handleMark = () => {
+    const previous = optimisticReviewed;
     setOptimisticReviewed(true);
-    Promise.resolve(onMarkReviewed?.(row.correlationId)).catch(err => captureError("call-log-mark-reviewed", err));
+    runAsynchronouslyWithAlert(
+      Promise.resolve(onMarkReviewed?.(row.correlationId)).catch(err => {
+        // Revert the optimistic override so the UI reflects the database's real state.
+        setOptimisticReviewed(previous);
+        captureError("call-log-mark-reviewed", err);
+        throw err;
+      })
+    );
   };
   const handleUnmark = () => {
+    const previous = optimisticReviewed;
     setOptimisticReviewed(false);
-    Promise.resolve(onUnmarkReviewed?.(row.correlationId)).catch(err => captureError("call-log-unmark-reviewed", err));
+    runAsynchronouslyWithAlert(
+      Promise.resolve(onUnmarkReviewed?.(row.correlationId)).catch(err => {
+        setOptimisticReviewed(previous);
+        captureError("call-log-unmark-reviewed", err);
+        throw err;
+      })
+    );
   };
 
   return (

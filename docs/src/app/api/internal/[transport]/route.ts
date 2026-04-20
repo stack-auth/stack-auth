@@ -83,10 +83,14 @@ const handler = createMcpHandler(
             .join("\n\n") ??
           "";
 
-        const responseConversationId = body.conversationId ?? conversationId ?? "";
+        const responseConversationId = body.conversationId ?? conversationId;
+        const bodyText = text.length > 0 ? text : "(empty response)";
+        const fullText = responseConversationId
+          ? `${bodyText}\n\n[conversationId: ${responseConversationId} — pass this value as the conversationId parameter in your next ask_stack_auth call to continue this conversation]`
+          : bodyText;
 
         return {
-          content: [{ type: "text", text: `${text.length > 0 ? text : "(empty response)"}\n\n[conversationId: ${responseConversationId} — pass this value as the conversationId parameter in your next ask_stack_auth call to continue this conversation]` }],
+          content: [{ type: "text", text: fullText }],
         };
       },
     );

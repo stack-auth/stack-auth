@@ -182,14 +182,27 @@ export function Usage({ rows, connectionState, onSelect, selectedId }: Props) {
     const avgDuration = durations.length > 0 ? Math.round(durations.reduce((a, b) => a + b, 0) / durations.length) : 0;
     const p95Duration = durations.length > 0 ? durations[Math.min(Math.floor(durations.length * 0.95), durations.length - 1)] : 0;
 
-    // Time-bucketed series
-    const spanMs = now - rangeStart;
+    let seriesStart: number;
+    let seriesEnd: number;
+    if (timeRange === "all" && filtered.length > 0) {
+      seriesStart = Infinity;
+      seriesEnd = -Infinity;
+      for (const r of filtered) {
+        const ts = toDate(r.createdAt).getTime();
+        if (ts < seriesStart) seriesStart = ts;
+        if (ts > seriesEnd) seriesEnd = ts;
+      }
+    } else {
+      seriesStart = rangeStart;
+      seriesEnd = now;
+    }
+    const spanMs = Math.max(0, seriesEnd - seriesStart);
     const bucketMs = spanMs <= 24 * 60 * 60 * 1000 ? 60 * 60 * 1000 : 24 * 60 * 60 * 1000;
     const bucketLabelFmt: Intl.DateTimeFormatOptions = bucketMs === 60 * 60 * 1000
       ? { hour: "numeric" }
       : { month: "short", day: "numeric" };
     const bucketCount = Math.min(48, Math.max(1, Math.ceil(spanMs / bucketMs)));
-    const bucketStart = now - bucketCount * bucketMs;
+    const bucketStart = seriesEnd - bucketCount * bucketMs;
     const timeBuckets: Array<{ label: string, start: number, calls: number, inputTokens: number, outputTokens: number, cachedInputTokens: number }> = [];
     for (let i = 0; i < bucketCount; i++) {
       const start = bucketStart + i * bucketMs;
@@ -557,9 +570,18 @@ export function Usage({ rows, connectionState, onSelect, selectedId }: Props) {
                 return (
                   <tr
                     key={String(row.id)}
+                    role="button"
+                    tabIndex={0}
+                    aria-selected={selectedId === row.id}
                     onClick={() => onSelect(row)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault();
+                        onSelect(row);
+                      }
+                    }}
                     className={clsx(
-                      "border-b border-gray-100 cursor-pointer hover:bg-blue-50",
+                      "border-b border-gray-100 cursor-pointer hover:bg-blue-50 focus:outline-none focus:ring-2 focus:ring-blue-500",
                       selectedId === row.id && "bg-blue-50"
                     )}
                   >

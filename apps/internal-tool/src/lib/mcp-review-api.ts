@@ -1,19 +1,12 @@
-const IS_DEV = process.env.NODE_ENV === "development";
-const PLACEHOLDER = "REPLACE_ME";
-
-function envOrDevDefault(value: string | undefined, devDefault: string): string {
-  if (!value || value === PLACEHOLDER) {
-    return IS_DEV ? devDefault : "";
-  }
-  return value;
-}
+import { envOrDevDefault } from "./env";
 
 const PORT_PREFIX = process.env.NEXT_PUBLIC_STACK_PORT_PREFIX ?? "81";
-const API_URL = envOrDevDefault(process.env.NEXT_PUBLIC_STACK_API_URL, `http://localhost:${PORT_PREFIX}02`);
-const PROJECT_ID = envOrDevDefault(process.env.NEXT_PUBLIC_STACK_PROJECT_ID, "internal");
+const API_URL = envOrDevDefault(process.env.NEXT_PUBLIC_STACK_API_URL, `http://localhost:${PORT_PREFIX}02`, "NEXT_PUBLIC_STACK_API_URL");
+const PROJECT_ID = envOrDevDefault(process.env.NEXT_PUBLIC_STACK_PROJECT_ID, "internal", "NEXT_PUBLIC_STACK_PROJECT_ID");
 const PUBLISHABLE_CLIENT_KEY = envOrDevDefault(
   process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY,
   "this-publishable-client-key-is-for-local-development-only",
+  "NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY",
 );
 
 async function post(path: string, body: unknown, authHeaders: Record<string, string>): Promise<void> {

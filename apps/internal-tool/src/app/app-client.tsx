@@ -1,5 +1,4 @@
 import { useUser } from "@stackframe/stack";
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { clsx } from "clsx";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import type { Identity } from "spacetimedb";
@@ -205,21 +204,15 @@ export default function App() {
                   row={currentSelectedRow}
                   allRows={rows}
                   onClose={() => setSelectedRow(null)}
-                  onSaveCorrection={(correlationId, correctedQuestion, correctedAnswer, publish) => {
-                    getApi()
-                      .then(api => api.updateCorrection({ correlationId, correctedQuestion, correctedAnswer, publish }))
-                      .catch(err => captureError("internal-tool-update-correction", err));
-                  }}
-                  onMarkReviewed={(correlationId) => {
-                    getApi()
-                      .then(api => api.markReviewed({ correlationId }))
-                      .catch(err => captureError("internal-tool-mark-reviewed", err));
-                  }}
-                  onUnmarkReviewed={(correlationId) => {
-                    getApi()
-                      .then(api => api.unmarkReviewed({ correlationId }))
-                      .catch(err => captureError("internal-tool-unmark-reviewed", err));
-                  }}
+                  onSaveCorrection={(correlationId, correctedQuestion, correctedAnswer, publish) =>
+                    getApi().then(api => api.updateCorrection({ correlationId, correctedQuestion, correctedAnswer, publish }))
+                  }
+                  onMarkReviewed={(correlationId) =>
+                    getApi().then(api => api.markReviewed({ correlationId }))
+                  }
+                  onUnmarkReviewed={(correlationId) =>
+                    getApi().then(api => api.unmarkReviewed({ correlationId }))
+                  }
                 />
               </aside>
             )}
@@ -231,16 +224,12 @@ export default function App() {
             <div className="p-6 max-w-4xl mx-auto">
               <KnowledgeBase
                 rows={rows}
-                onSave={(correlationId, question, answer, publish) => {
-                  getApi()
-                    .then(api => api.updateCorrection({ correlationId, correctedQuestion: question, correctedAnswer: answer, publish }))
-                    .catch(err => captureError("internal-tool-kb-save", err));
-                }}
-                onDelete={(correlationId) => {
-                  getApi()
-                    .then(api => api.delete({ correlationId }))
-                    .catch(err => captureError("internal-tool-kb-delete", err));
-                }}
+                onSave={(correlationId, question, answer, publish) =>
+                  getApi().then(api => api.updateCorrection({ correlationId, correctedQuestion: question, correctedAnswer: answer, publish }))
+                }
+                onDelete={(correlationId) =>
+                  getApi().then(api => api.delete({ correlationId }))
+                }
               />
             </div>
           </main>

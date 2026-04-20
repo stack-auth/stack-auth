@@ -1,3 +1,4 @@
+import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { useState, useMemo } from "react";
 import { format } from "date-fns";
 import { clsx } from "clsx";
@@ -8,8 +9,8 @@ type KbFilter = "all" | "published" | "draft";
 
 export function KnowledgeBase({ rows, onSave, onDelete }: {
   rows: McpCallLogRow[];
-  onSave: (correlationId: string, question: string, answer: string, publish: boolean) => void;
-  onDelete: (correlationId: string) => void;
+  onSave: (correlationId: string, question: string, answer: string, publish: boolean) => Promise<void> | void;
+  onDelete: (correlationId: string) => Promise<void> | void;
 }) {
   const [filter, setFilter] = useState<KbFilter>("all");
   const [search, setSearch] = useState("");
@@ -100,10 +101,14 @@ export function KnowledgeBase({ rows, onSave, onDelete }: {
               onStartEdit={() => setEditingId(row.correlationId)}
               onCancelEdit={() => setEditingId(null)}
               onSave={(question, answer, publish) => {
-                onSave(row.correlationId, question, answer, publish);
+                Promise.resolve(onSave(row.correlationId, question, answer, publish))
+                  .catch(err => captureError("knowledge-base-save", err));
                 setEditingId(null);
               }}
-              onDelete={() => onDelete(row.correlationId)}
+              onDelete={() => {
+                Promise.resolve(onDelete(row.correlationId))
+                  .catch(err => captureError("knowledge-base-delete", err));
+              }}
             />
           ))}
         </div>
