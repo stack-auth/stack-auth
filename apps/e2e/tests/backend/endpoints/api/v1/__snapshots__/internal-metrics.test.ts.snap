@@ -3481,7 +3481,7 @@ NiceResponse {
             "date": <stripped field 'date'>,
           },
           {
-            "activity": 9,
+            "activity": 10,
             "date": <stripped field 'date'>,
           },
         ],
@@ -3607,7 +3607,7 @@ NiceResponse {
             "date": <stripped field 'date'>,
           },
           {
-            "activity": 1,
+            "activity": 0,
             "date": <stripped field 'date'>,
           },
         ],
