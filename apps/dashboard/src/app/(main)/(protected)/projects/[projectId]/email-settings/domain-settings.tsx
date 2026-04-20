@@ -40,6 +40,14 @@ const SERVER_TYPE_LABELS: Record<ServerType, string> = {
   standard: "Custom SMTP",
 };
 
+const MANAGED_DOMAIN_STATUS_LABELS: Record<ManagedDomainStatus, string> = {
+  pending_dns: "Pending DNS records",
+  pending_verification: "Pending verification",
+  verified: "Verified",
+  applied: "Applied",
+  failed: "Failed",
+};
+
 const VISIBLE_FIELDS: Record<ServerType, ServerFieldConfig[]> = {
   shared: [],
   managed: [],
@@ -317,7 +325,7 @@ function ManagedEmailSetupDialog(props: { trigger: React.ReactNode }) {
                     <Alert key={domain.domainId} className="bg-slate-500/5 border-slate-500/20">
                       <AlertTitle className="font-mono text-xs">{domain.senderLocalPart}@{domain.subdomain}</AlertTitle>
                       <AlertDescription className="mt-1 flex items-center justify-between gap-2">
-                        <span className="text-xs">Status: {domain.status}</span>
+                        <span className="text-xs">Status: {(MANAGED_DOMAIN_STATUS_LABELS as Record<string, string>)[domain.status] ?? domain.status}</span>
                         <DesignButton
                           size="sm"
                           variant="secondary"
