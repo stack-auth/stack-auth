@@ -97,7 +97,7 @@ export const runEmailQueueStep = withTraceSpan("runEmailQueueStep", async () => 
 
   const sendPlan = await withTraceSpan("runEmailQueueStep-prepareSendPlan", prepareSendPlan)(deltaSeconds);
   await withTraceSpan("runEmailQueueStep-processSendPlan", processSendPlan)(sendPlan);
-  await withTraceSpan("runEmailQueueStep-logEmailsStuckInSending", logEmailsStuckInSending)();
+  await withTraceSpan("runEmailQueueStep-recoverEmailsStuckInSending", recoverEmailsStuckInSending)();
   const sendEnd = performance.now();
 
   if (sendPlan.length > 0 || queuedCount > 0 || pendingRender.length > 0) {
@@ -134,24 +134,67 @@ async function retryEmailsStuckInRendering(): Promise<void> {
   }
 }
 
-async function logEmailsStuckInSending(): Promise<void> {
-  const res = await globalPrismaClient.emailOutbox.findMany({
+/**
+ * Recover rows that have been stuck in SENDING for longer than STUCK_EMAIL_TIMEOUT_MS.
+ *
+ * These rows indicate a worker died after setting `startedSendingAt` but before cleaning up
+ * (either marking the send as finished or unclaiming it for retry). We deliberately do NOT
+ * retry automatically: the upstream send may have actually been accepted by the SMTP/provider
+ * before the worker died, and retrying would risk a duplicate delivery. Instead, we mark the
+ * row as a terminal server error with delivery status unknown, and emit a Sentry signal so a
+ * human can investigate if desired.
+ */
+async function recoverEmailsStuckInSending(): Promise<void> {
+  const stuckCutoff = new Date(Date.now() - STUCK_EMAIL_TIMEOUT_MS);
+  const recoveredAt = new Date();
+  const externalMessage = "Email sending did not complete in time. The email may or may not have been delivered; we are not retrying automatically to avoid sending a duplicate.";
+  const internalDetails: Prisma.InputJsonObject = {
+    errorType: "stuck-in-sending-recovered",
+    stuckTimeoutMs: STUCK_EMAIL_TIMEOUT_MS,
+    recoveredAt: recoveredAt.toISOString(),
+  };
+  const externalDetails: Prisma.InputJsonObject = {
+    errorType: "stuck-in-sending-recovered",
+  };
+
+  const recovered = await globalPrismaClient.emailOutbox.updateManyAndReturn({
     where: {
-      startedSendingAt: {
-        lte: new Date(Date.now() - STUCK_EMAIL_TIMEOUT_MS),
-      },
+      startedSendingAt: { lte: stuckCutoff },
       finishedSendingAt: null,
       skippedReason: null,
       isPaused: false,
     },
-    select: { id: true, tenancyId: true, startedSendingAt: true, to: true, sentAt: true, sendAttemptErrors: true },
+    data: {
+      finishedSendingAt: recoveredAt,
+      // canHaveDeliveryInfo must be non-null when finishedSendingAt is set (see schema).
+      // We set it to false because we have no webhook/provider signal we can correlate: delivery
+      // status is effectively unknown, and treating it as "no delivery info available" is the
+      // honest representation.
+      canHaveDeliveryInfo: false,
+      sendServerErrorExternalMessage: externalMessage,
+      sendServerErrorExternalDetails: externalDetails,
+      sendServerErrorInternalMessage: `Email was stuck in sending (startedSendingAt <= ${stuckCutoff.toISOString()}) and was recovered by the email queue step. Not retried to avoid duplicate delivery.`,
+      sendServerErrorInternalDetails: internalDetails,
+      shouldUpdateSequenceId: true,
+    },
+    select: { id: true, tenancyId: true, startedSendingAt: true, to: true, sendAttemptErrors: true },
   });
-  if (res.length > 0) {
-    captureError("email-queue-step-stuck-in-sending", new StackAssertionError(`${res.length} emails stuck in sending! This should never happen. It was NOT correctly marked as an error! Manual intervention is required.`, {
-      emails: res,
-    }));
+
+  if (recovered.length > 0) {
+    captureError(
+      "email-queue-step-stuck-in-sending",
+      new StackAssertionError(
+        `${recovered.length} emails were stuck in sending and have been recovered as terminal server errors (delivery status unknown, not retried to avoid duplicate sends). Manual investigation is recommended.`,
+        { emails: recovered },
+      ),
+    );
   }
 }
+
+export const _forTesting = {
+  recoverEmailsStuckInSending,
+  STUCK_EMAIL_TIMEOUT_MS,
+};
 
 async function updateLastExecutionTime(): Promise<number> {
   const key = "EMAIL_QUEUE_METADATA_KEY";
