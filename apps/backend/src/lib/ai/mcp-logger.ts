@@ -60,12 +60,8 @@ async function rawCallReducer(token: string, reducer: string, args: unknown[]): 
       "Authorization": `Bearer ${token}`,
     },
     body: JSON.stringify(args, (_, v) => {
-      if (typeof v !== "bigint") return v;
-      // SpacetimeDB's HTTP API wants u64/i64 as JSON numbers, not strings.
-      // Convert bigints within JS safe-int range; fall back to string above that.
-      const MAX = BigInt(Number.MAX_SAFE_INTEGER);
-      if (v <= MAX && v >= -MAX) return Number(v);
-      return v.toString();
+      if (typeof v === "bigint") return Number(v);
+      return v;
     }),
   });
   if (!res.ok) {

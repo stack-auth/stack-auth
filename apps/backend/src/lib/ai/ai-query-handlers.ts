@@ -167,10 +167,10 @@ function logMcpCallAndReview(args: {
   modelId: string,
 }): void {
   const { mcpCallMetadata, conversationId, correlationId, messages, contentBlocks, finalText, stepCount, startedAt, modelId } = args;
-  const firstUserMessage = messages.find(m => m.role === "user");
-  const question = typeof firstUserMessage?.content === "string"
-    ? firstUserMessage.content
-    : JSON.stringify(firstUserMessage?.content ?? "");
+  const lastUserMessage = messages.findLast(m => m.role === "user");
+  const question = typeof lastUserMessage?.content === "string"
+    ? lastUserMessage.content
+    : JSON.stringify(lastUserMessage?.content ?? "");
   const innerToolCallsJson = JSON.stringify(contentBlocks.filter(b => b.type === "tool-call"));
 
   const logPromise = logMcpCall({
