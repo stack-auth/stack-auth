@@ -71,15 +71,22 @@ export function createOpenRouterProvider() {
   });
 }
 
+export function createDirectOpenRouterProvider(apiKey: string) {
+  return createOpenRouter({ apiKey });
+}
+
 export function selectModel(
   quality: ModelQuality,
   speed: ModelSpeed,
-  isAuthenticated: boolean
+  isAuthenticated: boolean,
+  directApiKey?: string,
 ) {
   const config =
     MODEL_SELECTION_MATRIX[quality][speed][isAuthenticated ? "authenticated" : "unauthenticated"];
 
-  const openrouter = createOpenRouterProvider();
+  const openrouter = directApiKey
+    ? createDirectOpenRouterProvider(directApiKey)
+    : createOpenRouterProvider();
   const model = openrouter(config.modelId);
   return model;
 }

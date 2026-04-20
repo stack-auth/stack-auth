@@ -380,3 +380,15 @@ A: Function parameter types are checked contravariantly, so helper signatures li
 
 Q: What breaks when bulldozer tests stop using `bindTableToExecutionContext` wrappers?
 A: Any trigger callbacks written as `(changesTable) => ...` can fail against the strict `RowChangeTriggerInput` signature once wrappers are removed. Update those callbacks to explicit two-arg form like `(_ctx, changesTable) => ...`, and make helper types (for example table facades and lifecycle instrumentation helpers) use ctx-first method signatures so all table API calls pass `executionContext` explicitly.
+
+Q: How should `x-stack-override-error-status` behave in backend smart responses?
+A: In `apps/backend/src/route-handlers/smart-response.tsx`, only override `4xx` responses to `200` with `x-stack-actual-status`. Do not override `5xx`, so infrastructure/runtime failures still surface as real server errors.
+
+Q: Why can `email-queue-step` heap growth still point at `app-page-turbo.runtime.dev.js` after disabling React async debug info in `react-server-dom-*` bundles?
+A: Next.js dev app-page runtimes (`app-page*.runtime.dev.js`) include their own inlined async debug hook (`async_hooks.createHook`) with `pendingOperations` nodes plus stack-frame arrays from `collectStackTracePrivate`. Patching only `react-server-dom-*` is not enough. Gate the app-page runtime hook with `STACK_DISABLE_REACT_ASYNC_DEBUG_INFO` too; once gated, inspector allocation samples stop showing `init`/`collectStackTracePrivate` in `app-page-turbo.runtime.dev.js` and per-burst retained deltas drop from multi-MB to near-baseline noise.
+
+Q: How can we replace the huge `next@16.1.7` patch file with a resilient install-time rewrite?
+A: Use a strict root `postinstall` script that rewrites only Next `>=16` app-page dev runtime bundles (`app-page*.runtime.dev.js`) from `doNotLimit=new WeakSet;async_hooks.createHook(` to the guarded `STACK_DISABLE_REACT_ASYNC_DEBUG_INFO` form. Guardrails should fail loud on marker mismatches, mixed guarded/unguarded states, replacement counts not equal to one, or missing runtime fingerprints; the script should also be idempotent (`patched=0, alreadyPatched>0` on second run).
+
+Q: Why can Turbo-pruned Docker builds fail with `Cannot find module /app/scripts/postinstall-patch-next-async-debug-info.mjs` during `pnpm install`?
+A: In pruned builder stages, we copy `/app/out/json` and run `pnpm install` before copying `/app/out/full`. The root `package.json` still runs `postinstall: node ./scripts/postinstall-patch-next-async-debug-info.mjs`, but that script is not present yet. Fix by copying `scripts/postinstall-patch-next-async-debug-info.mjs` into the builder stage before `pnpm install` (for all Dockerfiles using the prune pattern).
