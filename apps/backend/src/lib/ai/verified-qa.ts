@@ -3,10 +3,8 @@ import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { callSql } from "./mcp-logger";
 
 type VerifiedRow = {
-  human_corrected_question: string | null,
-  human_corrected_answer: string | null,
   question: string,
-  response: string,
+  answer: string,
 };
 
 export async function getVerifiedQaContext(): Promise<string> {
@@ -20,13 +18,13 @@ export async function getVerifiedQaContext(): Promise<string> {
 
 async function getVerifiedQaContextInner(): Promise<string> {
   const rows = await callSql<VerifiedRow>(
-    "SELECT human_corrected_question, human_corrected_answer, question, response FROM published_qa"
+    "SELECT question, answer FROM published_qa"
   );
   if (rows.length === 0) return "";
 
   const pairs = rows.map(row => ({
-    question: row.human_corrected_question ?? row.question,
-    answer: row.human_corrected_answer ?? row.response,
+    question: row.question,
+    answer: row.answer,
   }));
 
   const formatted = pairs.map((p, i) =>
