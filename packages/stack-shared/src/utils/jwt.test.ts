@@ -8,7 +8,6 @@ import { getOldStackServerSecret, getPrivateJwks, getPublicJwkSet, signJWT, veri
 const randomSecret = () => jose.base64url.encode(crypto.randomBytes(32));
 
 // Mirrors the derivation used in apps/backend/src/app/api/latest/integrations/idp.ts.
-// Keeping it identical here pins the algorithm contract across the two call sites.
 async function deriveOidcCookieKey(secret: string): Promise<string> {
   return toHexString(await sha512(`oidc-idp-cookie-encryption-key:${secret}`));
 }
@@ -21,6 +20,20 @@ async function buildOidcCookieKeys(): Promise<string[]> {
     await deriveOidcCookieKey(primary),
     ...(old ? [await deriveOidcCookieKey(old)] : []),
   ];
+}
+
+// `STACK_SERVER_SECRET_OLD` is a required env var in this codebase. To model a backend
+// that isn't mid-rotation, set both env vars to the same value — the derivation produces
+// duplicate kids which collapse when we treat the result as a set.
+function setSteadyStateEnv(secret: string) {
+  process.env.STACK_SERVER_SECRET = secret;
+  process.env.STACK_SERVER_SECRET_OLD = secret;
+}
+
+// During an active rotation, primary is the new secret and _OLD is the previous one.
+function setRotatingEnv(primary: string, previous: string) {
+  process.env.STACK_SERVER_SECRET = primary;
+  process.env.STACK_SERVER_SECRET_OLD = previous;
 }
 
 // signJWT only accepts string expirations; for the expiry test we need an explicit past
@@ -58,10 +71,7 @@ describe("STACK_SERVER_SECRET rotation — Deploy 1 invariants", () => {
   });
 
   it("1. new login after Deploy 1: fresh JWT signs with new secret, verifies, and carries the new kid", async () => {
-    const newSecret = randomSecret();
-    const oldSecret = randomSecret();
-    process.env.STACK_SERVER_SECRET = newSecret;
-    process.env.STACK_SERVER_SECRET_OLD = oldSecret;
+    setRotatingEnv(randomSecret(), randomSecret());
 
     const jwt = await signJWT({ issuer: "iss", audience: "aud", payload: { sub: "user-1" } });
     const payload = await verifyJWT({ allowedIssuers: ["iss"], jwt });
@@ -75,11 +85,12 @@ describe("STACK_SERVER_SECRET rotation — Deploy 1 invariants", () => {
     const oldSecret = randomSecret();
     const newSecret = randomSecret();
 
-    process.env.STACK_SERVER_SECRET = oldSecret;
+    // Pre-rotation steady state: both env vars point at the old secret.
+    setSteadyStateEnv(oldSecret);
     const oldJwt = await signJWT({ issuer: "iss", audience: "aud", payload: { sub: "user-2" } });
 
-    process.env.STACK_SERVER_SECRET = newSecret;
-    process.env.STACK_SERVER_SECRET_OLD = oldSecret;
+    // Rotate.
+    setRotatingEnv(newSecret, oldSecret);
 
     const payload = await verifyJWT({ allowedIssuers: ["iss"], jwt: oldJwt });
     expect(payload.sub).toBe("user-2");
@@ -92,13 +103,12 @@ describe("STACK_SERVER_SECRET rotation — Deploy 1 invariants", () => {
     const oldSecret = randomSecret();
     const newSecret = randomSecret();
 
-    process.env.STACK_SERVER_SECRET = oldSecret;
+    setSteadyStateEnv(oldSecret);
     const preRotationKids = new Set(
       (await getPrivateJwks({ audience: "aud" })).map(j => j.kid),
     );
 
-    process.env.STACK_SERVER_SECRET = newSecret;
-    process.env.STACK_SERVER_SECRET_OLD = oldSecret;
+    setRotatingEnv(newSecret, oldSecret);
 
     const mintedJwt = await signJWT({ issuer: "iss", audience: "aud", payload: { sub: "user-3" } });
     const header = jose.decodeProtectedHeader(mintedJwt);
@@ -110,11 +120,10 @@ describe("STACK_SERVER_SECRET rotation — Deploy 1 invariants", () => {
     const oldSecret = randomSecret();
     const newSecret = randomSecret();
 
-    process.env.STACK_SERVER_SECRET = oldSecret;
+    setSteadyStateEnv(oldSecret);
     const oldJwt = await signJWT({ issuer: "iss", audience: "aud", payload: { kind: "old" } });
 
-    process.env.STACK_SERVER_SECRET = newSecret;
-    process.env.STACK_SERVER_SECRET_OLD = oldSecret;
+    setRotatingEnv(newSecret, oldSecret);
     const newJwt = await signJWT({ issuer: "iss", audience: "aud", payload: { kind: "new" } });
 
     expect((await verifyJWT({ allowedIssuers: ["iss"], jwt: oldJwt })).kind).toBe("old");
@@ -125,14 +134,12 @@ describe("STACK_SERVER_SECRET rotation — Deploy 1 invariants", () => {
     const oldSecret = randomSecret();
     const newSecret = randomSecret();
 
-    process.env.STACK_SERVER_SECRET = oldSecret;
+    setSteadyStateEnv(oldSecret);
     const oldSecretKids = new Set(
       (await getPrivateJwks({ audience: "aud" })).map(j => j.kid),
     );
 
-    process.env.STACK_SERVER_SECRET = newSecret;
-    process.env.STACK_SERVER_SECRET_OLD = oldSecret;
-
+    setRotatingEnv(newSecret, oldSecret);
     const jwt = await signJWT({ issuer: "iss", audience: "aud", payload: {} });
     expect(oldSecretKids.has(jose.decodeProtectedHeader(jwt).kid as string)).toBe(false);
   });
@@ -140,8 +147,7 @@ describe("STACK_SERVER_SECRET rotation — Deploy 1 invariants", () => {
   it("6. in-progress OIDC flow: cookie key derived from the old secret stays in the verify set during overlap", async () => {
     const oldSecret = randomSecret();
     const newSecret = randomSecret();
-    process.env.STACK_SERVER_SECRET = newSecret;
-    process.env.STACK_SERVER_SECRET_OLD = oldSecret;
+    setRotatingEnv(newSecret, oldSecret);
 
     const keys = await buildOidcCookieKeys();
     // Koa keygrip (used by oidc-provider for `cookies.keys`) verifies against any entry.
@@ -151,8 +157,7 @@ describe("STACK_SERVER_SECRET rotation — Deploy 1 invariants", () => {
   it("7. new OIDC flow after Deploy 1 signs cookies with the new-secret-derived key", async () => {
     const oldSecret = randomSecret();
     const newSecret = randomSecret();
-    process.env.STACK_SERVER_SECRET = newSecret;
-    process.env.STACK_SERVER_SECRET_OLD = oldSecret;
+    setRotatingEnv(newSecret, oldSecret);
 
     const keys = await buildOidcCookieKeys();
     // Koa keygrip signs using keys[0], so keys[0] must be the new-secret derivation.
@@ -166,11 +171,10 @@ describe("STACK_SERVER_SECRET rotation — Deploy 1 invariants", () => {
     const unrelatedSecret = randomSecret();
 
     // (a) signed by a totally unrelated secret — not in the verify set
-    process.env.STACK_SERVER_SECRET = unrelatedSecret;
+    setSteadyStateEnv(unrelatedSecret);
     const unrelatedJwt = await signJWT({ issuer: "iss", audience: "aud", payload: {} });
 
-    process.env.STACK_SERVER_SECRET = newSecret;
-    process.env.STACK_SERVER_SECRET_OLD = oldSecret;
+    setRotatingEnv(newSecret, oldSecret);
     await expect(verifyJWT({ allowedIssuers: ["iss"], jwt: unrelatedJwt })).rejects.toThrow();
 
     // (b) tampered signature on an otherwise-valid JWT
@@ -187,52 +191,46 @@ describe("STACK_SERVER_SECRET rotation — Deploy 1 invariants", () => {
     const oldSecret = randomSecret();
     const newSecret = randomSecret();
 
-    process.env.STACK_SERVER_SECRET = oldSecret;
+    setSteadyStateEnv(oldSecret);
     const expiredJwt = await signJWTWithExplicitExp({
       audience: "aud",
       issuer: "iss",
       expUnixSeconds: Math.floor(Date.now() / 1000) - 60,
     });
 
-    process.env.STACK_SERVER_SECRET = newSecret;
-    process.env.STACK_SERVER_SECRET_OLD = oldSecret;
-
+    setRotatingEnv(newSecret, oldSecret);
     await expect(verifyJWT({ allowedIssuers: ["iss"], jwt: expiredJwt })).rejects.toThrow(/exp/i);
   });
 
-  it("10. overlap JWKS equals the union of the new-secret-only and old-secret-only public sets, with no private scalars", async () => {
+  it("10. overlap JWKS equals the union of the new-secret-derived and old-secret-derived public sets, with no private scalars", async () => {
     const oldSecret = randomSecret();
     const newSecret = randomSecret();
 
-    // New-secret-only public set (what the JWKS looks like before Deploy 1 and after Deploy 2).
-    process.env.STACK_SERVER_SECRET = newSecret;
-    const newOnly = await getPublicJwkSet(await getPrivateJwks({ audience: "aud" }));
-    expect(newOnly.keys).toHaveLength(2);
+    // Unique kids derivable from a single secret (steady-state config; the 4 entries
+    // collapse to 2 unique kids because primary and _OLD are the same value).
+    setSteadyStateEnv(newSecret);
+    const newDerivedKids = new Set(
+      (await getPublicJwkSet(await getPrivateJwks({ audience: "aud" }))).keys.map(k => k.kid),
+    );
+    expect(newDerivedKids.size).toBe(2);
 
-    // Old-secret-only public set (what the JWKS looked like before the rotation started).
-    process.env.STACK_SERVER_SECRET = oldSecret;
-    delete process.env.STACK_SERVER_SECRET_OLD;
-    const oldOnly = await getPublicJwkSet(await getPrivateJwks({ audience: "aud" }));
-    expect(oldOnly.keys).toHaveLength(2);
+    setSteadyStateEnv(oldSecret);
+    const oldDerivedKids = new Set(
+      (await getPublicJwkSet(await getPrivateJwks({ audience: "aud" }))).keys.map(k => k.kid),
+    );
+    expect(oldDerivedKids.size).toBe(2);
 
-    // Overlap set during Deploy 1.
-    process.env.STACK_SERVER_SECRET = newSecret;
-    process.env.STACK_SERVER_SECRET_OLD = oldSecret;
+    // Overlap during Deploy 1.
+    setRotatingEnv(newSecret, oldSecret);
     const overlap = await getPublicJwkSet(await getPrivateJwks({ audience: "aud" }));
     expect(overlap.keys).toHaveLength(4);
-
-    // Identity: overlap kids == (new-only kids) ∪ (old-only kids).
     const overlapKids = new Set(overlap.keys.map(k => k.kid));
-    const expectedUnionKids = new Set<string>([
-      ...newOnly.keys.map(k => k.kid),
-      ...oldOnly.keys.map(k => k.kid),
-    ]);
-    expect(overlapKids).toEqual(expectedUnionKids);
 
-    // Sanity: the two secrets produce disjoint kids (they're derived by hashing the secret).
-    const newKids = new Set(newOnly.keys.map(k => k.kid));
-    const oldKids = new Set(oldOnly.keys.map(k => k.kid));
-    for (const k of newKids) expect(oldKids.has(k)).toBe(false);
+    // Identity: overlap kids == new-derived kids ∪ old-derived kids.
+    expect(overlapKids).toEqual(new Set<string>([...newDerivedKids, ...oldDerivedKids]));
+
+    // Sanity: the two secrets produce disjoint kid sets.
+    for (const k of newDerivedKids) expect(oldDerivedKids.has(k)).toBe(false);
 
     // The public JWKs must not leak the private scalar `d`.
     for (const k of overlap.keys) expect((k as unknown as { d?: unknown }).d).toBeUndefined();
