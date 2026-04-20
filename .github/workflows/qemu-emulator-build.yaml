@@ -27,8 +27,10 @@ env:
   EMULATOR_RUN_DIR: ${{ github.workspace }}/docker/local-emulator/qemu/run
   # The stack-cli ignores EMULATOR_IMAGE_DIR/RUN_DIR and derives its own paths
   # from STACK_EMULATOR_HOME. Point it at the same workspace so `emulator
-  # start` finds the freshly-built qcow2 + savevm from build-image.sh
-  # (snapshot-resume, fast) instead of auto-pulling from a prior release.
+  # start` finds the freshly-built qcow2 from build-image.sh and cold-boots
+  # it, instead of auto-pulling from a prior release. CI doesn't capture a
+  # savevm (EMULATOR_CAPTURE_SAVEVM defaults to 0); users capture locally
+  # on first `stack emulator pull`.
   STACK_EMULATOR_HOME: ${{ github.workspace }}/docker/local-emulator/qemu
 
 jobs:

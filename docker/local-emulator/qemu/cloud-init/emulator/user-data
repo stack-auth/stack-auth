@@ -734,13 +734,18 @@ write_files:
       log_provision "starting slim-docker-image"
       bash /usr/local/bin/slim-docker-image
 
-      # Snapshot-build mode: bring the stack container up, wait for full
+      # Capture mode: bring the stack container up, wait for full
       # readiness, emit STACK_SERVICES_READY, then wait indefinitely for the
       # host build script to capture VM state over QMP (stop + migrate + quit).
       # The VM never shuts itself down in this path — the host tears it down
       # once the savevm file has been written.
-      if [ -f /etc/stack-build.env ] && grep -q '^STACK_EMULATOR_BUILD_SNAPSHOT=1' /etc/stack-build.env 2>/dev/null; then
-        log_provision "snapshot-build mode: starting stack.service"
+      #
+      # CI never sets STACK_EMULATOR_CAPTURE_SAVEVM=1 (snapshots aren't
+      # portable across accelerators, so they're captured locally on first
+      # `stack emulator pull`). This branch only fires for opt-in local
+      # builds run with EMULATOR_CAPTURE_SAVEVM=1.
+      if [ -f /etc/stack-build.env ] && grep -q '^STACK_EMULATOR_CAPTURE_SAVEVM=1' /etc/stack-build.env 2>/dev/null; then
+        log_provision "capture mode: starting stack.service"
         systemctl start stack.service || true
 
         log_provision "waiting for backend + dashboard to be ready"

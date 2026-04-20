@@ -12,22 +12,34 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../../.." && pwd)"
 DEBIAN_VERSION="${DEBIAN_VERSION:-13}"
 DISK_SIZE="${EMULATOR_DISK_SIZE:-12G}"
 RAM="${EMULATOR_BUILD_RAM:-4096}"
-# Snapshot mode pins SMP to a fixed value so the runtime QEMU command (which
-# uses EMULATOR_CPUS, default 4) can match the source device topology — RAM
-# migration replay requires identical vCPU count.
-if [ "${EMULATOR_BUILD_SNAPSHOT:-1}" = "1" ]; then
+PROVISION_TIMEOUT="${EMULATOR_PROVISION_TIMEOUT:-3200}"
+EMULATOR_IMAGE_NAME="${EMULATOR_IMAGE_NAME:-stack-local-emulator}"
+# Snapshot-ready qcow2: bake deterministic placeholder secrets (PCK/SSK/SAK/
+# CRON_SECRET) into the image so runtime `rotate-secrets` can swap them for
+# fresh per-install values on every `emulator start`. Without this, the image
+# would ship with random shared secrets — a security regression. Cheap to
+# build (no extra wall-clock cost in CI), so it stays on by default.
+EMULATOR_BUILD_SNAPSHOT="${EMULATOR_BUILD_SNAPSHOT:-1}"
+# Capture RAM/device state via QMP at build time, producing a
+# `stack-emulator-<arch>.savevm.zst` next to the qcow2. Off by default —
+# users capture locally on first `stack emulator pull` (run-emulator.sh
+# capture) because migration state isn't portable across accelerators
+# (KVM/HVF/TCG) or `-cpu max` feature sets, so a CI-captured snapshot
+# couldn't resume reliably on arbitrary user hardware. Implies
+# EMULATOR_BUILD_SNAPSHOT=1.
+EMULATOR_CAPTURE_SAVEVM="${EMULATOR_CAPTURE_SAVEVM:-0}"
+if [ "$EMULATOR_CAPTURE_SAVEVM" = "1" ] && [ "$EMULATOR_BUILD_SNAPSHOT" != "1" ]; then
+  echo "EMULATOR_CAPTURE_SAVEVM=1 requires EMULATOR_BUILD_SNAPSHOT=1" >&2
+  exit 1
+fi
+# Capture mode pins SMP to a fixed value so the resume QEMU command (which
+# uses EMULATOR_CPUS, default 4) can match the captured device topology —
+# RAM migration replay requires identical vCPU count.
+if [ "$EMULATOR_CAPTURE_SAVEVM" = "1" ]; then
   CPUS="${EMULATOR_BUILD_CPUS:-4}"
 else
   CPUS="${EMULATOR_BUILD_CPUS:-$(sysctl -n hw.ncpu 2>/dev/null || nproc 2>/dev/null || echo 4)}"
 fi
-PROVISION_TIMEOUT="${EMULATOR_PROVISION_TIMEOUT:-3200}"
-EMULATOR_IMAGE_NAME="${EMULATOR_IMAGE_NAME:-stack-local-emulator}"
-# Snapshot build mode: bring the VM to a fully-warm state (backend + dashboard
-# responding), then capture RAM/device state via QMP so that `emulator start`
-# can -incoming from it and return in ~3-8s. Enabled by default; set
-# EMULATOR_BUILD_SNAPSHOT=0 to fall back to the legacy "shutdown after
-# provisioning" flow.
-EMULATOR_BUILD_SNAPSHOT="${EMULATOR_BUILD_SNAPSHOT:-1}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -67,7 +79,7 @@ check_deps() {
     command -v docker >/dev/null 2>&1 || missing+=("docker")
   fi
 
-  if [ "$EMULATOR_BUILD_SNAPSHOT" = "1" ]; then
+  if [ "$EMULATOR_CAPTURE_SAVEVM" = "1" ]; then
     for cmd in socat zstd; do
       command -v "$cmd" >/dev/null 2>&1 || missing+=("$cmd")
     done
@@ -297,33 +309,41 @@ build_one() {
   cp "$bundle_tgz" "$bundle_dir/img.tgz"
   cp "$BUILD_ENV_FILE" "$bundle_dir/build.env"
   if [ "$EMULATOR_BUILD_SNAPSHOT" = "1" ]; then
-    # Guest reads this flag to use placeholder secrets and to wait at the end
-    # of provision-build for the host to snapshot the RAM state.
+    # Guest reads this flag to use deterministic placeholder secrets so that
+    # runtime rotate-secrets can swap them out per-install.
     printf 'STACK_EMULATOR_BUILD_SNAPSHOT=1\n' >> "$bundle_dir/build.env"
+  fi
+  if [ "$EMULATOR_CAPTURE_SAVEVM" = "1" ]; then
+    # Guest reads this flag to start stack.service during provision-build,
+    # wait for backend+dashboard health, then block forever waiting for the
+    # host to capture VM state via QMP (stop + migrate + quit).
+    printf 'STACK_EMULATOR_CAPTURE_SAVEVM=1\n' >> "$bundle_dir/build.env"
   fi
   # Tell the guest which arch it's being built for so cross-arch (TCG) builds
   # can skip the smoke test, which isn't reliable under software emulation.
   printf 'STACK_EMULATOR_BUILD_ARCH=%s\n' "$arch" > "$bundle_dir/build-arch.env"
   make_iso_from_dir "$bundle_iso" "STACKBUNDLE" "$bundle_dir"
 
-  # render-stack-env (inside the guest) mounts a STACKCFG disk containing
-  # runtime.env + base.env. At runtime the host-side run-emulator.sh builds
-  # this ISO; at build time stack.service also starts the container, so we
-  # must provide the same shape here. Values mirror the defaults the runtime
-  # would supply — port-prefix 81 and matching host-port numbers (unused at
-  # build time since nothing is port-forwarded, but render-stack-env embeds
-  # them into /run/stack-auth/local-emulator.env).
-  mkdir -p "$runtime_cfg_dir"
-  {
-    printf 'STACK_EMULATOR_PORT_PREFIX=81\n'
-    printf 'STACK_EMULATOR_DASHBOARD_HOST_PORT=26700\n'
-    printf 'STACK_EMULATOR_BACKEND_HOST_PORT=26701\n'
-    printf 'STACK_EMULATOR_MINIO_HOST_PORT=26702\n'
-    printf 'STACK_EMULATOR_INBUCKET_HOST_PORT=26703\n'
-    printf 'STACK_EMULATOR_VM_DIR_HOST=\n'
-  } > "$runtime_cfg_dir/runtime.env"
-  cp "$BUILD_ENV_FILE" "$runtime_cfg_dir/base.env"
-  make_iso_from_dir "$runtime_iso" "STACKCFG" "$runtime_cfg_dir"
+  if [ "$EMULATOR_CAPTURE_SAVEVM" = "1" ]; then
+    # render-stack-env (inside the guest) mounts a STACKCFG disk containing
+    # runtime.env + base.env. At runtime the host-side run-emulator.sh builds
+    # this ISO; in capture mode stack.service also starts during the build,
+    # so we must provide the same shape here. Values mirror the defaults the
+    # runtime would supply — port-prefix 81 and matching host-port numbers
+    # (unused at build time since nothing is port-forwarded, but
+    # render-stack-env embeds them into /run/stack-auth/local-emulator.env).
+    mkdir -p "$runtime_cfg_dir"
+    {
+      printf 'STACK_EMULATOR_PORT_PREFIX=81\n'
+      printf 'STACK_EMULATOR_DASHBOARD_HOST_PORT=26700\n'
+      printf 'STACK_EMULATOR_BACKEND_HOST_PORT=26701\n'
+      printf 'STACK_EMULATOR_MINIO_HOST_PORT=26702\n'
+      printf 'STACK_EMULATOR_INBUCKET_HOST_PORT=26703\n'
+      printf 'STACK_EMULATOR_VM_DIR_HOST=\n'
+    } > "$runtime_cfg_dir/runtime.env"
+    cp "$BUILD_ENV_FILE" "$runtime_cfg_dir/base.env"
+    make_iso_from_dir "$runtime_iso" "STACKCFG" "$runtime_cfg_dir"
+  fi
 
   : > "$serial_log"
   : > "$provision_log"
@@ -335,7 +355,7 @@ build_one() {
   local snapshot_args=()
   local runtime_disk_args=()
   local virtfs_args=(-virtfs "local,path=$tmp_dir,mount_tag=hostfs,security_model=none")
-  if [ "$EMULATOR_BUILD_SNAPSHOT" = "1" ]; then
+  if [ "$EMULATOR_CAPTURE_SAVEVM" = "1" ]; then
     # STACKCFG runtime ISO lets stack.service start during the build — same
     # disk shape render-stack-env expects at runtime. Placed before netdev
     # so its virtio-blk PCI slot precedes virtio-net-pci, matching the
@@ -360,7 +380,7 @@ build_one() {
     )
     # QEMU disallows migration when virtfs is mounted in the guest — virtfs
     # has guest-side state (open handles, mount table) that isn't migratable.
-    # Drop the host fs mount in snapshot mode; STACK_SERVICES_READY still
+    # Drop the host fs mount in capture mode; STACK_SERVICES_READY still
     # arrives on the serial log so contains_provision_marker can detect it.
     virtfs_args=()
   fi
@@ -385,7 +405,7 @@ build_one() {
 
   pid="$(cat "$pidfile")"
   local ready_marker="STACK_CLOUD_INIT_DONE"
-  if [ "$EMULATOR_BUILD_SNAPSHOT" = "1" ]; then
+  if [ "$EMULATOR_CAPTURE_SAVEVM" = "1" ]; then
     ready_marker="STACK_SERVICES_READY"
   fi
   elapsed=0
@@ -450,7 +470,7 @@ build_one() {
     exit 1
   fi
 
-  if [ "$EMULATOR_BUILD_SNAPSHOT" = "1" ]; then
+  if [ "$EMULATOR_CAPTURE_SAVEVM" = "1" ]; then
     local savevm_file="$IMAGE_DIR/stack-emulator-${arch}.savevm.zst"
     local savevm_raw="$tmp_dir/state.raw"
     local savevm_tmp="$tmp_dir/state.zst"
