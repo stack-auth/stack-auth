@@ -10,13 +10,15 @@ export const customerProductReadSchema = yupObject({
   id: yupString().nullable().defined(),
   quantity: yupNumber().defined(),
   product: inlineProductSchema.defined(),
-  type: yupString().oneOf(["one_time", "subscription"]).defined(),
+  /** @deprecated Product ownership is independent of purchase type. Will be removed in a future version. */
+  type: yupString().oneOf(["one_time", "subscription"]).optional(),
+  /** @deprecated Subscription management will move to a dedicated endpoint. Will be removed in a future version. */
   subscription: yupObject({
     subscription_id: yupString().nullable().defined(),
     current_period_end: yupString().nullable().defined(),
     cancel_at_period_end: yupBoolean().defined(),
     is_cancelable: yupBoolean().defined(),
-  }).nullable().defined(),
+  }).nullable().optional(),
   switch_options: yupArray(customerProductSwitchOptionSchema).optional(),
 }).defined();
 

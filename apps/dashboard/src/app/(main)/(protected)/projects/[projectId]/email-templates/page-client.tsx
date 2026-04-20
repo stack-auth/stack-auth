@@ -63,17 +63,17 @@ export default function PageClient() {
               gradient="default"
               contentClassName="p-4"
             >
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-4">
-                  <div className="p-2.5 rounded-xl bg-foreground/[0.04] ring-1 ring-foreground/[0.06]">
+              <div className="flex items-center justify-between gap-3">
+                <div className="flex items-center gap-4 min-w-0 flex-1">
+                  <div className="p-2.5 rounded-xl bg-foreground/[0.04] ring-1 ring-foreground/[0.06] shrink-0">
                     <EnvelopeSimpleIcon className="h-5 w-5 text-muted-foreground" />
                   </div>
-                  <Typography className="font-semibold text-foreground">
+                  <Typography className="font-semibold text-foreground truncate">
                     {template.displayName}
                   </Typography>
                 </div>
 
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 shrink-0">
                   <Button
                     variant="ghost"
                     size="sm"
