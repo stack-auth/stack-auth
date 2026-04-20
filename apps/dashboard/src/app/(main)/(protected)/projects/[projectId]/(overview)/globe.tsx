@@ -7,8 +7,10 @@ import type { MetricsRecentUser } from '@stackframe/stack-shared/dist/interface/
 import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { use } from '@stackframe/stack-shared/dist/utils/react';
 import { getFlagEmoji } from '@stackframe/stack-shared/dist/utils/unicode';
+import { Link } from '@/components/link';
 import dynamic from 'next/dynamic';
 import { RefObject, Suspense, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useProjectId } from '../use-admin-app';
 import { createPortal } from 'react-dom';
 import { GlobeMethods } from 'react-globe.gl';
 import {
@@ -472,6 +474,7 @@ function GlobeLoading(props: { devReason: string, className?: string }) {
 
 function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, satelliteCount, children }: {countryData: Record<string, number>, totalUsers: number, activeUsersByCountry: Record<string, MetricsRecentUser[]>, satelliteCount: number, children?: React.ReactNode}) {
   const countries = use(countriesPromise);
+  const projectId = useProjectId();
   const globeRef = useRef<GlobeMethods | undefined>(undefined);
 
   // Precompute per-country anchors/areas once — the GeoJSON is static across
@@ -783,8 +786,8 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
 
   // --- Live user avatar layer: one ref per placement, populated via a
   // separate rAF loop that projects each avatar's lat/lng onto the canvas.
-  const liveAvatarRefs = useRef<Array<HTMLDivElement | null>>([]);
-  const setLiveAvatarRef = (index: number) => (el: HTMLDivElement | null) => {
+  const liveAvatarRefs = useRef<Array<HTMLElement | null>>([]);
+  const setLiveAvatarRef = (index: number) => (el: HTMLElement | null) => {
     liveAvatarRefs.current[index] = el;
   };
 
@@ -1229,13 +1232,14 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
                   by the live-avatar rAF effect. */}
               <div
                 className='absolute inset-0 pointer-events-none overflow-hidden'
-                aria-hidden="true"
               >
                 {liveAvatars.map((placement, i) => (
-                  <div
+                  <Link
                     key={placement.key}
                     ref={setLiveAvatarRef(i)}
-                    className='absolute top-0 left-0 opacity-0 will-change-transform'
+                    href={`/projects/${projectId}/users/${placement.user.id}`}
+                    title={`View profile of ${placement.user.display_name ?? placement.user.primary_email ?? 'user'}`}
+                    className='absolute top-0 left-0 block opacity-0 will-change-transform pointer-events-auto cursor-pointer z-10'
                     style={{
                       width: `${placement.size}px`,
                       height: `${placement.size}px`,
@@ -1273,7 +1277,7 @@ function GlobeSectionInner({ countryData, totalUsers, activeUsersByCountry, sate
                     </div>
                     {/* Tiny solid "heart" dot as a secondary "live" signal. */}
                     <div className='absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full bg-emerald-400 dark:bg-emerald-300 ring-2 ring-background shadow' />
-                  </div>
+                  </Link>
                 ))}
               </div>
 
