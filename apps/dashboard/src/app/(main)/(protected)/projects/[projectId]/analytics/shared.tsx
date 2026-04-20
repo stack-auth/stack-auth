@@ -321,7 +321,7 @@ export function ErrorDisplay({ error, onRetry }: { error: unknown, onRetry: () =
   );
 }
 
-function resolvePlanId(products: Array<{ id: string | null, type: string }>): PlanId {
+function resolvePlanId(products: Array<{ id: string | null, type?: string }>): PlanId {
   if (products.some(p => p.id === "growth" && p.type === "subscription")) return "growth";
   if (products.some(p => p.id === "team" && p.type === "subscription")) return "team";
   return "free";
@@ -371,7 +371,7 @@ export function SessionReplayLimitBanner() {
   return <SessionReplayLimitBannerInner team={ownerTeam} />;
 }
 
-function SessionReplayLimitBannerInner({ team }: { team: { useItem: (itemId: string) => { quantity: number }, useProducts: () => Array<{ id: string | null, type: string }> } }) {
+function SessionReplayLimitBannerInner({ team }: { team: { useItem: (itemId: string) => { quantity: number }, useProducts: () => Array<{ id: string | null, type?: string }> } }) {
   const replaysItem = team.useItem("session_replays");
   const products = team.useProducts();
   const planId = resolvePlanId(products);
@@ -401,7 +401,7 @@ function SessionReplayLimitBannerInner({ team }: { team: { useItem: (itemId: str
   );
 }
 
-function AnalyticsEventLimitBannerInner({ team }: { team: { useItem: (itemId: string) => { quantity: number }, useProducts: () => Array<{ id: string | null, type: string }>, createCheckoutUrl: (options: { productId: string, returnUrl: string }) => Promise<string> } }) {
+function AnalyticsEventLimitBannerInner({ team }: { team: { useItem: (itemId: string) => { quantity: number }, useProducts: () => Array<{ id: string | null, type?: string }>, createCheckoutUrl: (options: { productId: string, returnUrl: string }) => Promise<string> } }) {
   const eventsItem = team.useItem("analytics_events");
   const products = team.useProducts();
   const planId = resolvePlanId(products);

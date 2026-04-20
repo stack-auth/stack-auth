@@ -496,7 +496,7 @@ async function setupProjectWithPlan(planId: PlanId) {
       }
     });
   }
-
+  await wait(3000);
   return { ownerTeamId };
 }
 

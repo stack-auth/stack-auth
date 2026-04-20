@@ -21,6 +21,7 @@ import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fiel
 import { userIdOrMeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { validateBase64Image } from "@stackframe/stack-shared/dist/utils/base64";
 import { decodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, StatusError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { hashPassword, isPasswordHashValid } from "@stackframe/stack-shared/dist/utils/hashes";
 import { has } from "@stackframe/stack-shared/dist/utils/objects";
@@ -264,7 +265,7 @@ async function checkAuthUsersSoftLimit(tenancy: Tenancy) {
   // capacity=0 and flood logs. Bulldozer's seed-time invariant is that
   // nothing reads the ledger until runBulldozerPaymentsInit runs post-seed;
   // we honor that here rather than forcing seed to double-init.
-  if (process.env.STACK_SEED_MODE === 'true') {
+  if (getEnvVariable('STACK_SEED_MODE', '') === 'true') {
     return;
   }
   const billingTeamId = getBillingTeamId(tenancy.project);
