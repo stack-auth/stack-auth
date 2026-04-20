@@ -170,6 +170,7 @@ export async function createOidcProvider(options: { id: string, baseUrl: string,
     keys: privateJwks,
   };
   const publicJwkSet = await getPublicJwkSet(privateJwks);
+  const oldStackServerSecret = getOldStackServerSecret();
 
   const oidc = new Provider(options.baseUrl, {
     adapter: createPrismaAdapter(options.id),
@@ -181,8 +182,8 @@ export async function createOidcProvider(options: { id: string, baseUrl: string,
       // issued before the rotation remain readable until they expire naturally.
       keys: [
         toHexString(await sha512(`oidc-idp-cookie-encryption-key:${getEnvVariable("STACK_SERVER_SECRET")}`)),
-        ...(getOldStackServerSecret()
-          ? [toHexString(await sha512(`oidc-idp-cookie-encryption-key:${getOldStackServerSecret()}`))]
+        ...(oldStackServerSecret
+          ? [toHexString(await sha512(`oidc-idp-cookie-encryption-key:${oldStackServerSecret}`))]
           : []),
       ],
     },
