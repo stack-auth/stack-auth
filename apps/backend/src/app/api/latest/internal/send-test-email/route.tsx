@@ -1,5 +1,9 @@
 import { isSecureEmailPort, lowLevelSendEmailDirectWithoutRetries } from "@/lib/emails-low-level";
+import { getBillingTeamId } from "@/lib/plan-entitlements";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { getStackServerApp } from "@/stack";
+import { KnownErrors } from "@stackframe/stack-shared";
+import { ITEM_IDS } from "@stackframe/stack-shared/dist/plans";
 import * as schemaFields from "@stackframe/stack-shared/dist/schema-fields";
 import { adaptSchema, adminAuthTypeSchema, emailSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -37,6 +41,21 @@ export const POST = createSmartRouteHandler({
     }).defined(),
   }),
   handler: async ({ body, auth }) => {
+    // Debit the emails_per_month quota before hitting SMTP so this endpoint
+    // can't be used as an unbounded SMTP-send-through / socket-exhaustion
+    // vector (admin provides arbitrary recipient_email and email_config, so
+    // without a quota guard even a compromised/hostile project admin could
+    // spam an arbitrary recipient or pin our event loop with 10s SMTP waits).
+    const billingTeamId = getBillingTeamId(auth.tenancy.project);
+    if (billingTeamId != null) {
+      const app = getStackServerApp();
+      const emailItem = await app.getItem({ itemId: ITEM_IDS.emailsPerMonth, teamId: billingTeamId });
+      const isDebited = await emailItem.tryDecreaseQuantity(1);
+      if (!isDebited) {
+        throw new KnownErrors.ItemQuantityInsufficientAmount(ITEM_IDS.emailsPerMonth, billingTeamId, 1);
+      }
+    }
+
     const resultOuter = await timeout(lowLevelSendEmailDirectWithoutRetries({
       tenancyId: auth.tenancy.id,
       emailConfig: {
