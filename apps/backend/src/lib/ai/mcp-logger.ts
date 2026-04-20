@@ -32,10 +32,12 @@ async function getServiceToken(): Promise<string | null> {
   if (!base) return null;
   const token = getEnvVariable("STACK_SPACETIMEDB_SERVICE_TOKEN", "");
   if (!token) return null;
+  const logToken = getEnvVariable("STACK_MCP_LOG_TOKEN", "");
+  if (!logToken) return null;
 
   if (!enrollmentPromise) {
     enrollmentPromise = rawCallReducer(token, "enroll_service", [
-      getEnvVariable("STACK_MCP_LOG_TOKEN"),
+      logToken,
       "Stack Auth Backend",
     ]).catch(err => {
       enrollmentPromise = null;
