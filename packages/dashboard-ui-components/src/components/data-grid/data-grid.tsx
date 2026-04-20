@@ -9,6 +9,7 @@ import {
   MinusSquare,
   Square,
 } from "@phosphor-icons/react";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { cn } from "@stackframe/stack-ui";
 import { useVirtualizer, type VirtualItem } from "@tanstack/react-virtual";
 import React, {
@@ -442,6 +443,11 @@ function SelectionCheckbox({
 }
 
 // ─── Infinite scroll sentinel ────────────────────────────────────────
+
+// Stable module-level no-op so passing `onLoadMore ?? NOOP` to
+// InfiniteScrollSentinel doesn't allocate a fresh function every render
+// (which would re-trigger the sentinel's IntersectionObserver effect).
+const NOOP = () => {};
 
 function InfiniteScrollSentinel({
   onIntersect,
@@ -938,11 +944,17 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
   // ── Handlers ─────────────────────────────────────────────────
   const handleSort = useCallback(
     (columnId: string, multi: boolean) => {
+      // Box pattern matches handleRowClick / handleSelectAll — keeps the
+      // reducer pure and fires the callback exactly once even under Strict
+      // Mode (which invokes updater functions twice).
+      const box: { next: DataGridState["sorting"] | null } = { next: null };
       onChange((s) => {
-        const next = toggleSort(s.sorting, columnId, multi);
-        onSortChange?.(next);
-        return { ...s, sorting: next };
+        box.next = toggleSort(s.sorting, columnId, multi);
+        return { ...s, sorting: box.next };
       });
+      if (box.next != null) {
+        onSortChange?.(box.next);
+      }
     },
     [onChange, onSortChange],
   );
@@ -1402,7 +1414,9 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
               }}
             >
               {rowVirtualizer.getVirtualItems().map((virtualRow: VirtualItem) => {
-                const row = rows[virtualRow.index]!;
+                const row = rows[virtualRow.index] ?? throwErr(
+                  `DataGrid: virtualized row index ${virtualRow.index} out of range (rows.length=${rows.length})`,
+                );
                 const rowId = getRowId(row);
                 const isSelected = state.selection.selectedIds.has(rowId);
 
@@ -1472,7 +1486,7 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
           {/* Infinite scroll sentinel */}
           {paginationMode === "infinite" && hasMore && !isLoading && (
             <InfiniteScrollSentinel
-              onIntersect={onLoadMore ?? (() => {})}
+              onIntersect={onLoadMore ?? NOOP}
               isLoading={isLoadingMore}
               rootRef={infiniteScrollRootRef}
               strings={strings}

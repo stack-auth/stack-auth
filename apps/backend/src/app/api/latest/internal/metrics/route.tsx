@@ -238,6 +238,62 @@ async function loadActiveUsersByCountry(
   return result;
 }
 
+// Distinct user count inside the same ~2-minute `$token-refresh` window used
+// by `loadActiveUsersByCountry`. This is the "live users right now" number on
+// the overview globe and works independently of whether the analytics app is
+// installed (unlike `analytics_overview.online_live`, which relies on
+// `$page-view` events).
+async function loadLiveUsersCount(
+  tenancy: Tenancy,
+  now: Date,
+  includeAnonymous: boolean = false,
+): Promise<number> {
+  const since = new Date(now.getTime() - ACTIVE_USERS_BY_COUNTRY_WINDOW_MS);
+
+  try {
+    const clickhouseClient = getClickhouseAdminClient();
+    const res = await clickhouseClient.query({
+      query: `
+        SELECT uniqExact(user_id) AS live_users
+        FROM analytics_internal.events
+        WHERE event_type = '$token-refresh'
+          AND project_id = {projectId:String}
+          AND branch_id = {branchId:String}
+          AND user_id IS NOT NULL
+          AND event_at >= {since:DateTime}
+          AND ({includeAnonymous:UInt8} = 1 OR CAST(data.is_anonymous, 'UInt8') = 0)
+      `,
+      query_params: {
+        projectId: tenancy.project.id,
+        branchId: tenancy.branchId,
+        includeAnonymous: includeAnonymous ? 1 : 0,
+        since: formatClickhouseDateTimeParam(since),
+      },
+      format: "JSONEachRow",
+    });
+    const rows: { live_users: number | string }[] = await res.json();
+    return Number(rows[0]?.live_users ?? 0);
+  } catch (error) {
+    // Best-effort: a missing ClickHouse table or CH outage must not break the
+    // main metrics call. Sentry-log ClickHouseError vs. everything else so a
+    // noisy CH outage doesn't drown out real bugs.
+    const captureId = error instanceof ClickHouseError
+      ? "internal-metrics-load-live-users-count-clickhouse-error"
+      : "internal-metrics-load-live-users-count-unexpected-error";
+    captureError(captureId, new StackAssertionError(
+      "Failed to load live users count for internal metrics.",
+      {
+        cause: error,
+        tenancyId: tenancy.id,
+        projectId: tenancy.project.id,
+        branchId: tenancy.branchId,
+        windowMs: ACTIVE_USERS_BY_COUNTRY_WINDOW_MS,
+      },
+    ));
+    return 0;
+  }
+}
+
 async function loadTotalUsers(tenancy: Tenancy, now: Date, includeAnonymous: boolean = false): Promise<DataPoints> {
   const schema = await getPrismaSchemaForTenancy(tenancy);
   const prisma = await getPrismaClientForTenancy(tenancy);
@@ -1363,6 +1419,7 @@ export const GET = createSmartRouteHandler({
     bodyType: yupString().oneOf(["json"]).defined(),
     body: yupObject({
       total_users: yupNumber().integer().defined(),
+      live_users: yupNumber().integer().defined(),
       daily_users: DataPointsSchema,
       daily_active_users: DataPointsSchema,
       users_by_country: yupRecord(yupString().defined(), yupNumber().defined()).defined(),
@@ -1389,6 +1446,7 @@ export const GET = createSmartRouteHandler({
       dailyActiveUsers,
       usersByCountry,
       activeUsersByCountry,
+      liveUsers,
       recentlyRegistered,
       recentlyActive,
       loginMethods,
@@ -1402,6 +1460,7 @@ export const GET = createSmartRouteHandler({
       loadDailyActiveUsers(req.auth.tenancy, now, includeAnonymous),
       loadUsersByCountry(req.auth.tenancy, includeAnonymous),
       loadActiveUsersByCountry(req.auth.tenancy, now, includeAnonymous),
+      loadLiveUsersCount(req.auth.tenancy, now, includeAnonymous),
       usersCrudHandlers.adminList({
         tenancy: req.auth.tenancy,
         query: {
@@ -1434,6 +1493,7 @@ export const GET = createSmartRouteHandler({
       bodyType: "json",
       body: {
         total_users: totalUsers,
+        live_users: liveUsers,
         daily_users: dailyUsers,
         daily_active_users: dailyActiveUsers,
         users_by_country: usersByCountry,

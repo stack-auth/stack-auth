@@ -402,6 +402,97 @@ async function seedDummyTeams(options: SeedDummyTeamsOptions): Promise<Map<strin
   return teamNameToId;
 }
 
+type SeedOauthProvider = { providerId: string, accountId: string, email: string };
+
+/**
+ * Idempotently backfill OAuth provider rows for an existing seeded user.
+ *
+ * `adminCreate` already writes these on first insert, so this is a no-op for
+ * newly-created users. For users that existed before the seed grew its OAuth
+ * list, this appends the missing providers. Append-only by design: we never
+ * delete providers present in the DB but absent from the seed list, because
+ * that would cascade into AuthMethod rows and break unrelated tests.
+ *
+ * Dedupe key is `(configOAuthProviderId, providerAccountId)`, matching the
+ * `@@unique([tenancyId, configOAuthProviderId, projectUserId, providerAccountId])`
+ * constraint on ProjectUserOAuthAccount.
+ *
+ * Note: writes are sequential, not wrapped in `$transaction`, because the
+ * shared `PrismaClientTransaction` type is a union whose transaction branch
+ * doesn't expose `$transaction`. A partial failure could leak an orphan
+ * AuthMethod row; that's acceptable for a seed.
+ */
+async function syncSeedUserOauthProviders(
+  prisma: PrismaClientTransaction,
+  tenancyId: string,
+  projectUserId: string,
+  providers: readonly SeedOauthProvider[],
+): Promise<void> {
+  if (providers.length === 0) return;
+
+  const existing = await prisma.projectUserOAuthAccount.findMany({
+    where: { tenancyId, projectUserId },
+    select: { configOAuthProviderId: true, providerAccountId: true },
+  });
+  const existingKey = new Set(existing.map((a) => `${a.configOAuthProviderId}::${a.providerAccountId}`));
+
+  for (const provider of providers) {
+    if (existingKey.has(`${provider.providerId}::${provider.accountId}`)) continue;
+
+    const authMethod = await prisma.authMethod.create({
+      data: { tenancyId, projectUserId },
+    });
+    await prisma.projectUserOAuthAccount.create({
+      data: {
+        tenancyId,
+        projectUserId,
+        configOAuthProviderId: provider.providerId,
+        providerAccountId: provider.accountId,
+        email: provider.email,
+        oauthAuthMethod: { create: { authMethodId: authMethod.id } },
+        allowConnectedAccounts: true,
+        allowSignIn: true,
+      },
+    });
+  }
+}
+
+/**
+ * Sample a random subset of OAuth providers for a bulk synthetic user.
+ *
+ * Distribution: ~50% get multiple accounts, ~30% get one, ~20% get none.
+ * Consumes 1 + (roll < 0.5 ? 1 : 0) + n draws from `rand` per call; callers
+ * relying on a deterministic PRNG stream must preserve this invariant.
+ */
+function pickBulkOauthProviders(params: {
+  rand: () => number,
+  available: readonly string[],
+  email: string,
+}): SeedOauthProvider[] {
+  const { rand, available, email } = params;
+  const roll = rand();
+  let n: number;
+  if (roll < 0.5) {
+    n = 2 + Math.floor(rand() * (available.length - 1));
+  } else if (roll < 0.8) {
+    n = 1;
+  } else {
+    n = 0;
+  }
+  const pool = [...available];
+  const picked: string[] = [];
+  for (let i = 0; i < n && pool.length > 0; i++) {
+    const idx = Math.floor(rand() * pool.length);
+    picked.push(pool[idx]!);
+    pool.splice(idx, 1);
+  }
+  return picked.map((providerId) => ({
+    providerId,
+    accountId: `${email}-${providerId}`,
+    email,
+  }));
+}
+
 async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<string, string>> {
   const { prisma, tenancy, teamNameToId } = options;
 
@@ -444,6 +535,17 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
       });
       userId = createdUser.id;
     }
+
+    await syncSeedUserOauthProviders(
+      prisma,
+      tenancy.id,
+      userId,
+      user.oauthProviders.map((p) => ({
+        providerId: p.providerId,
+        accountId: p.accountId,
+        email: user.email,
+      })),
+    );
 
     if (user.createdAt != null) {
       await prisma.projectUser.updateMany({
@@ -522,27 +624,11 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
       const displayName = `${firstName} ${lastName}`;
       const hour = 8 + Math.floor(bulkRand() * 12);
       const bulkCreatedAt = daysAgo(dayBack, hour);
-      // ~50% of users get multiple connected oauth accounts, ~30% get one, ~20% get none
-      const oauthRoll = bulkRand();
-      let numProviders: number;
-      if (oauthRoll < 0.5) {
-        numProviders = 2 + Math.floor(bulkRand() * (bulkOauthProviders.length - 1));
-      } else if (oauthRoll < 0.8) {
-        numProviders = 1;
-      } else {
-        numProviders = 0;
-      }
-      const providerPool = [...bulkOauthProviders];
-      const pickedProviders: string[] = [];
-      for (let p = 0; p < numProviders && providerPool.length > 0; p++) {
-        const idx = Math.floor(bulkRand() * providerPool.length);
-        pickedProviders.push(providerPool[idx]!);
-        providerPool.splice(idx, 1);
-      }
-      const oauthProvider = pickedProviders.map((id) => ({
-        providerId: id,
-        accountId: `${email}-${id}`,
-      }));
+      const oauthProvider = pickBulkOauthProviders({
+        rand: bulkRand,
+        available: bulkOauthProviders,
+        email,
+      });
 
       const existing = await prisma.projectUser.findFirst({
         where: {
@@ -566,7 +652,7 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
             oauth_providers: oauthProvider.map((p) => ({
               id: p.providerId,
               account_id: p.accountId,
-              email,
+              email: p.email,
             })),
             profile_image_url: null,
           },
@@ -575,6 +661,7 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
       } else {
         bulkUserId = existing.projectUserId;
       }
+      await syncSeedUserOauthProviders(prisma, tenancy.id, bulkUserId, oauthProvider);
       await prisma.projectUser.updateMany({
         where: { tenancyId: tenancy.id, projectUserId: bulkUserId },
         data: { createdAt: bulkCreatedAt },

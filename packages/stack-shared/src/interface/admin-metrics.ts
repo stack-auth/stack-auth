@@ -158,6 +158,15 @@ export const MetricsActiveUsersByCountrySchema = yupRecord(
 
 export const MetricsResponseBodySchema = yupObject({
   total_users: yupNumber().integer().defined(),
+  // Count of distinct users seen refreshing a token in the last ~2 minutes —
+  // the "who's online right now" number rendered on the overview globe. Derived
+  // from the same `$token-refresh` window that powers `active_users_by_country`,
+  // so it works for every project regardless of whether the analytics app
+  // (page-view-based `analytics_overview.online_live`) is installed.
+  //
+  // Optional for one release cycle so older servers don't fail schema
+  // validation on the returned body. Tighten to `.defined()` after.
+  live_users: yupNumber().integer().optional().default(0),
   daily_users: MetricsDataPointsSchema,
   daily_active_users: MetricsDataPointsSchema,
   users_by_country: yupRecord(yupString().defined(), yupNumber().defined()).defined(),
