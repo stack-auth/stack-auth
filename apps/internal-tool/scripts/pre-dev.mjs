@@ -71,6 +71,11 @@ async function provisionServiceToken() {
     return;
   }
 
+  if (typeof token !== "string" || token.trim() === "") {
+    console.warn("[internal-tool] /v1/identity returned no usable token field; skipping write to .env.development.local. Backend SpacetimeDB features will error until STACK_SPACETIMEDB_SERVICE_TOKEN is set manually.");
+    return;
+  }
+
   const existingContent = existsSync(backendEnvLocal) ? readFileSync(backendEnvLocal, "utf8") : "";
   const prefix = existingContent && !existingContent.endsWith("\n") ? "\n" : "";
   appendFileSync(

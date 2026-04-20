@@ -30,16 +30,8 @@ let enrollmentPromise: Promise<void> | null = null;
 async function getServiceToken(): Promise<string | null> {
   const base = httpBase();
   if (!base) return null;
-
   const token = getEnvVariable("STACK_SPACETIMEDB_SERVICE_TOKEN", "");
-  if (!token) {
-    throw new StackAssertionError(
-      "STACK_SPACETIMEDB_SERVICE_TOKEN is not set. Mint one with: " +
-      "`curl -X POST <STACK_SPACETIMEDB_URL>/v1/identity` " +
-      "(e.g. http://localhost:8139/v1/identity for local dev) and set the `token` " +
-      "field from the response as an env var."
-    );
-  }
+  if (!token) return null;
 
   if (!enrollmentPromise) {
     enrollmentPromise = rawCallReducer(token, "enroll_service", [
@@ -91,7 +83,8 @@ export async function callReducerStrict(reducer: string, args: unknown[]): Promi
   const token = await getServiceToken();
   if (!token) {
     throw new StackAssertionError(
-      `SpacetimeDB is not configured (STACK_SPACETIMEDB_URL is empty). Reducer ${reducer} cannot run.`
+      `SpacetimeDB is not configured. Reducer ${reducer} cannot run. ` +
+      `Check STACK_SPACETIMEDB_URL and STACK_SPACETIMEDB_SERVICE_TOKEN.`
     );
   }
   await rawCallReducer(token, reducer, args);
