@@ -98,9 +98,12 @@ async function processEmailDeliveryEvent(kind: EmailEventKind, payload: ResendWe
           Prisma.sql`"markedAsSpamAt"`;
 
   // For `delivered` and `bounced` we don't want to overwrite a terminal state if we
-  // somehow receive events out of order. For `delivery_delayed` (non-terminal) and
-  // `complained` (separate column) we also gate on the row not already being in that state.
-  const terminalGuard = Prisma.sql`"deliveredAt" IS NULL AND "bouncedAt" IS NULL`;
+  // somehow receive events out of order. `complained` records a separate user action
+  // (markedAsSpamAt) that is meaningful even after delivery, so the terminal guard
+  // doesn't apply — the typical Resend sequence is email.delivered → email.complained.
+  const terminalGuard = kind === "complained"
+    ? Prisma.sql`TRUE`
+    : Prisma.sql`"deliveredAt" IS NULL AND "bouncedAt" IS NULL`;
   const selfGuard = kind === "delivered"
     ? Prisma.sql`"deliveredAt" IS NULL`
     : kind === "delivery_delayed"
@@ -159,6 +162,8 @@ async function processEmailDeliveryEvent(kind: EmailEventKind, payload: ResendWe
       FROM candidate
       WHERE e."tenancyId" = candidate."tenancyId"
         AND e."id" = candidate."id"
+        AND ${terminalGuard}
+        AND ${selfGuard}
       RETURNING e."id", e."tenancyId";
     `);
 
@@ -178,6 +183,7 @@ function parseEventTimestamp(raw: string | undefined): Date {
   if (raw) {
     const parsed = new Date(raw);
     if (!isNaN(parsed.getTime())) return parsed;
+    captureError("resend-webhook-parse-event-timestamp-invalid", new StackAssertionError("parseEventTimestamp: failed to parse raw timestamp, falling back to current time", { raw }));
   }
   return new Date();
 }
