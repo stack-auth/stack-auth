@@ -1,12 +1,380 @@
 ---
 title: Build a Team-Based App
-description: Tutorial stub for implementing teams and role-based access with Stack Auth.
+description: Model B2B tenants as teams, wire team selection and deep links, enforce RBAC on the server, and grow membership with invitations.
 ---
 
-This tutorial is coming soon.
+This tutorial walks through a **multi-tenant** product where a **team** is the customer boundary (workspace, organization, account). You get membership-scoped team access, permission checks, team selection UX, and invitations.
 
-## Planned coverage
+If you have not installed Stack yet (handler routes, `StackProvider`, environment variables), start with [Build a SaaS with Stack Auth](/guides/other/tutorials/build-a-saas-with-stack-auth), then continue here.
 
-- Team creation and membership flows
-- Team selection patterns
-- RBAC permission modeling for multi-tenant apps
+## What you will have at the end
+
+- Teams listed and resolved **for the signed-in user** (safe deep links like `/team/[teamId]`).
+- **Team creation** from the client (with dashboard settings) and an optional **server** provisioning pattern.
+- A **team switcher** pattern using `SelectedTeamSwitcher` with deep links and optional `selectedTeam` updates.
+- **RBAC** checks aligned with dashboard-defined team permissions, with server-side enforcement before mutations.
+- A path to **invite** collaborators and accept invitations.
+
+## Prerequisites
+
+- Stack Auth installed as in [Build a SaaS with Stack Auth](/guides/other/tutorials/build-a-saas-with-stack-auth) (Next.js App Router examples below assume `stackServerApp` in `stack/server.ts` and `@stackframe/stack` in the app).
+- A project in the [dashboard](https://app.stack-auth.com/projects) where you can edit **Teams** and **Team permissions**.
+
+<Note>
+  On the server, prefer **`user.getTeam(id)`** and **`user.listTeams()`** from `stackServerApp.getUser()` so you only ever load teams the current user belongs to. `stackServerApp.getTeam` / `stackServerApp.listTeams` operate at **project** scope (useful for admin or provisioning, not for normal tenant pages).
+</Note>
+
+## 1. Turn on teams in the dashboard
+
+In your Stack project:
+
+1. **Teams** - Enable team features and review defaults (for example whether a personal team is created on sign-up), per [Teams](/guides/apps/teams/overview).
+2. **Client-side team creation** - If the browser will call `user.createTeam`, enable client team creation in team settings (same guide).
+3. **Team permissions** - In **Team permissions**, define the actions your product needs (for example `export_reports`, nested under a role like `admin`). Add Stack **system** permissions where needed; their IDs start with `$` (for example `$invite_members`, `$read_members`, `$update_team`). See [RBAC](/guides/apps/rbac/overview).
+
+Keep client-side permission checks as **UX only**; always re-check on the server before changing data.
+
+## 2. List teams and resolve a team from a URL
+
+Use the **current user** as the scope: `listTeams` / `useTeams`, and `getTeam` / `useTeam` for one id.
+
+<Tabs>
+  <Tab title="Server Component">
+    ```tsx title="app/team/[teamId]/page.tsx"
+    import Link from "next/link";
+    import { stackServerApp } from "@/stack/server";
+
+    type PageProps = { params: { teamId: string } };
+
+    export default async function TeamHomePage({ params }: PageProps) {
+      const user = await stackServerApp.getUser({ or: "redirect" });
+      const team = await user.getTeam(params.teamId);
+
+      if (!team) {
+        return <p>You are not a member of this team.</p>;
+      }
+
+      return (
+        <main>
+          <h1>{team.displayName}</h1>
+          <p>Team ID: {team.id}</p>
+          <Link href="/team">All teams</Link>
+        </main>
+      );
+    }
+    ```
+  </Tab>
+  <Tab title="Client Component">
+    ```tsx title="app/team/[teamId]/team-home.tsx"
+    "use client";
+
+    import Link from "next/link";
+    import { useUser } from "@stackframe/stack";
+
+    type Props = { teamId: string };
+
+    export function TeamHome({ teamId }: Props) {
+      const user = useUser({ or: "redirect" });
+      const team = user.useTeam(teamId);
+
+      if (!team) {
+        return <p>You are not a member of this team.</p>;
+      }
+
+      return (
+        <main>
+          <h1>{team.displayName}</h1>
+          <p>Team ID: {team.id}</p>
+          <Link href="/team">All teams</Link>
+        </main>
+      );
+    }
+    ```
+  </Tab>
+</Tabs>
+
+If your framework types route `params` as a `Promise` (newer Next.js), `await` the params object before reading `teamId`.
+
+### Index page: all workspaces
+
+<Tabs>
+  <Tab title="Server">
+    ```tsx title="app/team/page.tsx"
+    import Link from "next/link";
+    import { stackServerApp } from "@/stack/server";
+
+    export default async function TeamsIndexPage() {
+      const user = await stackServerApp.getUser({ or: "redirect" });
+      const teams = await user.listTeams();
+
+      return (
+        <ul>
+          {teams.map((team) => (
+            <li key={team.id}>
+              <Link href={`/team/${team.id}`}>{team.displayName}</Link>
+            </li>
+          ))}
+        </ul>
+      );
+    }
+    ```
+  </Tab>
+  <Tab title="Client">
+    ```tsx title="app/team/page.tsx"
+    "use client";
+
+    import Link from "next/link";
+    import { useUser } from "@stackframe/stack";
+
+    export default function TeamsIndexPage() {
+      const user = useUser({ or: "redirect" });
+      const teams = user.useTeams();
+
+      return (
+        <ul>
+          {teams.map((team) => (
+            <li key={team.id}>
+              <Link href={`/team/${team.id}`}>{team.displayName}</Link>
+            </li>
+          ))}
+        </ul>
+      );
+    }
+    ```
+  </Tab>
+</Tabs>
+
+## 3. Create teams
+
+### Signed-in user creates a team (client)
+
+After enabling **client-side team creation**, the creator is added as a member with your project’s default creator permissions:
+
+```tsx title="components/create-workspace-button.tsx"
+"use client";
+
+import { useRouter } from "next/navigation";
+import { useUser } from "@stackframe/stack";
+
+export function CreateWorkspaceButton() {
+  const user = useUser({ or: "redirect" });
+  const router = useRouter();
+
+  return (
+    <button
+      type="button"
+      onClick={async () => {
+        const team = await user.createTeam({ displayName: "My workspace" });
+        router.push(`/team/${team.id}`);
+      }}
+    >
+      New workspace
+    </button>
+  );
+}
+```
+
+### Provision a team without a browser session (server)
+
+For imports, support tools, or other **server** jobs, `stackServerApp.createTeam` creates a team at project scope (see [Teams](/guides/apps/teams/overview)); wire membership separately if your flow requires it.
+
+```tsx title="scripts/provision-team.example.ts"
+import { stackServerApp } from "@/stack/server";
+
+export async function provisionEmptyTeam(displayName: string) {
+  return await stackServerApp.createTeam({ displayName });
+}
+```
+
+## 4. Team selection and deep links
+
+Stack tracks a **`selectedTeam`** on the user for “current workspace” UX. For B2B apps, **deep links** (`/team/[teamId]`) are usually recommended so shared URLs always refer to the same tenant; see [Team selection](/guides/apps/teams/team-selection).
+
+`SelectedTeamSwitcher` updates `selectedTeam` when `selectedTeam` is passed, optionally navigates via `urlMap`, and can skip updating stored selection with `noUpdateSelectedTeam`:
+
+```tsx title="components/team-switcher.tsx"
+"use client";
+
+import { SelectedTeamSwitcher, useUser } from "@stackframe/stack";
+
+type Props = { currentTeamId: string };
+
+export function TeamSwitcher({ currentTeamId }: Props) {
+  const user = useUser({ or: "redirect" });
+  const team = user.useTeam(currentTeamId);
+  if (!team) {
+    return null;
+  }
+
+  return (
+    <SelectedTeamSwitcher
+      urlMap={(t) => `/team/${t.id}`}
+      selectedTeam={team}
+    />
+  );
+}
+```
+
+Use `noUpdateSelectedTeam` when you only want navigation (for example “open workspace” without changing the persisted default). Details and examples are in [Team selection](/guides/apps/teams/team-selection).
+
+## 5. Enforce RBAC (server + client)
+
+Define permissions in the dashboard, then branch on **`getPermission`** / **`usePermission`** on the **user**, scoped to a **team**.
+
+Replace `export_reports` with a permission you created.
+
+<Tabs>
+  <Tab title="Server Component">
+    ```tsx title="app/team/[teamId]/reports/page.tsx"
+    import { stackServerApp } from "@/stack/server";
+
+    type PageProps = { params: { teamId: string } };
+
+    export default async function ReportsPage({ params }: PageProps) {
+      const user = await stackServerApp.getUser({ or: "redirect" });
+      const team = await user.getTeam(params.teamId);
+      if (!team) {
+        return <p>Workspace not found.</p>;
+      }
+
+      const canExport = await user.getPermission(team, "export_reports");
+      if (!canExport) {
+        return <p>You do not have access to exports in this workspace.</p>;
+      }
+
+      return <button type="button">Download report</button>;
+    }
+    ```
+  </Tab>
+  <Tab title="Client Component (UX only)">
+    ```tsx title="components/export-reports-button.tsx"
+    "use client";
+
+    import { useUser } from "@stackframe/stack";
+    import type { CurrentUser, Team } from "@stackframe/stack";
+
+    type Props = { teamId: string };
+
+    /** Split so `usePermission` only runs when `useTeam` returned a real team (Rules of Hooks). */
+    export function ExportReportsButton({ teamId }: Props) {
+      const user = useUser({ or: "redirect" });
+      const team = user.useTeam(teamId);
+      if (!team) {
+        return <p>Workspace not found.</p>;
+      }
+      return <ExportReportsButtonInner user={user} team={team} />;
+    }
+
+    function ExportReportsButtonInner({ user, team }: { user: CurrentUser; team: Team }) {
+      const permission = user.usePermission(team, "export_reports");
+      if (!permission) {
+        return null;
+      }
+      return <button type="button">Download report</button>;
+    }
+    ```
+  </Tab>
+</Tabs>
+
+System permissions use the same API, for example:
+
+```tsx
+const canInvite = await user.getPermission(team, "$invite_members");
+```
+
+For listing effective permissions, use `listPermissions` / `usePermissions` ([RBAC](/guides/apps/rbac/overview)).
+
+### Server action before a mutation
+
+```tsx title="app/actions/reports.ts"
+"use server";
+
+import { stackServerApp } from "@/stack/server";
+
+export async function requestReportExportAction(teamId: string) {
+  const user = await stackServerApp.getUser({ or: "throw" });
+  const team = await user.getTeam(teamId);
+  if (!team) {
+    throw new Error("Not a member of this team");
+  }
+  const canExport = await user.getPermission(team, "export_reports");
+  if (!canExport) {
+    throw new Error("Forbidden");
+  }
+
+  // TODO: enqueue export job scoped to team.id
+  return { ok: true as const };
+}
+```
+
+## 6. Invitations and membership
+
+Users with **`$invite_members`** can invite by email from the `Team` object (options object in the SDK):
+
+```tsx
+await team.inviteUser({ email: "colleague@company.com" });
+```
+
+Recipients with a **verified** email matching the invitation can list pending invites and accept:
+
+```tsx title="components/pending-invites.tsx"
+"use client";
+
+import { useUser } from "@stackframe/stack";
+
+export function PendingInvites() {
+  const user = useUser({ or: "redirect" });
+  const invitations = user.useTeamInvitations();
+
+  return (
+    <ul>
+      {invitations.map((inv) => (
+        <li key={inv.id}>
+          {inv.teamDisplayName} - {inv.recipientEmail}
+          <button
+            type="button"
+            onClick={async () => {
+              await inv.accept();
+            }}
+          >
+            Accept
+          </button>
+        </li>
+      ))}
+    </ul>
+  );
+}
+```
+
+Sender-side listing and revokes use `team.listInvitations` / `team.useInvitations` ([Teams](/guides/apps/teams/overview)).
+
+## 7. Metadata, profiles, and members
+
+Teams support `clientMetadata`, `serverMetadata`, and `clientReadOnlyMetadata` on `team.update` ([Teams](/guides/apps/teams/overview)). Per-team member display uses **`getTeamProfile` / `useTeamProfile`** on the user; listing members uses **`team.listUsers` / `team.useUsers`** and requires **`$read_members`** on the client.
+
+## Related guides
+
+| Topic | Guide |
+|--------|--------|
+| Auth bootstrap and route protection | [Build a SaaS with Stack Auth](/guides/other/tutorials/build-a-saas-with-stack-auth) |
+| Teams API reference | [Teams](/guides/apps/teams/overview) |
+| `SelectedTeamSwitcher` and URL strategies | [Team selection](/guides/apps/teams/team-selection) |
+| Permission modeling and nesting | [RBAC](/guides/apps/rbac/overview) |
+| REST without the SDK | [API overview](/api/overview) |
+| Pre-launch | [Launch checklist](/guides/apps/launch-checklist/overview) |
+
+## FAQ
+
+<AccordionGroup>
+  <Accordion title="When should I use user.getTeam vs stackServerApp.getTeam?">
+    For product pages and APIs acting as the signed-in user, use **`(await stackServerApp.getUser()).getTeam(id)`** so membership is enforced by Stack. Use **`stackServerApp.getTeam`** only when you intentionally need **project-wide** team lookup (for example internal admin tools), then apply your own authorization.
+  </Accordion>
+
+  <Accordion title="Why split the client export button into two components?">
+    React hooks must run unconditionally. `useTeam` may leave you without a `Team` instance; `usePermission` needs that team. A small wrapper that returns early, and an inner component that only calls `usePermission` when `team` is defined, keeps hooks valid.
+  </Accordion>
+
+  <Accordion title="Do permissions replace checks in my database?">
+    Stack permissions answer **whether this Stack user may perform an action in this Stack team**. You should still scope **your** rows by `team.id` (or equivalent) and validate inputs-Stack does not replace your data model.
+  </Accordion>
+</AccordionGroup>
