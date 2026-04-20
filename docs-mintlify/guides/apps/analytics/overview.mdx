@@ -4,7 +4,7 @@ description: "Explore events, session replays, and SQL queries in your project's
 icon: "/images/app-icons/analytics.svg"
 ---
 
-The Analytics app gives you direct access to your project's analytics dataset in Stack Auth. You can inspect raw event tables, run ClickHouse SQL queries, and watch session replays to debug real user behavior.
+The Analytics app gives you direct access to your project's analytics dataset in Hexclave. You can inspect raw event tables, run ClickHouse SQL queries, and watch session replays to debug real user behavior.
 
 ## Overview
 
@@ -16,13 +16,13 @@ Analytics is organized into three areas in the dashboard:
 
 ## How Analytics Works
 
-Stack records analytics events and replay chunks, then exposes them through the Analytics app for read-only querying and investigation.
+Hexclave records analytics events and replay chunks, then exposes them through the Analytics app for read-only querying and investigation.
 
-User activity in your app flows into Stack event ingestion, which stores data in ClickHouse. This data powers the Tables view, the SQL query runner, and the Session replay UI.
+User activity in your app flows into Hexclave event ingestion, which stores data in ClickHouse. This data powers the Tables view, the SQL query runner, and the Session replay UI.
 
 ### What Gets Tracked
 
-Stack collects both client-side and server-side analytics events:
+Hexclave collects both client-side and server-side analytics events:
 
 - **Client-side events**: browser interaction events like `$page-view` and `$click`
 - **Server-side events**: currently `$token-refresh` and `$sign-up-rule-trigger`
@@ -31,20 +31,20 @@ Stack collects both client-side and server-side analytics events:
 
 To use analytics in your project:
 
-1. Open your Stack Auth dashboard
+1. Open your Hexclave dashboard
 2. Go to **Apps**
 3. Open **Analytics**
 4. Click **Enable**
 
 ## Quick Start
 
-1. Enable Analytics in your Stack Auth dashboard (**Apps -> Analytics**)
-2. Initialize Stack Auth on your frontend with `StackClientApp`/`StackProvider`
+1. Enable Analytics in your Hexclave dashboard (**Apps -> Analytics**)
+2. Initialize Hexclave on your frontend with `StackClientApp`/`StackProvider`
 3. Sign in with a real user session
 4. Open the app and navigate/click around
 5. Check **Analytics -> Tables** to confirm events are arriving
 
-After setup, Stack automatically captures client-side `$page-view` and `$click` events.
+After setup, Hexclave automatically captures client-side `$page-view` and `$click` events.
 
 If you want replay recordings, also enable `analytics.replays.enabled` in your client app config.
 

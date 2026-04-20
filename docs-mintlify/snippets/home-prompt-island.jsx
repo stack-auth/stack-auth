@@ -1,8 +1,8 @@
 export const HomePromptIsland = () => {
   const agentSetupPromptPlaceholder = `You are my coding agent.
 
-Set up Stack Auth in this project.
-- Install and configure Stack Auth
+Set up Hexclave in this project.
+- Install and configure Hexclave
 - Create initial authentication routes
 - Add sign-in and sign-up UI
 - Verify local development setup
@@ -28,7 +28,7 @@ Return the exact files changed and next steps.`;
         Start with a single prompt.
       </h1>
       <p className="mt-3 max-w-3xl text-base leading-7 text-zinc-600 dark:text-zinc-300">
-        Set up Stack Auth by copying the prompt below into your favorite coding agent.
+        Set up Hexclave by copying the prompt below into your favorite coding agent.
       </p>
 
       <div className="relative mt-6">

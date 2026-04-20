@@ -1,6 +1,6 @@
 ---
 title: Setup
-description: Install and configure Stack Auth for your project
+description: Install and configure Hexclave for your project
 sidebarTitle: Setup
 ---
 
@@ -10,7 +10,7 @@ sidebarTitle: Setup
 
 Before getting started, make sure you have a project set up for your chosen platform:
 
-- **Next.js**: A [Next.js project](https://nextjs.org/docs/getting-started/installation) using the app router (Stack Auth does not support the pages router on Next.js)
+- **Next.js**: A [Next.js project](https://nextjs.org/docs/getting-started/installation) using the app router (Hexclave does not support the pages router on Next.js)
 - **React**: A [React project](https://react.dev/learn/creating-a-react-app) (we show examples with Vite)
 - **JavaScript**: A Node.js project with Express
 - **Python**: A Python environment with your chosen framework (Django, FastAPI, or Flask)
@@ -27,7 +27,7 @@ We recommend using our **setup wizard** for JavaScript frameworks for a seamless
   The setup wizard is available for JavaScript/TypeScript frameworks. For Python projects, please use the manual installation method.
 </Info>
 
-Run Stack's installation wizard with the following command:
+Run Hexclave's installation wizard with the following command:
 
 ```sh title="Terminal"
 npx @stackframe/stack-cli@latest init
@@ -35,7 +35,7 @@ npx @stackframe/stack-cli@latest init
 
 #### Update API keys
 
-Create an account on [the Stack Auth dashboard](https://app.stack-auth.com/projects), create a new project, and copy its environment variables into the appropriate configuration file. If your project requires publishable client keys, create a project key that includes one and copy that as well.
+Create an account on [the Hexclave dashboard](https://app.stack-auth.com/projects), create a new project, and copy its environment variables into the appropriate configuration file. If your project requires publishable client keys, create a project key that includes one and copy that as well.
 
 <Tabs>
   <Tab title="Next.js">
@@ -72,7 +72,7 @@ That's it! The wizard should have created or updated the following files in your
   <Tab title="Next.js">
     - `app/handler/[...stack]/page.tsx`: Default pages for sign-in, sign-out, account settings, and more
     - `app/layout.tsx`: Updated to wrap the entire body with `StackProvider` and `StackTheme`
-    - `app/loading.tsx`: Suspense boundary for Stack's async hooks
+    - `app/loading.tsx`: Suspense boundary for Hexclave's async hooks
     - `stack/server.ts`: Contains the `stackServerApp` for server-side usage
     - `stack/client.ts`: Contains the `stackClientApp` for client-side usage
   </Tab>
@@ -93,7 +93,7 @@ That's it! The wizard should have created or updated the following files in your
 
 <Steps>
   <Step title="Install package">
-    First, install the appropriate Stack package:
+    First, install the appropriate Hexclave package:
 
     <Tabs>
       <Tab title="Next.js">
@@ -135,7 +135,7 @@ That's it! The wizard should have created or updated the following files in your
   </Step>
 
   <Step title="Create API keys">
-    [Register a new account on Stack](https://app.stack-auth.com/handler/sign-up), create a project in the dashboard, and copy the project ID. If your project requires publishable client keys, also create a project key from the left sidebar and copy the publishable client key. For server-side setups, also copy the secret server key.
+    [Register a new account on Hexclave](https://app.stack-auth.com/handler/sign-up), create a project in the dashboard, and copy the project ID. If your project requires publishable client keys, also create a project key from the left sidebar and copy the publishable client key. For server-side setups, also copy the secret server key.
   </Step>
 
   <Step title="Configure environment variables">
@@ -200,8 +200,8 @@ That's it! The wizard should have created or updated the following files in your
     </Tabs>
   </Step>
 
-  <Step title="Create Stack configuration">
-    Create the Stack app configuration:
+  <Step title="Create Hexclave configuration">
+    Create the Hexclave app configuration:
 
     <Tabs>
       <Tab title="Next.js (server)">
@@ -291,7 +291,7 @@ That's it! The wizard should have created or updated the following files in your
                 **kwargs,
             )
             if res.status_code >= 400:
-                raise Exception(f"Stack Auth API request failed with {res.status_code}: {res.text}")
+                raise Exception(f"Hexclave API request failed with {res.status_code}: {res.text}")
             return res.json()
         ```
       </Tab>
@@ -313,7 +313,7 @@ That's it! The wizard should have created or updated the following files in your
                 **kwargs,
             )
             if res.status_code >= 400:
-                raise Exception(f"Stack Auth API request failed with {res.status_code}: {res.text}")
+                raise Exception(f"Hexclave API request failed with {res.status_code}: {res.text}")
             return res.json()
         ```
       </Tab>
@@ -335,7 +335,7 @@ That's it! The wizard should have created or updated the following files in your
                 **kwargs,
             )
             if res.status_code >= 400:
-                raise Exception(f"Stack Auth API request failed with {res.status_code}: {res.text}")
+                raise Exception(f"Hexclave API request failed with {res.status_code}: {res.text}")
             return res.json()
         ```
       </Tab>
@@ -404,7 +404,7 @@ That's it! The wizard should have created or updated the following files in your
   </Step>
 
   <Step title="Add providers (Next.js and React only)">
-    For Next.js and React, wrap your app with Stack providers:
+    For Next.js and React, wrap your app with Hexclave providers:
 
     <Tabs>
       <Tab title="Next.js">
@@ -472,7 +472,7 @@ That's it! The wizard should have created or updated the following files in your
 
 ## Post-setup
 
-That's it! Stack is now configured in your project.
+That's it! Hexclave is now configured in your project.
 
 ### Testing your setup
 
@@ -515,7 +515,7 @@ That's it! Stack is now configured in your project.
   </Tab>
   <Tab title="Django">
     ```python title="Terminal"
-    # Test the Stack Auth API connection
+    # Test the Hexclave API connection
     print(stack_auth_request('GET', '/api/v1/projects/current'))
 
     # Start your Django server
@@ -524,7 +524,7 @@ That's it! Stack is now configured in your project.
   </Tab>
   <Tab title="FastAPI">
     ```python title="Terminal"
-    # Test the Stack Auth API connection
+    # Test the Hexclave API connection
     print(stack_auth_request('GET', '/api/v1/projects/current'))
 
     # Start your FastAPI server
@@ -533,7 +533,7 @@ That's it! Stack is now configured in your project.
   </Tab>
   <Tab title="Flask">
     ```python title="Terminal"
-    # Test the Stack Auth API connection
+    # Test the Hexclave API connection
     print(stack_auth_request('GET', '/api/v1/projects/current'))
 
     # Start your Flask server
@@ -544,19 +544,19 @@ That's it! Stack is now configured in your project.
 
 ### What you'll see
 
-For JavaScript frameworks with built-in UI components, you'll see the Stack Auth sign-up page:
+For JavaScript frameworks with built-in UI components, you'll see the Hexclave sign-up page:
 
 <Frame>
-  <img src="/images/sign-in.png" alt="Stack sign-in page" />
+  <img src="/images/sign-in.png" alt="Hexclave sign-in page" />
 </Frame>
 
 After signing up/in, you will be redirected back to the home page. You can also check out the account settings page.
 
 <Frame>
-  <img src="/images/account-settings.png" alt="Stack account settings page" />
+  <img src="/images/account-settings.png" alt="Hexclave account settings page" />
 </Frame>
 
-For Python and backend-only JavaScript setups, you'll interact with Stack Auth through the REST API.
+For Python and backend-only JavaScript setups, you'll interact with Hexclave through the REST API.
 
 ## Example usage
 

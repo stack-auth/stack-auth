@@ -52,12 +52,12 @@ type StackClientApp = {
 
 Creates a new `StackClientApp` instance.
 
-Because each app creates a new connection to Stack Auth's backend, you should re-use existing instances wherever possible.
+Because each app creates a new connection to Hexclave's backend, you should re-use existing instances wherever possible.
 
 <Info>
 This object is not usually constructed directly. More commonly, you would construct a [`StackServerApp`](#stackserverapp) instead, pass it into your app setup (see the [setup guide](/guides/getting-started/setup)), and then use the `useStackApp()` hook to obtain a `StackClientApp`.
 
-The [setup wizard](/guides/getting-started/setup) does these steps for you, so you don't need to worry about it unless you are manually setting up Stack Auth.
+The [setup wizard](/guides/getting-started/setup) does these steps for you, so you don't need to worry about it unless you are manually setting up Hexclave.
 
 If you're building a client-only app and don't have a `SECRET_SERVER_KEY`, you can construct a `StackClientApp` directly.
 
@@ -71,7 +71,7 @@ If you're building a client-only app and don't have a `SECRET_SERVER_KEY`, you c
       </ParamField>
 
       <ParamField body="baseUrl" type="string">
-        Base URL for the Stack Auth API.
+        Base URL for the Hexclave API.
       </ParamField>
 
       <ParamField body="projectId" type="string">
@@ -544,7 +544,7 @@ Creates a new `StackServerApp` instance.
       </ParamField>
 
       <ParamField body="baseUrl" type="string">
-        Base URL for the Stack Auth API.
+        Base URL for the Hexclave API.
       </ParamField>
 
       <ParamField body="projectId" type="string">

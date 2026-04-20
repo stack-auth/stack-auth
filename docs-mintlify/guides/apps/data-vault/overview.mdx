@@ -4,26 +4,26 @@ description: "An encrypted key-value store for sensitive data, with zero-knowled
 icon: "/images/app-icons/data-vault.svg"
 ---
 
-Data Vault is an encrypted key-value store built into Stack Auth. It lets you securely store sensitive data — API tokens, connection strings, secrets, or any other values — without ever exposing plaintext to Stack Auth's database or operators.
+Data Vault is an encrypted key-value store built into Hexclave. It lets you securely store sensitive data — API tokens, connection strings, secrets, or any other values — without ever exposing plaintext to Hexclave's database or operators.
 
 ## How it works
 
 Data Vault uses a **double encryption** design:
 
-1. **Client-side encryption** — Your SDK encrypts values and hashes keys locally before they leave your server, using a secret that only you know. Stack Auth never sees your plaintext keys or values.
-2. **Server-side encryption** — Stack Auth adds a second layer of envelope encryption using a rotating master key, so even the encrypted data at rest is further protected.
+1. **Client-side encryption** — Your SDK encrypts values and hashes keys locally before they leave your server, using a secret that only you know. Hexclave never sees your plaintext keys or values.
+2. **Server-side encryption** — Hexclave adds a second layer of envelope encryption using a rotating master key, so even the encrypted data at rest is further protected.
 
 Because keys are hashed before storage, **you cannot list or enumerate keys** in a store. You must know the exact key to retrieve a value.
 
 <Warning>
-  If you lose your secret, your data is unrecoverable. Even Stack Auth cannot decrypt your values without it. Keep your secret safe and backed up.
+  If you lose your secret, your data is unrecoverable. Even Hexclave cannot decrypt your values without it. Keep your secret safe and backed up.
 </Warning>
 
 ## Setup
 
 ### 1. Create a store
 
-Go to your project's **Data Vault** page in the [Stack Auth dashboard](https://app.stack-auth.com) and create a new store. Each store has a unique ID that you'll reference in your code.
+Go to your project's **Data Vault** page in the [Hexclave dashboard](https://app.stack-auth.com) and create a new store. Each store has a unique ID that you'll reference in your code.
 
 ### 2. Generate a secret
 
@@ -88,7 +88,7 @@ await store.setValue("some-key", "some-value", {
 
 - **Keys** are hashed with an iterated hash (100,000 iterations) derived from your secret and the logical key. The server only stores the hash.
 - **Values** are encrypted client-side using a derived key from the same secret + key pair, then re-encrypted server-side with KMS envelope encryption.
-- **Your secret** never leaves your server. Stack Auth's API only receives hashed keys and double-encrypted values.
+- **Your secret** never leaves your server. Hexclave's API only receives hashed keys and double-encrypted values.
 - **No enumeration** — since only hashed keys are stored, there is no way to list all keys in a store. This is a deliberate security property.
 
 ## Use cases

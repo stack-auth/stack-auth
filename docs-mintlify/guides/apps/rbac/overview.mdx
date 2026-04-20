@@ -9,7 +9,7 @@ Permissions are a way to control what each user can do and access within your ap
 
 ## Permission Types
 
-Stack supports two types of permissions:
+Hexclave supports two types of permissions:
 
 1. **Team Permissions**: Control what a user can do within a specific team
 2. **User Permissions**: Control what a user can do globally, across the entire project
@@ -18,17 +18,17 @@ Both permission types can be managed from the dashboard, and both support arbitr
 
 ## Team Permissions
 
-Team permissions control what a user can do within each team. You can create and assign permissions to team members from the Stack dashboard. These permissions could include actions like `create_post` or `read_secret_info`, or roles like `admin` or `moderator`. Within your app, you can verify if a user has a specific permission within a team.
+Team permissions control what a user can do within each team. You can create and assign permissions to team members from the Hexclave dashboard. These permissions could include actions like `create_post` or `read_secret_info`, or roles like `admin` or `moderator`. Within your app, you can verify if a user has a specific permission within a team.
 
 Permissions can be nested to create a hierarchical structure. For example, an `admin` permission can include both `moderator` and `user` permissions. We provide tools to help you verify whether a user has a permission directly or indirectly.
 
 ### Creating a Permission
 
-To create a new permission, navigate to the `Team Permissions` section of the Stack dashboard. You can select the permissions that the new permission will contain. Any permissions included within these selected permissions will also be recursively included.
+To create a new permission, navigate to the `Team Permissions` section of the Hexclave dashboard. You can select the permissions that the new permission will contain. Any permissions included within these selected permissions will also be recursively included.
 
 ### System Permissions
 
-Stack comes with a few predefined team permissions known as system permissions. These permissions start with a dollar sign (`$`). While you can assign these permissions to members or include them within other permissions, you cannot modify them as they are integral to the Stack backend system.
+Hexclave comes with a few predefined team permissions known as system permissions. These permissions start with a dollar sign (`$`). While you can assign these permissions to members or include them within other permissions, you cannot modify them as they are integral to the Hexclave backend system.
 
 ### Checking if a User has a Permission
 
@@ -144,7 +144,7 @@ Project permissions are global permissions that apply to a user across the entir
 
 ### Creating a Project Permission
 
-To create a new project permission, navigate to the `Project Permissions` section of the Stack dashboard. Similar to team permissions, you can select other permissions that the new permission will contain, creating a hierarchical structure.
+To create a new project permission, navigate to the `Project Permissions` section of the Hexclave dashboard. Similar to team permissions, you can select other permissions that the new permission will contain, creating a hierarchical structure.
 
 ### Checking if a User has a Project Permission
 

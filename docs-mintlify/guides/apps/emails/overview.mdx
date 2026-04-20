@@ -1,10 +1,10 @@
 ---
 title: "Emails"
-description: "Send custom emails, manage templates, and track delivery - all from Stack Auth."
+description: "Send custom emails, manage templates, and track delivery - all from Hexclave."
 icon: "/images/app-icons/emails.svg"
 ---
 
-Stack Auth includes a full email system for sending transactional and marketing emails to your users. It handles rendering, delivery, scheduling, notification preferences, and tracking out of the box.
+Hexclave includes a full email system for sending transactional and marketing emails to your users. It handles rendering, delivery, scheduling, notification preferences, and tracking out of the box.
 
 ## Email types
 
@@ -184,14 +184,14 @@ EmailTemplate.PreviewVariables = {
 
 Key concepts:
 
-- **`variablesSchema`**  - Define the shape of your template variables using [arktype](https://arktype.io). Stack Auth validates variables against this schema at render time.
+- **`variablesSchema`**  - Define the shape of your template variables using [arktype](https://arktype.io). Hexclave validates variables against this schema at render time.
 - **`<Subject>`**  - Sets the email subject line from inside the template.
 - **`<NotificationCategory>`**  - Declares whether this is a `"Transactional"` or `"Marketing"` email.
 - **`PreviewVariables`**  - Sample data used for the live preview in the dashboard editor.
 
 ### Built-in templates
 
-Stack Auth ships with templates for common auth flows. These are used automatically by the built-in authentication components:
+Hexclave ships with templates for common auth flows. These are used automatically by the built-in authentication components:
 
 | Template | Trigger |
 |---|---|
@@ -207,7 +207,7 @@ You can customize any built-in template from the dashboard under **Emails → Te
 
 ## Themes
 
-Themes wrap your email content in a consistent layout  - header, footer, background, branding. Stack Auth includes three built-in themes:
+Themes wrap your email content in a consistent layout  - header, footer, background, branding. Hexclave includes three built-in themes:
 
 - **Default Light**  - Clean white background with subtle shadow
 - **Default Dark**  - Dark background with light text
@@ -262,7 +262,7 @@ If a user has unsubscribed from Marketing emails, the email will be automaticall
 
 ## React components integration
 
-Emails integrate with Stack Auth UI components automatically (for example verification, password reset, and magic-link flows).  
+Emails integrate with Hexclave UI components automatically (for example verification, password reset, and magic-link flows).  
 For custom flows, trigger `sendEmail` from your server code:
 
 ```typescript
@@ -288,7 +288,7 @@ Configure your email server in the dashboard under **Emails → Email Settings**
 
 ### Shared (development only)
 
-The default for new projects. Emails are sent from `noreply@stackframe.co` using Stack Auth's shared infrastructure. Good for development  - not suitable for production.
+The default for new projects. Emails are sent from `noreply@stackframe.co` using Hexclave's shared infrastructure. Good for development  - not suitable for production.
 
 ### Custom SMTP
 
@@ -301,14 +301,14 @@ Connect any SMTP provider. Configure:
 
 ### Resend
 
-Connect your [Resend](https://resend.com) account by entering your API key. Stack Auth configures the SMTP connection automatically.
+Connect your [Resend](https://resend.com) account by entering your API key. Hexclave configures the SMTP connection automatically.
 
 ### Managed
 
-Let Stack Auth manage your email domain. Stack Auth handles DNS configuration and deliverability for you. Set up requires:
+Let Hexclave manage your email domain. Hexclave handles DNS configuration and deliverability for you. Set up requires:
 
 1. Choose a subdomain (e.g. `mail.yourapp.com`)
-2. Add the DNS records Stack Auth provides
+2. Add the DNS records Hexclave provides
 3. Verify the domain in the dashboard
 
 <Info>
@@ -317,7 +317,7 @@ Let Stack Auth manage your email domain. Stack Auth handles DNS configuration an
 
 ## Delivery stats
 
-Stack Auth tracks delivery metrics across multiple time windows (hour, day, week, month):
+Hexclave tracks delivery metrics across multiple time windows (hour, day, week, month):
 
 - **Sent**  - Successfully delivered
 - **Bounced**  - Rejected by the recipient's mail server

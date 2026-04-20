@@ -1,9 +1,9 @@
 ---
 title: "Passkey"
-description: "Set up passkey authentication with Stack Auth using WebAuthn"
+description: "Set up passkey authentication with Hexclave using WebAuthn"
 ---
 
-This guide explains how to set up Passkey authentication with Stack Auth. Passkeys allow users to sign in to your application securely using biometrics, mobile devices, or security keys.
+This guide explains how to set up Passkey authentication with Hexclave. Passkeys allow users to sign in to your application securely using biometrics, mobile devices, or security keys.
 
 <Info>
   Passkeys provide a more secure and convenient authentication method compared to traditional passwords by using WebAuthn standard.
@@ -12,8 +12,8 @@ This guide explains how to set up Passkey authentication with Stack Auth. Passke
 ## Integration Steps
 
 <Steps>
-  <Step title="Enable Passkey Authentication in Stack Auth">
-    1. Log in to the [Stack Auth dashboard](https://app.stack-auth.com/).
+  <Step title="Enable Passkey Authentication in Hexclave">
+    1. Log in to the [Hexclave dashboard](https://app.stack-auth.com/).
     2. Select your project from the dashboard.
     3. In the left sidebar, select **Auth Methods**.
     4. Find the **Passkey** authentication method and toggle it to enable.
@@ -21,12 +21,12 @@ This guide explains how to set up Passkey authentication with Stack Auth. Passke
   </Step>
 
   <Step title="Implement Passkey Authentication in Your Application">
-    1. Make sure you've installed the Stack Auth SDK in your application:
+    1. Make sure you've installed the Hexclave SDK in your application:
        ```bash
        npm install @stackframe/stack
        ```
 
-    2. Add Passkey support to your sign-in component by using the built-in Stack Auth components or creating your own implementation with the SDK.
+    2. Add Passkey support to your sign-in component by using the built-in Hexclave components or creating your own implementation with the SDK.
 
        Using built-in components:
 
@@ -44,9 +44,9 @@ This guide explains how to set up Passkey authentication with Stack Auth. Passke
 
 ## How Passkey Authentication Works
 
-1. **Registration**: When a user creates a new passkey, their device generates a unique public-private key pair. The private key stays on the user's device, while the public key is sent to Stack Auth's servers.
+1. **Registration**: When a user creates a new passkey, their device generates a unique public-private key pair. The private key stays on the user's device, while the public key is sent to Hexclave's servers.
 
-2. **Authentication**: When a user wants to sign in, Stack Auth sends a challenge to the user's device. The device uses the private key to sign the challenge, and sends the signature back to Stack Auth for verification.
+2. **Authentication**: When a user wants to sign in, Hexclave sends a challenge to the user's device. The device uses the private key to sign the challenge, and sends the signature back to Hexclave for verification.
 
 3. **Cross-device authentication**: Users can create passkeys on one device and use them to sign in on another device using QR codes or nearby device detection.
 

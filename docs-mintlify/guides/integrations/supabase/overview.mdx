@@ -1,17 +1,17 @@
 ---
 title: Supabase
-description: Integrate Stack Auth with Supabase RLS
+description: Integrate Hexclave with Supabase RLS
 ---
 
-This guide shows how to integrate Stack Auth with Supabase row level security (RLS).
+This guide shows how to integrate Hexclave with Supabase row level security (RLS).
 
 <Info>
-This guide only focuses on the RLS/JWT integration and does not sync user data between Supabase and Stack. You should use [webhooks](/guides/apps/webhooks/overview) to achieve data sync.
+This guide only focuses on the RLS/JWT integration and does not sync user data between Supabase and Hexclave. You should use [webhooks](/guides/apps/webhooks/overview) to achieve data sync.
 </Info>
 
 ## Setup
 
-Let's create a sample table and some RLS policies to demonstrate how to integrate Stack Auth with Supabase RLS. You can apply the same logic to your own tables and policies.
+Let's create a sample table and some RLS policies to demonstrate how to integrate Hexclave with Supabase RLS. You can apply the same logic to your own tables and policies.
 
 <Steps>
   <Step title="Setup Supabase">
@@ -49,7 +49,7 @@ Let's create a sample table and some RLS policies to demonstrate how to integrat
   </Step>
 
   <Step title="Setup a new Next.js project">
-    Now let's create a new Next.js project and install Stack Auth and Supabase client. (more details on [Next.js setup](https://nextjs.org/docs/getting-started/installation), [Stack Auth setup](/guides/getting-started/setup), and [Supabase setup](https://supabase.com/docs/guides/getting-started/quickstarts/nextjs))
+    Now let's create a new Next.js project and install Hexclave and Supabase client. (more details on [Next.js setup](https://nextjs.org/docs/getting-started/installation), [Hexclave setup](/guides/getting-started/setup), and [Supabase setup](https://supabase.com/docs/guides/getting-started/quickstarts/nextjs))
 
     ```bash title="Terminal"
     npx create-next-app@latest -e with-supabase stack-supabase
@@ -63,7 +63,7 @@ Let's create a sample table and some RLS policies to demonstrate how to integrat
     - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
     - `SUPABASE_JWT_SECRET`
 
-    Copy environment variables from the Stack dashboard to the `.env.local` file.
+    Copy environment variables from the Hexclave dashboard to the `.env.local` file.
 
     - `NEXT_PUBLIC_STACK_PROJECT_ID`
     - `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY`
@@ -71,7 +71,7 @@ Let's create a sample table and some RLS policies to demonstrate how to integrat
   </Step>
 
   <Step title="Set up Supabase client">
-    Now let's create a server action that mints a supabase JWT with the Stack Auth user ID if the user is authenticated.
+    Now let's create a server action that mints a supabase JWT with the Hexclave user ID if the user is authenticated.
 
     ```tsx title="/utils/actions.ts"
     'use server';

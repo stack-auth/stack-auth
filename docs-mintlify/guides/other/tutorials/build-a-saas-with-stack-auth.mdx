@@ -1,29 +1,29 @@
 ---
-title: Build a SaaS with Stack Auth
-description: Bootstrap auth, resolve the signed-in user, protect your app, and ship-with optional pointers to teams, RBAC, and billing.
+title: Build a SaaS with Hexclave
+description: Bootstrap auth, resolve the signed-in user, protect your app, and ship—with optional pointers to teams, RBAC, and billing.
 ---
 
-This tutorial is a **generic SaaS path** on Stack Auth: install and configure the SDK, wire sign-in, read the current user on the client and server, and gate your product. It does **not** assume teams, workspaces, or a particular permission model-those live in [Build a team-based app](/guides/other/tutorials/build-a-team-based-app) and the linked guides below.
+This tutorial is a **generic SaaS path** on Hexclave: install and configure the SDK, wire sign-in, read the current user on the client and server, and gate your product. It does **not** assume teams, workspaces, or a particular permission model—those live in [Build a team-based app](/guides/other/tutorials/build-a-team-based-app) and the linked guides below.
 
 ## What you will have at the end
 
-- A working sign-in and account flow using Stack Auth's handler routes (Next.js) or your framework’s equivalent.
+- A working sign-in and account flow using Hexclave's handler routes (Next.js) or your framework’s equivalent.
 - A clear pattern for **who** is signed in across server components, client components, server actions, and route handlers.
 - **Protected** areas of your app (for example middleware on `/app/*` or `getUser({ or: "redirect" })` on key routes).
 - A short map for **where** multi-tenant and authorization work fits when you need it, plus a mindset for **production** domains, OAuth, and email.
 
 ## Prerequisites
 
-- A **Next.js** project using the **App Router** (Stack’s first-class path for hosted UI and handlers), or another stack supported in [Setup](/guides/getting-started/setup) (React, Express, or REST from any backend).
-- A Stack Auth account and a **project** in the [dashboard](https://app.stack-auth.com/projects).
+- A **Next.js** project using the **App Router** (Hexclave's first-class path for hosted UI and handlers), or another stack supported in [Setup](/guides/getting-started/setup) (React, Express, or REST from any backend).
+- A Hexclave account and a **project** in the [dashboard](https://app.stack-auth.com/projects).
 
 <Note>
-  Stack does not officially support the Next.js Pages Router. If you are on Pages Router, consider the React or JavaScript SDKs per the [FAQ](/guides/faq).
+  Hexclave does not officially support the Next.js Pages Router. If you are on Pages Router, consider the React or JavaScript SDKs per the [FAQ](/guides/faq).
 </Note>
 
-The examples below focus on **Next.js (App Router)**. The same ideas apply on other stacks-swap in `StackClientApp` / REST calls as in [Setup](/guides/getting-started/setup).
+The examples below focus on **Next.js (App Router)**. The same ideas apply on other stacks—swap in `StackClientApp` / REST calls as in [Setup](/guides/getting-started/setup).
 
-## 1. Install Stack and wire environment variables
+## 1. Install Hexclave and wire environment variables
 
 The fastest path for JavaScript and TypeScript is the **setup wizard**:
 
@@ -45,7 +45,7 @@ After `init`, you should see files similar to:
 
 - `app/handler/[...stack]/page.tsx` - hosted sign-in, sign-up, account settings, and more
 - `app/layout.tsx` - wraps the app with `StackProvider` and `StackTheme`
-- `app/loading.tsx` - Suspense boundary for Stack’s async hooks
+- `app/loading.tsx` - Suspense boundary for Hexclave's async hooks
 - `stack/server.ts` - `stackServerApp` for server components, actions, and route handlers
 - `stack/client.ts` - `stackClientApp` when you need the client app object explicitly
 
@@ -208,7 +208,7 @@ Almost every SaaS screen starts from the **current user**: profile, preferences,
 
 ### Server action that requires a user
 
-`{ or: "throw" }` is useful when a redirect would be wrong (for example, from a form POST). The example below only needs Stack for identity; your own persistence layer stores product data keyed by `user.id`.
+`{ or: "throw" }` is useful when a redirect would be wrong (for example, from a form POST). The example below only needs Hexclave for identity; your own persistence layer stores product data keyed by `user.id`.
 
 ```tsx title="app/actions/onboarding.ts"
 "use server";
@@ -249,7 +249,7 @@ export async function GET() {
 
 ### Middleware for a `/app` (or `/private`) section
 
-Match only the routes that should be gated, and **exclude** `/handler` so Stack’s auth pages keep working:
+Match only the routes that should be gated, and **exclude** `/handler` so Hexclave's auth pages keep working:
 
 ```tsx title="middleware.ts"
 import { NextRequest, NextResponse } from "next/server";
@@ -276,16 +276,16 @@ More detail on protection patterns and sensitive HTML is in [User fundamentals](
 
 ## 3. Tenancy, teams, and permissions (when you need them)
 
-Stack gives you **users** and authentication primitives; **your** SaaS decides how rows and features map to customers.
+Hexclave gives you **users** and authentication primitives; **your** SaaS decides how rows and features map to customers.
 
 - **Single-user or simple B2C** - Often enough to key application data to `user.id` and enforce access in your API with the same user you resolved via `stackServerApp.getUser()`.
-- **Shared accounts, workspaces, or B2B orgs** - Use Stack **teams** as the customer boundary, **team selection** for the active workspace, and **RBAC** for roles and fine-grained actions. Walk through that shape in [Build a team-based app](/guides/other/tutorials/build-a-team-based-app), with reference material in [Teams](/guides/apps/teams/overview), [Team selection](/guides/apps/teams/team-selection), and [RBAC](/guides/apps/rbac/overview).
+- **Shared accounts, workspaces, or B2B orgs** - Use Hexclave **teams** as the customer boundary, **team selection** for the active workspace, and **RBAC** for roles and fine-grained actions. Walk through that shape in [Build a team-based app](/guides/other/tutorials/build-a-team-based-app), with reference material in [Teams](/guides/apps/teams/overview), [Team selection](/guides/apps/teams/team-selection), and [RBAC](/guides/apps/rbac/overview).
 
 Non-JavaScript or custom frontends can use the [REST API](/api/overview) with the same project keys; the identity model you choose (user-only vs teams) stays consistent across clients.
 
 ## 4. Product polish: onboarding, email, and optional billing
 
-Hook flows to the guides-no extra Stack APIs are required at this layer:
+Hook flows to the guides-no extra Hexclave APIs are required at this layer:
 
 - **Onboarding and sign-up rules** - [User onboarding](/guides/apps/authentication/user-onboarding), [Sign-up rules](/guides/apps/authentication/sign-up-rules)
 - **Email** - [Emails](/guides/apps/emails/overview)
@@ -302,7 +302,7 @@ Before going live, tighten **callback domains**, replace shared **OAuth** keys w
 | Topic | Guide |
 |--------|--------|
 | Install and configure | [Setup](/guides/getting-started/setup) |
-| `StackApp` object | [Stack App](/guides/going-further/stack-app) |
+| `StackApp` object | [Hexclave App](/guides/going-further/stack-app) |
 | Current user and page protection | [User fundamentals](/guides/getting-started/user-fundamentals) |
 | Teams, membership, and RBAC (deeper path) | [Build a team-based app](/guides/other/tutorials/build-a-team-based-app) |
 | Teams reference | [Teams](/guides/apps/teams/overview) |
@@ -322,7 +322,7 @@ Before going live, tighten **callback domains**, replace shared **OAuth** keys w
     Use dashboard-defined permissions for **authorization** when you use RBAC; always enforce **business rules** on the server: Server Components, server actions, route handlers, or your backend with the **secret server key** or validated access tokens. Client checks alone are not enough for sensitive operations.
   </Accordion>
 
-  <Accordion title="Can I use Stack only as a backend API?">
+  <Accordion title="Can I use Hexclave only as a backend API?">
     Yes. Non-JS or custom frontends can use the [REST API](/api/overview) with the same project keys; the mental model (users, and optionally teams and permissions) stays the same.
   </Accordion>
 

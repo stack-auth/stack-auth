@@ -3,14 +3,14 @@ title: "Connected Accounts"
 description: "Managing third-party OAuth access tokens"
 ---
 
-Stack has good support for working with OAuth and OIDC providers, such as Google, Facebook, Microsoft, and others.
+Hexclave has good support for working with OAuth and OIDC providers, such as Google, Facebook, Microsoft, and others.
 
-Beyond using OAuth for signing in, Stack can manage your users' access token so you can invoke APIs on their behalf. For example, you can use this to send emails with Gmail, access repositories on GitHub, or access files on OneDrive.
+Beyond using OAuth for signing in, Hexclave can manage your users' access token so you can invoke APIs on their behalf. For example, you can use this to send emails with Gmail, access repositories on GitHub, or access files on OneDrive.
 
 A connected account is simply an external account that is linked to the user in some way. If you are not using shared keys (see note below), any user created with "Sign up with OAuth" is automatically connected to the account they signed up with, but it's also possible to connect a user with a provider that is unavailable for sign in.
 
 <Info>
-  You cannot connect a user's accounts with shared OAuth keys. You need to set up your own OAuth client ID and client secret in Stack's dashboard. For more details, check [Going to Production](/guides/apps/launch-checklist/overview#oauth-providers).
+  You cannot connect a user's accounts with shared OAuth keys. You need to set up your own OAuth client ID and client secret in Hexclave's dashboard. For more details, check [Going to Production](/guides/apps/launch-checklist/overview#oauth-providers).
 </Info>
 
 ## Connecting with OAuth providers
@@ -101,7 +101,7 @@ export const stackServerApp = new StackServerApp({
 
 ## OAuth account merging strategies
 
-When a user attempts to sign in with an OAuth provider that matches an existing account, Stack provides different strategies for handling the authentication flow.
+When a user attempts to sign in with an OAuth provider that matches an existing account, Hexclave provides different strategies for handling the authentication flow.
 
 The available strategies are:
 
@@ -109,9 +109,9 @@ The available strategies are:
 - Link method (new default)
 - Block duplicates (most secure)
 
-The "Link" strategy is the default behavior. If a user attempts to sign in with an OAuth provider that matches an existing account, Stack will link the OAuth identity to the existing account, and the user will be signed into that account.
+The "Link" strategy is the default behavior. If a user attempts to sign in with an OAuth provider that matches an existing account, Hexclave will link the OAuth identity to the existing account, and the user will be signed into that account.
 This requires both of the credentials to be verified, or otherwise the link will be blocked, in the same way as the "Block" strategy.
 
-The "Allow" strategy is the default behavior for old projects. If a user attempts to sign in with an OAuth provider that has an existing account with the same email address, Stack will create a separate account for the user.
+The "Allow" strategy is the default behavior for old projects. If a user attempts to sign in with an OAuth provider that has an existing account with the same email address, Hexclave will create a separate account for the user.
 
 The "Block" strategy will explicitly raise an error if a user attempts to sign in with an OAuth provider that matches an existing account.

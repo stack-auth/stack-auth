@@ -7,7 +7,7 @@ sidebarTitle: User Fundamentals
 import { UserFieldsTable } from "/snippets/user-fields-table.jsx";
 
 
-You've set up Stack Auth. Now let's understand the most important object in your application: the **User**.
+You've set up Hexclave. Now let's understand the most important object in your application: the **User**.
 
 The user object represents whoever is currently interacting with your app — their identity, profile, and metadata. Almost everything you build will revolve around it: retrieving the current user, protecting pages from unauthorized access, updating profile information, signing out, and more.
 
@@ -107,7 +107,7 @@ Middleware can be used whenever it is easy to tell whether a page should be prot
 
     export const config = {
       // You can add your own route protection logic here
-      // Make sure not to protect the root URL, as it would prevent users from accessing static Next.js files or Stack's /handler path
+      // Make sure not to protect the root URL, as it would prevent users from accessing static Next.js files or Hexclave's /handler path
       matcher: '/protected/:path*',
     };
     ```
@@ -158,7 +158,7 @@ export default function MyClientComponent() {
 
 ### Custom metadata
 
-Beyond built-in fields like `displayName` and `primaryEmail`, you'll often need to store your own data on a user. Stack Auth provides three metadata fields for this:
+Beyond built-in fields like `displayName` and `primaryEmail`, you'll often need to store your own data on a user. Hexclave provides three metadata fields for this:
 
 - **`clientMetadata`** — Readable and writable from both the client and the server. Use this for non-sensitive user preferences like theme, locale, or UI state.
 - **`serverMetadata`** — Readable and writable only from the server. Use this for sensitive or internal data like Stripe customer IDs, internal flags, or anything users shouldn't be able to see or modify.
@@ -233,7 +233,7 @@ You can sign out the user by redirecting them to `/handler/sign-out` or simply b
 
 ## Example: Custom profile page
 
-Stack automatically creates a user profile on sign-up. Let's build a page that displays this information. In `app/profile/page.tsx`:
+Hexclave automatically creates a user profile on sign-up. Let's build a page that displays this information. In `app/profile/page.tsx`:
 
 <Tabs>
   <Tab title="Client Component">
@@ -301,9 +301,9 @@ For more examples on how to use the `User` object, check the [the SDK documentat
 
 ## Anonymous users
 
-Stack Auth supports anonymous users - users who can interact with your app without signing up. This is useful for features like guest checkouts, try-before-you-sign-up flows, or collecting analytics before a user creates an account.
+Hexclave supports anonymous users - users who can interact with your app without signing up. This is useful for features like guest checkouts, try-before-you-sign-up flows, or collecting analytics before a user creates an account.
 
-To get an anonymous user, pass `{ or: "anonymous" }` to `useUser()` or `getUser()`. If the current visitor isn't signed in, Stack will automatically create an anonymous account for them behind the scenes.
+To get an anonymous user, pass `{ or: "anonymous" }` to `useUser()` or `getUser()`. If the current visitor isn't signed in, Hexclave will automatically create an anonymous account for them behind the scenes.
 
 ```tsx title="my-client-component.tsx"
 "use client";

@@ -1,13 +1,13 @@
 ---
 title: "Overview"
-description: "Complete REST API documentation for Stack Auth"
+description: "Complete REST API documentation for Hexclave"
 ---
 
 Stack offers a REST API for backends & frontends of any programming language or framework. This API is used to authenticate users, manage user data, and more.
 
 ## Authentication
 
-Stack Auth uses different authentication patterns depending on whether you're making requests from client-side code (browser, mobile app) or server-side code (your backend).
+Hexclave uses different authentication patterns depending on whether you're making requests from client-side code (browser, mobile app) or server-side code (your backend).
 
 <Warning>
   **Security Critical**: Never expose your secret server key (`ssk_...`) in
@@ -98,7 +98,7 @@ curl https://api.stack-auth.com/api/v1/ \
   </Accordion>
 
   <Accordion title="How do I handle API errors?">
-    Stack Auth API returns standard HTTP status codes. Common error responses include:
+    Hexclave API returns standard HTTP status codes. Common error responses include:
 
     - `400 Bad Request` - Invalid request parameters
     - `401 Unauthorized` - Invalid or missing authentication
@@ -112,7 +112,7 @@ curl https://api.stack-auth.com/api/v1/ \
   </Accordion>
 
   <Accordion title="Are there rate limits?">
-    Yes, Stack Auth implements rate limiting to ensure fair usage and system stability. Rate limits vary by endpoint and access type. When you exceed the rate limit, you'll receive a `429 Too Many Requests` response with headers indicating when you can retry.
+    Yes, Hexclave implements rate limiting to ensure fair usage and system stability. Rate limits vary by endpoint and access type. When you exceed the rate limit, you'll receive a `429 Too Many Requests` response with headers indicating when you can retry.
   </Accordion>
 </AccordionGroup>
 
@@ -123,7 +123,7 @@ curl https://api.stack-auth.com/api/v1/ \
     Check the Getting Started Guide for initial setup.
   </Card>
   <Card title="Documentation" href="/guides/getting-started/setup">
-    Visit the Concepts section for Stack Auth fundamentals.
+    Visit the Concepts section for Hexclave fundamentals.
   </Card>
   <Card title="Discord Community" href="https://discord.stack-auth.com">
     Join the Discord community for support and discussions.

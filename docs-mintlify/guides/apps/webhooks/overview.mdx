@@ -1,16 +1,16 @@
 ---
 title: "Webhooks"
-description: "Receive real-time updates when events occur in your Stack project"
+description: "Receive real-time updates when events occur in your Hexclave project"
 icon: "/images/app-icons/webhooks.svg"
 ---
 
-Webhooks are a powerful way to keep your backend in sync with Stack. They allow you to receive real-time updates when events occur in your Stack project, such as when a user or team is created, updated, or deleted.
+Webhooks are a powerful way to keep your backend in sync with Hexclave. They allow you to receive real-time updates when events occur in your Hexclave project, such as when a user or team is created, updated, or deleted.
 
 For payload schemas and each webhook event, see the [webhook API reference](/api/webhooks/users/usercreated).
 
 ## Setting up webhooks
 
-In the Stack dashboard, you can create a webhook endpoint in the "Webhooks" section. After creating this endpoint with your server URL, you will start receiving POST requests with a JSON payload at that endpoint. The event payload will look something like this:
+In the Hexclave dashboard, you can create a webhook endpoint in the "Webhooks" section. After creating this endpoint with your server URL, you will start receiving POST requests with a JSON payload at that endpoint. The event payload will look something like this:
 
 ```json
 {
@@ -29,9 +29,9 @@ You can use services like [Svix Playground](https://www.svix.com/play/) or [Webh
 
 ## Verifying webhooks
 
-To ensure the webhook is coming from Stack (and not from a malicious actor) and is not prone to replay attacks, you should verify the request.
+To ensure the webhook is coming from Hexclave (and not from a malicious actor) and is not prone to replay attacks, you should verify the request.
 
-Stack signs the webhook payload with a secret key that you can find in the endpoint details on the dashboard. You can verify the signature using the Svix client library. Check out the [Svix documentation](https://docs.svix.com/receiving/verifying-payloads/how) for instructions on how to verify the signature in JavaScript, Python, Ruby, and other languages. Here are example handlers across the supported frameworks:
+Hexclave signs the webhook payload with a secret key that you can find in the endpoint details on the dashboard. You can verify the signature using the Svix client library. Check out the [Svix documentation](https://docs.svix.com/receiving/verifying-payloads/how) for instructions on how to verify the signature in JavaScript, Python, Ruby, and other languages. Here are example handlers across the supported frameworks:
 
 <CodeGroup dropdown>
 ```tsx Next.js

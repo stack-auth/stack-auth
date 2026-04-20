@@ -1,12 +1,12 @@
 ---
 title: "Payments"
-description: "Accept payments and manage billing with Stack Auth's Stripe integration"
+description: "Accept payments and manage billing with Hexclave's Stripe integration"
 icon: "/images/app-icons/payments.svg"
 ---
 
 import { PaymentsConcepts } from "/snippets/payments-concepts.jsx";
 
-Stack Auth includes a Payments app that handles billing, subscriptions, and one-time purchases through Stripe. Instead of building your own billing system, you define products in the dashboard and Stack Auth takes care of checkout, entitlement tracking, subscription lifecycle, and invoicing.
+Hexclave includes a Payments app that handles billing, subscriptions, and one-time purchases through Stripe. Instead of building your own billing system, you define products in the dashboard and Hexclave takes care of checkout, entitlement tracking, subscription lifecycle, and invoicing.
 
 This guide walks through how to set up payments, sell products, manage subscriptions, and work with item-based entitlements like credits or seats.
 
@@ -25,7 +25,7 @@ This guide walks through how to set up payments, sell products, manage subscript
 </Steps>
 
 <Info>
-  Stack Auth Payments is currently only available for US-based businesses. Support for other countries is coming soon.
+  Hexclave Payments is currently only available for US-based businesses. Support for other countries is coming soon.
 </Info>
 
 ## Core concepts
@@ -46,7 +46,7 @@ And the typical flow to make it all work:
 
 1. You define products and items in the dashboard
 2. Your app generates a checkout URL and redirects the user to Stripe
-3. The user pays, Stripe notifies Stack Auth, and the product is granted
+3. The user pays, Stripe notifies Hexclave, and the product is granted
 4. Your app reads the customer's products and item balances to control access
 
 ## Defining products
@@ -379,7 +379,7 @@ If you have a reference to the user object already, you can also call `user.gran
 
 ## Customer types
 
-Stack Auth supports three types of payment customers:
+Hexclave supports three types of payment customers:
 
 - **Users** - Individual user accounts. Users can manage their own purchases, billing, and invoices from the client SDK.
 - **Teams** - Team or organization accounts. Team admins can create checkouts, switch plans, and cancel subscriptions for their team.
@@ -411,7 +411,7 @@ These apply to both one-time purchases and subscription renewals. Customize them
 
 During development, enable test mode in **Payments -> Settings**. All purchases will be free and no real money is charged - products are granted immediately without going through Stripe.
 
-When you're ready to test with real Stripe flows (but still using test credentials), disable Stack's test mode and use Stripe's test card numbers:
+When you're ready to test with real Stripe flows (but still using test credentials), disable Hexclave's test mode and use Stripe's test card numbers:
 
 - **Success**: `4242 4242 4242 4242`
 - **Decline**: `4000 0000 0000 0002`

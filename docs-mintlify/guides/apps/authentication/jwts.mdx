@@ -1,11 +1,11 @@
 ---
 title: "JWT Tokens"
-description: "Understand how Stack Auth uses JSON Web Tokens for authentication"
+description: "Understand how Hexclave uses JSON Web Tokens for authentication"
 ---
 
-JSON Web Tokens (JWT) are a compact, URL-safe means of representing claims to be transferred between two parties. Stack Auth uses JWTs for secure authentication and authorization.
+JSON Web Tokens (JWT) are a compact, URL-safe means of representing claims to be transferred between two parties. Hexclave uses JWTs for secure authentication and authorization.
 
-You don't need to worry about JWTs if you're using Stack Auth. However, if you are an expert user and want the full flexibility to manually verify JWTs for performance or other reasons, this page is for you.
+You don't need to worry about JWTs if you're using Hexclave. However, if you are an expert user and want the full flexibility to manually verify JWTs for performance or other reasons, this page is for you.
 
 ## What is a JWT?
 
@@ -21,9 +21,9 @@ The structure looks like this: `header.payload.signature`
 
 Use the interactive JWT viewer below to decode and inspect JWT tokens. If you're signed in, it will automatically load and display your current session token:
 
-## Stack Auth JWT Structure
+## Hexclave JWT Structure
 
-Stack Auth JWTs contain standardized headers and claims that power authentication throughout the platform.
+Hexclave JWTs contain standardized headers and claims that power authentication throughout the platform.
 
 ### Header
 
@@ -38,9 +38,9 @@ Stack Auth JWTs contain standardized headers and claims that power authenticatio
 * **`exp` (Expiration)**: When the token expires (Unix timestamp)
 * **`iat` (Issued At)**: When the token was issued (Unix timestamp)
 
-### Stack Auth Specific Claims
+### Hexclave Specific Claims
 
-* **`project_id`**: Your Stack Auth project ID
+* **`project_id`**: Your Hexclave project ID
 * **`branch_id`**: The project branch (currently always `main`)
 * **`refresh_token_id`**: ID of the associated refresh token
 * **`role`**: Always set to `authenticated` for valid users
@@ -54,7 +54,7 @@ Stack Auth JWTs contain standardized headers and claims that power authenticatio
 
 ## Example JWT Payload
 
-Here's what a typical Stack Auth JWT payload looks like:
+Here's what a typical Hexclave JWT payload looks like:
 
 ```json
 {
@@ -104,7 +104,7 @@ Users restricted by an administrator (e.g., via [sign-up rules](/guides/apps/aut
 
 ### Client-Side Usage
 
-Stack Auth automatically handles JWT tokens for you. When you use hooks like `useUser()`, the JWT is automatically included in API requests:
+Hexclave automatically handles JWT tokens for you. When you use hooks like `useUser()`, the JWT is automatically included in API requests:
 
 **Next.js:**
 
@@ -140,7 +140,7 @@ export function UserProfile() {
 
 ### Server-Side Usage
 
-On the server side, you can access the JWT and its claims through the Stack Auth API:
+On the server side, you can access the JWT and its claims through the Hexclave API:
 
 ```typescript
 import { stackServerApp } from '@/stack';
@@ -165,12 +165,12 @@ export async function GET() {
 
 ### Manual JWT Verification
 
-If you need to manually verify a JWT (for example, in a different service), fetch the public keys from Stack Auth's JWKS endpoint. Keys are derived per audience so the `kid` in the JWT header always matches one of the published keys.
+If you need to manually verify a JWT (for example, in a different service), fetch the public keys from Hexclave's JWKS endpoint. Keys are derived per audience so the `kid` in the JWT header always matches one of the published keys.
 
 ```typescript
 import * as jose from 'jose';
 
-// Get the public key set from Stack Auth
+// Get the public key set from Hexclave
 const jwks = jose.createRemoteJWKSet(
   new URL('https://api.stack-auth.com/api/v1/projects/YOUR_PROJECT_ID/.well-known/jwks.json')
 );
@@ -238,25 +238,25 @@ const { payload } = await jose.jwtVerify(token, jwks, {
 
 * **Never store JWTs in localStorage** for sensitive applications
 * Use secure, httpOnly cookies when possible
-* Stack Auth handles secure token storage automatically
+* Hexclave handles secure token storage automatically
 
 ### Token Expiration
 
 * JWTs have a limited lifetime (default is 10 minutes via `STACK_ACCESS_TOKEN_EXPIRATION_TIME`)
-* Stack Auth automatically refreshes tokens before they expire
+* Hexclave automatically refreshes tokens before they expire
 * Always check the `exp` claim when manually handling JWTs
 
 ### Signature Verification
 
 * Always verify JWT signatures using the public key
 * Never trust the contents of a JWT without verification
-* Stack Auth SDKs handle verification automatically
+* Hexclave SDKs handle verification automatically
 
 ## Troubleshooting
 
 ### Common Issues
 
-1. **"JWT is expired"**: The token has passed its expiration time. Stack Auth will automatically refresh it.
+1. **"JWT is expired"**: The token has passed its expiration time. Hexclave will automatically refresh it.
 
 2. **"Invalid signature"**: The token was tampered with or signed with a different key.
 
@@ -272,7 +272,7 @@ Use the JWT viewer above to inspect tokens and verify their contents. Pay specia
 
 ## Best Practices
 
-1. **Let Stack Auth handle tokens**: Use the provided SDKs instead of manual JWT handling
+1. **Let Hexclave handle tokens**: Use the provided SDKs instead of manual JWT handling
 2. **Validate on the server**: Always verify JWTs on your backend
 3. **Check expiration**: Ensure tokens haven't expired before using them
 4. **Use HTTPS**: Always transmit JWTs over secure connections
