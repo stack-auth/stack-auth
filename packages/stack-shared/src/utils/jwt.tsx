@@ -20,6 +20,23 @@ function getStackServerSecret() {
   return STACK_SERVER_SECRET;
 }
 
+/**
+ * Returns the previous `STACK_SERVER_SECRET` during a rotation, or `null` if none is set.
+ *
+ * When set, keys derived from this secret are accepted for verification (JWTs and OIDC cookies)
+ * but never used for signing new artifacts. Remove the env var once the grace window has
+ * elapsed — see the self-host rotation runbook.
+ */
+export function getOldStackServerSecret(): string | null {
+  const STACK_SERVER_SECRET_OLD = getEnvVariable("STACK_SERVER_SECRET_OLD", "");
+  try {
+    jose.base64url.decode(STACK_SERVER_SECRET_OLD);
+  } catch (e) {
+    throw new StackAssertionError("STACK_SERVER_SECRET_OLD is set but not a valid base64url string. Remove it, or set it to the previous STACK_SERVER_SECRET value.", { cause: e });
+  }
+  return STACK_SERVER_SECRET_OLD;
+}
+
 export async function getJwtInfo(options: {
   jwt: string,
 }) {
@@ -103,26 +120,35 @@ async function getPrivateJwkFromDerivedSecret(derivedSecret: string, kid: string
 export async function getPrivateJwks(options: {
   audience: string,
 }): Promise<PrivateJwk[]> {
-  const getHashOfJwkInfo = (type: string) => jose.base64url.encode(
-    crypto
-      .createHash('sha256')
-      .update(JSON.stringify([type, getStackServerSecret(), {
-        audience: options.audience,
-      }]))
-      .digest()
-  );
-  const perAudienceSecret = getHashOfJwkInfo("stack-jwk-audience-secret");
-  const perAudienceKid = getHashOfJwkInfo("stack-jwk-kid").slice(0, 12);
+  const derivePairForSecret = async (secret: string): Promise<PrivateJwk[]> => {
+    const getHashOfJwkInfo = (type: string) => jose.base64url.encode(
+      crypto
+        .createHash('sha256')
+        .update(JSON.stringify([type, secret, {
+          audience: options.audience,
+        }]))
+        .digest()
+    );
+    const perAudienceSecret = getHashOfJwkInfo("stack-jwk-audience-secret");
+    const perAudienceKid = getHashOfJwkInfo("stack-jwk-kid").slice(0, 12);
 
-  const oldPerAudienceSecret = oldGetPerAudienceSecret({ audience: options.audience });
-  const oldPerAudienceKid = oldGetKid({ secret: oldPerAudienceSecret });
+    const oldPerAudienceSecret = oldGetPerAudienceSecret({ audience: options.audience, secret });
+    const oldPerAudienceKid = oldGetKid({ secret: oldPerAudienceSecret });
 
-  return [
-    // TODO next-release: make this not take precedence; then, in the release after that, remove it entirely
-    await getPrivateJwkFromDerivedSecret(oldPerAudienceSecret, oldPerAudienceKid),
+    return [
+      // TODO next-release: make this not take precedence; then, in the release after that, remove it entirely
+      await getPrivateJwkFromDerivedSecret(oldPerAudienceSecret, oldPerAudienceKid),
 
-    await getPrivateJwkFromDerivedSecret(perAudienceSecret, perAudienceKid),
-  ];
+      await getPrivateJwkFromDerivedSecret(perAudienceSecret, perAudienceKid),
+    ];
+  };
+
+  const primaryPair = await derivePairForSecret(getStackServerSecret());
+  const oldSecret = getOldStackServerSecret();
+  const oldPair = oldSecret ? await derivePairForSecret(oldSecret) : [];
+
+  // Signing uses index 0 (primary secret, legacy derivation). Verify accepts all entries.
+  return [...primaryPair, ...oldPair];
 }
 
 export type PublicJwk = {
@@ -141,6 +167,7 @@ export async function getPublicJwkSet(privateJwks: PrivateJwk[]): Promise<{ keys
 
 function oldGetPerAudienceSecret(options: {
   audience: string,
+  secret: string,
 }) {
   if (options.audience === "kid") {
     throw new StackAssertionError("You cannot use the 'kid' audience for a per-audience secret, see comment below in jwt.tsx");
@@ -150,7 +177,7 @@ function oldGetPerAudienceSecret(options: {
       .createHash('sha256')
       // TODO we should prefix a string like "stack-audience-secret" before we hash so you can't use `getKid(...)` to get the secret for eg. the "kid" audience if the same secret value is used
       // Sadly doing this modification is a bit annoying as we need to leave the old keys to be valid for a little longer
-      .update(JSON.stringify([getStackServerSecret(), options.audience]))
+      .update(JSON.stringify([options.secret, options.audience]))
       .digest()
   );
 };
