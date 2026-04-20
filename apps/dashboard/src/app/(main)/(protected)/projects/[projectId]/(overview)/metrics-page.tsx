@@ -18,6 +18,7 @@ import { useUser } from "@stackframe/stack";
 import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import { ErrorBoundary } from "next/dist/client/components/error-boundary";
 import { Suspense, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ElementType } from "react";
 import { PageLayout } from "../page-layout";
 import { useAdminApp, useProjectId } from "../use-admin-app";
@@ -42,7 +43,7 @@ import {
   VisitorsHoverChart,
   VisitorsHoverDataPoint,
 } from "./line-chart";
-import { MetricsLoadingFallback } from "./metrics-loading";
+import { MetricsErrorFallback, MetricsLoadingFallback } from "./metrics-loading";
 
 const dailySignUpsConfig: LineChartDisplayConfig = {
   name: 'Daily Sign-Ups',
@@ -932,11 +933,17 @@ export default function MetricsPage(props: { toSetup: () => void }) {
       fullBleed
       wrapHeaderInCard
     >
-      <Suspense fallback={<MetricsLoadingFallback />}>
-        <MetricsContent includeAnonymous={includeAnonymous} timeRange={timeRange} customDateRange={customDateRange} />
-      </Suspense>
+      <ErrorBoundary errorComponent={MetricsErrorComponent}>
+        <Suspense fallback={<MetricsLoadingFallback />}>
+          <MetricsContent includeAnonymous={includeAnonymous} timeRange={timeRange} customDateRange={customDateRange} />
+        </Suspense>
+      </ErrorBoundary>
     </PageLayout>
   );
+}
+
+function MetricsErrorComponent(props: { error: Error, reset?: () => void }) {
+  return <MetricsErrorFallback error={props.error} onRetryAction={props.reset} />;
 }
 
 function MetricsContent({

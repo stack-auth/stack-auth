@@ -5,8 +5,8 @@ import { EmailOutboxRecipient, getEmailConfig, } from "@/lib/emails";
 import { generateUnsubscribeLink, getNotificationCategoryById, hasNotificationEnabled, listNotificationCategories } from "@/lib/notification-categories";
 import { getTenancy, Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient, PrismaClientTransaction } from "@/prisma-client";
-import { withTraceSpan } from "@/utils/telemetry";
 import { allPromisesAndWaitUntilEach } from "@/utils/background-tasks";
+import { withTraceSpan } from "@/utils/telemetry";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
 import { getEnvBoolean, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { captureError, errorToNiceString, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
@@ -144,11 +144,11 @@ async function logEmailsStuckInSending(): Promise<void> {
       skippedReason: null,
       isPaused: false,
     },
-    select: { id: true, tenancyId: true, startedSendingAt: true },
+    select: { id: true, tenancyId: true, startedSendingAt: true, to: true, sentAt: true, sendAttemptErrors: true },
   });
   if (res.length > 0) {
     captureError("email-queue-step-stuck-in-sending", new StackAssertionError(`${res.length} emails stuck in sending! This should never happen. It was NOT correctly marked as an error! Manual intervention is required.`, {
-      emails: res.map(e => ({ id: e.id, tenancyId: e.tenancyId, startedSendingAt: e.startedSendingAt })),
+      emails: res,
     }));
   }
 }
