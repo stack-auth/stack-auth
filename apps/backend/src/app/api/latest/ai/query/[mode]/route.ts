@@ -11,6 +11,7 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { validateImageAttachments } from "@stackframe/stack-shared/dist/ai/image-limits";
 import { yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Json } from "@stackframe/stack-shared/dist/utils/json";
 import { generateText, ModelMessage, stepCountIs, streamText } from "ai";
@@ -55,7 +56,10 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(StatusError.BadRequest, imageValidationResult.reason);
     }
 
-    const model = selectModel(quality, speed, isAuthenticated);
+    const authenticatedApiKey = isAuthenticated
+      ? getEnvVariable("STACK_OPENROUTER_AUTHENTICATED_API_KEY", "")
+      : "";
+    const model = selectModel(quality, speed, isAuthenticated, authenticatedApiKey || undefined);
     const isDocsOrSearch = systemPromptId === "docs-ask-ai" || systemPromptId === "command-center-ask-ai";
     let systemPrompt = getFullSystemPrompt(systemPromptId);
     if (isDocsOrSearch) {
