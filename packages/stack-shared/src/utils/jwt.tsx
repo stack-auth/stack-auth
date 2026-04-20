@@ -28,7 +28,8 @@ function getStackServerSecret() {
  * elapsed — see the self-host rotation runbook.
  */
 export function getOldStackServerSecret(): string {
-  const STACK_SERVER_SECRET_OLD = getEnvVariable("STACK_SERVER_SECRET_OLD");
+  const STACK_SERVER_SECRET_OLD = getEnvVariable("STACK_SERVER_SECRET_OLD", "");
+  if (!STACK_SERVER_SECRET_OLD) return "";
   try {
     jose.base64url.decode(STACK_SERVER_SECRET_OLD);
   } catch (e) {
@@ -143,9 +144,10 @@ export async function getPrivateJwks(options: {
     ];
   };
 
-  const primaryPair = await derivePairForSecret(getStackServerSecret());
+  const primarySecret = getStackServerSecret();
   const oldSecret = getOldStackServerSecret();
-  const oldPair = oldSecret ? await derivePairForSecret(oldSecret) : [];
+  const primaryPair = await derivePairForSecret(primarySecret);
+  const oldPair = oldSecret && oldSecret !== primarySecret ? await derivePairForSecret(oldSecret) : [];
 
   // Signing uses index 0 (primary secret, legacy derivation). Verify accepts all entries.
   return [...primaryPair, ...oldPair];

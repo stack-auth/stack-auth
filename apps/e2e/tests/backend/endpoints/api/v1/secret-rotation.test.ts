@@ -1,4 +1,4 @@
-  import { isBase64Url } from "@stackframe/stack-shared/dist/utils/bytes";
+import { isBase64Url } from "@stackframe/stack-shared/dist/utils/bytes";
 import * as jose from "jose";
 import { it } from "../../../../helpers";
 import { Auth, backendContext, niceBackendFetch } from "../../../backend-helpers";
@@ -26,12 +26,11 @@ import { Auth, backendContext, niceBackendFetch } from "../../../backend-helpers
 
 const INTERNAL_JWKS_PATH = "/api/v1/projects/internal/.well-known/jwks.json";
 
-it("JWKS publishes 4 ES256 P-256 entries (primary-secret pair + _OLD-secret pair), no private scalars", async ({ expect }) => {
+it("JWKS publishes 2 entries in steady state or 4 during rotation, all ES256 P-256, no duplicates, no private scalars", async ({ expect }) => {
   const response = await niceBackendFetch(INTERNAL_JWKS_PATH);
   expect(response.status).toBe(200);
   expect(response.headers.get("content-type")).includes("application/json");
   expect(response.headers.get("cache-control")).toBe("public, max-age=3600");
-  expect(response.body.keys).toHaveLength(4);
   for (const key of response.body.keys) {
     expect(key).toEqual({
       alg: "ES256",
@@ -44,9 +43,11 @@ it("JWKS publishes 4 ES256 P-256 entries (primary-secret pair + _OLD-secret pair
     // Must not leak the private scalar.
     expect((key as { d?: unknown }).d).toBeUndefined();
   }
-  // In steady state (primary === _OLD) uniqueness is 2; mid-rotation it is 4.
   const kids = response.body.keys.map((k: { kid: string }) => k.kid);
-  expect(new Set(kids).size).toBeGreaterThanOrEqual(2);
+  // `getPrivateJwks` dedups when primary === _OLD, so published count matches the
+  // unique kid count in every configuration. Either we're steady (2) or rotating (4).
+  expect(new Set(kids).size).toBe(kids.length);
+  expect([2, 4]).toContain(kids.length);
 });
 
 it("a fresh sign-up's access token verifies against the live JWKS", async ({ expect }) => {
