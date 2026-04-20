@@ -20,6 +20,11 @@ function httpBase(): string | null {
   return getEnvVariable("STACK_SPACETIMEDB_URL", "") || null;
 }
 
+// Cap every HTTP call to SpacetimeDB so a wedged host can't hang a request path
+// (e.g. a reviewer UI mutation) indefinitely. 10s is generous for local reducer
+// calls and SQL queries while still surfacing a real failure in bounded time.
+const SPACETIMEDB_FETCH_TIMEOUT_MS = 10_000;
+
 let enrollmentPromise: Promise<void> | null = null;
 
 async function getServiceToken(): Promise<string | null> {
@@ -63,6 +68,7 @@ async function rawCallReducer(token: string, reducer: string, args: unknown[]): 
       if (typeof v === "bigint") return Number(v);
       return v;
     }),
+    signal: AbortSignal.timeout(SPACETIMEDB_FETCH_TIMEOUT_MS),
   });
   if (!res.ok) {
     throw new StackAssertionError(`Reducer ${reducer} failed (${res.status}): ${await res.text()}`);
@@ -110,6 +116,7 @@ export async function callSql<T = Record<string, unknown>>(sql: string): Promise
     method: "POST",
     headers: { "Authorization": `Bearer ${token}` },
     body: sql,
+    signal: AbortSignal.timeout(SPACETIMEDB_FETCH_TIMEOUT_MS),
   });
   if (!res.ok) {
     throw new StackAssertionError(`SQL query failed (${res.status}): ${await res.text()}`);
