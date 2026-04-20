@@ -2,6 +2,7 @@ import { KnownError } from "..";
 import { StackAssertionError, captureError, concatStacktraces, errorToNiceString } from "./errors";
 import { DependenciesMap } from "./maps";
 import { Result } from "./results";
+import { traceSpan } from "./telemetry";
 import { generateUuid } from "./uuids";
 
 export type ReactPromise<T> = Promise<T> & (
@@ -264,7 +265,9 @@ export async function wait(ms: number) {
   if (ms >= 2**31) {
     throw new StackAssertionError("The maximum timeout for wait() is 2147483647ms (2**31 - 1). (found: ${ms}ms)");
   }
-  return await new Promise<void>(resolve => setTimeout(resolve, ms));
+  return await traceSpan({ description: 'wait(...)', attributes: { 'stack.wait.ms': ms } }, async (span) => {
+    return await new Promise<void>(resolve => setTimeout(resolve, ms));
+  });
 }
 import.meta.vitest?.test("wait", async ({ expect }) => {
   // Test with valid input

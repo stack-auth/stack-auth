@@ -12,7 +12,8 @@
  * so all TimeFold-scheduled repeats fire immediately.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { createBulldozerExecutionContext, type BulldozerExecutionContext } from "@/lib/bulldozer/db/index";
 import { createPaymentsSchema } from "../index";
 import type { TransactionRow } from "../types";
 import { createTestDb, jsonbExpr } from "./test-helpers";
@@ -24,9 +25,10 @@ describe.sequential("payments schema phase 1 (real postgres)", () => {
   const db = createTestDb();
   const { runStatements, readRows } = db;
   const schema = createPaymentsSchema();
+  let executionContext = createBulldozerExecutionContext();
 
-  const getRowDatas = async (table: { listRowsInGroup: (opts: any) => any }) => {
-    const rows = await readRows(table.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+  const getRowDatas = async (table: { listRowsInGroup: (ctx: BulldozerExecutionContext, opts: any) => any }) => {
+    const rows = await readRows(table.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true }));
     return rows.map((r: any) => r.rowdata);
   };
 
@@ -58,10 +60,14 @@ describe.sequential("payments schema phase 1 (real postgres)", () => {
     ...overrides,
   });
 
+  beforeEach(() => {
+    executionContext = createBulldozerExecutionContext();
+  });
+
   beforeAll(async () => {
     await db.setup();
     for (const table of schema._allPhase1Tables) {
-      await runStatements(table.init());
+      await runStatements(table.init(executionContext));
     }
   }, 60_000);
 
@@ -76,12 +82,12 @@ describe.sequential("payments schema phase 1 (real postgres)", () => {
 
   describe("subscription-renewal events", () => {
     it("should generate renewal event from subscription + non-creation invoice", async () => {
-      await runStatements(schema.subscriptions.setRow("sub-renewal-1", jsonbExpr(makeSubscription("sub-renewal-1", {
+      await runStatements(schema.subscriptions.setRow(executionContext, "sub-renewal-1", jsonbExpr(makeSubscription("sub-renewal-1", {
         stripeSubscriptionId: "stripe-sub-renewal-1",
         creationSource: "PURCHASE_PAGE",
         createdAtMillis: 1000,
       }))));
-      await runStatements(schema.subscriptionInvoices.setRow("inv-renewal-1", jsonbExpr({
+      await runStatements(schema.subscriptionInvoices.setRow(executionContext, "inv-renewal-1", jsonbExpr({
         id: "inv-renewal-1",
         tenancyId: "t1",
         stripeSubscriptionId: "stripe-sub-renewal-1",
@@ -102,7 +108,7 @@ describe.sequential("payments schema phase 1 (real postgres)", () => {
     });
 
     it("should NOT generate renewal event for creation invoices", async () => {
-      await runStatements(schema.subscriptionInvoices.setRow("inv-creation-1", jsonbExpr({
+      await runStatements(schema.subscriptionInvoices.setRow(executionContext, "inv-creation-1", jsonbExpr({
         id: "inv-creation-1",
         tenancyId: "t1",
         stripeSubscriptionId: "stripe-sub-renewal-1",
@@ -123,7 +129,7 @@ describe.sequential("payments schema phase 1 (real postgres)", () => {
 
   describe("subscription-cancel events", () => {
     it("should generate cancel event for active subscription with cancelAtPeriodEnd", async () => {
-      await runStatements(schema.subscriptions.setRow("sub-cancel-1", jsonbExpr(makeSubscription("sub-cancel-1", {
+      await runStatements(schema.subscriptions.setRow(executionContext, "sub-cancel-1", jsonbExpr(makeSubscription("sub-cancel-1", {
         cancelAtPeriodEnd: true,
         status: "active",
       }))));
@@ -135,7 +141,7 @@ describe.sequential("payments schema phase 1 (real postgres)", () => {
     });
 
     it("should NOT generate cancel event for canceled subscription", async () => {
-      await runStatements(schema.subscriptions.setRow("sub-cancel-2", jsonbExpr(makeSubscription("sub-cancel-2", {
+      await runStatements(schema.subscriptions.setRow(executionContext, "sub-cancel-2", jsonbExpr(makeSubscription("sub-cancel-2", {
         cancelAtPeriodEnd: true,
         status: "canceled",
       }))));
@@ -149,7 +155,7 @@ describe.sequential("payments schema phase 1 (real postgres)", () => {
 
   describe("one-time-purchase events", () => {
     it("should generate OTP event with computed chargedAmount and itemGrants", async () => {
-      await runStatements(schema.oneTimePurchases.setRow("otp-ev-1", jsonbExpr({
+      await runStatements(schema.oneTimePurchases.setRow(executionContext, "otp-ev-1", jsonbExpr({
         id: "otp-ev-1",
         tenancyId: "t1",
         customerId: "u-otp-ev",
@@ -185,7 +191,7 @@ describe.sequential("payments schema phase 1 (real postgres)", () => {
 
   describe("manual-item-quantity-change events", () => {
     it("should map through all fields correctly", async () => {
-      await runStatements(schema.manualItemQuantityChanges.setRow("iqc-ev-1", jsonbExpr({
+      await runStatements(schema.manualItemQuantityChanges.setRow(executionContext, "iqc-ev-1", jsonbExpr({
         id: "iqc-ev-1",
         tenancyId: "t1",
         customerId: "u-iqc-ev",
@@ -215,7 +221,7 @@ describe.sequential("payments schema phase 1 (real postgres)", () => {
 
   describe("subscription TimeFold: subscription-start", () => {
     it("should emit subscription-start event when a subscription is inserted", async () => {
-      await runStatements(schema.subscriptions.setRow("sub-tf-start", jsonbExpr(makeSubscription("sub-tf-start", {
+      await runStatements(schema.subscriptions.setRow(executionContext, "sub-tf-start", jsonbExpr(makeSubscription("sub-tf-start", {
         product: {
           displayName: "TF Plan",
           customerType: "user",
@@ -241,7 +247,7 @@ describe.sequential("payments schema phase 1 (real postgres)", () => {
 
   describe("subscription TimeFold: item-grant-repeat with when-repeated expiry", () => {
     it("should emit repeats that expire previous when-repeated grants", async () => {
-      await runStatements(schema.subscriptions.setRow("sub-tf-repeat", jsonbExpr(makeSubscription("sub-tf-repeat", {
+      await runStatements(schema.subscriptions.setRow(executionContext, "sub-tf-repeat", jsonbExpr(makeSubscription("sub-tf-repeat", {
         product: {
           displayName: "Repeat Plan",
           customerType: "user",
@@ -278,7 +284,7 @@ describe.sequential("payments schema phase 1 (real postgres)", () => {
   describe("subscription TimeFold: subscription-end", () => {
     it("should emit subscription-end with correct expiries when endedAt is set", async () => {
       const endTime = 3 * MONTH_MS;
-      await runStatements(schema.subscriptions.setRow("sub-tf-end", jsonbExpr(makeSubscription("sub-tf-end", {
+      await runStatements(schema.subscriptions.setRow(executionContext, "sub-tf-end", jsonbExpr(makeSubscription("sub-tf-end", {
         product: {
           displayName: "End Plan",
           customerType: "user",
@@ -316,7 +322,7 @@ describe.sequential("payments schema phase 1 (real postgres)", () => {
 
     it("should NOT expire items with expires=never", async () => {
       const endTime = 2 * MONTH_MS;
-      await runStatements(schema.subscriptions.setRow("sub-tf-mixed", jsonbExpr(makeSubscription("sub-tf-mixed", {
+      await runStatements(schema.subscriptions.setRow(executionContext, "sub-tf-mixed", jsonbExpr(makeSubscription("sub-tf-mixed", {
         product: {
           displayName: "Mixed Plan",
           customerType: "user",
@@ -345,12 +351,113 @@ describe.sequential("payments schema phase 1 (real postgres)", () => {
         .filter((e: any) => e.subscriptionId === "sub-tf-start");
       expect(endEvents).toHaveLength(0);
     });
+
+    it("should expire when-repeated grants alongside when-purchase-expires when ending before any repeat", async () => {
+      await runStatements(schema.subscriptions.setRow(executionContext, "sub-tf-end-mix-pre", jsonbExpr(makeSubscription("sub-tf-end-mix-pre", {
+        product: {
+          displayName: "Mix Pre-Repeat Plan",
+          customerType: "user",
+          productLineId: "line-tf-end-mix-pre",
+          prices: { p1: { USD: "10" } },
+          includedItems: {
+            storage: { quantity: 100, expires: "when-purchase-expires" },
+            quota: { quantity: 500, repeat: [7, "day"], expires: "when-repeated" },
+          },
+        },
+        endedAtMillis: 3 * DAY_MS,
+        createdAtMillis: 0,
+      }))));
+
+      const endEvents = (await getRowDatas(schema.subscriptionEndEvents))
+        .filter((e: any) => e.subscriptionId === "sub-tf-end-mix-pre");
+      expect(endEvents).toHaveLength(1);
+
+      const expiredByItem = new Map<string, any>();
+      for (const expiry of endEvents[0].itemQuantityChangesToExpire) {
+        expiredByItem.set(expiry.itemId, expiry);
+      }
+      expect([...expiredByItem.keys()].sort()).toEqual(["quota", "storage"]);
+      expect(expiredByItem.get("storage").transactionId).toBe("sub-start:sub-tf-end-mix-pre");
+      expect(expiredByItem.get("quota").transactionId).toBe("sub-start:sub-tf-end-mix-pre");
+      expect(expiredByItem.get("quota").quantity).toBe(500);
+
+      const repeats = (await getRowDatas(schema.itemGrantRepeatEvents))
+        .filter((e: any) => e.sourceId === "sub-tf-end-mix-pre");
+      expect(repeats).toHaveLength(0);
+    });
+
+    it("should reference the latest igr txnId for when-repeated grants when ending after repeats", async () => {
+      await runStatements(schema.subscriptions.setRow(executionContext, "sub-tf-end-mix-post", jsonbExpr(makeSubscription("sub-tf-end-mix-post", {
+        product: {
+          displayName: "Mix Post-Repeat Plan",
+          customerType: "user",
+          productLineId: "line-tf-end-mix-post",
+          prices: { p1: { USD: "10" } },
+          includedItems: {
+            storage: { quantity: 100, expires: "when-purchase-expires" },
+            quota: { quantity: 500, repeat: [7, "day"], expires: "when-repeated" },
+          },
+        },
+        endedAtMillis: 17 * DAY_MS,
+        createdAtMillis: 0,
+      }))));
+
+      const endEvents = (await getRowDatas(schema.subscriptionEndEvents))
+        .filter((e: any) => e.subscriptionId === "sub-tf-end-mix-post");
+      expect(endEvents).toHaveLength(1);
+
+      const expiredByItem = new Map<string, any>();
+      for (const expiry of endEvents[0].itemQuantityChangesToExpire) {
+        expiredByItem.set(expiry.itemId, expiry);
+      }
+      expect([...expiredByItem.keys()].sort()).toEqual(["quota", "storage"]);
+
+      // storage never repeated; still points at sub-start
+      expect(expiredByItem.get("storage").transactionId).toBe("sub-start:sub-tf-end-mix-post");
+
+      // quota last repeated at 14d; should point at that igr txn
+      const latestRepeatMillis = 14 * DAY_MS;
+      expect(expiredByItem.get("quota").transactionId).toBe(`igr:sub-tf-end-mix-post:${latestRepeatMillis}`);
+      expect(expiredByItem.get("quota").quantity).toBe(500);
+
+      const repeats = (await getRowDatas(schema.itemGrantRepeatEvents))
+        .filter((e: any) => e.sourceId === "sub-tf-end-mix-post")
+        .sort((a: any, b: any) => a.effectiveAtMillis - b.effectiveAtMillis);
+      expect(repeats.map((r: any) => r.effectiveAtMillis)).toEqual([7 * DAY_MS, 14 * DAY_MS]);
+    });
+
+    it("should NOT expire permanent grants (expires=never, absent, or invalid)", async () => {
+      await runStatements(schema.subscriptions.setRow(executionContext, "sub-tf-end-permanent", jsonbExpr(makeSubscription("sub-tf-end-permanent", {
+        product: {
+          displayName: "Permanent Grants Plan",
+          customerType: "user",
+          productLineId: "line-tf-end-permanent",
+          prices: { p1: { USD: "10" } },
+          includedItems: {
+            expiring: { quantity: 50, expires: "when-purchase-expires" },
+            repeating: { quantity: 10, repeat: [1, "day"], expires: "when-repeated" },
+            permanent_never: { quantity: 20, expires: "never" },
+            permanent_absent: { quantity: 30 },
+            permanent_invalid: { quantity: 40, expires: "not-a-real-value" },
+          },
+        },
+        endedAtMillis: 2 * MONTH_MS,
+        createdAtMillis: 0,
+      }))));
+
+      const endEvents = (await getRowDatas(schema.subscriptionEndEvents))
+        .filter((e: any) => e.subscriptionId === "sub-tf-end-permanent");
+      expect(endEvents).toHaveLength(1);
+
+      const expiredItemIds = endEvents[0].itemQuantityChangesToExpire.map((e: any) => e.itemId).sort();
+      expect(expiredItemIds).toEqual(["expiring", "repeating"]);
+    });
   });
 
 
   describe("subscription TimeFold: repeat timing", () => {
     it("should schedule repeats at anchor + N*interval and stop before endedAt", async () => {
-      await runStatements(schema.subscriptions.setRow("sub-tf-timing", jsonbExpr(makeSubscription("sub-tf-timing", {
+      await runStatements(schema.subscriptions.setRow(executionContext, "sub-tf-timing", jsonbExpr(makeSubscription("sub-tf-timing", {
         product: {
           displayName: "Timing Plan",
           customerType: "user",
@@ -384,7 +491,7 @@ describe.sequential("payments schema phase 1 (real postgres)", () => {
 
   describe("OTP TimeFold: item-grant-repeat", () => {
     it("should emit item-grant-repeat events for OTP with repeating items", async () => {
-      await runStatements(schema.oneTimePurchases.setRow("otp-tf-repeat", jsonbExpr({
+      await runStatements(schema.oneTimePurchases.setRow(executionContext, "otp-tf-repeat", jsonbExpr({
         id: "otp-tf-repeat",
         tenancyId: "t1",
         customerId: "u-otp-tf",
@@ -483,7 +590,7 @@ describe.sequential("payments schema phase 1 (real postgres)", () => {
 
   describe("refund transaction", () => {
     it("should pass through refund from manualTransactions", async () => {
-      await runStatements(schema.manualTransactions.setRow("refund-p1", jsonbExpr({
+      await runStatements(schema.manualTransactions.setRow(executionContext, "refund-p1", jsonbExpr({
         txnId: "refund-p1-001",
         tenancyId: "t1",
         effectiveAtMillis: 9000,
@@ -504,7 +611,7 @@ describe.sequential("payments schema phase 1 (real postgres)", () => {
     });
 
     it("should NOT pass through non-refund manual transactions", async () => {
-      await runStatements(schema.manualTransactions.setRow("non-refund-p1", jsonbExpr({
+      await runStatements(schema.manualTransactions.setRow(executionContext, "non-refund-p1", jsonbExpr({
         txnId: "other-p1-001",
         tenancyId: "t1",
         effectiveAtMillis: 9500,

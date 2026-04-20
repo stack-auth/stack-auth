@@ -1,5 +1,5 @@
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import type { Table } from "..";
+import { getBulldozerExecutionContext } from "../execution-context";
 import { attachRowChangeTriggerMetadata, normalizeRowChangeTrigger } from "../row-change-trigger-dispatch";
 import type { RegisteredRowChangeTrigger } from "../row-change-trigger-dispatch";
 import type { Json, RowData, RowIdentifier, SqlExpression, SqlStatement, TableId } from "../utilities";
@@ -60,6 +60,7 @@ export function declareCompactTable<
   partitionKey: string,
 }): Table<GK, null, ToBeCompactedRD> {
   const triggers = new Map<string, RegisteredRowChangeTrigger>();
+  let triggerRegistrationCount = 0;
   const groupsPath = getStorageEnginePath(options.tableId, ["groups"]);
   const getGroupKeyPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey]);
   const getGroupRowsPath = (groupKey: SqlExpression<Json>) => getStorageEnginePath(options.tableId, ["groups", groupKey, "rows"]);
@@ -159,14 +160,17 @@ export function declareCompactTable<
    * SQL to compute new compacted rows for affected groups.
    * groupKeyExpr: SQL expression for the group key to filter by.
    */
-  const computeCompactedRowsSql = (groupKeyExpr: SqlExpression<GK>): { sql: string } => ({ sql: `
+  const computeCompactedRowsSql = (
+    groupKeyExpr: SqlExpression<GK>,
+    ctx: Parameters<typeof options.toBeCompactedTable.listRowsInGroup>[0],
+  ): { sql: string } => ({ sql: `
     WITH "compactSourceRows" AS (
       SELECT
         "r"."rowidentifier" AS "rowidentifier",
         "r"."rowsortkey" AS "rowsortkey",
         "r"."rowdata" AS "rowdata"
       FROM (
-        ${options.toBeCompactedTable.listRowsInGroup({
+        ${options.toBeCompactedTable.listRowsInGroup(ctx, {
           groupKey: groupKeyExpr,
           start: "start",
           end: "end",
@@ -181,7 +185,7 @@ export function declareCompactTable<
         "r"."rowsortkey" AS "rowsortkey",
         "r"."rowdata" AS "rowdata"
       FROM (
-        ${options.boundaryTable.listRowsInGroup({
+        ${options.boundaryTable.listRowsInGroup(ctx, {
           groupKey: groupKeyExpr,
           start: "start",
           end: "end",
@@ -193,12 +197,15 @@ export function declareCompactTable<
     ${compactionAlgoSql}
   ` });
 
-  const createTriggerStatements = (fromChangesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => {
-    const normalizedChangesTableName = `normalized_changes_${generateSecureRandomString()}`;
-    const affectedGroupsTableName = `affected_groups_${generateSecureRandomString()}`;
-    const oldRowsTableName = `old_compacted_rows_${generateSecureRandomString()}`;
-    const newRowsTableName = `new_compacted_rows_${generateSecureRandomString()}`;
-    const compactChangesTableName = `compact_changes_${generateSecureRandomString()}`;
+  const createTriggerStatements = (
+    fromChangesTable: SqlExpression<{ __brand: "$SQL_Table" }>,
+    ctx: { generateDeterministicUniqueString: () => string },
+  ) => {
+    const normalizedChangesTableName = `normalized_changes_${ctx.generateDeterministicUniqueString()}`;
+    const affectedGroupsTableName = `affected_groups_${ctx.generateDeterministicUniqueString()}`;
+    const oldRowsTableName = `old_compacted_rows_${ctx.generateDeterministicUniqueString()}`;
+    const newRowsTableName = `new_compacted_rows_${ctx.generateDeterministicUniqueString()}`;
+    const compactChangesTableName = `compact_changes_${ctx.generateDeterministicUniqueString()}`;
     return [
       {
         ...sqlQuery`
@@ -238,7 +245,7 @@ export function declareCompactTable<
           "rows"."rowData" AS "rowData"
         FROM ${quoteSqlIdentifier(affectedGroupsTableName)} AS "groups"
         CROSS JOIN LATERAL (
-          ${computeCompactedRowsSql(sqlExpression`"groups"."groupKey"`)}
+          ${computeCompactedRowsSql(sqlExpression`"groups"."groupKey"`, ctx)}
         ) AS "rows"
       `.toStatement(newRowsTableName, '"groupKey" jsonb, "rowIdentifier" text, "rowSortKey" jsonb, "rowData" jsonb'),
       // Ensure group + rows paths exist for new groups
@@ -318,7 +325,7 @@ export function declareCompactTable<
   };
 
   const toBeCompactedTrigger = attachRowChangeTriggerMetadata(
-    (changesTable) => createTriggerStatements(changesTable),
+    (ctx, changesTable) => createTriggerStatements(changesTable, getBulldozerExecutionContext(ctx)),
     {
       targetTableId: tableIdToDebugString(options.tableId),
       targetTableTriggers: triggers,
@@ -326,7 +333,7 @@ export function declareCompactTable<
   );
   options.toBeCompactedTable.registerRowChangeTrigger(toBeCompactedTrigger);
   const boundaryTrigger = attachRowChangeTriggerMetadata(
-    (changesTable) => createTriggerStatements(changesTable),
+    (ctx, changesTable) => createTriggerStatements(changesTable, getBulldozerExecutionContext(ctx)),
     {
       targetTableId: tableIdToDebugString(options.tableId),
       targetTableTriggers: triggers,
@@ -348,9 +355,10 @@ export function declareCompactTable<
     },
     compareGroupKeys: options.toBeCompactedTable.compareGroupKeys,
     compareSortKeys: () => sqlExpression` 0 `,
-    init: () => {
-      const allGroupsTableName = `all_groups_${generateSecureRandomString()}`;
-      const initRowsTableName = `init_compacted_rows_${generateSecureRandomString()}`;
+    init: (ctx) => {
+      const executionCtx = getBulldozerExecutionContext(ctx);
+      const allGroupsTableName = `all_groups_${executionCtx.generateDeterministicUniqueString()}`;
+      const initRowsTableName = `init_compacted_rows_${executionCtx.generateDeterministicUniqueString()}`;
       return [
         sqlStatement`
           INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
@@ -363,11 +371,11 @@ export function declareCompactTable<
         // Union groups from both inputs
         sqlQuery`
           SELECT "groupkey" AS "groupKey" FROM (
-            ${options.toBeCompactedTable.listGroups({ start: "start", end: "end", startInclusive: true, endInclusive: true })}
+            ${options.toBeCompactedTable.listGroups(executionCtx, { start: "start", end: "end", startInclusive: true, endInclusive: true })}
           ) AS "g1"
           UNION
           SELECT "groupkey" AS "groupKey" FROM (
-            ${options.boundaryTable.listGroups({ start: "start", end: "end", startInclusive: true, endInclusive: true })}
+            ${options.boundaryTable.listGroups(executionCtx, { start: "start", end: "end", startInclusive: true, endInclusive: true })}
           ) AS "g2"
         `.toStatement(allGroupsTableName, '"groupKey" jsonb'),
         // Compute compacted rows for each group
@@ -379,7 +387,7 @@ export function declareCompactTable<
             "rows"."rowData" AS "rowData"
           FROM ${quoteSqlIdentifier(allGroupsTableName)} AS "groups"
           CROSS JOIN LATERAL (
-            ${computeCompactedRowsSql(sqlExpression`"groups"."groupKey"`)}
+            ${computeCompactedRowsSql(sqlExpression`"groups"."groupKey"`, executionCtx)}
           ) AS "rows"
         `.toStatement(initRowsTableName, '"groupKey" jsonb, "rowIdentifier" text, "rowSortKey" jsonb, "rowData" jsonb'),
         // Store results
@@ -414,7 +422,7 @@ export function declareCompactTable<
         `,
       ];
     },
-    delete: () => {
+    delete: (_ctx) => {
       return [sqlStatement`
         WITH RECURSIVE "pathsToDelete" AS (
           SELECT ${getTablePath(options.tableId)}::jsonb[] AS "path"
@@ -427,8 +435,8 @@ export function declareCompactTable<
         WHERE "keyPath" IN (SELECT "path" FROM "pathsToDelete")
       `];
     },
-    isInitialized: () => isInitializedExpression,
-    listGroups: ({ start, end, startInclusive, endInclusive }) => sqlQuery`
+    isInitialized: (_ctx) => isInitializedExpression,
+    listGroups: (_ctx, { start, end, startInclusive, endInclusive }) => sqlQuery`
       SELECT "groupPath"."keyPath"[cardinality("groupPath"."keyPath")] AS groupKey
       FROM "BulldozerStorageEngine" AS "groupPath"
       WHERE "groupPath"."keyPathParent" = ${groupsPath}::jsonb[]
@@ -455,7 +463,7 @@ export function declareCompactTable<
               : sqlExpression`${options.toBeCompactedTable.compareGroupKeys(sqlExpression`"groupPath"."keyPath"[cardinality("groupPath"."keyPath")]`, end)} < 0`
         }
     `,
-    listRowsInGroup: ({ groupKey, start, end, startInclusive, endInclusive }) => groupKey
+    listRowsInGroup: (_ctx, { groupKey, start, end, startInclusive, endInclusive }) => groupKey
       ? sqlQuery`
         SELECT
           ("row"."keyPath"[cardinality("row"."keyPath")] #>> '{}') AS rowIdentifier,
@@ -483,18 +491,20 @@ export function declareCompactTable<
         ORDER BY groupKey ASC, rowIdentifier ASC
       `,
     registerRowChangeTrigger: (trigger) => {
-      const id = generateSecureRandomString();
+      const id = `trigger_registration_${triggerRegistrationCount.toString(36).padStart(10, "0")}`;
+      triggerRegistrationCount++;
       triggers.set(id, normalizeRowChangeTrigger(trigger));
       return { deregister: () => triggers.delete(id) };
     },
-    verifyDataIntegrity: () => {
-      const allCompactedGroups = options.toBeCompactedTable.listGroups({
+    verifyDataIntegrity: (ctx) => {
+      const executionCtx = getBulldozerExecutionContext(ctx);
+      const allCompactedGroups = options.toBeCompactedTable.listGroups(executionCtx, {
         start: "start", end: "end", startInclusive: true, endInclusive: true,
       });
-      const allBoundaryGroups = options.boundaryTable.listGroups({
+      const allBoundaryGroups = options.boundaryTable.listGroups(executionCtx, {
         start: "start", end: "end", startInclusive: true, endInclusive: true,
       });
-      const allActualRows = table.listRowsInGroup({
+      const allActualRows = table.listRowsInGroup(executionCtx, {
         start: "start", end: "end", startInclusive: true, endInclusive: true,
       });
       return sqlQuery`
@@ -510,7 +520,7 @@ export function declareCompactTable<
             "rows"."rowData" AS "rowData"
           FROM "allGroups" AS "groups"
           CROSS JOIN LATERAL (
-            ${computeCompactedRowsSql(sqlExpression`"groups"."groupKey"`)}
+            ${computeCompactedRowsSql(sqlExpression`"groups"."groupKey"`, executionCtx)}
           ) AS "rows"
         ),
         "actual" AS (

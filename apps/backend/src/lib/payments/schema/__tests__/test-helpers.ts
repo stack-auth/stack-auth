@@ -7,7 +7,12 @@
  */
 
 import postgres from "postgres";
-import { toExecutableSqlTransaction, toQueryableSqlQuery } from "@/lib/bulldozer/db/index";
+import {
+  createBulldozerExecutionContext,
+  toExecutableSqlTransaction,
+  toQueryableSqlQuery,
+} from "@/lib/bulldozer/db/index";
+import { loadProcessQueueFunctionSql } from "@/lib/bulldozer/db/test-sql-loaders";
 
 type SqlStatement = { type: "statement", sql: string, outputName?: string };
 type SqlQuery = { type: "query", sql: string, toStatement(outputName?: string): SqlStatement };
@@ -21,13 +26,36 @@ function getConnectionString(): string {
   return connectionString;
 }
 
+export type CreateTestDbOptions = {
+  /**
+   * SQL expression used to seed `BulldozerTimeFoldMetadata.lastProcessedAt`
+   * at setup time. The default (`'2099-01-01T00:00:00Z'::timestamptz`) puts
+   * the metadata clock far in the future so every timefold tick fires
+   * inline at `setRow` time — this is what most payments tests rely on.
+   *
+   * Set this to `now()` (or a pre-epoch timestamp) to exercise the queued
+   * path where future ticks defer to `bulldozer_timefold_process_queue()`.
+   */
+  lastProcessedAt?: string,
+  /**
+   * When true, also installs `public.bulldozer_timefold_process_queue()`
+   * from the cascade migration so callers can invoke `processQueue()`
+   * against a real prod-shape function body. Default: false (inline-path
+   * tests don't need it).
+   */
+  installProcessQueueFn?: boolean,
+};
+
 /**
  * Creates an isolated test database. Call `setup()` in beforeAll and
  * `teardown()` in afterAll. Access `runStatements` / `readRows` after setup.
  *
  * Follows the same pattern as apps/backend/src/lib/bulldozer/db/index.test.ts.
  */
-export function createTestDb() {
+export function createTestDb(options: CreateTestDbOptions = {}) {
+  const lastProcessedAtExpression = options.lastProcessedAt ?? `'2099-01-01T00:00:00Z'::timestamptz`;
+  const installProcessQueueFn = options.installProcessQueueFn ?? false;
+
   const connectionString = getConnectionString();
   const base = connectionString.replace(/\/[^/]*(\?.*)?$/, "");
   const queryString = connectionString.split("?")[1] ?? "";
@@ -46,11 +74,43 @@ export function createTestDb() {
     get sql() { return getSql(); },
 
     runStatements: async (statements: SqlStatement[]) => {
-      await getSql().unsafe(toExecutableSqlTransaction(statements));
+      await getSql().unsafe(toExecutableSqlTransaction(createBulldozerExecutionContext(), statements));
     },
 
     readRows: async (query: SqlQuery) => {
       return await getSql().unsafe(toQueryableSqlQuery(query));
+    },
+
+    /**
+     * Overwrites `BulldozerTimeFoldMetadata.lastProcessedAt` to the given
+     * SQL expression. Useful for tests that need to bump the clock forward
+     * (to make queued ticks due) or backward (to force future ticks into
+     * the queue).
+     */
+    setLastProcessedAt: async (isoOrExpression: string) => {
+      await getSql().unsafe(`
+        UPDATE "BulldozerTimeFoldMetadata"
+        SET "lastProcessedAt" = (${isoOrExpression})::timestamptz,
+            "updatedAt" = now()
+        WHERE "key" = 'singleton'
+      `);
+    },
+
+    /** Invokes the real pg_cron drain entry point. Requires `installProcessQueueFn`. */
+    processQueue: async () => {
+      if (!installProcessQueueFn) {
+        throw new Error(
+          "processQueue() requires createTestDb({ installProcessQueueFn: true })",
+        );
+      }
+      await getSql().unsafe(`SELECT public.bulldozer_timefold_process_queue()`);
+    },
+
+    countQueueRows: async (): Promise<number> => {
+      const rows = await getSql()<Array<{ count: number }>>`
+        SELECT COUNT(*)::int AS "count" FROM "BulldozerTimeFoldQueue"
+      `;
+      return rows[0].count;
     },
 
     setup: async () => {
@@ -115,8 +175,25 @@ export function createTestDb() {
       `);
       await _sql.unsafe(`
         INSERT INTO "BulldozerTimeFoldMetadata" ("key", "lastProcessedAt")
-        VALUES ('singleton', '2099-01-01T00:00:00Z'::timestamptz)
+        VALUES ('singleton', ${lastProcessedAtExpression})
       `);
+      // declareTimeFoldTable.init() upserts a cascade template here (see
+      // 20260417000000_bulldozer_timefold_downstream_cascade). The
+      // table must exist even when tests don't exercise the queue path,
+      // because init() runs the upsert unconditionally.
+      await _sql.unsafe(`
+        CREATE TABLE "BulldozerTimeFoldDownstreamCascade" (
+          "tableStoragePath" JSONB[] NOT NULL,
+          "cascadeInputName" TEXT NOT NULL,
+          "cascadeTemplate" TEXT,
+          "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+          CONSTRAINT "BulldozerTimeFoldDownstreamCascade_pkey" PRIMARY KEY ("tableStoragePath")
+        )
+      `);
+      if (installProcessQueueFn) {
+        await _sql.unsafe(loadProcessQueueFunctionSql());
+      }
     },
 
     teardown: async () => {

@@ -8,7 +8,7 @@
  */
 
 import { Prisma } from "@/generated/prisma/client";
-import { toExecutableSqlTransaction } from "@/lib/bulldozer/db/index";
+import { createBulldozerExecutionContext, toExecutableSqlTransaction, type BulldozerExecutionContext } from "@/lib/bulldozer/db/index";
 import { paymentsSchema } from "@/lib/payments/schema/singleton";
 import type { ManualTransactionRow } from "@/lib/payments/schema/types";
 import type { PrismaClientTransaction } from "@/prisma-client";
@@ -153,13 +153,15 @@ export function manualTransactionToStoredRow(transaction: ManualTransactionRow):
 
 async function executeSetRow(
   prisma: PrismaClientTransaction,
-  storedTable: { setRow(id: string, data: { type: "expression", sql: string }): { type: "statement", sql: string }[] },
+  storedTable: { setRow(ctx: BulldozerExecutionContext, id: string, data: { type: "expression", sql: string }): { type: "statement", sql: string }[] },
   id: string,
   rowData: Record<string, unknown>,
 ) {
+  const executionContext = createBulldozerExecutionContext();
   const escaped = JSON.stringify(rowData).replaceAll("'", "''");
   const sql = toExecutableSqlTransaction(
-    storedTable.setRow(id, { type: "expression", sql: `'${escaped}'::jsonb` })
+    executionContext,
+    storedTable.setRow(executionContext, id, { type: "expression", sql: `'${escaped}'::jsonb` }),
   );
   await prisma.$executeRaw`${Prisma.raw(sql)}`;
 }

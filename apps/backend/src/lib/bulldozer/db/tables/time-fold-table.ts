@@ -1,7 +1,12 @@
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
-import type { Table } from "..";
-import type { RegisteredRowChangeTrigger } from "../row-change-trigger-dispatch";
-import { attachRowChangeTriggerMetadata, normalizeRowChangeTrigger } from "../row-change-trigger-dispatch";
+import { toCascadeSqlBlock, type Table } from "..";
+import { getBulldozerExecutionContext } from "../execution-context";
+import {
+  attachRowChangeTriggerMetadata,
+  CHANGE_OUTPUT_COLUMNS,
+  collectRowChangeTriggerStatements,
+  normalizeRowChangeTrigger,
+  type RegisteredRowChangeTrigger,
+} from "../row-change-trigger-dispatch";
 import type { Json, RowData, RowIdentifier, SqlExpression, SqlMapper, TableId, Timestamp } from "../utilities";
 import {
   getStorageEnginePath,
@@ -46,6 +51,7 @@ export function declareTimeFoldTable<
   reducer: SqlMapper<{ oldState: S, oldRowData: OldRD, timestamp: Timestamp | null }, { newState: S, newRowsData: NewRD[], nextTimestamp: Timestamp | null }>,
 }): Table<GK, null, NewRD> {
   const triggers = new Map<string, RegisteredRowChangeTrigger>();
+  let triggerRegistrationCount = 0;
   const reducerSqlLiteral = quoteSqlStringLiteral(options.reducer.sql);
   const tableStoragePath = getStorageEnginePath(options.tableId, []);
   const groupsPath = getStorageEnginePath(options.tableId, ["groups"]);
@@ -72,12 +78,15 @@ export function declareTimeFoldTable<
       '2000-01-01T00:00:00Z'::timestamptz
     )
   `;
-  const createApplyChangesStatements = (normalizedChangesTable: SqlExpression<string>) => {
-    const oldStateRowsTableName = `old_state_rows_${generateSecureRandomString()}`;
-    const oldTimeFoldRowsTableName = `old_time_fold_rows_${generateSecureRandomString()}`;
-    const recomputedStatesTableName = `recomputed_states_${generateSecureRandomString()}`;
-    const newTimeFoldRowsTableName = `new_time_fold_rows_${generateSecureRandomString()}`;
-    const timeFoldChangesTableName = `time_fold_changes_${generateSecureRandomString()}`;
+  const createApplyChangesStatements = (
+    normalizedChangesTable: SqlExpression<string>,
+    ctx: { generateDeterministicUniqueString: () => string },
+  ) => {
+    const oldStateRowsTableName = `old_state_rows_${ctx.generateDeterministicUniqueString()}`;
+    const oldTimeFoldRowsTableName = `old_time_fold_rows_${ctx.generateDeterministicUniqueString()}`;
+    const recomputedStatesTableName = `recomputed_states_${ctx.generateDeterministicUniqueString()}`;
+    const newTimeFoldRowsTableName = `new_time_fold_rows_${ctx.generateDeterministicUniqueString()}`;
+    const timeFoldChangesTableName = `time_fold_changes_${ctx.generateDeterministicUniqueString()}`;
 
     return [
       {
@@ -410,11 +419,14 @@ export function declareTimeFoldTable<
           ON "oldRows"."groupKey" IS NOT DISTINCT FROM "newRows"."groupKey"
           AND "oldRows"."rowIdentifier" = "newRows"."rowIdentifier"
         WHERE "oldRows"."rowData" IS DISTINCT FROM "newRows"."rowData"
-      `.toStatement(timeFoldChangesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb'),
+      `.toStatement(timeFoldChangesTableName, CHANGE_OUTPUT_COLUMNS),
     ];
   };
-  const createFromTableTriggerStatements = (fromChangesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => {
-    const normalizedChangesTableName = `normalized_changes_${generateSecureRandomString()}`;
+  const createFromTableTriggerStatements = (
+    fromChangesTable: SqlExpression<{ __brand: "$SQL_Table" }>,
+    ctx: { generateDeterministicUniqueString: () => string },
+  ) => {
+    const normalizedChangesTableName = `normalized_changes_${ctx.generateDeterministicUniqueString()}`;
     return [
       {
         ...sqlQuery`
@@ -439,11 +451,11 @@ export function declareTimeFoldTable<
         `.toStatement(normalizedChangesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowData" jsonb, "newRowData" jsonb, "hasOldRow" boolean, "hasNewRow" boolean'),
         requiresSequentialExecution: true,
       },
-      ...createApplyChangesStatements(quoteSqlIdentifier(normalizedChangesTableName)),
+      ...createApplyChangesStatements(quoteSqlIdentifier(normalizedChangesTableName), ctx),
     ];
   };
   const fromTableTrigger = attachRowChangeTriggerMetadata(
-    (fromChangesTable) => createFromTableTriggerStatements(fromChangesTable),
+    (ctx, fromChangesTable) => createFromTableTriggerStatements(fromChangesTable, getBulldozerExecutionContext(ctx)),
     {
       targetTableId: tableIdToDebugString(options.tableId),
       targetTableTriggers: triggers,
@@ -463,10 +475,35 @@ export function declareTimeFoldTable<
     },
     compareGroupKeys: options.fromTable.compareGroupKeys,
     compareSortKeys: (_a, _b) => sqlExpression`0`,
-    init: () => {
-      const fromGroupsTableName = `from_groups_${generateSecureRandomString()}`;
-      const fromRowsTableName = `from_rows_${generateSecureRandomString()}`;
-      const initChangesTableName = `init_changes_${generateSecureRandomString()}`;
+    init: (ctx) => {
+      const executionCtx = getBulldozerExecutionContext(ctx);
+      const fromGroupsTableName = `from_groups_${executionCtx.generateDeterministicUniqueString()}`;
+      const fromRowsTableName = `from_rows_${executionCtx.generateDeterministicUniqueString()}`;
+      const initChangesTableName = `init_changes_${executionCtx.generateDeterministicUniqueString()}`;
+
+      // Compile the downstream trigger cascade into a plpgsql DO block and
+      // persist it in BulldozerTimeFoldDownstreamCascade, keyed by this
+      // timefold's tableStoragePath. bulldozer_timefold_process_queue()
+      // reads and EXECUTEs it after each batch of queue-drained emissions.
+      //
+      // This mirrors, on the queue-drain path, what collectRowChangeTriggerStatements
+      // does on the inline setRow path (see row-change-trigger-dispatch.ts's
+      // use by the outer runStatements pipeline). Without this, pg_cron-
+      // drained emissions update the timefold's own rows but never propagate
+      // to filters/maps/LFolds above — see apps/backend/src/lib/bulldozer/db/
+      // timefold-queue-downstream.test.ts.
+      const cascadeInputName = `tf_cascade_input_${executionCtx.generateDeterministicUniqueString()}`;
+      const cascadeCollected = collectRowChangeTriggerStatements(executionCtx, {
+        sourceTableId: tableIdToDebugString(options.tableId),
+        sourceChangesTable: quoteSqlIdentifier(cascadeInputName),
+        sourceTableTriggers: triggers,
+      });
+      const cascadeTemplate = toCascadeSqlBlock(executionCtx, {
+        cascadeInputName,
+        cascadeInputColumns: CHANGE_OUTPUT_COLUMNS,
+        statements: cascadeCollected.statements,
+      });
+
       return [
         sqlStatement`
           INSERT INTO "BulldozerStorageEngine" ("id", "keyPath", "value")
@@ -477,7 +514,25 @@ export function declareTimeFoldTable<
             (gen_random_uuid(), ${getStorageEnginePath(options.tableId, ["metadata"])}, '{ "version": 1 }'::jsonb)
           ON CONFLICT ("keyPath") DO NOTHING
         `,
-        options.fromTable.listGroups({
+        // Upsert the cascade registry row. A null template means "no
+        // downstream triggers registered" — process_queue will skip the
+        // EXECUTE in that case, matching the no-op semantics of the inline
+        // path when no triggers are attached.
+        sqlStatement`
+          INSERT INTO "BulldozerTimeFoldDownstreamCascade"
+            ("tableStoragePath", "cascadeInputName", "cascadeTemplate")
+          VALUES (
+            ${tableStoragePath}::jsonb[],
+            ${quoteSqlStringLiteral(cascadeInputName)},
+            ${cascadeTemplate == null ? sqlExpression`NULL::text` : quoteSqlStringLiteral(cascadeTemplate)}
+          )
+          ON CONFLICT ("tableStoragePath") DO UPDATE
+          SET
+            "cascadeInputName" = EXCLUDED."cascadeInputName",
+            "cascadeTemplate" = EXCLUDED."cascadeTemplate",
+            "updatedAt" = now()
+        `,
+        options.fromTable.listGroups(executionCtx, {
           start: "start",
           end: "end",
           startInclusive: true,
@@ -490,7 +545,7 @@ export function declareTimeFoldTable<
             "rows"."rowdata" AS "newRowData"
           FROM ${quoteSqlIdentifier(fromGroupsTableName)} AS "groups"
           CROSS JOIN LATERAL (
-            ${options.fromTable.listRowsInGroup({
+            ${options.fromTable.listRowsInGroup(executionCtx, {
               groupKey: sqlExpression`"groups"."groupkey"`,
               start: "start",
               end: "end",
@@ -509,13 +564,17 @@ export function declareTimeFoldTable<
             true AS "hasNewRow"
           FROM ${quoteSqlIdentifier(fromRowsTableName)} AS "rows"
         `.toStatement(initChangesTableName, '"groupKey" jsonb, "rowIdentifier" text, "oldRowData" jsonb, "newRowData" jsonb, "hasOldRow" boolean, "hasNewRow" boolean'),
-        ...createApplyChangesStatements(quoteSqlIdentifier(initChangesTableName)),
+        ...createApplyChangesStatements(quoteSqlIdentifier(initChangesTableName), executionCtx),
       ];
     },
-    delete: () => {
+    delete: (_ctx) => {
       return [
         sqlStatement`
           DELETE FROM "BulldozerTimeFoldQueue"
+          WHERE "tableStoragePath" = ${tableStoragePath}::jsonb[]
+        `,
+        sqlStatement`
+          DELETE FROM "BulldozerTimeFoldDownstreamCascade"
           WHERE "tableStoragePath" = ${tableStoragePath}::jsonb[]
         `,
         sqlStatement`
@@ -532,8 +591,8 @@ export function declareTimeFoldTable<
         `,
       ];
     },
-    isInitialized: () => isInitializedExpression,
-    listGroups: ({ start, end, startInclusive, endInclusive }) => sqlQuery`
+    isInitialized: (_ctx) => isInitializedExpression,
+    listGroups: (_ctx, { start, end, startInclusive, endInclusive }) => sqlQuery`
       SELECT "groupPath"."keyPath"[cardinality("groupPath"."keyPath")] AS groupKey
       FROM "BulldozerStorageEngine" AS "groupPath"
       WHERE "groupPath"."keyPathParent" = ${groupsPath}::jsonb[]
@@ -561,7 +620,7 @@ export function declareTimeFoldTable<
         }
       ORDER BY "groupPath"."keyPath"[cardinality("groupPath"."keyPath")] ASC
     `,
-    listRowsInGroup: ({ groupKey, start, end, startInclusive, endInclusive }) => groupKey != null ? sqlQuery`
+    listRowsInGroup: (_ctx, { groupKey, start, end, startInclusive, endInclusive }) => groupKey != null ? sqlQuery`
       SELECT
         ("keyPath"[cardinality("keyPath")] #>> '{}') AS rowIdentifier,
         'null'::jsonb AS rowSortKey,
@@ -587,15 +646,17 @@ export function declareTimeFoldTable<
       ORDER BY groupKey ASC, rowIdentifier ASC
     `,
     registerRowChangeTrigger: (trigger) => {
-      const id = generateSecureRandomString();
+      const id = `trigger_registration_${triggerRegistrationCount.toString(36).padStart(10, "0")}`;
+      triggerRegistrationCount++;
       triggers.set(id, normalizeRowChangeTrigger(trigger));
       return { deregister: () => triggers.delete(id) };
     },
-    verifyDataIntegrity: () => {
-      const allInputGroups = options.fromTable.listGroups({
+    verifyDataIntegrity: (ctx) => {
+      const executionCtx = getBulldozerExecutionContext(ctx);
+      const allInputGroups = options.fromTable.listGroups(executionCtx, {
         start: "start", end: "end", startInclusive: true, endInclusive: true,
       });
-      const allActualGroups = table.listGroups({
+      const allActualGroups = table.listGroups(executionCtx, {
         start: "start", end: "end", startInclusive: true, endInclusive: true,
       });
       return sqlQuery`
