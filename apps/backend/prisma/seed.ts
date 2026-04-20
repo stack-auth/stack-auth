@@ -425,11 +425,16 @@ export async function seed() {
       }
     }
 
+    const existingDefaultUser = await usersCrudHandlers.adminRead({
+      tenancy: internalTenancy,
+      user_id: defaultUserId,
+    });
+    const existingMetadata = (existingDefaultUser.client_read_only_metadata ?? {}) as Record<string, unknown>;
     await usersCrudHandlers.adminUpdate({
       tenancy: internalTenancy,
       user_id: defaultUserId,
       data: {
-        client_read_only_metadata: { isAiChatReviewer: true },
+        client_read_only_metadata: { ...existingMetadata, isAiChatReviewer: true },
       },
     });
 
