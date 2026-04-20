@@ -1,6 +1,6 @@
 ---
 title: Self-host
-lastModified: "2026-04-14"
+lastModified: "2026-04-20"
 ---
 
 <Info type="danger">
@@ -109,7 +109,22 @@ Pull the latest emulator image and start it:
 
 <PlatformCodeblock document="others/self-host" examples={["emulator-start"]} hidePlatformSelector />
 
-The emulator automatically downloads the latest image if none exists locally. On first start, it may take a minute to boot. Subsequent starts are faster due to snapshot caching.
+The emulator automatically downloads the latest image if none exists locally. On first pull, a one-time local snapshot capture runs (~1-3 minutes) to enable fast startup. Subsequent starts resume from this snapshot in ~5-8 seconds.
+
+### How Fast-Start Works
+
+The emulator uses VM snapshots to dramatically reduce startup time:
+
+| Scenario | Time |
+|----------|------|
+| First pull (download + snapshot capture) | ~30s download + 1-3 min capture |
+| Normal start (with snapshot) | ~5-8 seconds |
+| Fast start with `EMULATOR_NO_ROTATION=1` | ~2.5 seconds |
+| Cold boot (no snapshot, fallback) | 30-120 seconds |
+
+The snapshot is captured locally during the first `emulator pull` because QEMU migration state isn't portable across different hardware accelerators (KVM, HVF, TCG). This one-time capture ensures fast resume works reliably on your specific hardware.
+
+Each time the emulator starts from a snapshot, it generates fresh secrets and rotates them into the running services. This keeps sessions isolated while maintaining fast startup times.
 
 ### Emulator Commands
 
@@ -117,8 +132,11 @@ The Stack CLI provides commands to manage the emulator:
 
 | Command | Description |
 |---------|-------------|
-| `emulator pull` | Download the latest emulator image |
-| `emulator start` | Start the emulator (auto-pulls if needed) |
+| `emulator pull` | Download the latest emulator image and capture a local snapshot |
+| `emulator pull --pr <number>` | Pull from a PR build's CI artifacts |
+| `emulator pull --run <id>` | Pull from a specific workflow run's artifacts |
+| `emulator pull --skip-snapshot` | Download only the image, skip snapshot capture |
+| `emulator start` | Start the emulator (auto-pulls and auto-captures if needed) |
 | `emulator stop` | Stop the emulator (preserves data) |
 | `emulator reset` | Wipe all data and reset to a fresh state |
 | `emulator status` | Show emulator and service health |
@@ -179,6 +197,21 @@ The emulator uses hardware acceleration when available:
 - **Cross-architecture**: Falls back to software emulation (slower)
 
 For best performance, run the emulator on your native architecture (arm64 on Apple Silicon, amd64 on Intel/AMD).
+
+### Environment Variables
+
+Configure emulator behavior with these environment variables:
+
+| Variable | Description |
+|----------|-------------|
+| `STACK_EMULATOR_HOME` | Directory for emulator images and runtime data (default: `~/.stack/emulator`) |
+| `EMULATOR_NO_ROTATION=1` | Skip secret rotation on startup for faster ~2.5s starts. Use for tests or CI where placeholder secrets are acceptable. |
+| `EMULATOR_BACKEND_PORT` | Override the backend API port (default: 26701) |
+| `EMULATOR_DASHBOARD_PORT` | Override the dashboard port (default: 26700) |
+
+<Info>
+With `EMULATOR_NO_ROTATION=1`, the emulator uses placeholder secrets instead of generating fresh ones each session. This is faster but should only be used in testing environments where security isolation between runs isn't needed.
+</Info>
 
 ### Managing Emulator Data
 
