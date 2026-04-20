@@ -2,7 +2,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { EmailOutboxSimpleStatus } from "@/generated/prisma/enums";
 import { getClickhouseAdminClient } from "@/lib/clickhouse";
 import { ClickHouseError } from "@clickhouse/client";
-import { ActivitySplit, buildSplitFromDailyEntitySets } from "@/lib/metrics-activity-split";
+import { ActivitySplit } from "@/lib/metrics-activity-split";
 import { Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, getPrismaSchemaForTenancy, sqlQuoteIdent } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
@@ -19,7 +19,6 @@ import {
   MetricsRecentUserSchema,
 } from "@stackframe/stack-shared/dist/interface/admin-metrics";
 import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { isUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { userFullInclude, userPrismaToCrud, usersCrudHandlers } from "../../users/crud";
 
@@ -56,11 +55,6 @@ export function getMetricsWindowBounds(now: Date): {
 function formatClickhouseDateTimeParam(date: Date): string {
   // ClickHouse DateTime params are passed as "YYYY-MM-DDTHH:MM:SS" (no timezone); treat them as UTC.
   return date.toISOString().slice(0, 19);
-}
-
-function normalizeUuidFromEvent(value: string): string | null {
-  const normalized = value.trim().toLowerCase();
-  return isUuid(normalized) ? normalized : null;
 }
 
 async function loadUsersByCountry(tenancy: Tenancy, includeAnonymous: boolean = false): Promise<Record<string, number>> {
@@ -163,7 +157,7 @@ async function loadDailyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymou
         AND user_id IS NOT NULL
         AND event_at >= {since:DateTime}
         AND event_at < {untilExclusive:DateTime}
-        AND ({includeAnonymous:UInt8} = 1 OR JSONExtract(toJSONString(data), 'is_anonymous', 'UInt8') = 0)
+        AND ({includeAnonymous:UInt8} = 1 OR coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0)
       GROUP BY day
       ORDER BY day ASC
     `,
@@ -197,29 +191,71 @@ async function loadDailyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymou
   return out;
 }
 
-async function loadDailyActiveUsersSplit(tenancy: Tenancy, now: Date, includeAnonymous: boolean): Promise<ActivitySplit> {
+async function loadDailyActiveSplitFromClickhouse(options: {
+  tenancy: Tenancy,
+  now: Date,
+  entity: "user" | "team",
+  includeAnonymous: boolean,
+}): Promise<ActivitySplit> {
+  const { tenancy, now, entity, includeAnonymous } = options;
   const todayUtc = new Date(now);
   todayUtc.setUTCHours(0, 0, 0, 0);
   const since = new Date(todayUtc.getTime() - METRICS_WINDOW_MS);
   const untilExclusive = new Date(todayUtc.getTime() + ONE_DAY_MS);
-  const clickhouseClient = getClickhouseAdminClient();
-  const schema = await getPrismaSchemaForTenancy(tenancy);
-  const prisma = await getPrismaClientForTenancy(tenancy);
 
-  const userRows = await clickhouseClient.query({
+  const idCol = entity === "user" ? "user_id" : "team_id";
+  // Teams don't have an is_anonymous concept, so that filter is users-only.
+  const anonFilter = entity === "user"
+    ? "AND ({includeAnonymous:UInt8} = 1 OR coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0)"
+    : "";
+
+  const clickhouseClient = getClickhouseAdminClient();
+  // Note: the inner `assumeNotNull(${idCol}) AS entity_id` must not reuse the
+  // column name, or ClickHouse re-resolves `WHERE ${idCol} IS NOT NULL`
+  // against the alias (assumeNotNull returns '' for NULLs, which passes the
+  // not-null test) and phantom rows slip through.
+  const result = await clickhouseClient.query({
     query: `
       SELECT
-        toDate(event_at) AS day,
-        assumeNotNull(user_id) AS user_id
-      FROM analytics_internal.events
-      WHERE event_type = '$token-refresh'
-        AND project_id = {projectId:String}
-        AND branch_id = {branchId:String}
-        AND user_id IS NOT NULL
-        AND event_at >= {since:DateTime}
-        AND event_at < {untilExclusive:DateTime}
-        AND ({includeAnonymous:UInt8} = 1 OR JSONExtract(toJSONString(data), 'is_anonymous', 'UInt8') = 0)
-      GROUP BY day, user_id
+        toString(w.day) AS day,
+        count() AS total_count,
+        countIf(f.first_date = w.day) AS new_count,
+        countIf(f.first_date < w.day AND w.prev_day = addDays(w.day, -1)) AS retained_count,
+        countIf(f.first_date < w.day AND (isNull(w.prev_day) OR w.prev_day < addDays(w.day, -1))) AS reactivated_count
+      FROM (
+        SELECT
+          day,
+          entity_id,
+          lagInFrame(day, 1) OVER (PARTITION BY entity_id ORDER BY day) AS prev_day
+        FROM (
+          SELECT DISTINCT
+            toDate(event_at) AS day,
+            assumeNotNull(${idCol}) AS entity_id
+          FROM analytics_internal.events
+          WHERE event_type = '$token-refresh'
+            AND project_id = {projectId:String}
+            AND branch_id = {branchId:String}
+            AND ${idCol} IS NOT NULL
+            AND event_at >= {since:DateTime}
+            AND event_at < {untilExclusive:DateTime}
+            ${anonFilter}
+        )
+      ) AS w
+      LEFT JOIN (
+        SELECT
+          assumeNotNull(${idCol}) AS entity_id,
+          toDate(min(event_at)) AS first_date
+        FROM analytics_internal.events
+        WHERE event_type = '$token-refresh'
+          AND project_id = {projectId:String}
+          AND branch_id = {branchId:String}
+          AND ${idCol} IS NOT NULL
+          AND event_at < {untilExclusive:DateTime}
+          ${anonFilter}
+        GROUP BY entity_id
+      ) AS f USING (entity_id)
+      GROUP BY w.day
+      ORDER BY w.day ASC
     `,
     query_params: {
       projectId: tenancy.project.id,
@@ -229,129 +265,35 @@ async function loadDailyActiveUsersSplit(tenancy: Tenancy, now: Date, includeAno
       includeAnonymous: includeAnonymous ? 1 : 0,
     },
     format: "JSONEachRow",
-  }).then((result) => result.json() as Promise<{ day: string, user_id: string }[]>);
-
-  const sanitizedUserRows = userRows.flatMap((row) => {
-    const userId = normalizeUuidFromEvent(row.user_id);
-    if (userId == null) {
-      return [];
-    }
-    return [{ ...row, user_id: userId }];
   });
+  const rows = (await result.json()) as {
+    day: string,
+    total_count: string,
+    new_count: string,
+    retained_count: string,
+    reactivated_count: string,
+  }[];
 
-  const activeUserIds = [...new Set(sanitizedUserRows.map((row) => row.user_id))];
-  const users: { projectUserId: string, signedUpAtOrCreatedAt: Date }[] = activeUserIds.length === 0
-    ? []
-    : await prisma.$replica().$queryRaw<{ projectUserId: string, signedUpAtOrCreatedAt: Date }[]>`
-        SELECT
-          "projectUserId"::text AS "projectUserId",
-          COALESCE("signedUpAt", "createdAt") AS "signedUpAtOrCreatedAt"
-        FROM ${sqlQuoteIdent(schema)}."ProjectUser"
-        WHERE "tenancyId" = ${tenancy.id}::UUID
-          AND "projectUserId" IN (${Prisma.join(activeUserIds.map((id) => Prisma.sql`${id}::UUID`))})
-          ${includeAnonymous ? Prisma.empty : Prisma.sql`AND "isAnonymous" = false`}
-      `;
-
+  const byDay = new Map(rows.map((r) => [r.day.split('T')[0], r]));
   const orderedDays: string[] = [];
-  const idsByDay = new Map<string, Set<string>>();
   for (let i = 0; i <= METRICS_WINDOW_DAYS; i += 1) {
-    const date = new Date(since.getTime() + i * ONE_DAY_MS).toISOString().split('T')[0];
-    orderedDays.push(date);
-    idsByDay.set(date, new Set<string>());
+    orderedDays.push(new Date(since.getTime() + i * ONE_DAY_MS).toISOString().split('T')[0]);
   }
-  for (const row of sanitizedUserRows) {
-    const day = row.day.split('T')[0];
-    const daySet = idsByDay.get(day);
-    if (daySet) {
-      daySet.add(row.user_id);
-    }
-  }
+  const split: ActivitySplit = {
+    total: orderedDays.map((date) => ({ date, activity: Number(byDay.get(date)?.total_count ?? 0) })),
+    new: orderedDays.map((date) => ({ date, activity: Number(byDay.get(date)?.new_count ?? 0) })),
+    retained: orderedDays.map((date) => ({ date, activity: Number(byDay.get(date)?.retained_count ?? 0) })),
+    reactivated: orderedDays.map((date) => ({ date, activity: Number(byDay.get(date)?.reactivated_count ?? 0) })),
+  };
+  return split;
+}
 
-  const createdDayByUserId = new Map<string, string>(
-    users.map((user) => [user.projectUserId, user.signedUpAtOrCreatedAt.toISOString().split('T')[0]])
-  );
-
-  return buildSplitFromDailyEntitySets({
-    orderedDays,
-    entityIdsByDay: idsByDay,
-    createdDayByEntityId: createdDayByUserId,
-  });
+async function loadDailyActiveUsersSplit(tenancy: Tenancy, now: Date, includeAnonymous: boolean): Promise<ActivitySplit> {
+  return await loadDailyActiveSplitFromClickhouse({ tenancy, now, entity: "user", includeAnonymous });
 }
 
 async function loadDailyActiveTeamsSplit(tenancy: Tenancy, now: Date): Promise<ActivitySplit> {
-  const todayUtc = new Date(now);
-  todayUtc.setUTCHours(0, 0, 0, 0);
-  const since = new Date(todayUtc.getTime() - METRICS_WINDOW_MS);
-  const untilExclusive = new Date(todayUtc.getTime() + ONE_DAY_MS);
-  const clickhouseClient = getClickhouseAdminClient();
-  const schema = await getPrismaSchemaForTenancy(tenancy);
-  const prisma = await getPrismaClientForTenancy(tenancy);
-
-  const teamRows = await clickhouseClient.query({
-    query: `
-      SELECT
-        toDate(event_at) AS day,
-        assumeNotNull(team_id) AS team_id
-      FROM analytics_internal.events
-      WHERE event_type = '$token-refresh'
-        AND project_id = {projectId:String}
-        AND branch_id = {branchId:String}
-        AND team_id IS NOT NULL
-        AND event_at >= {since:DateTime}
-        AND event_at < {untilExclusive:DateTime}
-      GROUP BY day, team_id
-    `,
-    query_params: {
-      projectId: tenancy.project.id,
-      branchId: tenancy.branchId,
-      since: formatClickhouseDateTimeParam(since),
-      untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
-    },
-    format: "JSONEachRow",
-  }).then((result) => result.json() as Promise<{ day: string, team_id: string }[]>);
-
-  const sanitizedTeamRows = teamRows.flatMap((row) => {
-    const teamId = normalizeUuidFromEvent(row.team_id);
-    if (teamId == null) {
-      return [];
-    }
-    return [{ ...row, team_id: teamId }];
-  });
-
-  const activeTeamIds = [...new Set(sanitizedTeamRows.map((row) => row.team_id))];
-  const teams: { teamId: string, createdAt: Date }[] = activeTeamIds.length === 0
-    ? []
-    : await prisma.$replica().$queryRaw<{ teamId: string, createdAt: Date }[]>`
-        SELECT "teamId"::text AS "teamId", "createdAt"
-        FROM ${sqlQuoteIdent(schema)}."Team"
-        WHERE "tenancyId" = ${tenancy.id}::UUID
-          AND "teamId" IN (${Prisma.join(activeTeamIds.map((id) => Prisma.sql`${id}::UUID`))})
-      `;
-
-  const orderedDays: string[] = [];
-  const idsByDay = new Map<string, Set<string>>();
-  for (let i = 0; i <= METRICS_WINDOW_DAYS; i += 1) {
-    const date = new Date(since.getTime() + i * ONE_DAY_MS).toISOString().split('T')[0];
-    orderedDays.push(date);
-    idsByDay.set(date, new Set<string>());
-  }
-  for (const row of sanitizedTeamRows) {
-    const day = row.day.split('T')[0];
-    const daySet = idsByDay.get(day);
-    if (daySet) {
-      daySet.add(row.team_id);
-    }
-  }
-
-  const createdDayByTeamId = new Map<string, string>(
-    teams.map((team) => [team.teamId, team.createdAt.toISOString().split('T')[0]])
-  );
-
-  return buildSplitFromDailyEntitySets({
-    orderedDays,
-    entityIdsByDay: idsByDay,
-    createdDayByEntityId: createdDayByTeamId,
-  });
+  return await loadDailyActiveSplitFromClickhouse({ tenancy, now, entity: "team", includeAnonymous: false });
 }
 
 async function loadLoginMethods(tenancy: Tenancy): Promise<{ method: string, count: number }[]> {
@@ -397,6 +339,9 @@ async function loadRecentlyActiveUsers(tenancy: Tenancy, includeAnonymous: boole
   return dbUsers.map((user) => userPrismaToCrud(user, tenancy.config));
 }
 
+// UUID v4 regex identical to isUuid() in stack-shared, ported to ClickHouse re2 syntax.
+const MAU_UUID_V4_REGEX = "^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$";
+
 async function loadMonthlyActiveUsers(tenancy: Tenancy, now: Date, includeAnonymous: boolean = false): Promise<number> {
   const { since, untilExclusive } = getMetricsWindowBounds(now);
 
@@ -404,17 +349,19 @@ async function loadMonthlyActiveUsers(tenancy: Tenancy, now: Date, includeAnonym
   try {
     const result = await clickhouseClient.query({
       query: `
-        SELECT
-          assumeNotNull(user_id) AS user_id
-        FROM analytics_internal.events
-        WHERE event_type = '$token-refresh'
-          AND project_id = {projectId:String}
-          AND branch_id = {branchId:String}
-          AND user_id IS NOT NULL
-          AND event_at >= {since:DateTime}
-          AND event_at < {untilExclusive:DateTime}
-          AND ({includeAnonymous:UInt8} = 1 OR JSONExtract(toJSONString(data), 'is_anonymous', 'UInt8') = 0)
-        GROUP BY user_id
+        SELECT uniqExact(sipHash64(normalized_user_id)) AS mau
+        FROM (
+          SELECT lower(trim(assumeNotNull(user_id))) AS normalized_user_id
+          FROM analytics_internal.events
+          WHERE event_type = '$token-refresh'
+            AND project_id = {projectId:String}
+            AND branch_id = {branchId:String}
+            AND user_id IS NOT NULL
+            AND event_at >= {since:DateTime}
+            AND event_at < {untilExclusive:DateTime}
+            AND ({includeAnonymous:UInt8} = 1 OR coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0)
+        )
+        WHERE match(normalized_user_id, {uuidRe:String})
       `,
       query_params: {
         projectId: tenancy.project.id,
@@ -422,18 +369,12 @@ async function loadMonthlyActiveUsers(tenancy: Tenancy, now: Date, includeAnonym
         since: formatClickhouseDateTimeParam(since),
         untilExclusive: formatClickhouseDateTimeParam(untilExclusive),
         includeAnonymous: includeAnonymous ? 1 : 0,
+        uuidRe: MAU_UUID_V4_REGEX,
       },
       format: "JSONEachRow",
     });
-    const rows: { user_id: string }[] = await result.json();
-    const uniqueUserIds = new Set<string>();
-    for (const row of rows) {
-      const normalizedUserId = normalizeUuidFromEvent(row.user_id);
-      if (normalizedUserId != null) {
-        uniqueUserIds.add(normalizedUserId);
-      }
-    }
-    return uniqueUserIds.size;
+    const rows: { mau: string | number }[] = await result.json();
+    return Number(rows[0]?.mau ?? 0);
   } catch (error) {
     // Only swallow real ClickHouse errors (e.g. project hasn't enabled
     // analytics yet, transient query failure). Anything else is a programming
@@ -835,7 +776,7 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
       LEFT JOIN (
         SELECT
           user_id,
-          argMax(JSONExtract(toJSONString(data), 'is_anonymous', 'UInt8'), event_at) AS latest_is_anonymous
+          argMax(coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0), event_at) AS latest_is_anonymous
         FROM analytics_internal.events
         WHERE event_type = '$token-refresh'
           AND project_id = {projectId:String}
@@ -846,7 +787,7 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
       ) AS token_refresh_users
         ON e.user_id = token_refresh_users.user_id
     `;
-    const nonAnonymousAnalyticsUserFilter = "({includeAnonymous:UInt8} = 1 OR coalesce(JSONExtract(toJSONString(e.data), 'is_anonymous', 'Nullable(UInt8)'), token_refresh_users.latest_is_anonymous, 0) = 0)";
+    const nonAnonymousAnalyticsUserFilter = "({includeAnonymous:UInt8} = 1 OR coalesce(CAST(e.data.is_anonymous, 'Nullable(UInt8)'), token_refresh_users.latest_is_anonymous, 0) = 0)";
     const [dailyEventResult, totalVisitorResult, referrerResult, topRegionResult, onlineResult] = await Promise.all([
       // Combined daily aggregates: page-view count, click count, and unique
       // visitors per day — one scan over the page-view/click event types.
@@ -953,7 +894,7 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
             uniqExactIf(
               assumeNotNull(user_id),
               user_id IS NOT NULL
-                AND ({includeAnonymous:UInt8} = 1 OR JSONExtract(toJSONString(data), 'is_anonymous', 'UInt8') = 0)
+                AND ({includeAnonymous:UInt8} = 1 OR coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0)
             ) AS visitors
           FROM analytics_internal.events
           WHERE event_type = '$token-refresh'
@@ -987,7 +928,7 @@ async function loadAnalyticsOverview(tenancy: Tenancy, now: Date, includeAnonymo
             AND user_id IS NOT NULL
             AND event_at >= {onlineSince:DateTime}
             AND event_at < {untilExclusive:DateTime}
-            AND ({includeAnonymous:UInt8} = 1 OR JSONExtract(toJSONString(data), 'is_anonymous', 'UInt8') = 0)
+            AND ({includeAnonymous:UInt8} = 1 OR coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0)
         `,
         query_params: {
           onlineSince: formatClickhouseDateTimeParam(new Date(now.getTime() - 5 * 60 * 1000)),
