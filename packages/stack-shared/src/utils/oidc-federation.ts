@@ -1,8 +1,8 @@
 import type { JWTPayload } from "jose";
 
 export type ClaimConditions = {
-  stringEquals?: Record<string, string | string[]>,
-  stringLike?: Record<string, string | string[]>,
+  stringEquals?: Map<string, string | string[]>,
+  stringLike?: Map<string, string | string[]>,
 };
 
 export function stringLikeToRegExp(pattern: string): RegExp {
@@ -32,7 +32,7 @@ export type MatchResult =
   | { matched: false, reason: string };
 
 export function matchClaims(conditions: ClaimConditions, claims: JWTPayload): MatchResult {
-  for (const [claimKey, expected] of Object.entries(conditions.stringEquals ?? {})) {
+  for (const [claimKey, expected] of conditions.stringEquals ?? new Map()) {
     const actual = claimAsString(claims[claimKey]);
     if (actual === undefined) return { matched: false, reason: `missing claim "${claimKey}"` };
     const options = toArray(expected);
@@ -40,7 +40,7 @@ export function matchClaims(conditions: ClaimConditions, claims: JWTPayload): Ma
       return { matched: false, reason: `stringEquals failed on claim "${claimKey}"` };
     }
   }
-  for (const [claimKey, expected] of Object.entries(conditions.stringLike ?? {})) {
+  for (const [claimKey, expected] of conditions.stringLike ?? new Map()) {
     const actual = claimAsString(claims[claimKey]);
     if (actual === undefined) return { matched: false, reason: `missing claim "${claimKey}"` };
     const options = toArray(expected);

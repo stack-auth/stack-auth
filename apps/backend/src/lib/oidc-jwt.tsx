@@ -13,8 +13,19 @@ type DiscoveryCacheEntry =
 const DISCOVERY_OK_TTL_MS = 60 * 60 * 1000;
 const DISCOVERY_ERR_TTL_MS = 30 * 1000;
 const CLOCK_SKEW_SECONDS = 60;
+const DISCOVERY_CACHE_MAX_ENTRIES = 1000;
 
 const discoveryCache = new Map<string, DiscoveryCacheEntry>();
+
+function setDiscoveryCache(key: string, entry: DiscoveryCacheEntry): void {
+  discoveryCache.delete(key);
+  discoveryCache.set(key, entry);
+  while (discoveryCache.size > DISCOVERY_CACHE_MAX_ENTRIES) {
+    const oldest = discoveryCache.keys().next().value;
+    if (oldest === undefined) break;
+    discoveryCache.delete(oldest);
+  }
+}
 
 function stripTrailingSlash(s: string): string {
   return s.endsWith("/") ? s.slice(0, -1) : s;
@@ -56,7 +67,7 @@ async function loadDiscovery(issuerUrl: string): Promise<{ doc: DiscoveryDoc, jw
     doc = { issuer: body.issuer, jwks_uri: body.jwks_uri };
   } catch (error) {
     const err = error instanceof Error ? error : new Error(String(error));
-    discoveryCache.set(cacheKey, { kind: "err", error: err, expiresAt: now + DISCOVERY_ERR_TTL_MS });
+    setDiscoveryCache(cacheKey, { kind: "err", error: err, expiresAt: now + DISCOVERY_ERR_TTL_MS });
     throw err;
   }
 
@@ -64,7 +75,7 @@ async function loadDiscovery(issuerUrl: string): Promise<{ doc: DiscoveryDoc, jw
     cacheMaxAge: 10 * 60 * 1000,
     cooldownDuration: 30 * 1000,
   });
-  discoveryCache.set(cacheKey, { kind: "ok", doc, jwks, expiresAt: now + DISCOVERY_OK_TTL_MS });
+  setDiscoveryCache(cacheKey, { kind: "ok", doc, jwks, expiresAt: now + DISCOVERY_OK_TTL_MS });
   return { doc, jwks };
 }
 

@@ -1,22 +1,26 @@
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it } from "vitest";
 import {
+  claimConditionsToJson,
   draftToPolicy,
   emptyDraft,
   newAudienceRow,
-  newClaimRow,
+  parseClaimConditionsJson,
   policyToDraft,
-  probeIssuerDiscovery,
   validateDraft,
   type PolicyDraft,
 } from "./policy-form";
 
 describe("emptyDraft", () => {
-  it("starts with one empty audience row and no claim rows", () => {
+  it("starts with one empty audience row and empty claim conditions JSON", () => {
     const d = emptyDraft();
     expect(d.audiences.length).toBe(1);
     expect(d.audiences[0].value).toBe("");
-    expect(d.claimRows).toEqual([]);
+    const parsed = parseClaimConditionsJson(d.claimConditionsJson);
+    expect(parsed.kind).toBe("ok");
+    if (parsed.kind === "ok") {
+      expect(parsed.parsed).toEqual({ stringEquals: {}, stringLike: {} });
+    }
     expect(d.enabled).toBe(true);
     expect(d.tokenTtlSeconds).toBe(900);
   });
@@ -29,10 +33,10 @@ describe("draftToPolicy", () => {
     enabled: true,
     issuerUrl: "  https://oidc.vercel.com/acme  ",
     audiences: [newAudienceRow("https://vercel.com/acme"), newAudienceRow("")],
-    claimRows: [
-      { rowId: "r1", claim: "environment", operator: "equals", valuesRaw: "production\npreview" },
-      { rowId: "r2", claim: "sub", operator: "like", valuesRaw: "owner:acme:project:*:environment:production" },
-    ],
+    claimConditionsJson: JSON.stringify({
+      stringEquals: { environment: ["production", "preview"] },
+      stringLike: { sub: ["owner:acme:project:*:environment:production"] },
+    }),
     tokenTtlSeconds: 900,
   });
 
@@ -43,7 +47,7 @@ describe("draftToPolicy", () => {
     expect(Object.values(p.audiences ?? {})).toEqual(["https://vercel.com/acme"]);
   });
 
-  it("converts claim rows into stringEquals / stringLike records keyed by generated IDs", () => {
+  it("converts JSON into stringEquals / stringLike records keyed by generated IDs", () => {
     const p = draftToPolicy(baseDraft());
     const equalsRecord = p.claimConditions.stringEquals?.environment ?? {};
     const likeRecord = p.claimConditions.stringLike?.sub ?? {};
@@ -51,25 +55,20 @@ describe("draftToPolicy", () => {
     expect(Object.values(likeRecord)).toEqual(["owner:acme:project:*:environment:production"]);
   });
 
-  it("merges two rows with the same claim + operator into one entry", () => {
-    const draft = baseDraft();
-    draft.claimRows = [
-      { rowId: "r1", claim: "aud", operator: "equals", valuesRaw: "a" },
-      { rowId: "r2", claim: "aud", operator: "equals", valuesRaw: "b" },
-    ];
-    const p = draftToPolicy(draft);
-    const audRecord = p.claimConditions.stringEquals?.aud ?? {};
-    expect(Object.values(audRecord).filter((v): v is string => typeof v === "string").sort(stringCompare)).toEqual(["a", "b"]);
-  });
-
-  it("drops rows with empty claim names or no values", () => {
-    const draft = baseDraft();
-    draft.claimRows = [
-      { rowId: "r1", claim: "", operator: "equals", valuesRaw: "x" },
-      { rowId: "r2", claim: "environment", operator: "equals", valuesRaw: "   \n  " },
-    ];
+  it("drops claims with no values", () => {
+    const draft: PolicyDraft = {
+      ...baseDraft(),
+      claimConditionsJson: JSON.stringify({ stringEquals: { environment: [] } }),
+    };
     const p = draftToPolicy(draft);
     expect(p.claimConditions.stringEquals).toEqual({});
+  });
+
+  it("treats blank JSON as no conditions", () => {
+    const draft: PolicyDraft = { ...baseDraft(), claimConditionsJson: "" };
+    const p = draftToPolicy(draft);
+    expect(p.claimConditions.stringEquals).toEqual({});
+    expect(p.claimConditions.stringLike).toEqual({});
   });
 });
 
@@ -81,9 +80,9 @@ describe("policyToDraft", () => {
       enabled: true,
       issuerUrl: "https://token.actions.githubusercontent.com",
       audiences: [newAudienceRow("https://github.com/acme")],
-      claimRows: [
-        { rowId: "r1", claim: "sub", operator: "like", valuesRaw: "repo:acme/*:environment:production" },
-      ],
+      claimConditionsJson: JSON.stringify({
+        stringLike: { sub: ["repo:acme/*:environment:production"] },
+      }),
       tokenTtlSeconds: 600,
     };
     const policy = draftToPolicy(original);
@@ -91,45 +90,57 @@ describe("policyToDraft", () => {
     expect(back.displayName).toBe(original.displayName);
     expect(back.issuerUrl).toBe(original.issuerUrl);
     expect(back.audiences.map(a => a.value)).toEqual(["https://github.com/acme"]);
-    expect(back.claimRows.length).toBe(1);
-    expect(back.claimRows[0].claim).toBe("sub");
-    expect(back.claimRows[0].operator).toBe("like");
-    expect(back.claimRows[0].valuesRaw).toBe("repo:acme/*:environment:production");
+    const parsedBack = parseClaimConditionsJson(back.claimConditionsJson);
+    expect(parsedBack.kind).toBe("ok");
+    if (parsedBack.kind === "ok") {
+      expect(parsedBack.parsed.stringLike).toEqual({ sub: ["repo:acme/*:environment:production"] });
+    }
     expect(back.tokenTtlSeconds).toBe(600);
-  });
-
-  it("preserves audience and claim value ids on an unchanged roundtrip", () => {
-    const policy = {
-      displayName: "unchanged",
-      enabled: true,
-      issuerUrl: "https://issuer.example.com",
-      audiences: {
-        aud1: "audience-a",
-      },
-      claimConditions: {
-        stringEquals: {
-          environment: {
-            env1: "production",
-            env2: "preview",
-          },
-        },
-        stringLike: {
-          sub: {
-            sub1: "repo:acme/*",
-          },
-        },
-      },
-      tokenTtlSeconds: 900,
-    } satisfies ReturnType<typeof draftToPolicy>;
-
-    const roundTripped = draftToPolicy(policyToDraft("pol-1", policy));
-    expect(roundTripped).toEqual(policy);
   });
 
   it("seeds at least one audience row when the policy has none", () => {
     const policyWithoutAudiences = draftToPolicy({ ...emptyDraft(), displayName: "x", issuerUrl: "https://x" });
     const d = policyToDraft("pol-x", { ...policyWithoutAudiences, audiences: {} });
     expect(d.audiences.length).toBe(1);
+  });
+});
+
+describe("claimConditionsToJson", () => {
+  it("flattens internal id-keyed records into plain value arrays", () => {
+    const json = claimConditionsToJson({
+      displayName: "x",
+      enabled: true,
+      issuerUrl: "https://x",
+      audiences: {},
+      claimConditions: {
+        stringEquals: { environment: { id1: "production", id2: "preview" } },
+        stringLike: { sub: { id3: "repo:acme/*" } },
+      },
+      tokenTtlSeconds: 900,
+    });
+    expect(JSON.parse(json)).toEqual({
+      stringEquals: { environment: ["production", "preview"] },
+      stringLike: { sub: ["repo:acme/*"] },
+    });
+  });
+});
+
+describe("parseClaimConditionsJson", () => {
+  it("returns error on invalid JSON", () => {
+    const r = parseClaimConditionsJson("{not json");
+    expect(r.kind).toBe("error");
+  });
+  it("returns error when top-level is not an object", () => {
+    const r = parseClaimConditionsJson("[]");
+    expect(r.kind).toBe("error");
+  });
+  it("returns error when section values are not string arrays", () => {
+    const r = parseClaimConditionsJson(JSON.stringify({ stringEquals: { sub: "not-an-array" } }));
+    expect(r.kind).toBe("error");
+  });
+  it("accepts an empty object", () => {
+    const r = parseClaimConditionsJson("{}");
+    expect(r).toEqual({ kind: "ok", parsed: { stringEquals: {}, stringLike: {} } });
   });
 });
 
@@ -142,12 +153,13 @@ describe("validateDraft", () => {
     expect(validateDraft(d)).toEqual([]);
   });
   it("flags all individual issues", () => {
-    const d = { ...emptyDraft(), tokenTtlSeconds: 10_000 };
+    const d = { ...emptyDraft(), tokenTtlSeconds: 10_000, claimConditionsJson: "{not json" };
     const kinds = validateDraft(d).map(i => i.kind);
     expect(kinds).toContain("missing-display-name");
     expect(kinds).toContain("missing-issuer");
     expect(kinds).toContain("missing-audiences");
     expect(kinds).toContain("invalid-ttl");
+    expect(kinds).toContain("invalid-claim-conditions-json");
   });
   it("flags TTL below 30", () => {
     const d = emptyDraft();
@@ -156,36 +168,5 @@ describe("validateDraft", () => {
     d.audiences[0].value = "x";
     d.tokenTtlSeconds = 10;
     expect(validateDraft(d).map(i => i.kind)).toEqual(["invalid-ttl"]);
-  });
-});
-
-describe("probeIssuerDiscovery", () => {
-  it("returns ok when the discovery doc contains issuer + jwks_uri", async () => {
-    const fetchImpl: typeof fetch = vi.fn(async () => new Response(JSON.stringify({ issuer: "https://idp", jwks_uri: "https://idp/jwks" }), { status: 200 }));
-    const result = await probeIssuerDiscovery("https://idp/", { fetchImpl });
-    expect(result).toEqual({ kind: "ok", issuer: "https://idp", jwksUri: "https://idp/jwks" });
-    expect(fetchImpl).toHaveBeenCalledWith("https://idp/.well-known/openid-configuration", expect.any(Object));
-  });
-  it("returns error on non-200", async () => {
-    const fetchImpl: typeof fetch = vi.fn(async () => new Response("nope", { status: 404 }));
-    const result = await probeIssuerDiscovery("https://idp", { fetchImpl });
-    expect(result.kind).toBe("error");
-  });
-  it("returns error when issuer URL is empty", async () => {
-    const result = await probeIssuerDiscovery("");
-    expect(result).toEqual({ kind: "error", reason: "issuer URL is empty" });
-  });
-  it("returns error on malformed discovery doc", async () => {
-    const fetchImpl: typeof fetch = vi.fn(async () => new Response(JSON.stringify({}), { status: 200 }));
-    const result = await probeIssuerDiscovery("https://idp", { fetchImpl });
-    expect(result.kind).toBe("error");
-    if (result.kind === "error") expect(result.reason).toMatch(/issuer/);
-  });
-});
-
-describe("newClaimRow / newAudienceRow", () => {
-  it("assigns distinct row ids", () => {
-    expect(newClaimRow().rowId).not.toBe(newClaimRow().rowId);
-    expect(newAudienceRow().rowId).not.toBe(newAudienceRow().rowId);
   });
 });

@@ -28,11 +28,11 @@ const ISSUED_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:access_token";
 
 function flattenClaimConditions(
   conds: Record<string, Record<string, string | undefined> | undefined> | undefined,
-): Record<string, string[]> {
-  const out: Record<string, string[]> = {};
+): Map<string, string[]> {
+  const out = new Map<string, string[]>();
   for (const [claimKey, valueRecord] of Object.entries(conds ?? {})) {
     const values = Object.values(valueRecord ?? {}).filter((v): v is string => typeof v === "string");
-    if (values.length > 0) out[claimKey] = values;
+    if (values.length > 0) out.set(claimKey, values);
   }
   return out;
 }

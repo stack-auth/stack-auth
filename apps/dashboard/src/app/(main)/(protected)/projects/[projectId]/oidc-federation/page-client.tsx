@@ -7,7 +7,6 @@ import {
   DesignEmptyState,
   DesignInput,
   DesignPillToggle,
-  DesignSelectorDropdown,
 } from "@/components/design-components";
 import { DesignMenu } from "@/components/design-components/menu";
 import { ActionDialog, Label, Switch, Textarea, Typography } from "@/components/ui";
@@ -28,17 +27,13 @@ import { useMemo, useState } from "react";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 import {
-  ClaimOperator,
-  ClaimRow,
   DiscoveryProbeResult,
   PolicyDraft,
   TrustPolicy,
   draftToPolicy,
   emptyDraft,
   newAudienceRow,
-  newClaimRow,
   policyToDraft,
-  probeIssuerDiscovery,
   validateDraft
 } from "./policy-form";
 
@@ -46,9 +41,12 @@ type Preset = {
   id: string,
   label: string,
   description: string,
-  seed: () => Pick<PolicyDraft, "displayName" | "issuerUrl" | "audiences" | "claimRows">,
+  seed: () => Pick<PolicyDraft, "displayName" | "issuerUrl" | "audiences" | "claimConditionsJson">,
   exampleSnippet: (projectId: string) => string,
 };
+
+const stringifyClaims = (v: { stringEquals?: Record<string, string[]>, stringLike?: Record<string, string[]> }) =>
+  JSON.stringify({ stringEquals: v.stringEquals ?? {}, stringLike: v.stringLike ?? {} }, null, 2);
 
 const PRESETS: Preset[] = [
   {
@@ -59,10 +57,10 @@ const PRESETS: Preset[] = [
       displayName: "Vercel production",
       issuerUrl: "https://oidc.vercel.com/YOUR_TEAM_SLUG",
       audiences: [newAudienceRow("https://vercel.com/YOUR_TEAM_SLUG")],
-      claimRows: [
-        { rowId: generateUuid(), claim: "environment", operator: "equals", valuesRaw: "production" },
-        { rowId: generateUuid(), claim: "sub", operator: "like", valuesRaw: "owner:YOUR_TEAM_SLUG:project:*:environment:production" },
-      ],
+      claimConditionsJson: stringifyClaims({
+        stringEquals: { environment: ["production"] },
+        stringLike: { sub: ["owner:YOUR_TEAM_SLUG:project:*:environment:production"] },
+      }),
     }),
     exampleSnippet: (projectId) => `import { StackServerApp, fromVercelOidc } from "@stackframe/stack";
 
@@ -81,9 +79,9 @@ export const stackServerApp = new StackServerApp({
       displayName: "GitHub Actions (acme/app)",
       issuerUrl: "https://token.actions.githubusercontent.com",
       audiences: [newAudienceRow("https://github.com/YOUR_ORG")],
-      claimRows: [
-        { rowId: generateUuid(), claim: "sub", operator: "like", valuesRaw: "repo:YOUR_ORG/YOUR_REPO:*" },
-      ],
+      claimConditionsJson: stringifyClaims({
+        stringLike: { sub: ["repo:YOUR_ORG/YOUR_REPO:*"] },
+      }),
     }),
     exampleSnippet: (projectId) => `import { StackServerApp, fromGithubActionsOidc } from "@stackframe/stack";
 
@@ -102,9 +100,9 @@ export const stackServerApp = new StackServerApp({
       displayName: "GCP workload",
       issuerUrl: "https://accounts.google.com",
       audiences: [newAudienceRow("stack-auth")],
-      claimRows: [
-        { rowId: generateUuid(), claim: "email", operator: "like", valuesRaw: "*@YOUR_PROJECT.iam.gserviceaccount.com" },
-      ],
+      claimConditionsJson: stringifyClaims({
+        stringLike: { email: ["*@YOUR_PROJECT.iam.gserviceaccount.com"] },
+      }),
     }),
     exampleSnippet: (projectId) => `import { StackServerApp, fromGcpMetadata } from "@stackframe/stack";
 
@@ -123,7 +121,7 @@ export const stackServerApp = new StackServerApp({
       displayName: "Custom IdP",
       issuerUrl: "https://issuer.example.com",
       audiences: [newAudienceRow("")],
-      claimRows: [],
+      claimConditionsJson: stringifyClaims({}),
     }),
     exampleSnippet: (projectId) => `import { StackServerApp, fromOidcToken } from "@stackframe/stack";
 
@@ -156,7 +154,7 @@ export default function PageClient() {
       configUpdate: {
         [`oidcFederation.trustPolicies.${id}`]: draftToPolicy(draft),
       },
-      pushable: true,
+      pushable: false,
     });
   };
 
@@ -166,7 +164,7 @@ export default function PageClient() {
       configUpdate: {
         [`oidcFederation.trustPolicies.${id}`]: null,
       },
-      pushable: true,
+      pushable: false,
     });
   };
 
@@ -176,7 +174,7 @@ export default function PageClient() {
       configUpdate: {
         [`oidcFederation.trustPolicies.${id}.enabled`]: enabled,
       },
-      pushable: true,
+      pushable: false,
     });
   };
 
@@ -229,6 +227,13 @@ export default function PageClient() {
             setDialogState(null);
           }}
           projectId={project.id}
+          probeDiscovery={async (issuerUrl) => {
+            const result = await stackAdminApp.probeOidcDiscovery({ issuerUrl });
+            if (result.status === "ok") {
+              return { kind: "ok", issuer: result.data.issuer, jwksUri: result.data.jwksUri };
+            }
+            return { kind: "error", reason: result.error.errorMessage };
+          }}
         />
       )}
     </PageLayout>
@@ -331,6 +336,7 @@ function PolicyDialog(props: {
   onSave: (draft: PolicyDraft) => Promise<void>,
   onClose: () => void,
   projectId: string,
+  probeDiscovery: (issuerUrl: string) => Promise<DiscoveryProbeResult>,
 }) {
   const [draft, setDraft] = useState<PolicyDraft>(props.initial);
   const [preset, setPreset] = useState<string>("custom");
@@ -355,15 +361,9 @@ function PolicyDialog(props: {
     setDraft(d => ({ ...d, audiences: d.audiences.length > 1 ? d.audiences.filter(a => a.rowId !== rowId) : d.audiences }));
   };
 
-  const updateClaimRow = (rowId: string, patch: Partial<Omit<ClaimRow, "rowId">>) => {
-    setDraft(d => ({ ...d, claimRows: d.claimRows.map(c => c.rowId === rowId ? { ...c, ...patch } : c) }));
-  };
-  const addClaimRow = (operator: ClaimOperator) => setDraft(d => ({ ...d, claimRows: [...d.claimRows, newClaimRow(operator)] }));
-  const removeClaimRow = (rowId: string) => setDraft(d => ({ ...d, claimRows: d.claimRows.filter(c => c.rowId !== rowId) }));
-
   const runDiscovery = async () => {
     setDiscoveryState({ kind: "loading" });
-    const result = await probeIssuerDiscovery(draft.issuerUrl);
+    const result = await props.probeDiscovery(draft.issuerUrl);
     setDiscoveryState(result);
   };
 
@@ -472,71 +472,18 @@ function PolicyDialog(props: {
         </section>
 
         <section className="flex flex-col gap-2">
-          <div className="flex items-center justify-between">
-            <SectionHeading>Claim conditions</SectionHeading>
-            <div className="flex items-center gap-2">
-              <DesignButton variant="ghost" size="sm" onClick={() => addClaimRow("equals")}>
-                <PlusIcon className="h-3.5 w-3.5 mr-1" weight="bold" />
-                equals
-              </DesignButton>
-              <DesignButton variant="ghost" size="sm" onClick={() => addClaimRow("like")}>
-                <PlusIcon className="h-3.5 w-3.5 mr-1" weight="bold" />
-                wildcard
-              </DesignButton>
-            </div>
-          </div>
+          <SectionHeading>Claim conditions</SectionHeading>
           <Typography variant="secondary" className="text-xs">
-            All rows must pass (AND). Within a row, multiple values match with OR. Wildcards use <code className="rounded bg-muted px-1 py-0.5">*</code> (any) and <code className="rounded bg-muted px-1 py-0.5">?</code> (single).
+            JSON object with <code className="rounded bg-muted px-1 py-0.5">stringEquals</code> and/or <code className="rounded bg-muted px-1 py-0.5">stringLike</code>. Each maps claim names to arrays of allowed values. All claims must match (AND); values within a claim match with OR. <code className="rounded bg-muted px-1 py-0.5">stringLike</code> supports <code className="rounded bg-muted px-1 py-0.5">*</code> / <code className="rounded bg-muted px-1 py-0.5">?</code> wildcards. Empty = any validly-signed token with a matching audience is accepted.
           </Typography>
-          {draft.claimRows.length === 0 ? (
-            <DesignAlert
-              variant="info"
-              description="No conditions — any validly-signed token from this issuer with a matching audience will be accepted."
-            />
-          ) : (
-            <div className="flex flex-col gap-2">
-              {draft.claimRows.map(row => (
-                <div
-                  key={row.rowId}
-                  className="rounded-xl border border-black/[0.08] dark:border-white/[0.06] bg-foreground/[0.015] p-3 flex flex-col gap-2"
-                >
-                  <div className="flex gap-2 items-center">
-                    <DesignInput
-                      className="flex-1"
-                      placeholder="claim (e.g. sub, environment)"
-                      value={row.claim}
-                      onChange={(e) => updateClaimRow(row.rowId, { claim: e.target.value })}
-                    />
-                    <DesignSelectorDropdown
-                      value={row.operator}
-                      onValueChange={(v) => updateClaimRow(row.rowId, { operator: v as ClaimOperator })}
-                      size="md"
-                      options={[
-                        { value: "equals", label: "equals" },
-                        { value: "like", label: "like (*, ?)" },
-                      ]}
-                      triggerClassName="w-36"
-                    />
-                    <DesignButton
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeClaimRow(row.rowId)}
-                      aria-label="Remove condition"
-                    >
-                      <TrashIcon className="h-4 w-4" />
-                    </DesignButton>
-                  </div>
-                  <Textarea
-                    rows={2}
-                    placeholder="Value (one per line for OR)"
-                    value={row.valuesRaw}
-                    onChange={(e) => updateClaimRow(row.rowId, { valuesRaw: e.target.value })}
-                    className="text-sm rounded-xl"
-                  />
-                </div>
-              ))}
-            </div>
-          )}
+          <Textarea
+            rows={10}
+            value={draft.claimConditionsJson}
+            onChange={(e) => setDraft({ ...draft, claimConditionsJson: e.target.value })}
+            className="text-xs font-mono rounded-xl"
+            spellCheck={false}
+            placeholder={`{\n  "stringEquals": { "environment": ["production"] },\n  "stringLike": { "sub": ["repo:acme/*"] }\n}`}
+          />
         </section>
 
         <section className="flex flex-col gap-2">
@@ -572,7 +519,7 @@ function PolicyDialog(props: {
             title="Fix these issues before saving"
             description={
               <ul className="list-disc pl-5 space-y-0.5">
-                {issues.map(i => <li key={i.kind}>{humanizeIssue(i.kind)}</li>)}
+                {issues.map(i => <li key={i.kind}>{humanizeIssue(i)}</li>)}
               </ul>
             }
           />
@@ -634,8 +581,8 @@ function DiscoveryHint({ state, issuerUrl }: { state: DiscoveryProbeResult | { k
   );
 }
 
-function humanizeIssue(kind: string): string {
-  switch (kind) {
+function humanizeIssue(issue: { kind: string, reason?: string }): string {
+  switch (issue.kind) {
     case "missing-display-name": {
       return "Display name is required";
     }
@@ -648,8 +595,11 @@ function humanizeIssue(kind: string): string {
     case "invalid-ttl": {
       return "Token TTL must be between 30 and 3600 seconds";
     }
+    case "invalid-claim-conditions-json": {
+      return `Claim conditions JSON is invalid: ${issue.reason ?? "parse error"}`;
+    }
     default: {
-      return kind;
+      return issue.kind;
     }
   }
 }

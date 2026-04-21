@@ -586,6 +586,14 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     }
   }
 
+  async probeOidcDiscovery(options: { issuerUrl: string }): Promise<Result<{ issuer: string, jwksUri: string }, { errorMessage: string }>> {
+    const response = await this._interface.probeOidcDiscovery({ issuer_url: options.issuerUrl });
+    if (response.ok) {
+      return Result.ok({ issuer: response.ok.issuer, jwksUri: response.ok.jwks_uri });
+    }
+    return Result.error({ errorMessage: response.error ?? "discovery probe failed" });
+  }
+
   async sendTestWebhook(options: { endpointId: string }): Promise<Result<undefined, { errorMessage: string }>> {
     const response = await this._interface.sendTestWebhook({
       endpoint_id: options.endpointId,

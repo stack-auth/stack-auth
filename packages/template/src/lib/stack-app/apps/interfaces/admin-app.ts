@@ -107,6 +107,8 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
 
     sendTestWebhook(options: { endpointId: string }): Promise<Result<undefined, { errorMessage: string }>>,
 
+    probeOidcDiscovery(options: { issuerUrl: string }): Promise<Result<{ issuer: string, jwksUri: string }, { errorMessage: string }>>,
+
     sendSignInInvitationEmail(email: string, callbackUrl: string): Promise<void>,
 
     listSentEmails(): Promise<AdminSentEmail[]>,

@@ -85,6 +85,10 @@ export function createOidcFederationTokenStore(options: {
   const getAccessToken = async (): Promise<string> => {
     const now = Date.now();
     if (cached && !shouldRefresh(now)) return cached.accessToken;
+    // Dedupe concurrent refreshes: the first caller creates `inFlight`; any caller
+    // arriving before it resolves awaits the same promise. If `doExchange()` rejects,
+    // every waiter sees that rejection (shared promise), and `inFlight` is cleared
+    // in `finally` so the next call retries instead of re-throwing a stale error.
     if (inFlight) {
       const value = await inFlight;
       return value.accessToken;

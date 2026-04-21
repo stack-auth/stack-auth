@@ -31,6 +31,13 @@ describe("stringLikeToRegExp", () => {
   });
 });
 
+const stringEquals = (entries: Record<string, string | string[]>) => ({
+  stringEquals: new Map<string, string | string[]>(Object.entries(entries)),
+});
+const stringLike = (entries: Record<string, string | string[]>) => ({
+  stringLike: new Map<string, string | string[]>(Object.entries(entries)),
+});
+
 describe("matchClaims", () => {
   test("empty conditions always match", () => {
     expect(matchClaims({}, { sub: "anything" })).toEqual({ matched: true });
@@ -38,7 +45,7 @@ describe("matchClaims", () => {
 
   test("stringEquals happy path", () => {
     const r = matchClaims(
-      { stringEquals: { sub: "owner:acme:project:app:environment:production" } },
+      stringEquals({ sub: "owner:acme:project:app:environment:production" }),
       { sub: "owner:acme:project:app:environment:production" },
     );
     expect(r).toEqual({ matched: true });
@@ -46,7 +53,7 @@ describe("matchClaims", () => {
 
   test("stringEquals mismatch fails with reason", () => {
     const r = matchClaims(
-      { stringEquals: { environment: "production" } },
+      stringEquals({ environment: "production" }),
       { environment: "preview" },
     );
     expect(r.matched).toBe(false);
@@ -54,7 +61,7 @@ describe("matchClaims", () => {
   });
 
   test("stringEquals array — any-of semantics", () => {
-    const cond = { stringEquals: { environment: ["production", "preview"] } };
+    const cond = stringEquals({ environment: ["production", "preview"] });
     expect(matchClaims(cond, { environment: "production" }).matched).toBe(true);
     expect(matchClaims(cond, { environment: "preview" }).matched).toBe(true);
     expect(matchClaims(cond, { environment: "development" }).matched).toBe(false);
@@ -62,7 +69,7 @@ describe("matchClaims", () => {
 
   test("missing claim fails loudly", () => {
     const r = matchClaims(
-      { stringEquals: { environment: "production" } },
+      stringEquals({ environment: "production" }),
       { sub: "x" },
     );
     expect(r.matched).toBe(false);
@@ -70,7 +77,7 @@ describe("matchClaims", () => {
   });
 
   test("stringLike wildcard on sub", () => {
-    const cond = { stringLike: { sub: "owner:acme:project:*:environment:production" } };
+    const cond = stringLike({ sub: "owner:acme:project:*:environment:production" });
     expect(matchClaims(cond, { sub: "owner:acme:project:app:environment:production" }).matched).toBe(true);
     expect(matchClaims(cond, { sub: "owner:acme:project:app:environment:preview" }).matched).toBe(false);
     expect(matchClaims(cond, { sub: "owner:evil:project:app:environment:production" }).matched).toBe(false);
@@ -78,8 +85,8 @@ describe("matchClaims", () => {
 
   test("stringEquals + stringLike combine with AND", () => {
     const cond = {
-      stringEquals: { environment: "production" },
-      stringLike: { sub: "repo:acme/*" },
+      ...stringEquals({ environment: "production" }),
+      ...stringLike({ sub: "repo:acme/*" }),
     };
     expect(matchClaims(cond, { environment: "production", sub: "repo:acme/app" }).matched).toBe(true);
     expect(matchClaims(cond, { environment: "preview", sub: "repo:acme/app" }).matched).toBe(false);
@@ -87,12 +94,12 @@ describe("matchClaims", () => {
   });
 
   test("numeric/boolean claims coerced to string", () => {
-    expect(matchClaims({ stringEquals: { count: "3" } }, { count: 3 }).matched).toBe(true);
-    expect(matchClaims({ stringEquals: { active: "true" } }, { active: true }).matched).toBe(true);
+    expect(matchClaims(stringEquals({ count: "3" }), { count: 3 }).matched).toBe(true);
+    expect(matchClaims(stringEquals({ active: "true" }), { active: true }).matched).toBe(true);
   });
 
   test("object/array claims are treated as missing (no implicit stringify)", () => {
-    const r = matchClaims({ stringEquals: { roles: "admin" } }, { roles: ["admin", "user"] });
+    const r = matchClaims(stringEquals({ roles: "admin" }), { roles: ["admin", "user"] });
     expect(r.matched).toBe(false);
     if (!r.matched) expect(r.reason).toMatch(/missing/);
   });

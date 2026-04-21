@@ -141,6 +141,8 @@ export async function createResponse<T extends SmartResponse>(req: NextRequest |
 
 
     // If the x-stack-override-error-status header is given, override 4xx statuses to 200.
+    // 5xx responses are deliberately not folded so that infrastructure (load balancers,
+    // retry/circuit-breaker logic, monitoring) can still observe real server errors.
     if (req?.headers.has("x-stack-override-error-status") && status >= 400 && status < 500) {
       status = 200;
       headers.set("x-stack-actual-status", [obj.statusCode.toString()]);
