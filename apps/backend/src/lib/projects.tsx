@@ -319,8 +319,6 @@ export async function createOrUpdateProjectWithLegacyConfig(
     branchId: branchId,
     environmentConfigOverrideOverride: configOverrideOverride,
   });
-
-
   const result = await getProject(projectId);
   if (!result) {
     throw new StackAssertionError("Project not found after creation/update", { projectId });

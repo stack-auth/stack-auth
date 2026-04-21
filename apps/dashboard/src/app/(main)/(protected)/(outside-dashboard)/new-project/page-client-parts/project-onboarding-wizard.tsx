@@ -429,14 +429,49 @@ export function ProjectOnboardingWizard(props: {
   }
 
   if (props.status === "config_choice") {
+    if (isLocalEmulator) {
+      return (
+        <OnboardingPage
+          stepKey="config-choice"
+          title="Welcome to Stack Auth!"
+          subtitle="You are running Stack Auth locally in the emulator."
+          steps={timelineSteps}
+          currentStep="config_choice"
+          onStepClick={handleTimelineStepClick}
+          disabled={saving}
+          primaryAction={
+            <DesignButton
+              className="w-full rounded-full"
+              loading={saving}
+              onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
+                await persistOnboardingState();
+                await props.setStatus("apps_selection");
+              }))}
+            >
+              Continue
+            </DesignButton>
+          }
+        >
+          <div className="mx-auto max-w-xl rounded-2xl bg-white/70 p-6 text-center ring-1 ring-black/[0.06] dark:bg-background/60 dark:ring-white/[0.06]">
+            <Typography className="text-base leading-relaxed">
+              This local project is ready for onboarding.
+            </Typography>
+            <Typography variant="secondary" className="mt-3 text-sm leading-relaxed">
+              Next, we will guide you through the onboarding flow to set up your Stack Auth configuration.
+            </Typography>
+          </div>
+        </OnboardingPage>
+      );
+    }
+
     const createNewSelected = selectedConfigChoice === "create-new";
-    const linkExistingSelected = !isLocalEmulator && selectedConfigChoice === "link-existing";
+    const linkExistingSelected = selectedConfigChoice === "link-existing";
 
     return (
       <OnboardingPage
         stepKey="config-choice"
         title="Choose how you want to start"
-        subtitle={isLocalEmulator ? "Start with a new configuration from this local stack.config.ts file." : "Start fresh or link an existing config."}
+        subtitle="Start fresh or link an existing config."
         steps={timelineSteps}
         currentStep="config_choice"
         onStepClick={handleTimelineStepClick}
@@ -447,7 +482,7 @@ export function ProjectOnboardingWizard(props: {
             loading={saving}
             onClick={() => runAsynchronouslyWithAlert(() => runWithSaving(async () => {
               await persistOnboardingState();
-              if (isLocalEmulator || selectedConfigChoice === "create-new") {
+              if (selectedConfigChoice === "create-new") {
                 await props.setStatus("apps_selection");
               } else {
                 props.setMode("link-existing");
@@ -458,7 +493,7 @@ export function ProjectOnboardingWizard(props: {
           </DesignButton>
         }
       >
-        <div className={cn("grid gap-4", isLocalEmulator ? "sm:grid-cols-1" : "sm:grid-cols-2")}>
+        <div className="grid gap-4 sm:grid-cols-2">
           <button
             type="button"
             disabled={saving}
@@ -487,35 +522,33 @@ export function ProjectOnboardingWizard(props: {
             </div>
           </button>
 
-          {!isLocalEmulator && (
-            <button
-              type="button"
-              disabled={saving}
-              onClick={() => setSelectedConfigChoice("link-existing")}
-              className={cn(
-                "relative flex flex-col items-center gap-6 rounded-2xl p-10 text-center transition-[box-shadow,background-color] duration-150 hover:transition-none",
-                linkExistingSelected
-                  ? "bg-white ring-2 ring-blue-500/50 shadow-md dark:bg-blue-500/[0.08] dark:ring-blue-500/50 dark:shadow-none"
-                  : "bg-white/50 ring-1 ring-black/[0.06] hover:ring-black/[0.10] dark:bg-background/60 dark:backdrop-blur-xl dark:ring-white/[0.06] dark:hover:ring-white/[0.10]",
-              )}
-            >
-              {linkExistingSelected && (
-                <div className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-white">
-                  <CheckCircleIcon className="h-4 w-4" weight="fill" />
-                </div>
-              )}
-              <div className={cn(
-                "rounded-xl p-4",
-                linkExistingSelected ? "bg-blue-500/15 text-blue-500" : "bg-foreground/[0.06] text-muted-foreground",
-              )}>
-                <LinkBreakIcon className="h-7 w-7" />
+          <button
+            type="button"
+            disabled={saving}
+            onClick={() => setSelectedConfigChoice("link-existing")}
+            className={cn(
+              "relative flex flex-col items-center gap-6 rounded-2xl p-10 text-center transition-[box-shadow,background-color] duration-150 hover:transition-none",
+              linkExistingSelected
+                ? "bg-white ring-2 ring-blue-500/50 shadow-md dark:bg-blue-500/[0.08] dark:ring-blue-500/50 dark:shadow-none"
+                : "bg-white/50 ring-1 ring-black/[0.06] hover:ring-black/[0.10] dark:bg-background/60 dark:backdrop-blur-xl dark:ring-white/[0.06] dark:hover:ring-white/[0.10]",
+            )}
+          >
+            {linkExistingSelected && (
+              <div className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full bg-emerald-600 text-white">
+                <CheckCircleIcon className="h-4 w-4" weight="fill" />
               </div>
-              <div className="space-y-1.5">
-                <Typography className="text-base font-semibold">Link Existing Config</Typography>
-                <Typography variant="secondary" className="text-sm leading-relaxed">If you already have a Stack Auth project locally or on GitHub, link it here.</Typography>
-              </div>
-            </button>
-          )}
+            )}
+            <div className={cn(
+              "rounded-xl p-4",
+              linkExistingSelected ? "bg-blue-500/15 text-blue-500" : "bg-foreground/[0.06] text-muted-foreground",
+            )}>
+              <LinkBreakIcon className="h-7 w-7" />
+            </div>
+            <div className="space-y-1.5">
+              <Typography className="text-base font-semibold">Link Existing Config</Typography>
+              <Typography variant="secondary" className="text-sm leading-relaxed">If you already have a Stack Auth project locally or on GitHub, link it here.</Typography>
+            </div>
+          </button>
         </div>
       </OnboardingPage>
     );

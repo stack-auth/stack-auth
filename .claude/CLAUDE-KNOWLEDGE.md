@@ -364,3 +364,21 @@ A: Use `getAuthorizationHeader()`, which returns `Bearer stackauth_<base64(getAu
 
 ### Q: What RequestLike header shapes are supported by tokenStore overrides?
 A: `RequestLike` accepts both `{ headers: { get(name): string | null } }` and `{ headers: Record<string, string | null> }`. Header lookup is case-insensitive for record-style headers, and supports `authorization`, `x-stack-auth`, and `cookie`.
+
+### Q: Which env var should emulator onboarding URLs use for dashboard port?
+A: Use `EMULATOR_DASHBOARD_PORT` (default `26700`) or explicit `STACK_LOCAL_EMULATOR_DASHBOARD_URL`. Do not derive emulator URLs from `NEXT_PUBLIC_STACK_PORT_PREFIX`, because that points to the host dev environment ports (e.g. `92xx`) rather than the emulator host-forwarded ports.
+
+### Q: Why does `PATCH /api/v1/internal/projects/current` fail in local emulator when updating only `onboarding_state`?
+A: `createOrUpdateProjectWithLegacyConfig` always called `overrideEnvironmentConfigOverride`, even when there were zero config override keys to apply. In local emulator mode, environment config overrides are intentionally blocked, so this threw `Environment configuration overrides cannot be changed in the local emulator` and returned 500. The fix is to skip `overrideEnvironmentConfigOverride` unless `configOverrideOverride` has at least one key.
+
+### Q: Why might local emulator UI changes in `apps/dashboard` not appear immediately at `localhost:26700`?
+A: The QEMU local emulator serves the dashboard from the Docker image bundled inside the VM, not from the host repo's live source tree. Source edits in `apps/dashboard` are reflected in lint/typecheck/tests immediately, but you need an updated emulator image/runtime to see the visual change on `26700`.
+
+### Q: Why can local emulator onboarding break with `ParseError` on non-`.ts` config files (e.g. `test-config.untracked`)?
+A: The emulator writes TypeScript-style config source (`import type ...` and `config: StackConfig`) and later evaluates it with Jiti. If the filename has a non-TS extension, Jiti may parse it as plain JS and fail. Fix by evaluating unknown extensions as TypeScript (use a `.ts` eval filename fallback) and add regression coverage for non-`.ts` config paths.
+
+### Q: How should docs fetch the canonical AI setup prompt text?
+A: Expose an unauthenticated backend endpoint at `/api/v1/setup-prompt` that returns `getSdkSetupPrompt("ai-prompt", { tanstackQuery: false })` as plain text and sets `Cache-Control: public, max-age=60`. Mintlify docs should fetch `https://api.stack-auth.com/api/v1/setup-prompt` directly when docs and API are on different origins.
+
+### Q: Can Mintlify snippets import other snippets?
+A: No. Keep snippet logic inline within each snippet file; avoid snippet-to-snippet imports. For setup prompt fetching, point directly to `https://api.stack-auth.com/api/v1/setup-prompt` when docs run on a different origin/port than the API.

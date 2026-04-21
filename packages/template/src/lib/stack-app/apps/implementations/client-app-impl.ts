@@ -607,7 +607,6 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     this._redirectMethod = resolvedOptions.redirectMethod || "nextjs"; // THIS_LINE_PLATFORM next
     this._urlOptions = resolvedOptions.urls ?? {};
     this._oauthScopesOnSignIn = resolvedOptions.oauthScopesOnSignIn ?? {};
-    this._prefetchCrossDomainHandoffParamsIfNeeded();
     if (isBrowserLike() && (resolvedOptions.tokenStore === "cookie" || resolvedOptions.tokenStore === "nextjs-cookie")) {
       runAsynchronously(this._trustedParentDomainCache.getOrWait([window.location.hostname], "write-only"));
       this._ensureCrossSubdomainCookieExists();

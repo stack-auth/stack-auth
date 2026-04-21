@@ -107,6 +107,25 @@ describe("local emulator config", () => {
     );
   });
 
+  it("supports non-ts config filenames by evaluating them as TypeScript", async () => {
+    const hostMountRoot = await fs.mkdtemp(path.join(os.tmpdir(), "stack-host-mount-"));
+    const absoluteFilePath = "/Users/foo/project/test-config.untracked";
+    const mountedParentPath = path.join(hostMountRoot, "/Users/foo/project");
+    const mountedFilePath = path.join(hostMountRoot, absoluteFilePath);
+    await fs.mkdir(mountedParentPath, { recursive: true });
+
+    vi.stubEnv(LOCAL_EMULATOR_HOST_MOUNT_ROOT_ENV, hostMountRoot);
+
+    await writeConfigToFile(absoluteFilePath, { auth: { allowLocalhost: true } });
+
+    await expect(readConfigFromFile(absoluteFilePath)).resolves.toEqual({
+      auth: {
+        allowLocalhost: true,
+      },
+    });
+    await expect(fs.readFile(mountedFilePath, "utf-8")).resolves.toContain(`import type { StackConfig }`);
+  });
+
   it("fails loudly when the QEMU host mount root is configured but unavailable", async () => {
     const hostMountRoot = await fs.mkdtemp(path.join(os.tmpdir(), "stack-host-mount-"));
     vi.stubEnv(LOCAL_EMULATOR_HOST_MOUNT_ROOT_ENV, hostMountRoot);

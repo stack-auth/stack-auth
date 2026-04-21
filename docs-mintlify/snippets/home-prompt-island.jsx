@@ -1,17 +1,56 @@
 export const HomePromptIsland = () => {
-  const agentSetupPromptPlaceholder = `You are my coding agent.
+  const setupPromptEndpoint = "https://api.stack-auth.com/api/v1/setup-prompt";
+  const setupPromptLoadErrorMessage = "Failed to load the setup prompt. Please try again.";
 
-Set up Stack Auth in this project.
-- Install and configure Stack Auth
-- Create initial authentication routes
-- Add sign-in and sign-up UI
-- Verify local development setup
+  const [prompt, setPrompt] = useState("");
+  const [isLoading, setIsLoading] = useState(true);
+  const [loadError, setLoadError] = useState(null);
 
-Return the exact files changed and next steps.`;
+  const loadPrompt = async () => {
+    setLoadError(null);
+    const response = await fetch(setupPromptEndpoint, {
+      method: "GET",
+      headers: {
+        Accept: "text/plain",
+      },
+    }).then(
+      (value) => value,
+      () => {
+        throw new Error(setupPromptLoadErrorMessage);
+      },
+    );
+    if (!response.ok) {
+      throw new Error(setupPromptLoadErrorMessage);
+    }
+
+    const text = await response.text();
+    if (text.trim().length === 0) {
+      throw new Error(setupPromptLoadErrorMessage);
+    }
+
+    setPrompt(text);
+    setIsLoading(false);
+    return text;
+  };
+
+  const onMount = (node) => {
+    if (node == null || node.dataset.setupPromptInitialized === "true") {
+      return;
+    }
+    node.dataset.setupPromptInitialized = "true";
+    loadPrompt().then(
+      () => undefined,
+      (error) => {
+        setLoadError(error instanceof Error ? error.message : setupPromptLoadErrorMessage);
+        setIsLoading(false);
+      },
+    );
+  };
 
   const onCopy = async (event) => {
+    const promptToCopy = isLoading ? await loadPrompt() : prompt;
+    await navigator.clipboard.writeText(promptToCopy);
     const button = event.currentTarget;
-    await navigator.clipboard.writeText(agentSetupPromptPlaceholder);
     button.textContent = "Copied";
     window.setTimeout(() => {
       button.textContent = "Copy prompt";
@@ -31,18 +70,19 @@ Return the exact files changed and next steps.`;
         Set up Stack Auth by copying the prompt below into your favorite coding agent.
       </p>
 
-      <div className="relative mt-6">
+      <div ref={onMount} className="relative mt-6">
         <textarea
           readOnly
-          value={agentSetupPromptPlaceholder}
+          value={loadError ? loadError : prompt}
           className="h-28 w-full resize-none overflow-hidden rounded-2xl border border-[#cdd7f4] bg-white/75 px-4 py-3 pr-32 font-mono text-xs leading-6 text-zinc-700 outline-none backdrop-blur-sm sm:text-sm dark:border-[#33476d] dark:bg-black/20 dark:text-zinc-200"
         />
         <button
           type="button"
           onClick={onCopy}
           className="absolute right-2 top-2 inline-flex items-center justify-center rounded-lg border border-[#9fb5e4] bg-[#eaf1ff] px-3 py-1.5 text-xs font-semibold text-[#2a4272] transition-colors duration-150 hover:transition-none hover:bg-[#dde8ff] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500 focus-visible:ring-offset-2 focus-visible:ring-offset-[#f3f6ff] dark:border-[#3d5a91] dark:bg-[#12213d] dark:text-[#d5e6ff] dark:hover:bg-[#1a2e51] dark:focus-visible:ring-offset-[#0f1a2e]"
+          disabled={isLoading || loadError !== null}
         >
-          Copy prompt
+          {isLoading ? "Loading..." : "Copy prompt"}
         </button>
         <div className="pointer-events-none absolute inset-x-2 bottom-2 h-8 rounded-b-xl bg-gradient-to-t from-[#f4f7ff] to-transparent dark:from-[#0f1a2e]" />
       </div>
@@ -58,7 +98,7 @@ Return the exact files changed and next steps.`;
           href="/guides/getting-started/setup"
           className="inline-flex items-center justify-center rounded-xl border border-[#9fb5e4] bg-white/60 px-5 py-3 text-sm font-semibold text-[#1f3764] no-underline transition-colors duration-150 hover:transition-none hover:bg-white/85 dark:border-[#3d5a91] dark:bg-transparent dark:text-[#d7e7ff] dark:hover:bg-white/10"
         >
-          Manual installation instructions
+          Open full prompt
         </a>
       </div>
     </div>

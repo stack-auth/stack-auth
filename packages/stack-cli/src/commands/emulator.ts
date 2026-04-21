@@ -7,6 +7,7 @@ import { fileURLToPath } from "url";
 import { CliError } from "../lib/errors.js";
 
 const DEFAULT_EMULATOR_BACKEND_PORT = 26701;
+const DEFAULT_EMULATOR_DASHBOARD_PORT = 26700;
 
 function emulatorBackendPort(): number {
   const raw = process.env.EMULATOR_BACKEND_PORT;
@@ -14,6 +15,16 @@ function emulatorBackendPort(): number {
   const parsed = Number(raw);
   if (!Number.isInteger(parsed) || parsed <= 0) {
     throw new CliError(`Invalid EMULATOR_BACKEND_PORT: ${raw}`);
+  }
+  return parsed;
+}
+
+function emulatorDashboardPort(): number {
+  const raw = process.env.EMULATOR_DASHBOARD_PORT;
+  if (!raw) return DEFAULT_EMULATOR_DASHBOARD_PORT;
+  const parsed = Number(raw);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new CliError(`Invalid EMULATOR_DASHBOARD_PORT: ${raw}`);
   }
   return parsed;
 }
@@ -95,21 +106,12 @@ async function fetchEmulatorCredentials(pck: string, backendPort: number, config
   };
 }
 
-function dashboardHostForPortPrefix(portPrefix: string): string {
-  if (portPrefix === "91") return "a.localhost";
-  if (portPrefix === "92") return "b.localhost";
-  if (portPrefix === "93") return "c.localhost";
-  return "localhost";
-}
-
 function localEmulatorDashboardBaseUrl(): string {
   const explicit = process.env.STACK_LOCAL_EMULATOR_DASHBOARD_URL;
   if (explicit && explicit.trim().length > 0) {
     return explicit.replace(/\/$/, "");
   }
-  const portPrefix = process.env.NEXT_PUBLIC_STACK_PORT_PREFIX ?? "81";
-  const host = dashboardHostForPortPrefix(portPrefix);
-  return `http://${host}:${portPrefix}01`;
+  return `http://localhost:${emulatorDashboardPort()}`;
 }
 
 function openUrlInBrowser(url: string): boolean {
