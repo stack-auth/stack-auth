@@ -1,9 +1,63 @@
 import { OAuthBaseProvider, TokenSet } from "@/oauth/providers/base";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { KnownErrors } from "@stackframe/stack-shared";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { extractScopes } from "@stackframe/stack-shared/dist/utils/strings";
+
+/**
+ * Access tokens minted under Stack Auth's shared OAuth apps must not be handed
+ * to clients — they carry Stack Auth's brand at the provider. Only allowed when
+ * the deployer explicitly opts in via STACK_ALLOW_SHARED_OAUTH_ACCESS_TOKENS.
+ * NOT gated on NODE_ENV — the env-var opt-in is the only escape hatch.
+ */
+export function isSharedAccessTokenBlocked(providerIsShared: boolean): boolean {
+  if (!providerIsShared) return false;
+  return getEnvVariable("STACK_ALLOW_SHARED_OAUTH_ACCESS_TOKENS", "") !== "true";
+}
+
+import.meta.vitest?.describe("isSharedAccessTokenBlocked", () => {
+  const { test, expect, beforeEach, afterEach, vi } = import.meta.vitest!;
+  beforeEach(() => {
+    vi.stubEnv("STACK_ALLOW_SHARED_OAUTH_ACCESS_TOKENS", "");
+  });
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  test("non-shared provider is never blocked, regardless of env var", () => {
+    expect(isSharedAccessTokenBlocked(false)).toBe(false);
+    vi.stubEnv("STACK_ALLOW_SHARED_OAUTH_ACCESS_TOKENS", "true");
+    expect(isSharedAccessTokenBlocked(false)).toBe(false);
+  });
+
+  test("shared provider is blocked when env var is unset or empty", () => {
+    expect(isSharedAccessTokenBlocked(true)).toBe(true);
+  });
+
+  test("shared provider is blocked for any value other than the literal 'true'", () => {
+    for (const v of ["false", "1", "TRUE", "yes", " true "]) {
+      vi.stubEnv("STACK_ALLOW_SHARED_OAUTH_ACCESS_TOKENS", v);
+      expect(isSharedAccessTokenBlocked(true)).toBe(true);
+    }
+  });
+
+  test("shared provider is allowed only when env var === 'true'", () => {
+    vi.stubEnv("STACK_ALLOW_SHARED_OAUTH_ACCESS_TOKENS", "true");
+    expect(isSharedAccessTokenBlocked(true)).toBe(false);
+  });
+
+  test("result does not depend on NODE_ENV", () => {
+    for (const nodeEnv of ["production", "development", "test", "preview", ""]) {
+      vi.stubEnv("NODE_ENV", nodeEnv);
+      vi.stubEnv("STACK_ALLOW_SHARED_OAUTH_ACCESS_TOKENS", "");
+      expect(isSharedAccessTokenBlocked(true)).toBe(true);
+      vi.stubEnv("STACK_ALLOW_SHARED_OAUTH_ACCESS_TOKENS", "true");
+      expect(isSharedAccessTokenBlocked(true)).toBe(false);
+    }
+  });
+});
 
 /**
  * Retrieves a valid access token for one or more OAuth accounts, or refreshes one if needed.

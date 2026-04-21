@@ -272,3 +272,55 @@ it("should fail if an untrusted after_callback_redirect_url is provided", async 
     }
   `);
 });
+
+// Regression: provider_scope against a shared provider must be rejected on
+// every authorize path — not only when a link token is present. A malicious
+// client would otherwise request elevated scopes under Stack Auth's shared
+// OAuth app on a plain sign-in.
+it("should reject provider_scope on shared provider for plain sign-in (no link token)", async ({ expect }) => {
+  const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
+    redirect: "manual",
+    query: {
+      ...await Auth.OAuth.getAuthorizeQuery(),
+      provider_scope: "user-read-private user-library-modify playlist-modify-public",
+    },
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "OAUTH_EXTRA_SCOPE_NOT_AVAILABLE_WITH_SHARED_OAUTH_KEYS",
+        "error": "Extra scopes are not available with shared OAuth keys. Please add your own OAuth keys on the Stack dashboard to use extra scopes.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "OAUTH_EXTRA_SCOPE_NOT_AVAILABLE_WITH_SHARED_OAUTH_KEYS",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("should reject provider_scope on shared provider for account-link flow", async ({ expect }) => {
+  await Auth.OAuth.signIn();
+  const response = await niceBackendFetch("/api/v1/auth/oauth/authorize/spotify", {
+    redirect: "manual",
+    query: {
+      ...await Auth.OAuth.getAuthorizeQuery(),
+      type: "link",
+      provider_scope: "user-read-private user-library-modify",
+    },
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "OAUTH_EXTRA_SCOPE_NOT_AVAILABLE_WITH_SHARED_OAUTH_KEYS",
+        "error": "Extra scopes are not available with shared OAuth keys. Please add your own OAuth keys on the Stack dashboard to use extra scopes.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "OAUTH_EXTRA_SCOPE_NOT_AVAILABLE_WITH_SHARED_OAUTH_KEYS",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
