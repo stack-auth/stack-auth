@@ -475,6 +475,7 @@ export default function PageClient() {
   const adminApp = useAdminApp() as AdminAppWithSessionReplays;
 
   useEffect(() => {
+    if (document.body.classList.contains("rr-block")) return;
     document.body.classList.add("rr-block");
     return () => {
       document.body.classList.remove("rr-block");
@@ -830,6 +831,7 @@ export default function PageClient() {
       }
     }
 
+    const root = replayerRootByTabRef.current.get(tabKey) ?? null;
     replayerByTabRef.current.delete(tabKey);
     replayerRootByTabRef.current.delete(tabKey);
 
@@ -840,6 +842,10 @@ export default function PageClient() {
     }
 
     if (!scheduleReinit) return;
+
+    // Clear any DOM left behind by the previous replayer so the new one
+    // doesn't stack a second iframe/wrapper into the same container.
+    if (root) root.innerHTML = "";
 
     pendingInitByTabRef.current.add(tabKey);
     const container = containerByTabRef.current.get(tabKey) ?? null;
