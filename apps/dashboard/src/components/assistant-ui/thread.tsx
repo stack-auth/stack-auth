@@ -62,7 +62,8 @@ export const Thread: FC<{
   runningStatusMessages?: string[],
   composerAttachments?: boolean,
   attachmentAdapter?: AttachmentAdapter,
-}> = ({ useOffWhiteLightMode = false, composerPlaceholder, hideMessageActions = false, runningStatusMessages, composerAttachments = false, attachmentAdapter }) => {
+  composerTopContent?: React.ReactNode,
+}> = ({ useOffWhiteLightMode = false, composerPlaceholder, hideMessageActions = false, runningStatusMessages, composerAttachments = false, attachmentAdapter, composerTopContent }) => {
   return (
     <HideMessageActionsContext.Provider value={hideMessageActions}>
       <HasRunningStatusContext.Provider value={!!runningStatusMessages}>
@@ -110,7 +111,7 @@ export const Thread: FC<{
               : "from-background via-background",
           )}>
                   <ThreadScrollToBottom />
-                  <Composer placeholder={composerPlaceholder} />
+                  <Composer placeholder={composerPlaceholder} topContent={composerTopContent} />
                 </div>
               </ThreadPrimitive.Viewport>
             </ThreadPrimitive.Root>
@@ -537,11 +538,12 @@ const ComposerStaticInput: FC<{ placeholder?: string }> = ({ placeholder }) => {
   );
 };
 
-const Composer: FC<{ placeholder?: ComposerPlaceholder }> = ({ placeholder }) => {
+const Composer: FC<{ placeholder?: ComposerPlaceholder, topContent?: React.ReactNode }> = ({ placeholder, topContent }) => {
   const attachmentsEnabled = useComposerAttachmentsEnabled();
   return (
     <ComposerPrimitive.Root className="group/composer relative flex w-full flex-col rounded-2xl border border-border/20 dark:border-foreground/[0.08] bg-white dark:bg-background/90 backdrop-blur-xl shadow-sm dark:shadow-lg ring-1 ring-foreground/[0.04] transition-all duration-150 hover:transition-none focus-within:ring-2 focus-within:ring-blue-500/20 focus-within:border-blue-500/30">
       {attachmentsEnabled && <ComposerAttachmentsRow />}
+      {topContent}
       {typeof placeholder === "object" ? (
         <ComposerAnimatedInput
           prefix={placeholder.prefix}
