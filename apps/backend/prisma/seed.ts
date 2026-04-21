@@ -332,6 +332,11 @@ export async function seed() {
       // Clone to ensure the stored JSON snapshot is independent of the config object
       // (mirrors the pattern used in seed-dummy-data.ts).
       const storedProduct = JSON.parse(JSON.stringify(growthProduct)) as Prisma.InputJsonValue;
+      // Mirror what a real Stripe checkout would produce, based on whether
+      // the internal project is running in test mode.
+      const creationSource = updatedInternalTenancy.config.payments.testMode
+        ? PurchaseCreationSource.TEST_MODE
+        : PurchaseCreationSource.PURCHASE_PAGE;
       await internalPrisma.subscription.create({
         data: {
           tenancyId: internalTenancy.id,
@@ -345,7 +350,7 @@ export async function seed() {
           currentPeriodStart: now,
           currentPeriodEnd: new Date('2099-12-31T23:59:59Z'),
           cancelAtPeriodEnd: false,
-          creationSource: PurchaseCreationSource.TEST_MODE,
+          creationSource,
         },
       });
       console.log('Granted Growth plan to internal team');

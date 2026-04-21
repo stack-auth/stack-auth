@@ -1,15 +1,15 @@
+import { SubscriptionStatus } from "@/generated/prisma/client";
 import { customerOwnsProduct, ensureCustomerExists, ensureProductIdOrInlineProduct, isActiveSubscription } from "@/lib/payments";
 import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { getOwnedProductsForCustomer, getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
+import { ensureFreePlanForBillingTeam } from "@/lib/payments/ensure-free-plan";
+import { ensureUserTeamPermissionExists } from "@/lib/request-checks";
+import { getStripeForAccount } from "@/lib/stripe";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { adaptSchema, clientOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { StackAssertionError, StatusError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { SubscriptionStatus } from "@/generated/prisma/client";
-import { getStripeForAccount } from "@/lib/stripe";
-import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
-import { ensureUserTeamPermissionExists } from "@/lib/request-checks";
+import { adaptSchema, clientOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
 export const DELETE = createSmartRouteHandler({
   metadata: {
@@ -148,6 +148,13 @@ export const DELETE = createSmartRouteHandler({
         where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: subscription.id } },
       });
       await bulldozerWriteSubscription(prisma, updatedSub);
+    }
+
+    // Regrant the free plan if a Stack Auth billing team just lost their
+    // only plans-line sub. Scoped to the internal tenancy — customer
+    // projects' own sub cancellations are for their own products.
+    if (auth.tenancy.project.id === "internal" && params.customer_type === "team") {
+      await ensureFreePlanForBillingTeam(params.customer_id);
     }
 
     return {
