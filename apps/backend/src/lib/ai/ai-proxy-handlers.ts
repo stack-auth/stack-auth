@@ -1,6 +1,7 @@
 import { logAiQuery } from "@/lib/ai/ai-query-logger";
 import { ALLOWED_MODEL_IDS } from "@/lib/ai/models";
 import { extractOpenRouterUsage, scanSseForUsage, type UsageFields } from "@/lib/ai/openrouter-usage";
+import { preprocessProxyBody } from "@/private";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { captureError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
@@ -32,7 +33,8 @@ export function sanitizeBody(raw: ArrayBuffer): SanitizedBody {
     parsed.metadata.user_id = parsed.metadata.user_id.slice(0, 128);
   }
 
-  return { parsed: parsed as Record<string, unknown>, bytes: new TextEncoder().encode(JSON.stringify(parsed)) };
+  const processed = preprocessProxyBody({ parsedBody: parsed }) as Record<string, unknown>;
+  return { parsed: processed, bytes: new TextEncoder().encode(JSON.stringify(processed)) };
 }
 
 type ProxyLogFields = {
