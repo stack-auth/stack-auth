@@ -8,6 +8,7 @@ import { getPublicEnvVar } from "@/lib/env";
 import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
 import { GearIcon } from "@phosphor-icons/react";
 import { AdminOwnedProject, Team, useStackApp, useUser } from "@stackframe/stack";
+import { isPaidPlan } from "@stackframe/stack-shared/dist/plans";
 import { projectOnboardingStatusValues, strictEmailSchema, yupObject, type ProjectOnboardingStatus } from "@stackframe/stack-shared/dist/schema-fields";
 import { groupBy } from "@stackframe/stack-shared/dist/utils/arrays";
 import { runAsynchronously, runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
@@ -412,9 +413,7 @@ function TeamAddUserDialogContent(props: {
   const users = props.team.useUsers();
   const admins = props.team.useItem("dashboard_admins");
   const products = props.team.useProducts();
-  const hasPaidPlan = products.some(
-    p => (p.id === "team" || p.id === "growth") && p.type === "subscription"
-  );
+  const hasPaidPlan = isPaidPlan(products);
 
   const [email, setEmail] = useState("");
   const [formError, setFormError] = useState<string | null>(null);
