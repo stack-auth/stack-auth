@@ -1,26 +1,23 @@
 import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { useEffect, useState, useRef } from "react";
 import type { Identity } from "spacetimedb";
+import { envOrDevDefault } from "../lib/env";
 import { DbConnection, type ErrorContext, type EventContext, type SubscriptionEventContext } from "../module_bindings";
 import type { AiQueryLogRow, McpCallLogRow, PublishedQaRow } from "../types";
 
 export type EnsureEnrolled = (identity: Identity) => Promise<void>;
 
-const IS_DEV = process.env.NODE_ENV === "development";
-const PLACEHOLDER = "REPLACE_ME";
-const rawHost = process.env.NEXT_PUBLIC_SPACETIMEDB_HOST;
-const rawDbName = process.env.NEXT_PUBLIC_SPACETIMEDB_DB_NAME;
-function resolveEnv(raw: string | undefined, devDefault: string, name: string): string {
-  if (raw && raw !== PLACEHOLDER) return raw;
-  if (IS_DEV) return devDefault;
-  throw new Error(`${name} is not configured. Set it in .env.local or hosting platform env.`);
+let cachedConfig: { host: string, dbName: string, tokenKey: string } | null = null;
+function getConfig() {
+  if (cachedConfig) return cachedConfig;
+  const host = envOrDevDefault(process.env.NEXT_PUBLIC_SPACETIMEDB_HOST, "ws://localhost:8139", "NEXT_PUBLIC_SPACETIMEDB_HOST");
+  if (process.env.NODE_ENV !== "development" && !host.startsWith("wss://")) {
+    throw new Error("NEXT_PUBLIC_SPACETIMEDB_HOST must use wss:// in production");
+  }
+  const dbName = envOrDevDefault(process.env.NEXT_PUBLIC_SPACETIMEDB_DB_NAME, "stack-auth-llm", "NEXT_PUBLIC_SPACETIMEDB_DB_NAME");
+  cachedConfig = { host, dbName, tokenKey: `spacetimedb_${host}/${dbName}/auth_token` };
+  return cachedConfig;
 }
-const HOST = resolveEnv(rawHost, "ws://localhost:8139", "NEXT_PUBLIC_SPACETIMEDB_HOST");
-if (!IS_DEV && !HOST.startsWith("wss://")) {
-  throw new Error("NEXT_PUBLIC_SPACETIMEDB_HOST must use wss:// in production");
-}
-const DB_NAME = resolveEnv(rawDbName, "stack-auth-llm", "NEXT_PUBLIC_SPACETIMEDB_DB_NAME");
-const TOKEN_KEY = `spacetimedb_${HOST}/${DB_NAME}/auth_token`;
 
 const MAX_RETRIES = 5;
 const RETRY_DELAY_MS = 2000;
@@ -73,14 +70,15 @@ function useTableSubscription<Row extends { id: bigint }>(
     }
 
     function connect() {
+      const config = getConfig();
       const conn = DbConnection.builder()
-        .withUri(HOST)
-        .withDatabaseName(DB_NAME)
-        .withToken(localStorage.getItem(TOKEN_KEY) || undefined)
+        .withUri(config.host)
+        .withDatabaseName(config.dbName)
+        .withToken(localStorage.getItem(config.tokenKey) || undefined)
         .onConnect((connInstance: DbConnection, identity: Identity, token: string) => {
           if (cancelled) return;
           retryCount = 0;
-          localStorage.setItem(TOKEN_KEY, token);
+          localStorage.setItem(config.tokenKey, token);
           connRef.current = connInstance;
 
           const startSubscription = () => {
@@ -140,7 +138,7 @@ function useTableSubscription<Row extends { id: bigint }>(
           const message = err instanceof Error ? err.message : "";
           const looksLikeAuthFailure = /unauthor|verify token|401/i.test(message);
           if (looksLikeAuthFailure) {
-            localStorage.removeItem(TOKEN_KEY);
+            localStorage.removeItem(config.tokenKey);
           }
           retry();
         })
