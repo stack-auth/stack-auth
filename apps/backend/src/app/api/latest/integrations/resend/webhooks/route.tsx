@@ -131,6 +131,7 @@ async function processEmailDeliveryEvent(kind: EmailEventKind, payload: ResendWe
         WHERE o."canHaveDeliveryInfo" = TRUE
           AND o."finishedSendingAt" IS NOT NULL
           AND o."finishedSendingAt" >= ${windowStart}
+          AND o."finishedSendingAt" <= ${eventAt}
           AND ${terminalGuard}
           AND ${selfGuard}
           AND (
