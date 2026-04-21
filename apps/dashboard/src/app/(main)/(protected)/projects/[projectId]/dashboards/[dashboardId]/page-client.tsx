@@ -197,7 +197,11 @@ function DashboardDetailContent({
     setPendingChips([]);
   }, []);
   const removePendingChip = useCallback((id: string) => {
-    setPendingChips((prev) => prev.filter((c) => c.id !== id));
+    setPendingChips((prev) => {
+      const next = prev.filter((c) => c.id !== id);
+      pendingChipsRef.current = next;
+      return next;
+    });
   }, []);
 
   const handleWidgetSelected = useCallback(

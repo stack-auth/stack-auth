@@ -537,10 +537,10 @@ export function createDashboardChatAdapter(
             };
             break;
           }
-          consumePendingChips?.();
         }
 
         let latestContent: ChatContent = [];
+        let chipsConsumed = chips.length === 0;
         for await (const content of streamDashboardCode(
           backendBaseUrl,
           currentUser,
@@ -552,6 +552,10 @@ export function createDashboardChatAdapter(
             projectId,
           },
         )) {
+          if (!chipsConsumed) {
+            consumePendingChips?.();
+            chipsConsumed = true;
+          }
           latestContent = content;
           yield { content };
         }
