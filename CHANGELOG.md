@@ -2,6 +2,11 @@
 
 ---
 
+## 4/21/26
+
+### OAuth
+- Fixed an issue where extra scopes and access tokens could be requested with shared OAuth keys in certain scenarios. The restriction is now enforced consistently across all OAuth flows.
+
 ## 1/23/26
 
 ### Payments
