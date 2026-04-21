@@ -601,6 +601,30 @@ it("getUser should work with Authorization header in request-like tokenStore", a
   expect(serverUser!.id).toBe(clientUser.id);
 });
 
+it("getUser should work with record-style headers in request-like tokenStore", async ({ expect }) => {
+  const { serverApp, clientApp } = await createApp({});
+  await signIn(clientApp);
+
+  const authorizationHeader = await clientApp.getAuthorizationHeader();
+  if (authorizationHeader == null) {
+    throw new Error("Expected authorization header for signed-in user.");
+  }
+
+  const requestLike = {
+    headers: {
+      Authorization: authorizationHeader,
+      Cookie: null,
+    },
+  };
+
+  const serverUser = await serverApp.getUser({ tokenStore: requestLike });
+  const clientUser = await clientApp.getUser({ or: "throw" });
+
+  expect(serverUser).not.toBeNull();
+  expect(serverUser!.primaryEmail).toBe("test@test.com");
+  expect(serverUser!.id).toBe(clientUser.id);
+});
+
 it("getUser should work with x-stack-auth header in request-like tokenStore", async ({ expect }) => {
   const { serverApp, clientApp } = await createApp({});
   await signIn(clientApp);

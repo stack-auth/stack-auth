@@ -251,7 +251,11 @@ To refresh an access token from a refresh token, use an OAuth2 token grant:
   For custom token management scenarios.
 
 RequestLike object:
-  An object that conforms to whatever the requests look like in common backend frameworks. For example, in JavaScript, these often have the shape `{ headers: { get(name: string): string | null } }`, but in other languages this may drastically differ (and may not even be an interface and instead rather just be an abstract class, or not exist at all).
+  An object that conforms to whatever the requests look like in common backend frameworks.
+  In JavaScript, common shapes include:
+  - `{ headers: { get(name: string): string | null } }`
+  - `{ headers: Record<string, string | null> }`
+  In other languages this may drastically differ (and may not even be an interface and instead rather just be an abstract class, or not exist at all).
 
   This exists as a simplified way to support common backend frameworks in a more accessible way than the `{ accessToken: string, refreshToken: string }` one.
   

@@ -361,3 +361,6 @@ A: Run from the monorepo root with explicit file paths: `pnpm test run "<path1>"
 
 ### Q: What's the new Authorization header format for Stack token forwarding?
 A: Use `getAuthorizationHeader()`, which returns `Bearer stackauth_<base64(getAuthJson())>`. The payload encodes both `accessToken` and `refreshToken`, and request-like token stores should parse this format first, with legacy `x-stack-auth` remaining as a backward-compatible fallback.
+
+### Q: What RequestLike header shapes are supported by tokenStore overrides?
+A: `RequestLike` accepts both `{ headers: { get(name): string | null } }` and `{ headers: Record<string, string | null> }`. Header lookup is case-insensitive for record-style headers, and supports `authorization`, `x-stack-auth`, and `cookie`.

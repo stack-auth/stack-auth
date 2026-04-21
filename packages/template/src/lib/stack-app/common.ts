@@ -78,9 +78,11 @@ export type GetCurrentPartialUserOptions<HasTokenStore> =
   } : {});
 
 export type RequestLike = {
-  headers: {
-    get: (name: string) => string | null,
-  },
+  headers:
+    | {
+      get: (name: string) => string | null,
+    }
+    | Record<string, string | null>,
 };
 
 export type TokenStoreInit<HasTokenStore extends boolean = boolean> =

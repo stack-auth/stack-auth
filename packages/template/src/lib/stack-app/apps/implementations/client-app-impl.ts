@@ -137,6 +137,20 @@ function getAuthJsonFromAuthorizationHeaderValue(authorizationHeaderValue: strin
   };
 }
 
+function getHeaderValueFromRequestLikeHeaders(headers: RequestLike["headers"], name: string): string | null {
+  if ("get" in headers && typeof headers.get === "function") {
+    return headers.get(name);
+  }
+
+  const lowerCaseName = name.toLowerCase();
+  for (const [headerName, headerValue] of Object.entries(headers)) {
+    if (headerName.toLowerCase() === lowerCaseName) {
+      return headerValue;
+    }
+  }
+  return null;
+}
+
 type StackClientAppImplConstructorOptionsResolved<HasTokenStore extends boolean, ProjectId extends string> = StackClientAppConstructorOptions<HasTokenStore, ProjectId> & { inheritsFrom?: undefined };
 
 export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string = string> implements StackClientApp<HasTokenStore, ProjectId> {
@@ -1039,7 +1053,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           if (this._requestTokenStores.has(tokenStoreInit)) return this._requestTokenStores.get(tokenStoreInit)!;
 
           // Authorization header (recommended)
-          const authorizationHeader = tokenStoreInit.headers.get("authorization") ?? tokenStoreInit.headers.get("Authorization");
+          const authorizationHeader = getHeaderValueFromRequestLikeHeaders(tokenStoreInit.headers, "authorization");
           if (authorizationHeader) {
             const authJson = getAuthJsonFromAuthorizationHeaderValue(authorizationHeader);
             if (authJson != null) {
@@ -1053,7 +1067,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           }
 
           // x-stack-auth header (legacy)
-          const stackAuthHeader = tokenStoreInit.headers.get("x-stack-auth") ?? tokenStoreInit.headers.get("X-Stack-Auth");
+          const stackAuthHeader = getHeaderValueFromRequestLikeHeaders(tokenStoreInit.headers, "x-stack-auth");
           if (stackAuthHeader) {
             let parsed;
             try {
@@ -1070,7 +1084,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           }
 
           // read from cookies
-          const cookieHeader = tokenStoreInit.headers.get("cookie");
+          const cookieHeader = getHeaderValueFromRequestLikeHeaders(tokenStoreInit.headers, "cookie");
           const parsed = cookie.parseCookie(cookieHeader || "");
           const res = new Store<TokenObject>(this._getTokensFromCookies(parsed));
           this._requestTokenStores.set(tokenStoreInit, res);
