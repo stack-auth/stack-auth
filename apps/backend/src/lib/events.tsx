@@ -166,6 +166,22 @@ const SignUpRuleTriggerEventType = {
   inherits: [],
 } as const satisfies SystemEventTypeBase;
 
+const OidcFederationExchangeEventType = {
+  id: "$oidc-federation-exchange",
+  dataSchema: yupObject({
+    // Always set. Matched policy on success; empty string on failure before any policy matched.
+    policyId: yupString().defined(),
+    // Advertised issuer from the OIDC discovery doc if the token made it that far, empty otherwise.
+    issuer: yupString().defined(),
+    // Token's `sub` claim when available, empty otherwise.
+    subject: yupString().defined(),
+    outcome: yupString().oneOf(['success', 'failure']).defined(),
+    // Human-readable reason; free-form. Useful for admin debugging. Empty on success.
+    reason: yupString().defined(),
+  }),
+  inherits: [ProjectActivityEventType],
+} as const satisfies SystemEventTypeBase;
+
 export const SystemEventTypes = stripEventTypeSuffixFromKeys({
   ProjectEventType,
   ProjectActivityEventType,
@@ -175,6 +191,7 @@ export const SystemEventTypes = stripEventTypeSuffixFromKeys({
   ApiRequestEventType,
   LegacyApiEventType,
   SignUpRuleTriggerEventType,
+  OidcFederationExchangeEventType,
 } as const);
 const systemEventTypesById = new Map(Object.values(SystemEventTypes).map(eventType => [eventType.id, eventType]));
 

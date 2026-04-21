@@ -98,6 +98,43 @@ const branchApiKeysSchema = yupObject({
 });
 // --- END NEW API Keys Schema ---
 
+// --- OIDC Federation Schema ---
+//
+// Lets a project trust external OIDC identity providers (Vercel, GitHub Actions, GCP, etc.)
+// so its deployed workloads can exchange a short-lived OIDC JWT for a Stack-issued server
+// access token via RFC 8693 token exchange — replacing the long-lived `STACK_SECRET_SERVER_KEY`.
+//
+// Grants are fixed at **server** scope. Admin-scope federation is intentionally not supported.
+// Claim-condition values: each configured claim maps to a record of { id -> expected-string }.
+// A record (not an array) is used for parity with the rest of this config schema, which models
+// all lists as records so overrides diff/merge cleanly across levels.
+const oidcFederationClaimValuesSchema = yupRecord(userSpecifiedIdSchema("oidcClaimValueId"), yupString());
+const branchOidcFederationSchema = yupObject({
+  trustPolicies: yupRecord(
+    userSpecifiedIdSchema("oidcTrustPolicyId"),
+    yupObject({
+      displayName: yupString(),
+      enabled: yupBoolean(),
+      // OIDC issuer URL. JWKS + metadata are fetched at `${issuerUrl}/.well-known/openid-configuration`.
+      issuerUrl: yupString(),
+      // Token `aud` must equal one of the values in this record.
+      audiences: yupRecord(userSpecifiedIdSchema("oidcAudienceId"), yupString()),
+      // AWS IAM-style conditions evaluated against the JWT's decoded claims.
+      // Outer key is the claim name (e.g. "sub", "environment"). Inner record lets an admin
+      // specify multiple acceptable values for the same claim (OR within a claim). Across
+      // claims and across stringEquals/stringLike, conditions are AND-ed.
+      claimConditions: yupObject({
+        stringEquals: yupRecord(yupString(), oidcFederationClaimValuesSchema),
+        stringLike: yupRecord(yupString(), oidcFederationClaimValuesSchema),
+      }),
+      // TTL of the Stack-issued access token returned by the exchange. Default 900s (15 min),
+      // clamped server-side to [30, 3600].
+      tokenTtlSeconds: yupNumber().min(30).max(3600),
+    }),
+  ),
+});
+// --- END OIDC Federation Schema ---
+
 // --- NEW Apps Schema ---
 const appIds = Object.keys(ALL_APPS) as (keyof typeof ALL_APPS)[];
 const branchAppsSchema = yupObject({
@@ -226,6 +263,8 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
   onboarding: branchOnboardingSchema,
 
   apiKeys: branchApiKeysSchema,
+
+  oidcFederation: branchOidcFederationSchema,
 
   apps: branchAppsSchema,
 
@@ -575,6 +614,20 @@ const organizationConfigDefaults = {
       team: false,
       user: false,
     },
+  },
+
+  oidcFederation: {
+    trustPolicies: (key: string) => ({
+      displayName: undefined,
+      enabled: false,
+      issuerUrl: undefined,
+      audiences: undefined,
+      claimConditions: {
+        stringEquals: undefined,
+        stringLike: undefined,
+      },
+      tokenTtlSeconds: undefined,
+    }),
   },
 
   apps: {

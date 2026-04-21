@@ -30,6 +30,23 @@ const branchSchemaFuzzerConfig = [{
       user: [true, false],
     }],
   }],
+  oidcFederation: [{
+    trustPolicies: [{
+      "some-trust-policy-id": [{
+        displayName: ["Vercel production"],
+        enabled: [true, false],
+        issuerUrl: ["https://oidc.vercel.com/acme"],
+        audiences: [{ "some-audience-id": ["https://vercel.com/acme"] }],
+        // Matcher semantics are covered by unit tests in utils/oidc-federation.test.ts;
+        // the fuzzer just needs a representative shape here to exercise config normalization.
+        claimConditions: [{
+          stringEquals: [{ "environment": [{ "some-value-id": ["production"] }] }],
+          stringLike: [{ "sub": [{ "some-value-id": ["owner:acme:project:*:environment:production"] }] }],
+        }],
+        tokenTtlSeconds: [900, 60],
+      }],
+    }],
+  }],
   auth: [{
     allowSignUp: [true, false],
     password: [{

@@ -630,6 +630,31 @@ model OAuthOuterInfo {
   updatedAt DateTime @updatedAt
 }
 
+// Durable audit row for OIDC federation exchange attempts. Gives the dashboard a simple
+// "last used at" + count aggregate per trust policy without having to scan the global
+// Event log by JSON claim. Written best-effort — a failure here must not break the exchange.
+model OidcFederationExchangeAudit {
+  id String @id @default(uuid()) @db.Uuid
+
+  tenancyId String @db.Uuid
+
+  // Matched trust-policy id on success; "" when the exchange failed before any policy matched.
+  policyId String
+  // OIDC issuer (post-discovery) on success; "" on failure.
+  issuer   String
+  // OIDC `sub` claim on success; "" on failure.
+  subject  String
+  // "success" | "failure" — kept as a plain string instead of an enum so we can extend the
+  // vocabulary later without a schema migration.
+  outcome  String
+  // Human-readable failure reason. Empty on success.
+  reason   String
+
+  createdAt DateTime @default(now())
+
+  @@index([tenancyId, policyId, createdAt(sort: Desc)], map: "OidcFederationExchangeAudit_tenancy_policy_createdAt_idx")
+}
+
 model ProjectUserRefreshToken {
   id            String @default(uuid()) @db.Uuid
   tenancyId     String @db.Uuid

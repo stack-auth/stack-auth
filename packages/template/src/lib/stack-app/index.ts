@@ -22,6 +22,19 @@ export type {
   ProjectConfig
 } from "./project-configs";
 
+export {
+  createOidcFederationTokenStore,
+  OidcFederationExchangeError,
+  fromGcpMetadata,
+  fromGithubActionsOidc,
+  fromOidcToken,
+  fromVercelOidc
+} from "./oidc-federation";
+export type {
+  OidcFederationTokenStore,
+  OidcFederationTokenStoreOptions
+} from "./oidc-federation";
+
 export type {
   InternalApiKey,
   InternalApiKeyBase,

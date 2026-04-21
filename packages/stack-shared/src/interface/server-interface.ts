@@ -35,6 +35,14 @@ export type ServerAuthApplicationOptions = (
     | {
       readonly projectOwnerSession: InternalSession | (() => Promise<string | null>),
     }
+    | {
+      /**
+       * OIDC federation: a callable returning a Stack-issued server access token (exchanged from
+       * a runtime OIDC JWT). Authenticates every server request via `x-stack-server-access-token`
+       * instead of a long-lived `STACK_SECRET_SERVER_KEY`.
+       */
+      readonly oidcFederation: { getAccessToken(): Promise<string> },
+    }
   )
 );
 
@@ -44,12 +52,23 @@ export class StackServerInterface extends StackClientInterface {
   }
 
   protected async sendServerRequest(path: string, options: RequestInit, session: InternalSession | null, requestType: "server" | "admin" = "server") {
+    const authHeaders: Record<string, string> = {};
+    if ("secretServerKey" in this.options) {
+      authHeaders["x-stack-secret-server-key"] = this.options.secretServerKey;
+    } else if ("oidcFederation" in this.options) {
+      authHeaders["x-stack-server-access-token"] = await this.options.oidcFederation.getAccessToken();
+    } else {
+      // projectOwnerSession path — sendClientRequest attaches session headers itself. We still
+      // send an empty secret-server-key so the backend treats this as a server request rather
+      // than rejecting it for the missing header.
+      authHeaders["x-stack-secret-server-key"] = "";
+    }
     return await this.sendClientRequest(
       path,
       {
         ...options,
         headers: {
-          "x-stack-secret-server-key": "secretServerKey" in this.options ? this.options.secretServerKey : "",
+          ...authHeaders,
           ...options.headers,
         },
       },
