@@ -1,4 +1,4 @@
-import { CustomerType, PurchaseCreationSource, Subscription, SubscriptionStatus } from "@/generated/prisma/client";
+import { CustomerType, PrismaClient, PurchaseCreationSource, Subscription, SubscriptionStatus } from "@/generated/prisma/client";
 import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { getOwnedProductsForCustomer } from "@/lib/payments/customer-data";
 // eslint-disable-next-line @typescript-eslint/no-deprecated -- idiomatic way to get the internal tenancy today (see plan-entitlements.ts)
@@ -39,12 +39,18 @@ function isAddOnProduct(product: { isAddOnTo?: false | Record<string, true> | nu
  * `bulldozerWriteSubscription(prisma, sub)` after any outer transaction
  * commits, and for verifying there's no conflicting plan in the same line.
  *
+ * `prisma` is deliberately typed as the union — the helper does a single
+ * `subscription.create` that works identically with a full client or a tx
+ * client. When called with a full client, the Prisma insert and the
+ * downstream `bulldozerWriteSubscription` are NOT atomic; same trade-off as
+ * every other dual-write call site.
+ *
  * `creationSource` is a parameter because the right value depends on context
  * (auto-regrant vs team-creation vs a hypothetical test-mode seed). Throws
  * on a misconfigured `free` product so broken deploys fail loudly.
  */
 export async function createFreePlanSubscriptionRow(options: {
-  prisma: PrismaClientTransaction,
+  prisma: PrismaClient | PrismaClientTransaction,
   internalTenancy: Tenancy,
   billingTeamId: string,
   creationSource: PurchaseCreationSource,

@@ -16,7 +16,7 @@ import {
 } from "@phosphor-icons/react";
 import { Alert, AlertDescription, Button } from "@/components/ui";
 import { useUser } from "@stackframe/stack";
-import { PLAN_LIMITS, type PlanId } from "@stackframe/stack-shared/dist/plans";
+import { BASE_PLAN_IDS_BY_TIER, PLAN_LIMITS, type PlanId } from "@stackframe/stack-shared/dist/plans";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useVirtualizer } from "@tanstack/react-virtual";
 import { useMemo, useRef } from "react";
@@ -322,9 +322,14 @@ export function ErrorDisplay({ error, onRetry }: { error: unknown, onRetry: () =
 }
 
 function resolvePlanId(products: Array<{ id: string | null, type?: string }>): PlanId {
-  if (products.some(p => p.id === "growth" && p.type === "subscription")) return "growth";
-  if (products.some(p => p.id === "team" && p.type === "subscription")) return "team";
-  return "free";
+  // Pick the highest-tier base plan the customer holds. Source of truth is
+  // `BASE_PLAN_IDS_BY_TIER` (ordered best→worst) so adding a plan in
+  // `plans.ts` doesn't require touching this file, and "free" stays the
+  // last-resort fallback.
+  const activeSubscriptionPlanIds = new Set(
+    products.filter(p => p.type === "subscription" && p.id != null).map(p => p.id),
+  );
+  return BASE_PLAN_IDS_BY_TIER.find(id => activeSubscriptionPlanIds.has(id)) ?? "free";
 }
 
 /**

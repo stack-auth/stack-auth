@@ -69,3 +69,10 @@ export const PLAN_LIMITS: {
 };
 
 export type PlanId = keyof typeof PLAN_LIMITS;
+
+/**
+ * Base plan IDs ordered from highest to lowest tier. Use this (instead of
+ * string literals) whenever code needs to pick a customer's "current" plan
+ * from their product list, so the choice stays in sync with `PLAN_LIMITS`.
+ */
+export const BASE_PLAN_IDS_BY_TIER = ["growth", "team", "free"] as const satisfies readonly PlanId[];

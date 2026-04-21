@@ -58,15 +58,17 @@ describe("POST /api/v1/internal/send-test-email — emails_per_month quota", () 
     expect(response.body.code).toBe("ITEM_QUANTITY_INSUFFICIENT_AMOUNT");
   });
 
-  it("debits emails_per_month by 1 even when SMTP fails", async ({ expect }) => {
+  it("refunds emails_per_month when SMTP delivery fails", async ({ expect }) => {
     const { createProjectResponse } = await Project.createAndSwitch({ config: { magic_link_enabled: true } });
     const ownerTeamId = createProjectResponse.body.owner_team_id;
 
     const before = await getEmailItemQuantity(ownerTeamId);
 
-    // SMTP call fails against nonexistent.example.invalid, but the quota debit
-    // happens before SMTP so the decrement should be observable regardless.
-    await niceBackendFetch("/api/v1/internal/send-test-email", {
+    // SMTP call fails against nonexistent.example.invalid. The quota is
+    // debited up-front (to bound concurrent SMTP attempts), then refunded
+    // when the send reports failure so admins iterating on a misconfigured
+    // mail server don't burn through their monthly allowance.
+    const response = await niceBackendFetch("/api/v1/internal/send-test-email", {
       method: "POST",
       accessType: "admin",
       body: {
@@ -75,7 +77,10 @@ describe("POST /api/v1/internal/send-test-email — emails_per_month quota", () 
       },
     });
 
+    expect(response.status).toBe(200);
+    expect(response.body.success).toBe(false);
+
     const after = await getEmailItemQuantity(ownerTeamId);
-    expect(after).toBe(before - 1);
+    expect(after).toBe(before);
   });
 });
