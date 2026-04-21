@@ -1955,11 +1955,21 @@ export default function PageClient() {
                       </Typography>
                     </div>
                   ) : (
-                    <div className="text-center p-6">
+                    <div className="text-center p-6 max-w-md mx-auto">
                       <MonitorPlayIcon className="h-12 w-12 text-muted-foreground/40 mx-auto" />
-                      <Typography className="mt-3 text-sm font-medium text-muted-foreground">
+                      <Typography className="mt-3 text-sm font-medium">
                         No session replays yet
                       </Typography>
+                      <Typography className="mt-2 text-sm text-muted-foreground">
+                        Session replays let you watch how users interact with your app to debug issues and understand user behavior. Install the analytics SDK in your app to start capturing replays.
+                      </Typography>
+                      <StyledLink
+                        href="https://docs.stack-auth.com/docs/apps/analytics"
+                        target="_blank"
+                        className="mt-3 inline-block text-sm"
+                      >
+                        Learn more in the docs
+                      </StyledLink>
                     </div>
                   )}
                 </div>
