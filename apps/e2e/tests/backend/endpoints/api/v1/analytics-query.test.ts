@@ -31,6 +31,7 @@ async function runQueryWithPlan(planId: PlanId, body: { query: string, params?: 
         throw new Error(`Failed to grant plan '${planId}' to team '${ownerTeamId}': ${JSON.stringify(grantResponse.body)}`);
       }
     });
+    await wait(2000);
   }
 
   const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
@@ -1762,6 +1763,47 @@ it("does not clamp timeout below the plan limit", async ({ expect }) => {
   expect(response.status).toBe(200);
   const maxExecutionTime = Number((response.body?.result as any)?.[0]?.max_execution_time);
   expect(maxExecutionTime).toBe(5);
+});
+
+it("rejects analytics queries when the timeout quota is zero (would otherwise send max_execution_time=0 to ClickHouse, i.e. unlimited)", async ({ expect }) => {
+  // Reachable in practice in the gap between a paid plan ending and the
+  // free plan being regranted, or any other billing-misconfigured state
+  // where the team has no plan in the plans line. `Math.min(timeout_ms, 0)`
+  // would produce `max_execution_time: 0`, which ClickHouse interprets as
+  // "no timeout" — the opposite of the intended enforcement.
+  const { createProjectResponse } = await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  const ownerTeamId = createProjectResponse.body.owner_team_id;
+
+  // Drain analytics_timeout_seconds to 0 (free plan starts at 10) via the
+  // internal-tenancy items endpoint.
+  await withInternalProject(async () => {
+    const drainResponse = await niceBackendFetch(
+      `/api/v1/payments/items/team/${ownerTeamId}/analytics_timeout_seconds/update-quantity?allow_negative=false`,
+      {
+        method: "POST",
+        accessType: "server",
+        body: { delta: -PLAN_LIMITS.free.analyticsTimeoutSeconds },
+      },
+    );
+    expect(drainResponse.status).toBe(200);
+  });
+  // Let the timefold process
+  await wait(2000);
+
+  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      query: "SELECT getSetting('max_execution_time') as max_execution_time",
+      timeout_ms: 5000,
+    },
+  });
+
+  expect(response.status).toBe(400);
+  expect(response.body).toMatchObject({
+    code: "ITEM_QUANTITY_INSUFFICIENT_AMOUNT",
+    details: { item_id: "analytics_timeout_seconds" },
+  });
 });
 
 it("does not allow numbers table function with large values", async ({ expect }) => {

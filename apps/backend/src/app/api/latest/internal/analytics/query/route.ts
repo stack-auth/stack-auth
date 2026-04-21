@@ -45,6 +45,13 @@ export const POST = createSmartRouteHandler({
     if (billingTeamId != null) {
       const app = getStackServerApp();
       const timeoutItem = await app.getItem({ itemId: ITEM_IDS.analyticsTimeoutSeconds, teamId: billingTeamId });
+      // clickHouse treats max_execution_time=0 as
+      // "unlimited", so a customer with zero timeout entitlement (no active
+      // plan in the plans line, or a transient gap between paid-plan end
+      // and free regrant) would otherwise get unbounded query execution.
+      if (timeoutItem.quantity <= 0) {
+        throw new KnownErrors.ItemQuantityInsufficientAmount(ITEM_IDS.analyticsTimeoutSeconds, billingTeamId, 1);
+      }
       const maxAllowedMs = timeoutItem.quantity * 1000;
       effectiveTimeoutMs = Math.min(body.timeout_ms, maxAllowedMs);
     }
