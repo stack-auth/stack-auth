@@ -1,4 +1,5 @@
 import { callReducerStrict } from "@/lib/ai/mcp-logger";
+import { assertIsAiChatReviewer } from "@/lib/ai/reviewer-auth";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
@@ -26,10 +27,7 @@ export const POST = createSmartRouteHandler({
   }),
   handler: async ({ auth, body }) => {
     const user = auth.user;
-    const metadata = user.client_read_only_metadata;
-    if (!(metadata && typeof metadata === "object" && "isAiChatReviewer" in metadata && metadata.isAiChatReviewer === true)) {
-      throw new StatusError(StatusError.Forbidden, "You are not approved to perform MCP review operations.");
-    }
+    assertIsAiChatReviewer(user);
     if (!/^[0-9a-fA-F]{64}$/.test(body.identity)) {
       throw new StatusError(StatusError.BadRequest, "Invalid identity.");
     }

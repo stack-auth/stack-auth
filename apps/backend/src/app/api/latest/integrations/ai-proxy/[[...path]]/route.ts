@@ -20,7 +20,7 @@ async function proxyToOpenRouter(req: NextRequest, options: { params: Promise<{ 
   const callerApiKey = req.headers.get("x-api-key");
   const shouldLog = sanitized != null && callerApiKey != null && callerApiKey.startsWith("stack-auth-");
   const correlationId = crypto.randomUUID();
-  const startedAt = Date.now();
+  const startedAt = performance.now();
 
   const targetUrl = apiKey === "FORWARD_TO_PRODUCTION"
     ? `${PRODUCTION_PROXY_BASE_URL}/${subpath}${req.nextUrl.search}`

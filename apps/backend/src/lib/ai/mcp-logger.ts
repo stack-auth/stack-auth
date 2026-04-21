@@ -36,13 +36,17 @@ async function getServiceToken(): Promise<string | null> {
   if (!logToken) return null;
 
   if (!enrollmentPromise) {
-    enrollmentPromise = rawCallReducer(token, "enroll_service", [
-      logToken,
-      "Stack Auth Backend",
-    ]).catch(err => {
-      enrollmentPromise = null;
-      throw err;
-    });
+    enrollmentPromise = (async () => {
+      try {
+        await rawCallReducer(token, "enroll_service", [
+          logToken,
+          "Stack Auth Backend",
+        ]);
+      } catch (err) {
+        enrollmentPromise = null;
+        throw err;
+      }
+    })();
   }
   await enrollmentPromise;
   return token;
@@ -59,13 +63,16 @@ async function rawCallReducer(token: string, reducer: string, args: unknown[]): 
       "Authorization": `Bearer ${token}`,
     },
     body: JSON.stringify(args, (_, v) => {
-      if (typeof v === "bigint") return Number(v);
-      return v;
+      if (typeof v !== "bigint") return v;
+      const MAX = BigInt(Number.MAX_SAFE_INTEGER);
+      if (v <= MAX && v >= -MAX) return Number(v);
+      return v.toString();
     }),
     signal: AbortSignal.timeout(SPACETIMEDB_FETCH_TIMEOUT_MS),
   });
   if (!res.ok) {
-    throw new StackAssertionError(`Reducer ${reducer} failed (${res.status}): ${await res.text()}`);
+    const preview = (await res.text()).slice(0, 200);
+    throw new StackAssertionError(`Reducer ${reducer} failed (${res.status}): ${preview}`);
   }
 }
 
@@ -114,7 +121,8 @@ export async function callSql<T = Record<string, unknown>>(sql: string): Promise
     signal: AbortSignal.timeout(SPACETIMEDB_FETCH_TIMEOUT_MS),
   });
   if (!res.ok) {
-    throw new StackAssertionError(`SQL query failed (${res.status}): ${await res.text()}`);
+    const preview = (await res.text()).slice(0, 200);
+    throw new StackAssertionError(`SQL query failed (${res.status}): ${preview}`);
   }
   const parsed = await res.json() as Array<{
     schema: { elements: Array<{ name: { some?: string } | null }> },
@@ -134,7 +142,6 @@ export async function callSql<T = Record<string, unknown>>(sql: string): Promise
 
 export async function logMcpCall(entry: McpLogEntry): Promise<void> {
   const logToken = getEnvVariable("STACK_MCP_LOG_TOKEN", "");
-  if (!logToken) return;
   // Positional args per reducer schema: token, correlationId, conversationId, toolName,
   // reason, userPrompt, question, response, stepCount, innerToolCallsJson, durationMs,
   // modelId, errorMessage

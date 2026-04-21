@@ -10,7 +10,7 @@ const mcpCallLog = table(
   {
     id: t.u64().primaryKey().autoInc(),
     shard: t.u8().index('btree'),
-    correlationId: t.string(),
+    correlationId: t.string().unique(),
     conversationId: t.string().optional(),
     createdAt: t.timestamp(),
     toolName: t.string(),
@@ -285,26 +285,23 @@ export const update_mcp_qa_review = spacetimedb.reducer(
     if (args.token !== EXPECTED_LOG_TOKEN) {
       throw new SenderError('Invalid log token');
     }
-    for (const row of ctx.db.mcpCallLog.iter()) {
-      if (row.correlationId === args.correlationId) {
-        ctx.db.mcpCallLog.delete(row);
-        ctx.db.mcpCallLog.insert({
-          ...row,
-          qaReviewedAt: ctx.timestamp,
-          qaNeedsHumanReview: args.qaNeedsHumanReview,
-          qaAnswerCorrect: args.qaAnswerCorrect,
-          qaAnswerRelevant: args.qaAnswerRelevant,
-          qaFlagsJson: args.qaFlagsJson,
-          qaImprovementSuggestions: args.qaImprovementSuggestions,
-          qaOverallScore: args.qaOverallScore,
-          qaReviewModelId: args.qaReviewModelId,
-          qaConversationJson: args.qaConversationJson,
-          qaErrorMessage: args.qaErrorMessage,
-        });
-        return;
-      }
+    const row = ctx.db.mcpCallLog.correlationId.find(args.correlationId);
+    if (row == null) {
+      throw new SenderError('Call log not found for correlationId: ' + args.correlationId);
     }
-    throw new SenderError('Call log not found for correlationId: ' + args.correlationId);
+    ctx.db.mcpCallLog.id.update({
+      ...row,
+      qaReviewedAt: ctx.timestamp,
+      qaNeedsHumanReview: args.qaNeedsHumanReview,
+      qaAnswerCorrect: args.qaAnswerCorrect,
+      qaAnswerRelevant: args.qaAnswerRelevant,
+      qaFlagsJson: args.qaFlagsJson,
+      qaImprovementSuggestions: args.qaImprovementSuggestions,
+      qaOverallScore: args.qaOverallScore,
+      qaReviewModelId: args.qaReviewModelId,
+      qaConversationJson: args.qaConversationJson,
+      qaErrorMessage: args.qaErrorMessage,
+    });
   }
 );
 
@@ -318,18 +315,15 @@ export const mark_human_reviewed = spacetimedb.reducer(
     if (args.token !== EXPECTED_LOG_TOKEN) {
       throw new SenderError('Invalid log token');
     }
-    for (const row of ctx.db.mcpCallLog.iter()) {
-      if (row.correlationId === args.correlationId) {
-        ctx.db.mcpCallLog.delete(row);
-        ctx.db.mcpCallLog.insert({
-          ...row,
-          humanReviewedAt: ctx.timestamp,
-          humanReviewedBy: args.reviewedBy,
-        });
-        return;
-      }
+    const row = ctx.db.mcpCallLog.correlationId.find(args.correlationId);
+    if (row == null) {
+      throw new SenderError('Call log not found for correlationId: ' + args.correlationId);
     }
-    throw new SenderError('Call log not found for correlationId: ' + args.correlationId);
+    ctx.db.mcpCallLog.id.update({
+      ...row,
+      humanReviewedAt: ctx.timestamp,
+      humanReviewedBy: args.reviewedBy,
+    });
   }
 );
 
@@ -342,18 +336,15 @@ export const unmark_human_reviewed = spacetimedb.reducer(
     if (args.token !== EXPECTED_LOG_TOKEN) {
       throw new SenderError('Invalid log token');
     }
-    for (const row of ctx.db.mcpCallLog.iter()) {
-      if (row.correlationId === args.correlationId) {
-        ctx.db.mcpCallLog.delete(row);
-        ctx.db.mcpCallLog.insert({
-          ...row,
-          humanReviewedAt: undefined,
-          humanReviewedBy: undefined,
-        });
-        return;
-      }
+    const row = ctx.db.mcpCallLog.correlationId.find(args.correlationId);
+    if (row == null) {
+      throw new SenderError('Call log not found for correlationId: ' + args.correlationId);
     }
-    throw new SenderError('Call log not found for correlationId: ' + args.correlationId);
+    ctx.db.mcpCallLog.id.update({
+      ...row,
+      humanReviewedAt: undefined,
+      humanReviewedBy: undefined,
+    });
   }
 );
 
@@ -370,22 +361,19 @@ export const update_human_correction = spacetimedb.reducer(
     if (args.token !== EXPECTED_LOG_TOKEN) {
       throw new SenderError('Invalid log token');
     }
-    for (const row of ctx.db.mcpCallLog.iter()) {
-      if (row.correlationId === args.correlationId) {
-        ctx.db.mcpCallLog.delete(row);
-        ctx.db.mcpCallLog.insert({
-          ...row,
-          humanCorrectedQuestion: args.correctedQuestion,
-          humanCorrectedAnswer: args.correctedAnswer,
-          humanReviewedAt: row.humanReviewedAt ?? ctx.timestamp,
-          humanReviewedBy: row.humanReviewedBy ?? args.reviewedBy,
-          publishedToQa: args.publish,
-          publishedAt: args.publish ? (row.publishedAt ?? ctx.timestamp) : undefined,
-        });
-        return;
-      }
+    const row = ctx.db.mcpCallLog.correlationId.find(args.correlationId);
+    if (row == null) {
+      throw new SenderError('Call log not found for correlationId: ' + args.correlationId);
     }
-    throw new SenderError('Call log not found for correlationId: ' + args.correlationId);
+    ctx.db.mcpCallLog.id.update({
+      ...row,
+      humanCorrectedQuestion: args.correctedQuestion,
+      humanCorrectedAnswer: args.correctedAnswer,
+      humanReviewedAt: row.humanReviewedAt ?? ctx.timestamp,
+      humanReviewedBy: row.humanReviewedBy ?? args.reviewedBy,
+      publishedToQa: args.publish,
+      publishedAt: args.publish ? (row.publishedAt ?? ctx.timestamp) : undefined,
+    });
   }
 );
 
@@ -434,13 +422,11 @@ export const delete_qa_entry = spacetimedb.reducer(
     if (args.token !== EXPECTED_LOG_TOKEN) {
       throw new SenderError('Invalid log token');
     }
-    for (const row of ctx.db.mcpCallLog.iter()) {
-      if (row.correlationId === args.correlationId) {
-        ctx.db.mcpCallLog.delete(row);
-        return;
-      }
+    const row = ctx.db.mcpCallLog.correlationId.find(args.correlationId);
+    if (row == null) {
+      throw new SenderError('Call log not found for correlationId: ' + args.correlationId);
     }
-    throw new SenderError('Call log not found for correlationId: ' + args.correlationId);
+    ctx.db.mcpCallLog.id.delete(row.id);
   }
 );
 

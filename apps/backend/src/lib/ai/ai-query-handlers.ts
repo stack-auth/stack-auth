@@ -62,45 +62,6 @@ export type ModeContext = {
   startedAt: number,
 };
 
-function buildStepsJson(steps: ReadonlyArray<StepResult<ToolSet>>): string {
-  return JSON.stringify(steps.map((step, i) => ({
-    step: i,
-    text: step.text || undefined,
-    toolCalls: step.toolCalls.map(tc => ({
-      toolName: tc.toolName,
-      toolCallId: tc.toolCallId,
-      args: tc.input,
-    })),
-    toolResults: step.toolResults.map(tr => ({
-      toolName: tr.toolName,
-      toolCallId: tr.toolCallId,
-      result: tr.output,
-    })),
-  })));
-}
-
-function buildContentBlocks(steps: ReadonlyArray<StepResult<ToolSet>>): ContentBlock[] {
-  const blocks: ContentBlock[] = [];
-  for (const step of steps) {
-    if (step.text) {
-      blocks.push({ type: "text", text: step.text });
-    }
-    const resultsByCallId = new Map(step.toolResults.map(r => [r.toolCallId, r]));
-    for (const toolCall of step.toolCalls) {
-      const toolResult = resultsByCallId.get(toolCall.toolCallId);
-      blocks.push({
-        type: "tool-call",
-        toolName: toolCall.toolName,
-        toolCallId: toolCall.toolCallId,
-        args: toolCall.input,
-        argsText: JSON.stringify(toolCall.input),
-        result: (toolResult?.output ?? null) as Json,
-      });
-    }
-  }
-  return blocks;
-}
-
 function logSuccess(args: {
   common: CommonLogFields,
   startedAt: number,
@@ -112,7 +73,20 @@ function logSuccess(args: {
   const { common, startedAt, steps, text, usage, providerMetadata } = args;
   runAsynchronouslyAndWaitUntil(logAiQuery({
     ...common,
-    stepsJson: buildStepsJson(steps),
+    stepsJson: JSON.stringify(steps.map((step, i) => ({
+      step: i,
+      text: step.text || undefined,
+      toolCalls: step.toolCalls.map(tc => ({
+        toolName: tc.toolName,
+        toolCallId: tc.toolCallId,
+        args: tc.input,
+      })),
+      toolResults: step.toolResults.map(tr => ({
+        toolName: tr.toolName,
+        toolCallId: tr.toolCallId,
+        result: tr.output,
+      })),
+    }))),
     finalText: text,
     inputTokens: usage.inputTokens ?? undefined,
     outputTokens: usage.outputTokens ?? undefined,
@@ -146,56 +120,13 @@ function logFailure(args: {
 }
 
 export async function assertProjectAccess(projectId: string, auth: SmartRequestAuth | null): Promise<void> {
-  if (auth?.project.id !== "internal" || auth.user == null) {
+  if (auth == null || auth.project.id !== "internal" || auth.user == null) {
     throw new StatusError(StatusError.Forbidden, "You do not have access to this project");
   }
   const managedProjectIds = await listManagedProjectIds(auth.user);
   if (!managedProjectIds.includes(projectId)) {
     throw new StatusError(StatusError.Forbidden, "You do not have access to this project");
   }
-}
-
-function logMcpCallAndReview(args: {
-  mcpCallMetadata: McpCallMetadata,
-  conversationId: string,
-  correlationId: string,
-  messages: ReadonlyArray<MessageLike>,
-  contentBlocks: ContentBlock[],
-  finalText: string,
-  stepCount: number,
-  startedAt: number,
-  modelId: string,
-}): void {
-  const { mcpCallMetadata, conversationId, correlationId, messages, contentBlocks, finalText, stepCount, startedAt, modelId } = args;
-  const lastUserMessage = messages.findLast(m => m.role === "user");
-  const question = typeof lastUserMessage?.content === "string"
-    ? lastUserMessage.content
-    : JSON.stringify(lastUserMessage?.content ?? "");
-  const innerToolCallsJson = JSON.stringify(contentBlocks.filter(b => b.type === "tool-call"));
-
-  const logPromise = logMcpCall({
-    correlationId,
-    toolName: mcpCallMetadata.toolName,
-    reason: mcpCallMetadata.reason,
-    userPrompt: mcpCallMetadata.userPrompt,
-    conversationId,
-    question,
-    response: finalText,
-    stepCount,
-    innerToolCallsJson,
-    durationMs: BigInt(Math.round(performance.now() - startedAt)),
-    modelId,
-    errorMessage: undefined,
-  });
-  runAsynchronouslyAndWaitUntil(logPromise);
-
-  runAsynchronouslyAndWaitUntil(reviewMcpCall({
-    logPromise,
-    correlationId,
-    question,
-    reason: mcpCallMetadata.reason,
-    response: finalText,
-  }));
 }
 
 export function handleStreamMode(ctx: ModeContext) {
@@ -215,7 +146,10 @@ export function handleStreamMode(ctx: ModeContext) {
     statusCode: 200,
     bodyType: "response" as const,
     body: result.toUIMessageStreamResponse({
-      onError: () => USER_FACING_ERROR_MESSAGE,
+      onError: (err) => {
+        captureError("ai-query-stream-writer", err);
+        return USER_FACING_ERROR_MESSAGE;
+      },
     }),
   };
 }
@@ -244,7 +178,25 @@ export async function handleGenerateMode(ctx: ModeContext & {
     throw new StatusError(StatusError.BadGateway, USER_FACING_ERROR_MESSAGE);
   }
 
-  const contentBlocks = buildContentBlocks(result.steps);
+  const contentBlocks: ContentBlock[] = [];
+  for (const step of result.steps) {
+    if (step.text) {
+      contentBlocks.push({ type: "text", text: step.text });
+    }
+    const resultsByCallId = new Map(step.toolResults.map(r => [r.toolCallId, r]));
+    for (const toolCall of step.toolCalls) {
+      const toolResult = resultsByCallId.get(toolCall.toolCallId);
+      contentBlocks.push({
+        type: "tool-call",
+        toolName: toolCall.toolName,
+        toolCallId: toolCall.toolCallId,
+        args: toolCall.input,
+        argsText: JSON.stringify(toolCall.input),
+        result: (toolResult?.output ?? null) as Json,
+      });
+    }
+  }
+
   logSuccess({
     common,
     startedAt,
@@ -257,17 +209,33 @@ export async function handleGenerateMode(ctx: ModeContext & {
   let responseConversationId: string | undefined;
   if (mcpCallMetadata != null && conversationIdForLog != null) {
     responseConversationId = conversationIdForLog;
-    logMcpCallAndReview({
-      mcpCallMetadata,
-      conversationId: conversationIdForLog,
+    const lastUserMessage = messages.findLast(m => m.role === "user");
+    const question = typeof lastUserMessage?.content === "string"
+      ? lastUserMessage.content
+      : JSON.stringify(lastUserMessage?.content ?? "");
+    const innerToolCallsJson = JSON.stringify(contentBlocks.filter(b => b.type === "tool-call"));
+    const logPromise = logMcpCall({
       correlationId,
-      messages,
-      contentBlocks,
-      finalText: result.text,
+      toolName: mcpCallMetadata.toolName,
+      reason: mcpCallMetadata.reason,
+      userPrompt: mcpCallMetadata.userPrompt,
+      conversationId: conversationIdForLog,
+      question,
+      response: result.text,
       stepCount: result.steps.length,
-      startedAt,
+      innerToolCallsJson,
+      durationMs: BigInt(Math.round(performance.now() - startedAt)),
       modelId: String(model.modelId),
+      errorMessage: undefined,
     });
+    runAsynchronouslyAndWaitUntil(logPromise);
+    runAsynchronouslyAndWaitUntil(reviewMcpCall({
+      logPromise,
+      correlationId,
+      question,
+      reason: mcpCallMetadata.reason,
+      response: result.text,
+    }));
   }
 
   return {

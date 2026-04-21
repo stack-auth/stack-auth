@@ -35,15 +35,6 @@ export function sanitizeBody(raw: ArrayBuffer): SanitizedBody {
   return { parsed: parsed as Record<string, unknown>, bytes: new TextEncoder().encode(JSON.stringify(parsed)) };
 }
 
-function buildMessagesWithSystem(parsed: Record<string, unknown>): unknown[] {
-  const messages = Array.isArray(parsed.messages) ? parsed.messages : [];
-  const system = parsed.system;
-  if (typeof system === "string" && system.length > 0) {
-    return [{ role: "system", content: system }, ...messages];
-  }
-  return messages;
-}
-
 type ProxyLogFields = {
   correlationId: string,
   parsed: Record<string, unknown>,
@@ -59,6 +50,10 @@ function buildProxyLogRow(fields: ProxyLogFields) {
   const toolNames = tools
     .map(t => (t && typeof t === "object" && "name" in t) ? (t as { name: unknown }).name : null)
     .filter((n): n is string => typeof n === "string");
+  const rawMessages = Array.isArray(parsed.messages) ? parsed.messages : [];
+  const messages = typeof parsed.system === "string" && parsed.system.length > 0
+    ? [{ role: "system", content: parsed.system }, ...rawMessages]
+    : rawMessages;
   return {
     correlationId,
     mode: parsed.stream === true ? "stream" : "generate",
@@ -70,7 +65,7 @@ function buildProxyLogRow(fields: ProxyLogFields) {
     projectId: undefined,
     userId: undefined,
     requestedToolsJson: JSON.stringify(toolNames),
-    messagesJson: JSON.stringify(buildMessagesWithSystem(parsed)),
+    messagesJson: JSON.stringify(messages),
     stepsJson: "[]",
     finalText: "",
     inputTokens: usage?.inputTokens,
@@ -87,7 +82,13 @@ function buildProxyLogRow(fields: ProxyLogFields) {
 
 function scheduleLog(row: ReturnType<typeof buildProxyLogRow>) {
   try {
-    const safe = logAiQuery(row).catch(e => captureError("ai-proxy-log-async", e));
+    const safe = (async () => {
+      try {
+        await logAiQuery(row);
+      } catch (e) {
+        captureError("ai-proxy-log-async", e);
+      }
+    })();
     runAsynchronouslyAndWaitUntil(safe);
   } catch (e) {
     captureError("ai-proxy-log-sync", e);
@@ -108,12 +109,17 @@ export async function observeAndLog(args: {
   if (isStreaming && response.body) {
     const [clientStream, observerStream] = response.body.tee();
     runAsynchronouslyAndWaitUntil((async () => {
-      const usage = await scanSseForUsage(observerStream).catch(() => undefined);
+      let usage: UsageFields = {};
+      try {
+        usage = (await scanSseForUsage(observerStream)) ?? {};
+      } catch {
+        // usage stays empty
+      }
       scheduleLog(buildProxyLogRow({
         correlationId,
         parsed: sanitizedBody.parsed,
         apiKey: callerApiKey,
-        durationMs: BigInt(Date.now() - startedAt),
+        durationMs: BigInt(Math.round(performance.now() - startedAt)),
         responseStatus: response.status,
         usage,
       }));
@@ -132,7 +138,7 @@ export async function observeAndLog(args: {
     correlationId,
     parsed: sanitizedBody.parsed,
     apiKey: callerApiKey,
-    durationMs: BigInt(Date.now() - startedAt),
+    durationMs: BigInt(Math.round(performance.now() - startedAt)),
     responseStatus: response.status,
     usage: extractOpenRouterUsage(parsedBody),
   }));

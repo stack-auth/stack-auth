@@ -49,8 +49,14 @@ export async function reviewMcpCall(entry: {
   if (!apiKey || apiKey === "FORWARD_TO_PRODUCTION") {
     return;
   }
+  try {
+    await entry.logPromise;
+  } catch (err) {
+    captureError("qa-reviewer-log-wait", err);
+    return;
+  }
 
-  let devinClient: Awaited<ReturnType<typeof createMCPClient>> | null = null;
+  let mcpClient: Awaited<ReturnType<typeof createMCPClient>> | null = null;
 
   const failureUpdate = (err: unknown) => ({
     qaNeedsHumanReview: true,
@@ -74,18 +80,18 @@ export async function reviewMcpCall(entry: {
     qaErrorMessage: string | undefined,
   };
 
-  try {
-    // Wait for the log row to be written first
-    await entry.logPromise;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 120_000);
 
-    devinClient = await createMCPClient({
+  try {
+    mcpClient = await createMCPClient({
       transport: {
         type: "http",
         url: "https://mcp.deepwiki.com/mcp",
       },
     });
 
-    const devinTools = await devinClient.tools();
+    const mcpTools = await mcpClient.tools();
     const openrouter = createOpenRouterProvider();
     const model = openrouter(REVIEW_MODEL_ID);
 
@@ -105,9 +111,10 @@ export async function reviewMcpCall(entry: {
     const result = await generateText({
       model,
       system: QA_SYSTEM_PROMPT + verifiedQa,
-      tools: devinTools as Parameters<typeof generateText>[0]["tools"],
+      tools: mcpTools as Parameters<typeof generateText>[0]["tools"],
       stopWhen: stepCountIs(10),
       messages: [{ role: "user", content: userMessage }],
+      abortSignal: controller.signal,
     });
 
     const conversation = result.steps.map((step, i) => {
@@ -161,31 +168,36 @@ export async function reviewMcpCall(entry: {
   } catch (err) {
     captureError("qa-reviewer", err);
     update = failureUpdate(err);
+  } finally {
+    clearTimeout(timeoutId);
   }
 
-  if (devinClient) {
-    await devinClient.close().catch((err: unknown) => {
+  if (mcpClient) {
+    try {
+      await mcpClient.close();
+    } catch (err) {
       captureError("qa-reviewer", err);
-    });
+    }
   }
 
   const token = getEnvVariable("STACK_MCP_LOG_TOKEN", "");
-  if (!token) return;
-  await callReducer("update_mcp_qa_review", [
-    token,
-    entry.correlationId,
-    update.qaNeedsHumanReview,
-    update.qaAnswerCorrect,
-    update.qaAnswerRelevant,
-    update.qaFlagsJson,
-    update.qaImprovementSuggestions,
-    update.qaOverallScore,
-    REVIEW_MODEL_ID,
-    opt(update.qaConversationJson),
-    opt(update.qaErrorMessage),
-  ]).catch((err: unknown) => {
+  try {
+    await callReducer("update_mcp_qa_review", [
+      token,
+      entry.correlationId,
+      update.qaNeedsHumanReview,
+      update.qaAnswerCorrect,
+      update.qaAnswerRelevant,
+      update.qaFlagsJson,
+      update.qaImprovementSuggestions,
+      update.qaOverallScore,
+      REVIEW_MODEL_ID,
+      opt(update.qaConversationJson),
+      opt(update.qaErrorMessage),
+    ]);
+  } catch (err) {
     captureError("qa-reviewer", err);
-  });
+  }
 }
 
 /**

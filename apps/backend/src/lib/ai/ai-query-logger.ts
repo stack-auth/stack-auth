@@ -28,7 +28,6 @@ export type AiQueryLogEntry = {
 
 export async function logAiQuery(entry: AiQueryLogEntry): Promise<void> {
   const logToken = getEnvVariable("STACK_MCP_LOG_TOKEN", "");
-  if (!logToken) return;
   await callReducer("log_ai_query", [
     logToken,
     entry.correlationId,

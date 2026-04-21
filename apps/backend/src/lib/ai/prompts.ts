@@ -695,9 +695,16 @@ Example:
       return () => window.removeEventListener('chat-state-change', handler);
     }, []);
     React.useEffect(() => {
-      stackServerApp.listUsers({ includeAnonymous: true })
-        .then(result => { setUsers(result); setLoading(false); })
-        .catch(err => { setError(String(err)); setLoading(false); });
+      (async () => {
+        try {
+          const result = await stackServerApp.listUsers({ includeAnonymous: true });
+          setUsers(result);
+          setLoading(false);
+        } catch (err) {
+          setError(String(err));
+          setLoading(false);
+        }
+      })();
     }, []);
     if (loading) return <div className="flex items-center justify-center min-h-[200px] text-muted-foreground">Loading...</div>;
     if (error) return <div className="p-6 text-red-500">{error}</div>;
@@ -856,11 +863,17 @@ embed the query in the dashboard itself so it fetches live data at runtime:
   const [rows, setRows] = React.useState(null);
   const [error, setError] = React.useState(null);
   React.useEffect(() => {
-    stackServerApp.queryAnalytics({
-      query: "SELECT toStartOfDay(event_at) AS day, count() AS n FROM events WHERE event_at > now() - INTERVAL 30 DAY GROUP BY day ORDER BY day"
-    })
-      .then(res => setRows(res.result))
-      .catch(err => { console.error('[Dashboard] query failed', err); setError('Failed to load analytics'); });
+    (async () => {
+      try {
+        const res = await stackServerApp.queryAnalytics({
+          query: "SELECT toStartOfDay(event_at) AS day, count() AS n FROM events WHERE event_at > now() - INTERVAL 30 DAY GROUP BY day ORDER BY day"
+        });
+        setRows(res.result);
+      } catch (err) {
+        console.error('[Dashboard] query failed', err);
+        setError('Failed to load analytics');
+      }
+    })();
   }, []);
 
 Rules:
