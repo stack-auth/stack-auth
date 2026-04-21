@@ -214,7 +214,7 @@ export function OidcPolicyDialog(props: {
 
   return (
     <Dialog open={props.open} onOpenChange={(open) => { if (!open) props.onClose(); }}>
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="max-w-2xl gap-4">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <ShieldCheckIcon className="h-4 w-4" />
@@ -310,10 +310,6 @@ export function OidcPolicyDialog(props: {
 
 // ── Step components ───────────────────────────────────────────────────────
 
-function SectionLabel({ children }: { children: React.ReactNode }) {
-  return <div className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{children}</div>;
-}
-
 function Field({ id, label, children }: { id?: string, label: string, children: React.ReactNode }) {
   return (
     <div className="flex flex-col gap-1.5">
@@ -338,7 +334,6 @@ function IdentityStep(props: {
     <>
       {props.isCreate && (
         <section className="flex flex-col gap-2">
-          <SectionLabel>Preset</SectionLabel>
           <DesignPillToggle
             options={PRESETS.map(p => ({ id: p.id, label: p.label }))}
             selected={props.preset}
@@ -354,7 +349,6 @@ function IdentityStep(props: {
         </section>
       )}
       <section className="flex flex-col gap-3">
-        <SectionLabel>Identity</SectionLabel>
         <Field id="oidc-name" label="Display name">
           <DesignInput
             id="oidc-name"
@@ -399,8 +393,7 @@ function AudiencesStep(props: {
 }) {
   return (
     <section className="flex flex-col gap-2">
-      <div className="flex items-center justify-between">
-        <SectionLabel>Audiences</SectionLabel>
+      <div className="flex items-center justify-end">
         <DesignButton variant="ghost" size="sm" onClick={props.addAudienceRow}>
           <PlusIcon className="h-3.5 w-3.5 mr-1" weight="bold" />
           Add audience
@@ -442,7 +435,6 @@ function ConditionsStep(props: {
   const parseResult = parseClaimConditionsJson(props.draft.claimConditionsJson);
   return (
     <section className="flex flex-col gap-2">
-      <SectionLabel>Claim conditions</SectionLabel>
       <Typography variant="secondary" className="text-xs">
         JSON with <code className="rounded bg-muted px-1 py-0.5">stringEquals</code> and/or <code className="rounded bg-muted px-1 py-0.5">stringLike</code>. Each maps a claim to allowed values. Claims combine with AND; values within a claim combine with OR. <code className="rounded bg-muted px-1 py-0.5">stringLike</code> supports <code className="rounded bg-muted px-1 py-0.5">*</code> / <code className="rounded bg-muted px-1 py-0.5">?</code>. Empty = any validly-signed token with a matching audience passes.
       </Typography>
@@ -471,7 +463,6 @@ function TokenStep(props: {
   return (
     <>
       <section className="flex flex-col gap-2">
-        <SectionLabel>Issued token</SectionLabel>
         <Field id="oidc-ttl" label="TTL (seconds)">
           <DesignInput
             id="oidc-ttl"
@@ -489,7 +480,6 @@ function TokenStep(props: {
       </section>
       {props.isCreate && props.selectedPreset && (
         <section className="flex flex-col gap-2">
-          <SectionLabel>SDK snippet</SectionLabel>
           <pre className="text-xs bg-muted/60 ring-1 ring-border rounded-xl p-3 overflow-x-auto leading-relaxed">
             {props.selectedPreset.exampleSnippet(props.projectId)}
           </pre>
