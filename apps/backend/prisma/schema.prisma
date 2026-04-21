@@ -27,6 +27,7 @@ model Project {
   isProductionMode Boolean
   ownerTeamId      String? @db.Uuid
   onboardingStatus String  @default("completed")
+  onboardingState  Json?
 
   logoUrl             String?
   logoFullUrl         String?

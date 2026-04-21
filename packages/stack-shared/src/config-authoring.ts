@@ -1,6 +1,8 @@
 import type { BranchConfigNormalizedOverride } from "./config/schema";
 
-export type StackConfig = BranchConfigNormalizedOverride;
+type StackConfigObject = BranchConfigNormalizedOverride;
+export const showOnboardingStackConfigValue = "show-onboarding";
+export type StackConfig = StackConfigObject | typeof showOnboardingStackConfigValue;
 
 type StrictConfigShape<Actual, Expected> =
   Expected extends readonly unknown[]
@@ -15,7 +17,10 @@ type StrictConfigShape<Actual, Expected> =
         : Actual
       : Actual;
 
-type StrictStackConfig<T extends StackConfig> = T & StrictConfigShape<T, StackConfig>;
+type StrictStackConfig<T extends StackConfig> =
+  T extends StackConfigObject
+    ? T & StrictConfigShape<T, StackConfigObject>
+    : T;
 
 export function defineStackConfig<const T extends StackConfig>(config: StrictStackConfig<T>): T {
   return config;

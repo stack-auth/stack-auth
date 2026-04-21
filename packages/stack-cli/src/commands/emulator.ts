@@ -53,6 +53,8 @@ type EmulatorCredentials = {
   project_id: string,
   publishable_client_key: string,
   secret_server_key: string,
+  onboarding_status: string,
+  onboarding_outstanding: boolean,
 };
 
 async function fetchEmulatorCredentials(pck: string, backendPort: number, configFile: string): Promise<EmulatorCredentials> {
@@ -74,12 +76,70 @@ async function fetchEmulatorCredentials(pck: string, backendPort: number, config
     project_id: string,
     publishable_client_key: string,
     secret_server_key: string,
+    onboarding_status: string,
+    onboarding_outstanding: boolean,
   };
+  if (typeof data.project_id !== "string" || typeof data.publishable_client_key !== "string" || typeof data.secret_server_key !== "string") {
+    throw new CliError("Local emulator project endpoint returned an invalid credentials response.");
+  }
+  const onboardingStatus = typeof data.onboarding_status === "string" ? data.onboarding_status : "completed";
+  const onboardingOutstanding = typeof data.onboarding_outstanding === "boolean"
+    ? data.onboarding_outstanding
+    : onboardingStatus !== "completed";
   return {
     project_id: data.project_id,
     publishable_client_key: data.publishable_client_key,
     secret_server_key: data.secret_server_key,
+    onboarding_status: onboardingStatus,
+    onboarding_outstanding: onboardingOutstanding,
   };
+}
+
+function dashboardHostForPortPrefix(portPrefix: string): string {
+  if (portPrefix === "91") return "a.localhost";
+  if (portPrefix === "92") return "b.localhost";
+  if (portPrefix === "93") return "c.localhost";
+  return "localhost";
+}
+
+function localEmulatorDashboardBaseUrl(): string {
+  const explicit = process.env.STACK_LOCAL_EMULATOR_DASHBOARD_URL;
+  if (explicit && explicit.trim().length > 0) {
+    return explicit.replace(/\/$/, "");
+  }
+  const portPrefix = process.env.NEXT_PUBLIC_STACK_PORT_PREFIX ?? "81";
+  const host = dashboardHostForPortPrefix(portPrefix);
+  return `http://${host}:${portPrefix}01`;
+}
+
+function openUrlInBrowser(url: string): boolean {
+  try {
+    if (process.platform === "darwin") {
+      execFileSync("open", [url], { stdio: "ignore" });
+      return true;
+    }
+    if (process.platform === "win32") {
+      execFileSync("cmd", ["/c", "start", "", url], { stdio: "ignore" });
+      return true;
+    }
+    execFileSync("xdg-open", [url], { stdio: "ignore" });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function maybeOpenOnboardingPage(credentials: EmulatorCredentials): void {
+  if (!credentials.onboarding_outstanding) {
+    return;
+  }
+  const url = `${localEmulatorDashboardBaseUrl()}/new-project?project_id=${encodeURIComponent(credentials.project_id)}`;
+  const opened = openUrlInBrowser(url);
+  if (opened) {
+    console.log(`Onboarding is still pending for project ${credentials.project_id}. Opened: ${url}`);
+  } else {
+    console.warn(`Onboarding is still pending for project ${credentials.project_id}. Open this URL manually: ${url}`);
+  }
 }
 
 function gh(args: string[]): string {
@@ -245,7 +305,12 @@ export function registerEmulatorCommand(program: Command) {
       if (resolvedConfigFile) {
         const pck = await readInternalPck();
         const creds = await fetchEmulatorCredentials(pck, emulatorBackendPort(), resolvedConfigFile);
-        console.log(JSON.stringify(creds, null, 2));
+        maybeOpenOnboardingPage(creds);
+        console.log(JSON.stringify({
+          project_id: creds.project_id,
+          publishable_client_key: creds.publishable_client_key,
+          secret_server_key: creds.secret_server_key,
+        }, null, 2));
       }
     });
 
@@ -278,6 +343,7 @@ export function registerEmulatorCommand(program: Command) {
         const pck = await readInternalPck();
         const backendPort = emulatorBackendPort();
         const creds = await fetchEmulatorCredentials(pck, backendPort, resolvedConfigFile);
+        maybeOpenOnboardingPage(creds);
         const apiUrl = `http://127.0.0.1:${backendPort}`;
         childEnv.STACK_PROJECT_ID = creds.project_id;
         childEnv.NEXT_PUBLIC_STACK_PROJECT_ID = creds.project_id;

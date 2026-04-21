@@ -55,6 +55,13 @@ export function getProjectQuery(projectId: string): RawQuery<Promise<Omit<Projec
         return null;
       }
       const row = queryResult[0];
+      const onboardingState = row.onboardingState;
+      if (onboardingState != null && (typeof onboardingState !== "object" || Array.isArray(onboardingState))) {
+        throw new StackAssertionError("Expected Project.onboardingState to be an object or null.", {
+          projectId,
+          onboardingState,
+        });
+      }
       return {
         id: row.id,
         display_name: row.displayName,
@@ -67,6 +74,7 @@ export function getProjectQuery(projectId: string): RawQuery<Promise<Omit<Projec
         is_production_mode: row.isProductionMode,
         owner_team_id: row.ownerTeamId,
         onboarding_status: row.onboardingStatus,
+        onboarding_state: onboardingState ?? undefined,
       };
     },
   };
@@ -102,16 +110,24 @@ export async function createOrUpdateProjectWithLegacyConfig(
   }
 
   const [projectId, branchId] = await retryTransaction(globalPrismaClient, async (tx) => {
-    const onboardingStatusColumnExistsRows = await tx.$queryRaw<Array<{ exists: boolean }>>`
+    const onboardingColumnExistsRows = await tx.$queryRaw<Array<{ onboardingStatusExists: boolean, onboardingStateExists: boolean }>>`
       SELECT EXISTS (
         SELECT 1
         FROM information_schema.columns
         WHERE table_schema = 'public'
           AND table_name = 'Project'
           AND column_name = 'onboardingStatus'
-      ) AS "exists"
+      ) AS "onboardingStatusExists",
+      EXISTS (
+        SELECT 1
+        FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = 'Project'
+          AND column_name = 'onboardingState'
+      ) AS "onboardingStateExists"
     `;
-    const onboardingStatusColumnExists = onboardingStatusColumnExistsRows[0]?.exists === true;
+    const onboardingStatusColumnExists = onboardingColumnExistsRows[0]?.onboardingStatusExists === true;
+    const onboardingStateColumnExists = onboardingColumnExistsRows[0]?.onboardingStateExists === true;
 
     let project: Prisma.ProjectGetPayload<{}>;
     let branchId: string;
@@ -174,6 +190,17 @@ export async function createOrUpdateProjectWithLegacyConfig(
         data: updateData,
       });
       branchId = options.branchId;
+    }
+
+    if (onboardingStateColumnExists && options.data.onboarding_state !== undefined) {
+      const onboardingStateString = options.data.onboarding_state == null
+        ? null
+        : JSON.stringify(options.data.onboarding_state);
+      await tx.$executeRaw`
+        UPDATE "Project"
+        SET "onboardingState" = ${onboardingStateString}::jsonb
+        WHERE "id" = ${project.id}
+      `;
     }
 
     return [project.id, branchId];

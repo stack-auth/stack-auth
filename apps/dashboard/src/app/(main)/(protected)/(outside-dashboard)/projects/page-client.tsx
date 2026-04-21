@@ -172,11 +172,26 @@ export default function PageClient() {
       ) {
         throw new Error("Local emulator endpoint returned an invalid response.");
       }
+      const onboardingStatus = "onboarding_status" in responseBody
+        ? responseBody.onboarding_status
+        : "completed";
+      if (!isProjectOnboardingStatus(onboardingStatus)) {
+        throw new Error("Local emulator endpoint returned an invalid onboarding status.");
+      }
 
       setOpenConfigFileDialog(false);
       setAbsoluteConfigFilePath("");
+      setProjectStatuses((previous) => {
+        const next = new Map(previous);
+        next.set(responseBody.project_id, onboardingStatus);
+        return next;
+      });
       await appInternals.refreshOwnedProjects();
-      router.push(`/projects/${encodeURIComponent(responseBody.project_id)}`);
+      if (onboardingStatus === "completed") {
+        router.push(`/projects/${encodeURIComponent(responseBody.project_id)}`);
+      } else {
+        router.push(`/new-project?project_id=${encodeURIComponent(responseBody.project_id)}`);
+      }
       await wait(2000);
     } finally {
       setOpeningConfigFile(false);

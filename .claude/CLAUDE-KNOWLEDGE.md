@@ -355,3 +355,6 @@ Then restart the dev server. This rebuilds all packages and generates the necess
 
 ## Q: How is backwards compatibility for the offer→product rename handled in the payments purchase APIs?
 A: API v1 requests are routed through the `v2beta1` migration. The migration wraps the latest handlers, accepts legacy `offer_id`/`offer_inline` request fields, translates product-related errors back to the old offer error codes/messages, and augments responses (like `validate-code`) with `offer`/`conflicting_group_offers` aliases alongside the new `product` fields. Newer API versions keep the product-only contract.
+
+### Q: What's the reliable way to run targeted tests across backend, dashboard, stack-shared, and e2e at once?
+A: Run from the monorepo root with explicit file paths: `pnpm test run "<path1>" "<path2>" ...`. This works even when individual packages do not define a local `test` script. Also avoid passing an extra `run` argument to package-level `test` scripts that already execute `vitest run`.

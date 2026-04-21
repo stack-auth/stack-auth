@@ -4,15 +4,25 @@ import {
   LOCAL_EMULATOR_ADMIN_USER_ID,
   LOCAL_EMULATOR_ONLY_ENDPOINT_MESSAGE,
   LOCAL_EMULATOR_OWNER_TEAM_ID,
+  isLocalEmulatorOnboardingEnabledInConfig,
   isLocalEmulatorEnabled,
   readConfigFromFile,
   resolveEmulatorPath,
-  writeConfigToFile,
+  writeShowOnboardingConfigToFile,
 } from "@/lib/local-emulator";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { clientOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import {
+  clientOrHigherAuthTypeSchema,
+  projectOnboardingStatusSchema,
+  projectOnboardingStatusValues,
+  type ProjectOnboardingStatus,
+  yupBoolean,
+  yupNumber,
+  yupObject,
+  yupString,
+} from "@stackframe/stack-shared/dist/schema-fields";
 import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
@@ -22,6 +32,10 @@ import * as path from "path";
 type LocalEmulatorProjectMappingRow = {
   projectId: string,
 };
+
+function isProjectOnboardingStatus(value: string): value is ProjectOnboardingStatus {
+  return projectOnboardingStatusValues.some((status) => status === value);
+}
 
 async function assertLocalEmulatorOwnerTeamReadiness() {
   const internalTenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID);
@@ -177,6 +191,66 @@ async function getOrCreateCredentials(projectId: string) {
   };
 }
 
+async function syncLocalEmulatorOnboardingStatus(projectId: string, showOnboarding: boolean): Promise<ProjectOnboardingStatus> {
+  const onboardingStateColumnExistsRows = await globalPrismaClient.$queryRaw<Array<{ exists: boolean }>>(Prisma.sql`
+    SELECT EXISTS (
+      SELECT 1
+      FROM information_schema.columns
+      WHERE table_schema = 'public'
+        AND table_name = 'Project'
+        AND column_name = 'onboardingState'
+    ) AS "exists"
+  `);
+  const onboardingStateColumnExists = onboardingStateColumnExistsRows[0]?.exists === true;
+
+  const rows = await globalPrismaClient.$queryRaw<Array<{ onboardingStatus: string }>>(Prisma.sql`
+    SELECT "onboardingStatus"
+    FROM "Project"
+    WHERE "id" = ${projectId}
+    LIMIT 1
+  `);
+  const row = rows.length > 0 ? rows[0] : undefined;
+  if (!row) {
+    throw new StackAssertionError("Local emulator project not found while syncing onboarding state.", { projectId });
+  }
+  if (!isProjectOnboardingStatus(row.onboardingStatus)) {
+    throw new StackAssertionError("Project onboarding status in DB is invalid.", {
+      projectId,
+      onboardingStatus: row.onboardingStatus,
+    });
+  }
+  const currentOnboardingStatus = row.onboardingStatus;
+
+  if (!showOnboarding) {
+    if (onboardingStateColumnExists) {
+      await globalPrismaClient.$executeRaw(Prisma.sql`
+        UPDATE "Project"
+        SET "onboardingStatus" = 'completed',
+            "onboardingState" = NULL
+        WHERE "id" = ${projectId}
+      `);
+    } else {
+      await globalPrismaClient.$executeRaw(Prisma.sql`
+        UPDATE "Project"
+        SET "onboardingStatus" = 'completed'
+        WHERE "id" = ${projectId}
+      `);
+    }
+    return "completed";
+  }
+
+  if (currentOnboardingStatus === "completed") {
+    await globalPrismaClient.$executeRaw(Prisma.sql`
+      UPDATE "Project"
+      SET "onboardingStatus" = 'config_choice'
+      WHERE "id" = ${projectId}
+    `);
+    return "config_choice";
+  }
+
+  return currentOnboardingStatus;
+}
+
 export const POST = createSmartRouteHandler({
   metadata: {
     hidden: true,
@@ -205,6 +279,8 @@ export const POST = createSmartRouteHandler({
       secret_server_key: yupString().defined(),
       super_secret_admin_key: yupString().defined(),
       branch_config_override_string: yupString().defined(),
+      onboarding_status: projectOnboardingStatusSchema.defined(),
+      onboarding_outstanding: yupBoolean().defined(),
     }).defined(),
   }),
   handler: async (req) => {
@@ -230,15 +306,17 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(StatusError.BadRequest, `Config file not found: ${absoluteFilePath}`);
     }
 
-    // If the file is empty, write a default config
+    // If the file is empty, write the onboarding sentinel config.
     const fileContent = await fs.readFile(resolvedFilePath, "utf-8");
     if (fileContent.trim() === "") {
-      await writeConfigToFile(absoluteFilePath, {});
+      await writeShowOnboardingConfigToFile(absoluteFilePath);
     }
 
     await assertLocalEmulatorOwnerTeamReadiness();
 
     const { projectId } = await getOrCreateLocalEmulatorProjectId(absoluteFilePath);
+    const showOnboarding = await isLocalEmulatorOnboardingEnabledInConfig(absoluteFilePath);
+    const onboardingStatus = await syncLocalEmulatorOnboardingStatus(projectId, showOnboarding);
     const credentials = await getOrCreateCredentials(projectId);
     const fileConfig = await readConfigFromFile(absoluteFilePath);
 
@@ -251,6 +329,8 @@ export const POST = createSmartRouteHandler({
         secret_server_key: credentials.secretServerKey,
         super_secret_admin_key: credentials.superSecretAdminKey,
         branch_config_override_string: JSON.stringify(fileConfig),
+        onboarding_status: onboardingStatus,
+        onboarding_outstanding: onboardingStatus !== "completed",
       },
     };
   },

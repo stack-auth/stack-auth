@@ -77,6 +77,10 @@ vi.mock("@/components/ui", () => ({
   cn: (...classNames: Array<string | false | null | undefined>) => classNames.filter(Boolean).join(" "),
 }));
 
+vi.mock("@/lib/env", () => ({
+  getPublicEnvVar: () => "false",
+}));
+
 vi.mock("@/lib/config-update", () => ({
   useUpdateConfig: () => vi.fn(async () => true),
 }));
@@ -183,9 +187,12 @@ describe("ProjectOnboardingWizard", () => {
       <ProjectOnboardingWizard
         project={project as never}
         status="payments_setup"
+        onboardingState={null}
         mode={null}
         setMode={vi.fn()}
         setStatus={setStatus}
+        setOnboardingState={vi.fn(async () => {})}
+        clearOnboardingState={vi.fn(async () => {})}
         onComplete={onComplete}
       />,
     );

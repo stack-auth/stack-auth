@@ -7,6 +7,8 @@ import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 const PROJECT_ONBOARDING_STATUSES = projectOnboardingStatusValues;
 
 export type SignInMethod = "credential" | "magicLink" | "passkey" | "google" | "github" | "microsoft";
+export type OnboardingConfigChoice = "create-new" | "link-existing";
+export type OnboardingPaymentsCountry = "US" | "OTHER";
 
 export const SIGN_IN_METHODS: Array<{ id: SignInMethod, label: string }> = [
   { id: "credential", label: "Email & password" },
@@ -20,6 +22,15 @@ export const SIGN_IN_METHODS: Array<{ id: SignInMethod, label: string }> = [
 export const REQUIRED_APP_IDS: AppId[] = ["authentication", "emails"];
 export const PRIMARY_APP_IDS: AppId[] = ["authentication", "emails", "payments", "analytics"];
 export const ALL_APP_IDS = Object.keys(ALL_APPS) as AppId[];
+export const OAUTH_SIGN_IN_METHODS: SignInMethod[] = ["google", "github", "microsoft"];
+
+export type ProjectOnboardingState = {
+  selected_config_choice: OnboardingConfigChoice,
+  selected_apps: AppId[],
+  selected_sign_in_methods: SignInMethod[],
+  selected_email_theme_id: string | null,
+  selected_payments_country: OnboardingPaymentsCountry,
+};
 
 export type StackAppInternals = {
   sendRequest: (path: string, requestOptions: RequestInit, requestType?: "client" | "server" | "admin") => Promise<Response>,
@@ -35,6 +46,76 @@ export const PAYMENT_COUNTRY_OPTIONS = [
   { value: "US", label: "United States" },
   { value: "OTHER", label: "Other" },
 ] as const;
+
+export function isProjectOnboardingState(value: unknown): value is ProjectOnboardingState {
+  if (value == null || typeof value !== "object" || Array.isArray(value)) {
+    return false;
+  }
+  const selectedConfigChoice = Reflect.get(value, "selected_config_choice");
+  if (selectedConfigChoice !== "create-new" && selectedConfigChoice !== "link-existing") {
+    return false;
+  }
+  const selectedApps = Reflect.get(value, "selected_apps");
+  if (!Array.isArray(selectedApps) || !selectedApps.every((entry) => ALL_APP_IDS.some((appId) => appId === entry))) {
+    return false;
+  }
+  const selectedSignInMethods = Reflect.get(value, "selected_sign_in_methods");
+  if (
+    !Array.isArray(selectedSignInMethods)
+    || !selectedSignInMethods.every((entry) => SIGN_IN_METHODS.some((method) => method.id === entry))
+  ) {
+    return false;
+  }
+  const selectedEmailThemeId = Reflect.get(value, "selected_email_theme_id");
+  if (selectedEmailThemeId !== null && typeof selectedEmailThemeId !== "string") {
+    return false;
+  }
+  const selectedPaymentsCountry = Reflect.get(value, "selected_payments_country");
+  if (selectedPaymentsCountry !== "US" && selectedPaymentsCountry !== "OTHER") {
+    return false;
+  }
+  return true;
+}
+
+export function normalizeProjectOnboardingState(
+  value: ProjectOnboardingState,
+  options?: { localEmulator: boolean },
+): ProjectOnboardingState {
+  const selectedApps = ALL_APP_IDS.filter((appId) => value.selected_apps.some((selectedAppId) => selectedAppId === appId));
+  const selectedSignInMethods = SIGN_IN_METHODS
+    .map((method) => method.id)
+    .filter((methodId) => value.selected_sign_in_methods.some((selectedMethodId) => selectedMethodId === methodId));
+  const localEmulator = options?.localEmulator === true;
+  const normalizedSignInMethods = localEmulator
+    ? selectedSignInMethods.filter((methodId) => !OAUTH_SIGN_IN_METHODS.some((oauthMethod) => oauthMethod === methodId))
+    : selectedSignInMethods;
+  return {
+    selected_config_choice: localEmulator ? "create-new" : value.selected_config_choice,
+    selected_apps: selectedApps,
+    selected_sign_in_methods: normalizedSignInMethods,
+    selected_email_theme_id: value.selected_email_theme_id,
+    selected_payments_country: value.selected_payments_country,
+  };
+}
+
+export function createProjectOnboardingState(options: {
+  selectedConfigChoice: OnboardingConfigChoice,
+  selectedApps: Set<AppId>,
+  selectedSignInMethods: Set<SignInMethod>,
+  selectedEmailThemeId: string | null,
+  selectedPaymentsCountry: OnboardingPaymentsCountry,
+  localEmulator: boolean,
+}): ProjectOnboardingState {
+  return normalizeProjectOnboardingState({
+    selected_config_choice: options.selectedConfigChoice,
+    selected_apps: ALL_APP_IDS.filter((appId) => options.selectedApps.has(appId)),
+    selected_sign_in_methods: SIGN_IN_METHODS
+      .map((method) => method.id)
+      .filter((methodId) => options.selectedSignInMethods.has(methodId)),
+    selected_email_theme_id: options.selectedEmailThemeId,
+    selected_payments_country: options.selectedPaymentsCountry,
+  }, { localEmulator: options.localEmulator });
+}
 
 export function isStackAppInternals(value: unknown): value is StackAppInternals {
   return (
