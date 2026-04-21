@@ -190,7 +190,7 @@ export function createVerificationCodeHandler<
 
       switch (handlerType) {
         case 'post': {
-          // Atomic claim — the conditional WHERE closes the TOCTOU against the usedAt check above.
+          // Atomic claim — conditional WHERE closes the TOCTOU against the checks above.
           const claimResult = await globalPrismaClient.verificationCode.updateMany({
             where: {
               projectId: auth.project.id,
@@ -198,6 +198,7 @@ export function createVerificationCodeHandler<
               code,
               type: options.type,
               usedAt: null,
+              expiresAt: { gt: new Date() },
             },
             data: {
               usedAt: new Date(),

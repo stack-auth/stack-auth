@@ -1187,6 +1187,99 @@ it("rejects accept when the signed-in user's email does not match the invited em
   expect(teamsResponse.body.items.find((item: any) => item.id === teamId)).toBeUndefined();
 });
 
+it("does not burn the invitation when a wrong-email user attempts to accept", async ({ expect }) => {
+  // Regression test for the griefing vector a reviewer flagged: if the email-match
+  // check runs after the atomic claim, any attacker with the link can burn the code,
+  // leaving the real recipient with VERIFICATION_CODE_ALREADY_USED. The email check
+  // must run in the pre-claim validate hook so a mismatched attempt leaves usedAt=null.
+  await Project.createAndSwitch();
+  await Auth.fastSignUp();
+  const { teamId } = await Team.create();
+
+  const receiveMailbox = createMailbox();
+  backendContext.set({ userAuth: null });
+  await niceBackendFetch("/api/v1/team-invitations/send-code", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      email: receiveMailbox.emailAddress,
+      team_id: teamId,
+      callback_url: "http://localhost:12345/some-callback-url",
+    },
+  });
+
+  const invitationMessages = await receiveMailbox.waitForMessagesWithSubject("join");
+  const code = invitationMessages
+    .findLast((m) => m.subject.includes("join"))
+    ?.body?.text.match(/http:\/\/localhost:12345\/some-callback-url\?code=([a-zA-Z0-9]+)/)?.[1];
+  expect(code).toBeTruthy();
+
+  // Attacker (different verified email) tries first — must be rejected with mismatch.
+  await Auth.fastSignUp();
+  const attackerResponse = await niceBackendFetch("/api/v1/team-invitations/accept", {
+    method: "POST",
+    accessType: "client",
+    body: { code },
+  });
+  expect(attackerResponse.status).toBe(403);
+  expect(attackerResponse.body.code).toBe("TEAM_INVITATION_EMAIL_MISMATCH");
+
+  // Legitimate recipient signs up and redeems the same code — must still succeed.
+  backendContext.set({ mailbox: receiveMailbox });
+  await Auth.fastSignUp({
+    primary_email: receiveMailbox.emailAddress,
+    primary_email_verified: true,
+  });
+  const legitimateResponse = await niceBackendFetch("/api/v1/team-invitations/accept", {
+    method: "POST",
+    accessType: "client",
+    body: { code },
+  });
+  expect(legitimateResponse.status).toBe(200);
+
+  const teamsResponse = await niceBackendFetch(`/api/v1/teams?user_id=me`, {
+    accessType: "client",
+    method: "GET",
+  });
+  expect(teamsResponse.body.items.find((item: any) => item.id === teamId)).toBeDefined();
+});
+
+it("accepts an invitation sent to a differently-cased email against a normalized channel", async ({ expect }) => {
+  // Regression test for the reviewer's Finding 3: contact channels are stored
+  // lowercased via normalizeEmail, but send-code used to store body.email raw.
+  // Sending to Alice@Example.com must match a channel stored as alice@example.com.
+  await Project.createAndSwitch();
+  await Auth.fastSignUp();
+  const { teamId } = await Team.create();
+
+  const receiveMailbox = createMailbox();
+  // Deliberately send to an uppercased variant of the recipient's address.
+  const uppercasedEmail = receiveMailbox.emailAddress.replace(/^(.)/, c => c.toUpperCase());
+  backendContext.set({ userAuth: null });
+  await niceBackendFetch("/api/v1/team-invitations/send-code", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      email: uppercasedEmail,
+      team_id: teamId,
+      callback_url: "http://localhost:12345/some-callback-url",
+    },
+  });
+
+  backendContext.set({ mailbox: receiveMailbox });
+  await Auth.fastSignUp({
+    primary_email: receiveMailbox.emailAddress,
+    primary_email_verified: true,
+  });
+  await Team.acceptInvitation();
+
+  const teamsResponse = await niceBackendFetch(`/api/v1/teams?user_id=me`, {
+    accessType: "client",
+    method: "GET",
+  });
+  expect(teamsResponse.body.items.find((item: any) => item.id === teamId)).toBeDefined();
+});
+
 it("still allows the legitimate invitee with the matching verified email to accept", async ({ expect }) => {
   // Complements the mismatch test: the new email-match check must not break the happy path.
   await Project.createAndSwitch();
