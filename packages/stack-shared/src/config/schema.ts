@@ -181,9 +181,13 @@ export const branchPaymentsSchema = yupObject({
   'Product customer type must match its product line customer type',
   function(this: yup.TestContext<yup.AnyObject>, value) {
     if (!value) return true;
-    for (const [productId, product] of Object.entries(value.products)) {
-      if (!product.productLineId) continue;
-      const productLine = getOrUndefined(value.productLines, product.productLineId);
+    const products = Reflect.get(value, "products");
+    if (!isObjectLike(products)) return true;
+
+    const productLines = Reflect.get(value, "productLines");
+    for (const [productId, product] of Object.entries(products)) {
+      if (product.productLineId == null) continue;
+      const productLine = isObjectLike(productLines) ? getOrUndefined(productLines, product.productLineId) : undefined;
       if (productLine === undefined) {
         return this.createError({
           message: `Product "${productId}" specifies product line ID "${product.productLineId}", but that product line does not exist`,
