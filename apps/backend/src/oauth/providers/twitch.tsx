@@ -40,7 +40,7 @@ export class TwitchProvider extends OAuthBaseProvider {
       displayName: userInfo.display_name,
       email: userInfo.email,
       profileImageUrl: userInfo.profile_image_url,
-      emailVerified: true,
+      emailVerified: !!userInfo.email,
     });
   }
 
