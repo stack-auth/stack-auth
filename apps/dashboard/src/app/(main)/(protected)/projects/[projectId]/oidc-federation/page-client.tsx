@@ -2,7 +2,6 @@
 
 import {
   DesignAlert,
-  DesignBadge,
   DesignButton,
   DesignCard,
   DesignEmptyState,
@@ -14,7 +13,6 @@ import { DesignMenu } from "@/components/design-components/menu";
 import { ActionDialog, Label, Switch, Textarea, Typography } from "@/components/ui";
 import { useUpdateConfig } from "@/lib/config-update";
 import {
-  CheckCircleIcon,
   ClockIcon,
   FunnelIcon,
   GlobeHemisphereWestIcon,
@@ -22,7 +20,6 @@ import {
   PlusIcon,
   ShieldCheckIcon,
   TrashIcon,
-  XCircleIcon,
 } from "@phosphor-icons/react";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
@@ -276,12 +273,6 @@ function PolicyCard(props: {
               <Typography className="font-semibold text-foreground truncate">
                 {policy.displayName || "(unnamed policy)"}
               </Typography>
-              <DesignBadge
-                label={enabled ? "Enabled" : "Disabled"}
-                color={enabled ? "green" : "red"}
-                icon={enabled ? CheckCircleIcon : XCircleIcon}
-                size="sm"
-              />
             </div>
             <div className="flex items-center flex-wrap gap-x-3 gap-y-1 mt-1 text-xs text-muted-foreground">
               <span className="inline-flex items-center gap-1 truncate max-w-[28rem]">
