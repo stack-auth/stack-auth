@@ -5,6 +5,7 @@ import { FormDialog } from "@/components/form-dialog";
 import { InputField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";
 import { ActionDialog, Button, Typography } from "@/components/ui";
+import { getShortcutModifierKeyLabel } from "@/lib/keyboard-shortcuts";
 import { useUpdateConfig } from "@/lib/config-update";
 import {
   ChartBarIcon,
@@ -28,6 +29,7 @@ export default function PageClient() {
   const adminApp = useAdminApp();
   const project = adminApp.useProject();
   const config = project.useConfig();
+  const modifierKeyLabel = getShortcutModifierKeyLabel();
   const updateConfig = useUpdateConfig();
   const router = useRouter();
   const [deleteDialogId, setDeleteDialogId] = useState<string | null>(null);
@@ -77,7 +79,9 @@ export default function PageClient() {
             <div>
               <Typography className="font-semibold text-foreground">No dashboards yet</Typography>
               <Typography variant="secondary" className="text-sm mt-1">
-                Create a dashboard from the command palette (⌘ K) or click &quot;New Dashboard&quot; above.
+                Create a dashboard from the command palette (
+                <span suppressHydrationWarning>{modifierKeyLabel} K</span>
+                ) or click &quot;New Dashboard&quot; above.
               </Typography>
             </div>
           </div>

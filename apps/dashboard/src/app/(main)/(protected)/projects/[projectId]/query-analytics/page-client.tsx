@@ -3,6 +3,7 @@
 import Editor from "@monaco-editor/react";
 import type { Monaco } from "@monaco-editor/react";
 import React, { useEffect, useMemo, useRef } from "react";
+import { getShortcutModifierKeyLabel } from "@/lib/keyboard-shortcuts";
 import { Alert, Button, Textarea, Typography } from "@/components/ui";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -21,6 +22,7 @@ type CompletionItem = Parameters<Monaco["languages"]["registerCompletionItemProv
 
 export default function PageClient() {
   const adminApp = useAdminApp();
+  const modifierKeyLabel = getShortcutModifierKeyLabel();
   const [query, setQuery] = React.useState("SELECT 1 AS value;");
   const [resultText, setResultText] = React.useState("");
   const [error, setError] = React.useState<string | null>(null);
@@ -168,7 +170,7 @@ export default function PageClient() {
           loading={loading}
           disabled={loading || !queryRef.current.trim()}
         >
-          Run query (⌘ + enter)
+          Run query (<span suppressHydrationWarning>{modifierKeyLabel}</span> + enter)
         </Button>
       </div>
 

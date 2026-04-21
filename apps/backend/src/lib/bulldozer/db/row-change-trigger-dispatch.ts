@@ -1,10 +1,19 @@
-import { generateSecureRandomString } from "@stackframe/stack-shared/dist/utils/crypto";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import type { BulldozerExecutionContext } from "./execution-context";
+import { getBulldozerExecutionContext } from "./execution-context";
 import type { SqlExpression, SqlStatement } from "./utilities";
 import { quoteSqlIdentifier, quoteSqlStringLiteral, sqlQuery } from "./utilities";
 
-const CHANGE_OUTPUT_COLUMNS = '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb';
+/**
+ * Column shape of every row-change changes-table flowing between tables
+ * in the bulldozer graph. One canonical source of truth for both the
+ * inline trigger dispatch (here), the queue-drain cascade (whose input
+ * is seeded to this same shape in `declareTimeFoldTable.init()`), and
+ * any downstream consumer that needs to describe a changes-table's
+ * columns for `jsonb_to_record(...)` etc.
+ */
+export const CHANGE_OUTPUT_COLUMNS = '"groupKey" jsonb, "rowIdentifier" text, "oldRowSortKey" jsonb, "newRowSortKey" jsonb, "oldRowData" jsonb, "newRowData" jsonb';
 const ROW_CHANGE_DIAGNOSTIC_COLUMN_NAME = "__row_change_table_id";
 export type ChangesTableExpression = SqlExpression<{ __brand: "$SQL_Table" }>;
 export type RowChangeTriggerDiagnostics = {
@@ -24,21 +33,22 @@ export type RegisteredRowChangeTrigger = {
   targetTableId: null | string,
   listTriggeredTables: () => RegisteredRowChangeTrigger[],
   execute: (
+    ctx: BulldozerExecutionContext,
     changesTable: ChangesTableExpression,
     outputChangesTableName: string,
   ) => RowChangeTriggerExecution,
 };
 export type RowChangeTriggerInput =
   | RegisteredRowChangeTrigger
-  | ((changesTable: ChangesTableExpression) => SqlStatement[]);
+  | ((ctx: BulldozerExecutionContext, changesTable: ChangesTableExpression) => SqlStatement[]);
 
 export function normalizeRowChangeTrigger(triggerInput: RowChangeTriggerInput): RegisteredRowChangeTrigger {
   if (typeof triggerInput === "function") {
     return {
       targetTableId: null,
       listTriggeredTables: () => [],
-      execute: (changesTable) => ({
-        statements: triggerInput(changesTable),
+      execute: (ctx, changesTable, _outputChangesTableName) => ({
+        statements: triggerInput(ctx, changesTable),
         outputChangesTable: null,
         triggeredTables: [],
       }),
@@ -50,6 +60,7 @@ export function normalizeRowChangeTrigger(triggerInput: RowChangeTriggerInput): 
 export function createTableRowChangeTrigger(options: {
   targetTableId: string,
   createStatements: (
+    ctx: BulldozerExecutionContext,
     changesTable: ChangesTableExpression,
     outputChangesTableName: string,
   ) => SqlStatement[],
@@ -58,8 +69,8 @@ export function createTableRowChangeTrigger(options: {
   return {
     targetTableId: options.targetTableId,
     listTriggeredTables: () => options.getTriggeredTables(),
-    execute: (changesTable, outputChangesTableName) => ({
-      statements: options.createStatements(changesTable, outputChangesTableName),
+    execute: (ctx, changesTable, outputChangesTableName) => ({
+      statements: options.createStatements(ctx, changesTable, outputChangesTableName),
       outputChangesTable: quoteSqlIdentifier(outputChangesTableName),
       triggeredTables: options.getTriggeredTables(),
     }),
@@ -67,7 +78,7 @@ export function createTableRowChangeTrigger(options: {
 }
 
 export function attachRowChangeTriggerMetadata(
-  trigger: (changesTable: ChangesTableExpression) => SqlStatement[],
+  trigger: (ctx: BulldozerExecutionContext, changesTable: ChangesTableExpression) => SqlStatement[],
   metadata: {
     targetTableId: string,
     targetTableTriggers: ReadonlyMap<string, RowChangeTriggerInput>,
@@ -79,8 +90,8 @@ export function attachRowChangeTriggerMetadata(
   return {
     targetTableId: metadata.targetTableId,
     listTriggeredTables: getTriggeredTables,
-    execute: (changesTable) => {
-      const statements = trigger(changesTable);
+    execute: (ctx, changesTable, _outputChangesTableName) => {
+      const statements = trigger(ctx, changesTable);
       const outputName = [...statements]
         .reverse()
         .map((statement) => statement.outputName)
@@ -110,8 +121,11 @@ function dedupeTriggers(triggers: RegisteredRowChangeTrigger[]): RegisteredRowCh
   return deduped;
 }
 
-function createChangesUnionStatement(inputTables: ChangesTableExpression[]): { statement: SqlStatement, table: ChangesTableExpression } {
-  const unionChangesTableName = `unioned_changes_${generateSecureRandomString()}`;
+function createChangesUnionStatement(
+  inputTables: ChangesTableExpression[],
+  ctx: BulldozerExecutionContext,
+): { statement: SqlStatement, table: ChangesTableExpression } {
+  const unionChangesTableName = `unioned_changes_${ctx.generateDeterministicUniqueString()}`;
   const unionSql = inputTables
     .map((table) => `
       SELECT
@@ -135,11 +149,12 @@ function createChangesUnionStatement(inputTables: ChangesTableExpression[]): { s
   };
 }
 
-export function collectRowChangeTriggerStatements(options: {
+export function collectRowChangeTriggerStatements(ctx: BulldozerExecutionContext, options: {
   sourceTableId: string,
   sourceChangesTable: ChangesTableExpression,
   sourceTableTriggers: Map<string, RegisteredRowChangeTrigger>,
 }): CollectedRowChangeTriggerStatements {
+  const executionCtx = getBulldozerExecutionContext(ctx);
   const outgoingByTableId = new Map<string, RegisteredRowChangeTrigger[]>();
   const graphEdges = new Map<string, Set<string>>();
   const discoveredTableIds = new Set<string>([options.sourceTableId]);
@@ -227,7 +242,7 @@ export function collectRowChangeTriggerStatements(options: {
     const sourceChangesTable = incomingChangesTables.length === 1
       ? incomingChangesTables[0]
       : (() => {
-        const unionedSourceChanges = createChangesUnionStatement(incomingChangesTables);
+        const unionedSourceChanges = createChangesUnionStatement(incomingChangesTables, executionCtx);
         statements.push(unionedSourceChanges.statement);
         return unionedSourceChanges.table;
       })();
@@ -236,14 +251,14 @@ export function collectRowChangeTriggerStatements(options: {
       SELECT ${sourceTableIdLiteral}::text AS "__row_change_table_id"
       FROM ${sourceChangesTable}
     `.toStatement(
-      `row_change_diag_${generateSecureRandomString()}`,
+      `row_change_diag_${executionCtx.generateDeterministicUniqueString()}`,
       `"${ROW_CHANGE_DIAGNOSTIC_COLUMN_NAME}" text`,
     ));
 
     const outgoingTriggers = outgoingByTableId.get(sourceTableId) ?? [];
     for (const trigger of outgoingTriggers) {
-      const outputChangesTableName = `trigger_changes_${generateSecureRandomString()}`;
-      const execution = trigger.execute(sourceChangesTable, outputChangesTableName);
+      const outputChangesTableName = `trigger_changes_${executionCtx.generateDeterministicUniqueString()}`;
+      const execution = trigger.execute(executionCtx, sourceChangesTable, outputChangesTableName);
       statements.push(...execution.statements);
       if (trigger.targetTableId == null) continue;
       if (execution.outputChangesTable == null) {

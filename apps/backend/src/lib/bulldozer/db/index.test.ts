@@ -2,7 +2,24 @@ import { stringCompare, templateIdentity } from "@stackframe/stack-shared/dist/u
 import postgres from "postgres";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, test } from "vitest";
 import type { Table } from "./index";
-import { declareCompactTable, declareConcatTable, declareFilterTable, declareFlatMapTable, declareGroupByTable, declareLeftJoinTable, declareLFoldTable, declareLimitTable, declareMapTable, declareReduceTable, declareSortTable, declareStoredTable, declareTimeFoldTable, toExecutableSqlTransaction, toQueryableSqlQuery } from "./index";
+import {
+  createBulldozerExecutionContext,
+  declareCompactTable,
+  declareConcatTable,
+  declareFilterTable,
+  declareFlatMapTable,
+  declareGroupByTable,
+  declareLeftJoinTable,
+  declareLFoldTable,
+  declareLimitTable,
+  declareMapTable,
+  declareReduceTable,
+  declareSortTable,
+  declareStoredTable,
+  declareTimeFoldTable,
+  toExecutableSqlTransaction,
+  toQueryableSqlQuery,
+} from "./index";
 
 type TestDb = { full: string, base: string };
 
@@ -46,13 +63,15 @@ const sqlStatement = (strings: TemplateStringsArray, ...values: { sql: string }[
 });
 
 describe.sequential("declareStoredTable (real postgres)", () => {
+  let executionContext = createBulldozerExecutionContext();
+
   const dbUrls = getTestDbUrls();
   const dbName = dbUrls.full.replace(/^.*\//, "").replace(/\?.*$/, "");
   const adminSql = postgres(dbUrls.base, { onnotice: () => undefined });
   const sql = postgres(dbUrls.full, { onnotice: () => undefined, max: 1 });
 
   async function runStatements(statements: SqlStatement[]) {
-    await sql.unsafe(toExecutableSqlTransaction(statements));
+    await sql.unsafe(toExecutableSqlTransaction(executionContext, statements));
   }
 
   async function readBoolean(expression: SqlExpression<boolean>) {
@@ -139,7 +158,9 @@ describe.sequential("declareStoredTable (real postgres)", () => {
   });
 
   beforeEach(async () => {
+    executionContext = createBulldozerExecutionContext();
     await sql`CREATE EXTENSION IF NOT EXISTS pgcrypto`;
+    await sql`DROP TABLE IF EXISTS "BulldozerTimeFoldDownstreamCascade"`;
     await sql`DROP TABLE IF EXISTS "BulldozerTimeFoldQueue"`;
     await sql`DROP TABLE IF EXISTS "BulldozerTimeFoldMetadata"`;
     await sql`DROP TABLE IF EXISTS "BulldozerMapTriggerAudit"`;
@@ -233,18 +254,28 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       INSERT INTO "BulldozerTimeFoldMetadata" ("key", "lastProcessedAt")
       VALUES ('singleton', now())
     `;
+    await sql`
+      CREATE TABLE "BulldozerTimeFoldDownstreamCascade" (
+        "tableStoragePath" JSONB[] NOT NULL,
+        "cascadeInputName" TEXT NOT NULL,
+        "cascadeTemplate" TEXT,
+        "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        CONSTRAINT "BulldozerTimeFoldDownstreamCascade_pkey" PRIMARY KEY ("tableStoragePath")
+      )
+    `;
   });
 
-  // any is used here because the verifier works with heterogeneous table types
-  const allInitializedTables: Table<any, any, any>[] = [];
-  function trackTable<T extends Table<any, any, any>>(t: T): T {
-    allInitializedTables.push(t);
-    return t;
+  type TableExecutionContext = Parameters<Table<any, any, any>["verifyDataIntegrity"]>[0];
+  const allInitializedTables: Array<{ verifyDataIntegrity: (executionContext: TableExecutionContext) => SqlQuery }> = [];
+  function trackTable<T extends Table<any, any, any>>(table: T): T {
+    allInitializedTables.push(table);
+    return table;
   }
 
   afterEach(async () => {
     for (const table of allInitializedTables) {
-      const errors = await readRows(table.verifyDataIntegrity());
+      const errors = await readRows(table.verifyDataIntegrity(executionContext));
       expect(errors).toEqual([]);
     }
     allInitializedTables.length = 0;
@@ -266,7 +297,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     table: ReturnType<typeof declareStoredTable<{ value: number }>>,
     event: string,
   ) {
-    return table.registerRowChangeTrigger((changesTable) => [
+    return table.registerRowChangeTrigger((_ctx, changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => [
       sqlStatement`
         INSERT INTO "BulldozerTriggerAudit" (
           "event",
@@ -557,7 +588,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     table: ReturnType<typeof createGroupedTable>["groupedTable"],
     event: string,
   ) {
-    return table.registerRowChangeTrigger((changesTable) => [
+    return table.registerRowChangeTrigger((_ctx, changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => [
       sqlStatement`
         INSERT INTO "BulldozerGroupTriggerAudit" (
           "event",
@@ -580,7 +611,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     table: ReturnType<typeof createMappedTable>["mappedTable"],
     event: string,
   ) {
-    return table.registerRowChangeTrigger((changesTable) => [
+    return table.registerRowChangeTrigger((_ctx, changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => [
       sqlStatement`
         INSERT INTO "BulldozerMapTriggerAudit" (
           "event",
@@ -603,7 +634,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     table: ReturnType<typeof createFlatMappedTable>["flatMappedTable"],
     event: string,
   ) {
-    return table.registerRowChangeTrigger((changesTable) => [
+    return table.registerRowChangeTrigger((_ctx, changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => [
       sqlStatement`
         INSERT INTO "BulldozerMapTriggerAudit" (
           "event",
@@ -626,7 +657,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     table: ReturnType<typeof createFilteredTable>["filteredTable"],
     event: string,
   ) {
-    return table.registerRowChangeTrigger((changesTable) => [
+    return table.registerRowChangeTrigger((_ctx, changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => [
       sqlStatement`
         INSERT INTO "BulldozerMapTriggerAudit" (
           "event",
@@ -649,7 +680,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     table: ReturnType<typeof createLimitedTable>["limitedTable"],
     event: string,
   ) {
-    return table.registerRowChangeTrigger((changesTable) => [
+    return table.registerRowChangeTrigger((_ctx, changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => [
       sqlStatement`
         INSERT INTO "BulldozerMapTriggerAudit" (
           "event",
@@ -672,7 +703,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     table: ReturnType<typeof createConcatenatedTable>["concatenatedTable"],
     event: string,
   ) {
-    return table.registerRowChangeTrigger((changesTable) => [
+    return table.registerRowChangeTrigger((_ctx, changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => [
       sqlStatement`
         INSERT INTO "BulldozerMapTriggerAudit" (
           "event",
@@ -695,7 +726,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     table: ReturnType<typeof createSortedTable>["sortedTable"],
     event: string,
   ) {
-    return table.registerRowChangeTrigger((changesTable) => [
+    return table.registerRowChangeTrigger((_ctx, changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => [
       sqlStatement`
         INSERT INTO "BulldozerMapTriggerAudit" (
           "event",
@@ -724,7 +755,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     table: ReturnType<typeof createLFoldTable>["lFoldTable"],
     event: string,
   ) {
-    return table.registerRowChangeTrigger((changesTable) => [
+    return table.registerRowChangeTrigger((_ctx, changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => [
       sqlStatement`
         INSERT INTO "BulldozerMapTriggerAudit" (
           "event",
@@ -753,7 +784,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     table: ReturnType<typeof createTimeFoldTable>["timeFoldTable"],
     event: string,
   ) {
-    return table.registerRowChangeTrigger((changesTable) => [
+    return table.registerRowChangeTrigger((_ctx, changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => [
       sqlStatement`
         INSERT INTO "BulldozerMapTriggerAudit" (
           "event",
@@ -776,7 +807,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     table: ReturnType<typeof createLeftJoinedTable>["leftJoinedTable"],
     event: string,
   ) {
-    return table.registerRowChangeTrigger((changesTable) => [
+    return table.registerRowChangeTrigger((_ctx, changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => [
       sqlStatement`
         INSERT INTO "BulldozerMapTriggerAudit" (
           "event",
@@ -803,7 +834,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
   function instrumentTriggerLifecycle<
     T extends {
       registerRowChangeTrigger(
-        trigger: (changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => SqlStatement[]
+        trigger: Parameters<Table<any, any, any>["registerRowChangeTrigger"]>[0]
       ): { deregister: () => void },
     },
   >(table: T): { table: T, getStats: () => TriggerLifecycleStats } {
@@ -833,13 +864,197 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     };
   }
 
+  test("setRow/init/delete SQL generation is deterministic on a mixed schema", () => {
+    const sourceA = declareStoredTable<{ value: number, team: string | null, t: number }>({ tableId: "det-source-a" });
+    const sourceB = declareStoredTable<{ value: number, team: string | null, t: number }>({ tableId: "det-source-b" });
+    const joinRules = declareStoredTable<{ team: string | null, threshold: number, label: string }>({ tableId: "det-join-rules" });
+    const compactEntries = declareStoredTable<{ itemId: string, quantity: number, t: number }>({ tableId: "det-compact-entries" });
+    const compactBoundaries = declareStoredTable<{ t: number }>({ tableId: "det-compact-boundaries" });
+
+    const groupedA = declareGroupByTable({
+      tableId: "det-grouped-a",
+      fromTable: sourceA,
+      groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+    });
+    const groupedB = declareGroupByTable({
+      tableId: "det-grouped-b",
+      fromTable: sourceB,
+      groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+    });
+    const groupedRules = declareGroupByTable({
+      tableId: "det-grouped-rules",
+      fromTable: joinRules,
+      groupBy: mapper(`"rowData"->'team' AS "groupKey"`),
+    });
+    const mappedA = declareMapTable({
+      tableId: "det-mapped-a",
+      fromTable: groupedA,
+      mapper: mapper(`"rowData"->'team' AS "team", (("rowData"->>'value')::int + 1) AS "valuePlusOne"`),
+    });
+    const flatMappedA = declareFlatMapTable({
+      tableId: "det-flat-mapped-a",
+      fromTable: groupedA,
+      mapper: mapper(`
+        jsonb_build_array(
+          jsonb_build_object('team', "rowData"->'team', 'kind', 'base', 'mappedValue', ("rowData"->>'value')::int),
+          jsonb_build_object('team', "rowData"->'team', 'kind', 'double', 'mappedValue', (("rowData"->>'value')::int) * 2)
+        ) AS "rows"
+      `),
+    });
+    const filteredA = declareFilterTable({
+      tableId: "det-filtered-a",
+      fromTable: groupedA,
+      filter: predicate(`(("rowData"->>'value')::int) > 0`),
+    });
+    const sortedA = declareSortTable({
+      tableId: "det-sorted-a",
+      fromTable: groupedA,
+      getSortKey: mapper(`(("rowData"->>'value')::int) AS "newSortKey"`),
+      compareSortKeys: (a, b) => expr(`(((${a.sql}) #>> '{}')::int) - (((${b.sql}) #>> '{}')::int)`),
+    });
+    const limitedA = declareLimitTable({
+      tableId: "det-limited-a",
+      fromTable: sortedA,
+      limit: expr(`2`),
+    });
+    const lFoldA = declareLFoldTable({
+      tableId: "det-lfold-a",
+      fromTable: sortedA,
+      initialState: expr(`'0'::jsonb`),
+      reducer: mapper(`
+        (COALESCE(("oldState"#>>'{}')::int, 0) + (("oldRowData"->>'value')::int)) AS "newState",
+        jsonb_build_array(jsonb_build_object('runningTotal', (COALESCE(("oldState"#>>'{}')::int, 0) + (("oldRowData"->>'value')::int)))) AS "newRowsData"
+      `),
+    });
+    const timeFoldA = declareTimeFoldTable({
+      tableId: "det-timefold-a",
+      fromTable: groupedA,
+      initialState: expr(`'0'::jsonb`),
+      reducer: mapper(`
+        "oldState" AS "newState",
+        jsonb_build_array(jsonb_build_object('team', "oldRowData"->'team', 'value', (("oldRowData"->>'value')::int))) AS "newRowsData",
+        NULL::timestamptz AS "nextTimestamp"
+      `),
+    });
+    const reducedA = declareReduceTable({
+      tableId: "det-reduced-a",
+      fromTable: groupedA,
+      initialState: expr(`'0'::jsonb`),
+      reducer: mapper(`(COALESCE(("oldState"#>>'{}')::int, 0) + (("oldRowData"->>'value')::int)) AS "newState"`),
+      finalize: mapper(`jsonb_build_object('sum', ("state"#>>'{}')::int) AS "rowData"`),
+    });
+    const concatenated = declareConcatTable({
+      tableId: "det-concat",
+      tables: [groupedA, groupedB],
+    });
+    const leftJoined = declareLeftJoinTable({
+      tableId: "det-left-join",
+      leftTable: groupedA,
+      rightTable: groupedRules,
+      leftJoinKey: mapper(`"rowData"->'team' AS "joinKey"`),
+      rightJoinKey: mapper(`"rowData"->'team' AS "joinKey"`),
+    });
+    const compactEntriesSorted = declareSortTable({
+      tableId: "det-compact-entries-sorted",
+      fromTable: compactEntries,
+      getSortKey: mapper(`("rowData"->>'t')::int AS "newSortKey"`),
+      compareSortKeys: (a, b) => expr(`(((${a.sql}) #>> '{}')::int) - (((${b.sql}) #>> '{}')::int)`),
+    });
+    const compactBoundariesSorted = declareSortTable({
+      tableId: "det-compact-boundaries-sorted",
+      fromTable: compactBoundaries,
+      getSortKey: mapper(`("rowData"->>'t')::int AS "newSortKey"`),
+      compareSortKeys: (a, b) => expr(`(((${a.sql}) #>> '{}')::int) - (((${b.sql}) #>> '{}')::int)`),
+    });
+    const compacted = declareCompactTable({
+      tableId: "det-compacted",
+      toBeCompactedTable: compactEntriesSorted,
+      boundaryTable: compactBoundariesSorted,
+      orderingKey: "t",
+      compactKey: "quantity",
+      partitionKey: "itemId",
+    });
+
+    const allTables: Table<any, any, any>[] = [
+      sourceA,
+      sourceB,
+      joinRules,
+      compactEntries,
+      compactBoundaries,
+      groupedA,
+      groupedB,
+      groupedRules,
+      mappedA,
+      flatMappedA,
+      filteredA,
+      sortedA,
+      limitedA,
+      lFoldA,
+      timeFoldA,
+      reducedA,
+      concatenated,
+      leftJoined,
+      compactEntriesSorted,
+      compactBoundariesSorted,
+      compacted,
+    ];
+
+    const setRowCases: Array<{
+      label: string,
+      buildStatements: (executionContext: ReturnType<typeof createBulldozerExecutionContext>) => SqlStatement[],
+    }> = [
+      {
+        label: "sourceA.setRow",
+        buildStatements: (executionContext) => sourceA.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":3,"t":11}'::jsonb`)),
+      },
+      {
+        label: "sourceB.setRow",
+        buildStatements: (executionContext) => sourceB.setRow(executionContext, "u2", expr(`'{"team":"beta","value":7,"t":12}'::jsonb`)),
+      },
+      {
+        label: "joinRules.setRow",
+        buildStatements: (executionContext) => joinRules.setRow(executionContext, "r1", expr(`'{"team":"alpha","threshold":1,"label":"rule-a"}'::jsonb`)),
+      },
+      {
+        label: "compactEntries.setRow",
+        buildStatements: (executionContext) => compactEntries.setRow(executionContext, "e1", expr(`'{"itemId":"credits","quantity":5,"t":10}'::jsonb`)),
+      },
+      {
+        label: "compactBoundaries.setRow",
+        buildStatements: (executionContext) => compactBoundaries.setRow(executionContext, "b1", expr(`'{"t":20}'::jsonb`)),
+      },
+    ];
+
+    for (const setRowCase of setRowCases) {
+      const firstCtx = createBulldozerExecutionContext();
+      const secondCtx = createBulldozerExecutionContext();
+      const firstSql = toExecutableSqlTransaction(firstCtx, setRowCase.buildStatements(firstCtx));
+      const secondSql = toExecutableSqlTransaction(secondCtx, setRowCase.buildStatements(secondCtx));
+      expect(firstSql, setRowCase.label).toEqual(secondSql);
+    }
+
+    const buildInitSql = () => {
+      const executionContext = createBulldozerExecutionContext();
+      const statements = allTables.flatMap((table) => table.init(executionContext));
+      return toExecutableSqlTransaction(executionContext, statements);
+    };
+    expect(buildInitSql()).toEqual(buildInitSql());
+
+    const buildDeleteSql = () => {
+      const executionContext = createBulldozerExecutionContext();
+      const statements = [...allTables].reverse().flatMap((table) => table.delete(executionContext));
+      return toExecutableSqlTransaction(executionContext, statements);
+    };
+    expect(buildDeleteSql()).toEqual(buildDeleteSql());
+  });
+
   test("init/isInitialized/delete lifecycle", async () => {
     const table = declareStoredTable<{ value: number }>({ tableId: "users" });
-    expect(await readBoolean(table.isInitialized())).toBe(false);
-    await runStatements(table.init());
-    expect(await readBoolean(table.isInitialized())).toBe(true);
-    await runStatements(table.delete());
-    expect(await readBoolean(table.isInitialized())).toBe(false);
+    expect(await readBoolean(table.isInitialized(executionContext))).toBe(false);
+    await runStatements(table.init(executionContext));
+    expect(await readBoolean(table.isInitialized(executionContext))).toBe(true);
+    await runStatements(table.delete(executionContext));
+    expect(await readBoolean(table.isInitialized(executionContext))).toBe(false);
   });
 
   test("groupBy registers upstream trigger in init and deregisters in delete", () => {
@@ -852,17 +1067,17 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
 
     expect(fromTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
-    groupedTable.init();
+    groupedTable.init(executionContext);
     expect(fromTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
-    groupedTable.init();
+    groupedTable.init(executionContext);
     expect(fromTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
-    groupedTable.delete();
+    groupedTable.delete(executionContext);
     expect(fromTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
-    groupedTable.delete();
+    groupedTable.delete(executionContext);
     expect(fromTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
-    groupedTable.init();
+    groupedTable.init(executionContext);
     expect(fromTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
-    groupedTable.delete();
+    groupedTable.delete(executionContext);
     expect(fromTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
   });
 
@@ -881,13 +1096,13 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
 
     expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
-    flatMappedTable.init();
+    flatMappedTable.init(executionContext);
     expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
-    flatMappedTable.delete();
+    flatMappedTable.delete(executionContext);
     expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
-    flatMappedTable.init();
+    flatMappedTable.init(executionContext);
     expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
-    flatMappedTable.delete();
+    flatMappedTable.delete(executionContext);
     expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
   });
 
@@ -907,13 +1122,13 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
 
     expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
-    sortedTable.init();
+    sortedTable.init(executionContext);
     expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
-    sortedTable.delete();
+    sortedTable.delete(executionContext);
     expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
-    sortedTable.init();
+    sortedTable.init(executionContext);
     expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
-    sortedTable.delete();
+    sortedTable.delete(executionContext);
     expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
   });
 
@@ -932,13 +1147,13 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
 
     expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
-    limitedTable.init();
+    limitedTable.init(executionContext);
     expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
-    limitedTable.delete();
+    limitedTable.delete(executionContext);
     expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
-    limitedTable.init();
+    limitedTable.init(executionContext);
     expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
-    limitedTable.delete();
+    limitedTable.delete(executionContext);
     expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
   });
 
@@ -964,16 +1179,16 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
     expect(groupedTableAInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
     expect(groupedTableBInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
-    concatenatedTable.init();
+    concatenatedTable.init(executionContext);
     expect(groupedTableAInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
     expect(groupedTableBInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
-    concatenatedTable.delete();
+    concatenatedTable.delete(executionContext);
     expect(groupedTableAInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
     expect(groupedTableBInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
-    concatenatedTable.init();
+    concatenatedTable.init(executionContext);
     expect(groupedTableAInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
     expect(groupedTableBInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
-    concatenatedTable.delete();
+    concatenatedTable.delete(executionContext);
     expect(groupedTableAInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
     expect(groupedTableBInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
   });
@@ -1002,13 +1217,13 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
 
     expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
-    timeFoldTable.init();
+    timeFoldTable.init(executionContext);
     expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
-    timeFoldTable.delete();
+    timeFoldTable.delete(executionContext);
     expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
-    timeFoldTable.init();
+    timeFoldTable.init(executionContext);
     expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
-    timeFoldTable.delete();
+    timeFoldTable.delete(executionContext);
     expect(groupedTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
   });
 
@@ -1037,16 +1252,16 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
     expect(groupedFromTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
     expect(groupedJoinTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
-    leftJoinedTable.init();
+    leftJoinedTable.init(executionContext);
     expect(groupedFromTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
     expect(groupedJoinTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
-    leftJoinedTable.delete();
+    leftJoinedTable.delete(executionContext);
     expect(groupedFromTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
     expect(groupedJoinTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
-    leftJoinedTable.init();
+    leftJoinedTable.init(executionContext);
     expect(groupedFromTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
     expect(groupedJoinTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
-    leftJoinedTable.delete();
+    leftJoinedTable.delete(executionContext);
     expect(groupedFromTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
     expect(groupedJoinTableInstrumentation.getStats()).toEqual({ registerCalls: 1, deregisterCalls: 0, activeRegistrations: 1 });
   });
@@ -1055,8 +1270,8 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     const table = declareStoredTable<{ value: number }>({ tableId: "users" });
     registerAuditTrigger(table, "insert");
 
-    await runStatements(table.init());
-    await runStatements(table.setRow("alpha", expr(`'{"value":1}'::jsonb`)));
+    await runStatements(table.init(executionContext));
+    await runStatements(table.setRow(executionContext, "alpha", expr(`'{"value":1}'::jsonb`)));
 
     expect(await readTriggerAuditRows()).toEqual([
       {
@@ -1072,9 +1287,9 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     const table = declareStoredTable<{ value: number }>({ tableId: "users" });
     registerAuditTrigger(table, "update");
 
-    await runStatements(table.init());
-    await runStatements(table.setRow("alpha", expr(`'{"value":1}'::jsonb`)));
-    await runStatements(table.setRow("alpha", expr(`'{"value":2}'::jsonb`)));
+    await runStatements(table.init(executionContext));
+    await runStatements(table.setRow(executionContext, "alpha", expr(`'{"value":1}'::jsonb`)));
+    await runStatements(table.setRow(executionContext, "alpha", expr(`'{"value":2}'::jsonb`)));
 
     expect(await readTriggerAuditRows()).toEqual([
       {
@@ -1096,10 +1311,10 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     const table = declareStoredTable<{ value: number }>({ tableId: "users" });
     registerAuditTrigger(table, "delete");
 
-    await runStatements(table.init());
-    await runStatements(table.setRow("alpha", expr(`'{"value":1}'::jsonb`)));
-    await runStatements(table.deleteRow("missing"));
-    await runStatements(table.deleteRow("alpha"));
+    await runStatements(table.init(executionContext));
+    await runStatements(table.setRow(executionContext, "alpha", expr(`'{"value":1}'::jsonb`)));
+    await runStatements(table.deleteRow(executionContext, "missing"));
+    await runStatements(table.deleteRow(executionContext, "alpha"));
 
     expect(await readTriggerAuditRows()).toEqual([
       {
@@ -1121,10 +1336,10 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     const table = declareStoredTable<{ value: number }>({ tableId: "users" });
     const handle = registerAuditTrigger(table, "deregister");
 
-    await runStatements(table.init());
-    await runStatements(table.setRow("alpha", expr(`'{"value":1}'::jsonb`)));
+    await runStatements(table.init(executionContext));
+    await runStatements(table.setRow(executionContext, "alpha", expr(`'{"value":1}'::jsonb`)));
     handle.deregister();
-    await runStatements(table.setRow("beta", expr(`'{"value":2}'::jsonb`)));
+    await runStatements(table.setRow(executionContext, "beta", expr(`'{"value":2}'::jsonb`)));
 
     expect(await readTriggerAuditRows()).toEqual([
       {
@@ -1141,8 +1356,8 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     registerAuditTrigger(table, "trigger_a");
     registerAuditTrigger(table, "trigger_b");
 
-    await runStatements(table.init());
-    await runStatements(table.setRow("alpha", expr(`'{"value":1}'::jsonb`)));
+    await runStatements(table.init(executionContext));
+    await runStatements(table.setRow(executionContext, "alpha", expr(`'{"value":1}'::jsonb`)));
 
     expect((await readTriggerAuditRows()).sort((a, b) => stringCompare(a.event, b.event))).toEqual([
       {
@@ -1164,12 +1379,12 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     const table = declareStoredTable<{ value: number, label: string }>({ tableId: "users" });
     const weirdIdentifier = "row.with/slash and spaces";
 
-    await runStatements(table.init());
-    await runStatements(table.setRow(weirdIdentifier, expr(`'{"value":1,"label":"first"}'::jsonb`)));
-    await runStatements(table.setRow(weirdIdentifier, expr(`'{"value":2,"label":"second"}'::jsonb`)));
-    await runStatements(table.setRow("plain-row", expr(`'{"value":3,"label":"third"}'::jsonb`)));
+    await runStatements(table.init(executionContext));
+    await runStatements(table.setRow(executionContext, weirdIdentifier, expr(`'{"value":1,"label":"first"}'::jsonb`)));
+    await runStatements(table.setRow(executionContext, weirdIdentifier, expr(`'{"value":2,"label":"second"}'::jsonb`)));
+    await runStatements(table.setRow(executionContext, "plain-row", expr(`'{"value":3,"label":"third"}'::jsonb`)));
 
-    const rows = await readRows(table.listRowsInGroup({
+    const rows = await readRows(table.listRowsInGroup(executionContext, {
       groupKey: expr("'null'::jsonb"),
       start: expr("'null'::jsonb"),
       end: expr("'null'::jsonb"),
@@ -1195,10 +1410,10 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("storedTable all-groups rows include groupKey and respect non-null group filters", async () => {
     const table = declareStoredTable<{ value: number }>({ tableId: "users" });
-    await runStatements(table.init());
-    await runStatements(table.setRow("a", expr(`'{"value":1}'::jsonb`)));
+    await runStatements(table.init(executionContext));
+    await runStatements(table.setRow(executionContext, "a", expr(`'{"value":1}'::jsonb`)));
 
-    const allGroupsRows = await readRows(table.listRowsInGroup({
+    const allGroupsRows = await readRows(table.listRowsInGroup(executionContext, {
       start: expr("'null'::jsonb"),
       end: expr("'null'::jsonb"),
       startInclusive: true,
@@ -1208,7 +1423,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     expect(allGroupsRows[0].groupkey).toBe(null);
     expect(allGroupsRows[0].rowidentifier).toBe("a");
 
-    const nonNullGroupRows = await readRows(table.listRowsInGroup({
+    const nonNullGroupRows = await readRows(table.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: expr("'null'::jsonb"),
       end: expr("'null'::jsonb"),
@@ -1222,10 +1437,10 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     const table = declareStoredTable<{ value: number, label: string }>({ tableId: "users" });
     const weirdIdentifier = "row.with/slash and spaces";
 
-    await runStatements(table.init());
-    await runStatements(table.setRow(weirdIdentifier, expr(`'{"value":1,"label":"first"}'::jsonb`)));
-    await runStatements(table.setRow(weirdIdentifier, expr(`'{"value":2,"label":"second"}'::jsonb`)));
-    await runStatements(table.setRow("plain-row", expr(`'{"value":3,"label":"third"}'::jsonb`)));
+    await runStatements(table.init(executionContext));
+    await runStatements(table.setRow(executionContext, weirdIdentifier, expr(`'{"value":1,"label":"first"}'::jsonb`)));
+    await runStatements(table.setRow(executionContext, weirdIdentifier, expr(`'{"value":2,"label":"second"}'::jsonb`)));
+    await runStatements(table.setRow(executionContext, "plain-row", expr(`'{"value":3,"label":"third"}'::jsonb`)));
 
     const rows = await sql.unsafe(`
       SELECT array_to_string(ARRAY(SELECT x #>> '{}' FROM unnest("keyPath") AS x), ' -> ') AS "keyPath", "value"
@@ -1308,13 +1523,13 @@ describe.sequential("declareStoredTable (real postgres)", () => {
   test("deleteRow removes only the target row and missing rows are no-op", async () => {
     const table = declareStoredTable<{ value: number }>({ tableId: "users" });
 
-    await runStatements(table.init());
-    await runStatements(table.setRow("a", expr(`'{"value":1}'::jsonb`)));
-    await runStatements(table.setRow("b", expr(`'{"value":2}'::jsonb`)));
-    await runStatements(table.deleteRow("missing"));
-    await runStatements(table.deleteRow("a"));
+    await runStatements(table.init(executionContext));
+    await runStatements(table.setRow(executionContext, "a", expr(`'{"value":1}'::jsonb`)));
+    await runStatements(table.setRow(executionContext, "b", expr(`'{"value":2}'::jsonb`)));
+    await runStatements(table.deleteRow(executionContext, "missing"));
+    await runStatements(table.deleteRow(executionContext, "a"));
 
-    const rows = await readRows(table.listRowsInGroup({
+    const rows = await readRows(table.listRowsInGroup(executionContext, {
       groupKey: expr("'null'::jsonb"),
       start: expr("'null'::jsonb"),
       end: expr("'null'::jsonb"),
@@ -1323,15 +1538,15 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(rows).toHaveLength(1);
     expect(rows[0].rowdata).toEqual({ value: 2 });
-    expect(await readBoolean(table.isInitialized())).toBe(true);
+    expect(await readBoolean(table.isInitialized(executionContext))).toBe(true);
   });
 
   test("exclusive start/end excludes the single null group and rowSortKey", async () => {
     const table = declareStoredTable<{ value: number }>({ tableId: "users" });
-    await runStatements(table.init());
-    await runStatements(table.setRow("row", expr(`'{"value":1}'::jsonb`)));
+    await runStatements(table.init(executionContext));
+    await runStatements(table.setRow(executionContext, "row", expr(`'{"value":1}'::jsonb`)));
 
-    const groups = await readRows(table.listGroups({
+    const groups = await readRows(table.listGroups(executionContext, {
       start: expr("'null'::jsonb"),
       end: expr("'null'::jsonb"),
       startInclusive: false,
@@ -1339,7 +1554,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(groups).toHaveLength(0);
 
-    const rows = await readRows(table.listRowsInGroup({
+    const rows = await readRows(table.listRowsInGroup(executionContext, {
       groupKey: expr("'null'::jsonb"),
       start: expr("'null'::jsonb"),
       end: expr("'null'::jsonb"),
@@ -1353,13 +1568,13 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     const left = declareStoredTable<{ value: number }>({ tableId: "left" });
     const right = declareStoredTable<{ value: number }>({ tableId: "right" });
 
-    await runStatements(left.init());
-    await runStatements(right.init());
-    await runStatements(left.setRow("shared", expr(`'{"value":1}'::jsonb`)));
-    await runStatements(right.setRow("shared", expr(`'{"value":2}'::jsonb`)));
-    await runStatements(left.delete());
+    await runStatements(left.init(executionContext));
+    await runStatements(right.init(executionContext));
+    await runStatements(left.setRow(executionContext, "shared", expr(`'{"value":1}'::jsonb`)));
+    await runStatements(right.setRow(executionContext, "shared", expr(`'{"value":2}'::jsonb`)));
+    await runStatements(left.delete(executionContext));
 
-    const rightRows = await readRows(right.listRowsInGroup({
+    const rightRows = await readRows(right.listRowsInGroup(executionContext, {
       groupKey: expr("'null'::jsonb"),
       start: expr("'null'::jsonb"),
       end: expr("'null'::jsonb"),
@@ -1367,18 +1582,18 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       endInclusive: true,
     }));
 
-    expect(await readBoolean(left.isInitialized())).toBe(false);
-    expect(await readBoolean(right.isInitialized())).toBe(true);
+    expect(await readBoolean(left.isInitialized(executionContext))).toBe(false);
+    expect(await readBoolean(right.isInitialized(executionContext))).toBe(true);
     expect(rightRows).toHaveLength(1);
     expect(rightRows[0].rowdata).toEqual({ value: 2 });
   });
 
   test("rowIdentifier from listRowsInGroup can be passed to deleteRow", async () => {
     const table = declareStoredTable<{ value: number }>({ tableId: "users" });
-    await runStatements(table.init());
-    await runStatements(table.setRow("plain-row", expr(`'{"value":1}'::jsonb`)));
+    await runStatements(table.init(executionContext));
+    await runStatements(table.setRow(executionContext, "plain-row", expr(`'{"value":1}'::jsonb`)));
 
-    const listedRows = await readRows(table.listRowsInGroup({
+    const listedRows = await readRows(table.listRowsInGroup(executionContext, {
       groupKey: expr("'null'::jsonb"),
       start: expr("'null'::jsonb"),
       end: expr("'null'::jsonb"),
@@ -1387,9 +1602,9 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(listedRows).toHaveLength(1);
 
-    await runStatements(table.deleteRow(listedRows[0].rowidentifier));
+    await runStatements(table.deleteRow(executionContext, listedRows[0].rowidentifier));
 
-    const remainingRows = await readRows(table.listRowsInGroup({
+    const remainingRows = await readRows(table.listRowsInGroup(executionContext, {
       groupKey: expr("'null'::jsonb"),
       start: expr("'null'::jsonb"),
       end: expr("'null'::jsonb"),
@@ -1401,14 +1616,14 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("groupBy init backfills groups and rows from source table", async () => {
     const { fromTable, groupedTable } = createGroupedTable();
-    await runStatements(fromTable.init());
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
-    await runStatements(fromTable.setRow("u3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
 
-    await runStatements(groupedTable.init());
+    await runStatements(groupedTable.init(executionContext));
 
-    const groups = await readRows(groupedTable.listGroups({
+    const groups = await readRows(groupedTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -1416,7 +1631,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(groups.map((row) => row.groupkey).sort(stringCompare)).toEqual(["alpha", "beta"]);
 
-    const alphaRows = await readRows(groupedTable.listRowsInGroup({
+    const alphaRows = await readRows(groupedTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start",
       end: "end",
@@ -1428,7 +1643,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       { rowIdentifier: "u3", rowData: { team: "alpha", value: 3 } },
     ]);
 
-    const allRows = await readRows(groupedTable.listRowsInGroup({
+    const allRows = await readRows(groupedTable.listRowsInGroup(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -1443,14 +1658,14 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("groupBy registerRowChangeTrigger emits insert/update/move/delete changes", async () => {
     const { fromTable, groupedTable } = createGroupedTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
     registerGroupAuditTrigger(groupedTable, "group_change");
 
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":2}'::jsonb`)));
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"beta","value":3}'::jsonb`)));
-    await runStatements(fromTable.deleteRow("u1"));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"beta","value":3}'::jsonb`)));
+    await runStatements(fromTable.deleteRow(executionContext, "u1"));
 
     expect(await readGroupTriggerAuditRows()).toEqual([
       {
@@ -1493,13 +1708,13 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("groupBy deregistered trigger no longer runs", async () => {
     const { fromTable, groupedTable } = createGroupedTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
     const handle = registerGroupAuditTrigger(groupedTable, "group_change");
 
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
     handle.deregister();
-    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
 
     expect(await readGroupTriggerAuditRows()).toEqual([
       {
@@ -1514,13 +1729,13 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("groupBy stays no-op while uninitialized", async () => {
     const { fromTable, groupedTable } = createGroupedTable();
-    await runStatements(fromTable.init());
+    await runStatements(fromTable.init(executionContext));
     registerGroupAuditTrigger(groupedTable, "group_change");
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
 
-    expect(await readBoolean(groupedTable.isInitialized())).toBe(false);
+    expect(await readBoolean(groupedTable.isInitialized(executionContext))).toBe(false);
     expect(await readGroupTriggerAuditRows()).toEqual([]);
-    const groups = await readRows(groupedTable.listGroups({
+    const groups = await readRows(groupedTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -1531,14 +1746,14 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("groupBy delete cleans up and re-init backfills from source", async () => {
     const { fromTable, groupedTable } = createGroupedTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(groupedTable.delete());
-    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(groupedTable.delete(executionContext));
+    await runStatements(fromTable.setRow(executionContext, "u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
 
-    expect(await readBoolean(groupedTable.isInitialized())).toBe(false);
-    const groupsBeforeReinit = await readRows(groupedTable.listGroups({
+    expect(await readBoolean(groupedTable.isInitialized(executionContext))).toBe(false);
+    const groupsBeforeReinit = await readRows(groupedTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -1546,8 +1761,8 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(groupsBeforeReinit).toEqual([]);
 
-    await runStatements(groupedTable.init());
-    const groupsAfterReinit = await readRows(groupedTable.listGroups({
+    await runStatements(groupedTable.init(executionContext));
+    const groupsAfterReinit = await readRows(groupedTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -1558,13 +1773,13 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("groupBy listGroups applies group-key ranges", async () => {
     const { fromTable, groupedTable } = createGroupedTable();
-    await runStatements(fromTable.init());
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
-    await runStatements(fromTable.setRow("u3", expr(`'{"team":"gamma","value":3}'::jsonb`)));
-    await runStatements(groupedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u3", expr(`'{"team":"gamma","value":3}'::jsonb`)));
+    await runStatements(groupedTable.init(executionContext));
 
-    const inclusive = await readRows(groupedTable.listGroups({
+    const inclusive = await readRows(groupedTable.listGroups(executionContext, {
       start: expr(`to_jsonb('beta'::text)`),
       end: expr(`to_jsonb('gamma'::text)`),
       startInclusive: true,
@@ -1572,7 +1787,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(inclusive.map((row) => row.groupkey).sort(stringCompare)).toEqual(["beta", "gamma"]);
 
-    const exclusive = await readRows(groupedTable.listGroups({
+    const exclusive = await readRows(groupedTable.listGroups(executionContext, {
       start: expr(`to_jsonb('beta'::text)`),
       end: expr(`to_jsonb('gamma'::text)`),
       startInclusive: false,
@@ -1583,11 +1798,11 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("groupBy removes empty groups after moves and deletes", async () => {
     const { fromTable, groupedTable } = createGroupedTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
 
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    const groupsAfterInsert = await readRows(groupedTable.listGroups({
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    const groupsAfterInsert = await readRows(groupedTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -1595,8 +1810,8 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(groupsAfterInsert.map((row) => row.groupkey)).toEqual(["alpha"]);
 
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"beta","value":2}'::jsonb`)));
-    const groupsAfterMove = await readRows(groupedTable.listGroups({
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    const groupsAfterMove = await readRows(groupedTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -1604,8 +1819,8 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(groupsAfterMove.map((row) => row.groupkey)).toEqual(["beta"]);
 
-    await runStatements(fromTable.deleteRow("u1"));
-    const groupsAfterDelete = await readRows(groupedTable.listGroups({
+    await runStatements(fromTable.deleteRow(executionContext, "u1"));
+    const groupsAfterDelete = await readRows(groupedTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -1616,11 +1831,11 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("groupBy deletes stale group paths from storage", async () => {
     const { fromTable, groupedTable } = createGroupedTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"beta","value":2}'::jsonb`)));
-    await runStatements(fromTable.deleteRow("u1"));
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTable.deleteRow(executionContext, "u1"));
 
     const staleGroupPaths = await sql`
       SELECT array_to_string(ARRAY(SELECT x #>> '{}' FROM unnest("keyPath") AS x), '.') AS "keyPath"
@@ -1639,12 +1854,12 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("groupBy listRowsInGroup handles missing groups and exclusive bounds", async () => {
     const { fromTable, groupedTable } = createGroupedTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("u2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
 
-    const missingGroupRows = await readRows(groupedTable.listRowsInGroup({
+    const missingGroupRows = await readRows(groupedTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('missing'::text)`),
       start: "start",
       end: "end",
@@ -1653,7 +1868,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(missingGroupRows).toEqual([]);
 
-    const exclusiveRows = await readRows(groupedTable.listRowsInGroup({
+    const exclusiveRows = await readRows(groupedTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: expr(`'null'::jsonb`),
       end: expr(`'null'::jsonb`),
@@ -1662,7 +1877,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(exclusiveRows).toEqual([]);
 
-    const inclusiveRows = await readRows(groupedTable.listRowsInGroup({
+    const inclusiveRows = await readRows(groupedTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: expr(`'null'::jsonb`),
       end: expr(`'null'::jsonb`),
@@ -1674,12 +1889,12 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("groupBy listRowsInGroup (all groups) handles 'rows' collisions in group key and row identifier", async () => {
     const { fromTable, groupedTable } = createGroupedTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"rows","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("rows", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"rows","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "rows", expr(`'{"team":"alpha","value":2}'::jsonb`)));
 
-    const allRows = await readRows(groupedTable.listRowsInGroup({
+    const allRows = await readRows(groupedTable.listRowsInGroup(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -1697,12 +1912,12 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("groupBy multiple triggers run in one transaction", async () => {
     const { fromTable, groupedTable } = createGroupedTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
     registerGroupAuditTrigger(groupedTable, "group_trigger_a");
     registerGroupAuditTrigger(groupedTable, "group_trigger_b");
 
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
 
     const rows = await readGroupTriggerAuditRows();
     expect(rows.map((row) => row.event).sort(stringCompare)).toEqual(["group_trigger_a", "group_trigger_b"]);
@@ -1710,11 +1925,11 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("groupBy supports null group keys and transitions away cleanly", async () => {
     const { fromTable, groupedTable } = createGroupedTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
 
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":null,"value":1}'::jsonb`)));
-    const nullGroupRows = await readRows(groupedTable.listRowsInGroup({
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":null,"value":1}'::jsonb`)));
+    const nullGroupRows = await readRows(groupedTable.listRowsInGroup(executionContext, {
       groupKey: expr(`'null'::jsonb`),
       start: "start",
       end: "end",
@@ -1723,8 +1938,8 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(nullGroupRows.map((row) => row.rowidentifier)).toEqual(["u1"]);
 
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":2}'::jsonb`)));
-    const groups = await readRows(groupedTable.listGroups({
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    const groups = await readRows(groupedTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -1735,14 +1950,14 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("mapTable init backfills groups and mapped rows", async () => {
     const { fromTable, groupedTable, mappedTable } = createMappedTable();
-    await runStatements(fromTable.init());
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
-    await runStatements(fromTable.setRow("u3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
-    await runStatements(groupedTable.init());
-    await runStatements(mappedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(mappedTable.init(executionContext));
 
-    const groups = await readRows(mappedTable.listGroups({
+    const groups = await readRows(mappedTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -1750,7 +1965,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(groups.map((row) => row.groupkey).sort(stringCompare)).toEqual(["alpha", "beta"]);
 
-    const alphaRows = await readRows(mappedTable.listRowsInGroup({
+    const alphaRows = await readRows(mappedTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start",
       end: "end",
@@ -1762,7 +1977,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       { rowIdentifier: "u3:1", rowData: { team: "alpha", mappedValue: 103 } },
     ]);
 
-    const allRows = await readRows(mappedTable.listRowsInGroup({
+    const allRows = await readRows(mappedTable.listRowsInGroup(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -1777,15 +1992,15 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("mapTable registerRowChangeTrigger emits mapped insert/update/move/delete changes", async () => {
     const { fromTable, groupedTable, mappedTable } = createMappedTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(mappedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(mappedTable.init(executionContext));
     registerMapAuditTrigger(mappedTable, "map_change");
 
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":2}'::jsonb`)));
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"beta","value":3}'::jsonb`)));
-    await runStatements(fromTable.deleteRow("u1"));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"beta","value":3}'::jsonb`)));
+    await runStatements(fromTable.deleteRow(executionContext, "u1"));
 
     expect(await readMapTriggerAuditRows()).toEqual([
       {
@@ -1828,13 +2043,13 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("mapTable uses flatMap-style rowIdentifier and skips unchanged updates", async () => {
     const { fromTable, groupedTable, mappedTable } = createMappedTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(mappedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(mappedTable.init(executionContext));
     registerMapAuditTrigger(mappedTable, "map_change");
 
-    await runStatements(fromTable.setRow("user:1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("user:1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "user:1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "user:1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
 
     expect(await readMapTriggerAuditRows()).toEqual([
       {
@@ -1846,7 +2061,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       },
     ]);
 
-    const alphaRows = await readRows(mappedTable.listRowsInGroup({
+    const alphaRows = await readRows(mappedTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start",
       end: "end",
@@ -1858,14 +2073,14 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("mapTable deregistered trigger no longer runs", async () => {
     const { fromTable, groupedTable, mappedTable } = createMappedTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(mappedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(mappedTable.init(executionContext));
     const handle = registerMapAuditTrigger(mappedTable, "map_change");
 
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
     handle.deregister();
-    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
 
     expect(await readMapTriggerAuditRows()).toEqual([
       {
@@ -1880,14 +2095,14 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("mapTable stays no-op while uninitialized", async () => {
     const { fromTable, groupedTable, mappedTable } = createMappedTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
     registerMapAuditTrigger(mappedTable, "map_change");
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
 
-    expect(await readBoolean(mappedTable.isInitialized())).toBe(false);
+    expect(await readBoolean(mappedTable.isInitialized(executionContext))).toBe(false);
     expect(await readMapTriggerAuditRows()).toEqual([]);
-    const groups = await readRows(mappedTable.listGroups({
+    const groups = await readRows(mappedTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -1898,15 +2113,15 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("mapTable delete cleans up and re-init backfills from source", async () => {
     const { fromTable, groupedTable, mappedTable } = createMappedTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(mappedTable.init());
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(mappedTable.delete());
-    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(mappedTable.init(executionContext));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(mappedTable.delete(executionContext));
+    await runStatements(fromTable.setRow(executionContext, "u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
 
-    expect(await readBoolean(mappedTable.isInitialized())).toBe(false);
-    const groupsBeforeReinit = await readRows(mappedTable.listGroups({
+    expect(await readBoolean(mappedTable.isInitialized(executionContext))).toBe(false);
+    const groupsBeforeReinit = await readRows(mappedTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -1914,8 +2129,8 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(groupsBeforeReinit).toEqual([]);
 
-    await runStatements(mappedTable.init());
-    const groupsAfterReinit = await readRows(mappedTable.listGroups({
+    await runStatements(mappedTable.init(executionContext));
+    const groupsAfterReinit = await readRows(mappedTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -1926,12 +2141,12 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("mapTable listRowsInGroup handles missing groups and exclusive bounds", async () => {
     const { fromTable, groupedTable, mappedTable } = createMappedTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(mappedTable.init());
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(mappedTable.init(executionContext));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
 
-    const missingGroupRows = await readRows(mappedTable.listRowsInGroup({
+    const missingGroupRows = await readRows(mappedTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('missing'::text)`),
       start: "start",
       end: "end",
@@ -1940,7 +2155,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(missingGroupRows).toEqual([]);
 
-    const exclusiveRows = await readRows(mappedTable.listRowsInGroup({
+    const exclusiveRows = await readRows(mappedTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: expr(`'null'::jsonb`),
       end: expr(`'null'::jsonb`),
@@ -1952,13 +2167,13 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("mapTable listRowsInGroup (all groups) handles 'rows' collisions in group key and row identifier", async () => {
     const { fromTable, groupedTable, mappedTable } = createMappedTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(mappedTable.init());
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"rows","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("rows", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(mappedTable.init(executionContext));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"rows","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "rows", expr(`'{"team":"alpha","value":2}'::jsonb`)));
 
-    const allRows = await readRows(mappedTable.listRowsInGroup({
+    const allRows = await readRows(mappedTable.listRowsInGroup(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -1976,12 +2191,12 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("mapTable deletes stale group paths from storage", async () => {
     const { fromTable, groupedTable, mappedTable } = createMappedTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(mappedTable.init());
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"beta","value":2}'::jsonb`)));
-    await runStatements(fromTable.deleteRow("u1"));
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(mappedTable.init(executionContext));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTable.deleteRow(executionContext, "u1"));
 
     const staleGroupPaths = await sql`
       SELECT array_to_string(ARRAY(SELECT x #>> '{}' FROM unnest("keyPath") AS x), '.') AS "keyPath"
@@ -2020,12 +2235,12 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       `),
     }));
 
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(mappedTable.init());
-    await runStatements(equivalentFlatMapTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(mappedTable.init(executionContext));
+    await runStatements(equivalentFlatMapTable.init(executionContext));
 
-    mappedTable.registerRowChangeTrigger((changesTable) => [
+    mappedTable.registerRowChangeTrigger((_ctx, changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => [
       sqlStatement`
         INSERT INTO "BulldozerMapTriggerAudit" (
           "event",
@@ -2043,7 +2258,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
         FROM ${changesTable}
       `,
     ]);
-    equivalentFlatMapTable.registerRowChangeTrigger((changesTable) => [
+    equivalentFlatMapTable.registerRowChangeTrigger((_ctx, changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => [
       sqlStatement`
         INSERT INTO "BulldozerMapTriggerAudit" (
           "event",
@@ -2062,19 +2277,19 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       `,
     ]);
 
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("u2", expr(`'{"team":"alpha","value":3}'::jsonb`)));
-    await runStatements(fromTable.deleteRow("u1"));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u2", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(fromTable.deleteRow(executionContext, "u1"));
 
-    const mapGroups = await readRows(mappedTable.listGroups({
+    const mapGroups = await readRows(mappedTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
       endInclusive: true,
     }));
-    const flatGroups = await readRows(equivalentFlatMapTable.listGroups({
+    const flatGroups = await readRows(equivalentFlatMapTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -2089,13 +2304,13 @@ describe.sequential("declareStoredTable (real postgres)", () => {
         rowData: Reflect.get(row, "rowdata"),
       }))
       .sort((a, b) => stringCompare(`${a.groupKey}:${a.rowIdentifier}`, `${b.groupKey}:${b.rowIdentifier}`));
-    const mapRows = normalizeRows(await readRows(mappedTable.listRowsInGroup({
+    const mapRows = normalizeRows(await readRows(mappedTable.listRowsInGroup(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
       endInclusive: true,
     })));
-    const flatRows = normalizeRows(await readRows(equivalentFlatMapTable.listRowsInGroup({
+    const flatRows = normalizeRows(await readRows(equivalentFlatMapTable.listRowsInGroup(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -2122,14 +2337,14 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("flatMapTable init backfills fan-out rows and skips empty expansions", async () => {
     const { fromTable, groupedTable, flatMappedTable } = createFlatMappedTable();
-    await runStatements(fromTable.init());
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
-    await runStatements(fromTable.setRow("u3", expr(`'{"team":"alpha","value":-1}'::jsonb`)));
-    await runStatements(groupedTable.init());
-    await runStatements(flatMappedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u3", expr(`'{"team":"alpha","value":-1}'::jsonb`)));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(flatMappedTable.init(executionContext));
 
-    const groups = await readRows(flatMappedTable.listGroups({
+    const groups = await readRows(flatMappedTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -2137,7 +2352,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(groups.map((row) => row.groupkey).sort(stringCompare)).toEqual(["alpha", "beta"]);
 
-    const alphaRows = await readRows(flatMappedTable.listRowsInGroup({
+    const alphaRows = await readRows(flatMappedTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start",
       end: "end",
@@ -2149,7 +2364,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       { rowIdentifier: "u1:2", rowData: { team: "alpha", kind: "double", mappedValue: 2 } },
     ]);
 
-    const allRows = await readRows(flatMappedTable.listRowsInGroup({
+    const allRows = await readRows(flatMappedTable.listRowsInGroup(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -2165,16 +2380,16 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("flatMapTable registerRowChangeTrigger emits per-expanded-row inserts, updates, moves, and removals", async () => {
     const { fromTable, groupedTable, flatMappedTable } = createFlatMappedTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(flatMappedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(flatMappedTable.init(executionContext));
     registerFlatMapAuditTrigger(flatMappedTable, "flat_map_change");
 
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":2}'::jsonb`)));
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"beta","value":3}'::jsonb`)));
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"beta","value":-1}'::jsonb`)));
-    await runStatements(fromTable.deleteRow("u1"));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"beta","value":3}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"beta","value":-1}'::jsonb`)));
+    await runStatements(fromTable.deleteRow(executionContext, "u1"));
 
     const normalizedAuditRows = (await readMapTriggerAuditRows())
       .map((row) => ({
@@ -2253,14 +2468,14 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("flatMapTable stays no-op while uninitialized", async () => {
     const { fromTable, groupedTable, flatMappedTable } = createFlatMappedTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
     registerFlatMapAuditTrigger(flatMappedTable, "flat_map_change");
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
 
-    expect(await readBoolean(flatMappedTable.isInitialized())).toBe(false);
+    expect(await readBoolean(flatMappedTable.isInitialized(executionContext))).toBe(false);
     expect(await readMapTriggerAuditRows()).toEqual([]);
-    const groups = await readRows(flatMappedTable.listGroups({
+    const groups = await readRows(flatMappedTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -2271,15 +2486,15 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("flatMapTable delete cleans up and re-init backfills from source", async () => {
     const { fromTable, groupedTable, flatMappedTable } = createFlatMappedTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(flatMappedTable.init());
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(flatMappedTable.delete());
-    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(flatMappedTable.init(executionContext));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(flatMappedTable.delete(executionContext));
+    await runStatements(fromTable.setRow(executionContext, "u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
 
-    expect(await readBoolean(flatMappedTable.isInitialized())).toBe(false);
-    const groupsBeforeReinit = await readRows(flatMappedTable.listGroups({
+    expect(await readBoolean(flatMappedTable.isInitialized(executionContext))).toBe(false);
+    const groupsBeforeReinit = await readRows(flatMappedTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -2287,8 +2502,8 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(groupsBeforeReinit).toEqual([]);
 
-    await runStatements(flatMappedTable.init());
-    const groupsAfterReinit = await readRows(flatMappedTable.listGroups({
+    await runStatements(flatMappedTable.init(executionContext));
+    const groupsAfterReinit = await readRows(flatMappedTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -2299,13 +2514,13 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("flatMapTable listRowsInGroup (all groups) handles 'rows' collisions in group key and source row identifier", async () => {
     const { fromTable, groupedTable, flatMappedTable } = createFlatMappedTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(flatMappedTable.init());
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"rows","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("rows", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(flatMappedTable.init(executionContext));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"rows","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "rows", expr(`'{"team":"alpha","value":2}'::jsonb`)));
 
-    const allRows = await readRows(flatMappedTable.listRowsInGroup({
+    const allRows = await readRows(flatMappedTable.listRowsInGroup(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -2325,12 +2540,12 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("flatMapTable deletes stale group paths from storage", async () => {
     const { fromTable, groupedTable, flatMappedTable } = createFlatMappedTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(flatMappedTable.init());
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"beta","value":2}'::jsonb`)));
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"beta","value":-1}'::jsonb`)));
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(flatMappedTable.init(executionContext));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"beta","value":-1}'::jsonb`)));
 
     const staleGroupPaths = await sql`
       SELECT array_to_string(ARRAY(SELECT x #>> '{}' FROM unnest("keyPath") AS x), '.') AS "keyPath"
@@ -2349,17 +2564,17 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("filterTable init backfills matching rows, keeps own metadata, and deletes cleanly", async () => {
     const { fromTable, groupedTable, filteredTable } = createFilteredTable();
-    await runStatements(fromTable.init());
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("u2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
-    await runStatements(fromTable.setRow("u3", expr(`'{"team":"beta","value":3}'::jsonb`)));
-    await runStatements(fromTable.setRow("u4", expr(`'{"team":"beta","value":0}'::jsonb`)));
-    await runStatements(groupedTable.init());
-    await runStatements(filteredTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u3", expr(`'{"team":"beta","value":3}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u4", expr(`'{"team":"beta","value":0}'::jsonb`)));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(filteredTable.init(executionContext));
 
-    expect(await readBoolean(filteredTable.isInitialized())).toBe(true);
+    expect(await readBoolean(filteredTable.isInitialized(executionContext))).toBe(true);
 
-    const groups = await readRows(filteredTable.listGroups({
+    const groups = await readRows(filteredTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -2367,7 +2582,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(groups.map((row) => row.groupkey).sort(stringCompare)).toEqual(["alpha", "beta"]);
 
-    const allRows = await readRows(filteredTable.listRowsInGroup({
+    const allRows = await readRows(filteredTable.listRowsInGroup(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -2390,9 +2605,9 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     `;
     expect(metadataRows).toHaveLength(1);
 
-    await runStatements(filteredTable.delete());
-    expect(await readBoolean(filteredTable.isInitialized())).toBe(false);
-    const groupsAfterDelete = await readRows(filteredTable.listGroups({
+    await runStatements(filteredTable.delete(executionContext));
+    expect(await readBoolean(filteredTable.isInitialized(executionContext))).toBe(false);
+    const groupsAfterDelete = await readRows(filteredTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -2403,16 +2618,16 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("filterTable registerRowChangeTrigger emits inserts, updates, deletes, and moves", async () => {
     const { fromTable, groupedTable, filteredTable } = createFilteredTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(filteredTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(filteredTable.init(executionContext));
     registerFilterAuditTrigger(filteredTable, "filter_change");
 
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":2}'::jsonb`)));
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":3}'::jsonb`)));
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"beta","value":5}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"beta","value":5}'::jsonb`)));
 
     const normalizedAuditRows = (await readMapTriggerAuditRows())
       .map((row) => ({
@@ -2455,14 +2670,14 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("filterTable stays no-op while uninitialized", async () => {
     const { fromTable, groupedTable, filteredTable } = createFilteredTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
     registerFilterAuditTrigger(filteredTable, "filter_change");
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":5}'::jsonb`)));
 
-    expect(await readBoolean(filteredTable.isInitialized())).toBe(false);
+    expect(await readBoolean(filteredTable.isInitialized(executionContext))).toBe(false);
     expect(await readMapTriggerAuditRows()).toEqual([]);
-    expect(await readRows(filteredTable.listGroups({
+    expect(await readRows(filteredTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -2472,13 +2687,13 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("filterTable listRowsInGroup (all groups) handles 'rows' collisions in group key and source row identifier", async () => {
     const { fromTable, groupedTable, filteredTable } = createFilteredTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(filteredTable.init());
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"rows","value":5}'::jsonb`)));
-    await runStatements(fromTable.setRow("rows", expr(`'{"team":"alpha","value":4}'::jsonb`)));
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(filteredTable.init(executionContext));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"rows","value":5}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "rows", expr(`'{"team":"alpha","value":4}'::jsonb`)));
 
-    const allRows = await readRows(filteredTable.listRowsInGroup({
+    const allRows = await readRows(filteredTable.listRowsInGroup(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -2492,16 +2707,16 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("limitTable init keeps only first N rows per group and stores metadata", async () => {
     const { fromTable, groupedTable, limitedTable } = createLimitedTable();
-    await runStatements(fromTable.init());
-    await runStatements(fromTable.setRow("a3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
-    await runStatements(fromTable.setRow("a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("a2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
-    await runStatements(fromTable.setRow("b2", expr(`'{"team":"beta","value":2}'::jsonb`)));
-    await runStatements(fromTable.setRow("b1", expr(`'{"team":"beta","value":1}'::jsonb`)));
-    await runStatements(groupedTable.init());
-    await runStatements(limitedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(fromTable.setRow(executionContext, "a3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "a2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "b2", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "b1", expr(`'{"team":"beta","value":1}'::jsonb`)));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(limitedTable.init(executionContext));
 
-    const groups = await readRows(limitedTable.listGroups({
+    const groups = await readRows(limitedTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -2509,7 +2724,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(groups.map((row) => row.groupkey).sort(stringCompare)).toEqual(["alpha", "beta"]);
 
-    const allRows = await readRows(limitedTable.listRowsInGroup({
+    const allRows = await readRows(limitedTable.listRowsInGroup(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -2537,13 +2752,13 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("limitTable membership shifts when boundary rows are inserted, updated, or deleted", async () => {
     const { fromTable, groupedTable, limitedTable } = createLimitedTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(limitedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(limitedTable.init(executionContext));
 
-    await runStatements(fromTable.setRow("u2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
-    await runStatements(fromTable.setRow("u3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
-    let alphaRows = await readRows(limitedTable.listRowsInGroup({
+    await runStatements(fromTable.setRow(executionContext, "u2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    let alphaRows = await readRows(limitedTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start",
       end: "end",
@@ -2552,8 +2767,8 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(alphaRows.map((row) => row.rowidentifier)).toEqual(["u2", "u3"]);
 
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    alphaRows = await readRows(limitedTable.listRowsInGroup({
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    alphaRows = await readRows(limitedTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start",
       end: "end",
@@ -2562,8 +2777,8 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(alphaRows.map((row) => row.rowidentifier)).toEqual(["u1", "u2"]);
 
-    await runStatements(fromTable.setRow("u2", expr(`'{"team":"alpha","value":22}'::jsonb`)));
-    alphaRows = await readRows(limitedTable.listRowsInGroup({
+    await runStatements(fromTable.setRow(executionContext, "u2", expr(`'{"team":"alpha","value":22}'::jsonb`)));
+    alphaRows = await readRows(limitedTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start",
       end: "end",
@@ -2575,8 +2790,8 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       { rowIdentifier: "u2", rowData: { team: "alpha", value: 22 } },
     ]);
 
-    await runStatements(fromTable.deleteRow("u1"));
-    alphaRows = await readRows(limitedTable.listRowsInGroup({
+    await runStatements(fromTable.deleteRow(executionContext, "u1"));
+    alphaRows = await readRows(limitedTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start",
       end: "end",
@@ -2588,20 +2803,20 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("limitTable trigger stream reconstructs the same final state as listRowsInGroup", async () => {
     const { fromTable, groupedTable, limitedTable } = createLimitedTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(limitedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(limitedTable.init(executionContext));
     registerLimitAuditTrigger(limitedTable, "limit_change");
 
-    await runStatements(fromTable.setRow("a2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
-    await runStatements(fromTable.setRow("a3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
-    await runStatements(fromTable.setRow("a4", expr(`'{"team":"alpha","value":4}'::jsonb`)));
-    await runStatements(fromTable.setRow("a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.deleteRow("a1"));
-    await runStatements(fromTable.setRow("a5", expr(`'{"team":"alpha","value":5}'::jsonb`)));
-    await runStatements(fromTable.setRow("a0", expr(`'{"team":"alpha","value":0}'::jsonb`)));
-    await runStatements(fromTable.deleteRow("a2"));
-    await runStatements(fromTable.setRow("a0", expr(`'{"team":"beta","value":100}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "a2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "a3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "a4", expr(`'{"team":"alpha","value":4}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.deleteRow(executionContext, "a1"));
+    await runStatements(fromTable.setRow(executionContext, "a5", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "a0", expr(`'{"team":"alpha","value":0}'::jsonb`)));
+    await runStatements(fromTable.deleteRow(executionContext, "a2"));
+    await runStatements(fromTable.setRow(executionContext, "a0", expr(`'{"team":"beta","value":100}'::jsonb`)));
 
     const auditRows = (await readMapTriggerAuditRows())
       .filter((row) => row.event === "limit_change");
@@ -2617,7 +2832,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       }
     }
 
-    const actualRows = (await readRows(limitedTable.listRowsInGroup({
+    const actualRows = (await readRows(limitedTable.listRowsInGroup(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -2638,14 +2853,14 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("limitTable stays no-op while uninitialized", async () => {
     const { fromTable, groupedTable, limitedTable } = createLimitedTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
     registerLimitAuditTrigger(limitedTable, "limit_change");
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("u2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
 
-    expect(await readBoolean(limitedTable.isInitialized())).toBe(false);
-    const groups = await readRows(limitedTable.listGroups({
+    expect(await readBoolean(limitedTable.isInitialized(executionContext))).toBe(false);
+    const groups = await readRows(limitedTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -2658,27 +2873,27 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("concatTable virtually concatenates grouped inputs and prefixes row identifiers", async () => {
     const { fromTableA, fromTableB, groupedTableA, groupedTableB, concatenatedTable } = createConcatenatedTable();
-    await runStatements(fromTableA.init());
-    await runStatements(fromTableB.init());
-    await runStatements(groupedTableA.init());
-    await runStatements(groupedTableB.init());
+    await runStatements(fromTableA.init(executionContext));
+    await runStatements(fromTableB.init(executionContext));
+    await runStatements(groupedTableA.init(executionContext));
+    await runStatements(groupedTableB.init(executionContext));
 
-    await runStatements(fromTableA.setRow("a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTableA.setRow("a2", expr(`'{"team":"beta","value":2}'::jsonb`)));
-    await runStatements(fromTableB.setRow("b1", expr(`'{"team":"alpha","value":3}'::jsonb`)));
-    await runStatements(fromTableB.setRow("b2", expr(`'{"team":"gamma","value":4}'::jsonb`)));
+    await runStatements(fromTableA.setRow(executionContext, "a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTableA.setRow(executionContext, "a2", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTableB.setRow(executionContext, "b1", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(fromTableB.setRow(executionContext, "b2", expr(`'{"team":"gamma","value":4}'::jsonb`)));
 
-    expect(await readBoolean(concatenatedTable.isInitialized())).toBe(false);
-    expect(await readRows(concatenatedTable.listGroups({
+    expect(await readBoolean(concatenatedTable.isInitialized(executionContext))).toBe(false);
+    expect(await readRows(concatenatedTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
       endInclusive: true,
     }))).toEqual([]);
-    await runStatements(concatenatedTable.init());
-    expect(await readBoolean(concatenatedTable.isInitialized())).toBe(true);
+    await runStatements(concatenatedTable.init(executionContext));
+    expect(await readBoolean(concatenatedTable.isInitialized(executionContext))).toBe(true);
 
-    const groups = await readRows(concatenatedTable.listGroups({
+    const groups = await readRows(concatenatedTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -2686,7 +2901,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(groups.map((row) => row.groupkey).sort(stringCompare)).toEqual(["alpha", "beta", "gamma"]);
 
-    const alphaRows = await readRows(concatenatedTable.listRowsInGroup({
+    const alphaRows = await readRows(concatenatedTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start",
       end: "end",
@@ -2701,7 +2916,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
         { rowIdentifier: "1:b1", rowData: { team: "alpha", value: 3 } },
       ]);
 
-    const allRows = await readRows(concatenatedTable.listRowsInGroup({
+    const allRows = await readRows(concatenatedTable.listRowsInGroup(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -2724,17 +2939,17 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("concatTable forwards prefixed trigger changes from each input table", async () => {
     const { fromTableA, fromTableB, groupedTableA, groupedTableB, concatenatedTable } = createConcatenatedTable();
-    await runStatements(fromTableA.init());
-    await runStatements(fromTableB.init());
-    await runStatements(groupedTableA.init());
-    await runStatements(groupedTableB.init());
-    await runStatements(concatenatedTable.init());
+    await runStatements(fromTableA.init(executionContext));
+    await runStatements(fromTableB.init(executionContext));
+    await runStatements(groupedTableA.init(executionContext));
+    await runStatements(groupedTableB.init(executionContext));
+    await runStatements(concatenatedTable.init(executionContext));
     registerConcatAuditTrigger(concatenatedTable, "concat_change");
 
-    await runStatements(fromTableA.setRow("a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTableB.setRow("b1", expr(`'{"team":"beta","value":2}'::jsonb`)));
-    await runStatements(fromTableB.setRow("b1", expr(`'{"team":"gamma","value":5}'::jsonb`)));
-    await runStatements(fromTableA.deleteRow("a1"));
+    await runStatements(fromTableA.setRow(executionContext, "a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTableB.setRow(executionContext, "b1", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTableB.setRow(executionContext, "b1", expr(`'{"team":"gamma","value":5}'::jsonb`)));
+    await runStatements(fromTableA.deleteRow(executionContext, "a1"));
 
     const auditRows = (await readMapTriggerAuditRows())
       .filter((row) => row.event === "concat_change")
@@ -2756,9 +2971,9 @@ describe.sequential("declareStoredTable (real postgres)", () => {
   test("concatTable stays virtual but requires its own metadata initialization", async () => {
     const { fromTableA, fromTableB, groupedTableA, groupedTableB, concatenatedTable } = createConcatenatedTable();
 
-    expect(await readBoolean(concatenatedTable.isInitialized())).toBe(false);
+    expect(await readBoolean(concatenatedTable.isInitialized(executionContext))).toBe(false);
 
-    const beforeInitGroups = await readRows(concatenatedTable.listGroups({
+    const beforeInitGroups = await readRows(concatenatedTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -2766,12 +2981,12 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(beforeInitGroups).toEqual([]);
 
-    await runStatements(fromTableA.init());
-    await runStatements(groupedTableA.init());
-    await runStatements(fromTableA.setRow("a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    expect(await readBoolean(concatenatedTable.isInitialized())).toBe(false);
+    await runStatements(fromTableA.init(executionContext));
+    await runStatements(groupedTableA.init(executionContext));
+    await runStatements(fromTableA.setRow(executionContext, "a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    expect(await readBoolean(concatenatedTable.isInitialized(executionContext))).toBe(false);
 
-    const oneSideOnlyRows = await readRows(concatenatedTable.listRowsInGroup({
+    const oneSideOnlyRows = await readRows(concatenatedTable.listRowsInGroup(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -2779,9 +2994,9 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(oneSideOnlyRows).toEqual([]);
 
-    await runStatements(concatenatedTable.init());
-    expect(await readBoolean(concatenatedTable.isInitialized())).toBe(true);
-    const rowsAfterConcatInit = await readRows(concatenatedTable.listRowsInGroup({
+    await runStatements(concatenatedTable.init(executionContext));
+    expect(await readBoolean(concatenatedTable.isInitialized(executionContext))).toBe(true);
+    const rowsAfterConcatInit = await readRows(concatenatedTable.listRowsInGroup(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -2789,15 +3004,15 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(rowsAfterConcatInit.map((row) => row.rowidentifier)).toEqual(["0:a1"]);
 
-    await runStatements(fromTableB.init());
-    await runStatements(groupedTableB.init());
-    await runStatements(fromTableB.setRow("b1", expr(`'{"team":"beta","value":2}'::jsonb`)));
-    expect(await readBoolean(concatenatedTable.isInitialized())).toBe(true);
+    await runStatements(fromTableB.init(executionContext));
+    await runStatements(groupedTableB.init(executionContext));
+    await runStatements(fromTableB.setRow(executionContext, "b1", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    expect(await readBoolean(concatenatedTable.isInitialized(executionContext))).toBe(true);
 
-    await runStatements(concatenatedTable.delete());
-    expect(await readBoolean(concatenatedTable.isInitialized())).toBe(false);
+    await runStatements(concatenatedTable.delete(executionContext));
+    expect(await readBoolean(concatenatedTable.isInitialized(executionContext))).toBe(false);
 
-    const rowsAfterDelete = await readRows(concatenatedTable.listRowsInGroup({
+    const rowsAfterDelete = await readRows(concatenatedTable.listRowsInGroup(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -2805,12 +3020,12 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(rowsAfterDelete).toEqual([]);
 
-    await runStatements(concatenatedTable.init());
-    expect(await readBoolean(concatenatedTable.isInitialized())).toBe(true);
+    await runStatements(concatenatedTable.init(executionContext));
+    expect(await readBoolean(concatenatedTable.isInitialized(executionContext))).toBe(true);
 
-    await runStatements(groupedTableB.delete());
-    expect(await readBoolean(concatenatedTable.isInitialized())).toBe(true);
-    const rowsAfterInputDelete = await readRows(concatenatedTable.listRowsInGroup({
+    await runStatements(groupedTableB.delete(executionContext));
+    expect(await readBoolean(concatenatedTable.isInitialized(executionContext))).toBe(true);
+    const rowsAfterInputDelete = await readRows(concatenatedTable.listRowsInGroup(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -2851,20 +3066,20 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       tables: [sortedTableAsc, sortedTableDesc],
     }));
 
-    await runStatements(fromTableAsc.init());
-    await runStatements(groupedTableAsc.init());
-    await runStatements(sortedTableAsc.init());
-    await runStatements(fromTableDesc.init());
-    await runStatements(groupedTableDesc.init());
-    await runStatements(sortedTableDesc.init());
+    await runStatements(fromTableAsc.init(executionContext));
+    await runStatements(groupedTableAsc.init(executionContext));
+    await runStatements(sortedTableAsc.init(executionContext));
+    await runStatements(fromTableDesc.init(executionContext));
+    await runStatements(groupedTableDesc.init(executionContext));
+    await runStatements(sortedTableDesc.init(executionContext));
 
-    await runStatements(fromTableAsc.setRow("a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTableDesc.setRow("b1", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTableAsc.setRow(executionContext, "a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTableDesc.setRow(executionContext, "b1", expr(`'{"team":"alpha","value":2}'::jsonb`)));
 
-    await runStatements(concatenatedTable.init());
-    expect(await readBoolean(concatenatedTable.isInitialized())).toBe(true);
+    await runStatements(concatenatedTable.init(executionContext));
+    expect(await readBoolean(concatenatedTable.isInitialized(executionContext))).toBe(true);
 
-    const alphaRows = await readRows(concatenatedTable.listRowsInGroup({
+    const alphaRows = await readRows(concatenatedTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start",
       end: "end",
@@ -2876,17 +3091,17 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("sortTable init backfills rows in computed sort order and stores metadata", async () => {
     const { fromTable, groupedTable, sortedTable } = createSortedTable();
-    await runStatements(fromTable.init());
-    await runStatements(fromTable.setRow("a3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
-    await runStatements(fromTable.setRow("a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("a2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
-    await runStatements(fromTable.setRow("b2", expr(`'{"team":"beta","value":2}'::jsonb`)));
-    await runStatements(fromTable.setRow("b1", expr(`'{"team":"beta","value":1}'::jsonb`)));
-    await runStatements(groupedTable.init());
-    await runStatements(sortedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(fromTable.setRow(executionContext, "a3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "a2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "b2", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "b1", expr(`'{"team":"beta","value":1}'::jsonb`)));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(sortedTable.init(executionContext));
 
-    expect(await readBoolean(sortedTable.isInitialized())).toBe(true);
-    const groups = await readRows(sortedTable.listGroups({
+    expect(await readBoolean(sortedTable.isInitialized(executionContext))).toBe(true);
+    const groups = await readRows(sortedTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -2894,7 +3109,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(groups.map((row) => row.groupkey).sort(stringCompare)).toEqual(["alpha", "beta"]);
 
-    const alphaRows = await readRows(sortedTable.listRowsInGroup({
+    const alphaRows = await readRows(sortedTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start",
       end: "end",
@@ -2922,16 +3137,16 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("sortTable emits insert, update, move, and delete changes with computed sort keys", async () => {
     const { fromTable, groupedTable, sortedTable } = createSortedTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(sortedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(sortedTable.init(executionContext));
     registerSortAuditTrigger(sortedTable, "sort_change");
 
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":3}'::jsonb`)));
-    await runStatements(fromTable.setRow("u2", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":0}'::jsonb`)));
-    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":1}'::jsonb`)));
-    await runStatements(fromTable.deleteRow("u1"));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u2", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":0}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u2", expr(`'{"team":"beta","value":1}'::jsonb`)));
+    await runStatements(fromTable.deleteRow(executionContext, "u1"));
 
     const auditRows = (await readMapTriggerAuditRows())
       .filter((row) => row.event === "sort_change")
@@ -2953,15 +3168,15 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("sortTable listRowsInGroup supports sort key range filtering", async () => {
     const { fromTable, groupedTable, sortedTable } = createSortedTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(sortedTable.init());
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("u2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
-    await runStatements(fromTable.setRow("u3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
-    await runStatements(fromTable.setRow("u4", expr(`'{"team":"alpha","value":4}'::jsonb`)));
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(sortedTable.init(executionContext));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u4", expr(`'{"team":"alpha","value":4}'::jsonb`)));
 
-    const midRows = await readRows(sortedTable.listRowsInGroup({
+    const midRows = await readRows(sortedTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: expr(`to_jsonb(2)`),
       end: expr(`to_jsonb(4)`),
@@ -2976,14 +3191,14 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("sortTable stays no-op while uninitialized", async () => {
     const { fromTable, groupedTable, sortedTable } = createSortedTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
     registerSortAuditTrigger(sortedTable, "sort_change");
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":5}'::jsonb`)));
 
-    expect(await readBoolean(sortedTable.isInitialized())).toBe(false);
+    expect(await readBoolean(sortedTable.isInitialized(executionContext))).toBe(false);
     expect((await readMapTriggerAuditRows()).filter((row) => row.event === "sort_change")).toEqual([]);
-    expect(await readRows(sortedTable.listGroups({
+    expect(await readRows(sortedTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -2993,17 +3208,17 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("lFoldTable init backfills flattened rows in deterministic sorted order", async () => {
     const { fromTable, groupedTable, sortedTable, lFoldTable } = createLFoldTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(fromTable.setRow("a2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
-    await runStatements(fromTable.setRow("a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("a3", expr(`'{"team":"alpha","value":2}'::jsonb`)));
-    await runStatements(fromTable.setRow("b1", expr(`'{"team":"beta","value":4}'::jsonb`)));
-    await runStatements(sortedTable.init());
-    await runStatements(lFoldTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(fromTable.setRow(executionContext, "a2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "a3", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "b1", expr(`'{"team":"beta","value":4}'::jsonb`)));
+    await runStatements(sortedTable.init(executionContext));
+    await runStatements(lFoldTable.init(executionContext));
 
-    expect(await readBoolean(lFoldTable.isInitialized())).toBe(true);
-    const groups = await readRows(lFoldTable.listGroups({
+    expect(await readBoolean(lFoldTable.isInitialized(executionContext))).toBe(true);
+    const groups = await readRows(lFoldTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -3011,7 +3226,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(groups.map((row) => row.groupkey).sort(stringCompare)).toEqual(["alpha", "beta"]);
 
-    const alphaRows = await readRows(lFoldTable.listRowsInGroup({
+    const alphaRows = await readRows(lFoldTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start",
       end: "end",
@@ -3033,16 +3248,16 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("lFoldTable recomputes only affected suffix and handles reorder/delete transitions", async () => {
     const { fromTable, groupedTable, sortedTable, lFoldTable } = createLFoldTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(sortedTable.init());
-    await runStatements(lFoldTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(sortedTable.init(executionContext));
+    await runStatements(lFoldTable.init(executionContext));
 
-    await runStatements(fromTable.setRow("a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("a2", expr(`'{"team":"alpha","value":3}'::jsonb`)));
-    await runStatements(fromTable.setRow("a3", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "a2", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "a3", expr(`'{"team":"alpha","value":5}'::jsonb`)));
 
-    const beforeTailUpdate = await readRows(lFoldTable.listRowsInGroup({
+    const beforeTailUpdate = await readRows(lFoldTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start",
       end: "end",
@@ -3055,8 +3270,8 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       { rowIdentifier: "a3:1", rowData: { kind: "running", runningTotal: 9, value: 5 } },
     ]);
 
-    await runStatements(fromTable.setRow("a3", expr(`'{"team":"alpha","value":6}'::jsonb`)));
-    const afterTailUpdate = await readRows(lFoldTable.listRowsInGroup({
+    await runStatements(fromTable.setRow(executionContext, "a3", expr(`'{"team":"alpha","value":6}'::jsonb`)));
+    const afterTailUpdate = await readRows(lFoldTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start",
       end: "end",
@@ -3070,8 +3285,8 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       { rowIdentifier: "a3:2", rowData: { kind: "even-marker", runningTotal: 10, value: 6 } },
     ]);
 
-    await runStatements(fromTable.setRow("a2", expr(`'{"team":"alpha","value":0}'::jsonb`)));
-    const afterMiddleMove = await readRows(lFoldTable.listRowsInGroup({
+    await runStatements(fromTable.setRow(executionContext, "a2", expr(`'{"team":"alpha","value":0}'::jsonb`)));
+    const afterMiddleMove = await readRows(lFoldTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start",
       end: "end",
@@ -3086,8 +3301,8 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       { rowIdentifier: "a3:2", rowSortKey: 6, rowData: { kind: "even-marker", runningTotal: 7, value: 6 } },
     ]);
 
-    await runStatements(fromTable.deleteRow("a1"));
-    const afterDelete = await readRows(lFoldTable.listRowsInGroup({
+    await runStatements(fromTable.deleteRow(executionContext, "a1"));
+    const afterDelete = await readRows(lFoldTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start",
       end: "end",
@@ -3104,19 +3319,19 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("lFoldTable trigger stream reconstructs exact final table state", async () => {
     const { fromTable, groupedTable, sortedTable, lFoldTable } = createLFoldTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(sortedTable.init());
-    await runStatements(lFoldTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(sortedTable.init(executionContext));
+    await runStatements(lFoldTable.init(executionContext));
     registerLFoldAuditTrigger(lFoldTable, "lfold_change");
 
-    await runStatements(fromTable.setRow("a3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
-    await runStatements(fromTable.setRow("a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("a2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
-    await runStatements(fromTable.setRow("b1", expr(`'{"team":"beta","value":4}'::jsonb`)));
-    await runStatements(fromTable.setRow("a2", expr(`'{"team":"beta","value":2}'::jsonb`)));
-    await runStatements(fromTable.setRow("a3", expr(`'{"team":"alpha","value":6}'::jsonb`)));
-    await runStatements(fromTable.deleteRow("a1"));
+    await runStatements(fromTable.setRow(executionContext, "a3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "a2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "b1", expr(`'{"team":"beta","value":4}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "a2", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "a3", expr(`'{"team":"alpha","value":6}'::jsonb`)));
+    await runStatements(fromTable.deleteRow(executionContext, "a1"));
 
     const auditRows = (await readMapTriggerAuditRows()).filter((row) => row.event === "lfold_change");
     const reconstructed = new Map<string, { groupKey: string | null, rowIdentifier: string, rowSortKey: unknown, rowData: unknown }>();
@@ -3134,7 +3349,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       }
     }
 
-    const actualRows = (await readRows(lFoldTable.listRowsInGroup({
+    const actualRows = (await readRows(lFoldTable.listRowsInGroup(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -3156,15 +3371,15 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("lFoldTable uses rowIdentifier as deterministic tie-breaker for equal sort keys", async () => {
     const { fromTable, groupedTable, sortedTable, lFoldTable } = createLFoldTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(sortedTable.init());
-    await runStatements(lFoldTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(sortedTable.init(executionContext));
+    await runStatements(lFoldTable.init(executionContext));
 
-    await runStatements(fromTable.setRow("z", expr(`'{"team":"alpha","value":2}'::jsonb`)));
-    await runStatements(fromTable.setRow("a", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "z", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "a", expr(`'{"team":"alpha","value":2}'::jsonb`)));
 
-    const alphaRows = await readRows(lFoldTable.listRowsInGroup({
+    const alphaRows = await readRows(lFoldTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start",
       end: "end",
@@ -3181,16 +3396,16 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("lFoldTable stays no-op while uninitialized", async () => {
     const { fromTable, groupedTable, sortedTable, lFoldTable } = createLFoldTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(sortedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(sortedTable.init(executionContext));
     registerLFoldAuditTrigger(lFoldTable, "lfold_change");
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":5}'::jsonb`)));
-    await runStatements(fromTable.setRow("u2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
 
-    expect(await readBoolean(lFoldTable.isInitialized())).toBe(false);
+    expect(await readBoolean(lFoldTable.isInitialized(executionContext))).toBe(false);
     expect((await readMapTriggerAuditRows()).filter((row) => row.event === "lfold_change")).toEqual([]);
-    expect(await readRows(lFoldTable.listGroups({
+    expect(await readRows(lFoldTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -3200,15 +3415,15 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("timeFoldTable init emits rows and enqueues future reductions", async () => {
     const { fromTable, groupedTable, timeFoldTable } = createTimeFoldTable();
-    await runStatements(fromTable.init());
-    await runStatements(fromTable.setRow("a1", expr(`'{"team":"alpha","value":2}'::jsonb`)));
-    await runStatements(fromTable.setRow("a2", expr(`'{"team":"alpha","value":3}'::jsonb`)));
-    await runStatements(fromTable.setRow("b1", expr(`'{"team":"beta","value":4}'::jsonb`)));
-    await runStatements(groupedTable.init());
-    await runStatements(timeFoldTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(fromTable.setRow(executionContext, "a1", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "a2", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "b1", expr(`'{"team":"beta","value":4}'::jsonb`)));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(timeFoldTable.init(executionContext));
 
-    expect(await readBoolean(timeFoldTable.isInitialized())).toBe(true);
-    const alphaRows = await readRows(timeFoldTable.listRowsInGroup({
+    expect(await readBoolean(timeFoldTable.isInitialized(executionContext))).toBe(true);
+    const alphaRows = await readRows(timeFoldTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start",
       end: "end",
@@ -3233,13 +3448,13 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("timeFoldTable updates and deletes keep queue rows in sync", async () => {
     const { fromTable, groupedTable, timeFoldTable } = createTimeFoldTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(timeFoldTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(timeFoldTable.init(executionContext));
     registerTimeFoldAuditTrigger(timeFoldTable, "timefold_change");
 
-    await runStatements(fromTable.setRow("a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("a1", expr(`'{"team":"alpha","value":4}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "a1", expr(`'{"team":"alpha","value":4}'::jsonb`)));
 
     const queueAfterUpdate = await readTimeFoldQueueRows();
     expect(queueAfterUpdate).toEqual([
@@ -3264,8 +3479,8 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       },
     ]);
 
-    await runStatements(fromTable.deleteRow("a1"));
-    const rowsAfterDelete = await readRows(timeFoldTable.listRowsInGroup({
+    await runStatements(fromTable.deleteRow(executionContext, "a1"));
+    const rowsAfterDelete = await readRows(timeFoldTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start",
       end: "end",
@@ -3284,15 +3499,15 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("timeFoldTable stays no-op while uninitialized", async () => {
     const { fromTable, groupedTable, timeFoldTable } = createTimeFoldTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
     registerTimeFoldAuditTrigger(timeFoldTable, "timefold_uninitialized");
 
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":7}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":7}'::jsonb`)));
 
-    expect(await readBoolean(timeFoldTable.isInitialized())).toBe(false);
+    expect(await readBoolean(timeFoldTable.isInitialized(executionContext))).toBe(false);
     expect((await readMapTriggerAuditRows()).filter((row) => row.event === "timefold_uninitialized")).toEqual([]);
-    expect(await readRows(timeFoldTable.listGroups({
+    expect(await readRows(timeFoldTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -3339,12 +3554,12 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       `),
     }));
 
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(timeFoldTable.init());
-    await runStatements(fromTable.setRow("a1", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(timeFoldTable.init(executionContext));
+    await runStatements(fromTable.setRow(executionContext, "a1", expr(`'{"team":"alpha","value":5}'::jsonb`)));
 
-    const alphaRows = await readRows(timeFoldTable.listRowsInGroup({
+    const alphaRows = await readRows(timeFoldTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start",
       end: "end",
@@ -3393,12 +3608,12 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       `),
     }));
 
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(timeFoldTable.init());
-    await runStatements(fromTable.setRow("a1", expr(`'{"team":"alpha","value":9}'::jsonb`)));
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(timeFoldTable.init(executionContext));
+    await runStatements(fromTable.setRow(executionContext, "a1", expr(`'{"team":"alpha","value":9}'::jsonb`)));
 
-    const alphaRows = await readRows(timeFoldTable.listRowsInGroup({
+    const alphaRows = await readRows(timeFoldTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start",
       end: "end",
@@ -3413,12 +3628,12 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("timeFoldTable moving rows across groups replaces queued group entry", async () => {
     const { fromTable, groupedTable, timeFoldTable } = createTimeFoldTable();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(timeFoldTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(timeFoldTable.init(executionContext));
 
-    await runStatements(fromTable.setRow("a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("a1", expr(`'{"team":null,"value":7}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "a1", expr(`'{"team":null,"value":7}'::jsonb`)));
 
     const queueRows = await readTimeFoldQueueRows();
     expect(queueRows).toHaveLength(1);
@@ -3428,7 +3643,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     expect(queueRow.rowData).toEqual({ team: null, value: 7 });
     expect(queueRow.stateAfter).toBeGreaterThan(0);
 
-    const alphaRows = await readRows(timeFoldTable.listRowsInGroup({
+    const alphaRows = await readRows(timeFoldTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start",
       end: "end",
@@ -3436,7 +3651,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       endInclusive: true,
     }));
     expect(alphaRows).toEqual([]);
-    const nullGroupRows = await readRows(timeFoldTable.listRowsInGroup({
+    const nullGroupRows = await readRows(timeFoldTable.listRowsInGroup(executionContext, {
       groupKey: expr(`'null'::jsonb`),
       start: "start",
       end: "end",
@@ -3451,21 +3666,21 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("leftJoinTable init backfills matches and unmatched left rows per group", async () => {
     const { fromTable, joinTable, groupedFromTable, groupedJoinTable, leftJoinedTable } = createLeftJoinedTable();
-    await runStatements(fromTable.init());
-    await runStatements(joinTable.init());
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":5}'::jsonb`)));
-    await runStatements(fromTable.setRow("u2", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("u3", expr(`'{"team":"beta","value":2}'::jsonb`)));
-    await runStatements(fromTable.setRow("u4", expr(`'{"team":"alpha","value":7}'::jsonb`)));
-    await runStatements(joinTable.setRow("r1", expr(`'{"team":"alpha","threshold":1,"label":"silver"}'::jsonb`)));
-    await runStatements(joinTable.setRow("r2", expr(`'{"team":"alpha","threshold":5,"label":"gold"}'::jsonb`)));
-    await runStatements(joinTable.setRow("r3", expr(`'{"team":"beta","threshold":2,"label":"vip"}'::jsonb`)));
-    await runStatements(groupedFromTable.init());
-    await runStatements(groupedJoinTable.init());
-    await runStatements(leftJoinedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(joinTable.init(executionContext));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u2", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u3", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u4", expr(`'{"team":"alpha","value":7}'::jsonb`)));
+    await runStatements(joinTable.setRow(executionContext, "r1", expr(`'{"team":"alpha","threshold":1,"label":"silver"}'::jsonb`)));
+    await runStatements(joinTable.setRow(executionContext, "r2", expr(`'{"team":"alpha","threshold":5,"label":"gold"}'::jsonb`)));
+    await runStatements(joinTable.setRow(executionContext, "r3", expr(`'{"team":"beta","threshold":2,"label":"vip"}'::jsonb`)));
+    await runStatements(groupedFromTable.init(executionContext));
+    await runStatements(groupedJoinTable.init(executionContext));
+    await runStatements(leftJoinedTable.init(executionContext));
 
-    expect(await readBoolean(leftJoinedTable.isInitialized())).toBe(true);
-    const groups = await readRows(leftJoinedTable.listGroups({
+    expect(await readBoolean(leftJoinedTable.isInitialized(executionContext))).toBe(true);
+    const groups = await readRows(leftJoinedTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -3473,7 +3688,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(groups.map((row) => row.groupkey).sort(stringCompare)).toEqual(["alpha", "beta"]);
 
-    const alphaRows = await readRows(leftJoinedTable.listRowsInGroup({
+    const alphaRows = await readRows(leftJoinedTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start",
       end: "end",
@@ -3504,7 +3719,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       },
     ]);
 
-    const betaRows = await readRows(leftJoinedTable.listRowsInGroup({
+    const betaRows = await readRows(leftJoinedTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('beta'::text)`),
       start: "start",
       end: "end",
@@ -3543,17 +3758,17 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       rightJoinKey: mapper(`"rowData"->'threshold' AS "joinKey"`),
     }));
 
-    await runStatements(fromTable.init());
-    await runStatements(joinTable.init());
-    await runStatements(groupedFromTable.init());
-    await runStatements(groupedJoinTable.init());
-    await runStatements(leftJoinedTable.init());
-    await runStatements(fromTable.setRow("u-null", expr(`'{"team":"alpha","value":null}'::jsonb`)));
-    await runStatements(fromTable.setRow("u-num", expr(`'{"team":"alpha","value":3}'::jsonb`)));
-    await runStatements(joinTable.setRow("r-null", expr(`'{"team":"alpha","threshold":null,"label":"null-match"}'::jsonb`)));
-    await runStatements(joinTable.setRow("r-num", expr(`'{"team":"alpha","threshold":3,"label":"num-match"}'::jsonb`)));
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(joinTable.init(executionContext));
+    await runStatements(groupedFromTable.init(executionContext));
+    await runStatements(groupedJoinTable.init(executionContext));
+    await runStatements(leftJoinedTable.init(executionContext));
+    await runStatements(fromTable.setRow(executionContext, "u-null", expr(`'{"team":"alpha","value":null}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u-num", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(joinTable.setRow(executionContext, "r-null", expr(`'{"team":"alpha","threshold":null,"label":"null-match"}'::jsonb`)));
+    await runStatements(joinTable.setRow(executionContext, "r-num", expr(`'{"team":"alpha","threshold":3,"label":"num-match"}'::jsonb`)));
 
-    const alphaRows = await readRows(leftJoinedTable.listRowsInGroup({
+    const alphaRows = await readRows(leftJoinedTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start",
       end: "end",
@@ -3581,26 +3796,26 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("leftJoinTable recomputes touched groups when either input table changes", async () => {
     const { fromTable, joinTable, groupedFromTable, groupedJoinTable, leftJoinedTable } = createLeftJoinedTable();
-    await runStatements(fromTable.init());
-    await runStatements(joinTable.init());
-    await runStatements(groupedFromTable.init());
-    await runStatements(groupedJoinTable.init());
-    await runStatements(leftJoinedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(joinTable.init(executionContext));
+    await runStatements(groupedFromTable.init(executionContext));
+    await runStatements(groupedJoinTable.init(executionContext));
+    await runStatements(leftJoinedTable.init(executionContext));
 
-    await runStatements(joinTable.setRow("r1", expr(`'{"team":"alpha","threshold":2,"label":"silver"}'::jsonb`)));
-    await runStatements(joinTable.setRow("r2", expr(`'{"team":"alpha","threshold":4,"label":"gold"}'::jsonb`)));
-    await runStatements(joinTable.setRow("rb1", expr(`'{"team":"beta","threshold":3,"label":"beta-rule"}'::jsonb`)));
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":5}'::jsonb`)));
-    await runStatements(fromTable.setRow("u2", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("u3", expr(`'{"team":"beta","value":2}'::jsonb`)));
-    await runStatements(fromTable.setRow("u2", expr(`'{"team":"alpha","value":4}'::jsonb`)));
-    await runStatements(joinTable.setRow("r1", expr(`'{"team":"alpha","threshold":6,"label":"silver"}'::jsonb`)));
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"beta","value":5}'::jsonb`)));
-    await runStatements(joinTable.deleteRow("rb1"));
-    await runStatements(fromTable.deleteRow("u3"));
-    await runStatements(fromTable.deleteRow("u2"));
+    await runStatements(joinTable.setRow(executionContext, "r1", expr(`'{"team":"alpha","threshold":2,"label":"silver"}'::jsonb`)));
+    await runStatements(joinTable.setRow(executionContext, "r2", expr(`'{"team":"alpha","threshold":4,"label":"gold"}'::jsonb`)));
+    await runStatements(joinTable.setRow(executionContext, "rb1", expr(`'{"team":"beta","threshold":3,"label":"beta-rule"}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u2", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u3", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u2", expr(`'{"team":"alpha","value":4}'::jsonb`)));
+    await runStatements(joinTable.setRow(executionContext, "r1", expr(`'{"team":"alpha","threshold":6,"label":"silver"}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"beta","value":5}'::jsonb`)));
+    await runStatements(joinTable.deleteRow(executionContext, "rb1"));
+    await runStatements(fromTable.deleteRow(executionContext, "u3"));
+    await runStatements(fromTable.deleteRow(executionContext, "u2"));
 
-    const groups = await readRows(leftJoinedTable.listGroups({
+    const groups = await readRows(leftJoinedTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -3608,7 +3823,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(groups.map((row) => row.groupkey)).toEqual(["beta"]);
 
-    const betaRows = await readRows(leftJoinedTable.listRowsInGroup({
+    const betaRows = await readRows(leftJoinedTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('beta'::text)`),
       start: "start",
       end: "end",
@@ -3628,18 +3843,18 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("leftJoinTable listRowsInGroup is deterministically ordered by rowIdentifier", async () => {
     const { fromTable, joinTable, groupedFromTable, groupedJoinTable, leftJoinedTable } = createLeftJoinedTable();
-    await runStatements(fromTable.init());
-    await runStatements(joinTable.init());
-    await runStatements(groupedFromTable.init());
-    await runStatements(groupedJoinTable.init());
-    await runStatements(leftJoinedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(joinTable.init(executionContext));
+    await runStatements(groupedFromTable.init(executionContext));
+    await runStatements(groupedJoinTable.init(executionContext));
+    await runStatements(leftJoinedTable.init(executionContext));
 
-    await runStatements(fromTable.setRow("u2", expr(`'{"team":"alpha","value":5}'::jsonb`)));
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":5}'::jsonb`)));
-    await runStatements(joinTable.setRow("r2", expr(`'{"team":"alpha","threshold":5,"label":"rule-2"}'::jsonb`)));
-    await runStatements(joinTable.setRow("r1", expr(`'{"team":"alpha","threshold":5,"label":"rule-1"}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u2", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+    await runStatements(joinTable.setRow(executionContext, "r2", expr(`'{"team":"alpha","threshold":5,"label":"rule-2"}'::jsonb`)));
+    await runStatements(joinTable.setRow(executionContext, "r1", expr(`'{"team":"alpha","threshold":5,"label":"rule-1"}'::jsonb`)));
 
-    const alphaRows = await readRows(leftJoinedTable.listRowsInGroup({
+    const alphaRows = await readRows(leftJoinedTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start",
       end: "end",
@@ -3656,14 +3871,14 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("sortTable bulk init respects descending comparator", async () => {
     const { fromTable, groupedTable, sortedTable } = createDescendingSortedTable();
-    await runStatements(fromTable.init());
-    await runStatements(fromTable.setRow("a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("a2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
-    await runStatements(fromTable.setRow("a3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
-    await runStatements(groupedTable.init());
-    await runStatements(sortedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(fromTable.setRow(executionContext, "a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "a2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "a3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(sortedTable.init(executionContext));
 
-    const alphaRows = await readRows(sortedTable.listRowsInGroup({
+    const alphaRows = await readRows(sortedTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start",
       end: "end",
@@ -3675,15 +3890,15 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("limitTable honors source comparator for top-N", async () => {
     const { fromTable, groupedTable, sortedTable, limitedTable } = createDescendingLimitedTable();
-    await runStatements(fromTable.init());
-    await runStatements(fromTable.setRow("a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("a2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
-    await runStatements(fromTable.setRow("a3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
-    await runStatements(groupedTable.init());
-    await runStatements(sortedTable.init());
-    await runStatements(limitedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(fromTable.setRow(executionContext, "a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "a2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "a3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(sortedTable.init(executionContext));
+    await runStatements(limitedTable.init(executionContext));
 
-    const alphaRows = await readRows(limitedTable.listRowsInGroup({
+    const alphaRows = await readRows(limitedTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start",
       end: "end",
@@ -3695,15 +3910,15 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("lFoldTable read order matches source comparator", async () => {
     const { fromTable, groupedTable, sortedTable, lFoldTable } = createDescendingLFoldTable();
-    await runStatements(fromTable.init());
-    await runStatements(fromTable.setRow("a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("a2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
-    await runStatements(fromTable.setRow("a3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
-    await runStatements(groupedTable.init());
-    await runStatements(sortedTable.init());
-    await runStatements(lFoldTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(fromTable.setRow(executionContext, "a1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "a2", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "a3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(sortedTable.init(executionContext));
+    await runStatements(lFoldTable.init(executionContext));
 
-    const alphaRows = await readRows(lFoldTable.listRowsInGroup({
+    const alphaRows = await readRows(lFoldTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start",
       end: "end",
@@ -3715,22 +3930,22 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("leftJoinTable trigger stream reconstructs exact final table state", async () => {
     const { fromTable, joinTable, groupedFromTable, groupedJoinTable, leftJoinedTable } = createLeftJoinedTable();
-    await runStatements(fromTable.init());
-    await runStatements(joinTable.init());
-    await runStatements(groupedFromTable.init());
-    await runStatements(groupedJoinTable.init());
-    await runStatements(leftJoinedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(joinTable.init(executionContext));
+    await runStatements(groupedFromTable.init(executionContext));
+    await runStatements(groupedJoinTable.init(executionContext));
+    await runStatements(leftJoinedTable.init(executionContext));
     registerLeftJoinAuditTrigger(leftJoinedTable, "left_join_change");
 
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":2}'::jsonb`)));
-    await runStatements(fromTable.setRow("u2", expr(`'{"team":"alpha","value":5}'::jsonb`)));
-    await runStatements(fromTable.setRow("u3", expr(`'{"team":"beta","value":7}'::jsonb`)));
-    await runStatements(joinTable.setRow("r1", expr(`'{"team":"alpha","threshold":3,"label":"silver"}'::jsonb`)));
-    await runStatements(joinTable.setRow("r2", expr(`'{"team":"alpha","threshold":5,"label":"gold"}'::jsonb`)));
-    await runStatements(joinTable.setRow("r3", expr(`'{"team":"beta","threshold":6,"label":"beta"}'::jsonb`)));
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"beta","value":8}'::jsonb`)));
-    await runStatements(joinTable.deleteRow("r2"));
-    await runStatements(fromTable.deleteRow("u3"));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u2", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u3", expr(`'{"team":"beta","value":7}'::jsonb`)));
+    await runStatements(joinTable.setRow(executionContext, "r1", expr(`'{"team":"alpha","threshold":3,"label":"silver"}'::jsonb`)));
+    await runStatements(joinTable.setRow(executionContext, "r2", expr(`'{"team":"alpha","threshold":5,"label":"gold"}'::jsonb`)));
+    await runStatements(joinTable.setRow(executionContext, "r3", expr(`'{"team":"beta","threshold":6,"label":"beta"}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"beta","value":8}'::jsonb`)));
+    await runStatements(joinTable.deleteRow(executionContext, "r2"));
+    await runStatements(fromTable.deleteRow(executionContext, "u3"));
 
     const auditRows = (await readMapTriggerAuditRows()).filter((row) => row.event === "left_join_change");
     const reconstructed = new Map<string, { groupKey: string | null, rowIdentifier: string, rowData: unknown }>();
@@ -3745,7 +3960,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       }
     }
 
-    const actualRows = (await readRows(leftJoinedTable.listRowsInGroup({
+    const actualRows = (await readRows(leftJoinedTable.listRowsInGroup(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -3766,17 +3981,17 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("leftJoinTable stays no-op while uninitialized", async () => {
     const { fromTable, joinTable, groupedFromTable, groupedJoinTable, leftJoinedTable } = createLeftJoinedTable();
-    await runStatements(fromTable.init());
-    await runStatements(joinTable.init());
-    await runStatements(groupedFromTable.init());
-    await runStatements(groupedJoinTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(joinTable.init(executionContext));
+    await runStatements(groupedFromTable.init(executionContext));
+    await runStatements(groupedJoinTable.init(executionContext));
     registerLeftJoinAuditTrigger(leftJoinedTable, "left_join_change");
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":5}'::jsonb`)));
-    await runStatements(joinTable.setRow("r1", expr(`'{"team":"alpha","threshold":2,"label":"silver"}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+    await runStatements(joinTable.setRow(executionContext, "r1", expr(`'{"team":"alpha","threshold":2,"label":"silver"}'::jsonb`)));
 
-    expect(await readBoolean(leftJoinedTable.isInitialized())).toBe(false);
+    expect(await readBoolean(leftJoinedTable.isInitialized(executionContext))).toBe(false);
     expect((await readMapTriggerAuditRows()).filter((row) => row.event === "left_join_change")).toEqual([]);
-    expect(await readRows(leftJoinedTable.listGroups({
+    expect(await readRows(leftJoinedTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -3786,17 +4001,17 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("flatMap -> map -> groupBy composition stays consistent across updates", async () => {
     const { fromTable, groupedTable, flatMappedTable, mappedAfterFlatMap, groupedByKind } = createFlatMapMapGroupPipeline();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(flatMappedTable.init());
-    await runStatements(mappedAfterFlatMap.init());
-    await runStatements(groupedByKind.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(flatMappedTable.init(executionContext));
+    await runStatements(mappedAfterFlatMap.init(executionContext));
+    await runStatements(groupedByKind.init(executionContext));
 
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":-1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":-1}'::jsonb`)));
 
-    const groups = await readRows(groupedByKind.listGroups({
+    const groups = await readRows(groupedByKind.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -3804,7 +4019,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(groups.map((row) => row.groupkey).sort(stringCompare)).toEqual(["base", "double"]);
 
-    const baseRows = await readRows(groupedByKind.listRowsInGroup({
+    const baseRows = await readRows(groupedByKind.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('base'::text)`),
       start: "start",
       end: "end",
@@ -3815,7 +4030,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       { rowIdentifier: "u2:1:1", rowData: { team: "beta", kind: "base", mappedValuePlusOne: 103 } },
     ]);
 
-    const doubleRows = await readRows(groupedByKind.listRowsInGroup({
+    const doubleRows = await readRows(groupedByKind.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('double'::text)`),
       start: "start",
       end: "end",
@@ -3829,17 +4044,17 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("stacked map tables propagate updates across multiple mapping layers", async () => {
     const { fromTable, groupedTable, mappedTableLevel1, mappedTableLevel2 } = createStackedMappedTables();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(mappedTableLevel1.init());
-    await runStatements(mappedTableLevel2.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(mappedTableLevel1.init(executionContext));
+    await runStatements(mappedTableLevel2.init(executionContext));
 
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":7}'::jsonb`)));
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":5}'::jsonb`)));
-    await runStatements(fromTable.setRow("u2", expr(`'{"team":"alpha","value":4}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u2", expr(`'{"team":"beta","value":7}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u2", expr(`'{"team":"alpha","value":4}'::jsonb`)));
 
-    const groupsAfterMove = await readRows(mappedTableLevel2.listGroups({
+    const groupsAfterMove = await readRows(mappedTableLevel2.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -3847,7 +4062,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(groupsAfterMove.map((row) => row.groupkey)).toEqual(["alpha"]);
 
-    const alphaRows = await readRows(mappedTableLevel2.listRowsInGroup({
+    const alphaRows = await readRows(mappedTableLevel2.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start",
       end: "end",
@@ -3859,8 +4074,8 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       { rowIdentifier: "u2:1:1", rowData: { team: "alpha", valueScaled: 28, bucket: "low" } },
     ]);
 
-    await runStatements(fromTable.deleteRow("u1"));
-    const alphaRowsAfterDelete = await readRows(mappedTableLevel2.listRowsInGroup({
+    await runStatements(fromTable.deleteRow(executionContext, "u1"));
+    const alphaRowsAfterDelete = await readRows(mappedTableLevel2.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start",
       end: "end",
@@ -3874,15 +4089,15 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("stacked map tables handle special row identifiers and null group transitions", async () => {
     const { fromTable, groupedTable, mappedTableLevel1, mappedTableLevel2 } = createStackedMappedTables();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(mappedTableLevel1.init());
-    await runStatements(mappedTableLevel2.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(mappedTableLevel1.init(executionContext));
+    await runStatements(mappedTableLevel2.init(executionContext));
 
     const specialIdentifier = "user/one:two space";
-    await runStatements(fromTable.setRow(specialIdentifier, expr(`'{"team":null,"value":3}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, specialIdentifier, expr(`'{"team":null,"value":3}'::jsonb`)));
 
-    const nullGroupRows = await readRows(mappedTableLevel2.listRowsInGroup({
+    const nullGroupRows = await readRows(mappedTableLevel2.listRowsInGroup(executionContext, {
       groupKey: expr(`'null'::jsonb`),
       start: "start",
       end: "end",
@@ -3893,8 +4108,8 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       { rowIdentifier: `${specialIdentifier}:1:1`, rowData: { team: null, valueScaled: 26, bucket: "low" } },
     ]);
 
-    await runStatements(fromTable.setRow(specialIdentifier, expr(`'{"team":"alpha","value":3}'::jsonb`)));
-    const groupsAfterMove = await readRows(mappedTableLevel2.listGroups({
+    await runStatements(fromTable.setRow(executionContext, specialIdentifier, expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    const groupsAfterMove = await readRows(mappedTableLevel2.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -3905,17 +4120,17 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("stacked map tables backfill correctly with staggered initialization order", async () => {
     const { fromTable, groupedTable, mappedTableLevel1, mappedTableLevel2 } = createStackedMappedTables();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
 
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u2", expr(`'{"team":"beta","value":2}'::jsonb`)));
 
-    await runStatements(mappedTableLevel1.init());
-    await runStatements(fromTable.setRow("u3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(mappedTableLevel1.init(executionContext));
+    await runStatements(fromTable.setRow(executionContext, "u3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
 
-    await runStatements(mappedTableLevel2.init());
-    const allRowsAfterInit = await readRows(mappedTableLevel2.listRowsInGroup({
+    await runStatements(mappedTableLevel2.init(executionContext));
+    const allRowsAfterInit = await readRows(mappedTableLevel2.listRowsInGroup(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -3927,8 +4142,8 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       { groupKey: "beta", rowIdentifier: "u2:1:1", rowData: { team: "beta", valueScaled: 24, bucket: "low" } },
     ]);
 
-    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":20}'::jsonb`)));
-    const betaRows = await readRows(mappedTableLevel2.listRowsInGroup({
+    await runStatements(fromTable.setRow(executionContext, "u2", expr(`'{"team":"beta","value":20}'::jsonb`)));
+    const betaRows = await readRows(mappedTableLevel2.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('beta'::text)`),
       start: "start",
       end: "end",
@@ -3942,17 +4157,17 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("groupBy over a stacked map table stays consistent on mapped key transitions", async () => {
     const { fromTable, groupedTable, mappedTableLevel1, mappedTableLevel2, groupedByBucketTable } = createGroupMapGroupPipeline();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(mappedTableLevel1.init());
-    await runStatements(mappedTableLevel2.init());
-    await runStatements(groupedByBucketTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(mappedTableLevel1.init(executionContext));
+    await runStatements(mappedTableLevel2.init(executionContext));
+    await runStatements(groupedByBucketTable.init(executionContext));
 
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":20}'::jsonb`)));
-    await runStatements(fromTable.setRow("u3", expr(`'{"team":"gamma","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u2", expr(`'{"team":"beta","value":20}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u3", expr(`'{"team":"gamma","value":2}'::jsonb`)));
 
-    const initialGroups = await readRows(groupedByBucketTable.listGroups({
+    const initialGroups = await readRows(groupedByBucketTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -3960,7 +4175,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(initialGroups.map((row) => row.groupkey).sort(stringCompare)).toEqual(["high", "low"]);
 
-    const lowRows = await readRows(groupedByBucketTable.listRowsInGroup({
+    const lowRows = await readRows(groupedByBucketTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('low'::text)`),
       start: "start",
       end: "end",
@@ -3969,10 +4184,10 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(lowRows.map((row) => row.rowidentifier).sort(stringCompare)).toEqual(["u1:1:1", "u3:1:1"]);
 
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":30}'::jsonb`)));
-    await runStatements(fromTable.deleteRow("u3"));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":30}'::jsonb`)));
+    await runStatements(fromTable.deleteRow(executionContext, "u3"));
 
-    const finalGroups = await readRows(groupedByBucketTable.listGroups({
+    const finalGroups = await readRows(groupedByBucketTable.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -3980,7 +4195,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(finalGroups.map((row) => row.groupkey)).toEqual(["high"]);
 
-    const highRows = await readRows(groupedByBucketTable.listRowsInGroup({
+    const highRows = await readRows(groupedByBucketTable.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('high'::text)`),
       start: "start",
       end: "end",
@@ -3992,13 +4207,13 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("composed trigger fanout works for stacked map and downstream groupBy tables", async () => {
     const { fromTable, groupedTable, mappedTableLevel1, mappedTableLevel2, groupedByBucketTable } = createGroupMapGroupPipeline();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(mappedTableLevel1.init());
-    await runStatements(mappedTableLevel2.init());
-    await runStatements(groupedByBucketTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(mappedTableLevel1.init(executionContext));
+    await runStatements(mappedTableLevel2.init(executionContext));
+    await runStatements(groupedByBucketTable.init(executionContext));
 
-    mappedTableLevel2.registerRowChangeTrigger((changesTable) => [
+    mappedTableLevel2.registerRowChangeTrigger((_ctx, changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => [
       sqlStatement`
         INSERT INTO "BulldozerMapTriggerAudit" (
           "event",
@@ -4016,7 +4231,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
         FROM ${changesTable}
       `,
     ]);
-    groupedByBucketTable.registerRowChangeTrigger((changesTable) => [
+    groupedByBucketTable.registerRowChangeTrigger((_ctx, changesTable: SqlExpression<{ __brand: "$SQL_Table" }>) => [
       sqlStatement`
         INSERT INTO "BulldozerGroupTriggerAudit" (
           "event",
@@ -4035,9 +4250,9 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       `,
     ]);
 
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":30}'::jsonb`)));
-    await runStatements(fromTable.deleteRow("u1"));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":30}'::jsonb`)));
+    await runStatements(fromTable.deleteRow(executionContext, "u1"));
 
     expect(await readMapTriggerAuditRows()).toEqual([
       {
@@ -4096,33 +4311,33 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("deep pipeline delete and re-init restores exact source truth", async () => {
     const { fromTable, groupedTable, mappedTableLevel1, mappedTableLevel2, groupedByBucketTable } = createGroupMapGroupPipeline();
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(mappedTableLevel1.init());
-    await runStatements(mappedTableLevel2.init());
-    await runStatements(groupedByBucketTable.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(mappedTableLevel1.init(executionContext));
+    await runStatements(mappedTableLevel2.init(executionContext));
+    await runStatements(groupedByBucketTable.init(executionContext));
 
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
-    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":20}'::jsonb`)));
-    await runStatements(fromTable.setRow("u3", expr(`'{"team":"gamma","value":2}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":1}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u2", expr(`'{"team":"beta","value":20}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u3", expr(`'{"team":"gamma","value":2}'::jsonb`)));
 
-    await runStatements(groupedByBucketTable.delete());
-    await runStatements(mappedTableLevel2.delete());
-    await runStatements(mappedTableLevel1.delete());
+    await runStatements(groupedByBucketTable.delete(executionContext));
+    await runStatements(mappedTableLevel2.delete(executionContext));
+    await runStatements(mappedTableLevel1.delete(executionContext));
 
-    expect(await readBoolean(mappedTableLevel1.isInitialized())).toBe(false);
-    expect(await readBoolean(mappedTableLevel2.isInitialized())).toBe(false);
-    expect(await readBoolean(groupedByBucketTable.isInitialized())).toBe(false);
+    expect(await readBoolean(mappedTableLevel1.isInitialized(executionContext))).toBe(false);
+    expect(await readBoolean(mappedTableLevel2.isInitialized(executionContext))).toBe(false);
+    expect(await readBoolean(groupedByBucketTable.isInitialized(executionContext))).toBe(false);
 
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":5}'::jsonb`)));
-    await runStatements(fromTable.deleteRow("u2"));
-    await runStatements(fromTable.setRow("u4", expr(`'{"team":"delta","value":0}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+    await runStatements(fromTable.deleteRow(executionContext, "u2"));
+    await runStatements(fromTable.setRow(executionContext, "u4", expr(`'{"team":"delta","value":0}'::jsonb`)));
 
-    await runStatements(mappedTableLevel1.init());
-    await runStatements(mappedTableLevel2.init());
-    await runStatements(groupedByBucketTable.init());
+    await runStatements(mappedTableLevel1.init(executionContext));
+    await runStatements(mappedTableLevel2.init(executionContext));
+    await runStatements(groupedByBucketTable.init(executionContext));
 
-    const allBucketRows = await readRows(groupedByBucketTable.listRowsInGroup({
+    const allBucketRows = await readRows(groupedByBucketTable.listRowsInGroup(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -4154,17 +4369,17 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       `),
     }));
 
-    await runStatements(fromTable.init());
-    await runStatements(groupedTable.init());
-    await runStatements(mapTableA.init());
-    await runStatements(mapTableB.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedTable.init(executionContext));
+    await runStatements(mapTableA.init(executionContext));
+    await runStatements(mapTableB.init(executionContext));
 
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":3}'::jsonb`)));
-    await runStatements(fromTable.setRow("u2", expr(`'{"team":"beta","value":4}'::jsonb`)));
-    await runStatements(fromTable.setRow("u1", expr(`'{"team":"alpha","value":6}'::jsonb`)));
-    await runStatements(fromTable.deleteRow("u2"));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u2", expr(`'{"team":"beta","value":4}'::jsonb`)));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":6}'::jsonb`)));
+    await runStatements(fromTable.deleteRow(executionContext, "u2"));
 
-    const alphaRowsA = await readRows(mapTableA.listRowsInGroup({
+    const alphaRowsA = await readRows(mapTableA.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start",
       end: "end",
@@ -4173,7 +4388,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(alphaRowsA.map((row) => row.rowdata)).toEqual([{ team: "alpha", mappedValueA: 106 }]);
 
-    const alphaRowsB = await readRows(mapTableB.listRowsInGroup({
+    const alphaRowsB = await readRows(mapTableB.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('alpha'::text)`),
       start: "start",
       end: "end",
@@ -4182,13 +4397,13 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     }));
     expect(alphaRowsB.map((row) => row.rowdata)).toEqual([{ team: "alpha", mappedValueB: -6 }]);
 
-    const groupsA = await readRows(mapTableA.listGroups({
+    const groupsA = await readRows(mapTableA.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
       endInclusive: true,
     }));
-    const groupsB = await readRows(mapTableB.listGroups({
+    const groupsB = await readRows(mapTableB.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -4234,16 +4449,16 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("compactTable merges consecutive entries in a single window", async () => {
     const { entries, boundaries, entriesSorted, boundariesSorted, compacted } = createCompactTableSetup();
-    await runStatements(entries.init());
-    await runStatements(boundaries.init());
-    await runStatements(entriesSorted.init());
-    await runStatements(boundariesSorted.init());
-    await runStatements(compacted.init());
+    await runStatements(entries.init(executionContext));
+    await runStatements(boundaries.init(executionContext));
+    await runStatements(entriesSorted.init(executionContext));
+    await runStatements(boundariesSorted.init(executionContext));
+    await runStatements(compacted.init(executionContext));
 
-    await runStatements(entries.setRow("e1", expr(`'{"itemId":"a","quantity":10,"t":1}'::jsonb`)));
-    await runStatements(entries.setRow("e2", expr(`'{"itemId":"a","quantity":5,"t":2}'::jsonb`)));
+    await runStatements(entries.setRow(executionContext, "e1", expr(`'{"itemId":"a","quantity":10,"t":1}'::jsonb`)));
+    await runStatements(entries.setRow(executionContext, "e2", expr(`'{"itemId":"a","quantity":5,"t":2}'::jsonb`)));
 
-    const rows = await readRows(compacted.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    const rows = await readRows(compacted.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true }));
     expect(rows).toHaveLength(1);
     expect(rows[0].rowdata.itemId).toBe("a");
     expect(rows[0].rowdata.quantity).toBe(15);
@@ -4252,18 +4467,18 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("compactTable splits windows at boundaries", async () => {
     const { entries, boundaries, entriesSorted, boundariesSorted, compacted } = createCompactTableSetup();
-    await runStatements(entries.init());
-    await runStatements(boundaries.init());
-    await runStatements(entriesSorted.init());
-    await runStatements(boundariesSorted.init());
-    await runStatements(compacted.init());
+    await runStatements(entries.init(executionContext));
+    await runStatements(boundaries.init(executionContext));
+    await runStatements(entriesSorted.init(executionContext));
+    await runStatements(boundariesSorted.init(executionContext));
+    await runStatements(compacted.init(executionContext));
 
-    await runStatements(entries.setRow("e1", expr(`'{"itemId":"a","quantity":10,"t":1}'::jsonb`)));
-    await runStatements(entries.setRow("e2", expr(`'{"itemId":"a","quantity":5,"t":2}'::jsonb`)));
-    await runStatements(boundaries.setRow("b1", expr(`'{"t":3}'::jsonb`)));
-    await runStatements(entries.setRow("e3", expr(`'{"itemId":"a","quantity":20,"t":4}'::jsonb`)));
+    await runStatements(entries.setRow(executionContext, "e1", expr(`'{"itemId":"a","quantity":10,"t":1}'::jsonb`)));
+    await runStatements(entries.setRow(executionContext, "e2", expr(`'{"itemId":"a","quantity":5,"t":2}'::jsonb`)));
+    await runStatements(boundaries.setRow(executionContext, "b1", expr(`'{"t":3}'::jsonb`)));
+    await runStatements(entries.setRow(executionContext, "e3", expr(`'{"itemId":"a","quantity":20,"t":4}'::jsonb`)));
 
-    const rows = (await readRows(compacted.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true })))
+    const rows = (await readRows(compacted.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true })))
       .map((r: any) => ({ itemId: r.rowdata.itemId, quantity: r.rowdata.quantity, t: r.rowdata.t }))
       .sort((a: any, b: any) => a.t - b.t);
 
@@ -4275,20 +4490,20 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("compactTable handles multiple partitions in same window", async () => {
     const { entries, boundaries, entriesSorted, boundariesSorted, compacted } = createCompactTableSetup();
-    await runStatements(entries.init());
-    await runStatements(boundaries.init());
-    await runStatements(entriesSorted.init());
-    await runStatements(boundariesSorted.init());
-    await runStatements(compacted.init());
+    await runStatements(entries.init(executionContext));
+    await runStatements(boundaries.init(executionContext));
+    await runStatements(entriesSorted.init(executionContext));
+    await runStatements(boundariesSorted.init(executionContext));
+    await runStatements(compacted.init(executionContext));
 
-    await runStatements(entries.setRow("e1", expr(`'{"itemId":"a","quantity":10,"t":1}'::jsonb`)));
-    await runStatements(entries.setRow("e2", expr(`'{"itemId":"b","quantity":5,"t":2}'::jsonb`)));
-    await runStatements(entries.setRow("e3", expr(`'{"itemId":"a","quantity":3,"t":3}'::jsonb`)));
-    await runStatements(entries.setRow("e4", expr(`'{"itemId":"b","quantity":7,"t":4}'::jsonb`)));
-    await runStatements(boundaries.setRow("b1", expr(`'{"t":5}'::jsonb`)));
-    await runStatements(entries.setRow("e5", expr(`'{"itemId":"b","quantity":2,"t":6}'::jsonb`)));
+    await runStatements(entries.setRow(executionContext, "e1", expr(`'{"itemId":"a","quantity":10,"t":1}'::jsonb`)));
+    await runStatements(entries.setRow(executionContext, "e2", expr(`'{"itemId":"b","quantity":5,"t":2}'::jsonb`)));
+    await runStatements(entries.setRow(executionContext, "e3", expr(`'{"itemId":"a","quantity":3,"t":3}'::jsonb`)));
+    await runStatements(entries.setRow(executionContext, "e4", expr(`'{"itemId":"b","quantity":7,"t":4}'::jsonb`)));
+    await runStatements(boundaries.setRow(executionContext, "b1", expr(`'{"t":5}'::jsonb`)));
+    await runStatements(entries.setRow(executionContext, "e5", expr(`'{"itemId":"b","quantity":2,"t":6}'::jsonb`)));
 
-    const rows = (await readRows(compacted.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true })))
+    const rows = (await readRows(compacted.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true })))
       .map((r: any) => ({ itemId: r.rowdata.itemId, quantity: r.rowdata.quantity, t: r.rowdata.t }))
       .sort((a: any, b: any) => a.t - b.t);
 
@@ -4301,68 +4516,68 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("compactTable single entry passes through as compacted row", async () => {
     const { entries, boundaries, entriesSorted, boundariesSorted, compacted } = createCompactTableSetup();
-    await runStatements(entries.init());
-    await runStatements(boundaries.init());
-    await runStatements(entriesSorted.init());
-    await runStatements(boundariesSorted.init());
-    await runStatements(compacted.init());
+    await runStatements(entries.init(executionContext));
+    await runStatements(boundaries.init(executionContext));
+    await runStatements(entriesSorted.init(executionContext));
+    await runStatements(boundariesSorted.init(executionContext));
+    await runStatements(compacted.init(executionContext));
 
-    await runStatements(entries.setRow("e1", expr(`'{"itemId":"x","quantity":42,"t":1}'::jsonb`)));
+    await runStatements(entries.setRow(executionContext, "e1", expr(`'{"itemId":"x","quantity":42,"t":1}'::jsonb`)));
 
-    const rows = await readRows(compacted.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    const rows = await readRows(compacted.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true }));
     expect(rows).toHaveLength(1);
     expect(rows[0].rowdata).toEqual({ itemId: "x", quantity: 42, t: 1 });
   });
 
   test("compactTable empty inputs produce empty output", async () => {
     const { entries, boundaries, entriesSorted, boundariesSorted, compacted } = createCompactTableSetup();
-    await runStatements(entries.init());
-    await runStatements(boundaries.init());
-    await runStatements(entriesSorted.init());
-    await runStatements(boundariesSorted.init());
-    await runStatements(compacted.init());
+    await runStatements(entries.init(executionContext));
+    await runStatements(boundaries.init(executionContext));
+    await runStatements(entriesSorted.init(executionContext));
+    await runStatements(boundariesSorted.init(executionContext));
+    await runStatements(compacted.init(executionContext));
 
-    const rows = await readRows(compacted.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    const rows = await readRows(compacted.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true }));
     expect(rows).toHaveLength(0);
   });
 
   test("compactTable recomputes when entry is added", async () => {
     const { entries, boundaries, entriesSorted, boundariesSorted, compacted } = createCompactTableSetup();
-    await runStatements(entries.init());
-    await runStatements(boundaries.init());
-    await runStatements(entriesSorted.init());
-    await runStatements(boundariesSorted.init());
-    await runStatements(compacted.init());
+    await runStatements(entries.init(executionContext));
+    await runStatements(boundaries.init(executionContext));
+    await runStatements(entriesSorted.init(executionContext));
+    await runStatements(boundariesSorted.init(executionContext));
+    await runStatements(compacted.init(executionContext));
 
-    await runStatements(entries.setRow("e1", expr(`'{"itemId":"a","quantity":10,"t":1}'::jsonb`)));
-    let rows = await readRows(compacted.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    await runStatements(entries.setRow(executionContext, "e1", expr(`'{"itemId":"a","quantity":10,"t":1}'::jsonb`)));
+    let rows = await readRows(compacted.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true }));
     expect(rows).toHaveLength(1);
     expect(rows[0].rowdata.quantity).toBe(10);
 
-    await runStatements(entries.setRow("e2", expr(`'{"itemId":"a","quantity":5,"t":2}'::jsonb`)));
-    rows = await readRows(compacted.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    await runStatements(entries.setRow(executionContext, "e2", expr(`'{"itemId":"a","quantity":5,"t":2}'::jsonb`)));
+    rows = await readRows(compacted.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true }));
     expect(rows).toHaveLength(1);
     expect(rows[0].rowdata.quantity).toBe(15);
   });
 
   test("compactTable recomputes when boundary is added splitting a window", async () => {
     const { entries, boundaries, entriesSorted, boundariesSorted, compacted } = createCompactTableSetup();
-    await runStatements(entries.init());
-    await runStatements(boundaries.init());
-    await runStatements(entriesSorted.init());
-    await runStatements(boundariesSorted.init());
-    await runStatements(compacted.init());
+    await runStatements(entries.init(executionContext));
+    await runStatements(boundaries.init(executionContext));
+    await runStatements(entriesSorted.init(executionContext));
+    await runStatements(boundariesSorted.init(executionContext));
+    await runStatements(compacted.init(executionContext));
 
-    await runStatements(entries.setRow("e1", expr(`'{"itemId":"a","quantity":10,"t":1}'::jsonb`)));
-    await runStatements(entries.setRow("e2", expr(`'{"itemId":"a","quantity":5,"t":3}'::jsonb`)));
+    await runStatements(entries.setRow(executionContext, "e1", expr(`'{"itemId":"a","quantity":10,"t":1}'::jsonb`)));
+    await runStatements(entries.setRow(executionContext, "e2", expr(`'{"itemId":"a","quantity":5,"t":3}'::jsonb`)));
 
-    let rows = await readRows(compacted.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    let rows = await readRows(compacted.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true }));
     expect(rows).toHaveLength(1);
     expect(rows[0].rowdata.quantity).toBe(15);
 
-    await runStatements(boundaries.setRow("b1", expr(`'{"t":2}'::jsonb`)));
+    await runStatements(boundaries.setRow(executionContext, "b1", expr(`'{"t":2}'::jsonb`)));
 
-    rows = (await readRows(compacted.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true })))
+    rows = (await readRows(compacted.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true })))
       .sort((a: any, b: any) => a.rowdata.t - b.rowdata.t);
     expect(rows).toHaveLength(2);
     expect(rows[0].rowdata.quantity).toBe(10);
@@ -4371,93 +4586,93 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("compactTable recomputes when entry is deleted", async () => {
     const { entries, boundaries, entriesSorted, boundariesSorted, compacted } = createCompactTableSetup();
-    await runStatements(entries.init());
-    await runStatements(boundaries.init());
-    await runStatements(entriesSorted.init());
-    await runStatements(boundariesSorted.init());
-    await runStatements(compacted.init());
+    await runStatements(entries.init(executionContext));
+    await runStatements(boundaries.init(executionContext));
+    await runStatements(entriesSorted.init(executionContext));
+    await runStatements(boundariesSorted.init(executionContext));
+    await runStatements(compacted.init(executionContext));
 
-    await runStatements(entries.setRow("e1", expr(`'{"itemId":"a","quantity":10,"t":1}'::jsonb`)));
-    await runStatements(entries.setRow("e2", expr(`'{"itemId":"a","quantity":5,"t":2}'::jsonb`)));
-    await runStatements(entries.setRow("e3", expr(`'{"itemId":"a","quantity":20,"t":3}'::jsonb`)));
+    await runStatements(entries.setRow(executionContext, "e1", expr(`'{"itemId":"a","quantity":10,"t":1}'::jsonb`)));
+    await runStatements(entries.setRow(executionContext, "e2", expr(`'{"itemId":"a","quantity":5,"t":2}'::jsonb`)));
+    await runStatements(entries.setRow(executionContext, "e3", expr(`'{"itemId":"a","quantity":20,"t":3}'::jsonb`)));
 
-    let rows = await readRows(compacted.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    let rows = await readRows(compacted.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true }));
     expect(rows).toHaveLength(1);
     expect(rows[0].rowdata.quantity).toBe(35);
 
-    await runStatements(entries.deleteRow("e2"));
+    await runStatements(entries.deleteRow(executionContext, "e2"));
 
-    rows = await readRows(compacted.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    rows = await readRows(compacted.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true }));
     expect(rows).toHaveLength(1);
     expect(rows[0].rowdata.quantity).toBe(30);
   });
 
   test("compactTable does not pass through boundary rows", async () => {
     const { entries, boundaries, entriesSorted, boundariesSorted, compacted } = createCompactTableSetup();
-    await runStatements(entries.init());
-    await runStatements(boundaries.init());
-    await runStatements(entriesSorted.init());
-    await runStatements(boundariesSorted.init());
-    await runStatements(compacted.init());
+    await runStatements(entries.init(executionContext));
+    await runStatements(boundaries.init(executionContext));
+    await runStatements(entriesSorted.init(executionContext));
+    await runStatements(boundariesSorted.init(executionContext));
+    await runStatements(compacted.init(executionContext));
 
-    await runStatements(boundaries.setRow("b1", expr(`'{"t":5}'::jsonb`)));
-    await runStatements(boundaries.setRow("b2", expr(`'{"t":10}'::jsonb`)));
+    await runStatements(boundaries.setRow(executionContext, "b1", expr(`'{"t":5}'::jsonb`)));
+    await runStatements(boundaries.setRow(executionContext, "b2", expr(`'{"t":10}'::jsonb`)));
 
-    const rows = await readRows(compacted.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    const rows = await readRows(compacted.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true }));
     expect(rows).toHaveLength(0);
   });
 
   test("compactTable recomputes when boundary is deleted (merges previously-split windows)", async () => {
     const { entries, boundaries, entriesSorted, boundariesSorted, compacted } = createCompactTableSetup();
-    await runStatements(entries.init());
-    await runStatements(boundaries.init());
-    await runStatements(entriesSorted.init());
-    await runStatements(boundariesSorted.init());
-    await runStatements(compacted.init());
+    await runStatements(entries.init(executionContext));
+    await runStatements(boundaries.init(executionContext));
+    await runStatements(entriesSorted.init(executionContext));
+    await runStatements(boundariesSorted.init(executionContext));
+    await runStatements(compacted.init(executionContext));
 
-    await runStatements(entries.setRow("e1", expr(`'{"itemId":"a","quantity":10,"t":1}'::jsonb`)));
-    await runStatements(entries.setRow("e2", expr(`'{"itemId":"a","quantity":5,"t":3}'::jsonb`)));
-    await runStatements(boundaries.setRow("b1", expr(`'{"t":2}'::jsonb`)));
+    await runStatements(entries.setRow(executionContext, "e1", expr(`'{"itemId":"a","quantity":10,"t":1}'::jsonb`)));
+    await runStatements(entries.setRow(executionContext, "e2", expr(`'{"itemId":"a","quantity":5,"t":3}'::jsonb`)));
+    await runStatements(boundaries.setRow(executionContext, "b1", expr(`'{"t":2}'::jsonb`)));
 
     // With boundary at t=2: two windows → two compacted rows
-    let rows = (await readRows(compacted.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true })))
+    let rows = (await readRows(compacted.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true })))
       .sort((a: any, b: any) => a.rowdata.t - b.rowdata.t);
     expect(rows).toHaveLength(2);
     expect(rows[0].rowdata).toEqual({ itemId: "a", quantity: 10, t: 1 });
     expect(rows[1].rowdata).toEqual({ itemId: "a", quantity: 5, t: 3 });
 
     // Delete boundary → windows merge back into one
-    await runStatements(boundaries.deleteRow("b1"));
+    await runStatements(boundaries.deleteRow(executionContext, "b1"));
 
-    rows = await readRows(compacted.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    rows = await readRows(compacted.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true }));
     expect(rows).toHaveLength(1);
     expect(rows[0].rowdata).toEqual({ itemId: "a", quantity: 15, t: 1 });
   });
 
   test("compactTable with multiple boundaries produces multiple compacted rows per partition", async () => {
     const { entries, boundaries, entriesSorted, boundariesSorted, compacted } = createCompactTableSetup();
-    await runStatements(entries.init());
-    await runStatements(boundaries.init());
-    await runStatements(entriesSorted.init());
-    await runStatements(boundariesSorted.init());
-    await runStatements(compacted.init());
+    await runStatements(entries.init(executionContext));
+    await runStatements(boundaries.init(executionContext));
+    await runStatements(entriesSorted.init(executionContext));
+    await runStatements(boundariesSorted.init(executionContext));
+    await runStatements(compacted.init(executionContext));
 
     // Window 1 (t < 10): entries at t=1,2,3
-    await runStatements(entries.setRow("e1", expr(`'{"itemId":"a","quantity":10,"t":1}'::jsonb`)));
-    await runStatements(entries.setRow("e2", expr(`'{"itemId":"a","quantity":5,"t":2}'::jsonb`)));
-    await runStatements(entries.setRow("e3", expr(`'{"itemId":"b","quantity":7,"t":3}'::jsonb`)));
+    await runStatements(entries.setRow(executionContext, "e1", expr(`'{"itemId":"a","quantity":10,"t":1}'::jsonb`)));
+    await runStatements(entries.setRow(executionContext, "e2", expr(`'{"itemId":"a","quantity":5,"t":2}'::jsonb`)));
+    await runStatements(entries.setRow(executionContext, "e3", expr(`'{"itemId":"b","quantity":7,"t":3}'::jsonb`)));
     // Boundary at t=10
-    await runStatements(boundaries.setRow("b1", expr(`'{"t":10}'::jsonb`)));
+    await runStatements(boundaries.setRow(executionContext, "b1", expr(`'{"t":10}'::jsonb`)));
     // Window 2 (10 <= t < 20): entries at t=11,12
-    await runStatements(entries.setRow("e4", expr(`'{"itemId":"a","quantity":20,"t":11}'::jsonb`)));
-    await runStatements(entries.setRow("e5", expr(`'{"itemId":"a","quantity":3,"t":12}'::jsonb`)));
+    await runStatements(entries.setRow(executionContext, "e4", expr(`'{"itemId":"a","quantity":20,"t":11}'::jsonb`)));
+    await runStatements(entries.setRow(executionContext, "e5", expr(`'{"itemId":"a","quantity":3,"t":12}'::jsonb`)));
     // Boundary at t=20
-    await runStatements(boundaries.setRow("b2", expr(`'{"t":20}'::jsonb`)));
+    await runStatements(boundaries.setRow(executionContext, "b2", expr(`'{"t":20}'::jsonb`)));
     // Window 3 (t >= 20): entries at t=21,22
-    await runStatements(entries.setRow("e6", expr(`'{"itemId":"a","quantity":100,"t":21}'::jsonb`)));
-    await runStatements(entries.setRow("e7", expr(`'{"itemId":"b","quantity":50,"t":22}'::jsonb`)));
+    await runStatements(entries.setRow(executionContext, "e6", expr(`'{"itemId":"a","quantity":100,"t":21}'::jsonb`)));
+    await runStatements(entries.setRow(executionContext, "e7", expr(`'{"itemId":"b","quantity":50,"t":22}'::jsonb`)));
 
-    const rows = (await readRows(compacted.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true })))
+    const rows = (await readRows(compacted.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true })))
       .map((r: any) => ({ itemId: r.rowdata.itemId, quantity: r.rowdata.quantity, t: r.rowdata.t }))
       .sort((a: any, b: any) => a.t - b.t || stringCompare(a.itemId, b.itemId));
 
@@ -4475,16 +4690,16 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("compactTable preserves first row's data for non-compactKey fields", async () => {
     const { entries, boundaries, entriesSorted, boundariesSorted, compacted } = createCompactTableSetup();
-    await runStatements(entries.init());
-    await runStatements(boundaries.init());
-    await runStatements(entriesSorted.init());
-    await runStatements(boundariesSorted.init());
-    await runStatements(compacted.init());
+    await runStatements(entries.init(executionContext));
+    await runStatements(boundaries.init(executionContext));
+    await runStatements(entriesSorted.init(executionContext));
+    await runStatements(boundariesSorted.init(executionContext));
+    await runStatements(compacted.init(executionContext));
 
-    await runStatements(entries.setRow("e1", expr(`'{"itemId":"a","quantity":10,"t":1}'::jsonb`)));
-    await runStatements(entries.setRow("e2", expr(`'{"itemId":"a","quantity":5,"t":2}'::jsonb`)));
+    await runStatements(entries.setRow(executionContext, "e1", expr(`'{"itemId":"a","quantity":10,"t":1}'::jsonb`)));
+    await runStatements(entries.setRow(executionContext, "e2", expr(`'{"itemId":"a","quantity":5,"t":2}'::jsonb`)));
 
-    const rows = await readRows(compacted.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    const rows = await readRows(compacted.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true }));
     expect(rows[0].rowdata.t).toBe(1);
     expect(rows[0].rowdata.itemId).toBe("a");
   });
@@ -4554,15 +4769,15 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("reduceTable produces one row per group with summed values", async () => {
     const { source, grouped, reduced } = createSumReduceSetup();
-    await runStatements(source.init());
-    await runStatements(grouped.init());
-    await runStatements(reduced.init());
+    await runStatements(source.init(executionContext));
+    await runStatements(grouped.init(executionContext));
+    await runStatements(reduced.init(executionContext));
 
-    await runStatements(source.setRow("u1", expr(`'{"team":"alpha","value":10}'::jsonb`)));
-    await runStatements(source.setRow("u2", expr(`'{"team":"alpha","value":5}'::jsonb`)));
-    await runStatements(source.setRow("u3", expr(`'{"team":"beta","value":7}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":10}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "u2", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "u3", expr(`'{"team":"beta","value":7}'::jsonb`)));
 
-    const rows = (await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true })))
+    const rows = (await readRows(reduced.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true })))
       .map((r: any) => r.rowdata)
       .sort((a: any, b: any) => stringCompare(a.team, b.team));
 
@@ -4574,14 +4789,14 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("reduceTable preserves input group key", async () => {
     const { source, grouped, reduced } = createSumReduceSetup();
-    await runStatements(source.init());
-    await runStatements(grouped.init());
-    await runStatements(reduced.init());
+    await runStatements(source.init(executionContext));
+    await runStatements(grouped.init(executionContext));
+    await runStatements(reduced.init(executionContext));
 
-    await runStatements(source.setRow("u1", expr(`'{"team":"alpha","value":10}'::jsonb`)));
-    await runStatements(source.setRow("u2", expr(`'{"team":"beta","value":7}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":10}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "u2", expr(`'{"team":"beta","value":7}'::jsonb`)));
 
-    const groups = (await readRows(reduced.listGroups({ start: "start", end: "end", startInclusive: true, endInclusive: true })))
+    const groups = (await readRows(reduced.listGroups(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true })))
       .map((r: any) => r.groupkey)
       .sort((a: string, b: string) => stringCompare(a, b));
     expect(groups).toHaveLength(2);
@@ -4591,28 +4806,28 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("reduceTable finalize embeds groupKey as row attributes", async () => {
     const { source, grouped, reduced } = createSumReduceSetup();
-    await runStatements(source.init());
-    await runStatements(grouped.init());
-    await runStatements(reduced.init());
+    await runStatements(source.init(executionContext));
+    await runStatements(grouped.init(executionContext));
+    await runStatements(reduced.init(executionContext));
 
-    await runStatements(source.setRow("u1", expr(`'{"team":"alpha","value":10}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":10}'::jsonb`)));
 
-    const rows = await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    const rows = await readRows(reduced.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true }));
     expect(rows[0].rowdata.team).toBe("alpha");
   });
 
   test("reduceTable with array-accumulating reducer preserves sort order", async () => {
     const { source, grouped, sorted, reduced } = createArrayReduceSetup();
-    await runStatements(source.init());
-    await runStatements(grouped.init());
-    await runStatements(sorted.init());
-    await runStatements(reduced.init());
+    await runStatements(source.init(executionContext));
+    await runStatements(grouped.init(executionContext));
+    await runStatements(sorted.init(executionContext));
+    await runStatements(reduced.init(executionContext));
 
-    await runStatements(source.setRow("a3", expr(`'{"category":"fruits","label":"cherry","t":3}'::jsonb`)));
-    await runStatements(source.setRow("a1", expr(`'{"category":"fruits","label":"apple","t":1}'::jsonb`)));
-    await runStatements(source.setRow("a2", expr(`'{"category":"fruits","label":"banana","t":2}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "a3", expr(`'{"category":"fruits","label":"cherry","t":3}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "a1", expr(`'{"category":"fruits","label":"apple","t":1}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "a2", expr(`'{"category":"fruits","label":"banana","t":2}'::jsonb`)));
 
-    const rows = await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    const rows = await readRows(reduced.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true }));
     expect(rows).toHaveLength(1);
     expect(rows[0].rowdata.category).toBe("fruits");
     expect(rows[0].rowdata.labels).toEqual(["apple", "banana", "cherry"]);
@@ -4636,106 +4851,106 @@ describe.sequential("declareStoredTable (real postgres)", () => {
         ("state" #>> '{}')::numeric AS "total"
       `),
     }));
-    await runStatements(source.init());
-    await runStatements(reduced.init());
+    await runStatements(source.init(executionContext));
+    await runStatements(reduced.init(executionContext));
 
-    await runStatements(source.setRow("r1", expr(`'{"value":10}'::jsonb`)));
-    await runStatements(source.setRow("r2", expr(`'{"value":5}'::jsonb`)));
-    await runStatements(source.setRow("r3", expr(`'{"value":3}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "r1", expr(`'{"value":10}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "r2", expr(`'{"value":5}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "r3", expr(`'{"value":3}'::jsonb`)));
 
-    const rows = await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    const rows = await readRows(reduced.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true }));
     expect(rows).toHaveLength(1);
     expect(rows[0].rowdata.total).toBe(18);
   });
 
   test("reduceTable empty input produces no output", async () => {
     const { source, grouped, reduced } = createSumReduceSetup();
-    await runStatements(source.init());
-    await runStatements(grouped.init());
-    await runStatements(reduced.init());
+    await runStatements(source.init(executionContext));
+    await runStatements(grouped.init(executionContext));
+    await runStatements(reduced.init(executionContext));
 
-    const rows = await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    const rows = await readRows(reduced.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true }));
     expect(rows).toHaveLength(0);
   });
 
   test("reduceTable recomputes when row is added", async () => {
     const { source, grouped, reduced } = createSumReduceSetup();
-    await runStatements(source.init());
-    await runStatements(grouped.init());
-    await runStatements(reduced.init());
+    await runStatements(source.init(executionContext));
+    await runStatements(grouped.init(executionContext));
+    await runStatements(reduced.init(executionContext));
 
-    await runStatements(source.setRow("u1", expr(`'{"team":"alpha","value":10}'::jsonb`)));
-    let rows = await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    await runStatements(source.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":10}'::jsonb`)));
+    let rows = await readRows(reduced.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true }));
     expect(rows).toHaveLength(1);
     expect(rows[0].rowdata.total).toBe(10);
 
-    await runStatements(source.setRow("u2", expr(`'{"team":"alpha","value":5}'::jsonb`)));
-    rows = await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    await runStatements(source.setRow(executionContext, "u2", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+    rows = await readRows(reduced.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true }));
     expect(rows).toHaveLength(1);
     expect(rows[0].rowdata.total).toBe(15);
   });
 
   test("reduceTable recomputes when row is updated", async () => {
     const { source, grouped, reduced } = createSumReduceSetup();
-    await runStatements(source.init());
-    await runStatements(grouped.init());
-    await runStatements(reduced.init());
+    await runStatements(source.init(executionContext));
+    await runStatements(grouped.init(executionContext));
+    await runStatements(reduced.init(executionContext));
 
-    await runStatements(source.setRow("u1", expr(`'{"team":"alpha","value":10}'::jsonb`)));
-    await runStatements(source.setRow("u2", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":10}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "u2", expr(`'{"team":"alpha","value":5}'::jsonb`)));
 
-    let rows = await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    let rows = await readRows(reduced.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true }));
     expect(rows[0].rowdata.total).toBe(15);
 
-    await runStatements(source.setRow("u2", expr(`'{"team":"alpha","value":20}'::jsonb`)));
-    rows = await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    await runStatements(source.setRow(executionContext, "u2", expr(`'{"team":"alpha","value":20}'::jsonb`)));
+    rows = await readRows(reduced.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true }));
     expect(rows[0].rowdata.total).toBe(30);
   });
 
   test("reduceTable recomputes when row is deleted", async () => {
     const { source, grouped, reduced } = createSumReduceSetup();
-    await runStatements(source.init());
-    await runStatements(grouped.init());
-    await runStatements(reduced.init());
+    await runStatements(source.init(executionContext));
+    await runStatements(grouped.init(executionContext));
+    await runStatements(reduced.init(executionContext));
 
-    await runStatements(source.setRow("u1", expr(`'{"team":"alpha","value":10}'::jsonb`)));
-    await runStatements(source.setRow("u2", expr(`'{"team":"alpha","value":5}'::jsonb`)));
-    await runStatements(source.setRow("u3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":10}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "u2", expr(`'{"team":"alpha","value":5}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "u3", expr(`'{"team":"alpha","value":3}'::jsonb`)));
 
-    let rows = await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    let rows = await readRows(reduced.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true }));
     expect(rows[0].rowdata.total).toBe(18);
 
-    await runStatements(source.deleteRow("u2"));
-    rows = await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    await runStatements(source.deleteRow(executionContext, "u2"));
+    rows = await readRows(reduced.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true }));
     expect(rows[0].rowdata.total).toBe(13);
   });
 
   test("reduceTable removes output when group becomes empty", async () => {
     const { source, grouped, reduced } = createSumReduceSetup();
-    await runStatements(source.init());
-    await runStatements(grouped.init());
-    await runStatements(reduced.init());
+    await runStatements(source.init(executionContext));
+    await runStatements(grouped.init(executionContext));
+    await runStatements(reduced.init(executionContext));
 
-    await runStatements(source.setRow("u1", expr(`'{"team":"alpha","value":10}'::jsonb`)));
-    let rows = await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    await runStatements(source.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":10}'::jsonb`)));
+    let rows = await readRows(reduced.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true }));
     expect(rows).toHaveLength(1);
 
-    await runStatements(source.deleteRow("u1"));
-    rows = await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    await runStatements(source.deleteRow(executionContext, "u1"));
+    rows = await readRows(reduced.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true }));
     expect(rows).toHaveLength(0);
   });
 
   test("reduceTable passes through single-row groups as grouped output", async () => {
     const { source, grouped, reduced } = createSumReduceSetup();
-    await runStatements(source.init());
-    await runStatements(grouped.init());
-    await runStatements(reduced.init());
+    await runStatements(source.init(executionContext));
+    await runStatements(grouped.init(executionContext));
+    await runStatements(reduced.init(executionContext));
 
-    await runStatements(source.setRow("u1", expr(`'{"team":"alpha","value":42}'::jsonb`)));
-    await runStatements(source.setRow("u2", expr(`'{"team":"beta","value":7}'::jsonb`)));
-    await runStatements(source.setRow("u3", expr(`'{"team":"gamma","value":99}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":42}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "u2", expr(`'{"team":"beta","value":7}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "u3", expr(`'{"team":"gamma","value":99}'::jsonb`)));
 
-    const rows = (await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true })))
+    const rows = (await readRows(reduced.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true })))
       .map((r: any) => r.rowdata)
       .sort((a: any, b: any) => stringCompare(a.team, b.team));
 
@@ -4745,21 +4960,21 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       { team: "gamma", total: 99 },
     ]);
 
-    const groups = await readRows(reduced.listGroups({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+    const groups = await readRows(reduced.listGroups(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true }));
     expect(groups).toHaveLength(3);
     expect(groups[0].groupkey).toBe("alpha");
   });
 
   test("reduceTable handles row moving between groups", async () => {
     const { source, grouped, reduced } = createSumReduceSetup();
-    await runStatements(source.init());
-    await runStatements(grouped.init());
-    await runStatements(reduced.init());
+    await runStatements(source.init(executionContext));
+    await runStatements(grouped.init(executionContext));
+    await runStatements(reduced.init(executionContext));
 
-    await runStatements(source.setRow("u1", expr(`'{"team":"alpha","value":10}'::jsonb`)));
-    await runStatements(source.setRow("u2", expr(`'{"team":"beta","value":7}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":10}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "u2", expr(`'{"team":"beta","value":7}'::jsonb`)));
 
-    let rows = (await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true })))
+    let rows = (await readRows(reduced.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true })))
       .map((r: any) => r.rowdata)
       .sort((a: any, b: any) => stringCompare(a.team, b.team));
     expect(rows).toEqual([
@@ -4767,9 +4982,9 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       { team: "beta", total: 7 },
     ]);
 
-    await runStatements(source.setRow("u1", expr(`'{"team":"beta","value":10}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "u1", expr(`'{"team":"beta","value":10}'::jsonb`)));
 
-    rows = (await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true })))
+    rows = (await readRows(reduced.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true })))
       .map((r: any) => r.rowdata)
       .sort((a: any, b: any) => stringCompare(a.team, b.team));
     expect(rows).toEqual([
@@ -4916,7 +5131,7 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     expect(totalTableCount).toBe(34);
     expect(finalConcat.inputTables).toHaveLength(10);
 
-    const statements = source.setRow("budget-row", expr(`'{"team":"alpha","value":5}'::jsonb`));
+    const statements = source.setRow(executionContext, "budget-row", expr(`'{"team":"alpha","value":5}'::jsonb`));
     expect(statements.length).toBeLessThan(1000);
   });
 
@@ -4944,15 +5159,15 @@ describe.sequential("declareStoredTable (real postgres)", () => {
         ("state" #>> '{}')::numeric AS "total"
       `),
     }));
-    await runStatements(source.init());
-    await runStatements(grouped.init());
-    await runStatements(reduced.init());
+    await runStatements(source.init(executionContext));
+    await runStatements(grouped.init(executionContext));
+    await runStatements(reduced.init(executionContext));
 
-    await runStatements(source.setRow("u1", expr(`'{"team":null,"value":10}'::jsonb`)));
-    await runStatements(source.setRow("u2", expr(`'{"team":null,"value":5}'::jsonb`)));
-    await runStatements(source.setRow("u3", expr(`'{"team":"alpha","value":7}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "u1", expr(`'{"team":null,"value":10}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "u2", expr(`'{"team":null,"value":5}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "u3", expr(`'{"team":"alpha","value":7}'::jsonb`)));
 
-    const rows = (await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true })))
+    const rows = (await readRows(reduced.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true })))
       .map((r: any) => r.rowdata)
       .sort((a: any, b: any) => stringCompare(String(a.team), String(b.team)));
 
@@ -4991,17 +5206,17 @@ describe.sequential("declareStoredTable (real postgres)", () => {
         ("state" #>> '{}')::numeric AS "total"
       `),
     }));
-    await runStatements(source.init());
-    await runStatements(grouped.init());
-    await runStatements(reduced.init());
+    await runStatements(source.init(executionContext));
+    await runStatements(grouped.init(executionContext));
+    await runStatements(reduced.init(executionContext));
 
-    await runStatements(source.setRow("r1", expr(`'{"tenancyId":"t1","customerId":"u1","value":10}'::jsonb`)));
-    await runStatements(source.setRow("r2", expr(`'{"tenancyId":"t1","customerId":"u1","value":5}'::jsonb`)));
-    await runStatements(source.setRow("r3", expr(`'{"tenancyId":"t1","customerId":"u2","value":7}'::jsonb`)));
-    await runStatements(source.setRow("r4", expr(`'{"tenancyId":"t2","customerId":"u1","value":20}'::jsonb`)));
-    await runStatements(source.setRow("r5", expr(`'{"tenancyId":"t2","customerId":"u1","value":3}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "r1", expr(`'{"tenancyId":"t1","customerId":"u1","value":10}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "r2", expr(`'{"tenancyId":"t1","customerId":"u1","value":5}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "r3", expr(`'{"tenancyId":"t1","customerId":"u2","value":7}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "r4", expr(`'{"tenancyId":"t2","customerId":"u1","value":20}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "r5", expr(`'{"tenancyId":"t2","customerId":"u1","value":3}'::jsonb`)));
 
-    const rows = (await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true })))
+    const rows = (await readRows(reduced.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true })))
       .map((r: any) => r.rowdata)
       .sort((a: any, b: any) => stringCompare(`${a.tenancyId}:${a.customerId}`, `${b.tenancyId}:${b.customerId}`));
 
@@ -5012,10 +5227,10 @@ describe.sequential("declareStoredTable (real postgres)", () => {
     ]);
 
     // Move r3 from (t1,u2) to (t1,u1) and r5 from (t2,u1) to (t1,u2)
-    await runStatements(source.setRow("r3", expr(`'{"tenancyId":"t1","customerId":"u1","value":7}'::jsonb`)));
-    await runStatements(source.setRow("r5", expr(`'{"tenancyId":"t1","customerId":"u2","value":3}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "r3", expr(`'{"tenancyId":"t1","customerId":"u1","value":7}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "r5", expr(`'{"tenancyId":"t1","customerId":"u2","value":3}'::jsonb`)));
 
-    const rowsAfterMoves = (await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true })))
+    const rowsAfterMoves = (await readRows(reduced.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true })))
       .map((r: any) => r.rowdata)
       .sort((a: any, b: any) => stringCompare(`${a.tenancyId}:${a.customerId}`, `${b.tenancyId}:${b.customerId}`));
 
@@ -5028,14 +5243,14 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("reduceTable delete + re-init backfills from current source state", async () => {
     const { source, grouped, reduced } = createSumReduceSetup();
-    await runStatements(source.init());
-    await runStatements(grouped.init());
-    await runStatements(reduced.init());
+    await runStatements(source.init(executionContext));
+    await runStatements(grouped.init(executionContext));
+    await runStatements(reduced.init(executionContext));
 
-    await runStatements(source.setRow("u1", expr(`'{"team":"alpha","value":10}'::jsonb`)));
-    await runStatements(source.setRow("u2", expr(`'{"team":"beta","value":7}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "u1", expr(`'{"team":"alpha","value":10}'::jsonb`)));
+    await runStatements(source.setRow(executionContext, "u2", expr(`'{"team":"beta","value":7}'::jsonb`)));
 
-    let rows = (await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true })))
+    let rows = (await readRows(reduced.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true })))
       .map((r: any) => r.rowdata)
       .sort((a: any, b: any) => stringCompare(a.team, b.team));
     expect(rows).toEqual([
@@ -5043,16 +5258,16 @@ describe.sequential("declareStoredTable (real postgres)", () => {
       { team: "beta", total: 7 },
     ]);
 
-    await runStatements(reduced.delete());
+    await runStatements(reduced.delete(executionContext));
 
-    await runStatements(source.setRow("u3", expr(`'{"team":"alpha","value":20}'::jsonb`)));
-    await runStatements(source.deleteRow("u2"));
+    await runStatements(source.setRow(executionContext, "u3", expr(`'{"team":"alpha","value":20}'::jsonb`)));
+    await runStatements(source.deleteRow(executionContext, "u2"));
 
-    expect(await readBoolean(reduced.isInitialized())).toBe(false);
+    expect(await readBoolean(reduced.isInitialized(executionContext))).toBe(false);
 
-    await runStatements(reduced.init());
+    await runStatements(reduced.init(executionContext));
 
-    rows = (await readRows(reduced.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true })))
+    rows = (await readRows(reduced.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true })))
       .map((r: any) => r.rowdata)
       .sort((a: any, b: any) => stringCompare(a.team, b.team));
     expect(rows).toEqual([
@@ -5062,10 +5277,10 @@ describe.sequential("declareStoredTable (real postgres)", () => {
 
   test("toQueryableSqlQuery returns executable SQL", async () => {
     const table = declareStoredTable<{ value: number }>({ tableId: "users" });
-    await runStatements(table.init());
-    await runStatements(table.setRow("alpha", expr(`'{"value":1}'::jsonb`)));
+    await runStatements(table.init(executionContext));
+    await runStatements(table.setRow(executionContext, "alpha", expr(`'{"value":1}'::jsonb`)));
 
-    const query = table.listRowsInGroup({
+    const query = table.listRowsInGroup(executionContext, {
       groupKey: expr("'null'::jsonb"),
       start: expr("'null'::jsonb"),
       end: expr("'null'::jsonb"),
