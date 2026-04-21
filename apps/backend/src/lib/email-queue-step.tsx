@@ -651,15 +651,16 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
       const isDebited = await emailItem.tryDecreaseQuantity(1);
       if (!isDebited) {
         const errorMessage = "Monthly email sending limit exceeded for your plan. Please upgrade your plan or wait until next month.";
-        const errorEntry: SendAttemptError = {
-          attemptNumber: row.sendRetries + 1,
-          timestamp: new Date().toISOString(),
-          externalMessage: errorMessage,
-          externalDetails: { errorType: "monthly-email-limit-exceeded" },
-          internalMessage: errorMessage,
-          internalDetails: { errorType: "monthly-email-limit-exceeded", remainingQuota: emailItem.quantity, billingTeamId: context.billingTeamId },
-        };
-        const updatedErrors = appendSendAttemptError(row.sendAttemptErrors as SendAttemptError[] | null, errorEntry);
+        // Intentionally do NOT increment sendRetries or append to
+        // sendAttemptErrors. sendRetries tracks SMTP attempts, and a quota
+        // rejection never reaches SMTP; the DB-level
+        // EmailOutbox_sendAttemptErrors_requires_failure CHECK also forbids
+        // non-null sendAttemptErrors while sendRetries is 0. All the
+        // debugging info is captured in sendServerError* below. Keeping
+        // sendRetries at 0 means that if a future admin flow ever
+        // un-finalises this row (clearing finishedSendingAt), the
+        // `sendRetries === 0` quota gate above re-fires instead of being
+        // silently skipped.
         await globalPrismaClient.emailOutbox.update({
           where: {
             tenancyId_id: {
@@ -671,8 +672,6 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
           data: {
             finishedSendingAt: new Date(),
             canHaveDeliveryInfo: false,
-            sendRetries: row.sendRetries + 1,
-            sendAttemptErrors: updatedErrors as Prisma.InputJsonArray,
             sendServerErrorExternalMessage: errorMessage,
             sendServerErrorExternalDetails: { errorType: "monthly-email-limit-exceeded" },
             sendServerErrorInternalMessage: errorMessage,
