@@ -916,7 +916,7 @@ export default function PageClient() {
             try {
               r.pause();
             } catch {
-              // ignore
+              restartReplayerForTab(tabKey);
             }
           }
           break;
@@ -941,7 +941,7 @@ export default function PageClient() {
             try {
               r.setConfig({ speed: effect.speed });
             } catch {
-              // ignore
+              restartReplayerForTab(tabKey);
             }
           }
           break;
@@ -955,7 +955,7 @@ export default function PageClient() {
             try {
               r.setConfig({ skipInactive: effect.skipInactive });
             } catch {
-              // ignore
+              restartReplayerForTab(tabKey);
             }
           }
           if (!effect.skipInactive) setIsSkipping(false);
