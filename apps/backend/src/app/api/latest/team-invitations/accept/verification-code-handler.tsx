@@ -68,12 +68,27 @@ export const teamInvitationCodeHandler = createVerificationCodeHandler({
 
     return codeObj;
   },
-  async handler(tenancy, {}, data, body, user) {
+  async handler(tenancy, { email: invitedEmail }, data, body, user) {
     if (!user) throw new KnownErrors.UserAuthenticationRequired;
     if (user.restricted_reason) {
       throw new KnownErrors.TeamInvitationRestrictedUserNotAllowed(user.restricted_reason);
     }
     const prisma = await getPrismaClientForTenancy(tenancy);
+
+    // Accepter must own the invited email as a verified contact channel.
+    const invitedChannel = await prisma.contactChannel.findFirst({
+      where: {
+        tenancyId: tenancy.id,
+        projectUserId: user.id,
+        type: "EMAIL",
+        value: invitedEmail,
+        isVerified: true,
+      },
+      select: { id: true },
+    });
+    if (!invitedChannel) {
+      throw new KnownErrors.TeamInvitationEmailMismatch();
+    }
 
     if (tenancy.project.id === "internal") {
       const currentMemberCount = await prisma.teamMember.count({

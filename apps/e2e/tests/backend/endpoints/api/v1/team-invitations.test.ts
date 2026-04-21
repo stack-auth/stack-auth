@@ -1140,3 +1140,81 @@ it("can accept invitation by ID", async ({ expect }) => {
   });
   expect(listResponse.body.items).toHaveLength(0);
 });
+
+it("rejects accept when the signed-in user's email does not match the invited email", async ({ expect }) => {
+  // Without this check, anyone holding the 45-char code (forwarded email, insider with
+  // outbox access, leaked share) could accept the invitation as themselves. The handler
+  // must require that the accepting user actually owns the invited email.
+  await Project.createAndSwitch();
+  await Auth.fastSignUp();
+  const { teamId } = await Team.create();
+
+  const receiveMailbox = createMailbox();
+  backendContext.set({ userAuth: null });
+  await niceBackendFetch("/api/v1/team-invitations/send-code", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      email: receiveMailbox.emailAddress,
+      team_id: teamId,
+      callback_url: "http://localhost:12345/some-callback-url",
+    },
+  });
+
+  const invitationMessages = await receiveMailbox.waitForMessagesWithSubject("join");
+  const code = invitationMessages
+    .findLast((m) => m.subject.includes("join"))
+    ?.body?.text.match(/http:\/\/localhost:12345\/some-callback-url\?code=([a-zA-Z0-9]+)/)?.[1];
+  expect(code).toBeTruthy();
+
+  // A different user (different verified email) signs in and tries to redeem the code.
+  // This simulates an attacker who obtained the invitation link out of band.
+  await Auth.fastSignUp();
+
+  const acceptResponse = await niceBackendFetch("/api/v1/team-invitations/accept", {
+    method: "POST",
+    accessType: "client",
+    body: { code },
+  });
+  expect(acceptResponse.status).toBe(403);
+  expect(acceptResponse.body.code).toBe("TEAM_INVITATION_EMAIL_MISMATCH");
+
+  // The attacker should not have been added to the team.
+  const teamsResponse = await niceBackendFetch(`/api/v1/teams?user_id=me`, {
+    accessType: "client",
+    method: "GET",
+  });
+  expect(teamsResponse.body.items.find((item: any) => item.id === teamId)).toBeUndefined();
+});
+
+it("still allows the legitimate invitee with the matching verified email to accept", async ({ expect }) => {
+  // Complements the mismatch test: the new email-match check must not break the happy path.
+  await Project.createAndSwitch();
+  await Auth.fastSignUp();
+  const { teamId } = await Team.create();
+
+  const receiveMailbox = createMailbox();
+  backendContext.set({ userAuth: null });
+  await niceBackendFetch("/api/v1/team-invitations/send-code", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      email: receiveMailbox.emailAddress,
+      team_id: teamId,
+      callback_url: "http://localhost:12345/some-callback-url",
+    },
+  });
+
+  backendContext.set({ mailbox: receiveMailbox });
+  await Auth.fastSignUp({
+    primary_email: receiveMailbox.emailAddress,
+    primary_email_verified: true,
+  });
+  await Team.acceptInvitation();
+
+  const teamsResponse = await niceBackendFetch(`/api/v1/teams?user_id=me`, {
+    accessType: "client",
+    method: "GET",
+  });
+  expect(teamsResponse.body.items.find((item: any) => item.id === teamId)).toBeDefined();
+});
