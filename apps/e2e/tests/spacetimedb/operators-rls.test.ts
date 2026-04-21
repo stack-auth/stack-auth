@@ -1,14 +1,23 @@
-import { describe } from "vitest";
+import { afterEach, beforeEach, describe } from "vitest";
 import { it } from "../helpers";
 import { AiChatReviewer, niceBackendFetch } from "../backend/backend-helpers";
-import { callReducer, getSpacetimedbConfig, isSpacetimedbReachable, mintIdentity, sqlQuery } from "./helpers";
+import { callReducer, createCleanupScope, getSpacetimedbConfig, isSpacetimedbReachable, mintIdentity, sqlQuery, type CleanupScope } from "./helpers";
 
 const canRun = await isSpacetimedbReachable();
 const { logToken } = getSpacetimedbConfig();
 
 describe.skipIf(!canRun)("operators table RLS", () => {
+  let scope: CleanupScope;
+  beforeEach(() => {
+    scope = createCleanupScope();
+  });
+  afterEach(async () => {
+    await scope.cleanup();
+  });
+
   it("each reviewer sees only their own operators row", async ({ expect }) => {
     const a = await mintIdentity();
+    scope.trackIdentity(a.identity);
     await AiChatReviewer.createReviewer();
     const enrollA = await niceBackendFetch("/api/latest/internal/spacetimedb-enroll-reviewer", {
       method: "POST",
@@ -18,6 +27,7 @@ describe.skipIf(!canRun)("operators table RLS", () => {
     expect(enrollA.status).toBe(200);
 
     const b = await mintIdentity();
+    scope.trackIdentity(b.identity);
     await AiChatReviewer.createReviewer();
     const enrollB = await niceBackendFetch("/api/latest/internal/spacetimedb-enroll-reviewer", {
       method: "POST",
@@ -38,6 +48,7 @@ describe.skipIf(!canRun)("operators table RLS", () => {
   it("a freshly-minted non-operator identity sees zero operators rows", async ({ expect }) => {
     // Seed at least one operator so the table isn't empty.
     const seeded = await mintIdentity();
+    scope.trackIdentity(seeded.identity);
     await AiChatReviewer.createReviewer();
     const enroll = await niceBackendFetch("/api/latest/internal/spacetimedb-enroll-reviewer", {
       method: "POST",
@@ -56,6 +67,7 @@ describe.skipIf(!canRun)("operators table RLS", () => {
     // stackUserId before inserting a new identity — a reviewer switching browsers
     // should not accumulate stale operator rows.
     const x = await mintIdentity();
+    scope.trackIdentity(x.identity);
     await AiChatReviewer.createReviewer();
     const enrollX = await niceBackendFetch("/api/latest/internal/spacetimedb-enroll-reviewer", {
       method: "POST",
@@ -66,6 +78,7 @@ describe.skipIf(!canRun)("operators table RLS", () => {
 
     // Same reviewer (backendContext.userAuth unchanged) enrolls a second identity.
     const y = await mintIdentity();
+    scope.trackIdentity(y.identity);
     const enrollY = await niceBackendFetch("/api/latest/internal/spacetimedb-enroll-reviewer", {
       method: "POST",
       accessType: "client",
@@ -85,6 +98,7 @@ describe.skipIf(!canRun)("operators table RLS", () => {
     "remove_operator reducer revokes an operator's view access",
     async ({ expect }) => {
       const target = await mintIdentity();
+      scope.trackIdentity(target.identity);
       await AiChatReviewer.createReviewer();
       const enroll = await niceBackendFetch("/api/latest/internal/spacetimedb-enroll-reviewer", {
         method: "POST",

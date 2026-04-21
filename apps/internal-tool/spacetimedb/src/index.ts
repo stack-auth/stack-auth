@@ -50,7 +50,7 @@ const aiQueryLog = table(
   {
     id: t.u64().primaryKey().autoInc(),
     shard: t.u8().index('btree'),
-    correlationId: t.string(),
+    correlationId: t.string().unique(),
     createdAt: t.timestamp(),
     mode: t.string(),
     systemPromptId: t.string(),
@@ -487,6 +487,23 @@ export const log_ai_query = spacetimedb.reducer(
       mcpCorrelationId: args.mcpCorrelationId,
       conversationId: args.conversationId,
     } as Parameters<typeof ctx.db.aiQueryLog.insert>[0]);
+  }
+);
+
+export const delete_ai_query_log = spacetimedb.reducer(
+  {
+    token: t.string(),
+    correlationId: t.string(),
+  },
+  (ctx, args) => {
+    if (args.token !== EXPECTED_LOG_TOKEN) {
+      throw new SenderError('Invalid log token');
+    }
+    const row = ctx.db.aiQueryLog.correlationId.find(args.correlationId);
+    if (row == null) {
+      throw new SenderError('Log entry not found for correlationId: ' + args.correlationId);
+    }
+    ctx.db.aiQueryLog.id.delete(row.id);
   }
 );
 

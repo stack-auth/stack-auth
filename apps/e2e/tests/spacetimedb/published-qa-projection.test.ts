@@ -1,7 +1,7 @@
-import { describe } from "vitest";
+import { afterEach, beforeEach, describe } from "vitest";
 import { it } from "../helpers";
 import { AiChatReviewer, niceBackendFetch } from "../backend/backend-helpers";
-import { isSpacetimedbReachable, mintIdentity, sqlQuery } from "./helpers";
+import { createCleanupScope, isSpacetimedbReachable, mintIdentity, sqlQuery, type CleanupScope } from "./helpers";
 
 const canRun = await isSpacetimedbReachable();
 
@@ -30,8 +30,17 @@ const FORBIDDEN_COLUMNS = [
 ];
 
 describe.skipIf(!canRun)("published_qa view projection", () => {
+  let scope: CleanupScope;
+  beforeEach(() => {
+    scope = createCleanupScope();
+  });
+  afterEach(async () => {
+    await scope.cleanup();
+  });
+
   it("exposes only {id, question, answer, publishedAt} — no reviewer or QA internals", async ({ expect }) => {
     const reviewerIdentity = await mintIdentity();
+    scope.trackIdentity(reviewerIdentity.identity);
     await AiChatReviewer.createReviewer();
     const enroll = await niceBackendFetch("/api/latest/internal/spacetimedb-enroll-reviewer", {
       method: "POST",
@@ -41,6 +50,7 @@ describe.skipIf(!canRun)("published_qa view projection", () => {
     expect(enroll.status).toBe(200);
 
     const markerQuestion = `test-projection-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    scope.trackMcpQuestion(markerQuestion);
     const markerAnswer = "answer-for-projection-test";
 
     const publish = await niceBackendFetch("/api/latest/internal/mcp-review/add-manual", {

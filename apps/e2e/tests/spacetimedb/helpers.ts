@@ -114,6 +114,82 @@ export async function findCorrelationIdByQuestion(
   return typeof raw === "string" ? raw : undefined;
 }
 
+/**
+ * Per-test collector for anything these tests drop into SpacetimeDB so
+ * `afterEach` can wipe it. Without this, each CI run would accumulate
+ * stale operators, mcp_call_log rows, and ai_query_log rows against the
+ * shared scratch DB.
+ *
+ * Deletions use the log token (skip if unavailable). MCP call log rows are
+ * looked up by their `question` marker — callers should pass a unique marker
+ * (`Date.now() + random` is enough). Cleanup is best-effort: individual
+ * failures are swallowed so one bad row doesn't leave the rest behind.
+ */
+export type CleanupScope = {
+  trackIdentity: (identity: string) => void,
+  trackMcpQuestion: (question: string) => void,
+  trackAiQueryCorrelationId: (correlationId: string) => void,
+  cleanup: () => Promise<void>,
+};
+
+export function createCleanupScope(): CleanupScope {
+  const identities = new Set<string>();
+  const questions = new Set<string>();
+  const aiQueryCorrelationIds = new Set<string>();
+
+  return {
+    trackIdentity: (identity) => { identities.add(identity); },
+    trackMcpQuestion: (question) => { questions.add(question); },
+    trackAiQueryCorrelationId: (correlationId) => { aiQueryCorrelationIds.add(correlationId); },
+    async cleanup() {
+      const { logToken } = getSpacetimedbConfig();
+      if (!logToken) {
+        // Without the log token we can't call any deletion reducer. Leaving
+        // state is fine here — the tests that actually write data skip in
+        // the same configuration.
+        identities.clear();
+        questions.clear();
+        aiQueryCorrelationIds.clear();
+        return;
+      }
+
+      // Enroll a throwaway operator so findCorrelationIdByQuestion (which
+      // reads my_visible_mcp_call_log) returns rows we can match on.
+      const caller = await mintIdentity().catch(() => null);
+      if (caller == null) return;
+
+      try {
+        await callReducer(caller.token, "add_operator", [
+          logToken,
+          [`0x${caller.identity}`],
+          `__cleanup__-${caller.identity}`,
+          "Cleanup Scope",
+        ]).catch(() => undefined);
+
+        for (const question of questions) {
+          const cid = await findCorrelationIdByQuestion(caller.token, question).catch(() => undefined);
+          if (cid) {
+            await callReducer(caller.token, "delete_qa_entry", [logToken, cid]).catch(() => undefined);
+          }
+        }
+
+        for (const correlationId of aiQueryCorrelationIds) {
+          await callReducer(caller.token, "delete_ai_query_log", [logToken, correlationId]).catch(() => undefined);
+        }
+
+        for (const identity of identities) {
+          await callReducer(caller.token, "remove_operator", [logToken, [`0x${identity}`]]).catch(() => undefined);
+        }
+      } finally {
+        await callReducer(caller.token, "remove_operator", [logToken, [`0x${caller.identity}`]]).catch(() => undefined);
+        identities.clear();
+        questions.clear();
+        aiQueryCorrelationIds.clear();
+      }
+    },
+  };
+}
+
 export async function sqlQuery(token: string, sql: string): Promise<SqlQueryResult> {
   const { baseUrl, dbName } = getSpacetimedbConfig();
   const res = await fetch(`${baseUrl}/v1/database/${encodeURIComponent(dbName)}/sql`, {

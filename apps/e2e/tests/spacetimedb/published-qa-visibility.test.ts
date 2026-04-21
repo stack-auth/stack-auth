@@ -1,7 +1,7 @@
-import { describe } from "vitest";
+import { afterEach, beforeEach, describe } from "vitest";
 import { it } from "../helpers";
 import { AiChatReviewer, niceBackendFetch } from "../backend/backend-helpers";
-import { findCorrelationIdByQuestion, isSpacetimedbReachable, mintIdentity, sqlQuery } from "./helpers";
+import { createCleanupScope, findCorrelationIdByQuestion, isSpacetimedbReachable, mintIdentity, sqlQuery, type CleanupScope } from "./helpers";
 
 const canRun = await isSpacetimedbReachable();
 
@@ -16,8 +16,17 @@ async function publishedQaContains(question: string): Promise<boolean> {
 }
 
 describe.skipIf(!canRun)("published_qa visibility", () => {
+  let scope: CleanupScope;
+  beforeEach(() => {
+    scope = createCleanupScope();
+  });
+  afterEach(async () => {
+    await scope.cleanup();
+  });
+
   it("does not expose rows added with publish:false", async ({ expect }) => {
     const reviewer = await mintIdentity();
+    scope.trackIdentity(reviewer.identity);
     await AiChatReviewer.createReviewer();
     const enroll = await niceBackendFetch("/api/latest/internal/spacetimedb-enroll-reviewer", {
       method: "POST",
@@ -27,6 +36,7 @@ describe.skipIf(!canRun)("published_qa visibility", () => {
     expect(enroll.status).toBe(200);
 
     const marker = uniqueMarker("unpublished");
+    scope.trackMcpQuestion(marker);
     const add = await niceBackendFetch("/api/latest/internal/mcp-review/add-manual", {
       method: "POST",
       accessType: "client",
@@ -39,6 +49,7 @@ describe.skipIf(!canRun)("published_qa visibility", () => {
 
   it("removes a row from published_qa when update-correction sets publish:false", async ({ expect }) => {
     const reviewer = await mintIdentity();
+    scope.trackIdentity(reviewer.identity);
     await AiChatReviewer.createReviewer();
     const enroll = await niceBackendFetch("/api/latest/internal/spacetimedb-enroll-reviewer", {
       method: "POST",
@@ -48,6 +59,7 @@ describe.skipIf(!canRun)("published_qa visibility", () => {
     expect(enroll.status).toBe(200);
 
     const marker = uniqueMarker("to-unpublish");
+    scope.trackMcpQuestion(marker);
     const add = await niceBackendFetch("/api/latest/internal/mcp-review/add-manual", {
       method: "POST",
       accessType: "client",
@@ -76,6 +88,7 @@ describe.skipIf(!canRun)("published_qa visibility", () => {
 
   it("removes a row from published_qa when deleted", async ({ expect }) => {
     const reviewer = await mintIdentity();
+    scope.trackIdentity(reviewer.identity);
     await AiChatReviewer.createReviewer();
     const enroll = await niceBackendFetch("/api/latest/internal/spacetimedb-enroll-reviewer", {
       method: "POST",
@@ -85,6 +98,7 @@ describe.skipIf(!canRun)("published_qa visibility", () => {
     expect(enroll.status).toBe(200);
 
     const marker = uniqueMarker("to-delete");
+    scope.trackMcpQuestion(marker);
     const add = await niceBackendFetch("/api/latest/internal/mcp-review/add-manual", {
       method: "POST",
       accessType: "client",
@@ -109,6 +123,7 @@ describe.skipIf(!canRun)("published_qa visibility", () => {
   it("lets reviewer B delete a row published by reviewer A (cross-reviewer integrity)", async ({ expect }) => {
     // A publishes.
     const reviewerA = await mintIdentity();
+    scope.trackIdentity(reviewerA.identity);
     await AiChatReviewer.createReviewer();
     const enrollA = await niceBackendFetch("/api/latest/internal/spacetimedb-enroll-reviewer", {
       method: "POST",
@@ -118,6 +133,7 @@ describe.skipIf(!canRun)("published_qa visibility", () => {
     expect(enrollA.status).toBe(200);
 
     const marker = uniqueMarker("cross-reviewer");
+    scope.trackMcpQuestion(marker);
     const add = await niceBackendFetch("/api/latest/internal/mcp-review/add-manual", {
       method: "POST",
       accessType: "client",
@@ -131,6 +147,7 @@ describe.skipIf(!canRun)("published_qa visibility", () => {
 
     // B deletes. fastSignUp re-points backendContext.userAuth to B; subsequent calls use B's auth.
     const reviewerB = await mintIdentity();
+    scope.trackIdentity(reviewerB.identity);
     await AiChatReviewer.createReviewer();
     const enrollB = await niceBackendFetch("/api/latest/internal/spacetimedb-enroll-reviewer", {
       method: "POST",

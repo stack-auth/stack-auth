@@ -1,16 +1,29 @@
-import { describe } from "vitest";
+import { afterEach, beforeEach, describe } from "vitest";
 import { it } from "../helpers";
 import { AiChatReviewer, niceBackendFetch } from "../backend/backend-helpers";
-import { callReducer, getSpacetimedbConfig, isSpacetimedbReachable, mintIdentity, opt, sqlQuery } from "./helpers";
+import { callReducer, createCleanupScope, getSpacetimedbConfig, isSpacetimedbReachable, mintIdentity, opt, sqlQuery, type CleanupScope } from "./helpers";
 
 const canRun = await isSpacetimedbReachable();
 const { logToken } = getSpacetimedbConfig();
 
+function uniqueMarker(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 describe.skipIf(!canRun)("SpacetimeDB reducer auth", () => {
+  let scope: CleanupScope;
+  beforeEach(() => {
+    scope = createCleanupScope();
+  });
+  afterEach(async () => {
+    await scope.cleanup();
+  });
+
   it("a freshly-minted non-operator identity sees zero rows in my_visible_mcp_call_log", async ({ expect }) => {
     // Seed a published row so the underlying mcp_call_log is definitely non-empty —
     // otherwise a 0-row result could be a false positive from an empty table.
     const reviewerIdentity = await mintIdentity();
+    scope.trackIdentity(reviewerIdentity.identity);
     await AiChatReviewer.createReviewer();
     const enroll = await niceBackendFetch("/api/latest/internal/spacetimedb-enroll-reviewer", {
       method: "POST",
@@ -18,10 +31,12 @@ describe.skipIf(!canRun)("SpacetimeDB reducer auth", () => {
       body: { identity: reviewerIdentity.identity },
     });
     expect(enroll.status).toBe(200);
+    const seedMarker = uniqueMarker("reducer-auth-seed");
+    scope.trackMcpQuestion(seedMarker);
     const seedPublish = await niceBackendFetch("/api/latest/internal/mcp-review/add-manual", {
       method: "POST",
       accessType: "client",
-      body: { question: "q", answer: "a", publish: false },
+      body: { question: seedMarker, answer: "a", publish: false },
     });
     expect(seedPublish.status).toBe(200);
 
@@ -78,6 +93,7 @@ describe.skipIf(!canRun)("SpacetimeDB reducer auth", () => {
     async ({ expect }) => {
       // Enroll identity X with stackUserId=A via the backend endpoint (legitimate flow).
       const target = await mintIdentity();
+      scope.trackIdentity(target.identity);
       const callerA = await mintIdentity();
       await AiChatReviewer.createReviewer();
       const enrollA = await niceBackendFetch("/api/latest/internal/spacetimedb-enroll-reviewer", {

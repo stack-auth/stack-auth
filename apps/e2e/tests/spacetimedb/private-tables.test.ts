@@ -1,12 +1,24 @@
-import { describe } from "vitest";
+import { afterEach, beforeEach, describe } from "vitest";
 import { it } from "../helpers";
 import { AiChatReviewer, niceBackendFetch } from "../backend/backend-helpers";
-import { callReducer, getSpacetimedbConfig, isSpacetimedbReachable, mintIdentity, opt, sqlQuery } from "./helpers";
+import { callReducer, createCleanupScope, getSpacetimedbConfig, isSpacetimedbReachable, mintIdentity, opt, sqlQuery, type CleanupScope } from "./helpers";
 
 const canRun = await isSpacetimedbReachable();
 const { logToken } = getSpacetimedbConfig();
 
+function uniqueMarker(prefix: string): string {
+  return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 describe.skipIf(!canRun)("private log tables and view gating", () => {
+  let scope: CleanupScope;
+  beforeEach(() => {
+    scope = createCleanupScope();
+  });
+  afterEach(async () => {
+    await scope.cleanup();
+  });
+
   // my_visible_ai_query_log is the counterpart to my_visible_mcp_call_log. Seeding
   // requires the log token (no user-facing endpoint writes to ai_query_log), so
   // skip when unavailable rather than asserting against an empty table.
@@ -14,9 +26,11 @@ describe.skipIf(!canRun)("private log tables and view gating", () => {
     "a freshly-minted non-operator identity sees zero rows in my_visible_ai_query_log",
     async ({ expect }) => {
       const seeder = await mintIdentity();
+      const aiQueryCorrelationId = uniqueMarker("ai-query-corr");
+      scope.trackAiQueryCorrelationId(aiQueryCorrelationId);
       const seed = await callReducer(seeder.token, "log_ai_query", [
         logToken!,
-        `corr-${Date.now()}`,
+        aiQueryCorrelationId,
         "chat",
         "system-prompt-id",
         "high",
@@ -50,6 +64,7 @@ describe.skipIf(!canRun)("private log tables and view gating", () => {
   it("cannot subscribe to the private mcp_call_log table directly", async ({ expect }) => {
     // Seed a row so the table isn't empty — we're testing access control, not emptiness.
     const seeder = await mintIdentity();
+    scope.trackIdentity(seeder.identity);
     await AiChatReviewer.createReviewer();
     const enroll = await niceBackendFetch("/api/latest/internal/spacetimedb-enroll-reviewer", {
       method: "POST",
@@ -57,10 +72,12 @@ describe.skipIf(!canRun)("private log tables and view gating", () => {
       body: { identity: seeder.identity },
     });
     expect(enroll.status).toBe(200);
+    const seedMarker = uniqueMarker("private-mcp-seed");
+    scope.trackMcpQuestion(seedMarker);
     const seed = await niceBackendFetch("/api/latest/internal/mcp-review/add-manual", {
       method: "POST",
       accessType: "client",
-      body: { question: "seeded", answer: "a", publish: false },
+      body: { question: seedMarker, answer: "a", publish: false },
     });
     expect(seed.status).toBe(200);
 
@@ -87,9 +104,11 @@ describe.skipIf(!canRun)("private log tables and view gating", () => {
     "cannot subscribe to the private ai_query_log table directly",
     async ({ expect }) => {
       const seeder = await mintIdentity();
+      const aiQueryCorrelationId = uniqueMarker("ai-query-corr");
+      scope.trackAiQueryCorrelationId(aiQueryCorrelationId);
       const seed = await callReducer(seeder.token, "log_ai_query", [
         logToken!,
-        `corr-${Date.now()}`,
+        aiQueryCorrelationId,
         "chat",
         "system-prompt-id",
         "high",
