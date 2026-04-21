@@ -12,6 +12,7 @@
     "typecheck": "pnpm pre && turbo typecheck --",
     "build:dev": "pnpm pre && NODE_ENV=development pnpm run build",
     "build": "pnpm pre && turbo build",
+    "cli": "pnpm pre && pnpm run --filter=@stackframe/stack-cli build && node packages/stack-cli/dist/index.js",
     "build:backend": "pnpm pre && turbo run build --filter=@stackframe/backend...",
     "build:dashboard": "pnpm pre && turbo run build --filter=@stackframe/dashboard...",
     "build:demo": "pnpm pre && turbo run build --filter=demo-app...",
