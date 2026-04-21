@@ -255,10 +255,12 @@ RequestLike object:
 
   This exists as a simplified way to support common backend frameworks in a more accessible way than the `{ accessToken: string, refreshToken: string }` one.
   
-  Extract tokens from the x-stack-auth header:
-  1. Get header value: headers.get("x-stack-auth")
-  2. Parse as JSON: { accessToken: string, refreshToken: string }
-  3. Use those tokens for authentication
+  Extract tokens from request headers:
+  1. Preferred: `Authorization` header in this format:
+     `Bearer stackauth_<base64({ "accessToken": "...", "refreshToken": "..." })>`
+  2. Legacy fallback: `x-stack-auth` JSON header
+     (`{ "accessToken": string, "refreshToken": string }`)
+  3. If neither auth header exists, read from cookies
 
 null:
   No token storage. When the constructor's tokenStore is null, the tokenStore
@@ -294,12 +296,18 @@ This does NOT apply to explicit token stores (`{ accessToken, refreshToken }`),
 custom stores, or null stores - those are always created fresh per use.
 
 
-### x-stack-auth Header Format
+### Authorization Header Format
 
 For cross-origin requests or server-side handling, use this header:
+  Authorization: Bearer stackauth_<base64({ "accessToken": "<token>", "refreshToken": "<token>" })>
+
+Use getAuthorizationHeader() to generate this header value.
+
+### Legacy x-stack-auth Header Format
+
+For backwards compatibility, request-like token stores also accept:
   x-stack-auth: { "accessToken": "<token>", "refreshToken": "<token>" }
 
-JSON-encoded object with both tokens.
 Use getAuthHeaders() to generate this header value.
 
 ## MFA Handling Pattern

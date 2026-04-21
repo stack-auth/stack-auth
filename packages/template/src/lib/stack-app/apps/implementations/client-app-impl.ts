@@ -19,7 +19,7 @@ import { TeamsCrud } from "@stackframe/stack-shared/dist/interface/crud/teams";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields";
 import { InternalSession } from "@stackframe/stack-shared/dist/sessions";
-import { decodeBase32, encodeBase32 } from "@stackframe/stack-shared/dist/utils/bytes";
+import { decodeBase32, decodeBase64, encodeBase32, encodeBase64 } from "@stackframe/stack-shared/dist/utils/bytes";
 import { scrambleDuringCompileTime } from "@stackframe/stack-shared/dist/utils/compile-time";
 import { isBrowserLike } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
@@ -83,6 +83,59 @@ const NextNavigation = scrambleDuringCompileTime(NextNavigationUnscrambled);
 const prefetchedCrossDomainHandoffTtlMs = 55 * 60 * 1000;
 
 const allClientApps = new Map<string, [checkString: string | undefined, app: StackClientApp<any, any>]>();
+const STACK_AUTHORIZATION_VALUE_PREFIX = "stackauth_";
+
+function getAuthorizationHeaderValueFromAuthJson(authJson: { accessToken: string | null, refreshToken: string | null }): string | null {
+  if (authJson.accessToken == null && authJson.refreshToken == null) {
+    return null;
+  }
+
+  const encodedAuthJson = encodeBase64(new TextEncoder().encode(JSON.stringify(authJson)));
+  return `Bearer ${STACK_AUTHORIZATION_VALUE_PREFIX}${encodedAuthJson}`;
+}
+
+function getAuthJsonFromAuthorizationHeaderValue(authorizationHeaderValue: string): { accessToken: string | null, refreshToken: string | null } | null {
+  const match = authorizationHeaderValue.match(/^Bearer\s+(.+)$/i);
+  if (match == null) {
+    return null;
+  }
+
+  const credential = match[1].trim();
+  if (!credential.startsWith(STACK_AUTHORIZATION_VALUE_PREFIX)) {
+    return null;
+  }
+
+  const encodedAuthJson = credential.slice(STACK_AUTHORIZATION_VALUE_PREFIX.length);
+  if (encodedAuthJson.length === 0) {
+    throw new Error("Invalid Authorization header format. Expected `Bearer stackauth_<base64(getAuthJson())>`.");
+  }
+
+  let parsed: unknown;
+  try {
+    const decodedAuthJson = new TextDecoder().decode(decodeBase64(encodedAuthJson));
+    parsed = JSON.parse(decodedAuthJson);
+  } catch (e) {
+    throw new Error(`Invalid stackauth authorization header: ${authorizationHeaderValue}`, { cause: e });
+  }
+
+  if (parsed == null || typeof parsed !== "object" || Array.isArray(parsed)) {
+    throw new Error("Invalid stackauth authorization payload. Expected an object.");
+  }
+
+  const accessToken = Reflect.get(parsed, "accessToken");
+  const refreshToken = Reflect.get(parsed, "refreshToken");
+  if (accessToken != null && typeof accessToken !== "string") {
+    throw new Error("Invalid stackauth authorization payload. `accessToken` must be a string or null.");
+  }
+  if (refreshToken != null && typeof refreshToken !== "string") {
+    throw new Error("Invalid stackauth authorization payload. `refreshToken` must be a string or null.");
+  }
+
+  return {
+    accessToken: accessToken ?? null,
+    refreshToken: refreshToken ?? null,
+  };
+}
 
 type StackClientAppImplConstructorOptionsResolved<HasTokenStore extends boolean, ProjectId extends string> = StackClientAppConstructorOptions<HasTokenStore, ProjectId> & { inheritsFrom?: undefined };
 
@@ -985,8 +1038,22 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         } else if (typeof tokenStoreInit === "object" && "headers" in tokenStoreInit) {
           if (this._requestTokenStores.has(tokenStoreInit)) return this._requestTokenStores.get(tokenStoreInit)!;
 
-          // x-stack-auth header
-          const stackAuthHeader = tokenStoreInit.headers.get("x-stack-auth");
+          // Authorization header (recommended)
+          const authorizationHeader = tokenStoreInit.headers.get("authorization") ?? tokenStoreInit.headers.get("Authorization");
+          if (authorizationHeader) {
+            const authJson = getAuthJsonFromAuthorizationHeaderValue(authorizationHeader);
+            if (authJson != null) {
+              const tokenStore = new Store<TokenObject>({
+                accessToken: authJson.accessToken,
+                refreshToken: authJson.refreshToken,
+              });
+              this._requestTokenStores.set(tokenStoreInit, tokenStore);
+              return tokenStore;
+            }
+          }
+
+          // x-stack-auth header (legacy)
+          const stackAuthHeader = tokenStoreInit.headers.get("x-stack-auth") ?? tokenStoreInit.headers.get("X-Stack-Auth");
           if (stackAuthHeader) {
             let parsed;
             try {
@@ -1509,6 +1576,14 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       // IF_PLATFORM react-like
       useRefreshToken(): string | null {
         return this.currentSession.useTokens().refreshToken;
+      },
+      // END_PLATFORM
+      async getAuthorizationHeader(): Promise<string | null> {
+        return getAuthorizationHeaderValueFromAuthJson(await this.getAuthJson());
+      },
+      // IF_PLATFORM react-like
+      useAuthorizationHeader(): string | null {
+        return getAuthorizationHeaderValueFromAuthJson(this.useAuthJson());
       },
       // END_PLATFORM
       async getAuthHeaders(): Promise<{ "x-stack-auth": string }> {
@@ -3294,6 +3369,16 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       return user.useRefreshToken();
     }
     return null;
+  }
+  // END_PLATFORM
+
+  async getAuthorizationHeader(options?: { tokenStore?: TokenStoreInit }): Promise<string | null> {
+    return getAuthorizationHeaderValueFromAuthJson(await this.getAuthJson(options));
+  }
+
+  // IF_PLATFORM react-like
+  useAuthorizationHeader(options?: { tokenStore?: TokenStoreInit }): string | null {
+    return getAuthorizationHeaderValueFromAuthJson(this.useAuthJson(options));
   }
   // END_PLATFORM
 

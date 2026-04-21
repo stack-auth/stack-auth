@@ -81,6 +81,8 @@ Use `useUser()` to get `CurrentUser` (client). Use `stackServerApp.getUser()` to
   delete(): Promise<void>; //$stack-link-to:#currentuserdelete
   toClientJson(): CurrentUserCrud["Client"]["Read"]; //$stack-link-to:#currentusertoclientjson
 
+  getAuthorizationHeader(): Promise<string | null>; //$stack-link-to:#currentusergetauthorizationheader
+  useAuthorizationHeader(): string | null; //$stack-link-to:#currentuseruseauthorizationheader
   getAuthHeaders(): Promise<Record<string, string>>; //$stack-link-to:#currentusergetauthheaders
   useAuthHeaders(): Record<string, string>; //$stack-link-to:#currentuseruseauthheaders
   getAccessToken(): Promise<string | null>; //$stack-link-to:#currentusergetaccesstoken
@@ -667,10 +669,53 @@ Use `useUser()` to get `CurrentUser` (client). Use `stackServerApp.getUser()` to
 
 ## Authentication
 
+<CurrentUserSection type="currentUser" property="getAuthorizationHeader" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Returns the HTTP `Authorization` header value in `Bearer stackauth_&lt;base64(getAuthJson())&gt;` format for authenticated requests.
+      Returns `null` if the user is not signed in.
+      If you are not using HTTP, use `getAuthJson()` instead.
+
+      <MethodReturns type="Promise<string | null>" />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function getAuthorizationHeader(): Promise<string | null>;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
+<CurrentUserSection type="currentUser" property="useAuthorizationHeader" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      React hook that returns the HTTP `Authorization` header value in `Bearer stackauth_&lt;base64(getAuthJson())&gt;` format.
+      Returns `null` if the user is not signed in.
+
+      <MethodReturns type='string | null' />
+    </MethodContent>
+
+    <MethodAside>
+      <AsideSection title="Signature">
+        ```typescript
+        declare function useAuthorizationHeader(): string | null;
+        ```
+      </AsideSection>
+    </MethodAside>
+
+  </MethodLayout>
+</CurrentUserSection>
+
 <CurrentUserSection type="currentUser" property="getAuthHeaders" defaultOpen={false}>
   <MethodLayout>
     <MethodContent>
-      Returns headers for cross-origin authenticated requests.
+      **Deprecated:** Use `getAuthorizationHeader()` instead.
+
+      Returns legacy `x-stack-auth` headers for cross-origin authenticated requests.
 
       <MethodReturns type="Promise<Record<string, string>>" />
     </MethodContent>
@@ -689,7 +734,9 @@ Use `useUser()` to get `CurrentUser` (client). Use `stackServerApp.getUser()` to
 <CurrentUserSection type="currentUser" property="useAuthHeaders" defaultOpen={false}>
   <MethodLayout>
     <MethodContent>
-      React hook that returns authentication headers for cross-origin requests.
+      **Deprecated:** Use `useAuthorizationHeader()` instead.
+
+      React hook that returns legacy `x-stack-auth` headers for cross-origin requests.
 
       <MethodReturns type='Record<string, string>' />
     </MethodContent>

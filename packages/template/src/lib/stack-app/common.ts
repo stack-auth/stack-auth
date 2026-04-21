@@ -125,31 +125,32 @@ export type AuthLike<ExtraOptions = {}> = {
   useRefreshToken(options?: {} & ExtraOptions): string | null, // THIS_LINE_PLATFORM react-like
 
   /**
-   * Returns headers for sending authenticated HTTP requests to external servers. Most commonly used in cross-origin
-   * requests. Similar to `getAuthJson`, but specifically for HTTP requests.
+   * Returns the value for the HTTP `Authorization` header for authenticated requests to external servers.
+   * Most commonly used in cross-origin requests. Similar to `getAuthJson`, but specifically for HTTP requests.
    *
    * If you are using `tokenStore: "cookie"`, you don't need this for same-origin requests. However, most
    * browsers now disable third-party cookies by default, so we must pass authentication tokens by header instead
    * if the client and server are on different origins.
    *
-   * This function returns a header object that can be used with `fetch` or other HTTP request libraries to send
-   * authenticated requests.
+   * This function returns the header value in this format:
+   * `Bearer stackauth_<base64(getAuthJson())>`, or `null` if the user is not signed in.
+   * You can use this with `fetch` or other HTTP request libraries to send authenticated requests.
    *
    * On the server, you can then pass in the `Request` object to the `tokenStore` option
    * of your Stack app. Please note that CORS does not allow most headers by default, so you
-   * must include `x-stack-auth` in the [`Access-Control-Allow-Headers` header](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Headers)
+   * must include `authorization` in the [`Access-Control-Allow-Headers` header](https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Headers)
    * of the CORS preflight response.
    *
-   * If you are not using HTTP (and hence cannot set headers), you will need to use the `getAccessToken()` and
-   * `getRefreshToken()` functions instead.
+   * If you are not using HTTP (and hence cannot set headers), use `getAuthJson()` instead.
    *
    * Example:
    *
    * ```ts
    * // client
+   * const authorizationHeader = await stackApp.getAuthorizationHeader();
    * const res = await fetch("https://api.example.com", {
    *   headers: {
-   *     ...await stackApp.getAuthHeaders()
+   *     ...(authorizationHeader ? { Authorization: authorizationHeader } : {})
    *     // you can also add your own headers here
    *   },
    * });
@@ -161,17 +162,25 @@ export type AuthLike<ExtraOptions = {}> = {
    * }
    * ```
    */
+  getAuthorizationHeader(options?: {} & ExtraOptions): Promise<string | null>,
+  useAuthorizationHeader(options?: {} & ExtraOptions): string | null, // THIS_LINE_PLATFORM react-like
+
+  /**
+   * @deprecated Use `getAuthorizationHeader()` instead.
+   *
+   * Returns the legacy `x-stack-auth` headers for authenticated HTTP requests. This remains for backwards
+   * compatibility with existing integrations.
+   */
   getAuthHeaders(options?: {} & ExtraOptions): Promise<{ "x-stack-auth": string }>,
+  /** @deprecated Use `useAuthorizationHeader()` instead. */
   useAuthHeaders(options?: {} & ExtraOptions): { "x-stack-auth": string }, // THIS_LINE_PLATFORM react-like
 
   /**
-   * @deprecated Use `getAccessToken()` and `getRefreshToken()` instead.
-   *
    * Creates a JSON-serializable object containing the information to authenticate a user on an external server.
-   * Similar to `getAuthHeaders`, but returns an object that can be sent over any protocol instead of just
+   * Similar to `getAuthorizationHeader`, but returns an object that can be sent over any protocol instead of just
    * HTTP headers.
    *
-   * While `getAuthHeaders` is the recommended way to send authentication tokens over HTTP, your app may use
+   * While `getAuthorizationHeader` is the recommended way to send authentication tokens over HTTP, your app may use
    * a different protocol, for example WebSockets or gRPC. This function returns a token object that can be JSON-serialized and sent to the server in any way you like.
    *
    * On the server, you can pass in this token object into the `tokenStore` option to fetch user details.
@@ -194,7 +203,6 @@ export type AuthLike<ExtraOptions = {}> = {
    * ```
    */
   getAuthJson(options?: {} & ExtraOptions): Promise<{ accessToken: string | null, refreshToken: string | null }>,
-  /** @deprecated Use `useAccessToken()` and `useRefreshToken()` instead. */
   useAuthJson(options?: {} & ExtraOptions): { accessToken: string | null, refreshToken: string | null }, // THIS_LINE_PLATFORM react-like
 };
 

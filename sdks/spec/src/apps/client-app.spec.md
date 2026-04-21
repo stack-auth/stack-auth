@@ -448,7 +448,28 @@ Panics:
   This is a programmer error - the code should be fixed to provide a tokenStore.
 
 
+## getAuthorizationHeader(options?)
+
+Arguments:
+  options.tokenStore: TokenStoreInit? - override token storage for this call
+
+Returns: string | null
+
+Get current tokens and return the Authorization header value:
+  Bearer stackauth_<base64({ "accessToken": "...", "refreshToken": "..." })>
+
+Returns null if not authenticated.
+
+For cross-origin authenticated requests where cookies can't be sent.
+
+Panics:
+  If constructor tokenStore was null and no tokenStore override is provided.
+  This is a programmer error - the code should be fixed to provide a tokenStore.
+
+
 ## getAuthHeaders(options?)
+
+@deprecated Use getAuthorizationHeader(options?).
 
 Arguments:
   options.tokenStore: TokenStoreInit? - override token storage for this call

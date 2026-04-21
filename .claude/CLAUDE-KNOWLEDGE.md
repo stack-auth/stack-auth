@@ -358,3 +358,6 @@ A: API v1 requests are routed through the `v2beta1` migration. The migration wra
 
 ### Q: What's the reliable way to run targeted tests across backend, dashboard, stack-shared, and e2e at once?
 A: Run from the monorepo root with explicit file paths: `pnpm test run "<path1>" "<path2>" ...`. This works even when individual packages do not define a local `test` script. Also avoid passing an extra `run` argument to package-level `test` scripts that already execute `vitest run`.
+
+### Q: What's the new Authorization header format for Stack token forwarding?
+A: Use `getAuthorizationHeader()`, which returns `Bearer stackauth_<base64(getAuthJson())>`. The payload encodes both `accessToken` and `refreshToken`, and request-like token stores should parse this format first, with legacy `x-stack-auth` remaining as a backward-compatible fallback.

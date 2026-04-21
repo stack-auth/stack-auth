@@ -114,6 +114,7 @@ function HookBasedTokens() {
   // Using the hook variants
   const accessToken = (user as any).useAccessToken?.() ?? null;
   const refreshToken = (user as any).useRefreshToken?.() ?? null;
+  const authorizationHeader = (user as any).useAuthorizationHeader?.() ?? null;
   const authHeaders = (user as any).useAuthHeaders?.() ?? null;
   const authJson = (user as any).useAuthJson?.() ?? null;
   const sessionTokens = user.currentSession.useTokens();
@@ -121,6 +122,7 @@ function HookBasedTokens() {
   // App-level hooks
   const appAccessToken = (app as any).useAccessToken?.() ?? null;
   const appRefreshToken = (app as any).useRefreshToken?.() ?? null;
+  const appAuthorizationHeader = (app as any).useAuthorizationHeader?.() ?? null;
   const appAuthHeaders = (app as any).useAuthHeaders?.() ?? null;
   const appAuthJson = (app as any).useAuthJson?.() ?? null;
 
@@ -136,8 +138,9 @@ function HookBasedTokens() {
 
         <TokenDisplay label="user.useAccessToken()" value={accessToken} showDecoded />
         <TokenDisplay label="user.useRefreshToken()" value={refreshToken} />
-        <JsonDisplay label="user.useAuthHeaders()" value={authHeaders} />
-        <JsonDisplay label="user.useAuthJson() [deprecated]" value={authJson} accessTokenKey="accessToken" />
+        <TokenDisplay label="user.useAuthorizationHeader()" value={authorizationHeader} />
+        <JsonDisplay label="user.useAuthHeaders() [deprecated]" value={authHeaders} />
+        <JsonDisplay label="user.useAuthJson()" value={authJson} accessTokenKey="accessToken" />
         <JsonDisplay label="user.currentSession.useTokens()" value={sessionTokens} accessTokenKey="accessToken" />
       </Card>
 
@@ -151,8 +154,9 @@ function HookBasedTokens() {
 
         <TokenDisplay label="app.useAccessToken()" value={appAccessToken} showDecoded />
         <TokenDisplay label="app.useRefreshToken()" value={appRefreshToken} />
-        <JsonDisplay label="app.useAuthHeaders()" value={appAuthHeaders} />
-        <JsonDisplay label="app.useAuthJson() [deprecated]" value={appAuthJson} accessTokenKey="accessToken" />
+        <TokenDisplay label="app.useAuthorizationHeader()" value={appAuthorizationHeader} />
+        <JsonDisplay label="app.useAuthHeaders() [deprecated]" value={appAuthHeaders} />
+        <JsonDisplay label="app.useAuthJson()" value={appAuthJson} accessTokenKey="accessToken" />
       </Card>
     </div>
   );
@@ -166,11 +170,13 @@ function AsyncBasedTokens() {
   const [asyncResults, setAsyncResults] = useState<{
     userAccessToken?: string | null,
     userRefreshToken?: string | null,
+    userAuthorizationHeader?: string | null,
     userAuthHeaders?: { "x-stack-auth": string } | null,
     userAuthJson?: { accessToken: string | null, refreshToken: string | null } | null,
     sessionTokens?: { accessToken: string | null, refreshToken: string | null } | null,
     appAccessToken?: string | null,
     appRefreshToken?: string | null,
+    appAuthorizationHeader?: string | null,
     appAuthHeaders?: { "x-stack-auth": string } | null,
     appAuthJson?: { accessToken: string | null, refreshToken: string | null } | null,
   } | null>(null);
@@ -183,6 +189,7 @@ function AsyncBasedTokens() {
       if (user) {
         results.userAccessToken = await (user as any).getAccessToken?.();
         results.userRefreshToken = await (user as any).getRefreshToken?.();
+        results.userAuthorizationHeader = await (user as any).getAuthorizationHeader?.();
         results.userAuthHeaders = await user.getAuthHeaders();
         results.userAuthJson = await user.getAuthJson();
         results.sessionTokens = await user.currentSession.getTokens();
@@ -190,6 +197,7 @@ function AsyncBasedTokens() {
 
       results.appAccessToken = await (app as any).getAccessToken?.();
       results.appRefreshToken = await (app as any).getRefreshToken?.();
+      results.appAuthorizationHeader = await (app as any).getAuthorizationHeader?.();
       results.appAuthHeaders = await app.getAuthHeaders();
       results.appAuthJson = await app.getAuthJson();
 
@@ -227,8 +235,9 @@ function AsyncBasedTokens() {
           <>
             <TokenDisplay label="await user.getAccessToken()" value={asyncResults?.userAccessToken} isLoading={isLoading && !asyncResults} showDecoded />
             <TokenDisplay label="await user.getRefreshToken()" value={asyncResults?.userRefreshToken} isLoading={isLoading && !asyncResults} />
-            <JsonDisplay label="await user.getAuthHeaders()" value={asyncResults?.userAuthHeaders} isLoading={isLoading && !asyncResults} />
-            <JsonDisplay label="await user.getAuthJson() [deprecated]" value={asyncResults?.userAuthJson} isLoading={isLoading && !asyncResults} accessTokenKey="accessToken" />
+            <TokenDisplay label="await user.getAuthorizationHeader()" value={asyncResults?.userAuthorizationHeader} isLoading={isLoading && !asyncResults} />
+            <JsonDisplay label="await user.getAuthHeaders() [deprecated]" value={asyncResults?.userAuthHeaders} isLoading={isLoading && !asyncResults} />
+            <JsonDisplay label="await user.getAuthJson()" value={asyncResults?.userAuthJson} isLoading={isLoading && !asyncResults} accessTokenKey="accessToken" />
             <JsonDisplay label="await user.currentSession.getTokens()" value={asyncResults?.sessionTokens} isLoading={isLoading && !asyncResults} accessTokenKey="accessToken" />
           </>
         )}
@@ -244,8 +253,9 @@ function AsyncBasedTokens() {
 
         <TokenDisplay label="await app.getAccessToken()" value={asyncResults?.appAccessToken} isLoading={isLoading && !asyncResults} showDecoded />
         <TokenDisplay label="await app.getRefreshToken()" value={asyncResults?.appRefreshToken} isLoading={isLoading && !asyncResults} />
-        <JsonDisplay label="await app.getAuthHeaders()" value={asyncResults?.appAuthHeaders} isLoading={isLoading && !asyncResults} />
-        <JsonDisplay label="await app.getAuthJson() [deprecated]" value={asyncResults?.appAuthJson} isLoading={isLoading && !asyncResults} accessTokenKey="accessToken" />
+        <TokenDisplay label="await app.getAuthorizationHeader()" value={asyncResults?.appAuthorizationHeader} isLoading={isLoading && !asyncResults} />
+        <JsonDisplay label="await app.getAuthHeaders() [deprecated]" value={asyncResults?.appAuthHeaders} isLoading={isLoading && !asyncResults} />
+        <JsonDisplay label="await app.getAuthJson()" value={asyncResults?.appAuthJson} isLoading={isLoading && !asyncResults} accessTokenKey="accessToken" />
       </Card>
     </div>
   );
@@ -323,10 +333,13 @@ export default function TokensDemoPage() {
               <strong>useRefreshToken() / getRefreshToken():</strong> Returns the long-lived refresh token used to obtain new access tokens.
             </p>
             <p>
-              <strong>useAuthHeaders() / getAuthHeaders():</strong> Returns headers ready to use with fetch() for cross-origin authenticated requests.
+              <strong>useAuthorizationHeader() / getAuthorizationHeader():</strong> Returns a `Bearer ...` value for the HTTP `Authorization` header.
             </p>
             <p>
-              <strong className="text-yellow-600">useAuthJson() / getAuthJson() [deprecated]:</strong> Returns both tokens as JSON. Use individual token getters instead.
+              <strong className="text-yellow-600">useAuthHeaders() / getAuthHeaders() [deprecated]:</strong> Returns legacy `x-stack-auth` headers. Prefer authorization-header methods.
+            </p>
+            <p>
+              <strong>useAuthJson() / getAuthJson():</strong> Returns both tokens as JSON. This is the recommended format for non-HTTP protocols.
             </p>
             <p>
               <strong>currentSession.useTokens() / getTokens():</strong> Returns both tokens from the current session object.
