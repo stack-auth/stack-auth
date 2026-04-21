@@ -681,6 +681,7 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
               remainingQuota: emailItem.quantity,
               billingTeamId: context.billingTeamId,
             },
+            shouldUpdateSequenceId: true,
           },
         });
         return;
