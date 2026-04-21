@@ -9,7 +9,7 @@ import {
   policyToDraft,
   validateDraft,
   type PolicyDraft,
-} from "./policy-form";
+} from "./oidc-policy-form";
 
 describe("emptyDraft", () => {
   it("starts with one empty audience row and empty claim conditions JSON", () => {

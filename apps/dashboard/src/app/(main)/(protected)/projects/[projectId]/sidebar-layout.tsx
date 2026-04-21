@@ -122,11 +122,6 @@ const projectSettingsItem: AppSection = {
       match: (fullUrl: URL) => /^\/projects\/[^\/]+\/project-keys(\/.*)?$/.test(fullUrl.pathname),
     },
     {
-      name: "OIDC Federation",
-      href: "/oidc-federation",
-      match: (fullUrl: URL) => /^\/projects\/[^\/]+\/oidc-federation(\/.*)?$/.test(fullUrl.pathname),
-    },
-    {
       name: "Trusted Domains",
       href: "/domains",
       match: (fullUrl: URL) => /^\/projects\/[^\/]+\/domains(\/.*)?$/.test(fullUrl.pathname),
@@ -476,7 +471,7 @@ function SidebarContent({
 
   const [expandedSections, setExpandedSections] = useState<Set<AppId>>(() => getDefaultExpandedSections());
   const [isProjectSettingsExpanded, setIsProjectSettingsExpanded] = useState(() =>
-    /^\/projects\/[^\/]+\/(project-settings|project-keys|oidc-federation|domains)(\/.*)?$/.test(pathname)
+    /^\/projects\/[^\/]+\/(project-settings|project-keys|domains)(\/.*)?$/.test(pathname)
   );
   const projectSettingsSection = useMemo<AppSection>(() => ({
     ...projectSettingsItem,
