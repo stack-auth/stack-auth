@@ -1961,7 +1961,7 @@ export default function PageClient() {
                         No session replays yet
                       </Typography>
                       <Typography className="mt-2 text-sm text-muted-foreground">
-                        Session replays let you watch how users interact with your app to debug issues and understand user behavior. Install the analytics SDK in your app to start capturing replays.
+                        Session replays let you watch how users interact with your app. Replays will appear here once your project starts capturing them.
                       </Typography>
                       <StyledLink
                         href="https://docs.stack-auth.com/docs/apps/analytics"
