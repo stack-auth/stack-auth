@@ -1,12 +1,11 @@
 import withPostHog from "@/analytics";
 import { globalPrismaClient } from "@/prisma-client";
-import { getBillingTeamId } from "@/lib/plan-entitlements";
 import { getStackServerApp } from "@/stack";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import { ITEM_IDS } from "@stackframe/stack-shared/dist/plans";
 import { urlSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { captureError, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { HTTP_METHODS } from "@stackframe/stack-shared/dist/utils/http";
 import { filterUndefined, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
 import { UnionToIntersection } from "@stackframe/stack-shared/dist/utils/types";
@@ -198,11 +197,19 @@ export async function logEvent<T extends EventType[]>(
   eventTypes: T,
   data: DataOfMany<T>,
   options: {
+    /**
+     * Billing team id for analytics-quota debiting, or null if the project
+     * has no owner team. Required: every caller has the tenancy (or project)
+     * in hand, so resolving this once at the call site via
+     * `getBillingTeamId(tenancy.project)` is strictly cheaper than a
+     * per-event DB lookup inside logEvent.
+     */
+    billingTeamId: string | null,
     time?: Date | { start: Date, end: Date },
     refreshTokenId?: string,
     sessionReplayId?: string,
     sessionReplaySegmentId?: string,
-  } = {}
+  }
 ) {
   let timeOrTimeRange = options.time ?? new Date();
   const timeRange = "start" in timeOrTimeRange && "end" in timeOrTimeRange ? timeOrTimeRange : { start: timeOrTimeRange, end: timeOrTimeRange };
@@ -267,17 +274,7 @@ export async function logEvent<T extends EventType[]>(
 
   // rest is no more dynamic APIs so we can run it asynchronously
   runAsynchronouslyAndWaitUntil((async () => {
-    // Resolve billing team for analytics event quota enforcement
-    let billingTeamId: string | null = null;
-    if (projectId) {
-      const project = await globalPrismaClient.project.findUnique({
-        where: { id: projectId },
-        select: { id: true, ownerTeamId: true },
-      });
-      if (project != null) {
-        billingTeamId = getBillingTeamId(project);
-      }
-    }
+    const billingTeamId = options.billingTeamId;
 
     if (billingTeamId != null) {
       const app = getStackServerApp();

@@ -15,6 +15,7 @@ import { turnstileResultValues } from '@stackframe/stack-shared/dist/utils/turns
 import * as jose from 'jose';
 import { JOSEError, JWTExpired } from 'jose/errors';
 import { getEndUserIpInfoForEvent, logEvent, SystemEventTypes } from './events';
+import { getBillingTeamId } from './plan-entitlements';
 import { Tenancy } from './tenancies';
 
 export const authorizationHeaderSchema = yupString().matches(/^StackSession [^ ]+$/);
@@ -274,6 +275,11 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: Refres
     }),
   ]);
 
+  // Token refresh runs on every access-token roll, so skip the per-event
+  // billing-team DB lookup by threading it through from the tenancy we
+  // already have.
+  const billingTeamId = getBillingTeamId(options.tenancy.project);
+
   // Log session activity event (used for metrics, geo info, etc.)
   await logEvent(
     [SystemEventTypes.SessionActivity],
@@ -284,6 +290,9 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: Refres
       sessionId: options.refreshTokenObj.id,
       isAnonymous: user.is_anonymous,
       teamId: undefined,
+    },
+    {
+      billingTeamId,
     }
   );
 
@@ -301,6 +310,7 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: Refres
     },
     {
       refreshTokenId: options.refreshTokenObj.id,
+      billingTeamId,
     }
   );
 
