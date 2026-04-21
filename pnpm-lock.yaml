@@ -862,6 +862,22 @@ importers:
         specifier: ^4.16.2
         version: 4.16.2
 
+  apps/mock-oidc-idp:
+    dependencies:
+      '@types/express':
+        specifier: ^5.0.0
+        version: 5.0.0
+      express:
+        specifier: ^4.21.2
+        version: 4.21.2
+      jose:
+        specifier: ^6.1.3
+        version: 6.1.3
+    devDependencies:
+      tsx:
+        specifier: ^4.16.2
+        version: 4.21.0
+
   docs:
     dependencies:
       2027-track:
@@ -40842,7 +40858,7 @@ snapshots:
   tsx@4.21.0:
     dependencies:
       esbuild: 0.27.1
-      get-tsconfig: 4.8.1
+      get-tsconfig: 4.13.6
     optionalDependencies:
       fsevents: 2.3.3
 
