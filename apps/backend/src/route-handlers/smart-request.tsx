@@ -311,8 +311,11 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
       }
       case "server": {
         if (serverAccessToken) {
-          if (!verifiedServerAccessToken || verifiedServerAccessToken.status === "error") {
+          if (!verifiedServerAccessToken) {
             throw new KnownErrors.UnparsableAccessToken();
+          }
+          if (verifiedServerAccessToken.status === "error") {
+            throw verifiedServerAccessToken.error;
           }
           break;
         }

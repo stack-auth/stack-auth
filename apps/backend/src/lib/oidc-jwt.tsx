@@ -1,31 +1,23 @@
+import { Prisma } from "@/generated/prisma/client";
+import type { PrismaClientTransaction } from "@/prisma-client";
 import { StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
-import { createRemoteJWKSet, decodeProtectedHeader, jwtVerify, type JWTPayload } from "jose";
+import { createLocalJWKSet, decodeProtectedHeader, jwtVerify, type JWK, type JWTPayload } from "jose";
+import { getOrSetCacheValue } from "./cache";
 
-type DiscoveryDoc = {
-  issuer: string,
-  jwks_uri: string,
-};
+type DiscoveryDoc = { issuer: string, jwks_uri: string };
+type JwksJson = { keys: JWK[] };
 
-type DiscoveryCacheEntry =
-  | { kind: "ok", doc: DiscoveryDoc, jwks: ReturnType<typeof createRemoteJWKSet>, expiresAt: number }
-  | { kind: "err", error: Error, expiresAt: number };
+type DiscoveryPayload =
+  | { kind: "ok", doc: DiscoveryDoc }
+  | { kind: "err", message: string };
 
 const DISCOVERY_OK_TTL_MS = 60 * 60 * 1000;
 const DISCOVERY_ERR_TTL_MS = 30 * 1000;
+const JWKS_TTL_MS = 10 * 60 * 1000;
 const CLOCK_SKEW_SECONDS = 60;
-const DISCOVERY_CACHE_MAX_ENTRIES = 1000;
-
-const discoveryCache = new Map<string, DiscoveryCacheEntry>();
-
-function setDiscoveryCache(key: string, entry: DiscoveryCacheEntry): void {
-  discoveryCache.delete(key);
-  discoveryCache.set(key, entry);
-  while (discoveryCache.size > DISCOVERY_CACHE_MAX_ENTRIES) {
-    const oldest = discoveryCache.keys().next().value;
-    if (oldest === undefined) break;
-    discoveryCache.delete(oldest);
-  }
-}
+const DISCOVERY_NAMESPACE = "oidc-discovery";
+const JWKS_NAMESPACE = "oidc-jwks";
+const FETCH_TIMEOUT_MS = 5000;
 
 function stripTrailingSlash(s: string): string {
   return s.endsWith("/") ? s.slice(0, -1) : s;
@@ -37,22 +29,37 @@ function toAudArray(aud: JWTPayload["aud"]): string[] {
   return [aud];
 }
 
-async function loadDiscovery(issuerUrl: string): Promise<{ doc: DiscoveryDoc, jwks: ReturnType<typeof createRemoteJWKSet> }> {
+async function writeDiscoveryCache(
+  prisma: PrismaClientTransaction,
+  cacheKey: string,
+  payload: DiscoveryPayload,
+  ttlMs: number,
+): Promise<void> {
+  const expiresAt = new Date(Date.now() + ttlMs);
+  await prisma.cacheEntry.upsert({
+    where: { namespace_cacheKey: { namespace: DISCOVERY_NAMESPACE, cacheKey } },
+    create: { namespace: DISCOVERY_NAMESPACE, cacheKey, payload: payload as unknown as Prisma.InputJsonValue, expiresAt },
+    update: { payload: payload as unknown as Prisma.InputJsonValue, expiresAt },
+  });
+}
+
+async function loadDiscovery(issuerUrl: string, prisma: PrismaClientTransaction): Promise<DiscoveryDoc> {
   const cacheKey = stripTrailingSlash(issuerUrl);
-  const now = Date.now();
-  const cached = discoveryCache.get(cacheKey);
-  if (cached && cached.expiresAt > now) {
-    if (cached.kind === "err") throw cached.error;
-    return { doc: cached.doc, jwks: cached.jwks };
+
+  const cached = await prisma.cacheEntry.findUnique({
+    where: { namespace_cacheKey: { namespace: DISCOVERY_NAMESPACE, cacheKey } },
+  });
+  if (cached && cached.expiresAt.getTime() > Date.now()) {
+    const payload = cached.payload as unknown as DiscoveryPayload;
+    if (payload.kind === "err") throw new Error(payload.message);
+    return payload.doc;
   }
 
-  const discoveryUrl = `${cacheKey}/.well-known/openid-configuration`;
-  let doc: DiscoveryDoc;
   try {
-    const response = await fetch(discoveryUrl, {
+    const response = await fetch(`${cacheKey}/.well-known/openid-configuration`, {
       method: "GET",
       headers: { accept: "application/json" },
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
     });
     if (!response.ok) {
       throw new Error(`OIDC discovery fetch failed for ${issuerUrl} (status ${response.status})`);
@@ -64,19 +71,46 @@ async function loadDiscovery(issuerUrl: string): Promise<{ doc: DiscoveryDoc, jw
     if (stripTrailingSlash(body.issuer) !== cacheKey) {
       throw new Error(`OIDC discovery issuer mismatch for ${issuerUrl}: expected ${cacheKey}, got ${body.issuer}`);
     }
-    doc = { issuer: body.issuer, jwks_uri: body.jwks_uri };
+    const doc: DiscoveryDoc = { issuer: body.issuer, jwks_uri: body.jwks_uri };
+    await writeDiscoveryCache(prisma, cacheKey, { kind: "ok", doc }, DISCOVERY_OK_TTL_MS);
+    return doc;
   } catch (error) {
-    const err = error instanceof Error ? error : new Error(String(error));
-    setDiscoveryCache(cacheKey, { kind: "err", error: err, expiresAt: now + DISCOVERY_ERR_TTL_MS });
-    throw err;
+    const message = error instanceof Error ? error.message : String(error);
+    await writeDiscoveryCache(prisma, cacheKey, { kind: "err", message }, DISCOVERY_ERR_TTL_MS);
+    throw error instanceof Error ? error : new Error(message);
   }
+}
 
-  const jwks = createRemoteJWKSet(new URL(doc.jwks_uri), {
-    cacheMaxAge: 10 * 60 * 1000,
-    cooldownDuration: 30 * 1000,
+async function fetchJwks(jwksUrl: string): Promise<JwksJson> {
+  const response = await fetch(jwksUrl, {
+    method: "GET",
+    headers: { accept: "application/json" },
+    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
   });
-  setDiscoveryCache(cacheKey, { kind: "ok", doc, jwks, expiresAt: now + DISCOVERY_OK_TTL_MS });
-  return { doc, jwks };
+  if (!response.ok) {
+    throw new Error(`OIDC JWKS fetch failed for ${jwksUrl} (status ${response.status})`);
+  }
+  const body = await response.json() as JwksJson;
+  if (!Array.isArray(body.keys)) {
+    throw new Error(`OIDC JWKS response for ${jwksUrl} is not a valid JWKS`);
+  }
+  return body;
+}
+
+async function loadJwks(jwksUrl: string, prisma: PrismaClientTransaction): Promise<JwksJson> {
+  return await getOrSetCacheValue<JwksJson>({
+    namespace: JWKS_NAMESPACE,
+    cacheKey: jwksUrl,
+    ttlMs: JWKS_TTL_MS,
+    prisma,
+    loader: () => fetchJwks(jwksUrl),
+  });
+}
+
+async function invalidateJwks(prisma: PrismaClientTransaction, jwksUrl: string): Promise<void> {
+  await prisma.cacheEntry.deleteMany({
+    where: { namespace: JWKS_NAMESPACE, cacheKey: jwksUrl },
+  });
 }
 
 export class OidcJwtValidationError extends StatusError {
@@ -91,6 +125,7 @@ export type ValidateOidcJwtOptions = {
   issuerUrl: string,
   audiences: string[],
   token: string,
+  prisma: PrismaClientTransaction,
 };
 
 export type ValidatedOidcJwt = {
@@ -100,8 +135,20 @@ export type ValidatedOidcJwt = {
   audience: string,
 };
 
+function translateVerifyError(error: unknown): OidcJwtValidationError {
+  if (error instanceof OidcJwtValidationError) return error;
+  const code = (error as { code?: unknown }).code;
+  const reason =
+    code === "ERR_JWT_EXPIRED" ? "token expired"
+      : code === "ERR_JWT_CLAIM_VALIDATION_FAILED" ? `claim validation failed: ${(error as { claim?: string }).claim ?? "unknown"}`
+        : code === "ERR_JWS_SIGNATURE_VERIFICATION_FAILED" ? "signature verification failed"
+          : code === "ERR_JWKS_NO_MATCHING_KEY" ? "no matching JWKS key for token `kid`"
+            : "token verification failed";
+  return new OidcJwtValidationError(reason, { cause: error });
+}
+
 export async function validateOidcJwt(options: ValidateOidcJwtOptions): Promise<ValidatedOidcJwt> {
-  const { issuerUrl, audiences, token } = options;
+  const { issuerUrl, audiences, token, prisma } = options;
 
   if (audiences.length === 0) {
     throw new OidcJwtValidationError("trust policy has no configured audiences");
@@ -113,46 +160,53 @@ export async function validateOidcJwt(options: ValidateOidcJwtOptions): Promise<
     throw new OidcJwtValidationError("token is not a well-formed JWT", { cause: error });
   }
 
-  let discovery: Awaited<ReturnType<typeof loadDiscovery>>;
+  let doc: DiscoveryDoc;
   try {
-    discovery = await loadDiscovery(issuerUrl);
+    doc = await loadDiscovery(issuerUrl, prisma);
   } catch (error) {
     captureError("oidc-federation-discovery-failed", error);
     throw new OidcJwtValidationError("issuer discovery failed", { cause: error });
   }
 
-  try {
-    const { payload } = await jwtVerify(token, discovery.jwks, {
-      issuer: discovery.doc.issuer,
+  const verifyOnce = async () => {
+    const jwks = await loadJwks(doc.jwks_uri, prisma);
+    const keystore = createLocalJWKSet(jwks);
+    return await jwtVerify(token, keystore, {
+      issuer: doc.issuer,
       audience: audiences,
       clockTolerance: CLOCK_SKEW_SECONDS,
     });
-    if (typeof payload.sub !== "string" || payload.sub.length === 0) {
-      throw new OidcJwtValidationError("token is missing `sub` claim");
-    }
-    const matchedAudience = toAudArray(payload.aud).find(a => audiences.includes(a));
-    if (matchedAudience === undefined) {
-      throw new OidcJwtValidationError("token audience does not match policy");
-    }
-    return {
-      claims: payload,
-      issuer: discovery.doc.issuer,
-      subject: payload.sub,
-      audience: matchedAudience,
-    };
-  } catch (error) {
-    if (error instanceof OidcJwtValidationError) throw error;
-    const code = (error as { code?: unknown }).code;
-    const reason =
-      code === "ERR_JWT_EXPIRED" ? "token expired"
-        : code === "ERR_JWT_CLAIM_VALIDATION_FAILED" ? `claim validation failed: ${(error as { claim?: string }).claim ?? "unknown"}`
-          : code === "ERR_JWS_SIGNATURE_VERIFICATION_FAILED" ? "signature verification failed"
-            : code === "ERR_JWKS_NO_MATCHING_KEY" ? "no matching JWKS key for token `kid`"
-              : "token verification failed";
-    throw new OidcJwtValidationError(reason, { cause: error });
-  }
-}
+  };
 
-export function _clearOidcDiscoveryCacheForTests(): void {
-  discoveryCache.clear();
+  let verifyResult: Awaited<ReturnType<typeof verifyOnce>>;
+  try {
+    verifyResult = await verifyOnce();
+  } catch (error) {
+    // Cached JWKS may be stale after key rotation — invalidate and retry once.
+    if ((error as { code?: unknown }).code === "ERR_JWKS_NO_MATCHING_KEY") {
+      await invalidateJwks(prisma, doc.jwks_uri);
+      try {
+        verifyResult = await verifyOnce();
+      } catch (retryError) {
+        throw translateVerifyError(retryError);
+      }
+    } else {
+      throw translateVerifyError(error);
+    }
+  }
+
+  const { payload } = verifyResult;
+  if (typeof payload.sub !== "string" || payload.sub.length === 0) {
+    throw new OidcJwtValidationError("token is missing `sub` claim");
+  }
+  const matchedAudience = toAudArray(payload.aud).find(a => audiences.includes(a));
+  if (matchedAudience === undefined) {
+    throw new OidcJwtValidationError("token audience does not match policy");
+  }
+  return {
+    claims: payload,
+    issuer: doc.issuer,
+    subject: payload.sub,
+    audience: matchedAudience,
+  };
 }

@@ -77,7 +77,7 @@ export const POST = createSmartRouteHandler({
 
     const tenancy = await getSoleTenancyFromProjectBranch(projectId, branchId, true);
     if (!tenancy) {
-      throw new StatusError(400, "invalid_request: no trust policy matched the provided OIDC token");
+      throw new StatusError(400, "invalid_request: project or branch not found");
     }
 
     const trustPolicies = tenancy.config.oidcFederation.trustPolicies;
@@ -98,7 +98,7 @@ export const POST = createSmartRouteHandler({
 
       let validated: Awaited<ReturnType<typeof validateOidcJwt>>;
       try {
-        validated = await validateOidcJwt({ issuerUrl, audiences, token: req.body.subject_token });
+        validated = await validateOidcJwt({ issuerUrl, audiences, token: req.body.subject_token, prisma: globalPrismaClient });
       } catch (error) {
         attemptReasons.push({ policyId, reason: error instanceof Error ? error.message : String(error) });
         continue;
