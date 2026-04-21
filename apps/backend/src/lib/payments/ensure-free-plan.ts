@@ -3,7 +3,7 @@ import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write"
 import { getOwnedProductsForCustomer } from "@/lib/payments/customer-data";
 // eslint-disable-next-line @typescript-eslint/no-deprecated -- idiomatic way to get the internal tenancy today (see plan-entitlements.ts)
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from "@/lib/tenancies";
-import { getPrismaClientForTenancy, type PrismaClientTransaction } from "@/prisma-client";
+import { getPrismaClientForTenancy, retryTransaction, type PrismaClientTransaction } from "@/prisma-client";
 import { addInterval } from "@stackframe/stack-shared/dist/utils/dates";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getOrUndefined, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
@@ -93,7 +93,27 @@ export async function createFreePlanSubscriptionRow(options: {
 /**
  * Regrants the `free` plan if the billing team has no active plan in the
  * free plan's product line. Callers can fire this speculatively — it silently
- * no-ops on misconfiguration or when a plan is already owned.
+ * no-ops on misconfiguration, when a plan is already owned, or when a
+ * concurrent caller already established the free sub.
+ *
+ * Two-phase concurrency story:
+ *
+ *   1. Fast path — optimistic bulldozer read. In the overwhelming common
+ *      case the billing team already has some plan in the product line
+ *      (free, team, or growth), so we return immediately without touching
+ *      Prisma's Subscription table.
+ *
+ *   2. Slow path — if the fast path sees "no base plan," re-check the
+ *      Subscription source-of-truth under SERIALIZABLE isolation and
+ *      insert atomically. The bulldozer derived ledger lags pg_cron and
+ *      can't detect in-flight writes from concurrent callers, so we
+ *      cannot rely on it for idempotency; reading the Subscription table
+ *      directly under SSI is the only way to serialize the check+insert.
+ *      `retryTransaction` handles P2028 serialization failures by
+ *      retrying; on the retry the other caller's row is visible and we
+ *      skip the insert.
+ *
+ * We do this
  */
 export async function ensureFreePlanForBillingTeam(billingTeamId: string): Promise<void> {
   const internalTenancy = await getInternalBillingTenancy();
@@ -104,16 +124,17 @@ export async function ensureFreePlanForBillingTeam(billingTeamId: string): Promi
   const freeProductLineId = freePlanProduct.productLineId;
 
   const internalPrisma = await getPrismaClientForTenancy(internalTenancy);
+
+  // Fast path: bulldozer-based optimistic check. Only BASE plans count —
+  // add-ons (extra-seats etc.) don't provide baseline entitlements on their
+  // own, so losing the base plan while still holding an add-on still
+  // triggers a regrant.
   const ownedProducts = await getOwnedProductsForCustomer({
     prisma: internalPrisma,
     tenancyId: internalTenancy.id,
     customerType: "team",
     customerId: billingTeamId,
   });
-  // Only BASE plans count as "a plan is already active" — add-ons in the same
-  // product line (e.g. extra-seats top-up) don't provide baseline entitlements
-  // on their own, so losing the base plan while still holding an add-on
-  // should still trigger a free-plan regrant.
   const alreadyHasBasePlanInLine = Object.values(ownedProducts).some(
     (p) =>
       p.productLineId === freeProductLineId
@@ -124,13 +145,38 @@ export async function ensureFreePlanForBillingTeam(billingTeamId: string): Promi
     return;
   }
 
-  const subscription = await createFreePlanSubscriptionRow({
-    prisma: internalPrisma,
-    internalTenancy,
-    billingTeamId,
-    // Free is always paymentProvider=stripe (via the non-TEST_MODE CASE),
-    // regardless of testMode. API_GRANT is the closest semantic fit.
-    creationSource: PurchaseCreationSource.API_GRANT,
-  });
-  await bulldozerWriteSubscription(internalPrisma, subscription);
+  // Slow path: the team appears to have no base plan. Re-check under
+  // SERIALIZABLE isolation and insert atomically so a concurrent caller
+  // can't produce a duplicate free sub.
+  const createdSub = await retryTransaction(internalPrisma, async (tx) => {
+    const existing = await tx.subscription.findFirst({
+      where: {
+        tenancyId: internalTenancy.id,
+        customerId: billingTeamId,
+        customerType: CustomerType.TEAM,
+        productId: "free",
+        status: { in: [SubscriptionStatus.active, SubscriptionStatus.trialing] },
+      },
+      select: { id: true },
+    });
+    if (existing != null) {
+      return null;
+    }
+    return await createFreePlanSubscriptionRow({
+      prisma: tx,
+      internalTenancy,
+      billingTeamId,
+      // Free is always paymentProvider=stripe (via the non-TEST_MODE CASE),
+      // regardless of testMode. API_GRANT is the closest semantic fit.
+      creationSource: PurchaseCreationSource.API_GRANT,
+    });
+  }, { level: "serializable" });
+
+  if (createdSub != null) {
+    // Bulldozer write happens outside the tx — it issues its own BEGIN/
+    // COMMIT and can't nest. If it fails after the Prisma insert committed,
+    // the sub exists in Prisma but not yet in Bulldozer; same trade-off as
+    // all other dual-write call sites, reconciled by the next sync.
+    await bulldozerWriteSubscription(internalPrisma, createdSub);
+  }
 }
