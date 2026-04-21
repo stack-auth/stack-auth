@@ -11,7 +11,8 @@
  * and manual item quantity changes. Entry indices are looked up dynamically.
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { createBulldozerExecutionContext, type BulldozerExecutionContext } from "@/lib/bulldozer/db/index";
 import { createPaymentsSchema } from "../index";
 import { getSplitAlgoCteSql } from "../phase-3/split-algo";
 import { createTestDb, jsonbExpr } from "./test-helpers";
@@ -22,21 +23,26 @@ describe.sequential("payments schema phase 3 (real postgres)", () => {
   const db = createTestDb();
   const { runStatements, readRows } = db;
   const schema = createPaymentsSchema();
+  let executionContext = createBulldozerExecutionContext();
 
-  const getRowDatas = async (table: { listRowsInGroup: (opts: any) => any }) => {
-    const rows = await readRows(table.listRowsInGroup({ start: "start", end: "end", startInclusive: true, endInclusive: true }));
+  const getRowDatas = async (table: { listRowsInGroup: (ctx: BulldozerExecutionContext, opts: any) => any }) => {
+    const rows = await readRows(table.listRowsInGroup(executionContext, { start: "start", end: "end", startInclusive: true, endInclusive: true }));
     return rows.map((r: any) => r.rowdata);
   };
+
+  beforeEach(() => {
+    executionContext = createBulldozerExecutionContext();
+  });
 
   beforeAll(async () => {
     await db.setup();
     for (const table of schema._allTables) {
-      await runStatements(table.init());
+      await runStatements(table.init(executionContext));
     }
 
     // Subscription with credits (when-purchase-expires) and bonus (never expires).
     // Has endedAt so we get subscription-end which expires the credits.
-    await runStatements(schema.subscriptions.setRow("sub-p3", jsonbExpr({
+    await runStatements(schema.subscriptions.setRow(executionContext, "sub-p3", jsonbExpr({
       id: "sub-p3",
       tenancyId: "t1",
       customerId: "u1",
@@ -67,7 +73,7 @@ describe.sequential("payments schema phase 3 (real postgres)", () => {
     })));
 
     // Manual non-expiring change (bonus)
-    await runStatements(schema.manualItemQuantityChanges.setRow("iqc-p3-1", jsonbExpr({
+    await runStatements(schema.manualItemQuantityChanges.setRow(executionContext, "iqc-p3-1", jsonbExpr({
       id: "iqc-p3-1",
       tenancyId: "t1",
       customerId: "u1",

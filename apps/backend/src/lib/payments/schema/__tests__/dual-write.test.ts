@@ -7,7 +7,8 @@
  * - setRow updates (overwrites) existing rows without creating duplicates
  */
 
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { createBulldozerExecutionContext } from "@/lib/bulldozer/db/index";
 import { createPaymentsSchema } from "@/lib/payments/schema/index";
 import {
   subscriptionToStoredRow,
@@ -19,16 +20,21 @@ import { createTestDb, jsonbExpr } from "./test-helpers";
 
 const db = createTestDb();
 const schema = createPaymentsSchema();
+let executionContext = createBulldozerExecutionContext();
 
 beforeAll(async () => {
   await db.setup();
   for (const table of schema._allTables) {
-    await db.runStatements(table.init());
+    await db.runStatements(table.init(executionContext));
   }
 }, 60_000);
 
 afterAll(async () => {
   await db.teardown();
+});
+
+beforeEach(() => {
+  executionContext = createBulldozerExecutionContext();
 });
 
 const { runStatements } = db;
@@ -163,7 +169,7 @@ describe("setRow via dual-write conversion", () => {
       createdAt: new Date("2024-01-01T00:00:00Z"),
     });
 
-    await runStatements(schema.subscriptions.setRow("dw-sub-1", jsonbExpr(rowData)));
+    await runStatements(schema.subscriptions.setRow(executionContext, "dw-sub-1", jsonbExpr(rowData)));
 
     const stored = await getStoredRowData("payments-subscriptions", "dw-sub-1");
     expect(stored).not.toBeNull();
@@ -194,7 +200,7 @@ describe("setRow via dual-write conversion", () => {
       creationSource: "TEST_MODE",
       createdAt: new Date("2024-01-01T00:00:00Z"),
     });
-    await runStatements(schema.subscriptions.setRow("dw-sub-overwrite", jsonbExpr(seedRowData)));
+    await runStatements(schema.subscriptions.setRow(executionContext, "dw-sub-overwrite", jsonbExpr(seedRowData)));
     const countBefore = await countStoredRows("payments-subscriptions");
 
     const updatedRowData = subscriptionToStoredRow({
@@ -218,7 +224,7 @@ describe("setRow via dual-write conversion", () => {
       createdAt: new Date("2024-01-01T00:00:00Z"),
     });
 
-    await runStatements(schema.subscriptions.setRow("dw-sub-overwrite", jsonbExpr(updatedRowData)));
+    await runStatements(schema.subscriptions.setRow(executionContext, "dw-sub-overwrite", jsonbExpr(updatedRowData)));
 
     const countAfter = await countStoredRows("payments-subscriptions");
     expect(countAfter).toBe(countBefore);
@@ -246,7 +252,7 @@ describe("setRow via dual-write conversion", () => {
       createdAt: new Date("2024-02-01T00:00:00Z"),
     });
 
-    await runStatements(schema.oneTimePurchases.setRow("dw-otp-1", jsonbExpr(rowData)));
+    await runStatements(schema.oneTimePurchases.setRow(executionContext, "dw-otp-1", jsonbExpr(rowData)));
 
     const stored = await getStoredRowData("payments-one-time-purchases", "dw-otp-1") as any;
     expect(stored).not.toBeNull();
@@ -271,7 +277,7 @@ describe("setRow via dual-write conversion", () => {
       creationSource: "TEST_MODE",
       createdAt: new Date("2024-02-01T00:00:00Z"),
     });
-    await runStatements(schema.oneTimePurchases.setRow("dw-otp-overwrite", jsonbExpr(seedRowData)));
+    await runStatements(schema.oneTimePurchases.setRow(executionContext, "dw-otp-overwrite", jsonbExpr(seedRowData)));
     const countBefore = await countStoredRows("payments-one-time-purchases");
 
     const refundedRowData = oneTimePurchaseToStoredRow({
@@ -290,7 +296,7 @@ describe("setRow via dual-write conversion", () => {
       createdAt: new Date("2024-02-01T00:00:00Z"),
     });
 
-    await runStatements(schema.oneTimePurchases.setRow("dw-otp-overwrite", jsonbExpr(refundedRowData)));
+    await runStatements(schema.oneTimePurchases.setRow(executionContext, "dw-otp-overwrite", jsonbExpr(refundedRowData)));
 
     const countAfter = await countStoredRows("payments-one-time-purchases");
     expect(countAfter).toBe(countBefore);
@@ -312,7 +318,7 @@ describe("setRow via dual-write conversion", () => {
       createdAt: new Date("2024-04-01T00:00:00Z"),
     });
 
-    await runStatements(schema.manualItemQuantityChanges.setRow("dw-iqc-1", jsonbExpr(rowData)));
+    await runStatements(schema.manualItemQuantityChanges.setRow(executionContext, "dw-iqc-1", jsonbExpr(rowData)));
 
     const stored = await getStoredRowData("payments-manual-item-quantity-changes", "dw-iqc-1") as any;
     expect(stored).not.toBeNull();
@@ -334,7 +340,7 @@ describe("setRow via dual-write conversion", () => {
       createdAt: new Date("2024-05-01T00:00:00Z"),
     });
 
-    await runStatements(schema.subscriptionInvoices.setRow("dw-inv-1", jsonbExpr(rowData)));
+    await runStatements(schema.subscriptionInvoices.setRow(executionContext, "dw-inv-1", jsonbExpr(rowData)));
 
     const stored = await getStoredRowData("payments-subscription-invoices", "dw-inv-1") as any;
     expect(stored).not.toBeNull();

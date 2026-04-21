@@ -2,7 +2,9 @@ import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import postgres from "postgres";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Table } from "./index";
+import type { RowData } from "./utilities";
 import {
+  createBulldozerExecutionContext,
   declareCompactTable as _declareCompactTable,
   declareConcatTable as _declareConcatTable,
   declareFilterTable as _declareFilterTable,
@@ -20,14 +22,16 @@ import {
   toQueryableSqlQuery,
 } from "./index";
 
-// any is used here because the verifier works with heterogeneous table types
-const allInitializedTables: Table<any, any, any>[] = [];
+let executionContext = createBulldozerExecutionContext();
+
+type TableExecutionContext = Parameters<Table<any, any, any>["verifyDataIntegrity"]>[0];
+const allInitializedTables: Array<{ verifyDataIntegrity: (executionContext: TableExecutionContext) => SqlQuery }> = [];
 function trackTable<T extends Table<any, any, any>>(table: T): T {
   allInitializedTables.push(table);
   return table;
 }
-function tracked<Fn extends (...args: any[]) => Table<any, any, any>>(fn: Fn): Fn {
-  return ((...args: unknown[]) => trackTable(fn(...args))) as Fn;
+function tracked<Fn extends (...args: any[]) => Table<any, any, any>>(fn: Fn): (...args: Parameters<Fn>) => ReturnType<Fn> {
+  return (...args) => trackTable(fn(...args)) as ReturnType<Fn>;
 }
 
 const declareCompactTable = tracked(_declareCompactTable);
@@ -41,7 +45,11 @@ const declareLimitTable = tracked(_declareLimitTable);
 const declareMapTable = tracked(_declareMapTable);
 const declareReduceTable = tracked(_declareReduceTable);
 const declareSortTable = tracked(_declareSortTable);
-const declareStoredTable = tracked(_declareStoredTable);
+function declareStoredTable<RD extends RowData>(
+  options: Parameters<typeof _declareStoredTable<RD>>[0],
+): ReturnType<typeof _declareStoredTable<RD>> {
+  return trackTable(_declareStoredTable<RD>(options));
+}
 const declareTimeFoldTable = tracked(_declareTimeFoldTable);
 
 type TestDb = { full: string, base: string };
@@ -178,7 +186,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
   const PERF_STATEMENT_TIMEOUT = "180s";
 
   async function runStatements(statements: SqlStatement[]) {
-    await sql.unsafe(toExecutableSqlTransaction(statements, { statementTimeout: PERF_STATEMENT_TIMEOUT }));
+    await sql.unsafe(toExecutableSqlTransaction(executionContext, statements, { statementTimeout: PERF_STATEMENT_TIMEOUT }));
   }
 
   async function readRows(query: SqlQuery) {
@@ -262,12 +270,12 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
   ): Promise<void> {
     for (const operation of operations) {
       if (operation.type === "upsert") {
-        await runStatements(fromTable.setRow(
+        await runStatements(fromTable.setRow(executionContext,
           operation.rowIdentifier,
           expr(jsonbLiteral({ team: operation.team, value: operation.value })),
         ));
       } else {
-        await runStatements(fromTable.deleteRow(operation.rowIdentifier));
+        await runStatements(fromTable.deleteRow(executionContext, operation.rowIdentifier));
       }
     }
   }
@@ -295,6 +303,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
   });
 
   beforeEach(async () => {
+    executionContext = createBulldozerExecutionContext();
     await sql`CREATE EXTENSION IF NOT EXISTS pgcrypto`;
     await sql`DROP TABLE IF EXISTS "BulldozerStorageEngine"`;
     await sql`DROP TABLE IF EXISTS "BulldozerTimeFoldQueue"`;
@@ -369,7 +378,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
 
   afterEach(async () => {
     for (const table of allInitializedTables) {
-      const errors = await readRows(table.verifyDataIntegrity());
+      const errors = await readRows(table.verifyDataIntegrity(executionContext));
       expect(errors).toEqual([]);
     }
     allInitializedTables.length = 0;
@@ -397,11 +406,11 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       measuredOperations,
       beforeRun: async () => {
         const fromTable = declareStoredTable<{ value: number, team: string | null }>({ tableId: "perf-baseline-users" });
-        await runStatements(fromTable.init());
+        await runStatements(fromTable.init(executionContext));
         return {
           fromTable,
           validate: async () => {
-            const rows = await readRows(fromTable.listRowsInGroup({
+            const rows = await readRows(fromTable.listRowsInGroup(executionContext, {
               start: "start",
               end: "end",
               startInclusive: true,
@@ -444,15 +453,15 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
           groupBy: { type: "mapper", sql: `"rowData"->'bucket' AS "groupKey"` },
         });
 
-        await runStatements(fromTable.init());
-        await runStatements(groupedByTeam.init());
-        await runStatements(mapped.init());
-        await runStatements(groupedByBucket.init());
+        await runStatements(fromTable.init(executionContext));
+        await runStatements(groupedByTeam.init(executionContext));
+        await runStatements(mapped.init(executionContext));
+        await runStatements(groupedByBucket.init(executionContext));
 
         return {
           fromTable,
           validate: async () => {
-            const rows = await readRows(groupedByBucket.listRowsInGroup({
+            const rows = await readRows(groupedByBucket.listRowsInGroup(executionContext, {
               start: "start",
               end: "end",
               startInclusive: true,
@@ -508,11 +517,11 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       groupBy: { type: "mapper", sql: `"rowData"->'bucket' AS "groupKey"` },
     });
 
-    await runStatements(fromTable.init());
-    await runStatements(groupedByTeam.init());
-    await runStatements(mappedLevel1.init());
-    await runStatements(mappedLevel2.init());
-    await runStatements(groupedByBucket.init());
+    await runStatements(fromTable.init(executionContext));
+    await runStatements(groupedByTeam.init(executionContext));
+    await runStatements(mappedLevel1.init(executionContext));
+    await runStatements(mappedLevel2.init(executionContext));
+    await runStatements(groupedByBucket.init(executionContext));
 
     const seedRows = [
       ["u1", { team: "alpha", value: 5 }],
@@ -522,18 +531,18 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       ["u 5", { team: null, value: 13 }],
     ] as const;
     for (const [rowIdentifier, rowData] of seedRows) {
-      await runStatements(fromTable.setRow(rowIdentifier, expr(jsonbLiteral(rowData))));
+      await runStatements(fromTable.setRow(executionContext, rowIdentifier, expr(jsonbLiteral(rowData))));
     }
 
-    await runStatements(fromTable.setRow("u1", expr(jsonbLiteral({ team: "alpha", value: 15 }))));
+    await runStatements(fromTable.setRow(executionContext, "u1", expr(jsonbLiteral({ team: "alpha", value: 15 }))));
 
     const setRowMutation = await measureMs("regression stacked pipeline setRow", async () => {
-      await runStatements(fromTable.setRow("u2", expr(jsonbLiteral({ team: "beta", value: 19 }))));
+      await runStatements(fromTable.setRow(executionContext, "u2", expr(jsonbLiteral({ team: "beta", value: 19 }))));
     });
     expect(setRowMutation.elapsedMs).toBeLessThan(STACKED_MAP_PIPELINE_MUTATION_MAX_MS);
 
     const deleteMutation = await measureMs("regression stacked pipeline deleteRow", async () => {
-      await runStatements(fromTable.deleteRow("u3"));
+      await runStatements(fromTable.deleteRow(executionContext, "u3"));
     });
     expect(deleteMutation.elapsedMs).toBeLessThan(STACKED_MAP_PIPELINE_MUTATION_MAX_MS);
   });
@@ -558,7 +567,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       tables: [groupedByTeamA, groupedByTeamB],
     });
 
-    expect((await readRows(concatenatedByTeam.listGroups({
+    expect((await readRows(concatenatedByTeam.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -567,17 +576,17 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
 
     await prefillStoredTableInSingleStatement(tableAId, VIRTUAL_CONCAT_LOAD_ROW_COUNT);
     await prefillStoredTableInSingleStatement(tableBId, VIRTUAL_CONCAT_LOAD_ROW_COUNT);
-    await runStatements(groupedByTeamA.init());
-    await runStatements(groupedByTeamB.init());
-    await runStatements(concatenatedByTeam.init());
-    expect(await readRows(concatenatedByTeam.listGroups({
+    await runStatements(groupedByTeamA.init(executionContext));
+    await runStatements(groupedByTeamB.init(executionContext));
+    await runStatements(concatenatedByTeam.init(executionContext));
+    expect(await readRows(concatenatedByTeam.listGroups(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
       endInclusive: true,
     }))).not.toEqual([]);
 
-    const concatenatedCountQuery = concatenatedByTeam.listRowsInGroup({
+    const concatenatedCountQuery = concatenatedByTeam.listRowsInGroup(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -616,7 +625,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     `;
     expect(metadataInitializedRows[0].initialized).toBe(true);
 
-    const listRowsQuery = table.listRowsInGroup({
+    const listRowsQuery = table.listRowsInGroup(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -634,7 +643,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     const setRowIterationTimes: number[] = [];
     for (let i = 0; i < LOAD_SET_ROW_AVG_ITERATIONS; i++) {
       const startedAt = performance.now();
-      await runStatements(table.setRow(
+      await runStatements(table.setRow(executionContext,
         `seed-${Math.floor(loadRowCount / 2) + i}`,
         expr(jsonbLiteral({ team: "beta", value: 777 + i })),
       ));
@@ -649,13 +658,13 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     for (let i = 0; i < LOAD_ONLINE_MUTATION_ITERATIONS; i++) {
       const rowIdentifier = `perf-online-row-${i}`;
       const insertStartedAt = performance.now();
-      await runStatements(table.setRow(rowIdentifier, expr(jsonbLiteral({ team: "beta", value: 111 + i }))));
+      await runStatements(table.setRow(executionContext, rowIdentifier, expr(jsonbLiteral({ team: "beta", value: 111 + i }))));
       onlineInsertTimes.push(performance.now() - insertStartedAt);
       const updateStartedAt = performance.now();
-      await runStatements(table.setRow(rowIdentifier, expr(jsonbLiteral({ team: "beta", value: 211 + i }))));
+      await runStatements(table.setRow(executionContext, rowIdentifier, expr(jsonbLiteral({ team: "beta", value: 211 + i }))));
       onlineUpdateTimes.push(performance.now() - updateStartedAt);
       const deleteStartedAt = performance.now();
-      await runStatements(table.deleteRow(rowIdentifier));
+      await runStatements(table.deleteRow(executionContext, rowIdentifier));
       onlineDeleteTimes.push(performance.now() - deleteStartedAt);
     }
     const onlineInsertAvgMs = onlineInsertTimes.reduce((acc, value) => acc + value, 0) / onlineInsertTimes.length;
@@ -669,7 +678,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     expect(onlineDeleteAvgMs).toBeLessThanOrEqual(LOAD_ONLINE_MUTATION_MAX_MS);
 
     const pointDelete = await measureMs("load point delete (deleteRow existing)", async () => {
-      await runStatements(table.deleteRow(`seed-${Math.floor(loadRowCount / 2) - 1}`));
+      await runStatements(table.deleteRow(executionContext, `seed-${Math.floor(loadRowCount / 2) - 1}`));
     });
     expect(pointDelete.elapsedMs).toBeLessThan(LOAD_POINT_MUTATION_MAX_MS);
 
@@ -760,86 +769,86 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       ` },
     });
 
-    await runStatements(leftJoinRulesTable.init());
-    await runStatements(leftJoinRulesTable.setRow("rule-alpha", expr(jsonbLiteral({ team: "alpha", threshold: 0, label: "alpha-rule" }))));
-    await runStatements(leftJoinRulesTable.setRow("rule-beta", expr(jsonbLiteral({ team: "beta", threshold: 0, label: "beta-rule" }))));
-    await runStatements(leftJoinRulesTable.setRow("rule-gamma", expr(jsonbLiteral({ team: "gamma", threshold: 0, label: "gamma-rule" }))));
-    await runStatements(leftJoinRulesTable.setRow("rule-null", expr(jsonbLiteral({ team: null, threshold: 0, label: "null-rule" }))));
+    await runStatements(leftJoinRulesTable.init(executionContext));
+    await runStatements(leftJoinRulesTable.setRow(executionContext, "rule-alpha", expr(jsonbLiteral({ team: "alpha", threshold: 0, label: "alpha-rule" }))));
+    await runStatements(leftJoinRulesTable.setRow(executionContext, "rule-beta", expr(jsonbLiteral({ team: "beta", threshold: 0, label: "beta-rule" }))));
+    await runStatements(leftJoinRulesTable.setRow(executionContext, "rule-gamma", expr(jsonbLiteral({ team: "gamma", threshold: 0, label: "gamma-rule" }))));
+    await runStatements(leftJoinRulesTable.setRow(executionContext, "rule-null", expr(jsonbLiteral({ team: null, threshold: 0, label: "null-rule" }))));
     const leftJoinRulesInit = await measureMs("load init leftJoinRulesByTeam", async () => {
-      await runStatements(leftJoinRulesByTeam.init());
+      await runStatements(leftJoinRulesByTeam.init(executionContext));
     });
     expect(leftJoinRulesInit.elapsedMs).toBeLessThan(LOAD_DERIVED_INIT_MAX_MS);
 
     const groupInit = await measureMs("load init groupedByTeam", async () => {
-      await runStatements(groupedByTeam.init());
+      await runStatements(groupedByTeam.init(executionContext));
     });
     expect(groupInit.elapsedMs).toBeLessThan(LOAD_DERIVED_INIT_MAX_MS);
     const mapInit = await measureMs("load init mappedByTeam", async () => {
-      await runStatements(mappedByTeam.init());
+      await runStatements(mappedByTeam.init(executionContext));
     });
     expect(mapInit.elapsedMs).toBeLessThan(LOAD_DERIVED_INIT_MAX_MS);
     const mapTwiceInit = await measureMs("load init mappedTwice", async () => {
-      await runStatements(mappedTwice.init());
+      await runStatements(mappedTwice.init(executionContext));
     });
     expect(mapTwiceInit.elapsedMs).toBeLessThan(LOAD_DERIVED_INIT_MAX_MS);
     const bucketInit = await measureMs("load init groupedByBucket", async () => {
-      await runStatements(groupedByBucket.init());
+      await runStatements(groupedByBucket.init(executionContext));
     });
     expect(bucketInit.elapsedMs).toBeLessThan(LOAD_DERIVED_INIT_MAX_MS);
     const filterInit = await measureMs("load init filteredHighValue", async () => {
-      await runStatements(filteredHighValue.init());
+      await runStatements(filteredHighValue.init(executionContext));
     });
     expect(filterInit.elapsedMs).toBeLessThan(LOAD_FILTER_TABLE_INIT_MAX_MS);
     const concatInit = await measureMs("load init concatenatedByTeam", async () => {
-      await runStatements(concatenatedByTeam.init());
+      await runStatements(concatenatedByTeam.init(executionContext));
     });
     expect(concatInit.elapsedMs).toBeLessThan(LOAD_CONCAT_TABLE_INIT_MAX_MS);
     const limitInit = await measureMs("load init limitedByTeam", async () => {
-      await runStatements(limitedByTeam.init());
+      await runStatements(limitedByTeam.init(executionContext));
     });
     expect(limitInit.elapsedMs).toBeLessThan(LOAD_LIMIT_TABLE_INIT_MAX_MS);
     const expandInit = await measureMs("load init expandedByTeam", async () => {
-      await runStatements(expandedByTeam.init());
+      await runStatements(expandedByTeam.init(executionContext));
     });
     expect(expandInit.elapsedMs).toBeLessThan(LOAD_EXPANDING_INIT_MAX_MS);
 
-    const groupedCountQuery = groupedByTeam.listRowsInGroup({
+    const groupedCountQuery = groupedByTeam.listRowsInGroup(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
       endInclusive: true,
     });
-    const mappedCountQuery = mappedTwice.listRowsInGroup({
+    const mappedCountQuery = mappedTwice.listRowsInGroup(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
       endInclusive: true,
     });
-    const bucketCountQuery = groupedByBucket.listRowsInGroup({
+    const bucketCountQuery = groupedByBucket.listRowsInGroup(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
       endInclusive: true,
     });
-    const expandedCountQuery = expandedByTeam.listRowsInGroup({
+    const expandedCountQuery = expandedByTeam.listRowsInGroup(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
       endInclusive: true,
     });
-    const filteredHighValueCountQuery = filteredHighValue.listRowsInGroup({
+    const filteredHighValueCountQuery = filteredHighValue.listRowsInGroup(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
       endInclusive: true,
     });
-    const concatenatedByTeamCountQuery = concatenatedByTeam.listRowsInGroup({
+    const concatenatedByTeamCountQuery = concatenatedByTeam.listRowsInGroup(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
       endInclusive: true,
     });
-    const limitedByTeamCountQuery = limitedByTeam.listRowsInGroup({
+    const limitedByTeamCountQuery = limitedByTeam.listRowsInGroup(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -910,7 +919,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       return await sql.unsafe(`
         SELECT COUNT(*)::int AS "count"
         FROM (
-          ${toQueryableSqlQuery(expandedByTeam.listRowsInGroup({
+          ${toQueryableSqlQuery(expandedByTeam.listRowsInGroup(executionContext, {
             groupKey: expr(`to_jsonb('beta'::text)`),
             start: "start",
             end: "end",
@@ -924,11 +933,11 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     expect(filteredExpandedBetaBase.elapsedMs).toBeLessThan(LOAD_FILTERED_QUERY_MAX_MS);
     expect(Number(filteredExpandedBetaBase.result[0].count)).toBeGreaterThan(0);
 
-    await runStatements(table.setRow(
+    await runStatements(table.setRow(executionContext,
       "seed-100000",
       expr(jsonbLiteral({ team: "delta", value: 999 })),
     ));
-    const deltaGroupedRows = await readRows(groupedByTeam.listRowsInGroup({
+    const deltaGroupedRows = await readRows(groupedByTeam.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('delta'::text)`),
       start: "start",
       end: "end",
@@ -936,7 +945,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       endInclusive: true,
     }));
     expect(deltaGroupedRows.some((row) => row.rowidentifier === "seed-100000")).toBe(true);
-    const highBucketRows = await readRows(groupedByBucket.listRowsInGroup({
+    const highBucketRows = await readRows(groupedByBucket.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('high'::text)`),
       start: "start",
       end: "end",
@@ -950,7 +959,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       bucket: "high",
       valueScaled: 2018,
     });
-    const expandedDeltaRows = await readRows(expandedByTeam.listRowsInGroup({
+    const expandedDeltaRows = await readRows(expandedByTeam.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('delta'::text)`),
       start: "start",
       end: "end",
@@ -961,7 +970,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       { rowIdentifier: "seed-100000:1", rowData: { team: "delta", kind: "base", mappedValue: 1009 } },
       { rowIdentifier: "seed-100000:2", rowData: { team: "delta", kind: "double", mappedValue: 1998 } },
     ]);
-    const filteredDeltaRows = await readRows(filteredHighValue.listRowsInGroup({
+    const filteredDeltaRows = await readRows(filteredHighValue.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('delta'::text)`),
       start: "start",
       end: "end",
@@ -973,7 +982,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     ]);
     const groupedSubsetSql = `
       SELECT *
-      FROM (${toQueryableSqlQuery(groupedByTeam.listRowsInGroup({
+      FROM (${toQueryableSqlQuery(groupedByTeam.listRowsInGroup(executionContext, {
         groupKey: expr(`to_jsonb('beta'::text)`),
         start: "start",
         end: "end",
@@ -1051,7 +1060,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       ` },
     });
     const sortInit = await measureMs("load init sortedHighValueByTeam", async () => {
-      await runStatements(sortedHighValueByTeam.init());
+      await runStatements(sortedHighValueByTeam.init(executionContext));
     });
     expect(sortInit.elapsedMs).toBeLessThan(LOAD_SORT_TABLE_INIT_MAX_MS);
     const approxRowsPerValuePerTeam = Math.max(1, Math.floor(loadRowCount / 4 / 1000));
@@ -1060,7 +1069,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     const sortedSubsetFromCursorMinSortKey = Math.max(700, 1000 - sortedSubsetRequiredSortKeySpan);
     const sortedSubsetFromStartSql = `
       SELECT *
-      FROM (${toQueryableSqlQuery(sortedHighValueByTeam.listRowsInGroup({
+      FROM (${toQueryableSqlQuery(sortedHighValueByTeam.listRowsInGroup(executionContext, {
         groupKey: expr(`to_jsonb('beta'::text)`),
         start: "start",
         end: expr(`to_jsonb(${sortedSubsetFromStartMaxSortKey}::int)`),
@@ -1092,7 +1101,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     expect(sortedSubsetFromStartStats.trimmedAverageMs).toBeLessThanOrEqual(LOAD_SUBSET_ITERATION_MAX_MS);
     const sortedSubsetFromSortKeySql = `
       SELECT *
-      FROM (${toQueryableSqlQuery(sortedHighValueByTeam.listRowsInGroup({
+      FROM (${toQueryableSqlQuery(sortedHighValueByTeam.listRowsInGroup(executionContext, {
         groupKey: expr(`to_jsonb('beta'::text)`),
         start: expr(`to_jsonb(${sortedSubsetFromCursorMinSortKey}::int)`),
         end: expr(`to_jsonb(999::int)`),
@@ -1123,14 +1132,14 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     );
     expect(sortedSubsetFromSortKeyStats.trimmedAverageMs).toBeLessThanOrEqual(LOAD_SUBSET_ITERATION_MAX_MS);
     const lFoldInit = await measureMs("load init foldedHighValueByTeam", async () => {
-      await runStatements(foldedHighValueByTeam.init());
+      await runStatements(foldedHighValueByTeam.init(executionContext));
     });
     expect(lFoldInit.elapsedMs).toBeLessThan(LOAD_LFOLD_TABLE_INIT_MAX_MS);
     const timeFoldInit = await measureMs("load init timedExposureByTeam", async () => {
-      await runStatements(timedExposureByTeam.init());
+      await runStatements(timedExposureByTeam.init(executionContext));
     });
     expect(timeFoldInit.elapsedMs).toBeLessThan(LOAD_TIMEFOLD_TABLE_INIT_MAX_MS);
-    const sortedDeltaRows = await readRows(sortedHighValueByTeam.listRowsInGroup({
+    const sortedDeltaRows = await readRows(sortedHighValueByTeam.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('delta'::text)`),
       start: "start",
       end: "end",
@@ -1140,7 +1149,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     expect(sortedDeltaRows.map((row) => ({ rowIdentifier: row.rowidentifier, rowSortKey: row.rowsortkey, rowData: row.rowdata }))).toEqual([
       { rowIdentifier: "seed-100000:1", rowSortKey: 999, rowData: { team: "delta", value: 999 } },
     ]);
-    const foldedDeltaRows = await readRows(foldedHighValueByTeam.listRowsInGroup({
+    const foldedDeltaRows = await readRows(foldedHighValueByTeam.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('delta'::text)`),
       start: "start",
       end: "end",
@@ -1154,7 +1163,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       value: 999,
       runningTotal: 999,
     });
-    const timedExposureDeltaRows = await readRows(timedExposureByTeam.listRowsInGroup({
+    const timedExposureDeltaRows = await readRows(timedExposureByTeam.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('delta'::text)`),
       start: "start",
       end: "end",
@@ -1171,7 +1180,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     const foldedHighValueCountOnly = await measureMs("load count foldedHighValueByTeam table only", async () => {
       return await sql.unsafe(`
         SELECT COUNT(*)::int AS "count"
-        FROM (${toQueryableSqlQuery(foldedHighValueByTeam.listRowsInGroup({
+        FROM (${toQueryableSqlQuery(foldedHighValueByTeam.listRowsInGroup(executionContext, {
           start: "start",
           end: "end",
           startInclusive: true,
@@ -1185,7 +1194,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     const timedExposureCountOnly = await measureMs("load count timedExposureByTeam table only", async () => {
       return await sql.unsafe(`
         SELECT COUNT(*)::int AS "count"
-        FROM (${toQueryableSqlQuery(timedExposureByTeam.listRowsInGroup({
+        FROM (${toQueryableSqlQuery(timedExposureByTeam.listRowsInGroup(executionContext, {
           start: "start",
           end: "end",
           startInclusive: true,
@@ -1198,7 +1207,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       ? (loadRowCount - 1)
       : loadRowCount;
     expect(Number(timedExposureCountOnly.result[0].count)).toBe(expectedTimedExposureCount);
-    const concatenatedDeltaRows = await readRows(concatenatedByTeam.listRowsInGroup({
+    const concatenatedDeltaRows = await readRows(concatenatedByTeam.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('delta'::text)`),
       start: "start",
       end: "end",
@@ -1212,7 +1221,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
         { rowIdentifier: "0:seed-100000", rowData: { team: "delta", value: 999 } },
         { rowIdentifier: "1:seed-100000:1", rowData: { team: "delta", value: 999 } },
       ]);
-    const limitedDeltaRows = await readRows(limitedByTeam.listRowsInGroup({
+    const limitedDeltaRows = await readRows(limitedByTeam.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('delta'::text)`),
       start: "start",
       end: "end",
@@ -1222,10 +1231,10 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     expect(limitedDeltaRows).toHaveLength(1);
     expect(limitedDeltaRows[0].rowidentifier).toBe("seed-100000");
     const leftJoinInit = await measureMs("load init leftJoinedTopByTeam", async () => {
-      await runStatements(leftJoinedTopByTeam.init());
+      await runStatements(leftJoinedTopByTeam.init(executionContext));
     });
     expect(leftJoinInit.elapsedMs).toBeLessThan(LOAD_LEFT_JOIN_TABLE_INIT_MAX_MS);
-    const leftJoinedTopByTeamCountQuery = leftJoinedTopByTeam.listRowsInGroup({
+    const leftJoinedTopByTeamCountQuery = leftJoinedTopByTeam.listRowsInGroup(executionContext, {
       start: "start",
       end: "end",
       startInclusive: true,
@@ -1239,7 +1248,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     });
     expect(leftJoinedTopByTeamCountOnly.elapsedMs).toBeLessThan(LOAD_LEFT_JOIN_TABLE_COUNT_QUERY_MAX_MS);
     expect(Number(leftJoinedTopByTeamCountOnly.result[0].count)).toBe(Number(limitedByTeamCountOnly.result[0].count) + 1);
-    const leftJoinedDeltaRows = await readRows(leftJoinedTopByTeam.listRowsInGroup({
+    const leftJoinedDeltaRows = await readRows(leftJoinedTopByTeam.listRowsInGroup(executionContext, {
       groupKey: expr(`to_jsonb('delta'::text)`),
       start: "start",
       end: "end",
@@ -1269,8 +1278,8 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       getSortKey: { type: "mapper", sql: `(("rowData"->>'value')::numeric) AS "newSortKey"` },
       compareSortKeys: (a, b) => expr(`(((${a.sql}) #>> '{}')::int) - (((${b.sql}) #>> '{}')::int)`),
     });
-    await runStatements(compactEntriesSorted.init());
-    await runStatements(compactBoundariesSorted.init());
+    await runStatements(compactEntriesSorted.init(executionContext));
+    await runStatements(compactBoundariesSorted.init(executionContext));
     const compactedByTeam = declareCompactTable({
       tableId: "load-prefilled-compacted-by-team",
       toBeCompactedTable: compactEntriesSorted,
@@ -1280,13 +1289,13 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       partitionKey: "team",
     });
     const compactInit = await measureMs("load init compactedByTeam", async () => {
-      await runStatements(compactedByTeam.init());
+      await runStatements(compactedByTeam.init(executionContext));
     });
     expect(compactInit.elapsedMs).toBeLessThan(LOAD_COMPACT_TABLE_INIT_MAX_MS);
     const compactedCountOnly = await measureMs("load count compactedByTeam table only", async () => {
       return await sql.unsafe(`
         SELECT COUNT(*)::int AS "count"
-        FROM (${toQueryableSqlQuery(compactedByTeam.listRowsInGroup({
+        FROM (${toQueryableSqlQuery(compactedByTeam.listRowsInGroup(executionContext, {
           start: "start",
           end: "end",
           startInclusive: true,
@@ -1317,13 +1326,13 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
       ` },
     });
     const reduceInit = await measureMs("load init reducedByTeam", async () => {
-      await runStatements(reducedByTeam.init());
+      await runStatements(reducedByTeam.init(executionContext));
     });
     expect(reduceInit.elapsedMs).toBeLessThan(LOAD_REDUCE_TABLE_INIT_MAX_MS);
     const reducedCountOnly = await measureMs("load count reducedByTeam table only", async () => {
       return await sql.unsafe(`
         SELECT COUNT(*)::int AS "count"
-        FROM (${toQueryableSqlQuery(reducedByTeam.listRowsInGroup({
+        FROM (${toQueryableSqlQuery(reducedByTeam.listRowsInGroup(executionContext, {
           start: "start",
           end: "end",
           startInclusive: true,
@@ -1338,7 +1347,7 @@ describe.sequential("bulldozer db performance (real postgres)", () => {
     allInitializedTables.length = 0;
 
     const bulkDelete = await measureMs("load full table delete", async () => {
-      await runStatements(table.delete());
+      await runStatements(table.delete(executionContext));
     });
     expect(bulkDelete.elapsedMs).toBeLessThan(LOAD_TABLE_DELETE_MAX_MS);
 
