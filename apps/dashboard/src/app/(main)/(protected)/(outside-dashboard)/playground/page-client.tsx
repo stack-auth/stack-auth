@@ -19,10 +19,13 @@ import {
   Cube,
   Envelope,
   FileText,
+  FlaskIcon,
   HardDrive,
+  InfoIcon,
   MagnifyingGlassIcon,
   Package,
   PencilSimple,
+  PulseIcon,
   Sliders,
   Sparkle,
   StackSimple,
@@ -44,6 +47,10 @@ import {
   DesignButton,
   DesignCard,
   DesignCategoryTabs,
+  DesignDialog,
+  DesignDialogClose,
+  type DesignDialogSize,
+  type DesignDialogVariant,
   DesignInput,
   DesignPillToggle,
 } from "@stackframe/dashboard-ui-components";
@@ -62,6 +69,7 @@ type ComponentId =
   | "cursor-blast"
   | "data-grid"
   | "data-table"
+  | "dialog"
   | "editable-grid"
   | "input"
   | "list-item-row"
@@ -80,6 +88,7 @@ const COMPONENT_LIST: Array<{ value: ComponentId, label: string }> = [
   { value: "cursor-blast", label: "Cursor Blast Effect" },
   { value: "data-grid", label: "Data Grid" },
   { value: "data-table", label: "Data Table" },
+  { value: "dialog", label: "Dialog" },
   { value: "editable-grid", label: "Editable Grid" },
   { value: "input", label: "Input" },
   { value: "list-item-row", label: "List Item Row" },
@@ -398,6 +407,16 @@ export default function PageClient() {
   const [tableLastRowClick, setTableLastRowClick] = useState("");
   const [tableGlass, setTableGlass] = useState<boolean | undefined>(undefined);
   const [tableShowToolbar, setTableShowToolbar] = useState(false);
+
+  // Dialog
+  const [dialogShape, setDialogShape] = useState<"confirm" | "rich" | "wide">("confirm");
+  const [dialogSize, setDialogSize] = useState<DesignDialogSize>("md");
+  const [dialogVariant, setDialogVariant] = useState<DesignDialogVariant>("glassmorphic");
+  const [dialogTitle, setDialogTitle] = useState("Heads up");
+  const [dialogDescription, setDialogDescription] = useState("This is a lightweight confirmation modal.");
+  const [dialogShowFooter, setDialogShowFooter] = useState(true);
+  const [dialogShowIcon, setDialogShowIcon] = useState(true);
+  const [dialogHideTopClose, setDialogHideTopClose] = useState(false);
 
   // Editable Grid
   const [gridCols, setGridCols] = useState<1 | 2>(2);
@@ -898,6 +917,108 @@ export default function PageClient() {
             maxHeight={400}
           />
         </div>
+      );
+    }
+    if (selected === "dialog") {
+      const dialogTriggerLabel = dialogShape === "rich"
+        ? "Open trigger history"
+        : dialogShape === "wide"
+          ? "Open tester"
+          : "Open confirmation";
+      const dialogIcon = dialogShowIcon
+        ? (dialogShape === "rich" ? PulseIcon : dialogShape === "wide" ? FlaskIcon : InfoIcon)
+        : null;
+      const headerContent = dialogShape === "rich" ? (
+        <div className="rounded-xl bg-foreground/[0.02] ring-1 ring-foreground/[0.06] p-3 space-y-3">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="text-sm font-semibold truncate flex-1 min-w-0">Allow @stack.dev signups</span>
+            <DesignBadge label="Allow" color="green" size="sm" />
+            <DesignBadge label="Enabled" color="green" size="sm" />
+          </div>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="rounded-lg bg-background/60 ring-1 ring-foreground/[0.06] p-2">
+              <span className="block text-[10px] uppercase tracking-wider text-muted-foreground">Last 24h</span>
+              <span className="text-sm font-semibold tabular-nums">12</span>
+            </div>
+            <div className="rounded-lg bg-background/60 ring-1 ring-foreground/[0.06] p-2">
+              <span className="block text-[10px] uppercase tracking-wider text-muted-foreground">All-time</span>
+              <span className="text-sm font-semibold tabular-nums">3</span>
+            </div>
+            <div className="rounded-lg bg-background/60 ring-1 ring-foreground/[0.06] p-2 flex items-center justify-center">
+              <span className="text-[10px] text-muted-foreground">sparkline</span>
+            </div>
+          </div>
+        </div>
+      ) : undefined;
+
+      let body: React.ReactNode;
+      if (dialogShape === "rich") {
+        body = (
+          <>
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Recent triggers</span>
+            <div className="rounded-xl ring-1 ring-foreground/[0.06] bg-background/60 divide-y divide-foreground/[0.06]">
+              {["jordan@stack.dev", "ops@stack.dev", "pat@stack.dev"].map((email) => (
+                <div key={email} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                  <span className="truncate">{email}</span>
+                  <DesignBadge label="2m ago" color="blue" size="sm" />
+                </div>
+              ))}
+            </div>
+          </>
+        );
+      } else if (dialogShape === "wide") {
+        body = (
+          <>
+            <DesignAlert
+              variant="info"
+              description="Use a wider size for forms and tester surfaces. The body region is scrollable."
+            />
+            <DesignCard>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <DesignInput placeholder="Email" />
+                <DesignInput placeholder="Country (e.g. US)" />
+              </div>
+            </DesignCard>
+          </>
+        );
+      } else {
+        body = (
+          <p className="text-sm">
+            Body content lives in the scrollable region between the header and the footer.
+            Use it for short messages, inline forms, or detail views.
+          </p>
+        );
+      }
+
+      const footer = dialogShowFooter ? (
+        dialogShape === "wide" ? (
+          <>
+            <DesignDialogClose asChild>
+              <DesignButton variant="secondary" size="sm">Cancel</DesignButton>
+            </DesignDialogClose>
+            <DesignButton size="sm">Run test</DesignButton>
+          </>
+        ) : (
+          <DesignDialogClose asChild>
+            <DesignButton variant="secondary" size="sm">Close</DesignButton>
+          </DesignDialogClose>
+        )
+      ) : undefined;
+
+      return (
+        <DesignDialog
+          size={dialogSize}
+          variant={dialogVariant}
+          icon={dialogIcon}
+          title={dialogTitle || "Dialog"}
+          description={dialogDescription || undefined}
+          headerContent={headerContent}
+          footer={footer}
+          hideTopCloseButton={dialogHideTopClose}
+          trigger={<DesignButton size="sm">{dialogTriggerLabel}</DesignButton>}
+        >
+          {body}
+        </DesignDialog>
       );
     }
     if (selected === "data-table") {
@@ -1598,6 +1719,100 @@ export default function PageClient() {
         </div>
       );
     }
+    if (selected === "dialog") {
+      const sizeOptions: Array<{ value: DesignDialogSize, label: string }> = [
+        { value: "sm", label: "Small" },
+        { value: "md", label: "Medium" },
+        { value: "lg", label: "Large" },
+        { value: "xl", label: "XL" },
+        { value: "2xl", label: "2XL" },
+        { value: "3xl", label: "3XL" },
+        { value: "4xl", label: "4XL" },
+        { value: "5xl", label: "5XL" },
+        { value: "6xl", label: "6XL" },
+        { value: "7xl", label: "7XL" },
+        { value: "full", label: "Full" },
+      ];
+      return (
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 items-end">
+          <PropField label="Shape">
+            <DesignSelectorDropdown
+              value={dialogShape}
+              onValueChange={(v) => {
+                if (v === "confirm" || v === "rich" || v === "wide") {
+                  setDialogShape(v);
+                  if (v === "confirm") {
+                    setDialogSize("md");
+                    setDialogTitle("Heads up");
+                    setDialogDescription("This is a lightweight confirmation modal.");
+                  } else if (v === "rich") {
+                    setDialogSize("2xl");
+                    setDialogTitle("Rule trigger history");
+                    setDialogDescription("3 total triggers for this rule");
+                  } else {
+                    setDialogSize("5xl");
+                    setDialogTitle("Test sign-up rules");
+                    setDialogDescription("Simulate a sign-up request to see which rules trigger.");
+                  }
+                  return;
+                }
+                throw new Error(`Unknown dialog shape "${v}"`);
+              }}
+              options={[
+                { value: "confirm", label: "Confirmation" },
+                { value: "rich", label: "Rule trigger history" },
+                { value: "wide", label: "Open tester" },
+              ]}
+              size="sm"
+            />
+          </PropField>
+          <PropField label="Size">
+            <DesignSelectorDropdown
+              value={dialogSize}
+              onValueChange={(v) => {
+                const match = sizeOptions.find((o) => o.value === v);
+                if (!match) throw new Error(`Unknown dialog size "${v}"`);
+                setDialogSize(match.value);
+              }}
+              options={sizeOptions}
+              size="sm"
+            />
+          </PropField>
+          <PropField label="Variant">
+            <DesignSelectorDropdown
+              value={dialogVariant}
+              onValueChange={(v) => {
+                if (v === "glassmorphic" || v === "plain") {
+                  setDialogVariant(v);
+                  return;
+                }
+                throw new Error(`Unknown dialog variant "${v}"`);
+              }}
+              options={[
+                { value: "glassmorphic", label: "Glassmorphic" },
+                { value: "plain", label: "Plain" },
+              ]}
+              size="sm"
+            />
+          </PropField>
+          <PropField label="Title">
+            <DesignInput size="sm" value={dialogTitle} onChange={(e) => setDialogTitle(e.target.value)} />
+          </PropField>
+          <PropField label="Description">
+            <DesignInput size="sm" value={dialogDescription} onChange={(e) => setDialogDescription(e.target.value)} placeholder="(empty = none)" />
+          </PropField>
+          <PropField label="Header Icon">
+            <BoolToggle value={dialogShowIcon} onChange={setDialogShowIcon} on="Show" off="Hide" />
+          </PropField>
+          <PropField label="Footer">
+            <BoolToggle value={dialogShowFooter} onChange={setDialogShowFooter} on="Show" off="Hide" />
+          </PropField>
+          <PropField label="Top-right Close">
+            <BoolToggle value={!dialogHideTopClose} onChange={(v) => setDialogHideTopClose(!v)} on="Show" off="Hide" />
+          </PropField>
+        </div>
+      );
+    }
     if (selected === "editable-grid") {
       return (
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-3 sm:gap-4 items-end">
@@ -2053,6 +2268,39 @@ export default function PageClient() {
   toolbar={${dgShowToolbar}}
   maxHeight={400}
 />`;
+    }
+    if (selected === "dialog") {
+      const dialogTriggerLabel = dialogShape === "rich"
+        ? "Open trigger history"
+        : dialogShape === "wide"
+          ? "Open tester"
+          : "Open confirmation";
+      const iconImport = dialogShowIcon
+        ? (dialogShape === "rich" ? "PulseIcon" : dialogShape === "wide" ? "FlaskIcon" : "InfoIcon")
+        : null;
+      const iconProp = iconImport ? `\n  icon={${iconImport}}` : `\n  icon={null}`;
+      const descProp = dialogDescription ? `\n  description="${escapeAttr(dialogDescription)}"` : "";
+      const variantProp = dialogVariant === "glassmorphic" ? "" : `\n  variant="${dialogVariant}"`;
+      const hideCloseProp = dialogHideTopClose ? `\n  hideTopCloseButton` : "";
+      const headerContentProp = dialogShape === "rich"
+        ? `\n  headerContent={\n    <div className=\"rounded-xl bg-foreground/[0.02] ring-1 ring-foreground/[0.06] p-3 space-y-3\">\n      {/* summary card: title row + 3 stat tiles */}\n    </div>\n  }`
+        : "";
+      const footerProp = dialogShowFooter
+        ? (dialogShape === "wide"
+          ? `\n  footer={\n    <>\n      <DesignDialogClose asChild>\n        <DesignButton variant=\"secondary\" size=\"sm\">Cancel</DesignButton>\n      </DesignDialogClose>\n      <DesignButton size=\"sm\">Run test</DesignButton>\n    </>\n  }`
+          : `\n  footer={\n    <DesignDialogClose asChild>\n      <DesignButton variant=\"secondary\" size=\"sm\">Close</DesignButton>\n    </DesignDialogClose>\n  }`)
+        : "";
+      const bodySnippet = dialogShape === "rich"
+        ? `\n  <span className=\"text-xs font-semibold uppercase tracking-wider text-muted-foreground\">Recent triggers</span>\n  {/* recent triggers list */}`
+        : dialogShape === "wide"
+          ? `\n  <DesignAlert variant=\"info\" description=\"Wide-form body content\" />\n  {/* tester form */}`
+          : `\n  <p className=\"text-sm\">Body content lives here.</p>`;
+      return `<DesignDialog
+  size="${dialogSize}"${variantProp}${iconProp}
+  title="${escapeAttr(dialogTitle || "Dialog")}"${descProp}${headerContentProp}${footerProp}${hideCloseProp}
+  trigger={<DesignButton size="sm">${escapeAttr(dialogTriggerLabel)}</DesignButton>}
+>${bodySnippet}
+</DesignDialog>`;
     }
     if (selected === "data-table") {
       const glassProp = tableGlass === undefined ? "" : `\n  glassmorphic={${tableGlass}}`;
