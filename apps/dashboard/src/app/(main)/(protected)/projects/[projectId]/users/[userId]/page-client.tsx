@@ -32,10 +32,13 @@ import {
   useToast
 } from "@/components/ui";
 import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialogs";
+import { ALL_APPS_FRONTEND } from "@/lib/apps-frontend";
+import { isAppEnabled } from "@/lib/apps-utils";
 import { parseRiskScore } from "@/lib/risk-score-utils";
 import { AtIcon, CalendarIcon, CheckIcon, EnvelopeIcon, GlobeIcon, HashIcon, KeyIcon, ProhibitIcon, ShieldIcon, SquareIcon, UsersIcon, XIcon } from "@phosphor-icons/react";
 import { ServerContactChannel, ServerOAuthProvider, ServerTeam, ServerUser } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
+import { AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { captureError, StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
@@ -1334,11 +1337,13 @@ function ActivityPlaceholder() {
 }
 
 const USER_PAGE_TABS = [
-  { id: "profile", label: "Profile" },
-  { id: "analytics", label: "Analytics" },
-  { id: "payments", label: "Payments" },
-  { id: "fraud-protection", label: "Fraud Protection" },
-] as const;
+  { id: "profile", label: "Profile", appId: null },
+  { id: "authentication", label: "Authentication", appId: "authentication" },
+  { id: "teams", label: "Teams", appId: "teams" },
+  { id: "payments", label: "Payments", appId: "payments" },
+  { id: "emails", label: "Emails", appId: "emails" },
+  { id: "analytics", label: "Analytics", appId: "analytics" },
+] as const satisfies ReadonlyArray<{ id: string, label: string, appId: AppId | null }>;
 
 type UserPageTab = typeof USER_PAGE_TABS[number]["id"];
 
@@ -1352,7 +1357,21 @@ function TabPlaceholder({ label }: { label: string }) {
 }
 
 function UserPage({ user }: { user: ServerUser }) {
-  const [selectedTab, setSelectedTab] = useState<UserPageTab>("profile");
+  const stackAdminApp = useAdminApp();
+  const project = stackAdminApp.useProject();
+  const config = project.useConfig();
+
+  const visibleTabs = useMemo(
+    () => USER_PAGE_TABS.filter((tab) => tab.appId === null || isAppEnabled(config.apps.installed, tab.appId)),
+    [config.apps.installed],
+  );
+
+  const [selectedTab, setSelectedTab] = useState<UserPageTab>(() => visibleTabs[0]?.id ?? "profile");
+
+  // If the currently selected tab becomes unavailable (e.g. app uninstalled), fall back to the first visible tab.
+  const activeTab: UserPageTab = visibleTabs.some((tab) => tab.id === selectedTab)
+    ? selectedTab
+    : (visibleTabs[0]?.id ?? "profile");
 
   return (
     <PageLayout>
@@ -1363,19 +1382,23 @@ function UserPage({ user }: { user: ServerUser }) {
           <ActivityPlaceholder />
         </div>
         <UserDetails user={user} />
-        <DesignCategoryTabs
-          categories={[...USER_PAGE_TABS]}
-          selectedCategory={selectedTab}
-          onSelect={(id) => setSelectedTab(id as UserPageTab)}
-          showBadge={false}
-          size="sm"
-          glassmorphic={false}
-        />
-        {selectedTab === "profile" && (
+        {visibleTabs.length > 0 && (
+          <DesignCategoryTabs
+            categories={visibleTabs.map(({ id, label, appId }) => ({
+              id,
+              label,
+              icon: appId ? ALL_APPS_FRONTEND[appId].icon : undefined,
+            }))}
+            selectedCategory={activeTab}
+            onSelect={(id) => setSelectedTab(id as UserPageTab)}
+            showBadge={false}
+            size="sm"
+            glassmorphic={false}
+          />
+        )}
+        {activeTab === "profile" && (
           <div className="flex flex-col gap-6">
             <ContactChannelsSection user={user} />
-            <UserTeamsSection user={user} />
-            <OAuthProvidersSection user={user} />
             <MetadataSection
               entityName="user"
               docsUrl={userMetadataDocsUrl}
@@ -1394,9 +1417,11 @@ function UserPage({ user }: { user: ServerUser }) {
             />
           </div>
         )}
-        {selectedTab === "analytics" && <TabPlaceholder label="Analytics" />}
-        {selectedTab === "payments" && <TabPlaceholder label="Payments" />}
-        {selectedTab === "fraud-protection" && <TabPlaceholder label="Fraud Protection" />}
+        {activeTab === "authentication" && <OAuthProvidersSection user={user} />}
+        {activeTab === "teams" && <UserTeamsSection user={user} />}
+        {activeTab === "payments" && <TabPlaceholder label="Payments" />}
+        {activeTab === "emails" && <TabPlaceholder label="Emails" />}
+        {activeTab === "analytics" && <TabPlaceholder label="Analytics" />}
       </div>
     </PageLayout>
   );
