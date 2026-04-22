@@ -324,6 +324,11 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
 
   // Save all pending changes
   const handleSave = async () => {
+    if (pendingChanges.prices !== undefined && Object.keys(pendingChanges.prices).length === 0) {
+      alert("A product must have at least one price. Add a price option or make the product free before saving.");
+      return;
+    }
+
     const configUpdate: Record<string, any> = {};
 
     // Apply product changes
@@ -829,18 +834,19 @@ type ProductPricesSectionProps = {
 function ProductPricesSection({ productId, prices, onPricesChange, inline = false }: ProductPricesSectionProps) {
   const [editingPrice, setEditingPrice] = useState<EditingPrice | null>(null);
   const [isAddingPrice, setIsAddingPrice] = useState(false);
+  const [replacePricesOnSave, setReplacePricesOnSave] = useState(false);
 
   const handleSavePrice = (editing: EditingPrice) => {
     const newPrice = editingPriceToPrice(editing);
 
-    const updatedPrices = {
-      ...prices,
-      [editing.priceId]: newPrice,
-    };
+    const updatedPrices = replacePricesOnSave
+      ? { [editing.priceId]: newPrice }
+      : { ...prices, [editing.priceId]: newPrice };
 
     onPricesChange(updatedPrices);
     setEditingPrice(null);
     setIsAddingPrice(false);
+    setReplacePricesOnSave(false);
   };
 
   const handleDeletePrice = (priceId: string) => {
@@ -864,6 +870,7 @@ function ProductPricesSection({ productId, prices, onPricesChange, inline = fals
   const hasNoPrices = priceEntries.length === 0;
 
   const handleMakePaid = () => {
+    setReplacePricesOnSave(true);
     openAddDialog();
   };
 
@@ -994,6 +1001,7 @@ function ProductPricesSection({ productId, prices, onPricesChange, inline = fals
         if (!open) {
           setEditingPrice(null);
           setIsAddingPrice(false);
+          setReplacePricesOnSave(false);
         }
       }}
       editingPrice={editingPrice}

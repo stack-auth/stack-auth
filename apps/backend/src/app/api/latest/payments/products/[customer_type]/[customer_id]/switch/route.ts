@@ -133,10 +133,12 @@ export const POST = createSmartRouteHandler({
       s => s.productId === body.from_product_id && isActiveSubscription(s)
     ) ?? null;
     const fromIsFreePlan = fromPriceEntries.length === 0
-      || fromPriceEntries.every(([, p]) => !p.USD || Number(p.USD) === 0);
+      || fromPriceEntries.every(([, p]) => p.USD == null || Number(p.USD) === 0);
     if (!existingSub && !fromIsFreePlan) {
       throw new StatusError(400, "This subscription cannot be switched.");
     }
+    // Server-granted subscriptions (no stripeSubscriptionId) are immutable via this endpoint;
+    // they must be cancelled through admin tooling before the customer switches plans.
     if (existingSub && !existingSub.stripeSubscriptionId) {
       throw new StatusError(400, "This subscription cannot be switched.");
     }
