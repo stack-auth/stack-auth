@@ -37,6 +37,13 @@ function EnableEmailVerificationDialog({
   pendingChange: PendingChange | null,
   onDismiss: () => void,
 }) {
+  const description =
+    pendingChange == null
+      ? undefined
+      : pendingChange.totalAffectedCount === 1
+        ? "Existing user who has not verified will need to complete verification the next time they open your app."
+        : "Existing users who have not verified will need to complete verification the next time they open your app.";
+
   return (
     <DesignDialog
       open={pendingChange != null}
@@ -48,21 +55,7 @@ function EnableEmailVerificationDialog({
       size="lg"
       icon={WarningCircle}
       title="Enable email verification?"
-      description="Existing users who have not verified will need to complete verification the next time they open your app."
-      headerContent={
-        pendingChange != null && pendingChange.totalAffectedCount > 0 ? (
-          <p className="text-sm text-muted-foreground">
-            <span className="font-semibold tabular-nums text-foreground">
-              {pendingChange.totalAffectedCount.toLocaleString()}
-            </span>
-            {" "}
-            user
-            {pendingChange.totalAffectedCount === 1 ? "" : "s"}
-            {" "}
-            may be asked to verify on their next app open. The list below is a sample; totals may be higher.
-          </p>
-        ) : null
-      }
+      description={description}
       footer={(
         <>
           <DesignDialogClose asChild>
@@ -86,9 +79,14 @@ function EnableEmailVerificationDialog({
         <div className="flex flex-col gap-3">
           {pendingChange.affectedUsers.length > 0 && (
             <div>
-              <Typography variant="secondary" className="mb-2 text-[10px] font-semibold uppercase tracking-wider">
-                Sample accounts
-              </Typography>
+              <div className="mb-2 flex flex-wrap items-baseline gap-2">
+                <span className="text-lg font-semibold tabular-nums text-primary">
+                  {pendingChange.totalAffectedCount.toLocaleString()}
+                </span>
+                <Typography variant="secondary" className="text-[10px] font-semibold uppercase tracking-wider">
+                  Affected accounts
+                </Typography>
+              </div>
               <div className="max-h-[min(200px,35vh)] overflow-y-auto rounded-xl bg-background/60 ring-1 ring-foreground/[0.06]">
                 <ul className="divide-y divide-foreground/[0.06]">
                   {pendingChange.affectedUsers.map((user) => (
@@ -122,7 +120,7 @@ function EnableEmailVerificationDialog({
                     {" "}
                     {(pendingChange.totalAffectedCount - pendingChange.affectedUsers.length).toLocaleString()}
                     {" "}
-                    more not shown in this sample
+                    more
                   </p>
                 )}
               </div>
