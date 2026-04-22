@@ -248,24 +248,24 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: Refres
   // Get end user IP info for session tracking and event logging
   const ipInfo = await getEndUserIpInfoForEvent();
 
+  // updateMany (instead of update) so a concurrent sign-out / session revocation
+  // that deletes the row between the caller's read and this write does not
+  // surface as a P2025 500. We re-check existence below and return null if the
+  // token was deleted, which the refresh route maps to RefreshTokenNotFoundOrExpired.
   await Promise.all([
-    prisma.projectUser.update({
+    prisma.projectUser.updateMany({
       where: {
-        tenancyId_projectUserId: {
-          tenancyId: options.tenancy.id,
-          projectUserId: options.refreshTokenObj.projectUserId,
-        },
+        tenancyId: options.tenancy.id,
+        projectUserId: options.refreshTokenObj.projectUserId,
       },
       data: withExternalDbSyncUpdate({
         lastActiveAt: now,
       }),
     }),
-    globalPrismaClient.projectUserRefreshToken.update({
+    globalPrismaClient.projectUserRefreshToken.updateMany({
       where: {
-        tenancyId_id: {
-          tenancyId: options.tenancy.id,
-          id: options.refreshTokenObj.id,
-        },
+        tenancyId: options.tenancy.id,
+        id: options.refreshTokenObj.id,
       },
       data: withExternalDbSyncUpdate({
         lastActiveAt: now,
@@ -273,6 +273,17 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: Refres
       }),
     }),
   ]);
+
+  const stillExists = await globalPrismaClient.projectUserRefreshToken.findUnique({
+    where: {
+      tenancyId_id: {
+        tenancyId: options.tenancy.id,
+        id: options.refreshTokenObj.id,
+      },
+    },
+    select: { id: true },
+  });
+  if (!stillExists) return null;
 
   // Log session activity event (used for metrics, geo info, etc.)
   await logEvent(
