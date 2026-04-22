@@ -250,9 +250,10 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: Refres
 
   // updateMany (instead of update) so a concurrent sign-out / session revocation
   // that deletes the row between the caller's read and this write does not
-  // surface as a P2025 500. We re-check existence below and return null if the
-  // token was deleted, which the refresh route maps to RefreshTokenNotFoundOrExpired.
-  await Promise.all([
+  // surface as a P2025 500. count === 0 on the refresh-token update means the
+  // row was deleted mid-flight; return null so the refresh route maps it to
+  // RefreshTokenNotFoundOrExpired.
+  const [, refreshTokenUpdate] = await Promise.all([
     prisma.projectUser.updateMany({
       where: {
         tenancyId: options.tenancy.id,
@@ -273,17 +274,7 @@ export async function generateAccessTokenFromRefreshTokenIfValid(options: Refres
       }),
     }),
   ]);
-
-  const stillExists = await globalPrismaClient.projectUserRefreshToken.findUnique({
-    where: {
-      tenancyId_id: {
-        tenancyId: options.tenancy.id,
-        id: options.refreshTokenObj.id,
-      },
-    },
-    select: { id: true },
-  });
-  if (!stillExists) return null;
+  if (refreshTokenUpdate.count === 0) return null;
 
   // Log session activity event (used for metrics, geo info, etc.)
   await logEvent(
