@@ -1,8 +1,4 @@
 import { Prisma } from "@/generated/prisma/client";
-import { listManagedProjectIds } from "@/lib/projects";
-import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "@/lib/tenancies";
-import { globalPrismaClient, retryTransaction, type PrismaClientTransaction } from "@/prisma-client";
-import { KnownErrors } from "@stackframe/stack-shared";
 import {
   conversationMessageTypeValues,
   conversationPriorityValues,
@@ -11,6 +7,7 @@ import {
   conversationSourceValues,
   conversationStatusValues,
   type ConversationDetailResponse,
+  type ConversationEntryPoint,
   type ConversationMessage,
   type ConversationMessageType,
   type ConversationMetadata,
@@ -20,11 +17,15 @@ import {
   type ConversationStatus,
   type ConversationSummary,
 } from "@/lib/conversation-types";
-import { yupArray, yupMixed, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import { listManagedProjectIds } from "@/lib/projects";
+import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, getTenancy } from "@/lib/tenancies";
+import { globalPrismaClient, retryTransaction, type PrismaClientTransaction } from "@/prisma-client";
+import { KnownErrors } from "@stackframe/stack-shared";
+import { computeFirstResponseDueAt, computeNextResponseDueAt, resolveSupportSla, type SupportSlaConfig } from "@stackframe/stack-shared/dist/helpers/support-sla";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
-import * as yup from "yup";
+import { yupArray, yupMixed, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { StackAssertionError, StatusError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 
 const tagsSchema = yupArray(yupString().defined()).defined();
 const attachmentsSchema = yupArray(yupMixed().defined()).defined();
@@ -38,6 +39,12 @@ type DbConversationRow = {
   priority: string,
   source: string,
   createdAt: Date,
+  updatedAt: Date,
+  lastMessageAt: Date,
+  lastInboundAt: Date | null,
+  lastOutboundAt: Date | null,
+  closedAt: Date | null,
+  recordMetadata: Prisma.JsonValue | null,
   userDisplayName: string | null,
   userPrimaryEmail: string | null,
   userProfileImageUrl: string | null,
@@ -49,6 +56,17 @@ type DbConversationRow = {
   nextResponseDueAt: Date | null,
   lastCustomerReplyAt: Date | null,
   lastAgentReplyAt: Date | null,
+};
+
+type ConversationEntryPointRow = {
+  id: string,
+  channelType: string,
+  adapterKey: string,
+  externalChannelId: string | null,
+  isEntryPoint: boolean,
+  metadata: Prisma.JsonValue | null,
+  createdAt: Date,
+  updatedAt: Date,
 };
 
 type ConversationSummaryRow = DbConversationRow & {
@@ -116,7 +134,7 @@ function toIsoString(value: Date | null): string | null {
   return value?.toISOString() ?? null;
 }
 
-function metadataFromRow(row: DbConversationRow): ConversationMetadata {
+function conversationAttributesFromRow(row: DbConversationRow): ConversationMetadata {
   return {
     assignedToUserId: row.assignedToUserId,
     assignedToDisplayName: row.assignedToDisplayName,
@@ -169,7 +187,27 @@ function summaryFromRow(row: ConversationSummaryRow): ConversationSummary {
     ),
     preview: previewForSummary(row),
     lastActivityAt: (row.lastVisibleActivityAt ?? row.createdAt).toISOString(),
-    metadata: metadataFromRow(row),
+    metadata: conversationAttributesFromRow(row),
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
+    lastMessageAt: row.lastMessageAt.toISOString(),
+    lastInboundAt: toIsoString(row.lastInboundAt),
+    lastOutboundAt: toIsoString(row.lastOutboundAt),
+    closedAt: toIsoString(row.closedAt),
+    recordMetadata: row.recordMetadata ?? null,
+  };
+}
+
+function entryPointFromRow(row: ConversationEntryPointRow): ConversationEntryPoint {
+  return {
+    id: row.id,
+    channelType: row.channelType,
+    adapterKey: row.adapterKey,
+    externalChannelId: row.externalChannelId,
+    isEntryPoint: row.isEntryPoint,
+    metadata: row.metadata,
+    createdAt: row.createdAt.toISOString(),
+    updatedAt: row.updatedAt.toISOString(),
   };
 }
 
@@ -216,17 +254,23 @@ async function getConversationRow(options: {
       c.priority,
       c.source,
       c."createdAt",
+      c."updatedAt",
+      c."lastMessageAt",
+      c."lastInboundAt",
+      c."lastOutboundAt",
+      c."closedAt",
+      c.metadata AS "recordMetadata",
       pu."displayName" AS "userDisplayName",
       pu."profileImageUrl" AS "userProfileImageUrl",
       cc."value" AS "userPrimaryEmail",
-      cm."assignedToUserId",
-      cm."assignedToDisplayName",
-      cm.tags,
-      cm."firstResponseDueAt",
-      cm."firstResponseAt",
-      cm."nextResponseDueAt",
-      cm."lastCustomerReplyAt",
-      cm."lastAgentReplyAt"
+      c."assignedToUserId",
+      c."assignedToDisplayName",
+      c.tags,
+      c."firstResponseDueAt",
+      c."firstResponseAt",
+      c."nextResponseDueAt",
+      c."lastCustomerReplyAt",
+      c."lastAgentReplyAt"
     FROM "Conversation" c
     LEFT JOIN "ProjectUser" pu
       ON pu."tenancyId" = c."tenancyId"
@@ -236,9 +280,6 @@ async function getConversationRow(options: {
       AND cc."projectUserId" = c."projectUserId"
       AND cc."type" = 'EMAIL'
       AND cc."isPrimary" = 'TRUE'
-    LEFT JOIN "ConversationMetadata" cm
-      ON cm."tenancyId" = c."tenancyId"
-      AND cm."conversationId" = c.id
     WHERE c."tenancyId" = ${options.tenancyId}::uuid
       AND c.id = ${options.conversationId}::uuid
       ${options.viewerProjectUserId != null ? Prisma.sql`AND c."projectUserId" = ${options.viewerProjectUserId}::uuid` : Prisma.empty}
@@ -262,13 +303,10 @@ async function getConversationState(options: {
       c.status,
       c.priority,
       c.source,
-      cm."firstResponseAt",
-      cm."lastCustomerReplyAt",
-      cm."lastAgentReplyAt"
+      c."firstResponseAt",
+      c."lastCustomerReplyAt",
+      c."lastAgentReplyAt"
     FROM "Conversation" c
-    LEFT JOIN "ConversationMetadata" cm
-      ON cm."tenancyId" = c."tenancyId"
-      AND cm."conversationId" = c.id
     WHERE c."tenancyId" = ${options.tenancyId}::uuid
       AND c.id = ${options.conversationId}::uuid
       ${options.viewerProjectUserId != null ? Prisma.sql`AND c."projectUserId" = ${options.viewerProjectUserId}::uuid` : Prisma.empty}
@@ -294,7 +332,7 @@ async function getConversationState(options: {
   };
 }
 
-async function ensureConversationChannel(options: {
+async function ensureConversationEntryPoint(options: {
   tx: PrismaClientTransaction,
   tenancyId: string,
   conversationId: string,
@@ -304,7 +342,7 @@ async function ensureConversationChannel(options: {
 }) {
   const existingRows = await options.tx.$queryRaw<{ id: string }[]>(Prisma.sql`
     SELECT id
-    FROM "ConversationChannel"
+    FROM "ConversationEntryPoint"
     WHERE "tenancyId" = ${options.tenancyId}::uuid
       AND "conversationId" = ${options.conversationId}::uuid
       AND "channelType" = ${options.channelType}
@@ -319,9 +357,9 @@ async function ensureConversationChannel(options: {
     return existingRow.id;
   }
 
-  const channelId = generateUuid();
+  const entryPointId = generateUuid();
   await options.tx.$executeRaw(Prisma.sql`
-    INSERT INTO "ConversationChannel" (
+    INSERT INTO "ConversationEntryPoint" (
       id,
       "tenancyId",
       "conversationId",
@@ -334,7 +372,7 @@ async function ensureConversationChannel(options: {
       "updatedAt"
     )
     VALUES (
-      ${channelId}::uuid,
+      ${entryPointId}::uuid,
       ${options.tenancyId}::uuid,
       ${options.conversationId}::uuid,
       ${options.channelType},
@@ -346,7 +384,7 @@ async function ensureConversationChannel(options: {
       NOW()
     )
   `);
-  return channelId;
+  return entryPointId;
 }
 
 export async function getManagedProjectTenancy(projectId: string, user: UsersCrud["Admin"]["Read"]) {
@@ -378,17 +416,23 @@ export async function listConversationSummaries(options: {
       c.priority,
       c.source,
       c."createdAt",
+      c."updatedAt",
+      c."lastMessageAt",
+      c."lastInboundAt",
+      c."lastOutboundAt",
+      c."closedAt",
+      c.metadata AS "recordMetadata",
       pu."displayName" AS "userDisplayName",
       pu."profileImageUrl" AS "userProfileImageUrl",
       cc."value" AS "userPrimaryEmail",
-      md."assignedToUserId",
-      md."assignedToDisplayName",
-      md.tags,
-      md."firstResponseDueAt",
-      md."firstResponseAt",
-      md."nextResponseDueAt",
-      md."lastCustomerReplyAt",
-      md."lastAgentReplyAt",
+      c."assignedToUserId",
+      c."assignedToDisplayName",
+      c.tags,
+      c."firstResponseDueAt",
+      c."firstResponseAt",
+      c."nextResponseDueAt",
+      c."lastCustomerReplyAt",
+      c."lastAgentReplyAt",
       lm."messageType" AS "latestMessageType",
       lm.body AS "latestBody",
       lm."createdAt" AS "lastVisibleActivityAt"
@@ -401,9 +445,6 @@ export async function listConversationSummaries(options: {
       AND cc."projectUserId" = c."projectUserId"
       AND cc."type" = 'EMAIL'
       AND cc."isPrimary" = 'TRUE'
-    LEFT JOIN "ConversationMetadata" md
-      ON md."tenancyId" = c."tenancyId"
-      AND md."conversationId" = c.id
     LEFT JOIN LATERAL (
       SELECT
         cm."messageType",
@@ -471,21 +512,40 @@ export async function getConversationDetail(options: {
   const messages = messageRows.map((row) => messageFromRow(row, conversation));
   const latestMessage = messages.at(-1) ?? throwErr("Conversations must contain at least one message");
 
+  const entryPointRows = await globalPrismaClient.$queryRaw<ConversationEntryPointRow[]>(Prisma.sql`
+    SELECT
+      cep.id,
+      cep."channelType",
+      cep."adapterKey",
+      cep."externalChannelId",
+      cep."isEntryPoint",
+      cep.metadata,
+      cep."createdAt",
+      cep."updatedAt"
+    FROM "ConversationEntryPoint" cep
+    WHERE cep."tenancyId" = ${options.tenancyId}::uuid
+      AND cep."conversationId" = ${options.conversationId}::uuid
+    ORDER BY cep."createdAt" ASC, cep.id ASC
+  `);
+
   return {
-    conversation: {
-      ...summaryFromRow({
-        ...conversation,
-        latestMessageType: latestMessage.messageType,
-        latestBody: latestMessage.body,
-        lastVisibleActivityAt: new Date(latestMessage.createdAt),
-      }),
-      status: parseEnumValue(conversationStatusValues, conversation.status, "conversation status"),
-      priority: parseEnumValue(conversationPriorityValues, conversation.priority, "conversation priority"),
-      source: parseEnumValue(conversationSourceValues, conversation.source, "conversation source"),
-      metadata: metadataFromRow(conversation),
-    },
+    conversation: summaryFromRow({
+      ...conversation,
+      latestMessageType: latestMessage.messageType,
+      latestBody: latestMessage.body,
+      lastVisibleActivityAt: new Date(latestMessage.createdAt),
+    }),
     messages,
+    entryPoints: entryPointRows.map(entryPointFromRow),
   };
+}
+
+async function loadSupportSlaConfig(tenancyId: string): Promise<SupportSlaConfig> {
+  const tenancy = await getTenancy(tenancyId);
+  if (tenancy == null) {
+    throw new StackAssertionError(`Tenancy ${tenancyId} not found when loading support SLA config`);
+  }
+  return resolveSupportSla(tenancy.config.support);
 }
 
 export async function createConversation(options: {
@@ -510,6 +570,11 @@ export async function createConversation(options: {
   const isUserMessage = sender.type === "user";
   const isAgentMessage = sender.type === "agent";
 
+  const sla = await loadSupportSlaConfig(options.tenancyId);
+  const firstResponseDueAt = isUserMessage
+    ? computeFirstResponseDueAt(now, sla)
+    : null;
+
   await retryTransaction(globalPrismaClient, async (tx) => {
     await tx.$executeRaw(Prisma.sql`
       INSERT INTO "Conversation" (
@@ -521,6 +586,15 @@ export async function createConversation(options: {
         status,
         priority,
         source,
+        "assignedToUserId",
+        "assignedToDisplayName",
+        tags,
+        "firstResponseDueAt",
+        "firstResponseAt",
+        "nextResponseDueAt",
+        "lastCustomerReplyAt",
+        "lastAgentReplyAt",
+        metadata,
         "createdAt",
         "updatedAt",
         "lastMessageAt",
@@ -537,6 +611,15 @@ export async function createConversation(options: {
         'open',
         ${options.priority},
         ${options.source},
+        NULL,
+        NULL,
+        ${jsonbParam([])},
+        ${firstResponseDueAt == null ? Prisma.sql`NULL` : Prisma.sql`${firstResponseDueAt}`},
+        NULL,
+        NULL,
+        ${isUserMessage ? Prisma.sql`${now}` : Prisma.sql`NULL`},
+        ${isAgentMessage ? Prisma.sql`${now}` : Prisma.sql`NULL`},
+        NULL,
         ${now},
         ${now},
         ${now},
@@ -547,40 +630,7 @@ export async function createConversation(options: {
     `);
 
     await tx.$executeRaw(Prisma.sql`
-      INSERT INTO "ConversationMetadata" (
-        "conversationId",
-        "tenancyId",
-        "assignedToUserId",
-        "assignedToDisplayName",
-        tags,
-        "firstResponseDueAt",
-        "firstResponseAt",
-        "nextResponseDueAt",
-        "lastCustomerReplyAt",
-        "lastAgentReplyAt",
-        metadata,
-        "createdAt",
-        "updatedAt"
-      )
-      VALUES (
-        ${conversationId}::uuid,
-        ${options.tenancyId}::uuid,
-        NULL,
-        NULL,
-        ${jsonbParam([])},
-        NULL,
-        NULL,
-        NULL,
-        ${isUserMessage ? Prisma.sql`${now}` : Prisma.sql`NULL`},
-        ${isAgentMessage ? Prisma.sql`${now}` : Prisma.sql`NULL`},
-        NULL,
-        ${now},
-        ${now}
-      )
-    `);
-
-    await tx.$executeRaw(Prisma.sql`
-      INSERT INTO "ConversationChannel" (
+      INSERT INTO "ConversationEntryPoint" (
         id,
         "tenancyId",
         "conversationId",
@@ -702,13 +752,20 @@ export async function appendConversationMessage(options: {
     currentStatus: conversation.status,
   });
 
+  const sla = await loadSupportSlaConfig(options.tenancyId);
+  const shouldSetNextResponseDueAt = shouldTrackReplies && sender.type === "user" && autoStatus === "open";
+  const shouldClearNextResponseDueAt = shouldTrackReplies && sender.type === "agent";
+  const nextResponseDueAt = shouldSetNextResponseDueAt
+    ? computeNextResponseDueAt(now, sla)
+    : null;
+
   await retryTransaction(globalPrismaClient, async (tx) => {
     const channelId = (
       options.messageType === "message"
       && options.channelType != null
       && options.adapterKey != null
     )
-      ? await ensureConversationChannel({
+      ? await ensureConversationEntryPoint({
         tx,
         tenancyId: options.tenancyId,
         conversationId: options.conversationId,
@@ -770,14 +827,21 @@ export async function appendConversationMessage(options: {
     `);
 
     await tx.$executeRaw(Prisma.sql`
-      UPDATE "ConversationMetadata"
+      UPDATE "Conversation"
       SET
         "updatedAt" = ${now},
         "firstResponseAt" = ${nextFirstResponseAt == null ? Prisma.sql`"firstResponseAt"` : Prisma.sql`${nextFirstResponseAt}`},
         "lastCustomerReplyAt" = ${shouldTrackReplies && sender.type === "user" ? Prisma.sql`${now}` : Prisma.sql`"lastCustomerReplyAt"`},
-        "lastAgentReplyAt" = ${shouldTrackReplies && sender.type === "agent" ? Prisma.sql`${now}` : Prisma.sql`"lastAgentReplyAt"`}
+        "lastAgentReplyAt" = ${shouldTrackReplies && sender.type === "agent" ? Prisma.sql`${now}` : Prisma.sql`"lastAgentReplyAt"`},
+        "nextResponseDueAt" = ${
+          shouldClearNextResponseDueAt
+            ? Prisma.sql`NULL`
+            : nextResponseDueAt != null
+              ? Prisma.sql`${nextResponseDueAt}`
+              : Prisma.sql`"nextResponseDueAt"`
+        }
       WHERE "tenancyId" = ${options.tenancyId}::uuid
-        AND "conversationId" = ${options.conversationId}::uuid
+        AND id = ${options.conversationId}::uuid
     `);
   });
 }
@@ -850,7 +914,7 @@ export async function updateConversationStatus(options: {
   });
 }
 
-export async function updateConversationMetadata(options: {
+export async function updateConversationAttributes(options: {
   tenancyId: string,
   conversationId: string,
   assignedToUserId?: string | null,
@@ -858,16 +922,16 @@ export async function updateConversationMetadata(options: {
   tags?: string[],
   priority?: ConversationPriority,
 }) {
-  const metadataUpdates: Prisma.Sql[] = [];
+  const conversationUpdates: Prisma.Sql[] = [];
 
   if ("assignedToUserId" in options) {
-    metadataUpdates.push(Prisma.sql`"assignedToUserId" = ${options.assignedToUserId ?? null}`);
+    conversationUpdates.push(Prisma.sql`"assignedToUserId" = ${options.assignedToUserId ?? null}`);
   }
   if ("assignedToDisplayName" in options) {
-    metadataUpdates.push(Prisma.sql`"assignedToDisplayName" = ${options.assignedToDisplayName ?? null}`);
+    conversationUpdates.push(Prisma.sql`"assignedToDisplayName" = ${options.assignedToDisplayName ?? null}`);
   }
   if ("tags" in options) {
-    metadataUpdates.push(Prisma.sql`tags = ${jsonbParam(options.tags ?? [])}`);
+    conversationUpdates.push(Prisma.sql`tags = ${jsonbParam(options.tags ?? [])}`);
   }
 
   await retryTransaction(globalPrismaClient, async (tx) => {
@@ -882,14 +946,14 @@ export async function updateConversationMetadata(options: {
       `);
     }
 
-    if (metadataUpdates.length > 0) {
+    if (conversationUpdates.length > 0) {
       await tx.$executeRaw(Prisma.sql`
-        UPDATE "ConversationMetadata"
+        UPDATE "Conversation"
         SET
-          ${Prisma.join(metadataUpdates, ", ")},
+          ${Prisma.join(conversationUpdates, ", ")},
           "updatedAt" = NOW()
         WHERE "tenancyId" = ${options.tenancyId}::uuid
-          AND "conversationId" = ${options.conversationId}::uuid
+          AND id = ${options.conversationId}::uuid
       `);
     }
   });

@@ -77,9 +77,8 @@ model Tenancy {
   sessionReplayChunks SessionReplayChunk[]
   managedEmailDomains ManagedEmailDomain[]
   conversations       Conversation[]
-  conversationChannels ConversationChannel[]
+  conversationEntryPoints ConversationEntryPoint[]
   conversationMessages ConversationMessage[]
-  conversationMetadata ConversationMetadata[]
 
   // Email capacity boost - when set and in the future, email capacity is multiplied by 4
   emailCapacityBoostExpiresAt DateTime?
@@ -1150,6 +1149,15 @@ model Conversation {
   status        String
   priority      String
   source        String
+  assignedToUserId      String?
+  assignedToDisplayName String?
+  tags                  Json?
+  firstResponseDueAt    DateTime?
+  firstResponseAt       DateTime?
+  nextResponseDueAt     DateTime?
+  lastCustomerReplyAt   DateTime?
+  lastAgentReplyAt      DateTime?
+  metadata              Json?
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   lastMessageAt DateTime @default(now())
@@ -1161,8 +1169,7 @@ model Conversation {
   projectUser ProjectUser?           @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
   team        Team?                  @relation(fields: [tenancyId, teamId], references: [tenancyId, teamId], onDelete: Cascade)
   messages    ConversationMessage[]
-  channels    ConversationChannel[]
-  metadata    ConversationMetadata?
+  entryPoints ConversationEntryPoint[]
 
   @@id([tenancyId, id])
   @@index([tenancyId, projectUserId, lastMessageAt(sort: Desc)], name: "Conversation_user_lastMessageAt_idx")
@@ -1170,29 +1177,7 @@ model Conversation {
   @@index([tenancyId, teamId, lastMessageAt(sort: Desc)], name: "Conversation_team_lastMessageAt_idx")
 }
 
-model ConversationMetadata {
-  conversationId String @db.Uuid
-  tenancyId      String @db.Uuid
-
-  assignedToUserId      String?
-  assignedToDisplayName String?
-  tags                  Json?
-  firstResponseDueAt    DateTime?
-  firstResponseAt       DateTime?
-  nextResponseDueAt     DateTime?
-  lastCustomerReplyAt   DateTime?
-  lastAgentReplyAt      DateTime?
-  metadata              Json?
-  createdAt             DateTime @default(now())
-  updatedAt             DateTime @updatedAt
-
-  conversation Conversation @relation(fields: [tenancyId, conversationId], references: [tenancyId, id], onDelete: Cascade)
-  tenancy      Tenancy      @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
-
-  @@id([tenancyId, conversationId])
-}
-
-model ConversationChannel {
+model ConversationEntryPoint {
   id             String @default(uuid()) @db.Uuid
   tenancyId      String @db.Uuid
   conversationId String @db.Uuid
@@ -1207,10 +1192,11 @@ model ConversationChannel {
 
   tenancy      Tenancy      @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
   conversation Conversation @relation(fields: [tenancyId, conversationId], references: [tenancyId, id], onDelete: Cascade)
+  messages     ConversationMessage[]
 
   @@id([tenancyId, id])
-  @@index([tenancyId, conversationId, createdAt], name: "ConversationChannel_conversation_createdAt_idx")
-  @@index([tenancyId, channelType, adapterKey], name: "ConversationChannel_type_adapter_idx")
+  @@index([tenancyId, conversationId, createdAt], name: "ConversationEntryPoint_conversation_createdAt_idx")
+  @@index([tenancyId, channelType, adapterKey], name: "ConversationEntryPoint_type_adapter_idx")
 }
 
 model ConversationMessage {
@@ -1231,6 +1217,7 @@ model ConversationMessage {
 
   tenancy      Tenancy      @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
   conversation Conversation @relation(fields: [tenancyId, conversationId], references: [tenancyId, id], onDelete: Cascade)
+  channel      ConversationEntryPoint? @relation(fields: [tenancyId, channelId], references: [tenancyId, id])
 
   @@id([tenancyId, id])
   @@index([tenancyId, conversationId, createdAt], name: "ConversationMessage_conversation_createdAt_idx")

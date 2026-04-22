@@ -3,7 +3,7 @@
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
 import { UserSearchPicker } from "@/components/data-table/user-search-picker";
 import { useRouter } from "@/components/router";
-import { DesignAlert, DesignBadge, DesignCard, DesignCategoryTabs, DesignInput, DesignPillToggle, DesignSelectorDropdown } from "@/components/design-components";
+import { DesignAlert, DesignBadge, DesignCard, DesignCategoryTabs, DesignInput, DesignSelectorDropdown } from "@/components/design-components";
 import {
   Avatar,
   AvatarFallback,
@@ -20,10 +20,15 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
   Spinner,
   Textarea,
   Typography,
   cn,
+  useToast,
 } from "@/components/ui";
 import {
   appendConversationUpdate,
@@ -39,8 +44,10 @@ import {
   type ConversationSummary,
 } from "@/lib/conversation-types";
 import { useUser } from "@stackframe/stack";
+import { computeSlaUrgency, type SlaUrgency } from "@stackframe/stack-shared/dist/helpers/support-sla";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
 import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
 import {
   ArrowLeftIcon,
@@ -50,11 +57,13 @@ import {
   HeadsetIcon,
   MagnifyingGlassIcon,
   NotePencilIcon,
+  PaperPlaneRightIcon,
   PlusIcon,
+  UsersThreeIcon,
   XIcon,
 } from "@phosphor-icons/react";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { type Dispatch, type SetStateAction, useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 
@@ -124,6 +133,259 @@ function formatAbsoluteTimestamp(value: string | null) {
     return "Invalid date";
   }
   return date.toLocaleString();
+}
+
+function entryPointChannelLabel(channelType: string): string {
+  const known: ConversationSource[] = ["chat", "email", "api", "manual"];
+  if (known.includes(channelType as ConversationSource)) {
+    return getSourceBadge(channelType as ConversationSource).label;
+  }
+  return channelType;
+}
+
+function getConversationStartedFromLine(detail: ConversationDetailResponse): string {
+  if (detail.entryPoints.length === 0) {
+    return getSourceBadge(detail.conversation.source).label;
+  }
+  const ordered = [...detail.entryPoints].sort((a, b) => Number(b.isEntryPoint) - Number(a.isEntryPoint));
+  const primary = ordered[0];
+  return `${entryPointChannelLabel(primary.channelType)} · ${primary.adapterKey}`;
+}
+
+function useTickingNow(intervalMs: number = 30_000): Date {
+  const [now, setNow] = useState<Date>(() => new Date());
+  useEffect(() => {
+    const id = setInterval(() => setNow(new Date()), intervalMs);
+    return () => clearInterval(id);
+  }, [intervalMs]);
+  return now;
+}
+
+function parseOptionalDate(value: string | null | undefined): Date | null {
+  if (value == null) return null;
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return date;
+}
+
+function getSlaUrgencyFor(
+  at: string | null,
+  now: Date,
+  windowStartedAt?: string | null,
+): SlaUrgency | null {
+  const date = parseOptionalDate(at);
+  if (date == null) return null;
+  return computeSlaUrgency(date, now, { windowStartedAt: parseOptionalDate(windowStartedAt) });
+}
+
+function getSlaUrgencyTextClass(urgency: SlaUrgency | null): string | null {
+  if (urgency === "overdue" || urgency === "urgent") {
+    return "text-red-600 dark:text-red-400";
+  }
+  if (urgency === "warning") {
+    return "text-amber-600 dark:text-amber-400";
+  }
+  return null;
+}
+
+function SlaUrgencyDot(props: { urgency: SlaUrgency | null, className?: string }) {
+  if (props.urgency == null || props.urgency === "ok") {
+    return null;
+  }
+  const bgClass = props.urgency === "warning"
+    ? "bg-amber-500"
+    : "bg-red-500";
+  const animateClass = props.urgency === "overdue" ? "animate-pulse" : "";
+  return (
+    <span
+      aria-hidden
+      className={cn(
+        "inline-block h-1.5 w-1.5 shrink-0 rounded-full",
+        bgClass,
+        animateClass,
+        props.className,
+      )}
+    />
+  );
+}
+
+function getSlaUrgencyAriaLabel(urgency: SlaUrgency | null): string | null {
+  if (urgency === "overdue") return "SLA overdue";
+  if (urgency === "urgent") return "SLA due very soon";
+  if (urgency === "warning") return "SLA approaching";
+  return null;
+}
+
+function CompactSlaRow(props: {
+  label: string,
+  at: string | null,
+  empty: string,
+  now?: Date,
+  isDue?: boolean,
+  windowStartedAt?: string | null,
+}) {
+  if (props.at == null) {
+    return (
+      <div className="flex items-baseline justify-between gap-2 text-xs">
+        <Typography variant="secondary" className="shrink-0">{props.label}</Typography>
+        <Typography className="text-muted-foreground">{props.empty}</Typography>
+      </div>
+    );
+  }
+  const date = new Date(props.at);
+  if (Number.isNaN(date.getTime())) {
+    return (
+      <div className="flex items-baseline justify-between gap-2 text-xs">
+        <Typography variant="secondary" className="shrink-0">{props.label}</Typography>
+        <Typography className="text-muted-foreground">Invalid</Typography>
+      </div>
+    );
+  }
+  const urgency = props.isDue === true && props.now != null
+    ? computeSlaUrgency(date, props.now, { windowStartedAt: parseOptionalDate(props.windowStartedAt) })
+    : null;
+  const urgencyClass = getSlaUrgencyTextClass(urgency);
+  const ariaLabel = getSlaUrgencyAriaLabel(urgency);
+  return (
+    <div className="flex items-baseline justify-between gap-2 text-xs">
+      <Typography variant="secondary" className="shrink-0">{props.label}</Typography>
+      <div className="flex min-w-0 items-center gap-1.5">
+        <SlaUrgencyDot urgency={urgency} />
+        <Typography
+          aria-label={ariaLabel ?? undefined}
+          className={cn(
+            "min-w-0 text-right font-medium tabular-nums",
+            urgencyClass ?? "text-foreground/90",
+          )}
+        >
+          {fromNow(date)}
+        </Typography>
+      </div>
+    </div>
+  );
+}
+
+function ConversationTeamSlaSidebar(props: {
+  detail: ConversationDetailResponse,
+  assignedToDraft: { userId: string | null, displayName: string | null },
+  setAssignedToDraft: Dispatch<SetStateAction<{ userId: string | null, displayName: string | null }>>,
+  priorityDraft: ConversationPriority,
+  setPriorityDraft: Dispatch<SetStateAction<ConversationPriority>>,
+  tagsDraft: string,
+  setTagsDraft: Dispatch<SetStateAction<string>>,
+  assigneeOptions: Array<{ value: string, label: string }>,
+  settingsSaving: boolean,
+  settingsError: string | null,
+  onSave: () => Promise<void>,
+  now: Date,
+}) {
+  const md = props.detail.conversation.metadata;
+  return (
+    <div className="flex flex-col gap-5">
+      <div>
+        <Typography className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Team
+        </Typography>
+        <div className="mt-2 flex flex-col gap-3">
+          <div className="flex flex-col gap-1.5">
+            <Typography variant="secondary" className="text-[11px] uppercase tracking-wider">
+              Assignee
+            </Typography>
+            <DesignSelectorDropdown
+              value={props.assignedToDraft.userId ?? "unassigned"}
+              onValueChange={(value) => {
+                if (value === "unassigned") {
+                  props.setAssignedToDraft({ userId: null, displayName: null });
+                  return;
+                }
+                const assigneeOption = props.assigneeOptions.find((option) => option.value === value)
+                  ?? throwErr(`Assignee option "${value}" was not found.`);
+                props.setAssignedToDraft({
+                  userId: assigneeOption.value,
+                  displayName: assigneeOption.label,
+                });
+              }}
+              options={[
+                { value: "unassigned", label: "Unassigned" },
+                ...props.assigneeOptions,
+              ]}
+              size="sm"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Typography variant="secondary" className="text-[11px] uppercase tracking-wider">
+              Priority
+            </Typography>
+            <DesignSelectorDropdown
+              value={props.priorityDraft}
+              onValueChange={(value) => {
+                if (value !== "low" && value !== "normal" && value !== "high" && value !== "urgent") {
+                  throwErr(`Unknown priority value "${value}"`);
+                }
+                props.setPriorityDraft(value);
+              }}
+              options={PRIORITY_OPTIONS.map((option) => ({ value: option.id, label: option.label }))}
+              size="sm"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Typography variant="secondary" className="text-[11px] uppercase tracking-wider">
+              Tags
+            </Typography>
+            <DesignInput
+              value={props.tagsDraft}
+              onChange={(event) => props.setTagsDraft(event.target.value)}
+              placeholder="vip, billing, bug-report"
+            />
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => props.setAssignedToDraft({ userId: null, displayName: null })}
+            >
+              Unassign
+            </Button>
+            <Button size="sm" disabled={props.settingsSaving} onClick={() => runAsynchronously(props.onSave())}>
+              {props.settingsSaving ? <Spinner className="mr-2 h-4 w-4" /> : null}
+              Save
+            </Button>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <Typography className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          SLA
+        </Typography>
+        <div className="mt-2 space-y-1.5 rounded-lg border border-border/50 bg-foreground/[0.02] px-2.5 py-2">
+          <CompactSlaRow
+            label="First response due"
+            at={md.firstResponseDueAt}
+            empty="None"
+            isDue={md.firstResponseAt == null}
+            now={props.now}
+            windowStartedAt={props.detail.conversation.createdAt}
+          />
+          <CompactSlaRow label="First response sent" at={md.firstResponseAt} empty="Not yet" />
+          <CompactSlaRow
+            label="Next response due"
+            at={md.nextResponseDueAt}
+            empty="None"
+            isDue
+            now={props.now}
+            windowStartedAt={md.lastCustomerReplyAt}
+          />
+          <CompactSlaRow label="Last customer reply" at={md.lastCustomerReplyAt} empty="None" />
+          <CompactSlaRow label="Last agent reply" at={md.lastAgentReplyAt} empty="None" />
+        </div>
+      </div>
+
+      {props.settingsError != null && (
+        <Typography className="text-xs text-red-500">{props.settingsError}</Typography>
+      )}
+    </div>
+  );
 }
 
 function parseTagInput(value: string) {
@@ -440,10 +702,7 @@ function NewConversationDialog(props: {
                 if (!canSubmit) {
                   return;
                 }
-                const nextUserId = selectedUserId;
-                if (nextUserId == null) {
-                  throw new Error("A support conversation must be attached to a selected user.");
-                }
+                const nextUserId = selectedUserId ?? throwErr("A support conversation must be attached to a selected user.");
 
                 setIsSubmitting(true);
                 setErrorMessage(null);
@@ -474,13 +733,15 @@ function NewConversationDialog(props: {
   );
 }
 
+const REPLY_DISABLED_MESSAGE = "Customer-visible replies are disabled until inbound email is available. Please respond to the customer by email (use their address from the header).";
+
 function SupportComposer(props: {
   detail: ConversationDetailResponse,
   onUpdated: (detail: ConversationDetailResponse) => void,
   currentUser: { getAccessToken: () => Promise<string | null> } | null,
   projectId: string,
 }) {
-  const [mode, setMode] = useState<"reply" | "internal-note">("reply");
+  const [mode, setMode] = useState<"reply" | "internal-note">("internal-note");
   const [body, setBody] = useState("");
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -488,97 +749,151 @@ function SupportComposer(props: {
   useEffect(() => {
     setBody("");
     setErrorMessage(null);
+    setMode("internal-note");
   }, [props.detail.conversation.conversationId]);
 
+  const submit = async () => {
+    if (mode === "reply" || body.trim() === "" || isSubmitting) {
+      return;
+    }
+    setIsSubmitting(true);
+    setErrorMessage(null);
+    try {
+      const nextDetail = await appendConversationUpdate(props.currentUser, {
+        projectId: props.projectId,
+        conversationId: props.detail.conversation.conversationId,
+        type: "internal-note",
+        body: body.trim(),
+      });
+      props.onUpdated(nextDetail);
+      setBody("");
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : "Unknown error");
+    } finally {
+      setIsSubmitting(false);
+    }
+  };
+
   return (
-    <DesignCard className="rounded-2xl" contentClassName="p-5">
-      <div className="flex flex-col gap-4">
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div>
-            <Typography className="text-sm font-medium">Reply or note</Typography>
-            <Typography variant="secondary" className="text-xs">
-              Support replies stay in the user-facing conversation. Internal notes stay visible only to the support team.
-            </Typography>
-          </div>
-          <DesignPillToggle
-            options={[
-              { id: "reply", label: "Support Reply" },
-              { id: "internal-note", label: "Internal Note" },
-            ]}
-            selected={mode}
-            onSelect={(id) => setMode(id === "internal-note" ? "internal-note" : "reply")}
-            size="sm"
-            gradient="blue"
-          />
-        </div>
-
-        <Textarea
-          value={body}
-          onChange={(event) => setBody(event.target.value)}
-          placeholder={mode === "reply" ? "Write the reply that the user should see..." : "Write an internal note for the support team..."}
-          className="min-h-32"
-        />
-
-        {errorMessage != null && (
-          <DesignAlert
-            variant="error"
-            title="Could not update conversation"
-            description={errorMessage}
-          />
-        )}
-
-        <div className="flex justify-end">
-          <Button
-            disabled={body.trim() === "" || isSubmitting}
-            onClick={async () => {
-              setIsSubmitting(true);
-              setErrorMessage(null);
-              try {
-                if (mode === "reply" && props.detail.conversation.metadata.assignedToUserId == null) {
-                  const currentUserId = (
-                    typeof props.currentUser === "object"
-                    && props.currentUser != null
-                    && "id" in props.currentUser
-                    && typeof props.currentUser.id === "string"
-                  ) ? props.currentUser.id : null;
-                  const currentUserDisplayName = (
-                    typeof props.currentUser === "object"
-                    && props.currentUser != null
-                    && "displayName" in props.currentUser
-                    && typeof props.currentUser.displayName === "string"
-                  ) ? props.currentUser.displayName : null;
-                  if (currentUserId != null) {
-                    await appendConversationUpdate(props.currentUser, {
-                      projectId: props.projectId,
-                      conversationId: props.detail.conversation.conversationId,
-                      type: "metadata",
-                      assignedToUserId: currentUserId,
-                      assignedToDisplayName: currentUserDisplayName,
-                    });
-                  }
-                }
-
-                const nextDetail = await appendConversationUpdate(props.currentUser, {
-                  projectId: props.projectId,
-                  conversationId: props.detail.conversation.conversationId,
-                  type: mode,
-                  body: body.trim(),
-                });
-                props.onUpdated(nextDetail);
-                setBody("");
-              } catch (error) {
-                setErrorMessage(error instanceof Error ? error.message : "Unknown error");
-              } finally {
-                setIsSubmitting(false);
-              }
+    <div
+      className={cn(
+        "shrink-0 border-t border-border/50 px-2 pb-2 pt-1.5 sm:px-3 sm:pb-2.5 sm:pt-2",
+        "bg-gradient-to-b from-muted/25 to-muted/40 dark:from-white/[0.04] dark:to-white/[0.07]",
+      )}
+    >
+      <div className="mx-auto flex w-full max-w-3xl flex-col gap-1 sm:gap-1.5">
+        <div
+          className="inline-flex h-7 w-full max-w-[13rem] rounded-full bg-foreground/[0.06] p-0.5 dark:bg-white/[0.08] sm:h-7 sm:max-w-[14rem]"
+          role="tablist"
+          aria-label="Message type"
+        >
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === "reply"}
+            className={cn(
+              "min-h-0 flex-1 rounded-full px-2.5 text-[11px] font-medium transition-colors duration-150 sm:px-3 sm:text-xs",
+              mode === "reply"
+                ? "bg-background text-foreground shadow-sm dark:bg-background/90"
+                : "text-muted-foreground hover:text-foreground/80",
+            )}
+            onClick={() => {
+              setMode("reply");
+              setBody("");
             }}
           >
-            {isSubmitting ? <Spinner className="mr-2 h-4 w-4" /> : mode === "reply" ? <ChatCircleDotsIcon className="mr-2 h-4 w-4" /> : <NotePencilIcon className="mr-2 h-4 w-4" />}
-            {mode === "reply" ? "Send Reply" : "Add Note"}
+            Reply
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={mode === "internal-note"}
+            className={cn(
+              "min-h-0 flex-1 rounded-full px-2.5 text-[11px] font-medium transition-colors duration-150 sm:px-3 sm:text-xs",
+              mode === "internal-note"
+                ? "bg-background text-foreground shadow-sm dark:bg-background/90"
+                : "text-muted-foreground hover:text-foreground/80",
+            )}
+            onClick={() => setMode("internal-note")}
+          >
+            Note
+          </button>
+        </div>
+
+        <Typography variant="secondary" className="text-[10px] leading-tight text-muted-foreground sm:text-[11px]">
+          {mode === "reply"
+            ? "Read-only — use email to reach the customer."
+            : "Team only — not sent to the customer."}
+        </Typography>
+
+        {mode === "reply" && (
+          <DesignAlert variant="info" title="Reply unavailable" description={REPLY_DISABLED_MESSAGE} />
+        )}
+
+        {errorMessage != null && (
+          <div className="px-0.5">
+            <DesignAlert
+              variant="error"
+              title="Could not send"
+              description={errorMessage}
+            />
+          </div>
+        )}
+
+        <div
+          className={cn(
+            "flex items-end gap-1 rounded-2xl border px-1 py-0.5 shadow-sm backdrop-blur-md transition-colors duration-150 sm:gap-1.5 sm:rounded-[22px] sm:px-1.5 sm:py-1",
+            mode === "internal-note"
+              ? "border-purple-400/25 bg-purple-500/[0.06] dark:border-purple-400/20 dark:bg-purple-500/[0.08]"
+              : "border-border/60 bg-muted/40 opacity-90 dark:bg-background/40",
+          )}
+        >
+          <Textarea
+            value={mode === "reply" ? "" : body}
+            onChange={(event) => setBody(event.target.value)}
+            readOnly={mode === "reply"}
+            disabled={mode === "reply"}
+            placeholder={mode === "reply" ? REPLY_DISABLED_MESSAGE : "Internal note…"}
+            rows={mode === "reply" ? 2 : 1}
+            className={cn(
+              "max-h-[min(7rem,22vh)] min-h-[36px] flex-1 resize-none border-0 bg-transparent px-2 py-1.5 text-sm leading-snug sm:min-h-[40px] sm:px-2.5 sm:py-2 sm:text-[15px]",
+              "shadow-none placeholder:text-muted-foreground/70 focus-visible:ring-0 focus-visible:ring-offset-0",
+              mode === "reply" && "cursor-not-allowed text-muted-foreground",
+            )}
+            onKeyDown={(event) => {
+              if (mode === "reply") {
+                return;
+              }
+              if (event.key === "Enter" && !event.shiftKey) {
+                event.preventDefault();
+                runAsynchronously(submit());
+              }
+            }}
+          />
+          <Button
+            type="button"
+            size="icon"
+            disabled={mode === "reply" || body.trim() === "" || isSubmitting}
+            className={cn(
+              "mb-0.5 h-8 w-8 shrink-0 rounded-full text-white shadow-md transition-transform duration-150 active:scale-95 sm:mb-1 sm:h-9 sm:w-9",
+              mode === "internal-note"
+                ? "bg-purple-600 hover:bg-purple-600/90"
+                : "bg-blue-500 hover:bg-blue-500/90",
+            )}
+            aria-label={mode === "reply" ? "Send reply (disabled)" : "Add note"}
+            onClick={() => runAsynchronously(submit())}
+          >
+            {isSubmitting ? (
+              <Spinner className="h-4 w-4 text-white" />
+            ) : mode === "reply" ? (
+              <PaperPlaneRightIcon className="h-5 w-5" weight="fill" aria-hidden />
+            ) : (
+              <NotePencilIcon className="h-5 w-5" weight="fill" aria-hidden />
+            )}
           </Button>
         </div>
       </div>
-    </DesignCard>
+    </div>
   );
 }
 
@@ -588,6 +903,7 @@ export default function PageClient() {
   const project = adminApp.useProject();
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { toast } = useToast();
 
   const projectId = project.id;
   const selectedConversationId = searchParams.get("conversationId") ?? searchParams.get("threadId");
@@ -612,6 +928,9 @@ export default function PageClient() {
   const [settingsSaving, setSettingsSaving] = useState(false);
   const [settingsError, setSettingsError] = useState<string | null>(null);
   const [priorityDraft, setPriorityDraft] = useState<ConversationPriority>("normal");
+  const [teamSheetOpen, setTeamSheetOpen] = useState(false);
+  const [isLgViewport, setIsLgViewport] = useState(false);
+  const now = useTickingNow();
 
   const resolvedSelectedUserId = selectedUserId ?? conversationDetail?.conversation.userId ?? EMPTY_USER_ID;
   const selectedUser = adminApp.useUser(resolvedSelectedUserId);
@@ -630,6 +949,48 @@ export default function PageClient() {
   }, [assignableTeamMembers]);
 
   const selectedUserLabel = selectedUser?.displayName ?? selectedUser?.primaryEmail ?? selectedUserId;
+
+  useEffect(() => {
+    const mediaQuery = window.matchMedia("(min-width: 1024px)");
+    const apply = () => setIsLgViewport(mediaQuery.matches);
+    apply();
+    mediaQuery.addEventListener("change", apply);
+    return () => mediaQuery.removeEventListener("change", apply);
+  }, []);
+
+  useEffect(() => {
+    if (isLgViewport) {
+      setTeamSheetOpen(false);
+    }
+  }, [isLgViewport]);
+
+  const saveTeamSettings = useCallback(async () => {
+    if (conversationDetail == null) {
+      return;
+    }
+    setSettingsSaving(true);
+    setSettingsError(null);
+    try {
+      const nextDetail = await appendConversationUpdate(currentUser, {
+        projectId,
+        conversationId: conversationDetail.conversation.conversationId,
+        type: "metadata",
+        assignedToUserId: assignedToDraft.userId,
+        assignedToDisplayName: assignedToDraft.displayName,
+        priority: priorityDraft,
+        tags: parseTagInput(tagsDraft),
+      });
+      setConversationDetail(nextDetail);
+      setConversations((current) => current.map((conversation) => (
+        conversation.conversationId === nextDetail.conversation.conversationId ? nextDetail.conversation : conversation
+      )));
+      setTeamSheetOpen(false);
+    } catch (error) {
+      setSettingsError(error instanceof Error ? error.message : "Could not save conversation settings.");
+    } finally {
+      setSettingsSaving(false);
+    }
+  }, [assignedToDraft, conversationDetail, currentUser, priorityDraft, projectId, tagsDraft]);
 
   const updateSelection = useCallback((next: { conversationId?: string | null, userId?: string | null }) => {
     const params = new URLSearchParams(searchParams.toString());
@@ -752,11 +1113,11 @@ export default function PageClient() {
               New Conversation
             </Button>
           ),
-        } : {})}
+        } : { fillWidth: true as const })}
       >
-        <div className="relative isolate">
+        <div className={cn("relative isolate", isConversationSelected && "flex min-h-0 flex-1 flex-col")}>
           <div className="pointer-events-none absolute inset-x-0 -top-8 -z-10 h-44 bg-gradient-to-b from-blue-500/12 via-cyan-500/8 to-transparent blur-2xl" />
-          <div className="grid gap-6">
+          <div className={cn(isConversationSelected ? "flex min-h-0 flex-1 flex-col gap-3" : "grid gap-6")}>
             {!isConversationSelected && (
               <DesignCard
                 className="h-fit rounded-3xl border border-white/10 bg-background/80 shadow-[0_10px_40px_-24px_rgba(30,80,255,0.6)] backdrop-blur-xl"
@@ -826,6 +1187,16 @@ export default function PageClient() {
                     const queueLabel = getConversationQueueLabel(conversation.status);
                     const firstDueLabel = formatAbsoluteTimestamp(conversation.metadata.firstResponseDueAt);
                     const nextDueLabel = formatAbsoluteTimestamp(conversation.metadata.nextResponseDueAt);
+                    const firstDueUrgency = conversation.metadata.firstResponseAt == null
+                      ? getSlaUrgencyFor(conversation.metadata.firstResponseDueAt, now, conversation.createdAt)
+                      : null;
+                    const nextDueUrgency = getSlaUrgencyFor(
+                      conversation.metadata.nextResponseDueAt,
+                      now,
+                      conversation.metadata.lastCustomerReplyAt,
+                    );
+                    const firstDueClass = getSlaUrgencyTextClass(firstDueUrgency);
+                    const nextDueClass = getSlaUrgencyTextClass(nextDueUrgency);
                     return (
                       <div
                         key={conversation.conversationId}
@@ -865,9 +1236,27 @@ export default function PageClient() {
                               </Typography>
                             </div>
 
-                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
-                              <span>First due {firstDueLabel}</span>
-                              <span>Next due {nextDueLabel}</span>
+                            <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px]">
+                              <span
+                                className={cn(
+                                  "inline-flex items-center gap-1",
+                                  firstDueClass ?? "text-muted-foreground",
+                                )}
+                                aria-label={getSlaUrgencyAriaLabel(firstDueUrgency) ?? undefined}
+                              >
+                                <SlaUrgencyDot urgency={firstDueUrgency} />
+                                First due {firstDueLabel}
+                              </span>
+                              <span
+                                className={cn(
+                                  "inline-flex items-center gap-1",
+                                  nextDueClass ?? "text-muted-foreground",
+                                )}
+                                aria-label={getSlaUrgencyAriaLabel(nextDueUrgency) ?? undefined}
+                              >
+                                <SlaUrgencyDot urgency={nextDueUrgency} />
+                                Next due {nextDueLabel}
+                              </span>
                             </div>
 
                             <div className="rounded-md border border-border/60 bg-foreground/[0.03] px-2 py-1.5">
@@ -891,7 +1280,7 @@ export default function PageClient() {
             )}
 
             {isConversationSelected && (
-              <div className="flex min-w-0 flex-col gap-4">
+              <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
                 <button
                   type="button"
                   onClick={() => updateSelection({ conversationId: null })}
@@ -915,24 +1304,27 @@ export default function PageClient() {
                 )}
 
                 {!conversationLoading && conversationDetail != null && (
-                  <>
-                    <DesignCard
-                      className="rounded-2xl border border-white/10 bg-gradient-to-b from-blue-500/[0.06] via-background/75 to-background/90 shadow-[0_14px_40px_-28px_rgba(30,80,255,0.75)]"
-                      contentClassName="p-3"
-                    >
-                      <div className="flex flex-col gap-3">
-                        <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2 lg:flex-row lg:items-stretch lg:gap-5">
+                    <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
+                      <div className="shrink-0 rounded-xl border border-border/60 bg-background/80 px-3 py-2.5 shadow-sm backdrop-blur-sm dark:bg-background/50">
+                        <div className="flex flex-wrap items-start justify-between gap-2">
                           <SupportUserHeader
                             size="compact"
                             displayName={conversationDetail.conversation.userDisplayName}
                             primaryEmail={conversationDetail.conversation.userPrimaryEmail}
                             profileImageUrl={conversationDetail.conversation.userProfileImageUrl}
                           />
-
-                          <div className="flex items-center gap-2 sm:justify-end">
+                          <div className="flex shrink-0 flex-wrap items-center justify-end gap-1.5">
+                            {!isLgViewport && (
+                              <Button variant="outline" size="sm" className="h-8 gap-1.5 px-2.5" onClick={() => setTeamSheetOpen(true)}>
+                                <UsersThreeIcon className="h-4 w-4" />
+                                Team
+                              </Button>
+                            )}
                             <Button
                               variant="outline"
                               size="sm"
+                              className="h-8"
                               onClick={async () => {
                                 try {
                                   const nextDetail = await appendConversationUpdate(currentUser, {
@@ -947,11 +1339,15 @@ export default function PageClient() {
                                   )));
                                   setRefreshKey((current) => current + 1);
                                 } catch (error) {
-                                  alert(error instanceof Error ? error.message : "Could not update the conversation status.");
+                                  toast({
+                                    variant: "destructive",
+                                    title: "Could not update conversation status",
+                                    description: error instanceof Error ? error.message : "An unknown error occurred.",
+                                  });
                                 }
                               }}
                             >
-                              {conversationDetail.conversation.status === "closed" ? "Reopen Conversation" : "Close Conversation"}
+                              {conversationDetail.conversation.status === "closed" ? "Reopen" : "Close"}
                             </Button>
                             <Button
                               variant="outline"
@@ -970,182 +1366,112 @@ export default function PageClient() {
                             </Button>
                           </div>
                         </div>
-
-                        <div className="min-w-0">
-                          <Typography className="text-lg font-semibold tracking-tight">{conversationDetail.conversation.subject}</Typography>
-                          <Typography variant="secondary" className="mt-0.5 text-xs">
+                        <Typography className="mt-2 text-base font-semibold leading-snug tracking-tight sm:text-lg">
+                          {conversationDetail.conversation.subject}
+                        </Typography>
+                        <Typography variant="secondary" className="mt-1 text-xs leading-snug">
+                          <span className="text-muted-foreground">Started from</span>
+                          {" "}
+                          {getConversationStartedFromLine(conversationDetail)}
+                        </Typography>
+                        <div className="mt-2 flex flex-wrap items-center gap-x-3 gap-y-1">
+                          <DesignBadge label={getStatusBadge(conversationDetail.conversation.status).label} color={getStatusBadge(conversationDetail.conversation.status).color} size="sm" />
+                          <Typography variant="secondary" className="text-xs">
                             Last active {formatSupportTimestamp(conversationDetail.conversation.lastActivityAt)}
                           </Typography>
-                          <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                            <DesignBadge label={getStatusBadge(conversationDetail.conversation.status).label} color={getStatusBadge(conversationDetail.conversation.status).color} size="sm" />
-                            <DesignBadge label={getPriorityMeta(conversationDetail.conversation.priority).label} color={getPriorityMeta(conversationDetail.conversation.priority).color} size="sm" />
-                            <DesignBadge label={getSourceBadge(conversationDetail.conversation.source).label} color={getSourceBadge(conversationDetail.conversation.source).color} size="sm" />
-                          </div>
                         </div>
                       </div>
-                    </DesignCard>
 
-                    <DesignCard className="rounded-2xl border border-white/10" contentClassName="p-4">
-                      <div className="flex flex-col gap-3">
-                        <div className="grid gap-2 rounded-lg border border-border/60 bg-foreground/[0.02] p-2 sm:grid-cols-2 xl:grid-cols-5">
-                          {[
-                            { label: "First due", value: formatAbsoluteTimestamp(conversationDetail.conversation.metadata.firstResponseDueAt) },
-                            { label: "First sent", value: formatAbsoluteTimestamp(conversationDetail.conversation.metadata.firstResponseAt) },
-                            { label: "Next due", value: formatAbsoluteTimestamp(conversationDetail.conversation.metadata.nextResponseDueAt) },
-                            { label: "Last customer", value: formatAbsoluteTimestamp(conversationDetail.conversation.metadata.lastCustomerReplyAt) },
-                            { label: "Last support", value: formatAbsoluteTimestamp(conversationDetail.conversation.metadata.lastAgentReplyAt) },
-                          ].map((item) => (
-                            <div key={item.label} className="rounded-md border border-border/60 bg-background/50 px-2 py-1.5">
-                              <Typography variant="secondary" className="text-[10px] uppercase tracking-wider">
-                                {item.label}
-                              </Typography>
-                              <Typography className="mt-0.5 text-xs">{item.value}</Typography>
-                            </div>
-                          ))}
-                        </div>
-
-                        <div className="grid gap-3 xl:grid-cols-[220px_180px_minmax(0,1fr)_auto] xl:items-end">
-                          <div className="flex flex-col gap-1.5">
-                            <Typography variant="secondary" className="text-[11px] uppercase tracking-wider">
-                              Assignee
-                            </Typography>
-                            <DesignSelectorDropdown
-                              value={assignedToDraft.userId ?? "unassigned"}
-                              onValueChange={(value) => {
-                                if (value === "unassigned") {
-                                setAssignedToDraft({ userId: null, displayName: null });
-                                return;
-                                }
-                                const assigneeOption = assigneeOptions.find((option) => option.value === value);
-                                if (assigneeOption == null) {
-                                  throw new Error(`Assignee option "${value}" was not found.`);
-                                }
-                              setAssignedToDraft({
-                                userId: assigneeOption.value,
-                                displayName: assigneeOption.label,
-                              });
-                              }}
-                              options={[
-                                { value: "unassigned", label: "Unassigned" },
-                                ...assigneeOptions,
-                              ]}
-                              size="sm"
-                            />
-                          </div>
-
-                          <div className="flex flex-col gap-1.5">
-                            <Typography variant="secondary" className="text-[11px] uppercase tracking-wider">
-                              Severity
-                            </Typography>
-                            <DesignSelectorDropdown
-                              value={priorityDraft}
-                              onValueChange={(value) => {
-                                if (value !== "low" && value !== "normal" && value !== "high" && value !== "urgent") {
-                                  throw new Error(`Unknown priority value "${value}"`);
-                                }
-                              setPriorityDraft(value);
-                              }}
-                              options={PRIORITY_OPTIONS.map((option) => ({ value: option.id, label: option.label }))}
-                              size="sm"
-                            />
-                          </div>
-
-                          <div className="flex flex-col gap-1.5">
-                            <Typography variant="secondary" className="text-[11px] uppercase tracking-wider">
-                              Tags
-                            </Typography>
-                            <DesignInput
-                              value={tagsDraft}
-                              onChange={(event) => setTagsDraft(event.target.value)}
-                              placeholder="vip, billing, bug-report"
-                            />
-                          </div>
-
-                          <div className="flex items-center justify-end gap-2">
-                            <Button
-                              variant="outline"
-                              size="sm"
-                              onClick={() => setAssignedToDraft({ userId: null, displayName: null })}
-                            >
-                              Unassign
-                            </Button>
-                            <Button
-                              size="sm"
-                              disabled={settingsSaving}
-                              onClick={async () => {
-                              setSettingsSaving(true);
-                              setSettingsError(null);
-                              try {
-                                const nextDetail = await appendConversationUpdate(currentUser, {
-                                  projectId,
-                                  conversationId: conversationDetail.conversation.conversationId,
-                                  type: "metadata",
-                                  assignedToUserId: assignedToDraft.userId,
-                                  assignedToDisplayName: assignedToDraft.displayName,
-                                  priority: priorityDraft,
-                                  tags: parseTagInput(tagsDraft),
-                                });
-                                setConversationDetail(nextDetail);
-                                setConversations((current) => current.map((conversation) => (
-                                  conversation.conversationId === nextDetail.conversation.conversationId ? nextDetail.conversation : conversation
-                                )));
-                              } catch (error) {
-                                setSettingsError(error instanceof Error ? error.message : "Could not save conversation settings.");
-                              } finally {
-                                setSettingsSaving(false);
-                              }
-                              }}
-                            >
-                              {settingsSaving ? <Spinner className="mr-2 h-4 w-4" /> : null}
-                              Save
-                            </Button>
-                          </div>
-                        </div>
-
-                        {settingsError != null && (
-                          <Typography className="text-xs text-red-500">{settingsError}</Typography>
-                        )}
-                      </div>
-                    </DesignCard>
-
-                    <DesignCard className="rounded-3xl border border-white/10" contentClassName="overflow-hidden p-0">
-                      <div className="border-b border-border/70 bg-foreground/[0.02] px-5 py-4">
-                        <Typography className="text-sm font-semibold">Conversation</Typography>
-                        <Typography variant="secondary" className="mt-1 text-xs">
-                          Customer messages appear on the left; support replies on the right. Internal notes appear as dashed annotations in the timeline and are never visible to the end user.
-                        </Typography>
-                      </div>
                       <div
-                        className="max-h-[min(720px,72vh)] overflow-y-auto px-4 py-4"
-                        style={{ scrollbarGutter: "stable" }}
+                        className={cn(
+                          "relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-2xl border border-white/10 bg-background/50 shadow-[0_10px_36px_-28px_rgba(30,80,255,0.55)]",
+                          "ring-1 ring-black/[0.06] dark:bg-background/60 dark:ring-white/[0.06] dark:backdrop-blur-xl",
+                          "min-h-[min(520px,calc(100dvh-14rem))] lg:min-h-0",
+                        )}
                       >
-                        <div className="flex flex-col gap-3">
-                          {conversationDetail.messages.map((message) => (
-                            <SupportChatMessage key={message.id} message={message} conversation={conversationDetail.conversation} />
-                          ))}
+                        <div className="flex min-h-0 flex-1 flex-col">
+                          <div
+                            className="min-h-0 flex-1 overflow-y-auto px-3 py-3 sm:px-4"
+                            style={{ scrollbarGutter: "stable" }}
+                          >
+                            <div className="flex flex-col gap-3">
+                              {conversationDetail.messages.map((message) => (
+                                <SupportChatMessage key={message.id} message={message} conversation={conversationDetail.conversation} />
+                              ))}
+                            </div>
+                          </div>
+                          <SupportComposer
+                            detail={conversationDetail}
+                            currentUser={currentUser}
+                            projectId={projectId}
+                            onUpdated={(nextDetail) => {
+                              setConversationDetail(nextDetail);
+                              setConversations((current) => {
+                                const existing = current.find((conversation) => conversation.conversationId === nextDetail.conversation.conversationId);
+                                if (existing == null) {
+                                  return [nextDetail.conversation, ...current];
+                                }
+                                return current.map((conversation) => (
+                                  conversation.conversationId === nextDetail.conversation.conversationId ? nextDetail.conversation : conversation
+                                ));
+                              });
+                              setRefreshKey((current) => current + 1);
+                            }}
+                          />
                         </div>
                       </div>
-                    </DesignCard>
+                    </div>
 
-                    <SupportComposer
-                      detail={conversationDetail}
-                      currentUser={currentUser}
-                      projectId={projectId}
-                      onUpdated={(nextDetail) => {
-                    setConversationDetail(nextDetail);
-                    setConversations((current) => {
-                      const existing = current.find((conversation) => conversation.conversationId === nextDetail.conversation.conversationId);
-                      if (existing == null) {
-                        return [nextDetail.conversation, ...current];
-                      }
-                      return current.map((conversation) => (
-                        conversation.conversationId === nextDetail.conversation.conversationId ? nextDetail.conversation : conversation
-                      ));
-                    });
-                    setRefreshKey((current) => current + 1);
-                      }}
-                    />
-                  </>
+                    {isLgViewport && (
+                      <aside className="flex w-full max-w-[18rem] shrink-0 flex-col">
+                        <div className="rounded-xl border border-border/60 bg-foreground/[0.02] p-4">
+                          <Typography className="text-sm font-semibold">Team & SLA</Typography>
+                          <div className="mt-4">
+                            <ConversationTeamSlaSidebar
+                              detail={conversationDetail}
+                              assignedToDraft={assignedToDraft}
+                              setAssignedToDraft={setAssignedToDraft}
+                              priorityDraft={priorityDraft}
+                              setPriorityDraft={setPriorityDraft}
+                              tagsDraft={tagsDraft}
+                              setTagsDraft={setTagsDraft}
+                              assigneeOptions={assigneeOptions}
+                              settingsSaving={settingsSaving}
+                              settingsError={settingsError}
+                              onSave={saveTeamSettings}
+                              now={now}
+                            />
+                          </div>
+                        </div>
+                      </aside>
+                    )}
+
+                    {!isLgViewport && (
+                      <Sheet open={teamSheetOpen} onOpenChange={setTeamSheetOpen}>
+                        <SheetContent side="right" className="flex w-full flex-col gap-0 overflow-y-auto sm:max-w-md">
+                          <SheetHeader className="text-left">
+                            <SheetTitle>Team & SLA</SheetTitle>
+                          </SheetHeader>
+                          <div className="mt-4 flex-1">
+                            <ConversationTeamSlaSidebar
+                              detail={conversationDetail}
+                              assignedToDraft={assignedToDraft}
+                              setAssignedToDraft={setAssignedToDraft}
+                              priorityDraft={priorityDraft}
+                              setPriorityDraft={setPriorityDraft}
+                              tagsDraft={tagsDraft}
+                              setTagsDraft={setTagsDraft}
+                              assigneeOptions={assigneeOptions}
+                              settingsSaving={settingsSaving}
+                              settingsError={settingsError}
+                              onSave={saveTeamSettings}
+                              now={now}
+                            />
+                          </div>
+                        </SheetContent>
+                      </Sheet>
+                    )}
+                  </div>
                 )}
 
                 {!conversationLoading && conversationDetail == null && selectedUserId != null && selectedUser != null && (

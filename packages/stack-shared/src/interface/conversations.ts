@@ -1,5 +1,5 @@
 import * as yup from "yup";
-import { yupArray, yupMixed, yupObject, yupString } from "../schema-fields";
+import { yupArray, yupBoolean, yupMixed, yupObject, yupString } from "../schema-fields";
 
 export const conversationStatusValues = ["open", "pending", "closed"] as const;
 export type ConversationStatus = (typeof conversationStatusValues)[number];
@@ -49,6 +49,24 @@ export const conversationSummarySchema = yupObject({
   preview: yupString().nullable().defined(),
   lastActivityAt: yupString().defined(),
   metadata: conversationMetadataSchema.defined(),
+  createdAt: yupString().optional(),
+  updatedAt: yupString().optional(),
+  lastMessageAt: yupString().optional(),
+  lastInboundAt: yupString().nullable().optional(),
+  lastOutboundAt: yupString().nullable().optional(),
+  closedAt: yupString().nullable().optional(),
+  recordMetadata: yupMixed().nullable().optional(),
+});
+
+export const conversationEntryPointSchema = yupObject({
+  id: yupString().uuid().defined(),
+  channelType: yupString().defined(),
+  adapterKey: yupString().defined(),
+  externalChannelId: yupString().nullable().defined(),
+  isEntryPoint: yupBoolean().defined(),
+  metadata: yupMixed().nullable().defined(),
+  createdAt: yupString().defined(),
+  updatedAt: yupString().defined(),
 });
 
 export const conversationMessageSchema = yupObject({
@@ -75,6 +93,7 @@ export const conversationListResponseSchema = yupObject({
 export const conversationDetailResponseSchema = yupObject({
   conversation: conversationSummarySchema.defined(),
   messages: yupArray(conversationMessageSchema.defined()).defined(),
+  entryPoints: yupArray(conversationEntryPointSchema.defined()).defined(),
 });
 
 export type ConversationMetadata = yup.InferType<typeof conversationMetadataSchema>;
@@ -82,4 +101,5 @@ export type ConversationSender = yup.InferType<typeof conversationSenderSchema>;
 export type ConversationSummary = yup.InferType<typeof conversationSummarySchema>;
 export type ConversationMessage = yup.InferType<typeof conversationMessageSchema>;
 export type ConversationListResponse = yup.InferType<typeof conversationListResponseSchema>;
+export type ConversationEntryPoint = yup.InferType<typeof conversationEntryPointSchema>;
 export type ConversationDetailResponse = yup.InferType<typeof conversationDetailResponseSchema>;

@@ -9,18 +9,11 @@ import {
   conversationSourceValues,
   conversationStatusValues,
 } from "@/lib/conversation-types";
+import { internalDashboardAuthSchema } from "@/lib/conversations-api";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { adaptSchema, projectIdSchema, userIdSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { projectIdSchema, userIdSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { globalPrismaClient } from "@/prisma-client";
-
-const internalDashboardAuthSchema = yupObject({
-  type: adaptSchema,
-  user: adaptSchema.defined(),
-  project: yupObject({
-    id: yupString().oneOf(["internal"]).defined(),
-  }).defined(),
-}).defined();
 
 export const GET = createSmartRouteHandler({
   metadata: {

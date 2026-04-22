@@ -2,7 +2,7 @@ import {
   appendConversationMessage,
   getConversationDetail,
   getManagedProjectTenancy,
-  updateConversationMetadata,
+  updateConversationAttributes,
   updateConversationStatus,
 } from "@/lib/conversations";
 import {
@@ -10,9 +10,12 @@ import {
   conversationPriorityValues,
   conversationStatusValues,
 } from "@/lib/conversation-types";
+import {
+  conversationIdRouteParamsSchema,
+  internalDashboardAuthSchema,
+} from "@/lib/conversations-api";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import {
-  adaptSchema,
   projectIdSchema,
   yupArray,
   yupNumber,
@@ -21,18 +24,6 @@ import {
   yupUnion,
 } from "@stackframe/stack-shared/dist/schema-fields";
 
-const internalDashboardAuthSchema = yupObject({
-  type: adaptSchema,
-  user: adaptSchema.defined(),
-  project: yupObject({
-    id: yupString().oneOf(["internal"]).defined(),
-  }).defined(),
-}).defined();
-
-const routeParamsSchema = yupObject({
-  conversationId: yupString().uuid().defined(),
-}).defined();
-
 export const GET = createSmartRouteHandler({
   metadata: {
     summary: "Get conversation detail",
@@ -40,7 +31,7 @@ export const GET = createSmartRouteHandler({
   },
   request: yupObject({
     auth: internalDashboardAuthSchema,
-    params: routeParamsSchema,
+    params: conversationIdRouteParamsSchema,
     query: yupObject({
       projectId: projectIdSchema.defined(),
     }).defined(),
@@ -70,11 +61,11 @@ export const GET = createSmartRouteHandler({
 export const PATCH = createSmartRouteHandler({
   metadata: {
     summary: "Update conversation",
-    description: "Append a message or update metadata on a managed project conversation",
+    description: "Append a message or update conversation attributes on a managed project conversation",
   },
   request: yupObject({
     auth: internalDashboardAuthSchema,
-    params: routeParamsSchema,
+    params: conversationIdRouteParamsSchema,
     body: yupUnion(
       yupObject({
         projectId: projectIdSchema.defined(),
@@ -151,7 +142,7 @@ export const PATCH = createSmartRouteHandler({
         },
       });
     } else {
-      await updateConversationMetadata({
+      await updateConversationAttributes({
         tenancyId: tenancy.id,
         conversationId: params.conversationId,
         assignedToUserId: body.assignedToUserId,

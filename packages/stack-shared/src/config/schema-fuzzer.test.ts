@@ -200,6 +200,13 @@ const branchSchemaFuzzerConfig = [{
   onboarding: [{
     requireEmailVerification: [true, false],
   }],
+  support: [{
+    sla: [{
+      enabled: [true, false],
+      firstResponseMinutes: [1, 15, 60, 1440, null] as const,
+      nextResponseMinutes: [1, 30, 120, 2880, null] as const,
+    }],
+  }],
 }] satisfies FuzzerConfig<BranchConfigNormalizedOverride>;
 
 const environmentSchemaFuzzerConfig = [{

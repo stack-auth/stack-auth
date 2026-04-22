@@ -28,7 +28,7 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
     SELECT table_name
     FROM information_schema.tables
     WHERE table_schema = 'public'
-      AND table_name IN ('Conversation', 'ConversationMetadata', 'ConversationChannel', 'ConversationMessage')
+      AND table_name IN ('Conversation', 'ConversationEntryPoint', 'ConversationMessage')
     ORDER BY table_name
   `;
   expect(Array.from(tables)).toMatchInlineSnapshot(`
@@ -37,13 +37,10 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
         "table_name": "Conversation",
       },
       {
-        "table_name": "ConversationChannel",
+        "table_name": "ConversationEntryPoint",
       },
       {
         "table_name": "ConversationMessage",
-      },
-      {
-        "table_name": "ConversationMetadata",
       },
     ]
   `);
@@ -61,6 +58,9 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
       "status",
       "priority",
       "source",
+      "assignedToUserId",
+      "assignedToDisplayName",
+      "tags",
       "createdAt",
       "updatedAt",
       "lastMessageAt"
@@ -73,35 +73,17 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
       'open',
       'high',
       'chat',
-      NOW(),
-      NOW(),
-      NOW()
-    )
-  `;
-
-  await sql`
-    INSERT INTO "ConversationMetadata" (
-      "conversationId",
-      "tenancyId",
-      "assignedToUserId",
-      "assignedToDisplayName",
-      "tags",
-      "createdAt",
-      "updatedAt"
-    )
-    VALUES (
-      ${conversationId}::uuid,
-      ${ctx.tenancyId}::uuid,
       'support-admin-1',
       'Support Admin',
       ${JSON.stringify(["vip", "auth"])}::jsonb,
       NOW(),
+      NOW(),
       NOW()
     )
   `;
 
   await sql`
-    INSERT INTO "ConversationChannel" (
+    INSERT INTO "ConversationEntryPoint" (
       "id",
       "tenancyId",
       "conversationId",
