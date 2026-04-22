@@ -1,16 +1,16 @@
 ---
 title: Build a SaaS with Stack Auth
-description: End-to-end path from project setup to teams, permissions, and production for a multi-tenant SaaS on Stack Auth.
+description: Bootstrap auth, resolve the signed-in user, protect your app, and ship-with optional pointers to teams, RBAC, and billing.
 ---
 
-This tutorial maps a typical SaaS build onto Stack Auth: bootstrap auth, model customers as teams, enforce access with permissions, and close the loop before production. A plain Markdown version with the same structure lives in the repo at `docs-mintlify/guides/other/tutorials/build-a-saas-with-stack-auth.md`.
+This tutorial is a **generic SaaS path** on Stack Auth: install and configure the SDK, wire sign-in, read the current user on the client and server, and gate your product. It does **not** assume teams, workspaces, or a particular permission model-those live in [Build a team-based app](/guides/other/tutorials/build-a-team-based-app) and the linked guides below.
 
 ## What you will have at the end
 
 - A working sign-in and account flow using Stack Auth's handler routes (Next.js) or your framework’s equivalent.
-- A clear pattern for **who** is signed in and **what** they can access in the product.
-- A **multi-tenant** shape (usually **teams** as organizations) with a sensible **team selection** story.
-- A checklist mindset for **production** domains, OAuth, and email.
+- A clear pattern for **who** is signed in across server components, client components, server actions, and route handlers.
+- **Protected** areas of your app (for example middleware on `/app/*` or `getUser({ or: "redirect" })` on key routes).
+- A short map for **where** multi-tenant and authorization work fits when you need it, plus a mindset for **production** domains, OAuth, and email.
 
 ## Prerequisites
 
@@ -21,7 +21,7 @@ This tutorial maps a typical SaaS build onto Stack Auth: bootstrap auth, model c
   Stack does not officially support the Next.js Pages Router. If you are on Pages Router, consider the React or JavaScript SDKs per the [FAQ](/guides/faq).
 </Note>
 
-The examples below focus on **Next.js (App Router)**. The same ideas apply on other stacks—swap in `StackClientApp` / REST calls as in [Setup](/guides/getting-started/setup).
+The examples below focus on **Next.js (App Router)**. The same ideas apply on other stacks-swap in `StackClientApp` / REST calls as in [Setup](/guides/getting-started/setup).
 
 ## 1. Install Stack and wire environment variables
 
@@ -43,11 +43,11 @@ STACK_SECRET_SERVER_KEY=<your-secret-server-key>
 
 After `init`, you should see files similar to:
 
-- `app/handler/[...stack]/page.tsx` — hosted sign-in, sign-up, account settings, and more
-- `app/layout.tsx` — wraps the app with `StackProvider` and `StackTheme`
-- `app/loading.tsx` — Suspense boundary for Stack’s async hooks
-- `stack/server.ts` — `stackServerApp` for server components, actions, and route handlers
-- `stack/client.ts` — `stackClientApp` when you need the client app object explicitly
+- `app/handler/[...stack]/page.tsx` - hosted sign-in, sign-up, account settings, and more
+- `app/layout.tsx` - wraps the app with `StackProvider` and `StackTheme`
+- `app/loading.tsx` - Suspense boundary for Stack’s async hooks
+- `stack/server.ts` - `stackServerApp` for server components, actions, and route handlers
+- `stack/client.ts` - `stackClientApp` when you need the client app object explicitly
 
 If you ever need to align manually with the wizard output, the core pieces look like this:
 
@@ -147,7 +147,7 @@ export function AuthHeader() {
 
 ## 2. Resolve the signed-in user everywhere
 
-Almost every SaaS screen starts from the **current user**: profile, billing state, which teams they belong to, and admin vs member behavior.
+Almost every SaaS screen starts from the **current user**: profile, preferences, billing state in your database, or admin vs end-user behavior you define yourself.
 
 <Tabs>
   <Tab title="Server Component">
@@ -208,22 +208,22 @@ Almost every SaaS screen starts from the **current user**: profile, billing stat
 
 ### Server action that requires a user
 
-`{ or: "throw" }` is useful when a redirect would be wrong (for example, from a form POST):
+`{ or: "throw" }` is useful when a redirect would be wrong (for example, from a form POST). The example below only needs Stack for identity; your own persistence layer stores product data keyed by `user.id`.
 
-```tsx title="app/actions/workspace.ts"
+```tsx title="app/actions/onboarding.ts"
 "use server";
 
 import { stackServerApp } from "@/stack/server";
 
-export async function createWorkspaceAction(formData: FormData) {
+export async function completeOnboardingStepAction(formData: FormData) {
   const user = await stackServerApp.getUser({ or: "throw" });
-  const displayName = String(formData.get("displayName") ?? "").trim();
-  if (!displayName) {
-    throw new Error("Workspace name is required");
+  const step = String(formData.get("step") ?? "").trim();
+  if (!step) {
+    throw new Error("Step is required");
   }
 
-  const team = await user.createTeam({ displayName });
-  return { teamId: team.id };
+  // TODO: write to your database using user.id as the tenant key (or your own model).
+  return { userId: user.id, step };
 }
 ```
 
@@ -271,237 +271,29 @@ export const config = {
 More detail on protection patterns and sensitive HTML is in [User fundamentals](/guides/getting-started/user-fundamentals).
 
 <Info>
-  Treat **client-side** permission and role checks as **UX only**. Anything that mutates data or exposes another tenant’s data must be enforced again on the server (server components, server actions, route handlers, or your backend using the secret key or verified tokens).
+  Treat **client-side** checks as **UX only**. Anything that mutates data or exposes another customer’s data must be enforced again on the server (server components, server actions, route handlers, or your backend using the secret key or verified tokens).
 </Info>
 
-## 3. Model tenants with teams
+## 3. Tenancy, teams, and permissions (when you need them)
 
-For B2B SaaS, a **team** is usually the right abstraction for an account, workspace, or organization. Users can belong to **multiple** teams; permissions are often evaluated **per team**.
+Stack gives you **users** and authentication primitives; **your** SaaS decides how rows and features map to customers.
 
-### List teams (client vs server)
+- **Single-user or simple B2C** - Often enough to key application data to `user.id` and enforce access in your API with the same user you resolved via `stackServerApp.getUser()`.
+- **Shared accounts, workspaces, or B2B orgs** - Use Stack **teams** as the customer boundary, **team selection** for the active workspace, and **RBAC** for roles and fine-grained actions. Walk through that shape in [Build a team-based app](/guides/other/tutorials/build-a-team-based-app), with reference material in [Teams](/guides/apps/teams/overview), [Team selection](/guides/apps/teams/team-selection), and [RBAC](/guides/apps/rbac/overview).
 
-<Tabs>
-  <Tab title="Client Component">
-    ```tsx title="components/workspace-list.tsx"
-    "use client";
+Non-JavaScript or custom frontends can use the [REST API](/api/overview) with the same project keys; the identity model you choose (user-only vs teams) stays consistent across clients.
 
-    import Link from "next/link";
-    import { useUser } from "@stackframe/stack";
+## 4. Product polish: onboarding, email, and optional billing
 
-    export function WorkspaceList() {
-      const user = useUser({ or: "redirect" });
-      const teams = user.useTeams();
+Hook flows to the guides-no extra Stack APIs are required at this layer:
 
-      return (
-        <ul>
-          {teams.map((team) => (
-            <li key={team.id}>
-              <Link href={`/team/${team.id}`}>{team.displayName}</Link>
-            </li>
-          ))}
-        </ul>
-      );
-    }
-    ```
-  </Tab>
-  <Tab title="Server Component">
-    ```tsx title="app/app/workspaces/page.tsx"
-    import Link from "next/link";
-    import { stackServerApp } from "@/stack/server";
-
-    export default async function WorkspacesPage() {
-      const user = await stackServerApp.getUser({ or: "redirect" });
-      const teams = await user.listTeams();
-
-      return (
-        <ul>
-          {teams.map((team) => (
-            <li key={team.id}>
-              <Link href={`/team/${team.id}`}>{team.displayName}</Link>
-            </li>
-          ))}
-        </ul>
-      );
-    }
-    ```
-  </Tab>
-</Tabs>
-
-### Create a workspace from the client
-
-Enable **client-side team creation** in the dashboard (Teams settings) if you call `createTeam` from the browser:
-
-```tsx title="components/create-workspace-button.tsx"
-"use client";
-
-import { useRouter } from "next/navigation";
-import { useUser } from "@stackframe/stack";
-
-export function CreateWorkspaceButton() {
-  const user = useUser({ or: "redirect" });
-  const router = useRouter();
-
-  return (
-    <button
-      type="button"
-      onClick={async () => {
-        const team = await user.createTeam({ displayName: "My workspace" });
-        router.push(`/team/${team.id}`);
-      }}
-    >
-      New workspace
-    </button>
-  );
-}
-```
-
-### Create a workspace without tying it to the current user (server)
-
-Provisioning jobs (imports, admin tools) sometimes use the app-level API:
-
-```tsx title="scripts/provision-team.ts (example pattern)"
-import { stackServerApp } from "@/stack/server";
-
-export async function provisionEmptyTeam(displayName: string) {
-  return await stackServerApp.createTeam({ displayName });
-}
-```
-
-See [Teams](/guides/apps/teams/overview) for updates, metadata (`clientMetadata` / `serverMetadata`), and listing members.
-
-### Deep-link dashboard for one workspace
-
-Resolve the team **through the current user** so you only render data for workspaces they belong to:
-
-```tsx title="app/team/[teamId]/page.tsx"
-import { stackServerApp } from "@/stack/server";
-
-type PageProps = { params: { teamId: string } };
-
-export default async function TeamHomePage({ params }: PageProps) {
-  const user = await stackServerApp.getUser({ or: "redirect" });
-  const team = await user.getTeam(params.teamId);
-
-  if (!team) {
-    return <p>You are not a member of this workspace.</p>;
-  }
-
-  return (
-    <main>
-      <h1>{team.displayName}</h1>
-      <p>Workspace ID: {team.id}</p>
-    </main>
-  );
-}
-```
-
-### Team selection UI
-
-For a global “current team” switcher (often combined with deep links), use `SelectedTeamSwitcher` with the `Team` object from `useTeam`:
-
-```tsx title="components/team-switcher.tsx"
-"use client";
-
-import { SelectedTeamSwitcher, useUser } from "@stackframe/stack";
-
-type Props = { currentTeamId: string };
-
-export function TeamSwitcher({ currentTeamId }: Props) {
-  const user = useUser({ or: "redirect" });
-  const team = user.useTeam(currentTeamId);
-  if (!team) {
-    return null;
-  }
-
-  return (
-    <SelectedTeamSwitcher
-      urlMap={(t) => `/team/${t.id}`}
-      selectedTeam={team}
-    />
-  );
-}
-```
-
-See [Team selection](/guides/apps/teams/team-selection) for `noUpdateSelectedTeam` and combining deep links with “default workspace” behavior.
-
-## 4. Authorize with RBAC
-
-Define permissions in the dashboard (nested permissions = roles). Then gate UI and **re-check on the server** before mutations.
-
-Replace `export_customer_data` with a permission you create in your project.
-
-<Tabs>
-  <Tab title="Server Component">
-    ```tsx title="app/team/[teamId]/export/page.tsx"
-    import { stackServerApp } from "@/stack/server";
-
-    type PageProps = { params: { teamId: string } };
-
-    export default async function ExportPage({ params }: PageProps) {
-      const user = await stackServerApp.getUser({ or: "redirect" });
-      const team = await user.getTeam(params.teamId);
-      if (!team) {
-        return <p>Workspace not found.</p>;
-      }
-
-      const canExport = await user.getPermission(team, "export_customer_data");
-      if (!canExport) {
-        return <p>You do not have access to exports in this workspace.</p>;
-      }
-
-      return <button type="button">Download export</button>;
-    }
-    ```
-  </Tab>
-  <Tab title="Client Component (UX only)">
-    ```tsx title="components/export-button.tsx"
-    "use client";
-
-    import { useUser } from "@stackframe/stack";
-    import type { CurrentUser, Team } from "@stackframe/stack";
-
-    type Props = { teamId: string };
-
-    /** Split so `usePermission` only runs when `useTeam` returned a real team (Rules of Hooks). */
-    export function ExportButton({ teamId }: Props) {
-      const user = useUser({ or: "redirect" });
-      const team = user.useTeam(teamId);
-      if (!team) {
-        return <p>Workspace not found.</p>;
-      }
-      return <ExportButtonInner user={user} team={team} />;
-    }
-
-    function ExportButtonInner({ user, team }: { user: CurrentUser; team: Team }) {
-      const permission = user.usePermission(team, "export_customer_data");
-      if (!permission) {
-        return null;
-      }
-      return <button type="button">Download export</button>;
-    }
-    ```
-  </Tab>
-</Tabs>
-
-System permissions (IDs starting with `$`) ship with Stack—for example `$invite_members`. You can branch on those the same way:
-
-```tsx
-const canInvite = await user.getPermission(team, "$invite_members");
-```
-
-Full permission modeling is in [RBAC](/guides/apps/rbac/overview).
-
-## 5. Product polish: onboarding, email, and optional billing
-
-Hook flows to the guides—no extra Stack APIs are required at this layer:
-
-- **Onboarding and sign-up rules** — [User onboarding](/guides/apps/authentication/user-onboarding), [Sign-up rules](/guides/apps/authentication/sign-up-rules)
-- **Email** — [Emails](/guides/apps/emails/overview)
-- **Stripe / plans** — [Payments](/guides/apps/payments/overview)
+- **Onboarding and sign-up rules** - [User onboarding](/guides/apps/authentication/user-onboarding), [Sign-up rules](/guides/apps/authentication/sign-up-rules)
+- **Email** - [Emails](/guides/apps/emails/overview)
+- **Stripe / plans** - [Payments](/guides/apps/payments/overview)
 
 Example: after sign-up, send users to an onboarding route from your own `app/page.tsx` or a server layout once `getUser()` is non-null.
 
-## 6. Production checklist
+## 5. Production checklist
 
 Before going live, tighten **callback domains**, replace shared **OAuth** keys with your own provider apps where needed, and review email and security defaults. Follow [Launch checklist](/guides/apps/launch-checklist/overview).
 
@@ -512,8 +304,8 @@ Before going live, tighten **callback domains**, replace shared **OAuth** keys w
 | Install and configure | [Setup](/guides/getting-started/setup) |
 | `StackApp` object | [Stack App](/guides/going-further/stack-app) |
 | Current user and page protection | [User fundamentals](/guides/getting-started/user-fundamentals) |
-| Teams and membership | [Teams](/guides/apps/teams/overview) |
-| Switching workspaces | [Team selection](/guides/apps/teams/team-selection) |
+| Teams, membership, and RBAC (deeper path) | [Build a team-based app](/guides/other/tutorials/build-a-team-based-app) |
+| Teams reference | [Teams](/guides/apps/teams/overview) |
 | Permissions | [RBAC](/guides/apps/rbac/overview) |
 | Pre-launch hardening | [Launch checklist](/guides/apps/launch-checklist/overview) |
 | Billing (optional) | [Payments](/guides/apps/payments/overview) |
@@ -523,15 +315,15 @@ Before going live, tighten **callback domains**, replace shared **OAuth** keys w
 
 <AccordionGroup>
   <Accordion title="Do I have to use teams for a SaaS?">
-    No. Single-user B2C products can rely on **user permissions** and user-scoped data only. Teams become important when multiple people share one customer account or workspace.
+    No. This guide stays user-centric until you opt into teams. When multiple people share one customer account, follow [Build a team-based app](/guides/other/tutorials/build-a-team-based-app) and the [Teams](/guides/apps/teams/overview) docs.
   </Accordion>
 
   <Accordion title="Where should I enforce permissions?">
-    Use dashboard-defined permissions for **authorization**, but enforce **business rules** on the server: Server Components, server actions, route handlers, or your backend with the **secret server key** or validated access tokens. Client checks alone are not enough for sensitive operations.
+    Use dashboard-defined permissions for **authorization** when you use RBAC; always enforce **business rules** on the server: Server Components, server actions, route handlers, or your backend with the **secret server key** or validated access tokens. Client checks alone are not enough for sensitive operations.
   </Accordion>
 
   <Accordion title="Can I use Stack only as a backend API?">
-    Yes. Non-JS or custom frontends can use the [REST API](/api/overview) with the same project keys; the mental model (users, teams, permissions) stays the same.
+    Yes. Non-JS or custom frontends can use the [REST API](/api/overview) with the same project keys; the mental model (users, and optionally teams and permissions) stays the same.
   </Accordion>
 
   <Accordion title="How do I test locally with OAuth and redirects?">
@@ -539,7 +331,7 @@ Before going live, tighten **callback domains**, replace shared **OAuth** keys w
   </Accordion>
 
   <Accordion title="How does this relate to the team-focused tutorial?">
-    [Build a team-based app](/guides/other/tutorials/build-a-team-based-app) goes deeper on teams and RBAC modeling. This SaaS tutorial is the broader **product** path: auth bootstrap, tenant selection, optional billing, and launch.
+    [Build a team-based app](/guides/other/tutorials/build-a-team-based-app) is the place for **teams**, **team selection**, and **RBAC** walkthroughs. This SaaS tutorial covers the **generic** product path: auth bootstrap, resolving the user, protecting routes, then linking out for tenancy and launch details.
   </Accordion>
 
   <Accordion title="Where do I get help or report doc gaps?">
