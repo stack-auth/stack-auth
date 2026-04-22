@@ -80,7 +80,8 @@ export const POST = createSmartRouteHandler({
     const productLineId = Object.keys(productLines).find((g) => product.productLineId === g);
     let conflictingProductLineProducts: { product_id: string, display_name: string }[] = [];
     if (productLineId) {
-      const isSubscribable = Object.values(product.prices).some((p: any) => p && p.interval);
+      const productPrices = product.prices;
+      const isSubscribable = productPrices !== "include-by-default" && Object.values(productPrices).some((p) => p != null && p.interval != null);
       if (isSubscribable) {
         const addOnBaseProductIds = product.isAddOnTo ? new Set(Object.keys(product.isAddOnTo)) : new Set<string>();
         conflictingProductLineProducts = Object.entries(ownedProducts)

@@ -161,6 +161,11 @@ export function ProductDialog({
   };
 
   const handleSave = async () => {
+    if (Object.keys(prices).length === 0) {
+      setErrors({ prices: "At least one price is required" });
+      return;
+    }
+
     const product: Product = {
       displayName,
       customerType,
@@ -610,11 +615,24 @@ export function ProductDialog({
                     <ListSection title="Prices">
                       <PricingSection
                         prices={prices}
-                        onPricesChange={setPrices}
+                        onPricesChange={(newPrices) => {
+                          setPrices(newPrices);
+                          if (errors.prices && Object.keys(newPrices).length > 0) {
+                            setErrors(prev => {
+                              const { prices: _, ...rest } = prev;
+                              return rest;
+                            });
+                          }
+                        }}
                         variant="dialog"
                       />
                     </ListSection>
                   </div>
+                  {errors.prices ? (
+                    <Typography type="p" className="text-destructive text-sm">
+                      {errors.prices}
+                    </Typography>
+                  ) : null}
                 </div>
               </div>
             </StepperPage>

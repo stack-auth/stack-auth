@@ -116,7 +116,8 @@ export const POST = createSmartRouteHandler({
         Object.values(subMap).filter(s => isActiveSubscription(s)).map(s => s.productId ?? "__null__")
       );
       const hasOtpInProductLine = Object.entries(ownedProducts).some(
-        ([productId, p]) => p.productLineId === fromProduct.productLineId
+        ([productId, p]) => productId !== body.from_product_id
+          && p.productLineId === fromProduct.productLineId
           && p.quantity > 0
           && !activeSubProductIds.has(productId)
       );

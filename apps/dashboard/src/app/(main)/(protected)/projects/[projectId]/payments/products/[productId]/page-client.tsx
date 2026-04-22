@@ -864,7 +864,6 @@ function ProductPricesSection({ productId, prices, onPricesChange, inline = fals
   const hasNoPrices = priceEntries.length === 0;
 
   const handleMakePaid = () => {
-    onPricesChange({});
     openAddDialog();
   };
 
