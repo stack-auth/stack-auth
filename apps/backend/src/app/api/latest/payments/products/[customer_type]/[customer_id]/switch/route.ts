@@ -137,6 +137,9 @@ export const POST = createSmartRouteHandler({
     if (!existingSub && !fromIsFreePlan) {
       throw new StatusError(400, "This subscription cannot be switched.");
     }
+    if (existingSub && !existingSub.stripeSubscriptionId) {
+      throw new StatusError(400, "This subscription cannot be switched.");
+    }
 
     const priceEntries = typedEntries(toProduct.prices)
       .filter(([, price]) => price.interval);
