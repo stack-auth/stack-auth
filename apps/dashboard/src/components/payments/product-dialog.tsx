@@ -8,7 +8,7 @@ import { PriceEditorField } from "@/components/payments/price-editor";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger, SimpleTooltip, toast } from "@/components/ui";
 import { useUpdateConfig } from "@/lib/config-update";
 import { AdminProject } from "@stackframe/stack";
-import { priceOrIncludeByDefaultSchema, productSchema, userSpecifiedIdSchema, yupRecord } from "@stackframe/stack-shared/dist/schema-fields";
+import { pricesSchema, productSchema, userSpecifiedIdSchema, yupRecord } from "@stackframe/stack-shared/dist/schema-fields";
 import { has } from "@stackframe/stack-shared/dist/utils/objects";
 import * as yup from "yup";
 
@@ -37,8 +37,8 @@ export function ProductDialog({ open, onOpenChange, project, mode, initial }: Pr
     productId: userSpecifiedIdSchema("productId").defined().label("Product ID"),
     displayName: yup.string().defined().label("Display Name"),
     customerType: yup.string().oneOf(["user", "team", "custom"]).defined().label("Customer Type"),
-    prices: priceOrIncludeByDefaultSchema.defined().label("Prices").test("at-least-one-price", (value, context) => {
-      if (value === "include-by-default" || Object.keys(value).length === 0) {
+    prices: pricesSchema.defined().label("Prices").test("at-least-one-price", (value, context) => {
+      if (Object.keys(value).length === 0) {
         return context.createError({ message: "At least one price is required" });
       }
       return true;

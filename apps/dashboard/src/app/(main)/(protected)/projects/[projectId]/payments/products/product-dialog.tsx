@@ -67,7 +67,7 @@ export function ProductDialog({
   const [isAddOn, setIsAddOn] = useState(!!editingProduct?.isAddOnTo);
   const [isAddOnTo, setIsAddOnTo] = useState<string[]>(editingProduct?.isAddOnTo !== false ? Object.keys(editingProduct?.isAddOnTo || {}) : []);
   const [stackable, setStackable] = useState(editingProduct?.stackable || false);
-  const [prices, setPrices] = useState<Record<string, Price>>(editingProduct?.prices === "include-by-default" ? {} : editingProduct?.prices || {});
+  const [prices, setPrices] = useState<Record<string, Price>>(editingProduct?.prices || {});
   const [includedItems, setIncludedItems] = useState<Product['includedItems']>(editingProduct?.includedItems || {});
   const [freeTrial, setFreeTrial] = useState<Product['freeTrial']>(editingProduct?.freeTrial || undefined);
   const [serverOnly, setServerOnly] = useState(editingProduct?.serverOnly || false);

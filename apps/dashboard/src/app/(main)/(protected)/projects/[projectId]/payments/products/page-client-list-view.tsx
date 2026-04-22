@@ -303,9 +303,6 @@ function formatPrice(price: (Product['prices'] & object)[string]): string | null
 }
 
 function formatProductPrices(prices: Product['prices']): string {
-  if (prices === 'include-by-default') return 'Free';
-  if (typeof prices !== 'object') return '';
-
   const formattedPrices = Object.values(prices)
     .map(formatPrice)
     .filter(Boolean)
@@ -663,8 +660,6 @@ export default function PageClient() {
         }
         // If same customer type and addons, sort by lowest price
         const getPricePriority = (product: Product) => {
-          if (product.prices === 'include-by-default') return 0;
-          if (typeof product.prices !== 'object') return 0;
           return Math.min(...Object.values(product.prices).map(price => +(price.USD ?? Infinity)));
         };
         const priceA = getPricePriority(a.product);

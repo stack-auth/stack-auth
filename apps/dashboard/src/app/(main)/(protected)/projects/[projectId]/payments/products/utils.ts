@@ -7,8 +7,8 @@ import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
 // ============================================================================
 
 export type Product = CompleteConfig['payments']['products'][keyof CompleteConfig['payments']['products']];
-export type Price = (Product['prices'] & object)[string];
-export type PricesObject = Exclude<Product['prices'], 'include-by-default'>;
+export type Price = Product['prices'][string];
+export type PricesObject = Product['prices'];
 
 // ============================================================================
 // Constants
@@ -123,18 +123,10 @@ export function formatPriceDisplay(price: Price): string {
 }
 
 /**
- * Converts prices object to array format, handling 'include-by-default' case
+ * Builds a fresh $0 price entry. Used as the "Make free" handler on product forms.
  */
-export function getPricesObject(draft: Product): PricesObject {
-  if (draft.prices === 'include-by-default') {
-    return {
-      "free": {
-        USD: '0.00',
-        serverOnly: false,
-      },
-    };
-  }
-  return draft.prices;
+export function createFreePrice(): { [priceId: string]: Price } {
+  return { [generateUniqueId('price')]: { USD: '0.00', serverOnly: false } };
 }
 
 // ============================================================================
