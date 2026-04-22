@@ -6,7 +6,7 @@ import { spawnSync } from "node:child_process";
 
 const target = process.argv[2]; // "local" or "prod"
 
-/** HTTP API for `spacetime publish` (matches docker/dependencies/docker.compose.yaml host port …39). */
+/** HTTP API for 'spacetime publish' (matches docker/dependencies/docker.compose.yaml host port ...39). */
 function localPublishServerUrl() {
   if (process.env.STACK_SPACETIME_PUBLISH_URL) {
     return process.env.STACK_SPACETIME_PUBLISH_URL;
