@@ -1,21 +1,105 @@
-import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { quetzalKeys, quetzalLocales } from "../generated/quetzal-translations";
-import { TranslationProviderClient } from "./translation-provider-client";
+"use client";
 
-export function TranslationProvider({ lang, translationOverrides, children }: {
-  lang: Parameters<typeof quetzalLocales.get>[0] | undefined,
-  translationOverrides?: Record<string, string>,
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import i18next, { i18n as I18nInstance } from "i18next";
+import { createContext, useContext, useEffect, useMemo } from "react";
+import { locales, SupportedLocale, supportedLocales } from "../locales";
+
+export type TranslationContextValue = {
+  i18n: I18nInstance,
+  locale: SupportedLocale,
+};
+
+export const TranslationContext = createContext<TranslationContextValue | null>(null);
+
+export function useTranslationContext(): TranslationContextValue | null {
+  return useContext(TranslationContext);
+}
+
+/**
+ * Translation provider that wraps the application with i18next translations.
+ *
+ * @param lang - The locale to use for translations (e.g., "en-US", "de-DE")
+ * @param translationOverrides - Optional key-value pairs to override specific translations
+ * @param children - Child components
+ */
+export function TranslationProvider({
+  children,
+  lang,
+  translationOverrides,
+}: {
   children: React.ReactNode,
+  lang: SupportedLocale | undefined,
+  translationOverrides?: Record<string, string>,
 }) {
-  const locale = quetzalLocales.get(lang ?? (undefined as never));
+  const effectiveLocale = lang && supportedLocales.includes(lang) ? lang : "en-US";
 
-  const localeWithOverrides = new Map<string, string>(locale);
-  for (const [orig, override] of Object.entries(translationOverrides ?? {})) {
-    const key = quetzalKeys.get(orig as never) ?? throwErr(new Error(`Invalid translation override: Original key ${JSON.stringify(orig)} not found. Make sure you are passing the correct values into the translationOverrides property of the component.`));
-    localeWithOverrides.set(key, override);
-  }
+  // Create a new i18n instance for this provider
+  // We use a separate instance to avoid conflicts with other StackProviders
+  const i18n = useMemo(() => {
+    const instance = i18next.createInstance();
 
-  return <TranslationProviderClient quetzalKeys={quetzalKeys} quetzalLocale={localeWithOverrides}>
-    {children}
-  </TranslationProviderClient>;
+    // Get base translations for the locale
+    const baseTranslations = locales[effectiveLocale];
+
+    // Merge with overrides
+    const translations = {
+      ...baseTranslations,
+      ...translationOverrides,
+    };
+
+    // init() is synchronous when initImmediate: false and resources are provided inline
+    // The returned promise resolves immediately
+    runAsynchronously(instance.init({
+      initImmediate: false,
+      lng: effectiveLocale,
+      fallbackLng: "en-US",
+      interpolation: {
+        escapeValue: false, // React already escapes values
+        prefix: "{",
+        suffix: "}",
+      },
+      resources: {
+        [effectiveLocale]: {
+          translation: translations,
+        },
+        // Also load English as fallback if different from current locale
+        ...(effectiveLocale !== "en-US" && {
+          "en-US": {
+            translation: locales["en-US"],
+          },
+        }),
+      },
+    }));
+
+    return instance;
+  }, [effectiveLocale, translationOverrides]);
+
+  // Update translations when locale or overrides change
+  useEffect(() => {
+    if (i18n.language !== effectiveLocale) {
+      const baseTranslations = locales[effectiveLocale];
+      const translations = {
+        ...baseTranslations,
+        ...translationOverrides,
+      };
+
+      i18n.addResourceBundle(effectiveLocale, "translation", translations, true, true);
+      runAsynchronously(i18n.changeLanguage(effectiveLocale));
+    }
+  }, [i18n, effectiveLocale, translationOverrides]);
+
+  const contextValue = useMemo(
+    () => ({
+      i18n,
+      locale: effectiveLocale,
+    }),
+    [i18n, effectiveLocale]
+  );
+
+  return (
+    <TranslationContext.Provider value={contextValue}>
+      {children}
+    </TranslationContext.Provider>
+  );
 }
