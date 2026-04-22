@@ -1,3 +1,4 @@
+import { randomUUID } from "crypto";
 import type { Sql } from "postgres";
 import { expect } from "vitest";
 
@@ -54,8 +55,15 @@ export const postMigration = async (sql: Sql) => {
   expect(indexRows[0].indexdef).toContain('"createdAt" DESC');
 
   // 3. Insert + aggregate — the dashboard "last used at" query shape.
-  const tenancyId = "00000000-0000-0000-0000-000000000001";
-  const otherTenancyId = "00000000-0000-0000-0000-000000000002";
+  // The audit table FKs to Tenancy, which itself FKs to Project, so create both first.
+  const projectId = `test-${randomUUID()}`;
+  const otherProjectId = `test-${randomUUID()}`;
+  const tenancyId = randomUUID();
+  const otherTenancyId = randomUUID();
+  await sql`INSERT INTO "Project" ("id", "createdAt", "updatedAt", "displayName", "description", "isProductionMode") VALUES (${projectId}, NOW(), NOW(), 'Test', '', false)`;
+  await sql`INSERT INTO "Project" ("id", "createdAt", "updatedAt", "displayName", "description", "isProductionMode") VALUES (${otherProjectId}, NOW(), NOW(), 'Test', '', false)`;
+  await sql`INSERT INTO "Tenancy" ("id", "createdAt", "updatedAt", "projectId", "branchId", "hasNoOrganization") VALUES (${tenancyId}::uuid, NOW(), NOW(), ${projectId}, 'main', 'TRUE'::"BooleanTrue")`;
+  await sql`INSERT INTO "Tenancy" ("id", "createdAt", "updatedAt", "projectId", "branchId", "hasNoOrganization") VALUES (${otherTenancyId}::uuid, NOW(), NOW(), ${otherProjectId}, 'main', 'TRUE'::"BooleanTrue")`;
   await sql.unsafe(`
     INSERT INTO "OidcFederationExchangeAudit" ("id", "tenancyId", "policyId", "issuer", "subject", "outcome", "reason", "createdAt")
     VALUES
