@@ -891,6 +891,10 @@ function TestRulesCard({ state }: { state: TestRulesState }) {
   const decisionRule = result?.outcome.decision_rule_id
     ? result.evaluations.find((e) => e.rule_id === result.outcome.decision_rule_id)
     : undefined;
+  const restrictedRule = result?.outcome.restricted_because_of_rule_id
+    && result.outcome.restricted_because_of_rule_id !== result.outcome.decision_rule_id
+    ? result.evaluations.find((e) => e.rule_id === result.outcome.restricted_because_of_rule_id)
+    : undefined;
 
   return (
     <div className="space-y-5">
@@ -1064,7 +1068,12 @@ function TestRulesCard({ state }: { state: TestRulesState }) {
                     </>
                   )}
                 </Typography>
-                {result?.outcome.decision === 'reject' && decisionRule?.action.message && (
+                {restrictedRule && (
+                  <Typography variant="secondary" className="text-xs mt-1">
+                    Restricted by: <span className="font-medium">{restrictedRule.display_name || restrictedRule.rule_id}</span>
+                  </Typography>
+                )}
+                {decisionRule?.action.message && (
                   <Typography variant="secondary" className="text-xs mt-1 italic">
                     Reason: {decisionRule.action.message}
                   </Typography>
@@ -1085,8 +1094,8 @@ function TestRulesCard({ state }: { state: TestRulesState }) {
                   <>
                     <details className="rounded-lg border bg-background/40">
                       <summary className="cursor-pointer px-4 py-2.5 text-sm font-medium flex items-center justify-between">
-                        <span>Matched rules</span>
-                        <span className="text-xs text-muted-foreground">{matchedCount} of {result.evaluations.length}</span>
+                        <span>Rule evaluations</span>
+                        <span className="text-xs text-muted-foreground">{matchedCount} matched of {result.evaluations.length}</span>
                       </summary>
                       <div className="px-4 pb-3 space-y-1">
                         {result.evaluations.map((e) => (
