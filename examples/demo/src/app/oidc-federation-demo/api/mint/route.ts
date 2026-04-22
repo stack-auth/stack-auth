@@ -15,9 +15,18 @@ export async function POST(request: Request) {
       ttlSeconds: 300,
     }),
   });
-  const data = await res.json();
+  const text = await res.text();
   if (!res.ok) {
-    return NextResponse.json({ error: data?.error ?? `mock IdP returned ${res.status}` }, { status: 502 });
+    let message = `mock IdP returned ${res.status}`;
+    try {
+      const maybeErr = JSON.parse(text) as { error?: unknown };
+      if (typeof maybeErr.error === "string") message = maybeErr.error;
+    } catch { /* non-JSON body — fall through to default message */ }
+    return NextResponse.json({ error: message }, { status: 502 });
   }
-  return NextResponse.json(data);
+  try {
+    return NextResponse.json(JSON.parse(text));
+  } catch {
+    return NextResponse.json({ error: "mock IdP returned non-JSON response" }, { status: 502 });
+  }
 }

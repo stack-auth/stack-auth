@@ -251,7 +251,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   if (verifiedServerAccessToken?.status === "ok"
       && branchIdHeader != null
       && verifiedServerAccessToken.data.branchId !== branchIdHeader) {
-    throw new StatusError(401, `Server access token was issued for branch "${verifiedServerAccessToken.data.branchId}" but request asserted branch "${branchIdHeader}"`);
+    throw new KnownErrors.AccessTokenBranchMismatch(verifiedServerAccessToken.data.branchId, branchIdHeader);
   }
   const effectiveBranchId = verifiedServerAccessToken?.status === "ok"
     ? verifiedServerAccessToken.data.branchId

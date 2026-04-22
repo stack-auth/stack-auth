@@ -1,33 +1,44 @@
 import { describe, expect, test } from "vitest";
-import { matchClaims, stringLikeToRegExp } from "./oidc-federation";
+import { MAX_CLAIM_VALUE_LENGTH, MAX_GLOB_PATTERN_LENGTH, matchClaims, stringLikeMatch } from "./oidc-federation";
 
-describe("stringLikeToRegExp", () => {
-  const re = stringLikeToRegExp;
-
+describe("stringLikeMatch", () => {
   test("exact literal with no wildcards", () => {
-    expect(re("repo:acme/app").test("repo:acme/app")).toBe(true);
-    expect(re("repo:acme/app").test("repo:acme/app:more")).toBe(false);
-    expect(re("repo:acme/app").test("repo:acme/ap")).toBe(false);
+    expect(stringLikeMatch("repo:acme/app", "repo:acme/app")).toBe(true);
+    expect(stringLikeMatch("repo:acme/app", "repo:acme/app:more")).toBe(false);
+    expect(stringLikeMatch("repo:acme/app", "repo:acme/ap")).toBe(false);
   });
 
   test("star matches any char sequence (incl. empty)", () => {
-    expect(re("repo:acme/*").test("repo:acme/app")).toBe(true);
-    expect(re("repo:acme/*").test("repo:acme/")).toBe(true);
-    expect(re("repo:acme/*:production").test("repo:acme/app:production")).toBe(true);
-    expect(re("repo:acme/*:production").test("repo:acme/app:staging")).toBe(false);
+    expect(stringLikeMatch("repo:acme/*", "repo:acme/app")).toBe(true);
+    expect(stringLikeMatch("repo:acme/*", "repo:acme/")).toBe(true);
+    expect(stringLikeMatch("repo:acme/*:production", "repo:acme/app:production")).toBe(true);
+    expect(stringLikeMatch("repo:acme/*:production", "repo:acme/app:staging")).toBe(false);
   });
 
   test("question mark matches exactly one char", () => {
-    expect(re("v?").test("v1")).toBe(true);
-    expect(re("v?").test("v")).toBe(false);
-    expect(re("v?").test("v12")).toBe(false);
+    expect(stringLikeMatch("v?", "v1")).toBe(true);
+    expect(stringLikeMatch("v?", "v")).toBe(false);
+    expect(stringLikeMatch("v?", "v12")).toBe(false);
   });
 
-  test("regex metacharacters in pattern are escaped", () => {
-    expect(re("a.b").test("a.b")).toBe(true);
-    expect(re("a.b").test("axb")).toBe(false);
-    expect(re("a+b(c)").test("a+b(c)")).toBe(true);
-    expect(re("a+b(c)").test("aab(c)")).toBe(false);
+  test("regex metacharacters are treated as literals", () => {
+    expect(stringLikeMatch("a.b", "a.b")).toBe(true);
+    expect(stringLikeMatch("a.b", "axb")).toBe(false);
+    expect(stringLikeMatch("a+b(c)", "a+b(c)")).toBe(true);
+    expect(stringLikeMatch("a+b(c)", "aab(c)")).toBe(false);
+  });
+
+  test("pathological near-miss patterns terminate quickly (linear)", () => {
+    const pattern = "*a*a*a*a*a*a*a*a*a*a*a*a*a*a*a*b";
+    const value = "a".repeat(80);
+    const start = Date.now();
+    expect(stringLikeMatch(pattern, value)).toBe(false);
+    expect(Date.now() - start).toBeLessThan(50);
+  });
+
+  test("length caps reject oversized input", () => {
+    expect(stringLikeMatch("*".repeat(MAX_GLOB_PATTERN_LENGTH + 1), "x")).toBe(false);
+    expect(stringLikeMatch("*", "x".repeat(MAX_CLAIM_VALUE_LENGTH + 1))).toBe(false);
   });
 });
 
@@ -98,9 +109,23 @@ describe("matchClaims", () => {
     expect(matchClaims(stringEquals({ active: "true" }), { active: true }).matched).toBe(true);
   });
 
-  test("object/array claims are treated as missing (no implicit stringify)", () => {
-    const r = matchClaims(stringEquals({ roles: "admin" }), { roles: ["admin", "user"] });
+  test("array claims match when any element matches (stringEquals)", () => {
+    expect(matchClaims(stringEquals({ roles: "admin" }), { roles: ["admin", "user"] }).matched).toBe(true);
+    expect(matchClaims(stringEquals({ roles: "admin" }), { roles: ["viewer", "user"] }).matched).toBe(false);
+  });
+
+  test("array claims match when any element matches (stringLike)", () => {
+    const cond = stringLike({ groups: "team:*" });
+    expect(matchClaims(cond, { groups: ["team:eng", "team:ops"] }).matched).toBe(true);
+    expect(matchClaims(cond, { groups: ["dept:eng"] }).matched).toBe(false);
+  });
+
+  test("object claims fail with a distinct reason (not 'missing')", () => {
+    const r = matchClaims(stringEquals({ meta: "x" }), { meta: { nested: "x" } });
     expect(r.matched).toBe(false);
-    if (!r.matched) expect(r.reason).toMatch(/missing/);
+    if (!r.matched) {
+      expect(r.reason).not.toMatch(/missing/);
+      expect(r.reason).toMatch(/object/);
+    }
   });
 });

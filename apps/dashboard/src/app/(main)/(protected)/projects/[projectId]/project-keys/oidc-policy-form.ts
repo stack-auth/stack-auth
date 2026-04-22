@@ -107,6 +107,18 @@ export function claimConditionsToJson(policy: TrustPolicy): string {
   return JSON.stringify(shaped, null, 2);
 }
 
+// Fail closed on invalid JSON: refuse to emit a policy with empty conditions, which would
+// otherwise broaden trust silently. Callers should run `validateDraft` first; this is the
+// second line of defense.
+export class DraftToPolicyError extends Error {
+  constructor(public readonly reason: string) {
+    super(`cannot convert draft to policy: ${reason}`);
+    this.name = "DraftToPolicyError";
+    // Preserve `instanceof DraftToPolicyError` if this ever gets downleveled to ES5.
+    Object.setPrototypeOf(this, DraftToPolicyError.prototype);
+  }
+}
+
 export function draftToPolicy(draft: PolicyDraft): TrustPolicy {
   const audienceValues = draft.audiences
     .map((audience) => ({ value: audience.value.trim(), persistedId: audience.persistedId }))
@@ -121,7 +133,10 @@ export function draftToPolicy(draft: PolicyDraft): TrustPolicy {
   }
 
   const parseResult = parseClaimConditionsJson(draft.claimConditionsJson);
-  const parsed = parseResult.kind === "ok" ? parseResult.parsed : { stringEquals: {}, stringLike: {} };
+  if (parseResult.kind !== "ok") {
+    throw new DraftToPolicyError(`invalid claim conditions JSON: ${parseResult.reason}`);
+  }
+  const parsed = parseResult.parsed;
   const toRecord = (section: Record<string, string[]>): Record<string, ClaimValueRecord> => {
     const out: Record<string, ClaimValueRecord> = Object.create(null);
     for (const [claim, values] of Object.entries(section)) out[claim] = valuesToRecord(values);

@@ -1912,28 +1912,27 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
             .filter(([, app]) => !options.excludeAlphaApps || app.stage !== "alpha")
             .map(([key]) => [key, { enabled: true }])),
         },
-        oidcFederation: {
-          // Default trust policy pointing at the local mock OIDC IdP
-          // (apps/mock-oidc-idp). The demo at `examples/demo/oidc-federation-demo`
-          // mints tokens from this IdP and exchanges them here.
-          trustPolicies: {
-            "mock-idp-demo": {
-              displayName: "Mock IdP (local dev)",
-              enabled: true,
-              issuerUrl: process.env.STACK_MOCK_OIDC_ISSUER_URL
-                ?? `http://localhost:${process.env.NEXT_PUBLIC_STACK_PORT_PREFIX ?? "81"}15`,
-              audiences: {
-                default: "stack-demo",
-              },
-              claimConditions: {
-                stringLike: {
-                  sub: { demo: "workload:*" },
-                },
-                stringEquals: {},
-              },
-              tokenTtlSeconds: 900,
-            },
+        // Default trust policy pointing at the local mock OIDC IdP (apps/mock-oidc-idp).
+        // The demo at `examples/demo/oidc-federation-demo` mints tokens from this IdP and
+        // exchanges them here. Written with path notation so a seeded policy doesn't
+        // wipe sibling policies that might be set at a higher config override level.
+        // The id `mock-idp-demo` must not contain `.` (path separator); enforced by
+        // USER_SPECIFIED_ID_PATTERN on oidcTrustPolicyId at config validation time.
+        "oidcFederation.trustPolicies.mock-idp-demo": {
+          displayName: "Mock IdP (local dev)",
+          enabled: true,
+          issuerUrl: process.env.STACK_MOCK_OIDC_ISSUER_URL
+            ?? `http://localhost:${process.env.NEXT_PUBLIC_STACK_PORT_PREFIX ?? "81"}15`,
+          audiences: {
+            default: "stack-demo",
           },
+          claimConditions: {
+            stringLike: {
+              sub: { demo: "workload:*" },
+            },
+            stringEquals: {},
+          },
+          tokenTtlSeconds: 900,
         },
       },
     }),

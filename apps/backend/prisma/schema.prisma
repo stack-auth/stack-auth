@@ -72,10 +72,11 @@ model Tenancy {
   // If organizationId is NULL, hasNoOrganization must be TRUE. If organizationId is not NULL, hasNoOrganization must be NULL.
   organizationId      String?              @db.Uuid
   hasNoOrganization   BooleanTrue?
-  emailOutboxes       EmailOutbox[]
-  sessionReplays      SessionReplay[]
-  sessionReplayChunks SessionReplayChunk[]
-  managedEmailDomains ManagedEmailDomain[]
+  emailOutboxes                EmailOutbox[]
+  sessionReplays               SessionReplay[]
+  sessionReplayChunks          SessionReplayChunk[]
+  managedEmailDomains          ManagedEmailDomain[]
+  oidcFederationExchangeAudits OidcFederationExchangeAudit[]
 
   // Email capacity boost - when set and in the future, email capacity is multiplied by 4
   emailCapacityBoostExpiresAt DateTime?
@@ -636,7 +637,8 @@ model OAuthOuterInfo {
 model OidcFederationExchangeAudit {
   id String @id @default(uuid()) @db.Uuid
 
-  tenancyId String @db.Uuid
+  tenancyId String  @db.Uuid
+  tenancy   Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
 
   // Matched trust-policy id on success; "" when the exchange failed before any policy matched.
   policyId String
@@ -644,8 +646,8 @@ model OidcFederationExchangeAudit {
   issuer   String
   // OIDC `sub` claim on success; "" on failure.
   subject  String
-  // "success" | "failure" — kept as a plain string instead of an enum so we can extend the
-  // vocabulary later without a schema migration.
+  // "success" | "failure". Constrained at the DB layer via a CHECK constraint in the audit
+  // migration; extending the vocabulary requires a follow-up ALTER CONSTRAINT.
   outcome  String
   // Human-readable failure reason. Empty on success.
   reason   String

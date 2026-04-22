@@ -3,6 +3,7 @@ import type { PrismaClientTransaction } from "@/prisma-client";
 import { StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { createLocalJWKSet, decodeProtectedHeader, jwtVerify, type JWK, type JWTPayload } from "jose";
 import { getOrSetCacheValue } from "./cache";
+import { validateSafeFetchUrl } from "./safe-fetch";
 
 type DiscoveryDoc = { issuer: string, jwks_uri: string };
 type JwksJson = { keys: JWK[] };
@@ -43,6 +44,21 @@ async function writeDiscoveryCache(
   });
 }
 
+async function cacheErrorAndRethrow(
+  prisma: PrismaClientTransaction,
+  cacheKey: string,
+  error: unknown,
+): Promise<never> {
+  const message = error instanceof Error ? error.message : String(error);
+  try {
+    await writeDiscoveryCache(prisma, cacheKey, { kind: "err", message }, DISCOVERY_ERR_TTL_MS);
+  } catch (cacheErr) {
+    // Don't let a DB hiccup clobber the real discovery error — surface both.
+    captureError("oidc-discovery-cache-write-failed", cacheErr);
+  }
+  throw error instanceof Error ? error : new Error(message);
+}
+
 async function loadDiscovery(issuerUrl: string, prisma: PrismaClientTransaction): Promise<DiscoveryDoc> {
   const cacheKey = stripTrailingSlash(issuerUrl);
 
@@ -55,8 +71,15 @@ async function loadDiscovery(issuerUrl: string, prisma: PrismaClientTransaction)
     return payload.doc;
   }
 
+  // URL-validation failures are deterministic per-config; don't poison the error
+  // cache with them, or fixing a mistyped issuer URL would still fail for DISCOVERY_ERR_TTL_MS.
+  const safe = await validateSafeFetchUrl(`${cacheKey}/.well-known/openid-configuration`);
+  if (safe.kind !== "ok") {
+    throw new Error(`OIDC discovery URL rejected for ${issuerUrl}: ${safe.reason}`);
+  }
+
   try {
-    const response = await fetch(`${cacheKey}/.well-known/openid-configuration`, {
+    const response = await fetch(safe.url.toString(), {
       method: "GET",
       headers: { accept: "application/json" },
       signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
@@ -71,18 +94,26 @@ async function loadDiscovery(issuerUrl: string, prisma: PrismaClientTransaction)
     if (stripTrailingSlash(body.issuer) !== cacheKey) {
       throw new Error(`OIDC discovery issuer mismatch for ${issuerUrl}: expected ${cacheKey}, got ${body.issuer}`);
     }
+    const jwksSafe = await validateSafeFetchUrl(body.jwks_uri);
+    if (jwksSafe.kind !== "ok") {
+      // The jwks_uri comes from the discovery response, not admin config, so a
+      // rejection here is legitimately a transient/remote-side problem worth caching.
+      throw new Error(`OIDC discovery jwks_uri rejected for ${issuerUrl}: ${jwksSafe.reason}`);
+    }
     const doc: DiscoveryDoc = { issuer: body.issuer, jwks_uri: body.jwks_uri };
     await writeDiscoveryCache(prisma, cacheKey, { kind: "ok", doc }, DISCOVERY_OK_TTL_MS);
     return doc;
   } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    await writeDiscoveryCache(prisma, cacheKey, { kind: "err", message }, DISCOVERY_ERR_TTL_MS);
-    throw error instanceof Error ? error : new Error(message);
+    return await cacheErrorAndRethrow(prisma, cacheKey, error);
   }
 }
 
 async function fetchJwks(jwksUrl: string): Promise<JwksJson> {
-  const response = await fetch(jwksUrl, {
+  const safe = await validateSafeFetchUrl(jwksUrl);
+  if (safe.kind !== "ok") {
+    throw new Error(`OIDC JWKS URL rejected: ${safe.reason}`);
+  }
+  const response = await fetch(safe.url.toString(), {
     method: "GET",
     headers: { accept: "application/json" },
     signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),

@@ -12,6 +12,7 @@ import { productSchema, userSpecifiedIdSchema, yupBoolean, yupDate, yupMixed, yu
 import { SUPPORTED_CURRENCIES } from "../utils/currency-constants";
 import { StackAssertionError } from "../utils/errors";
 import { allProviders } from "../utils/oauth";
+import { MAX_GLOB_PATTERN_LENGTH } from "../utils/oidc-federation";
 import { DeepFilterUndefined, DeepMerge, DeepRequiredOrUndefined, filterUndefined, get, getOrUndefined, has, isObjectLike, mapValues, set, typedAssign, typedEntries, typedFromEntries } from "../utils/objects";
 import { Result } from "../utils/results";
 import { stringCompare } from "../utils/strings";
@@ -108,7 +109,14 @@ const branchApiKeysSchema = yupObject({
 // Claim-condition values: each configured claim maps to a record of { id -> expected-string }.
 // A record (not an array) is used for parity with the rest of this config schema, which models
 // all lists as records so overrides diff/merge cleanly across levels.
-const oidcFederationClaimValuesSchema = yupRecord(userSpecifiedIdSchema("oidcClaimValueId"), yupString());
+// Claim-match values are bounded so admins get a validation error at save time
+// instead of a silent never-matches at runtime (see `stringLikeMatch` guards).
+// The stringEquals schema could use a shorter cap, but we share one schema for
+// both sections and MAX_CLAIM_VALUE_LENGTH is the larger of the two limits.
+const oidcFederationClaimValuesSchema = yupRecord(
+  userSpecifiedIdSchema("oidcClaimValueId"),
+  yupString().max(MAX_GLOB_PATTERN_LENGTH, `claim match value must be at most ${MAX_GLOB_PATTERN_LENGTH} characters`),
+);
 const branchOidcFederationSchema = yupObject({
   trustPolicies: yupRecord(
     userSpecifiedIdSchema("oidcTrustPolicyId"),
@@ -116,7 +124,22 @@ const branchOidcFederationSchema = yupObject({
       displayName: yupString(),
       enabled: yupBoolean(),
       // OIDC issuer URL. JWKS + metadata are fetched at `${issuerUrl}/.well-known/openid-configuration`.
-      issuerUrl: yupString(),
+      // Must be HTTPS; http:// is only permitted for localhost/127.0.0.1 (dev).
+      issuerUrl: yupString().test(
+        "issuer-url-https",
+        "issuerUrl must be an https URL (http is only allowed for localhost)",
+        (value) => {
+          if (value == null || value === "") return true;
+          try {
+            const url = new URL(value);
+            if (url.protocol === "https:") return true;
+            if (url.protocol === "http:" && (url.hostname === "localhost" || url.hostname === "127.0.0.1" || url.hostname === "::1")) return true;
+            return false;
+          } catch {
+            return false;
+          }
+        },
+      ),
       // Token `aud` must equal one of the values in this record.
       audiences: yupRecord(userSpecifiedIdSchema("oidcAudienceId"), yupString()),
       // AWS IAM-style conditions evaluated against the JWT's decoded claims.

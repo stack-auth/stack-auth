@@ -728,6 +728,20 @@ const BranchDoesNotExist = createKnownErrorConstructor(
   (json: any) => [json.branch_id] as const,
 );
 
+const AccessTokenBranchMismatch = createKnownErrorConstructor(
+  KnownError,
+  "ACCESS_TOKEN_BRANCH_MISMATCH",
+  (tokenBranchId: string, requestedBranchId: string) => [
+    401,
+    `Server access token was issued for branch "${tokenBranchId}" but request asserted branch "${requestedBranchId}".`,
+    {
+      token_branch_id: tokenBranchId,
+      requested_branch_id: requestedBranchId,
+    },
+  ] as const,
+  (json: any) => [json.token_branch_id, json.requested_branch_id] as const,
+);
+
 
 const SignUpNotEnabled = createKnownErrorConstructor(
   KnownError,
@@ -1910,6 +1924,7 @@ export const KnownErrors = {
   ProjectNotFound,
   CurrentProjectNotFound,
   BranchDoesNotExist,
+  AccessTokenBranchMismatch,
   SignUpNotEnabled,
   SignUpRejected,
   BotChallengeRequired,

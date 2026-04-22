@@ -25,7 +25,7 @@ import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { ColumnDef, Row, Table } from "@tanstack/react-table";
 import { useSearchParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import * as yup from "yup";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -43,7 +43,7 @@ type KeyRow = {
   id: string,
   name: string,
   status: "valid" | "expired" | "revoked",
-  apiKey: InternalApiKey & { status: "valid" | "expired" | "revoked" },
+  apiKey: InternalApiKey,
 };
 
 type PolicyRow = {
@@ -86,13 +86,13 @@ export default function PageClient() {
 
   const rows: UnifiedRow[] = useMemo(() => {
     const keyRows: KeyRow[] = apiKeySets.map((apiKey) => {
-      const status = ({ valid: "valid", "manually-revoked": "revoked", expired: "expired" } as const)[apiKey.whyInvalid() || "valid"];
+      const status = ({ valid: "valid", "manually-revoked": "revoked", expired: "expired" } as const)[apiKey.whyInvalid() ?? "valid"];
       return {
         kind: "key",
         id: apiKey.id,
         name: apiKey.description || "(no description)",
         status,
-        apiKey: Object.assign(apiKey, { status }),
+        apiKey,
       };
     });
     const policyRows: PolicyRow[] = policies.map(([id, policy]) => ({
@@ -108,7 +108,7 @@ export default function PageClient() {
     ];
   }, [apiKeySets, policies]);
 
-  const savePolicy = async (policy: TrustPolicy, draft: PolicyDraft, isCreate: boolean) => {
+  const savePolicy = useCallback(async (policy: TrustPolicy, draft: PolicyDraft, isCreate: boolean) => {
     const id = isCreate ? generateUuid() : draft.id;
     if (!id) throw new StackAssertionError("Trust policy ID missing on save");
     await updateConfig({
@@ -116,21 +116,21 @@ export default function PageClient() {
       configUpdate: { [`oidcFederation.trustPolicies.${id}`]: policy },
       pushable: false,
     });
-  };
-  const deletePolicy = async (id: string) => {
+  }, [stackAdminApp, updateConfig]);
+  const deletePolicy = useCallback(async (id: string) => {
     await updateConfig({
       adminApp: stackAdminApp,
       configUpdate: { [`oidcFederation.trustPolicies.${id}`]: null },
       pushable: false,
     });
-  };
-  const togglePolicy = async (id: string, enabled: boolean) => {
+  }, [stackAdminApp, updateConfig]);
+  const togglePolicy = useCallback(async (id: string, enabled: boolean) => {
     await updateConfig({
       adminApp: stackAdminApp,
       configUpdate: { [`oidcFederation.trustPolicies.${id}.enabled`]: enabled },
       pushable: false,
     });
-  };
+  }, [stackAdminApp, updateConfig]);
 
   const columns = useMemo<ColumnDef<UnifiedRow>[]>(() => [
     {
@@ -175,8 +175,7 @@ export default function PageClient() {
         onDeletePolicy={(id) => runAsynchronouslyWithAlert(deletePolicy(id))}
       />,
     },
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  ], [requirePublishableClientKey]);
+  ], [requirePublishableClientKey, deletePolicy, togglePolicy]);
 
   return (
     <PageLayout

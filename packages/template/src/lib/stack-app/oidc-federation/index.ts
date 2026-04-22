@@ -2,6 +2,17 @@ import { envVars } from "../../env";
 
 const GRANT_TYPE = "urn:ietf:params:oauth:grant-type:token-exchange";
 const SUBJECT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:jwt";
+const DEFAULT_FETCH_TIMEOUT_MS = 10_000;
+
+async function fetchWithTimeout(input: string, init: RequestInit, timeoutMs = DEFAULT_FETCH_TIMEOUT_MS): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(input, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 export type OidcFederationTokenStore = {
   getAccessToken(): Promise<string>,
@@ -13,6 +24,9 @@ export type OidcFederationTokenStoreOptions = {
 };
 
 type CachedToken = { accessToken: string, refreshAtMs: number };
+type CachedFailure = { error: OidcFederationExchangeError, expiresAtMs: number };
+
+const NEGATIVE_CACHE_MS = 2_000;
 
 export class OidcFederationExchangeError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
@@ -23,13 +37,17 @@ export class OidcFederationExchangeError extends Error {
 
 export function createOidcFederationTokenStore(options: {
   projectId: string,
-  apiBaseUrl: string,
+  /** String or getter. Use a getter when the surrounding interface can itself recompute the base URL. */
+  apiBaseUrl: string | (() => string),
   branchId?: string,
   getOidcToken: () => Promise<string>,
   sourceLabel?: string,
 }): OidcFederationTokenStore {
+  const baseUrl = options.apiBaseUrl;
+  const getApiBaseUrl = typeof baseUrl === "function" ? baseUrl : () => baseUrl;
   const label = options.sourceLabel ?? "oidc";
   let cached: CachedToken | null = null;
+  let lastFailure: CachedFailure | null = null;
   let inFlight: Promise<CachedToken> | null = null;
 
   const shouldRefresh = (now: number) => !cached || cached.refreshAtMs - now <= 5_000;
@@ -45,7 +63,7 @@ export function createOidcFederationTokenStore(options: {
       throw new OidcFederationExchangeError(`${label} returned an empty OIDC token`);
     }
 
-    const url = new URL("/api/v1/auth/oidc-federation/exchange", options.apiBaseUrl);
+    const url = new URL("/api/v1/auth/oidc-federation/exchange", getApiBaseUrl());
     const headers: Record<string, string> = {
       "content-type": "application/json",
       "x-stack-project-id": options.projectId,
@@ -54,7 +72,7 @@ export function createOidcFederationTokenStore(options: {
 
     let response: Response;
     try {
-      response = await fetch(url.toString(), {
+      response = await fetchWithTimeout(url.toString(), {
         method: "POST",
         headers,
         body: JSON.stringify({
@@ -85,10 +103,15 @@ export function createOidcFederationTokenStore(options: {
   const getAccessToken = async (): Promise<string> => {
     const now = Date.now();
     if (cached && !shouldRefresh(now)) return cached.accessToken;
+    // Negative cache: if the last exchange failed very recently, reject fast instead of
+    // racing a second exchange while the first's awaiters are still settling. This
+    // prevents retry stampedes against the backend during an outage.
+    if (lastFailure && lastFailure.expiresAtMs > now) {
+      throw lastFailure.error;
+    }
     // Dedupe concurrent refreshes: the first caller creates `inFlight`; any caller
     // arriving before it resolves awaits the same promise. If `doExchange()` rejects,
-    // every waiter sees that rejection (shared promise), and `inFlight` is cleared
-    // in `finally` so the next call retries instead of re-throwing a stale error.
+    // every waiter sees that rejection (shared promise).
     if (inFlight) {
       const value = await inFlight;
       return value.accessToken;
@@ -97,7 +120,14 @@ export function createOidcFederationTokenStore(options: {
       try {
         const value = await doExchange();
         cached = value;
+        lastFailure = null;
         return value;
+      } catch (err) {
+        lastFailure = {
+          error: err instanceof OidcFederationExchangeError ? err : new OidcFederationExchangeError(String(err), err),
+          expiresAtMs: Date.now() + NEGATIVE_CACHE_MS,
+        };
+        throw err;
       } finally {
         inFlight = null;
       }
@@ -111,7 +141,7 @@ export function createOidcFederationTokenStore(options: {
 
 export function createOidcFederationTokenStoreForServerApp(options: {
   projectId: string,
-  apiBaseUrl: string,
+  apiBaseUrl: string | (() => string),
   extraRequestHeaders: Record<string, string>,
   getOidcToken: () => Promise<string>,
   sourceLabel?: string,
@@ -156,7 +186,7 @@ export function fromGithubActionsOidc(options: { audience: string }): OidcFedera
       }
       const url = new URL(requestUrl);
       url.searchParams.set("audience", options.audience);
-      const response = await fetch(url.toString(), {
+      const response = await fetchWithTimeout(url.toString(), {
         headers: { authorization: `Bearer ${requestToken}` },
       });
       if (!response.ok) {
@@ -175,7 +205,7 @@ export function fromGcpMetadata(options: { audience: string }): OidcFederationTo
     getOidcToken: async () => {
       const url = new URL("http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity");
       url.searchParams.set("audience", options.audience);
-      const response = await fetch(url.toString(), {
+      const response = await fetchWithTimeout(url.toString(), {
         headers: { "metadata-flavor": "Google" },
       });
       if (!response.ok) {

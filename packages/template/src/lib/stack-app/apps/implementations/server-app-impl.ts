@@ -440,7 +440,7 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
         if (federationOptions) {
           const store = createOidcFederationTokenStoreForServerApp({
             projectId,
-            apiBaseUrl: apiUrls()[0],
+            apiBaseUrl: () => apiUrls()[0],
             extraRequestHeaders,
             getOidcToken: federationOptions.getOidcToken,
             sourceLabel: federationOptions.sourceLabel,

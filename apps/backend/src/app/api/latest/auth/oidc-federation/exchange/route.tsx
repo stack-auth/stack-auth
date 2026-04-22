@@ -55,10 +55,11 @@ export const POST = createSmartRouteHandler({
       grant_type: yupString().oneOf([GRANT_TYPE]).defined(),
       subject_token: yupString().defined(),
       subject_token_type: yupString().oneOf([SUBJECT_TOKEN_TYPE]).defined(),
-      requested_token_type: yupString().optional(),
-      audience: yupString().optional(),
-      resource: yupString().optional(),
-      scope: yupString().optional(),
+      // RFC 8693 optional params. Only `requested_token_type` is accepted, and only with
+      // the access-token value we actually issue. Audience/resource/scope are not
+      // negotiable per-request — they're fixed by the trust policy — so reject them
+      // outright to avoid giving callers a false sense of configurability.
+      requested_token_type: yupString().oneOf([ISSUED_TOKEN_TYPE]).optional(),
     }).defined(),
   }),
   response: yupObject({

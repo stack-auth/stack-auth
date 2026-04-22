@@ -112,8 +112,7 @@ void main().then(
     // started OK — listener logs its own ready message
   },
   (err: unknown) => {
-    // eslint-disable-next-line no-console
-    console.error("Mock OIDC IdP failed to start:", err);
+    process.stderr.write(`Mock OIDC IdP failed to start: ${err instanceof Error ? err.stack ?? err.message : String(err)}\n`);
     process.exit(1);
   },
 );

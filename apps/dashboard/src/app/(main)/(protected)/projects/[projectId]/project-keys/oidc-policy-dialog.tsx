@@ -4,7 +4,7 @@ import { DesignAlert, DesignButton, DesignInput, DesignPillToggle } from "@/comp
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Label, Textarea, Typography } from "@/components/ui";
 import type { StackAdminApp } from "@stackframe/stack";
 import { ClockIcon, GlobeHemisphereWestIcon, LinkSimpleIcon, PlusIcon, ShieldCheckIcon, TrashIcon } from "@phosphor-icons/react";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   DiscoveryProbeResult,
   DraftValidationIssue,
@@ -155,6 +155,22 @@ export function OidcPolicyDialog(props: {
   const [discoveryState, setDiscoveryState] = useState<DiscoveryProbeResult | { kind: "idle" } | { kind: "loading" }>({ kind: "idle" });
   const [saving, setSaving] = useState(false);
 
+  // Reset transient state only on the false→true transition of `open`. Depending on
+  // `props.initial` directly would wipe in-progress edits every time the parent
+  // re-rendered with a fresh object reference.
+  const wasOpenRef = useRef(false);
+  useEffect(() => {
+    if (props.open && !wasOpenRef.current) {
+      setDraft(props.initial);
+      setPreset("custom");
+      setStep("identity");
+      setDiscoveryState({ kind: "idle" });
+      setSaving(false);
+    }
+    wasOpenRef.current = props.open;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [props.open]);
+
   const issues = validateDraft(draft);
   const issueByKind = useMemo(() => new Map(issues.map(i => [i.kind, i])), [issues]);
   const stepHasIssue = (s: StepId) => issueKindsForStep(s).some(k => issueByKind.has(k));
@@ -178,12 +194,16 @@ export function OidcPolicyDialog(props: {
 
   const runDiscovery = async () => {
     setDiscoveryState({ kind: "loading" });
-    const result = await props.adminApp.probeOidcDiscovery({ issuerUrl: draft.issuerUrl });
-    setDiscoveryState(
-      result.status === "ok"
-        ? { kind: "ok", issuer: result.data.issuer, jwksUri: result.data.jwksUri }
-        : { kind: "error", reason: result.error.errorMessage },
-    );
+    try {
+      const result = await props.adminApp.probeOidcDiscovery({ issuerUrl: draft.issuerUrl });
+      setDiscoveryState(
+        result.status === "ok"
+          ? { kind: "ok", issuer: result.data.issuer, jwksUri: result.data.jwksUri }
+          : { kind: "error", reason: result.error.errorMessage },
+      );
+    } catch (err) {
+      setDiscoveryState({ kind: "error", reason: err instanceof Error ? err.message : "discovery probe failed" });
+    }
   };
 
   const stepIndex = STEPS.findIndex(s => s.id === step);

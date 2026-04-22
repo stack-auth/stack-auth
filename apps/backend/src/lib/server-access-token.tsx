@@ -1,6 +1,5 @@
 import { KnownErrors } from "@stackframe/stack-shared";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { signJWT, verifyJWT } from "@stackframe/stack-shared/dist/utils/jwt";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { JOSEError, JWTExpired } from "jose/errors";
@@ -90,11 +89,11 @@ export async function verifyServerAccessToken(token: string, options: { projectI
     if (typeof branchId !== "string"
         || typeof fed !== "object" || fed === null
         || !("policy_id" in fed) || !("issuer" in fed) || !("sub" in fed) || !("audience" in fed)) {
-      throw new StackAssertionError("Malformed server access token payload", { payload });
+      return Result.error(new KnownErrors.UnparsableAccessToken());
     }
     const { policy_id: policyId, issuer, sub: subject, audience } = fed;
     if (typeof policyId !== "string" || typeof issuer !== "string" || typeof subject !== "string" || typeof audience !== "string") {
-      throw new StackAssertionError("Malformed server access token `fed` claim", { payload });
+      return Result.error(new KnownErrors.UnparsableAccessToken());
     }
     return Result.ok({
       projectId: options.projectId,
