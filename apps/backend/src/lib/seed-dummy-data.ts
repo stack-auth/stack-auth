@@ -347,8 +347,6 @@ const DUMMY_SEED_IDS = {
     growthMonthly4: 'b4d5e6f7-a8b9-4012-cd3e-4f5a6b7c8d93',
     growthMonthly5: 'c5e6f7a8-b9c0-4123-de4f-5a6b7c8d9ea4',
     starterCreation: 'd6f7a8b9-c0d1-4234-ef50-6a7b8c9d0fb5',
-    legacyPaid1: 'e7a8b9c0-d1e2-4345-a061-7b8c9d0e1ac6',
-    legacyPaid2: 'f8b9c0d1-e2f3-4456-b172-8c9d0e1f2bd7',
   },
   emails: {
     welcomeAmelia: 'af8cfd90-8912-4bf7-93a7-20ff2be54767',
@@ -1042,24 +1040,6 @@ async function seedDummyTransactions(options: TransactionsSeedOptions) {
       status: 'paid',
       amountTotal: 0,
       createdAt: daysAgo(20, 8),
-    },
-    {
-      id: DUMMY_SEED_IDS.invoices.legacyPaid1,
-      stripeSubscriptionId: 'sub_legacy_enterprise_alpha',
-      stripeInvoiceId: 'in_legacy_ent_001',
-      isSubscriptionCreationInvoice: true,
-      status: 'paid',
-      amountTotal: 49900,
-      createdAt: daysAgo(28, 9),
-    },
-    {
-      id: DUMMY_SEED_IDS.invoices.legacyPaid2,
-      stripeSubscriptionId: 'sub_legacy_enterprise_alpha',
-      stripeInvoiceId: 'in_legacy_ent_002',
-      isSubscriptionCreationInvoice: false,
-      status: 'paid',
-      amountTotal: 49900,
-      createdAt: daysAgo(14, 9),
     },
   ];
 
