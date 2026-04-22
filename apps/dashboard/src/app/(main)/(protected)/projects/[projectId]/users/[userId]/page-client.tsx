@@ -1294,13 +1294,13 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
   );
 }
 
-const ACTIVITY_GRID_WEEKS = 16;
-const ACTIVITY_GRID_DAYS = 7;
+const ACTIVITY_GRID_COLUMNS = 16;
+const ACTIVITY_GRID_ROWS = 22;
 
 function ActivityPlaceholder() {
   const cells = useMemo(() => {
     const result: number[] = [];
-    for (let i = 0; i < ACTIVITY_GRID_WEEKS * ACTIVITY_GRID_DAYS; i++) {
+    for (let i = 0; i < ACTIVITY_GRID_COLUMNS * ACTIVITY_GRID_ROWS; i++) {
       result.push(Math.random());
     }
     return result;
@@ -1312,8 +1312,9 @@ function ActivityPlaceholder() {
       <div
         className="grid gap-[3px]"
         style={{
-          gridTemplateColumns: `repeat(${ACTIVITY_GRID_WEEKS}, 1fr)`,
-          gridTemplateRows: `repeat(${ACTIVITY_GRID_DAYS}, 1fr)`,
+          gridTemplateColumns: `repeat(${ACTIVITY_GRID_COLUMNS}, 9px)`,
+          gridTemplateRows: `repeat(${ACTIVITY_GRID_ROWS}, 9px)`,
+          gridAutoFlow: "row",
         }}
       >
         {cells.map((rand, i) => (
@@ -1378,10 +1379,12 @@ function UserPage({ user }: { user: ServerUser }) {
       <div className="flex flex-col gap-6">
         <RestrictionBanner user={user} />
         <div className="flex items-start justify-between gap-6">
-          <UserHeader user={user} />
+          <div className="flex min-w-0 flex-1 flex-col gap-4">
+            <UserHeader user={user} />
+            <UserDetails user={user} />
+          </div>
           <ActivityPlaceholder />
         </div>
-        <UserDetails user={user} />
         {visibleTabs.length > 0 && (
           <DesignCategoryTabs
             categories={visibleTabs.map(({ id, label, appId }) => ({
