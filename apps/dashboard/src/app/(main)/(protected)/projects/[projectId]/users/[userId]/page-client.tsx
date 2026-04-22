@@ -1,5 +1,7 @@
 "use client";
 
+import { CountryCodeInput } from "@/components/country-code-select";
+import { DesignCard, DesignCategoryTabs, DesignDataTable, DesignEditableGrid, type DesignEditableGridItem, DesignMenu, type DesignMenuActionItem } from "@/components/design-components";
 import { EditableInput } from "@/components/editable-input";
 import { FormDialog, SmartFormDialog } from "@/components/form-dialog";
 import { InputField, SelectField } from "@/components/form-fields";
@@ -24,59 +26,30 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
   Input,
   Separator,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
   Textarea,
   Typography,
   useToast
 } from "@/components/ui";
 import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialogs";
-import { AtIcon, CalendarIcon, CheckIcon, DotsThreeIcon, EnvelopeIcon, GlobeIcon, HashIcon, ProhibitIcon, ShieldIcon, SquareIcon, XIcon } from "@phosphor-icons/react";
-import { ServerContactChannel, ServerOAuthProvider, ServerUser } from "@stackframe/stack";
+import { parseRiskScore } from "@/lib/risk-score-utils";
+import { AtIcon, CalendarIcon, CheckIcon, EnvelopeIcon, GlobeIcon, HashIcon, KeyIcon, ProhibitIcon, ShieldIcon, SquareIcon, UsersIcon, XIcon } from "@phosphor-icons/react";
+import { ServerContactChannel, ServerOAuthProvider, ServerTeam, ServerUser } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
-import { CountryCodeInput } from "@/components/country-code-select";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { captureError, StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
-import { useState } from "react";
+import { ColumnDef } from "@tanstack/react-table";
+import { useMemo, useState } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
-import { parseRiskScore } from "@/lib/risk-score-utils";
 
 const userMetadataDocsUrl = "https://docs.stack-auth.com/docs/concepts/custom-user-data";
-
-type UserInfoProps = {
-  icon: React.ReactNode,
-  children: React.ReactNode,
-  name: string,
-}
-
-function UserInfo({ icon, name, children }: UserInfoProps) {
-  return (
-    <>
-      <span className="flex gap-2 items-center">
-        <span className="opacity-75">{icon}</span>
-        <span className="font-semibold whitespace-nowrap mr-2">{name}</span>
-      </span>
-      {children}
-    </>
-  );
-}
 
 export default function PageClient({ userId }: { userId: string }) {
   const stackAdminApp = useAdminApp();
@@ -111,12 +84,12 @@ function UserHeader({ user }: UserHeaderProps) {
   const stackAdminApp = useAdminApp();
 
   return (
-    <div className="flex gap-4 items-center">
-      <Avatar className="w-20 h-20">
+    <div className="flex min-w-0 flex-1 gap-4 items-center">
+      <Avatar className="w-20 h-20 shrink-0">
         <AvatarImage src={user.profileImageUrl ?? undefined} alt={name} />
         <AvatarFallback>{name.slice(0, 2)}</AvatarFallback>
       </Avatar>
-      <div className="flex-grow">
+      <div className="min-w-0 flex-1">
         <EditableInput
           value={name}
           initialEditValue={user.displayName ?? ""}
@@ -129,38 +102,41 @@ function UserHeader({ user }: UserHeaderProps) {
         <p>Last active {fromNow(user.lastActiveAt)}</p>
       </div>
       <div>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button variant="ghost" size="icon">
-              <DotsThreeIcon className="h-5 w-5" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="end">
-            <DropdownMenuItem onClick={async () => {
-              const expiresInMillis = 1000 * 60 * 60 * 2;
-              const expiresAtDate = new Date(Date.now() + expiresInMillis);
-              const session = await user.createSession({ expiresInMillis });
-              const tokens = await session.getTokens();
-              setImpersonateSnippet(deindent`
-                document.cookie = 'stack-refresh-${stackAdminApp.projectId}=${tokens.refreshToken}; expires=${expiresAtDate.toUTCString()}; path=/'; 
-                window.location.reload();
-              `);
-            }}>
-              <span>Impersonate</span>
-            </DropdownMenuItem>
-            {user.isMultiFactorRequired && (
-              <DropdownMenuItem onClick={async () => {
+        <DesignMenu
+          variant="actions"
+          trigger="icon"
+          triggerLabel="User actions"
+          align="end"
+          items={[
+            {
+              id: "impersonate",
+              label: "Impersonate",
+              onClick: async () => {
+                const expiresInMillis = 1000 * 60 * 60 * 2;
+                const expiresAtDate = new Date(Date.now() + expiresInMillis);
+                const session = await user.createSession({ expiresInMillis });
+                const tokens = await session.getTokens();
+                setImpersonateSnippet(deindent`
+                  document.cookie = 'stack-refresh-${stackAdminApp.projectId}=${tokens.refreshToken}; expires=${expiresAtDate.toUTCString()}; path=/'; 
+                  window.location.reload();
+                `);
+              },
+            },
+            ...user.isMultiFactorRequired ? [{
+              id: "remove-2fa",
+              label: "Remove 2FA",
+              onClick: async () => {
                 await user.update({ totpMultiFactorSecret: null });
-              }}>
-                <span>Remove 2FA</span>
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuSeparator />
-            <DropdownMenuItem onClick={() => setIsDeleteModalOpen(true)}>
-              <Typography className="text-destructive">Delete</Typography>
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
+              },
+            }] satisfies DesignMenuActionItem[] : [],
+            {
+              id: "delete",
+              label: "Delete",
+              itemVariant: "destructive" as const,
+              onClick: () => setIsDeleteModalOpen(true),
+            },
+          ]}
+        />
         <DeleteUserDialog user={user} open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen} redirectTo={`/projects/${stackAdminApp.projectId}/users`} />
         <ImpersonateUserDialog user={user} impersonateSnippet={impersonateSnippet} onClose={() => setImpersonateSnippet(null)} />
       </div>
@@ -309,39 +285,6 @@ function RestrictionDialog({
   );
 }
 
-// Restriction row that looks like an editable input but opens a dialog
-function RestrictedStatusRow({ user }: { user: ServerUser }) {
-  const [dialogOpen, setDialogOpen] = useState(false);
-
-  const isRestricted = user.isRestricted;
-  const reasonText = getRestrictionReasonText(user);
-
-  const displayValue = isRestricted ? `Yes — ${reasonText}` : 'No';
-
-  return (
-    <>
-      <UserInfo icon={<ProhibitIcon size={16}/>} name="Restricted">
-        <button
-          type="button"
-          onClick={() => setDialogOpen(true)}
-          className={cn(
-            "w-full text-left px-1 py-0 rounded-md text-sm",
-            "hover:ring-1 hover:ring-slate-300 dark:hover:ring-gray-500 hover:bg-slate-50 dark:hover:bg-gray-800 hover:cursor-pointer",
-            "focus:outline-none focus-visible:ring-1 focus-visible:ring-slate-500 dark:focus-visible:ring-gray-50 focus-visible:bg-slate-100 dark:focus-visible:bg-gray-800",
-            "transition-colors hover:transition-none",
-          )}
-        >
-          {displayValue}
-        </button>
-      </UserInfo>
-      <RestrictionDialog
-        user={user}
-        open={dialogOpen}
-        onOpenChange={setDialogOpen}
-      />
-    </>
-  );
-}
 
 // Restriction banner shown at top of page when user is restricted
 function RestrictionBanner({ user }: { user: ServerUser }) {
@@ -386,56 +329,85 @@ function RestrictionBanner({ user }: { user: ServerUser }) {
   );
 }
 
-type UserDetailsProps = {
-  user: ServerUser,
-};
+function UserDetails({ user }: { user: ServerUser }) {
+  const [restrictionDialogOpen, setRestrictionDialogOpen] = useState(false);
 
-function UserDetails({ user }: UserDetailsProps) {
-  const [newPassword, setNewPassword] = useState<string | null>(null);
+  const isRestricted = user.isRestricted;
+  const reasonText = getRestrictionReasonText(user);
+  const restrictedDisplayValue = isRestricted ? `Yes — ${reasonText}` : 'No';
 
-
-  return (
-    <div className="grid grid-cols-[min-content_1fr] lg:grid-cols-[min-content_1fr_min-content_1fr] gap-2 text-sm px-4">
-      <UserInfo icon={<HashIcon size={16}/>} name="User ID">
-        <EditableInput value={user.id} readOnly />
-      </UserInfo>
-      <UserInfo icon={<EnvelopeIcon size={16}/>} name="Primary email">
-        <EditableInput value={user.primaryEmail ?? ""} placeholder={"-"} readOnly/>
-      </UserInfo>
-      <UserInfo icon={<AtIcon size={16}/>} name="Display name">
-        <EditableInput value={user.displayName ?? ""} placeholder={"-"} onUpdate={async (newName) => {
-          await user.setDisplayName(newName);
-        }}/>
-      </UserInfo>
-      <UserInfo icon={<SquareIcon size={16}/>} name="Password">
-        <EditableInput
-          value={""}
-          placeholder={user.hasPassword ? "************" : "-"}
-          mode="password"
-          onUpdate={async (newPassword) => {
-            await user.setPassword({ password: newPassword });
-          }}
-        />
-      </UserInfo>
-      <UserInfo icon={<ShieldIcon size={16}/>} name="2-factor auth">
-        <EditableInput value={user.isMultiFactorRequired ? 'Enabled' : ''} placeholder='Disabled' readOnly />
-      </UserInfo>
-      <UserInfo icon={<CalendarIcon size={16}/>} name="Signed up at">
-        <EditableInput value={user.signedUpAt.toDateString()} readOnly />
-      </UserInfo>
-      <UserInfo icon={<ShieldIcon size={16}/>} name="Risk score: bot">
-        <EditableInput value={String(user.riskScores.signUp.bot)} onUpdate={async (newValue) => {
-          await user.update({
-            riskScores: {
-              signUp: {
-                bot: parseRiskScore(newValue),
-                freeTrialAbuse: user.riskScores.signUp.freeTrialAbuse,
-              },
+  const items = useMemo<DesignEditableGridItem[]>(() => [
+    {
+      type: "text",
+      icon: <HashIcon size={14} />,
+      name: "User ID",
+      value: user.id,
+      readOnly: true,
+    },
+    {
+      type: "text",
+      icon: <EnvelopeIcon size={14} />,
+      name: "Primary email",
+      value: user.primaryEmail ?? "",
+      placeholder: "-",
+      readOnly: true,
+    },
+    {
+      type: "text",
+      icon: <AtIcon size={14} />,
+      name: "Display name",
+      value: user.displayName ?? "",
+      placeholder: "-",
+      onUpdate: async (newName) => {
+        await user.setDisplayName(newName);
+      },
+    },
+    {
+      type: "text",
+      icon: <SquareIcon size={14} />,
+      name: "Password",
+      value: "",
+      placeholder: user.hasPassword ? "************" : "-",
+      onUpdate: async (newPassword) => {
+        await user.setPassword({ password: newPassword });
+      },
+    },
+    {
+      type: "text",
+      icon: <ShieldIcon size={14} />,
+      name: "2-factor auth",
+      value: user.isMultiFactorRequired ? "Enabled" : "",
+      placeholder: "Disabled",
+      readOnly: true,
+    },
+    {
+      type: "text",
+      icon: <CalendarIcon size={14} />,
+      name: "Signed up at",
+      value: user.signedUpAt.toDateString(),
+      readOnly: true,
+    },
+    {
+      type: "text",
+      icon: <ShieldIcon size={14} />,
+      name: "Risk score: bot",
+      value: String(user.riskScores.signUp.bot),
+      onUpdate: async (newValue) => {
+        await user.update({
+          riskScores: {
+            signUp: {
+              bot: parseRiskScore(newValue),
+              freeTrialAbuse: user.riskScores.signUp.freeTrialAbuse,
             },
-          });
-        }} />
-      </UserInfo>
-      <UserInfo icon={<GlobeIcon size={16}/>} name="Sign-up country code">
+          },
+        });
+      },
+    },
+    {
+      type: "custom",
+      icon: <GlobeIcon size={14} />,
+      name: "Sign-up country code",
+      children: (
         <CountryCodeInput
           value={user.countryCode ?? null}
           onChange={(newValue) => {
@@ -446,23 +418,49 @@ function UserDetails({ user }: UserDetailsProps) {
             });
           }}
           placeholder="-"
-          className="w-full h-8 text-sm"
+          className="w-full h-7 text-sm"
         />
-      </UserInfo>
-      <UserInfo icon={<ShieldIcon size={16}/>} name="Risk score: free trial abuse">
-        <EditableInput value={String(user.riskScores.signUp.freeTrialAbuse)} onUpdate={async (newValue) => {
-          await user.update({
-            riskScores: {
-              signUp: {
-                bot: user.riskScores.signUp.bot,
-                freeTrialAbuse: parseRiskScore(newValue),
-              },
+      ),
+    },
+    {
+      type: "text",
+      icon: <ShieldIcon size={14} />,
+      name: "Risk score: free trial abuse",
+      value: String(user.riskScores.signUp.freeTrialAbuse),
+      onUpdate: async (newValue) => {
+        await user.update({
+          riskScores: {
+            signUp: {
+              bot: user.riskScores.signUp.bot,
+              freeTrialAbuse: parseRiskScore(newValue),
             },
-          });
-        }} />
-      </UserInfo>
-      <RestrictedStatusRow user={user} />
-    </div>
+          },
+        });
+      },
+    },
+    {
+      type: "custom-button",
+      icon: <ProhibitIcon size={14} />,
+      name: "Restricted",
+      children: restrictedDisplayValue,
+      onClick: () => setRestrictionDialogOpen(true),
+    },
+  ], [user, restrictedDisplayValue]);
+
+  return (
+    <>
+      <DesignEditableGrid
+        items={items}
+        columns={2}
+        size="sm"
+        deferredSave={false}
+      />
+      <RestrictionDialog
+        user={user}
+        open={restrictionDialogOpen}
+        onOpenChange={setRestrictionDialogOpen}
+      />
+    </>
   );
 }
 
@@ -739,21 +737,95 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
     await channel.update({ isPrimary: true });
   };
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Contact Channels</h2>
+  const contactChannelColumns = useMemo<ColumnDef<ServerContactChannel>[]>(() => [
+    {
+      accessorKey: "value",
+      header: "E-Mail",
+    },
+    {
+      id: "isPrimary",
+      header: "Primary",
+      cell: ({ row }) => (
+        <div className="text-center">
+          {row.original.isPrimary ? <CheckIcon className="mx-auto h-4 w-4 text-green-500" /> : null}
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setIsAddEmailDialogOpen(true)}
-        >
-          Add E-mail
-        </Button>
-      </div>
+      ),
+    },
+    {
+      id: "isVerified",
+      header: "Verified",
+      cell: ({ row }) => (
+        <div className="text-center">
+          {row.original.isVerified
+            ? <CheckIcon className="mx-auto h-4 w-4 text-green-500" />
+            : <XIcon className="mx-auto h-4 w-4 text-muted-foreground" />}
+        </div>
+      ),
+    },
+    {
+      id: "usedForAuth",
+      header: "Used for sign-in",
+      cell: ({ row }) => (
+        <div className="text-center">
+          {row.original.usedForAuth
+            ? <CheckIcon className="mx-auto h-4 w-4 text-green-500" />
+            : <XIcon className="mx-auto h-4 w-4 text-muted-foreground" />}
+        </div>
+      ),
+    },
+    {
+      id: "actions",
+      cell: ({ row }) => {
+        const channel = row.original;
+        return (
+          <div className="flex justify-end">
+            <ActionCell
+              items={[
+                {
+                  item: "Send sign-in invitation",
+                  onClick: async () => {
+                    setSendSignInInvitationDialog({ channel, isOpen: true });
+                  },
+                },
+                ...(!channel.isVerified ? [{
+                  item: "Send verification email",
+                  onClick: async () => {
+                    setSendVerificationEmailDialog({ channel, isOpen: true });
+                  },
+                }] : []),
+                ...(project.config.credentialEnabled ? [{
+                  item: "Send reset password email",
+                  onClick: async () => {
+                    setSendResetPasswordEmailDialog({ channel, isOpen: true });
+                  },
+                }] : []),
+                {
+                  item: channel.isVerified ? "Mark as unverified" : "Mark as verified",
+                  onClick: async () => { await toggleVerified(channel); },
+                },
+                ...(!channel.isPrimary ? [{
+                  item: "Set as primary",
+                  onClick: async () => { await setPrimaryEmail(channel); },
+                }] : []),
+                {
+                  item: channel.usedForAuth ? "Disable for sign-in" : "Enable for sign-in",
+                  onClick: async () => { await toggleUsedForAuth(channel); },
+                },
+                {
+                  item: "Delete",
+                  danger: true,
+                  onClick: async () => { await channel.delete(); },
+                },
+              ]}
+            />
+          </div>
+        );
+      },
+    },
+  ], [project.config.credentialEnabled]);
 
+  return (
+    <>
       <AddEmailDialog
         user={user}
         open={isAddEmailDialogOpen}
@@ -796,186 +868,106 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
         />
       )}
 
-      {contactChannels.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 p-4 border rounded-md bg-muted/10">
-          <p className='text-sm text-gray-500 text-center'>
-            No contact channels
-          </p>
-        </div>
-      ) : (
-        <div className='border rounded-md'>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>E-Mail</TableHead>
-                <TableHead className="text-center">Primary</TableHead>
-                <TableHead className="text-center">Verified</TableHead>
-                <TableHead className="text-center">Used for sign-in</TableHead>
-                <TableHead className="w-[80px]"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {contactChannels.map((channel) => (
-                <TableRow key={channel.id}>
-                  <TableCell>
-                    <div className='flex flex-col md:flex-row gap-2 md:gap-4'>
-                      {channel.value}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {channel.isPrimary ? <CheckIcon className="mx-auto h-4 w-4 text-green-500" /> : null}
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {channel.isVerified ?
-                      <CheckIcon className="mx-auto h-4 w-4 text-green-500" /> :
-                      <XIcon className="mx-auto h-4 w-4 text-muted-foreground" />
-                    }
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {channel.usedForAuth ?
-                      <CheckIcon className="mx-auto h-4 w-4 text-green-500" /> :
-                      <XIcon className="mx-auto h-4 w-4 text-muted-foreground" />
-                    }
-                  </TableCell>
-                  <TableCell align="right">
-                    <ActionCell
-                      items={[
-                        {
-                          item: "Send sign-in invitation",
-                          onClick: async () => {
-                            setSendSignInInvitationDialog({
-                              channel,
-                              isOpen: true,
-                            });
-                          },
-                        },
-                        ...(!channel.isVerified ? [{
-                          item: "Send verification email",
-                          onClick: async () => {
-                            setSendVerificationEmailDialog({
-                              channel,
-                              isOpen: true,
-                            });
-                          },
-                        }] : []),
-                        ...(project.config.credentialEnabled ? [{
-                          item: "Send reset password email",
-                          onClick: async () => {
-                            setSendResetPasswordEmailDialog({
-                              channel,
-                              isOpen: true,
-                            });
-                          },
-                        }] : []),
-                        {
-                          item: channel.isVerified ? "Mark as unverified" : "Mark as verified",
-                          onClick: async () => {
-                            await toggleVerified(channel);
-                          },
-                        },
-                        ...(!channel.isPrimary ? [{
-                          item: "Set as primary",
-                          onClick: async () => {
-                            await setPrimaryEmail(channel);
-                          },
-                        }] : []),
-                        {
-                          item: channel.usedForAuth ? "Disable for sign-in" : "Enable for sign-in",
-                          onClick: async () => {
-                            await toggleUsedForAuth(channel);
-                          },
-                        },
-                        {
-                          item: "Delete",
-                          danger: true,
-                          onClick: async () => {
-                            await channel.delete();
-                          },
-                        }
-                      ]}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
-    </div>
+      <DesignCard
+        title="Contact Channels"
+        icon={EnvelopeIcon}
+        glassmorphic={false}
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsAddEmailDialogOpen(true)}
+          >
+            Add E-mail
+          </Button>
+        }
+      >
+        {contactChannels.length === 0 ? (
+          <div className="flex flex-col items-center gap-2 py-8">
+            <p className='text-sm text-muted-foreground text-center'>
+              No contact channels
+            </p>
+          </div>
+        ) : (
+          <DesignDataTable
+            columns={contactChannelColumns}
+            data={contactChannels}
+          />
+        )}
+      </DesignCard>
+    </>
   );
 }
 
-type UserTeamsSectionProps = {
-  user: ServerUser,
-};
-
-function UserTeamsSection({ user }: UserTeamsSectionProps) {
+function UserTeamsSection({ user }: { user: ServerUser }) {
   const stackAdminApp = useAdminApp();
   const teams = user.useTeams();
 
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">Teams</h2>
-          <p className="text-sm text-muted-foreground">Teams this user belongs to</p>
+  const teamColumns = useMemo<ColumnDef<ServerTeam>[]>(() => [
+    {
+      accessorKey: "id",
+      header: "Team ID",
+      cell: ({ row }) => (
+        <div className="font-mono text-xs bg-muted px-2 py-1 rounded max-w-[120px] truncate">
+          {row.original.id}
         </div>
-      </div>
+      ),
+    },
+    {
+      accessorKey: "displayName",
+      header: "Display Name",
+      cell: ({ row }) => (
+        <span className="font-medium">{row.original.displayName || '-'}</span>
+      ),
+    },
+    {
+      id: "createdAt",
+      header: "Created At",
+      cell: ({ row }) => (
+        <span className="text-sm text-muted-foreground">
+          {row.original.createdAt.toLocaleDateString()}
+        </span>
+      ),
+    },
+    {
+      id: "actions",
+      cell: ({ row }) => (
+        <div className="flex justify-end">
+          <ActionCell
+            items={[
+              {
+                item: "View Team",
+                onClick: () => {
+                  window.open(`/projects/${stackAdminApp.projectId}/teams/${row.original.id}`, '_blank', 'noopener');
+                },
+              },
+            ]}
+          />
+        </div>
+      ),
+    },
+  ], [stackAdminApp.projectId]);
 
+  return (
+    <DesignCard
+      title="Teams"
+      subtitle="Teams this user belongs to"
+      icon={UsersIcon}
+      glassmorphic={false}
+    >
       {teams.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 p-4 border rounded-md bg-muted/10">
-          <p className='text-sm text-gray-500 text-center'>
+        <div className="flex flex-col items-center gap-2 py-8">
+          <p className='text-sm text-muted-foreground text-center'>
             No teams found
           </p>
         </div>
       ) : (
-        <div className='border rounded-md'>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Team ID</TableHead>
-                <TableHead>Display Name</TableHead>
-                <TableHead>Created At</TableHead>
-                <TableHead className="w-[80px]"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {teams.map((team) => (
-                <TableRow key={team.id}>
-                  <TableCell>
-                    <div className="font-mono text-xs bg-muted px-2 py-1 rounded max-w-[120px] truncate">
-                      {team.id}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="font-medium">
-                      {team.displayName || '-'}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="text-sm text-muted-foreground">
-                      {team.createdAt.toLocaleDateString()}
-                    </div>
-                  </TableCell>
-                  <TableCell align="right">
-                    <ActionCell
-                      items={[
-                        {
-                          item: "View Team",
-                          onClick: () => {
-                            window.open(`/projects/${stackAdminApp.projectId}/teams/${team.id}`, '_blank', 'noopener');
-                          },
-                        },
-                      ]}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        <DesignDataTable
+          columns={teamColumns}
+          data={teams}
+        />
       )}
-    </div>
+    </DesignCard>
   );
 }
 
@@ -1176,29 +1168,82 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
     }
   };
 
-  const toggleAllowSignIn = async (provider: ServerOAuthProvider) => {
-    await handleProviderUpdate(provider, { allowSignIn: !provider.allowSignIn });
-  };
-
-  const toggleAllowConnectedAccounts = async (provider: ServerOAuthProvider) => {
-    await handleProviderUpdate(provider, { allowConnectedAccounts: !provider.allowConnectedAccounts });
-  };
+  const oauthColumns: ColumnDef<ServerOAuthProvider>[] = [
+    {
+      accessorKey: "type",
+      header: "Provider",
+      cell: ({ row }) => (
+        <span className="capitalize font-medium">{row.original.type}</span>
+      ),
+    },
+    {
+      accessorKey: "email",
+      header: "Email",
+    },
+    {
+      accessorKey: "accountId",
+      header: "Account ID",
+      cell: ({ row }) => (
+        <span className="font-mono text-xs truncate block max-w-[160px]">{row.original.accountId}</span>
+      ),
+    },
+    {
+      id: "allowSignIn",
+      header: () => <span className="whitespace-nowrap">Used for sign-in</span>,
+      cell: ({ row }) => (
+        <div className="text-center">
+          {row.original.allowSignIn
+            ? <CheckIcon className="mx-auto h-4 w-4 text-green-500" />
+            : <XIcon className="mx-auto h-4 w-4 text-muted-foreground" />}
+        </div>
+      ),
+    },
+    {
+      id: "allowConnectedAccounts",
+      header: () => <span className="whitespace-nowrap">Used for connected accounts</span>,
+      cell: ({ row }) => (
+        <div className="text-center">
+          {row.original.allowConnectedAccounts
+            ? <CheckIcon className="mx-auto h-4 w-4 text-green-500" />
+            : <XIcon className="mx-auto h-4 w-4 text-muted-foreground" />}
+        </div>
+      ),
+    },
+    {
+      id: "actions",
+      cell: ({ row }) => {
+        const provider = row.original;
+        return (
+          <div className="flex justify-end">
+            <ActionCell
+              items={[
+                {
+                  item: "Edit",
+                  onClick: () => setEditingProvider(provider),
+                },
+                {
+                  item: provider.allowSignIn ? "Disable sign-in" : "Enable sign-in",
+                  onClick: async () => { await handleProviderUpdate(provider, { allowSignIn: !provider.allowSignIn }); },
+                },
+                {
+                  item: provider.allowConnectedAccounts ? "Disable connected accounts" : "Enable connected accounts",
+                  onClick: async () => { await handleProviderUpdate(provider, { allowConnectedAccounts: !provider.allowConnectedAccounts }); },
+                },
+                {
+                  item: "Delete",
+                  danger: true,
+                  onClick: async () => { await provider.delete(); },
+                },
+              ]}
+            />
+          </div>
+        );
+      },
+    },
+  ];
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div>
-          <h2 className="text-lg font-semibold">OAuth Providers</h2>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => setIsAddProviderDialogOpen(true)}
-        >
-          Add Provider
-        </Button>
-      </div>
-
+    <>
       <OAuthProviderDialog
         user={user}
         open={isAddProviderDialogOpen}
@@ -1216,124 +1261,144 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
         />
       )}
 
-      {oauthProviders.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 p-4 border rounded-md bg-muted/10">
-          <p className='text-sm text-gray-500 text-center'>
-            No OAuth providers connected
-          </p>
-        </div>
-      ) : (
-        <div className='border rounded-md'>
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Provider</TableHead>
-                <TableHead>Email</TableHead>
-                <TableHead>Account ID</TableHead>
-                <TableHead className="text-center">Used for sign-in</TableHead>
-                <TableHead className="text-center">Used for connected accounts</TableHead>
-                <TableHead className="w-[80px]"></TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {oauthProviders.map((provider: ServerOAuthProvider) => (
-                <TableRow key={provider.id + '-' + provider.accountId}>
-                  <TableCell>
-                    <div className='flex items-center gap-2'>
-                      <div className="capitalize font-medium">
-                        {provider.type}
-                      </div>
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className='flex flex-col md:flex-row gap-2 md:gap-4'>
-                      {provider.email}
-                    </div>
-                  </TableCell>
-                  <TableCell>
-                    <div className="font-mono text-xs">
-                      {provider.accountId}
-                    </div>
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {provider.allowSignIn ?
-                      <CheckIcon className="mx-auto h-4 w-4 text-green-500" /> :
-                      <XIcon className="mx-auto h-4 w-4 text-muted-foreground" />
-                    }
-                  </TableCell>
-                  <TableCell className="text-center">
-                    {provider.allowConnectedAccounts ?
-                      <CheckIcon className="mx-auto h-4 w-4 text-green-500" /> :
-                      <XIcon className="mx-auto h-4 w-4 text-muted-foreground" />
-                    }
-                  </TableCell>
-                  <TableCell align="right">
-                    <ActionCell
-                      items={[
-                        {
-                          item: "Edit",
-                          onClick: () => setEditingProvider(provider),
-                        },
-                        {
-                          item: provider.allowSignIn ? "Disable sign-in" : "Enable sign-in",
-                          onClick: async () => {
-                            await toggleAllowSignIn(provider);
-                          },
-                        },
-                        {
-                          item: provider.allowConnectedAccounts ? "Disable connected accounts" : "Enable connected accounts",
-                          onClick: async () => {
-                            await toggleAllowConnectedAccounts(provider);
-                          },
-                        },
-                        {
-                          item: "Delete",
-                          danger: true,
-                          onClick: async () => {
-                            await provider.delete();
-                          },
-                        }
-                      ]}
-                    />
-                  </TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+      <DesignCard
+        title="OAuth Providers"
+        icon={KeyIcon}
+        glassmorphic={false}
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setIsAddProviderDialogOpen(true)}
+          >
+            Add Provider
+          </Button>
+        }
+      >
+        {oauthProviders.length === 0 ? (
+          <div className="flex flex-col items-center gap-2 py-8">
+            <p className='text-sm text-muted-foreground text-center'>
+              No OAuth providers connected
+            </p>
+          </div>
+        ) : (
+          <DesignDataTable
+            columns={oauthColumns}
+            data={oauthProviders}
+          />
+        )}
+      </DesignCard>
+    </>
+  );
+}
+
+const ACTIVITY_GRID_WEEKS = 16;
+const ACTIVITY_GRID_DAYS = 7;
+
+function ActivityPlaceholder() {
+  const cells = useMemo(() => {
+    const result: number[] = [];
+    for (let i = 0; i < ACTIVITY_GRID_WEEKS * ACTIVITY_GRID_DAYS; i++) {
+      result.push(Math.random());
+    }
+    return result;
+  }, []);
+
+  return (
+    <div className="hidden xl:flex flex-col items-end gap-1.5 opacity-30 select-none shrink-0 pt-1" aria-hidden>
+      <span className="text-[11px] font-medium text-muted-foreground tracking-wide uppercase">Activity</span>
+      <div
+        className="grid gap-[3px]"
+        style={{
+          gridTemplateColumns: `repeat(${ACTIVITY_GRID_WEEKS}, 1fr)`,
+          gridTemplateRows: `repeat(${ACTIVITY_GRID_DAYS}, 1fr)`,
+        }}
+      >
+        {cells.map((rand, i) => (
+          <div
+            key={i}
+            className={cn(
+              "w-[9px] h-[9px] rounded-[2px]",
+              rand < 0.55
+                ? "bg-foreground/[0.06]"
+                : rand < 0.75
+                  ? "bg-foreground/[0.12]"
+                  : rand < 0.9
+                    ? "bg-foreground/[0.22]"
+                    : "bg-foreground/[0.35]",
+            )}
+          />
+        ))}
+      </div>
+    </div>
+  );
+}
+
+const USER_PAGE_TABS = [
+  { id: "profile", label: "Profile" },
+  { id: "analytics", label: "Analytics" },
+  { id: "payments", label: "Payments" },
+  { id: "fraud-protection", label: "Fraud Protection" },
+] as const;
+
+type UserPageTab = typeof USER_PAGE_TABS[number]["id"];
+
+function TabPlaceholder({ label }: { label: string }) {
+  return (
+    <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-2">
+      <p className="text-sm font-medium">{label}</p>
+      <p className="text-xs">Coming soon</p>
     </div>
   );
 }
 
 function UserPage({ user }: { user: ServerUser }) {
+  const [selectedTab, setSelectedTab] = useState<UserPageTab>("profile");
+
   return (
     <PageLayout>
       <div className="flex flex-col gap-6">
         <RestrictionBanner user={user} />
-        <UserHeader user={user} />
-        <Separator />
-        <UserDetails user={user} />
-        <Separator />
-        <ContactChannelsSection user={user} />
-        <UserTeamsSection user={user} />
-        <OAuthProvidersSection user={user} />
-        <MetadataSection
-          entityName="user"
-          docsUrl={userMetadataDocsUrl}
-          clientMetadata={user.clientMetadata}
-          clientReadOnlyMetadata={user.clientReadOnlyMetadata}
-          serverMetadata={user.serverMetadata}
-          onUpdateClientMetadata={async (value) => {
-            await user.setClientMetadata(value);
-          }}
-          onUpdateClientReadOnlyMetadata={async (value) => {
-            await user.setClientReadOnlyMetadata(value);
-          }}
-          onUpdateServerMetadata={async (value) => {
-            await user.setServerMetadata(value);
-          }}
+        <div className="flex items-start justify-between gap-6">
+          <UserHeader user={user} />
+          <ActivityPlaceholder />
+        </div>
+        <DesignCategoryTabs
+          categories={[...USER_PAGE_TABS]}
+          selectedCategory={selectedTab}
+          onSelect={(id) => setSelectedTab(id as UserPageTab)}
+          showBadge={false}
+          size="sm"
+          glassmorphic={false}
         />
+        {selectedTab === "profile" && (
+          <div className="flex flex-col gap-6">
+            <UserDetails user={user} />
+            <Separator />
+            <ContactChannelsSection user={user} />
+            <UserTeamsSection user={user} />
+            <OAuthProvidersSection user={user} />
+            <MetadataSection
+              entityName="user"
+              docsUrl={userMetadataDocsUrl}
+              clientMetadata={user.clientMetadata}
+              clientReadOnlyMetadata={user.clientReadOnlyMetadata}
+              serverMetadata={user.serverMetadata}
+              onUpdateClientMetadata={async (value) => {
+                await user.setClientMetadata(value);
+              }}
+              onUpdateClientReadOnlyMetadata={async (value) => {
+                await user.setClientReadOnlyMetadata(value);
+              }}
+              onUpdateServerMetadata={async (value) => {
+                await user.setServerMetadata(value);
+              }}
+            />
+          </div>
+        )}
+        {selectedTab === "analytics" && <TabPlaceholder label="Analytics" />}
+        {selectedTab === "payments" && <TabPlaceholder label="Payments" />}
+        {selectedTab === "fraud-protection" && <TabPlaceholder label="Fraud Protection" />}
       </div>
     </PageLayout>
   );
