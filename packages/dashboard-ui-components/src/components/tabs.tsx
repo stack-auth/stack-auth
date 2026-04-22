@@ -13,6 +13,7 @@ export type DesignCategoryTabItem = {
   label: string,
   count?: number,
   badgeCount?: number,
+  icon?: React.ComponentType<React.SVGProps<SVGSVGElement>>,
 };
 
 export type DesignCategoryTabsProps = Omit<React.ComponentProps<"div">, "onSelect"> & {
@@ -170,6 +171,9 @@ export function DesignCategoryTabs({
               "flex items-center gap-2",
               loadingCategoryId === category.id && "invisible"
             )}>
+              {category.icon && (
+                <category.icon className="h-4 w-4 shrink-0" aria-hidden />
+              )}
               {category.label}
               {shouldShowBadge && (
                 <span
