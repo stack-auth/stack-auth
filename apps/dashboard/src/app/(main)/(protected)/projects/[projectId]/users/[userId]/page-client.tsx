@@ -27,7 +27,6 @@ import {
   DialogHeader,
   DialogTitle,
   Input,
-  Separator,
   Textarea,
   Typography,
   useToast
@@ -1363,6 +1362,7 @@ function UserPage({ user }: { user: ServerUser }) {
           <UserHeader user={user} />
           <ActivityPlaceholder />
         </div>
+        <UserDetails user={user} />
         <DesignCategoryTabs
           categories={[...USER_PAGE_TABS]}
           selectedCategory={selectedTab}
@@ -1373,8 +1373,6 @@ function UserPage({ user }: { user: ServerUser }) {
         />
         {selectedTab === "profile" && (
           <div className="flex flex-col gap-6">
-            <UserDetails user={user} />
-            <Separator />
             <ContactChannelsSection user={user} />
             <UserTeamsSection user={user} />
             <OAuthProvidersSection user={user} />
