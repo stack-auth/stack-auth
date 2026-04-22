@@ -121,6 +121,19 @@ export function isActiveSubscription(subscription: { status: string }): boolean 
   return s === "active" || s === SubscriptionStatus.active || s === "trialing" || s === SubscriptionStatus.trialing;
 }
 
+/**
+ * True when the given product config / snapshot declares itself as an add-on
+ * to one or more other products. Add-ons share a product line with their base
+ * plan but don't satisfy "base plan owned" invariants on their own.
+ *
+ * The predicate normalises the three ways a product can signal "not an
+ * add-on" (absent, explicitly `false`, or an empty record) so callers don't
+ * have to reimplement the check.
+ */
+export function isAddOnProduct(product: { isAddOnTo?: false | Record<string, true> | null }): boolean {
+  return product.isAddOnTo != null && product.isAddOnTo !== false && Object.keys(product.isAddOnTo).length > 0;
+}
+
 type OwnedProducts = OwnedProductsRow["ownedProducts"];
 
 /**

@@ -1,5 +1,5 @@
 import { SubscriptionStatus } from "@/generated/prisma/client";
-import { ensureClientCanAccessCustomer, ensureCustomerExists, getDefaultCardPaymentMethodSummary, getStripeCustomerForCustomerOrNull, isActiveSubscription } from "@/lib/payments";
+import { ensureClientCanAccessCustomer, ensureCustomerExists, getDefaultCardPaymentMethodSummary, getStripeCustomerForCustomerOrNull, isActiveSubscription, isAddOnProduct } from "@/lib/payments";
 import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
 import { getOwnedProductsForCustomer, getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
 import { upsertProductVersion } from "@/lib/product-versions";
@@ -9,7 +9,7 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { getOrUndefined, typedEntries, typedKeys } from "@stackframe/stack-shared/dist/utils/objects";
+import { getOrUndefined, typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { typedToUppercase } from "@stackframe/stack-shared/dist/utils/strings";
 import Stripe from "stripe";
 
@@ -72,7 +72,7 @@ export const POST = createSmartRouteHandler({
     if (body.from_product_id === body.to_product_id) {
       throw new StatusError(400, "Product is already active.");
     }
-    if (toProduct.isAddOnTo && typedKeys(toProduct.isAddOnTo).length > 0) {
+    if (isAddOnProduct(toProduct)) {
       throw new StatusError(400, "Add-on products cannot be selected for plan switching.");
     }
     const fromIsIncludeByDefault = fromProduct.prices === "include-by-default";

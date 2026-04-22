@@ -1,6 +1,8 @@
 import { CustomerType, PrismaClient, PurchaseCreationSource, Subscription, SubscriptionStatus } from "@/generated/prisma/client";
+import { isAddOnProduct } from "@/lib/payments";
 import { bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
-import { getOwnedProductsForCustomer } from "@/lib/payments/customer-data";
+import { getSubscriptionMapForCustomer } from "@/lib/payments/customer-data";
+import type { ProductSnapshot } from "@/lib/payments/schema/types";
 // eslint-disable-next-line @typescript-eslint/no-deprecated -- idiomatic way to get the internal tenancy today (see plan-entitlements.ts)
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch, type Tenancy } from "@/lib/tenancies";
 import { getPrismaClientForTenancy, retryTransaction, type PrismaClientTransaction } from "@/prisma-client";
@@ -28,10 +30,6 @@ async function getInternalBillingTenancy(): Promise<Tenancy> {
     throw new StackAssertionError("Internal billing tenancy not found");
   }
   return tenancy;
-}
-
-function isAddOnProduct(product: { isAddOnTo?: false | Record<string, true> | null }): boolean {
-  return product.isAddOnTo != null && product.isAddOnTo !== false && Object.keys(product.isAddOnTo).length > 0;
 }
 
 /**
@@ -104,22 +102,29 @@ export async function createFreePlanSubscriptionRow(options: {
  *
  * Two-phase concurrency story:
  *
- *   1. Fast path — optimistic bulldozer read. In the overwhelming common
- *      case the billing team already has some plan in the product line
- *      (free, team, or growth), so we return immediately without touching
- *      Prisma's Subscription table.
+ *   1. Fast path — O(1) read against the `subscriptionMapByCustomer`
+ *      LFold. That LFold is a `GroupBy → Sort → LFold` chain with no
+ *      TimeFold in its dependencies, so its row-change triggers cascade
+ *      synchronously during `bulldozerWriteSubscription`'s `setRow`
+ *      (unlike `ownedProducts`, which sits downstream of a TimeFold and
+ *      only catches up when `pg_cron` drains the queue). That means
+ *      callers that just committed a sub mutation upstream (the DELETE
+ *      cancel route, the Stripe webhook handler) see their own writes
+ *      here and we don't spuriously regrant on stale data.
  *
- *   2. Slow path — if the fast path sees "no base plan," re-check the
- *      Subscription source-of-truth under SERIALIZABLE isolation and
- *      insert atomically. The bulldozer derived ledger lags pg_cron and
- *      can't detect in-flight writes from concurrent callers, so we
- *      cannot rely on it for idempotency; reading the Subscription table
- *      directly under SSI is the only way to serialize the check+insert.
- *      `retryTransaction` handles P2028 serialization failures by
- *      retrying; on the retry the other caller's row is visible and we
- *      skip the insert.
+ *   2. Slow path — if the fast path found nothing, re-check against the
+ *      Prisma Subscription source-of-truth under SERIALIZABLE isolation
+ *      and insert atomically so two concurrent callers can't both create
+ *      a duplicate free sub. `retryTransaction` handles P2028
+ *      serialization failures by retrying; on the retry the other
+ *      caller's row is visible and we skip the insert.
  *
- * We do this
+ * TODO: once "default products" lands and the free plan is granted
+ * implicitly by config rather than a DB row, this whole regrant dance
+ * goes away. The slow-path Prisma write is also a pre-Bulldozer-
+ * deprecation artefact — when Bulldozer owns subscription writes
+ * directly, the SERIALIZABLE Prisma tx becomes a Bulldozer insert with
+ * its own concurrency story.
  */
 export async function ensureFreePlanForBillingTeam(billingTeamId: string): Promise<void> {
   const internalTenancy = await getInternalBillingTenancy();
@@ -131,41 +136,74 @@ export async function ensureFreePlanForBillingTeam(billingTeamId: string): Promi
 
   const internalPrisma = await getPrismaClientForTenancy(internalTenancy);
 
-  // Fast path: bulldozer-based optimistic check. Only BASE plans count —
-  // add-ons (extra-seats etc.) don't provide baseline entitlements on their
-  // own, so losing the base plan while still holding an add-on still
-  // triggers a regrant.
-  const ownedProducts = await getOwnedProductsForCustomer({
+  // Snapshot-based "occupies the free plan's product line" predicate. We
+  // treat a sub as occupying the line iff its captured product snapshot
+  // lives in that line, isn't an add-on, and HASN'T ENDED YET (endedAt in
+  // the future or absent). Crucially we do NOT gate on `status` —
+  // `incomplete` / `past_due` / `unpaid` subs that arrive mid-Stripe-flow
+  // still reserve the line (they will either transition to `active` or to
+  // a terminal status with `endedAt` set), and this matches the semantics
+  // that `ownedProducts` derives via the Subscription TimeFold (see
+  // `subscription-timefold-algo.ts` — `subscription-start` emits on row
+  // insert regardless of status; `subscription-end` emits at
+  // `endedAtMillis`). Treating only active/trialing as occupying would
+  // (and did) cause the free plan to be double-granted on top of a
+  // just-created incomplete paid sub.
+  const nowMillis = Date.now();
+  const productLineStillOccupiedBy = (sub: {
+    product: ProductSnapshot,
+    endedAtMillis?: number | null,
+    endedAt?: Date | null,
+  }): boolean => {
+    if (sub.product.productLineId !== freeProductLineId) return false;
+    if (isAddOnProduct(sub.product)) return false;
+    const endedAtMillis = sub.endedAtMillis != null
+      ? sub.endedAtMillis
+      : sub.endedAt != null ? sub.endedAt.getTime() : null;
+    return endedAtMillis == null || endedAtMillis > nowMillis;
+  };
+
+  // Fast path: read the customer's synchronous subscription LFold. Note
+  // that Bulldozer SubscriptionRow uses the schema-side lowercase
+  // CustomerType (`"team"`), not the Prisma enum — see
+  // `bulldozer-dual-write.ts:subscriptionToStoredRow` which
+  // `.toLowerCase()`s on write.
+  const subscriptionMap = await getSubscriptionMapForCustomer({
     prisma: internalPrisma,
     tenancyId: internalTenancy.id,
     customerType: "team",
     customerId: billingTeamId,
   });
-  const alreadyHasBasePlanInLine = Object.values(ownedProducts).some(
-    (p) =>
-      p.productLineId === freeProductLineId
-      && p.quantity > 0
-      && !isAddOnProduct(p.product),
-  );
-  if (alreadyHasBasePlanInLine) {
+  if (Object.values(subscriptionMap).some(productLineStillOccupiedBy)) {
     return;
   }
 
-  // Slow path: the team appears to have no base plan. Re-check under
-  // SERIALIZABLE isolation and insert atomically so a concurrent caller
-  // can't produce a duplicate free sub.
+  // Slow path: the team appears to have no occupying sub. Re-check under
+  // SERIALIZABLE isolation against the Prisma source-of-truth and insert
+  // atomically so concurrent callers can't both produce a duplicate free
+  // sub. Prisma here (not Bulldozer) because the insert is a Prisma write
+  // and we want the check and insert to serialize on the same row. We
+  // filter `endedAt IS NULL OR endedAt > NOW()` at the SQL level and
+  // apply the snapshot predicate in-memory — per-customer sub counts are
+  // tiny, and the `(tenancyId, customerId, customerType)` index is used.
+  const now = new Date();
   const createdSub = await retryTransaction(internalPrisma, async (tx) => {
-    const existing = await tx.subscription.findFirst({
+    const unendedSubs = await tx.subscription.findMany({
       where: {
         tenancyId: internalTenancy.id,
         customerId: billingTeamId,
         customerType: CustomerType.TEAM,
-        productId: "free",
-        status: { in: [SubscriptionStatus.active, SubscriptionStatus.trialing] },
+        OR: [{ endedAt: null }, { endedAt: { gt: now } }],
       },
-      select: { id: true },
+      select: { product: true, endedAt: true },
     });
-    if (existing != null) {
+    const existing = unendedSubs.some((sub) =>
+      productLineStillOccupiedBy({
+        product: sub.product as ProductSnapshot,
+        endedAt: sub.endedAt,
+      }),
+    );
+    if (existing) {
       return null;
     }
     return await createFreePlanSubscriptionRow({
