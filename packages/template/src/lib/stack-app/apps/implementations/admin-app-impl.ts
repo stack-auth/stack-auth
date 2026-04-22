@@ -1,7 +1,7 @@
 import { StackAdminInterface } from "@stackframe/stack-shared";
 import { getProductionModeErrors } from "@stackframe/stack-shared/dist/helpers/production-mode";
 import { InternalApiKeyCreateCrudResponse } from "@stackframe/stack-shared/dist/interface/admin-interface";
-import type { MetricsResponse } from "@stackframe/stack-shared/dist/interface/admin-metrics";
+import type { MetricsResponse, UserActivityResponse } from "@stackframe/stack-shared/dist/interface/admin-metrics";
 import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@stackframe/stack-shared/dist/interface/crud/analytics";
 import { EmailTemplateCrud } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
 import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
@@ -101,6 +101,9 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   });
   private readonly _metricsCache = createCache(async ([includeAnonymous]: [boolean]) => {
     return await this._interface.getMetrics(includeAnonymous);
+  });
+  private readonly _userActivityCache = createCache(async ([userId]: [string]) => {
+    return await this._interface.getUserActivity(userId);
   });
   private readonly _emailPreviewCache = createCache(async ([themeId, themeTsxSource, templateId, templateTsxSource]: [string | null | false | undefined, string | undefined, string | undefined, string | undefined]) => {
     return await this._interface.renderEmailPreview({ themeId, themeTsxSource, templateId, templateTsxSource });
@@ -561,7 +564,10 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       // IF_PLATFORM react-like
       useMetrics: (includeAnonymous: boolean = false): MetricsResponse => {
         return useAsyncCache(this._metricsCache, [includeAnonymous] as const, "adminApp.useMetrics()") as MetricsResponse;
-      }
+      },
+      useUserActivity: (userId: string): UserActivityResponse => {
+        return useAsyncCache(this._userActivityCache, [userId] as const, "adminApp.useUserActivity()") as UserActivityResponse;
+      },
       // END_PLATFORM
     };
   }

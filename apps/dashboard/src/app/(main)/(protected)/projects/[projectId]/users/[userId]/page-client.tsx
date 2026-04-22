@@ -28,6 +28,9 @@ import {
   DialogTitle,
   Input,
   Textarea,
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
   Typography,
   useToast
 } from "@/components/ui";
@@ -35,6 +38,7 @@ import { DeleteUserDialog, ImpersonateUserDialog } from "@/components/user-dialo
 import { ALL_APPS_FRONTEND } from "@/lib/apps-frontend";
 import { isAppEnabled } from "@/lib/apps-utils";
 import { parseRiskScore } from "@/lib/risk-score-utils";
+import { useUserActivityOrThrow } from "@/lib/stack-app-internals";
 import { AtIcon, CalendarIcon, CheckIcon, EnvelopeIcon, GlobeIcon, HashIcon, KeyIcon, ProhibitIcon, ShieldIcon, SquareIcon, UsersIcon, XIcon } from "@phosphor-icons/react";
 import { ServerContactChannel, ServerOAuthProvider, ServerTeam, ServerUser } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -45,7 +49,7 @@ import { captureError, StackAssertionError } from '@stackframe/stack-shared/dist
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { ColumnDef } from "@tanstack/react-table";
-import { useMemo, useState } from "react";
+import { Suspense, useMemo, useState } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
@@ -1296,18 +1300,56 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
 
 const ACTIVITY_GRID_COLUMNS = 16;
 const ACTIVITY_GRID_ROWS = 22;
+const ACTIVITY_GRID_CELLS = ACTIVITY_GRID_COLUMNS * ACTIVITY_GRID_ROWS;
 
-function ActivityPlaceholder() {
-  const cells = useMemo(() => {
-    const result: number[] = [];
-    for (let i = 0; i < ACTIVITY_GRID_COLUMNS * ACTIVITY_GRID_ROWS; i++) {
-      result.push(Math.random());
-    }
-    return result;
-  }, []);
+// Activity heatmap color ramp. Indexed by 0 = no activity, 1..4 = increasing
+// intensity (buckets based on the user's own max activity over the window).
+// Tailwind needs the exact class strings at build time, so we keep them
+// enumerated here rather than building them dynamically.
+//
+// The level-0 shade uses foreground alpha (not `bg-muted`) because the user
+// header sits on top of a gradient backdrop — `bg-muted` blends into the
+// lighter top-left of that gradient in dark mode and the empty cells
+// disappear. Foreground-alpha guarantees consistent contrast against whatever
+// is behind the cells, in both themes.
+const ACTIVITY_COLORS = [
+  "bg-foreground/[0.08] dark:bg-foreground/[0.12]",
+  "bg-emerald-500/30 dark:bg-emerald-400/30",
+  "bg-emerald-500/55 dark:bg-emerald-400/55",
+  "bg-emerald-500/80 dark:bg-emerald-400/80",
+  "bg-emerald-500 dark:bg-emerald-400",
+] as const;
 
+function activityLevel(activity: number, max: number): 0 | 1 | 2 | 3 | 4 {
+  if (activity <= 0 || max <= 0) return 0;
+  const intensity = activity / max;
+  if (intensity <= 0.25) return 1;
+  if (intensity <= 0.5) return 2;
+  if (intensity <= 0.75) return 3;
+  return 4;
+}
+
+// Dates come back from ClickHouse as plain `YYYY-MM-DD` strings. Parse them as
+// UTC to match the bucket boundary the backend groups by (`toDate(event_at)`
+// in UTC), otherwise cells on the east side of the dateline would show one day
+// off in the tooltip.
+const ACTIVITY_TOOLTIP_DATE_FORMATTER = new Intl.DateTimeFormat(undefined, {
+  weekday: "short",
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+  timeZone: "UTC",
+});
+
+function formatActivityDate(isoDate: string): string {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return ACTIVITY_TOOLTIP_DATE_FORMATTER.format(date);
+}
+
+function ActivityShell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="hidden xl:flex flex-col items-end gap-1.5 opacity-30 select-none shrink-0 pt-1" aria-hidden>
+    <div className="hidden xl:flex flex-col items-end gap-1.5 shrink-0 pt-1">
       <span className="text-[11px] font-medium text-muted-foreground tracking-wide uppercase">Activity</span>
       <div
         className="grid gap-[3px]"
@@ -1317,23 +1359,59 @@ function ActivityPlaceholder() {
           gridAutoFlow: "row",
         }}
       >
-        {cells.map((rand, i) => (
-          <div
-            key={i}
-            className={cn(
-              "w-[9px] h-[9px] rounded-[2px]",
-              rand < 0.55
-                ? "bg-foreground/[0.06]"
-                : rand < 0.75
-                  ? "bg-foreground/[0.12]"
-                  : rand < 0.9
-                    ? "bg-foreground/[0.22]"
-                    : "bg-foreground/[0.35]",
-            )}
-          />
-        ))}
+        {children}
       </div>
     </div>
+  );
+}
+
+function ActivityLoadingFallback() {
+  const cells = useMemo(() => Array.from({ length: ACTIVITY_GRID_CELLS }), []);
+  return (
+    <ActivityShell>
+      {cells.map((_, i) => (
+        <div key={i} className={cn("w-[9px] h-[9px] rounded-[2px]", ACTIVITY_COLORS[0])} aria-hidden />
+      ))}
+    </ActivityShell>
+  );
+}
+
+function ActivityGraph({ userId }: { userId: string }) {
+  const stackAdminApp = useAdminApp();
+  const { data_points: dataPoints } = useUserActivityOrThrow(stackAdminApp, userId);
+
+  // Tail the window so the most recent day always lands on the last cell,
+  // even if the backend decides to extend the window later.
+  const cells = useMemo(() => dataPoints.slice(-ACTIVITY_GRID_CELLS), [dataPoints]);
+  const maxActivity = useMemo(
+    () => cells.reduce((acc, c) => Math.max(acc, c.activity), 0),
+    [cells],
+  );
+
+  return (
+    <ActivityShell>
+      {cells.map((cell) => {
+        const level = activityLevel(cell.activity, maxActivity);
+        return (
+          <Tooltip key={cell.date} delayDuration={0}>
+            <TooltipTrigger asChild>
+              <div
+                className={cn(
+                  "relative w-[9px] h-[9px] rounded-[2px] transition-none hover:z-10 hover:ring-2 hover:ring-foreground",
+                  ACTIVITY_COLORS[level],
+                )}
+              />
+            </TooltipTrigger>
+            <TooltipContent side="top" className="text-xs">
+              <div className="font-medium">
+                {cell.activity} {cell.activity === 1 ? "event" : "events"}
+              </div>
+              <div className="opacity-70">{formatActivityDate(cell.date)}</div>
+            </TooltipContent>
+          </Tooltip>
+        );
+      })}
+    </ActivityShell>
   );
 }
 
@@ -1383,7 +1461,9 @@ function UserPage({ user }: { user: ServerUser }) {
             <UserHeader user={user} />
             <UserDetails user={user} />
           </div>
-          <ActivityPlaceholder />
+          <Suspense fallback={<ActivityLoadingFallback />}>
+            <ActivityGraph userId={user.id} />
+          </Suspense>
         </div>
         {visibleTabs.length > 0 && (
           <DesignCategoryTabs
