@@ -76,7 +76,7 @@ export const PaymentsConcepts = () => {
           <span className="text-[11px] text-zinc-500 dark:text-zinc-500">"Plan"</span>
         </div>
         <div className="grid gap-2.5 p-3 sm:grid-cols-3">
-          {productCard("Free", "$0", null, [["10", "credits"]], false, "include-by-default", "zinc")}
+          {productCard("Free", "$0", null, [["10", "credits"]], false, null, null)}
           {productCard("Pro", "$20", "mo", [["500", "credits"], ["5", "seats"]], true, "popular", "violet")}
           {productCard("Enterprise", "$99", "mo", [["5,000", "credits"], ["50", "seats"]], false, null, null)}
         </div>

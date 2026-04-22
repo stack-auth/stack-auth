@@ -41,7 +41,7 @@ import { IncludedItemDialog } from "../included-item-dialog";
 import { PricingSection } from "../pricing-section";
 import { ProductCardPreview } from "../product-card-preview";
 import {
-  generateUniqueId,
+  createFreePrice,
   type Price,
   type Product,
 } from "../utils";
@@ -290,7 +290,7 @@ export default function PageClient() {
   const duplicateIsAddOnTo = duplicateIsAddOn && duplicateData.isAddOnTo
     ? Object.keys(duplicateData.isAddOnTo as Record<string, boolean>)
     : [];
-  const duplicatePrices = duplicateData?.prices === 'include-by-default' ? {} : (duplicateData?.prices ?? {});
+  const duplicatePrices = duplicateData?.prices ?? {};
 
   // Form state - initialized from duplicate data if available
   const [productId, setProductId] = useState("");
@@ -788,8 +788,7 @@ ${Object.entries(prices).map(([id, price]) => {
                 variant="form"
                 isFree={Object.keys(prices).length === 1 && Object.values(prices)[0].USD === '0.00'}
                 onMakeFree={() => {
-                  const newPriceId = generateUniqueId('price');
-                  setPrices({ [newPriceId]: { USD: '0.00', serverOnly: false } });
+                  setPrices(createFreePrice());
                 }}
               />
             </section>

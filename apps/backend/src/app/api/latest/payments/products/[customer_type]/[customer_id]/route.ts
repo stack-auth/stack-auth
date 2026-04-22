@@ -79,7 +79,6 @@ export const GET = createSmartRouteHandler({
       if (product.customerType !== params.customer_type) continue;
       if (auth.type === "client" && product.serverOnly) continue;
       if (!product.productLineId) continue;
-      if (product.prices === "include-by-default") continue;
       const hasIntervalPrice = typedEntries(product.prices).some(([, price]) => price.interval);
       if (!hasIntervalPrice) continue;
       if (product.isAddOnTo && typedKeys(product.isAddOnTo).length > 0) continue;

@@ -6,8 +6,27 @@ import { spawnSync } from "node:child_process";
 
 const target = process.argv[2]; // "local" or "prod"
 
+/** HTTP API for `spacetime publish` (matches docker/dependencies/docker.compose.yaml host port …39). */
+function localPublishServerUrl() {
+  if (process.env.STACK_SPACETIME_PUBLISH_URL) {
+    return process.env.STACK_SPACETIME_PUBLISH_URL;
+  }
+  const prefix = process.env.NEXT_PUBLIC_STACK_PORT_PREFIX ?? "81";
+  return `http://127.0.0.1:${prefix}39`;
+}
+
 const configs = {
-  local: ["publish", "stack-auth-llm", "--server", "local", "-p", "spacetimedb", "--yes", "--no-config", "--delete-data=on-conflict"],
+  local: [
+    "publish",
+    "stack-auth-llm",
+    "--server",
+    localPublishServerUrl(),
+    "-p",
+    "spacetimedb",
+    "--yes",
+    "--no-config",
+    "--delete-data=on-conflict",
+  ],
   prod: ["publish", "stack-auth-llm", "--server", "maincloud", "-p", "spacetimedb", "--yes", "--no-config"],
 };
 

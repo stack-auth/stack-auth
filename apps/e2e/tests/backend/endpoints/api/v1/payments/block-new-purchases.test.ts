@@ -256,6 +256,73 @@ it("should block switch endpoint when blockNewPurchases is enabled", async ({ ex
   `);
 });
 
+it("should block switch endpoint when upgrading from a $0 plan while blockNewPurchases is enabled", async ({ expect }) => {
+  await Project.createAndSwitch();
+  await Payments.setup();
+  await Project.updateConfig({
+    payments: {
+      blockNewPurchases: true,
+      catalogs: {
+        catalog: { displayName: "Plans" },
+      },
+      products: {
+        freePlan: {
+          displayName: "Free",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          catalogId: "catalog",
+          prices: {
+            monthly: {
+              USD: "0.00",
+              interval: [1, "month"],
+            },
+          },
+          includedItems: {},
+        },
+        paidPlan: {
+          displayName: "Paid",
+          customerType: "user",
+          serverOnly: false,
+          stackable: false,
+          catalogId: "catalog",
+          prices: {
+            monthly: {
+              USD: "2000",
+              interval: [1, "month"],
+            },
+          },
+          includedItems: {},
+        },
+      },
+    },
+  });
+
+  const { userId } = await Auth.fastSignUp();
+
+  const switchResponse = await niceBackendFetch(`/api/latest/payments/products/user/${userId}/switch`, {
+    method: "POST",
+    accessType: "client",
+    body: {
+      from_product_id: "freePlan",
+      to_product_id: "paidPlan",
+    },
+  });
+  expect(switchResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 403,
+      "body": {
+        "code": "NEW_PURCHASES_BLOCKED",
+        "error": "New purchases are currently blocked for this project. Please contact support for more information.",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "NEW_PURCHASES_BLOCKED",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
 it("should allow purchases when blockNewPurchases is false (default)", async ({ expect }) => {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
   await Payments.setup();

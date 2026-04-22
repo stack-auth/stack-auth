@@ -68,7 +68,7 @@ it("rejects switches across different product lines", async ({ expect }) => {
   `);
 });
 
-it("rejects creating products with the deprecated include-by-default price", async ({ expect }) => {
+it("rejects writes that use the deprecated include-by-default price sentinel", async ({ expect }) => {
   await Project.createAndSwitch();
   await Payments.setup();
   const response = await niceBackendFetch(`/api/latest/internal/config/override/environment`, {

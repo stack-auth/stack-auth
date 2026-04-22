@@ -452,6 +452,15 @@ export function migrateConfigOverride(type: "project" | "branch" | "environment"
   }
   // END
 
+  // BEGIN 2026-04-21: `include-by-default` product prices are no longer supported. Rewrite to an empty price map so legacy configs continue to load.
+  if (isBranchOrHigher) {
+    res = mapProperty(res, p => p.length === 4 && p[0] === "payments" && p[1] === "products" && p[3] === "prices", (value) => {
+      if (value === "include-by-default") return {};
+      return value;
+    });
+  }
+  // END
+
   // return the result
   return res;
 };
@@ -488,6 +497,18 @@ import.meta.vitest?.test("mapProperty - basic property mapping", ({ expect }) =>
   expect(mapProperty({ "a.b": { c: 1 } }, p => p.join(".") === "a.b.c", (value) => value + 1)).toEqual({ "a.b": { c: 2 } });
 
   expect(mapProperty({ a: { b: { c: 1 } } }, p => p.length === 3 && p[0] === "a" && p[1] === "b", (value) => value + 1)).toEqual({ a: { b: { c: 2 } } });
+
+  // The include-by-default migration uses a 4-segment path predicate against dot-notation keys:
+  // `payments.products.X.prices`. Verify it matches whether the override is fully nested, dot-notation
+  // at the root, or a mix.
+  const sentinelToEmpty = (v: any) => v === "include-by-default" ? {} : v;
+  const sentinelPred = (p: string[]) => p.length === 4 && p[0] === "payments" && p[1] === "products" && p[3] === "prices";
+  expect(mapProperty({ "payments.products.x.prices": "include-by-default" }, sentinelPred, sentinelToEmpty))
+    .toEqual({ "payments.products.x.prices": {} });
+  expect(mapProperty({ payments: { products: { x: { prices: "include-by-default" } } } }, sentinelPred, sentinelToEmpty))
+    .toEqual({ payments: { products: { x: { prices: {} } } } });
+  expect(mapProperty({ "payments.products": { x: { prices: "include-by-default" } } }, sentinelPred, sentinelToEmpty))
+    .toEqual({ "payments.products": { x: { prices: {} } } });
 });
 
 function renameProperty(obj: Record<string, any>, oldPath: string | ((path: string[]) => boolean), newName: string | ((path: string[]) => string)): any {
@@ -948,12 +969,12 @@ export async function sanitizeOrganizationConfig(config: OrganizationRenderedCon
     const isAddOnTo = product.isAddOnTo === false ?
       false as const :
       typedFromEntries(Object.keys(product.isAddOnTo).map((key) => [key, true as const]));
-    const prices = product.prices === "include-by-default" ?
-      "include-by-default" as const :
-      typedFromEntries(typedEntries(product.prices).map(([key, value]) => {
-        const data = { serverOnly: false, ...(value ?? {}) };
-        return [key, data];
-      }));
+    type PriceEntry = Partial<typeof product.prices[string]> & { serverOnly: boolean };
+    // `serverOnly` is guaranteed to be a boolean by the applyDefaults step above.
+    const prices: Record<string, PriceEntry> = typedFromEntries(typedEntries(product.prices).map(([key, value]) => {
+      const data: PriceEntry = { ...value };
+      return [key, data];
+    }));
     return [key, {
       ...product,
       isAddOnTo,

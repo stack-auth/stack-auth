@@ -168,6 +168,25 @@ const writeResponseSchema = yupObject({
   bodyType: yupString().oneOf(["success"]).defined(),
 });
 
+function findIncludeByDefaultPath(value: unknown, path: string[] = []): string | null {
+  if (value === "include-by-default") {
+    // Only flag the deprecated sentinel when it sits at `payments.products.*.prices`;
+    // anywhere else it's just a string literal that happens to match.
+    if (path.length === 4 && path[0] === "payments" && path[1] === "products" && path[3] === "prices") {
+      return path.join(".");
+    }
+    return null;
+  }
+  if (value && typeof value === "object") {
+    for (const [key, child] of Object.entries(value)) {
+      const childPath = [...path, ...key.split(".")];
+      const found = findIncludeByDefaultPath(child, childPath);
+      if (found) return found;
+    }
+  }
+  return null;
+}
+
 async function parseAndValidateConfig(
   configString: string,
   levelConfig: typeof levelConfigs["branch" | "environment" | "project"]
@@ -182,53 +201,24 @@ async function parseAndValidateConfig(
     throw e;
   }
 
+  // Reject writes that use the deprecated `include-by-default` price sentinel. Reads of
+  // old stored configs still get migrated silently (see migrateConfigOverride) so existing
+  // data keeps loading, but new writes must use an explicit $0 price instead.
+  const legacyPath = findIncludeByDefaultPath(parsedConfig);
+  if (legacyPath) {
+    throw new StatusError(
+      StatusError.BadRequest,
+      `"include-by-default" is no longer supported at ${legacyPath}. Use an explicit $0 price instead.`,
+    );
+  }
+
   const migratedConfig = levelConfig.migrate(parsedConfig);
   const overrideError = await getConfigOverrideErrors(levelConfig.schema, migratedConfig);
   if (overrideError.status === "error") {
     throw new StatusError(StatusError.BadRequest, overrideError.error);
   }
 
-  rejectNewIncludeByDefaultProducts(migratedConfig);
-
   return migratedConfig;
-}
-
-/**
- * Soft-close of the `include-by-default` product feature (deprecated in the
- * bulldozer payments rework — see PR #1315). The config schema still accepts
- * the value so that pre-existing configs continue to load, but new writes
- * are rejected here. Any dashboard or SDK caller that tries to set
- * `payments.products.<id>.prices` to `"include-by-default"` — whether via the
- * nested form or the dot-notation form — will get a 400.
- */
-function rejectNewIncludeByDefaultProducts(parsedConfig: unknown): void {
-  if (!parsedConfig || typeof parsedConfig !== "object") return;
-  const err = () => new StatusError(
-    StatusError.BadRequest,
-    "`include-by-default` product prices are no longer supported. Use an explicit $0 price instead.",
-  );
-  const obj = parsedConfig as Record<string, unknown>;
-  for (const [key, value] of Object.entries(obj)) {
-    const m = /^payments\.products\.([^.]+)(?:\.(.*))?$/.exec(key);
-    if (!m) continue;
-    const rest = m[2];
-    if (!rest) {
-      if (value && typeof value === "object" && (value as Record<string, unknown>).prices === "include-by-default") {
-        throw err();
-      }
-    } else if (rest === "prices") {
-      if (value === "include-by-default") throw err();
-    }
-  }
-  const payments = obj.payments as Record<string, unknown> | undefined;
-  const products = payments?.products as Record<string, unknown> | undefined;
-  if (products && typeof products === "object") {
-    for (const product of Object.values(products)) {
-      if (product && typeof product === "object" && (product as Record<string, unknown>).prices === "include-by-default") {
-        throw err();
-      }
-    }
-  }
 }
 
 async function warnOnValidationFailure(

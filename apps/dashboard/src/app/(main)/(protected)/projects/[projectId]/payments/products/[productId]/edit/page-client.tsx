@@ -33,7 +33,7 @@ import { IncludedItemDialog } from "../../included-item-dialog";
 import { PricingSection } from "../../pricing-section";
 import { ProductCardPreview } from "../../product-card-preview";
 import {
-  generateUniqueId,
+  createFreePrice,
   type Price,
   type Product,
 } from "../../utils";
@@ -103,10 +103,7 @@ function EditProductForm({ productId, existingProduct }: { productId: string, ex
   const existingIsAddOnTo = existingIsAddOn
     ? Object.keys(existingProduct.isAddOnTo as Record<string, boolean>)
     : [];
-  const existingPrices = existingProduct.prices === 'include-by-default'
-    ? {}
-    : existingProduct.prices;
-  const wasLegacyIncludeByDefault = existingProduct.prices === 'include-by-default';
+  const existingPrices = existingProduct.prices;
 
   // Form state - initialized from existing product
   const [displayName, setDisplayName] = useState(existingProduct.displayName || '');
@@ -301,17 +298,6 @@ function EditProductForm({ productId, existingProduct }: { productId: string, ex
         {/* Left side - Configuration form */}
         <div className="flex-1 overflow-y-auto p-6 flex justify-center">
           <div className="w-full max-w-2xl space-y-6">
-            {wasLegacyIncludeByDefault && (
-              <Alert variant="destructive">
-                <AlertTitle>This product uses a deprecated pricing option</AlertTitle>
-                <AlertDescription>
-                  &ldquo;Include by default&rdquo; is no longer supported and currently does
-                  not grant any items to customers. Add at least one price
-                  (e.g. $0) below and save to restore customer access.
-                </AlertDescription>
-              </Alert>
-            )}
-
             {/* Display Name and Product ID - same row */}
             <div className="grid grid-cols-2 gap-4 items-start">
               {/* Display Name */}
@@ -367,6 +353,16 @@ function EditProductForm({ productId, existingProduct }: { productId: string, ex
             {/* Pricing Section */}
             <section className="space-y-3">
               <Typography type="h4" className="font-semibold">Pricing</Typography>
+              {Object.keys(existingPrices).length === 0 && Object.keys(prices).length === 0 && (
+                <Alert variant="destructive">
+                  <AlertTitle>This product has no prices</AlertTitle>
+                  <AlertDescription>
+                    This product was previously set to &quot;include by default&quot;, which is no longer supported.
+                    Add an explicit $0 price below (click &quot;Make free&quot;) to restore customer access, or
+                    set a paid price.
+                  </AlertDescription>
+                </Alert>
+              )}
               <PricingSection
                 prices={prices}
                 onPricesChange={(newPrices) => {
@@ -384,8 +380,7 @@ function EditProductForm({ productId, existingProduct }: { productId: string, ex
                 variant="form"
                 isFree={Object.keys(prices).length === 1 && Object.values(prices)[0].USD === '0.00'}
                 onMakeFree={() => {
-                  const newPriceId = generateUniqueId('price');
-                  setPrices({ [newPriceId]: { USD: '0.00', serverOnly: false } });
+                  setPrices(createFreePrice());
                 }}
               />
             </section>

@@ -124,7 +124,7 @@ const branchSchemaFuzzerConfig = [{
         catalogId: ["some-product-line-id", "some-other-product-line-id"],  // ensure migration works
         groupId: ["some-product-line-id", "some-other-product-line-id"],  // ensure migration works
         isAddOnTo: [false, { "some-product-id": [true], "some-other-product-id": [true] }] as const,
-        prices: ["include-by-default" as "include-by-default", {
+        prices: [{
           "some-price-id": [{
             ...typedFromEntries(SUPPORTED_CURRENCIES.map(currency => [currency.code, ["100_00", "not a number", "Infinity", "0"]])),
             interval: [[[0, 1, -3, 100, 0.333, Infinity], ["day", "week", "month", "year"]]] as const,

@@ -21,7 +21,7 @@ import { Tenancy } from "./tenancies";
 
 type Product = yup.InferType<typeof productSchema>;
 type ProductWithMetadata = yup.InferType<typeof productSchemaWithMetadata>;
-type SelectedPrice = Exclude<Product["prices"], "include-by-default">[string];
+type SelectedPrice = Product["prices"][string];
 
 export async function ensureClientCanAccessCustomer(options: {
   customerType: "user" | "team" | "custom",
@@ -293,7 +293,7 @@ export function productToInlineProduct(product: ProductWithMetadata): yup.InferT
     client_metadata: product.clientMetadata ?? null,
     client_read_only_metadata: product.clientReadOnlyMetadata ?? null,
     server_metadata: product.serverMetadata ?? null,
-    prices: product.prices === "include-by-default" ? {} : typedFromEntries(typedEntries(product.prices).map(([key, value]) => [key, filterUndefined({
+    prices: typedFromEntries(typedEntries(product.prices).map(([key, value]) => [key, filterUndefined({
       ...typedFromEntries(SUPPORTED_CURRENCIES.map(c => [c.code, getOrUndefined(value, c.code)])),
       interval: value.interval,
       free_trial: value.freeTrial,
@@ -317,12 +317,10 @@ export async function validatePurchaseSession(options: {
   const { prisma, tenancyId, customerType, customerId, product, productId, priceId, quantity } = options;
 
   // Step 1: Resolve the selected price from the product config
-  // (include-by-default products have no prices — kept for compatibility but not currently supported)
   let selectedPrice: SelectedPrice | undefined = undefined;
-  if (!priceId && product.prices !== "include-by-default") {
+  if (!priceId) {
     selectedPrice = typedValues(product.prices)[0];
-  }
-  if (priceId && product.prices !== "include-by-default") {
+  } else {
     const pricesMap = new Map(typedEntries(product.prices));
     selectedPrice = pricesMap.get(priceId);
     if (!selectedPrice) {

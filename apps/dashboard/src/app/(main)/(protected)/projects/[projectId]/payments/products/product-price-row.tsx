@@ -36,17 +36,11 @@ function LabelWithInfo({ children, tooltip }: { children: React.ReactNode, toolt
 
 type ProductPriceRowProps = {
   priceId: string,
-  price: (Product['prices'] & object)[string],
-  /**
-   * Legacy display-only flag. `include-by-default` products can no longer be
-   * created (see the soft close in the config override route), but existing
-   * ones in prod configs still render with this label in view mode.
-   */
-  includeByDefault: boolean,
+  price: Product['prices'][string],
   isFree: boolean,
   readOnly?: boolean,
   startEditing?: boolean,
-  onSave: (newId: string | undefined, price: (Product['prices'] & object)[string]) => void,
+  onSave: (newId: string | undefined, price: Product['prices'][string]) => void,
   onRemove?: () => void,
   existingPriceIds: string[],
 };
@@ -57,7 +51,6 @@ type ProductPriceRowProps = {
 export function ProductPriceRow({
   priceId,
   price,
-  includeByDefault,
   isFree,
   readOnly,
   startEditing,
@@ -332,9 +325,6 @@ export function ProductPriceRow({
           </div>
           {!isFree && (
             <div className="text-xs text-muted-foreground capitalize">{intervalText ?? 'One-time'}</div>
-          )}
-          {includeByDefault && (
-            <div className="text-[11px] text-muted-foreground mt-1">Included by default</div>
           )}
           {!isFree && price.freeTrial && (
             <div className="mt-1.5">

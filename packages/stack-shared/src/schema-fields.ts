@@ -654,12 +654,9 @@ export const productPriceSchema = yupObject({
   serverOnly: yupBoolean(),
   freeTrial: dayIntervalSchema.optional(),
 }).test("at-least-one-currency", (value, context) => validateHasAtLeastOneSupportedCurrency(value, context));
-export const priceOrIncludeByDefaultSchema = yupUnion(
-  yupString().oneOf(['include-by-default']).meta({ openapiField: { description: 'Makes this item free and includes it by default for all customers.', exampleValue: 'include-by-default' } }),
-  yupRecord(
-    userSpecifiedIdSchema("priceId"),
-    productPriceSchema,
-  ),
+export const pricesSchema = yupRecord(
+  userSpecifiedIdSchema("priceId"),
+  productPriceSchema,
 );
 export const productSchema = yupObject({
   displayName: yupString(),
@@ -675,7 +672,7 @@ export const productSchema = yupObject({
   freeTrial: dayIntervalSchema.optional(),
   serverOnly: yupBoolean(),
   stackable: yupBoolean(),
-  prices: priceOrIncludeByDefaultSchema.defined(),
+  prices: pricesSchema.defined(),
   includedItems: yupRecord(
     userSpecifiedIdSchema("itemId"),
     yupObject({

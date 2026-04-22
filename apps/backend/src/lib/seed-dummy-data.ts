@@ -330,7 +330,6 @@ const DUMMY_SEED_IDS = {
     designSystemsGrowth: 'a296195f-c460-4cd6-b4c4-6cd359b4c643',
     prototypeStarterTrial: '5a255248-4d42-4d61-95f9-f53e97c3f2dd',
     mateoGrowthAnnual: 'c4acea49-302a-43b9-82a7-446b19e0e662',
-    legacyEnterprise: '11664974-38ff-4356-8e39-2fa9105ed84f',
   },
   itemQuantityChanges: {
     designSeatsGrant: '44ca1801-0732-4273-ae14-4fd1c3999e24',
@@ -810,27 +809,6 @@ async function seedDummyTransactions(options: TransactionsSeedOptions) {
       cancelAtPeriodEnd: true,
       stripeSubscriptionId: null,
       createdAt: new Date('2024-02-01T00:00:00.000Z'),
-    },
-    {
-      id: DUMMY_SEED_IDS.subscriptions.legacyEnterprise,
-      customerType: CustomerType.CUSTOM,
-      customerId: 'enterprise-alpha',
-      productId: 'legacy-enterprise',
-      priceId: undefined,
-      product: cloneJson({
-        displayName: 'Legacy Enterprise Pilot',
-        productLineId: 'workspace',
-        customerType: 'user',
-        prices: 'include-by-default',
-      }),
-      quantity: 1,
-      status: SubscriptionStatus.canceled,
-      creationSource: PurchaseCreationSource.PURCHASE_PAGE,
-      currentPeriodStart: new Date('2023-11-01T00:00:00.000Z'),
-      currentPeriodEnd: new Date('2024-05-01T00:00:00.000Z'),
-      cancelAtPeriodEnd: true,
-      stripeSubscriptionId: 'sub_legacy_enterprise_alpha',
-      createdAt: new Date('2023-11-01T00:00:00.000Z'),
     },
   ];
 
