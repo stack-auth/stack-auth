@@ -142,6 +142,20 @@ export const POST = createSmartRouteHandler({
     if (existingSub && !existingSub.stripeSubscriptionId) {
       throw new StatusError(400, "This subscription cannot be switched.");
     }
+    // Free-plan fallthrough: if the customer claims to be switching "from" a free product
+    // but actually holds a different active subscription in the same product line, reject —
+    // otherwise the new paid subscription would coexist with the existing one.
+    if (!existingSub && fromIsFreePlan && fromProduct.productLineId) {
+      const competingSub = Object.values(subMap).find(
+        s => s.productId !== body.from_product_id
+          && isActiveSubscription(s)
+          && s.productId != null
+          && getOrUndefined(products, s.productId)?.productLineId === fromProduct.productLineId
+      );
+      if (competingSub) {
+        throw new StatusError(400, "Customer has an active subscription in this product line; switch from that product instead.");
+      }
+    }
 
     const priceEntries = typedEntries(toProduct.prices)
       .filter(([, price]) => price.interval);

@@ -324,7 +324,8 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
 
   // Save all pending changes
   const handleSave = async () => {
-    if (pendingChanges.prices !== undefined && Object.keys(pendingChanges.prices).length === 0) {
+    const effectivePrices = pendingChanges.prices ?? product.prices;
+    if (Object.keys(effectivePrices).length === 0) {
       alert("A product must have at least one price. Add a price option or make the product free before saving.");
       return;
     }
@@ -866,7 +867,11 @@ function ProductPricesSection({ productId, prices, onPricesChange, inline = fals
   };
 
   const priceEntries = typedEntries(prices);
-  const isFree = priceEntries.length === 1 && (priceEntries[0][1].USD === '0' || priceEntries[0][1].USD === '0.00');
+  const isFree = priceEntries.length === 1
+    && (priceEntries[0][1].USD === '0' || priceEntries[0][1].USD === '0.00')
+    && !priceEntries[0][1].interval
+    && !priceEntries[0][1].freeTrial
+    && !priceEntries[0][1].serverOnly;
   const hasNoPrices = priceEntries.length === 0;
 
   const handleMakePaid = () => {
