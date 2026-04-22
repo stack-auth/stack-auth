@@ -7,8 +7,10 @@ import {
   cn,
   Dialog,
   DialogBody,
+  DialogClose,
   DialogContent,
   DialogDescription,
+  DialogFooter,
   DialogHeader,
   DialogTitle,
   DialogTrigger,
@@ -23,9 +25,11 @@ import {
   DesignBadge,
   DesignButton,
   DesignCard,
+  DesignEmptyState,
   DesignInput,
   DesignMenu,
   DesignSelectorDropdown,
+  DesignSkeleton,
 } from "@/components/design-components";
 import {
   createEmptyCondition,
@@ -42,12 +46,15 @@ import { CSS } from '@dnd-kit/utilities';
 import {
   ArrowsDownUpIcon,
   CheckIcon,
+  ClockIcon,
   DotsSixVerticalIcon,
   FlaskIcon,
   PencilSimpleIcon,
   PlusIcon,
+  PulseIcon,
   ShieldCheckIcon,
   TrashIcon,
+  UserIcon,
   XIcon,
 } from "@phosphor-icons/react";
 import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
@@ -265,9 +272,104 @@ function parseRuleTriggerRows(resultRows: Record<string, unknown>[]): RuleTrigge
 // Trigger history dialog
 // ─────────────────────────────────────────────────────────────────────────────
 
+function TriggerStatTile({ label, value, hint }: { label: string, value: React.ReactNode, hint?: string }) {
+  return (
+    <div className="rounded-xl bg-foreground/[0.03] ring-1 ring-foreground/[0.06] px-3 py-2.5 min-w-0">
+      <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground truncate">
+        {label}
+      </div>
+      <div className="mt-0.5 text-lg font-semibold tabular-nums text-foreground leading-none">
+        {value}
+      </div>
+      {hint && (
+        <div className="mt-1 text-[10px] text-muted-foreground/80 truncate">{hint}</div>
+      )}
+    </div>
+  );
+}
+
+function TriggerHistoryChart({ data }: { data: { hour: string, count: number }[] }) {
+  const chartData = data.length >= 2 ? data : [{ hour: '0', count: 0 }, { hour: '1', count: 0 }];
+  const maxCount = Math.max(1, ...chartData.map(d => d.count));
+  return (
+    <div className="rounded-xl bg-foreground/[0.03] ring-1 ring-foreground/[0.06] px-3 py-2 h-full flex flex-col justify-between min-w-0">
+      <div className="flex items-center justify-between text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+        <span>Activity</span>
+        <PulseIcon className="h-3 w-3 text-muted-foreground/70" />
+      </div>
+      <div className="h-9 -mx-1">
+        <ResponsiveContainer width="100%" height="100%">
+          <AreaChart data={chartData} margin={{ top: 2, right: 2, bottom: 0, left: 2 }}>
+            <YAxis hide domain={[0, maxCount]} />
+            <Area
+              type="monotone"
+              dataKey="count"
+              stroke="currentColor"
+              strokeWidth={1.5}
+              fill="currentColor"
+              fillOpacity={0.18}
+              className="text-primary"
+              isAnimationActive={false}
+            />
+          </AreaChart>
+        </ResponsiveContainer>
+      </div>
+    </div>
+  );
+}
+
+function formatTriggerTime(triggeredAt: string): { date: string, time: string, relative: string } {
+  const dt = parseClickHouseDate(triggeredAt);
+  const now = new Date();
+  const diffMs = now.getTime() - dt.getTime();
+  const diffMin = Math.floor(diffMs / 60_000);
+  const diffHr = Math.floor(diffMin / 60);
+  const diffDay = Math.floor(diffHr / 24);
+
+  let relative: string;
+  if (diffMin < 1) relative = "just now";
+  else if (diffMin < 60) relative = `${diffMin}m ago`;
+  else if (diffHr < 24) relative = `${diffHr}h ago`;
+  else if (diffDay < 7) relative = `${diffDay}d ago`;
+  else relative = dt.toLocaleDateString(undefined, { month: "short", day: "numeric" });
+
+  return {
+    date: dt.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" }),
+    time: dt.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }),
+    relative,
+  };
+}
+
+function TriggerRow({ trigger }: { trigger: RuleTriggerListItem }) {
+  const { date, time, relative } = formatTriggerTime(trigger.triggeredAt);
+  const email = trigger.email;
+  return (
+    <div className="group flex items-center gap-3 px-3 py-2.5 transition-colors duration-150 hover:bg-foreground/[0.03] hover:transition-none">
+      <div className="h-8 w-8 rounded-lg bg-foreground/[0.04] ring-1 ring-foreground/[0.06] flex items-center justify-center shrink-0">
+        <ClockIcon className="h-4 w-4 text-muted-foreground" />
+      </div>
+      <div className="flex-1 min-w-0 flex items-center gap-2">
+        <UserIcon className="h-3.5 w-3.5 text-muted-foreground/70 shrink-0" />
+        {email ? (
+          <Typography className="text-xs font-mono truncate">{email}</Typography>
+        ) : (
+          <Typography variant="secondary" className="text-xs italic">no email captured</Typography>
+        )}
+      </div>
+      <div className="hidden sm:flex flex-col items-end shrink-0 leading-tight">
+        <Typography className="text-xs font-medium tabular-nums">{time}</Typography>
+        <Typography variant="secondary" className="text-[10px] tabular-nums">{date}</Typography>
+      </div>
+      <DesignBadge label={relative} color="blue" size="sm" />
+    </div>
+  );
+}
+
 function RuleTriggerHistoryDialog({
   ruleId,
   ruleDisplayName,
+  ruleActionType,
+  ruleEnabled,
   sparklineData,
   countInTimespan,
   allTimeCount,
@@ -276,6 +378,8 @@ function RuleTriggerHistoryDialog({
 }: {
   ruleId: string,
   ruleDisplayName: string,
+  ruleActionType: ActionType,
+  ruleEnabled: boolean,
   sparklineData: { hour: string, count: number }[],
   countInTimespan: number,
   allTimeCount: number,
@@ -351,6 +455,8 @@ function RuleTriggerHistoryDialog({
     runAsynchronouslyWithAlert(() => fetchTriggerPage({ offset: triggers.length, reset: false }));
   };
 
+  const totalLabel = `${allTimeCount.toLocaleString()} total trigger${allTimeCount === 1 ? "" : "s"}`;
+
   return (
     <Dialog open={open} onOpenChange={handleOpenChange}>
       <DialogTrigger asChild>
@@ -369,55 +475,107 @@ function RuleTriggerHistoryDialog({
           />
         </button>
       </DialogTrigger>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Rule trigger history</DialogTitle>
-          <DialogDescription>
-            {ruleDisplayName} triggered {allTimeCount.toLocaleString()} time{allTimeCount === 1 ? "" : "s"} all-time.
-          </DialogDescription>
+      <DialogContent
+        className="max-w-2xl gap-0 p-0 overflow-hidden border-0 sm:rounded-2xl bg-background/85 backdrop-blur-2xl ring-1 ring-foreground/[0.06] shadow-[0_24px_48px_-12px_rgba(0,0,0,0.25),0_4px_24px_-8px_rgba(0,0,0,0.12)] dark:bg-background/80 dark:ring-white/[0.06]"
+        overlayProps={{ className: "bg-black/50 backdrop-blur-sm" }}
+      >
+        <DialogHeader className="px-6 pt-6 pb-4 border-b border-foreground/[0.06]">
+          <div className="flex items-start gap-3">
+            <div className="h-9 w-9 rounded-xl bg-primary/10 ring-1 ring-primary/15 flex items-center justify-center shrink-0">
+              <PulseIcon className="h-4 w-4 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0 space-y-1">
+              <DialogTitle className="text-base">Rule trigger history</DialogTitle>
+              <DialogDescription className="text-xs">
+                {totalLabel} for this rule
+              </DialogDescription>
+            </div>
+          </div>
+
+          <div className="mt-4 rounded-xl bg-foreground/[0.02] ring-1 ring-foreground/[0.06] p-3 space-y-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <Typography className="text-sm font-semibold truncate flex-1 min-w-0" title={ruleDisplayName}>
+                {ruleDisplayName}
+              </Typography>
+              <ActionBadge type={ruleActionType} />
+              <DesignBadge
+                label={ruleEnabled ? "Enabled" : "Disabled"}
+                color={ruleEnabled ? "green" : "orange"}
+                size="sm"
+              />
+            </div>
+            <div className="grid grid-cols-3 gap-2">
+              <TriggerStatTile
+                label={`Last ${timespanHours}h`}
+                value={countInTimespan.toLocaleString()}
+                hint="recent matches"
+              />
+              <TriggerStatTile
+                label="All-time"
+                value={allTimeCount.toLocaleString()}
+                hint="since rule created"
+              />
+              <TriggerHistoryChart data={sparklineData} />
+            </div>
+          </div>
         </DialogHeader>
-        <DialogBody>
+
+        <DialogBody className="mx-0 my-0 w-auto px-6 py-4">
+          <div className="flex items-center justify-between">
+            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              Recent triggers
+            </span>
+            {!isInitialLoading && triggers.length > 0 && (
+              <Typography variant="secondary" className="text-[11px] tabular-nums">
+                showing {triggers.length}{hasMore ? "+" : ""}
+              </Typography>
+            )}
+          </div>
+
           {loadingError ? (
             <DesignAlert variant="error" description={loadingError} />
           ) : null}
 
           <div
-            className="max-h-[420px] overflow-auto rounded-xl ring-1 ring-foreground/[0.06] bg-background/60"
+            className="max-h-[360px] overflow-auto rounded-xl ring-1 ring-foreground/[0.06] bg-background/60"
             onScroll={handleScroll}
           >
             {isInitialLoading ? (
               <div className="space-y-2 p-3">
-                {["one", "two", "three", "four", "five", "six"].map((skeletonId) => (
-                  <div key={skeletonId} className="h-11 rounded-md bg-muted animate-pulse" />
+                {["one", "two", "three", "four", "five"].map((skeletonId) => (
+                  <DesignSkeleton key={skeletonId} className="h-11 rounded-lg" />
                 ))}
               </div>
             ) : triggers.length === 0 ? (
-              <div className="p-6 text-center">
-                <Typography variant="secondary" className="text-xs">
-                  No trigger events found for this rule.
-                </Typography>
-              </div>
+              <DesignEmptyState
+                icon={ClockIcon}
+                title="No triggers yet"
+                description={
+                  isSparklineLoading
+                    ? "Loading recent activity…"
+                    : "Once a sign-up matches this rule, you'll see it appear here."
+                }
+              />
             ) : (
               <div className="divide-y divide-foreground/[0.06]">
                 {triggers.map((trigger) => (
-                  <div key={trigger.id} className="px-3 py-2.5">
-                    <Typography className="text-xs font-medium tabular-nums">
-                      {parseClickHouseDate(trigger.triggeredAt).toLocaleString()}
-                    </Typography>
-                    <Typography variant="secondary" className="text-xs font-mono">
-                      {trigger.email ?? "(no email)"}
-                    </Typography>
-                  </div>
+                  <TriggerRow key={trigger.id} trigger={trigger} />
                 ))}
               </div>
             )}
             {isLoadingMore ? (
               <div className="p-3">
-                <div className="h-9 rounded-md bg-muted animate-pulse" />
+                <DesignSkeleton className="h-9 rounded-lg" />
               </div>
             ) : null}
           </div>
         </DialogBody>
+
+        <DialogFooter className="px-6 py-3 border-t border-foreground/[0.06] bg-foreground/[0.02]">
+          <DialogClose asChild>
+            <DesignButton variant="secondary" size="sm">Close</DesignButton>
+          </DialogClose>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
@@ -427,7 +585,14 @@ function RuleTriggerHistoryDialog({
 // Inline rule editor (visible when adding/editing a rule)
 // ─────────────────────────────────────────────────────────────────────────────
 
-function RuleEditor({
+const ACTION_DROPDOWN_OPTIONS: { value: ActionType, label: string }[] = [
+  { value: "allow", label: "Allow" },
+  { value: "reject", label: "Reject" },
+  { value: "restrict", label: "Restrict" },
+  { value: "log", label: "Log only" },
+];
+
+function useRuleEditorState({
   rule,
   ruleId,
   isNew,
@@ -485,81 +650,131 @@ function RuleEditor({
     }
   };
 
+  return {
+    displayName, setDisplayName,
+    actionType, setActionType,
+    actionMessage, setActionMessage,
+    enabled, setEnabled,
+    isSaving,
+    conditionTree, setConditionTree,
+    isTreeValid,
+    isNew,
+    ruleId,
+    handleSave,
+    onCancel,
+  };
+}
+
+type RuleEditorState = ReturnType<typeof useRuleEditorState>;
+
+function ActionDropdown({ state, size = "sm", className }: { state: RuleEditorState, size?: "sm" | "md" | "lg", className?: string }) {
   return (
-    <div className="rounded-2xl bg-background/70 backdrop-blur-xl ring-2 ring-primary/40 shadow-sm transition-all duration-150 hover:transition-none p-4">
-      <div className="flex items-start gap-3">
-        <div className="pt-2">
-          <Switch checked={enabled} onCheckedChange={setEnabled} />
-        </div>
+    <DesignSelectorDropdown
+      value={state.actionType}
+      onValueChange={(v) => state.setActionType(v as ActionType)}
+      size={size}
+      className={className ?? "w-40"}
+      options={ACTION_DROPDOWN_OPTIONS}
+    />
+  );
+}
 
-        <div className="flex-1 space-y-4 min-w-0">
+function RejectMessageField({ state, size = "sm", className }: { state: RuleEditorState, size?: "sm" | "md" | "lg", className?: string }) {
+  if (state.actionType !== 'reject') return null;
+  return (
+    <DesignInput
+      value={state.actionMessage}
+      onChange={(e) => state.setActionMessage(e.target.value)}
+      placeholder="Internal rejection reason (not shown to user)"
+      className={cn("flex-1 min-w-[200px]", className)}
+      size={size}
+    />
+  );
+}
+
+function SaveCancelButtons({ state, size = "sm" }: { state: RuleEditorState, size?: "sm" | "lg" }) {
+  return (
+    <>
+      <DesignButton
+        onClick={state.handleSave}
+        disabled={!state.displayName.trim() || !state.isTreeValid || state.isSaving}
+        size={size}
+        loading={state.isSaving}
+      >
+        {state.isNew ? 'Create rule' : 'Save changes'}
+      </DesignButton>
+      <DesignButton
+        variant="ghost"
+        onClick={state.onCancel}
+        disabled={state.isSaving}
+        size={size}
+      >
+        Cancel
+      </DesignButton>
+    </>
+  );
+}
+
+function ConditionsPanel({ state }: { state: RuleEditorState }) {
+  return (
+    <div className="p-3 rounded-xl bg-foreground/[0.03] ring-1 ring-foreground/[0.04]">
+      <ConditionBuilder value={state.conditionTree} onChange={state.setConditionTree} />
+    </div>
+  );
+}
+
+function NumberedStep({ n, title, children }: { n: number, title: string, children: React.ReactNode }) {
+  return (
+    <div className="flex items-start gap-3">
+      <div className="h-6 w-6 rounded-full bg-primary/10 ring-1 ring-primary/20 text-primary text-[11px] font-semibold flex items-center justify-center tabular-nums shrink-0 mt-0.5">
+        {n}
+      </div>
+      <div className="flex-1 min-w-0 space-y-2">
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</span>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+function RuleEditor(props: {
+  rule?: SignUpRule,
+  ruleId: string,
+  isNew: boolean,
+  onSave: (ruleId: string, rule: SignUpRule) => Promise<void>,
+  onCancel: () => void,
+}) {
+  const state = useRuleEditorState(props);
+
+  return (
+    <div className="rounded-2xl bg-background/70 backdrop-blur-xl ring-2 ring-primary/40 shadow-sm transition-all duration-150 hover:transition-none p-4 space-y-4">
+      <NumberedStep n={1} title="Name this rule">
+        <div className="flex items-center gap-3">
           <DesignInput
-            value={displayName}
-            onChange={(e) => setDisplayName(e.target.value)}
+            value={state.displayName}
+            onChange={(e) => state.setDisplayName(e.target.value)}
             placeholder="Rule name (e.g., Block disposable emails)"
-            autoFocus
             size="md"
+            className="flex-1"
+            autoFocus
           />
-
-          <div className="space-y-2">
-            <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Conditions</span>
-            <div className="p-3 rounded-xl bg-foreground/[0.03] ring-1 ring-foreground/[0.04]">
-              <ConditionBuilder
-                value={conditionTree}
-                onChange={setConditionTree}
-              />
-            </div>
-          </div>
-
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2">
-              <span className="text-xs font-medium text-muted-foreground">Action</span>
-              <DesignSelectorDropdown
-                value={actionType}
-                onValueChange={(v) => setActionType(v as ActionType)}
-                size="sm"
-                className="w-40"
-                options={[
-                  { value: "allow", label: "Allow" },
-                  { value: "reject", label: "Reject" },
-                  { value: "restrict", label: "Restrict" },
-                  { value: "log", label: "Log only" },
-                ]}
-              />
-            </div>
-
-            {actionType === 'reject' && (
-              <DesignInput
-                value={actionMessage}
-                onChange={(e) => setActionMessage(e.target.value)}
-                placeholder="Internal rejection reason (not shown to user)"
-                className="flex-1 min-w-[200px]"
-                size="sm"
-              />
-            )}
-          </div>
-
-          <div className="flex items-center gap-2 pt-1">
-            <DesignButton
-              onClick={handleSave}
-              disabled={!displayName.trim() || !isTreeValid || isSaving}
-              size="sm"
-              loading={isSaving}
-            >
-              <CheckIcon className="h-4 w-4 mr-1.5" />
-              {isNew ? 'Create rule' : 'Save changes'}
-            </DesignButton>
-            <DesignButton
-              variant="ghost"
-              onClick={onCancel}
-              disabled={isSaving}
-              size="sm"
-            >
-              <XIcon className="h-4 w-4 mr-1.5" />
-              Cancel
-            </DesignButton>
+          <div className="flex items-center gap-2 text-xs text-muted-foreground shrink-0">
+            <Switch checked={state.enabled} onCheckedChange={state.setEnabled} />
+            <span>{state.enabled ? "Enabled" : "Disabled"}</span>
           </div>
         </div>
+      </NumberedStep>
+      <NumberedStep n={2} title="When these conditions match">
+        <ConditionsPanel state={state} />
+      </NumberedStep>
+      <NumberedStep n={3} title="Then take this action">
+        <div className="flex flex-wrap items-center gap-3">
+          <ActionDropdown state={state} />
+          <RejectMessageField state={state} />
+        </div>
+      </NumberedStep>
+      <div className="flex items-center justify-end gap-2 pt-2 border-t border-foreground/[0.06]">
+        <SaveCancelButtons state={state} />
       </div>
     </div>
   );
@@ -659,6 +874,8 @@ function SortableRuleRow(props: RuleRowProps) {
           <RuleTriggerHistoryDialog
             ruleId={props.entry.id}
             ruleDisplayName={ruleName}
+            ruleActionType={actionType}
+            ruleEnabled={isEnabled}
             sparklineData={props.analytics?.hourlyCounts ?? []}
             countInTimespan={props.analytics?.countInTimespan ?? 0}
             allTimeCount={props.analytics?.allTimeCount ?? 0}
@@ -855,217 +1072,232 @@ function TestRulesCard({
     'default-reject': 'Rejected by default',
   };
 
+  const fieldLabel = (text: string) => (
+    <Typography variant="secondary" className="text-[10px] font-semibold uppercase tracking-wider">
+      {text}
+    </Typography>
+  );
+
+  const sectionHeader = (icon: React.ReactNode, title: string, hint?: string) => (
+    <div className="flex items-center gap-2">
+      <div className="h-6 w-6 rounded-lg bg-foreground/[0.04] ring-1 ring-foreground/[0.06] flex items-center justify-center shrink-0">
+        {icon}
+      </div>
+      <div className="min-w-0">
+        <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">{title}</span>
+        {hint && <span className="text-[10px] text-muted-foreground/80 ml-2">{hint}</span>}
+      </div>
+    </div>
+  );
+
+  const subCard = (children: React.ReactNode, className?: string) => (
+    <div className={cn("rounded-xl ring-1 ring-foreground/[0.06] bg-background/60 p-3 space-y-2", className)}>
+      {children}
+    </div>
+  );
+
   return (
     <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-      <div className="space-y-3">
-        <div className="grid gap-3 md:grid-cols-2">
-          <div className="space-y-1.5">
-            <Typography variant="secondary" className="text-xs uppercase tracking-wider">Email</Typography>
-            <DesignInput
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="user@company.com"
-              size="sm"
-            />
+      <div className="rounded-xl bg-foreground/[0.02] ring-1 ring-foreground/[0.06] p-4 space-y-4">
+        <div className="space-y-3">
+          {sectionHeader(
+            <UserIcon className="h-3.5 w-3.5 text-muted-foreground" />,
+            "Identity",
+            "What the user submits"
+          )}
+          <div className="grid gap-3 md:grid-cols-2">
+            <div className="space-y-1.5">
+              {fieldLabel("Email")}
+              <DesignInput
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="user@company.com"
+                size="sm"
+              />
+            </div>
+            <div className="space-y-1.5">
+              {fieldLabel("Auth method")}
+              <DesignSelectorDropdown
+                value={authMethod}
+                onValueChange={(v) => {
+                  if (v === 'password' || v === 'otp' || v === 'oauth' || v === 'passkey') {
+                    setAuthMethod(v);
+                    if (v !== 'oauth') setOauthProvider('');
+                  }
+                }}
+                size="sm"
+                options={[
+                  { value: "password", label: "Password" },
+                  { value: "otp", label: "OTP" },
+                  { value: "oauth", label: "OAuth" },
+                  { value: "passkey", label: "Passkey" },
+                ]}
+              />
+            </div>
           </div>
           <div className="space-y-1.5">
-            <Typography variant="secondary" className="text-xs uppercase tracking-wider">Auth method</Typography>
-            <DesignSelectorDropdown
-              value={authMethod}
-              onValueChange={(v) => {
-                if (v === 'password' || v === 'otp' || v === 'oauth' || v === 'passkey') {
-                  setAuthMethod(v);
-                  if (v !== 'oauth') setOauthProvider('');
-                }
-              }}
+            {fieldLabel("OAuth provider")}
+            <DesignInput
+              value={oauthProvider}
+              onChange={(e) => setOauthProvider(e.target.value)}
+              placeholder={authMethod === 'oauth' ? "google" : "Only used for OAuth"}
+              disabled={authMethod !== 'oauth'}
+              list="sign-up-rule-test-oauth-providers"
               size="sm"
-              options={[
-                { value: "password", label: "Password" },
-                { value: "otp", label: "OTP" },
-                { value: "oauth", label: "OAuth" },
-                { value: "passkey", label: "Passkey" },
-              ]}
             />
+            <datalist id="sign-up-rule-test-oauth-providers">
+              {OAUTH_PROVIDER_OPTIONS.map((provider) => (
+                <option key={provider} value={provider} />
+              ))}
+            </datalist>
           </div>
         </div>
 
-        <div className="space-y-1.5">
-          <Typography variant="secondary" className="text-xs uppercase tracking-wider">OAuth provider</Typography>
-          <DesignInput
-            value={oauthProvider}
-            onChange={(e) => setOauthProvider(e.target.value)}
-            placeholder={authMethod === 'oauth' ? "google" : "Only used for OAuth"}
-            disabled={authMethod !== 'oauth'}
-            list="sign-up-rule-test-oauth-providers"
-            size="sm"
-          />
-          <datalist id="sign-up-rule-test-oauth-providers">
-            {OAUTH_PROVIDER_OPTIONS.map((provider) => (
-              <option key={provider} value={provider} />
-            ))}
-          </datalist>
-        </div>
+        <div className="h-px bg-foreground/[0.06]" />
 
-        <div className="grid gap-3 md:grid-cols-4">
-          <div className="space-y-1.5">
-            <Typography variant="secondary" className="text-xs uppercase tracking-wider">Country override</Typography>
-            <CountryCodeInput
-              value={countryCodeOverride || null}
-              onChange={(val) => setCountryCodeOverride(val ?? "")}
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Typography variant="secondary" className="text-xs uppercase tracking-wider">Bot score</Typography>
-            <DesignInput
-              value={botRiskScoreOverride}
-              onChange={(e) => setBotRiskScoreOverride(e.target.value)}
-              placeholder="0-100"
-              inputMode="numeric"
-              size="sm"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Typography variant="secondary" className="text-xs uppercase tracking-wider">Free-trial abuse</Typography>
-            <DesignInput
-              value={freeTrialAbuseRiskScoreOverride}
-              onChange={(e) => setFreeTrialAbuseRiskScoreOverride(e.target.value)}
-              placeholder="0-100"
-              inputMode="numeric"
-              size="sm"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Typography variant="secondary" className="text-xs uppercase tracking-wider">Turnstile</Typography>
-            <DesignSelectorDropdown
-              value={turnstileResultOverride}
-              onValueChange={(value) => {
-                if (value === DEFAULT_TURNSTILE_OVERRIDE || value === "ok" || value === "invalid" || value === "error") {
-                  setTurnstileResultOverride(value);
-                }
-              }}
-              size="sm"
-              options={[
-                { value: DEFAULT_TURNSTILE_OVERRIDE, label: "Default (real result)" },
-                { value: "ok", label: "OK" },
-                { value: "invalid", label: "Invalid" },
-                { value: "error", label: "Error" },
-              ]}
-            />
+        <div className="space-y-3">
+          {sectionHeader(
+            <ShieldCheckIcon className="h-3.5 w-3.5 text-muted-foreground" />,
+            "Risk overrides",
+            "Optional"
+          )}
+          <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
+            <div className="space-y-1.5">
+              {fieldLabel("Country")}
+              <CountryCodeInput
+                value={countryCodeOverride || null}
+                onChange={(val) => setCountryCodeOverride(val ?? "")}
+              />
+            </div>
+            <div className="space-y-1.5">
+              {fieldLabel("Bot score")}
+              <DesignInput
+                value={botRiskScoreOverride}
+                onChange={(e) => setBotRiskScoreOverride(e.target.value)}
+                placeholder="0-100"
+                inputMode="numeric"
+                size="sm"
+              />
+            </div>
+            <div className="space-y-1.5">
+              {fieldLabel("Free-trial abuse")}
+              <DesignInput
+                value={freeTrialAbuseRiskScoreOverride}
+                onChange={(e) => setFreeTrialAbuseRiskScoreOverride(e.target.value)}
+                placeholder="0-100"
+                inputMode="numeric"
+                size="sm"
+              />
+            </div>
+            <div className="space-y-1.5">
+              {fieldLabel("Turnstile")}
+              <DesignSelectorDropdown
+                value={turnstileResultOverride}
+                onValueChange={(value) => {
+                  if (value === DEFAULT_TURNSTILE_OVERRIDE || value === "ok" || value === "invalid" || value === "error") {
+                    setTurnstileResultOverride(value);
+                  }
+                }}
+                size="sm"
+                options={[
+                  { value: DEFAULT_TURNSTILE_OVERRIDE, label: "Default (real result)" },
+                  { value: "ok", label: "OK" },
+                  { value: "invalid", label: "Invalid" },
+                  { value: "error", label: "Error" },
+                ]}
+              />
+            </div>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 flex-wrap">
+        <div className="flex items-center justify-between gap-3 pt-1 border-t border-foreground/[0.06] -mx-1 px-1">
+          <Typography variant="secondary" className="text-xs">
+            Simulate a sign-up to preview which rules trigger.
+          </Typography>
           <DesignButton
             size="sm"
             onClick={() => runAsynchronouslyWithAlert(runTest)}
             loading={isRunning}
           >
-            Run test
+            <span className="inline-flex items-center gap-1.5">
+              <FlaskIcon className="h-4 w-4" />
+              Run test
+            </span>
           </DesignButton>
-          <Typography variant="secondary" className="text-xs">
-            Simulate a sign-up to preview which rules trigger.
-          </Typography>
         </div>
       </div>
 
       <div className="space-y-3">
         {!result ? (
-          <DesignAlert
-            variant="info"
-            description="Run a test to preview which rules trigger and what the sign-up outcome would be."
-          />
+          <div className="rounded-xl ring-1 ring-foreground/[0.06] bg-background/60 h-full min-h-[260px] flex items-center justify-center">
+            <DesignEmptyState
+              icon={FlaskIcon}
+              title="No simulation yet"
+              description="Fill in the context on the left, then run a test to see how each rule evaluates."
+            />
+          </div>
         ) : (
           <>
-            <div className="rounded-xl ring-1 ring-foreground/[0.06] bg-background/60 p-3 space-y-1">
-              <div className="flex items-center justify-between">
-                <Typography className="text-sm font-semibold">Outcome</Typography>
-                <DesignBadge label={outcomeLabel} color={outcomeBadgeColor} size="sm" />
-              </div>
-              <Typography variant="secondary" className="text-xs">
-                {decisionLabel[result.outcome.decision]}
-              </Typography>
-              {decisionRule && (
-                <Typography variant="secondary" className="text-xs">
-                  Decision rule: {decisionRule.display_name || decisionRule.rule_id}
-                </Typography>
-              )}
-              {decisionRule?.action.message && (
-                <Typography variant="secondary" className="text-xs">
-                  Rejection reason: {decisionRule.action.message}
-                </Typography>
-              )}
-              {restrictedRule && (
-                <Typography variant="secondary" className="text-xs">
-                  Restricted by: {restrictedRule.display_name || restrictedRule.rule_id}
-                </Typography>
-              )}
-            </div>
-
-            <div className="rounded-xl ring-1 ring-foreground/[0.06] bg-background/60 p-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <Typography className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Triggered rules
-                </Typography>
-                <Typography variant="secondary" className="text-[11px]">
-                  {matchedEvaluations.length} matched
-                </Typography>
-              </div>
-              {matchedEvaluations.length === 0 ? (
-                <Typography variant="secondary" className="text-xs">
-                  No rules matched. Default action applies.
-                </Typography>
-              ) : (
-                <div className="space-y-2">
-                  {matchedEvaluations.map((evaluation) => (
-                    <div
-                      key={evaluation.rule_id}
-                      className="flex items-center justify-between gap-2 rounded-lg bg-background/60 px-2.5 py-2 ring-1 ring-foreground/[0.04]"
-                    >
-                      <div className="min-w-0">
-                        <Typography className="text-xs font-medium truncate">
-                          {evaluation.display_name || evaluation.rule_id}
-                        </Typography>
-                        <Typography variant="secondary" className="text-[10px] truncate font-mono">
-                          {evaluation.condition || "No condition"}
-                        </Typography>
-                      </div>
-                      <div className="flex items-center gap-1.5 flex-shrink-0">
-                        <ActionBadge type={evaluation.action.type} />
-                        {evaluation.rule_id === result.outcome.decision_rule_id && (
-                          <DesignBadge label="Decision" color="purple" size="sm" />
-                        )}
-                        {evaluation.rule_id === result.outcome.restricted_because_of_rule_id && (
-                          <DesignBadge label="Restrict" color="orange" size="sm" />
-                        )}
-                      </div>
+            {subCard(
+              <>
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 min-w-0">
+                    <div className={cn(
+                      "h-7 w-7 rounded-lg flex items-center justify-center shrink-0 ring-1",
+                      result.outcome.should_allow
+                        ? "bg-emerald-500/10 ring-emerald-400/30 text-emerald-500"
+                        : "bg-red-500/10 ring-red-400/30 text-red-500",
+                    )}>
+                      {result.outcome.should_allow
+                        ? <CheckIcon className="h-4 w-4" />
+                        : <XIcon className="h-4 w-4" />}
                     </div>
-                  ))}
+                    <Typography className="text-sm font-semibold">Outcome</Typography>
+                  </div>
+                  <DesignBadge label={outcomeLabel} color={outcomeBadgeColor} size="sm" />
                 </div>
-              )}
-            </div>
-
-            <div className="rounded-xl ring-1 ring-foreground/[0.06] bg-background/60 p-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <Typography className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                  Evaluation trace
-                </Typography>
-                <Typography variant="secondary" className="text-[11px]">
-                  {evaluations.length} evaluated
-                </Typography>
-              </div>
-              {evaluations.length === 0 ? (
                 <Typography variant="secondary" className="text-xs">
-                  No rules configured yet.
+                  {decisionLabel[result.outcome.decision]}
                 </Typography>
-              ) : (
-                <div className="space-y-1 max-h-48 overflow-auto pr-1">
-                  {evaluations.map((evaluation) => {
-                    const statusColor = statusBadgeColor(evaluation.status);
-                    return (
+                {decisionRule && (
+                  <Typography variant="secondary" className="text-xs">
+                    Decision rule: <span className="font-medium text-foreground">{decisionRule.display_name || decisionRule.rule_id}</span>
+                  </Typography>
+                )}
+                {decisionRule?.action.message && (
+                  <Typography variant="secondary" className="text-xs">
+                    Rejection reason: {decisionRule.action.message}
+                  </Typography>
+                )}
+                {restrictedRule && (
+                  <Typography variant="secondary" className="text-xs">
+                    Restricted by: <span className="font-medium text-foreground">{restrictedRule.display_name || restrictedRule.rule_id}</span>
+                  </Typography>
+                )}
+              </>,
+              "space-y-1.5"
+            )}
+
+            {subCard(
+              <>
+                <div className="flex items-center justify-between">
+                  <Typography className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Triggered rules
+                  </Typography>
+                  <Typography variant="secondary" className="text-[11px] tabular-nums">
+                    {matchedEvaluations.length} matched
+                  </Typography>
+                </div>
+                {matchedEvaluations.length === 0 ? (
+                  <Typography variant="secondary" className="text-xs">
+                    No rules matched. Default action applies.
+                  </Typography>
+                ) : (
+                  <div className="space-y-2">
+                    {matchedEvaluations.map((evaluation) => (
                       <div
                         key={evaluation.rule_id}
-                        className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 hover:bg-foreground/[0.03] transition-colors hover:transition-none"
-                        title={evaluation.error ?? undefined}
+                        className="flex items-center justify-between gap-2 rounded-lg bg-background/60 px-2.5 py-2 ring-1 ring-foreground/[0.04]"
                       >
                         <div className="min-w-0">
                           <Typography className="text-xs font-medium truncate">
@@ -1077,33 +1309,96 @@ function TestRulesCard({
                         </div>
                         <div className="flex items-center gap-1.5 flex-shrink-0">
                           <ActionBadge type={evaluation.action.type} />
-                          {statusColor ? (
-                            <DesignBadge label={statusLabel[evaluation.status]} color={statusColor} size="sm" />
-                          ) : (
-                            <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
-                              {statusLabel[evaluation.status]}
-                            </span>
+                          {evaluation.rule_id === result.outcome.decision_rule_id && (
+                            <DesignBadge label="Decision" color="purple" size="sm" />
+                          )}
+                          {evaluation.rule_id === result.outcome.restricted_because_of_rule_id && (
+                            <DesignBadge label="Restrict" color="orange" size="sm" />
                           )}
                         </div>
                       </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
 
-            <div className="rounded-xl ring-1 ring-foreground/[0.06] bg-background/60 p-3 space-y-1">
-              <Typography className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-                Normalized context
-              </Typography>
-              <Typography variant="secondary" className="text-xs">Email: {result.context.email || "(empty)"}</Typography>
-              <Typography variant="secondary" className="text-xs">Email domain: {result.context.email_domain || "(empty)"}</Typography>
-              <Typography variant="secondary" className="text-xs">Country code: {result.context.country_code || "(empty)"}</Typography>
-              <Typography variant="secondary" className="text-xs">OAuth provider: {result.context.oauth_provider || "(empty)"}</Typography>
-              <Typography variant="secondary" className="text-xs">Turnstile result: {result.context.turnstile_result}</Typography>
-              <Typography variant="secondary" className="text-xs">Risk score (bot): {result.context.risk_scores.bot}</Typography>
-              <Typography variant="secondary" className="text-xs">Risk score (free trial abuse): {result.context.risk_scores.free_trial_abuse}</Typography>
-            </div>
+            {subCard(
+              <>
+                <div className="flex items-center justify-between">
+                  <Typography className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                    Evaluation trace
+                  </Typography>
+                  <Typography variant="secondary" className="text-[11px] tabular-nums">
+                    {evaluations.length} evaluated
+                  </Typography>
+                </div>
+                {evaluations.length === 0 ? (
+                  <Typography variant="secondary" className="text-xs">
+                    No rules configured yet.
+                  </Typography>
+                ) : (
+                  <div className="space-y-1 max-h-48 overflow-auto pr-1">
+                    {evaluations.map((evaluation) => {
+                      const statusColor = statusBadgeColor(evaluation.status);
+                      return (
+                        <div
+                          key={evaluation.rule_id}
+                          className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 hover:bg-foreground/[0.03] transition-colors hover:transition-none"
+                          title={evaluation.error ?? undefined}
+                        >
+                          <div className="min-w-0">
+                            <Typography className="text-xs font-medium truncate">
+                              {evaluation.display_name || evaluation.rule_id}
+                            </Typography>
+                            <Typography variant="secondary" className="text-[10px] truncate font-mono">
+                              {evaluation.condition || "No condition"}
+                            </Typography>
+                          </div>
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            <ActionBadge type={evaluation.action.type} />
+                            {statusColor ? (
+                              <DesignBadge label={statusLabel[evaluation.status]} color={statusColor} size="sm" />
+                            ) : (
+                              <span className="text-[10px] uppercase tracking-wide text-muted-foreground">
+                                {statusLabel[evaluation.status]}
+                              </span>
+                            )}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
+            )}
+
+            {subCard(
+              <>
+                <Typography className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                  Normalized context
+                </Typography>
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1">
+                  {[
+                    ["Email", result.context.email || "(empty)"],
+                    ["Domain", result.context.email_domain || "(empty)"],
+                    ["Country", result.context.country_code || "(empty)"],
+                    ["OAuth", result.context.oauth_provider || "(empty)"],
+                    ["Turnstile", result.context.turnstile_result],
+                    ["Bot risk", String(result.context.risk_scores.bot)],
+                    ["Free-trial risk", String(result.context.risk_scores.free_trial_abuse)],
+                  ].map(([label, value]) => (
+                    <div key={label} className="flex items-center justify-between gap-2 min-w-0">
+                      <Typography variant="secondary" className="text-[10px] uppercase tracking-wider shrink-0">
+                        {label}
+                      </Typography>
+                      <Typography className="text-xs font-mono truncate">{value}</Typography>
+                    </div>
+                  ))}
+                </div>
+              </>,
+              "space-y-1.5"
+            )}
           </>
         )}
       </div>
@@ -1123,16 +1418,33 @@ function TestRulesDialog({
       <DialogTrigger asChild>
         {trigger}
       </DialogTrigger>
-      <DialogContent className="max-w-5xl">
-        <DialogHeader>
-          <DialogTitle>Test sign-up rules</DialogTitle>
-          <DialogDescription>
-            Simulate a sign-up request to see which rules trigger and how the final decision is made.
-          </DialogDescription>
+      <DialogContent
+        className="max-w-5xl gap-0 p-0 overflow-hidden border-0 sm:rounded-2xl bg-background/85 backdrop-blur-2xl ring-1 ring-foreground/[0.06] shadow-[0_24px_48px_-12px_rgba(0,0,0,0.25),0_4px_24px_-8px_rgba(0,0,0,0.12)] dark:bg-background/80 dark:ring-white/[0.06]"
+        overlayProps={{ className: "bg-black/50 backdrop-blur-sm" }}
+      >
+        <DialogHeader className="px-6 pt-6 pb-4 border-b border-foreground/[0.06]">
+          <div className="flex items-start gap-3">
+            <div className="h-9 w-9 rounded-xl bg-primary/10 ring-1 ring-primary/15 flex items-center justify-center shrink-0">
+              <FlaskIcon className="h-4 w-4 text-primary" />
+            </div>
+            <div className="flex-1 min-w-0 space-y-1">
+              <DialogTitle className="text-base">Test sign-up rules</DialogTitle>
+              <DialogDescription className="text-xs">
+                Simulate a sign-up request to preview which rules trigger and how the final decision is made.
+              </DialogDescription>
+            </div>
+          </div>
         </DialogHeader>
-        <DialogBody>
+
+        <DialogBody className="mx-0 my-0 w-auto px-6 py-4">
           <TestRulesCard stackAdminApp={stackAdminApp} />
         </DialogBody>
+
+        <DialogFooter className="px-6 py-3 border-t border-foreground/[0.06] bg-foreground/[0.02]">
+          <DialogClose asChild>
+            <DesignButton variant="secondary" size="sm">Close</DesignButton>
+          </DialogClose>
+        </DialogFooter>
       </DialogContent>
     </Dialog>
   );
