@@ -4,11 +4,21 @@ const GRANT_TYPE = "urn:ietf:params:oauth:grant-type:token-exchange";
 const SUBJECT_TOKEN_TYPE = "urn:ietf:params:oauth:token-type:jwt";
 const DEFAULT_FETCH_TIMEOUT_MS = 10_000;
 
-async function fetchWithTimeout(input: string, init: RequestInit, timeoutMs = DEFAULT_FETCH_TIMEOUT_MS): Promise<Response> {
+// Runs a fetch with a single AbortController that stays alive until the `consume`
+// callback finishes reading the body. Clearing the timer as soon as headers arrive
+// (the obvious version) leaves `.text()` / `.json()` free to hang on a stalled body,
+// which would defeat the point of the timeout on a server-auth path.
+async function withFetchTimeout<T>(
+  input: string,
+  init: RequestInit,
+  consume: (response: Response) => Promise<T>,
+  timeoutMs = DEFAULT_FETCH_TIMEOUT_MS,
+): Promise<T> {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), timeoutMs);
   try {
-    return await fetch(input, { ...init, signal: controller.signal });
+    const response = await fetch(input, { ...init, signal: controller.signal });
+    return await consume(response);
   } finally {
     clearTimeout(timer);
   }
@@ -50,6 +60,9 @@ export function createOidcFederationTokenStore(options: {
   let lastFailure: CachedFailure | null = null;
   let inFlight: Promise<CachedToken> | null = null;
 
+  // `refreshAtMs` / `now` / `expiresAtMs` are all compared to each other — use
+  // `performance.now()` so wall-clock jumps (NTP corrections, suspend/resume, manual
+  // clock changes) can't make us reuse an expired token or extend negative caching.
   const shouldRefresh = (now: number) => !cached || cached.refreshAtMs - now <= 5_000;
 
   const doExchange = async (): Promise<CachedToken> => {
@@ -70,38 +83,48 @@ export function createOidcFederationTokenStore(options: {
     };
     if (options.branchId) headers["x-stack-branch-id"] = options.branchId;
 
-    let response: Response;
+    let result: { kind: "ok", json: { access_token?: unknown, expires_in?: unknown } } | { kind: "httpError", status: number, body: string };
     try {
-      response = await fetchWithTimeout(url.toString(), {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          grant_type: GRANT_TYPE,
-          subject_token: subjectToken,
-          subject_token_type: SUBJECT_TOKEN_TYPE,
-        }),
-      });
+      result = await withFetchTimeout(
+        url.toString(),
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            grant_type: GRANT_TYPE,
+            subject_token: subjectToken,
+            subject_token_type: SUBJECT_TOKEN_TYPE,
+          }),
+        },
+        async (response) => {
+          if (!response.ok) {
+            const body = await response.text().catch(() => "<unreadable>");
+            return { kind: "httpError" as const, status: response.status, body };
+          }
+          const json = await response.json() as { access_token?: unknown, expires_in?: unknown };
+          return { kind: "ok" as const, json };
+        },
+      );
     } catch (cause) {
       throw new OidcFederationExchangeError("network error during OIDC federation exchange", cause);
     }
 
-    if (!response.ok) {
-      const body = await response.text().catch(() => "<unreadable>");
+    if (result.kind === "httpError") {
       throw new OidcFederationExchangeError(
-        `OIDC federation exchange returned ${response.status}: ${body.slice(0, 500)}`,
+        `OIDC federation exchange returned ${result.status}: ${result.body.slice(0, 500)}`,
       );
     }
 
-    const json = await response.json() as { access_token?: unknown, expires_in?: unknown };
+    const { json } = result;
     if (typeof json.access_token !== "string" || typeof json.expires_in !== "number") {
       throw new OidcFederationExchangeError("OIDC federation exchange response missing access_token or expires_in");
     }
-    const refreshAtMs = Date.now() + Math.floor(json.expires_in * 1000 * 0.8);
+    const refreshAtMs = performance.now() + Math.floor(json.expires_in * 1000 * 0.8);
     return { accessToken: json.access_token, refreshAtMs };
   };
 
   const getAccessToken = async (): Promise<string> => {
-    const now = Date.now();
+    const now = performance.now();
     if (cached && !shouldRefresh(now)) return cached.accessToken;
     // Negative cache: if the last exchange failed very recently, reject fast instead of
     // racing a second exchange while the first's awaiters are still settling. This
@@ -125,7 +148,7 @@ export function createOidcFederationTokenStore(options: {
       } catch (err) {
         lastFailure = {
           error: err instanceof OidcFederationExchangeError ? err : new OidcFederationExchangeError(String(err), err),
-          expiresAtMs: Date.now() + NEGATIVE_CACHE_MS,
+          expiresAtMs: performance.now() + NEGATIVE_CACHE_MS,
         };
         throw err;
       } finally {
@@ -186,15 +209,18 @@ export function fromGithubActionsOidc(options: { audience: string }): OidcFedera
       }
       const url = new URL(requestUrl);
       url.searchParams.set("audience", options.audience);
-      const response = await fetchWithTimeout(url.toString(), {
-        headers: { authorization: `Bearer ${requestToken}` },
-      });
-      if (!response.ok) {
-        throw new Error(`GitHub Actions OIDC request failed: ${response.status}`);
-      }
-      const body = await response.json() as { value?: unknown };
-      if (typeof body.value !== "string") throw new Error("GitHub Actions OIDC response is missing `value`");
-      return body.value;
+      return await withFetchTimeout(
+        url.toString(),
+        { headers: { authorization: `Bearer ${requestToken}` } },
+        async (response) => {
+          if (!response.ok) {
+            throw new Error(`GitHub Actions OIDC request failed: ${response.status}`);
+          }
+          const body = await response.json() as { value?: unknown };
+          if (typeof body.value !== "string") throw new Error("GitHub Actions OIDC response is missing `value`");
+          return body.value;
+        },
+      );
     },
   };
 }
@@ -205,13 +231,16 @@ export function fromGcpMetadata(options: { audience: string }): OidcFederationTo
     getOidcToken: async () => {
       const url = new URL("http://metadata.google.internal/computeMetadata/v1/instance/service-accounts/default/identity");
       url.searchParams.set("audience", options.audience);
-      const response = await fetchWithTimeout(url.toString(), {
-        headers: { "metadata-flavor": "Google" },
-      });
-      if (!response.ok) {
-        throw new Error(`GCP metadata server returned ${response.status}. Is this running on a GCP workload?`);
-      }
-      return await response.text();
+      return await withFetchTimeout(
+        url.toString(),
+        { headers: { "metadata-flavor": "Google" } },
+        async (response) => {
+          if (!response.ok) {
+            throw new Error(`GCP metadata server returned ${response.status}. Is this running on a GCP workload?`);
+          }
+          return await response.text();
+        },
+      );
     },
   };
 }
