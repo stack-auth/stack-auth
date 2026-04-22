@@ -233,6 +233,16 @@ it("should block switch endpoint when blockNewPurchases is enabled", async ({ ex
 
   const { userId } = await Auth.fastSignUp();
 
+  // Grant planA ownership via server so the switch would otherwise have a valid
+  // source subscription — without this, the endpoint could reject for an unrelated
+  // reason and the test would pass by accident if the block check ever moved.
+  const grantResponse = await niceBackendFetch(`/api/latest/payments/products/user/${userId}`, {
+    method: "POST",
+    accessType: "server",
+    body: { product_id: "planA" },
+  });
+  expect(grantResponse.status).toBe(200);
+
   const switchResponse = await niceBackendFetch(`/api/latest/payments/products/user/${userId}/switch`, {
     method: "POST",
     accessType: "client",
