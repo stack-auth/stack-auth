@@ -72,6 +72,11 @@ type ChunkRow = {
   createdAt: Date,
 };
 
+type SessionReplayEventsResponse = {
+  chunks: ChunkRow[],
+  chunkEvents: Array<{ chunkId: string, events: unknown[] }>,
+};
+
 function isReplayerStale(replayer: RrwebReplayer | null | undefined) {
   if (!replayer) return true;
   const candidate = replayer as any;
@@ -98,10 +103,7 @@ type AdminAppWithSessionReplays = ReturnType<typeof useAdminApp> & {
     items: RecordingRow[],
     nextCursor: string | null,
   }>,
-  getSessionReplayEvents: (sessionReplayId: string, options?: { offset?: number, limit?: number }) => Promise<{
-    chunks: ChunkRow[],
-    chunkEvents: Array<{ chunkId: string, events: unknown[] }>,
-  }>,
+  getSessionReplayEvents: (sessionReplayId: string, options?: { offset?: number, limit?: number }) => Promise<SessionReplayEventsResponse>,
 };
 
 type ReplayFilters = {
@@ -1020,9 +1022,17 @@ export default function PageClient() {
   // ---- Container ref callback ----
 
   const setContainerRefForTab = useCallback((tabKey: TabKey, el: HTMLDivElement | null) => {
-    containerByTabRef.current.set(tabKey, el);
+    if (!el) {
+      containerByTabRef.current.delete(tabKey);
+      disposeReplayerForTab(tabKey, {
+        pause: true,
+        scheduleReinit: false,
+      });
+      pendingInitByTabRef.current.delete(tabKey);
+      return;
+    }
 
-    if (!el) return;
+    containerByTabRef.current.set(tabKey, el);
 
     const existingRoot = replayerRootByTabRef.current.get(tabKey);
     if (existingRoot && existingRoot !== el) {
@@ -1099,7 +1109,7 @@ export default function PageClient() {
 
     try {
       // Phase 1: Fetch initial batch (fast start).
-      const initialResponse = await adminApp.getSessionReplayEvents(recordingId, { offset: 0, limit: INITIAL_CHUNK_BATCH });
+      const initialResponse: SessionReplayEventsResponse = await adminApp.getSessionReplayEvents(recordingId, { offset: 0, limit: INITIAL_CHUNK_BATCH });
       if (msRef.current.generation !== gen) return;
 
       const allChunkRows: ChunkRow[] = initialResponse.chunks.map((c) => ({
@@ -1187,7 +1197,7 @@ export default function PageClient() {
       while (offset < totalChunks) {
         if (msRef.current.generation !== gen) return;
 
-        const batchResponse = await adminApp.getSessionReplayEvents(recordingId, { offset, limit: BACKGROUND_CHUNK_BATCH });
+        const batchResponse: SessionReplayEventsResponse = await adminApp.getSessionReplayEvents(recordingId, { offset, limit: BACKGROUND_CHUNK_BATCH });
         if (msRef.current.generation !== gen) return;
 
         processChunkEvents(batchResponse.chunkEvents, allStreams, chunkIdToTabKey);

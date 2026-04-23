@@ -1,1 +1,5 @@
-AGENTS.md
+# Stack Auth
+
+## Commands
+- **Lint**: `pnpm lint`
+- **Typecheck**: `pnpm typecheck`
