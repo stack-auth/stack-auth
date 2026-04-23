@@ -57,15 +57,13 @@ async function runInit(program: Command, opts: InitOptions) {
 
   console.log("Welcome to Stack Auth!\n");
 
-  const mode: string = "link";
-  // TODO: re-enable local emulator option
-  // const mode: string = opts.mode ?? await select({
-  //   message: "Would you like to link to an existing project, or create a new one?",
-  //   choices: [
-  //     { name: "Create a new project (local emulator)", value: "create" as const },
-  //     { name: "Link an existing project", value: "link" as const },
-  //   ],
-  // });
+  const mode: string = opts.mode ?? await select({
+    message: "Would you like to link to an existing project, or create a new one?",
+    choices: [
+      { name: "Link an existing project", value: "link" as const },
+      { name: "Create a new project (local emulator)", value: "create" as const },
+    ],
+  });
 
   let configPath: string | undefined;
 
@@ -104,15 +102,13 @@ async function handleLink(flags: Record<string, unknown>, opts: InitOptions, out
   } else if (opts.mode === "link-cloud") {
     source = "cloud";
   } else {
-    source = "cloud";
-    // TODO: re-enable config file linking option
-    // source = await select({
-    //   message: "How would you like to link your project?",
-    //   choices: [
-    //     { name: "Link from config file", value: "config-file" as const },
-    //     { name: "Link from app.stack-auth.com", value: "cloud" as const },
-    //   ],
-    // });
+    source = await select({
+      message: "How would you like to link your project?",
+      choices: [
+        { name: "Link from config file", value: "config-file" as const },
+        { name: "Link from app.stack-auth.com", value: "cloud" as const },
+      ],
+    });
   }
 
   if (source === "config-file") {
