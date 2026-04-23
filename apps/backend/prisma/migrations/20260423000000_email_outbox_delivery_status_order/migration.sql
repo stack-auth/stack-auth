@@ -9,6 +9,14 @@ DROP INDEX CONCURRENTLY IF EXISTS "EmailOutbox_status_tenancy_idx";
 
 -- SPLIT_STATEMENT_SENTINEL
 
+-- Keep the table rewrite bounded by the migration transaction timeout instead
+-- of the shorter default statement timeout.
+-- SPLIT_STATEMENT_SENTINEL
+-- SINGLE_STATEMENT_SENTINEL
+SET LOCAL statement_timeout = '75s';
+
+-- SPLIT_STATEMENT_SENTINEL
+
 ALTER TABLE "EmailOutbox"
   DROP COLUMN "status";
 
@@ -34,8 +42,3 @@ ALTER TABLE "EmailOutbox"
         ELSE 'SENT'::"EmailOutboxStatus"
     END
   ) STORED;
-
--- SPLIT_STATEMENT_SENTINEL
--- SINGLE_STATEMENT_SENTINEL
--- RUN_OUTSIDE_TRANSACTION_SENTINEL
-CREATE INDEX CONCURRENTLY IF NOT EXISTS "EmailOutbox_status_tenancy_idx" ON /* SCHEMA_NAME_SENTINEL */."EmailOutbox" ("tenancyId", "status");
