@@ -39,6 +39,28 @@ describe("branchPaymentsSchema", () => {
     })).rejects.toThrow('Product "pro" specifies product line ID "missing-line", but that product line does not exist');
   });
 
+  it("rejects null product entries without throwing a raw TypeError", async () => {
+    await expect(branchPaymentsSchema.validate({
+      products: {
+        pro: null,
+      },
+    })).rejects.toMatchObject({ name: "ValidationError" });
+  });
+
+  it("rejects null product line entries without throwing a raw TypeError", async () => {
+    await expect(branchPaymentsSchema.validate({
+      productLines: {
+        teamLine: null,
+      },
+      products: {
+        pro: {
+          customerType: "user",
+          productLineId: "teamLine",
+        },
+      },
+    })).rejects.toMatchObject({ name: "ValidationError" });
+  });
+
   it("rejects a product whose customer type differs from its product line", async () => {
     await expect(branchPaymentsSchema.validate({
       productLines: {

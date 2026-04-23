@@ -186,6 +186,7 @@ export const branchPaymentsSchema = yupObject({
 
     const productLines = Reflect.get(value, "productLines");
     for (const [productId, product] of Object.entries(products)) {
+      if (!isObjectLike(product)) continue;
       if (product.productLineId == null) continue;
       const productLine = isObjectLike(productLines) ? getOrUndefined(productLines, product.productLineId) : undefined;
       if (productLine === undefined) {
@@ -194,6 +195,7 @@ export const branchPaymentsSchema = yupObject({
           path: `${this.path}.products.${productId}.productLineId`,
         });
       }
+      if (!isObjectLike(productLine)) continue;
       if (product.customerType !== productLine.customerType) {
         return this.createError({
           message: `Product "${productId}" has customer type "${product.customerType}" but its product line "${product.productLineId}" has customer type "${productLine.customerType}"`,
