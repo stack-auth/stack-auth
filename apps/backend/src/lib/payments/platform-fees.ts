@@ -217,7 +217,7 @@ async function collectInverseFeeInner(options: {
         // the idempotency key expires.
         captureError("collect-inverse-fee-ledger-reconcile", new StackAssertionError(
           "Found pre-existing Stripe transfer during retry reconciliation but ledger update failed — manual reconciliation needed to avoid double-debit on next retry",
-          { sourceType: options.sourceType, sourceId: options.sourceId, preExistingTransferId: pre.id, dbErr }
+          { sourceType: options.sourceType, sourceId: options.sourceId, preExistingTransferId: pre.id, dbErr: dbErr instanceof Error ? dbErr.message : String(dbErr) }
         ));
         await markLedgerFailed(
           ledgerKey,

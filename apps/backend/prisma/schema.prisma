@@ -1316,7 +1316,7 @@ model SubscriptionInvoice {
 // 0.9% cut of refund outflows). Each row is keyed by the originating Stripe
 // event so collection is idempotent under webhook / handler retry.
 model PlatformFeeEvent {
-  id String @id @default(uuid()) @db.Uuid
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 
   tenancyId String @db.Uuid
   projectId String
