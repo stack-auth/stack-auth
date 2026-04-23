@@ -3,10 +3,27 @@ import { BlockList, isIPv4, isIPv6 } from "node:net";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 
 type LookupAddress = { address: string, family: number };
+type IpFamily = 4 | 6;
+type ResolvedSafeFetchUrl = { kind: "ok", url: URL, address: string, family: IpFamily };
 
 export type SafeFetchUrlResult =
   | { kind: "ok", url: URL }
   | { kind: "error", reason: string };
+
+export type SafeFetchJsonResult<T> =
+  | { kind: "ok", url: URL, status: number, body: T }
+  | { kind: "http-error", url: URL, status: number, body: string }
+  | { kind: "url-error", reason: string }
+  | { kind: "fetch-error", url: URL, reason: string };
+
+type FetchInitWithDispatcher = RequestInit & { dispatcher?: unknown };
+type LookupCallback = (err: NodeJS.ErrnoException | null, address: string, family: number) => void;
+type UndiciAgentLike = { close?: () => Promise<void> | void };
+type UndiciAgentConstructor = new (options: {
+  connect: {
+    lookup: (hostname: string, options: unknown, callback: LookupCallback) => void,
+  },
+}) => UndiciAgentLike;
 
 // Precomputed blocklist of CIDR ranges the server must never dereference. Covers
 // loopback, RFC1918, link-local + cloud metadata, CGNAT, multicast/reserved for
@@ -40,10 +57,45 @@ const BLOCKED_RANGES: BlockList = (() => {
  * plain http outside of dev-loopback, and hostnames that resolve to addresses in
  * BLOCKED_RANGES.
  *
- * First line of defense only. DNS rebinding (lookup here ≠ lookup at fetch time)
- * would require pinning fetch to the resolved IP via a custom Agent.
  */
 export async function validateSafeFetchUrl(raw: string): Promise<SafeFetchUrlResult> {
+  const safe = await resolveSafeFetchUrl(raw);
+  if (safe.kind !== "ok") return safe;
+  return { kind: "ok", url: safe.url };
+}
+
+export async function safeFetchJson<T>(raw: string, options?: {
+  headers?: HeadersInit,
+  timeoutMs?: number,
+}): Promise<SafeFetchJsonResult<T>> {
+  const safe = await resolveSafeFetchUrl(raw);
+  if (safe.kind !== "ok") return { kind: "url-error", reason: safe.reason };
+
+  let dispatcher: UndiciAgentLike | undefined;
+  try {
+    dispatcher = createPinnedDispatcher(safe.address, safe.family);
+    const response = await fetch(safe.url.toString(), {
+      method: "GET",
+      headers: options?.headers,
+      signal: AbortSignal.timeout(options?.timeoutMs ?? 5000),
+      dispatcher,
+    } as FetchInitWithDispatcher);
+
+    if (!response.ok) {
+      const body = await response.text().catch(() => "<unreadable>");
+      return { kind: "http-error", url: safe.url, status: response.status, body };
+    }
+    const body = await response.json() as T;
+    return { kind: "ok", url: safe.url, status: response.status, body };
+  } catch (err) {
+    const reason = err instanceof Error ? err.message : String(err);
+    return { kind: "fetch-error", url: safe.url, reason };
+  } finally {
+    await Promise.resolve(dispatcher?.close?.()).catch(() => undefined);
+  }
+}
+
+async function resolveSafeFetchUrl(raw: string): Promise<ResolvedSafeFetchUrl | { kind: "error", reason: string }> {
   let url: URL;
   try {
     url = new URL(raw);
@@ -74,7 +126,32 @@ export async function validateSafeFetchUrl(raw: string): Promise<SafeFetchUrlRes
       return { kind: "error", reason: "hostname resolves to a disallowed IP range" };
     }
   }
-  return { kind: "ok", url };
+  const selected = resolved[0];
+  if (!selected) {
+    return { kind: "error", reason: `DNS lookup returned no addresses for ${hostname}` };
+  }
+  const family = toIpFamily(selected);
+  if (family === null) {
+    return { kind: "error", reason: `DNS lookup returned unsupported address family for ${hostname}` };
+  }
+  return { kind: "ok", url, address: selected.address, family };
+}
+
+function createPinnedDispatcher(address: string, family: IpFamily): UndiciAgentLike {
+  const { Agent } = require("undici") as { Agent: UndiciAgentConstructor };
+  return new Agent({
+    connect: {
+      lookup: (_hostname, _options, callback) => {
+        callback(null, address, family);
+      },
+    },
+  });
+}
+
+function toIpFamily(resolved: LookupAddress): IpFamily | null {
+  if (resolved.family === 4 || isIPv4(resolved.address)) return 4;
+  if (resolved.family === 6 || isIPv6(resolved.address)) return 6;
+  return null;
 }
 
 function isBlockedAddress(address: string): boolean {

@@ -169,10 +169,11 @@ export function createOidcFederationTokenStoreForServerApp(options: {
   getOidcToken: () => Promise<string>,
   sourceLabel?: string,
 }): OidcFederationTokenStore {
+  const extraRequestHeaders = new Headers(options.extraRequestHeaders);
   return createOidcFederationTokenStore({
     projectId: options.projectId,
     apiBaseUrl: options.apiBaseUrl,
-    branchId: options.extraRequestHeaders["x-stack-branch-id"],
+    branchId: extraRequestHeaders.get("x-stack-branch-id") ?? undefined,
     getOidcToken: options.getOidcToken,
     sourceLabel: options.sourceLabel,
   });

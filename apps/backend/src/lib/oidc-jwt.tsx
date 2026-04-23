@@ -3,9 +3,9 @@ import type { PrismaClientTransaction } from "@/prisma-client";
 import { StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { createLocalJWKSet, decodeProtectedHeader, jwtVerify, type JWK, type JWTPayload } from "jose";
 import { getOrSetCacheValue } from "./cache";
-import { validateSafeFetchUrl } from "./safe-fetch";
+import { safeFetchJson, validateSafeFetchUrl } from "./safe-fetch";
 
-type DiscoveryDoc = { issuer: string, jwks_uri: string };
+export type DiscoveryDoc = { issuer: string, jwks_uri: string };
 type JwksJson = { keys: JWK[] };
 
 type DiscoveryPayload =
@@ -59,6 +59,37 @@ async function cacheErrorAndRethrow(
   throw error instanceof Error ? error : new Error(message);
 }
 
+export async function fetchOidcDiscoveryDocument(issuerUrl: string): Promise<DiscoveryDoc> {
+  const cacheKey = stripTrailingSlash(issuerUrl);
+
+  const discovery = await safeFetchJson<Partial<DiscoveryDoc>>(`${cacheKey}/.well-known/openid-configuration`, {
+    headers: { accept: "application/json" },
+    timeoutMs: FETCH_TIMEOUT_MS,
+  });
+  if (discovery.kind === "url-error") {
+    throw new Error(`OIDC discovery URL rejected for ${issuerUrl}: ${discovery.reason}`);
+  }
+  if (discovery.kind === "fetch-error") {
+    throw new Error(`OIDC discovery fetch failed for ${issuerUrl}: ${discovery.reason}`);
+  }
+  if (discovery.kind === "http-error") {
+    throw new Error(`OIDC discovery fetch failed for ${issuerUrl} (status ${discovery.status})`);
+  }
+
+  const body = discovery.body;
+  if (typeof body.issuer !== "string" || typeof body.jwks_uri !== "string") {
+    throw new Error(`OIDC discovery response for ${issuerUrl} is missing issuer or jwks_uri`);
+  }
+  if (stripTrailingSlash(body.issuer) !== cacheKey) {
+    throw new Error(`OIDC discovery issuer mismatch for ${issuerUrl}: expected ${cacheKey}, got ${body.issuer}`);
+  }
+  const jwksSafe = await validateSafeFetchUrl(body.jwks_uri);
+  if (jwksSafe.kind !== "ok") {
+    throw new Error(`OIDC discovery jwks_uri rejected for ${issuerUrl}: ${jwksSafe.reason}`);
+  }
+  return { issuer: body.issuer, jwks_uri: body.jwks_uri };
+}
+
 async function loadDiscovery(issuerUrl: string, prisma: PrismaClientTransaction): Promise<DiscoveryDoc> {
   const cacheKey = stripTrailingSlash(issuerUrl);
 
@@ -71,57 +102,35 @@ async function loadDiscovery(issuerUrl: string, prisma: PrismaClientTransaction)
     return payload.doc;
   }
 
-  // URL-validation failures are deterministic per-config; don't poison the error
-  // cache with them, or fixing a mistyped issuer URL would still fail for DISCOVERY_ERR_TTL_MS.
-  const safe = await validateSafeFetchUrl(`${cacheKey}/.well-known/openid-configuration`);
-  if (safe.kind !== "ok") {
-    throw new Error(`OIDC discovery URL rejected for ${issuerUrl}: ${safe.reason}`);
-  }
-
   try {
-    const response = await fetch(safe.url.toString(), {
-      method: "GET",
-      headers: { accept: "application/json" },
-      signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
-    });
-    if (!response.ok) {
-      throw new Error(`OIDC discovery fetch failed for ${issuerUrl} (status ${response.status})`);
-    }
-    const body = await response.json() as Partial<DiscoveryDoc>;
-    if (typeof body.issuer !== "string" || typeof body.jwks_uri !== "string") {
-      throw new Error(`OIDC discovery response for ${issuerUrl} is missing issuer or jwks_uri`);
-    }
-    if (stripTrailingSlash(body.issuer) !== cacheKey) {
-      throw new Error(`OIDC discovery issuer mismatch for ${issuerUrl}: expected ${cacheKey}, got ${body.issuer}`);
-    }
-    const jwksSafe = await validateSafeFetchUrl(body.jwks_uri);
-    if (jwksSafe.kind !== "ok") {
-      // The jwks_uri comes from the discovery response, not admin config, so a
-      // rejection here is legitimately a transient/remote-side problem worth caching.
-      throw new Error(`OIDC discovery jwks_uri rejected for ${issuerUrl}: ${jwksSafe.reason}`);
-    }
-    const doc: DiscoveryDoc = { issuer: body.issuer, jwks_uri: body.jwks_uri };
+    const doc = await fetchOidcDiscoveryDocument(issuerUrl);
     await writeDiscoveryCache(prisma, cacheKey, { kind: "ok", doc }, DISCOVERY_OK_TTL_MS);
     return doc;
   } catch (error) {
+    // URL-validation failures are deterministic per-config; don't poison the error
+    // cache with them, or fixing a mistyped issuer URL would still fail for DISCOVERY_ERR_TTL_MS.
+    if (error instanceof Error && error.message.startsWith("OIDC discovery URL rejected")) {
+      throw error;
+    }
     return await cacheErrorAndRethrow(prisma, cacheKey, error);
   }
 }
 
 async function fetchJwks(jwksUrl: string): Promise<JwksJson> {
-  const safe = await validateSafeFetchUrl(jwksUrl);
-  if (safe.kind !== "ok") {
-    throw new Error(`OIDC JWKS URL rejected: ${safe.reason}`);
-  }
-  const response = await fetch(safe.url.toString(), {
-    method: "GET",
+  const jwks = await safeFetchJson<JwksJson>(jwksUrl, {
     headers: { accept: "application/json" },
-    signal: AbortSignal.timeout(FETCH_TIMEOUT_MS),
+    timeoutMs: FETCH_TIMEOUT_MS,
   });
-  if (!response.ok) {
-    throw new Error(`OIDC JWKS fetch failed for ${jwksUrl} (status ${response.status})`);
+  if (jwks.kind === "url-error") {
+    throw new Error(`OIDC JWKS URL rejected: ${jwks.reason}`);
   }
-  const body = await response.json() as JwksJson;
+  if (jwks.kind === "fetch-error") {
+    throw new Error(`OIDC JWKS fetch failed for ${jwksUrl}: ${jwks.reason}`);
+  }
+  if (jwks.kind === "http-error") {
+    throw new Error(`OIDC JWKS fetch failed for ${jwksUrl} (status ${jwks.status})`);
+  }
+  const body = jwks.body;
   if (!Array.isArray(body.keys)) {
     throw new Error(`OIDC JWKS response for ${jwksUrl} is not a valid JWKS`);
   }

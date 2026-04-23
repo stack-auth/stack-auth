@@ -35,4 +35,28 @@ describe("createOidcFederationTokenStoreForServerApp", () => {
     const sentHeaders = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
     expect(sentHeaders.get("x-stack-branch-id")).toBe("preview");
   });
+
+  it("reuses x-stack-branch-id case-insensitively", async () => {
+    const fetchMock = vi.fn<Parameters<typeof fetch>, ReturnType<typeof fetch>>(async () => {
+      return new Response(JSON.stringify({ access_token: "stack-token", expires_in: 300 }), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const tokenStore = createOidcFederationTokenStoreForServerApp({
+      projectId: "internal",
+      apiBaseUrl: "https://api.example.com",
+      extraRequestHeaders: {
+        "X-Stack-Branch-Id": "preview",
+      },
+      getOidcToken: async () => "oidc-token",
+    });
+
+    await tokenStore.getAccessToken();
+
+    const sentHeaders = new Headers(fetchMock.mock.calls[0]?.[1]?.headers);
+    expect(sentHeaders.get("x-stack-branch-id")).toBe("preview");
+  });
 });
