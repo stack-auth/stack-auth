@@ -1312,6 +1312,40 @@ model SubscriptionInvoice {
   @@unique([tenancyId, stripeInvoiceId])
 }
 
+// Ledger of platform fees collected via inverse Connect transfers (e.g. our
+// 0.9% cut of refund outflows). Each row is keyed by the originating Stripe
+// event so collection is idempotent under webhook / handler retry.
+model PlatformFeeEvent {
+  id String @id @default(uuid()) @db.Uuid
+
+  tenancyId String @db.Uuid
+  projectId String
+
+  // Discriminator for the source event. Currently only REFUND; additional
+  // sources (e.g. manual adjustments) may be added later.
+  sourceType String
+  // Stripe ID of the originating event — refund id for REFUND. Unique with
+  // sourceType to make fee collection idempotent.
+  sourceId   String
+
+  amount   Int
+  currency String
+
+  // PENDING | COLLECTED | FAILED
+  status           String
+  stripeTransferId String?
+  error            String?
+
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+  collectedAt DateTime?
+
+  @@unique([sourceType, sourceId])
+  @@index([tenancyId])
+  @@index([projectId])
+  @@index([status])
+}
+
 model OutgoingRequest {
   id String @id @default(uuid()) @db.Uuid
 
