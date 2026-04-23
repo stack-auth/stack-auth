@@ -65,47 +65,9 @@ export const stackServerApp = new StackServerApp({
 });
 \`\`\`
 
-### 3) Create the Stack handler (if available in framework)
+### 3) Wrap your app in a Stack provider
 
-This sets up pages for sign in, sign up, password reset, etc.
-
-\`\`\`tsx
-import { StackHandler } from "@stackframe/stack"; // Next.js
-// import { StackHandler } from "@stackframe/react"; // React
-
-export default function Handler() {
-  return <StackHandler fullPage />;
-}
-\`\`\`
-
-### 4) Create a Suspense boundary
-
-Suspense is necessary for many stack auth hooks such as useUser to function. Add a loading component with a custom loading indicator for the current project. Don't add if one already exists
-
-For example:
-\`\`\`tsx
-//src/loading.tsx
-
-export default function Loading() {
-  return <p>Loading...</p>
-}
-\`\`\`
-
-### 5) Link environment variables
-
-This is only necessary if not using local emulator. Ensure these are ignored by git.
-
-Rename the env var keys in .env to match the framework's convention for client-exposed variables. For example, Vite requires VITE_ prefix, Next.js uses NEXT_PUBLIC_, etc. The values should stay the same — only rename the keys.
-
-The required variables are:
-- Project ID (e.g. NEXT_PUBLIC_STACK_PROJECT_ID, VITE_STACK_PROJECT_ID, etc.)
-- Secret server key: STACK_SECRET_SERVER_KEY (only for frameworks with server-side support, no prefix needed)
-
-The publishable client key (e.g. NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY, VITE_STACK_PUBLISHABLE_CLIENT_KEY, etc.) is only required if your project has publishable client keys enabled as a requirement.
-
-### 6) React only: Wrap the entire page in a Stack provider
-
-This is used for the useUser and useStackApp hooks.
+Required for all frameworks (including Next.js). \`StackHandler\`, \`useUser\`, and \`useStackApp\` all depend on it — without it you will get "useStackApp must be used within a StackProvider" at runtime. In Next.js, add it to the root \`app/layout.tsx\` around \`{children}\`. In React/Vite, wrap your root component.
 
 \`\`\`tsx
 import { StackProvider, StackTheme } from "@stackframe/stack";
@@ -123,4 +85,43 @@ return (
   </body>
 );
 \`\`\`
+
+### 4) Create the Stack handler (if available in framework)
+
+This sets up pages for sign in, sign up, password reset, etc.
+
+\`\`\`tsx
+import { StackHandler } from "@stackframe/stack"; // Next.js
+// import { StackHandler } from "@stackframe/react"; // React
+
+export default function Handler() {
+  return <StackHandler fullPage />;
+}
+\`\`\`
+
+### 5) Create a Suspense boundary
+
+Suspense is necessary for many stack auth hooks such as useUser to function. Add a loading component with a custom loading indicator for the current project. Don't add if one already exists
+
+For example:
+\`\`\`tsx
+//src/loading.tsx
+
+export default function Loading() {
+  return <p>Loading...</p>
+}
+\`\`\`
+
+### 6) Link environment variables
+
+This is only necessary if not using local emulator. Ensure these are ignored by git.
+
+Rename the env var keys in .env to match the framework's convention for client-exposed variables. For example, Vite requires VITE_ prefix, Next.js uses NEXT_PUBLIC_, etc. The values should stay the same — only rename the keys.
+
+The required variables are:
+- Project ID (e.g. NEXT_PUBLIC_STACK_PROJECT_ID, VITE_STACK_PROJECT_ID, etc.)
+- Secret server key: STACK_SECRET_SERVER_KEY (only for frameworks with server-side support, no prefix needed)
+
+The publishable client key (e.g. NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY, VITE_STACK_PUBLISHABLE_CLIENT_KEY, etc.) is only required if your project has publishable client keys enabled as a requirement.
+
 `;
