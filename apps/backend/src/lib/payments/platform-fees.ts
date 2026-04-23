@@ -193,7 +193,7 @@ async function collectInverseFeeInner(options: {
       return;
     }
 
-    if (existing && existing.data.length > 0) {
+    if (existing.data.length > 0) {
       const pre = existing.data[0];
       try {
         await globalPrismaClient.platformFeeEvent.update({
