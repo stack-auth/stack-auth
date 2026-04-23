@@ -232,6 +232,31 @@ it("handles invalid SQL query", async ({ expect }) => {
   `);
 });
 
+it("does not leak data from the internal cross-project users table via type-mismatch errors", async ({ expect }) => {
+  const response = await runQuery({
+    query: "SELECT if(1, primary_email, 1) AS leaked FROM analytics_internal.users LIMIT 1",
+  });
+
+  expect(response.status).toBe(400);
+  const errorText = JSON.stringify(response.body);
+  expect(errorText).not.toContain("@");
+  expect(errorText).not.toMatch(/primary_email\s*[:=]\s*['"]/);
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "ANALYTICS_QUERY_ERROR",
+        "details": { "error": "There is no supertype for types String, UInt8 because some of them are String\\\\/FixedString\\\\/Enum and some of them are not: In scope SELECT if(1, primary_email, 1) AS leaked FROM analytics_internal.users LIMIT 1. " },
+        "error": "There is no supertype for types String, UInt8 because some of them are String\\\\/FixedString\\\\/Enum and some of them are not: In scope SELECT if(1, primary_email, 1) AS leaked FROM analytics_internal.users LIMIT 1. ",
+      },
+      "headers": Headers {
+        "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
 it("can execute query returning multiple rows", async ({ expect }) => {
   const response = await runQuery({ query: "SELECT arrayJoin([0, 1, 2]) AS number" });
 
