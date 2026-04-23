@@ -166,6 +166,14 @@ export function ProjectOnboardingWizard(props: {
     });
   }, [currentTimelineIndex, props.mode, setMode, setStatus, timelineSteps]);
 
+  const handleBack = useMemo(() => {
+    if (currentTimelineIndex <= 0) {
+      return undefined;
+    }
+    const previousStep = timelineSteps[currentTimelineIndex - 1].id;
+    return () => handleTimelineStepClick(previousStep);
+  }, [currentTimelineIndex, handleTimelineStepClick, timelineSteps]);
+
   const advanceFromDomainSetup = useCallback(() => {
     return runAsynchronouslyWithAlert(async () => {
       setDomainSetupAutoAdvanceError(null);
@@ -304,6 +312,7 @@ export function ProjectOnboardingWizard(props: {
         steps={timelineSteps}
         currentStep="config_choice"
         onStepClick={handleTimelineStepClick}
+        onBack={handleBack}
         disabled={saving}
         primaryAction={
           <DesignButton
@@ -398,6 +407,7 @@ export function ProjectOnboardingWizard(props: {
         steps={timelineSteps}
         currentStep="apps_selection"
         onStepClick={handleTimelineStepClick}
+        onBack={handleBack}
         disabled={saving}
         wide
         primaryAction={
@@ -512,6 +522,7 @@ export function ProjectOnboardingWizard(props: {
         steps={timelineSteps}
         currentStep="auth_setup"
         onStepClick={handleTimelineStepClick}
+        onBack={handleBack}
         disabled={saving}
         wide
         primaryAction={
@@ -668,6 +679,7 @@ export function ProjectOnboardingWizard(props: {
         steps={timelineSteps}
         currentStep="email_theme_setup"
         onStepClick={handleTimelineStepClick}
+        onBack={handleBack}
         disabled={saving}
         wide
         primaryAction={
@@ -773,6 +785,7 @@ export function ProjectOnboardingWizard(props: {
         steps={timelineSteps}
         currentStep="payments_setup"
         onStepClick={handleTimelineStepClick}
+        onBack={handleBack}
         disabled={saving}
         actionsLayout="inline"
         primaryAction={

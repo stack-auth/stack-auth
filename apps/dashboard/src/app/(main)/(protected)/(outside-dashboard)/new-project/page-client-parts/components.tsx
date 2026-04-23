@@ -23,7 +23,7 @@ import {
   Typography,
   cn,
 } from "@/components/ui";
-import { CheckCircleIcon, WarningCircleIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon, CheckCircleIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { AdminOwnedProject } from "@stackframe/stack";
 import { ALL_APPS, type AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { previewTemplateSource } from "@stackframe/stack-shared/dist/helpers/emails";
@@ -40,6 +40,7 @@ export type OnboardingPageProps = {
   disabled?: boolean,
   primaryAction: ReactNode,
   secondaryAction?: ReactNode,
+  onBack?: () => void,
   wide?: boolean,
   actionsLayout?: "stacked" | "inline",
   children: ReactNode,
@@ -92,7 +93,18 @@ export function OnboardingPage(props: OnboardingPageProps) {
       </div>
 
       <div className="onboarding-cascade fixed bottom-6 left-0 right-0 z-50 flex justify-center" style={{ "--cascade-i": 3 } as CSSProperties}>
-        <div className="flex items-center gap-[5px]">
+        <div className="relative flex items-center gap-[5px]">
+          {props.onBack != null && (
+            <button
+              type="button"
+              onClick={props.onBack}
+              disabled={props.disabled}
+              aria-label="Go back to previous step"
+              className="absolute right-full mr-3 inline-flex h-5 w-5 items-center justify-center rounded-full text-foreground/40 transition-colors hover:text-foreground/80 disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              <ArrowLeftIcon className="h-3.5 w-3.5" weight="bold" />
+            </button>
+          )}
           {props.steps.map((step, index) => {
             const isComplete = index < currentIndex;
             const isCurrent = index === currentIndex;
