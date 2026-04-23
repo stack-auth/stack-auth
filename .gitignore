@@ -144,3 +144,6 @@ packages/stack/*
 !packages/react/package.json
 !packages/next/package.json
 !packages/stack/package.json
+
+# claude code
+.claude/scheduled_tasks.lock

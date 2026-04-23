@@ -4,6 +4,14 @@
 
 set -e
 
+# Pick up rotated secrets from the emulator snapshot resume path if present.
+if [ -f /run/stack-auth/rotated-secrets.env ]; then
+  set -a
+  # shellcheck disable=SC1091
+  source /run/stack-auth/rotated-secrets.env
+  set +a
+fi
+
 BACKEND_URL="http://127.0.0.1:${BACKEND_PORT:-8102}"
 
 if [ -z "${CRON_SECRET:-}" ]; then
