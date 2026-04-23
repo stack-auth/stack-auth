@@ -1,8 +1,9 @@
 "use client";
 
-import { Card, CardContent, CardDescription, CardHeader, CardTitle, Switch, Typography } from "@/components/ui";
+import { Switch, Typography } from "@/components/ui";
 import { useUpdateConfig } from "@/lib/config-update";
 import { cn } from "@/lib/utils";
+import { DesignBadge, DesignCard } from "@/components/design-components";
 import { FlaskIcon } from "@phosphor-icons/react";
 import { useAdminApp } from "../../use-admin-app";
 
@@ -20,70 +21,53 @@ export function TestModeToggle() {
     });
   };
 
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle>Test Mode</CardTitle>
-        <CardDescription>
-          Switch between test and live payment environments.
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="flex items-center justify-between">
-          <div className="flex items-start gap-3">
-            <div className={cn(
-              "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
-              paymentsConfig.testMode
-                ? "bg-blue-500/15 dark:bg-blue-400/15"
-                : "bg-muted"
-            )}>
-              <FlaskIcon className={cn(
-                "h-4 w-4",
-                paymentsConfig.testMode
-                  ? "text-blue-600 dark:text-blue-400"
-                  : "text-muted-foreground"
-              )} />
-            </div>
-            <div className="space-y-1">
-              <Typography className="font-medium">
-                {paymentsConfig.testMode ? "Test mode is active" : "Test mode is disabled"}
-              </Typography>
-              <Typography variant="secondary" className="text-sm">
-                {paymentsConfig.testMode
-                  ? "All checkouts are bypassed and no real payments are processed."
-                  : "Checkouts will process real payments through Stripe."
-                }
-              </Typography>
-            </div>
-          </div>
-          <Switch
-            checked={paymentsConfig.testMode}
-            onCheckedChange={handleToggle}
-          />
-        </div>
+  const isOn = paymentsConfig.testMode;
 
-        {paymentsConfig.testMode && (
-          <div className="mt-4 flex flex-wrap gap-2">
-            {[
-              "No credit card required",
-              "Products granted instantly",
-              "No Stripe transactions",
-            ].map((item) => (
-              <span
-                key={item}
-                className={cn(
-                  "inline-flex items-center px-2 py-0.5 rounded-md text-[11px] font-medium",
-                  "bg-blue-500/10 dark:bg-blue-400/15",
-                  "text-blue-700 dark:text-blue-300",
-                  "ring-1 ring-blue-500/20 dark:ring-blue-400/20"
-                )}
-              >
-                {item}
-              </span>
-            ))}
+  const testModeBadges = [
+    "No credit card required",
+    "Products granted instantly",
+    "No Stripe transactions",
+  ];
+
+  return (
+    <DesignCard
+      title="Test Mode"
+      subtitle="Switch between test and live payment environments."
+      icon={FlaskIcon}
+      gradient={isOn ? "blue" : "default"}
+    >
+      <div className="flex items-start justify-between gap-4">
+        <div className="flex items-start gap-3 min-w-0">
+          <div className={cn(
+            "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl ring-1 transition-colors duration-150 hover:transition-none",
+            isOn
+              ? "bg-blue-500/10 text-blue-600 dark:bg-blue-400/10 dark:text-blue-400 ring-blue-500/20"
+              : "bg-foreground/[0.05] text-muted-foreground ring-foreground/[0.08]"
+          )}>
+            <FlaskIcon className="h-4 w-4" weight="duotone" />
           </div>
-        )}
-      </CardContent>
-    </Card>
+          <div className="space-y-1 min-w-0">
+            <Typography className="text-sm font-medium text-foreground">
+              {isOn ? "Test mode is active" : "Test mode is disabled"}
+            </Typography>
+            <Typography variant="secondary" className="text-xs">
+              {isOn
+                ? "All checkouts are bypassed and no real payments are processed."
+                : "Checkouts will process real payments through Stripe."
+              }
+            </Typography>
+          </div>
+        </div>
+        <Switch checked={isOn} onCheckedChange={handleToggle} />
+      </div>
+
+      {isOn && (
+        <div className="mt-4 flex flex-wrap gap-1.5">
+          {testModeBadges.map((label) => (
+            <DesignBadge key={label} label={label} color="blue" size="sm" />
+          ))}
+        </div>
+      )}
+    </DesignCard>
   );
 }
