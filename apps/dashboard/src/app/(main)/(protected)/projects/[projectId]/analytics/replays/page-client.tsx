@@ -1961,15 +1961,15 @@ export default function PageClient() {
                         No session replays yet
                       </Typography>
                       <Typography className="mt-2 text-sm text-muted-foreground">
-                        Session replays let you watch how users interact with your app. Replays will appear here once your project starts capturing them.
+                        Session replays let you watch how users interact with your app. For info on enabling replays,{" "}
+                        <StyledLink
+                          href="https://docs.stack-auth.com/docs/apps/analytics"
+                          target="_blank"
+                        >
+                          look here
+                        </StyledLink>
+                        .
                       </Typography>
-                      <StyledLink
-                        href="https://docs.stack-auth.com/docs/apps/analytics"
-                        target="_blank"
-                        className="mt-3 inline-block text-sm"
-                      >
-                        Learn more in the docs
-                      </StyledLink>
                     </div>
                   )}
                 </div>
