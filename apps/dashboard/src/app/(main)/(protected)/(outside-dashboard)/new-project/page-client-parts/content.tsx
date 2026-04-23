@@ -26,7 +26,7 @@ import { PlusCircleIcon } from "@phosphor-icons/react";
 import { AdminOwnedProject, useStackApp, useUser } from "@stackframe/stack";
 import { runAsynchronouslyWithAlert, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { useSearchParams } from "next/navigation";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useRef, useState, useTransition } from "react";
 
 import type { ProjectOnboardingStatus } from "@stackframe/stack-shared/dist/schema-fields";
 import { ProjectOnboardingWizard } from "./project-onboarding-wizard";
@@ -38,6 +38,20 @@ import {
 } from "./shared";
 
 export default function PageClient() {
+  return (
+    <Suspense
+      fallback={
+        <div className="flex w-full flex-grow items-center justify-center">
+          <Spinner size={24} />
+        </div>
+      }
+    >
+      <PageClientInner />
+    </Suspense>
+  );
+}
+
+function PageClientInner() {
   const app = useStackApp();
   const appInternals = useMemo(() => getStackAppInternals(app), [app]);
   const user = useUser({ or: "redirect", projectIdMustMatch: "internal" });
@@ -55,6 +69,7 @@ export default function PageClient() {
 
   const [projectStatuses, setProjectStatuses] = useState<Map<string, ProjectOnboardingStatus>>(new Map());
   const [loadingStatuses, setLoadingStatuses] = useState(true);
+  const [, startStatusTransition] = useTransition();
   const [projectName, setProjectName] = useState(displayNameFromSearch ?? "");
   const [selectedTeamId, setSelectedTeamId] = useState<string | null>(null);
   const [creatingTeam, setCreatingTeam] = useState(false);
@@ -181,11 +196,15 @@ export default function PageClient() {
       throw new Error(`Failed to update onboarding status: ${response.status} ${await response.text()}`);
     }
 
-    setProjectStatuses((previous) => {
-      const next = new Map(previous);
-      next.set(project.id, status);
-      return next;
+    startStatusTransition(() => {
+      setProjectStatuses((previous) => {
+        const next = new Map(previous);
+        next.set(project.id, status);
+        return next;
+      });
     });
+
+    await appInternals.refreshOwnedProjects();
   };
 
   if (isLocalEmulator) {
