@@ -5,7 +5,7 @@ import type { ManualTransactionRow } from "@/lib/payments/schema/types";
 import { getStripeForAccount } from "@/lib/stripe";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import type { TransactionEntry } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { adaptSchema, adminAuthTypeSchema, moneyAmountSchema, productSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -273,9 +273,9 @@ export const POST = createSmartRouteHandler({
         refund_application_fee: false,
       });
       // Fee collection is best-effort and the originating refund has already
-      // succeeded — don't block the response on the inverse transfer. The
-      // helper has its own durable ledger + Sentry capture for failures.
-      runAsynchronously(collectInverseFee({
+      // succeeded, but we still need to keep the background ledger/transfer work
+      // alive after the response on serverless runtimes.
+      runAsynchronouslyAndWaitUntil(collectInverseFee({
         tenancy: auth.tenancy,
         amountStripeUnits: refundAmountStripeUnits,
         currency: "usd",
@@ -388,7 +388,7 @@ export const POST = createSmartRouteHandler({
         },
         refund_application_fee: false,
       });
-      runAsynchronously(collectInverseFee({
+      runAsynchronouslyAndWaitUntil(collectInverseFee({
         tenancy: auth.tenancy,
         amountStripeUnits: refundAmountStripeUnits,
         currency: "usd",

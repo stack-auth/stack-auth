@@ -13,10 +13,10 @@ const EXPECTED_REFUND_FEE_STRIPE_UNITS = 45;
 const EXPECTED_PARTIAL_REFUND_FEE_STRIPE_UNITS = 11;
 
 /**
- * `collectInverseFee` is intentionally fire-and-forget via `runAsynchronously`
- * in the refund route, so the refund response returns before the ledger row
- * is written / reaches a terminal status. Tests must poll instead of asserting
- * immediately after the refund response.
+ * `collectInverseFee` is intentionally backgrounded via `runAsynchronouslyAndWaitUntil`
+ * in the refund route, so the refund response can return before the ledger row
+ * reaches a terminal status. Tests must poll instead of asserting immediately
+ * after the refund response.
  */
 async function waitForPlatformFeeEvent(options: { terminal?: boolean } = {}) {
   const { terminal = true } = options;
