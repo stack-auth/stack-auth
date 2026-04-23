@@ -88,14 +88,14 @@ async function processEmailDeliveryEvent(kind: EmailEventKind, payload: ResendWe
 
   const eventAt = parseEventTimestamp(payload.data?.created_at ?? payload.created_at);
 
-  // Build the SET clause for this event kind. We only want to flip one of
-  // (deliveredAt, deliveryDelayedAt, bouncedAt, markedAsSpamAt) — and only when
-  // none of the terminal delivery states have been reached yet.
-  const updateColumn =
-    kind === "delivered" ? Prisma.sql`"deliveredAt"` :
-      kind === "delivery_delayed" ? Prisma.sql`"deliveryDelayedAt"` :
-        kind === "bounced" ? Prisma.sql`"bouncedAt"` :
-          Prisma.sql`"markedAsSpamAt"`;
+  // Build the delivery-state SET clause for this event kind. `delivery_delayed`
+  // is non-terminal; Resend can later send `delivered` or `bounced`, and the
+  // EmailOutbox exclusivity constraint allows only one of delivered/delayed/bounced.
+  const deliveryUpdate =
+    kind === "delivered" ? Prisma.sql`"deliveredAt" = ${eventAt}, "deliveryDelayedAt" = NULL` :
+      kind === "delivery_delayed" ? Prisma.sql`"deliveryDelayedAt" = ${eventAt}` :
+        kind === "bounced" ? Prisma.sql`"bouncedAt" = ${eventAt}, "deliveryDelayedAt" = NULL` :
+          Prisma.sql`"markedAsSpamAt" = ${eventAt}`;
 
   // For `delivered` and `bounced` we don't want to overwrite a terminal state if we
   // somehow receive events out of order. `complained` records a separate user action
@@ -158,7 +158,7 @@ async function processEmailDeliveryEvent(kind: EmailEventKind, payload: ResendWe
         LIMIT 1
       )
       UPDATE "EmailOutbox" e
-      SET ${updateColumn} = ${eventAt},
+      SET ${deliveryUpdate},
           "shouldUpdateSequenceId" = TRUE
       FROM candidate
       WHERE e."tenancyId" = candidate."tenancyId"
