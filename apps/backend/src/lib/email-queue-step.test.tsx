@@ -13,7 +13,13 @@ describe.sequential("recoverEmailsStuckInSending", () => {
   const testRunTag = `stuck-in-sending-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const createdIds: { tenancyId: string, id: string }[] = [];
 
-  const makeRow = async (params: { startedSendingAt: Date | null, finishedSendingAt?: Date | null, isPaused?: boolean }) => {
+  const makeRow = async (params: {
+    startedSendingAt: Date | null,
+    finishedSendingAt?: Date | null,
+    isPaused?: boolean,
+    sendRetries?: number,
+    nextSendRetryAt?: Date | null,
+  }) => {
     const tenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID);
     const created = await globalPrismaClient.emailOutbox.create({
       data: {
@@ -36,6 +42,8 @@ describe.sequential("recoverEmailsStuckInSending", () => {
         renderedIsTransactional: false,
         startedSendingAt: params.startedSendingAt,
         finishedSendingAt: params.finishedSendingAt ?? null,
+        sendRetries: params.sendRetries ?? 0,
+        nextSendRetryAt: params.nextSendRetryAt ?? null,
         isPaused: params.isPaused ?? false,
       },
     });
@@ -51,7 +59,11 @@ describe.sequential("recoverEmailsStuckInSending", () => {
 
   it("recovers a row whose startedSendingAt is older than the stuck timeout", async () => {
     const longAgo = new Date(Date.now() - STUCK_EMAIL_TIMEOUT_MS - 60_000);
-    const row = await makeRow({ startedSendingAt: longAgo });
+    const row = await makeRow({
+      startedSendingAt: longAgo,
+      sendRetries: 1,
+      nextSendRetryAt: new Date(Date.now() + 60_000),
+    });
 
     await recoverEmailsStuckInSending();
 

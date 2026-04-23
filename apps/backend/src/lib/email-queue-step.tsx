@@ -175,6 +175,7 @@ async function recoverEmailsStuckInSending(): Promise<void> {
       sendServerErrorExternalDetails: externalDetails,
       sendServerErrorInternalMessage: `Email was stuck in sending (startedSendingAt <= ${stuckCutoff.toISOString()}) and was recovered by the email queue step. Not retried to avoid duplicate delivery.`,
       sendServerErrorInternalDetails: internalDetails,
+      nextSendRetryAt: null,
       shouldUpdateSequenceId: true,
     },
     select: { id: true, tenancyId: true, startedSendingAt: true, to: true, sendAttemptErrors: true },
