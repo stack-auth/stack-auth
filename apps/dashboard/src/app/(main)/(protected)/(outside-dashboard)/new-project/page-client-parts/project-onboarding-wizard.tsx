@@ -339,7 +339,7 @@ export function ProjectOnboardingWizard(props: {
               "relative flex flex-col items-center gap-6 rounded-2xl p-10 text-center transition-[box-shadow,background-color] duration-150 hover:transition-none",
               createNewSelected
                 ? "bg-white ring-2 ring-blue-500/50 shadow-md dark:bg-blue-500/[0.08] dark:ring-blue-500/50 dark:shadow-none"
-                : "bg-white/50 ring-1 ring-black/[0.06] hover:ring-black/[0.10] dark:bg-background/60 dark:backdrop-blur-xl dark:ring-white/[0.06] dark:hover:ring-white/[0.10]",
+                : "bg-white/90 ring-1 ring-black/[0.06] hover:ring-black/[0.10] dark:bg-white/[0.06] dark:ring-white/[0.10] dark:hover:ring-white/[0.14]",
             )}
           >
             {createNewSelected && (
@@ -367,7 +367,7 @@ export function ProjectOnboardingWizard(props: {
               "relative flex flex-col items-center gap-6 rounded-2xl p-10 text-center transition-[box-shadow,background-color] duration-150 hover:transition-none",
               linkExistingSelected
                 ? "bg-white ring-2 ring-blue-500/50 shadow-md dark:bg-blue-500/[0.08] dark:ring-blue-500/50 dark:shadow-none"
-                : "bg-white/50 ring-1 ring-black/[0.06] hover:ring-black/[0.10] dark:bg-background/60 dark:backdrop-blur-xl dark:ring-white/[0.06] dark:hover:ring-white/[0.10]",
+                : "bg-white/90 ring-1 ring-black/[0.06] hover:ring-black/[0.10] dark:bg-white/[0.06] dark:ring-white/[0.10] dark:hover:ring-white/[0.14]",
             )}
           >
             {linkExistingSelected && (
@@ -717,7 +717,6 @@ export function ProjectOnboardingWizard(props: {
               variant="warning"
               title="No themes found"
               description="Theme selection is temporarily unavailable. You can still continue."
-              glassmorphic
             />
           )}
           <div className="grid gap-4 sm:grid-cols-3">
@@ -737,8 +736,8 @@ export function ProjectOnboardingWizard(props: {
                           "dark:shadow-[0_14px_48px_-10px_rgba(96,165,250,0.38),0_0_1px_rgba(96,165,250,0.25)]",
                         )
                       : cn(
-                          "bg-white/60 dark:bg-background/40 dark:backdrop-blur-xl",
-                          "ring-1 ring-black/[0.05] hover:ring-black/[0.09] dark:ring-white/[0.05] dark:hover:ring-white/[0.09]",
+                          "bg-white/90 dark:bg-white/[0.06]",
+                          "ring-1 ring-black/[0.06] hover:ring-black/[0.10] dark:ring-white/[0.10] dark:hover:ring-white/[0.14]",
                         ),
                   )}
                 >

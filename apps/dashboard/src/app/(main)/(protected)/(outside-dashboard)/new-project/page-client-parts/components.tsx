@@ -538,7 +538,6 @@ export function ModeNotImplementedCard(props: { onBack: () => void }) {
         variant="warning"
         title="Not available yet"
         description="Linking an existing config into onboarding is not available yet."
-        glassmorphic
       />
       <div className="flex justify-center">
         <DesignButton variant="outline" className="rounded-full px-8" onClick={props.onBack}>
