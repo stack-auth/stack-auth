@@ -54,6 +54,7 @@ import * as yup from "yup";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
+import { UserAnalyticsSection } from "./user-analytics";
 
 const userMetadataDocsUrl = "https://docs.stack-auth.com/docs/concepts/custom-user-data";
 
@@ -1504,7 +1505,7 @@ function UserPage({ user }: { user: ServerUser }) {
         {activeTab === "teams" && <UserTeamsSection user={user} />}
         {activeTab === "payments" && <TabPlaceholder label="Payments" />}
         {activeTab === "emails" && <TabPlaceholder label="Emails" />}
-        {activeTab === "analytics" && <TabPlaceholder label="Analytics" />}
+        {activeTab === "analytics" && <UserAnalyticsSection user={user} />}
       </div>
     </PageLayout>
   );
