@@ -186,8 +186,6 @@ export default function PageClient() {
       next.set(project.id, status);
       return next;
     });
-
-    await appInternals.refreshOwnedProjects();
   };
 
   if (isLocalEmulator) {
