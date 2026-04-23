@@ -4,7 +4,12 @@ import { Link } from "@/components/link";
 import { ItemDialog } from "@/components/payments/item-dialog";
 import { useRouter } from "@/components/router";
 import {
-  Button,
+  DesignButton,
+  DesignInput,
+  DesignSelectorDropdown,
+} from "@/components/design-components";
+import { SubpageHeader } from "@/components/design-components/subpage-header";
+import {
   Card,
   CardDescription,
   CardHeader,
@@ -14,18 +19,11 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
-  Input,
   Label,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
   SimpleTooltip,
   toast,
   Typography,
 } from "@/components/ui";
-import { SubpageHeader } from "@/components/design-components/subpage-header";
 import { useUpdateConfig } from "@/lib/config-update";
 import { cn } from "@/lib/utils";
 import { ArrowSquareOutIcon, BuildingOfficeIcon, CaretDownIcon, ChatIcon, ClockIcon, CodeIcon, CopyIcon, GearIcon, HardDriveIcon, LightningIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TrashIcon, UserIcon } from "@phosphor-icons/react";
@@ -34,7 +32,7 @@ import { getUserSpecifiedIdErrorMessage, isValidUserSpecifiedId, sanitizeUserSpe
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { useSearchParams } from "next/navigation";
-import { useLayoutEffect, useRef, useState } from "react";
+import { useLayoutEffect, useMemo, useRef, useState } from "react";
 import { useAdminApp, useProjectId } from "../../../use-admin-app";
 import { CreateProductLineDialog } from "../create-product-line-dialog";
 import { IncludedItemDialog } from "../included-item-dialog";
@@ -70,6 +68,13 @@ const CUSTOMER_TYPE_OPTIONS = [
     icon: GearIcon,
     color: 'amber',
   },
+] as const;
+
+const FREE_TRIAL_UNIT_OPTIONS = [
+  { value: 'day', label: 'days' },
+  { value: 'week', label: 'weeks' },
+  { value: 'month', label: 'months' },
+  { value: 'year', label: 'years' },
 ] as const;
 
 const COLOR_CLASSES = {
@@ -341,6 +346,22 @@ export default function PageClient() {
 
     return () => observer.disconnect();
   }, [hasSelectedCustomerType]);
+
+  const productLineDropdownOptions = useMemo(() => [
+    { value: 'no-product-line', label: 'No product line' },
+    ...typedEntries(paymentsConfig.productLines)
+      .filter(([, productLine]) => productLine.customerType === customerType)
+      .map(([id, productLine]) => ({
+        value: id,
+        label: productLine.displayName || id,
+      })),
+    { value: 'create-new', label: '+ Create new' },
+  ], [paymentsConfig.productLines, customerType]);
+
+  const freeTrialUnitSelectOptions = useMemo(
+    () => FREE_TRIAL_UNIT_OPTIONS.map((o) => ({ value: o.value, label: o.label })),
+    []
+  );
 
   // Computed values
   const existingProducts = typedEntries(paymentsConfig.products)
@@ -615,11 +636,19 @@ ${Object.entries(prices).map(([id, price]) => {
         onBack={handleBack}
         actions={
           <>
-            <Button variant="outline" onClick={handleCancel}>
+            <DesignButton
+              variant="secondary"
+              size="sm"
+              type="button"
+              onClick={handleCancel}
+              className="h-9 rounded-xl px-4 text-sm"
+            >
               Cancel
-            </Button>
+            </DesignButton>
             {isInlineProduct ? (
-              <Button
+              <DesignButton
+                size="sm"
+                type="button"
                 onClick={() => {
                   const prompt = generateInlineProductPrompt();
                   runAsynchronouslyWithAlert(async () => {
@@ -627,38 +656,44 @@ ${Object.entries(prices).map(([id, price]) => {
                     toast({ title: "Prompt copied to clipboard" });
                   });
                 }}
+                className="h-9 rounded-xl px-4 text-sm"
               >
                 <CopyIcon className="h-4 w-4 mr-2" />
                 Copy Checkout Prompt
-              </Button>
+              </DesignButton>
             ) : (
               <DropdownMenu>
-                <div className="flex items-center">
+                <div className="inline-flex items-stretch overflow-hidden rounded-xl">
                   <SimpleTooltip
                     tooltip={!canSave ? "Fill in required fields and add at least one price" : undefined}
                     disabled={canSave}
                   >
-                    <Button
+                    <DesignButton
+                      size="sm"
+                      type="button"
                       onClick={handleSave}
                       disabled={!canSave || isSaving}
-                      className="!rounded-r-none"
+                      loading={isSaving}
+                      className="h-9 rounded-none px-4 text-sm"
                     >
-                      {isSaving ? "Creating..." : "Create Product"}
-                    </Button>
+                      Create Product
+                    </DesignButton>
                   </SimpleTooltip>
-                  <div className="w-px h-6 bg-primary-foreground/20" />
                   <DropdownMenuTrigger asChild>
-                    <Button
+                    <DesignButton
                       variant="default"
+                      size="sm"
+                      type="button"
                       disabled={!canSave || isSaving}
-                      className="!rounded-l-none px-2"
+                      className="h-9 rounded-none px-2.5 border-l border-primary-foreground/20"
                     >
                       <CaretDownIcon className="h-4 w-4" />
-                    </Button>
+                    </DesignButton>
                   </DropdownMenuTrigger>
                 </div>
-                <DropdownMenuContent align="end" className="min-w-[220px]">
+                <DropdownMenuContent align="end" className="min-w-[180px]">
                   <DropdownMenuItem
+                    icon={<CodeIcon className="h-4 w-4" />}
                     onClick={() => {
                       const code = generateInlineProductCode();
                       runAsynchronouslyWithAlert(async () => {
@@ -666,12 +701,11 @@ ${Object.entries(prices).map(([id, price]) => {
                         toast({ title: "Code copied to clipboard" });
                       });
                     }}
-                    className="flex items-center gap-2"
                   >
-                    <CodeIcon className="h-4 w-4" />
-                    <span>Copy inline product code</span>
+                    Copy code
                   </DropdownMenuItem>
                   <DropdownMenuItem
+                    icon={<ChatIcon className="h-4 w-4" />}
                     onClick={() => {
                       const prompt = generateInlineProductPrompt();
                       runAsynchronouslyWithAlert(async () => {
@@ -679,10 +713,8 @@ ${Object.entries(prices).map(([id, price]) => {
                         toast({ title: "Prompt copied to clipboard" });
                       });
                     }}
-                    className="flex items-center gap-2"
                   >
-                    <ChatIcon className="h-4 w-4" />
-                    <span>Copy prompt for inline product</span>
+                    Copy prompt
                   </DropdownMenuItem>
                 </DropdownMenuContent>
               </DropdownMenu>
@@ -695,13 +727,13 @@ ${Object.entries(prices).map(([id, price]) => {
       <div ref={mainContentRef} className="flex-1 flex overflow-hidden">
         {/* Left side - Configuration form */}
         <div className="flex-1 overflow-y-auto p-6 flex justify-center">
-          <div className="w-full max-w-2xl space-y-6">
+          <div className="w-full max-w-2xl space-y-5">
             {/* Display Name and Product ID - same row */}
             <div className="grid grid-cols-2 gap-4 items-start">
               {/* Display Name */}
-              <div className="grid gap-1.5">
+              <div className="grid gap-2">
                 <Label htmlFor="display-name" className="text-sm font-medium">Display Name</Label>
-                <Input
+                <DesignInput
                   id="display-name"
                   value={displayName}
                   onChange={(e) => {
@@ -722,15 +754,10 @@ ${Object.entries(prices).map(([id, price]) => {
                     }
                   }}
                   placeholder="e.g., Pro Plan"
-                  className={cn(
-                    "h-8 rounded-lg text-sm",
-                    "bg-foreground/[0.03] border-border/50 dark:border-foreground/[0.1]",
-                    "focus:ring-1 focus:ring-cyan-500/30 focus:border-cyan-500/50",
-                    "transition-all duration-150 hover:transition-none",
-                    errors.displayName && "border-destructive focus:ring-destructive/30"
-                  )}
+                  size="md"
+                  className={cn(errors.displayName && "border-destructive focus-visible:ring-destructive/30")}
                 />
-                <span className="text-xs text-foreground/40">Visible to customers during checkout</span>
+                <span className="text-xs text-muted-foreground">Visible to customers during checkout</span>
                 {errors.displayName && (
                   <Typography type="label" className="text-destructive text-xs">
                     {errors.displayName}
@@ -739,9 +766,9 @@ ${Object.entries(prices).map(([id, price]) => {
               </div>
 
               {/* Product ID */}
-              <div className="grid gap-1.5">
+              <div className="grid gap-2">
                 <Label htmlFor="product-id" className="text-sm font-medium">Product ID</Label>
-                <Input
+                <DesignInput
                   id="product-id"
                   value={productId}
                   onChange={(e) => {
@@ -757,15 +784,13 @@ ${Object.entries(prices).map(([id, price]) => {
                     }
                   }}
                   placeholder="e.g., pro-plan"
+                  size="md"
                   className={cn(
-                    "h-8 rounded-lg font-mono text-sm",
-                    "bg-foreground/[0.03] border-border/50 dark:border-foreground/[0.1]",
-                    "focus:ring-1 focus:ring-cyan-500/30 focus:border-cyan-500/50",
-                    "transition-all duration-150 hover:transition-none",
-                    errors.productId && "border-destructive focus:ring-destructive/30"
+                    "font-mono text-sm",
+                    errors.productId && "border-destructive focus-visible:ring-destructive/30"
                   )}
                 />
-                <span className="text-xs text-foreground/40">Used to reference this product in code</span>
+                <span className="text-xs text-muted-foreground">Used to reference this product in code</span>
                 {errors.productId && (
                   <Typography type="label" className="text-destructive text-xs">
                     {errors.productId}
@@ -776,7 +801,7 @@ ${Object.entries(prices).map(([id, price]) => {
 
             {/* Pricing Section */}
             <section className="space-y-3">
-              <Typography type="h4" className="font-semibold">Pricing</Typography>
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Pricing</h2>
               <PricingSection
                 prices={prices}
                 onPricesChange={(newPrices) => {
@@ -817,15 +842,17 @@ ${Object.entries(prices).map(([id, price]) => {
 
             {/* Included Items Section */}
             <section className="space-y-3">
-              <Typography type="h4" className="font-semibold">Included Items</Typography>
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Included Items</h2>
 
               {Object.entries(includedItems).length === 0 ? (
-                <div className="rounded-lg border border-dashed border-border/50 p-4 text-center">
-                  <p className="text-sm text-foreground/50 mb-3">
+                <div className="rounded-xl border border-dashed border-border/50 p-4 text-center">
+                  <p className="text-sm text-muted-foreground mb-3">
                     No items included yet
                   </p>
-                  <Button
+                  <DesignButton
                     variant="outline"
+                    size="sm"
+                    type="button"
                     onClick={() => {
                       setEditingItemId(undefined);
                       setShowItemDialog(true);
@@ -833,7 +860,7 @@ ${Object.entries(prices).map(([id, price]) => {
                   >
                     <PlusIcon className="h-4 w-4 mr-2" />
                     Add Item
-                  </Button>
+                  </DesignButton>
                 </div>
               ) : (
                 <div className="space-y-2">
@@ -841,39 +868,44 @@ ${Object.entries(prices).map(([id, price]) => {
                     <div
                       key={itemId}
                       className={cn(
-                        "flex items-center justify-between p-2.5 rounded-lg",
-                        "bg-foreground/[0.02] border border-border/30",
+                        "flex items-center justify-between p-3 rounded-xl",
+                        "bg-foreground/[0.02] border border-border/50 ring-1 ring-foreground/[0.04]",
                         "hover:bg-foreground/[0.04] transition-colors duration-150 hover:transition-none"
                       )}
                     >
-                      <div className="flex-1">
+                      <div className="flex-1 min-w-0">
                         <div className="font-medium text-sm">{getItemDisplay(itemId, item, existingItems)}</div>
-                        <div className="text-xs text-foreground/30 font-mono">{itemId}</div>
+                        <div className="text-xs text-muted-foreground font-mono truncate">{itemId}</div>
                       </div>
-                      <div className="flex items-center gap-1">
-                        <Button
+                      <div className="flex items-center gap-1 shrink-0">
+                        <DesignButton
                           variant="ghost"
                           size="sm"
+                          type="button"
                           onClick={() => {
                             setEditingItemId(itemId);
                             setShowItemDialog(true);
                           }}
                         >
                           Edit
-                        </Button>
-                        <Button
+                        </DesignButton>
+                        <DesignButton
                           variant="ghost"
                           size="sm"
+                          type="button"
+                          className="text-destructive hover:text-destructive"
                           onClick={() => removeIncludedItem(itemId)}
                         >
-                          <TrashIcon className="h-4 w-4 text-destructive" />
-                        </Button>
+                          <TrashIcon className="h-4 w-4" />
+                        </DesignButton>
                       </div>
                     </div>
                   ))}
-                  <Button
+                  <DesignButton
                     variant="outline"
+                    size="sm"
                     className="w-full"
+                    type="button"
                     onClick={() => {
                       setEditingItemId(undefined);
                       setShowItemDialog(true);
@@ -881,14 +913,14 @@ ${Object.entries(prices).map(([id, price]) => {
                   >
                     <PlusIcon className="h-4 w-4 mr-2" />
                     Add Another Item
-                  </Button>
+                  </DesignButton>
                 </div>
               )}
             </section>
 
             {/* Options Section - Two column grid */}
             <section className="space-y-3">
-              <Typography type="h4" className="font-semibold">Options</Typography>
+              <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Options</h2>
 
               <div className="grid grid-cols-[auto,1fr] gap-x-6">
                 {/* Stackable */}
@@ -1001,7 +1033,7 @@ ${Object.entries(prices).map(([id, price]) => {
                   </label>
                   {freeTrial && (
                     <div className="flex items-center gap-2 ml-4">
-                      <Input
+                      <DesignInput
                         type="number"
                         min={1}
                         value={freeTrial[0]}
@@ -1009,22 +1041,16 @@ ${Object.entries(prices).map(([id, price]) => {
                           const val = parseInt(e.target.value) || 1;
                           setFreeTrial([val, freeTrial[1]]);
                         }}
-                        className="h-7 w-16 text-sm rounded-md"
+                        size="sm"
+                        className="w-16"
                       />
-                      <Select
+                      <DesignSelectorDropdown
                         value={freeTrial[1]}
                         onValueChange={(value) => setFreeTrial([freeTrial[0], value as 'day' | 'week' | 'month' | 'year'])}
-                      >
-                        <SelectTrigger className="h-7 w-24 rounded-md text-sm">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          <SelectItem value="day">days</SelectItem>
-                          <SelectItem value="week">weeks</SelectItem>
-                          <SelectItem value="month">months</SelectItem>
-                          <SelectItem value="year">years</SelectItem>
-                        </SelectContent>
-                      </Select>
+                        options={freeTrialUnitSelectOptions}
+                        size="sm"
+                        className="w-28 shrink-0"
+                      />
                     </div>
                   )}
                 </div>
@@ -1032,7 +1058,7 @@ ${Object.entries(prices).map(([id, price]) => {
                 {/* Product Line */}
                 <span className="text-sm text-foreground/70 py-2 flex items-center border-b border-border/20">Part of a mutually exclusive group?</span>
                 <div className="py-2 flex items-center border-b border-border/20">
-                  <Select
+                  <DesignSelectorDropdown
                     value={effectiveProductLineId || 'no-product-line'}
                     onValueChange={(value) => {
                       if (value === 'create-new') {
@@ -1043,24 +1069,12 @@ ${Object.entries(prices).map(([id, price]) => {
                         setProductLineId(value);
                       }
                     }}
-                  >
-                    <SelectTrigger className="h-8 w-full max-w-[200px] rounded-lg">
-                      <SelectValue placeholder="No product line" />
-                    </SelectTrigger>
-                    <SelectContent className="rounded-lg">
-                      <SelectItem value="no-product-line" className="rounded-lg">No product line</SelectItem>
-                      {Object.entries(paymentsConfig.productLines)
-                        .filter(([, productLine]) => productLine.customerType === customerType)
-                        .map(([id, productLine]) => (
-                          <SelectItem key={id} value={id} className="rounded-lg">
-                            {productLine.displayName || id}
-                          </SelectItem>
-                        ))}
-                      <SelectItem value="create-new" className="rounded-lg">
-                        <span className="text-primary">+ Create new</span>
-                      </SelectItem>
-                    </SelectContent>
-                  </Select>
+                    options={productLineDropdownOptions}
+                    placeholder="No product line"
+                    size="sm"
+                    className="w-full max-w-[200px]"
+                    triggerClassName="w-full max-w-[200px]"
+                  />
                 </div>
 
                 {/* Inline Product */}
@@ -1081,7 +1095,7 @@ ${Object.entries(prices).map(([id, price]) => {
 
         {/* Right side - Preview or Code Snippet (shown when container too small) */}
         {showPreview && (
-          <div className="flex w-[400px] shrink-0 flex-col items-center p-8 border-l border-border/40 bg-foreground/[0.01]">
+          <div className="flex w-[400px] shrink-0 flex-col items-center p-8 mr-12 lg:mr-16 border-l border-border/40 bg-foreground/[0.01]">
             <div className="text-center mb-6">
               <span className="text-xs font-medium text-foreground/40 uppercase tracking-wider">
                 {isInlineProduct ? 'Checkout Code Snippet' : 'Preview'}
@@ -1096,9 +1110,10 @@ ${Object.entries(prices).map(([id, price]) => {
               )}>
                   {generateInlineProductCode()}
                 </pre>
-                <Button
+                <DesignButton
                   variant="outline"
                   size="sm"
+                  type="button"
                   className="mt-4"
                   onClick={() => {
                   runAsynchronouslyWithAlert(async () => {
@@ -1109,7 +1124,7 @@ ${Object.entries(prices).map(([id, price]) => {
                 >
                   <CopyIcon className="h-4 w-4 mr-2" />
                   Copy Code
-                </Button>
+                </DesignButton>
               </div>
             ) : (
               <div className="w-[320px]">
