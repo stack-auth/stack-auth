@@ -64,8 +64,6 @@ const tenancy = {
 } as Tenancy;
 
 describe("collectInverseFee", () => {
-  const originalPlatformAccountId = process.env.STACK_STRIPE_PLATFORM_ACCOUNT_ID;
-
   beforeEach(() => {
     mocks.rows.clear();
     mocks.captureError.mockClear();
@@ -93,15 +91,11 @@ describe("collectInverseFee", () => {
       mocks.rows.set(key, row);
       return row;
     });
-    process.env.STACK_STRIPE_PLATFORM_ACCOUNT_ID = "acct_platform";
+    vi.stubEnv("STACK_STRIPE_PLATFORM_ACCOUNT_ID", "acct_platform");
   });
 
   afterEach(() => {
-    if (originalPlatformAccountId === undefined) {
-      delete process.env.STACK_STRIPE_PLATFORM_ACCOUNT_ID;
-    } else {
-      process.env.STACK_STRIPE_PLATFORM_ACCOUNT_ID = originalPlatformAccountId;
-    }
+    vi.unstubAllEnvs();
   });
 
   it("fails closed instead of creating a transfer when Stripe reconciliation lookup fails", async () => {
