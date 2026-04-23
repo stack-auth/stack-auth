@@ -73,6 +73,7 @@ it("does not 500 when an OAuth refresh-token grant races with a sign-out of the 
       body: {
         grant_type: "refresh_token",
         client_id: projectKeys.projectId,
+        client_secret: projectKeys.publishableClientKey,
         refresh_token: rt,
       },
     });
