@@ -126,10 +126,10 @@ async function resolveSafeFetchUrl(raw: string): Promise<ResolvedSafeFetchUrl | 
       return { kind: "error", reason: "hostname resolves to a disallowed IP range" };
     }
   }
-  const selected = resolved[0];
-  if (!selected) {
+  if (resolved.length === 0) {
     return { kind: "error", reason: `DNS lookup returned no addresses for ${hostname}` };
   }
+  const selected = resolved[0];
   const family = toIpFamily(selected);
   if (family === null) {
     return { kind: "error", reason: `DNS lookup returned unsupported address family for ${hostname}` };
