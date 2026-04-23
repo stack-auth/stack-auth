@@ -1,12 +1,13 @@
 // @vitest-environment jsdom
 
-import { cleanup, render, waitFor } from "@testing-library/react";
+import { cleanup, fireEvent, render, waitFor } from "@testing-library/react";
 import { useState } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createDefaultDataGridState,
   DataGrid,
   type DataGridColumnDef,
+  type DataGridProps,
 } from "./index";
 
 type Row = {
@@ -104,6 +105,26 @@ function DataGridHarness(props: { fillHeight?: boolean }) {
   );
 }
 
+function InteractiveDataGridHarness(props: {
+  onSortChange?: DataGridProps<Row>["onSortChange"],
+  onSelectionChange?: DataGridProps<Row>["onSelectionChange"],
+}) {
+  const [state, setState] = useState(() => createDefaultDataGridState(columns));
+
+  return (
+    <DataGrid<Row>
+      columns={columns}
+      rows={[{ id: "row-1", name: "Row 1" }]}
+      getRowId={(row) => row.id}
+      state={state}
+      onChange={setState}
+      selectionMode="multiple"
+      onSortChange={props.onSortChange}
+      onSelectionChange={props.onSelectionChange}
+    />
+  );
+}
+
 describe("DataGrid infinite scroll observer", () => {
   beforeEach(() => {
     intersectionObserverRecords = [];
@@ -157,5 +178,56 @@ describe("DataGrid infinite scroll observer", () => {
     });
 
     expect(intersectionObserverRecords.at(-1)?.options?.root ?? null).toBeNull();
+  });
+});
+
+describe("DataGrid controlled callbacks", () => {
+  beforeEach(() => {
+    vi.stubGlobal("ResizeObserver", MockResizeObserver);
+    vi.spyOn(HTMLElement.prototype, "getBoundingClientRect").mockImplementation(
+      function getBoundingClientRect() {
+        return {
+          x: 0,
+          y: 0,
+          width: 320,
+          height: 44,
+          top: 0,
+          left: 0,
+          right: 320,
+          bottom: 44,
+          toJSON() {
+            return this;
+          },
+        } as DOMRect;
+      },
+    );
+  });
+
+  afterEach(() => {
+    cleanup();
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it("fires onSortChange from the current controlled sort state", () => {
+    const onSortChange = vi.fn();
+    const { getByRole } = render(<InteractiveDataGridHarness onSortChange={onSortChange} />);
+
+    fireEvent.click(getByRole("columnheader", { name: /name/i }));
+
+    expect(onSortChange).toHaveBeenCalledTimes(1);
+    expect(onSortChange).toHaveBeenCalledWith([{ columnId: "name", direction: "asc" }]);
+  });
+
+  it("fires onSelectionChange when selecting all rows", () => {
+    const onSelectionChange = vi.fn();
+    const { getByRole } = render(<InteractiveDataGridHarness onSelectionChange={onSelectionChange} />);
+
+    fireEvent.click(getByRole("checkbox", { name: /select all rows/i }));
+
+    expect(onSelectionChange).toHaveBeenCalledTimes(1);
+    const [selectedIds, selectedRows] = onSelectionChange.mock.calls[0];
+    expect([...selectedIds]).toEqual(["row-1"]);
+    expect(selectedRows).toEqual([{ id: "row-1", name: "Row 1" }]);
   });
 });

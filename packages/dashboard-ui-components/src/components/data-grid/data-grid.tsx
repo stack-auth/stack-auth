@@ -944,19 +944,11 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
   // ── Handlers ─────────────────────────────────────────────────
   const handleSort = useCallback(
     (columnId: string, multi: boolean) => {
-      // Box pattern matches handleRowClick / handleSelectAll — keeps the
-      // reducer pure and fires the callback exactly once even under Strict
-      // Mode (which invokes updater functions twice).
-      const box: { next: DataGridState["sorting"] | null } = { next: null };
-      onChange((s) => {
-        box.next = toggleSort(s.sorting, columnId, multi);
-        return { ...s, sorting: box.next };
-      });
-      if (box.next != null) {
-        onSortChange?.(box.next);
-      }
+      const next = toggleSort(state.sorting, columnId, multi);
+      onChange((s) => ({ ...s, sorting: next }));
+      onSortChange?.(next);
     },
-    [onChange, onSortChange],
+    [onChange, onSortChange, state.sorting],
   );
 
   const handleResize = useCallback(
@@ -993,33 +985,29 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
 
   const handleRowClick = useCallback(
     (row: TRow, rowId: RowId, event: React.MouseEvent) => {
-      // Selection. Capture `next` via a mutable box so TS doesn't widen it
-      // to `null` across the closure boundary. The reducer stays pure; the
-      // callback fires outside of it (fixes strict-mode double-invoke that
-      // the old `setTimeout` inside the reducer hit).
+      // Selection callbacks fire outside the updater (fixes strict-mode
+      // double-invoke from the old `setTimeout` inside the reducer). Compute
+      // from the current controlled prop instead of from inside the updater,
+      // because React does not guarantee updater functions run synchronously.
       if (selectionMode !== "none") {
-        const box: { next: DataGridState["selection"] | null } = { next: null };
-        onChange((s) => {
-          box.next = toggleRowSelection(
-            s.selection,
-            rowId,
-            selectionMode,
-            event.shiftKey,
-            event.metaKey || event.ctrlKey,
-            rowIds,
-          );
-          return { ...s, selection: box.next };
-        });
-        const resolved = box.next;
-        if (onSelectionChange && resolved != null) {
-          const selectedRows = rows.filter((r) => resolved.selectedIds.has(getRowId(r)));
-          onSelectionChange(resolved.selectedIds, selectedRows);
+        const next = toggleRowSelection(
+          state.selection,
+          rowId,
+          selectionMode,
+          event.shiftKey,
+          event.metaKey || event.ctrlKey,
+          rowIds,
+        );
+        onChange((s) => ({ ...s, selection: next }));
+        if (onSelectionChange) {
+          const selectedRows = rows.filter((r) => next.selectedIds.has(getRowId(r)));
+          onSelectionChange(next.selectedIds, selectedRows);
         }
       }
 
       onRowClick?.(row, rowId, event);
     },
-    [selectionMode, onChange, onRowClick, onSelectionChange, rowIds, rows, getRowId],
+    [selectionMode, onChange, onRowClick, onSelectionChange, rowIds, rows, getRowId, state.selection],
   );
 
   const handleRowSelectionCheckboxClick = useCallback(
@@ -1034,18 +1022,14 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
   );
 
   const handleSelectAll = useCallback(() => {
-    const box: { next: DataGridState["selection"] | null, rows: readonly TRow[] } = { next: null, rows: [] };
-    onChange((s) => {
-      const allSelected = rowIds.every((id) => s.selection.selectedIds.has(id));
-      box.next = allSelected ? clearSelection() : selectAll(rowIds);
-      box.rows = allSelected ? [] : rows;
-      return { ...s, selection: box.next };
-    });
-    const resolvedNext = box.next;
-    if (onSelectionChange && resolvedNext != null) {
-      onSelectionChange(resolvedNext.selectedIds, [...box.rows]);
+    const allSelectedNow = rowIds.every((id) => state.selection.selectedIds.has(id));
+    const next = allSelectedNow ? clearSelection() : selectAll(rowIds);
+    const selectedRows = allSelectedNow ? [] : rows;
+    onChange((s) => ({ ...s, selection: next }));
+    if (onSelectionChange) {
+      onSelectionChange(next.selectedIds, [...selectedRows]);
     }
-  }, [onChange, rowIds, rows, onSelectionChange]);
+  }, [onChange, rowIds, rows, onSelectionChange, state.selection]);
 
   const handleExportCsv = useCallback(() => {
     exportToCsv(rows, visibleColumns, exportFilename);
