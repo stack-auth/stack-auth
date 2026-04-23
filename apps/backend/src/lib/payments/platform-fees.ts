@@ -169,14 +169,38 @@ async function collectInverseFeeInner(options: {
   // without a stripeTransferId (the transfer might have succeeded but our
   // ledger-update crashed), list transfers on the merchant's account for this
   // transfer_group and use the pre-existing transfer if we find one.
+  //
+  // Two error cases are handled explicitly below; the distinction matters
+  // because falling through to `transfers.create` is only safe when we've
+  // proven no transfer exists yet:
+  //   (a) the `transfers.list` lookup itself fails — safe to fall through:
+  //       we don't know if a transfer exists, but the idempotency key on the
+  //       near-term retry (24h window) still dedupes, and worst case the NEXT
+  //       retry's reconciliation will pick up whatever we create here.
+  //   (b) the lookup succeeds AND returns a pre-existing transfer, but the
+  //       ledger update then fails — we MUST NOT fall through. Creating a
+  //       second transfer now (or after the idempotency key expires on a
+  //       later retry) would double-debit the merchant. Bail with FAILED so
+  //       ops sees the inconsistency and can reconcile manually using the
+  //       captured transfer id.
   if (!ledgerRow.stripeTransferId) {
+    let existing: Stripe.ApiList<Stripe.Transfer> | null = null;
     try {
-      const existing = await platformStripe.transfers.list(
+      existing = await platformStripe.transfers.list(
         { transfer_group: transferGroup, limit: 1 },
         { stripeAccount: stripeAccountId },
       );
-      if (existing.data.length > 0) {
-        const pre = existing.data[0];
+    } catch (searchErr) {
+      captureError("collect-inverse-fee-search", new StackAssertionError(
+        "Failed to search Stripe for existing platform fee transfer before retry — proceeding with idempotent create",
+        { sourceType: options.sourceType, sourceId: options.sourceId, ...stripeErrorContext(searchErr) }
+      ));
+      // Case (a): fall through to `transfers.create`.
+    }
+
+    if (existing && existing.data.length > 0) {
+      const pre = existing.data[0];
+      try {
         await globalPrismaClient.platformFeeEvent.update({
           where: ledgerKey,
           data: {
@@ -186,15 +210,22 @@ async function collectInverseFeeInner(options: {
             error: null,
           },
         });
+      } catch (dbErr) {
+        // Case (b): DO NOT fall through. We know a transfer exists on Stripe
+        // (id: pre.id) but we couldn't record it. Mark FAILED loudly and
+        // return; creating another transfer here would double-debit after
+        // the idempotency key expires.
+        captureError("collect-inverse-fee-ledger-reconcile", new StackAssertionError(
+          "Found pre-existing Stripe transfer during retry reconciliation but ledger update failed — manual reconciliation needed to avoid double-debit on next retry",
+          { sourceType: options.sourceType, sourceId: options.sourceId, preExistingTransferId: pre.id, dbErr }
+        ));
+        await markLedgerFailed(
+          ledgerKey,
+          `Pre-existing Stripe transfer ${pre.id} found but ledger update failed during reconciliation; manual intervention required to avoid double-debit`,
+        );
         return;
       }
-    } catch (searchErr) {
-      captureError("collect-inverse-fee-search", new StackAssertionError(
-        "Failed to search Stripe for existing platform fee transfer before retry — proceeding with idempotent create",
-        { sourceType: options.sourceType, sourceId: options.sourceId, ...stripeErrorContext(searchErr) }
-      ));
-      // Fall through: the idempotency key still gives us 24h of safety on the
-      // near-term retry path; the reconciliation only matters beyond that.
+      return;
     }
   }
 
