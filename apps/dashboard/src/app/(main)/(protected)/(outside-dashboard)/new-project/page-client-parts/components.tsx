@@ -124,16 +124,6 @@ export function OnboardingPage(props: OnboardingPageProps) {
   );
 }
 
-function appStageBadgeColor(stage: (typeof ALL_APPS)[AppId]["stage"]) {
-  if (stage === "alpha") {
-    return "orange";
-  }
-  if (stage === "beta") {
-    return "blue";
-  }
-  return null;
-}
-
 export type OnboardingAppCardProps = {
   appId: AppId,
   selected: boolean,
@@ -145,7 +135,6 @@ export type OnboardingAppCardProps = {
 
 export function OnboardingAppCard(props: OnboardingAppCardProps) {
   const app = ALL_APPS[props.appId];
-  const stageBadgeColor = appStageBadgeColor(app.stage);
 
   return (
     <Tooltip delayDuration={0}>
@@ -189,13 +178,6 @@ export function OnboardingAppCard(props: OnboardingAppCardProps) {
             <Typography className="text-sm font-semibold text-foreground">{app.displayName}</Typography>
             {props.required && (
               <DesignBadge label="Required" color="orange" size="sm" />
-            )}
-            {!props.required && stageBadgeColor != null && (
-              <DesignBadge
-                label={app.stage === "alpha" ? "Alpha" : "Beta"}
-                color={stageBadgeColor}
-                size="sm"
-              />
             )}
           </div>
           <Typography className="text-xs leading-relaxed text-muted-foreground">
