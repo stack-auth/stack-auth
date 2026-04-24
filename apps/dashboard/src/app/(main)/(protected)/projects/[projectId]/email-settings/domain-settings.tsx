@@ -2,25 +2,39 @@
 
 import { FormDialog } from "@/components/form-dialog";
 import { InputField } from "@/components/form-fields";
-import { DesignCard } from "@/components/design-components";
+import {
+  DesignAlert,
+  DesignButton,
+  DesignCard,
+  DesignInput,
+} from "@/components/design-components";
 import { useUpdateConfig } from "@/lib/config-update";
 import { getPublicEnvVar } from "@/lib/env";
 import { cn } from "@/lib/utils";
 import { AdminEmailConfig } from "@stackframe/stack";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
-import { strictEmailSchema } from "@stackframe/stack-shared/dist/schema-fields";
-import { ArrowsClockwise, Envelope, GearSix, GlobeSimple, PaperPlaneTilt } from "@phosphor-icons/react";
+import {
+  ArrowLeft,
+  ArrowsClockwise,
+  CheckCircle,
+  Cloud,
+  CopySimple,
+  Envelope,
+  GlobeSimple,
+  HardDrives,
+  type Icon as PhosphorIcon,
+  PaperPlaneTilt,
+  Plus,
+  ShieldCheck,
+  Spinner,
+  WarningDiamond,
+} from "@phosphor-icons/react";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { DesignAlert } from "@/components/design-components";
-import { DesignButton } from "@/components/design-components";
-import { DesignInput } from "@/components/design-components";
-import { DesignSelectorDropdown } from "@/components/design-components";
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { Label, Typography, useToast } from "@/components/ui";
-import { SimpleTooltip } from "@/components/ui/simple-tooltip";
-import { useCallback, useMemo, useState } from "react";
+import { Dialog, DialogContent, DialogTitle, Label, Typography, useToast } from "@/components/ui";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import * as yup from "yup";
+import Image from "next/image";
 import { useAdminApp } from "../use-admin-app";
 
 type ServerType = "shared" | "managed" | "resend" | "standard";
@@ -41,49 +55,41 @@ const SERVER_TYPE_LABELS: Record<Exclude<ServerType, "shared">, string> = {
   standard: "Custom SMTP",
 };
 
+type ManagedDomain = {
+  domainId: string,
+  subdomain: string,
+  senderLocalPart: string,
+  status: ManagedDomainStatus,
+  nameServerRecords: string[],
+};
+
+type SetupState = {
+  domainId: string,
+  subdomain: string,
+  senderLocalPart: string,
+  nameServerRecords: string[],
+  status: ManagedDomainStatus,
+};
+
 function getSharedServerTypeLabel(senderEmail: string | undefined): string {
   return `Shared (${senderEmail || DEFAULT_SHARED_SENDER_EMAIL})`;
 }
 
 const MANAGED_DOMAIN_STATUS_LABELS: Record<ManagedDomainStatus, string> = {
-  pending_dns: "Pending DNS records",
-  pending_verification: "Pending verification",
+  pending_dns: "Waiting for DNS",
+  pending_verification: "Verifying…",
   verified: "Verified",
-  applied: "Applied",
+  applied: "Active",
   failed: "Failed",
 };
 
-const VISIBLE_FIELDS: Record<ServerType, ServerFieldConfig[]> = {
-  shared: [],
-  managed: [],
-  resend: [
-    { label: "Sender Email", key: "senderEmail", type: "email" },
-    { label: "Sender Name", key: "senderName", type: "text" },
-  ],
-  standard: [
-    { label: "Sender Email", key: "senderEmail", type: "email" },
-    { label: "Sender Name", key: "senderName", type: "text" },
-  ],
+const MANAGED_DOMAIN_STATUS_COLORS: Record<ManagedDomainStatus, string> = {
+  pending_dns: "text-amber-600 dark:text-amber-400 bg-amber-500/10",
+  pending_verification: "text-blue-600 dark:text-blue-400 bg-blue-500/10",
+  verified: "text-green-600 dark:text-green-400 bg-green-500/10",
+  applied: "text-green-600 dark:text-green-400 bg-green-500/10",
+  failed: "text-red-600 dark:text-red-400 bg-red-500/10",
 };
-
-const CONFIG_FIELDS: Record<ServerType, ServerFieldConfig[]> = {
-  shared: [],
-  managed: [],
-  resend: [
-    { label: "Resend API Key", key: "password", type: "password" },
-  ],
-  standard: [
-    { label: "Host", key: "host", type: "text" },
-    { label: "Port", key: "port", type: "number" },
-    { label: "Username", key: "username", type: "text" },
-    { label: "Password", key: "password", type: "password" },
-  ],
-};
-
-function maskSecret(value: string): string {
-  if (value.length <= 4) return "••••";
-  return "••••••••" + value.slice(-4);
-}
 
 function getServerTypeFromConfig(config: CompleteConfig["emails"]["server"]): ServerType {
   if (config.isShared) return "shared";
@@ -116,6 +122,64 @@ function getFormValuesFromConfig(config: CompleteConfig["emails"]["server"], pro
     password: config.password ?? "",
   };
 }
+
+function ResendIcon({ className }: { className?: string }) {
+  return (
+    <>
+      <Image
+        src="/assets/resend-icon-black.svg"
+        alt=""
+        width={20}
+        height={20}
+        aria-hidden
+        className={cn(className, "block dark:hidden")}
+      />
+      <Image
+        src="/assets/resend-icon-white.svg"
+        alt=""
+        width={20}
+        height={20}
+        aria-hidden
+        className={cn(className, "hidden dark:block")}
+      />
+    </>
+  );
+}
+
+type ProviderMeta = {
+  value: ServerType,
+  label: string,
+  tagline: string,
+  icon?: PhosphorIcon,
+  customIcon?: React.ReactNode,
+};
+
+const PROVIDERS: ProviderMeta[] = [
+  {
+    value: "shared",
+    label: "Stack Shared",
+    tagline: "Only default emails — no custom templates, themes, or sender identity.",
+    icon: Cloud,
+  },
+  {
+    value: "managed",
+    label: "Managed Domain",
+    tagline: "Bring your own domain. You add DNS records; we handle signing & delivery.",
+    icon: ShieldCheck,
+  },
+  {
+    value: "resend",
+    label: "Resend",
+    tagline: "Connect a Resend account with an API key.",
+    customIcon: <ResendIcon className="h-5 w-5" />,
+  },
+  {
+    value: "standard",
+    label: "Custom SMTP",
+    tagline: "SendGrid, Postmark, AWS SES — any SMTP.",
+    icon: HardDrives,
+  },
+];
 
 function TestSendingDialog(props: { trigger: React.ReactNode }) {
   const stackAdminApp = useAdminApp();
@@ -154,207 +218,366 @@ function TestSendingDialog(props: { trigger: React.ReactNode }) {
   );
 }
 
-const managedEmailSetupSchema = yup.object({
-  subdomain: yup
-    .string()
-    .trim()
-    .defined("Managed subdomain is required")
-    .test(
-      "non-empty-subdomain",
-      "Managed subdomain is required",
-      (value) => value.trim().length > 0,
-    )
-    .matches(
-      /^(?=.{1,253}$)(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z0-9-]{2,63}$/,
-      "Enter a full subdomain like emails.example.com",
-    ),
-  senderLocalPart: yup
-    .string()
-    .trim()
-    .defined("Sender local part is required")
-    .test(
-      "non-empty-sender-local-part",
-      "Sender local part is required",
-      (value) => value.trim().length > 0,
-    ),
-});
+const subdomainSchema = yup
+  .string()
+  .trim()
+  .defined("Managed subdomain is required")
+  .test("non-empty-subdomain", "Managed subdomain is required", (value) => value.trim().length > 0)
+  .matches(
+    /^(?=.{1,253}$)(?:[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?\.)+[a-zA-Z0-9-]{2,63}$/,
+    "Enter a full subdomain like emails.example.com",
+  );
 
-function ManagedEmailSetupDialog(props: { trigger: React.ReactNode }) {
+const senderLocalPartSchema = yup
+  .string()
+  .trim()
+  .defined("Sender local part is required")
+  .test("non-empty", "Sender local part is required", (value) => value.trim().length > 0);
+
+function CopyButton({ text }: { text: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      onClick={() => {
+        runAsynchronouslyWithAlert(async () => {
+          await navigator.clipboard.writeText(text);
+          setCopied(true);
+          setTimeout(() => setCopied(false), 1200);
+        });
+      }}
+      className="shrink-0 p-1 rounded-md hover:bg-foreground/[0.06] text-muted-foreground hover:text-foreground transition-colors"
+      title={copied ? "Copied" : "Copy"}
+    >
+      {copied
+        ? <CheckCircle className="h-3.5 w-3.5 text-green-600" weight="fill" />
+        : <CopySimple className="h-3.5 w-3.5" />}
+    </button>
+  );
+}
+
+function ManagedDomainSetupDialog(props: {
+  open: boolean,
+  onOpenChange: (open: boolean) => void,
+  initialState: SetupState | null,
+  onCompleted: () => void,
+}) {
   const stackAdminApp = useAdminApp();
-  const [open, setOpen] = useState(false);
-  const [setupState, setSetupState] = useState<{
-    domainId: string,
-    nameServerRecords: string[],
-    subdomain: string,
-    senderLocalPart: string,
-    status: ManagedDomainStatus,
-  } | null>(null);
-  const [domains, setDomains] = useState<Array<{
-    domainId: string,
-    subdomain: string,
-    senderLocalPart: string,
-    status: ManagedDomainStatus,
-    nameServerRecords: string[],
-  }>>([]);
+  const { toast } = useToast();
+  const [stage, setStage] = useState<1 | 2 | 3>(props.initialState ? 2 : 1);
+  const [subdomain, setSubdomain] = useState(props.initialState?.subdomain ?? "");
+  const [senderLocalPart, setSenderLocalPart] = useState(props.initialState?.senderLocalPart ?? "updates");
+  const [setupState, setSetupState] = useState<SetupState | null>(props.initialState);
+  const [stage1Error, setStage1Error] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loadingDomains, setLoadingDomains] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
+  const [checking, setChecking] = useState(false);
 
-  const refreshDomains = async () => {
-    setLoadingDomains(true);
-    try {
-      const result = await stackAdminApp.listManagedEmailDomains();
-      setDomains(result);
-    } finally {
-      setLoadingDomains(false);
+  useEffect(() => {
+    if (props.open) {
+      setStage(props.initialState ? 2 : 1);
+      setSubdomain(props.initialState?.subdomain ?? "");
+      setSenderLocalPart(props.initialState?.senderLocalPart ?? "updates");
+      setSetupState(props.initialState);
+      setStage1Error(null);
+      setError(null);
+      setSubmitting(false);
+      setChecking(false);
     }
-  };
+  }, [props.open, props.initialState]);
+
+  const handleContinue = useCallback(async () => {
+    setStage1Error(null);
+    try {
+      await subdomainSchema.validate(subdomain);
+      await senderLocalPartSchema.validate(senderLocalPart);
+    } catch (e) {
+      setStage1Error(e instanceof yup.ValidationError ? e.message : "Invalid input");
+      return;
+    }
+    setSubmitting(true);
+    try {
+      const result = await stackAdminApp.setupManagedEmailProvider({
+        subdomain: subdomain.trim(),
+        senderLocalPart: senderLocalPart.trim(),
+      });
+      const nextState: SetupState = {
+        domainId: result.domainId,
+        nameServerRecords: result.nameServerRecords,
+        subdomain: result.subdomain,
+        senderLocalPart: result.senderLocalPart,
+        status: result.status,
+      };
+      setSetupState(nextState);
+      setStage(nextState.status === "verified" || nextState.status === "applied" ? 3 : 2);
+      props.onCompleted();
+    } catch (e) {
+      setStage1Error(e instanceof Error ? e.message : "Failed to set up domain");
+    } finally {
+      setSubmitting(false);
+    }
+  }, [subdomain, senderLocalPart, stackAdminApp, props]);
+
+  const handleCheck = useCallback(async () => {
+    if (!setupState) return;
+    setChecking(true);
+    setError(null);
+    try {
+      const result = await stackAdminApp.checkManagedEmailStatus({
+        domainId: setupState.domainId,
+        subdomain: setupState.subdomain,
+        senderLocalPart: setupState.senderLocalPart,
+      });
+      const next: SetupState = { ...setupState, status: result.status };
+      setSetupState(next);
+      if (next.status === "verified" || next.status === "applied") {
+        setStage(3);
+      } else if (next.status === "failed") {
+        setError("Verification failed. Double-check your DNS records and try again.");
+      } else {
+        toast({
+          title: "DNS not yet propagated",
+          description: "Give it a few more minutes — changes can take up to 48 hours.",
+        });
+      }
+      props.onCompleted();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not check verification");
+    } finally {
+      setChecking(false);
+    }
+  }, [setupState, stackAdminApp, toast, props]);
+
+  const handleApply = useCallback(async () => {
+    if (!setupState) return;
+    setSubmitting(true);
+    setError(null);
+    try {
+      await stackAdminApp.applyManagedEmailProvider({ domainId: setupState.domainId });
+      toast({ title: "Domain applied", description: `Sending emails from ${setupState.senderLocalPart}@${setupState.subdomain}.`, variant: "success" });
+      props.onCompleted();
+      props.onOpenChange(false);
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not apply domain");
+    } finally {
+      setSubmitting(false);
+    }
+  }, [setupState, stackAdminApp, toast, props]);
+
+  const steps = [
+    { n: 1 as const, title: "Your domain" },
+    { n: 2 as const, title: "DNS records" },
+    { n: 3 as const, title: "Verify" },
+  ];
 
   return (
-    <FormDialog
-      trigger={props.trigger}
-      open={open}
-      onOpenChange={(newOpen) => {
-        setOpen(newOpen);
-        if (newOpen) {
-          runAsynchronouslyWithAlert(async () => {
-            await refreshDomains();
-          }, {
-            onError: (err) => {
-              setError(err instanceof Error ? err.message : "Failed to load managed domains");
-            },
-          });
-        } else {
-          setSetupState(null);
-          setDomains([]);
-          setError(null);
-        }
-      }}
-      title="Managed Email Setup"
-      formSchema={managedEmailSetupSchema}
-      defaultValues={{ subdomain: "", senderLocalPart: "updates" }}
-      okButton={setupState ? false : { label: "Start Setup" }}
-      cancelButton
-      onSubmit={async (values) => {
-        const setupResult = await stackAdminApp.setupManagedEmailProvider({
-          subdomain: values.subdomain,
-          senderLocalPart: values.senderLocalPart,
-        });
-        setSetupState({
-          domainId: setupResult.domainId,
-          nameServerRecords: setupResult.nameServerRecords,
-          subdomain: setupResult.subdomain,
-          senderLocalPart: setupResult.senderLocalPart,
-          status: setupResult.status,
-        });
-        await refreshDomains();
-        setError(null);
-        return "prevent-close" as const;
-      }}
-      render={(form) => (
-        <>
-          {!setupState && (
+    <Dialog open={props.open} onOpenChange={props.onOpenChange}>
+      <DialogContent className="max-w-[680px] p-0 gap-0" noCloseButton>
+        <DialogTitle className="sr-only">Add managed domain</DialogTitle>
+
+        <div className="px-6 pt-5 pb-4 border-b border-border/40">
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <div className="text-base font-semibold text-foreground">Add managed domain</div>
+              <div className="text-xs text-muted-foreground mt-0.5">Bring your own domain — takes about 5 minutes.</div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2">
+            {steps.map((s, i) => {
+              const isDone = s.n < stage;
+              const isActive = s.n === stage;
+              const isLast = i === steps.length - 1;
+              const marker = (
+                <div className={cn(
+                  "h-6 w-6 rounded-full flex items-center justify-center text-[11px] font-semibold shrink-0",
+                  isDone && "bg-green-500 text-white",
+                  isActive && "bg-foreground text-background",
+                  !isDone && !isActive && "bg-foreground/[0.08] text-muted-foreground",
+                )}>
+                  {isDone ? <CheckCircle size={14} weight="fill" /> : s.n}
+                </div>
+              );
+              const label = (
+                <span className={cn(
+                  "text-xs font-medium whitespace-nowrap",
+                  isActive ? "text-foreground" : "text-muted-foreground",
+                )}>
+                  {s.title}
+                </span>
+              );
+              return (
+                <div key={s.n} className={cn("flex items-center gap-2", !isLast && "flex-1")}>
+                  {isLast ? (
+                    <>
+                      {label}
+                      {marker}
+                    </>
+                  ) : (
+                    <>
+                      {marker}
+                      {label}
+                      <div className={cn("flex-1 h-px", isDone ? "bg-green-500/60" : "bg-border")} />
+                    </>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        <div className="px-6 py-5 space-y-4">
+          {stage === 1 && (
             <>
-              <InputField
-                label="Managed subdomain"
-                name="subdomain"
-                control={form.control}
-                type="text"
-                placeholder="emails.example.com"
-                required
-              />
-              <InputField
-                label="Sender local part"
-                name="senderLocalPart"
-                control={form.control}
-                type="text"
-                required
-              />
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Subdomain you own</Label>
+                <DesignInput
+                  value={subdomain}
+                  onChange={(e) => {
+                    setSubdomain(e.target.value);
+                    setStage1Error(null);
+                  }}
+                  type="text"
+                  placeholder="emails.example.com"
+                  size="md"
+                />
+                <Typography variant="secondary" className="text-xs">
+                  Use a dedicated subdomain (e.g. <span className="font-mono">emails.example.com</span>), not your apex domain.
+                </Typography>
+              </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Sender local part</Label>
+                <div className="flex items-center gap-2">
+                  <DesignInput
+                    value={senderLocalPart}
+                    onChange={(e) => {
+                      setSenderLocalPart(e.target.value);
+                      setStage1Error(null);
+                    }}
+                    type="text"
+                    size="md"
+                  />
+                  <Typography variant="secondary" className="text-sm font-mono whitespace-nowrap">
+                    @{subdomain || "your-subdomain"}
+                  </Typography>
+                </div>
+              </div>
+              {stage1Error && <DesignAlert variant="error" description={stage1Error} />}
             </>
           )}
-          {setupState && (
-            <Alert className="bg-blue-500/5 border-blue-500/20">
-              <AlertTitle>Delegate your subdomain with these NS records</AlertTitle>
-              <AlertDescription>
-                Add these nameservers at your DNS provider for the managed subdomain you entered.
-                <div className="mt-2 flex flex-col gap-1">
-                  {setupState.nameServerRecords.map((record) => (
-                    <div key={record} className="font-mono text-xs">{record}</div>
-                  ))}
+
+          {stage === 2 && setupState && (
+            <>
+              <div>
+                <div className="text-sm font-semibold text-foreground">
+                  Add these records to <span className="font-mono">{setupState.subdomain}</span>
                 </div>
-              </AlertDescription>
-            </Alert>
+                <div className="text-xs text-muted-foreground mt-1">
+                  Log into your DNS provider and create each row below. We&apos;ll detect them automatically.
+                </div>
+              </div>
+
+              <div className="rounded-lg border border-border/60 overflow-hidden">
+                <div className="grid grid-cols-[72px_160px_1fr] px-3 py-2 bg-foreground/[0.04] border-b border-border/50">
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Type</div>
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Name</div>
+                  <div className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Content</div>
+                </div>
+                {setupState.nameServerRecords.map((r, i) => (
+                  <div
+                    key={`${r}-${i}`}
+                    className={cn(
+                      "grid grid-cols-[72px_160px_1fr] items-center px-3 py-2",
+                      i < setupState.nameServerRecords.length - 1 && "border-b border-border/40",
+                    )}
+                  >
+                    <span className="font-mono text-[11px] font-semibold text-foreground/80">NS</span>
+                    <span className="font-mono text-xs text-foreground truncate">{setupState.subdomain}</span>
+                    <div className="flex items-center justify-between gap-2 min-w-0">
+                      <span className="font-mono text-xs text-foreground truncate">{r}</span>
+                      <CopyButton text={r} />
+                    </div>
+                  </div>
+                ))}
+              </div>
+
+              <Typography variant="secondary" className="text-xs">
+                DNS changes typically propagate within 10 minutes but can take up to 48 hours.
+              </Typography>
+
+              {error && <DesignAlert variant="error" description={error} />}
+            </>
           )}
-          {setupState && (
-            <div className="flex items-center gap-2">
-              <DesignButton
-                variant="secondary"
-                size="sm"
-                onClick={() => runAsynchronouslyWithAlert(async () => {
-                  const result = await stackAdminApp.checkManagedEmailStatus({
-                    domainId: setupState.domainId,
-                    subdomain: setupState.subdomain,
-                    senderLocalPart: setupState.senderLocalPart,
-                  });
-                  setSetupState({ ...setupState, status: result.status });
-                  await refreshDomains();
-                })}
-              >
-                <ArrowsClockwise className="h-3.5 w-3.5 mr-1" />
-                Refresh Status
-              </DesignButton>
-              <DesignButton
-                size="sm"
-                disabled={setupState.status !== "verified"}
-                onClick={() => runAsynchronouslyWithAlert(async () => {
-                  await stackAdminApp.applyManagedEmailProvider({
-                    domainId: setupState.domainId,
-                  });
-                  setOpen(false);
-                })}
-              >
-                Use This Domain
-              </DesignButton>
+
+          {stage === 3 && setupState && (
+            <div className="py-6 flex flex-col items-center text-center gap-3">
+              <div className="h-12 w-12 rounded-full bg-green-500/15 flex items-center justify-center">
+                <CheckCircle size={28} weight="fill" className="text-green-600" />
+              </div>
+              <div>
+                <div className="text-sm font-semibold text-foreground">Domain verified</div>
+                <div className="text-xs text-muted-foreground mt-1">
+                  <span className="font-mono">{setupState.senderLocalPart}@{setupState.subdomain}</span> is ready to send.
+                </div>
+              </div>
+              {error && <DesignAlert variant="error" description={error} />}
             </div>
           )}
-          {(() => {
-            const visibleDomains = setupState ? domains.filter((d) => d.domainId === setupState.domainId) : domains;
-            return (
-              <div className="space-y-2">
-                <Typography variant="secondary" className="text-xs uppercase tracking-wider">Tracked managed domains</Typography>
-                {loadingDomains ? (
-                  <Typography variant="secondary" className="text-sm">Loading managed domains...</Typography>
-                ) : visibleDomains.length === 0 ? (
-                  <Typography variant="secondary" className="text-sm">No managed domains tracked yet.</Typography>
-                ) : (
-                  visibleDomains.map((domain) => (
-                    <Alert key={domain.domainId} className="bg-slate-500/5 border-slate-500/20">
-                      <AlertTitle className="font-mono text-xs">{domain.senderLocalPart}@{domain.subdomain}</AlertTitle>
-                      <AlertDescription className="mt-1 flex items-center justify-between gap-2">
-                        <span className="text-xs">Status: {(MANAGED_DOMAIN_STATUS_LABELS as Record<string, string>)[domain.status] ?? domain.status}</span>
-                        <DesignButton
-                          size="sm"
-                          variant="secondary"
-                          disabled={domain.status !== "verified"}
-                          onClick={() => runAsynchronouslyWithAlert(async () => {
-                            await stackAdminApp.applyManagedEmailProvider({
-                              domainId: domain.domainId,
-                            });
-                            await refreshDomains();
-                          })}
-                        >
-                          Use This Domain
-                        </DesignButton>
-                      </AlertDescription>
-                    </Alert>
-                  ))
-                )}
-              </div>
-            );
-          })()}
-          {error && <DesignAlert variant="error" description={error} />}
-        </>
-      )}
-    />
+        </div>
+
+        <div className="px-6 py-3 border-t border-border/40 flex items-center justify-between">
+          {stage === 2 && setupState ? (
+            <DesignButton
+              variant="secondary"
+              size="sm"
+              className="gap-1.5"
+              onClick={() => setStage(1)}
+              disabled={submitting || checking}
+            >
+              <ArrowLeft className="h-3.5 w-3.5" /> Back
+            </DesignButton>
+          ) : stage === 3 ? (
+            <DesignButton variant="secondary" size="sm" onClick={() => props.onOpenChange(false)}>
+              Close
+            </DesignButton>
+          ) : (
+            <DesignButton variant="secondary" size="sm" onClick={() => props.onOpenChange(false)}>
+              Cancel
+            </DesignButton>
+          )}
+          <div className="flex gap-2">
+            {stage === 2 && (
+              <DesignButton
+                variant="outline"
+                size="sm"
+                className="gap-1.5"
+                loading={checking}
+                onClick={() => runAsynchronouslyWithAlert(handleCheck)}
+              >
+                <ArrowsClockwise className="h-3.5 w-3.5" /> Check verification
+              </DesignButton>
+            )}
+            {stage === 1 && (
+              <DesignButton
+                size="sm"
+                loading={submitting}
+                onClick={() => runAsynchronouslyWithAlert(handleContinue)}
+              >
+                Continue
+              </DesignButton>
+            )}
+            {stage === 3 && (
+              <DesignButton
+                size="sm"
+                loading={submitting}
+                onClick={() => runAsynchronouslyWithAlert(handleApply)}
+              >
+                Use this domain
+              </DesignButton>
+            )}
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -371,33 +594,68 @@ export function DomainSettings() {
 
   const [serverType, setServerType] = useState<ServerType>(savedServerType);
   const [formValues, setFormValues] = useState<Record<string, string>>(savedValues);
-  const [configExpanded, setConfigExpanded] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
 
+  const [domains, setDomains] = useState<ManagedDomain[]>([]);
+  const [loadingDomains, setLoadingDomains] = useState(false);
+  const [dialog, setDialog] = useState<{ initialState: SetupState | null } | null>(null);
+
+  const refreshDomains = useCallback(async () => {
+    setLoadingDomains(true);
+    try {
+      const result = await stackAdminApp.listManagedEmailDomains();
+      setDomains(result);
+    } finally {
+      setLoadingDomains(false);
+    }
+  }, [stackAdminApp]);
+
+  useEffect(() => {
+    if (serverType === "managed") {
+      runAsynchronouslyWithAlert(refreshDomains);
+    }
+  }, [serverType, refreshDomains]);
+
   const isShared = serverType === "shared";
-  const visibleFields = VISIBLE_FIELDS[serverType];
-  const configFields = CONFIG_FIELDS[serverType];
-  const hasConfigFields = configFields.length > 0;
+
+  const visibleSenderFields = serverType === "resend" || serverType === "standard";
+  const configFields = useMemo(() => {
+    if (serverType === "resend") {
+      return [{ label: "Resend API Key", key: "password", type: "password" as const }];
+    }
+    if (serverType === "standard") {
+      return [
+        { label: "Host", key: "host", type: "text" as const },
+        { label: "Port", key: "port", type: "number" as const },
+        { label: "Username", key: "username", type: "text" as const },
+        { label: "Password", key: "password", type: "password" as const },
+      ];
+    }
+    return [];
+  }, [serverType]);
 
   const isDirty = useMemo(() => {
     if (serverType !== savedServerType) return true;
-    for (const field of [...visibleFields, ...configFields]) {
-      if ((formValues[field.key] || "") !== (savedValues[field.key] || "")) return true;
+    const keys = new Set<string>();
+    if (visibleSenderFields) {
+      keys.add("senderEmail");
+      keys.add("senderName");
+    }
+    for (const f of configFields) keys.add(f.key);
+    for (const k of keys) {
+      if ((formValues[k] || "") !== (savedValues[k] || "")) return true;
     }
     return false;
-  }, [serverType, savedServerType, formValues, savedValues, visibleFields, configFields]);
+  }, [serverType, savedServerType, formValues, savedValues, visibleSenderFields, configFields]);
 
   const updateField = useCallback((key: string, value: string) => {
     setFormValues(prev => ({ ...prev, [key]: value }));
     setSaveError(null);
   }, []);
 
-  const handleServerTypeChange = useCallback((newType: ServerType) => {
+  const handleSelectProvider = useCallback((newType: ServerType) => {
     setServerType(newType);
-    if (CONFIG_FIELDS[newType].length > 0) {
-      setConfigExpanded(true);
-    }
     setSaveError(null);
   }, []);
 
@@ -420,12 +678,6 @@ export function DomainSettings() {
           pushable: false,
         });
         toast({ title: "Email server updated", variant: "success" });
-      } else if (serverType === "managed") {
-        toast({
-          title: "Email server unchanged",
-          description: "Managed email configuration is controlled through the managed domain setup.",
-          variant: "success",
-        });
       } else {
         const requireField = (key: string, label: string): string => {
           const val = formValues[key];
@@ -487,6 +739,8 @@ export function DomainSettings() {
         });
         toast({ title: "Email server updated", variant: "success" });
       }
+    } catch (e) {
+      setSaveError(e instanceof Error ? e.message : "Could not save changes");
     } finally {
       setSaving(false);
     }
@@ -504,200 +758,281 @@ export function DomainSettings() {
     );
   }
 
-  const emailFormatError = !isShared && formValues.senderEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formValues.senderEmail)
+  const emailFormatError = visibleSenderFields && formValues.senderEmail && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formValues.senderEmail)
     ? "Invalid email format" : null;
 
-  const missingRequiredFields = !isShared ? [
-    ...visibleFields.filter(f => !(formValues[f.key] || "").trim()),
-    ...configFields.filter(f => !(formValues[f.key] || "").trim()),
+  const missingRequiredFields = visibleSenderFields ? [
+    ...(!(formValues.senderEmail || "").trim() ? ["Sender Email"] : []),
+    ...(!(formValues.senderName || "").trim() ? ["Sender Name"] : []),
+    ...configFields.filter(f => !(formValues[f.key] || "").trim()).map(f => f.label),
   ] : [];
 
   const canSave = isDirty && !emailFormatError && missingRequiredFields.length === 0;
+  const activeManagedDomainId = emailConfig.provider === "managed" && emailConfig.managedSubdomain && emailConfig.managedSenderLocalPart
+    ? domains.find((d) =>
+      d.subdomain === emailConfig.managedSubdomain
+      && d.senderLocalPart === emailConfig.managedSenderLocalPart
+    )?.domainId
+    : null;
 
   return (
-    <DesignCard gradient="default">
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="flex items-center gap-2">
-          <div className="p-1.5 rounded-lg bg-foreground/[0.06] dark:bg-foreground/[0.04]">
-            <Envelope className="h-3.5 w-3.5 text-foreground/70 dark:text-muted-foreground" />
-          </div>
-          <span className="text-xs font-semibold text-foreground uppercase tracking-wider">
-            Email Server
-          </span>
-        </div>
-
-        {/* Sender identity + server type -- 3-column grid */}
-        <div className="grid gap-x-6 gap-y-4 sm:grid-cols-3">
-          <div className="space-y-1.5">
-            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Server Type</Label>
-            <DesignSelectorDropdown
-              value={serverType}
-              onValueChange={(v) => handleServerTypeChange(v as ServerType)}
-              options={[
-                { value: "shared", label: getSharedServerTypeLabel(savedServerType === "shared" ? savedValues.senderEmail : undefined) },
-                { value: "managed", label: SERVER_TYPE_LABELS.managed },
-                { value: "resend", label: SERVER_TYPE_LABELS.resend },
-                { value: "standard", label: SERVER_TYPE_LABELS.standard },
-              ]}
-              size="md"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Sender Email</Label>
-            {isShared ? (
-              <SimpleTooltip tooltip="Sender email is fixed on the shared server">
-                <Typography className="text-sm font-medium text-foreground/60 cursor-default py-1">{formValues.senderEmail || DEFAULT_SHARED_SENDER_EMAIL}</Typography>
-              </SimpleTooltip>
-            ) : serverType === "managed" ? (
-              <SimpleTooltip tooltip="Sender email is configured through the managed domain setup">
-                <Typography className="text-sm font-medium text-foreground/60 cursor-default py-1">
-                  {formValues.senderEmail || "Not configured"}
-                </Typography>
-              </SimpleTooltip>
-            ) : (
-              <>
-                <DesignInput
-                  value={formValues.senderEmail || ""}
-                  onChange={(e) => updateField("senderEmail", e.target.value)}
-                  className={cn(emailFormatError && "border-destructive")}
-                  type="email"
-                  placeholder="you@example.com"
-                  size="md"
-                />
-                {emailFormatError && (
-                  <Typography variant="secondary" className="text-xs text-destructive">{emailFormatError}</Typography>
-                )}
-              </>
-            )}
-          </div>
-          <div className="space-y-1.5">
-            <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Sender Name</Label>
-            {isShared || serverType === "managed" ? (
-              <SimpleTooltip tooltip={isShared ? "Sender name uses your project name on the shared server" : "Sender name uses your project name for managed email"}>
-                <Typography className="text-sm font-medium text-foreground/60 cursor-default py-1">{project.displayName}</Typography>
-              </SimpleTooltip>
-            ) : (
-              <DesignInput
-                value={formValues.senderName || ""}
-                onChange={(e) => updateField("senderName", e.target.value)}
-                type="text"
-                placeholder="Your App Name"
-                size="md"
+    <>
+      <DesignCard gradient="default">
+        <div className="space-y-6">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <div className="p-1.5 rounded-lg bg-foreground/[0.06] dark:bg-foreground/[0.04]">
+                <Envelope className="h-3.5 w-3.5 text-foreground/70 dark:text-muted-foreground" />
+              </div>
+              <span className="text-xs font-semibold text-foreground uppercase tracking-wider">Email Server</span>
+            </div>
+            {!isShared && serverType !== "managed" && !isDirty && (
+              <TestSendingDialog
+                trigger={
+                  <DesignButton variant="outline" size="sm" className="gap-1.5">
+                    <PaperPlaneTilt className="h-3.5 w-3.5" />
+                    Send test email
+                  </DesignButton>
+                }
               />
             )}
           </div>
-        </div>
 
-        {/* Managed domain info + setup trigger */}
-        {serverType === "managed" && (
-          <div className="space-y-4 border-t border-border/40 pt-4">
-            {savedServerType === "managed" && formValues.managedSubdomain && (
-              <div className="grid gap-x-6 gap-y-3 sm:grid-cols-2">
-                <div className="space-y-1">
-                  <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Managed Domain</Label>
-                  <Typography className="text-sm font-medium font-mono">{formValues.managedSubdomain}</Typography>
-                </div>
-                <div className="space-y-1">
-                  <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Sender</Label>
-                  <Typography className="text-sm font-medium font-mono">{formValues.senderEmail}</Typography>
-                </div>
-              </div>
-            )}
-            <ManagedEmailSetupDialog
-              trigger={
-                <DesignButton variant="secondary" size="sm" className="gap-1.5">
-                  <GlobeSimple className="h-3.5 w-3.5" />
-                  {savedServerType === "managed" ? "Manage Domain" : "Set Up Managed Domain"}
-                </DesignButton>
-              }
-            />
-          </div>
-        )}
-
-        {/* Send Test Email -- prominent, centered */}
-        {!isShared && serverType !== "managed" && !isDirty && (
-          <div className="flex justify-center">
-            <TestSendingDialog
-              trigger={
-                <DesignButton variant="outline" className="gap-2 hover:bg-accent">
-                  <PaperPlaneTilt className="h-4 w-4" />
-                  Send Test Email
-                </DesignButton>
-              }
-            />
-          </div>
-        )}
-
-        {/* Config expand toggle + expanded fields */}
-        {hasConfigFields && (
-          <div className="space-y-4">
-            <div className="flex items-center gap-2 border-t border-border/40 pt-4">
-              <SimpleTooltip tooltip={configExpanded ? "Hide server configuration" : "Show server configuration"}>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+            {PROVIDERS.map((p) => {
+              const isSelected = serverType === p.value;
+              const isSaved = savedServerType === p.value;
+              const isDraft = isSelected && !isSaved;
+              const Icon = p.icon;
+              return (
                 <button
+                  key={p.value}
                   type="button"
-                  onClick={() => setConfigExpanded(!configExpanded)}
+                  onClick={() => handleSelectProvider(p.value)}
                   className={cn(
-                    "p-2 rounded-lg transition-colors duration-150 hover:transition-none",
-                    "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]",
-                    configExpanded && "bg-foreground/[0.06] text-foreground"
+                    "relative text-left rounded-xl border p-4 transition-all",
+                    isSaved && "border-green-500/40 bg-green-500/[0.04]",
+                    isDraft && "border-amber-500/50 bg-amber-500/[0.04] ring-1 ring-amber-500/20 border-dashed",
+                    !isSaved && !isDraft && "border-border/60 hover:border-foreground/20 hover:bg-foreground/[0.02]",
+                    isSelected && !isDraft && !isSaved && "border-foreground/40 bg-foreground/[0.03] shadow-sm ring-1 ring-foreground/10",
                   )}
                 >
-                  <GearSix size={16} weight={configExpanded ? "fill" : "regular"} />
+                  <div className="absolute top-2 right-2 flex items-center gap-1">
+                    {isSaved && (
+                      <span className="flex items-center gap-1 text-[10px] font-medium uppercase tracking-wider text-green-700 dark:text-green-400 bg-green-500/10 border border-green-500/20 px-1.5 py-0.5 rounded">
+                        <span className="h-1.5 w-1.5 rounded-full bg-green-500" />
+                        Current
+                      </span>
+                    )}
+                    {isDraft && (
+                      <span className="text-[10px] font-medium uppercase tracking-wider text-amber-700 dark:text-amber-400 bg-amber-500/10 border border-amber-500/20 px-1.5 py-0.5 rounded">
+                        Draft
+                      </span>
+                    )}
+                  </div>
+                  <div className="h-5 w-5 mb-3 flex items-center">
+                    {p.customIcon ?? (Icon && <Icon className="h-5 w-5 text-foreground/80" weight="regular" />)}
+                  </div>
+                  <div className="text-sm font-semibold text-foreground">{p.label}</div>
+                  <div className="text-xs text-muted-foreground mt-1 leading-relaxed">{p.tagline}</div>
                 </button>
-              </SimpleTooltip>
-              <Typography variant="secondary" className="text-xs">
-                {configExpanded ? "Server configuration" : "Show server configuration"}
-              </Typography>
-            </div>
+              );
+            })}
+          </div>
 
-            {configExpanded && (
+          {isDirty && serverType !== "managed" && (
+            <div className="rounded-lg border border-amber-500/30 bg-amber-500/[0.06] p-3 flex items-center justify-between gap-4">
+              <div className="flex items-center gap-2 text-sm text-foreground">
+                <WarningDiamond className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" weight="fill" />
+                <span>
+                  Unsaved changes — previewing{" "}
+                  <span className="font-semibold">{PROVIDERS.find((p) => p.value === serverType)?.label}</span>.
+                  Changes don&apos;t take effect until you save.
+                </span>
+              </div>
+              <div className="flex gap-2 shrink-0">
+                <DesignButton variant="secondary" size="sm" onClick={handleDiscard} disabled={saving}>
+                  Discard
+                </DesignButton>
+                <DesignButton
+                  size="sm"
+                  loading={saving}
+                  disabled={!canSave && serverType !== "shared"}
+                  onClick={() => runAsynchronouslyWithAlert(handleSave)}
+                >
+                  Save changes
+                </DesignButton>
+              </div>
+            </div>
+          )}
+
+          {isShared && (
+            <DesignAlert
+              variant="info"
+              description="On the shared server you can only send Stack's default emails. Custom templates, themes, and sender identity require your own provider."
+            />
+          )}
+
+          {serverType === "managed" && (
+            <div className="space-y-3 pt-2">
+              <div className="flex items-center justify-between">
+                <div>
+                  <div className="text-sm font-medium text-foreground">Tracked managed domains</div>
+                  <div className="text-xs text-muted-foreground mt-0.5">Domains you own that we sign & deliver from.</div>
+                </div>
+                <DesignButton size="sm" className="gap-1.5" onClick={() => setDialog({ initialState: null })}>
+                  <Plus className="h-3.5 w-3.5" /> Add domain
+                </DesignButton>
+              </div>
+
+              {loadingDomains && domains.length === 0 ? (
+                <div className="rounded-lg border border-border/60 p-6 flex items-center justify-center gap-2 text-muted-foreground">
+                  <Spinner size={16} className="animate-spin" />
+                  <span className="text-sm">Loading managed domains…</span>
+                </div>
+              ) : domains.length === 0 ? (
+                <div className="rounded-lg border border-dashed border-border/60 p-6 text-center">
+                  <GlobeSimple size={24} className="mx-auto text-muted-foreground/50" />
+                  <div className="text-sm font-medium text-foreground mt-2">No managed domains yet</div>
+                  <div className="text-xs text-muted-foreground mt-1">Add your first domain to start sending from a custom sender.</div>
+                </div>
+              ) : (
+                <div className="rounded-lg border border-border/60 divide-y divide-border/50 overflow-hidden">
+                  {domains.map((d) => {
+                    const isInUse = d.domainId === activeManagedDomainId;
+                    const isReadyButUnused = !isInUse && (d.status === "verified" || d.status === "applied");
+                    const isPending = d.status === "pending_dns" || d.status === "pending_verification" || d.status === "failed";
+                    const displayStatus: ManagedDomainStatus = isInUse ? "applied" : isReadyButUnused ? "verified" : d.status;
+                    const displayLabel = isInUse ? "Active" : MANAGED_DOMAIN_STATUS_LABELS[displayStatus];
+                    return (
+                      <div key={d.domainId} className="flex items-center justify-between px-4 py-3 gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          <GlobeSimple className="h-4 w-4 text-muted-foreground shrink-0" />
+                          <div className="min-w-0">
+                            <div className="text-sm font-mono text-foreground truncate">
+                              {d.senderLocalPart}@{d.subdomain}
+                            </div>
+                            <div className="text-[11px] text-muted-foreground mt-0.5">
+                              {isInUse ? "In use for this project" : "Not in use"}
+                            </div>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <span className={cn(
+                            "text-[11px] font-medium px-2 py-0.5 rounded-full",
+                            MANAGED_DOMAIN_STATUS_COLORS[displayStatus],
+                          )}>
+                            {displayLabel}
+                          </span>
+                          {isReadyButUnused && (
+                            <DesignButton
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => runAsynchronouslyWithAlert(async () => {
+                                await stackAdminApp.applyManagedEmailProvider({ domainId: d.domainId });
+                                toast({ title: "Domain applied", description: `Sending from ${d.senderLocalPart}@${d.subdomain}.`, variant: "success" });
+                                await refreshDomains();
+                              })}
+                            >
+                              Use this domain
+                            </DesignButton>
+                          )}
+                          {isPending && (
+                            <DesignButton
+                              size="sm"
+                              variant="secondary"
+                              onClick={() => setDialog({ initialState: {
+                                domainId: d.domainId,
+                                subdomain: d.subdomain,
+                                senderLocalPart: d.senderLocalPart,
+                                nameServerRecords: d.nameServerRecords,
+                                status: d.status,
+                              } })}
+                            >
+                              View DNS
+                            </DesignButton>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
+          {(serverType === "resend" || serverType === "standard") && (
+            <div className="space-y-4 pt-2">
               <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
-                {configFields.map((field) => {
-                  const isEmpty = !(formValues[field.key] || "").trim();
-                  return (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Sender Email</Label>
+                  <DesignInput
+                    value={formValues.senderEmail || ""}
+                    onChange={(e) => updateField("senderEmail", e.target.value)}
+                    className={cn(emailFormatError && "border-destructive")}
+                    type="email"
+                    placeholder="you@example.com"
+                    size="md"
+                  />
+                  {emailFormatError && (
+                    <Typography variant="secondary" className="text-xs text-destructive">{emailFormatError}</Typography>
+                  )}
+                </div>
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Sender Name</Label>
+                  <DesignInput
+                    value={formValues.senderName || ""}
+                    onChange={(e) => updateField("senderName", e.target.value)}
+                    type="text"
+                    placeholder="Your App Name"
+                    size="md"
+                  />
+                </div>
+              </div>
+
+              {serverType === "resend" && (
+                <div className="space-y-1.5">
+                  <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Resend API Key</Label>
+                  <DesignInput
+                    value={formValues.password || ""}
+                    onChange={(e) => updateField("password", e.target.value)}
+                    type="password"
+                    placeholder="re_..."
+                    size="md"
+                  />
+                </div>
+              )}
+
+              {serverType === "standard" && (
+                <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
+                  {configFields.map((field) => (
                     <div key={field.key} className="space-y-1.5">
                       <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{field.label}</Label>
                       <DesignInput
                         value={formValues[field.key] || ""}
                         onChange={(e) => updateField(field.key, e.target.value)}
-                        className={cn(isDirty && isEmpty && "border-destructive")}
                         type={field.type}
                         size="md"
                       />
-                      {isDirty && isEmpty && (
-                        <Typography variant="secondary" className="text-xs text-destructive">{field.label} is required</Typography>
-                      )}
                     </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
-        )}
+                  ))}
+                </div>
+              )}
 
-        {/* Save error */}
-        {saveError && (
-          <DesignAlert variant="error" description={saveError} />
-        )}
+              {saveError && (
+                <DesignAlert variant="error" description={saveError} />
+              )}
+            </div>
+          )}
+        </div>
+      </DesignCard>
 
-        {/* Save / Cancel -- only when dirty, not for managed (config is set through setup dialog) */}
-        {isDirty && serverType !== "managed" && (
-          <div className="flex justify-end gap-2 pt-3 border-t border-border/40">
-            <DesignButton variant="secondary" size="sm" onClick={handleDiscard} disabled={saving}>
-              Cancel
-            </DesignButton>
-            <DesignButton
-              size="sm"
-              loading={saving}
-              disabled={!canSave}
-              onClick={() => runAsynchronouslyWithAlert(handleSave)}
-            >
-              Save
-            </DesignButton>
-          </div>
-        )}
-      </div>
-    </DesignCard>
+      <ManagedDomainSetupDialog
+        open={dialog !== null}
+        onOpenChange={(o) => { if (!o) setDialog(null); }}
+        initialState={dialog?.initialState ?? null}
+        onCompleted={() => { runAsynchronouslyWithAlert(refreshDomains); }}
+      />
+    </>
   );
 }
