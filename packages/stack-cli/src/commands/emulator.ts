@@ -464,6 +464,14 @@ async function ensureDepsForPull(arch: "arm64" | "amd64"): Promise<void> {
     return;
   }
 
+  // In non-interactive environments (CI, piped stdin) we cannot prompt, so
+  // surface the standard per-binary install hints instead of erroring with
+  // only a TTY complaint.
+  if (!process.stdin.isTTY) {
+    preflightForVmStart("pull", arch);
+    return;
+  }
+
   console.log("The emulator needs the following dependencies that aren't installed:");
   for (const b of missingBins) console.log(`  - ${b.name}`);
   if (firmwareMissing) console.log("  - aarch64 UEFI firmware");
@@ -479,7 +487,11 @@ async function ensureDepsForPull(arch: "arm64" | "amd64"): Promise<void> {
 
   const brewMissing = platform === "darwin" && !commandExists("brew");
   console.log("Proposed install plan:");
-  if (brewMissing) console.log("  - install Homebrew (https://brew.sh)");
+  if (brewMissing) {
+    console.log("  - install Homebrew by running the official installer:");
+    console.log("      /bin/bash -c \"$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)\"");
+    console.log("    (executes remote code from raw.githubusercontent.com — review https://brew.sh if unsure)");
+  }
   if (platform === "darwin") console.log(`  - brew install ${pkgList.join(" ")}`);
   else console.log(`  - sudo apt-get update && sudo apt-get install -y ${pkgList.join(" ")}`);
   console.log();
@@ -498,7 +510,16 @@ async function ensureDepsForPull(arch: "arm64" | "amd64"): Promise<void> {
 
   console.log("\nInstalling packages...");
   if (platform === "darwin") {
-    execFileSync("brew", ["install", ...pkgList], { stdio: "inherit" });
+    // After a fresh Homebrew bootstrap, `brew` lives at /opt/homebrew/bin
+    // (Apple Silicon) or /usr/local/bin (Intel); the installer only updates
+    // shell profiles, not the current process's PATH, so resolve it by
+    // absolute path when needed.
+    const brewBin = commandExists("brew")
+      ? "brew"
+      : existsSync("/opt/homebrew/bin/brew")
+        ? "/opt/homebrew/bin/brew"
+        : "/usr/local/bin/brew";
+    execFileSync(brewBin, ["install", ...pkgList], { stdio: "inherit" });
   } else {
     execFileSync("sudo", ["apt-get", "update"], { stdio: "inherit" });
     execFileSync("sudo", ["apt-get", "install", "-y", ...pkgList], { stdio: "inherit" });
