@@ -34,7 +34,7 @@ type ServerFieldConfig = {
 };
 
 const SERVER_TYPE_LABELS: Record<ServerType, string> = {
-  shared: "Shared (noreply@stackframe.co)",
+  shared: "Shared (environment-configured)",
   managed: "Managed (via managed domain setup)",
   resend: "Resend",
   standard: "Custom SMTP",
@@ -87,9 +87,16 @@ function getServerTypeFromConfig(config: CompleteConfig["emails"]["server"]): Se
   return "standard";
 }
 
-function getFormValuesFromConfig(config: CompleteConfig["emails"]["server"], projectName: string): Record<string, string> {
+function getFormValuesFromConfig(
+  config: CompleteConfig["emails"]["server"],
+  projectName: string,
+  sharedSenderEmail: string | null,
+): Record<string, string> {
   if (config.isShared) {
-    return { senderEmail: "noreply@stackframe.co", senderName: projectName };
+    return {
+      senderEmail: sharedSenderEmail ?? "Configured via STACK_EMAIL_SENDER",
+      senderName: projectName,
+    };
   }
   if (config.provider === "managed") {
     const senderEmail = config.managedSubdomain && config.managedSenderLocalPart
@@ -357,12 +364,21 @@ export function DomainSettings() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const emailConfig = project.useConfig().emails.server;
+  const sharedSenderEmail = project.config.emailConfig?.type === "shared"
+    && "senderEmail" in project.config.emailConfig
+    && typeof project.config.emailConfig.senderEmail === "string"
+    ? project.config.emailConfig.senderEmail
+    : null;
   const updateConfig = useUpdateConfig();
   const { toast } = useToast();
   const isEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
 
   const savedServerType = getServerTypeFromConfig(emailConfig);
-  const savedValues = getFormValuesFromConfig(emailConfig, project.displayName);
+  const savedValues = getFormValuesFromConfig(
+    emailConfig,
+    project.displayName,
+    sharedSenderEmail,
+  );
 
   const [serverType, setServerType] = useState<ServerType>(savedServerType);
   const [formValues, setFormValues] = useState<Record<string, string>>(savedValues);
@@ -541,8 +557,10 @@ export function DomainSettings() {
           <div className="space-y-1.5">
             <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Sender Email</Label>
             {isShared ? (
-              <SimpleTooltip tooltip="Sender email is fixed on the shared server">
-                <Typography className="text-sm font-medium text-foreground/60 cursor-default py-1">noreply@stackframe.co</Typography>
+              <SimpleTooltip tooltip="Sender email is read from STACK_EMAIL_SENDER on the server.">
+                <Typography className="text-sm font-medium text-foreground/60 cursor-default py-1">
+                  {sharedSenderEmail ?? "Configured via STACK_EMAIL_SENDER"}
+                </Typography>
               </SimpleTooltip>
             ) : serverType === "managed" ? (
               <SimpleTooltip tooltip="Sender email is configured through the managed domain setup">

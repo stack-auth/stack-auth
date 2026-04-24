@@ -1,6 +1,7 @@
 "use client";
 
 import { TeamMemberSearchTable } from "@/components/data-table/team-member-search-table";
+import { DesignAnalyticsCard } from "@/components/design-components";
 import { FormDialog } from "@/components/form-dialog";
 import { InputField, SelectField, TextAreaField } from "@/components/form-fields";
 import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, DataTable, DataTableColumnHeader, DataTableViewOptions, SimpleTooltip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, Typography, useToast } from "@/components/ui";
@@ -19,7 +20,6 @@ import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
-import { DesignAnalyticsCard } from "@/components/design-components";
 
 // Section header with icon following design guide
 function SectionHeader({ icon: Icon, title }: { icon: ElementType, title: string }) {
@@ -59,6 +59,11 @@ export default function PageClient() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const emailConfig = project.useConfig().emails.server;
+  const sharedSenderEmail = project.config.emailConfig?.type === "shared"
+    && "senderEmail" in project.config.emailConfig
+    && typeof project.config.emailConfig.senderEmail === "string"
+    ? project.config.emailConfig.senderEmail
+    : null;
   const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
 
   return (
@@ -82,7 +87,7 @@ export default function PageClient() {
           {isLocalEmulator && <EmulatorModeCard />}
 
           {/* Email Server Card */}
-          <EmailServerCard emailConfig={emailConfig} />
+          <EmailServerCard emailConfig={emailConfig} sharedSenderEmail={sharedSenderEmail} />
 
           {/* Email Log Card */}
           <EmailLogCard />
@@ -130,16 +135,22 @@ function EmulatorModeCard() {
   );
 }
 
-function EmailServerCard({ emailConfig }: { emailConfig: CompleteConfig['emails']['server'] }) {
+function EmailServerCard({
+  emailConfig,
+  sharedSenderEmail,
+}: {
+  emailConfig: CompleteConfig['emails']['server'],
+  sharedSenderEmail: string | null,
+}) {
   const isLocalEmulator = getPublicEnvVar("NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR") === "true";
   const serverType = emailConfig.isShared
-    ? 'Shared'
+    ? 'Shared (environment-configured)'
     : emailConfig.provider === 'managed'
       ? 'Managed By Stack Auth'
       : (emailConfig.provider === 'resend' ? 'Resend' : 'Custom SMTP');
 
   const senderEmail = emailConfig.isShared
-    ? 'noreply@stackframe.co'
+    ? (sharedSenderEmail ?? 'Configured via STACK_EMAIL_SENDER')
     : emailConfig.provider === 'managed' && emailConfig.managedSubdomain && emailConfig.managedSenderLocalPart
       ? `${emailConfig.managedSenderLocalPart}@${emailConfig.managedSubdomain}`
       : emailConfig.senderEmail;
@@ -207,7 +218,7 @@ function EmailServerCard({ emailConfig }: { emailConfig: CompleteConfig['emails'
             <div className="flex items-center gap-2">
               <span className="text-sm font-medium text-foreground">{serverType}</span>
               {emailConfig.isShared && (
-                <SimpleTooltip tooltip="When you use the shared email server, all the emails are sent from Stack's email address" type='info' />
+                <SimpleTooltip tooltip="Shared email settings are read from STACK_EMAIL_* environment variables on the server." type='info' />
               )}
             </div>
           </div>
@@ -820,7 +831,7 @@ function EditEmailServerDialog(props: {
           name="type"
           control={form.control}
           options={[
-            { label: "Shared (noreply@stackframe.co)", value: 'shared' },
+            { label: "Shared (environment-configured)", value: 'shared' },
             { label: "Managed (via managed domain setup)", value: 'managed' },
             { label: "Resend (your own email address)", value: 'resend' },
             { label: "Custom SMTP server (your own email address)", value: 'standard' },

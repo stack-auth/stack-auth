@@ -1165,6 +1165,9 @@ export const renderedOrganizationConfigToProjectCrud = (renderedConfig: Complete
 
     email_config: renderedConfig.emails.server.isShared ? {
       type: 'shared',
+      host: getEnvVariable("STACK_EMAIL_HOST"),
+      port: parseInt(getEnvVariable("STACK_EMAIL_PORT")),
+      sender_email: getEnvVariable("STACK_EMAIL_SENDER"),
     } : renderedConfig.emails.server.provider === "managed" ? {
       type: 'standard',
       host: "smtp.resend.com",
