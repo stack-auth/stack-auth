@@ -27,18 +27,23 @@ type ServerType = "shared" | "managed" | "resend" | "standard";
 
 type ManagedDomainStatus = "pending_dns" | "pending_verification" | "verified" | "applied" | "failed";
 
+const DEFAULT_SHARED_SENDER_EMAIL = "noreply@stackframe.co";
+
 type ServerFieldConfig = {
   label: string,
   key: string,
   type: "text" | "email" | "number" | "password",
 };
 
-const SERVER_TYPE_LABELS: Record<ServerType, string> = {
-  shared: "Shared (noreply@stackframe.co)",
+const SERVER_TYPE_LABELS: Record<Exclude<ServerType, "shared">, string> = {
   managed: "Managed (via managed domain setup)",
   resend: "Resend",
   standard: "Custom SMTP",
 };
+
+function getSharedServerTypeLabel(senderEmail: string | undefined): string {
+  return `Shared (${senderEmail || DEFAULT_SHARED_SENDER_EMAIL})`;
+}
 
 const MANAGED_DOMAIN_STATUS_LABELS: Record<ManagedDomainStatus, string> = {
   pending_dns: "Pending DNS records",
@@ -89,7 +94,7 @@ function getServerTypeFromConfig(config: CompleteConfig["emails"]["server"]): Se
 
 function getFormValuesFromConfig(config: CompleteConfig["emails"]["server"], projectName: string): Record<string, string> {
   if (config.isShared) {
-    return { senderEmail: "noreply@stackframe.co", senderName: projectName };
+    return { senderEmail: config.senderEmail ?? "", senderName: projectName };
   }
   if (config.provider === "managed") {
     const senderEmail = config.managedSubdomain && config.managedSenderLocalPart
@@ -530,7 +535,7 @@ export function DomainSettings() {
               value={serverType}
               onValueChange={(v) => handleServerTypeChange(v as ServerType)}
               options={[
-                { value: "shared", label: SERVER_TYPE_LABELS.shared },
+                { value: "shared", label: getSharedServerTypeLabel(savedServerType === "shared" ? savedValues.senderEmail : undefined) },
                 { value: "managed", label: SERVER_TYPE_LABELS.managed },
                 { value: "resend", label: SERVER_TYPE_LABELS.resend },
                 { value: "standard", label: SERVER_TYPE_LABELS.standard },
@@ -542,7 +547,7 @@ export function DomainSettings() {
             <Label className="text-xs font-medium text-muted-foreground uppercase tracking-wider">Sender Email</Label>
             {isShared ? (
               <SimpleTooltip tooltip="Sender email is fixed on the shared server">
-                <Typography className="text-sm font-medium text-foreground/60 cursor-default py-1">noreply@stackframe.co</Typography>
+                <Typography className="text-sm font-medium text-foreground/60 cursor-default py-1">{formValues.senderEmail || DEFAULT_SHARED_SENDER_EMAIL}</Typography>
               </SimpleTooltip>
             ) : serverType === "managed" ? (
               <SimpleTooltip tooltip="Sender email is configured through the managed domain setup">

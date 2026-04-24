@@ -21,6 +21,8 @@ import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 import { DesignAnalyticsCard } from "@/components/design-components";
 
+const DEFAULT_SHARED_SENDER_EMAIL = "noreply@stackframe.co";
+
 // Section header with icon following design guide
 function SectionHeader({ icon: Icon, title }: { icon: ElementType, title: string }) {
   return (
@@ -139,7 +141,7 @@ function EmailServerCard({ emailConfig }: { emailConfig: CompleteConfig['emails'
       : (emailConfig.provider === 'resend' ? 'Resend' : 'Custom SMTP');
 
   const senderEmail = emailConfig.isShared
-    ? 'noreply@stackframe.co'
+    ? (emailConfig.senderEmail ?? DEFAULT_SHARED_SENDER_EMAIL)
     : emailConfig.provider === 'managed' && emailConfig.managedSubdomain && emailConfig.managedSenderLocalPart
       ? `${emailConfig.managedSenderLocalPart}@${emailConfig.managedSubdomain}`
       : emailConfig.senderEmail;
@@ -602,7 +604,7 @@ const getDefaultValues = (emailConfig: CompleteConfig['emails']['server'] | unde
   if (!emailConfig) {
     return { type: 'shared', senderName: project.displayName } as const;
   } else if (emailConfig.isShared) {
-    return { type: 'shared' } as const;
+    return { type: 'shared', senderEmail: emailConfig.senderEmail } as const;
   } else if (emailConfig.provider === 'resend') {
     return {
       type: 'resend',
@@ -820,7 +822,7 @@ function EditEmailServerDialog(props: {
           name="type"
           control={form.control}
           options={[
-            { label: "Shared (noreply@stackframe.co)", value: 'shared' },
+            { label: `Shared (${defaultValues.type === "shared" ? (defaultValues.senderEmail ?? DEFAULT_SHARED_SENDER_EMAIL) : DEFAULT_SHARED_SENDER_EMAIL})`, value: 'shared' },
             { label: "Managed (via managed domain setup)", value: 'managed' },
             { label: "Resend (your own email address)", value: 'resend' },
             { label: "Custom SMTP server (your own email address)", value: 'standard' },
