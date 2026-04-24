@@ -8,6 +8,7 @@ import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { useCallback, useState } from "react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
+import { AnalyticsEventLimitBanner } from "../shared";
 import { AiQueryBar } from "./ai-query-bar";
 import { AiQueryDialog } from "./ai-query-dialog";
 import {
@@ -225,6 +226,7 @@ export default function PageClient() {
   return (
     <AppEnabledGuard appId="analytics">
       <PageLayout fillWidth noPadding>
+        <AnalyticsEventLimitBanner />
         <div className="flex h-[calc(100vh-4.5rem)] max-h-[calc(100vh-4.5rem)] flex-1 min-h-0 overflow-hidden lg:-mx-2 dark:h-full dark:max-h-full">
           {/* Left sidebar — hidden on mobile */}
           <div className="hidden lg:flex h-full w-48 flex-shrink-0 flex-col overflow-hidden border-r border-border/50 pl-2">

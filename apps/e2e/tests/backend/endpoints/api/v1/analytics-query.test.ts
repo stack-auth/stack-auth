@@ -1,10 +1,38 @@
+import { PLAN_LIMITS, PlanId } from "@stackframe/stack-shared/dist/plans";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { it } from "../../../../helpers";
-import { Project, User, niceBackendFetch } from "../../../backend-helpers";
+import { Project, User, niceBackendFetch, withInternalProject } from "../../../backend-helpers";
 
 async function runQuery(body: { query: string, params?: Record<string, string>, timeout_ms?: number }) {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+
+  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
+    method: "POST",
+    accessType: "admin",
+    body,
+  });
+
+  return response;
+}
+
+async function runQueryWithPlan(planId: PlanId, body: { query: string, params?: Record<string, string>, timeout_ms?: number }) {
+  const { createProjectResponse } = await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  const ownerTeamId = createProjectResponse.body.owner_team_id;
+
+  if (planId !== "free") {
+    await withInternalProject(async () => {
+      const grantResponse = await niceBackendFetch(`/api/v1/payments/products/team/${ownerTeamId}`, {
+        method: "POST",
+        accessType: "server",
+        body: { product_id: planId },
+      });
+      if (grantResponse.status !== 200) {
+        throw new Error(`Failed to grant plan '${planId}' to team '${ownerTeamId}': ${JSON.stringify(grantResponse.body)}`);
+      }
+    });
+    await wait(2000);
+  }
 
   const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
     method: "POST",
@@ -154,10 +182,11 @@ it("can execute a query with custom timeout", async ({ expect }) => {
   `);
 });
 
-it("rejects timeouts longer than 2 minutes", async ({ expect }) => {
+it("rejects timeouts longer than max plan limit", async ({ expect }) => {
+  const maxSchemaMs = Math.max(...Object.values(PLAN_LIMITS).map(p => p.analyticsTimeoutSeconds)) * 1000;
   const response = await runQuery({
     query: "SELECT 1 as value",
-    timeout_ms: 120_001,
+    timeout_ms: maxSchemaMs + 1,
   });
 
   expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
@@ -168,12 +197,12 @@ it("rejects timeouts longer than 2 minutes", async ({ expect }) => {
         "details": {
           "message": deindent\`
             Request validation failed on POST /api/v1/internal/analytics/query:
-              - body.timeout_ms must be less than or equal to 120000
+              - body.timeout_ms must be less than or equal to ${maxSchemaMs}
           \`,
         },
         "error": deindent\`
           Request validation failed on POST /api/v1/internal/analytics/query:
-            - body.timeout_ms must be less than or equal to 120000
+            - body.timeout_ms must be less than or equal to ${maxSchemaMs}
         \`,
       },
       "headers": Headers {
@@ -1689,6 +1718,92 @@ it("does not leak column names from restricted tables via unknown identifier (co
       },
     }
   `);
+});
+
+it("clamps timeout to free plan limit", async ({ expect }) => {
+  const response = await runQueryWithPlan("free", {
+    query: "SELECT getSetting('max_execution_time') as max_execution_time",
+    timeout_ms: 120000,
+  });
+
+  expect(response.status).toBe(200);
+  const maxExecutionTime = Number((response.body?.result as any)?.[0]?.max_execution_time);
+  expect(maxExecutionTime).toBe(PLAN_LIMITS.free.analyticsTimeoutSeconds);
+});
+
+it("clamps timeout to team plan limit", async ({ expect }) => {
+  const response = await runQueryWithPlan("team", {
+    query: "SELECT getSetting('max_execution_time') as max_execution_time",
+    timeout_ms: 120000,
+  });
+
+  expect(response.status).toBe(200);
+  const maxExecutionTime = Number((response.body?.result as any)?.[0]?.max_execution_time);
+  expect(maxExecutionTime).toBe(PLAN_LIMITS.team.analyticsTimeoutSeconds);
+});
+
+it("clamps timeout to growth plan limit", async ({ expect }) => {
+  const maxSchemaMs = Math.max(...Object.values(PLAN_LIMITS).map(p => p.analyticsTimeoutSeconds)) * 1000;
+  const response = await runQueryWithPlan("growth", {
+    query: "SELECT getSetting('max_execution_time') as max_execution_time",
+    timeout_ms: maxSchemaMs,
+  });
+
+  expect(response.status).toBe(200);
+  const maxExecutionTime = Number((response.body?.result as any)?.[0]?.max_execution_time);
+  expect(maxExecutionTime).toBe(PLAN_LIMITS.growth.analyticsTimeoutSeconds);
+});
+
+it("does not clamp timeout below the plan limit", async ({ expect }) => {
+  const response = await runQueryWithPlan("team", {
+    query: "SELECT getSetting('max_execution_time') as max_execution_time",
+    timeout_ms: 5000,
+  });
+
+  expect(response.status).toBe(200);
+  const maxExecutionTime = Number((response.body?.result as any)?.[0]?.max_execution_time);
+  expect(maxExecutionTime).toBe(5);
+});
+
+it("rejects analytics queries when the timeout quota is zero (would otherwise send max_execution_time=0 to ClickHouse, i.e. unlimited)", async ({ expect }) => {
+  // Reachable in practice in the gap between a paid plan ending and the
+  // free plan being regranted, or any other billing-misconfigured state
+  // where the team has no plan in the plans line. `Math.min(timeout_ms, 0)`
+  // would produce `max_execution_time: 0`, which ClickHouse interprets as
+  // "no timeout" — the opposite of the intended enforcement.
+  const { createProjectResponse } = await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  const ownerTeamId = createProjectResponse.body.owner_team_id;
+
+  // Drain analytics_timeout_seconds to 0 (free plan starts at 10) via the
+  // internal-tenancy items endpoint.
+  await withInternalProject(async () => {
+    const drainResponse = await niceBackendFetch(
+      `/api/v1/payments/items/team/${ownerTeamId}/analytics_timeout_seconds/update-quantity?allow_negative=false`,
+      {
+        method: "POST",
+        accessType: "server",
+        body: { delta: -PLAN_LIMITS.free.analyticsTimeoutSeconds },
+      },
+    );
+    expect(drainResponse.status).toBe(200);
+  });
+  // Let the timefold process
+  await wait(2000);
+
+  const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
+    method: "POST",
+    accessType: "admin",
+    body: {
+      query: "SELECT getSetting('max_execution_time') as max_execution_time",
+      timeout_ms: 5000,
+    },
+  });
+
+  expect(response.status).toBe(400);
+  expect(response.body).toMatchObject({
+    code: "ITEM_QUANTITY_INSUFFICIENT_AMOUNT",
+    details: { item_id: "analytics_timeout_seconds" },
+  });
 });
 
 it("does not allow numbers table function with large values", async ({ expect }) => {

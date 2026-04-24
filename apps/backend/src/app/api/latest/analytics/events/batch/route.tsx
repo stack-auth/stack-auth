@@ -1,8 +1,11 @@
 import { getClickhouseAdminClient } from "@/lib/clickhouse";
+import { getBillingTeamId } from "@/lib/plan-entitlements";
 import { findRecentSessionReplay } from "@/lib/session-replays";
+import { getStackServerApp } from "@/stack";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
+import { ITEM_IDS } from "@stackframe/stack-shared/dist/plans";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
@@ -82,6 +85,17 @@ export const POST = createSmartRouteHandler({
     const userId = auth.user.id;
     const refreshTokenId = auth.refreshTokenId;
     const tenancyId = auth.tenancy.id;
+
+    const app = getStackServerApp();
+
+    const billingTeamId = getBillingTeamId(auth.tenancy.project);
+    if (billingTeamId != null) {
+      const eventsItem = await app.getItem({ itemId: ITEM_IDS.analyticsEvents, teamId: billingTeamId });
+      const isDebited = await eventsItem.tryDecreaseQuantity(body.events.length);
+      if (!isDebited) {
+        throw new KnownErrors.ItemQuantityInsufficientAmount(ITEM_IDS.analyticsEvents, billingTeamId, body.events.length);
+      }
+    }
 
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
     const recentSession = await findRecentSessionReplay(prisma, { tenancyId, refreshTokenId });

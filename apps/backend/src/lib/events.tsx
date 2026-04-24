@@ -1,6 +1,8 @@
 import withPostHog from "@/analytics";
 import { globalPrismaClient } from "@/prisma-client";
+import { getStackServerApp } from "@/stack";
 import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
+import { ITEM_IDS } from "@stackframe/stack-shared/dist/plans";
 import { urlSchema, yupBoolean, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
@@ -195,11 +197,19 @@ export async function logEvent<T extends EventType[]>(
   eventTypes: T,
   data: DataOfMany<T>,
   options: {
+    /**
+     * Billing team id for analytics-quota debiting, or null if the project
+     * has no owner team. Required: every caller has the tenancy (or project)
+     * in hand, so resolving this once at the call site via
+     * `getBillingTeamId(tenancy.project)` is strictly cheaper than a
+     * per-event DB lookup inside logEvent.
+     */
+    billingTeamId: string | null,
     time?: Date | { start: Date, end: Date },
     refreshTokenId?: string,
     sessionReplayId?: string,
     sessionReplaySegmentId?: string,
-  } = {}
+  }
 ) {
   let timeOrTimeRange = options.time ?? new Date();
   const timeRange = "start" in timeOrTimeRange && "end" in timeOrTimeRange ? timeOrTimeRange : { start: timeOrTimeRange, end: timeOrTimeRange };
@@ -264,6 +274,17 @@ export async function logEvent<T extends EventType[]>(
 
   // rest is no more dynamic APIs so we can run it asynchronously
   runAsynchronouslyAndWaitUntil((async () => {
+    const billingTeamId = options.billingTeamId;
+
+    if (billingTeamId != null) {
+      const app = getStackServerApp();
+      const eventsItem = await app.getItem({ itemId: ITEM_IDS.analyticsEvents, teamId: billingTeamId });
+      const isDebited = await eventsItem.tryDecreaseQuantity(1);
+      if (!isDebited) {
+        return;
+      }
+    }
+
     // log event in DB
     await globalPrismaClient.event.create({
       data: {

@@ -181,6 +181,12 @@ it("should provide delivery statistics", async ({ expect }) => {
     primaryEmailVerified: true,
   });
 
+  // Give Bulldozer's pg_cron tick time to materialise the billing team's
+  // `emails_per_month` quota from its freshly-granted free plan. Without
+  // this wait the first email gets quota-blocked into a permanent
+  // server-error terminal and `stats.hour.sent` never reaches 1.
+  await wait(2000);
+
   await serverApp.sendEmail({
     userIds: [user.id],
     html: "<p>Stats</p>",
@@ -244,6 +250,12 @@ it("should send test email with custom SMTP configuration", async ({ expect }) =
 
   // Verify config is not shared
   expect(config.emails.server.isShared).toBe(false);
+
+  // Give Bulldozer's pg_cron tick time to materialise the billing team's
+  // `emails_per_month` quota from its freshly-granted free plan; otherwise
+  // the `tryDecreaseQuantity` inside the route rejects with
+  // ItemQuantityInsufficientAmount before SMTP is ever dialled.
+  await wait(2000);
 
   // Send a test email
   const result = await adminApp.sendTestEmail({

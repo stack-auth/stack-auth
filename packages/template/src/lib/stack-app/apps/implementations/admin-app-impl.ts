@@ -1,4 +1,4 @@
-import { StackAdminInterface } from "@stackframe/stack-shared";
+import { KnownErrors, StackAdminInterface } from "@stackframe/stack-shared";
 import { getProductionModeErrors } from "@stackframe/stack-shared/dist/helpers/production-mode";
 import { InternalApiKeyCreateCrudResponse } from "@stackframe/stack-shared/dist/interface/admin-interface";
 import type { MetricsResponse } from "@stackframe/stack-shared/dist/interface/admin-metrics";
@@ -570,14 +570,29 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     recipientEmail: string,
     emailConfig: EmailConfig,
   }): Promise<Result<undefined, { errorMessage: string }>> {
-    const response = await this._interface.sendTestEmail({
-      recipient_email: options.recipientEmail,
-      email_config: {
-        ...(pick(options.emailConfig, ['host', 'port', 'username', 'password'])),
-        sender_email: options.emailConfig.senderEmail,
-        sender_name: options.emailConfig.senderName,
-      },
-    });
+    let response: { success: boolean, error_message?: string };
+    try {
+      response = await this._interface.sendTestEmail({
+        recipient_email: options.recipientEmail,
+        email_config: {
+          ...(pick(options.emailConfig, ['host', 'port', 'username', 'password'])),
+          sender_email: options.emailConfig.senderEmail,
+          sender_name: options.emailConfig.senderName,
+        },
+      });
+    } catch (error) {
+      // Translate the quota-exhaustion KnownError into the existing
+      // Result.error shape so SDK/dashboard callers don't need to branch on
+      // exceptions. The backend throws `ItemQuantityInsufficientAmount`
+      // (consistent with every other limit-rejection endpoint), but this
+      // method's historical contract has always been a `Result`.
+      if (error instanceof KnownErrors.ItemQuantityInsufficientAmount) {
+        return Result.error({
+          errorMessage: "Monthly email sending limit exceeded for your plan. Please upgrade your plan or wait until next month before sending more test emails.",
+        });
+      }
+      throw error;
+    }
 
     if (response.success) {
       return Result.ok(undefined);

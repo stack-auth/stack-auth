@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
+import { PLAN_LIMITS } from "@stackframe/stack-shared/dist/plans";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../helpers";
-import { Auth, Project, Team, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../backend-helpers";
+import { Auth, Project, Team, backendContext, bumpEmailAddress, niceBackendFetch, withInternalProject } from "../../../backend-helpers";
 
 async function uploadBatch(options: {
   browserSessionId: string,
@@ -1381,4 +1382,140 @@ it("admin list session replays rejects invalid filter parameters", async ({ expe
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
+});
+
+// ============================================================================
+// Session replay limit enforcement tests
+// ============================================================================
+
+async function getSessionReplayItemQuantity(ownerTeamId: string) {
+  return await withInternalProject(async () => {
+    const response = await niceBackendFetch(`/api/v1/payments/items/team/${ownerTeamId}/session_replays`, {
+      accessType: "server",
+    });
+    if (response.status !== 200) {
+      throw new Error(`Failed to get session_replays item: ${JSON.stringify(response.body)}`);
+    }
+    return response.body.quantity as number;
+  });
+}
+
+async function setSessionReplayItemQuantity(ownerTeamId: string, quantity: number) {
+  const currentQuantity = await getSessionReplayItemQuantity(ownerTeamId);
+  const delta = quantity - currentQuantity;
+
+  await withInternalProject(async () => {
+    const response = await niceBackendFetch(`/api/v1/payments/items/team/${ownerTeamId}/session_replays/update-quantity?allow_negative=true`, {
+      method: "POST",
+      accessType: "server",
+      body: { delta },
+    });
+    if (response.status !== 200) {
+      throw new Error(`Failed to set session_replays quantity: ${JSON.stringify(response.body)}`);
+    }
+  });
+}
+
+it("free plan starts with correct session replay allocation", async ({ expect }) => {
+  const { createProjectResponse } = await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  const ownerTeamId = createProjectResponse.body.owner_team_id;
+
+  const quantity = await getSessionReplayItemQuantity(ownerTeamId);
+  expect(quantity).toBe(PLAN_LIMITS.free.sessionReplays);
+});
+
+it("rejects new session replay when quota is exhausted", async ({ expect }) => {
+  const { createProjectResponse } = await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  const ownerTeamId = createProjectResponse.body.owner_team_id;
+
+  await Auth.Otp.signIn();
+  await setSessionReplayItemQuantity(ownerTeamId, 0);
+
+  const now = Date.now();
+  const res = await uploadBatch({
+    browserSessionId: randomUUID(),
+    batchId: randomUUID(),
+    startedAtMs: now,
+    sentAtMs: now + 500,
+    events: [{ type: 2, timestamp: now + 100 }],
+  });
+
+  expect(res.status).toBe(400);
+  expect(res.body.code).toBe("ITEM_QUANTITY_INSUFFICIENT_AMOUNT");
+});
+
+it("accepts new session replay and debits quota by 1", async ({ expect }) => {
+  const { createProjectResponse } = await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  const ownerTeamId = createProjectResponse.body.owner_team_id;
+
+  await Auth.Otp.signIn();
+
+  const quantityBefore = await getSessionReplayItemQuantity(ownerTeamId);
+
+  const now = Date.now();
+  const res = await uploadBatch({
+    browserSessionId: randomUUID(),
+    batchId: randomUUID(),
+    startedAtMs: now,
+    sentAtMs: now + 500,
+    events: [{ type: 2, timestamp: now + 100 }],
+  });
+
+  expect(res.status).toBe(200);
+  expect(res.body.deduped).toBe(false);
+
+  const quantityAfter = await getSessionReplayItemQuantity(ownerTeamId);
+  expect(quantityAfter).toBe(quantityBefore - 1);
+});
+
+it("does not debit quota when appending chunks to an existing session replay, even after quota is exhausted", async ({ expect }) => {
+  const { createProjectResponse } = await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  const ownerTeamId = createProjectResponse.body.owner_team_id;
+
+  await Auth.Otp.signIn();
+
+  const now = Date.now();
+  const firstBatch = await uploadBatch({
+    browserSessionId: randomUUID(),
+    batchId: randomUUID(),
+    startedAtMs: now,
+    sentAtMs: now + 500,
+    events: [{ type: 2, timestamp: now + 100 }],
+  });
+  expect(firstBatch.status).toBe(200);
+  expect(firstBatch.body.deduped).toBe(false);
+
+  const quantityAfterFirst = await getSessionReplayItemQuantity(ownerTeamId);
+
+  const secondBatch = await uploadBatch({
+    browserSessionId: randomUUID(),
+    batchId: randomUUID(),
+    startedAtMs: now,
+    sentAtMs: now + 1000,
+    events: [{ type: 3, timestamp: now + 500 }],
+  });
+  expect(secondBatch.status).toBe(200);
+  expect(secondBatch.body.session_replay_id).toBe(firstBatch.body.session_replay_id);
+
+  const quantityAfterSecond = await getSessionReplayItemQuantity(ownerTeamId);
+  expect(quantityAfterSecond).toBe(quantityAfterFirst);
+
+  // Exhaust quota — existing replays should still be able to append
+  await setSessionReplayItemQuantity(ownerTeamId, 0);
+
+  const thirdBatch = await uploadBatch({
+    browserSessionId: randomUUID(),
+    batchId: randomUUID(),
+    startedAtMs: now,
+    sentAtMs: now + 1500,
+    events: [{ type: 3, timestamp: now + 1000 }],
+  });
+  expect(thirdBatch.status).toBe(200);
+  expect(thirdBatch.body.session_replay_id).toBe(firstBatch.body.session_replay_id);
+
+  const quantityAfterThird = await getSessionReplayItemQuantity(ownerTeamId);
+  expect(quantityAfterThird).toBe(0);
 });
