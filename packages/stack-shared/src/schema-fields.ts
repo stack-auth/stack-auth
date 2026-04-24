@@ -887,7 +887,7 @@ export const neonAuthorizationHeaderSchema = basicAuthorizationHeaderSchema.test
   return false;
 });
 import.meta.vitest?.test("neonAuthorizationHeaderSchema handles malformed Basic auth as a validation error", async ({ expect }) => {
-  await expect(neonAuthorizationHeaderSchema.validate("Basic")).rejects.toThrow('Authorization header must be in the format "Basic <base64>"');
+  await expect(neonAuthorizationHeaderSchema.validate("Basic", { abortEarly: false })).rejects.toThrow('Authorization header must be in the format "Basic <base64>"');
 });
 
 // Utils

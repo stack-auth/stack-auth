@@ -216,6 +216,7 @@ it("should fail if the neon client details are missing", async ({ expect }) => {
 });
 
 it("should fail if the neon client authorization header is malformed", async ({ expect }) => {
+  // This project ID is arbitrary because malformed Basic auth is rejected before any project lookup runs.
   const projectId = "73782539-cf39-486b-a9f8-9b2893f79ef2";
   const response = await niceBackendFetch(urlString`/api/v1/integrations/neon/projects/transfer?project_id=${projectId}`, {
     method: "GET",
