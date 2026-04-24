@@ -13,6 +13,7 @@ import { createInitPrompt } from "../lib/init-prompt.js";
 import { createProjectInteractively } from "../lib/create-project.js";
 import { runClaudeAgent } from "../lib/claude-agent.js";
 import { detectImportPackageFromDir, renderConfigFileContent } from "@stackframe/stack-shared/dist/config-rendering";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
 type InitOptions = {
   mode?: "create" | "create-cloud" | "link-config" | "link-cloud",
@@ -80,7 +81,7 @@ async function runInit(program: Command, opts: InitOptions) {
   let configPath: string | undefined;
 
   if (mode === "link" || mode === "link-config" || mode === "link-cloud") {
-    const result = await handleLink(flags, opts, outputDir);
+    const result = await handleLink(flags, opts, outputDir, mode);
     configPath = result.configPath;
   } else if (mode === "create") {
     const result = await handleCreate(opts, outputDir);
@@ -109,12 +110,12 @@ async function runInit(program: Command, opts: InitOptions) {
   }
 }
 
-async function handleLink(flags: Record<string, unknown>, opts: InitOptions, outputDir: string): Promise<{ configPath?: string }> {
+async function handleLink(flags: Record<string, unknown>, opts: InitOptions, outputDir: string, resolvedMode?: string): Promise<{ configPath?: string }> {
   let source: "config-file" | "cloud";
 
-  if (opts.mode === "link-config") {
+  if (resolvedMode === "link-config" || opts.mode === "link-config") {
     source = "config-file";
-  } else if (opts.mode === "link-cloud") {
+  } else if (resolvedMode === "link-cloud" || opts.mode === "link-cloud") {
     source = "cloud";
   } else {
     source = await select({
@@ -181,11 +182,14 @@ async function writeProjectKeysToEnv(
     hasSuperSecretAdminKey: false,
   });
 
+  const publishableClientKey = apiKey.publishableClientKey ?? throwErr("createInternalApiKey returned no publishableClientKey despite hasPublishableClientKey=true");
+  const secretServerKey = apiKey.secretServerKey ?? throwErr("createInternalApiKey returned no secretServerKey despite hasSecretServerKey=true");
+
   const envLines = [
     "# Stack Auth",
     `NEXT_PUBLIC_STACK_PROJECT_ID=${project.id}`,
-    `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=${apiKey.publishableClientKey ?? ""}`,
-    `STACK_SECRET_SERVER_KEY=${apiKey.secretServerKey ?? ""}`,
+    `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=${publishableClientKey}`,
+    `STACK_SECRET_SERVER_KEY=${secretServerKey}`,
   ].join("\n");
 
   const envPath = path.resolve(outputDir, ".env");
