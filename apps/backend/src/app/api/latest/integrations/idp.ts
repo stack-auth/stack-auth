@@ -1,10 +1,10 @@
-import { globalPrismaClient, retryTransaction } from '@/prisma-client';
 import { Prisma } from '@/generated/prisma/client';
+import { globalPrismaClient, retryTransaction } from '@/prisma-client';
 import { decodeBase64OrBase64Url, toHexString } from '@stackframe/stack-shared/dist/utils/bytes';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError, captureError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { sha512 } from '@stackframe/stack-shared/dist/utils/hashes';
-import { getPrivateJwks, getPublicJwkSet } from '@stackframe/stack-shared/dist/utils/jwt';
+import { getOldStackServerSecret, getPrivateJwks, getPublicJwkSet } from '@stackframe/stack-shared/dist/utils/jwt';
 import { deindent } from '@stackframe/stack-shared/dist/utils/strings';
 import { generateUuid } from '@stackframe/stack-shared/dist/utils/uuids';
 import Provider, { Adapter, AdapterConstructor, AdapterPayload } from 'oidc-provider';
@@ -170,14 +170,21 @@ export async function createOidcProvider(options: { id: string, baseUrl: string,
     keys: privateJwks,
   };
   const publicJwkSet = await getPublicJwkSet(privateJwks);
+  const oldStackServerSecret = getOldStackServerSecret();
 
   const oidc = new Provider(options.baseUrl, {
     adapter: createPrismaAdapter(options.id),
     clients: JSON.parse(getEnvVariable("STACK_INTEGRATION_CLIENTS_CONFIG", "[]")),
     ttl: {},
     cookies: {
+      // oidc-provider passes these to Koa keygrip: index 0 signs new cookies, any entry verifies.
+      // During a STACK_SERVER_SECRET rotation, the old-secret-derived key is appended so cookies
+      // issued before the rotation remain readable until they expire naturally.
       keys: [
         toHexString(await sha512(`oidc-idp-cookie-encryption-key:${getEnvVariable("STACK_SERVER_SECRET")}`)),
+        ...(oldStackServerSecret
+          ? [toHexString(await sha512(`oidc-idp-cookie-encryption-key:${oldStackServerSecret}`))]
+          : []),
       ],
     },
     jwks: privateJwkSet,
