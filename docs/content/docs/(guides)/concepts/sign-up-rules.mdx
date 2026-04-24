@@ -2,7 +2,7 @@
 title: Sign-up Rules
 description: Control who can sign up for your application with customizable rules.
 icon: ShieldCheck
-lastModified: "2026-02-24"
+lastModified: "2026-04-24"
 ---
 
 Sign-up rules let you control who can sign up for your application. You can create rules that evaluate sign-up attempts based on conditions like email domain or authentication method, then allow, reject, or restrict users accordingly.
@@ -106,25 +106,24 @@ The dashboard shows analytics for each rule, including how many times it's been 
 
 ## Testing rules
 
-You can test your sign-up rules using the built-in rule tester. It simulates sign-up requests and shows which rules would trigger and what the outcome would be—without affecting real users.
+The built-in rule tester lets you simulate sign-up requests to see which rules would trigger and what the outcome would be—without affecting real users.
 
-To open the tester, scroll to the bottom of the Sign-up Rules page and click **Open tester**.
+To open the tester, click **Open tester** in the page header (next to the **Add rule** button).
 
 ### Test inputs
 
-Enter the following to simulate a sign-up attempt:
+The tester shows two fields by default:
 
 - **Email**: The email address to test (e.g., `user@company.com`)
-- **Auth method**: The authentication method (`Password`, `OTP`, `OAuth`, or `Passkey`)
-- **OAuth provider**: The OAuth provider ID (only used when auth method is OAuth)
+- **Sign-up method**: The authentication method (`Password`, `OTP`, `OAuth`, or `Passkey`)
+
+Expand **Advanced options** to configure additional fields like OAuth provider, country, risk scores, and Turnstile settings.
 
 Click **Run test** to see the results.
 
 ### Understanding the results
 
-The tester displays:
+After running a test, the tester shows an outcome card indicating whether the sign-up would be allowed or rejected. Expand the sections below the outcome for more details:
 
-- **Outcome**: Whether the sign-up would be allowed or rejected, and whether the decision came from a specific rule or the default action.
-- **Triggered rules**: All rules that matched the test input, showing each rule's name, condition, action type, and whether it was the deciding rule.
-- **Evaluation trace**: A detailed view of how every rule was evaluated—which matched, which didn't, which were disabled, and any errors.
-- **Normalized context**: How the test input was parsed, including the extracted email domain. Useful for debugging conditions that reference `email`, `emailDomain`, `authMethod`, or `oauthProvider`.
+- **Matched rules**: Rules that matched the test input, showing each rule's name, condition, action type, and whether it was the deciding rule.
+- **Resolved context**: How the test input was parsed, including the extracted email domain. Useful for debugging conditions that reference context variables.
