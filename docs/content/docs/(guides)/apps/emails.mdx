@@ -2,7 +2,7 @@
 title: Emails
 description: Send custom emails to your users with Stack Auth's email system.
 icon: Mail
-lastModified: "2026-03-11"
+lastModified: "2026-04-24"
 ---
 
 Stack Auth provides emails that allows you to send custom emails to your users. The system supports both custom HTML emails and template-based emails with theming.
@@ -145,49 +145,67 @@ These templates can be customized through the admin interface or programmaticall
 
 ## Email Configuration
 
-Email configuration is managed through the Stack Auth dashboard or admin API, not directly in your application code. You have three options:
+Email configuration is managed through the Stack Auth dashboard. Go to your project's Email settings and select one of the four email providers:
 
-### Shared Email Provider (Development)
+- **Stack Shared** — Default emails only. No custom templates, themes, or sender identity.
+- **Managed Domain** — Bring your own domain. You add DNS records; Stack Auth handles signing and delivery.
+- **Resend** — Connect your Resend account for managed email delivery.
+- **Custom SMTP** — Use your own SMTP server for full control over email delivery.
 
-For development and testing, you can use Stack's shared email provider. This sends emails from `noreply@stackframe.co` and is configured through your project settings in the Stack Auth dashboard.
+When you select a provider, the dashboard shows a **Current** pill on the saved option. If you preview a different provider, a **Draft** pill appears along with an unsaved-changes banner until you save or discard.
 
-- Go to your project's Email settings in the dashboard
-- Select "Shared" as your email server type
-- No additional configuration required
+### Stack Shared (Development)
 
-### Managed by Stack Auth (Production)
+For development and testing, Stack Shared sends emails from `noreply@stackframe.co`. No configuration needed — just select it and save.
 
-Stack Auth can automatically manage your email domain and DNS configuration, letting you send emails from your own domain without manually configuring SMTP.
+### Managed Domain (Production)
+
+Use your own domain without configuring SMTP yourself. Stack Auth handles email signing and delivery through its managed infrastructure.
 
 **Setup:**
 
-1. Go to your project's Email settings in the dashboard and click "Managed Setup"
-2. Enter your subdomain (e.g., `mail.yourdomain.com`) and sender local part (e.g., `noreply`)
-3. Stack Auth will display nameserver records — add these NS records at your DNS provider for the subdomain
-4. Wait for DNS propagation (status will change from "pending_verification" to "verified")
-5. Click "Use This Domain" to activate
+<Steps>
+  <Step title="Add a domain">
+    Go to your project's Email settings, select **Managed Domain**, and click **Add domain**. Enter your domain (e.g., `mail.yourdomain.com`).
+  </Step>
+  <Step title="Configure DNS records">
+    Stack Auth displays a table of DNS records to add at your DNS provider. Each row shows the **Type**, **Name**, and **Content** for the record. Use the copy button on each row to copy the values.
+  </Step>
+  <Step title="Verify and activate">
+    Click **Check verification** to verify your DNS records. Once verified, click **Use this domain** to activate it.
+  </Step>
+</Steps>
 
-Your emails will be sent from `{sender}@{subdomain}` (e.g., `noreply@mail.yourdomain.com`).
+Your domain list shows the status of each domain:
+
+- **Active** — Currently in use for sending emails
+- **Verified** — DNS verified, ready to activate
+- **Waiting for DNS** — Waiting for you to add the required DNS records
+- **Verifying** — DNS propagation in progress
+- **Failed** — Verification failed; check your DNS configuration
+
+Only one domain can be active at a time. To switch domains, click **Use this domain** on any verified domain.
 
 <Info>
 DNS propagation can take anywhere from a few minutes to 48 hours depending on your DNS provider.
 </Info>
 
-### Custom Email Server (Production)
+### Resend
 
-If you prefer to use your own SMTP server, configure it through the dashboard:
+Connect your Resend account for managed email delivery. Select **Resend** and enter your Resend API key.
 
-- Go to your project's Email settings in the dashboard  
-- Select "Custom SMTP server" as your email server type
-- Configure the following settings:
-  - **Host**: Your SMTP server hostname (e.g., `smtp.yourprovider.com`)
-  - **Port**: SMTP port (typically 587 for STARTTLS, or 465/2465 for implicit TLS)
-  - **Username**: Your SMTP username
-  - **Password**: Your SMTP password
-  - **Sender Email**: The email address emails will be sent from
-  - **Sender Name**: The display name for your emails
+### Custom SMTP (Production)
 
-The dashboard will automatically test your configuration when you save it.
+For full control over email delivery, configure your own SMTP server:
+
+- **Host**: Your SMTP server hostname (e.g., `smtp.yourprovider.com`)
+- **Port**: SMTP port (typically 587 for STARTTLS, or 465/2465 for implicit TLS)
+- **Username**: Your SMTP username
+- **Password**: Your SMTP password
+- **Sender Email**: The email address emails will be sent from
+- **Sender Name**: The display name for your emails
+
+The dashboard tests your configuration automatically when you save.
 
 ## Notification Categories
 
