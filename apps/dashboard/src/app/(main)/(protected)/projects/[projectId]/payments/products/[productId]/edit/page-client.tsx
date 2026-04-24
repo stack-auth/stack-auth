@@ -4,6 +4,9 @@ import { Link } from "@/components/link";
 import { ItemDialog } from "@/components/payments/item-dialog";
 import { useRouter } from "@/components/router";
 import {
+  Alert,
+  AlertDescription,
+  AlertTitle,
   Button,
   Checkbox,
   Input,
@@ -30,7 +33,7 @@ import { IncludedItemDialog } from "../../included-item-dialog";
 import { PricingSection } from "../../pricing-section";
 import { ProductCardPreview } from "../../product-card-preview";
 import {
-  generateUniqueId,
+  createFreePrice,
   type Price,
   type Product,
 } from "../../utils";
@@ -100,10 +103,7 @@ function EditProductForm({ productId, existingProduct }: { productId: string, ex
   const existingIsAddOnTo = existingIsAddOn
     ? Object.keys(existingProduct.isAddOnTo as Record<string, boolean>)
     : [];
-  const existingPrices = existingProduct.prices === 'include-by-default'
-    ? {}
-    : existingProduct.prices;
-  const existingFreeByDefault = existingProduct.prices === 'include-by-default';
+  const existingPrices = existingProduct.prices;
 
   // Form state - initialized from existing product
   const [displayName, setDisplayName] = useState(existingProduct.displayName || '');
@@ -112,7 +112,6 @@ function EditProductForm({ productId, existingProduct }: { productId: string, ex
   const [isAddOnTo, setIsAddOnTo] = useState<string[]>(existingIsAddOnTo);
   const [stackable, setStackable] = useState(existingProduct.stackable);
   const [serverOnly, setServerOnly] = useState(existingProduct.serverOnly);
-  const [freeByDefault, setFreeByDefault] = useState(existingFreeByDefault);
   const [prices, setPrices] = useState<Record<string, Price>>(existingPrices);
   const [includedItems, setIncludedItems] = useState<Product['includedItems']>(existingProduct.includedItems);
   const [freeTrial, setFreeTrial] = useState<Product['freeTrial']>(existingProduct.freeTrial);
@@ -155,7 +154,7 @@ function EditProductForm({ productId, existingProduct }: { productId: string, ex
     productLineId: effectiveProductLineId || undefined,
     isAddOnTo: isAddOn ? Object.fromEntries(isAddOnTo.map(id => [id, true])) : false,
     stackable,
-    prices: freeByDefault ? 'include-by-default' : prices,
+    prices,
     includedItems,
     serverOnly,
     freeTrial,
@@ -197,8 +196,8 @@ function EditProductForm({ productId, existingProduct }: { productId: string, ex
       }
     }
 
-    if (!freeByDefault && Object.keys(prices).length === 0) {
-      newErrors.prices = "Add at least one price or enable 'Include by default'";
+    if (Object.keys(prices).length === 0) {
+      newErrors.prices = "Add at least one price";
     }
 
     return newErrors;
@@ -219,7 +218,7 @@ function EditProductForm({ productId, existingProduct }: { productId: string, ex
         productLineId: effectiveProductLineId || undefined,
         isAddOnTo: isAddOn ? Object.fromEntries(isAddOnTo.map(id => [id, true])) : false,
         stackable,
-        prices: freeByDefault ? 'include-by-default' : prices,
+        prices,
         includedItems,
         serverOnly,
         freeTrial,
@@ -267,7 +266,7 @@ function EditProductForm({ productId, existingProduct }: { productId: string, ex
     }
   };
 
-  const canSave = !!(displayName.trim() && (freeByDefault || Object.keys(prices).length > 0));
+  const canSave = !!(displayName.trim() && Object.keys(prices).length > 0);
 
   return (
     <div className="flex flex-col h-full">
@@ -354,6 +353,16 @@ function EditProductForm({ productId, existingProduct }: { productId: string, ex
             {/* Pricing Section */}
             <section className="space-y-3">
               <Typography type="h4" className="font-semibold">Pricing</Typography>
+              {Object.keys(existingPrices).length === 0 && Object.keys(prices).length === 0 && (
+                <Alert variant="destructive">
+                  <AlertTitle>This product has no prices</AlertTitle>
+                  <AlertDescription>
+                    This product was previously set to &quot;include by default&quot;, which is no longer supported.
+                    Add an explicit $0 price below (click &quot;Make free&quot;) to restore customer access, or
+                    set a paid price.
+                  </AlertDescription>
+                </Alert>
+              )}
               <PricingSection
                 prices={prices}
                 onPricesChange={(newPrices) => {
@@ -369,23 +378,9 @@ function EditProductForm({ productId, existingProduct }: { productId: string, ex
                 hasError={!!errors.prices}
                 errorMessage={errors.prices}
                 variant="form"
-                isFree={freeByDefault || (Object.keys(prices).length === 1 && Object.values(prices)[0].USD === '0.00')}
-                freeByDefault={freeByDefault}
+                isFree={Object.keys(prices).length === 1 && Object.values(prices)[0].USD === '0.00'}
                 onMakeFree={() => {
-                  setPrices({});
-                  setFreeByDefault(true);
-                }}
-                onMakePaid={() => {
-                  setFreeByDefault(false);
-                }}
-                onFreeByDefaultChange={(checked) => {
-                  setFreeByDefault(checked);
-                  if (!checked) {
-                    const newPriceId = generateUniqueId('price');
-                    setPrices({ [newPriceId]: { USD: '0.00', serverOnly: false } });
-                  } else {
-                    setPrices({});
-                  }
+                  setPrices(createFreePrice());
                 }}
               />
             </section>

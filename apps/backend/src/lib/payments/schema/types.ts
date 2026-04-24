@@ -62,7 +62,7 @@ export type ProductSnapshot = {
   serverOnly?: boolean | null,
   freeTrial?: DayInterval | null,
   isAddOnTo?: false | Record<string, true> | null,
-  prices: "include-by-default" | Record<string, Record<string, Json>>,
+  prices: Record<string, Record<string, Json>>,
   includedItems: Record<string, IncludedItemConfig>,
   clientMetadata?: Json | null,
   clientReadOnlyMetadata?: Json | null,

@@ -44,7 +44,6 @@ import { ProductDialog } from "./product-dialog";
 import { ProductPriceRow } from "./product-price-row";
 import {
   generateUniqueId,
-  getPricesObject,
   intervalLabel,
   shortIntervalLabel,
   type PricesObject,
@@ -564,7 +563,7 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
     };
   }, [hashAnchor, isHashTarget, currentHash]);
 
-  const pricesObject: PricesObject = getPricesObject(product);
+  const pricesObject: PricesObject = product.prices;
   const priceCount = Object.keys(pricesObject).length;
 
   const generateComprehensivePrompt = (): string => {
@@ -592,9 +591,7 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
     prompt += `\n`;
 
     prompt += `## Pricing Structure\n`;
-    if (product.prices === 'include-by-default') {
-      prompt += `This product is included by default (free).\n\n`;
-    } else if (priceEntries.length === 0) {
+    if (priceEntries.length === 0) {
       prompt += `No prices configured.\n\n`;
     } else {
       priceEntries.forEach(([priceId, price], index) => {
@@ -825,7 +822,6 @@ function ProductCard({ id, product, allProducts, existingItems, onSave, onDelete
               priceId={pid}
               price={price}
               isFree={false}
-              includeByDefault={product.prices === 'include-by-default'}
               readOnly={true}
               startEditing={false}
               existingPriceIds={entries.map(([k]) => k).filter(k => k !== pid)}
@@ -1823,8 +1819,6 @@ export default function PageClient({ createDraftRequestId, draftCustomerType = '
         }
         // If same customer type and addons, sort by lowest price
         const getPricePriority = (product: Product) => {
-          if (product.prices === 'include-by-default') return 0;
-          if (typeof product.prices !== 'object') return 0;
           return Math.min(...Object.values(product.prices).map(price => +(price.USD ?? Infinity)));
         };
         const priceA = getPricePriority(a.product);

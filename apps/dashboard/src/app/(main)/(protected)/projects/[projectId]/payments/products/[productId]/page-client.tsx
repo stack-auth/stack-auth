@@ -44,7 +44,7 @@ import {
   Typography,
 } from "@/components/ui";
 import { useUpdateConfig } from "@/lib/config-update";
-import { ArrowLeftIcon, ClockIcon, CopyIcon, CurrencyDollarIcon, DotsThreeIcon, FolderOpenIcon, GiftIcon, HardDriveIcon, PackageIcon, PencilSimpleIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TagIcon, TrashIcon, UsersIcon, XIcon } from "@phosphor-icons/react";
+import { ArrowLeftIcon, ClockIcon, CopyIcon, CurrencyDollarIcon, DotsThreeIcon, FolderOpenIcon, GiftIcon, HardDriveIcon, PackageIcon, PencilSimpleIcon, PlusIcon, PuzzlePieceIcon, StackIcon, TagIcon, TrashIcon, UsersIcon } from "@phosphor-icons/react";
 import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import type { Transaction, TransactionEntry } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import type { DayInterval } from "@stackframe/stack-shared/dist/utils/dates";
@@ -324,6 +324,12 @@ function ProductDetailsSection({ productId, product, config }: ProductDetailsSec
 
   // Save all pending changes
   const handleSave = async () => {
+    const effectivePrices = pendingChanges.prices ?? product.prices;
+    if (Object.keys(effectivePrices).length === 0) {
+      alert("A product must have at least one price. Add a price option or make the product free before saving.");
+      return;
+    }
+
     const configUpdate: Record<string, any> = {};
 
     // Apply product changes
@@ -829,25 +835,24 @@ type ProductPricesSectionProps = {
 function ProductPricesSection({ productId, prices, onPricesChange, inline = false }: ProductPricesSectionProps) {
   const [editingPrice, setEditingPrice] = useState<EditingPrice | null>(null);
   const [isAddingPrice, setIsAddingPrice] = useState(false);
+  const [replacePricesOnSave, setReplacePricesOnSave] = useState(false);
 
   const handleSavePrice = (editing: EditingPrice) => {
     const newPrice = editingPriceToPrice(editing);
 
-    const currentPrices = prices === 'include-by-default' ? {} : prices;
-    const updatedPrices = {
-      ...currentPrices,
-      [editing.priceId]: newPrice,
-    };
+    const updatedPrices = replacePricesOnSave
+      ? { [editing.priceId]: newPrice }
+      : { ...prices, [editing.priceId]: newPrice };
 
     onPricesChange(updatedPrices);
     setEditingPrice(null);
     setIsAddingPrice(false);
+    setReplacePricesOnSave(false);
   };
 
   const handleDeletePrice = (priceId: string) => {
-    const currentPrices = prices === 'include-by-default' ? {} : prices;
-    const { [priceId]: _, ...remainingPrices } = currentPrices as Record<string, Price>;
-    onPricesChange(Object.keys(remainingPrices).length > 0 ? remainingPrices : {});
+    const { [priceId]: _, ...remainingPrices } = prices;
+    onPricesChange(remainingPrices);
   };
 
 
@@ -861,25 +866,20 @@ function ProductPricesSection({ productId, prices, onPricesChange, inline = fals
     setIsAddingPrice(true);
   };
 
-  const isIncludeByDefault = prices === 'include-by-default';
-  const priceEntries = !isIncludeByDefault ? typedEntries(prices as Record<string, Price>) : [];
-  // Check if the product has a single $0 price (free but not included by default)
-  const isFreeNotIncluded = priceEntries.length === 1 && priceEntries[0][1].USD === '0' || priceEntries.length === 1 && priceEntries[0][1].USD === '0.00';
-  const isFree = isIncludeByDefault || isFreeNotIncluded;
-  const hasNoPrices = !isIncludeByDefault && priceEntries.length === 0;
+  const priceEntries = typedEntries(prices);
+  const isFree = priceEntries.length === 1
+    && (priceEntries[0][1].USD === '0' || priceEntries[0][1].USD === '0.00')
+    && !priceEntries[0][1].interval
+    && !priceEntries[0][1].freeTrial
+    && !priceEntries[0][1].serverOnly;
+  const hasNoPrices = priceEntries.length === 0;
 
   const handleMakePaid = () => {
-    // Convert from include-by-default to empty prices object, then open add dialog
-    onPricesChange({});
+    setReplacePricesOnSave(true);
     openAddDialog();
   };
 
-  const handleSetIncludeByDefault = () => {
-    onPricesChange('include-by-default');
-  };
-
-  const handleSetFreeNotIncluded = () => {
-    // Set a $0 price to make it free but not included by default
+  const handleMakeFree = () => {
     const newPriceId = generateUniqueId('price');
     onPricesChange({
       [newPriceId]: { USD: '0', serverOnly: false },
@@ -889,18 +889,9 @@ function ProductPricesSection({ productId, prices, onPricesChange, inline = fals
   const listContent = (
     <div className="pl-1">
       {isFree ? (
-        // Free product - show "Free" with option to toggle include-by-default
         <div className="flex flex-col">
           <div className="flex items-center text-sm leading-6">
             <span className="font-semibold text-foreground">Free</span>
-            <span className="text-muted-foreground mx-1.5">—</span>
-            {isIncludeByDefault ? (
-              <SimpleTooltip tooltip="This product will automatically be given to all new and existing customers">
-                <span className="text-muted-foreground cursor-help border-b border-dotted border-muted-foreground/50">Included by default</span>
-              </SimpleTooltip>
-            ) : (
-              <span className="text-muted-foreground">Not included by default</span>
-            )}
           </div>
           <div className="flex items-center gap-2 mt-1">
             <Button
@@ -912,27 +903,6 @@ function ProductPricesSection({ productId, prices, onPricesChange, inline = fals
               <CurrencyDollarIcon className="h-3 w-3 mr-1" />
               Make paid
             </Button>
-            {isIncludeByDefault ? (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-fit h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
-                onClick={handleSetFreeNotIncluded}
-              >
-                <XIcon className="h-3 w-3 mr-1" />
-                {"Don't include by default"}
-              </Button>
-            ) : (
-              <Button
-                variant="ghost"
-                size="sm"
-                className="w-fit h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
-                onClick={handleSetIncludeByDefault}
-              >
-                <GiftIcon className="h-3 w-3 mr-1" />
-                Include by default
-              </Button>
-            )}
           </div>
         </div>
       ) : hasNoPrices ? (
@@ -954,7 +924,7 @@ function ProductPricesSection({ productId, prices, onPricesChange, inline = fals
               variant="ghost"
               size="sm"
               className="w-fit h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
-              onClick={handleSetIncludeByDefault}
+              onClick={handleMakeFree}
             >
               <GiftIcon className="h-3 w-3 mr-1" />
               Make free
@@ -1018,7 +988,7 @@ function ProductPricesSection({ productId, prices, onPricesChange, inline = fals
               variant="ghost"
               size="sm"
               className="w-fit h-6 px-1 text-xs text-muted-foreground hover:text-foreground"
-              onClick={handleSetIncludeByDefault}
+              onClick={handleMakeFree}
             >
               <GiftIcon className="h-3 w-3 mr-1" />
               Make free
@@ -1036,6 +1006,7 @@ function ProductPricesSection({ productId, prices, onPricesChange, inline = fals
         if (!open) {
           setEditingPrice(null);
           setIsAddingPrice(false);
+          setReplacePricesOnSave(false);
         }
       }}
       editingPrice={editingPrice}

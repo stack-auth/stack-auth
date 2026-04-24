@@ -75,16 +75,14 @@ export const POST = createSmartRouteHandler({
     if (toProduct.isAddOnTo && typedKeys(toProduct.isAddOnTo).length > 0) {
       throw new StatusError(400, "Add-on products cannot be selected for plan switching.");
     }
-    const fromIsIncludeByDefault = fromProduct.prices === "include-by-default";
-    if (toProduct.prices === "include-by-default") {
-      throw new StatusError(400, "Include-by-default products cannot be selected for plan switching.");
-    }
-    if (!fromIsIncludeByDefault) {
-      const fromHasIntervalPrice = typedEntries(fromProduct.prices as Exclude<typeof fromProduct.prices, "include-by-default">)
-        .some(([, price]) => price.interval);
-      if (!fromHasIntervalPrice) {
-        throw new StatusError(400, "This subscription cannot be switched.");
-      }
+    const fromPriceEntries = typedEntries(fromProduct.prices);
+    const fromHasIntervalPrice = fromPriceEntries.some(([, price]) => price.interval);
+    // A product with non-interval prices is a one-time purchase and can't be switched.
+    // A product with no prices at all (e.g. auto-migrated from the legacy `include-by-default`
+    // sentinel, or an intentionally free product) is treated as a free plan the customer may
+    // upgrade away from.
+    if (fromPriceEntries.length > 0 && !fromHasIntervalPrice) {
+      throw new StatusError(400, "This subscription cannot be switched.");
     }
 
     const prisma = await getPrismaClientForTenancy(auth.tenancy);
@@ -118,7 +116,8 @@ export const POST = createSmartRouteHandler({
         Object.values(subMap).filter(s => isActiveSubscription(s)).map(s => s.productId ?? "__null__")
       );
       const hasOtpInProductLine = Object.entries(ownedProducts).some(
-        ([productId, p]) => p.productLineId === fromProduct.productLineId
+        ([productId, p]) => productId !== body.from_product_id
+          && p.productLineId === fromProduct.productLineId
           && p.quantity > 0
           && !activeSubProductIds.has(productId)
       );
@@ -127,17 +126,35 @@ export const POST = createSmartRouteHandler({
       }
     }
 
-    // Find the active subscription to switch from
-    const existingSub = !fromIsIncludeByDefault
-      ? Object.values(subMap).find(
-        s => s.productId === body.from_product_id && isActiveSubscription(s)
-      ) ?? null
-      : null;
-    if (!existingSub && !fromIsIncludeByDefault) {
+    // Find the active subscription to switch from. Customers on a free plan (no prices, or
+    // auto-migrated from the legacy `include-by-default` sentinel) won't have a subscription
+    // row — in that case we fall through to the "create a new Stripe subscription" branch.
+    const existingSub = Object.values(subMap).find(
+      s => s.productId === body.from_product_id && isActiveSubscription(s)
+    ) ?? null;
+    const fromIsFreePlan = fromPriceEntries.length === 0
+      || fromPriceEntries.every(([, p]) => p.USD == null || Number(p.USD) === 0);
+    if (!existingSub && !fromIsFreePlan) {
       throw new StatusError(400, "This subscription cannot be switched.");
     }
+    // Server-granted subscriptions (no stripeSubscriptionId) are immutable via this endpoint;
+    // they must be cancelled through admin tooling before the customer switches plans.
     if (existingSub && !existingSub.stripeSubscriptionId) {
       throw new StatusError(400, "This subscription cannot be switched.");
+    }
+    // Free-plan fallthrough: if the customer claims to be switching "from" a free product
+    // but actually holds a different active subscription in the same product line, reject —
+    // otherwise the new paid subscription would coexist with the existing one.
+    if (!existingSub && fromIsFreePlan && fromProduct.productLineId) {
+      const competingSub = Object.values(subMap).find(
+        s => s.productId !== body.from_product_id
+          && isActiveSubscription(s)
+          && s.productId != null
+          && getOrUndefined(products, s.productId)?.productLineId === fromProduct.productLineId
+      );
+      if (competingSub) {
+        throw new StatusError(400, "Customer has an active subscription in this product line; switch from that product instead.");
+      }
     }
 
     const priceEntries = typedEntries(toProduct.prices)
@@ -258,9 +275,8 @@ export const POST = createSmartRouteHandler({
       });
       await bulldozerWriteSubscription(prisma, updatedSub);
     } else {
-      // DEPRECATED: this path handles switching from include-by-default (free) products
-      // to paid subscriptions. Default products are being removed; this code is kept
-      // for backward compatibility only.
+      // No existing Stripe subscription — create a new one. This happens when
+      // switching from a $0 product (which has no stripeSubscriptionId) to a paid one.
       const created = await stripe.subscriptions.create({
         customer: stripeCustomer.id,
         payment_behavior: "error_if_incomplete",

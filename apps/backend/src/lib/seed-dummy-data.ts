@@ -330,7 +330,6 @@ const DUMMY_SEED_IDS = {
     designSystemsGrowth: 'a296195f-c460-4cd6-b4c4-6cd359b4c643',
     prototypeStarterTrial: '5a255248-4d42-4d61-95f9-f53e97c3f2dd',
     mateoGrowthAnnual: 'c4acea49-302a-43b9-82a7-446b19e0e662',
-    legacyEnterprise: '11664974-38ff-4356-8e39-2fa9105ed84f',
   },
   itemQuantityChanges: {
     designSeatsGrant: '44ca1801-0732-4273-ae14-4fd1c3999e24',
@@ -348,8 +347,6 @@ const DUMMY_SEED_IDS = {
     growthMonthly4: 'b4d5e6f7-a8b9-4012-cd3e-4f5a6b7c8d93',
     growthMonthly5: 'c5e6f7a8-b9c0-4123-de4f-5a6b7c8d9ea4',
     starterCreation: 'd6f7a8b9-c0d1-4234-ef50-6a7b8c9d0fb5',
-    legacyPaid1: 'e7a8b9c0-d1e2-4345-a061-7b8c9d0e1ac6',
-    legacyPaid2: 'f8b9c0d1-e2f3-4456-b172-8c9d0e1f2bd7',
   },
   emails: {
     welcomeAmelia: 'af8cfd90-8912-4bf7-93a7-20ff2be54767',
@@ -811,27 +808,6 @@ async function seedDummyTransactions(options: TransactionsSeedOptions) {
       stripeSubscriptionId: null,
       createdAt: new Date('2024-02-01T00:00:00.000Z'),
     },
-    {
-      id: DUMMY_SEED_IDS.subscriptions.legacyEnterprise,
-      customerType: CustomerType.CUSTOM,
-      customerId: 'enterprise-alpha',
-      productId: 'legacy-enterprise',
-      priceId: undefined,
-      product: cloneJson({
-        displayName: 'Legacy Enterprise Pilot',
-        productLineId: 'workspace',
-        customerType: 'user',
-        prices: 'include-by-default',
-      }),
-      quantity: 1,
-      status: SubscriptionStatus.canceled,
-      creationSource: PurchaseCreationSource.PURCHASE_PAGE,
-      currentPeriodStart: new Date('2023-11-01T00:00:00.000Z'),
-      currentPeriodEnd: new Date('2024-05-01T00:00:00.000Z'),
-      cancelAtPeriodEnd: true,
-      stripeSubscriptionId: 'sub_legacy_enterprise_alpha',
-      createdAt: new Date('2023-11-01T00:00:00.000Z'),
-    },
   ];
 
   for (const subscription of subscriptionSeeds) {
@@ -1064,24 +1040,6 @@ async function seedDummyTransactions(options: TransactionsSeedOptions) {
       status: 'paid',
       amountTotal: 0,
       createdAt: daysAgo(20, 8),
-    },
-    {
-      id: DUMMY_SEED_IDS.invoices.legacyPaid1,
-      stripeSubscriptionId: 'sub_legacy_enterprise_alpha',
-      stripeInvoiceId: 'in_legacy_ent_001',
-      isSubscriptionCreationInvoice: true,
-      status: 'paid',
-      amountTotal: 49900,
-      createdAt: daysAgo(28, 9),
-    },
-    {
-      id: DUMMY_SEED_IDS.invoices.legacyPaid2,
-      stripeSubscriptionId: 'sub_legacy_enterprise_alpha',
-      stripeInvoiceId: 'in_legacy_ent_002',
-      isSubscriptionCreationInvoice: false,
-      status: 'paid',
-      amountTotal: 49900,
-      createdAt: daysAgo(14, 9),
     },
   ];
 

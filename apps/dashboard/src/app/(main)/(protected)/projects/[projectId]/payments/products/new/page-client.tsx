@@ -41,7 +41,7 @@ import { IncludedItemDialog } from "../included-item-dialog";
 import { PricingSection } from "../pricing-section";
 import { ProductCardPreview } from "../product-card-preview";
 import {
-  generateUniqueId,
+  createFreePrice,
   type Price,
   type Product,
 } from "../utils";
@@ -290,8 +290,7 @@ export default function PageClient() {
   const duplicateIsAddOnTo = duplicateIsAddOn && duplicateData.isAddOnTo
     ? Object.keys(duplicateData.isAddOnTo as Record<string, boolean>)
     : [];
-  const duplicatePrices = duplicateData?.prices === 'include-by-default' ? {} : (duplicateData?.prices ?? {});
-  const duplicateFreeByDefault = duplicateData?.prices === 'include-by-default';
+  const duplicatePrices = duplicateData?.prices ?? {};
 
   // Form state - initialized from duplicate data if available
   const [productId, setProductId] = useState("");
@@ -303,7 +302,6 @@ export default function PageClient() {
   const [isAddOnTo, setIsAddOnTo] = useState<string[]>(duplicateIsAddOnTo);
   const [stackable, setStackable] = useState(duplicateData?.stackable ?? false);
   const [serverOnly, setServerOnly] = useState(duplicateData?.serverOnly ?? false);
-  const [freeByDefault, setFreeByDefault] = useState(duplicateFreeByDefault);
   const [isInlineProduct, setIsInlineProduct] = useState(false);
   const [prices, setPrices] = useState<Record<string, Price>>(duplicatePrices);
   const [includedItems, setIncludedItems] = useState<Product['includedItems']>(duplicateData?.includedItems ?? {});
@@ -372,7 +370,7 @@ export default function PageClient() {
     productLineId: effectiveProductLineId || undefined,
     isAddOnTo: isAddOn ? Object.fromEntries(isAddOnTo.map(id => [id, true])) : false,
     stackable,
-    prices: freeByDefault ? 'include-by-default' : prices,
+    prices,
     includedItems,
     serverOnly,
     freeTrial,
@@ -452,8 +450,8 @@ export default function PageClient() {
       }
     }
 
-    if (!freeByDefault && Object.keys(prices).length === 0) {
-      newErrors.prices = "Add at least one price or enable 'Include by default'";
+    if (Object.keys(prices).length === 0) {
+      newErrors.prices = "Add at least one price";
     }
 
     return newErrors;
@@ -474,7 +472,7 @@ export default function PageClient() {
         productLineId: effectiveProductLineId || undefined,
         isAddOnTo: isAddOn ? Object.fromEntries(isAddOnTo.map(id => [id, true])) : false,
         stackable,
-        prices: freeByDefault ? 'include-by-default' : prices,
+        prices,
         includedItems,
         serverOnly,
         freeTrial,
@@ -537,13 +535,11 @@ export default function PageClient() {
     );
   }
 
-  const canSave = !!(productId.trim() && displayName.trim() && (freeByDefault || Object.keys(prices).length > 0));
+  const canSave = !!(productId.trim() && displayName.trim() && Object.keys(prices).length > 0);
 
   // Generate inline product code for copying
   const generateInlineProductCode = () => {
-    const pricesCode = freeByDefault
-      ? `'include-by-default'`
-      : `{
+    const pricesCode = `{
 ${Object.entries(prices).map(([id, price]) => {
   const parts = [`    '${id}': { USD: '${price.USD}'`];
   if (price.interval) {
@@ -579,22 +575,20 @@ ${Object.entries(prices).map(([id, price]) => {
 
   // Generate prompt for creating inline product
   const generateInlineProductPrompt = () => {
-    const priceDescriptions = freeByDefault
-      ? 'free and included by default for all customers'
-      : Object.entries(prices).map(([id, price]) => {
-        let desc = `$${price.USD}`;
-        if (price.interval) {
-          const [count, unit] = price.interval;
-          desc += count === 1 ? ` per ${unit}` : ` every ${count} ${unit}s`;
-        } else {
-          desc += ' one-time';
-        }
-        if (price.freeTrial) {
-          const [count, unit] = price.freeTrial;
-          desc += ` with ${count} ${unit}${count > 1 ? 's' : ''} free trial`;
-        }
-        return desc;
-      }).join(', ');
+    const priceDescriptions = Object.entries(prices).map(([id, price]) => {
+      let desc = `$${price.USD}`;
+      if (price.interval) {
+        const [count, unit] = price.interval;
+        desc += count === 1 ? ` per ${unit}` : ` every ${count} ${unit}s`;
+      } else {
+        desc += ' one-time';
+      }
+      if (price.freeTrial) {
+        const [count, unit] = price.freeTrial;
+        desc += ` with ${count} ${unit}${count > 1 ? 's' : ''} free trial`;
+      }
+      return desc;
+    }).join(', ');
 
     const itemDescriptions = Object.entries(includedItems).map(([itemId, item]) => {
       const itemInfo = existingItems.find(i => i.id === itemId);
@@ -792,25 +786,9 @@ ${Object.entries(prices).map(([id, price]) => {
                 hasError={!!errors.prices}
                 errorMessage={errors.prices}
                 variant="form"
-                isFree={freeByDefault || (Object.keys(prices).length === 1 && Object.values(prices)[0].USD === '0.00')}
-                freeByDefault={freeByDefault}
+                isFree={Object.keys(prices).length === 1 && Object.values(prices)[0].USD === '0.00'}
                 onMakeFree={() => {
-                  setPrices({});
-                  setFreeByDefault(true);
-                }}
-                onMakePaid={() => {
-                  setFreeByDefault(false);
-                }}
-                onFreeByDefaultChange={(checked) => {
-                  setFreeByDefault(checked);
-                  if (!checked) {
-                    // When unchecking "included by default", set a $0 price
-                    const newPriceId = generateUniqueId('price');
-                    setPrices({ [newPriceId]: { USD: '0.00', serverOnly: false } });
-                  } else {
-                    // When checking "included by default", clear prices
-                    setPrices({});
-                  }
+                  setPrices(createFreePrice());
                 }}
               />
             </section>

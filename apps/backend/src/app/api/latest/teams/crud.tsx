@@ -103,8 +103,7 @@ export const teamsCrudHandlers = createLazyProxy(() => createCrudHandlers(teamsC
       if (auth.project.id === "internal") {
         const freePlanProduct = auth.tenancy.config.payments.products.free;
         if (freePlanProduct.customerType === "team" && freePlanProduct.productLineId != null) {
-          const prices = freePlanProduct.prices === "include-by-default" ? {} : freePlanProduct.prices;
-          const firstPriceEntry = typedEntries(prices)[0] as [string, Record<string, unknown>] | undefined;
+          const firstPriceEntry = typedEntries(freePlanProduct.prices)[0] as [string, Record<string, unknown>] | undefined;
           const now = new Date();
           const priceInterval = firstPriceEntry != null && "interval" in firstPriceEntry[1]
             ? firstPriceEntry[1].interval as [number, "day" | "week" | "month" | "year"] | undefined

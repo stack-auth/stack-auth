@@ -185,8 +185,8 @@ function getUsdUnitPrice(entry: ProductGrantEntry): MoneyAmount | null {
   if (!entry.price_id) {
     return null;
   }
-  const product = entry.product as { prices?: Record<string, { USD?: string } | undefined> | "include-by-default" } | null | undefined;
-  if (!product || !product.prices || product.prices === "include-by-default") {
+  const product = entry.product as { prices?: Record<string, { USD?: string } | undefined> } | null | undefined;
+  if (!product || !product.prices) {
     return null;
   }
   const price = product.prices[entry.price_id];

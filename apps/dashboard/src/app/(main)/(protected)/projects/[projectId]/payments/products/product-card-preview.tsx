@@ -7,7 +7,6 @@ import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { Fragment } from "react";
 import {
   freeTrialLabel,
-  getPricesObject,
   intervalLabel,
   shortIntervalLabel,
   type PricesObject,
@@ -63,7 +62,7 @@ export function ProductCardPreview({
   className,
 }: ProductCardPreviewProps) {
   const customerType = product.customerType;
-  const pricesObject = getPricesObject(product);
+  const pricesObject = product.prices;
   const priceEntries = typedEntries(pricesObject);
   const itemsList = typedEntries(product.includedItems);
 
