@@ -1,5 +1,5 @@
 import { Link } from "@/components/link";
-import { ChartLineIcon, ClipboardTextIcon, CreditCardIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
+import { ChartLineIcon, ChatCircleDotsIcon, ClipboardTextIcon, CreditCardIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { StackAdminApp } from "@stackframe/stack";
 import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@stackframe/stack-shared/dist/utils/urls";
@@ -212,6 +212,22 @@ export const ALL_APPS_FRONTEND = {
         <p>Emails gives you a full control room for transactional communication.</p>
         <p>Configure shared delivery, Resend, or custom SMTP without touching code, then send test or operational messages whenever you need.</p>
         <p>Draft, templatize, and theme email content so every notification stays on brand while delivery logs remain close by.</p>
+      </>
+    ),
+  },
+  support: {
+    icon: ChatCircleDotsIcon,
+    href: "conversations",
+    navigationItems: [
+      { displayName: "Conversations", href: "." },
+      { displayName: "Support Settings", href: "../support-settings" },
+    ],
+    screenshots: getScreenshots('support', 0),
+    storeDescription: (
+      <>
+        <p>The Support app&apos;s Conversations view turns your user detail view into an operational workspace instead of a dead end.</p>
+        <p>Open threads from the unified inbox, add internal notes, and reply to users from the same place while keeping the history tied to the underlying Stack user record.</p>
+        <p>It is designed for the people who need to troubleshoot identity, onboarding, and account issues without bouncing between five dashboard pages.</p>
       </>
     ),
   },
@@ -445,4 +461,3 @@ async function getEmailDraftBreadcrumbItems(stackAdminApp: StackAdminApp<false>,
     },
   ];
 }
-

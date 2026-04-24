@@ -1,3 +1,6 @@
+Q: What conversation schema shape matches the latest support ERD?
+A: Keep assignment/SLA/metadata fields directly on `Conversation` (drop `ConversationMetadata`), model channel ingress rows in `ConversationEntryPoint` (renamed from `ConversationChannel`), and keep `ConversationMessage.channelId` referencing entry points by `(tenancyId, id)`. Backend raw SQL in `apps/backend/src/lib/conversations.tsx` must read/write those metadata fields from `Conversation` itself.
+
 # CLAUDE Knowledge Base
 
 Q: How are the development ports derived now that NEXT_PUBLIC_STACK_PORT_PREFIX exists?
@@ -218,6 +221,8 @@ Q: How should user signup time be exposed in JWT claims before production rollou
 A: Use `signed_up_at` (OIDC-style naming) in access tokens and encode it as Unix seconds in `apps/backend/src/lib/tokens.tsx` (`Math.floor(user.signed_up_at_millis / 1000)`). Since this is pre-prod, the payload schema can require `signed_up_at` directly without a backward-compat optional shim.
 
 Q: Where should new globally searchable Cmd+K destinations be added in the dashboard?
+A: For the new Support app work, model support as generic conversations rather than support-specific threads: use `Conversation` for identity/status/source, `ConversationChannel` for adapter/entry-point expansion (`chat`, `email`, `api`, `manual`), `ConversationMessage` for message history (`message`, `internal-note`, `status-change`), and `ConversationMetadata` for assignment/tags/SLA timestamps. Keep the dashboard UI under `/projects/[projectId]/conversations` (legacy `/projects/[projectId]/support` redirects there), but point both internal admin routes and user-facing API routes at the generic `/api/latest/.../conversations` surface.
+A: Support-thread contracts added during dashboard feature work are easiest to keep buildable by colocating them in the consuming app (`apps/dashboard/src/lib/*` and `apps/backend/src/lib/*`) unless the package build is already running and up to date. New files under `packages/stack-shared/src` are not automatically visible to app-local typechecks that import `@stackframe/stack-shared/dist/*` until the package dist has been regenerated.
 A: Add project-level shortcuts to `PROJECT_SHORTCUTS` in `apps/dashboard/src/components/cmdk-commands.tsx` (optionally gated with `requiredApps`), and for app subpages rely on the flattened `appFrontend.navigationItems` command generation in the same file so pages are directly searchable without nested preview navigation.
 
 Q: How should handler URL/shared interface renames be rolled out when template/backend import `@stackframe/stack-shared/dist/*`?
@@ -386,3 +391,6 @@ A: Use a strict root `postinstall` script that rewrites only Next `>=16` app-pag
 
 Q: Why can Turbo-pruned Docker builds fail with `Cannot find module /app/scripts/postinstall-patch-next-async-debug-info.mjs` during `pnpm install`?
 A: In pruned builder stages, we copy `/app/out/json` and run `pnpm install` before copying `/app/out/full`. The root `package.json` still runs `postinstall: node ./scripts/postinstall-patch-next-async-debug-info.mjs`, but that script is not present yet. Fix by copying `scripts/postinstall-patch-next-async-debug-info.mjs` into the builder stage before `pnpm install` (for all Dockerfiles using the prune pattern).
+
+Q: When does a managed conversation’s `status` move between `open` and `pending` without an explicit status PATCH?
+A: `appendConversationMessage` in `apps/backend/src/lib/conversations.tsx` updates `Conversation.status` in the same transaction as the new row: a user-visible **agent** `message` on an `open` thread sets `pending` (waiting on user); a user `message` on a `pending` thread sets `open` (needs support). **Internal notes** do not change status. **`closed` is unchanged** by message appends—reopen/close stays explicit via `updateConversationStatus`. No extra `status-change` message row is written for these automatic transitions (only the `status` column updates) so inbox previews stay tied to the latest real message.

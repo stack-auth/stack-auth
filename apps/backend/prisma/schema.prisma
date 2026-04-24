@@ -76,6 +76,9 @@ model Tenancy {
   sessionReplays      SessionReplay[]
   sessionReplayChunks SessionReplayChunk[]
   managedEmailDomains ManagedEmailDomain[]
+  conversations       Conversation[]
+  conversationEntryPoints ConversationEntryPoint[]
+  conversationMessages ConversationMessage[]
 
   // Email capacity boost - when set and in the future, email capacity is multiplied by 4
   emailCapacityBoostExpiresAt DateTime?
@@ -185,6 +188,7 @@ model Team {
 
   teamMembers   TeamMember[]
   projectApiKey ProjectApiKey[]
+  conversations Conversation[]
 
   @@id([tenancyId, teamId])
   @@unique([mirroredProjectId, mirroredBranchId, teamId])
@@ -323,6 +327,7 @@ model ProjectUser {
   projectId                  String?
   userNotificationPreference UserNotificationPreference[]
   sessionReplays             SessionReplay[]
+  conversations              Conversation[]
 
   @@id([tenancyId, projectUserId])
   @@unique([mirroredProjectId, mirroredBranchId, projectUserId])
@@ -1132,6 +1137,91 @@ model UserNotificationPreference {
   @@unique([tenancyId, projectUserId, notificationCategoryId])
   @@index([shouldUpdateSequenceId, tenancyId], name: "UserNotificationPreference_shouldUpdateSequenceId_idx")
   @@index([tenancyId, sequenceId], name: "UserNotificationPreference_tenancyId_sequenceId_idx")
+}
+
+model Conversation {
+  id            String @default(uuid()) @db.Uuid
+  tenancyId     String @db.Uuid
+  projectUserId String? @db.Uuid
+  teamId        String? @db.Uuid
+
+  subject       String
+  status        String
+  priority      String
+  source        String
+  assignedToUserId      String?
+  assignedToDisplayName String?
+  tags                  Json?
+  firstResponseDueAt    DateTime?
+  firstResponseAt       DateTime?
+  nextResponseDueAt     DateTime?
+  lastCustomerReplyAt   DateTime?
+  lastAgentReplyAt      DateTime?
+  metadata              Json?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  lastMessageAt DateTime @default(now())
+  lastInboundAt DateTime?
+  lastOutboundAt DateTime?
+  closedAt      DateTime?
+
+  tenancy     Tenancy                @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  projectUser ProjectUser?           @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
+  team        Team?                  @relation(fields: [tenancyId, teamId], references: [tenancyId, teamId], onDelete: Cascade)
+  messages    ConversationMessage[]
+  entryPoints ConversationEntryPoint[]
+
+  @@id([tenancyId, id])
+  @@index([tenancyId, projectUserId, lastMessageAt(sort: Desc)], name: "Conversation_user_lastMessageAt_idx")
+  @@index([tenancyId, status, lastMessageAt(sort: Desc)], name: "Conversation_status_lastMessageAt_idx")
+  @@index([tenancyId, teamId, lastMessageAt(sort: Desc)], name: "Conversation_team_lastMessageAt_idx")
+}
+
+model ConversationEntryPoint {
+  id             String @default(uuid()) @db.Uuid
+  tenancyId      String @db.Uuid
+  conversationId String @db.Uuid
+
+  channelType       String
+  adapterKey        String
+  externalChannelId String?
+  isEntryPoint      Boolean @default(false)
+  metadata          Json?
+  createdAt         DateTime @default(now())
+  updatedAt         DateTime @updatedAt
+
+  tenancy      Tenancy      @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [tenancyId, conversationId], references: [tenancyId, id], onDelete: Cascade)
+  messages     ConversationMessage[]
+
+  @@id([tenancyId, id])
+  @@index([tenancyId, conversationId, createdAt], name: "ConversationEntryPoint_conversation_createdAt_idx")
+  @@index([tenancyId, channelType, adapterKey], name: "ConversationEntryPoint_type_adapter_idx")
+}
+
+model ConversationMessage {
+  id        String @default(uuid()) @db.Uuid
+  tenancyId String @db.Uuid
+  conversationId String @db.Uuid
+  channelId      String? @db.Uuid
+
+  messageType        String
+  senderType         String
+  senderId           String?
+  senderDisplayName  String?
+  senderPrimaryEmail String?
+  body               String?
+  attachments        Json?
+  metadata           Json?
+  createdAt          DateTime @default(now())
+
+  tenancy      Tenancy      @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+  conversation Conversation @relation(fields: [tenancyId, conversationId], references: [tenancyId, id], onDelete: Cascade)
+  channel      ConversationEntryPoint? @relation(fields: [tenancyId, channelId], references: [tenancyId, id])
+
+  @@id([tenancyId, id])
+  @@index([tenancyId, conversationId, createdAt], name: "ConversationMessage_conversation_createdAt_idx")
+  @@index([tenancyId, channelId, createdAt], name: "ConversationMessage_channel_createdAt_idx")
 }
 
 model ThreadMessage {

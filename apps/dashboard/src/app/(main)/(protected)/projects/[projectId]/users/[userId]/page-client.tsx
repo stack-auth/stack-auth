@@ -51,12 +51,14 @@ import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { captureError, StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
 import { useState } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
 import { parseRiskScore } from "@/lib/risk-score-utils";
+import { useRouter } from "@/components/router";
 
 const userMetadataDocsUrl = "https://docs.stack-auth.com/docs/concepts/custom-user-data";
 
@@ -109,6 +111,7 @@ function UserHeader({ user }: UserHeaderProps) {
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
   const [impersonateSnippet, setImpersonateSnippet] = useState<string | null>(null);
   const stackAdminApp = useAdminApp();
+  const router = useRouter();
 
   return (
     <div className="flex gap-4 items-center">
@@ -128,7 +131,13 @@ function UserHeader({ user }: UserHeaderProps) {
           }}/>
         <p>Last active {fromNow(user.lastActiveAt)}</p>
       </div>
-      <div>
+      <div className="flex items-center gap-2">
+        <Button
+          variant="outline"
+          onClick={() => router.push(`${urlString`/projects/${stackAdminApp.projectId}/conversations`}?userId=${encodeURIComponent(user.id)}`)}
+        >
+          Support
+        </Button>
         <DropdownMenu>
           <DropdownMenuTrigger asChild>
             <Button variant="ghost" size="icon">

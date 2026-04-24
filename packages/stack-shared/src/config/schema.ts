@@ -201,6 +201,14 @@ export const branchPaymentsSchema = yupObject({
   }
 );
 
+export const branchSupportSchema = yupObject({
+  sla: yupObject({
+    enabled: yupBoolean(),
+    firstResponseMinutes: yupNumber().integer().min(1).nullable(),
+    nextResponseMinutes: yupNumber().integer().min(1).nullable(),
+  }).optional(),
+}).optional();
+
 const branchDomain = yupObject({});
 
 const branchOnboardingSchema = yupObject({
@@ -240,6 +248,8 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
   }),
 
   payments: branchPaymentsSchema,
+
+  support: branchSupportSchema,
 
   dbSync: yupObject({
     externalDatabases: yupRecord(
@@ -699,6 +709,13 @@ const organizationConfigDefaults = {
     } as const)
   },
 
+  support: {
+    sla: {
+      enabled: false,
+      firstResponseMinutes: null,
+      nextResponseMinutes: null,
+    },
+  },
 
   dbSync: {
     externalDatabases: (key: string) => ({

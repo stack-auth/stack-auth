@@ -44,6 +44,17 @@ describe("POST /api/v1/internal/feedback", () => {
     expect(messages[0].body?.text).toContain(senderEmail);
     expect(messages[0].body?.text).toContain(signInResult.userId);
     expect(messages[0].body?.text).toContain("Authenticated feedback from the dashboard.");
+
+    const listResponse = await niceBackendFetch("/api/v1/conversations", {
+      accessType: "client",
+    });
+    expect(listResponse.status).toBe(200);
+    const fromSupportForm = listResponse.body.conversations.find(
+      (c: { subject: string }) => c.subject === subject,
+    );
+    expect(fromSupportForm).toBeDefined();
+    expect(fromSupportForm.source).toBe("api");
+    expect(fromSupportForm.preview).toContain("Authenticated feedback from the dashboard.");
   });
 
   it.runIf(!isLocalEmulator)("should send feedback without authentication (dev tool)", async ({ expect }) => {
