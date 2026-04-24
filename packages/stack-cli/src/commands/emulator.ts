@@ -442,7 +442,7 @@ async function confirmPrompt(question: string): Promise<boolean> {
     throw new CliError("Cannot prompt for confirmation: stdin is not a TTY. Install the missing dependencies manually and retry.");
   }
   const rl = createInterface({ input: process.stdin, output: process.stdout });
-  return new Promise((resolvePromise) => {
+  return await new Promise((resolvePromise) => {
     rl.question(`${question} [y/N] `, (answer) => {
       rl.close();
       resolvePromise(/^y(es)?$/i.test(answer.trim()));
