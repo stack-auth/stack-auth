@@ -72,10 +72,11 @@ model Tenancy {
   // If organizationId is NULL, hasNoOrganization must be TRUE. If organizationId is not NULL, hasNoOrganization must be NULL.
   organizationId      String?              @db.Uuid
   hasNoOrganization   BooleanTrue?
-  emailOutboxes       EmailOutbox[]
-  sessionReplays      SessionReplay[]
-  sessionReplayChunks SessionReplayChunk[]
-  managedEmailDomains ManagedEmailDomain[]
+  emailOutboxes                EmailOutbox[]
+  sessionReplays               SessionReplay[]
+  sessionReplayChunks          SessionReplayChunk[]
+  managedEmailDomains          ManagedEmailDomain[]
+  oidcFederationExchangeAudits OidcFederationExchangeAudit[]
 
   // Email capacity boost - when set and in the future, email capacity is multiplied by 4
   emailCapacityBoostExpiresAt DateTime?
@@ -628,6 +629,32 @@ model OAuthOuterInfo {
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// Durable audit row for OIDC federation exchange attempts. Gives the dashboard a simple
+// "last used at" + count aggregate per trust policy without having to scan the global
+// Event log by JSON claim. Written best-effort — a failure here must not break the exchange.
+model OidcFederationExchangeAudit {
+  id String @id @default(uuid()) @db.Uuid
+
+  tenancyId String  @db.Uuid
+  tenancy   Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  // Matched trust-policy id on success; "" when the exchange failed before any policy matched.
+  policyId String
+  // OIDC issuer (post-discovery) on success; "" on failure.
+  issuer   String
+  // OIDC `sub` claim on success; "" on failure.
+  subject  String
+  // "success" | "failure". Constrained at the DB layer via a CHECK constraint in the audit
+  // migration; extending the vocabulary requires a follow-up ALTER CONSTRAINT.
+  outcome  String
+  // Human-readable failure reason. Empty on success.
+  reason   String
+
+  createdAt DateTime @default(now())
+
+  @@index([tenancyId, policyId, createdAt(sort: Desc)], map: "OidcFederationExchangeAudit_tenancy_policy_createdAt_idx")
 }
 
 model ProjectUserRefreshToken {

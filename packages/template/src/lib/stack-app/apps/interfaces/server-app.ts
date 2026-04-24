@@ -7,12 +7,21 @@ import { DataVaultStore } from "../../data-vault";
 import { EmailDeliveryInfo, SendEmailOptions } from "../../email";
 import { ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions } from "../../teams";
 import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, SyncedPartialServerUser, TokenPartialUser } from "../../users";
+import { OidcFederationTokenStoreOptions } from "../../oidc-federation";
 import { _StackServerAppImpl } from "../implementations";
 import { StackClientApp, StackClientAppConstructorOptions } from "./client-app";
 
 
 export type StackServerAppConstructorOptions<HasTokenStore extends boolean, ProjectId extends string> = StackClientAppConstructorOptions<HasTokenStore, ProjectId> & {
   secretServerKey?: string,
+  /**
+   * Authenticate via OIDC federation instead of a static `secretServerKey`. Pass the result of
+   * one of the `fromVercelOidc()` / `fromGithubActionsOidc(...)` / `fromGcpMetadata(...)` /
+   * `fromOidcToken(...)` helpers. When present, takes precedence over `secretServerKey`.
+   */
+  auth?: {
+    oidcFederation?: OidcFederationTokenStoreOptions,
+  },
 };
 
 export type StackServerApp<HasTokenStore extends boolean = boolean, ProjectId extends string = string> = (

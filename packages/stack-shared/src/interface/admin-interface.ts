@@ -359,6 +359,19 @@ export class StackAdminInterface extends StackServerInterface {
     return (await response.json()) as MetricsResponse;
   }
 
+  async probeOidcDiscovery(data: {
+    issuer_url: string,
+  }): Promise<{ ok?: { issuer: string, jwks_uri: string }, error?: string }> {
+    const response = await this.sendAdminRequest(`/internal/oidc-federation/probe-discovery`, {
+      method: "POST",
+      headers: {
+        "content-type": "application/json",
+      },
+      body: JSON.stringify(data),
+    }, null);
+    return await response.json();
+  }
+
   async sendTestEmail(data: {
     recipient_email: string,
     email_config: {

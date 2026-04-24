@@ -4,6 +4,7 @@ import { getUser, getUserIfOnGlobalPrismaClientQuery } from "@/app/api/latest/us
 import { checkApiKeySet, checkApiKeySetQuery } from "@/lib/internal-api-keys";
 import { getProjectQuery, listManagedProjectIds } from "@/lib/projects";
 import { DEFAULT_BRANCH_ID, Tenancy, getSoleTenancyFromProjectBranchQuery } from "@/lib/tenancies";
+import { verifyServerAccessToken } from "@/lib/server-access-token";
 import { decodeAccessToken } from "@/lib/tokens";
 import { globalPrismaClient, rawQueryAll } from "@/prisma-client";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -160,10 +161,12 @@ async function parseBody(req: NextRequest, bodyBuffer: ArrayBuffer): Promise<Sma
 
 const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextRequest): Promise<SmartRequestAuth | null> => {
   const projectId = req.headers.get("x-stack-project-id");
-  const branchId = req.headers.get("x-stack-branch-id") ?? DEFAULT_BRANCH_ID;
+  const branchIdHeader = req.headers.get("x-stack-branch-id");
+  const requestedBranchId = branchIdHeader ?? DEFAULT_BRANCH_ID;
   let requestType = req.headers.get("x-stack-access-type");
   const publishableClientKey = req.headers.get("x-stack-publishable-client-key");
   const secretServerKey = req.headers.get("x-stack-secret-server-key");
+  const serverAccessToken = req.headers.get("x-stack-server-access-token");
   const superSecretAdminKey = req.headers.get("x-stack-super-secret-admin-key");
   const adminAccessToken = req.headers.get("x-stack-admin-access-token");
   const accessToken = req.headers.get("x-stack-access-token");
@@ -172,13 +175,17 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   const allowRestrictedUser = allowAnonymousUser || req.headers.get("x-stack-allow-restricted-user") === "true";
 
   // Ensure header combinations are valid
-  const eitherKeyOrToken = !!(publishableClientKey || secretServerKey || superSecretAdminKey || adminAccessToken);
+  const eitherKeyOrToken = !!(publishableClientKey || secretServerKey || superSecretAdminKey || adminAccessToken || serverAccessToken);
   if (!requestType && eitherKeyOrToken) {
     throw new KnownErrors.ProjectKeyWithoutAccessType();
   }
   if (!requestType) return null;
   if (!typedIncludes(["client", "server", "admin"] as const, requestType)) throw new KnownErrors.InvalidAccessType(requestType);
   if (!projectId) throw new KnownErrors.AccessTypeWithoutProjectId(requestType);
+
+  if (serverAccessToken && requestType !== "server") {
+    throw new StatusError(401, "x-stack-server-access-token is only valid with x-stack-access-type: server");
+  }
 
   const extractUserIdAndRefreshTokenIdFromAccessToken = async (options: { token: string, projectId: string, allowAnonymous: boolean, allowRestricted: boolean }) => {
     const result = await decodeAccessToken(options.token, { allowAnonymous: /* always true as we check for anonymous users later */ true, allowRestricted: /* always true as we check for restricted users later */ true });
@@ -238,6 +245,18 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
 
   const { userId, refreshTokenId } = projectId && accessToken ? await extractUserIdAndRefreshTokenIdFromAccessToken({ token: accessToken, projectId, allowAnonymous: allowAnonymousUser, allowRestricted: allowRestrictedUser }) : { userId: null, refreshTokenId: null };
 
+  const verifiedServerAccessToken = projectId && serverAccessToken && requestType === "server"
+    ? await verifyServerAccessToken(serverAccessToken, { projectId })
+    : null;
+  if (verifiedServerAccessToken?.status === "ok"
+      && branchIdHeader != null
+      && verifiedServerAccessToken.data.branchId !== branchIdHeader) {
+    throw new KnownErrors.AccessTokenBranchMismatch(verifiedServerAccessToken.data.branchId, branchIdHeader);
+  }
+  const effectiveBranchId = verifiedServerAccessToken?.status === "ok"
+    ? verifiedServerAccessToken.data.branchId
+    : requestedBranchId;
+
   // Prisma does a query for every function call by default, even if we batch them with transactions
   // Because smart route handlers are always called, we instead send over a single raw query that fetches all the
   // data at the same time, saving us a lot of requests
@@ -248,12 +267,12 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   // the user from the global database and only fall back to the source-of-truth database if we later determine that
   // the user is not on the global database.
   const bundledQueries = {
-    userIfOnGlobalPrismaClient: userId ? getUserIfOnGlobalPrismaClientQuery(projectId, branchId, userId) : undefined,
+    userIfOnGlobalPrismaClient: userId ? getUserIfOnGlobalPrismaClientQuery(projectId, effectiveBranchId, userId) : undefined,
     isClientKeyValid: publishableClientKey && requestType === "client" ? checkApiKeySetQuery(projectId, { publishableClientKey }) : undefined,
     isServerKeyValid: secretServerKey && requestType === "server" ? checkApiKeySetQuery(projectId, { secretServerKey }) : undefined,
     isAdminKeyValid: superSecretAdminKey && requestType === "admin" ? checkApiKeySetQuery(projectId, { superSecretAdminKey }) : undefined,
     project: getProjectQuery(projectId),
-    tenancy: getSoleTenancyFromProjectBranchQuery(projectId, branchId, true),
+    tenancy: getSoleTenancyFromProjectBranchQuery(projectId, effectiveBranchId, true),
   };
   const queriesResults = await rawQueryAll(globalPrismaClient, bundledQueries);
   const project = await queriesResults.project;
@@ -291,6 +310,15 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
         break;
       }
       case "server": {
+        if (serverAccessToken) {
+          if (!verifiedServerAccessToken) {
+            throw new KnownErrors.UnparsableAccessToken();
+          }
+          if (verifiedServerAccessToken.status === "error") {
+            throw verifiedServerAccessToken.error;
+          }
+          break;
+        }
         if (!secretServerKey) throw new KnownErrors.ServerAuthenticationRequired();
         if (isServerKeyValid.status === "error") throw new KnownErrors.InvalidSecretServerKey(projectId);
         break;
@@ -308,7 +336,7 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
 
   if (!tenancy) {
     // note that we only check branch existence here so you can't probe branches unless you have the project keys
-    throw new KnownErrors.BranchDoesNotExist(branchId);
+    throw new KnownErrors.BranchDoesNotExist(effectiveBranchId);
   }
 
   // As explained above, as a performance optimization we already fetch the user from the global database optimistically
@@ -316,11 +344,11 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   // database instead.
   const user = tenancy.config.sourceOfTruth.type === "hosted"
     ? await queriesResults.userIfOnGlobalPrismaClient
-    : (userId ? await getUser({ userId, projectId, branchId }) : undefined);
+    : (userId ? await getUser({ userId, projectId, branchId: effectiveBranchId }) : undefined);
 
   return {
     project,
-    branchId,
+    branchId: effectiveBranchId,
     refreshTokenId: refreshTokenId ?? undefined,
     tenancy,
     user: user ?? undefined,

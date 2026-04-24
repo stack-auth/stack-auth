@@ -1,0 +1,143 @@
+---
+title: OIDC Federation
+description: Replace long-lived STACK_SECRET_SERVER_KEY with a short-lived OIDC token exchanged at runtime.
+---
+
+OIDC Federation lets your deployed workloads authenticate to Stack Auth without storing a long-lived `STACK_SECRET_SERVER_KEY` anywhere. At runtime, your platform (Vercel / GitHub Actions / GCP / any OIDC IdP) mints a short-lived OIDC JWT; the Stack SDK exchanges it for a short-lived Stack server access token via [RFC 8693](https://datatracker.ietf.org/doc/html/rfc8693) Token Exchange.
+
+Benefits:
+
+- **No long-lived secrets in your runtime environment.** Leaked env vars no longer grant indefinite access.
+- **Scope by platform claims.** Accept only tokens coming from your `production` environment, a specific repo, a specific service account — via AWS-IAM-style `StringEquals` / `StringLike` claim conditions.
+- **Zero change to the rest of the SDK.** Once configured, every other Stack API call is identical to key-based auth.
+
+---
+
+## 1. Configure a trust policy in the dashboard
+
+Open **OIDC Federation** in your project's sidebar and add a trust policy. Each policy declares:
+
+- **Issuer URL** — e.g. `https://oidc.vercel.com/YOUR_TEAM` or `https://token.actions.githubusercontent.com`. Stack fetches `<issuerUrl>/.well-known/openid-configuration` to discover the JWKS.
+- **Audiences** — one or more exact strings. The token's `aud` claim must match one of these.
+- **Claim conditions** — AWS IAM-style:
+  - `StringEquals`: exact-value matches on arbitrary claims (e.g. `environment = production`).
+  - `StringLike`: wildcard patterns using `*` and `?` (e.g. `sub ~ repo:acme/*:environment:production`).
+- **Token TTL** — how long the issued Stack server access token lives (default 15 min, max 1 hour).
+
+A token is accepted only if at least one enabled policy's issuer + audience + claim conditions all match.
+
+The dashboard ships with presets for Vercel, GitHub Actions, and GCP that pre-fill the common claim shapes — use them as starting points.
+
+## 2. Configure the SDK
+
+Pass the result of a preset helper to `StackServerApp`:
+
+### Vercel
+
+```ts
+import { StackServerApp, fromVercelOidc } from "@stackframe/stack";
+
+export const stackServerApp = new StackServerApp({
+  projectId: process.env.NEXT_PUBLIC_STACK_PROJECT_ID!,
+  tokenStore: "nextjs-cookie",
+  auth: {
+    oidcFederation: fromVercelOidc(),
+  },
+});
+```
+
+In Vercel Functions the token lives on the `Request` object rather than in `process.env`. Pass it in:
+
+```ts
+import { fromVercelOidc } from "@stackframe/stack";
+
+export async function POST(request: Request) {
+  const stackServerApp = new StackServerApp({
+    // ...
+    auth: { oidcFederation: fromVercelOidc({ getRequest: () => request }) },
+  });
+  // ...
+}
+```
+
+### GitHub Actions
+
+Make sure your job has `permissions: { id-token: write }`:
+
+```ts
+import { StackServerApp, fromGithubActionsOidc } from "@stackframe/stack";
+
+export const stackServerApp = new StackServerApp({
+  projectId: process.env.STACK_PROJECT_ID!,
+  tokenStore: "memory",
+  auth: {
+    oidcFederation: fromGithubActionsOidc({
+      audience: "https://github.com/YOUR_ORG",
+    }),
+  },
+});
+```
+
+### GCP (Workload Identity / metadata server)
+
+Works on GCE, GKE, Cloud Run, and Cloud Functions:
+
+```ts
+import { StackServerApp, fromGcpMetadata } from "@stackframe/stack";
+
+export const stackServerApp = new StackServerApp({
+  projectId: process.env.STACK_PROJECT_ID!,
+  tokenStore: "memory",
+  auth: {
+    oidcFederation: fromGcpMetadata({ audience: "stack-auth" }),
+  },
+});
+```
+
+### Any OIDC provider
+
+For anything else, provide a function that returns the current OIDC JWT:
+
+```ts
+import { StackServerApp, fromOidcToken } from "@stackframe/stack";
+
+export const stackServerApp = new StackServerApp({
+  projectId: process.env.STACK_PROJECT_ID!,
+  tokenStore: "memory",
+  auth: {
+    oidcFederation: fromOidcToken(async () => fetchMyOidcToken()),
+  },
+});
+```
+
+---
+
+## How the exchange works
+
+1. On first request the SDK calls `getOidcToken()` to fetch the platform's OIDC JWT.
+2. It POSTs the JWT to `/api/v1/auth/oidc-federation/exchange` with an RFC 8693 body:
+   ```http
+   POST /api/v1/auth/oidc-federation/exchange
+   content-type: application/json
+   x-stack-project-id: <your project id>
+
+   {
+     "grant_type": "urn:ietf:params:oauth:grant-type:token-exchange",
+     "subject_token": "<OIDC JWT>",
+     "subject_token_type": "urn:ietf:params:oauth:token-type:jwt"
+   }
+   ```
+3. Stack validates the JWT's signature (via the issuer's JWKS), its `iss`/`aud`/`exp`/`nbf`, and every claim condition on the first matching trust policy. On success it mints a short-lived Stack server access token.
+4. The SDK caches the access token and uses it as `x-stack-server-access-token` on every subsequent request. It refreshes eagerly at 80% of the token's TTL.
+
+## Scope & safety model
+
+- **Server scope only.** OIDC federation never mints an admin-scope token. The super-secret admin key is out of scope by design — compromise of a deployment's OIDC issuer should not compromise your Stack project configuration.
+- **No shared state required.** Stack-issued access tokens are self-contained JWTs, so the backend doesn't store exchanged tokens in a database.
+- **Distinct issuer/audience.** Stack-issued tokens use an issuer/audience pair disjoint from user access tokens. There is no path by which a user token can impersonate a server identity or vice-versa.
+
+## Troubleshooting
+
+- **"issuer discovery failed"** — Check that `<issuerUrl>/.well-known/openid-configuration` is reachable. Stack caches discovery errors for 30s.
+- **"claim validation failed"** — Your token's claim value doesn't match the configured condition. Decode your JWT (e.g. at [jwt.io](https://jwt.io)) and confirm the shape.
+- **"token audience does not match policy"** — The `aud` claim in the JWT must exactly equal one of the audiences configured in the trust policy.

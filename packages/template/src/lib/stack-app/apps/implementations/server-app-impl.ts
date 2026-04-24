@@ -30,6 +30,7 @@ import { Customer, CustomerProductsList, CustomerProductsRequestOptions, InlineP
 import { DataVaultStore } from "../../data-vault";
 import { EmailDeliveryInfo, SendEmailOptions } from "../../email";
 import { NotificationCategory } from "../../notification-categories";
+import { createOidcFederationTokenStoreForServerApp } from "../../oidc-federation";
 import { AdminProjectPermissionDefinition, AdminTeamPermission, AdminTeamPermissionDefinition } from "../../permissions";
 import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, ServerListUsersOptions, ServerTeam, ServerTeamCreateOptions, ServerTeamUpdateOptions, ServerTeamUser, Team, serverTeamCreateOptionsToCrud, serverTeamUpdateOptionsToCrud } from "../../teams";
 import { ProjectCurrentServerUser, ServerOAuthProvider, ServerUser, ServerUserCreateOptions, ServerUserUpdateOptions, serverUserCreateOptionsToCrud, serverUserUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
@@ -423,13 +424,31 @@ export class _StackServerAppImplIncomplete<HasTokenStore extends boolean, Projec
       ...extraOptions,
       interface: extraOptions?.interface ?? (() => {
         const apiUrls = resolveApiUrls(resolvedOptions.baseUrl);
-        return new StackServerInterface({
+        const projectId = resolvedOptions.projectId ?? getDefaultProjectId();
+        const extraRequestHeaders = resolvedOptions.extraRequestHeaders ?? getDefaultExtraRequestHeaders();
+        const baseInterfaceOptions = {
           getBaseUrl: () => apiUrls()[0],
           getApiUrls: apiUrls,
-          projectId: resolvedOptions.projectId ?? getDefaultProjectId(),
-          extraRequestHeaders: resolvedOptions.extraRequestHeaders ?? getDefaultExtraRequestHeaders(),
+          projectId,
+          extraRequestHeaders,
           clientVersion,
           ...(publishableClientKey != null ? { publishableClientKey } : {}),
+        };
+        // OIDC federation takes precedence over a static secret server key when both are present.
+        // The store handles exchange + refresh; the interface just asks for an access token per request.
+        const federationOptions = resolvedOptions.auth?.oidcFederation;
+        if (federationOptions) {
+          const store = createOidcFederationTokenStoreForServerApp({
+            projectId,
+            apiBaseUrl: () => apiUrls()[0],
+            extraRequestHeaders,
+            getOidcToken: federationOptions.getOidcToken,
+            sourceLabel: federationOptions.sourceLabel,
+          });
+          return new StackServerInterface({ ...baseInterfaceOptions, oidcFederation: store });
+        }
+        return new StackServerInterface({
+          ...baseInterfaceOptions,
           secretServerKey: resolvedOptions.secretServerKey ?? getDefaultSecretServerKey(),
         });
       })(),

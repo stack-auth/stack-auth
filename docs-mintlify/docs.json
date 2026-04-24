@@ -60,6 +60,7 @@
             "pages": [
               "guides/going-further/stack-app",
               "guides/going-further/backend-integration",
+              "guides/going-further/oidc-federation",
               "guides/going-further/local-development",
               "guides/going-further/user-metadata"
             ]

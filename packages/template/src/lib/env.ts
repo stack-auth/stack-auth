@@ -80,4 +80,13 @@ export const envVars = {
   get NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR() {
     return (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_STACK_IS_LOCAL_EMULATOR : undefined) ?? undefined;
   },
+  get VERCEL_OIDC_TOKEN() {
+    return (typeof process !== "undefined" ? process.env.VERCEL_OIDC_TOKEN : undefined) ?? undefined;
+  },
+  get ACTIONS_ID_TOKEN_REQUEST_URL() {
+    return (typeof process !== "undefined" ? process.env.ACTIONS_ID_TOKEN_REQUEST_URL : undefined) ?? undefined;
+  },
+  get ACTIONS_ID_TOKEN_REQUEST_TOKEN() {
+    return (typeof process !== "undefined" ? process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN : undefined) ?? undefined;
+  },
 };
