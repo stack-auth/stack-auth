@@ -457,9 +457,11 @@ async function ensureDepsForPull(arch: "arm64" | "amd64"): Promise<void> {
   if (missingBins.length === 0 && !firmwareMissing) return;
 
   const platform = process.platform;
-  if (platform !== "darwin" && platform !== "linux") {
-    // Auto-install is only implemented for macOS and Linux; fall through to
-    // the standard error with manual install hints.
+  // Auto-install targets macOS (brew) and Debian/Ubuntu-family Linux
+  // (apt-get). On other distros or platforms, fall back to the standard
+  // per-binary install hints.
+  const linuxHasApt = platform === "linux" && commandExists("apt-get");
+  if (platform !== "darwin" && !linuxHasApt) {
     preflightForVmStart("pull", arch);
     return;
   }
@@ -483,7 +485,15 @@ async function ensureDepsForPull(arch: "arm64" | "amd64"): Promise<void> {
   }
   // macOS qemu formula bundles the aarch64 firmware; Linux needs a separate package.
   if (firmwareMissing && platform === "linux") pkgs.add("qemu-efi-aarch64");
+  // Edge case: on macOS arm64, firmware can be missing while all binaries
+  // are present (e.g. a partial qemu install). Reinstalling `qemu` recreates
+  // the bundled firmware files.
+  if (firmwareMissing && platform === "darwin") pkgs.add("qemu");
   const pkgList = Array.from(pkgs).sort();
+  if (pkgList.length === 0) {
+    preflightForVmStart("pull", arch);
+    return;
+  }
 
   const brewMissing = platform === "darwin" && !commandExists("brew");
   console.log("Proposed install plan:");
