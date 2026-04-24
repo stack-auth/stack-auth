@@ -1,8 +1,10 @@
 "use client";
 
+import { TeamSearchTable } from "@/components/data-table/team-search-table";
+import { UserSearchPicker } from "@/components/data-table/user-search-picker";
+import { StyledLink } from "@/components/link";
 import { Alert, Button, Dialog, DialogContent, DialogHeader, DialogTitle, Skeleton, Switch, Typography } from "@/components/ui";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
-import { StyledLink } from "@/components/link";
 import { useFromNow } from "@/hooks/use-from-now";
 import {
   getDesiredGlobalOffsetFromPlaybackState,
@@ -16,26 +18,24 @@ import {
   NULL_TAB_KEY,
 } from "@/lib/session-replay-streams";
 import { cn } from "@/lib/utils";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { ArrowLeftIcon, ArrowsClockwiseIcon, CheckIcon, CursorClickIcon, FastForwardIcon, FunnelSimpleIcon, GearIcon, LinkIcon, MonitorPlayIcon, PauseIcon, PlayIcon, XIcon } from "@phosphor-icons/react";
+import { runAsynchronously, runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { ArrowsClockwiseIcon, CursorClickIcon, FastForwardIcon, FunnelSimpleIcon, GearIcon, MonitorPlayIcon, PauseIcon, PlayIcon, XIcon } from "@phosphor-icons/react";
-import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { UserSearchPicker } from "@/components/data-table/user-search-picker";
-import { TeamSearchTable } from "@/components/data-table/team-search-table";
+import { Panel, PanelGroup, PanelResizeHandle } from "react-resizable-panels";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
 import {
+  ALLOWED_PLAYER_SPEEDS,
   createInitialState,
   replayReducer,
-  ALLOWED_PLAYER_SPEEDS,
-  type ReplaySettings,
-  type ReplayState,
+  type ChunkRange,
   type ReplayAction,
   type ReplayEffect,
+  type ReplaySettings,
+  type ReplayState,
   type StreamInfo,
-  type ChunkRange,
 } from "./session-replay-machine";
 
 const PAGE_SIZE = 50;
@@ -87,6 +87,7 @@ type AdminAppWithSessionReplays = ReturnType<typeof useAdminApp> & {
     items: RecordingRow[],
     nextCursor: string | null,
   }>,
+  getSessionReplay: (sessionReplayId: string) => Promise<RecordingRow>,
   getSessionReplayEvents: (sessionReplayId: string, options?: { offset?: number, limit?: number }) => Promise<{
     chunks: ChunkRow[],
     chunkEvents: Array<{ chunkId: string, events: unknown[] }>,
@@ -460,8 +461,13 @@ function useReplayMachine(initialSettings: ReplaySettings) {
 // Main component
 // ---------------------------------------------------------------------------
 
-export default function PageClient() {
+type PageClientProps = {
+  initialReplayId?: string,
+};
+
+export default function PageClient({ initialReplayId }: PageClientProps) {
   const adminApp = useAdminApp() as AdminAppWithSessionReplays;
+  const isStandaloneReplayPage = initialReplayId != null;
 
   // ---- Recording list + filters ----
 
@@ -475,17 +481,31 @@ export default function PageClient() {
   const [draftFilters, setDraftFilters] = useState<ReplayFilters>(EMPTY_FILTERS);
   const [clickCountsByReplayId, setClickCountsByReplayId] = useState<Map<string, number>>(new Map());
   const [timelineEvents, setTimelineEvents] = useState<TimelineEvent[]>([]);
+  const [standaloneReplay, setStandaloneReplay] = useState<RecordingRow | null>(null);
+  const [standaloneReplayError, setStandaloneReplayError] = useState<string | null>(null);
 
   const listBoxRef = useRef<HTMLDivElement | null>(null);
 
-  const [selectedRecordingId, setSelectedRecordingId] = useState<string | null>(null);
+  const [selectedRecordingId, setSelectedRecordingId] = useState<string | null>(initialReplayId ?? null);
+  const [replayShareLinkCopied, setReplayShareLinkCopied] = useState(false);
   const selectedRecording = useMemo(
-    () => recordings.find(r => r.id === selectedRecordingId) ?? null,
-    [recordings, selectedRecordingId],
+    () => recordings.find(r => r.id === selectedRecordingId)
+      ?? (standaloneReplay?.id === selectedRecordingId ? standaloneReplay : null),
+    [recordings, selectedRecordingId, standaloneReplay],
   );
 
   const hasAutoSelectedRef = useRef(false);
   const loadingMoreRef = useRef(false);
+
+  useEffect(() => {
+    setReplayShareLinkCopied(false);
+  }, [selectedRecordingId]);
+
+  useEffect(() => {
+    if (!replayShareLinkCopied) return;
+    const timer = setTimeout(() => setReplayShareLinkCopied(false), 2000);
+    return () => clearTimeout(timer);
+  }, [replayShareLinkCopied]);
 
   const loadPage = useCallback(async (cursor: string | null) => {
     if (cursor !== null && loadingMoreRef.current) return;
@@ -533,13 +553,18 @@ export default function PageClient() {
   }, [adminApp, appliedFilters]);
 
   useEffect(() => {
+    if (isStandaloneReplayPage) {
+      setLoadingInitial(false);
+      return;
+    }
     setRecordings([]);
     setNextCursor(null);
     hasAutoSelectedRef.current = false;
     runAsynchronously(() => loadPage(null), { noErrorLogging: true });
-  }, [loadPage]);
+  }, [isStandaloneReplayPage, loadPage]);
 
   useEffect(() => {
+    if (isStandaloneReplayPage) return;
     if (recordings.length === 0) return;
     const ids = recordings.map(r => r.id);
     runAsynchronously(async () => {
@@ -559,7 +584,27 @@ export default function PageClient() {
       }
       setClickCountsByReplayId(map);
     }, { noErrorLogging: true });
-  }, [recordings, adminApp]);
+  }, [isStandaloneReplayPage, recordings, adminApp]);
+
+  useEffect(() => {
+    if (initialReplayId == null) return;
+    let cancelled = false;
+    setStandaloneReplay(null);
+    setStandaloneReplayError(null);
+    runAsynchronously(async () => {
+      try {
+        const replay = await adminApp.getSessionReplay(initialReplayId);
+        if (cancelled) return;
+        setStandaloneReplay(replay);
+      } catch (e: any) {
+        if (cancelled) return;
+        setStandaloneReplayError(e?.message ?? "Failed to load session replay.");
+      }
+    }, { noErrorLogging: true });
+    return () => {
+      cancelled = true;
+    };
+  }, [adminApp, initialReplayId, isStandaloneReplayPage]);
 
   const onListScroll = useCallback(() => {
     const el = listBoxRef.current;
@@ -1133,9 +1178,10 @@ export default function PageClient() {
   }, [adminApp, msRef]);
 
   useEffect(() => {
-    if (!selectedRecordingId || !selectedRecording) return;
+    if (!selectedRecordingId) return;
+    if (!isStandaloneReplayPage && !selectedRecording) return;
     runAsynchronously(() => loadChunksAndDownload(selectedRecordingId), { noErrorLogging: true });
-  }, [loadChunksAndDownload, selectedRecordingId, selectedRecording]);
+  }, [isStandaloneReplayPage, loadChunksAndDownload, selectedRecordingId, selectedRecording]);
 
   useEffect(() => {
     if (!selectedRecordingId) {
@@ -1371,371 +1417,395 @@ export default function PageClient() {
   }, [draftFilters]);
 
   useEffect(() => {
+    if (isStandaloneReplayPage) return;
     if (recordings.length === 0) {
       setSelectedRecordingId(null);
       return;
     }
     if (selectedRecordingId && recordings.some((r) => r.id === selectedRecordingId)) return;
     setSelectedRecordingId(recordings[0]?.id ?? null);
-  }, [recordings, selectedRecordingId]);
+  }, [isStandaloneReplayPage, recordings, selectedRecordingId]);
 
   // ---- Rendering ----
 
   return (
     <AppEnabledGuard appId="analytics">
-      <PageLayout title="Session Replays" fillWidth>
+      <PageLayout
+        title={isStandaloneReplayPage ? "Session Replay" : "Session Replays"}
+        description={isStandaloneReplayPage ? (
+          <StyledLink
+            href={`/projects/${encodeURIComponent(adminApp.projectId)}/analytics/replays`}
+            className="inline-flex items-center gap-1 text-xs"
+          >
+            <ArrowLeftIcon className="h-3 w-3" />
+            Back to all replays
+          </StyledLink>
+        ) : undefined}
+        fillWidth
+      >
         <PanelGroup data-walkthrough="analytics-replays" direction="horizontal" className="!h-[calc(100vh-180px)] min-h-[520px] rounded-xl border border-border/40 overflow-hidden bg-background">
-          <Panel defaultSize={25} minSize={16}>
-            <div className="h-full flex flex-col">
-              <div className="shrink-0 px-3 py-2 border-b border-border/30 space-y-2">
-                <div className="flex items-center justify-between gap-2 h-8">
-                  <Typography className="text-sm font-medium">
-                    Sessions{!loadingInitial && recordings.length > 0 ? ` (${recordings.length}${nextCursor ? "+" : ""})` : ""}
-                  </Typography>
-                  <DropdownMenu>
-                    <DropdownMenuTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="h-7 px-2.5"
-                      >
-                        <FunnelSimpleIcon className="h-3.5 w-3.5 mr-1" />
-                        Filters
-                        {activeFilterCount > 0 && (
-                          <span className="ml-1 rounded-full bg-foreground/10 px-1.5 py-0 text-[10px]">
-                            {activeFilterCount}
+          {!isStandaloneReplayPage && (
+            <>
+              <Panel defaultSize={25} minSize={16}>
+                <div className="h-full flex flex-col">
+                  <div className="shrink-0 px-3 py-2 border-b border-border/30 space-y-2">
+                    <div className="flex items-center justify-between gap-2 h-8">
+                      <Typography className="text-sm font-medium">
+                        Sessions{!loadingInitial && recordings.length > 0 ? ` (${recordings.length}${nextCursor ? "+" : ""})` : ""}
+                      </Typography>
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="h-7 px-2.5"
+                          >
+                            <FunnelSimpleIcon className="h-3.5 w-3.5 mr-1" />
+                            Filters
+                            {activeFilterCount > 0 && (
+                              <span className="ml-1 rounded-full bg-foreground/10 px-1.5 py-0 text-[10px]">
+                                {activeFilterCount}
+                              </span>
+                            )}
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent
+                          align="end"
+                          className="w-48"
+                          onCloseAutoFocus={(e) => e.preventDefault()}
+                        >
+                          <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("user")); }}>
+                            User
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("team")); }}>
+                            Team
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("duration")); }}>
+                            Duration
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("lastActive")); }}>
+                            Last active
+                          </DropdownMenuItem>
+                          <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("clicks")); }}>
+                            Click count
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </div>
+
+                    {activeFilterCount > 0 && (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {appliedFilters.userId && (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px]">
+                            user:{appliedFilters.userLabel || "selected"}
                           </span>
                         )}
-                      </Button>
-                    </DropdownMenuTrigger>
-                    <DropdownMenuContent
-                      align="end"
-                      className="w-48"
-                      onCloseAutoFocus={(e) => e.preventDefault()}
-                    >
-                      <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("user")); }}>
-                        User
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("team")); }}>
-                        Team
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("duration")); }}>
-                        Duration
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("lastActive")); }}>
-                        Last active
-                      </DropdownMenuItem>
-                      <DropdownMenuItem onClick={() => { requestAnimationFrame(() => openFilterDialog("clicks")); }}>
-                        Click count
-                      </DropdownMenuItem>
-                    </DropdownMenuContent>
-                  </DropdownMenu>
-                </div>
-
-                {activeFilterCount > 0 && (
-                  <div className="flex flex-wrap items-center gap-1.5">
-                    {appliedFilters.userId && (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px]">
-                        user:{appliedFilters.userLabel || "selected"}
-                      </span>
+                        {appliedFilters.teamId && (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px]">
+                            team:{appliedFilters.teamLabel || "selected"}
+                          </span>
+                        )}
+                        {(appliedFilters.durationMinSeconds || appliedFilters.durationMaxSeconds) && (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px]">
+                            duration
+                          </span>
+                        )}
+                        {appliedFilters.lastActivePreset && (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px]">
+                            last active: {appliedFilters.lastActivePreset}
+                          </span>
+                        )}
+                        {appliedFilters.clickCountMin && (
+                          <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px]">
+                            clicks
+                          </span>
+                        )}
+                        <button
+                          className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors hover:transition-none"
+                          onClick={() => setAppliedFilters(EMPTY_FILTERS)}
+                        >
+                          <XIcon className="h-2.5 w-2.5" />
+                          clear
+                        </button>
+                      </div>
                     )}
-                    {appliedFilters.teamId && (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px]">
-                        team:{appliedFilters.teamLabel || "selected"}
-                      </span>
-                    )}
-                    {(appliedFilters.durationMinSeconds || appliedFilters.durationMaxSeconds) && (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px]">
-                        duration
-                      </span>
-                    )}
-                    {appliedFilters.lastActivePreset && (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px]">
-                        last active: {appliedFilters.lastActivePreset}
-                      </span>
-                    )}
-                    {appliedFilters.clickCountMin && (
-                      <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px]">
-                        clicks
-                      </span>
-                    )}
-                    <button
-                      className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px] text-muted-foreground hover:text-foreground transition-colors hover:transition-none"
-                      onClick={() => setAppliedFilters(EMPTY_FILTERS)}
-                    >
-                      <XIcon className="h-2.5 w-2.5" />
-                      clear
-                    </button>
                   </div>
-                )}
-              </div>
 
-              <Dialog open={activeFilterDialog === "user"} onOpenChange={(open) => setActiveFilterDialog(open ? "user" : null)}>
-                <DialogContent className="max-w-md">
-                  <DialogHeader>
-                    <DialogTitle>User Filter</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-3">
-                    <UserSearchPicker
-                      action={(user) => (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
+                  <Dialog open={activeFilterDialog === "user"} onOpenChange={(open) => setActiveFilterDialog(open ? "user" : null)}>
+                    <DialogContent className="max-w-md">
+                      <DialogHeader>
+                        <DialogTitle>User Filter</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-3">
+                        <UserSearchPicker
+                          action={(user) => (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
                             setAppliedFilters((prev) => ({
                               ...prev,
                               userId: user.id,
                               userLabel: user.displayName ?? user.primaryEmail ?? user.id,
                             }));
                             setActiveFilterDialog(null);
-                          }}
-                        >
-                          Select
-                        </Button>
-                      )}
-                    />
-                    <div className="flex items-center justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8"
-                        onClick={() => {
+                              }}
+                            >
+                              Select
+                            </Button>
+                          )}
+                        />
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8"
+                            onClick={() => {
                           setAppliedFilters((prev) => ({ ...prev, userId: "", userLabel: "" }));
                           setActiveFilterDialog(null);
-                        }}
-                      >
-                        Clear
-                      </Button>
-                    </div>
-                  </div>
-                </DialogContent>
-              </Dialog>
+                            }}
+                          >
+                            Clear
+                          </Button>
+                        </div>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
 
-              <Dialog open={activeFilterDialog === "team"} onOpenChange={(open) => setActiveFilterDialog(open ? "team" : null)}>
-                <DialogContent className="max-w-3xl">
-                  <DialogHeader>
-                    <DialogTitle>Team Filter</DialogTitle>
-                  </DialogHeader>
-                  <div className="space-y-3 pt-2">
-                    <TeamSearchTable
-                      action={(team) => (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={() => {
+                  <Dialog open={activeFilterDialog === "team"} onOpenChange={(open) => setActiveFilterDialog(open ? "team" : null)}>
+                    <DialogContent className="max-w-3xl">
+                      <DialogHeader>
+                        <DialogTitle>Team Filter</DialogTitle>
+                      </DialogHeader>
+                      <div className="space-y-3 pt-2">
+                        <TeamSearchTable
+                          action={(team) => (
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
                             setAppliedFilters((prev) => ({
                               ...prev,
                               teamId: team.id,
                               teamLabel: team.displayName,
                             }));
                             setActiveFilterDialog(null);
-                          }}
-                        >
-                          Select
-                        </Button>
-                      )}
-                    />
-                    <div className="flex items-center justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        className="h-8"
-                        onClick={() => {
+                              }}
+                            >
+                              Select
+                            </Button>
+                          )}
+                        />
+                        <div className="flex items-center justify-end gap-2">
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8"
+                            onClick={() => {
                           setAppliedFilters((prev) => ({ ...prev, teamId: "", teamLabel: "" }));
                           setActiveFilterDialog(null);
-                        }}
-                      >
-                        Clear
-                      </Button>
-                    </div>
-                  </div>
-                </DialogContent>
-              </Dialog>
+                            }}
+                          >
+                            Clear
+                          </Button>
+                        </div>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
 
-              <Dialog open={activeFilterDialog === "duration"} onOpenChange={(open) => setActiveFilterDialog(open ? "duration" : null)}>
-                <DialogContent className="max-w-md">
-                  <DialogHeader>
-                    <DialogTitle>Duration Filter</DialogTitle>
-                  </DialogHeader>
-                  <form onSubmit={(e) => {
+                  <Dialog open={activeFilterDialog === "duration"} onOpenChange={(open) => setActiveFilterDialog(open ? "duration" : null)}>
+                    <DialogContent className="max-w-md">
+                      <DialogHeader>
+                        <DialogTitle>Duration Filter</DialogTitle>
+                      </DialogHeader>
+                      <form onSubmit={(e) => {
                     e.preventDefault();
                     applyDraftFilters();
-                  }}>
-                    <div className="grid grid-cols-2 gap-3 pt-2">
-                      <label className="space-y-1">
-                        <Typography className="text-xs text-muted-foreground">Min (seconds)</Typography>
-                        <input
-                          type="number"
-                          min={0}
-                          className="h-8 w-full rounded-md border border-border/50 bg-background px-2 text-xs"
-                          value={draftFilters.durationMinSeconds}
-                          onChange={(e) => setDraftFilters((prev) => ({ ...prev, durationMinSeconds: e.target.value }))}
-                        />
-                      </label>
-                      <label className="space-y-1">
-                        <Typography className="text-xs text-muted-foreground">Max (seconds)</Typography>
-                        <input
-                          type="number"
-                          min={0}
-                          className="h-8 w-full rounded-md border border-border/50 bg-background px-2 text-xs"
-                          value={draftFilters.durationMaxSeconds}
-                          onChange={(e) => setDraftFilters((prev) => ({ ...prev, durationMaxSeconds: e.target.value }))}
-                        />
-                      </label>
-                    </div>
-                    <div className="pt-3 flex items-center justify-end gap-2">
-                      <Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => setActiveFilterDialog(null)}>Cancel</Button>
-                      <Button type="submit" size="sm" className="h-8">Apply</Button>
-                    </div>
-                  </form>
-                </DialogContent>
-              </Dialog>
+                      }}>
+                        <div className="grid grid-cols-2 gap-3 pt-2">
+                          <label className="space-y-1">
+                            <Typography className="text-xs text-muted-foreground">Min (seconds)</Typography>
+                            <input
+                              type="number"
+                              min={0}
+                              className="h-8 w-full rounded-md border border-border/50 bg-background px-2 text-xs"
+                              value={draftFilters.durationMinSeconds}
+                              onChange={(e) => setDraftFilters((prev) => ({ ...prev, durationMinSeconds: e.target.value }))}
+                            />
+                          </label>
+                          <label className="space-y-1">
+                            <Typography className="text-xs text-muted-foreground">Max (seconds)</Typography>
+                            <input
+                              type="number"
+                              min={0}
+                              className="h-8 w-full rounded-md border border-border/50 bg-background px-2 text-xs"
+                              value={draftFilters.durationMaxSeconds}
+                              onChange={(e) => setDraftFilters((prev) => ({ ...prev, durationMaxSeconds: e.target.value }))}
+                            />
+                          </label>
+                        </div>
+                        <div className="pt-3 flex items-center justify-end gap-2">
+                          <Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => setActiveFilterDialog(null)}>Cancel</Button>
+                          <Button type="submit" size="sm" className="h-8">Apply</Button>
+                        </div>
+                      </form>
+                    </DialogContent>
+                  </Dialog>
 
-              <Dialog open={activeFilterDialog === "lastActive"} onOpenChange={(open) => setActiveFilterDialog(open ? "lastActive" : null)}>
-                <DialogContent className="max-w-md">
-                  <DialogHeader>
-                    <DialogTitle>Last Active Filter</DialogTitle>
-                  </DialogHeader>
-                  <div className="flex flex-wrap gap-2 pt-2">
-                    {([["24h", "Last 24 hours"], ["7d", "Last 7 days"], ["30d", "Last 30 days"]] as const).map(([value, label]) => (
-                      <Button
-                        key={value}
-                        variant={appliedFilters.lastActivePreset === value ? "default" : "outline"}
-                        size="sm"
-                        className="h-8"
-                        onClick={() => {
+                  <Dialog open={activeFilterDialog === "lastActive"} onOpenChange={(open) => setActiveFilterDialog(open ? "lastActive" : null)}>
+                    <DialogContent className="max-w-md">
+                      <DialogHeader>
+                        <DialogTitle>Last Active Filter</DialogTitle>
+                      </DialogHeader>
+                      <div className="flex flex-wrap gap-2 pt-2">
+                        {([["24h", "Last 24 hours"], ["7d", "Last 7 days"], ["30d", "Last 30 days"]] as const).map(([value, label]) => (
+                          <Button
+                            key={value}
+                            variant={appliedFilters.lastActivePreset === value ? "default" : "outline"}
+                            size="sm"
+                            className="h-8"
+                            onClick={() => {
                           setAppliedFilters((prev) => ({ ...prev, lastActivePreset: value }));
                           setActiveFilterDialog(null);
-                        }}
-                      >
-                        {label}
-                      </Button>
-                    ))}
-                  </div>
-                  <div className="pt-1 flex items-center justify-end gap-2">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      className="h-8"
-                      onClick={() => {
+                            }}
+                          >
+                            {label}
+                          </Button>
+                        ))}
+                      </div>
+                      <div className="pt-1 flex items-center justify-end gap-2">
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="h-8"
+                          onClick={() => {
                         setAppliedFilters((prev) => ({ ...prev, lastActivePreset: "" }));
                         setActiveFilterDialog(null);
-                      }}
-                    >
-                      Clear
-                    </Button>
-                  </div>
-                </DialogContent>
-              </Dialog>
+                          }}
+                        >
+                          Clear
+                        </Button>
+                      </div>
+                    </DialogContent>
+                  </Dialog>
 
-              <Dialog open={activeFilterDialog === "clicks"} onOpenChange={(open) => setActiveFilterDialog(open ? "clicks" : null)}>
-                <DialogContent className="max-w-md">
-                  <DialogHeader>
-                    <DialogTitle>Click Count Filter</DialogTitle>
-                  </DialogHeader>
-                  <form onSubmit={(e) => {
+                  <Dialog open={activeFilterDialog === "clicks"} onOpenChange={(open) => setActiveFilterDialog(open ? "clicks" : null)}>
+                    <DialogContent className="max-w-md">
+                      <DialogHeader>
+                        <DialogTitle>Click Count Filter</DialogTitle>
+                      </DialogHeader>
+                      <form onSubmit={(e) => {
                     e.preventDefault();
                     applyDraftFilters();
-                  }}>
-                    <div className="space-y-3 pt-2">
-                      <input
-                        type="number"
-                        min={0}
-                        className="h-8 w-full rounded-md border border-border/50 bg-background px-2 text-xs"
-                        value={draftFilters.clickCountMin}
-                        onChange={(e) => setDraftFilters((prev) => ({ ...prev, clickCountMin: e.target.value }))}
-                        placeholder="Minimum click count"
-                      />
-                    </div>
-                    <div className="pt-3 flex items-center justify-end gap-2">
-                      <Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => setActiveFilterDialog(null)}>Cancel</Button>
-                      <Button type="submit" size="sm" className="h-8">Apply</Button>
-                    </div>
-                  </form>
-                </DialogContent>
-              </Dialog>
+                      }}>
+                        <div className="space-y-3 pt-2">
+                          <input
+                            type="number"
+                            min={0}
+                            className="h-8 w-full rounded-md border border-border/50 bg-background px-2 text-xs"
+                            value={draftFilters.clickCountMin}
+                            onChange={(e) => setDraftFilters((prev) => ({ ...prev, clickCountMin: e.target.value }))}
+                            placeholder="Minimum click count"
+                          />
+                        </div>
+                        <div className="pt-3 flex items-center justify-end gap-2">
+                          <Button type="button" variant="ghost" size="sm" className="h-8" onClick={() => setActiveFilterDialog(null)}>Cancel</Button>
+                          <Button type="submit" size="sm" className="h-8">Apply</Button>
+                        </div>
+                      </form>
+                    </DialogContent>
+                  </Dialog>
 
-              {listError && (
-                <div className="p-3">
-                  <Alert variant="destructive">{listError}</Alert>
-                </div>
-              )}
+                  {listError && (
+                    <div className="p-3">
+                      <Alert variant="destructive">{listError}</Alert>
+                    </div>
+                  )}
 
-              <div
-                ref={listBoxRef}
-                onScroll={onListScroll}
-                className="flex-1 overflow-y-auto"
-              >
-                {loadingInitial ? (
-                  <div className="p-2 space-y-1">
-                    {Array.from({ length: 8 }).map((_, i) => (
-                      <div key={i} className="rounded-lg p-3">
-                        <Skeleton className="h-4 w-36" />
-                        <Skeleton className="mt-1.5 h-3 w-24" />
+                  <div
+                    ref={listBoxRef}
+                    onScroll={onListScroll}
+                    className="flex-1 overflow-y-auto"
+                  >
+                    {loadingInitial ? (
+                      <div className="p-2 space-y-1">
+                        {Array.from({ length: 8 }).map((_, i) => (
+                          <div key={i} className="rounded-lg p-3">
+                            <Skeleton className="h-4 w-36" />
+                            <Skeleton className="mt-1.5 h-3 w-24" />
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                ) : recordings.length === 0 ? (
-                  <div className="p-6 text-center">
-                    <Typography className="text-sm text-muted-foreground">
-                      {activeFilterCount > 0 ? "No replays match these filters." : "No replays yet."}
-                    </Typography>
-                  </div>
-                ) : (
-                  <div className="p-1.5 space-y-0.5">
-                    {recordings.map((r) => {
-                      const isSelected = r.id === selectedRecordingId;
-                      const durationMs = r.lastEventAt.getTime() - r.startedAt.getTime();
-                      const duration = formatDurationMs(durationMs);
-                      return (
-                        <button
-                          key={r.id}
-                          onClick={() => setSelectedRecordingId(r.id)}
-                          className={cn(
-                            "w-full text-left rounded-lg px-3 py-2.5",
-                            "transition-colors hover:transition-none",
-                            isSelected ? "bg-muted/60 ring-1 ring-border/40" : "hover:bg-muted/20",
-                          )}
-                        >
-                          <div className="flex items-center justify-between gap-2">
-                            <span className="text-sm font-medium truncate">
-                              {getRecordingTitle(r)}
-                            </span>
-                            <span className="text-xs text-muted-foreground whitespace-nowrap">
-                              {duration}
-                            </span>
-                          </div>
-                          <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
-                            <DisplayDate date={r.lastEventAt} />
-                            {(clickCountsByReplayId.get(r.id) ?? 0) > 0 && (
-                              <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground/70">
-                                <CursorClickIcon className="h-3 w-3" />
-                                {clickCountsByReplayId.get(r.id)}
-                              </span>
-                            )}
-                          </div>
-                        </button>
-                      );
-                    })}
+                    ) : recordings.length === 0 ? (
+                      <div className="p-6 text-center">
+                        <Typography className="text-sm text-muted-foreground">
+                          {activeFilterCount > 0 ? "No replays match these filters." : "No replays yet."}
+                        </Typography>
+                      </div>
+                    ) : (
+                      <div className="p-1.5 space-y-0.5">
+                        {recordings.map((r) => {
+                          const isSelected = r.id === selectedRecordingId;
+                          const durationMs = r.lastEventAt.getTime() - r.startedAt.getTime();
+                          const duration = formatDurationMs(durationMs);
+                          return (
+                            <div
+                              key={r.id}
+                              className={cn(
+                                "rounded-lg",
+                                isSelected ? "bg-muted/60 ring-1 ring-border/40" : "hover:bg-muted/20",
+                              )}
+                            >
+                              <button
+                                onClick={() => setSelectedRecordingId(r.id)}
+                                className={cn(
+                                  "w-full text-left rounded-lg px-3 py-2.5",
+                                  "transition-colors hover:transition-none",
+                                )}
+                              >
+                                <div className="flex items-center justify-between gap-2">
+                                  <span className="text-sm font-medium truncate">
+                                    {getRecordingTitle(r)}
+                                  </span>
+                                  <span className="text-xs text-muted-foreground whitespace-nowrap">
+                                    {duration}
+                                  </span>
+                                </div>
+                                <div className="flex items-center justify-between gap-2 text-xs text-muted-foreground">
+                                  <DisplayDate date={r.lastEventAt} />
+                                  {(clickCountsByReplayId.get(r.id) ?? 0) > 0 && (
+                                    <span className="flex items-center gap-0.5 text-[10px] text-muted-foreground/70">
+                                      <CursorClickIcon className="h-3 w-3" />
+                                      {clickCountsByReplayId.get(r.id)}
+                                    </span>
+                                  )}
+                                </div>
+                              </button>
+                            </div>
+                          );
+                        })}
 
-                    {loadingMore && (
-                      <div className="rounded-lg p-3">
-                        <Skeleton className="h-4 w-36" />
-                        <Skeleton className="mt-1.5 h-3 w-24" />
+                        {loadingMore && (
+                          <div className="rounded-lg p-3">
+                            <Skeleton className="h-4 w-36" />
+                            <Skeleton className="mt-1.5 h-3 w-24" />
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
-                )}
-              </div>
-            </div>
-          </Panel>
+                </div>
+              </Panel>
 
-          <PanelResizeHandle className="w-px bg-border/40 hover:bg-border transition-colors hover:transition-none" />
+              <PanelResizeHandle className="w-px bg-border/40 hover:bg-border transition-colors hover:transition-none" />
+            </>
+          )}
 
-          <Panel defaultSize={75} minSize={35}>
+          <Panel defaultSize={isStandaloneReplayPage ? 100 : 75} minSize={35}>
             <div className="h-full flex flex-col">
-              {(ms.downloadError || ms.playerError) && (
+              {(standaloneReplayError || ms.downloadError || ms.playerError) && (
                 <div className="p-3 space-y-2">
+                  {standaloneReplayError && <Alert variant="destructive">{standaloneReplayError}</Alert>}
                   {ms.downloadError && <Alert variant="destructive">{ms.downloadError}</Alert>}
                   {ms.playerError && <Alert variant="destructive">{ms.playerError}</Alert>}
                 </div>
@@ -1749,16 +1819,43 @@ export default function PageClient() {
                   >
                     {getRecordingTitle(selectedRecording)}
                   </StyledLink>
+                ) : isStandaloneReplayPage && selectedRecordingId ? (
+                  <Typography className="text-sm font-medium truncate font-mono">
+                    Replay {selectedRecordingId}
+                  </Typography>
                 ) : (
                   <Typography className="text-sm font-medium truncate" />
                 )}
-                <ReplaySettingsButton
-                  settings={ms.settings}
-                  onSettingsChange={(updates) => actRef.current({ type: "UPDATE_SETTINGS", updates })}
-                />
+                <div className="flex items-center gap-1">
+                  {selectedRecordingId && (
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-7 w-7"
+                      aria-label={replayShareLinkCopied ? "Link copied" : "Copy link to replay"}
+                      title={replayShareLinkCopied ? "Copied!" : "Copy link to replay"}
+                      onClick={() => runAsynchronouslyWithAlert(async () => {
+                        await navigator.clipboard.writeText(
+                          `${window.location.origin}/projects/${encodeURIComponent(adminApp.projectId)}/analytics/replays/${encodeURIComponent(selectedRecordingId)}`,
+                        );
+                        setReplayShareLinkCopied(true);
+                      })}
+                    >
+                      {replayShareLinkCopied ? (
+                        <CheckIcon className="h-4 w-4 text-emerald-600" weight="bold" />
+                      ) : (
+                        <LinkIcon className="h-4 w-4" />
+                      )}
+                    </Button>
+                  )}
+                  <ReplaySettingsButton
+                    settings={ms.settings}
+                    onSettingsChange={(updates) => actRef.current({ type: "UPDATE_SETTINGS", updates })}
+                  />
+                </div>
               </div>
 
-              {selectedRecording ? (
+              {selectedRecordingId ? (
                 <div className="flex-1 overflow-hidden flex flex-col">
                   <div className="flex-1 overflow-hidden flex flex-col">
                     <div
