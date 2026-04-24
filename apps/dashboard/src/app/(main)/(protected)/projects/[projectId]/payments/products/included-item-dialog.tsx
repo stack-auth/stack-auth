@@ -1,16 +1,22 @@
 "use client";
 
+import {
+  DesignButton,
+  DesignDialog,
+  DesignDialogClose,
+  DesignInput,
+  DesignSelectorDropdown,
+} from "@/components/design-components";
+import { Checkbox, Label, SimpleTooltip, Typography } from "@/components/ui";
 import { cn } from "@/lib/utils";
+import { PackageIcon } from "@phosphor-icons/react";
 import { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
-import { Button, Checkbox, Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, Input, Label, Select, SelectContent, SelectItem, SelectTrigger, SelectValue, SimpleTooltip, Typography } from "@/components/ui";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
-type Interval = [number, 'day' | 'week' | 'month' | 'year'] | 'never';
 type ExpiresOption = 'never' | 'when-purchase-expires' | 'when-repeated';
 
 type Product = CompleteConfig['payments']['products'][string];
 type IncludedItem = Product['includedItems'][string];
-type Price = (Product['prices'] & object)[string];
 
 type IncludedItemDialogProps = {
   open: boolean,
@@ -129,106 +135,124 @@ export function IncludedItemDialog({
 
   const selectedItem = existingItems.find(item => item.id === selectedItemId);
 
+  const itemSelectOptions = useMemo(() => [
+    ...existingItems.map(item => ({
+      value: item.id,
+      label: `${item.displayName || item.id} (${item.customerType.toUpperCase()} · ${item.id})`,
+    })),
+    { value: 'create-new', label: '+ Create new item' },
+  ], [existingItems]);
+
+  const repeatUnitOptions = useMemo(() => [
+    { value: 'day', label: 'day(s)' },
+    { value: 'week', label: 'week(s)' },
+    { value: 'month', label: 'month(s)' },
+    { value: 'year', label: 'year(s)' },
+  ], []);
+
+  const expiresSelectOptions = useMemo(() => EXPIRES_OPTIONS
+    .filter(option => !option.requiresRepeat || hasRepeat)
+    .map(option => ({ value: option.value, label: option.label })), [hasRepeat]);
+
+  const expiresDescription = EXPIRES_OPTIONS.find(o => o.value === expires)?.description;
+
   return (
-    <Dialog open={open} onOpenChange={handleClose}>
-      <DialogContent className="sm:max-w-[550px]">
-        <DialogHeader>
-          <DialogTitle>{editingItem ? "Edit Included Item" : "Add Included Item"}</DialogTitle>
-          <DialogDescription>
-            Configure which items are included with this product and how they behave.
-          </DialogDescription>
-        </DialogHeader>
-
-        <div className="grid gap-4 py-4">
-          {/* Item Selection */}
-          <div className="grid gap-2">
-            <Label htmlFor="item-select">
-              <SimpleTooltip tooltip="Choose which item to include with this product">
-                Select Item
-              </SimpleTooltip>
-            </Label>
-            <Select
-              value={selectedItemId}
-              onValueChange={(value) => {
-                if (value === 'create-new') {
-                  onCreateNewItem?.();
-                } else {
-                  setSelectedItemId(value);
-                  if (errors.itemId) {
-                    setErrors(prev => {
-                      const newErrors = { ...prev };
-                      delete newErrors.itemId;
-                      return newErrors;
-                    });
-                  }
-                }
-              }}
-              disabled={!!editingItem}
-            >
-              <SelectTrigger className={cn(errors.itemId ? "border-destructive" : "")}>
-                <SelectValue placeholder="Choose an item..." />
-              </SelectTrigger>
-              <SelectContent>
-                {existingItems.map(item => (
-                  <SelectItem key={item.id} value={item.id}>
-                    <div className="flex flex-col">
-                      <span>{item.displayName || item.id}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {item.customerType.toUpperCase()} • {item.id}
-                      </span>
-                    </div>
-                  </SelectItem>
-                ))}
-                <SelectItem value="create-new">
-                  <span className="text-primary">+ Create new item</span>
-                </SelectItem>
-              </SelectContent>
-            </Select>
-            {errors.itemId && (
-              <Typography type="label" className="text-destructive">
-                {errors.itemId}
-              </Typography>
-            )}
-          </div>
-
-          {/* Quantity */}
-          <div className="grid gap-2">
-            <Label htmlFor="quantity">
-              <SimpleTooltip tooltip="How many of this item the customer receives">
-                Quantity
-              </SimpleTooltip>
-            </Label>
-            <Input
-              id="quantity"
-              type="number"
-              min="1"
-              value={quantity}
-              onChange={(e) => {
-                setQuantity(e.target.value);
-                if (errors.quantity) {
+    <DesignDialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) handleClose();
+      }}
+      size="lg"
+      icon={PackageIcon}
+      title={editingItem ? "Edit Included Item" : "Add Included Item"}
+      description="Configure which items are included with this product and how they behave."
+      footer={(
+        <>
+          <DesignDialogClose asChild>
+            <DesignButton variant="secondary" size="sm" type="button">Cancel</DesignButton>
+          </DesignDialogClose>
+          <DesignButton size="sm" type="button" onClick={validateAndSave}>
+            {editingItem ? "Save Changes" : "Add Item"}
+          </DesignButton>
+        </>
+      )}
+    >
+      <div className="grid gap-4">
+        {/* Item Selection */}
+        <div className="grid gap-2">
+          <Label htmlFor="item-select">
+            <SimpleTooltip tooltip="Choose which item to include with this product">
+              Select Item
+            </SimpleTooltip>
+          </Label>
+          <DesignSelectorDropdown
+            value={selectedItemId}
+            onValueChange={(value) => {
+              if (value === 'create-new') {
+                onCreateNewItem?.();
+              } else {
+                setSelectedItemId(value);
+                if (errors.itemId) {
                   setErrors(prev => {
                     const newErrors = { ...prev };
-                    delete newErrors.quantity;
+                    delete newErrors.itemId;
                     return newErrors;
                   });
                 }
-              }}
-              className={errors.quantity ? "border-destructive" : ""}
-            />
-            {errors.quantity && (
-              <Typography type="label" className="text-destructive">
-                {errors.quantity}
-              </Typography>
-            )}
-          </div>
+              }
+            }}
+            options={itemSelectOptions}
+            disabled={!!editingItem}
+            placeholder="Choose an item..."
+            size="md"
+            triggerClassName={cn(errors.itemId && "border-destructive")}
+          />
+          {errors.itemId && (
+            <Typography type="label" className="text-destructive text-xs">
+              {errors.itemId}
+            </Typography>
+          )}
+        </div>
 
-          {/* Repeat */}
-          <div className="space-y-3">
-            <div className="flex items-center space-x-2">
-              <Checkbox
-                id="repeat"
-                checked={hasRepeat}
-                onCheckedChange={(checked) => {
+        {/* Quantity */}
+        <div className="grid gap-2">
+          <Label htmlFor="quantity">
+            <SimpleTooltip tooltip="How many of this item the customer receives">
+              Quantity
+            </SimpleTooltip>
+          </Label>
+          <DesignInput
+            id="quantity"
+            type="number"
+            min={1}
+            value={quantity}
+            onChange={(e) => {
+              setQuantity(e.target.value);
+              if (errors.quantity) {
+                setErrors(prev => {
+                  const newErrors = { ...prev };
+                  delete newErrors.quantity;
+                  return newErrors;
+                });
+              }
+            }}
+            size="md"
+            className={errors.quantity ? "border-destructive focus-visible:ring-destructive/30" : ""}
+          />
+          {errors.quantity && (
+            <Typography type="label" className="text-destructive text-xs">
+              {errors.quantity}
+            </Typography>
+          )}
+        </div>
+
+        {/* Repeat */}
+        <div className="space-y-3">
+          <div className="flex items-center space-x-2">
+            <Checkbox
+              id="repeat"
+              checked={hasRepeat}
+              onCheckedChange={(checked) => {
                   setHasRepeat(checked as boolean);
                   // Reset expires if turning off repeat and it was set to 'when-repeated'
                   if (!checked && expires === 'when-repeated') {
@@ -241,28 +265,28 @@ export function IncludedItemDialog({
                       });
                     }
                   }
-                }}
-              />
-              <Label htmlFor="repeat" className="cursor-pointer">
-                <SimpleTooltip tooltip="The item will be granted again after the specified interval">
-                  Grant repeatedly
+              }}
+            />
+            <Label htmlFor="repeat" className="cursor-pointer">
+              <SimpleTooltip tooltip="The item will be granted again after the specified interval">
+                Grant repeatedly
+              </SimpleTooltip>
+            </Label>
+          </div>
+
+          {hasRepeat && (
+            <div className="grid gap-2">
+              <Label>
+                <SimpleTooltip tooltip="The item will be granted again after this interval">
+                  Repeat Interval
                 </SimpleTooltip>
               </Label>
-            </div>
-
-            {hasRepeat && (
-              <div className="grid gap-2">
-                <Label>
-                  <SimpleTooltip tooltip="The item will be granted again after this interval">
-                    Repeat Interval
-                  </SimpleTooltip>
-                </Label>
-                <div className="flex gap-2">
-                  <Input
-                    type="number"
-                    min="1"
-                    value={repeatCount}
-                    onChange={(e) => {
+              <div className="flex gap-2">
+                <DesignInput
+                  type="number"
+                  min={1}
+                  value={repeatCount}
+                  onChange={(e) => {
                       setRepeatCount(e.target.value);
                       if (errors.repeatCount) {
                         setErrors(prev => {
@@ -271,40 +295,37 @@ export function IncludedItemDialog({
                           return newErrors;
                         });
                       }
-                    }}
-                    className={cn("w-24", errors.repeatCount ? "border-destructive" : "")}
-                  />
-                  <Select value={repeatUnit} onValueChange={(value) => setRepeatUnit(value as typeof repeatUnit)}>
-                    <SelectTrigger className="flex-1">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="day">day(s)</SelectItem>
-                      <SelectItem value="week">week(s)</SelectItem>
-                      <SelectItem value="month">month(s)</SelectItem>
-                      <SelectItem value="year">year(s)</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {errors.repeatCount && (
-                  <Typography type="label" className="text-destructive">
-                    {errors.repeatCount}
-                  </Typography>
-                )}
+                  }}
+                  size="md"
+                  className={cn("w-24 shrink-0", errors.repeatCount ? "border-destructive focus-visible:ring-destructive/30" : "")}
+                />
+                <DesignSelectorDropdown
+                  value={repeatUnit}
+                  onValueChange={(value) => setRepeatUnit(value as typeof repeatUnit)}
+                  options={repeatUnitOptions}
+                  size="md"
+                  className="min-w-0 flex-1"
+                />
               </div>
-            )}
-          </div>
+              {errors.repeatCount && (
+                <Typography type="label" className="text-destructive text-xs">
+                  {errors.repeatCount}
+                </Typography>
+              )}
+            </div>
+          )}
+        </div>
 
-          {/* Expiration */}
-          <div className="grid gap-2">
-            <Label>
-              <SimpleTooltip tooltip="When the included item should expire">
-                Expiration
-              </SimpleTooltip>
-            </Label>
-            <Select
-              value={expires}
-              onValueChange={(value) => {
+        {/* Expiration */}
+        <div className="grid gap-2">
+          <Label>
+            <SimpleTooltip tooltip="When the included item should expire">
+              Expiration
+            </SimpleTooltip>
+          </Label>
+          <DesignSelectorDropdown
+            value={expires}
+            onValueChange={(value) => {
                 setExpires(value as ExpiresOption);
                 if (errors.expires) {
                   setErrors(prev => {
@@ -313,64 +334,46 @@ export function IncludedItemDialog({
                     return newErrors;
                   });
                 }
-              }}
-            >
-              <SelectTrigger className={errors.expires ? "border-destructive" : ""}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {EXPIRES_OPTIONS.filter(option => !option.requiresRepeat || hasRepeat).map(option => (
-                  <SelectItem key={option.value} value={option.value}>
-                    <div className="flex flex-col">
-                      <span>{option.label}</span>
-                      <span className="text-xs text-muted-foreground">
-                        {option.description}
-                      </span>
-                    </div>
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            {errors.expires && (
-              <Typography type="label" className="text-destructive">
-                {errors.expires}
-              </Typography>
-            )}
-          </div>
-
-          {/* Summary */}
-          {selectedItem && (
-            <div className="rounded-lg border bg-muted/30 p-3">
-              <Typography type="label" className="text-muted-foreground">
-                Summary:
-              </Typography>
-              <Typography type="p" className="text-sm mt-1">
-                Grant <span className="font-medium">{quantity}× {selectedItem.displayName || selectedItem.id}</span>
-                {hasRepeat && (
-                  <span>
-                    {' '}every {repeatCount} {repeatUnit}{parseInt(repeatCount) > 1 ? 's' : ''}
-                  </span>
-                )}
-                {expires !== 'never' && (
-                  <span>
-                    {' '}(expires {EXPIRES_OPTIONS.find(o => o.value === expires)?.label.toLowerCase()})
-                  </span>
-                )}
-              </Typography>
-            </div>
+            }}
+            options={expiresSelectOptions}
+            size="md"
+            triggerClassName={cn(errors.expires && "border-destructive")}
+          />
+          {expiresDescription ? (
+            <Typography type="label" className="text-muted-foreground text-xs">
+              {expiresDescription}
+            </Typography>
+          ) : null}
+          {errors.expires && (
+            <Typography type="label" className="text-destructive text-xs">
+              {errors.expires}
+            </Typography>
           )}
         </div>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={handleClose}>
-            Cancel
-          </Button>
-          <Button onClick={validateAndSave}>
-            {editingItem ? "Save Changes" : "Add Item"}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+        {/* Summary */}
+        {selectedItem && (
+          <div className="rounded-xl border border-border/50 bg-foreground/[0.02] p-3 ring-1 ring-foreground/[0.06]">
+            <Typography type="label" className="text-muted-foreground text-xs">
+              Summary
+            </Typography>
+            <Typography type="p" className="text-sm mt-2 text-foreground">
+              Grant <span className="font-medium">{quantity}× {selectedItem.displayName || selectedItem.id}</span>
+              {hasRepeat && (
+                <span>
+                  {' '}every {repeatCount} {repeatUnit}{parseInt(repeatCount) > 1 ? 's' : ''}
+                </span>
+              )}
+              {expires !== 'never' && (
+                <span>
+                  {' '}(expires {EXPIRES_OPTIONS.find(o => o.value === expires)?.label.toLowerCase()})
+                </span>
+              )}
+            </Typography>
+          </div>
+        )}
+      </div>
+    </DesignDialog>
   );
 }
 

@@ -129,7 +129,10 @@ const SelectItem = forwardRefIfNeeded<
   <SelectPrimitive.Item
     ref={ref}
     className={cn(
-      "relative flex w-full cursor-default select-none items-center rounded-lg py-1.5 pl-2 pr-8 text-sm outline-none text-muted-foreground hover:text-foreground focus:bg-foreground/[0.05] focus:text-foreground transition-all duration-150 hover:transition-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      "relative flex w-full cursor-default select-none items-center rounded-lg py-1.5 pl-2 pr-8 text-sm outline-none text-muted-foreground transition-all duration-150 hover:transition-none data-[disabled]:pointer-events-none data-[disabled]:opacity-50",
+      "hover:bg-foreground/[0.05] hover:text-foreground",
+      "focus:bg-foreground/[0.05] focus:text-foreground",
+      "data-[highlighted]:bg-foreground/[0.05] data-[highlighted]:text-foreground",
       className
     )}
     {...props}

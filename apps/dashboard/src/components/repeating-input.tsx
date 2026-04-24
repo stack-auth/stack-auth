@@ -1,15 +1,10 @@
 "use client";
 
+import { DesignInput, DesignSelectorDropdown } from "@/components/design-components";
 import {
-  Input,
   Popover,
   PopoverContent,
   PopoverTrigger,
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { CaretUpDownIcon } from "@phosphor-icons/react";
@@ -21,7 +16,6 @@ const DEFAULT_INTERVAL_UNITS: DayInterval[1][] = ['day', 'week', 'month', 'year'
 type IntervalSelection = 'one-time' | 'custom' | DayInterval[1];
 
 export type RepeatingInputProps = {
-  // Input value
   value: string,
   onValueChange: (value: string) => void,
   inputType?: 'text' | 'number',
@@ -29,7 +23,6 @@ export type RepeatingInputProps = {
   prefix?: string,
   inputClassName?: string,
 
-  // Interval/frequency
   intervalSelection: IntervalSelection,
   intervalCount: number,
   intervalUnit?: DayInterval[1],
@@ -38,7 +31,6 @@ export type RepeatingInputProps = {
   onIntervalCountChange: (count: number) => void,
   onIntervalUnitChange: (unit: DayInterval[1] | undefined) => void,
 
-  // Options
   allowedUnits?: DayInterval[1][],
   noneLabel?: string,
   useDurationLabels?: boolean,
@@ -150,75 +142,87 @@ export function RepeatingInput({
   const triggerLabel = getIntervalLabel(effectiveSelection, intervalCount, effectiveUnit, useDurationLabels);
 
   return (
-    <div className={cn("flex rounded-md border border-input focus-within:ring-1 focus-within:ring-ring", className)}>
-      {/* Input field */}
-      <div className="relative flex-1">
-        {prefix && (
-          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground pointer-events-none">
-            {prefix}
-          </span>
+    <div
+      className={cn(
+        "flex h-9 w-full items-stretch overflow-hidden rounded-xl",
+        "border border-black/[0.08] dark:border-white/[0.06]",
+        "bg-white/80 dark:bg-foreground/[0.03]",
+        "shadow-sm ring-1 ring-black/[0.08] dark:ring-white/[0.06]",
+        "transition-all duration-150 hover:transition-none",
+        "hover:bg-white dark:hover:bg-foreground/[0.06]",
+        "focus-within:ring-1 focus-within:ring-foreground/[0.1]",
+        (disabled || readOnly) && "opacity-60",
+        className
+      )}
+    >
+      {prefix && (
+        <div className="flex items-center justify-center select-none px-3 text-sm text-muted-foreground/70 border-r border-black/[0.06] dark:border-white/[0.06] bg-black/[0.03] dark:bg-white/[0.02]">
+          {prefix}
+        </div>
+      )}
+      <input
+        type={inputType}
+        value={value}
+        onChange={(e) => onValueChange(e.target.value)}
+        placeholder={placeholder}
+        disabled={disabled || readOnly}
+        className={cn(
+          "min-w-0 flex-1 bg-transparent px-3 text-sm text-foreground",
+          "placeholder:text-muted-foreground/50",
+          "focus:outline-none",
+          "disabled:cursor-not-allowed",
+          inputClassName
         )}
-        <Input
-          type={inputType}
-          value={value}
-          onChange={(e) => onValueChange(e.target.value)}
-          placeholder={placeholder}
-          disabled={disabled || readOnly}
-          className={cn(
-            "rounded-r-none border-0 focus-visible:ring-0 focus-visible:ring-offset-0",
-            prefix && "!pl-7",
-            inputClassName
-          )}
-        />
-      </div>
+      />
 
-      {/* Frequency dropdown button */}
       <Popover open={popoverOpen} onOpenChange={(isOpen) => !readOnly && !disabled && setPopoverOpen(isOpen)}>
         <PopoverTrigger asChild disabled={readOnly || disabled}>
           <button
             type="button"
             disabled={disabled || readOnly}
             className={cn(
-              "flex items-center gap-1.5 px-3 h-10 bg-muted/50 border-l border-input",
-              "text-sm text-muted-foreground rounded-r-md",
-              "hover:bg-muted hover:text-foreground",
-              "focus:outline-none",
+              "flex items-center gap-1.5 px-3 text-sm border-l border-black/[0.06] dark:border-white/[0.06]",
+              "bg-black/[0.02] dark:bg-white/[0.02] text-muted-foreground",
+              "hover:bg-foreground/[0.05] hover:text-foreground",
+              "focus:outline-none focus-visible:bg-foreground/[0.06]",
               "transition-colors duration-150 hover:transition-none",
               (disabled || readOnly) && "opacity-50 cursor-not-allowed pointer-events-none"
             )}
           >
             <span className="whitespace-nowrap">{triggerLabel}</span>
-            <CaretUpDownIcon className="h-4 w-4 shrink-0 opacity-50" />
+            <CaretUpDownIcon className="h-3.5 w-3.5 shrink-0 opacity-50" />
           </button>
         </PopoverTrigger>
-        <PopoverContent align="end" className="w-60 p-0 overflow-hidden">
+        <PopoverContent
+          align="end"
+          sideOffset={6}
+          className="w-60 p-0 overflow-hidden rounded-xl border border-black/[0.08] dark:border-white/[0.08] bg-white/95 dark:bg-background/95 backdrop-blur-xl shadow-lg ring-1 ring-black/[0.06] dark:ring-white/[0.06]"
+        >
           <div className="flex flex-col p-1">
-            {/* One-time option */}
             <button
               type="button"
               className={cn(
-                "flex items-center w-full px-3 py-2 rounded-lg text-left text-sm font-medium",
+                "flex items-center w-full px-2.5 py-2 rounded-lg text-left text-sm",
                 "transition-colors duration-150 hover:transition-none",
                 effectiveSelection === 'one-time'
                   ? "bg-foreground/[0.08] text-foreground"
-                  : "hover:bg-foreground/[0.04] text-foreground"
+                  : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05]"
               )}
               onClick={selectOneTime}
             >
               {noneLabel}
             </button>
 
-            {/* Fixed interval options */}
             {normalizedUnits.map((unitOption) => (
               <button
                 type="button"
                 key={unitOption}
                 className={cn(
-                  "flex items-center w-full px-3 py-2 rounded-lg text-left text-sm font-medium",
+                  "flex items-center w-full px-2.5 py-2 rounded-lg text-left text-sm",
                   "transition-colors duration-150 hover:transition-none",
                   effectiveSelection === unitOption
                     ? "bg-foreground/[0.08] text-foreground"
-                    : "hover:bg-foreground/[0.04] text-foreground"
+                    : "text-muted-foreground hover:text-foreground hover:bg-foreground/[0.05]"
                 )}
                 onClick={() => selectFixed(unitOption)}
               >
@@ -227,18 +231,14 @@ export function RepeatingInput({
             ))}
           </div>
 
-          {/* Custom interval option */}
-          <div className="border-t border-border/30 p-3">
+          <div className="border-t border-black/[0.06] dark:border-white/[0.06] p-3">
             <div className="text-xs font-medium text-muted-foreground mb-2">Custom</div>
             <div className="flex gap-2">
-              <Input
+              <DesignInput
                 type="number"
                 min={1}
-                className={cn(
-                  "w-20 h-9 text-sm",
-                  "rounded-lg border border-border/60 dark:border-foreground/[0.1]",
-                  "bg-background dark:bg-[hsl(240,10%,10%)]"
-                )}
+                size="sm"
+                className="w-20"
                 value={effectiveSelection === 'custom' ? intervalCount : 1}
                 onChange={(e) => {
                   const val = parseInt(e.target.value, 10);
@@ -247,28 +247,19 @@ export function RepeatingInput({
                   }
                 }}
               />
-              <Select
+              <DesignSelectorDropdown
                 value={effectiveUnit}
                 onValueChange={(v) => {
                   const newUnit = v as DayInterval[1];
                   applyCustom(effectiveSelection === 'custom' ? intervalCount : 1, newUnit);
                 }}
-              >
-                <SelectTrigger className={cn(
-                  "h-9 text-sm flex-1",
-                  "rounded-lg border border-border/60 dark:border-foreground/[0.1]",
-                  "bg-background dark:bg-[hsl(240,10%,10%)]"
-                )}>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {normalizedUnits.map((u) => (
-                    <SelectItem key={u} value={u}>
-                      {u}{(effectiveSelection === 'custom' ? intervalCount : 1) !== 1 ? 's' : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+                options={normalizedUnits.map((u) => ({
+                  value: u,
+                  label: `${u}${(effectiveSelection === 'custom' ? intervalCount : 1) !== 1 ? 's' : ''}`,
+                }))}
+                size="sm"
+                className="min-w-0 flex-1"
+              />
             </div>
           </div>
         </PopoverContent>
@@ -276,4 +267,3 @@ export function RepeatingInput({
     </div>
   );
 }
-

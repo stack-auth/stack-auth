@@ -8,6 +8,8 @@ import {
   DesignCard,
   DesignCardTint,
   DesignCategoryTabs,
+  DesignDialog,
+  DesignDialogClose,
   DesignInput,
   DesignPillToggle,
 } from "@stackframe/dashboard-ui-components";
@@ -28,15 +30,19 @@ import {
   cn,
 } from "@/components/ui";
 import {
+  BrowsersIcon,
   CheckCircle,
   Cube,
   DotsThree,
   Envelope,
   FileText,
+  FlaskIcon,
   HardDrive,
+  InfoIcon,
   MagnifyingGlassIcon,
   Palette,
   PencilSimple,
+  PulseIcon,
   Sliders,
   SquaresFourIcon,
   StackSimple,
@@ -1070,6 +1076,178 @@ export default function PageClient() {
               { name: "showDefaultToolbar", type: "boolean", default: "false", description: "Toggle the built-in toolbar controls." },
               { name: "viewOptions", type: "boolean", default: "false", description: "Use DataTableViewOptions for column toggles." },
               { name: "onRowClick", type: "(row) => void", description: "Optional row click handler for navigation." },
+            ]} />
+          </div>
+        </DesignSection>
+
+        {/* ============================================================ */}
+        {/* DIALOG COMPONENT */}
+        {/* ============================================================ */}
+        <DesignSection
+          id="dialog"
+          icon={BrowsersIcon}
+          title="Dialog"
+          description="Use the standard glassmorphic modal for any focus-trapping modal in the dashboard. Supports header/body/footer regions, an icon chip, and an optional rich header card."
+        >
+          <ComponentDemo
+            title="Confirmation dialog"
+            description="The most common shape: icon chip, title, description, body content, and a single secondary close action."
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <DesignDialog
+                size="md"
+                trigger={<DesignButton size="sm">Open confirmation</DesignButton>}
+                icon={InfoIcon}
+                title="Heads up"
+                description="This is a lightweight confirmation modal."
+                footer={
+                  <DesignDialogClose asChild>
+                    <DesignButton variant="secondary" size="sm">Close</DesignButton>
+                  </DesignDialogClose>
+                }
+              >
+                <Typography className="text-sm">
+                  Body content lives in the scrollable region between the header and the
+                  footer. Use it for short messages, inline forms, or detail views.
+                </Typography>
+              </DesignDialog>
+            </div>
+          </ComponentDemo>
+
+          <ComponentDemo
+            title="Rich header with summary card"
+            description="Mirrors the rule trigger history dialog: an icon chip, title, description, and an embedded summary card rendered via headerContent."
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <DesignDialog
+                size="2xl"
+                trigger={<DesignButton variant="secondary" size="sm">Open trigger history</DesignButton>}
+                icon={PulseIcon}
+                title="Rule trigger history"
+                description="3 total triggers for this rule"
+                headerContent={
+                  <div className="rounded-xl bg-foreground/[0.02] ring-1 ring-foreground/[0.06] p-3 space-y-3">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Typography className="text-sm font-semibold truncate flex-1 min-w-0">
+                        Allow @stack.dev signups
+                      </Typography>
+                      <DesignBadge label="Allow" color="green" size="sm" />
+                      <DesignBadge label="Enabled" color="green" size="sm" />
+                    </div>
+                    <div className="grid grid-cols-3 gap-2">
+                      <div className="rounded-lg bg-background/60 ring-1 ring-foreground/[0.06] p-2">
+                        <Typography variant="secondary" className="text-[10px] uppercase tracking-wider">Last 24h</Typography>
+                        <Typography className="text-sm font-semibold tabular-nums">12</Typography>
+                      </div>
+                      <div className="rounded-lg bg-background/60 ring-1 ring-foreground/[0.06] p-2">
+                        <Typography variant="secondary" className="text-[10px] uppercase tracking-wider">All-time</Typography>
+                        <Typography className="text-sm font-semibold tabular-nums">3</Typography>
+                      </div>
+                      <div className="rounded-lg bg-background/60 ring-1 ring-foreground/[0.06] p-2 flex items-center justify-center">
+                        <Typography variant="secondary" className="text-[10px]">sparkline goes here</Typography>
+                      </div>
+                    </div>
+                  </div>
+                }
+                footer={
+                  <DesignDialogClose asChild>
+                    <DesignButton variant="secondary" size="sm">Close</DesignButton>
+                  </DesignDialogClose>
+                }
+              >
+                <span className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">Recent triggers</span>
+                <div className="rounded-xl ring-1 ring-foreground/[0.06] bg-background/60 divide-y divide-foreground/[0.06]">
+                  {["jordan@stack.dev", "ops@stack.dev", "pat@stack.dev"].map((email) => (
+                    <div key={email} className="flex items-center justify-between gap-3 px-3 py-2 text-sm">
+                      <span className="truncate">{email}</span>
+                      <DesignBadge label="2m ago" color="blue" size="sm" />
+                    </div>
+                  ))}
+                </div>
+              </DesignDialog>
+            </div>
+          </ComponentDemo>
+
+          <ComponentDemo
+            title="Wide tester / form modal"
+            description="Use a larger size for forms and tester surfaces. Combine with primary + secondary footer actions."
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <DesignDialog
+                size="5xl"
+                trigger={<DesignButton size="sm">Open tester</DesignButton>}
+                icon={FlaskIcon}
+                title="Test sign-up rules"
+                description="Simulate a sign-up request to see which rules trigger."
+                footer={
+                  <>
+                    <DesignDialogClose asChild>
+                      <DesignButton variant="secondary" size="sm">Cancel</DesignButton>
+                    </DesignDialogClose>
+                    <DesignButton size="sm">Run test</DesignButton>
+                  </>
+                }
+              >
+                <DesignAlert
+                  variant="info"
+                  description="In a real tester this body holds the form. The dialog itself simply provides the surface, structure, and a11y."
+                />
+                <DesignCard>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <DesignInput placeholder="Email" />
+                    <DesignInput placeholder="Country (e.g. US)" />
+                  </div>
+                </DesignCard>
+              </DesignDialog>
+            </div>
+          </ComponentDemo>
+
+          <ComponentDemo
+            title="Sign-up rules shell parity"
+            description="Use region-level class overrides when migrating existing hand-built dialogs and preserving exact shell spacing."
+          >
+            <div className="flex flex-wrap items-center gap-2">
+              <DesignDialog
+                size="2xl"
+                trigger={<DesignButton variant="secondary" size="sm">Open parity shell</DesignButton>}
+                icon={PulseIcon}
+                title="Rule trigger history"
+                description="0 total triggers for this rule"
+                overlayClassName="bg-black/50 backdrop-blur-sm"
+                headerClassName="px-6 pt-6 pb-4 border-b border-foreground/[0.06]"
+                bodyClassName="mx-0 my-0 w-auto px-6 py-4"
+                footerClassName="px-6 py-3 border-t border-foreground/[0.06] bg-foreground/[0.02]"
+                footer={
+                  <DesignDialogClose asChild>
+                    <DesignButton variant="secondary" size="sm">Close</DesignButton>
+                  </DesignDialogClose>
+                }
+              >
+                <DesignAlert
+                  variant="info"
+                  description="This preset mirrors the shell used by the sign-up rules trigger-history and tester dialogs."
+                />
+              </DesignDialog>
+            </div>
+          </ComponentDemo>
+
+          <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
+            <Typography type="label" className="font-semibold mb-3">Props</Typography>
+            <PropsTable props={[
+              { name: "trigger", type: "ReactNode", description: "Element wrapped in a DialogTrigger. Optional when controlling externally via open/onOpenChange." },
+              { name: "open / onOpenChange / defaultOpen", type: "boolean / fn / boolean", description: "Standard controlled or uncontrolled state for the dialog." },
+              { name: "size", type: "'sm' | 'md' | 'lg' | 'xl' | '2xl' | ... | '7xl' | 'full'", default: "'lg'", description: "Width preset for the modal surface." },
+              { name: "variant", type: "'glassmorphic' | 'plain'", default: "'glassmorphic'", description: "Visual style for the surface and overlay." },
+              { name: "icon", type: "ElementType | null", description: "Icon component for the header chip. Pass null to skip the chip." },
+              { name: "title / description", type: "ReactNode", description: "Standard header text. `title` is wired into DialogTitle for a11y." },
+              { name: "headerContent", type: "ReactNode", description: "Rich content rendered below the icon/title block (summary cards, badges, etc)." },
+              { name: "customHeader", type: "ReactNode", description: "Override the entire header. You become responsible for rendering DialogTitle." },
+              { name: "footer", type: "ReactNode", description: "Footer node. Renders in a styled bottom bar. Wrap close buttons in DialogClose asChild." },
+              { name: "noBodyPadding", type: "boolean", default: "false", description: "Disable the default px-6 py-4 padding for full-bleed content." },
+              { name: "hideTopCloseButton", type: "boolean", default: "false", description: "Hide the top-right close button rendered by DialogContent." },
+              { name: "className", type: "string", description: "Extra classes for the modal surface container." },
+              { name: "overlayClassName", type: "string", description: "Overlay classes, useful for custom backdrop opacity/blur." },
+              { name: "headerClassName / bodyClassName / footerClassName", type: "string", description: "Region-specific class overrides for exact parity migrations." },
             ]} />
           </div>
         </DesignSection>

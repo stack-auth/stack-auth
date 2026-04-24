@@ -50,6 +50,8 @@ Use this when implementing a new dashboard UI quickly:
    - Use `DesignDataTable`.
 11. Need dropdown action/selector/toggle menu?
    - Use `DesignMenu`.
+12. Need a focus-trapping modal/dialog (confirmation, rich modal, tester, form)?
+   - Use `DesignDialog`.
 
 ---
 
@@ -57,9 +59,12 @@ Use this when implementing a new dashboard UI quickly:
 
 `@/components/ui/*` can still be used for primitives that do not currently have a design-components equivalent:
 
-- dialogs/sheets/popovers (`ActionDialog`, `FormDialog`, `Sheet`, etc.)
+- confirmation-pattern helpers like `ActionDialog` / `FormDialog` (these wrap an `onClick`/form submit lifecycle and remain useful when you only need a dressed-up confirm/submit prompt)
+- side-sheets/popovers (`Sheet`, `Popover`, etc.)
 - complex layout containers where design-components does not provide one
 - highly specialized editor internals
+
+For any general-purpose modal surface (rich detail dialogs, tester surfaces, data dialogs, settings popovers presented as modals), use `DesignDialog` instead of wiring `Dialog` + `DialogContent` + `DialogHeader` etc. by hand. `DesignDialog` is the canonical glassmorphic dialog surface for the dashboard — see §22 below.
 
 When using a primitive directly:
 
@@ -566,6 +571,99 @@ Rules:
 
 - keep as optional enhancement, not required UX
 - avoid distracting overuse in production-critical flows
+
+### 4.14 `DesignDialog`
+
+File: `packages/dashboard-ui-components/src/components/dialog.tsx` (re-exported through `@/components/design-components`)
+
+Use for:
+
+- any focus-trapping modal in the dashboard (confirmations, rich detail dialogs, tester surfaces, settings forms presented as modals)
+- replacing hand-wired `Dialog` + `DialogContent` + `DialogHeader` combinations from `@stackframe/stack-ui`
+
+Props you should use most:
+
+- `trigger`: element wrapped in a `DialogTrigger`. Skip when controlling externally via `open`/`onOpenChange`/`defaultOpen`.
+- `size`: `"sm" | "md" | "lg" | "xl" | "2xl" | "3xl" | "4xl" | "5xl" | "6xl" | "7xl" | "full"` (defaults to `"lg"`).
+- `variant`: `"glassmorphic"` (default) or `"plain"`. `glassmorphic` applies the dashboard's blurred surface + dimmed overlay.
+- `icon`: a Phosphor icon component (or `null` to skip the chip).
+- `title` / `description`: standard header text. `title` is automatically wired into `DialogTitle` for a11y.
+- `headerContent`: rich content rendered below the icon/title block — use this for embedded summary cards, metric tiles, or status pills inside the header.
+- `customHeader`: complete override of the header region. You become responsible for rendering an accessible `DialogTitle`.
+- `footer`: footer node rendered in a styled bottom bar. Wrap close buttons in `DesignDialogClose asChild` (re-exported by the same module).
+- `noBodyPadding`: disable the default `px-6 py-4` padding for full-bleed body content.
+- `hideTopCloseButton`: hide the top-right "X" rendered by `DialogContent` for fully custom close affordances.
+- `bodyClassName` / `headerClassName` / `footerClassName` / `overlayClassName` / `className`: fine-grained class overrides for each region.
+
+Re-exports (import these from the same module — do not mix with `@stackframe/stack-ui` for the same dialog):
+
+- `DesignDialogClose` (alias of `DialogClose`)
+- `DesignDialogTrigger` (alias of `DialogTrigger`)
+- `DesignDialogTitle` / `DesignDialogDescription`
+- `DesignDialogRoot` (alias of `Dialog`) for the rare cases that need raw `Dialog.Root` semantics
+
+Rules:
+
+- Do not write `Dialog` + `DialogContent` + `DialogHeader` + `DialogBody` + `DialogFooter` directly when building a full-page modal — use `DesignDialog`.
+- When refactoring an existing dialog, preserve any `headerContent` summary cards, sparklines, or stat tiles by passing them via the `headerContent` prop rather than crafting a `customHeader` from scratch.
+- Footer slot already provides border + background + responsive flex; don't re-add wrapping divs with the same styling.
+- Use the smallest `size` that fits your content. `md`/`lg` for confirmations, `2xl`/`3xl` for detail dialogs with summary cards, `5xl`+ for tester/forms.
+
+Common shapes (for AI agents):
+
+```tsx
+// Confirmation
+<DesignDialog
+  trigger={<DesignButton size="sm">Open</DesignButton>}
+  icon={InfoIcon}
+  title="Heads up"
+  description="You're about to do something."
+  footer={
+    <DesignDialogClose asChild>
+      <DesignButton variant="secondary" size="sm">Close</DesignButton>
+    </DesignDialogClose>
+  }
+>
+  <p className="text-sm">Body content.</p>
+</DesignDialog>
+
+// Rich modal with summary card
+<DesignDialog
+  open={open}
+  onOpenChange={setOpen}
+  size="2xl"
+  icon={PulseIcon}
+  title="Rule trigger history"
+  description="3 total triggers"
+  headerContent={<SummaryCard />}
+  footer={
+    <DesignDialogClose asChild>
+      <DesignButton variant="secondary" size="sm">Close</DesignButton>
+    </DesignDialogClose>
+  }
+>
+  {/* recent triggers list */}
+</DesignDialog>
+
+// Wide tester / form
+<DesignDialog
+  trigger={<DesignButton size="sm">Open tester</DesignButton>}
+  size="5xl"
+  icon={FlaskIcon}
+  title="Test sign-up rules"
+  description="Simulate a sign-up request."
+  footer={
+    <>
+      <DesignDialogClose asChild>
+        <DesignButton variant="secondary" size="sm">Cancel</DesignButton>
+      </DesignDialogClose>
+      <DesignButton size="sm">Run test</DesignButton>
+    </>
+  }
+>
+  <TesterForm />
+</DesignDialog>
+```
 
 ---
 
