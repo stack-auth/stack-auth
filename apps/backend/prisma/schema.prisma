@@ -972,7 +972,7 @@ model EmailOutbox {
   // verifies it matches the status-driving fields. It used to be STORED
   // GENERATED, but changing that expression rewrites the full EmailOutbox table
   // under a strong lock; a plain checked column can be backfilled in batches.
-  status EmailOutboxStatus @default(dbgenerated("'PREPARING'::\"EmailOutboxStatus\""))
+  status EmailOutboxStatus @default(PREPARING)
 
   // A simplified version of the status property.
   // In terms of the color mapping of `status`, white statuses have a `simpleStatus` of `in-progress`, red statuses have a `simpleStatus` of `error`, and everything else has a `simpleStatus` of `ok`.
