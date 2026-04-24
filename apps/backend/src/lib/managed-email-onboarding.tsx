@@ -3,6 +3,7 @@ import {
   ManagedEmailDomain,
   ManagedEmailDomainStatus,
   createManagedEmailDomain,
+  demoteOtherAppliedManagedEmailDomains,
   getManagedEmailDomainByResendDomainId,
   getManagedEmailDomainByTenancyAndSubdomain,
   listManagedEmailDomainsForTenancy,
@@ -12,6 +13,7 @@ import {
 import { Tenancy } from "@/lib/tenancies";
 import { getNodeEnvironment, getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
 
 type ResendDomainRecord = {
   record: string,
@@ -543,7 +545,16 @@ export async function setupManagedEmailProvider(options: { subdomain: string, se
       senderLocalPart: options.senderLocalPart,
       resendDomainId: `managed_mock_${options.tenancy.id}_${normalizedSubdomain}`.replace(/[^a-zA-Z0-9_-]/g, "_"),
       nameServerRecords: ["ns1.dnsimple.com", "ns2.dnsimple.com"],
-      status: "verified",
+      status: "pending_verification",
+    });
+    runAsynchronously(async () => {
+      await wait(1000);
+      await updateManagedEmailDomainWebhookStatus({
+        resendDomainId: row.resendDomainId,
+        providerStatusRaw: "verified",
+        status: "verified",
+        lastError: null,
+      });
     });
     return managedDomainToSetupResult(row);
   }
@@ -631,6 +642,10 @@ export async function applyManagedEmailProvider(options: {
     senderLocalPart: domain.senderLocalPart,
   });
 
+  await demoteOtherAppliedManagedEmailDomains({
+    tenancyId: options.tenancy.id,
+    keepId: domain.id,
+  });
   await markManagedEmailDomainApplied(domain.id);
   return { status: "applied" };
 }

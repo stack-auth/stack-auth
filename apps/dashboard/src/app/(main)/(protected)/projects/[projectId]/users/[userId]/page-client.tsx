@@ -316,18 +316,20 @@ function RestrictedStatusRow({ user }: { user: ServerUser }) {
   return (
     <>
       <UserInfo icon={<ProhibitIcon size={16}/>} name="Restricted">
-        <button
-          type="button"
-          onClick={() => setDialogOpen(true)}
-          className={cn(
-            "w-full text-left px-1 py-0 rounded-md text-sm",
-            "hover:ring-1 hover:ring-slate-300 dark:hover:ring-gray-500 hover:bg-slate-50 dark:hover:bg-gray-800 hover:cursor-pointer",
-            "focus:outline-none focus-visible:ring-1 focus-visible:ring-slate-500 dark:focus-visible:ring-gray-50 focus-visible:bg-slate-100 dark:focus-visible:bg-gray-800",
-            "transition-colors hover:transition-none",
-          )}
-        >
-          {displayValue}
-        </button>
+        <div className="flex items-center relative w-full">
+          <button
+            type="button"
+            onClick={() => setDialogOpen(true)}
+            className={cn(
+              "stack-scope flex w-full items-center rounded-xl border border-black/[0.08] dark:border-white/[0.06] bg-white/80 dark:bg-foreground/[0.03] shadow-sm ring-1 ring-black/[0.08] dark:ring-white/[0.06]",
+              "h-8 px-3 text-sm text-left text-muted-foreground",
+              "transition-all duration-150 hover:transition-none hover:bg-white dark:hover:bg-foreground/[0.06] hover:cursor-pointer",
+              "focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-foreground/[0.1]",
+            )}
+          >
+            <span className="truncate">{displayValue}</span>
+          </button>
+        </div>
       </UserInfo>
       <RestrictionDialog
         user={user}

@@ -6,15 +6,27 @@ import { spawnSync } from "node:child_process";
 
 const target = process.argv[2]; // "local" or "prod"
 
-// SpacetimeDB in this repo runs in Docker (see docker/dependencies/docker.compose.yaml),
-// with the container's port 3000 mapped to host port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}39.
-// We pass the full URL instead of `--server local` so the publish doesn't depend on each
-// contributor's spacetime CLI config (the CLI's built-in `local` alias is http://127.0.0.1:3000).
-const portPrefix = process.env.NEXT_PUBLIC_STACK_PORT_PREFIX || "81";
-const localServerUrl = `http://127.0.0.1:${portPrefix}39`;
+/** HTTP API for 'spacetime publish' (matches docker/dependencies/docker.compose.yaml host port ...39). */
+function localPublishServerUrl() {
+  if (process.env.STACK_SPACETIME_PUBLISH_URL) {
+    return process.env.STACK_SPACETIME_PUBLISH_URL;
+  }
+  const prefix = process.env.NEXT_PUBLIC_STACK_PORT_PREFIX ?? "81";
+  return `http://127.0.0.1:${prefix}39`;
+}
 
 const configs = {
-  local: ["publish", "stack-auth-llm", "--server", localServerUrl, "-p", "spacetimedb", "--yes", "--no-config", "--delete-data=on-conflict"],
+  local: [
+    "publish",
+    "stack-auth-llm",
+    "--server",
+    localPublishServerUrl(),
+    "-p",
+    "spacetimedb",
+    "--yes",
+    "--no-config",
+    "--delete-data=on-conflict",
+  ],
   prod: ["publish", "stack-auth-llm", "--server", "maincloud", "-p", "spacetimedb", "--yes", "--no-config"],
 };
 

@@ -5,7 +5,7 @@ import { CopyButton } from "@/components/ui";
 import { createDefaultDataGridState, DataGrid, useDataSource, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
 import { getPublicEnvVar } from '@/lib/env';
 import { CaretLeftIcon, CaretRightIcon, InfoIcon, KeyIcon, LinkIcon, TextAlignLeftIcon } from "@phosphor-icons/react";
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { SvixProvider, useEndpoint, useEndpointMessageAttempts, useEndpointSecret } from "svix-react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
@@ -183,18 +183,11 @@ function MessageTable(props: { endpointId: string }) {
 export default function PageClient(props: { endpointId: string }) {
   const stackAdminApp = useAdminApp();
   const svixToken = stackAdminApp.useSvixToken();
-  const [updateCounter, setUpdateCounter] = useState(0);
-
-  // This is a hack to make sure svix hooks update when content changes
-  const svixTokenUpdated = useMemo(() => {
-    return svixToken + '';
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [svixToken, updateCounter]);
 
   return (
     <AppEnabledGuard appId="webhooks">
       <SvixProvider
-        token={svixTokenUpdated}
+        token={svixToken.token}
         appId={stackAdminApp.projectId}
         options={{ serverUrl: getPublicEnvVar('NEXT_PUBLIC_STACK_SVIX_SERVER_URL') }}
       >

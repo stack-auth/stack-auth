@@ -1,14 +1,340 @@
 ---
 title: Build a SaaS with Stack Auth
-description: End-to-end tutorial stub for building a SaaS app with Stack Auth.
+description: Bootstrap auth, resolve the signed-in user, protect your app, and ship-with optional pointers to teams, RBAC, and billing.
 ---
 
-This tutorial is coming soon.
+This tutorial is a **generic SaaS path** on Stack Auth: install and configure the SDK, wire sign-in, read the current user on the client and server, and gate your product. It does **not** assume teams, workspaces, or a particular permission model-those live in [Build a team-based app](/guides/other/tutorials/build-a-team-based-app) and the linked guides below.
 
-## Planned coverage
+## What you will have at the end
 
-- Project setup and auth bootstrapping
-- App onboarding, teams, and permissions
-- Production deployment checklist
+- A working sign-in and account flow using Stack Auth's handler routes (Next.js) or your framework’s equivalent.
+- A clear pattern for **who** is signed in across server components, client components, server actions, and route handlers.
+- **Protected** areas of your app (for example middleware on `/app/*` or `getUser({ or: "redirect" })` on key routes).
+- A short map for **where** multi-tenant and authorization work fits when you need it, plus a mindset for **production** domains, OAuth, and email.
 
-If you want this prioritized, open a request in our community channels and include your stack details.
+## Prerequisites
+
+- A **Next.js** project using the **App Router** (Stack’s first-class path for hosted UI and handlers), or another stack supported in [Setup](/guides/getting-started/setup) (React, Express, or REST from any backend).
+- A Stack Auth account and a **project** in the [dashboard](https://app.stack-auth.com/projects).
+
+<Note>
+  Stack does not officially support the Next.js Pages Router. If you are on Pages Router, consider the React or JavaScript SDKs per the [FAQ](/guides/faq).
+</Note>
+
+The examples below focus on **Next.js (App Router)**. The same ideas apply on other stacks-swap in `StackClientApp` / REST calls as in [Setup](/guides/getting-started/setup).
+
+## 1. Install Stack and wire environment variables
+
+The fastest path for JavaScript and TypeScript is the **setup wizard**:
+
+```bash title="Terminal"
+npx @stackframe/stack-cli@latest init
+```
+
+Then create or open a project in the dashboard and copy **project ID**, **publishable client key** (if your project uses one), and **secret server key** into your app configuration. For Next.js, that usually means `.env.local`:
+
+```bash title=".env.local"
+NEXT_PUBLIC_STACK_PROJECT_ID=<your-project-id>
+NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>
+STACK_SECRET_SERVER_KEY=<your-secret-server-key>
+```
+
+### What the wizard sets up (Next.js)
+
+After `init`, you should see files similar to:
+
+- `app/handler/[...stack]/page.tsx` - hosted sign-in, sign-up, account settings, and more
+- `app/layout.tsx` - wraps the app with `StackProvider` and `StackTheme`
+- `app/loading.tsx` - Suspense boundary for Stack’s async hooks
+- `stack/server.ts` - `stackServerApp` for server components, actions, and route handlers
+- `stack/client.ts` - `stackClientApp` when you need the client app object explicitly
+
+If you ever need to align manually with the wizard output, the core pieces look like this:
+
+<Tabs>
+  <Tab title="stack/server.ts">
+    ```typescript title="stack/server.ts"
+    import "server-only";
+    import { StackServerApp } from "@stackframe/stack";
+
+    export const stackServerApp = new StackServerApp({
+      tokenStore: "nextjs-cookie",
+    });
+    ```
+  </Tab>
+  <Tab title="stack/client.ts">
+    ```typescript title="stack/client.ts"
+    import { StackClientApp } from "@stackframe/stack";
+
+    export const stackClientApp = new StackClientApp({
+      // Reads NEXT_PUBLIC_STACK_* from the environment by default
+    });
+    ```
+  </Tab>
+  <Tab title="app/handler/[...stack]/page.tsx">
+    ```tsx title="app/handler/[...stack]/page.tsx"
+    import { StackHandler } from "@stackframe/stack";
+    import { stackServerApp } from "@/stack/server";
+
+    export default function Handler(props: unknown) {
+      return <StackHandler fullPage app={stackServerApp} routeProps={props} />;
+    }
+    ```
+  </Tab>
+  <Tab title="app/layout.tsx">
+    ```tsx title="app/layout.tsx"
+    import { StackProvider, StackTheme } from "@stackframe/stack";
+    import { stackServerApp } from "@/stack/server";
+
+    export default function RootLayout({ children }: { children: React.ReactNode }) {
+      return (
+        <html lang="en">
+          <body>
+            <StackProvider app={stackServerApp}>
+              <StackTheme>{children}</StackTheme>
+            </StackProvider>
+          </body>
+        </html>
+      );
+    }
+    ```
+  </Tab>
+  <Tab title="app/loading.tsx">
+    ```tsx title="app/loading.tsx"
+    export default function Loading() {
+      return <>Loading...</>;
+    }
+    ```
+  </Tab>
+</Tabs>
+
+Full variants (React, Express, Python, manual install) are in [Setup](/guides/getting-started/setup).
+
+After setup, open the hosted auth UI (for example `/handler/sign-up`), create a test user, and confirm you land back in your app.
+
+### Marketing header: sign in / sign out
+
+Use `useStackApp()` so you do not hard-code handler URLs (they can be customized in the project):
+
+```tsx title="components/auth-header.tsx"
+"use client";
+
+import Link from "next/link";
+import { useStackApp, useUser } from "@stackframe/stack";
+
+export function AuthHeader() {
+  const app = useStackApp();
+  const user = useUser();
+
+  return (
+    <header style={{ display: "flex", gap: "1rem", alignItems: "center" }}>
+      {user ? (
+        <>
+          <span>{user.displayName ?? user.primaryEmail ?? user.id}</span>
+          <Link href={app.urls.accountSettings}>Account</Link>
+          <Link href={app.urls.signOut}>Sign out</Link>
+        </>
+      ) : (
+        <>
+          <Link href={app.urls.signIn}>Sign in</Link>
+          <Link href={app.urls.signUp}>Sign up</Link>
+        </>
+      )}
+    </header>
+  );
+}
+```
+
+## 2. Resolve the signed-in user everywhere
+
+Almost every SaaS screen starts from the **current user**: profile, preferences, billing state in your database, or admin vs end-user behavior you define yourself.
+
+<Tabs>
+  <Tab title="Server Component">
+    ```tsx title="app/dashboard/page.tsx"
+    import { stackServerApp } from "@/stack/server";
+
+    export default async function DashboardPage() {
+      const user = await stackServerApp.getUser();
+
+      if (!user) {
+        return <p>You are not signed in.</p>;
+      }
+
+      return <p>Hello, {user.displayName ?? user.primaryEmail ?? user.id}</p>;
+    }
+    ```
+  </Tab>
+  <Tab title="Server Component (require auth)">
+    ```tsx title="app/app/page.tsx"
+    import { stackServerApp } from "@/stack/server";
+
+    export default async function AppHomePage() {
+      const user = await stackServerApp.getUser({ or: "redirect" });
+      return <p>Hello, {user.displayName ?? user.primaryEmail ?? user.id}</p>;
+    }
+    ```
+  </Tab>
+  <Tab title="Client Component">
+    ```tsx title="components/greeting.tsx"
+    "use client";
+
+    import { useUser } from "@stackframe/stack";
+
+    export function Greeting() {
+      const user = useUser();
+
+      if (!user) {
+        return <p>Please sign in.</p>;
+      }
+
+      return <p>Hello, {user.displayName ?? user.primaryEmail ?? user.id}</p>;
+    }
+    ```
+  </Tab>
+  <Tab title="Client Component (require auth)">
+    ```tsx title="components/greeting.tsx"
+    "use client";
+
+    import { useUser } from "@stackframe/stack";
+
+    export function Greeting() {
+      const user = useUser({ or: "redirect" });
+      return <p>Hello, {user.displayName ?? user.primaryEmail ?? user.id}</p>;
+    }
+    ```
+  </Tab>
+</Tabs>
+
+### Server action that requires a user
+
+`{ or: "throw" }` is useful when a redirect would be wrong (for example, from a form POST). The example below only needs Stack for identity; your own persistence layer stores product data keyed by `user.id`.
+
+```tsx title="app/actions/onboarding.ts"
+"use server";
+
+import { stackServerApp } from "@/stack/server";
+
+export async function completeOnboardingStepAction(formData: FormData) {
+  const user = await stackServerApp.getUser({ or: "throw" });
+  const step = String(formData.get("step") ?? "").trim();
+  if (!step) {
+    throw new Error("Step is required");
+  }
+
+  // TODO: write to your database using user.id as the tenant key (or your own model).
+  return { userId: user.id, step };
+}
+```
+
+### Route Handler (App Router API)
+
+```tsx title="app/api/me/route.ts"
+import { stackServerApp } from "@/stack/server";
+import { NextResponse } from "next/server";
+
+export async function GET() {
+  const user = await stackServerApp.getUser();
+  if (!user) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  return NextResponse.json({
+    id: user.id,
+    displayName: user.displayName,
+    primaryEmail: user.primaryEmail,
+  });
+}
+```
+
+### Middleware for a `/app` (or `/private`) section
+
+Match only the routes that should be gated, and **exclude** `/handler` so Stack’s auth pages keep working:
+
+```tsx title="middleware.ts"
+import { NextRequest, NextResponse } from "next/server";
+import { stackServerApp } from "@/stack/server";
+
+export async function middleware(request: NextRequest) {
+  const user = await stackServerApp.getUser();
+  if (!user) {
+    return NextResponse.redirect(new URL("/handler/sign-in", request.url));
+  }
+  return NextResponse.next();
+}
+
+export const config = {
+  matcher: "/app/:path*",
+};
+```
+
+More detail on protection patterns and sensitive HTML is in [User fundamentals](/guides/getting-started/user-fundamentals).
+
+<Info>
+  Treat **client-side** checks as **UX only**. Anything that mutates data or exposes another customer’s data must be enforced again on the server (server components, server actions, route handlers, or your backend using the secret key or verified tokens).
+</Info>
+
+## 3. Tenancy, teams, and permissions (when you need them)
+
+Stack gives you **users** and authentication primitives; **your** SaaS decides how rows and features map to customers.
+
+- **Single-user or simple B2C** - Often enough to key application data to `user.id` and enforce access in your API with the same user you resolved via `stackServerApp.getUser()`.
+- **Shared accounts, workspaces, or B2B orgs** - Use Stack **teams** as the customer boundary, **team selection** for the active workspace, and **RBAC** for roles and fine-grained actions. Walk through that shape in [Build a team-based app](/guides/other/tutorials/build-a-team-based-app), with reference material in [Teams](/guides/apps/teams/overview), [Team selection](/guides/apps/teams/team-selection), and [RBAC](/guides/apps/rbac/overview).
+
+Non-JavaScript or custom frontends can use the [REST API](/api/overview) with the same project keys; the identity model you choose (user-only vs teams) stays consistent across clients.
+
+## 4. Product polish: onboarding, email, and optional billing
+
+Hook flows to the guides-no extra Stack APIs are required at this layer:
+
+- **Onboarding and sign-up rules** - [User onboarding](/guides/apps/authentication/user-onboarding), [Sign-up rules](/guides/apps/authentication/sign-up-rules)
+- **Email** - [Emails](/guides/apps/emails/overview)
+- **Stripe / plans** - [Payments](/guides/apps/payments/overview)
+
+Example: after sign-up, send users to an onboarding route from your own `app/page.tsx` or a server layout once `getUser()` is non-null.
+
+## 5. Production checklist
+
+Before going live, tighten **callback domains**, replace shared **OAuth** keys with your own provider apps where needed, and review email and security defaults. Follow [Launch checklist](/guides/apps/launch-checklist/overview).
+
+## Related guides
+
+| Topic | Guide |
+|--------|--------|
+| Install and configure | [Setup](/guides/getting-started/setup) |
+| `StackApp` object | [Stack App](/guides/going-further/stack-app) |
+| Current user and page protection | [User fundamentals](/guides/getting-started/user-fundamentals) |
+| Teams, membership, and RBAC (deeper path) | [Build a team-based app](/guides/other/tutorials/build-a-team-based-app) |
+| Teams reference | [Teams](/guides/apps/teams/overview) |
+| Permissions | [RBAC](/guides/apps/rbac/overview) |
+| Pre-launch hardening | [Launch checklist](/guides/apps/launch-checklist/overview) |
+| Billing (optional) | [Payments](/guides/apps/payments/overview) |
+| General questions | [FAQ](/guides/faq) |
+
+## FAQ
+
+<AccordionGroup>
+  <Accordion title="Do I have to use teams for a SaaS?">
+    No. This guide stays user-centric until you opt into teams. When multiple people share one customer account, follow [Build a team-based app](/guides/other/tutorials/build-a-team-based-app) and the [Teams](/guides/apps/teams/overview) docs.
+  </Accordion>
+
+  <Accordion title="Where should I enforce permissions?">
+    Use dashboard-defined permissions for **authorization** when you use RBAC; always enforce **business rules** on the server: Server Components, server actions, route handlers, or your backend with the **secret server key** or validated access tokens. Client checks alone are not enough for sensitive operations.
+  </Accordion>
+
+  <Accordion title="Can I use Stack only as a backend API?">
+    Yes. Non-JS or custom frontends can use the [REST API](/api/overview) with the same project keys; the mental model (users, and optionally teams and permissions) stays the same.
+  </Accordion>
+
+  <Accordion title="How do I test locally with OAuth and redirects?">
+    Localhost callback behavior and production domain restrictions are covered under **Domains** in [Launch checklist](/guides/apps/launch-checklist/overview). Keep localhost allowances enabled only for development.
+  </Accordion>
+
+  <Accordion title="How does this relate to the team-focused tutorial?">
+    [Build a team-based app](/guides/other/tutorials/build-a-team-based-app) is the place for **teams**, **team selection**, and **RBAC** walkthroughs. This SaaS tutorial covers the **generic** product path: auth bootstrap, resolving the user, protecting routes, then linking out for tenancy and launch details.
+  </Accordion>
+
+  <Accordion title="Where do I get help or report doc gaps?">
+    See [FAQ](/guides/faq) for contribution and community pointers.
+  </Accordion>
+</AccordionGroup>
