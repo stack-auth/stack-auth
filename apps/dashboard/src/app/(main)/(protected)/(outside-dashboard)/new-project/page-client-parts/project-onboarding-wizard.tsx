@@ -727,8 +727,10 @@ export function ProjectOnboardingWizard(props: {
                   key={theme.id}
                   type="button"
                   onClick={() => setSelectedEmailThemeId(theme.id)}
+                  disabled={saving}
                   className={cn(
                     "relative flex flex-col overflow-hidden rounded-2xl text-left transition-[box-shadow,background-color] duration-150 hover:transition-none",
+                    "disabled:cursor-not-allowed disabled:opacity-60",
                     isSelected
                       ? cn(
                           "bg-blue-500/[0.06] dark:bg-blue-500/[0.04] ring-1 ring-blue-500/40",
