@@ -4,12 +4,12 @@ import { afterAll, describe, expect, it } from "vitest";
 import { _forTesting } from "./email-queue-step";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "./tenancies";
 
-const { recoverEmailsStuckInSending, STUCK_EMAIL_TIMEOUT_MS } = _forTesting;
+const { failEmailsStuckInSending, STUCK_EMAIL_TIMEOUT_MS } = _forTesting;
 
 // These tests connect to the real dev DB (like payments.test.tsx) and create real EmailOutbox
 // rows against the seeded `internal` tenancy. Each row is tagged with a unique tsxSource so we
 // can find and clean up just our test rows.
-describe.sequential("recoverEmailsStuckInSending", () => {
+describe.sequential("failEmailsStuckInSending", () => {
   const testRunTag = `stuck-in-sending-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const createdIds: { tenancyId: string, id: string }[] = [];
 
@@ -59,7 +59,7 @@ describe.sequential("recoverEmailsStuckInSending", () => {
     }
   });
 
-  it("recovers a row whose startedSendingAt is older than the stuck timeout", async () => {
+  it("marks a row as failed when startedSendingAt is older than the stuck timeout", async () => {
     const longAgo = new Date(Date.now() - STUCK_EMAIL_TIMEOUT_MS - 60_000);
     const row = await makeRow({
       startedSendingAt: longAgo,
@@ -67,7 +67,7 @@ describe.sequential("recoverEmailsStuckInSending", () => {
       nextSendRetryAt: new Date(Date.now() + 60_000),
     });
 
-    await recoverEmailsStuckInSending(recoveryTestFilter);
+    await failEmailsStuckInSending(recoveryTestFilter);
 
     const after = await globalPrismaClient.emailOutbox.findUniqueOrThrow({
       where: { tenancyId_id: { tenancyId: row.tenancyId, id: row.id } },
@@ -77,9 +77,10 @@ describe.sequential("recoverEmailsStuckInSending", () => {
     expect(after.canHaveDeliveryInfo).toBe(false);
     expect(after.sendServerErrorExternalMessage).toMatch(/timed out/i);
     expect(after.sendServerErrorInternalMessage).toMatch(/stuck in sending/i);
+    expect(after.sendServerErrorInternalMessage).toMatch(/terminal server error/i);
     // Must be a terminal state — no retry scheduled.
     expect(after.nextSendRetryAt).toBeNull();
-    // sendRetries is not bumped by recovery (we never attempted the send again).
+    // sendRetries is not bumped by this path (we never attempted the send again).
     expect(after.sendRetries).toBe(row.sendRetries);
     // Status must be SERVER_ERROR, not SENDING.
     expect(after.status).toBe("SERVER_ERROR");
@@ -89,7 +90,7 @@ describe.sequential("recoverEmailsStuckInSending", () => {
     const recently = new Date(Date.now() - 1000);
     const row = await makeRow({ startedSendingAt: recently });
 
-    await recoverEmailsStuckInSending(recoveryTestFilter);
+    await failEmailsStuckInSending(recoveryTestFilter);
 
     const after = await globalPrismaClient.emailOutbox.findUniqueOrThrow({
       where: { tenancyId_id: { tenancyId: row.tenancyId, id: row.id } },
@@ -99,14 +100,14 @@ describe.sequential("recoverEmailsStuckInSending", () => {
     expect(after.status).toBe("SENDING");
   });
 
-  it("does not re-queue recovered rows for another send attempt", async () => {
+  it("does not re-queue rows already marked failed for another send attempt", async () => {
     const longAgo = new Date(Date.now() - STUCK_EMAIL_TIMEOUT_MS - 60_000);
     const row = await makeRow({ startedSendingAt: longAgo });
 
-    await recoverEmailsStuckInSending(recoveryTestFilter);
+    await failEmailsStuckInSending(recoveryTestFilter);
     // A second pass should be a no-op for this row: it's already terminal, so it must not
     // become a candidate for re-sending (which could duplicate an already-accepted delivery).
-    await recoverEmailsStuckInSending(recoveryTestFilter);
+    await failEmailsStuckInSending(recoveryTestFilter);
 
     const after = await globalPrismaClient.emailOutbox.findUniqueOrThrow({
       where: { tenancyId_id: { tenancyId: row.tenancyId, id: row.id } },
