@@ -1,7 +1,34 @@
 import { randomUUID } from "node:crypto";
-import { generatedEmailSuffix } from "../../../../../../../helpers";
-import { it } from "../../../../../../../helpers";
+import { generatedEmailSuffix, it } from "../../../../../../../helpers";
 import { Auth, backendContext, createMailbox, niceBackendFetch } from "../../../../../../backend-helpers";
+
+type RaceFailure = {
+  readonly request: "refresh" | "sign-out",
+  readonly status?: number,
+  readonly body?: unknown,
+  readonly error?: unknown,
+};
+
+function collectUnexpectedRaceResponseFailures(options: {
+  readonly refreshResult: PromiseSettledResult<Awaited<ReturnType<typeof niceBackendFetch>>>,
+  readonly signOutResult: PromiseSettledResult<Awaited<ReturnType<typeof niceBackendFetch>>>,
+}): RaceFailure[] {
+  const failures: RaceFailure[] = [];
+  const results: [RaceFailure["request"], PromiseSettledResult<Awaited<ReturnType<typeof niceBackendFetch>>>][] = [
+    ["refresh", options.refreshResult],
+    ["sign-out", options.signOutResult],
+  ];
+  for (const [request, result] of results) {
+    if (result.status === "rejected") {
+      failures.push({ request, error: result.reason });
+      continue;
+    }
+    if (result.value.status >= 500 || JSON.stringify(result.value.body).includes("P2025")) {
+      failures.push({ request, status: result.value.status, body: result.value.body });
+    }
+  }
+  return failures;
+}
 
 // Guards Sentry STACK-BACKEND-146:
 // PrismaClientKnownRequestError P2025 on projectUserRefreshToken.update()
@@ -11,7 +38,7 @@ it("does not 500 when a refresh races with a sign-out of the same session", { ti
   // Fire many refresh+signout pairs concurrently to hit the race window
   // between findFirst(refreshToken) and projectUserRefreshToken.update().
   const ATTEMPTS = 10;
-  const crashes: any[] = [];
+  const failures: RaceFailure[] = [];
 
   for (let i = 0; i < ATTEMPTS; i++) {
     backendContext.set({
@@ -31,31 +58,26 @@ it("does not 500 when a refresh races with a sign-out of the same session", { ti
       accessType: "client",
     });
 
-    const [refreshRes] = await Promise.all([refreshP, signOutP]);
+    const [refreshResult, signOutResult] = await Promise.allSettled([refreshP, signOutP]);
+    failures.push(...collectUnexpectedRaceResponseFailures({ refreshResult, signOutResult }));
 
     // Acceptable outcomes:
     //   200 (refresh won the race)
     //   401 REFRESH_TOKEN_NOT_FOUND_OR_EXPIRED (sign-out won cleanly)
     // Bug outcome: 500 with Prisma P2025 bubbling out as an unhandled error.
-    if (refreshRes.status !== 200 && refreshRes.status !== 401) {
-      crashes.push({ status: refreshRes.status, body: refreshRes.body });
-    } else if (
-      typeof refreshRes.body === "object" &&
-      refreshRes.body !== null &&
-      JSON.stringify(refreshRes.body).includes("P2025")
-    ) {
-      crashes.push({ status: refreshRes.status, body: refreshRes.body });
+    if (refreshResult.status === "fulfilled" && refreshResult.value.status !== 200 && refreshResult.value.status !== 401) {
+      failures.push({ request: "refresh", status: refreshResult.value.status, body: refreshResult.value.body });
     }
   }
 
-  expect(crashes).toEqual([]);
+  expect(failures).toEqual([]);
 });
 
 it("does not 500 when an OAuth refresh-token grant races with a sign-out of the same session", { timeout: 120_000 }, async ({ expect }) => {
   // The OAuth token endpoint uses the same refresh-token helper as the direct
   // session refresh endpoint, so keep this regression covered on both callers.
   const ATTEMPTS = 10;
-  const crashes: any[] = [];
+  const failures: RaceFailure[] = [];
 
   for (let i = 0; i < ATTEMPTS; i++) {
     backendContext.set({
@@ -82,18 +104,13 @@ it("does not 500 when an OAuth refresh-token grant races with a sign-out of the 
       accessType: "client",
     });
 
-    const [refreshRes] = await Promise.all([refreshP, signOutP]);
+    const [refreshResult, signOutResult] = await Promise.allSettled([refreshP, signOutP]);
+    failures.push(...collectUnexpectedRaceResponseFailures({ refreshResult, signOutResult }));
 
-    if (refreshRes.status !== 200 && refreshRes.status !== 401) {
-      crashes.push({ status: refreshRes.status, body: refreshRes.body });
-    } else if (
-      typeof refreshRes.body === "object" &&
-      refreshRes.body !== null &&
-      JSON.stringify(refreshRes.body).includes("P2025")
-    ) {
-      crashes.push({ status: refreshRes.status, body: refreshRes.body });
+    if (refreshResult.status === "fulfilled" && refreshResult.value.status !== 200 && refreshResult.value.status !== 401) {
+      failures.push({ request: "refresh", status: refreshResult.value.status, body: refreshResult.value.body });
     }
   }
 
-  expect(crashes).toEqual([]);
+  expect(failures).toEqual([]);
 });
