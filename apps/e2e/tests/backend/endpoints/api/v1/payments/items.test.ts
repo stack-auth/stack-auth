@@ -386,7 +386,10 @@ it("allows team admins to be added when item quantity is increased", async ({ ex
   for (let i = 0; i < mailboxes.length; i++) {
     const mailbox = mailboxes[i];
     backendContext.set({ mailbox: mailbox });
-    await Auth.fastSignUp();
+    await Auth.fastSignUp({
+      primary_email: mailbox.emailAddress,
+      primary_email_verified: true,
+    });
 
     const invitationMessages = await mailbox.waitForMessagesWithSubject("join");
     const acceptResponse = await niceBackendFetch("/api/v1/team-invitations/accept", {

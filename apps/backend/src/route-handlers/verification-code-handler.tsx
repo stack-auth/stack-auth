@@ -190,19 +190,23 @@ export function createVerificationCodeHandler<
 
       switch (handlerType) {
         case 'post': {
-          await globalPrismaClient.verificationCode.update({
+          // Atomic claim — conditional WHERE closes the TOCTOU against the checks above.
+          const claimResult = await globalPrismaClient.verificationCode.updateMany({
             where: {
-              projectId_branchId_code: {
-                projectId: auth.project.id,
-                branchId: auth.tenancy.branchId,
-                code,
-              },
+              projectId: auth.project.id,
+              branchId: auth.tenancy.branchId,
+              code,
               type: options.type,
+              usedAt: null,
+              expiresAt: { gt: new Date() },
             },
             data: {
               usedAt: new Date(),
             },
           });
+          if (claimResult.count === 0) {
+            throw new KnownErrors.VerificationCodeAlreadyUsed();
+          }
 
           return await options.handler(auth.tenancy, validatedMethod, validatedData, requestBody as any, auth.user);
         }

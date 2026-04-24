@@ -1132,6 +1132,16 @@ const TeamInvitationRestrictedUserNotAllowed = createKnownErrorConstructor(
   (json: any) => [json.restricted_reason ?? { type: "anonymous" }] as const,
 );
 
+const TeamInvitationEmailMismatch = createKnownErrorConstructor(
+  KnownError,
+  "TEAM_INVITATION_EMAIL_MISMATCH",
+  () => [
+    403,
+    "This team invitation was sent to a different email address. Sign in with the invited email, or add and verify that email on your account, then try again.",
+  ] as const,
+  () => [] as const,
+);
+
 
 const EmailTemplateAlreadyExists = createKnownErrorConstructor(
   KnownError,
@@ -1942,6 +1952,7 @@ export const KnownErrors = {
   TeamNotFound,
   TeamMembershipNotFound,
   TeamInvitationRestrictedUserNotAllowed,
+  TeamInvitationEmailMismatch,
   EmailTemplateAlreadyExists,
   OAuthConnectionNotConnectedToUser,
   OAuthConnectionAlreadyConnectedToAnotherUser,
