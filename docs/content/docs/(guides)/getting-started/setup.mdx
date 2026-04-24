@@ -118,27 +118,27 @@ We recommend using our **setup wizard** for JavaScript frameworks for a seamless
       />
 
       <Step>
+      ### Add providers (Next.js and React only)
+      </Step>
+
+      For Next.js and React, wrap your app with Stack providers. This step is required before using `StackHandler`, `useUser`, or `useStackApp`—without it you'll get a runtime error.
+
+      <PlatformCodeblock
+        document="setup/setup"
+        examples={["app-providers"]}
+        title="App Providers"
+      />
+
+      <Step>
       ### Set up authentication handlers (Frontend frameworks only)
       </Step>
-      
+
       For JavaScript frameworks, create the authentication handler:
 
       <PlatformCodeblock
         document="setup/setup"
         examples={["auth-handlers"]}
         title="Authentication Handlers"
-      />
-
-      <Step>
-      ### Add providers (Next.js and React only)
-      </Step>
-
-      For Next.js and React, wrap your app with Stack providers:
-
-      <PlatformCodeblock
-        document="setup/setup"
-        examples={["app-providers"]}
-        title="App Providers"
       />
 
       <Step>
