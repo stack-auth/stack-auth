@@ -72,22 +72,6 @@ type ChunkRow = {
   createdAt: Date,
 };
 
-type SessionReplayEventsResponse = {
-  chunks: ChunkRow[],
-  chunkEvents: Array<{ chunkId: string, events: unknown[] }>,
-};
-
-function isReplayerStale(replayer: RrwebReplayer | null | undefined) {
-  if (!replayer) return true;
-  const candidate = replayer as any;
-  const iframe = (candidate.iframe ?? null) as HTMLIFrameElement | null;
-  const wrapper = (candidate.wrapper ?? null) as HTMLElement | null;
-  if (!iframe || !iframe.isConnected) return true;
-  if (!iframe.contentDocument || !iframe.contentWindow) return true;
-  if (wrapper && !wrapper.isConnected) return true;
-  return false;
-}
-
 type AdminAppWithSessionReplays = ReturnType<typeof useAdminApp> & {
   listSessionReplays: (options?: {
     limit?: number,
@@ -103,7 +87,10 @@ type AdminAppWithSessionReplays = ReturnType<typeof useAdminApp> & {
     items: RecordingRow[],
     nextCursor: string | null,
   }>,
-  getSessionReplayEvents: (sessionReplayId: string, options?: { offset?: number, limit?: number }) => Promise<SessionReplayEventsResponse>,
+  getSessionReplayEvents: (sessionReplayId: string, options?: { offset?: number, limit?: number }) => Promise<{
+    chunks: ChunkRow[],
+    chunkEvents: Array<{ chunkId: string, events: unknown[] }>,
+  }>,
 };
 
 type ReplayFilters = {
@@ -476,14 +463,6 @@ function useReplayMachine(initialSettings: ReplaySettings) {
 export default function PageClient() {
   const adminApp = useAdminApp() as AdminAppWithSessionReplays;
 
-  useEffect(() => {
-    if (document.body.classList.contains("rr-block")) return;
-    document.body.classList.add("rr-block");
-    return () => {
-      document.body.classList.remove("rr-block");
-    };
-  }, []);
-
   // ---- Recording list + filters ----
 
   const [recordings, setRecordings] = useState<RecordingRow[]>([]);
@@ -705,7 +684,6 @@ export default function PageClient() {
         root: rootEl,
         speed: msRef.current.settings.playerSpeed,
         skipInactive: msRef.current.settings.skipInactivity,
-        showWarning: false,
         triggerFocus: false,
       });
 
@@ -815,77 +793,17 @@ export default function PageClient() {
     }
   }, [msRef]);
 
-  const disposeReplayerForTab = useCallback((tabKey: TabKey, options?: {
-    pause?: boolean,
-    scheduleReinit?: boolean,
-  }) => {
-    const pause = options?.pause ?? true;
-    const scheduleReinit = options?.scheduleReinit ?? false;
-
-    const replayer = replayerByTabRef.current.get(tabKey) ?? null;
-    if (replayer) {
-      if (pause && !isReplayerStale(replayer)) {
-        try {
-          replayer.pause();
-        } catch {
-          // ignore
-        }
-      }
-    }
-
-    const root = replayerRootByTabRef.current.get(tabKey) ?? null;
-    replayerByTabRef.current.delete(tabKey);
-    replayerRootByTabRef.current.delete(tabKey);
-
-    const observer = resizeObserverByTabRef.current.get(tabKey);
-    if (observer) {
-      observer.disconnect();
-      resizeObserverByTabRef.current.delete(tabKey);
-    }
-
-    if (!scheduleReinit) return;
-
-    // Clear any DOM left behind by the previous replayer so the new one
-    // doesn't stack a second iframe/wrapper into the same container.
-    if (root) root.innerHTML = "";
-
-    pendingInitByTabRef.current.add(tabKey);
-    const container = containerByTabRef.current.get(tabKey) ?? null;
-    const hasEvents = (eventsByTabRef.current.get(tabKey)?.length ?? 0) > 0;
-    if (!container || !container.isConnected || !hasEvents) return;
-
-    runAsynchronously(() => ensureReplayerForTab(tabKey, msRef.current.generation), { noErrorLogging: true });
-  }, [ensureReplayerForTab, msRef]);
-
-  const restartReplayerForTab = useCallback((tabKey: TabKey, options?: {
-    pause?: boolean,
-  }) => {
-    disposeReplayerForTab(tabKey, {
-      pause: options?.pause ?? false,
-      scheduleReinit: true,
-    });
-  }, [disposeReplayerForTab]);
-
-  const getUsableReplayerForTab = useCallback((tabKey: TabKey) => {
-    const replayer = replayerByTabRef.current.get(tabKey) ?? null;
-    if (!replayer) return null;
-    if (!isReplayerStale(replayer)) return replayer;
-
-    restartReplayerForTab(tabKey);
-    return null;
-  }, [restartReplayerForTab]);
-
   // Effect executor — maps machine effects to imperative DOM/rrweb calls.
   function executeEffects(effects: ReplayEffect[]) {
     for (const effect of effects) {
       switch (effect.type) {
         case "play_replayer": {
-          const r = getUsableReplayerForTab(effect.tabKey);
+          const r = replayerByTabRef.current.get(effect.tabKey);
           if (r) {
             try {
               r.play(effect.localOffsetMs);
             } catch {
-              restartReplayerForTab(effect.tabKey);
+              // ignore
             }
           } else {
             // Replayer doesn't exist — try to create it so REPLAYER_READY
@@ -896,29 +814,22 @@ export default function PageClient() {
           break;
         }
         case "pause_replayer_at": {
-          const r = getUsableReplayerForTab(effect.tabKey);
+          const r = replayerByTabRef.current.get(effect.tabKey);
           if (r) {
             try {
               r.pause(effect.localOffsetMs);
             } catch {
-              restartReplayerForTab(effect.tabKey);
+              // ignore
             }
           }
           break;
         }
         case "pause_all": {
-          for (const [tabKey, r] of [...replayerByTabRef.current.entries()]) {
-            if (isReplayerStale(r)) {
-              disposeReplayerForTab(tabKey, {
-                pause: false,
-                scheduleReinit: false,
-              });
-              continue;
-            }
+          for (const r of replayerByTabRef.current.values()) {
             try {
               r.pause();
             } catch {
-              restartReplayerForTab(tabKey);
+              // ignore
             }
           }
           break;
@@ -935,29 +846,21 @@ export default function PageClient() {
           break;
         }
         case "set_replayer_speed": {
-          for (const [tabKey, r] of [...replayerByTabRef.current.entries()]) {
-            if (isReplayerStale(r)) {
-              restartReplayerForTab(tabKey);
-              continue;
-            }
+          for (const r of replayerByTabRef.current.values()) {
             try {
               r.setConfig({ speed: effect.speed });
             } catch {
-              restartReplayerForTab(tabKey);
+              // ignore
             }
           }
           break;
         }
         case "set_replayer_skip_inactive": {
-          for (const [tabKey, r] of [...replayerByTabRef.current.entries()]) {
-            if (isReplayerStale(r)) {
-              restartReplayerForTab(tabKey);
-              continue;
-            }
+          for (const r of replayerByTabRef.current.values()) {
             try {
               r.setConfig({ skipInactive: effect.skipInactive });
             } catch {
-              restartReplayerForTab(tabKey);
+              // ignore
             }
           }
           if (!effect.skipInactive) setIsSkipping(false);
@@ -965,7 +868,7 @@ export default function PageClient() {
         }
         case "sync_mini_tabs": {
           const activeKey = msRef.current.activeTabKey;
-          for (const [tabKey] of [...replayerByTabRef.current.entries()]) {
+          for (const [tabKey, r] of replayerByTabRef.current.entries()) {
             if (tabKey === activeKey) continue;
             const stream = msRef.current.streams.find(s => s.tabKey === tabKey);
             if (!stream) continue;
@@ -974,12 +877,10 @@ export default function PageClient() {
               stream.firstEventAtMs,
               effect.globalOffsetMs,
             );
-            const r = getUsableReplayerForTab(tabKey);
-            if (!r) continue;
             try {
               r.pause(localOffset);
             } catch {
-              restartReplayerForTab(tabKey);
+              // ignore
             }
           }
           break;
@@ -993,10 +894,21 @@ export default function PageClient() {
         }
         case "recreate_replayer": {
           const tabKey = effect.tabKey;
-          disposeReplayerForTab(tabKey, {
-            pause: replayerByTabRef.current.has(tabKey),
-            scheduleReinit: false,
-          });
+          const r = replayerByTabRef.current.get(tabKey);
+          if (r) {
+            try {
+              r.pause();
+            } catch {
+              // ignore
+            }
+          }
+          replayerByTabRef.current.delete(tabKey);
+          replayerRootByTabRef.current.delete(tabKey);
+          const obs = resizeObserverByTabRef.current.get(tabKey);
+          if (obs) {
+            obs.disconnect();
+            resizeObserverByTabRef.current.delete(tabKey);
+          }
           pendingInitByTabRef.current.add(tabKey);
           runAsynchronously(() => ensureReplayerForTab(tabKey, effect.generation), { noErrorLogging: true });
           break;
@@ -1022,31 +934,34 @@ export default function PageClient() {
   // ---- Container ref callback ----
 
   const setContainerRefForTab = useCallback((tabKey: TabKey, el: HTMLDivElement | null) => {
-    if (!el) {
-      containerByTabRef.current.delete(tabKey);
-      disposeReplayerForTab(tabKey, {
-        pause: true,
-        scheduleReinit: false,
-      });
-      pendingInitByTabRef.current.delete(tabKey);
-      return;
-    }
-
     containerByTabRef.current.set(tabKey, el);
+
+    if (!el) return;
 
     const existingRoot = replayerRootByTabRef.current.get(tabKey);
     if (existingRoot && existingRoot !== el) {
-      disposeReplayerForTab(tabKey, {
-        pause: true,
-        scheduleReinit: false,
-      });
+      const r = replayerByTabRef.current.get(tabKey);
+      if (r) {
+        try {
+          r.pause();
+        } catch {
+          // ignore
+        }
+        replayerByTabRef.current.delete(tabKey);
+        replayerRootByTabRef.current.delete(tabKey);
+      }
+      const obs = resizeObserverByTabRef.current.get(tabKey);
+      if (obs) {
+        obs.disconnect();
+        resizeObserverByTabRef.current.delete(tabKey);
+      }
       pendingInitByTabRef.current.add(tabKey);
     }
 
     if (!pendingInitByTabRef.current.has(tabKey)) return;
     if ((eventsByTabRef.current.get(tabKey)?.length ?? 0) === 0) return;
     runAsynchronously(() => ensureReplayerForTab(tabKey, msRef.current.generation), { noErrorLogging: true });
-  }, [disposeReplayerForTab, ensureReplayerForTab, msRef]);
+  }, [ensureReplayerForTab, msRef]);
 
   // ---- Load chunks and download events ----
 
@@ -1109,7 +1024,7 @@ export default function PageClient() {
 
     try {
       // Phase 1: Fetch initial batch (fast start).
-      const initialResponse: SessionReplayEventsResponse = await adminApp.getSessionReplayEvents(recordingId, { offset: 0, limit: INITIAL_CHUNK_BATCH });
+      const initialResponse = await adminApp.getSessionReplayEvents(recordingId, { offset: 0, limit: INITIAL_CHUNK_BATCH });
       if (msRef.current.generation !== gen) return;
 
       const allChunkRows: ChunkRow[] = initialResponse.chunks.map((c) => ({
@@ -1197,7 +1112,7 @@ export default function PageClient() {
       while (offset < totalChunks) {
         if (msRef.current.generation !== gen) return;
 
-        const batchResponse: SessionReplayEventsResponse = await adminApp.getSessionReplayEvents(recordingId, { offset, limit: BACKGROUND_CHUNK_BATCH });
+        const batchResponse = await adminApp.getSessionReplayEvents(recordingId, { offset, limit: BACKGROUND_CHUNK_BATCH });
         if (msRef.current.generation !== gen) return;
 
         processChunkEvents(batchResponse.chunkEvents, allStreams, chunkIdToTabKey);

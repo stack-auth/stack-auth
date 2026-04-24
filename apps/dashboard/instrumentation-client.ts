@@ -14,12 +14,14 @@ export const onRouterTransitionStart = Sentry.captureRouterTransitionStart;
 const postHogKey = getPublicEnvVar('NEXT_PUBLIC_POSTHOG_KEY') ?? "phc_vIUFi0HzHo7oV26OsaZbUASqxvs8qOmap1UBYAutU4k";
 if (postHogKey.length > 5) {
   posthog.init(postHogKey, {
-    session_recording: {
-      maskAllInputs: false,
-      maskInputOptions: {
-        password: true,
-      },
-    },
+    // We use Sentry's Replay integration below for error debugging. Keep
+    // PostHog session recording off to avoid loading its lazy recorder, which
+    // is the source of Sentry issue STACK-SERVER-1NK:
+    // "Called on script loaded before session recording is available".
+    // PostHog documents `disable_session_recording: true` as the config-level
+    // way to prevent automatic web session recording.
+    // Source: https://posthog.com/docs/session-replay/how-to-control-which-sessions-you-record
+    disable_session_recording: true,
     defaults: '2025-11-30',
     api_host: "/consume",
     ui_host: "https://eu.i.posthog.com",
