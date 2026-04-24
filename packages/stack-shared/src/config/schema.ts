@@ -181,10 +181,10 @@ export const branchPaymentsSchema = yupObject({
   'Product customer type must match its product line customer type',
   function(this: yup.TestContext<yup.AnyObject>, value) {
     if (!value) return true;
-    const products = Reflect.get(value, "products");
+    const products = value.products;
     if (!isObjectLike(products)) return true;
 
-    const productLines = Reflect.get(value, "productLines");
+    const productLines = value.productLines;
     for (const [productId, product] of Object.entries(products)) {
       if (!isObjectLike(product)) continue;
       if (product.productLineId == null) continue;
