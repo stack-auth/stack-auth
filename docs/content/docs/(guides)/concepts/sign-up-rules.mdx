@@ -2,7 +2,7 @@
 title: Sign-up Rules
 description: Control who can sign up for your application with customizable rules.
 icon: ShieldCheck
-lastModified: "2026-02-24"
+lastModified: "2026-03-20"
 ---
 
 Sign-up rules let you control who can sign up for your application. You can create rules that evaluate sign-up attempts based on conditions like email domain or authentication method, then allow, reject, or restrict users accordingly.
@@ -31,6 +31,9 @@ When building rule conditions, you have access to these context variables:
 | `emailDomain` | string | The domain part of the email (after @) |
 | `authMethod` | string | The authentication method: `password`, `otp`, `oauth`, or `passkey` |
 | `oauthProvider` | string | The OAuth provider ID if using OAuth (e.g., `google`, `github`), empty string otherwise |
+| `countryCode` | string | ISO 3166-1 alpha-2 country code detected at sign-up (e.g., `US`, `DE`, `JP`). Empty string if unavailable. |
+| `riskScores.bot` | number | Bot risk score from 0-100. Higher values indicate higher likelihood of automated sign-up attempts. |
+| `riskScores.free_trial_abuse` | number | Free trial abuse risk score from 0-100. Higher values indicate abuse patterns like disposable emails or repeated sign-ups. |
 
 The condition builder supports these operations on string values:
 
@@ -39,6 +42,9 @@ The condition builder supports these operations on string values:
 - `endsWith("suffix")` - Check if value ends with a suffix
 - `matches("regex")` - Check if value matches a regular expression
 - `==` and `!=` - Exact equality comparisons
+- `in` - Check if value is in a list (e.g., `countryCode in ["US", "CA"]`)
+
+For numeric fields like risk scores, you can use comparison operators: `>`, `>=`, `<`, `<=`.
 
 You can combine multiple conditions using AND/OR logic.
 
@@ -99,6 +105,27 @@ Allow password sign-ups from any domain, but restrict OAuth sign-ups:
 1. Rule 1: `authMethod == "password"` → Allow
 2. Rule 2: `authMethod == "oauth"` → Restrict
 3. Default: Allow
+
+### Block high-risk bot sign-ups
+
+Block sign-ups with a high bot risk score:
+
+- Condition: `riskScores.bot > 70`
+- Action: Reject
+
+### Restrict sign-ups from specific countries
+
+Require manual review for sign-ups from certain countries:
+
+- Condition: `countryCode in ["XX", "YY"]` (replace with actual country codes)
+- Action: Restrict
+
+### Combined fraud signals
+
+Block sign-ups with multiple fraud indicators:
+
+- Condition: `riskScores.bot > 50 && riskScores.free_trial_abuse > 50`
+- Action: Reject
 
 ## Analytics
 

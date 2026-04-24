@@ -1609,14 +1609,16 @@ The `ServerUser` object contains most `CurrentUser` properties and methods with 
 
 ### Table of Contents
 
-<ClickableTableOfContents 
+<ClickableTableOfContents
 title="ServerUser Table of Contents"
-code={`type ServerUser = 
+code={`type ServerUser =
     // Inherits most functionality from CurrentUser
     & Omit<CurrentUser, "getAuthJson" | "signOut">  //$stack-link-to:#currentuser
     & {
       lastActiveAt: Date; //$stack-link-to:#serveruserlastactiveat
       serverMetadata: Json; //$stack-link-to:#serveruserservermetadata
+      countryCode: string | null; //$stack-link-to:#serverusercountrycode
+      riskScores: { signUp: { bot: number; freeTrialAbuse: number } }; //$stack-link-to:#serveruserriskscores
 
       update(data): Promise<void>; //$stack-link-to:#serveruserupdate
 
@@ -1651,6 +1653,41 @@ code={`type ServerUser =
 
       ```typescript
       declare const serverMetadata: Json;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="serverUser" property="countryCode" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      The ISO 3166-1 alpha-2 country code detected at sign-up (e.g., `US`, `DE`, `JP`). Returns `null` if the country could not be determined.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const countryCode: string | null;
+      ```
+    </MethodAside>
+  </MethodLayout>
+</CollapsibleTypesSection>
+
+<CollapsibleTypesSection type="serverUser" property="riskScores" defaultOpen={false}>
+  <MethodLayout>
+    <MethodContent>
+      Risk scores calculated at sign-up for fraud protection. Contains:
+      - `signUp.bot`: Bot risk score from 0-100. Higher values indicate higher likelihood of automated sign-up attempts.
+      - `signUp.freeTrialAbuse`: Free trial abuse risk score from 0-100. Higher values indicate abuse patterns like disposable emails or repeated sign-ups.
+    </MethodContent>
+    <MethodAside title="Type Definition">
+
+      ```typescript
+      declare const riskScores: {
+        signUp: {
+          bot: number;
+          freeTrialAbuse: number;
+        };
+      };
       ```
     </MethodAside>
   </MethodLayout>
