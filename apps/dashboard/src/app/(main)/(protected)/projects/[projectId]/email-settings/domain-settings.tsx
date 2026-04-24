@@ -41,6 +41,20 @@ type ServerType = "shared" | "managed" | "resend" | "standard";
 
 type ManagedDomainStatus = "pending_dns" | "pending_verification" | "verified" | "applied" | "failed";
 
+const DEFAULT_SHARED_SENDER_EMAIL = "noreply@stackframe.co";
+
+type ServerFieldConfig = {
+  label: string,
+  key: string,
+  type: "text" | "email" | "number" | "password",
+};
+
+const SERVER_TYPE_LABELS: Record<Exclude<ServerType, "shared">, string> = {
+  managed: "Managed (via managed domain setup)",
+  resend: "Resend",
+  standard: "Custom SMTP",
+};
+
 type ManagedDomain = {
   domainId: string,
   subdomain: string,
@@ -56,6 +70,10 @@ type SetupState = {
   nameServerRecords: string[],
   status: ManagedDomainStatus,
 };
+
+function getSharedServerTypeLabel(senderEmail: string | undefined): string {
+  return `Shared (${senderEmail || DEFAULT_SHARED_SENDER_EMAIL})`;
+}
 
 const MANAGED_DOMAIN_STATUS_LABELS: Record<ManagedDomainStatus, string> = {
   pending_dns: "Waiting for DNS",
@@ -82,7 +100,7 @@ function getServerTypeFromConfig(config: CompleteConfig["emails"]["server"]): Se
 
 function getFormValuesFromConfig(config: CompleteConfig["emails"]["server"], projectName: string): Record<string, string> {
   if (config.isShared) {
-    return { senderEmail: "noreply@stackframe.co", senderName: projectName };
+    return { senderEmail: config.senderEmail ?? "", senderName: projectName };
   }
   if (config.provider === "managed") {
     const senderEmail = config.managedSubdomain && config.managedSenderLocalPart
