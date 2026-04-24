@@ -1,0 +1,10 @@
+{
+  "version": 1,
+  "skills": {
+    "roids": {
+      "source": "developing-gamer/roids",
+      "sourceType": "github",
+      "computedHash": "dfb5b8c385bb5f427c13e621b572d8adaa449687d121f0f231f9aab69ebbc6bb"
+    }
+  }
+}
