@@ -71,10 +71,10 @@ export const stackServerApp = new StackServerApp({
 
 ### 3) Wrap your app in a Stack provider
 
-Required for all frameworks (including Next.js). \`StackHandler\`, \`useUser\`, and \`useStackApp\` all depend on it — without it you will get "useStackApp must be used within a StackProvider" at runtime. In Next.js, add it to the root \`app/layout.tsx\` around \`{children}\`. In React/Vite, wrap your root component.
+Required for all React based frameworks (including Next.js). \`StackHandler\`, \`useUser\`, and \`useStackApp\` all depend on it — without it you will get "useStackApp must be used within a StackProvider" at runtime. In Next.js, add it to the root \`app/layout.tsx\` around \`{children}\`. In React/Vite, wrap your root component.
 
 \`\`\`tsx
-import { StackProvider, StackTheme } from "@stackframe/stack";
+import { StackProvider, StackTheme } from "@stackframe/stack"; // or "@stackframe/react" 
 import { stackClientApp } from "../stack/client"; // adjust relative path
 \`\`\`
 
