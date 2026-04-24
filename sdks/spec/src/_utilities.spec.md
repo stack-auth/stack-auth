@@ -25,7 +25,7 @@ x-stack-access-type: "client" | "server" | "admin"
   - "client" for StackClientApp
   - "server" for StackServerApp (also include server key header)
 x-stack-override-error-status: "true"
-  - Tells server to return errors as 200 with x-stack-actual-status header
+  - Tells server to return 4xx errors as 200 with x-stack-actual-status header
   - This works around some platforms that intercept non-200 responses
 x-stack-random-nonce: <random-string>
   - Cache buster to prevent framework caching (e.g., Next.js)

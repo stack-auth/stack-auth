@@ -178,18 +178,17 @@ function NavItem({
 
   const isHighlighted = isDirectItemActive || isSectionActive;
 
+  const activeItemClasses = "bg-white/70 text-foreground shadow-sm ring-1 ring-white/60 dark:bg-transparent dark:bg-gradient-to-r dark:from-blue-500/[0.15] dark:to-blue-500/[0.08] dark:shadow-[0_0_12px_rgba(59,130,246,0.15)] dark:ring-blue-500/20";
+  const activeSectionClasses = "text-foreground hover:bg-white/55 dark:hover:bg-background/60";
   const inactiveClasses = cn(
     "hover:bg-white/55 dark:hover:bg-background/60",
     "text-muted-foreground hover:text-foreground"
   );
 
   const buttonClasses = cn(
-    "group flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-semibold transition-all duration-150 hover:transition-none",
-    isHighlighted
-      ? "bg-white/70 text-foreground shadow-sm ring-1 ring-white/60 dark:bg-transparent dark:bg-gradient-to-r dark:from-blue-500/[0.15] dark:to-blue-500/[0.08] dark:shadow-[0_0_12px_rgba(59,130,246,0.15)] dark:ring-blue-500/20"
-      : inactiveClasses,
-    isSection ? "cursor-default" : "cursor-pointer",
-    isSection && isExpanded && !isHighlighted && "bg-white/20 dark:bg-background/30"
+    "group flex h-8 w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm font-semibold transition-all duration-150 hover:transition-none",
+    isHighlighted ? (isSection ? activeSectionClasses : activeItemClasses) : inactiveClasses,
+    "cursor-pointer"
   );
 
   const iconClasses = cn(
@@ -223,7 +222,7 @@ function NavItem({
                 className={cn(
                   "h-9 w-9 p-0 justify-center rounded-lg transition-all duration-150 hover:transition-none",
                   isHighlighted
-                    ? "bg-white/70 shadow-sm ring-1 ring-white/60 dark:bg-blue-500/[0.12] dark:shadow-[0_0_12px_rgba(59,130,246,0.15)] dark:ring-blue-500/20"
+                    ? "text-foreground hover:bg-white/40 dark:hover:bg-background/60"
                     : "hover:bg-white/40 dark:hover:bg-background/60 text-muted-foreground hover:text-foreground"
                 )}
               >
@@ -262,20 +261,36 @@ function NavItem({
   return (
     <div className="transition-[margin] duration-200">
       {isSection ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="sm"
-          onClick={onToggle}
-          aria-expanded={isExpanded}
-          className={buttonClasses}
-        >
-          <span className="flex min-w-0 flex-1 items-center gap-3">
+        <div className={buttonClasses}>
+          <Link
+            href={item.firstItemHref ?? href ?? "#"}
+            onClick={() => {
+              if (!isExpanded) {
+                onToggle?.();
+              }
+              onClick?.();
+            }}
+            className="flex min-w-0 flex-1 items-center gap-3"
+          >
             <IconComponent className={iconClasses} />
             <span className="truncate text-sm">{item.name}</span>
-          </span>
-          <CaretDownIcon weight="bold" className={caretClasses} />
-        </Button>
+          </Link>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onToggle?.();
+            }}
+            aria-expanded={isExpanded}
+            aria-label={isExpanded ? `Collapse ${item.name}` : `Expand ${item.name}`}
+            className="h-7 w-7 rounded-md p-0 text-muted-foreground transition-all duration-150 hover:bg-white/30 hover:text-foreground hover:transition-none dark:hover:bg-background/40"
+          >
+            <CaretDownIcon weight="bold" className={caretClasses} />
+          </Button>
+        </div>
       ) : (
         <Button
           asChild

@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-shared",
-  "version": "2.8.84",
+  "version": "2.8.86",
   "repository": "https://github.com/stack-auth/stack-auth",
   "scripts": {
     "build": "rimraf dist && tsdown",

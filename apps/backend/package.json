@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/backend",
-  "version": "2.8.84",
+  "version": "2.8.86",
   "repository": "https://github.com/stack-auth/stack-auth",
   "private": true,
   "type": "module",
@@ -11,7 +11,7 @@
     "with-env:dev": "dotenv -c development --",
     "with-env:prod": "dotenv -c production --",
     "with-env:test": "dotenv -c test --",
-    "dev": "BACKEND_PORT=${STACK_DEV_FALLBACK_BACKEND:+${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}10} && BACKEND_PORT=${BACKEND_PORT:-${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}02} && concurrently -n \"dev,codegen,prisma-studio,email-queue,cron-jobs\" -k \"next dev --port $BACKEND_PORT ${STACK_BACKEND_DEV_EXTRA_ARGS:-}\" \"pnpm run codegen:watch\" \"pnpm run prisma-studio\" \"pnpm run run-email-queue\" \"pnpm run run-cron-jobs\"",
+    "dev": "BACKEND_PORT=${STACK_DEV_FALLBACK_BACKEND:+${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}10} && BACKEND_PORT=${BACKEND_PORT:-${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}02} && concurrently -n \"dev,codegen,prisma-studio,email-queue,cron-jobs,bulldozer-studio\" -k \"STACK_DISABLE_REACT_ASYNC_DEBUG_INFO=${STACK_DISABLE_REACT_ASYNC_DEBUG_INFO:-true} next dev --port $BACKEND_PORT ${STACK_BACKEND_DEV_EXTRA_ARGS:-}\" \"pnpm run codegen:watch\" \"pnpm run prisma-studio\" \"pnpm run run-email-queue\" \"pnpm run run-cron-jobs\" \"pnpm run run-bulldozer-studio\"",
     "dev:inspect": "STACK_BACKEND_DEV_EXTRA_ARGS=\"--inspect\" pnpm run dev",
     "dev:profile": "STACK_BACKEND_DEV_EXTRA_ARGS=\"--experimental-cpu-prof\" pnpm run dev",
     "build": "pnpm run codegen && next build",
@@ -48,7 +48,8 @@
     "run-cron-jobs": "pnpm run with-env:dev tsx scripts/run-cron-jobs.ts",
     "run-cron-jobs:test": "pnpm run with-env:test tsx scripts/run-cron-jobs.ts",
     "verify-data-integrity": "pnpm run with-env:dev tsx scripts/verify-data-integrity/index.ts",
-    "run-email-queue": "pnpm run with-env:dev tsx scripts/run-email-queue.ts"
+    "run-email-queue": "pnpm run with-env:dev tsx scripts/run-email-queue.ts",
+    "run-bulldozer-studio": "pnpm run with-env:dev tsx watch --clear-screen=false scripts/run-bulldozer-studio.ts"
   },
   "prisma": {
     "seed": "pnpm run db-seed-script"
@@ -94,6 +95,7 @@
     "chokidar-cli": "^3.0.0",
     "dotenv": "^16.4.5",
     "dotenv-cli": "^7.3.0",
+    "elkjs": "^0.11.1",
     "emailable": "^3.1.1",
     "freestyle-sandboxes": "^0.1.6",
     "jiti": "^2.6.1",

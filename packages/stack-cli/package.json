@@ -1,6 +1,6 @@
 {
   "name": "@stackframe/stack-cli",
-  "version": "2.8.84",
+  "version": "2.8.86",
   "repository": "https://github.com/stack-auth/stack-auth",
   "description": "The CLI for Stack Auth. https://stack-auth.com",
   "main": "dist/index.js",
@@ -13,7 +13,8 @@
     "build": "tsdown && node scripts/copy-emulator-assets.mjs",
     "dev": "tsdown --watch",
     "lint": "eslint --ext .tsx,.ts .",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
   },
   "files": [
     "README.md",
@@ -31,6 +32,7 @@
     "@stackframe/js": "workspace:*",
     "@stackframe/stack-shared": "workspace:*",
     "commander": "^13.1.0",
+    "extract-zip": "^2.0.1",
     "jiti": "^2.4.2"
   },
   "devDependencies": {
