@@ -79,16 +79,19 @@ async function runInit(program: Command, opts: InitOptions) {
   }
 
   let configPath: string | undefined;
+  let projectId: string | undefined;
 
   if (mode === "link" || mode === "link-config" || mode === "link-cloud") {
     const result = await handleLink(flags, opts, outputDir, mode);
     configPath = result.configPath;
+    projectId = result.projectId;
   } else if (mode === "create") {
     const result = await handleCreate(opts, outputDir);
     configPath = result.configPath;
   } else if (mode === "create-cloud") {
     const result = await handleCreateCloud(flags, opts, outputDir);
     configPath = result.configPath;
+    projectId = result.projectId;
   } else {
     throw new CliError(`Unknown mode: ${mode}`);
   }
@@ -108,9 +111,30 @@ async function runInit(program: Command, opts: InitOptions) {
   } else {
     console.log("\n" + initPrompt);
   }
+
+  const { dashboardUrl } = resolveLoginConfig(flags as { projectId?: string });
+  printNextSteps({ mode, projectId, dashboardUrl });
 }
 
-async function handleLink(flags: Record<string, unknown>, opts: InitOptions, outputDir: string, resolvedMode?: string): Promise<{ configPath?: string }> {
+function printNextSteps(args: { mode: string, projectId?: string, dashboardUrl: string }) {
+  console.log("\nYou're all set! What's next:\n");
+  console.log("  • Start your dev server, then visit /handler/sign-up to create a test user");
+  console.log("    (and /handler/sign-in to log in). Drop <UserButton /> into a page to see the session.");
+
+  if (args.mode === "create") {
+    console.log("  • You're wired up to the local emulator. Start it in another terminal:");
+    console.log("      npx @stackframe/stack-cli emulator start");
+    console.log("    Local dashboard: http://localhost:26700");
+  } else if (args.projectId) {
+    console.log("  • Manage this project in the dashboard:");
+    console.log(`      ${args.dashboardUrl}/projects/${args.projectId}`);
+  }
+
+  console.log("  • Docs: https://docs.stack-auth.com");
+  console.log("");
+}
+
+async function handleLink(flags: Record<string, unknown>, opts: InitOptions, outputDir: string, resolvedMode?: string): Promise<{ configPath?: string, projectId?: string }> {
   let source: "config-file" | "cloud";
 
   if (resolvedMode === "link-config" || opts.mode === "link-config") {
@@ -221,7 +245,7 @@ async function writeProjectKeysToEnv(
   }
 }
 
-async function handleCreateCloud(flags: Record<string, unknown>, opts: InitOptions, outputDir: string): Promise<{ configPath?: string }> {
+async function handleCreateCloud(flags: Record<string, unknown>, _opts: InitOptions, outputDir: string): Promise<{ configPath?: string, projectId?: string }> {
   const sessionAuth = await ensureLoggedInSession(flags);
   const user = await getInternalUser(sessionAuth);
 
@@ -231,10 +255,10 @@ async function handleCreateCloud(flags: Record<string, unknown>, opts: InitOptio
   console.log(`\nCreated project: ${newProject.displayName} (${newProject.id})\n`);
 
   await writeProjectKeysToEnv(newProject, outputDir);
-  return {};
+  return { projectId: newProject.id };
 }
 
-async function handleLinkFromCloud(flags: Record<string, unknown>, opts: InitOptions, outputDir: string): Promise<{ configPath?: string }> {
+async function handleLinkFromCloud(flags: Record<string, unknown>, opts: InitOptions, outputDir: string): Promise<{ configPath?: string, projectId?: string }> {
   const sessionAuth = await ensureLoggedInSession(flags);
   const user = await getInternalUser(sessionAuth);
   let projects = await user.listOwnedProjects();
@@ -283,7 +307,7 @@ async function handleLinkFromCloud(flags: Record<string, unknown>, opts: InitOpt
 
   const project = projects.find((p) => p.id === projectId)!;
   await writeProjectKeysToEnv(project, outputDir);
-  return {};
+  return { projectId };
 }
 
 async function performLogin(flags: Record<string, unknown>) {
