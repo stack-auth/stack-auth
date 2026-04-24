@@ -10,8 +10,9 @@ import {
   type Infer as __Infer,
 } from "spacetimedb";
 
-export default {
-  token: __t.string(),
-  correlationId: __t.string(),
-  reviewedBy: __t.string(),
-};
+export default __t.row({
+  id: __t.u64(),
+  question: __t.string(),
+  answer: __t.string(),
+  publishedAt: __t.option(__t.timestamp()).name("published_at"),
+});

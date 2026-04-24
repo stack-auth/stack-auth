@@ -35,40 +35,74 @@ import {
 
 // Import all reducer arg schemas
 import AddManualQaReducer from "./add_manual_qa_reducer";
+import AddOperatorReducer from "./add_operator_reducer";
 import DeleteQaEntryReducer from "./delete_qa_entry_reducer";
+import EnrollServiceReducer from "./enroll_service_reducer";
+import LogAiQueryReducer from "./log_ai_query_reducer";
 import LogMcpCallReducer from "./log_mcp_call_reducer";
 import MarkHumanReviewedReducer from "./mark_human_reviewed_reducer";
+import RemoveOperatorReducer from "./remove_operator_reducer";
+import UnmarkHumanReviewedReducer from "./unmark_human_reviewed_reducer";
 import UpdateHumanCorrectionReducer from "./update_human_correction_reducer";
 import UpdateMcpQaReviewReducer from "./update_mcp_qa_review_reducer";
 
 // Import all procedure arg schemas
 
 // Import all table schema definitions
-import McpCallLogRow from "./mcp_call_log_table";
+import MyVisibleAiQueryLogRow from "./my_visible_ai_query_log_table";
+import MyVisibleMcpCallLogRow from "./my_visible_mcp_call_log_table";
+import OperatorsRow from "./operators_table";
+import PublishedQaRow from "./published_qa_table";
 
 /** Type-only namespace exports for generated type groups. */
 
 /** The schema information for all tables in this module. This is defined the same was as the tables would have been defined in the server. */
 const tablesSchema = __schema({
-  mcpCallLog: __table({
-    name: 'mcp_call_log',
+  operators: __table({
+    name: 'operators',
     indexes: [
-      { accessor: 'id', name: 'mcp_call_log_id_idx_btree', algorithm: 'btree', columns: [
-        'id',
+      { accessor: 'identity', name: 'operators_identity_idx_btree', algorithm: 'btree', columns: [
+        'identity',
       ] },
     ],
     constraints: [
-      { name: 'mcp_call_log_id_key', constraint: 'unique', columns: ['id'] },
+      { name: 'operators_identity_key', constraint: 'unique', columns: ['identity'] },
     ],
-  }, McpCallLogRow),
+  }, OperatorsRow),
+  myVisibleAiQueryLog: __table({
+    name: 'my_visible_ai_query_log',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyVisibleAiQueryLogRow),
+  myVisibleMcpCallLog: __table({
+    name: 'my_visible_mcp_call_log',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, MyVisibleMcpCallLogRow),
+  publishedQa: __table({
+    name: 'published_qa',
+    indexes: [
+    ],
+    constraints: [
+    ],
+  }, PublishedQaRow),
 });
 
 /** The schema information for all reducers in this module. This is defined the same way as the reducers would have been defined in the server, except the body of the reducer is omitted in code generation. */
 const reducersSchema = __reducers(
   __reducerSchema("add_manual_qa", AddManualQaReducer),
+  __reducerSchema("add_operator", AddOperatorReducer),
   __reducerSchema("delete_qa_entry", DeleteQaEntryReducer),
+  __reducerSchema("enroll_service", EnrollServiceReducer),
+  __reducerSchema("log_ai_query", LogAiQueryReducer),
   __reducerSchema("log_mcp_call", LogMcpCallReducer),
   __reducerSchema("mark_human_reviewed", MarkHumanReviewedReducer),
+  __reducerSchema("remove_operator", RemoveOperatorReducer),
+  __reducerSchema("unmark_human_reviewed", UnmarkHumanReviewedReducer),
   __reducerSchema("update_human_correction", UpdateHumanCorrectionReducer),
   __reducerSchema("update_mcp_qa_review", UpdateMcpQaReviewReducer),
 );

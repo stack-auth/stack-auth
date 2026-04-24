@@ -12,9 +12,7 @@ import {
 
 export default {
   token: __t.string(),
-  correlationId: __t.string(),
-  correctedQuestion: __t.string(),
-  correctedAnswer: __t.string(),
-  publish: __t.bool(),
-  reviewedBy: __t.string(),
+  identity: __t.identity(),
+  stackUserId: __t.string(),
+  displayName: __t.string(),
 };

@@ -1,8 +1,8 @@
-import { getConnectionOrThrow } from "@/lib/ai/mcp-logger";
+import { callReducerStrict } from "@/lib/ai/mcp-logger";
+import { assertIsAiChatReviewer } from "@/lib/ai/reviewer-auth";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 
 export const POST = createSmartRouteHandler({
   metadata: { hidden: true },
@@ -26,21 +26,14 @@ export const POST = createSmartRouteHandler({
   }),
   handler: async ({ auth, body }) => {
     const user = auth.user;
-    if (getNodeEnvironment() !== "development") {
-      const metadata = user.client_read_only_metadata;
-      if (!(metadata && typeof metadata === "object" && "isAiChatReviewer" in metadata && metadata.isAiChatReviewer === true)) {
-        throw new StatusError(StatusError.Forbidden, "You are not approved to perform MCP review operations.");
-      }
-    }
-
-    const conn = await getConnectionOrThrow();
+    assertIsAiChatReviewer(user);
 
     const token = getEnvVariable("STACK_MCP_LOG_TOKEN");
-    await conn.reducers.markHumanReviewed({
+    await callReducerStrict("mark_human_reviewed", [
       token,
-      correlationId: body.correlationId,
-      reviewedBy: user.display_name ?? user.primary_email ?? user.id,
-    });
+      body.correlationId,
+      user.display_name ?? user.primary_email ?? user.id,
+    ]);
 
     return {
       statusCode: 200,

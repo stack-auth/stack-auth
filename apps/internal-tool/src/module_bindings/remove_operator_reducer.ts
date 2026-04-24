@@ -12,14 +12,5 @@ import {
 
 export default {
   token: __t.string(),
-  correlationId: __t.string(),
-  qaNeedsHumanReview: __t.bool(),
-  qaAnswerCorrect: __t.bool(),
-  qaAnswerRelevant: __t.bool(),
-  qaFlagsJson: __t.string(),
-  qaImprovementSuggestions: __t.string(),
-  qaOverallScore: __t.u32(),
-  qaReviewModelId: __t.string(),
-  qaConversationJson: __t.option(__t.string()),
-  qaErrorMessage: __t.option(__t.string()),
+  identity: __t.identity(),
 };

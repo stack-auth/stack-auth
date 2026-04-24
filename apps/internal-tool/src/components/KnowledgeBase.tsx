@@ -1,3 +1,4 @@
+import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { useState, useMemo } from "react";
 import { format } from "date-fns";
 import { clsx } from "clsx";
@@ -8,8 +9,8 @@ type KbFilter = "all" | "published" | "draft";
 
 export function KnowledgeBase({ rows, onSave, onDelete }: {
   rows: McpCallLogRow[];
-  onSave: (correlationId: string, question: string, answer: string, publish: boolean) => void;
-  onDelete: (correlationId: string) => void;
+  onSave: (correlationId: string, question: string, answer: string, publish: boolean) => Promise<void> | void;
+  onDelete: (correlationId: string) => Promise<void> | void;
 }) {
   const [filter, setFilter] = useState<KbFilter>("all");
   const [search, setSearch] = useState("");
@@ -100,14 +101,52 @@ export function KnowledgeBase({ rows, onSave, onDelete }: {
               onStartEdit={() => setEditingId(row.correlationId)}
               onCancelEdit={() => setEditingId(null)}
               onSave={(question, answer, publish) => {
-                onSave(row.correlationId, question, answer, publish);
+                Promise.resolve(onSave(row.correlationId, question, answer, publish))
+                  .catch(err => captureError("knowledge-base-save", err));
                 setEditingId(null);
               }}
-              onDelete={() => onDelete(row.correlationId)}
+              onDelete={() => {
+                Promise.resolve(onDelete(row.correlationId))
+                  .catch(err => captureError("knowledge-base-delete", err));
+              }}
             />
           ))}
         </div>
       )}
+    </div>
+  );
+}
+
+type PendingAction = "edit" | "publish" | "unpublish" | "delete" | null;
+
+function ConfirmDialog({ title, message, confirmLabel, confirmClassName, onConfirm, onCancel }: {
+  title: string;
+  message: string;
+  confirmLabel: string;
+  confirmClassName?: string;
+  onConfirm: () => void;
+  onCancel: () => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-8" onClick={onCancel}>
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-md p-6" onClick={(e) => e.stopPropagation()}>
+        <h2 className="text-base font-semibold text-gray-900 mb-2">{title}</h2>
+        <p className="text-sm text-gray-600 mb-5">{message}</p>
+        <div className="flex gap-2 justify-end">
+          <button
+            onClick={onCancel}
+            className="px-3 py-1.5 text-xs font-medium text-gray-700 bg-gray-100 rounded-md hover:bg-gray-200"
+          >
+            Cancel
+          </button>
+          <button
+            onClick={onConfirm}
+            className={clsx("px-3 py-1.5 text-xs font-medium text-white rounded-md", confirmClassName ?? "bg-blue-600 hover:bg-blue-700")}
+          >
+            {confirmLabel}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -125,6 +164,7 @@ function KbCard({ row, isEditing, onStartEdit, onCancelEdit, onSave, onDelete }:
 
   const [editQuestion, setEditQuestion] = useState(question);
   const [editAnswer, setEditAnswer] = useState(answer);
+  const [pending, setPending] = useState<PendingAction>(null);
 
   const cardBorder = row.publishedToQa ? "border-green-200" : "border-amber-200";
   const cardBg = row.publishedToQa ? "bg-green-50/30" : "bg-amber-50/30";
@@ -201,28 +241,28 @@ function KbCard({ row, isEditing, onStartEdit, onCancelEdit, onSave, onDelete }:
         </div>
         <div className="flex items-center gap-1">
           <button
-            onClick={onStartEdit}
+            onClick={() => setPending("edit")}
             className="px-2 py-0.5 text-[10px] text-blue-600 hover:text-blue-800"
           >
             Edit
           </button>
           {row.publishedToQa ? (
             <button
-              onClick={() => onSave(question, answer, false)}
+              onClick={() => setPending("unpublish")}
               className="px-2 py-0.5 text-[10px] text-amber-600 hover:text-amber-800"
             >
               Unpublish
             </button>
           ) : (
             <button
-              onClick={() => onSave(question, answer, true)}
+              onClick={() => setPending("publish")}
               className="px-2 py-0.5 text-[10px] text-green-600 hover:text-green-800"
             >
               Publish
             </button>
           )}
           <button
-            onClick={onDelete}
+            onClick={() => setPending("delete")}
             className="px-2 py-0.5 text-[10px] text-red-500 hover:text-red-700"
           >
             Delete
@@ -235,6 +275,58 @@ function KbCard({ row, isEditing, onStartEdit, onCancelEdit, onSave, onDelete }:
         <p className="text-sm font-medium text-gray-900">{question}</p>
         <p className="text-xs text-gray-600 line-clamp-3 whitespace-pre-wrap">{answer}</p>
       </div>
+
+      {pending === "edit" && (
+        <ConfirmDialog
+          title="Edit this Q&A?"
+          message="You'll open the inline editor. You can cancel from there without saving."
+          confirmLabel="Edit"
+          onCancel={() => setPending(null)}
+          onConfirm={() => {
+            setPending(null);
+            onStartEdit();
+          }}
+        />
+      )}
+      {pending === "publish" && (
+        <ConfirmDialog
+          title="Publish this Q&A?"
+          message="Publishing makes this Q&A visible on the public knowledge base."
+          confirmLabel="Publish"
+          confirmClassName="bg-green-600 hover:bg-green-700"
+          onCancel={() => setPending(null)}
+          onConfirm={() => {
+            setPending(null);
+            onSave(question, answer, true);
+          }}
+        />
+      )}
+      {pending === "unpublish" && (
+        <ConfirmDialog
+          title="Unpublish this Q&A?"
+          message="This Q&A will no longer appear on the public knowledge base."
+          confirmLabel="Unpublish"
+          confirmClassName="bg-amber-600 hover:bg-amber-700"
+          onCancel={() => setPending(null)}
+          onConfirm={() => {
+            setPending(null);
+            onSave(question, answer, false);
+          }}
+        />
+      )}
+      {pending === "delete" && (
+        <ConfirmDialog
+          title="Delete this Q&A?"
+          message="This permanently removes the entry. This cannot be undone."
+          confirmLabel="Delete"
+          confirmClassName="bg-red-600 hover:bg-red-700"
+          onCancel={() => setPending(null)}
+          onConfirm={() => {
+            setPending(null);
+            onDelete();
+          }}
+        />
+      )}
     </div>
   );
 }

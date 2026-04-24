@@ -1570,6 +1570,30 @@ export namespace User {
     }
     return users;
   }
+
+  export async function setClientReadOnlyMetadata(userId: string, metadata: Record<string, unknown>) {
+    const response = await niceBackendFetch(`/api/v1/users/${userId}`, {
+      method: "PATCH",
+      accessType: "server",
+      body: {
+        client_read_only_metadata: metadata,
+      },
+    });
+    expect(response).toMatchObject({ status: 200 });
+    return response;
+  }
+}
+
+export namespace AiChatReviewer {
+  export async function createReviewer() {
+    const { userId, accessToken, refreshToken } = await Auth.fastSignUp();
+    await User.setClientReadOnlyMetadata(userId, { isAiChatReviewer: true });
+    return { userId, accessToken, refreshToken };
+  }
+
+  export async function createNonReviewer() {
+    return await Auth.fastSignUp();
+  }
 }
 
 

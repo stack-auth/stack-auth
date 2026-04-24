@@ -1,6 +1,6 @@
 import { SmartRequestAuth } from "@/route-handlers/smart-request";
 import { ToolSet } from "ai";
-import { updateDashboardTool } from "./create-dashboard";
+import { patchDashboardTool, updateDashboardTool } from "./create-dashboard";
 import { createEmailDraftTool } from "./create-email-draft";
 import { createEmailTemplateTool } from "./create-email-template";
 import { createEmailThemeTool } from "./create-email-theme";
@@ -13,7 +13,8 @@ export type ToolName =
   | "create-email-theme"
   | "create-email-template"
   | "create-email-draft"
-  | "update-dashboard";
+  | "update-dashboard"
+  | "patch-dashboard";
 
 export type ToolContext = {
   auth: SmartRequestAuth | null,
@@ -62,6 +63,11 @@ export async function getTools(
         break;
       }
 
+      case "patch-dashboard": {
+        tools["patchDashboard"] = patchDashboardTool(context.auth);
+        break;
+      }
+
       default: {
         // TypeScript will ensure this is unreachable if we handle all cases
         const _exhaustive: never = toolName;
@@ -89,6 +95,7 @@ export function validateToolNames(toolNames: unknown): toolNames is ToolName[] {
     "create-email-template",
     "create-email-draft",
     "update-dashboard",
+    "patch-dashboard",
   ];
 
   return toolNames.every((name) => validToolNames.includes(name as ToolName));

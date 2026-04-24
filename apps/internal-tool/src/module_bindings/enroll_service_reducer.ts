@@ -12,16 +12,5 @@ import {
 
 export default {
   token: __t.string(),
-  correlationId: __t.string(),
-  conversationId: __t.option(__t.string()),
-  toolName: __t.string(),
-  reason: __t.string(),
-  userPrompt: __t.string(),
-  question: __t.string(),
-  response: __t.string(),
-  stepCount: __t.u32(),
-  innerToolCallsJson: __t.string(),
-  durationMs: __t.u64(),
-  modelId: __t.string(),
-  errorMessage: __t.option(__t.string()),
+  displayName: __t.string(),
 };

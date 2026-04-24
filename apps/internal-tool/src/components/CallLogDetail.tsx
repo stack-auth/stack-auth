@@ -1,3 +1,5 @@
+import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { clsx } from "clsx";
 import { format, formatDistanceToNow } from "date-fns";
 import { useState, useEffect } from "react";
@@ -31,15 +33,49 @@ function CopyButton({ text }: { text: string }) {
 
 // ─── Main Component ────────────────────────────────────
 
-export function CallLogDetail({ row, allRows, onClose, onSaveCorrection, onMarkReviewed }: {
+export function CallLogDetail({ row, allRows, onClose, onSaveCorrection, onMarkReviewed, onUnmarkReviewed }: {
   row: McpCallLogRow;
   allRows: McpCallLogRow[];
   onClose: () => void;
   onSaveCorrection?: (correlationId: string, correctedQuestion: string, correctedAnswer: string, publish: boolean) => Promise<void> | void;
   onMarkReviewed?: (correlationId: string) => Promise<void> | void;
+  onUnmarkReviewed?: (correlationId: string) => Promise<void> | void;
 }) {
   const [showReplay, setShowReplay] = useState(false);
-  const isReviewed = row.humanReviewedAt != null;
+  // Optimistic override while the mark/unmark roundtrip is in flight. Cleared
+  // once the real subscription update catches up.
+  const [optimisticReviewed, setOptimisticReviewed] = useState<boolean | null>(null);
+  useEffect(() => {
+    const actual = row.humanReviewedAt != null;
+    if (optimisticReviewed != null && optimisticReviewed === actual) {
+      setOptimisticReviewed(null);
+    }
+  }, [row.humanReviewedAt, optimisticReviewed]);
+  const isReviewed = optimisticReviewed ?? (row.humanReviewedAt != null);
+
+  const handleMark = () => {
+    const previous = optimisticReviewed;
+    setOptimisticReviewed(true);
+    runAsynchronouslyWithAlert(
+      Promise.resolve(onMarkReviewed?.(row.correlationId)).catch(err => {
+        // Revert the optimistic override so the UI reflects the database's real state.
+        setOptimisticReviewed(previous);
+        captureError("call-log-mark-reviewed", err);
+        throw err;
+      })
+    );
+  };
+  const handleUnmark = () => {
+    const previous = optimisticReviewed;
+    setOptimisticReviewed(false);
+    runAsynchronouslyWithAlert(
+      Promise.resolve(onUnmarkReviewed?.(row.correlationId)).catch(err => {
+        setOptimisticReviewed(previous);
+        captureError("call-log-unmark-reviewed", err);
+        throw err;
+      })
+    );
+  };
 
   return (
     <div className="p-4 space-y-4">
@@ -54,19 +90,31 @@ export function CallLogDetail({ row, allRows, onClose, onSaveCorrection, onMarkR
           {isReviewed && (
             <span
               className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-green-100 text-green-800"
-              title={`Reviewed ${row.humanReviewedAt ? format(toDate(row.humanReviewedAt), "PPpp") : ""}${row.humanReviewedBy ? ` by ${row.humanReviewedBy}` : ""}`}
+              title={row.humanReviewedAt ? format(toDate(row.humanReviewedAt), "PPpp") : ""}
             >
-              &#10003; Reviewed{row.humanReviewedBy ? ` by ${row.humanReviewedBy}` : ""}
+              &#10003; Reviewed
+              {row.humanReviewedBy ? ` by ${row.humanReviewedBy}` : ""}
+              {row.humanReviewedAt
+                ? ` · ${formatDistanceToNow(toDate(row.humanReviewedAt), { addSuffix: true })}`
+                : " · just now"}
             </span>
           )}
         </div>
         <div className="flex items-center gap-2">
           {!isReviewed && onMarkReviewed && (
             <button
-              onClick={() => void onMarkReviewed(row.correlationId)}
+              onClick={handleMark}
               className="px-2.5 py-1 text-xs font-medium text-green-700 bg-green-50 rounded-md hover:bg-green-100 border border-green-200"
             >
               Mark as reviewed
+            </button>
+          )}
+          {isReviewed && onUnmarkReviewed && (
+            <button
+              onClick={handleUnmark}
+              className="px-2.5 py-1 text-xs font-medium text-gray-600 bg-gray-50 rounded-md hover:bg-gray-100 border border-gray-200"
+            >
+              Unmark
             </button>
           )}
           <button

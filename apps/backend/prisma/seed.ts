@@ -425,6 +425,19 @@ export async function seed() {
       }
     }
 
+    const existingDefaultUser = await usersCrudHandlers.adminRead({
+      tenancy: internalTenancy,
+      user_id: defaultUserId,
+    });
+    const existingMetadata = (existingDefaultUser.client_read_only_metadata ?? {}) as Record<string, unknown>;
+    await usersCrudHandlers.adminUpdate({
+      tenancy: internalTenancy,
+      user_id: defaultUserId,
+      data: {
+        client_read_only_metadata: { ...existingMetadata, isAiChatReviewer: true },
+      },
+    });
+
     // Create or ensure TeamMember exists before granting permissions.
     // Using upsert here (instead of create inside the else block above) ensures
     // idempotency when adminInternalAccess changes between seed runs.
