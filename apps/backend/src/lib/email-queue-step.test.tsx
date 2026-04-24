@@ -13,6 +13,8 @@ describe.sequential("recoverEmailsStuckInSending", () => {
   const testRunTag = `stuck-in-sending-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const createdIds: { tenancyId: string, id: string }[] = [];
 
+  const recoveryTestFilter = { tsxSource: `/* ${testRunTag} */` };
+
   const makeRow = async (params: {
     startedSendingAt: Date | null,
     finishedSendingAt?: Date | null,
@@ -24,7 +26,7 @@ describe.sequential("recoverEmailsStuckInSending", () => {
     const created = await globalPrismaClient.emailOutbox.create({
       data: {
         tenancyId: tenancy.id,
-        tsxSource: `/* ${testRunTag} */`,
+        tsxSource: recoveryTestFilter.tsxSource,
         themeId: null,
         isHighPriority: false,
         to: { type: "custom-emails", emails: ["stuck-test@example.com"] },
@@ -65,7 +67,7 @@ describe.sequential("recoverEmailsStuckInSending", () => {
       nextSendRetryAt: new Date(Date.now() + 60_000),
     });
 
-    await recoverEmailsStuckInSending();
+    await recoverEmailsStuckInSending(recoveryTestFilter);
 
     const after = await globalPrismaClient.emailOutbox.findUniqueOrThrow({
       where: { tenancyId_id: { tenancyId: row.tenancyId, id: row.id } },
@@ -73,7 +75,7 @@ describe.sequential("recoverEmailsStuckInSending", () => {
     expect(after.finishedSendingAt).not.toBeNull();
     expect(after.startedSendingAt?.toISOString()).toBe(row.startedSendingAt?.toISOString());
     expect(after.canHaveDeliveryInfo).toBe(false);
-    expect(after.sendServerErrorExternalMessage).toMatch(/did not complete in time/i);
+    expect(after.sendServerErrorExternalMessage).toMatch(/timed out/i);
     expect(after.sendServerErrorInternalMessage).toMatch(/stuck in sending/i);
     // Must be a terminal state — no retry scheduled.
     expect(after.nextSendRetryAt).toBeNull();
@@ -87,7 +89,7 @@ describe.sequential("recoverEmailsStuckInSending", () => {
     const recently = new Date(Date.now() - 1000);
     const row = await makeRow({ startedSendingAt: recently });
 
-    await recoverEmailsStuckInSending();
+    await recoverEmailsStuckInSending(recoveryTestFilter);
 
     const after = await globalPrismaClient.emailOutbox.findUniqueOrThrow({
       where: { tenancyId_id: { tenancyId: row.tenancyId, id: row.id } },
@@ -101,10 +103,10 @@ describe.sequential("recoverEmailsStuckInSending", () => {
     const longAgo = new Date(Date.now() - STUCK_EMAIL_TIMEOUT_MS - 60_000);
     const row = await makeRow({ startedSendingAt: longAgo });
 
-    await recoverEmailsStuckInSending();
+    await recoverEmailsStuckInSending(recoveryTestFilter);
     // A second pass should be a no-op for this row: it's already terminal, so it must not
     // become a candidate for re-sending (which could duplicate an already-accepted delivery).
-    await recoverEmailsStuckInSending();
+    await recoverEmailsStuckInSending(recoveryTestFilter);
 
     const after = await globalPrismaClient.emailOutbox.findUniqueOrThrow({
       where: { tenancyId_id: { tenancyId: row.tenancyId, id: row.id } },

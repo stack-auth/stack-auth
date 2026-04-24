@@ -137,17 +137,16 @@ async function retryEmailsStuckInRendering(): Promise<void> {
 /**
  * Recover rows that have been stuck in SENDING for longer than STUCK_EMAIL_TIMEOUT_MS.
  *
- * These rows indicate a worker died after setting `startedSendingAt` but before cleaning up
- * (either marking the send as finished or unclaiming it for retry). We deliberately do NOT
- * retry automatically: the upstream send may have actually been accepted by the SMTP/provider
- * before the worker died, and retrying would risk a duplicate delivery. Instead, we mark the
- * row as a terminal server error with delivery status unknown, and emit a Sentry signal so a
- * human can investigate if desired.
+ * These rows can happen when sending hangs or fails after `startedSendingAt` was set but before
+ * the send attempt was finalized. We deliberately do NOT retry automatically: the upstream send
+ * may have actually been accepted by the SMTP/provider, and retrying would risk a duplicate
+ * delivery. Instead, we mark the row as a terminal server error with delivery status unknown,
+ * and emit a Sentry signal so a human can investigate if desired.
  */
-async function recoverEmailsStuckInSending(): Promise<void> {
+async function recoverEmailsStuckInSending(additionalWhere?: Prisma.EmailOutboxWhereInput): Promise<void> {
   const stuckCutoff = new Date(Date.now() - STUCK_EMAIL_TIMEOUT_MS);
   const recoveredAt = new Date();
-  const externalMessage = "Email sending did not complete in time. The email may or may not have been delivered; we are not retrying automatically to avoid sending a duplicate.";
+  const externalMessage = "Email sending timed out before we could confirm whether it was delivered.";
   const internalDetails: Prisma.InputJsonObject = {
     errorType: "stuck-in-sending-recovered",
     stuckTimeoutMs: STUCK_EMAIL_TIMEOUT_MS,
@@ -157,13 +156,15 @@ async function recoverEmailsStuckInSending(): Promise<void> {
     errorType: "stuck-in-sending-recovered",
   };
 
+  const baseWhere: Prisma.EmailOutboxWhereInput = {
+    startedSendingAt: { lte: stuckCutoff },
+    finishedSendingAt: null,
+    skippedReason: null,
+    isPaused: false,
+  };
+
   const recovered = await globalPrismaClient.emailOutbox.updateManyAndReturn({
-    where: {
-      startedSendingAt: { lte: stuckCutoff },
-      finishedSendingAt: null,
-      skippedReason: null,
-      isPaused: false,
-    },
+    where: additionalWhere == null ? baseWhere : { AND: [baseWhere, additionalWhere] },
     data: {
       finishedSendingAt: recoveredAt,
       // canHaveDeliveryInfo must be non-null when finishedSendingAt is set (see schema).
@@ -176,9 +177,12 @@ async function recoverEmailsStuckInSending(): Promise<void> {
       sendServerErrorInternalMessage: `Email was stuck in sending (startedSendingAt <= ${stuckCutoff.toISOString()}) and was recovered by the email queue step. Not retried to avoid duplicate delivery.`,
       sendServerErrorInternalDetails: internalDetails,
       nextSendRetryAt: null,
+      // Do not append to sendAttemptErrors here: this recovery path did not observe a provider
+      // response or application error for this attempt, and the terminal server-error fields
+      // already record the recovery event without duplicating potentially sensitive details.
       shouldUpdateSequenceId: true,
     },
-    select: { id: true, tenancyId: true, startedSendingAt: true, to: true, sendAttemptErrors: true },
+    select: { id: true, tenancyId: true, startedSendingAt: true },
   });
 
   if (recovered.length > 0) {
@@ -186,7 +190,7 @@ async function recoverEmailsStuckInSending(): Promise<void> {
       "email-queue-step-stuck-in-sending",
       new StackAssertionError(
         `${recovered.length} emails were stuck in sending and have been recovered as terminal server errors (delivery status unknown, not retried to avoid duplicate sends). Manual investigation is recommended.`,
-        { emails: recovered },
+        { emails: recovered.map(({ id, tenancyId, startedSendingAt }) => ({ id, tenancyId, startedSendingAt })) },
       ),
     );
   }
