@@ -9,7 +9,7 @@ import { createRefreshTokenObj, decodeAccessToken, generateAccessTokenFromRefres
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
 import { AuthorizationCode, AuthorizationCodeModel, Client, Falsey, RefreshToken, Token, User } from "@node-oauth/oauth2-server";
 import { KnownErrors } from "@stackframe/stack-shared";
-import { StackAssertionError, StatusError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { getProjectBranchFromClientId } from ".";
 const PrismaClientKnownRequestError = Prisma.PrismaClientKnownRequestError;
 
@@ -105,10 +105,16 @@ export class OAuthModel implements AuthorizationCodeModel {
 
     const refreshTokenObj = await this._getOrCreateRefreshTokenObj(client, user, scope);
 
-    return await generateAccessTokenFromRefreshTokenIfValid({
+    const accessToken = await generateAccessTokenFromRefreshTokenIfValid({
       tenancy,
       refreshTokenObj,
-    }) ?? throwErr("Get or create refresh token failed; returned refreshTokenObj that's invalid (or maybe it's an ultra-rare race condition and it became invalid in since the function call?)", { refreshTokenObj });  // TODO fix the ultra-rare race condition — although unless we're at gigascale this should basically never happen
+    });
+    if (!accessToken) {
+      // Either the refresh token became invalid between _getOrCreateRefreshTokenObj and now
+      // (e.g. a concurrent sign-out deleted the row), or the user was deleted mid-flight.
+      throw new KnownErrors.RefreshTokenNotFoundOrExpired();
+    }
+    return accessToken;
   }
 
   async _getOrCreateRefreshTokenObj(client: Client, user: User, scope: string[]) {
