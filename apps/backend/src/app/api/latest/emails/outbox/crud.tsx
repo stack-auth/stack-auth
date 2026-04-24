@@ -46,6 +46,36 @@ const EDITABLE_STATUSES = new Set([
   "SERVER_ERROR",
 ]);
 
+function emailOutboxStatusAfterManualUpdateSql({
+  isPaused,
+  isQueued,
+}: {
+  isPaused: Prisma.Sql,
+  isQueued: Prisma.Sql,
+}): Prisma.Sql {
+  return Prisma.sql`
+    CASE
+      WHEN ${isPaused} THEN 'PAUSED'::"EmailOutboxStatus"
+      WHEN "skippedReason" IS NOT NULL THEN 'SKIPPED'::"EmailOutboxStatus"
+      WHEN "startedRenderingAt" IS NULL THEN 'PREPARING'::"EmailOutboxStatus"
+      WHEN "finishedRenderingAt" IS NULL THEN 'RENDERING'::"EmailOutboxStatus"
+      WHEN "renderErrorExternalMessage" IS NOT NULL THEN 'RENDER_ERROR'::"EmailOutboxStatus"
+      WHEN "startedSendingAt" IS NULL AND ${isQueued} IS FALSE THEN 'SCHEDULED'::"EmailOutboxStatus"
+      WHEN "startedSendingAt" IS NULL THEN 'QUEUED'::"EmailOutboxStatus"
+      WHEN "finishedSendingAt" IS NULL THEN 'SENDING'::"EmailOutboxStatus"
+      WHEN "sendServerErrorExternalMessage" IS NOT NULL THEN 'SERVER_ERROR'::"EmailOutboxStatus"
+      WHEN "canHaveDeliveryInfo" IS FALSE THEN 'SENT'::"EmailOutboxStatus"
+      WHEN "markedAsSpamAt" IS NOT NULL THEN 'MARKED_AS_SPAM'::"EmailOutboxStatus"
+      WHEN "clickedAt" IS NOT NULL THEN 'CLICKED'::"EmailOutboxStatus"
+      WHEN "openedAt" IS NOT NULL THEN 'OPENED'::"EmailOutboxStatus"
+      WHEN "bouncedAt" IS NOT NULL THEN 'BOUNCED'::"EmailOutboxStatus"
+      WHEN "deliveryDelayedAt" IS NOT NULL THEN 'DELIVERY_DELAYED'::"EmailOutboxStatus"
+      WHEN "canHaveDeliveryInfo" IS TRUE AND "deliveredAt" IS NULL THEN 'SENDING'::"EmailOutboxStatus"
+      ELSE 'SENT'::"EmailOutboxStatus"
+    END
+  `;
+}
+
 // eslint-disable-next-line @typescript-eslint/no-explicit-any -- complex discriminated union types require type assertions
 function prismaModelToCrud(prismaModel: EmailOutbox): EmailOutboxCrud["Server"]["Read"] {
   const recipient = prismaModel.to as any;
@@ -388,6 +418,7 @@ export const emailOutboxCrudHandlers = createLazyProxy(() => createCrudHandlers(
       setNull("nextSendRetryAt"); // Clear any pending retry so it won't be picked up
       set("skippedReason", Prisma.sql`'MANUALLY_CANCELLED'::"EmailOutboxSkippedReason"`);
       set("skippedDetails", Prisma.sql`'{}'::jsonb`);
+      set("status", Prisma.sql`'SKIPPED'::"EmailOutboxStatus"`);
     } else {
       // Normal update path
       let needsRerenderReset = false;
@@ -423,6 +454,10 @@ export const emailOutboxCrudHandlers = createLazyProxy(() => createCrudHandlers(
       // If content changed, reset rendering and sending state
       if (needsRerenderReset) {
         set("isQueued", Prisma.sql`false`);
+        set("status", emailOutboxStatusAfterManualUpdateSql({
+          isPaused: data.is_paused !== undefined ? Prisma.sql`${data.is_paused}` : Prisma.sql`"isPaused"`,
+          isQueued: Prisma.sql`false`,
+        }));
         // Reset retry fields (sendRetries to 0, others to null)
         set("sendRetries", Prisma.sql`0`);
         setNull(
@@ -439,6 +474,16 @@ export const emailOutboxCrudHandlers = createLazyProxy(() => createCrudHandlers(
           "deliveredAt", "deliveryDelayedAt", "bouncedAt",
           "openedAt", "clickedAt", "unsubscribedAt", "markedAsSpamAt"
         );
+      } else if (data.is_paused !== undefined) {
+        set("status", emailOutboxStatusAfterManualUpdateSql({
+          isPaused: Prisma.sql`${data.is_paused}`,
+          isQueued: data.scheduled_at_millis !== undefined ? Prisma.sql`false` : Prisma.sql`"isQueued"`,
+        }));
+      } else if (data.scheduled_at_millis !== undefined) {
+        set("status", emailOutboxStatusAfterManualUpdateSql({
+          isPaused: Prisma.sql`"isPaused"`,
+          isQueued: Prisma.sql`false`,
+        }));
       }
     }
 
@@ -550,4 +595,3 @@ function parseEmailOutboxFromJson(j: Record<string, unknown>): EmailOutbox {
     shouldUpdateSequenceId: j.shouldUpdateSequenceId as boolean,
   };
 }
-

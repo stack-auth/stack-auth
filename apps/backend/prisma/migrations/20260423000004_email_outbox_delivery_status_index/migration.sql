@@ -1,6 +1,5 @@
--- Create the replacement status index in a follow-up migration so the prior
--- EmailOutbox table rewrite has committed before CREATE INDEX CONCURRENTLY
--- waits for conflicting transactions.
+-- Create the replacement status index after the status column swap has
+-- committed, so CREATE INDEX CONCURRENTLY can wait outside that transaction.
 
 -- SPLIT_STATEMENT_SENTINEL
 -- SINGLE_STATEMENT_SENTINEL

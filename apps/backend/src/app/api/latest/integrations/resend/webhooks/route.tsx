@@ -32,25 +32,43 @@ function ensureResendWebhookSignature(headers: Record<string, string[] | undefin
   }
 }
 
-type ResendWebhookPayload = {
-  type?: string,
-  created_at?: string,
-  data?: {
+const resendWebhookRecipientSchema = yupMixed<string | string[]>()
+  .test(
+    "string-or-string-array",
+    "data.to must be a string or an array of strings",
+    (value) => value == null || typeof value === "string" || (Array.isArray(value) && value.every((recipient) => typeof recipient === "string")),
+  )
+  .optional();
+
+const resendWebhookPayloadSchema = yupObject({
+  type: yupString().optional(),
+  created_at: yupString().optional(),
+  data: yupObject({
     // domain.* fields
-    id?: string,
-    status?: string,
-    error?: string,
+    id: yupString().optional(),
+    status: yupString().optional(),
+    error: yupString().optional(),
     // email.* fields
-    email_id?: string,
-    to?: string[] | string,
-    created_at?: string,
-    bounce?: {
-      message?: string,
-      subType?: string,
-      type?: string,
-    },
-  },
-};
+    email_id: yupString().optional(),
+    to: resendWebhookRecipientSchema,
+    created_at: yupString().optional(),
+    bounce: yupObject({
+      message: yupString().optional(),
+      subType: yupString().optional(),
+      type: yupString().optional(),
+    }).optional(),
+  }).optional(),
+}).defined();
+
+type ResendWebhookPayload = Awaited<ReturnType<typeof parseResendWebhookPayload>>;
+
+async function parseResendWebhookPayload(bodyBuffer: ArrayBuffer) {
+  const payload = JSON.parse(decodeBody(bodyBuffer));
+  return await resendWebhookPayloadSchema.validate(payload, {
+    strict: true,
+    stripUnknown: false,
+  });
+}
 
 // Window for matching a Resend webhook event back to an EmailOutbox row by (recipient, time).
 // Generous because delivery info can take minutes; bounces can take up to ~72h.
@@ -81,21 +99,34 @@ function emailEventKindFromType(type: string): EmailEventKind | null {
 async function processEmailDeliveryEvent(kind: EmailEventKind, payload: ResendWebhookPayload): Promise<void> {
   const rawTo = payload.data?.to;
   const recipients = Array.isArray(rawTo) ? rawTo : (typeof rawTo === "string" ? [rawTo] : []);
-  if (recipients.length === 0) {
+  const normalizedRecipients = [...new Set(
+    recipients
+      .map((recipient) => recipient.trim().toLowerCase())
+      .filter((recipient) => recipient.length > 0),
+  )];
+  if (normalizedRecipients.length === 0) {
     captureError("resend-webhook-email-event-missing-to", new StackAssertionError("Resend email.* webhook is missing data.to", { payload }));
     return;
   }
 
   const eventAt = parseEventTimestamp(payload.data?.created_at ?? payload.created_at);
+  if (eventAt == null) {
+    captureError("resend-webhook-email-event-missing-created-at", new StackAssertionError("Resend email.* webhook has missing or invalid created_at; skipping delivery-state update", {
+      kind,
+      rawCreatedAt: payload.data?.created_at ?? payload.created_at,
+      emailId: payload.data?.email_id,
+    }));
+    return;
+  }
 
   // Build the delivery-state SET clause for this event kind. `delivery_delayed`
   // is non-terminal; Resend can later send `delivered` or `bounced`, and the
   // EmailOutbox exclusivity constraint allows only one of delivered/delayed/bounced.
   const deliveryUpdate =
-    kind === "delivered" ? Prisma.sql`"deliveredAt" = ${eventAt}, "deliveryDelayedAt" = NULL` :
-      kind === "delivery_delayed" ? Prisma.sql`"deliveryDelayedAt" = ${eventAt}` :
-        kind === "bounced" ? Prisma.sql`"bouncedAt" = ${eventAt}, "deliveryDelayedAt" = NULL` :
-          Prisma.sql`"markedAsSpamAt" = ${eventAt}`;
+    kind === "delivered" ? Prisma.sql`"deliveredAt" = ${eventAt}, "deliveryDelayedAt" = NULL, "status" = 'SENT'::"EmailOutboxStatus"` :
+      kind === "delivery_delayed" ? Prisma.sql`"deliveryDelayedAt" = ${eventAt}, "status" = 'DELIVERY_DELAYED'::"EmailOutboxStatus"` :
+        kind === "bounced" ? Prisma.sql`"bouncedAt" = ${eventAt}, "deliveryDelayedAt" = NULL, "status" = 'BOUNCED'::"EmailOutboxStatus"` :
+          Prisma.sql`"markedAsSpamAt" = ${eventAt}, "status" = 'MARKED_AS_SPAM'::"EmailOutboxStatus"`;
 
   // For `delivered` and `bounced` we don't want to overwrite a terminal state if we
   // somehow receive events out of order. `complained` records a separate user action
@@ -114,79 +145,77 @@ async function processEmailDeliveryEvent(kind: EmailEventKind, payload: ResendWe
 
   const windowStart = new Date(eventAt.getTime() - EVENT_MATCH_WINDOW_HOURS * 60 * 60 * 1000);
 
-  for (const recipient of recipients) {
-    const normalizedRecipient = recipient.trim().toLowerCase();
-    if (normalizedRecipient.length === 0) continue;
-
-    // Find the single most recent outbox row that matches this recipient and was sent within
-    // the window. Match against either:
-    //  - `to->emails` array (custom-emails / user-custom-emails with explicit emails), or
-    //  - the user's primary email contact channel (user-primary-email,
-    //    or user-custom-emails falling back to primary).
-    // We CTE-select the single best candidate then conditionally UPDATE it.
-    const updated = await globalPrismaClient.$queryRaw<{ id: string, tenancyId: string }[]>(Prisma.sql`
-      WITH candidate AS (
-        SELECT o."tenancyId", o."id"
-        FROM "EmailOutbox" o
-        WHERE o."canHaveDeliveryInfo" = TRUE
-          AND o."finishedSendingAt" IS NOT NULL
-          AND o."finishedSendingAt" >= ${windowStart}
-          AND o."finishedSendingAt" <= ${eventAt}
-          AND ${terminalGuard}
-          AND ${selfGuard}
-          AND (
-            (
-              o."to"->>'type' IN ('custom-emails', 'user-custom-emails')
-              AND EXISTS (
-                SELECT 1
-                FROM jsonb_array_elements_text(COALESCE(o."to"->'emails', '[]'::jsonb)) AS e(value)
-                WHERE LOWER(e.value) = ${normalizedRecipient}
-              )
-            )
-            OR (
-              o."to"->>'type' IN ('user-primary-email', 'user-custom-emails')
-              AND EXISTS (
-                SELECT 1 FROM "ContactChannel" cc
-                WHERE cc."tenancyId" = o."tenancyId"
-                  AND cc."projectUserId" = (o."to"->>'userId')::uuid
-                  AND cc."type" = 'EMAIL'
-                  AND LOWER(cc."value") = ${normalizedRecipient}
-              )
-            )
-          )
-        ORDER BY o."finishedSendingAt" DESC
-        LIMIT 1
-      )
-      UPDATE "EmailOutbox" e
-      SET ${deliveryUpdate},
-          "shouldUpdateSequenceId" = TRUE
-      FROM candidate
-      WHERE e."tenancyId" = candidate."tenancyId"
-        AND e."id" = candidate."id"
+  // Find the single most recent outbox row that matches any recipient and was sent within
+  // the window. Match against either:
+  //  - `to->emails` array (custom-emails / user-custom-emails with explicit emails), or
+  //  - the user's primary email contact channel (user-primary-email,
+  //    or user-custom-emails falling back to primary).
+  // We CTE-select the single best candidate then conditionally UPDATE it.
+  const updated = await globalPrismaClient.$queryRaw<{ id: string, tenancyId: string }[]>(Prisma.sql`
+    WITH candidate AS (
+      SELECT o."tenancyId", o."id"
+      FROM "EmailOutbox" o
+      WHERE o."canHaveDeliveryInfo" = TRUE
+        AND o."finishedSendingAt" IS NOT NULL
+        AND o."finishedSendingAt" >= ${windowStart}
+        AND o."finishedSendingAt" <= ${eventAt}
         AND ${terminalGuard}
         AND ${selfGuard}
-      RETURNING e."id", e."tenancyId";
-    `);
+        AND (
+          (
+            o."to"->>'type' IN ('custom-emails', 'user-custom-emails')
+            AND EXISTS (
+              SELECT 1
+              FROM jsonb_array_elements_text(COALESCE(o."to"->'emails', '[]'::jsonb)) AS e(value)
+              WHERE LOWER(e.value) IN (${Prisma.join(normalizedRecipients)})
+            )
+          )
+          OR (
+            o."to"->>'type' IN ('user-primary-email', 'user-custom-emails')
+            AND EXISTS (
+              SELECT 1 FROM "ContactChannel" cc
+              WHERE cc."tenancyId" = o."tenancyId"
+                AND cc."projectUserId" = (o."to"->>'userId')::uuid
+                AND cc."type" = 'EMAIL'
+                AND LOWER(cc."value") IN (${Prisma.join(normalizedRecipients)})
+            )
+          )
+        )
+      ORDER BY o."finishedSendingAt" DESC
+      LIMIT 1
+    )
+    UPDATE "EmailOutbox" e
+    SET ${deliveryUpdate},
+        "shouldUpdateSequenceId" = TRUE
+    FROM candidate
+    WHERE e."tenancyId" = candidate."tenancyId"
+      AND e."id" = candidate."id"
+      AND ${terminalGuard}
+      AND ${selfGuard}
+    RETURNING e."id", e."tenancyId";
+  `);
 
-    if (updated.length === 0) {
-      // Not fatal — could be a test email, an already-final row, or an event outside our match window.
-      captureError("resend-webhook-email-event-no-match", new StackAssertionError("No EmailOutbox row matched Resend webhook event", {
-        kind,
-        recipient: normalizedRecipient,
-        eventAt: eventAt.toISOString(),
-        emailId: payload.data?.email_id,
-      }));
-    }
+  if (updated.length === 0) {
+    // Not fatal — could be a test email, an already-final row, or an event outside our match window.
+    captureError("resend-webhook-email-event-no-match", new StackAssertionError("No EmailOutbox row matched Resend webhook event", {
+      kind,
+      recipients: normalizedRecipients,
+      eventAt: eventAt.toISOString(),
+      emailId: payload.data?.email_id,
+    }));
   }
 }
 
-function parseEventTimestamp(raw: string | undefined): Date {
-  if (raw) {
+function parseEventTimestamp(raw: string | undefined): Date | null {
+  if (raw == null) {
+    return null;
+  }
+  if (raw.length > 0) {
     const parsed = new Date(raw);
     if (!isNaN(parsed.getTime())) return parsed;
-    captureError("resend-webhook-parse-event-timestamp-invalid", new StackAssertionError("parseEventTimestamp: failed to parse raw timestamp, falling back to current time", { raw }));
   }
-  return new Date();
+  captureError("resend-webhook-parse-event-timestamp-invalid", new StackAssertionError("parseEventTimestamp: failed to parse raw timestamp", { raw }));
+  return null;
 }
 
 export const POST = createSmartRouteHandler({
@@ -212,7 +241,7 @@ export const POST = createSmartRouteHandler({
   handler: async (req, fullReq) => {
     ensureResendWebhookSignature(req.headers, fullReq.bodyBuffer);
 
-    const payloadResult = Result.fromThrowing(() => JSON.parse(decodeBody(fullReq.bodyBuffer)) as ResendWebhookPayload);
+    const payloadResult = await Result.fromThrowingAsync(async () => await parseResendWebhookPayload(fullReq.bodyBuffer));
     if (payloadResult.status === "error") {
       throw new StatusError(400, "Invalid JSON payload in Resend webhook");
     }
@@ -236,6 +265,11 @@ export const POST = createSmartRouteHandler({
       const kind = eventType ? emailEventKindFromType(eventType) : null;
       if (kind) {
         await processEmailDeliveryEvent(kind, payload);
+      } else {
+        captureError("resend-webhook-unknown-event-type", new StackAssertionError("Resend webhook payload has unknown event type", {
+          eventType,
+          payload,
+        }));
       }
     }
 

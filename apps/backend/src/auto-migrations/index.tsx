@@ -145,8 +145,8 @@ export async function applyMigrations(options: {
 
           const txOrPrismaClient = runOutside ? options.prismaClient : tx;
           if (isSingleStatement) {
-            const res = await txOrPrismaClient.$queryRaw`${Prisma.raw(statement)}`;
             if (isConditionallyRepeatMigration) {
+              const res = await txOrPrismaClient.$queryRaw`${Prisma.raw(statement)}`;
               if (!Array.isArray(res)) {
                 throw new StackAssertionError("Expected an array as a return value of repeat condition", { res });
               }
@@ -164,6 +164,8 @@ export async function applyMigrations(options: {
                   return;
                 }
               }
+            } else {
+              await txOrPrismaClient.$executeRaw`${Prisma.raw(statement)}`;
             }
           } else {
             await txOrPrismaClient.$executeRaw`
