@@ -10,6 +10,7 @@ import { writeConfigValue } from "../lib/config.js";
 import { CliError, AuthError } from "../lib/errors.js";
 import { isNonInteractiveEnv } from "../lib/interactive.js";
 import { createInitPrompt } from "../lib/init-prompt.js";
+import { createProjectInteractively } from "../lib/create-project.js";
 import { runClaudeAgent } from "../lib/claude-agent.js";
 import { detectImportPackageFromDir, renderConfigFileContent } from "@stackframe/stack-shared/dist/config-rendering";
 
@@ -156,10 +157,29 @@ async function handleLinkFromCloud(flags: Record<string, unknown>, opts: InitOpt
   }
 
   const user = await getInternalUser(sessionAuth);
-  const projects = await user.listOwnedProjects();
+  let projects = await user.listOwnedProjects();
+  let autoCreatedProjectId: string | null = null;
 
   if (projects.length === 0) {
-    throw new CliError("You don't own any projects. Create one at app.stack-auth.com first.");
+    if (isNonInteractiveEnv()) {
+      throw new CliError("No projects found. Run `stack project create --display-name <name>` first, or set --select-project-id.");
+    }
+
+    const shouldCreate = await confirm({
+      message: "You don't have any Stack Auth projects yet. Would you like to create one?",
+      default: true,
+    });
+
+    if (!shouldCreate) {
+      throw new CliError("You don't own any projects. Create one at app.stack-auth.com or re-run and choose to create one.");
+    }
+
+    const newProject = await createProjectInteractively(user, {
+      defaultDisplayName: path.basename(outputDir),
+    });
+    console.log(`\nCreated project: ${newProject.displayName} (${newProject.id})\n`);
+    projects = [newProject];
+    autoCreatedProjectId = newProject.id;
   }
 
   let projectId: string;
@@ -169,6 +189,8 @@ async function handleLinkFromCloud(flags: Record<string, unknown>, opts: InitOpt
       throw new CliError(`Project '${opts.selectProjectId}' not found among your owned projects.`);
     }
     projectId = opts.selectProjectId;
+  } else if (autoCreatedProjectId) {
+    projectId = autoCreatedProjectId;
   } else {
     projectId = await select({
       message: "Select a project:",
