@@ -187,18 +187,19 @@ export const branchPaymentsSchema = yupObject({
     const productLines = value.productLines;
     for (const [productId, product] of Object.entries(products)) {
       if (!isObjectLike(product)) continue;
-      if (product.productLineId == null) continue;
-      const productLine = isObjectLike(productLines) ? getOrUndefined(productLines, product.productLineId) : undefined;
+      const productLineId = product.productLineId;
+      if (typeof productLineId !== "string" || productLineId.length === 0) continue;
+      const productLine = isObjectLike(productLines) ? getOrUndefined(productLines, productLineId) : undefined;
       if (productLine === undefined) {
         return this.createError({
-          message: `Product "${productId}" specifies product line ID "${product.productLineId}", but that product line does not exist`,
+          message: `Product "${productId}" specifies product line ID "${productLineId}", but that product line does not exist`,
           path: `${this.path}.products.${productId}.productLineId`,
         });
       }
       if (!isObjectLike(productLine)) continue;
       if (product.customerType !== productLine.customerType) {
         return this.createError({
-          message: `Product "${productId}" has customer type "${product.customerType}" but its product line "${product.productLineId}" has customer type "${productLine.customerType}"`,
+          message: `Product "${productId}" has customer type "${product.customerType}" but its product line "${productLineId}" has customer type "${productLine.customerType}"`,
           path: `${this.path}.products.${productId}.customerType`,
         });
       }
@@ -206,6 +207,95 @@ export const branchPaymentsSchema = yupObject({
     return true;
   }
 );
+import.meta.vitest?.test("branchPaymentsSchema accepts partial payments config without products", async ({ expect }) => {
+  await expect(branchPaymentsSchema.validate({
+    blockNewPurchases: true,
+  }, { abortEarly: false })).resolves.toMatchObject({
+    blockNewPurchases: true,
+  });
+});
+
+import.meta.vitest?.test("branchPaymentsSchema accepts product lines without products", async ({ expect }) => {
+  await expect(branchPaymentsSchema.validate({
+    productLines: {
+      pro: {
+        displayName: "Pro",
+        customerType: "user",
+      },
+    },
+  }, { abortEarly: false })).resolves.toMatchObject({
+    productLines: {
+      pro: {
+        displayName: "Pro",
+        customerType: "user",
+      },
+    },
+  });
+});
+
+import.meta.vitest?.test("branchPaymentsSchema rejects a product that references a missing product line", async ({ expect }) => {
+  await expect(branchPaymentsSchema.validate({
+    products: {
+      pro: {
+        customerType: "user",
+        productLineId: "missing-line",
+        prices: "include-by-default",
+      },
+    },
+  }, { abortEarly: false })).rejects.toThrowErrorMatchingInlineSnapshot(`[ValidationError: Product "pro" specifies product line ID "missing-line", but that product line does not exist]`);
+});
+
+import.meta.vitest?.test("branchPaymentsSchema rejects null product entries without throwing a raw TypeError", async ({ expect }) => {
+  await expect(branchPaymentsSchema.validate({
+    products: {
+      pro: null,
+    },
+  }, { abortEarly: false })).rejects.toThrowErrorMatchingInlineSnapshot(`[ValidationError: products cannot be null]`);
+});
+
+import.meta.vitest?.test("branchPaymentsSchema rejects null product line entries without throwing a raw TypeError", async ({ expect }) => {
+  await expect(branchPaymentsSchema.validate({
+    productLines: {
+      teamLine: null,
+    },
+    products: {
+      pro: {
+        customerType: "user",
+        productLineId: "teamLine",
+        prices: "include-by-default",
+      },
+    },
+  }, { abortEarly: false })).rejects.toThrowErrorMatchingInlineSnapshot(`[ValidationError: productLines cannot be null]`);
+});
+
+import.meta.vitest?.test("branchPaymentsSchema rejects a product whose customer type differs from its product line", async ({ expect }) => {
+  await expect(branchPaymentsSchema.validate({
+    productLines: {
+      teamLine: {
+        customerType: "team",
+      },
+    },
+    products: {
+      pro: {
+        customerType: "user",
+        productLineId: "teamLine",
+        prices: "include-by-default",
+      },
+    },
+  }, { abortEarly: false })).rejects.toThrowErrorMatchingInlineSnapshot(`[ValidationError: Product "pro" has customer type "user" but its product line "teamLine" has customer type "team"]`);
+});
+
+import.meta.vitest?.test("branchPaymentsSchema lets productLineId schema reject empty IDs", async ({ expect }) => {
+  await expect(branchPaymentsSchema.validate({
+    products: {
+      pro: {
+        customerType: "user",
+        productLineId: "",
+        prices: "include-by-default",
+      },
+    },
+  }, { abortEarly: false })).rejects.toThrowErrorMatchingInlineSnapshot(`[ValidationError: productLineId must contain only letters, numbers, underscores, and hyphens, and not start with a hyphen]`);
+});
 
 const branchDomain = yupObject({});
 
