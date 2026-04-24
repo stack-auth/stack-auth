@@ -438,7 +438,7 @@ async function renderTenancyEmails(workerId: string, tenancyId: string, group: E
   }
 }
 
-async function queueReadyEmails(): Promise<{ queuedCount: number }> {
+export async function queueReadyEmails(): Promise<{ queuedCount: number }> {
   // Queue emails that are ready to send. Split into two queries for clarity and index usage.
   // We always require scheduledAt <= NOW() to respect the original scheduling intent.
 
@@ -451,6 +451,8 @@ async function queueReadyEmails(): Promise<{ queuedCount: number }> {
     WHERE "isQueued" = FALSE
       AND "isPaused" = FALSE
       AND "skippedReason" IS NULL
+      AND "startedSendingAt" IS NULL
+      AND "finishedSendingAt" IS NULL
       AND "finishedRenderingAt" IS NOT NULL
       AND "renderedHtml" IS NOT NULL
       AND "scheduledAt" <= NOW()
@@ -469,6 +471,8 @@ async function queueReadyEmails(): Promise<{ queuedCount: number }> {
     WHERE "isQueued" = FALSE
       AND "isPaused" = FALSE
       AND "skippedReason" IS NULL
+      AND "startedSendingAt" IS NULL
+      AND "finishedSendingAt" IS NULL
       AND "finishedRenderingAt" IS NOT NULL
       AND "renderedHtml" IS NOT NULL
       AND "scheduledAt" <= NOW()
