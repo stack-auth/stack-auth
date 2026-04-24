@@ -10,11 +10,12 @@ import { writeConfigValue } from "../lib/config.js";
 import { CliError, AuthError } from "../lib/errors.js";
 import { isNonInteractiveEnv } from "../lib/interactive.js";
 import { createInitPrompt } from "../lib/init-prompt.js";
+import { createProjectInteractively } from "../lib/create-project.js";
 import { runClaudeAgent } from "../lib/claude-agent.js";
 import { detectImportPackageFromDir, renderConfigFileContent } from "@stackframe/stack-shared/dist/config-rendering";
 
 type InitOptions = {
-  mode?: "create" | "link-config" | "link-cloud",
+  mode?: "create" | "create-cloud" | "link-config" | "link-cloud",
   apps?: string,
   configFile?: string,
   selectProjectId?: string,
@@ -26,7 +27,7 @@ export function registerInitCommand(program: Command) {
   program
     .command("init")
     .description("Initialize Stack Auth in your project")
-    .option("--mode <mode>", "Mode: create, link-config, or link-cloud (skips interactive prompts)")
+    .option("--mode <mode>", "Mode: create, create-cloud, link-config, or link-cloud (skips interactive prompts)")
     .option("--apps <apps>", "Comma-separated app IDs to enable (for create mode)")
     .option("--config-file <path>", "Path to existing config file (for link-config mode)")
     .option("--select-project-id <id>", "Project ID to link (for link-cloud mode)")
@@ -57,13 +58,24 @@ async function runInit(program: Command, opts: InitOptions) {
 
   console.log("Welcome to Stack Auth!\n");
 
-  const mode: string = opts.mode ?? await select({
-    message: "Would you like to link to an existing project, or create a new one?",
-    choices: [
-      { name: "Link an existing project", value: "link" as const },
-      { name: "Create a new project (local emulator)", value: "create" as const },
-    ],
-  });
+  let mode: string;
+  if (opts.mode) {
+    mode = opts.mode;
+  } else if (opts.selectProjectId) {
+    mode = "link-cloud";
+  } else if (opts.configFile) {
+    mode = "link-config";
+  } else {
+    console.log("Creating a new Stack Auth project.\n");
+    const location = await select({
+      message: "Where would you like to create the project?",
+      choices: [
+        { name: "Stack Auth Cloud", value: "hosted" as const },
+        { name: "Local (requires local emulator installation, ~1.3gb storage required)", value: "local" as const },
+      ],
+    });
+    mode = location === "local" ? "create" : "create-cloud";
+  }
 
   let configPath: string | undefined;
 
@@ -72,6 +84,9 @@ async function runInit(program: Command, opts: InitOptions) {
     configPath = result.configPath;
   } else if (mode === "create") {
     const result = await handleCreate(opts, outputDir);
+    configPath = result.configPath;
+  } else if (mode === "create-cloud") {
+    const result = await handleCreateCloud(flags, opts, outputDir);
     configPath = result.configPath;
   } else {
     throw new CliError(`Unknown mode: ${mode}`);
@@ -138,10 +153,9 @@ async function handleLinkFromConfigFile(opts: InitOptions): Promise<{ configPath
   return { configPath };
 }
 
-async function handleLinkFromCloud(flags: Record<string, unknown>, opts: InitOptions, outputDir: string): Promise<{ configPath?: string }> {
-  let sessionAuth;
+async function ensureLoggedInSession(flags: Record<string, unknown>) {
   try {
-    sessionAuth = resolveSessionAuth(flags as { projectId?: string });
+    return resolveSessionAuth(flags as { projectId?: string });
   } catch (e) {
     if (e instanceof AuthError) {
       if (isNonInteractiveEnv()) {
@@ -149,37 +163,16 @@ async function handleLinkFromCloud(flags: Record<string, unknown>, opts: InitOpt
       }
       console.log("You need to log in first.\n");
       await performLogin(flags);
-      sessionAuth = resolveSessionAuth(flags as { projectId?: string });
-    } else {
-      throw e;
+      return resolveSessionAuth(flags as { projectId?: string });
     }
+    throw e;
   }
+}
 
-  const user = await getInternalUser(sessionAuth);
-  const projects = await user.listOwnedProjects();
-
-  if (projects.length === 0) {
-    throw new CliError("You don't own any projects. Create one at app.stack-auth.com first.");
-  }
-
-  let projectId: string;
-  if (opts.selectProjectId) {
-    const found = projects.find((p) => p.id === opts.selectProjectId);
-    if (!found) {
-      throw new CliError(`Project '${opts.selectProjectId}' not found among your owned projects.`);
-    }
-    projectId = opts.selectProjectId;
-  } else {
-    projectId = await select({
-      message: "Select a project:",
-      choices: projects.map((p) => ({
-        name: `${p.displayName} (${p.id})`,
-        value: p.id,
-      })),
-    });
-  }
-
-  const project = projects.find((p) => p.id === projectId)!;
+async function writeProjectKeysToEnv(
+  project: { id: string, app: { createInternalApiKey: (opts: { description: string, expiresAt: Date, hasPublishableClientKey: boolean, hasSecretServerKey: boolean, hasSuperSecretAdminKey: boolean }) => Promise<{ publishableClientKey?: string | null, secretServerKey?: string | null }> } },
+  outputDir: string,
+) {
   const apiKey = await project.app.createInternalApiKey({
     description: "Created by CLI init script",
     expiresAt: new Date(Date.now() + 1000 * 60 * 60 * 24 * 365 * 200), // 200 years
@@ -190,7 +183,7 @@ async function handleLinkFromCloud(flags: Record<string, unknown>, opts: InitOpt
 
   const envLines = [
     "# Stack Auth",
-    `NEXT_PUBLIC_STACK_PROJECT_ID=${projectId}`,
+    `NEXT_PUBLIC_STACK_PROJECT_ID=${project.id}`,
     `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=${apiKey.publishableClientKey ?? ""}`,
     `STACK_SECRET_SERVER_KEY=${apiKey.secretServerKey ?? ""}`,
   ].join("\n");
@@ -222,7 +215,70 @@ async function handleLinkFromCloud(flags: Record<string, unknown>, opts: InitOpt
     fs.writeFileSync(envPath, envLines + "\n");
     console.log("\nCreated .env with Stack Auth keys");
   }
+}
 
+async function handleCreateCloud(flags: Record<string, unknown>, opts: InitOptions, outputDir: string): Promise<{ configPath?: string }> {
+  const sessionAuth = await ensureLoggedInSession(flags);
+  const user = await getInternalUser(sessionAuth);
+
+  const newProject = await createProjectInteractively(user, {
+    defaultDisplayName: path.basename(outputDir),
+  });
+  console.log(`\nCreated project: ${newProject.displayName} (${newProject.id})\n`);
+
+  await writeProjectKeysToEnv(newProject, outputDir);
+  return {};
+}
+
+async function handleLinkFromCloud(flags: Record<string, unknown>, opts: InitOptions, outputDir: string): Promise<{ configPath?: string }> {
+  const sessionAuth = await ensureLoggedInSession(flags);
+  const user = await getInternalUser(sessionAuth);
+  let projects = await user.listOwnedProjects();
+  let autoCreatedProjectId: string | null = null;
+
+  if (projects.length === 0) {
+    if (isNonInteractiveEnv()) {
+      throw new CliError("No projects found. Run `stack project create --display-name <name>` first, or set --select-project-id.");
+    }
+
+    const shouldCreate = await confirm({
+      message: "You don't have any Stack Auth projects yet. Would you like to create one?",
+      default: true,
+    });
+
+    if (!shouldCreate) {
+      throw new CliError("You don't own any projects. Create one at app.stack-auth.com or re-run and choose to create one.");
+    }
+
+    const newProject = await createProjectInteractively(user, {
+      defaultDisplayName: path.basename(outputDir),
+    });
+    console.log(`\nCreated project: ${newProject.displayName} (${newProject.id})\n`);
+    projects = [newProject];
+    autoCreatedProjectId = newProject.id;
+  }
+
+  let projectId: string;
+  if (opts.selectProjectId) {
+    const found = projects.find((p) => p.id === opts.selectProjectId);
+    if (!found) {
+      throw new CliError(`Project '${opts.selectProjectId}' not found among your owned projects.`);
+    }
+    projectId = opts.selectProjectId;
+  } else if (autoCreatedProjectId) {
+    projectId = autoCreatedProjectId;
+  } else {
+    projectId = await select({
+      message: "Select a project:",
+      choices: projects.map((p) => ({
+        name: `${p.displayName} (${p.id})`,
+        value: p.id,
+      })),
+    });
+  }
+
+  const project = projects.find((p) => p.id === projectId)!;
+  await writeProjectKeysToEnv(project, outputDir);
   return {};
 }
 
