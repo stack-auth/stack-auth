@@ -10,6 +10,7 @@ import { runEmailQueueStep, serializeRecipient } from './email-queue-step';
 import { LowLevelEmailConfig, isSecureEmailPort } from './emails-low-level';
 import { Tenancy } from './tenancies';
 
+export const RESEND_SMTP_HOST = "smtp.resend.com";
 
 /**
  * Describes where an email should be delivered. Each outbox entry targets exactly one recipient entity.
@@ -57,6 +58,7 @@ export async function sendEmailToMany(options: {
       themeId: options.themeId,
       isHighPriority: options.isHighPriority,
       createdWith: options.createdWith.type === "draft" ? EmailOutboxCreatedWith.DRAFT : EmailOutboxCreatedWith.PROGRAMMATIC_CALL,
+      status: "PREPARING",
       emailDraftId: options.createdWith.type === "draft" ? options.createdWith.draftId : undefined,
       emailProgrammaticCallTemplateId: options.createdWith.type === "programmatic-call" ? options.createdWith.templateId : undefined,
       to: serializeRecipient(recipient)!,
@@ -112,7 +114,7 @@ export async function getEmailConfig(tenancy: Tenancy): Promise<LowLevelEmailCon
         });
       }
       return {
-        host: "smtp.resend.com",
+        host: RESEND_SMTP_HOST,
         port: 465,
         username: "resend",
         password: projectEmailConfig.password,
