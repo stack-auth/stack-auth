@@ -1,9 +1,11 @@
 import { buildOneTimePurchaseTransaction, buildSubscriptionTransaction, resolveSelectedPriceFromProduct } from "@/app/api/latest/internal/payments/transactions/transaction-builder";
 import { bulldozerWriteManualTransaction, bulldozerWriteOneTimePurchase, bulldozerWriteSubscription } from "@/lib/payments/bulldozer-dual-write";
+import { collectInverseFee, PlatformFeeSourceType } from "@/lib/payments/platform-fees";
 import type { ManualTransactionRow } from "@/lib/payments/schema/types";
 import { getStripeForAccount } from "@/lib/stripe";
 import { getPrismaClientForTenancy } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { runAsynchronouslyAndWaitUntil } from "@/utils/background-tasks";
 import type { TransactionEntry } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { adaptSchema, adminAuthTypeSchema, moneyAmountSchema, productSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
@@ -262,10 +264,24 @@ export const POST = createSmartRouteHandler({
       if (refundAmountStripeUnits > totalStripeUnits) {
         throw new KnownErrors.SchemaError("Refund amount cannot exceed the charged amount.");
       }
-      await stripe.refunds.create({
+      const subscriptionRefund = await stripe.refunds.create({
         payment_intent: paymentIntentId,
         amount: refundAmountStripeUnits,
+        // Keep the charge-leg application fee with the platform. Stripe's
+        // default would reverse it proportionally, cancelling out our 0.9%
+        // cut on the original charge.
+        refund_application_fee: false,
       });
+      // Fee collection is best-effort and the originating refund has already
+      // succeeded, but we still need to keep the background ledger/transfer work
+      // alive after the response on serverless runtimes.
+      runAsynchronouslyAndWaitUntil(collectInverseFee({
+        tenancy: auth.tenancy,
+        amountStripeUnits: refundAmountStripeUnits,
+        currency: "usd",
+        sourceType: PlatformFeeSourceType.REFUND,
+        sourceId: subscriptionRefund.id,
+      }));
       const refundedAt = new Date();
       if (refundedQuantity > 0) {
         if (!subscription.stripeSubscriptionId) {
@@ -363,14 +379,22 @@ export const POST = createSmartRouteHandler({
       if (refundAmountStripeUnits > totalStripeUnits) {
         throw new KnownErrors.SchemaError("Refund amount cannot exceed the charged amount.");
       }
-      await stripe.refunds.create({
+      const purchaseRefund = await stripe.refunds.create({
         payment_intent: purchase.stripePaymentIntentId,
         amount: refundAmountStripeUnits,
         metadata: {
           tenancyId: auth.tenancy.id,
           purchaseId: purchase.id,
         },
+        refund_application_fee: false,
       });
+      runAsynchronouslyAndWaitUntil(collectInverseFee({
+        tenancy: auth.tenancy,
+        amountStripeUnits: refundAmountStripeUnits,
+        currency: "usd",
+        sourceType: PlatformFeeSourceType.REFUND,
+        sourceId: purchaseRefund.id,
+      }));
       const refundedAt = new Date();
       await prisma.oneTimePurchase.update({
         where: { tenancyId_id: { tenancyId: auth.tenancy.id, id: body.id } },

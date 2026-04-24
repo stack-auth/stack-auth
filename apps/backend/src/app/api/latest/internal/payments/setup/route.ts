@@ -50,6 +50,22 @@ export const POST = createSmartRouteHandler({
           transfers: { requested: true },
         },
         country: "US",
+        // `debit_negative_balances` lets Stripe ACH-debit the merchant's
+        // linked bank when their Stripe balance goes negative due to payouts,
+        // chargebacks, or other settlement events. It does NOT let our
+        // `stripe.transfers.create` push a connected account into a negative
+        // balance on its own — transfers hard-fail on insufficient balance
+        // and land in the PlatformFeeEvent ledger with status=FAILED for
+        // manual reconciliation. We still enable this setting so that merchant
+        // balances that *would* go negative for other reasons (e.g. their own
+        // refunds running ahead of incoming payments) are covered automatically.
+        // Refs: https://docs.stripe.com/connect/account-debits
+        //       https://docs.stripe.com/connect/account-balances#negative-balances
+        settings: {
+          payouts: {
+            debit_negative_balances: true,
+          },
+        },
         metadata: {
           tenancyId: auth.tenancy.id,
         }
