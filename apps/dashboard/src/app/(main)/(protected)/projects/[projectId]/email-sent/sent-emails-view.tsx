@@ -2,41 +2,69 @@
 
 import { DesignBadge } from "@/components/design-components";
 import { DesignCard } from "@/components/design-components";
-import { DesignDataTable } from "@/components/design-components";
 import { useRouter } from "@/components/router";
 import { Spinner, Typography } from "@/components/ui";
 import { Envelope } from "@phosphor-icons/react";
 import { AdminEmailOutbox } from "@stackframe/stack";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { ColumnDef } from "@tanstack/react-table";
+import {
+  createDefaultDataGridState,
+  DataGrid,
+  useDataSource,
+  type DataGridColumnDef,
+  type DataGridState,
+} from "@stackframe/dashboard-ui-components";
 import { type ReactNode, useCallback, useEffect, useMemo, useState } from "react";
 import { useAdminApp, useProjectId } from "../use-admin-app";
 import { DomainReputationCard } from "./domain-reputation-card";
 import { STATUS_LABELS, computeEmailStats, getStatusBadgeColor } from "./email-status-utils";
 import { StatsBar } from "./stats-bar";
 
-const emailColumns: ColumnDef<AdminEmailOutbox>[] = [
+type EmailWithDeliveredAt = AdminEmailOutbox & {
+  deliveredAt?: Date | string | null,
+};
+
+function hasDeliveredAt(email: AdminEmailOutbox): email is EmailWithDeliveredAt {
+  return "deliveredAt" in email;
+}
+
+function getRecipientDisplay(email: AdminEmailOutbox): string {
+  const to = email.to;
+  if (to.type === "user-primary-email") {
+    return `User: ${to.userId.slice(0, 8)}...`;
+  }
+  if (to.type === "user-custom-emails") {
+    return to.emails[0] ?? `User: ${to.userId.slice(0, 8)}...`;
+  }
+  return to.emails[0] ?? "No recipients";
+}
+
+function getEmailTimestamp(email: AdminEmailOutbox): Date {
+  const deliveredAt = hasDeliveredAt(email) ? email.deliveredAt : undefined;
+  return deliveredAt ? new Date(deliveredAt) : email.scheduledAt;
+}
+
+const emailColumns: DataGridColumnDef<AdminEmailOutbox>[] = [
   {
-    accessorKey: "recipient",
+    id: "recipient",
     header: "Recipient",
-    cell: ({ row }) => {
-      const to = row.original.to;
-      if (to.type === "user-primary-email") return `User: ${to.userId.slice(0, 8)}...`;
-      if (to.type === "user-custom-emails") return to.emails[0] ?? `User: ${to.userId.slice(0, 8)}...`;
-      return to.emails[0] ?? "No recipients";
-    },
+    width: 200,
+    type: "string",
+    accessor: (row) => getRecipientDisplay(row),
   },
   {
-    accessorKey: "scheduledAt",
+    id: "scheduledAt",
     header: "Time",
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any -- deliveredAt may not exist on all status variants
-    cell: ({ row }) => ((row.original as any).deliveredAt ? new Date((row.original as any).deliveredAt).toLocaleString() : row.original.scheduledAt.toLocaleString()),
+    accessor: (row) => getEmailTimestamp(row),
+    width: 180,
+    type: "dateTime",
   },
   {
-    accessorKey: "status",
+    id: "status",
     header: "Status",
-    cell: ({ row }) => (
-      <DesignBadge label={STATUS_LABELS[row.original.status]} color={getStatusBadgeColor(row.original.status)} size="sm" />
+    width: 120,
+    renderCell: ({ row }) => (
+      <DesignBadge label={STATUS_LABELS[row.status]} color={getStatusBadgeColor(row.status)} size="sm" />
     ),
   },
 ];
@@ -53,6 +81,12 @@ export function SentEmailsView({ filterFn, renderActions }: SentEmailsViewProps)
   const [emails, setEmails] = useState<AdminEmailOutbox[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Kept as a bulk fetch (rather than cursor-paginated via `dataSource`)
+  // because `filterFn` is an arbitrary client-side predicate — we can't
+  // translate it to backend query params, and `computeEmailStats` needs
+  // every filtered row to produce accurate totals. If the outbox grows
+  // too large for a single fetch, we'd need a server-side stats +
+  // paginated-list endpoint.
   const refreshEmails = useCallback(async () => {
     setLoading(true);
     try {
@@ -64,11 +98,35 @@ export function SentEmailsView({ filterFn, renderActions }: SentEmailsViewProps)
   }, [stackAdminApp]);
 
   useEffect(() => {
-    runAsynchronouslyWithAlert(refreshEmails);
+    let cancelled = false;
+    runAsynchronouslyWithAlert(async () => {
+      await refreshEmails();
+      if (cancelled) return;
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [refreshEmails]);
 
   const filtered = useMemo(() => emails.filter(filterFn), [emails, filterFn]);
   const stats = useMemo(() => computeEmailStats(filtered), [filtered]);
+
+  const [gridState, setGridState] = useState<DataGridState>(() => ({
+    ...createDefaultDataGridState(emailColumns),
+    sorting: [{ columnId: "scheduledAt", direction: "desc" }],
+  }));
+
+  const gridData = useDataSource({
+    data: filtered,
+    columns: emailColumns,
+    getRowId: (row) => row.id,
+    sorting: gridState.sorting,
+    quickSearch: gridState.quickSearch,
+    pagination: gridState.pagination,
+    // Client mode: arbitrary `filterFn` + client-computed stats require the
+    // full list. See comment above `refreshEmails`.
+    paginationMode: "client",
+  });
 
   return (
     <div className="flex gap-4">
@@ -102,12 +160,17 @@ export function SentEmailsView({ filterFn, renderActions }: SentEmailsViewProps)
               <Typography variant="secondary">Loading...</Typography>
             </div>
           ) : (
-            <DesignDataTable
-              data={filtered}
-              defaultColumnFilters={[]}
+            <DataGrid
               columns={emailColumns}
-              defaultSorting={[{ id: "scheduledAt", desc: true }]}
-              onRowClick={(email) => router.push(`/projects/${projectId}/email-viewer/${email.id}`)}
+              rows={gridData.rows}
+              getRowId={(row) => row.id}
+              totalRowCount={gridData.totalRowCount}
+              isLoading={gridData.isLoading}
+              state={gridState}
+              onChange={setGridState}
+              onRowClick={(row) => {
+                router.push(`/projects/${projectId}/email-viewer/${row.id}`);
+              }}
             />
           )}
         </DesignCard>

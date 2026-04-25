@@ -65,7 +65,7 @@ function PaymentsLayoutInner({ children }: { children: React.ReactNode }) {
 
   if (!stripeAccountInfo && !isLocalEmulator) {
     return (
-      <div className="mx-auto max-w-sm h-full flex items-center">
+      <div className="mx-auto flex w-full max-w-sm min-h-[calc(100vh-4.5rem)] items-center justify-center px-3 py-8">
         <Card className="w-full">
           <CardContent className="p-8 text-center">
             <div className="mx-auto mb-4 grid h-12 w-12 place-items-center rounded-full bg-primary/10 text-primary">

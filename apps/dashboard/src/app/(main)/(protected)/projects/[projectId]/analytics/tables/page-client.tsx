@@ -26,6 +26,8 @@ type TableConfig = {
 };
 
 type TableId = string;
+const ANALYTICS_TABLES_STICKY_TOP = "var(--analytics-tables-sticky-top)";
+const ANALYTICS_TABLES_SIDEBAR_HEIGHT = "var(--analytics-tables-sidebar-height)";
 
 const AVAILABLE_TABLES = new Map<TableId, TableConfig>([
   [
@@ -197,7 +199,7 @@ function TableContent({ tableId }: { tableId: TableId }) {
   );
 
   return (
-    <div className="flex flex-1 min-h-0 flex-col">
+    <div className="flex min-w-0 flex-col">
       <QueryDataGrid
         query={effectiveQuery}
         mode={effectiveMode}
@@ -207,6 +209,8 @@ function TableContent({ tableId }: { tableId: TableId }) {
         searchBar={aiSearchBar}
         toolbarExtra={renderToolbarExtra}
         exportFilename={`${tableId}-export`}
+        fillHeight={false}
+        stickyTop={ANALYTICS_TABLES_STICKY_TOP}
       />
 
       <AiQueryDialog
@@ -225,10 +229,16 @@ export default function PageClient() {
   return (
     <AppEnabledGuard appId="analytics">
       <PageLayout fillWidth noPadding>
-        <div className="flex h-[calc(100vh-4.5rem)] max-h-[calc(100vh-4.5rem)] flex-1 min-h-0 overflow-hidden lg:-mx-2 dark:h-full dark:max-h-full">
+        <div className="flex min-w-0 items-start lg:-mx-2 [--analytics-tables-sticky-top:3.5rem] [--analytics-tables-sidebar-height:calc(100vh-3.5rem)] dark:[--analytics-tables-sticky-top:5rem] dark:[--analytics-tables-sidebar-height:calc(100vh-6rem)]">
           {/* Left sidebar — hidden on mobile */}
-          <div className="hidden lg:flex h-full w-48 flex-shrink-0 flex-col overflow-hidden border-r border-border/50 pl-2">
-            <div className="flex-1 overflow-auto px-4 py-4">
+          <div
+            className="hidden lg:flex w-48 min-h-0 flex-shrink-0 self-start flex-col overflow-hidden border-r border-border/50 pl-2 sticky"
+            style={{
+              top: ANALYTICS_TABLES_STICKY_TOP,
+              height: ANALYTICS_TABLES_SIDEBAR_HEIGHT,
+            }}
+          >
+            <div className="px-4 py-4">
               <Typography className="px-3 mb-3 text-xs font-semibold uppercase tracking-wide text-foreground/70">
                 Tables
               </Typography>
@@ -248,11 +258,10 @@ export default function PageClient() {
                   </button>
                 ))}
               </div>
-            </div>
-            <div className="py-4 px-4">
+
               <Link
                 href="./queries"
-                className="flex items-center gap-2 px-3 py-2 rounded-md text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors hover:transition-none w-full"
+                className="mt-4 flex items-center gap-2 border-t border-border/50 px-3 pt-4 py-2 rounded-md text-sm text-muted-foreground hover:bg-muted hover:text-foreground transition-colors hover:transition-none w-full"
               >
                 <CodeIcon className="h-4 w-4" />
                 Queries
@@ -261,7 +270,7 @@ export default function PageClient() {
           </div>
 
           {/* Right content */}
-          <div className="flex h-full min-w-0 flex-1 flex-col overflow-hidden">
+          <div className="flex min-w-0 flex-1 flex-col">
             {selectedTable ? (
               <TableContent key={selectedTable} tableId={selectedTable} />
             ) : (

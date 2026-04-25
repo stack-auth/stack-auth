@@ -4,6 +4,7 @@
 
 @layer base {
   :root {
+    --data-grid-sticky-top: 3.5rem;
     --background: 230 45% 86%;
     --foreground: 240 10% 3.9%;
 
@@ -50,6 +51,7 @@
   }
 
   .dark {
+    --data-grid-sticky-top: 5rem;
     --background: 240 10% 3.9%;
     --foreground: 0 0% 98%;
 

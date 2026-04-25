@@ -1,10 +1,11 @@
 "use client";
 
 import { DesignAlert, DesignBadge, DesignButton, DesignCard, DesignEditableGrid, type DesignEditableGridItem } from "@/components/design-components";
-import { CopyButton, Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui";
+import { CopyButton } from "@/components/ui";
+import { createDefaultDataGridState, DataGrid, useDataSource, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
 import { getPublicEnvVar } from '@/lib/env';
 import { CaretLeftIcon, CaretRightIcon, InfoIcon, KeyIcon, LinkIcon, TextAlignLeftIcon } from "@phosphor-icons/react";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { SvixProvider, useEndpoint, useEndpointMessageAttempts, useEndpointSecret } from "svix-react";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
@@ -92,8 +93,56 @@ function EndpointDetails(props: { endpointId: string }) {
   );
 }
 
+type MessageAttempt = {
+  id: string,
+  status: number,
+  timestamp: Date,
+};
+
 function MessageTable(props: { endpointId: string }) {
   const messages = getSvixResult(useEndpointMessageAttempts(props.endpointId, { limit: 10, withMsg: true }));
+
+  const columns = useMemo<DataGridColumnDef<MessageAttempt>[]>(() => [
+    { id: "id", header: "ID", accessor: "id", width: 200, type: "string" },
+    {
+      id: "status",
+      header: "Status",
+      width: 100,
+      renderCell: ({ row }) => (
+        <DesignBadge
+          label={statusToString.get(row.status) ?? "Unknown"}
+          color={
+            row.status === 0
+              ? "green"
+              : row.status === 2
+                ? "red"
+                : row.status === 1
+                  ? "orange"
+                  : "blue"
+          }
+          size="sm"
+        />
+      ),
+    },
+    {
+      id: "timestamp",
+      header: "Timestamp",
+      width: 300,
+      type: "dateTime",
+      accessor: (row) => row.timestamp,
+    },
+  ], []);
+
+  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
+  const gridData = useDataSource({
+    data: (messages.loaded ? messages.data : []) as MessageAttempt[],
+    columns,
+    getRowId: (row) => row.id,
+    sorting: gridState.sorting,
+    quickSearch: gridState.quickSearch,
+    pagination: gridState.pagination,
+    paginationMode: "client",
+  });
 
   if (!messages.loaded) return messages.rendered;
 
@@ -108,40 +157,15 @@ function MessageTable(props: { endpointId: string }) {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="border rounded-md">
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead className="w-[200px]">ID</TableHead>
-              <TableHead className="w-[100px]">Message</TableHead>
-              <TableHead className="w-[300px]">Timestamp</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {messages.data.map(message => (
-              <TableRow key={message.id}>
-                <TableCell>{message.id}</TableCell>
-                <TableCell>
-                  <DesignBadge
-                    label={statusToString.get(message.status) ?? "Unknown"}
-                    color={
-                      message.status === 0
-                        ? "green"
-                        : message.status === 2
-                          ? "red"
-                          : message.status === 1
-                            ? "orange"
-                            : "blue"
-                    }
-                    size="sm"
-                  />
-                </TableCell>
-                <TableCell>{message.timestamp.toLocaleString()}</TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </div>
+      <DataGrid
+        columns={columns}
+        rows={gridData.rows}
+        getRowId={(row) => row.id}
+        totalRowCount={gridData.totalRowCount}
+        state={gridState}
+        onChange={setGridState}
+        footer={false}
+      />
 
       <div className="flex justify-end gap-4">
         <DesignButton size='sm' variant='secondary' disabled={!messages.hasPrevPage} onClick={messages.prevPage}>

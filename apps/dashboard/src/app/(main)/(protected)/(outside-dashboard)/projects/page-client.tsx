@@ -67,6 +67,7 @@ export default function PageClient() {
   const [openingConfigFile, setOpeningConfigFile] = useState(false);
   const [projectStatuses, setProjectStatuses] = useState<Map<string, ProjectOnboardingStatus>>(new Map());
   const [loadingProjectStatuses, setLoadingProjectStatuses] = useState(true);
+  const [projectDau, setProjectDau] = useState<Map<string, { date: string, activity: number }[]>>(new Map());
   const router = useRouter();
 
   useEffect(() => {
@@ -113,6 +114,43 @@ export default function PageClient() {
       }
     });
 
+    return () => {
+      cancelled = true;
+    };
+  }, [appInternals, rawProjects.length]);
+
+  useEffect(() => {
+    let cancelled = false;
+    runAsynchronously(async () => {
+      try {
+        const response = await appInternals.sendRequest("/internal/projects-dau", {}, "client");
+        if (!response.ok) {
+          console.warn("[projects-dau] request failed", response.status, await response.text());
+          return;
+        }
+        const body = await response.json();
+        if (body == null || typeof body !== "object" || !("projects" in body) || body.projects == null || typeof body.projects !== "object") {
+          console.warn("[projects-dau] unexpected body", body);
+          return;
+        }
+        const map = new Map<string, { date: string, activity: number }[]>();
+        for (const [projectId, series] of Object.entries(body.projects as Record<string, unknown>)) {
+          if (!Array.isArray(series)) continue;
+          const points: { date: string, activity: number }[] = [];
+          for (const point of series) {
+            if (point != null && typeof point === "object" && "date" in point && "activity" in point && typeof (point as any).date === "string" && typeof (point as any).activity === "number") {
+              points.push({ date: (point as any).date, activity: (point as any).activity });
+            }
+          }
+          map.set(projectId, points);
+        }
+        if (!cancelled) {
+          setProjectDau(map);
+        }
+      } catch (e) {
+        console.warn("[projects-dau] fetch error", e);
+      }
+    });
     return () => {
       cancelled = true;
     };
@@ -300,7 +338,7 @@ export default function PageClient() {
                 <TeamAddUserDialog team={team} />
               )}
             </div>
-            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4">
+            <div className="grid gap-4 grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-4 bg">
               {projects.map((project) => {
                 const onboardingStatus = projectStatuses.get(project.id);
                 if (!loadingProjectStatuses && onboardingStatus == null) {
@@ -316,6 +354,7 @@ export default function PageClient() {
                     project={project}
                     href={projectHref}
                     showIncompleteBadge={!loadingProjectStatuses && onboardingStatus !== "completed"}
+                    dau={projectDau.get(project.id)}
                   />
                 );
               })}
