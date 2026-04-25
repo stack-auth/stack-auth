@@ -53,13 +53,45 @@ export function registerInitCommand(program: Command) {
     });
 }
 
+function validateOptions(opts: InitOptions) {
+  if (opts.selectProjectId && opts.configFile) {
+    throw new CliError("--select-project-id and --config-file cannot be used together.");
+  }
+
+  const incompatible: Record<NonNullable<InitOptions["mode"]>, Array<keyof InitOptions>> = {
+    "create": ["selectProjectId", "configFile"],
+    "create-cloud": ["selectProjectId", "configFile", "apps"],
+    "link-config": ["selectProjectId", "apps"],
+    "link-cloud": ["configFile", "apps"],
+  };
+  const flagNames: Partial<Record<keyof InitOptions, string>> = {
+    selectProjectId: "--select-project-id",
+    configFile: "--config-file",
+    apps: "--apps",
+  };
+
+  if (opts.mode) {
+    for (const key of incompatible[opts.mode]) {
+      if (opts[key] != null) {
+        throw new CliError(`${flagNames[key]} cannot be used with --mode ${opts.mode}.`);
+      }
+    }
+  }
+}
+
 async function runInit(program: Command, opts: InitOptions) {
   const flags = program.opts();
   const outputDir = opts.outputDir ? path.resolve(opts.outputDir) : process.cwd();
 
+  if (!fs.existsSync(outputDir)) {
+    throw new CliError(`Output directory does not exist: ${outputDir}`);
+  }
+
+  validateOptions(opts);
+
   console.log("Welcome to Stack Auth!\n");
 
-  let mode: string;
+  let mode: "create" | "create-cloud" | "link" | "link-config" | "link-cloud";
   if (opts.mode) {
     mode = opts.mode;
   } else if (opts.selectProjectId) {
@@ -67,30 +99,48 @@ async function runInit(program: Command, opts: InitOptions) {
   } else if (opts.configFile) {
     mode = "link-config";
   } else {
-    console.log("Creating a new Stack Auth project.\n");
-    const location = await select({
-      message: "Where would you like to create the project?",
+    const action = await select({
+      message: "Would you like to link to an existing project, or create a new one?",
       choices: [
-        { name: "Stack Auth Cloud", value: "hosted" as const },
-        { name: "Local (requires local emulator installation, ~1.3gb storage required)", value: "local" as const },
+        { name: "Create a new project", value: "create" as const },
+        { name: "Link an existing project", value: "link" as const },
       ],
     });
-    mode = location === "local" ? "create" : "create-cloud";
+
+    if (action === "link") {
+      mode = "link";
+    } else {
+      const location = await select({
+        message: "Where would you like to create the project?",
+        choices: [
+          { name: "Stack Auth Cloud", value: "hosted" as const },
+          { name: "Local (requires local emulator installation, ~1.3gb storage required)", value: "local" as const },
+        ],
+      });
+      mode = location === "local" ? "create" : "create-cloud";
+    }
   }
 
   let configPath: string | undefined;
 
-  if (mode === "link" || mode === "link-config" || mode === "link-cloud") {
-    const result = await handleLink(flags, opts, outputDir, mode);
-    configPath = result.configPath;
-  } else if (mode === "create") {
-    const result = await handleCreate(opts, outputDir);
-    configPath = result.configPath;
-  } else if (mode === "create-cloud") {
-    const result = await handleCreateCloud(flags, opts, outputDir);
-    configPath = result.configPath;
-  } else {
-    throw new CliError(`Unknown mode: ${mode}`);
+  switch (mode) {
+    case "link":
+    case "link-config":
+    case "link-cloud": {
+      const result = await handleLink(flags, opts, outputDir, mode);
+      configPath = result.configPath;
+      break;
+    }
+    case "create": {
+      const result = await handleCreate(opts, outputDir);
+      configPath = result.configPath;
+      break;
+    }
+    case "create-cloud": {
+      const result = await handleCreateCloud(flags, opts, outputDir);
+      configPath = result.configPath;
+      break;
+    }
   }
 
   const initPrompt = createInitPrompt(false, configPath);
@@ -110,12 +160,12 @@ async function runInit(program: Command, opts: InitOptions) {
   }
 }
 
-async function handleLink(flags: Record<string, unknown>, opts: InitOptions, outputDir: string, resolvedMode?: string): Promise<{ configPath?: string }> {
+async function handleLink(flags: Record<string, unknown>, opts: InitOptions, outputDir: string, resolvedMode: "link" | "link-config" | "link-cloud"): Promise<{ configPath?: string }> {
   let source: "config-file" | "cloud";
 
-  if (resolvedMode === "link-config" || opts.mode === "link-config") {
+  if (resolvedMode === "link-config") {
     source = "config-file";
-  } else if (resolvedMode === "link-cloud" || opts.mode === "link-cloud") {
+  } else if (resolvedMode === "link-cloud") {
     source = "cloud";
   } else {
     source = await select({
@@ -354,6 +404,21 @@ async function handleCreate(opts: InitOptions, outputDir: string): Promise<{ con
   const importPackage = detectImportPackageFromDir(path.dirname(configPath));
   const content = renderConfigFileContent(config, importPackage);
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
+
+  if (fs.existsSync(configPath)) {
+    if (isNonInteractiveEnv()) {
+      throw new CliError(`Config file already exists at ${configPath}. Refusing to overwrite in non-interactive mode.`);
+    }
+    const shouldOverwrite = await confirm({
+      message: `Config file already exists at ${configPath}. Overwrite?`,
+      default: false,
+    });
+    if (!shouldOverwrite) {
+      console.log("\nLeaving existing config file unchanged.");
+      return { configPath };
+    }
+  }
+
   fs.writeFileSync(configPath, content);
 
   console.log(`\nConfig file written to ${configPath}`);
