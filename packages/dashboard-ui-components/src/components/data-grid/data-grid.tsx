@@ -154,6 +154,20 @@ function getNearestVerticalScrollElement(element: HTMLElement | null): HTMLEleme
   return window;
 }
 
+function shouldIgnoreRowClick(target: EventTarget | null): boolean {
+  return target instanceof HTMLElement && target.closest([
+    "a",
+    "button",
+    "input",
+    "select",
+    "textarea",
+    "[role=\"button\"]",
+    "[role=\"menuitem\"]",
+    "[contenteditable]",
+    "[data-no-row-click]",
+  ].join(",")) != null;
+}
+
 // ─── Header cell ─────────────────────────────────────────────────────
 
 function HeaderCell<TRow>({
@@ -1182,7 +1196,10 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
     ro.observe(gridEl);
     ro.observe(stickyEl);
     ro.observe(bodyEl);
-    ro.observe(clipEl);
+    // NOTE: deliberately not observing `clipEl`. The effect writes
+    // `clip-path`/`mask-image` to `clipEl`, so observing it creates a
+    // feedback loop that thrashes height inside a bounded parent. `gridEl` /
+    // `bodyEl` changing size already covers clip-relevant layout changes.
     if (extraObservedScrollEl) {
       ro.observe(extraObservedScrollEl);
     }
@@ -1427,7 +1444,12 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
                         : { height: fixedRowHeight }),
                       transform: `translateY(${virtualRow.start}px)`,
                     }}
-                    onClick={(e) => handleRowClick(row, rowId, e)}
+                    onClick={(e) => {
+                      if (e.defaultPrevented || shouldIgnoreRowClick(e.target)) {
+                        return;
+                      }
+                      handleRowClick(row, rowId, e);
+                    }}
                     onDoubleClick={(e) => onRowDoubleClick?.(row, rowId, e)}
                     role="row"
                     aria-rowindex={virtualRow.index + 2}

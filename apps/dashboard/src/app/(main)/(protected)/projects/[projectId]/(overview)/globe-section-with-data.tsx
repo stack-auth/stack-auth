@@ -55,7 +55,7 @@ function LiveUsersBadge({ count }: { count: number }) {
   const isLive = safeCount > 0;
   return (
     <div
-      className="absolute top-0 right-0 z-10 px-5 pt-4 dark:px-1 dark:pt-0 pointer-events-none"
+      className="absolute top-0 right-0 z-10 px-5 pt-4 dark:px-2 dark:pt-2 pointer-events-none"
       aria-live="polite"
       aria-atomic="true"
     >

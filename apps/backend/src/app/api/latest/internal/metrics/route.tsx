@@ -22,7 +22,7 @@ import {
 } from "@stackframe/stack-shared/dist/interface/admin-metrics";
 import { captureError, StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
-import { adaptSchema, adminAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, adminAuthTypeSchema, yupArray, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { userFullInclude, userPrismaToCrud, usersCrudHandlers } from "../../users/crud";
 
 type DataPoints = MetricsDataPoint[];
@@ -87,7 +87,7 @@ async function loadUsersByCountry(tenancy: Tenancy, includeAnonymous: boolean = 
             user_id,
             event_at,
             CAST(data.ip_info.country_code, 'Nullable(String)') AS cc,
-            CAST(data.is_anonymous, 'UInt8') AS is_anonymous
+            coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) AS is_anonymous
           FROM analytics_internal.events
           WHERE event_type = '$token-refresh'
             AND project_id = {projectId:String}
@@ -155,7 +155,7 @@ async function loadActiveUsersByCountry(
             user_id,
             event_at,
             CAST(data.ip_info.country_code, 'Nullable(String)') AS cc,
-            CAST(data.is_anonymous, 'UInt8') AS is_anonymous
+            coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) AS is_anonymous
           FROM analytics_internal.events
           WHERE event_type = '$token-refresh'
             AND project_id = {projectId:String}
@@ -271,7 +271,7 @@ async function loadLiveUsersCount(
           AND branch_id = {branchId:String}
           AND user_id IS NOT NULL
           AND event_at >= {since:DateTime}
-          AND ({includeAnonymous:UInt8} = 1 OR CAST(data.is_anonymous, 'UInt8') = 0)
+          AND ({includeAnonymous:UInt8} = 1 OR coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 0)
       `,
       query_params: {
         projectId: tenancy.project.id,
@@ -557,7 +557,7 @@ async function loadAnonymousVisitorsFromTokenRefresh(
       AND user_id IS NOT NULL
       AND event_at >= {since:DateTime}
       AND event_at < {untilExclusive:DateTime}
-      AND CAST(data.is_anonymous, 'UInt8') = 1
+      AND coalesce(CAST(data.is_anonymous, 'Nullable(UInt8)'), 0) = 1
     GROUP BY day, user_id
   `;
 

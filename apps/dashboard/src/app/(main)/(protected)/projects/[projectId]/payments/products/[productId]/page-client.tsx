@@ -1593,7 +1593,6 @@ function ProductCustomersSection({ productId, product }: ProductCustomersSection
             state={gridState}
             onChange={setGridState}
             toolbar={false}
-            footer={false}
           />
         )}
       </div>
