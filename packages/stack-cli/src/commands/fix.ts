@@ -74,15 +74,18 @@ async function runFix(opts: FixOptions) {
   }
 
   if (errorText.length > MAX_ERROR_LENGTH) {
+    const originalLength = errorText.length;
     errorText = errorText.slice(0, MAX_ERROR_LENGTH);
+    console.warn(`\nWarning: error text was ${originalLength} characters; truncated to ${MAX_ERROR_LENGTH}. The agent will not see anything past the cutoff.\n`);
   }
 
   console.log("\nError to fix:\n");
   console.log("  " + errorText.split("\n").join("\n  "));
   console.log();
 
+  console.log(`Working directory: ${outputDir}`);
+
   if (!opts.yes && !isNonInteractiveEnv()) {
-    console.log(`Working directory: ${outputDir}`);
     const ok = await abortablePrompt(confirm({
       message: "Run the AI agent to fix this error?",
       default: true,
