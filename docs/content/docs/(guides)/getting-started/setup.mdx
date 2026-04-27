@@ -1,5 +1,6 @@
 ---
 title: Setup
+lastModified: "2026-04-27"
 ---
 
 ### Prerequisites
@@ -35,6 +36,49 @@ We recommend using our **setup wizard** for JavaScript frameworks for a seamless
       ```sh title="Terminal"
       npx @stackframe/stack-cli@latest init
       ```
+
+      The wizard will guide you through:
+      1. **Creating a new project** or **linking an existing one**
+      2. Choosing between **Stack Auth Cloud** or **local emulator** (for new projects)
+      3. Setting up your environment variables and project files
+
+      <Accordion title="CLI init options reference">
+        The `init` command supports several modes and options for different workflows:
+
+        **Modes** (use `--mode <mode>` to skip interactive prompts):
+        | Mode | Description |
+        |------|-------------|
+        | `create` | Create a new local project with the emulator |
+        | `create-cloud` | Create a new project on Stack Auth Cloud |
+        | `link-config` | Link to an existing `stack.config.ts` file |
+        | `link-cloud` | Link to an existing project from your Stack Auth dashboard |
+
+        **Options:**
+        | Option | Description |
+        |--------|-------------|
+        | `--mode <mode>` | Set the mode (see above). Required for non-interactive/CI environments |
+        | `--apps <apps>` | Comma-separated app IDs to enable (for `create` mode) |
+        | `--config-file <path>` | Path to existing config file (for `link-config` mode) |
+        | `--select-project-id <id>` | Project ID to link (for `link-cloud` mode) |
+        | `--output-dir <dir>` | Directory to write output files (defaults to current directory) |
+        | `--no-agent` | Skip the setup agent and print manual instructions instead |
+
+        **Examples:**
+        ```sh title="Terminal"
+        # Create a new project on Stack Auth Cloud
+        npx @stackframe/stack-cli@latest init --mode create-cloud
+
+        # Link to an existing project by ID
+        npx @stackframe/stack-cli@latest init --mode link-cloud --select-project-id your-project-id
+
+        # CI/non-interactive: link to a project (requires prior login)
+        npx @stackframe/stack-cli@latest init --mode link-cloud --select-project-id your-project-id
+        ```
+
+        <Info>
+          In non-interactive environments (like CI pipelines), the `--mode` flag is required. Run `stack login` first or set the `STACK_CLI_REFRESH_TOKEN` environment variable.
+        </Info>
+      </Accordion>
 
       <Step>
       ### Update API keys
