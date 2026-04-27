@@ -355,3 +355,9 @@ Then restart the dev server. This rebuilds all packages and generates the necess
 
 ## Q: How is backwards compatibility for the offer→product rename handled in the payments purchase APIs?
 A: API v1 requests are routed through the `v2beta1` migration. The migration wraps the latest handlers, accepts legacy `offer_id`/`offer_inline` request fields, translates product-related errors back to the old offer error codes/messages, and augments responses (like `validate-code`) with `offer`/`conflicting_group_offers` aliases alongside the new `product` fields. Newer API versions keep the product-only contract.
+
+## Q: How does `/api/v1/ai/query/generate` reject invalid AI tool names?
+A: Invalid `tools` entries are rejected by `requestBodySchema` in `apps/backend/src/lib/ai/schema.ts` via `yupString().oneOf(TOOL_NAMES)`, so the endpoint returns a structured `SCHEMA_ERROR` object mentioning `body.tools[n]` rather than a custom `"Invalid tool names"` string from handler logic.
+
+## Q: Why did the internal metrics E2E snapshots need to change in April 2026?
+A: The `/api/v1/internal/metrics` response now intentionally includes `analytics_overview.daily_anonymous_visitors_fallback`, `analytics_overview.anonymous_visitors_fallback`, and `active_users_by_country`. Those additions are reflected in `packages/stack-shared/src/interface/admin-metrics.ts` and the backend route, so the E2E snapshots must include them instead of treating them as regressions.

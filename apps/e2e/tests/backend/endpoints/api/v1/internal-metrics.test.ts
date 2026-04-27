@@ -319,6 +319,34 @@ it("should handle anonymous users with activity correctly", async ({ expect }) =
   timeout: 120_000,
 });
 
+it("should expose lightweight user counts without loading the full metrics route", async ({ expect }) => {
+  await Project.createAndSwitch({
+    config: {
+      magic_link_enabled: true,
+    }
+  });
+
+  await InternalApiKey.createAndSetProjectKeys();
+
+  backendContext.set({ mailbox: createMailbox() });
+  await Auth.Otp.signIn();
+  await Auth.Anonymous.signUp();
+  await Auth.Anonymous.signUp();
+
+  const response = await niceBackendFetch("/api/v1/internal/metrics/user-counts", { accessType: 'admin' });
+
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": {
+        "anonymous_users": 2,
+        "total_users": 3,
+      },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
 it("should handle mixed auth methods excluding anonymous users", async ({ expect }) => {
   await Project.createAndSwitch({
     config: {
