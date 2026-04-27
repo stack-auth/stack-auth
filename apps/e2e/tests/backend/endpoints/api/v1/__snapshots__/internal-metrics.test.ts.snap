@@ -4,8 +4,136 @@ exports[`should return metrics data > metrics_result_no_users 1`] = `
 NiceResponse {
   "status": 200,
   "body": {
+    "active_users_by_country": {},
     "analytics_overview": {
+      "anonymous_visitors_fallback": 0,
       "avg_session_seconds": 0,
+      "daily_anonymous_visitors_fallback": [
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+      ],
       "daily_clicks": [
         {
           "activity": 0,
@@ -2151,6 +2279,7 @@ NiceResponse {
       "recent_emails": [],
       "total_emails": 0,
     },
+    "live_users": <stripped field 'live_users'>,
     "login_methods": [],
     "payments_overview": {
       "active_subscription_count": 0,
@@ -2300,8 +2429,165 @@ exports[`should return metrics data with users > metrics_result_with_users 1`] =
 NiceResponse {
   "status": 200,
   "body": {
+    "active_users_by_country": {
+      "AQ": [
+        {
+          "display_name": null,
+          "id": "<stripped UUID>",
+          "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+          "primary_email": "mailbox-1--<stripped UUID>@stack-generated.example.com",
+          "profile_image_url": null,
+          "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+        },
+        {
+          "display_name": null,
+          "id": "<stripped UUID>",
+          "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+          "primary_email": "mailbox-2--<stripped UUID>@stack-generated.example.com",
+          "profile_image_url": null,
+          "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+        },
+      ],
+      "CH": [
+        {
+          "display_name": null,
+          "id": "<stripped UUID>",
+          "last_active_at_millis": <stripped field 'last_active_at_millis'>,
+          "primary_email": "mailbox-3--<stripped UUID>@stack-generated.example.com",
+          "profile_image_url": null,
+          "signed_up_at_millis": <stripped field 'signed_up_at_millis'>,
+        },
+      ],
+    },
     "analytics_overview": {
+      "anonymous_visitors_fallback": 0,
       "avg_session_seconds": 0,
+      "daily_anonymous_visitors_fallback": [
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+        {
+          "activity": 0,
+          "date": <stripped field 'date'>,
+        },
+      ],
       "daily_clicks": [
         {
           "activity": 0,
@@ -4542,6 +4828,7 @@ NiceResponse {
       ],
       "total_emails": 15,
     },
+    "live_users": <stripped field 'live_users'>,
     "login_methods": [
       {
         "count": 9,
