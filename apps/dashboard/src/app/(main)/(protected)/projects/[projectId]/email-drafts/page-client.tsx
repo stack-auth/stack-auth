@@ -1,5 +1,6 @@
 "use client";
 
+import { DesignAnalyticsCard } from "@/components/design-components";
 import { FormDialog } from "@/components/form-dialog";
 import { InputField } from "@/components/form-fields";
 import { useRouter } from "@/components/router";
@@ -13,7 +14,6 @@ import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
-import { DesignAnalyticsCard } from "@/components/design-components";
 
 // Section header with icon following design guide
 function SectionHeader({ icon: Icon, title }: { icon: ElementType, title: string }) {
