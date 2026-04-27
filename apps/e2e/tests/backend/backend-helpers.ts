@@ -1245,7 +1245,10 @@ export namespace InternalApiKey {
 
 export namespace Project {
   export async function create(body?: any) {
-    const ownerTeamId = body?.owner_team_id ?? (await User.getCurrent()).selected_team_id;
+    const ownerTeamId =
+      body?.owner_team_id
+      ?? (await User.getCurrent()).selected_team_id
+      ?? (await Team.createWithCurrentAsCreator()).teamId;
     const response = await niceBackendFetch("/api/v1/internal/projects", {
       accessType: "client",
       method: "POST",
