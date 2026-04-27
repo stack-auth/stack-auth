@@ -154,8 +154,19 @@ function getNearestVerticalScrollElement(element: HTMLElement | null): HTMLEleme
   return window;
 }
 
-function shouldIgnoreRowClick(target: EventTarget | null): boolean {
-  return target instanceof HTMLElement && target.closest([
+function getEventTargetElement(target: EventTarget | null): Element | null {
+  if (target instanceof Element) {
+    return target;
+  }
+  if (target instanceof Node) {
+    return target.parentElement;
+  }
+  return null;
+}
+
+export function isDataGridInteractiveRowClickTarget(target: EventTarget | null): boolean {
+  const targetElement = getEventTargetElement(target);
+  return targetElement?.closest([
     "a",
     "button",
     "input",
@@ -163,9 +174,13 @@ function shouldIgnoreRowClick(target: EventTarget | null): boolean {
     "textarea",
     "[role=\"button\"]",
     "[role=\"menuitem\"]",
-    "[contenteditable]",
+    "[contenteditable]:not([contenteditable=\"false\"])",
     "[data-no-row-click]",
   ].join(",")) != null;
+}
+
+function shouldIgnoreRowClick(event: React.MouseEvent): boolean {
+  return event.defaultPrevented || isDataGridInteractiveRowClickTarget(event.target);
 }
 
 // ─── Header cell ─────────────────────────────────────────────────────
@@ -1445,12 +1460,17 @@ export function DataGrid<TRow>(props: DataGridProps<TRow>) {
                       transform: `translateY(${virtualRow.start}px)`,
                     }}
                     onClick={(e) => {
-                      if (e.defaultPrevented || shouldIgnoreRowClick(e.target)) {
+                      if (shouldIgnoreRowClick(e)) {
                         return;
                       }
                       handleRowClick(row, rowId, e);
                     }}
-                    onDoubleClick={(e) => onRowDoubleClick?.(row, rowId, e)}
+                    onDoubleClick={(e) => {
+                      if (shouldIgnoreRowClick(e)) {
+                        return;
+                      }
+                      onRowDoubleClick?.(row, rowId, e);
+                    }}
                     role="row"
                     aria-rowindex={virtualRow.index + 2}
                     aria-selected={isSelected}

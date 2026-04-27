@@ -405,13 +405,12 @@ async function seedDummyTeams(options: SeedDummyTeamsOptions): Promise<Map<strin
 type SeedOauthProvider = { providerId: string, accountId: string, email: string };
 
 /**
- * Idempotently backfill OAuth provider rows for an existing seeded user.
+ * Idempotently reconcile OAuth provider rows for an existing seeded user.
  *
- * `adminCreate` already writes these on first insert, so this is a no-op for
- * newly-created users. For users that existed before the seed grew its OAuth
- * list, this appends the missing providers. Append-only by design: we never
- * delete providers present in the DB but absent from the seed list, because
- * that would cascade into AuthMethod rows and break unrelated tests.
+ * `adminCreate` already writes these on first insert, so this usually becomes
+ * a no-op for newly-created users. For users that existed before the seed grew
+ * its OAuth list, this makes the database match the current deterministic seed
+ * output exactly.
  *
  * Dedupe key is `(configOAuthProviderId, providerAccountId)`, matching the
  * `@@unique([tenancyId, configOAuthProviderId, projectUserId, providerAccountId])`
@@ -419,8 +418,7 @@ type SeedOauthProvider = { providerId: string, accountId: string, email: string 
  *
  * Note: writes are sequential, not wrapped in `$transaction`, because the
  * shared `PrismaClientTransaction` type is a union whose transaction branch
- * doesn't expose `$transaction`. A partial failure could leak an orphan
- * AuthMethod row; that's acceptable for a seed.
+ * doesn't expose `$transaction`. This is acceptable for a seed.
  */
 async function syncSeedUserOauthProviders(
   prisma: PrismaClientTransaction,
@@ -428,13 +426,47 @@ async function syncSeedUserOauthProviders(
   projectUserId: string,
   providers: readonly SeedOauthProvider[],
 ): Promise<void> {
-  if (providers.length === 0) return;
+  const desiredKey = new Set(providers.map((p) => `${p.providerId}::${p.accountId}`));
 
   const existing = await prisma.projectUserOAuthAccount.findMany({
     where: { tenancyId, projectUserId },
-    select: { configOAuthProviderId: true, providerAccountId: true },
+    select: {
+      configOAuthProviderId: true,
+      providerAccountId: true,
+      oauthAuthMethod: {
+        select: {
+          authMethodId: true,
+        },
+      },
+    },
   });
   const existingKey = new Set(existing.map((a) => `${a.configOAuthProviderId}::${a.providerAccountId}`));
+
+  for (const account of existing) {
+    const key = `${account.configOAuthProviderId}::${account.providerAccountId}`;
+    if (desiredKey.has(key)) continue;
+
+    if (account.oauthAuthMethod != null) {
+      await prisma.authMethod.delete({
+        where: {
+          tenancyId_id: {
+            tenancyId,
+            id: account.oauthAuthMethod.authMethodId,
+          },
+        },
+      });
+    }
+    await prisma.projectUserOAuthAccount.delete({
+      where: {
+        tenancyId_configOAuthProviderId_projectUserId_providerAccountId: {
+          tenancyId,
+          configOAuthProviderId: account.configOAuthProviderId,
+          projectUserId,
+          providerAccountId: account.providerAccountId,
+        },
+      },
+    });
+  }
 
   for (const provider of providers) {
     if (existingKey.has(`${provider.providerId}::${provider.accountId}`)) continue;

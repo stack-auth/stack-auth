@@ -183,6 +183,11 @@ export const MetricsResponseBodySchema = yupObject({
   analytics_overview: MetricsAnalyticsOverviewSchema,
 }).defined();
 
+export const MetricsUserCountsSchema = yupObject({
+  total_users: yupNumber().integer().defined(),
+  anonymous_users: yupNumber().integer().defined(),
+}).defined();
+
 // Derived static types — single source of truth lives in the schemas above.
 export type MetricsDataPoint = yup.InferType<typeof MetricsDataPointSchema>;
 export type MetricsActivitySplit = yup.InferType<typeof MetricsActivitySplitSchema>;
@@ -198,3 +203,4 @@ export type MetricsAnalyticsOverview = yup.InferType<typeof MetricsAnalyticsOver
 export type MetricsLoginMethodEntry = yup.InferType<typeof MetricsLoginMethodEntrySchema>;
 export type MetricsRecentUser = yup.InferType<typeof MetricsRecentUserSchema>;
 export type MetricsResponse = yup.InferType<typeof MetricsResponseBodySchema>;
+export type MetricsUserCounts = yup.InferType<typeof MetricsUserCountsSchema>;

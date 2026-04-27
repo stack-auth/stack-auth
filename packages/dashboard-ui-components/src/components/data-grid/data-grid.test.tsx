@@ -6,6 +6,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   createDefaultDataGridState,
   DataGrid,
+  isDataGridInteractiveRowClickTarget,
   type DataGridColumnDef,
   type DataGridProps,
 } from "./index";
@@ -148,6 +149,18 @@ describe("DataGrid infinite scroll observer", () => {
         } as DOMRect;
       },
     );
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+      configurable: true,
+      get() {
+        return 400;
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() {
+        return 400;
+      },
+    });
   });
 
   afterEach(() => {
@@ -201,6 +214,18 @@ describe("DataGrid controlled callbacks", () => {
         } as DOMRect;
       },
     );
+    Object.defineProperty(HTMLElement.prototype, "clientHeight", {
+      configurable: true,
+      get() {
+        return 400;
+      },
+    });
+    Object.defineProperty(HTMLElement.prototype, "scrollHeight", {
+      configurable: true,
+      get() {
+        return 400;
+      },
+    });
   });
 
   afterEach(() => {
@@ -229,5 +254,17 @@ describe("DataGrid controlled callbacks", () => {
     const [selectedIds, selectedRows] = onSelectionChange.mock.calls[0];
     expect([...selectedIds]).toEqual(["row-1"]);
     expect(selectedRows).toEqual([{ id: "row-1", name: "Row 1" }]);
+  });
+
+  it("identifies nested interactive controls as row-click blockers", () => {
+    const cell = document.createElement("div");
+    const button = document.createElement("button");
+    const label = document.createElement("span");
+    label.textContent = "Open menu";
+    button.append(label);
+    cell.append(button);
+
+    expect(isDataGridInteractiveRowClickTarget(label.firstChild)).toBe(true);
+    expect(isDataGridInteractiveRowClickTarget(cell)).toBe(false);
   });
 });
