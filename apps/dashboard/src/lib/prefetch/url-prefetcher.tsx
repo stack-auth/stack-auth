@@ -25,10 +25,7 @@ const urlPrefetchers: Record<string, ((match: RegExpMatchArray, query: URLSearch
   ],
   "/projects/*/users": [
     ([_, projectId]) => {
-      (useAdminApp(projectId) as any)[stackAppInternalsSymbol].useMetrics(false);
-    },
-    ([_, projectId]) => {
-      (useAdminApp(projectId) as any)[stackAppInternalsSymbol].useMetrics(true);
+      (useAdminApp(projectId) as any)[stackAppInternalsSymbol].useMetricsUserCounts();
     },
     ([_, projectId]) => {
       useAdminApp(projectId).useUsers({ limit: 1 });
