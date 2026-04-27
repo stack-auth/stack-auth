@@ -19,7 +19,7 @@ import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { ErrorBoundary } from "next/dist/client/components/error-boundary";
-import { Suspense, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type ElementType } from "react";
+import { type ElementType, Suspense, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { PageLayout } from "../page-layout";
 import { useAdminApp, useProjectId } from "../use-admin-app";
 import { GlobeSectionWithData } from "./globe-section-with-data";
@@ -27,7 +27,6 @@ import {
   ComposedAnalyticsChart,
   ComposedDataPoint,
   CustomDateRange,
-  DataPoint,
   DonutChartDisplay,
   EmailStackedBarChartDisplay,
   EmailStackedDataPoint,
@@ -41,7 +40,7 @@ import {
   TimeRange,
   TimeRangeToggle,
   VisitorsHoverChart,
-  VisitorsHoverDataPoint,
+  VisitorsHoverDataPoint
 } from "./line-chart";
 import { MetricsErrorFallback, MetricsLoadingFallback } from "./metrics-loading";
 
@@ -503,9 +502,8 @@ function AnalyticsChartWidget({
                 ) : (
                   <ComposedAnalyticsChart
                     datapoints={composedData}
-                    showVisitors={analyticsEnabled}
+                    showVisitors
                     showRevenue={paymentsEnabled}
-                    height={chartViewportHeight}
                     compact={compact}
                   />
                 )
@@ -518,7 +516,6 @@ function AnalyticsChartWidget({
                 ) : (
                   <StackedBarChartDisplay
                     datapoints={dauStackedData}
-                    height={chartViewportHeight}
                     compact={compact}
                   />
                 )
@@ -535,7 +532,6 @@ function AnalyticsChartWidget({
                 ) : (
                   <VisitorsHoverChart
                     datapoints={visitorsData}
-                    height={chartViewportHeight}
                     compact={compact}
                   />
                 )
@@ -552,7 +548,6 @@ function AnalyticsChartWidget({
                 ) : (
                   <RevenueHoverChart
                     datapoints={revenueData}
-                    height={chartViewportHeight}
                     compact={compact}
                   />
                 )
@@ -782,6 +777,38 @@ function EmailBreakdownCard({
   );
 }
 
+function getReferrerHost(referrer: string): string | null {
+  if (!referrer) return null;
+  try {
+    const url = new URL(/^https?:\/\//i.test(referrer) ? referrer : `https://${referrer}`);
+    const host = url.hostname.toLowerCase();
+    if (!host || !host.includes(".")) return null;
+    return host;
+  } catch {
+    return null;
+  }
+}
+
+function ReferrerFavicon({ host }: { host: string }) {
+  const [failed, setFailed] = useState(false);
+  if (failed) {
+    return <span aria-hidden className="h-4 w-4 shrink-0 rounded-sm bg-foreground/[0.06]" />;
+  }
+  return (
+    // eslint-disable-next-line @next/next/no-img-element
+    <img
+      src={`https://www.google.com/s2/favicons?domain=${encodeURIComponent(host)}&sz=32`}
+      alt=""
+      width={16}
+      height={16}
+      loading="lazy"
+      decoding="async"
+      onError={() => setFailed(true)}
+      className="h-4 w-4 shrink-0 rounded-sm object-contain"
+    />
+  );
+}
+
 function ReferrersWithAnalyticsCard({
   topReferrers,
   analyticsEnabled,
@@ -809,13 +836,21 @@ function ReferrersWithAnalyticsCard({
           <div className="flex flex-col gap-1.5">
             {topReferrers.slice(0, listWindow.visibleCount).map((item) => {
               const max = topReferrers[0].visitors;
+              const host = getReferrerHost(item.referrer);
               return (
                 <div key={item.referrer} className="relative flex items-center justify-between rounded-lg px-2.5 py-1.5 overflow-hidden">
                   <div
                     className="absolute inset-y-0 left-0 rounded-lg bg-purple-500/10 dark:bg-purple-400/10"
                     style={{ width: max > 0 ? `${(item.visitors / max) * 100}%` : '0%' }}
                   />
-                  <span className="relative text-[11px] text-foreground truncate max-w-[65%]">{item.referrer}</span>
+                  <span className="relative flex items-center gap-2 min-w-0 max-w-[70%]">
+                    {host ? (
+                      <ReferrerFavicon host={host} />
+                    ) : (
+                      <span aria-hidden className="h-4 w-4 shrink-0 rounded-sm bg-foreground/[0.06]" />
+                    )}
+                    <span className="text-[11px] text-foreground truncate">{item.referrer}</span>
+                  </span>
                   <span className="relative text-[11px] font-medium text-foreground tabular-nums">{item.visitors.toLocaleString()}</span>
                 </div>
               );
@@ -1020,7 +1055,10 @@ function MetricsContent({
 
   const allComposedData = useMemo<ComposedDataPoint[]>(() => {
     const dailyRev = analytics.daily_revenue;
-    const dailyVis = analytics.daily_visitors;
+    // When the analytics app isn't installed there are no `$page-view` events,
+    // so fall back to token-refresh-derived anonymous visitors so the card has
+    // something meaningful to render instead of a flat zero line.
+    const dailyVis = analyticsEnabled ? analytics.daily_visitors : analytics.daily_anonymous_visitors_fallback;
 
     const visitorMap = new Map(dailyVis.map(d => [d.date, d.activity]));
     const revenueMap = new Map(dailyRev.map(d => [d.date, d]));
@@ -1033,14 +1071,14 @@ function MetricsContent({
 
     const points = [...allDates].map(date => ({
       date,
-      visitors: analyticsEnabled ? (visitorMap.get(date) ?? 0) : 0,
+      visitors: visitorMap.get(date) ?? 0,
       new_cents: paymentsEnabled ? (revenueMap.get(date)?.new_cents ?? 0) : 0,
       refund_cents: paymentsEnabled ? (revenueMap.get(date)?.refund_cents ?? 0) : 0,
       dau: dauTotalsByDate.get(date) ?? 0,
     })).sort((a, b) => stringCompare(a.date, b.date));
 
     return points;
-  }, [analytics.daily_revenue, analytics.daily_visitors, dauStackedData, dauTotalsByDate, analyticsEnabled, paymentsEnabled]);
+  }, [analytics.daily_revenue, analytics.daily_visitors, analytics.daily_anonymous_visitors_fallback, dauStackedData, dauTotalsByDate, analyticsEnabled, paymentsEnabled]);
   const composedData = useMemo<ComposedDataPoint[]>(
     () => filterStackedDatapointsByTimeRange(allComposedData, timeRange, customDateRange),
     [allComposedData, timeRange, customDateRange],
@@ -1139,16 +1177,16 @@ function MetricsContent({
       dauTotal: formatCompact(latestDau),
       dauLabel: "Daily Active Users",
       dauDelta: previousDau == null ? undefined : calculatePeriodDelta(latestDau, previousDau),
-      visitorsTotal: analyticsEnabled ? formatCompact(visitorsTotalInRange) : "—",
+      visitorsTotal: formatCompact(visitorsTotalInRange),
       visitorsLabel: "Unique Visitors",
-      visitorsDelta: analyticsEnabled && hasFullPreviousComposedWindow ? calculatePeriodDelta(visitorsTotalInRange, previousVisitorsTotal) : undefined,
+      visitorsDelta: hasFullPreviousComposedWindow ? calculatePeriodDelta(visitorsTotalInRange, previousVisitorsTotal) : undefined,
       revenueTotal: paymentsEnabled
         ? formatUsdFromCents(totalRevenueCentsInRange)
         : "—",
       revenueLabel: "Revenue",
       revenueDelta: paymentsEnabled && hasFullPreviousComposedWindow ? calculatePeriodDelta(totalRevenueCentsInRange, previousRevenueTotalCents) : undefined,
     };
-  }, [allComposedData, composedData, dauStackedData, analyticsEnabled, paymentsEnabled]);
+  }, [allComposedData, composedData, dauStackedData, paymentsEnabled]);
 
   const gridContainerRef = useRef<HTMLDivElement>(null);
   const [gridContainerWidth, setGridContainerWidth] = useState(0);
@@ -1158,15 +1196,10 @@ function MetricsContent({
   }, []);
   useLayoutEffect(() => {
     const mediaQuery = window.matchMedia("(min-width: 1024px)");
-    const updateViewportMatch = () => {
-      setIsLgViewport(mediaQuery.matches);
-    };
-
-    updateViewportMatch();
-    mediaQuery.addEventListener("change", updateViewportMatch);
-    return () => {
-      mediaQuery.removeEventListener("change", updateViewportMatch);
-    };
+    const update = () => setIsLgViewport(mediaQuery.matches);
+    update();
+    mediaQuery.addEventListener("change", update);
+    return () => mediaQuery.removeEventListener("change", update);
   }, []);
   useResizeObserver(gridContainerRef, (entry) => setGridContainerWidth(entry.contentRect.width));
 
@@ -1199,21 +1232,16 @@ function MetricsContent({
         ref={gridContainerRef}
         className={cn(
           "grid gap-4 sm:gap-5 grid-cols-1 lg:grid-cols-12",
+          "min-h-[400px] lg:h-[440px]",
         )}
-        style={shouldShowGlobe
-          ? { minHeight: Math.max(400, Math.round(globeColumnWidth)) }
-          : { minHeight: 400 }}
       >
         {shouldShowGlobe && (
           <div className={cn(
-            "hidden lg:flex lg:col-span-5 h-full relative",
+            "hidden lg:flex lg:col-span-5 h-full relative items-center justify-center overflow-hidden",
             "rounded-2xl bg-white/90 backdrop-blur-xl ring-1 ring-black/[0.06] shadow-sm",
             "dark:bg-transparent dark:backdrop-blur-none dark:ring-0 dark:shadow-none dark:rounded-none",
           )}>
-            <div className="absolute inset-0 flex items-start justify-center">
-              <GlobeSectionWithData includeAnonymous={includeAnonymous} />
-            </div>
-            <div className="absolute top-0 left-0 px-5 pt-4 z-10 dark:px-1 dark:pt-0">
+            <div className="absolute top-0 left-0 z-10 px-5 pt-4 dark:px-1 dark:pt-0 pointer-events-none">
               <div className="flex items-center gap-2 mb-2">
                 <div className="p-1.5 rounded-lg bg-foreground/[0.04]">
                   <GlobeIcon className="h-3.5 w-3.5 text-muted-foreground" />
@@ -1226,6 +1254,7 @@ function MetricsContent({
                 {data.total_users.toLocaleString()}
               </div>
             </div>
+            <GlobeSectionWithData includeAnonymous={includeAnonymous} />
           </div>
         )}
 
@@ -1292,7 +1321,6 @@ function MetricsContent({
         <DonutChartDisplay
           datapoints={data.login_methods}
           compact
-          height={180}
           gradientColor="blue"
         />
         <EmailBreakdownCard
