@@ -5,7 +5,7 @@ import Provider, { errors } from 'oidc-provider';
 
 const stackPortPrefix = process.env.NEXT_PUBLIC_STACK_PORT_PREFIX ?? "81";
 const defaultMockOAuthPort = Number(`${stackPortPrefix}14`);
-const port = Number(process.env.PORT ?? defaultMockOAuthPort);
+const port = Number(process.env.STACK_OAUTH_MOCK_PORT ?? process.env.PORT ?? defaultMockOAuthPort);
 const backendPortForRedirects = `${stackPortPrefix}02`;
 const emulatorBackendPort = process.env.STACK_EMULATOR_BACKEND_PORT ?? "32102";
 const providerIds = [
