@@ -1,0 +1,140 @@
+---
+title: Local Emulator
+lastModified: "2026-04-27"
+---
+
+The local emulator packages the entire Stack Auth backend into a single QEMU virtual machine, so you can develop and test against a complete Stack Auth instance on your own machine. It includes PostgreSQL, Redis, ClickHouse, MinIO, Inbucket, Svix, QStash, the Dashboard, and the Backend API.
+
+## Prerequisites
+
+The emulator runs in a QEMU virtual machine. When you run `stack emulator pull`, the CLI checks for required dependencies and can automatically install them on supported platforms.
+
+**Required dependencies:**
+
+| Binary | Purpose |
+|--------|---------|
+| `qemu-system-aarch64` or `qemu-system-x86_64` | VM emulation (architecture-specific) |
+| `qemu-img` | Disk image management |
+| `socat` | Port forwarding |
+| `curl` | HTTP utilities |
+| `nc` (netcat) | Network utilities |
+| `lsof` | Process management |
+| `openssl` | TLS utilities |
+| `zstd` | Snapshot compression |
+
+On ARM64 systems (Apple Silicon Macs), UEFI firmware is also required. This is typically bundled with QEMU on macOS.
+
+### Automatic dependency installation
+
+On **macOS** and **Debian/Ubuntu Linux**, `stack emulator pull` can automatically install missing dependencies:
+
+- **macOS**: Uses Homebrew. If Homebrew is not installed, the CLI can install it for you.
+- **Linux**: Uses `apt-get` on Debian/Ubuntu systems.
+
+The CLI shows which dependencies are missing and the exact commands it will run, then prompts for confirmation before installing anything.
+
+On other Linux distributions (Fedora, Arch, etc.) or in non-interactive environments (CI pipelines, piped input), the CLI shows which packages you need to install manually.
+
+<Info>
+The `gh` CLI and `GITHUB_TOKEN` are not part of the auto-install set. If you need to pull from private repositories or avoid GitHub API rate limits, install `gh` separately or set `GITHUB_TOKEN` in your environment.
+</Info>
+
+## Pulling the emulator image
+
+Download the emulator VM image before starting:
+
+```bash
+stack emulator pull
+```
+
+This downloads the appropriate image for your system architecture (ARM64 or AMD64) and captures a local snapshot for fast startup.
+
+**Options:**
+
+| Flag | Description |
+|------|-------------|
+| `--arch <arch>` | Target architecture (`arm64` or `amd64`). Defaults to your system's architecture. |
+| `--branch <branch>` | Release branch to pull from. Defaults to `dev`. |
+| `--tag <tag>` | Specific release tag. Defaults to the latest release. |
+| `--pr <number>` | Pull from a specific PR's CI artifacts (requires GitHub authentication). |
+| `--run <id>` | Pull from a specific workflow run's artifacts. |
+| `--skip-snapshot` | Download only the disk image without capturing a snapshot. The first `stack emulator start` will cold-boot, which is slower. |
+
+<Info>
+Using `--skip-snapshot` bypasses the dependency check entirely since the VM won't boot during the pull. You'll still need all dependencies when you run `stack emulator start` later.
+</Info>
+
+## Starting and stopping the emulator
+
+**Start the emulator:**
+
+```bash
+stack emulator start
+```
+
+The emulator runs in the background. Services become available at:
+
+| Service | URL | Description |
+|---------|-----|-------------|
+| Dashboard | http://localhost:26700 | Stack Auth admin dashboard |
+| Backend API | http://localhost:26701 | Stack Auth REST API |
+| MinIO | http://localhost:26702 | S3-compatible storage |
+| Inbucket | http://localhost:26703 | Email testing interface |
+
+**Stop the emulator:**
+
+```bash
+stack emulator stop
+```
+
+Stopping preserves all data. Your users, projects, and configuration persist across stop/start cycles.
+
+**Reset the emulator:**
+
+```bash
+stack emulator reset
+```
+
+This wipes all data and returns the emulator to a fresh state.
+
+**Check status:**
+
+```bash
+stack emulator status
+```
+
+Shows whether the emulator is running and the health of its services.
+
+## Running commands with the emulator
+
+The `run` command starts the emulator, executes a command with Stack Auth credentials injected, and stops the emulator when the command exits:
+
+```bash
+stack emulator run --config-file ./stack.config.ts "npm run dev"
+```
+
+This is useful for development workflows where you want the emulator to automatically start and stop with your dev server.
+
+When `--config-file` is provided, the CLI injects these environment variables into the child process:
+
+- `STACK_PROJECT_ID` / `NEXT_PUBLIC_STACK_PROJECT_ID` / `VITE_STACK_PROJECT_ID` / `EXPO_PUBLIC_STACK_PROJECT_ID`
+- `STACK_PUBLISHABLE_CLIENT_KEY` / `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY`
+- `STACK_SECRET_SERVER_KEY`
+- `STACK_API_URL` / `NEXT_PUBLIC_STACK_API_URL` / `VITE_STACK_API_URL` / `EXPO_PUBLIC_STACK_API_URL`
+
+## Listing available releases
+
+See which emulator versions are available:
+
+```bash
+stack emulator list-releases
+```
+
+## Hardware acceleration
+
+The emulator uses hardware acceleration when available:
+
+- **macOS**: Uses HVF (Hypervisor.framework) for native-architecture VMs
+- **Linux**: Uses KVM when available
+
+Running a non-native architecture (e.g., AMD64 emulator on an ARM64 Mac) falls back to software emulation, which is significantly slower.
