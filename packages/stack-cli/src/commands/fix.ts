@@ -129,7 +129,7 @@ function buildFixPrompt(errorText: string): string {
     "The user pasted the following error:",
     "",
     "<<<ERROR_START>>>",
-    errorText,
+    JSON.stringify(errorText),
     "<<<ERROR_END>>>",
     "",
     "FINAL OUTPUT FORMAT — your last assistant message MUST be exactly this markdown structure, with nothing before or after it:",
