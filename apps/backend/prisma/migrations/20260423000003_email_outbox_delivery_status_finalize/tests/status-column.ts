@@ -75,8 +75,9 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
     FROM pg_trigger
     WHERE tgrelid = '"EmailOutbox"'::regclass
       AND tgname IN ('EmailOutbox_status_v2_trigger', 'EmailOutbox_status_trigger')
+    ORDER BY tgname
   `;
-  expect(triggerRows).toHaveLength(0);
+  expect(triggerRows.map((row) => row.tgname)).toEqual(['EmailOutbox_status_trigger']);
 
   const delayedRows = await sql`
     SELECT "status"
@@ -89,8 +90,7 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
 
   await sql`
     UPDATE "EmailOutbox"
-    SET "markedAsSpamAt" = NOW(),
-        "status" = 'MARKED_AS_SPAM'::"EmailOutboxStatus"
+    SET "markedAsSpamAt" = NOW()
     WHERE "tenancyId" = ${ctx.tenancyId}::uuid
       AND "id" = ${ctx.delayedEmailId}::uuid
   `;

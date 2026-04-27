@@ -968,10 +968,10 @@ model EmailOutbox {
   // NOTE: The `sending` status is NOT the same as `finishedSendingAt`! If the outbox can have delivery info, then
   // `sending` is about waiting for a terminal delivery state. A better name would be `delivering`, but that name is less catchy than `sending`.
   //
-  // This is an app-maintained column with a database CHECK constraint that
+  // This is a trigger-maintained column with a database CHECK constraint that
   // verifies it matches the status-driving fields. It used to be STORED
   // GENERATED, but changing that expression rewrites the full EmailOutbox table
-  // under a strong lock; a plain checked column can be backfilled in batches.
+  // under a strong lock; a plain trigger-maintained column can be backfilled in batches.
   status EmailOutboxStatus @default(PREPARING)
 
   // A simplified version of the status property.

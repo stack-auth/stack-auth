@@ -124,7 +124,6 @@ async function retryEmailsStuckInRendering(): Promise<void> {
     data: {
       renderedByWorkerId: null,
       startedRenderingAt: null,
-      status: "PREPARING",
       shouldUpdateSequenceId: true,
     },
   });
@@ -244,7 +243,6 @@ async function claimEmailsForRendering(workerId: string): Promise<EmailOutbox[]>
     SET
       "renderedByWorkerId" = ${workerId}::uuid,
       "startedRenderingAt" = NOW(),
-      "status" = 'RENDERING'::"EmailOutboxStatus",
       "shouldUpdateSequenceId" = TRUE
     FROM selected
     WHERE e."tenancyId" = selected."tenancyId" AND e."id" = selected."id"
@@ -331,7 +329,6 @@ async function renderTenancyEmails(workerId: string, tenancyId: string, group: E
         renderErrorInternalMessage: error,
         renderErrorInternalDetails: { error },
         finishedRenderingAt: new Date(),
-        status: "RENDER_ERROR",
         shouldUpdateSequenceId: true,
       },
     });
@@ -353,7 +350,6 @@ async function renderTenancyEmails(workerId: string, tenancyId: string, group: E
         renderErrorInternalMessage: null,
         renderErrorInternalDetails: Prisma.DbNull,
         finishedRenderingAt: new Date(),
-        status: row.isQueued ? "QUEUED" : "SCHEDULED",
         shouldUpdateSequenceId: true,
       },
     });
@@ -446,7 +442,6 @@ export async function queueReadyEmails(): Promise<{ queuedCount: number }> {
   const freshEmails = await globalPrismaClient.$queryRaw<{ id: string }[]>`
     UPDATE "EmailOutbox"
     SET "isQueued" = TRUE,
-        "status" = 'QUEUED'::"EmailOutboxStatus",
         "shouldUpdateSequenceId" = TRUE
     WHERE "isQueued" = FALSE
       AND "isPaused" = FALSE
@@ -466,7 +461,6 @@ export async function queueReadyEmails(): Promise<{ queuedCount: number }> {
     UPDATE "EmailOutbox"
     SET "isQueued" = TRUE,
         "nextSendRetryAt" = NULL,
-        "status" = 'QUEUED'::"EmailOutboxStatus",
         "shouldUpdateSequenceId" = TRUE
     WHERE "isQueued" = FALSE
       AND "isPaused" = FALSE
@@ -546,7 +540,6 @@ async function claimEmailsForSending(tx: PrismaClientTransaction, tenancyId: str
     )
     UPDATE "EmailOutbox" AS e
     SET "startedSendingAt" = NOW(),
-        "status" = 'SENDING'::"EmailOutboxStatus",
         "shouldUpdateSequenceId" = TRUE
     FROM selected
     WHERE e."tenancyId" = selected."tenancyId" AND e."id" = selected."id"
@@ -696,7 +689,6 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
           data: {
             startedSendingAt: null,
             isQueued: false,
-            status: "SCHEDULED",
             sendRetries: newAttemptCount,
             nextSendRetryAt: new Date(Date.now() + backoffMs),
             sendAttemptErrors: updatedErrors as Prisma.InputJsonArray,
@@ -731,7 +723,6 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
           data: {
             finishedSendingAt: new Date(),
             canHaveDeliveryInfo: false,
-            status: "SERVER_ERROR",
             sendRetries: newAttemptCount,
             sendAttemptErrors: updatedErrors as Prisma.InputJsonArray,
             sendServerErrorExternalMessage: result.error.message,
@@ -765,7 +756,6 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
         data: {
           finishedSendingAt: new Date(),
           canHaveDeliveryInfo: providerCanDeliverInfo,
-          status: providerCanDeliverInfo ? "SENDING" : "SENT",
           sendServerErrorExternalMessage: null,
           sendServerErrorExternalDetails: Prisma.DbNull,
           sendServerErrorInternalMessage: null,
@@ -789,7 +779,6 @@ async function processSingleEmail(context: TenancyProcessingContext, row: EmailO
       data: {
         finishedSendingAt: new Date(),
         canHaveDeliveryInfo: false,
-        status: "SERVER_ERROR",
         sendServerErrorExternalMessage: "An error occurred while sending the email. If you are the admin of this project, please check the email configuration and try again.",
         sendServerErrorExternalDetails: {},
         sendServerErrorInternalMessage: errorToNiceString(error),
@@ -881,7 +870,6 @@ async function markSkipped(row: EmailOutbox, reason: EmailOutboxSkippedReason, d
     data: {
       skippedReason: reason,
       skippedDetails: details as Prisma.InputJsonValue,
-      status: "SKIPPED",
       shouldUpdateSequenceId: true,
     },
   });

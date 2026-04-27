@@ -58,7 +58,6 @@ export async function sendEmailToMany(options: {
       themeId: options.themeId,
       isHighPriority: options.isHighPriority,
       createdWith: options.createdWith.type === "draft" ? EmailOutboxCreatedWith.DRAFT : EmailOutboxCreatedWith.PROGRAMMATIC_CALL,
-      status: "PREPARING",
       emailDraftId: options.createdWith.type === "draft" ? options.createdWith.draftId : undefined,
       emailProgrammaticCallTemplateId: options.createdWith.type === "programmatic-call" ? options.createdWith.templateId : undefined,
       to: serializeRecipient(recipient)!,

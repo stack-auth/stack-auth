@@ -34,7 +34,7 @@ describe("queueReadyEmails", () => {
       expect(queryText).toContain('"isQueued" = FALSE');
       expect(queryText).toContain('"startedSendingAt" IS NULL');
       expect(queryText).toContain('"finishedSendingAt" IS NULL');
-      expect(queryText).toContain('"status" = \'QUEUED\'::"EmailOutboxStatus"');
+      expect(queryText).not.toContain('"status" =');
     }
   });
 });

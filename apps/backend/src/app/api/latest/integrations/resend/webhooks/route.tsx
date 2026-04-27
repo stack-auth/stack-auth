@@ -123,10 +123,10 @@ async function processEmailDeliveryEvent(kind: EmailEventKind, payload: ResendWe
   // is non-terminal; Resend can later send `delivered` or `bounced`, and the
   // EmailOutbox exclusivity constraint allows only one of delivered/delayed/bounced.
   const deliveryUpdate =
-    kind === "delivered" ? Prisma.sql`"deliveredAt" = ${eventAt}, "deliveryDelayedAt" = NULL, "status" = 'SENT'::"EmailOutboxStatus"` :
-      kind === "delivery_delayed" ? Prisma.sql`"deliveryDelayedAt" = ${eventAt}, "status" = 'DELIVERY_DELAYED'::"EmailOutboxStatus"` :
-        kind === "bounced" ? Prisma.sql`"bouncedAt" = ${eventAt}, "deliveryDelayedAt" = NULL, "status" = 'BOUNCED'::"EmailOutboxStatus"` :
-          Prisma.sql`"markedAsSpamAt" = ${eventAt}, "status" = 'MARKED_AS_SPAM'::"EmailOutboxStatus"`;
+    kind === "delivered" ? Prisma.sql`"deliveredAt" = ${eventAt}, "deliveryDelayedAt" = NULL` :
+      kind === "delivery_delayed" ? Prisma.sql`"deliveryDelayedAt" = ${eventAt}` :
+        kind === "bounced" ? Prisma.sql`"bouncedAt" = ${eventAt}, "deliveryDelayedAt" = NULL` :
+          Prisma.sql`"markedAsSpamAt" = ${eventAt}`;
 
   // For `delivered` and `bounced` we don't want to overwrite a terminal state if we
   // somehow receive events out of order. `complained` records a separate user action
