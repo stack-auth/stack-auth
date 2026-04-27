@@ -3,7 +3,8 @@
 import { TeamMemberSearchTable } from "@/components/data-table/team-member-search-table";
 import { FormDialog } from "@/components/form-dialog";
 import { InputField, SelectField, TextAreaField } from "@/components/form-fields";
-import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, DataTable, DataTableColumnHeader, DataTableViewOptions, SimpleTooltip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, Typography, useToast } from "@/components/ui";
+import { ActionDialog, Alert, AlertDescription, AlertTitle, Button, SimpleTooltip, Tooltip, TooltipContent, TooltipProvider, TooltipTrigger, Typography, useToast } from "@/components/ui";
+import { useRouter } from "@/components/router";
 import { useUpdateConfig } from "@/lib/config-update";
 import { getPublicEnvVar } from "@/lib/env";
 import { ArrowSquareOut, CheckCircle, Envelope, HardDrive, Sliders, WarningCircleIcon, XCircle, XIcon } from "@phosphor-icons/react";
@@ -13,7 +14,13 @@ import { strictEmailSchema } from "@stackframe/stack-shared/dist/schema-fields";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { deepPlainEquals } from "@stackframe/stack-shared/dist/utils/objects";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { ColumnDef, Table as TableType } from "@tanstack/react-table";
+import {
+  createDefaultDataGridState,
+  DataGrid,
+  useDataSource,
+  type DataGridColumnDef,
+  type DataGridState,
+} from "@stackframe/dashboard-ui-components";
 import { useEffect, useMemo, useState, type ElementType } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
@@ -450,10 +457,26 @@ function ManagedEmailSetupDialog(props: {
 
 function EmailLogCard() {
   const stackAdminApp = useAdminApp();
+  const router = useRouter();
   const [emailLogs, setEmailLogs] = useState<AdminSentEmail[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [table, setTable] = useState<TableType<AdminSentEmail> | null>(null);
+  const [gridState, setGridState] = useState<DataGridState>(() => ({
+    ...createDefaultDataGridState(emailTableColumns),
+    sorting: [{ columnId: "sentAt", direction: "desc" }],
+  }));
+  const gridData = useDataSource({
+    data: emailLogs,
+    columns: emailTableColumns,
+    getRowId: (row) => row.id,
+    sorting: gridState.sorting,
+    quickSearch: gridState.quickSearch,
+    pagination: gridState.pagination,
+    // `listSentEmails()` returns a flat array (no cursor support in the
+    // SDK), so client-mode paginate is the right fit until the server API
+    // grows cursor pagination.
+    paginationMode: "client",
+  });
 
   // Fetch email logs when component mounts
   useEffect(() => {
@@ -562,27 +585,19 @@ function EmailLogCard() {
               View and manage email sending history
             </Typography>
           </div>
-          {table && (
-            <div className="flex items-center gap-2 flex-shrink-0">
-              <DataTableViewOptions
-                table={table}
-              />
-            </div>
-          )}
         </div>
       </div>
       <div className="border-t border-foreground/[0.05] px-5 pb-5 [&_div.rounded-md.border]:border-0 [&_div.rounded-md.border]:shadow-none">
-        <DataTable
-          data={emailLogs}
-          defaultColumnFilters={[]}
+        <DataGrid
           columns={emailTableColumns}
-          defaultSorting={[{ id: 'sentAt', desc: true }]}
-          showDefaultToolbar={false}
-          showResetFilters={false}
-          onTableReady={(tableInstance) => {
-            if (table !== tableInstance) {
-              setTable(tableInstance);
-            }
+          rows={gridData.rows}
+          getRowId={(row) => row.id}
+          totalRowCount={gridData.totalRowCount}
+          isLoading={gridData.isLoading}
+          state={gridState}
+          onChange={setGridState}
+          onRowClick={(row) => {
+            router.push(`email-viewer/${row.id}`);
           }}
         />
       </div>
@@ -1033,51 +1048,41 @@ function TestSendingDialog(props: {
   />;
 }
 
-const emailTableColumns: ColumnDef<AdminSentEmail>[] = [
+const emailTableColumns: DataGridColumnDef<AdminSentEmail>[] = [
   {
-    accessorKey: 'recipient',
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Recipient" />,
-    cell: ({ row }) => (
-      <span className="text-sm font-medium text-foreground">{row.original.recipient}</span>
-    ),
-  },
-  {
-    accessorKey: 'subject',
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Subject" />,
-    cell: ({ row }) => (
-      <span className="text-sm text-muted-foreground truncate max-w-[300px] block">
-        {row.original.subject}
-      </span>
-    ),
-  },
-  {
-    accessorKey: 'sentAt',
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Sent At" />,
-    cell: ({ row }) => {
-      const date = row.original.sentAt;
-      return (
-        <span className="text-sm text-muted-foreground tabular-nums font-mono">
-          {date.toLocaleDateString('en-US', {
-            month: 'short',
-            day: 'numeric',
-            year: 'numeric',
-          })} {date.toLocaleTimeString('en-US', {
-            hour: 'numeric',
-            minute: '2-digit',
-            hour12: true,
-          })}
-        </span>
-      );
+    id: "recipient",
+    header: "Recipient",
+    width: 200,
+    type: "string",
+    accessor: (row) => row.to[0] ?? row.recipient,
+    renderCell: ({ row }) => {
+      const recipientEmail = row.to[0] ?? row.recipient;
+      return recipientEmail || "No recipient";
     },
   },
   {
-    id: 'status',
-    accessorFn: (row) => (row.error ? 'failed' : 'sent'),
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Status" />,
-    cell: ({ row }) => (
+    id: "subject",
+    header: "Subject",
+    width: 240,
+    flex: 1,
+    type: "string",
+    accessor: "subject",
+  },
+  {
+    id: "sentAt",
+    header: "Sent At",
+    accessor: "sentAt",
+    width: 180,
+    type: "dateTime",
+  },
+  {
+    id: "status",
+    header: "Status",
+    width: 120,
+    renderCell: ({ row }) => (
       <StatusBadge
-        status={row.original.error ? 'failed' : 'sent'}
-        error={row.original.error ? String(row.original.error) : null}
+        status={row.error ? "failed" : "sent"}
+        error={row.error != null ? String(row.error) : null}
       />
     ),
   },

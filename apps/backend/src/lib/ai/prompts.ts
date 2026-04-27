@@ -33,18 +33,20 @@ For personalized support, complex issues, or help beyond documentation:
 - **Email Support**: team@stack-auth.com (for technical support and detailed inquiries)
 `;
 
-export type SystemPromptId =
-  | "command-center-ask-ai"
-  | "docs-ask-ai"
-  | "wysiwyg-edit"
-  | "email-wysiwyg-editor"
-  | "email-assistant-template"
-  | "email-assistant-theme"
-  | "email-assistant-draft"
-  | "create-dashboard"
-  | "run-query"
-  | "build-analytics-query"
-  | "rewrite-template-source";
+export const SYSTEM_PROMPT_IDS = [
+  "command-center-ask-ai",
+  "docs-ask-ai",
+  "wysiwyg-edit",
+  "email-wysiwyg-editor",
+  "email-assistant-template",
+  "email-assistant-theme",
+  "email-assistant-draft",
+  "create-dashboard",
+  "run-query",
+  "build-analytics-query",
+  "rewrite-template-source",
+] as const;
+export type SystemPromptId = typeof SYSTEM_PROMPT_IDS[number];
 
 /**
  * Context-specific system prompts that are appended to the base prompt.
@@ -1119,6 +1121,129 @@ Key insights: Metadata fields are sparse/empty — don't expect rich structures.
 \`\`\`
 - Token refresh is an excellent proxy for active authenticated sessions
 - ip_info has rich geolocation data for geo-based analysis
+
+### OTHER TABLES
+
+**contact_channels** table (email/phone channels attached to a user):
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID | Primary key |
+| user_id | UUID | Join to users.id |
+| type | LowCardinality(String) | Channel type, e.g. \`email\` |
+| value | String | The channel value (e.g. email address) |
+| is_primary | UInt8 (0/1) | Primary contact for the user |
+| is_verified | UInt8 (0/1) | Verification status |
+| used_for_auth | UInt8 (0/1) | Usable as an auth identifier |
+| created_at | DateTime64(3, 'UTC') | |
+
+**teams** table:
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID | Primary key |
+| display_name | String | |
+| profile_image_url | Nullable(String) | |
+| created_at | DateTime64(3, 'UTC') | |
+| client_metadata | String | JSON string; typically empty |
+| client_read_only_metadata | String | JSON string; typically empty |
+| server_metadata | String | JSON string; typically empty |
+
+**team_member_profiles** table (team membership + per-team profile overrides — this is the join table of users ↔ teams):
+| Column | Type | Notes |
+|--------|------|-------|
+| team_id | UUID | Join to teams.id |
+| user_id | UUID | Join to users.id |
+| display_name | Nullable(String) | Per-team override |
+| profile_image_url | Nullable(String) | Per-team override |
+| created_at | DateTime64(3, 'UTC') | Membership creation |
+
+**team_permissions** table (permissions granted to a user inside a specific team):
+| Column | Type | Notes |
+|--------|------|-------|
+| team_id | UUID | |
+| user_id | UUID | |
+| id | String | Permission identifier (e.g. \`admin\`, \`member\`) |
+| created_at | DateTime64(3, 'UTC') | |
+
+**team_invitations** table:
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID | Primary key |
+| team_id | UUID | |
+| team_display_name | String | Snapshot of team name at invite time |
+| recipient_email | String | |
+| expires_at_millis | Int64 | Unix milliseconds — compare with \`toUnixTimestamp64Milli(now())\` |
+| created_at | DateTime64(3, 'UTC') | |
+
+**email_outboxes** table (transactional + programmatic email delivery log):
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID | Primary key |
+| status | LowCardinality(String) | Raw delivery status |
+| simple_status | LowCardinality(String) | Collapsed status for reporting |
+| created_with | LowCardinality(String) | How the email was created |
+| email_draft_id | Nullable(String) | |
+| email_programmatic_call_template_id | Nullable(String) | |
+| theme_id | Nullable(String) | |
+| is_high_priority | UInt8 (0/1) | |
+| is_transactional | Nullable(UInt8) | |
+| subject | Nullable(String) | |
+| notification_category_id | Nullable(String) | |
+| started_rendering_at | Nullable(DateTime64(3, 'UTC')) | |
+| rendered_at | Nullable(DateTime64(3, 'UTC')) | |
+| render_error | Nullable(String) | Non-null implies render failure |
+| scheduled_at | DateTime64(3, 'UTC') | |
+| created_at | DateTime64(3, 'UTC') | |
+| updated_at | DateTime64(3, 'UTC') | |
+| started_sending_at | Nullable(DateTime64(3, 'UTC')) | |
+| server_error | Nullable(String) | Non-null implies send failure |
+| delivered_at | Nullable(DateTime64(3, 'UTC')) | |
+| opened_at | Nullable(DateTime64(3, 'UTC')) | |
+| clicked_at | Nullable(DateTime64(3, 'UTC')) | |
+| unsubscribed_at | Nullable(DateTime64(3, 'UTC')) | |
+| marked_as_spam_at | Nullable(DateTime64(3, 'UTC')) | |
+| bounced_at | Nullable(DateTime64(3, 'UTC')) | |
+| delivery_delayed_at | Nullable(DateTime64(3, 'UTC')) | |
+| can_have_delivery_info | Nullable(UInt8) | |
+| skipped_reason | LowCardinality(Nullable(String)) | Non-null implies send was skipped |
+| skipped_details | Nullable(String) | |
+| send_retries | Int32 | |
+| is_paused | UInt8 (0/1) | |
+
+Key insights: Most \`*_at\` columns are nullable — use \`IS NOT NULL\` / \`IS NULL\` rather than assuming a value exists. \`delivered_at\`, \`opened_at\`, and \`clicked_at\` are classic funnel steps.
+
+**project_permissions** table (project-level permissions granted to a user, not scoped to a team):
+| Column | Type | Notes |
+|--------|------|-------|
+| user_id | UUID | |
+| id | String | Permission identifier |
+| created_at | DateTime64(3, 'UTC') | |
+
+**notification_preferences** table (per-user opt-in/out for notification categories):
+| Column | Type | Notes |
+|--------|------|-------|
+| user_id | UUID | |
+| notification_category_id | String | |
+| enabled | UInt8 (0/1) | |
+
+Key insights: No timestamp column — do NOT attempt \`ORDER BY created_at\` or date filtering on this table.
+
+**refresh_tokens** table (active/past refresh tokens — proxy for sessions):
+| Column | Type | Notes |
+|--------|------|-------|
+| id | UUID | Primary key |
+| user_id | UUID | |
+| created_at | DateTime64(3, 'UTC') | Token issue time |
+| last_used_at | DateTime64(3, 'UTC') | Last time this token was exchanged |
+| is_impersonation | UInt8 (0/1) | Dashboard/admin impersonation session |
+| expires_at | Nullable(DateTime64(3, 'UTC')) | Null ⇒ non-expiring |
+
+**connected_accounts** table (OAuth / SSO provider account links):
+| Column | Type | Notes |
+|--------|------|-------|
+| user_id | UUID | |
+| provider | String | e.g. \`google\`, \`github\` |
+| provider_account_id | String | External account identifier |
+| created_at | DateTime64(3, 'UTC') | Link time |
 
 ### CRITICAL SQL RULES
 
