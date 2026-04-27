@@ -1,3 +1,4 @@
+import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { describe } from "vitest";
 import { it } from "../../../../../helpers";
 import { Project, niceBackendFetch } from "../../../../backend-helpers";
@@ -48,7 +49,12 @@ describe("managed email onboarding internal endpoints", () => {
 
     expect(setupResponse.status).toBe(200);
     expect(setupResponse.body.domain_id).toBeDefined();
-    expect(setupResponse.body.status).toBe("verified");
+    expect(setupResponse.body.status).toBe("pending_verification");
+
+    // Mock onboarding asynchronously flips status to "verified" ~1s after setup
+    // (mirroring the real Resend webhook flow). Wait for the transition before
+    // asserting verified state.
+    await wait(1500);
 
     const listResponse = await niceBackendFetch("/api/v1/internal/emails/managed-onboarding/list", {
       method: "GET",
