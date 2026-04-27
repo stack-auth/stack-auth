@@ -14,6 +14,7 @@ const DEFAULT_EMULATOR_BACKEND_PORT = 26701;
 const DEFAULT_EMULATOR_DASHBOARD_PORT = 26700;
 const DEFAULT_EMULATOR_MINIO_PORT = 26702;
 const DEFAULT_EMULATOR_INBUCKET_PORT = 26703;
+const DEFAULT_EMULATOR_MOCK_OAUTH_PORT = 26704;
 const DEFAULT_PORT_PREFIX = "81";
 const GITHUB_API = "https://api.github.com";
 const DEFAULT_REPO = "stack-auth/stack-auth";
@@ -188,6 +189,7 @@ function prepareRuntimeConfigIso(): void {
   const backendPort = envPort("EMULATOR_BACKEND_PORT", DEFAULT_EMULATOR_BACKEND_PORT);
   const minioPort = envPort("EMULATOR_MINIO_PORT", DEFAULT_EMULATOR_MINIO_PORT);
   const inbucketPort = envPort("EMULATOR_INBUCKET_PORT", DEFAULT_EMULATOR_INBUCKET_PORT);
+  const mockOAuthPort = envPort("EMULATOR_MOCK_OAUTH_PORT", DEFAULT_EMULATOR_MOCK_OAUTH_PORT);
 
   const runtimeEnv = [
     `STACK_EMULATOR_PORT_PREFIX=${portPrefix}`,
@@ -195,6 +197,7 @@ function prepareRuntimeConfigIso(): void {
     `STACK_EMULATOR_BACKEND_HOST_PORT=${backendPort}`,
     `STACK_EMULATOR_MINIO_HOST_PORT=${minioPort}`,
     `STACK_EMULATOR_INBUCKET_HOST_PORT=${inbucketPort}`,
+    `STACK_EMULATOR_MOCK_OAUTH_HOST_PORT=${mockOAuthPort}`,
     `STACK_EMULATOR_VM_DIR_HOST=${vmDir}`,
     "",
   ].join("\n");
