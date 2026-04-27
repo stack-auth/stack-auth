@@ -1,6 +1,7 @@
 import { globalVar } from "./globals";
 import { Json } from "./json";
 import { pick } from "./objects";
+import { getProcessEnv } from "./process-env";
 import { nicify } from "./strings";
 
 
@@ -78,7 +79,7 @@ export class StackAssertionError extends Error {
       enumerable: false,
     });
 
-    if (process.env.NEXT_PUBLIC_STACK_DEBUGGER_ON_ASSERTION_ERROR === "true") {
+    if (getProcessEnv("NEXT_PUBLIC_STACK_DEBUGGER_ON_ASSERTION_ERROR") === "true") {
       debugger;
     }
   }

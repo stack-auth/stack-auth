@@ -7,6 +7,7 @@ import { StackAssertionError } from "./utils/errors";
 import { decodeBasicAuthorizationHeader } from "./utils/http";
 import { allProviders } from "./utils/oauth";
 import { deepPlainClone, omit, typedFromEntries } from "./utils/objects";
+import { getProcessEnv } from "./utils/process-env";
 import { deindent } from "./utils/strings";
 import { isValidCountryCode, normalizeCountryCode } from "./utils/country-codes";
 import { isValidHostnameWithWildcards, isValidUrl } from "./utils/urls";
@@ -881,7 +882,7 @@ export const neonAuthorizationHeaderSchema = basicAuthorizationHeaderSchema.test
   const decoded = decodeBasicAuthorizationHeader(value);
   if (decoded === null) return true;
   const [clientId, clientSecret] = decoded;
-  for (const neonClientConfig of JSON.parse(process.env.STACK_INTEGRATION_CLIENTS_CONFIG || '[]')) {
+  for (const neonClientConfig of JSON.parse(getProcessEnv("STACK_INTEGRATION_CLIENTS_CONFIG") || '[]')) {
     if (clientId === neonClientConfig.client_id && clientSecret === neonClientConfig.client_secret) return true;
   }
   return false;
