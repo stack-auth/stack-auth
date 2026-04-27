@@ -1,23 +1,20 @@
 'use client';
 import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-admin-app";
-import { DesignDataTable } from "@/components/design-components";
 import { useRouter } from "@/components/router";
-import { ActionCell, ActionDialog, DataTable, DataTableColumnHeader, DateCell, SearchToolbarItem, TextCell, Typography } from "@/components/ui";
+import { ActionCell, ActionDialog, Typography } from "@/components/ui";
 import { ServerTeam } from '@stackframe/stack';
-import { ColumnDef, Row, Table } from "@tanstack/react-table";
-import { useState } from "react";
+import {
+  createDefaultDataGridState,
+  DataGrid,
+  useDataSource,
+  type DataGridColumnDef,
+  type DataGridState,
+} from "@stackframe/dashboard-ui-components";
+import React, { useMemo, useState } from "react";
 import * as yup from "yup";
 import { FormDialog } from "../form-dialog";
 import { InputField } from "../form-fields";
 import { CreateCheckoutDialog } from "../payments/create-checkout-dialog";
-
-function toolbarRender<TData>(table: Table<TData>) {
-  return (
-    <>
-      <SearchToolbarItem table={table} keyName="displayName" placeholder="Filter by name" />
-    </>
-  );
-}
 
 const teamFormSchema = yup.object({
   displayName: yup.string(),
@@ -68,7 +65,7 @@ function DeleteDialog(props: {
   </ActionDialog>;
 }
 
-function Actions({ row }: { row: Row<ServerTeam> }) {
+function TeamActions({ team }: { team: ServerTeam }) {
   const router = useRouter();
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
   const [isDeleteModalOpen, setIsDeleteModalOpen] = useState(false);
@@ -77,14 +74,14 @@ function Actions({ row }: { row: Row<ServerTeam> }) {
 
   return (
     <>
-      <EditDialog team={row.original} open={isEditModalOpen} onOpenChange={setIsEditModalOpen} />
-      <DeleteDialog team={row.original} open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen} />
-      <CreateCheckoutDialog open={isCreateCheckoutModalOpen} onOpenChange={setIsCreateCheckoutModalOpen} team={row.original} />
+      <EditDialog team={team} open={isEditModalOpen} onOpenChange={setIsEditModalOpen} />
+      <DeleteDialog team={team} open={isDeleteModalOpen} onOpenChange={setIsDeleteModalOpen} />
+      <CreateCheckoutDialog open={isCreateCheckoutModalOpen} onOpenChange={setIsCreateCheckoutModalOpen} team={team} />
       <ActionCell
         items={[
           {
             item: "View Members",
-            onClick: () => router.push(`/projects/${adminApp.projectId}/teams/${row.original.id}`),
+            onClick: () => router.push(`/projects/${encodeURIComponent(adminApp.projectId)}/teams/${encodeURIComponent(team.id)}`),
           },
           {
             item: "Edit",
@@ -106,25 +103,45 @@ function Actions({ row }: { row: Row<ServerTeam> }) {
   );
 }
 
-const columns: ColumnDef<ServerTeam>[] =  [
+const columns: DataGridColumnDef<ServerTeam>[] = [
   {
-    accessorKey: "id",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="ID" />,
-    cell: ({ row }) => <TextCell size={60}>{row.original.id}</TextCell>,
+    id: "id",
+    header: "ID",
+    accessor: "id",
+    width: 120,
+    type: "string",
+    renderCell: ({ value }) => (
+      <span className="truncate font-mono text-xs text-muted-foreground">{String(value)}</span>
+    ),
   },
   {
-    accessorKey: "displayName",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Display Name" />,
-    cell: ({ row }) => <TextCell size={200}>{row.original.displayName}</TextCell>,
+    id: "displayName",
+    header: "Display Name",
+    accessor: "displayName",
+    width: 200,
+    flex: 1,
+    type: "string",
+    renderCell: ({ value }) => (
+      <span className="truncate">{String(value ?? "")}</span>
+    ),
   },
   {
-    accessorKey: "createdAt",
-    header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Created At" />,
-    cell: ({ row }) => <DateCell date={row.original.createdAt}></DateCell>,
+    id: "createdAt",
+    header: "Created At",
+    accessor: "createdAt",
+    width: 140,
+    type: "dateTime",
   },
   {
     id: "actions",
-    cell: ({ row }) => <Actions row={row} />,
+    header: "",
+    width: 50,
+    minWidth: 50,
+    maxWidth: 50,
+    sortable: false,
+    hideable: false,
+    resizable: false,
+    renderCell: ({ row }) => <TeamActions team={row} />,
   },
 ];
 
@@ -132,15 +149,33 @@ export function TeamTable(props: { teams: ServerTeam[] }) {
   const router = useRouter();
   const stackAdminApp = useAdminApp();
 
-  return <DesignDataTable
-    data={props.teams}
-    columns={columns}
-    toolbarRender={toolbarRender}
-    defaultColumnFilters={[]}
-    defaultSorting={[{ id: 'createdAt', desc: true }]}
-    glassmorphic
-    onRowClick={(row) => {
-      router.push(`/projects/${encodeURIComponent(stackAdminApp.projectId)}/teams/${encodeURIComponent(row.id)}`);
-    }}
-  />;
+  const [gridState, setGridState] = useState<DataGridState>(() => ({
+    ...createDefaultDataGridState(columns),
+    sorting: [{ columnId: "createdAt", direction: "desc" }],
+  }));
+
+  const gridData = useDataSource({
+    data: props.teams,
+    columns,
+    getRowId: (row) => row.id,
+    sorting: gridState.sorting,
+    quickSearch: gridState.quickSearch,
+    pagination: gridState.pagination,
+    paginationMode: "client",
+  });
+
+  return (
+    <DataGrid
+      columns={columns}
+      rows={gridData.rows}
+      getRowId={(row) => row.id}
+      totalRowCount={gridData.totalRowCount}
+      isLoading={gridData.isLoading}
+      state={gridState}
+      onChange={setGridState}
+      onRowClick={(row) => {
+        router.push(`/projects/${encodeURIComponent(stackAdminApp.projectId)}/teams/${encodeURIComponent(row.id)}`);
+      }}
+    />
+  );
 }
