@@ -14,7 +14,7 @@ import { traceSpan, withTraceSpan } from './telemetry';
 
 let esbuildInitializePromise: Promise<void> | null = null;
 
-if (getProcessEnv("NODE_ENV") === 'development' && typeof process !== "undefined" && typeof process.exit === "function") {
+if (typeof process !== "undefined" && typeof process.exit === "function" && getProcessEnv("NODE_ENV") === 'development') {
   // On development Node.js servers, initialize ESBuild as soon as the module is imported so we have to wait less on the first request
   runAsynchronously(async () => {
     try {

@@ -1,7 +1,6 @@
 import { globalVar } from "./globals";
 import { Json } from "./json";
 import { pick } from "./objects";
-import { getProcessEnv } from "./process-env";
 import { nicify } from "./strings";
 
 
@@ -79,7 +78,9 @@ export class StackAssertionError extends Error {
       enumerable: false,
     });
 
-    if (getProcessEnv("NEXT_PUBLIC_STACK_DEBUGGER_ON_ASSERTION_ERROR") === "true") {
+    // Use literal dot-form (guarded with `typeof process`) so Next.js / webpack
+    // DefinePlugin can inline the value at build time. See process-env.tsx.
+    if ((typeof process !== "undefined" ? process.env.NEXT_PUBLIC_STACK_DEBUGGER_ON_ASSERTION_ERROR : undefined) === "true") {
       debugger;
     }
   }
