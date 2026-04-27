@@ -13,6 +13,18 @@ type FixOptions = {
 const MAX_ERROR_LENGTH = 8000;
 const MAX_STDIN_BYTES = MAX_ERROR_LENGTH * 4;
 
+async function abortablePrompt<T>(promise: Promise<T>): Promise<T> {
+  try {
+    return await promise;
+  } catch (error: unknown) {
+    if (error != null && typeof error === "object" && "name" in error && (error as { name: unknown }).name === "ExitPromptError") {
+      console.log("\nAborted.");
+      process.exit(0);
+    }
+    throw error;
+  }
+}
+
 async function readStdin(): Promise<string> {
   if (process.stdin.isTTY) return "";
   const chunks: Buffer[] = [];
@@ -39,15 +51,7 @@ export function registerFixCommand(program: Command) {
     .option("--output-dir <dir>", "Directory of the project to fix (defaults to cwd)")
     .option("-y, --yes", "Skip the confirmation prompt")
     .action(async (opts: FixOptions) => {
-      try {
-        await runFix(opts);
-      } catch (error: unknown) {
-        if (error != null && typeof error === "object" && "name" in error && error.name === "ExitPromptError") {
-          console.log("\nAborted.");
-          process.exit(0);
-        }
-        throw error;
-      }
+      await runFix(opts);
     });
 }
 
@@ -63,10 +67,10 @@ async function runFix(opts: FixOptions) {
     if (isNonInteractiveEnv()) {
       throw new CliError("No error provided. Pass --error \"...\" or pipe the error to stdin.");
     }
-    errorText = (await input({
+    errorText = (await abortablePrompt(input({
       message: "Paste the Stack Auth error you want fixed:",
       validate: (v) => v.trim().length > 0 || "Error text is required",
-    })).trim();
+    }))).trim();
   }
 
   if (errorText.length > MAX_ERROR_LENGTH) {
@@ -79,10 +83,10 @@ async function runFix(opts: FixOptions) {
 
   if (!opts.yes && !isNonInteractiveEnv()) {
     console.log(`Working directory: ${outputDir}`);
-    const ok = await confirm({
+    const ok = await abortablePrompt(confirm({
       message: "Run the AI agent to fix this error?",
       default: true,
-    });
+    }));
     if (!ok) {
       console.log("Aborted.");
       return;
