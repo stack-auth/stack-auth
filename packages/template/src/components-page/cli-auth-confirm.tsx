@@ -72,6 +72,7 @@ export function useCliAuthConfirmation(): CliAuthConfirmationState {
   const [status, setStatus] = useState<Exclude<CliAuthConfirmationStatus, "invalid">>("idle");
   const [error, setError] = useState<Error | null>(null);
   const autoCompleteRef = useRef(false);
+  const authorizeInProgressRef = useRef(false);
   const [loginCode] = useState(() => {
     if (typeof window === 'undefined') return null;
     return new URLSearchParams(window.location.search).get("login_code");
@@ -113,18 +114,20 @@ export function useCliAuthConfirmation(): CliAuthConfirmationState {
   }, [confirmed, user, completeWithCurrentUser]);
 
   const authorize = useCallback(async () => {
-    if (status === "authorizing" || status === "redirecting") {
+    if (authorizeInProgressRef.current) {
       return;
     }
-    if (!loginCode) {
-      setError(new Error("Missing login code in URL parameters"));
-      setStatus("error");
-      return;
-    }
+    authorizeInProgressRef.current = true;
 
-    setError(null);
-    setStatus("authorizing");
     try {
+      if (!loginCode) {
+        setError(new Error("Missing login code in URL parameters"));
+        setStatus("error");
+        return;
+      }
+
+      setError(null);
+      setStatus("authorizing");
       if (user) {
         await completeWithCurrentUser();
         setStatus("success");
@@ -171,8 +174,10 @@ export function useCliAuthConfirmation(): CliAuthConfirmationState {
     } catch (err) {
       setError(getError(err));
       setStatus("error");
+    } finally {
+      authorizeInProgressRef.current = false;
     }
-  }, [app, completeWithCurrentUser, loginCode, status, user]);
+  }, [app, completeWithCurrentUser, loginCode, user]);
 
   const retry = useCallback(() => {
     setError(null);

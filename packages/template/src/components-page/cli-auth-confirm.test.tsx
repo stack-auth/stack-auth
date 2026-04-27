@@ -128,6 +128,25 @@ describe("useCliAuthConfirmation", () => {
     `);
   });
 
+  it("ignores duplicate authorize clicks before React re-renders", async () => {
+    window.history.replaceState({}, "", "/handler/cli-auth-confirm?login_code=login-code");
+    const getTokens = vi.fn(async () => ({ refreshToken: "refresh-token" }));
+    const sendRequest = vi.fn(async (_path: string, _requestOptions: RequestInit) => new Response(null, { status: 200 }));
+    const app = createAppTestDouble({
+      user: { currentSession: { getTokens } },
+      sendRequest,
+    });
+
+    await renderWithApp(app);
+    await act(async () => {
+      const authorizeButton = getButton("authorize");
+      authorizeButton.click();
+      authorizeButton.click();
+    });
+
+    expect(sendRequest).toHaveBeenCalledOnce();
+  });
+
   it("claims anonymous CLI sessions before redirecting to sign-up", async () => {
     window.history.replaceState({}, "", "/handler/cli-auth-confirm?login_code=login-code");
     const signInWithTokens = vi.fn(async (_tokens: { accessToken: string, refreshToken: string }) => {});

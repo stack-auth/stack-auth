@@ -338,6 +338,7 @@ export const resolveHandlerUrls = (options: { urls: HandlerUrlOptions | undefine
 
 export const buildCliAuthConfirmUrl = (options: {
   cliAuthConfirmUrl: string,
+  /** Used as the base URL only when cliAuthConfirmUrl is relative. */
   appUrl: string,
   loginCode: string,
 }): string => {
