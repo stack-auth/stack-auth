@@ -2007,6 +2007,7 @@ function createComponentsTab(app: StackClientApp<true>): HTMLElement {
     { key: 'emailVerification' as any, label: 'Email verification' },
     { key: 'accountSettings' as any, label: 'Account settings' },
     { key: 'teamInvitation' as any, label: 'Team invitation' },
+    { key: 'cliAuthConfirm' as any, label: 'CLI auth confirmation' },
     { key: 'mfa' as any, label: 'MFA' },
     { key: 'onboarding' as any, label: 'Onboarding' },
     { key: 'error' as any, label: 'Error' },
