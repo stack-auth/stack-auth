@@ -11,12 +11,22 @@ type FixOptions = {
 };
 
 const MAX_ERROR_LENGTH = 8000;
+const MAX_STDIN_BYTES = MAX_ERROR_LENGTH * 4;
 
 async function readStdin(): Promise<string> {
   if (process.stdin.isTTY) return "";
   const chunks: Buffer[] = [];
+  let totalBytes = 0;
   for await (const chunk of process.stdin) {
-    chunks.push(typeof chunk === "string" ? Buffer.from(chunk) : chunk);
+    const buf = typeof chunk === "string" ? Buffer.from(chunk) : chunk;
+    const remaining = MAX_STDIN_BYTES - totalBytes;
+    if (buf.length >= remaining) {
+      chunks.push(buf.subarray(0, remaining));
+      totalBytes += remaining;
+      break;
+    }
+    chunks.push(buf);
+    totalBytes += buf.length;
   }
   return Buffer.concat(chunks).toString("utf-8").trim();
 }
