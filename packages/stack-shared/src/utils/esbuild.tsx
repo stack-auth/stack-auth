@@ -1,9 +1,8 @@
 import * as esbuild from 'esbuild-wasm/lib/browser.js';
 import { join } from 'path';
-import { isBrowserLike } from './env';
+import { getProcessEnv, isBrowserLike } from './env';
 import { captureError, StackAssertionError, throwErr } from "./errors";
 import { createGlobalAsync } from './globals';
-import { getProcessEnv } from './process-env';
 import { ignoreUnhandledRejection, runAsynchronously } from './promises';
 import { Result } from "./results";
 import { traceSpan, withTraceSpan } from './telemetry';

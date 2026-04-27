@@ -1,7 +1,7 @@
 import { KnownError } from "..";
+import { getProcessEnv } from "./env";
 import { StackAssertionError, captureError, concatStacktraces, errorToNiceString } from "./errors";
 import { DependenciesMap } from "./maps";
-import { getProcessEnv } from "./process-env";
 import { Result } from "./results";
 import { traceSpan } from "./telemetry";
 import { generateUuid } from "./uuids";

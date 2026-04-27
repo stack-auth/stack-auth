@@ -79,7 +79,7 @@ export class StackAssertionError extends Error {
     });
 
     // Use literal dot-form (guarded with `typeof process`) so Next.js / webpack
-    // DefinePlugin can inline the value at build time. See process-env.tsx.
+    // DefinePlugin can inline the value at build time. See getProcessEnv in ./env.
     if ((typeof process !== "undefined" ? process.env.NEXT_PUBLIC_STACK_DEBUGGER_ON_ASSERTION_ERROR : undefined) === "true") {
       debugger;
     }
