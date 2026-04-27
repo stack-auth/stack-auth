@@ -1,5 +1,8 @@
 import { createMCPClient, type MCPClient } from "@ai-sdk/mcp";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
+import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { tool } from "ai";
+import { z } from "zod";
 
 let mintlifyMcpClientPromise: Promise<MCPClient> | null = null;
 
@@ -30,6 +33,19 @@ async function getMintlifyMcpClient(): Promise<MCPClient> {
  * that agent uses these lower-level Mintlify tools for search and page reads.
  */
 export async function createDocsTools() {
-  const client = await getMintlifyMcpClient();
-  return await client.tools();
+  try {
+    const client = await getMintlifyMcpClient();
+    return await client.tools();
+  } catch (error) {
+    captureError("mintlify-mcp-docs-tools", error);
+    return {
+      docsUnavailable: tool({
+        description: "Report that the Stack Auth documentation search tools are currently unavailable.",
+        inputSchema: z.object({}),
+        execute: async () => ({
+          error: "Stack Auth documentation search is temporarily unavailable. Please try again later.",
+        }),
+      }),
+    };
+  }
 }
