@@ -130,6 +130,11 @@ write_files:
         HP_DASHBOARD="$STACK_EMULATOR_DASHBOARD_HOST_PORT"
         HP_MINIO="$STACK_EMULATOR_MINIO_HOST_PORT"
         HP_INBUCKET="$STACK_EMULATOR_INBUCKET_HOST_PORT"
+        # Mock OAuth binds to this port inside the VM and the host forwards the
+        # same port through, so the OIDC issuer URL is reachable identically
+        # from the browser and from the backend. Falls back to ${P}14 for
+        # older ISOs that don't set it.
+        HP_MOCK_OAUTH="${STACK_EMULATOR_MOCK_OAUTH_HOST_PORT:-${P}14}"
 
         cat <<COMPUTED
       STACK_SKIP_MIGRATIONS=true
@@ -153,7 +158,8 @@ write_files:
       STACK_CLICKHOUSE_URL=http://${DEPS_HOST}:8123
       STACK_EMAIL_MONITOR_VERIFICATION_CALLBACK_URL=http://localhost:${HP_DASHBOARD}/handler/email-verification
       STACK_EMAIL_MONITOR_INBUCKET_API_URL=http://${DEPS_HOST}:9001
-      STACK_OAUTH_MOCK_URL=http://localhost:${P}14
+      STACK_OAUTH_MOCK_URL=http://localhost:${HP_MOCK_OAUTH}
+      STACK_OAUTH_MOCK_PORT=${HP_MOCK_OAUTH}
       STACK_FREESTYLE_API_ENDPOINT=http://${DEPS_HOST}:8180
       STACK_STRIPE_MOCK_PORT=12111
       NEXT_PUBLIC_STACK_STRIPE_PUBLISHABLE_KEY=pk_test_mock_publishable_key_for_local_emulator
