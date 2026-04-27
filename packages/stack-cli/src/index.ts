@@ -1,3 +1,6 @@
+import { initSentry, reportUnexpectedError, flushSentry } from "./lib/sentry.js";
+initSentry();
+
 import { Command } from "commander";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
@@ -44,9 +47,31 @@ async function main() {
       console.error(`Error: ${err.message}`);
       process.exit(1);
     }
+    reportUnexpectedError(err);
+    await flushSentry();
     throw err;
   }
 }
+
+async function handleFatal(err: unknown): Promise<never> {
+  try {
+    reportUnexpectedError(err);
+    await flushSentry();
+  } catch {
+    // best-effort
+  }
+  console.error(err);
+  process.exit(1);
+}
+
+process.on("uncaughtException", (err) => {
+  // eslint-disable-next-line @typescript-eslint/no-floating-promises
+  handleFatal(err);
+});
+process.on("unhandledRejection", (reason) => {
+  // eslint-disable-next-line @typescript-eslint/no-floating-promises
+  handleFatal(reason);
+});
 
 // eslint-disable-next-line @typescript-eslint/no-floating-promises
 main();

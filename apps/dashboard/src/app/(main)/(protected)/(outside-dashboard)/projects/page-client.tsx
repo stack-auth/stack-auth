@@ -65,6 +65,7 @@ export default function PageClient() {
   const [openConfigFileDialog, setOpenConfigFileDialog] = useState(false);
   const [absoluteConfigFilePath, setAbsoluteConfigFilePath] = useState("");
   const [openingConfigFile, setOpeningConfigFile] = useState(false);
+  const [recentConfigProjects, setRecentConfigProjects] = useState<Array<{ project_id: string, absolute_file_path: string, display_name: string }>>([]);
   const [projectStatuses, setProjectStatuses] = useState<Map<string, ProjectOnboardingStatus>>(new Map());
   const [loadingProjectStatuses, setLoadingProjectStatuses] = useState(true);
   const router = useRouter();
@@ -118,17 +119,53 @@ export default function PageClient() {
     };
   }, [appInternals, rawProjects.length]);
 
+  useEffect(() => {
+    if (!openConfigFileDialog || !isLocalEmulator) return;
+    let cancelled = false;
+    runAsynchronously(async () => {
+      try {
+        const response = await appInternals.sendRequest("/internal/local-emulator/project", { method: "GET" }, "client");
+        if (!response.ok) return;
+        const body = await response.json() as { projects?: Array<{ project_id?: string, absolute_file_path?: string, display_name?: string }> };
+        if (cancelled || !body.projects) return;
+        const parsed = body.projects
+          .filter((p): p is { project_id: string, absolute_file_path: string, display_name: string } =>
+            typeof p.project_id === "string" && typeof p.absolute_file_path === "string" && typeof p.display_name === "string",
+          );
+        setRecentConfigProjects(parsed);
+      } catch {
+        // best-effort — dialog still works without the recent list
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [openConfigFileDialog, isLocalEmulator, appInternals]);
+
+  const pathCopyTip = useMemo(() => {
+    const p = typeof navigator !== "undefined" ? navigator.platform : "";
+    if (/Mac|iPhone|iPad|iPod/i.test(p)) {
+      return "Tip: in Finder, right-click the file → hold ⌥ Option → Copy as Pathname, then paste here.";
+    }
+    if (/Win/i.test(p)) {
+      return "Tip: in File Explorer, Shift + right-click the file → Copy as path, then paste here.";
+    }
+    return "Tip: from your project folder, run `realpath stack.config.ts` in a terminal.";
+  }, []);
+
   const handleOpenConfigFile = async () => {
     const trimmedPath = absoluteConfigFilePath.trim();
     if (trimmedPath.length === 0) {
-      throw new Error("Please enter an absolute config file path.");
+      toast({ description: "Please enter a path to your project or stack.config.ts.", variant: "destructive" });
+      return;
     }
 
     const hasUnixAbsolutePath = trimmedPath.startsWith("/");
     const hasWindowsAbsolutePath = /^[a-zA-Z]:[\\/]/.test(trimmedPath);
     const hasWindowsUncPath = trimmedPath.startsWith("\\\\");
     if (!hasUnixAbsolutePath && !hasWindowsAbsolutePath && !hasWindowsUncPath) {
-      throw new Error("Config file path must be absolute.");
+      toast({ description: "The path must be absolute (e.g. /Users/you/project or /Users/you/project/stack.config.ts).", variant: "destructive" });
+      return;
     }
 
     setOpeningConfigFile(true);
@@ -149,19 +186,20 @@ export default function PageClient() {
       const responseBody = await response.json();
 
       if (!response.ok) {
+        let message = "Couldn't open that path. Make sure it points to your project folder or a valid stack.config.ts.";
         if (typeof responseBody === "string" && responseBody.length > 0) {
-          throw new Error(responseBody);
-        }
-        if (
+          message = responseBody;
+        } else if (
           responseBody != null &&
           typeof responseBody === "object" &&
           "error" in responseBody &&
           typeof responseBody.error === "string" &&
           responseBody.error.length > 0
         ) {
-          throw new Error(responseBody.error);
+          message = responseBody.error;
         }
-        throw new Error("Failed to open config file project in local emulator.");
+        toast({ description: message, variant: "destructive" });
+        return;
       }
 
       if (
@@ -170,7 +208,8 @@ export default function PageClient() {
         !("project_id" in responseBody) ||
         typeof responseBody.project_id !== "string"
       ) {
-        throw new Error("Local emulator endpoint returned an invalid response.");
+        toast({ description: "Local emulator endpoint returned an invalid response.", variant: "destructive" });
+        return;
       }
 
       setOpenConfigFileDialog(false);
@@ -178,6 +217,11 @@ export default function PageClient() {
       await appInternals.refreshOwnedProjects();
       router.push(`/projects/${encodeURIComponent(responseBody.project_id)}`);
       await wait(2000);
+    } catch (e) {
+      toast({
+        description: e instanceof Error ? e.message : "Something went wrong opening that project.",
+        variant: "destructive",
+      });
     } finally {
       setOpeningConfigFile(false);
     }
@@ -248,7 +292,7 @@ export default function PageClient() {
               router.push("/new-project");
               return await wait(2000);
             }}
-          >{isLocalEmulator ? "Open config file" : "Create Project"}
+          >{isLocalEmulator ? "Open a project" : "Create Project"}
           </Button>
         </div>
       </div>
@@ -264,24 +308,52 @@ export default function PageClient() {
       >
         <DialogContent className="sm:max-w-[520px]">
           <DialogHeader>
-            <DialogTitle>Open config file</DialogTitle>
+            <DialogTitle>Open your Stack Auth project</DialogTitle>
           </DialogHeader>
           <div className="space-y-3">
             <Typography variant="secondary">
-              Enter the absolute path to your local Stack config file. The local emulator will create or reuse the mapped project and open it in the dashboard.
+              Point the local dashboard at the <code>stack.config.ts</code> in your project. If you just ran <code>stack init</code>, it was created at the root of that project.
             </Typography>
+            <Typography variant="secondary" className="text-xs">
+              Don&apos;t have one yet? Paste your project folder path instead and we&apos;ll create <code>stack.config.ts</code> for you.
+            </Typography>
+            {recentConfigProjects.length > 0 && (
+              <div className="space-y-1">
+                <Typography variant="secondary" className="text-xs uppercase tracking-wide">Recent</Typography>
+                <div className="max-h-40 overflow-y-auto rounded-md border">
+                  {recentConfigProjects.map((p) => (
+                    <button
+                      key={p.project_id}
+                      type="button"
+                      className="block w-full truncate px-3 py-2 text-left text-sm hover:bg-muted"
+                      onClick={() => setAbsoluteConfigFilePath(p.absolute_file_path)}
+                      title={p.absolute_file_path}
+                    >
+                      {p.absolute_file_path}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
             <Input
               autoFocus
               placeholder="/Users/you/project/stack.config.ts"
               value={absoluteConfigFilePath}
               onChange={(event) => setAbsoluteConfigFilePath(event.target.value)}
             />
+            <Typography variant="secondary" className="text-xs">
+              {pathCopyTip}
+            </Typography>
           </div>
           <DialogFooter className="pt-2">
             <Button variant="outline" onClick={() => setOpenConfigFileDialog(false)} disabled={openingConfigFile}>
               Cancel
             </Button>
-            <Button onClick={handleOpenConfigFile} loading={openingConfigFile}>
+            <Button
+              onClick={handleOpenConfigFile}
+              loading={openingConfigFile}
+              disabled={absoluteConfigFilePath.trim().length === 0}
+            >
               Open project
             </Button>
           </DialogFooter>
