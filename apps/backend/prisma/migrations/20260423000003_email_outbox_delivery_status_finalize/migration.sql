@@ -7,6 +7,8 @@
 -- SINGLE_STATEMENT_SENTINEL
 SELECT set_config('lock_timeout', '5s', true);
 
+-- SPLIT_STATEMENT_SENTINEL
+
 ALTER TABLE "EmailOutbox"
   VALIDATE CONSTRAINT "EmailOutbox_status_v2_not_null_check";
 

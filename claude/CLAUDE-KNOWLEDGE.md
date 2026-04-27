@@ -386,3 +386,6 @@ A: Use a strict root `postinstall` script that rewrites only Next `>=16` app-pag
 
 Q: Why can Turbo-pruned Docker builds fail with `Cannot find module /app/scripts/postinstall-patch-next-async-debug-info.mjs` during `pnpm install`?
 A: In pruned builder stages, we copy `/app/out/json` and run `pnpm install` before copying `/app/out/full`. The root `package.json` still runs `postinstall: node ./scripts/postinstall-patch-next-async-debug-info.mjs`, but that script is not present yet. Fix by copying `scripts/postinstall-patch-next-async-debug-info.mjs` into the builder stage before `pnpm install` (for all Dockerfiles using the prune pattern).
+
+Q: What breaks forward/backward DB migration compat when converting `EmailOutbox.status` from generated to trigger-maintained?
+A: Forward compat still fails if any current-branch code path explicitly writes `EmailOutbox.status` while running against dev migrations where it is generated; dummy seed data was one such path. Back compat can also fail if a `SINGLE_STATEMENT_SENTINEL` chunk contains `SELECT set_config(...)` plus another DDL statement; split the lock-timeout statement into its own chunk so Prisma's adapter handles it cleanly.

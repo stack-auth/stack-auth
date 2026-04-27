@@ -1185,7 +1185,6 @@ async function seedDummyEmails(options: EmailSeedOptions) {
         extraRenderVariables: {},
         shouldSkipDeliverabilityCheck: false,
         createdWith: EmailOutboxCreatedWith.PROGRAMMATIC_CALL,
-        status: email.hasError ? 'SERVER_ERROR' : 'SENT',
         scheduledAt: email.createdAt,
         renderedByWorkerId: email.id,
         startedRenderingAt: email.createdAt,
