@@ -342,9 +342,7 @@ it("should expose lightweight user counts without loading the full metrics route
         "anonymous_users": 2,
         "total_users": 3,
       },
-      "headers": Headers {
-        <some fields may have been hidden>,
-      },
+      "headers": Headers { <some fields may have been hidden> },
     }
   `);
 });
