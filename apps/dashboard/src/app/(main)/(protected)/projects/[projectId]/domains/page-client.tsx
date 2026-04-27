@@ -113,7 +113,7 @@ function EditDialog(props: {
       addWww: props.type === 'create',
       domain: props.type === 'update' ? props.defaultDomain.replace(/^https?:\/\//, "") : undefined,
       handlerPath: props.type === 'update' ? props.defaultHandlerPath : "/handler",
-      insecureHttp: false,
+      insecureHttp: props.type === 'update' ? props.defaultDomain.startsWith('http://') : false,
     }}
     onOpenChange={props.onOpenChange}
     trigger={props.trigger}
