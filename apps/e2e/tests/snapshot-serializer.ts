@@ -85,6 +85,7 @@ const stripFields = [
   "wall_clock_time",
   "cpu_time",
   "hourly_counts",
+  "live_users",
 ] as const;
 
 const stripFieldsIfString = [
