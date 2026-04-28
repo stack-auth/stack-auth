@@ -69,6 +69,9 @@ export const conversationEntryPointSchema = yupObject({
   updatedAt: yupString().defined(),
 });
 
+// Message detail responses include parent conversation context for clients.
+// `subject`, `status`, `priority`, and `source` are populated from the parent
+// Conversation by the backend mapper; they are not stored on ConversationMessage.
 export const conversationMessageSchema = yupObject({
   id: yupString().uuid().defined(),
   conversationId: yupString().uuid().defined(),

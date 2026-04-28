@@ -211,6 +211,9 @@ function entryPointFromRow(row: ConversationEntryPointRow): ConversationEntryPoi
   };
 }
 
+// ConversationMessage responses are enriched with parent Conversation context so
+// clients can render messages without separately joining each one to the thread.
+// These fields are current conversation state, not columns on ConversationMessage.
 function messageFromRow(row: ConversationMessageRow, conversation: DbConversationRow): ConversationMessage {
   return {
     id: row.id,
