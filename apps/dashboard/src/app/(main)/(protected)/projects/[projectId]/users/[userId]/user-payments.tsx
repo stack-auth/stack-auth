@@ -224,7 +224,6 @@ function MetricsRow({ userId, transactions }: { userId: string, transactions: Tr
     let total = 0;
     for (const transaction of transactions) {
       if (transaction.test_mode) continue;
-      if (transaction.adjusted_by.length > 0) continue;
       for (const entry of transaction.entries) {
         if (!isMoneyTransferEntry(entry)) continue;
         if (entry.customer_type !== "user" || entry.customer_id !== userId) continue;
