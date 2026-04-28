@@ -20,7 +20,7 @@ function getDottedAttribute(context: EvalContext, attribute: string): unknown {
   let cursor: unknown = context;
   for (const part of parts) {
     if (cursor == null || typeof cursor !== "object") return undefined;
-    cursor = (cursor as Record<string, unknown>)[part];
+    cursor = Reflect.get(cursor, part);
   }
   return cursor;
 }
@@ -69,14 +69,25 @@ function lexicalCompare(a: string, b: string): number {
 }
 
 const regexCache = new Map<string, RegExp>();
+const regexCacheMaxSize = 1000;
 
 function getCompiledRegex(pattern: string): RegExp | undefined {
   const existing = regexCache.get(pattern);
-  if (existing !== undefined) return existing;
+  if (existing !== undefined) {
+    regexCache.delete(pattern);
+    regexCache.set(pattern, existing);
+    return existing;
+  }
   const error = getFeatureFlagRegexPatternError(pattern);
   if (error !== undefined) return undefined;
   const regex = new RegExp(pattern);
   regexCache.set(pattern, regex);
+  if (regexCache.size > regexCacheMaxSize) {
+    const oldestKey = regexCache.keys().next().value;
+    if (oldestKey !== undefined) {
+      regexCache.delete(oldestKey);
+    }
+  }
   return regex;
 }
 
@@ -115,8 +126,8 @@ function applyOperator(
     case "gte": { return typeof actual === "number" && typeof expected === "number" && actual >= expected; }
     case "lt": { return typeof actual === "number" && typeof expected === "number" && actual < expected; }
     case "lte": { return typeof actual === "number" && typeof expected === "number" && actual <= expected; }
-    case "in": { return Array.isArray(expected) && expected.includes(actual as never); }
-    case "not_in": { return !(Array.isArray(expected) && expected.includes(actual as never)); }
+    case "in": { return Array.isArray(expected) && expected.includes(actual); }
+    case "not_in": { return !(Array.isArray(expected) && expected.includes(actual)); }
     case "is_set": { return actual !== undefined && actual !== null; }
     case "is_not_set": { return actual === undefined || actual === null; }
     case "before":

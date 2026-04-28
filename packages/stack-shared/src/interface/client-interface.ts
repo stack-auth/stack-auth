@@ -552,6 +552,7 @@ export class StackClientInterface {
   async evaluateFeatureFlags(
     body: FeatureFlagEvaluateRequest,
     session: InternalSession | null,
+    requestType: "client" | "server" | "admin" = "client",
   ): Promise<FeatureFlagEvaluateResponse> {
     const response = await this.sendClientRequest(
       "/feature-flags/evaluate",
@@ -563,6 +564,7 @@ export class StackClientInterface {
         body: JSON.stringify(body),
       },
       session,
+      requestType,
     );
     const responseBody: FeatureFlagEvaluateResponse = await response.json();
     return responseBody;

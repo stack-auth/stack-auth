@@ -71,6 +71,38 @@ function getRequestBody(fetchMock: { mock: { calls: unknown[][] } }): Record<str
   return parsed;
 }
 
+function getRequestHeaders(fetchMock: { mock: { calls: unknown[][] } }): Headers {
+  const requestInit = fetchMock.mock.calls[0]?.[1];
+  if (requestInit == null || typeof requestInit !== "object" || !("headers" in requestInit)) {
+    throw new Error("Expected request init to include headers");
+  }
+
+  const headers = requestInit.headers;
+  if (headers instanceof Headers) {
+    return headers;
+  }
+  const result = new Headers();
+  if (Array.isArray(headers)) {
+    for (const entry of headers) {
+      if (!Array.isArray(entry) || entry.length !== 2 || typeof entry[0] !== "string" || typeof entry[1] !== "string") {
+        throw new Error("Expected request headers entries to contain string pairs");
+      }
+      result.append(entry[0], entry[1]);
+    }
+    return result;
+  }
+  if (headers != null && typeof headers === "object") {
+    for (const [key, value] of Object.entries(headers)) {
+      if (typeof value !== "string") {
+        throw new Error("Expected request headers record values to be strings");
+      }
+      result.append(key, value);
+    }
+    return result;
+  }
+  throw new Error("Expected request headers to be a HeadersInit value");
+}
+
 afterEach(() => {
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
@@ -386,6 +418,21 @@ describe("StackClientInterface feature flag evaluation", () => {
         },
       },
     });
+  });
+
+  it("forwards requestType to feature flag evaluation", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => createJsonResponse({
+      results: {},
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const iface = createClientInterface();
+    await iface.evaluateFeatureFlags({
+      flag_keys: ["server-only"],
+    }, createSession(), "server");
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(getRequestHeaders(fetchMock).get("x-stack-access-type")).toBe("server");
   });
 });
 

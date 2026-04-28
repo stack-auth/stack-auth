@@ -2,6 +2,8 @@
 // `../config/schema.ts` (`branchFeatureFlagsSchema`) but expressed as plain TS so consumers can
 // import it without dragging in yup. Keep these in sync with the schema.
 
+import safeRegex from "safe-regex2";
+
 export type FlagType = "boolean" | "multivariate" | "json" | "numeric" | "string";
 
 export type StickyBy = "userId" | "teamId" | "distinctId";
@@ -26,16 +28,13 @@ export function getFeatureFlagRegexPatternError(pattern: string): string | undef
   if (pattern.length > maxFeatureFlagRegexPatternLength) {
     return `Regex patterns must be at most ${maxFeatureFlagRegexPatternLength} characters`;
   }
-  if (/\\[1-9]/.test(pattern)) {
-    return "Regex patterns cannot use backreferences";
-  }
-  if (/\([^)]*[+*][^)]*\)[+*{]/.test(pattern)) {
-    return "Regex patterns cannot use nested quantifiers";
-  }
   try {
     new RegExp(pattern);
   } catch (e) {
     return e instanceof Error ? e.message : String(e);
+  }
+  if (!safeRegex(pattern)) {
+    return "Regex pattern is not safe for request-time evaluation";
   }
   return undefined;
 }

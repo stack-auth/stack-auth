@@ -58,7 +58,7 @@ export const POST = createSmartRouteHandler({
       context: body.context,
       cohorts: body.cohorts,
     } : {
-      distinctId: body.distinct_id ?? auth.user?.id,
+      distinctId: auth.user?.id,
       userId: auth.user?.id,
       user: auth.user ? {
         id: auth.user.id,

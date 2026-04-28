@@ -2,8 +2,9 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import type { SmartResponse } from "@/route-handlers/smart-response";
 import { _internal as hashingInternal } from "@stackframe/stack-shared/dist/feature-flags/hashing";
 import type { FeatureFlagsConfig, FlagDef } from "@stackframe/stack-shared/dist/feature-flags/types";
-import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+import type { Schema } from "yup";
 
 function deepSortKeys(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(deepSortKeys);
@@ -31,7 +32,24 @@ export const GET = createSmartRouteHandler({
     }).defined(),
     method: yupString().oneOf(["GET"]).defined(),
   }),
-  response: yupMixed<SmartResponse>().defined(),
+  response: yupUnion(
+    yupObject({
+      statusCode: yupNumber().oneOf([200]).defined(),
+      bodyType: yupString().oneOf(["binary"]).defined(),
+      body: yupMixed<Uint8Array>().defined(),
+      headers: yupObject({
+        "content-type": yupArray(yupString().defined()).defined(),
+        etag: yupArray(yupString().defined()).defined(),
+      }).defined(),
+    }).defined(),
+    yupObject({
+      statusCode: yupNumber().oneOf([304]).defined(),
+      bodyType: yupString().oneOf(["empty"]).defined(),
+      headers: yupObject({
+        etag: yupArray(yupString().defined()).defined(),
+      }).defined(),
+    }).defined(),
+  ) as unknown as Schema<SmartResponse>,
   handler: async ({ auth, headers }) => {
     const config: FeatureFlagsConfig = auth.tenancy.config.featureFlags;
     const flagsById: Record<string, Omit<FlagDef, "ownerUserId">> = {};
@@ -54,14 +72,13 @@ export const GET = createSmartRouteHandler({
     const etag = `"${version}"`;
 
     if (headers["if-none-match"]?.includes(etag) || headers["if-none-match"]?.includes(version)) {
+      const responseHeaders: Record<string, string[]> = {
+        etag: [etag],
+      };
       return {
         statusCode: 304,
-        bodyType: "binary",
-        body: new Uint8Array(),
-        headers: {
-          "content-type": ["application/json; charset=utf-8"],
-          etag: [etag],
-        },
+        bodyType: "empty",
+        headers: responseHeaders,
       };
     }
 
@@ -71,14 +88,15 @@ export const GET = createSmartRouteHandler({
       holdouts,
       version,
     };
+    const responseHeaders: Record<string, string[]> = {
+      "content-type": ["application/json; charset=utf-8"],
+      etag: [etag],
+    };
     return {
       statusCode: 200,
       bodyType: "binary",
       body: new TextEncoder().encode(JSON.stringify(body)),
-      headers: {
-        "content-type": ["application/json; charset=utf-8"],
-        etag: [etag],
-      },
+      headers: responseHeaders,
     };
   },
 });

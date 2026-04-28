@@ -5,7 +5,7 @@ import { Auth, Project, niceBackendFetch } from "../../../backend-helpers";
 
 async function setupProjectWithFlags(featureFlags: FeatureFlagsConfig) {
   await Project.createAndSwitch();
-  await Project.updatePushedConfig({ featureFlags });
+  await Project.updatePushedConfig({ "featureFlags": featureFlags });
 }
 
 it("/feature-flags/evaluate returns the default variant when no rules match", async ({ expect }) => {
@@ -150,7 +150,7 @@ it("/feature-flags/evaluate returns the same variant for the same distinct_id un
   const fetchOnce = async () => {
     const r = await niceBackendFetch("/api/latest/feature-flags/evaluate", {
       method: "POST",
-      accessType: "client",
+      accessType: "server",
       body: { distinct_id: "stable-user" },
     });
     return r.body.results.rollout;
@@ -193,7 +193,7 @@ it("/feature-flags/evaluate returns deterministic weighted variants for multivar
   const fetchOnce = async (distinctId: string) => {
     const r = await niceBackendFetch("/api/latest/feature-flags/evaluate", {
       method: "POST",
-      accessType: "client",
+      accessType: "server",
       body: { distinct_id: distinctId, flag_keys: ["pricing"] },
     });
     return r.body.results.pricing;
@@ -257,7 +257,7 @@ it("/feature-flags/evaluate falls back to the authenticated user id when distinc
   const explicitUserId = await niceBackendFetch("/api/latest/feature-flags/evaluate", {
     method: "POST",
     accessType: "client",
-    body: { distinct_id: userId, flag_keys: ["rollout"] },
+    body: { distinct_id: "caller-supplied-id-is-ignored", flag_keys: ["rollout"] },
   });
 
   expect(omittedDistinctId.body.results.rollout).toMatchObject({
