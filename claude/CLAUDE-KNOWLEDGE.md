@@ -1,6 +1,3 @@
-Q: What conversation schema shape matches the latest support ERD?
-A: Keep assignment/SLA/metadata fields directly on `Conversation` (drop `ConversationMetadata`), model channel ingress rows in `ConversationEntryPoint` (renamed from `ConversationChannel`), and keep `ConversationMessage.channelId` referencing entry points by `(tenancyId, id)`. Backend raw SQL in `apps/backend/src/lib/conversations.tsx` must read/write those metadata fields from `Conversation` itself.
-
 # CLAUDE Knowledge Base
 
 Q: How are the development ports derived now that NEXT_PUBLIC_STACK_PORT_PREFIX exists?
@@ -224,8 +221,11 @@ Q: How should user signup time be exposed in JWT claims before production rollou
 A: The local dashboard's `DEV` overlay includes `Quick Sign In` and `Switch to email...` shortcuts, which are useful for browser smoke tests without going through the full external OAuth flow.
 A: Use `signed_up_at` (OIDC-style naming) in access tokens and encode it as Unix seconds in `apps/backend/src/lib/tokens.tsx` (`Math.floor(user.signed_up_at_millis / 1000)`). Since this is pre-prod, the payload schema can require `signed_up_at` directly without a backward-compat optional shim.
 
+Q: What conversation schema shape matches the latest support ERD?
+A: Keep assignment/SLA/metadata fields directly on `Conversation`, model channel ingress rows in `ConversationEntryPoint`, and keep `ConversationMessage.channelId` referencing entry points by `(tenancyId, id)`. Backend raw SQL in `apps/backend/src/lib/conversations.tsx` must read/write those metadata fields from `Conversation` itself.
+
 Q: Where should new globally searchable Cmd+K destinations be added in the dashboard?
-A: For the new Support app work, model support as generic conversations rather than support-specific threads: use `Conversation` for identity/status/source, `ConversationChannel` for adapter/entry-point expansion (`chat`, `email`, `api`, `manual`), `ConversationMessage` for message history (`message`, `internal-note`, `status-change`), and `ConversationMetadata` for assignment/tags/SLA timestamps. Keep the dashboard UI under `/projects/[projectId]/conversations` (legacy `/projects/[projectId]/support` redirects there), but point both internal admin routes and user-facing API routes at the generic `/api/latest/.../conversations` surface.
+A: For the new Support app work, model support as generic conversations rather than support-specific threads: use `Conversation` for identity/status/source plus assignment/tags/SLA/metadata fields, `ConversationEntryPoint` for channel ingress and adapter/entry-point expansion (`chat`, `email`, `api`, `manual`), and `ConversationMessage` for message history (`message`, `internal-note`, `status-change`) with `channelId` referencing entry points by `(tenancyId, id)`. Keep the dashboard UI under `/projects/[projectId]/conversations` (legacy `/projects/[projectId]/support` redirects there), but point both internal admin routes and user-facing API routes at the generic `/api/latest/.../conversations` surface.
 A: Support-thread contracts added during dashboard feature work are easiest to keep buildable by colocating them in the consuming app (`apps/dashboard/src/lib/*` and `apps/backend/src/lib/*`) unless the package build is already running and up to date. New files under `packages/stack-shared/src` are not automatically visible to app-local typechecks that import `@stackframe/stack-shared/dist/*` until the package dist has been regenerated.
 A: Add project-level shortcuts to `PROJECT_SHORTCUTS` in `apps/dashboard/src/components/cmdk-commands.tsx` (optionally gated with `requiredApps`), and for app subpages rely on the flattened `appFrontend.navigationItems` command generation in the same file so pages are directly searchable without nested preview navigation.
 
