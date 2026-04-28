@@ -1,7 +1,7 @@
 "use client";
 
 import { CountryCodeInput } from "@/components/country-code-select";
-import { DesignCard, DesignCategoryTabs, DesignDataTable, DesignEditableGrid, type DesignEditableGridItem, DesignMenu, type DesignMenuActionItem } from "@/components/design-components";
+import { DesignCard, DesignCategoryTabs, DesignDataTable, DesignEditableGrid, type DesignEditableGridItem, DesignMenu, type DesignMenuActionItem, type DesignCategoryTabItem } from "@/components/design-components";
 import { EditableInput } from "@/components/editable-input";
 import { FormDialog, SmartFormDialog } from "@/components/form-dialog";
 import { InputField, SelectField } from "@/components/form-fields";
@@ -39,22 +39,23 @@ import { ALL_APPS_FRONTEND } from "@/lib/apps-frontend";
 import { isAppEnabled } from "@/lib/apps-utils";
 import { parseRiskScore } from "@/lib/risk-score-utils";
 import { useUserActivityOrThrow } from "@/lib/stack-app-internals";
-import { AtIcon, CalendarIcon, CheckIcon, EnvelopeIcon, GlobeIcon, HashIcon, KeyIcon, ProhibitIcon, ShieldIcon, SquareIcon, UsersIcon, XIcon } from "@phosphor-icons/react";
+import { AtIcon, CalendarIcon, CheckIcon, DatabaseIcon, EnvelopeIcon, GlobeIcon, HashIcon, KeyIcon, ProhibitIcon, ShieldIcon, SquareIcon, UsersIcon, XIcon } from "@phosphor-icons/react";
 import { ServerContactChannel, ServerOAuthProvider, ServerTeam, ServerUser } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { normalizeCountryCode } from "@stackframe/stack-shared/dist/schema-fields";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
-import { captureError, StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import { captureError, StackAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { ColumnDef } from "@tanstack/react-table";
-import { Suspense, useMemo, useState } from "react";
+import { Suspense, useMemo, useState, type ReactNode } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
 import { UserAnalyticsSection } from "./user-analytics";
+import { UserPaymentsSection } from "./user-payments";
 
 const userMetadataDocsUrl = "https://docs.stack-auth.com/docs/concepts/custom-user-data";
 
@@ -878,7 +879,6 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
       <DesignCard
         title="Contact Channels"
         icon={EnvelopeIcon}
-        glassmorphic={false}
         actions={
           <Button
             variant="outline"
@@ -960,7 +960,6 @@ function UserTeamsSection({ user }: { user: ServerUser }) {
       title="Teams"
       subtitle="Teams this user belongs to"
       icon={UsersIcon}
-      glassmorphic={false}
     >
       {teams.length === 0 ? (
         <div className="flex flex-col items-center gap-2 py-8">
@@ -1271,7 +1270,6 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
       <DesignCard
         title="OAuth Providers"
         icon={KeyIcon}
-        glassmorphic={false}
         actions={
           <Button
             variant="outline"
@@ -1348,7 +1346,7 @@ function formatActivityDate(isoDate: string): string {
   return ACTIVITY_TOOLTIP_DATE_FORMATTER.format(date);
 }
 
-function ActivityShell({ children }: { children: React.ReactNode }) {
+function ActivityShell({ children }: { children: ReactNode }) {
   return (
     <div className="hidden xl:flex flex-col items-end gap-1.5 shrink-0 pt-1">
       <span className="text-[11px] font-medium text-muted-foreground tracking-wide uppercase">Activity</span>
@@ -1416,16 +1414,28 @@ function ActivityGraph({ userId }: { userId: string }) {
   );
 }
 
+type UserPageTabConfig = {
+  id: string,
+  label: string,
+} & (
+  | { appId: AppId, icon?: undefined }
+  | { appId: null, icon: NonNullable<DesignCategoryTabItem["icon"]> }
+);
+
 const USER_PAGE_TABS = [
-  { id: "profile", label: "Profile", appId: null },
   { id: "authentication", label: "Authentication", appId: "authentication" },
   { id: "teams", label: "Teams", appId: "teams" },
   { id: "payments", label: "Payments", appId: "payments" },
   { id: "emails", label: "Emails", appId: "emails" },
   { id: "analytics", label: "Analytics", appId: "analytics" },
-] as const satisfies ReadonlyArray<{ id: string, label: string, appId: AppId | null }>;
+  { id: "metadata", label: "Metadata", appId: null, icon: DatabaseIcon },
+] as const satisfies readonly UserPageTabConfig[];
 
 type UserPageTab = typeof USER_PAGE_TABS[number]["id"];
+
+function isUserPageTab(id: string): id is UserPageTab {
+  return USER_PAGE_TABS.some((tab) => tab.id === id);
+}
 
 function TabPlaceholder({ label }: { label: string }) {
   return (
@@ -1446,12 +1456,14 @@ function UserPage({ user }: { user: ServerUser }) {
     [config.apps.installed],
   );
 
-  const [selectedTab, setSelectedTab] = useState<UserPageTab>(() => visibleTabs[0]?.id ?? "profile");
+  const [selectedTab, setSelectedTab] = useState<UserPageTab>(
+    () => visibleTabs[0]?.id ?? throwErr("User page has no visible tabs; metadata tab should always be visible"),
+  );
 
   // If the currently selected tab becomes unavailable (e.g. app uninstalled), fall back to the first visible tab.
   const activeTab: UserPageTab = visibleTabs.some((tab) => tab.id === selectedTab)
     ? selectedTab
-    : (visibleTabs[0]?.id ?? "profile");
+    : (visibleTabs[0]?.id ?? throwErr("User page has no visible tabs; metadata tab should always be visible"));
 
   return (
     <PageLayout>
@@ -1468,44 +1480,51 @@ function UserPage({ user }: { user: ServerUser }) {
         </div>
         {visibleTabs.length > 0 && (
           <DesignCategoryTabs
-            categories={visibleTabs.map(({ id, label, appId }) => ({
-              id,
-              label,
-              icon: appId ? ALL_APPS_FRONTEND[appId].icon : undefined,
+            categories={visibleTabs.map((tab) => ({
+              id: tab.id,
+              label: tab.label,
+              icon: tab.appId === null ? tab.icon : ALL_APPS_FRONTEND[tab.appId].icon,
             }))}
             selectedCategory={activeTab}
-            onSelect={(id) => setSelectedTab(id as UserPageTab)}
+            onSelect={(id) => {
+              if (!isUserPageTab(id)) {
+                throw new StackAssertionError(`Unknown user page tab selected: ${id}`);
+              }
+              setSelectedTab(id);
+            }}
             showBadge={false}
             size="sm"
             glassmorphic={false}
           />
         )}
-        {activeTab === "profile" && (
+        {activeTab === "authentication" && (
           <div className="flex flex-col gap-6">
             <ContactChannelsSection user={user} />
-            <MetadataSection
-              entityName="user"
-              docsUrl={userMetadataDocsUrl}
-              clientMetadata={user.clientMetadata}
-              clientReadOnlyMetadata={user.clientReadOnlyMetadata}
-              serverMetadata={user.serverMetadata}
-              onUpdateClientMetadata={async (value) => {
-                await user.setClientMetadata(value);
-              }}
-              onUpdateClientReadOnlyMetadata={async (value) => {
-                await user.setClientReadOnlyMetadata(value);
-              }}
-              onUpdateServerMetadata={async (value) => {
-                await user.setServerMetadata(value);
-              }}
-            />
+            <OAuthProvidersSection user={user} />
           </div>
         )}
-        {activeTab === "authentication" && <OAuthProvidersSection user={user} />}
         {activeTab === "teams" && <UserTeamsSection user={user} />}
-        {activeTab === "payments" && <TabPlaceholder label="Payments" />}
+        {activeTab === "payments" && <UserPaymentsSection user={user} />}
         {activeTab === "emails" && <TabPlaceholder label="Emails" />}
         {activeTab === "analytics" && <UserAnalyticsSection user={user} />}
+        {activeTab === "metadata" && (
+          <MetadataSection
+            entityName="user"
+            docsUrl={userMetadataDocsUrl}
+            clientMetadata={user.clientMetadata}
+            clientReadOnlyMetadata={user.clientReadOnlyMetadata}
+            serverMetadata={user.serverMetadata}
+            onUpdateClientMetadata={async (value) => {
+              await user.setClientMetadata(value);
+            }}
+            onUpdateClientReadOnlyMetadata={async (value) => {
+              await user.setClientReadOnlyMetadata(value);
+            }}
+            onUpdateServerMetadata={async (value) => {
+              await user.setServerMetadata(value);
+            }}
+          />
+        )}
       </div>
     </PageLayout>
   );

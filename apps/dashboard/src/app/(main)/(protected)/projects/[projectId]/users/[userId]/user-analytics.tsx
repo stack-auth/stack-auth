@@ -1,6 +1,8 @@
 "use client";
 
 import {
+  DesignBadge,
+  type DesignBadgeColor,
   DesignCard,
   DesignChartCard,
   DesignChartContainer,
@@ -8,12 +10,12 @@ import {
   DesignMetricCard,
   getDesignChartColor,
 } from "@/components/design-components";
-import { cn, Skeleton, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
+import { Skeleton, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
 import { ChartBarIcon, ChartLineIcon, CursorClickIcon, EyeIcon, GlobeIcon, MonitorPlayIcon, WarningCircleIcon } from "@phosphor-icons/react";
 import { ServerUser } from "@stackframe/stack";
 import { captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, type ElementType } from "react";
 import {
   Area,
   AreaChart,
@@ -29,7 +31,7 @@ const TOP_PAGES_LIMIT = 10;
 const TOP_REFERRERS_LIMIT = 10;
 const RECENT_EVENTS_LIMIT = 50;
 
-// Formats a JS Date as `YYYY-MM-DD HH:MM:SS` UTC — the format ClickHouse
+// Formats a JS Date as `YYYY-MM-DD HH:MM:SS` UTC - the format ClickHouse
 // expects when the query param is typed as `DateTime`. Keeping this
 // inline avoids round-tripping through the backend's own DateTime helper.
 function toClickhouseDateTimeParam(date: Date): string {
@@ -38,7 +40,7 @@ function toClickhouseDateTimeParam(date: Date): string {
 
 // ClickHouse returns UInt64 counts as strings (JS can't safely represent
 // every UInt64), so normalize everywhere. Anything we can't parse cleanly
-// becomes 0 — the user won't get a phantom NaN in their KPI cards.
+// becomes 0 so the user won't get a phantom NaN in their KPI cards.
 function toNumber(value: unknown): number {
   if (typeof value === "number") return Number.isFinite(value) ? value : 0;
   if (typeof value === "string") {
@@ -96,7 +98,7 @@ type AnalyticsData = {
 
 type LoadState =
   | { status: "loading" }
-  | { status: "error", message: string }
+  | { status: "error" }
   | { status: "ready", data: AnalyticsData };
 
 const SUMMARY_QUERY = `
@@ -179,7 +181,7 @@ const RECENT_EVENTS_QUERY = `
 
 function parseSummary(rows: Record<string, unknown>[]): SummaryRow {
   // The SUMMARY query has no GROUP BY, so ClickHouse always returns exactly
-  // one aggregate row — even when no events match. If that invariant ever
+  // one aggregate row - even when no events match. If that invariant ever
   // breaks we want to know loudly rather than silently render zeroes.
   const row = rows[0] ?? throwErr("SUMMARY_QUERY returned zero rows; expected exactly one aggregate row");
   return {
@@ -272,6 +274,16 @@ function formatEventAt(eventAt: string): string {
   return Number.isNaN(asDate.getTime()) ? eventAt : EVENT_AT_FORMATTER.format(asDate);
 }
 
+function getTooltipDay(payload: readonly unknown[]): string | null {
+  for (const item of payload) {
+    if (typeof item !== "object" || item === null || !("payload" in item)) continue;
+    const row = item.payload;
+    if (typeof row !== "object" || row === null || !("day" in row)) continue;
+    if (typeof row.day === "string") return row.day;
+  }
+  return null;
+}
+
 function eventLabel(event: RecentEventRow): string {
   switch (event.event_type) {
     case "$page-view": {
@@ -279,7 +291,7 @@ function eventLabel(event: RecentEventRow): string {
     }
     case "$click": {
       const text = event.click_text?.trim();
-      if (text != null && text.length > 0) return text.length > 60 ? text.slice(0, 60) + "…" : text;
+      if (text != null && text.length > 0) return text.length > 60 ? text.slice(0, 60) + "..." : text;
       if (event.tag_name != null) return `<${event.tag_name.toLowerCase()}>`;
       return "Click";
     }
@@ -292,19 +304,20 @@ function eventLabel(event: RecentEventRow): string {
   }
 }
 
-function eventTypeBadge(eventType: string): { label: string, className: string } {
+function eventTypeBadge(eventType: string): { label: string, color: DesignBadgeColor } {
   switch (eventType) {
     case "$page-view": {
-      return { label: "Page view", className: "bg-blue-500/10 text-blue-600 dark:text-blue-400" };
+      return { label: "Page view", color: "blue" };
     }
     case "$click": {
-      return { label: "Click", className: "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" };
+      return { label: "Click", color: "green" };
     }
     case "$token-refresh": {
-      return { label: "Refresh", className: "bg-purple-500/10 text-purple-600 dark:text-purple-400" };
+      return { label: "Refresh", color: "purple" };
     }
     default: {
-      return { label: eventType.replace(/^\$/, "") || "Event", className: "bg-foreground/[0.06] text-muted-foreground" };
+      const label = eventType.replace(/^\$/, "");
+      return { label: label.length > 0 ? label : "Event", color: "blue" };
     }
   }
 }
@@ -350,33 +363,37 @@ export function UserAnalyticsSection({ user }: { user: ServerUser }) {
       stackAdminApp.queryAnalytics({ query, params, timeout_ms: 30_000, include_all_branches: false });
 
     runAsynchronously(async () => {
-      try {
-        const [summaryRes, dailyRes, topPagesRes, topReferrersRes, recentRes] = await Promise.all([
-          runQuery(SUMMARY_QUERY, baseParams),
-          runQuery(DAILY_QUERY, baseParams),
-          runQuery(TOP_PAGES_QUERY, { ...baseParams, limit: TOP_PAGES_LIMIT }),
-          runQuery(TOP_REFERRERS_QUERY, { ...baseParams, limit: TOP_REFERRERS_LIMIT }),
-          runQuery(RECENT_EVENTS_QUERY, { ...baseParams, limit: RECENT_EVENTS_LIMIT }),
-        ]);
+      const [summaryRes, dailyRes, topPagesRes, topReferrersRes, recentRes] = await Promise.all([
+        runQuery(SUMMARY_QUERY, baseParams),
+        runQuery(DAILY_QUERY, baseParams),
+        runQuery(TOP_PAGES_QUERY, { ...baseParams, limit: TOP_PAGES_LIMIT }),
+        runQuery(TOP_REFERRERS_QUERY, { ...baseParams, limit: TOP_REFERRERS_LIMIT }),
+        runQuery(RECENT_EVENTS_QUERY, { ...baseParams, limit: RECENT_EVENTS_LIMIT }),
+      ]);
 
-        if (token.cancelled) return;
+      if (token.cancelled) return;
 
-        setState({
-          status: "ready",
-          data: {
-            summary: parseSummary(summaryRes.result),
-            daily: parseDaily(dailyRes.result),
-            topPages: parseTopPages(topPagesRes.result),
-            topReferrers: parseTopReferrers(topReferrersRes.result),
-            recent: parseRecentEvents(recentRes.result),
-          },
-        });
-      } catch (error) {
+      setState({
+        status: "ready",
+        data: {
+          summary: parseSummary(summaryRes.result),
+          daily: parseDaily(dailyRes.result),
+          topPages: parseTopPages(topPagesRes.result),
+          topReferrers: parseTopReferrers(topReferrersRes.result),
+          recent: parseRecentEvents(recentRes.result),
+        },
+      });
+    }, {
+      noErrorLogging: true,
+      onError: (error) => {
         if (token.cancelled) return;
+        // Swallow the underlying error into a generic UI message. The raw
+        // message (often a ClickHouse stack) isn't actionable for admins, so
+        // we surface a generic message and keep the details in the logs via
+        // captureError for on-call triage.
         captureError("user-analytics-query", error);
-        const message = error instanceof Error ? error.message : "Failed to load analytics.";
-        setState({ status: "error", message });
-      }
+        setState({ status: "error" });
+      },
     });
 
     return () => {
@@ -389,7 +406,7 @@ export function UserAnalyticsSection({ user }: { user: ServerUser }) {
   }
 
   if (state.status === "error") {
-    return <UserAnalyticsError message={state.message} />;
+    return <UserAnalyticsError />;
   }
 
   return <UserAnalyticsLoaded data={state.data} />;
@@ -413,16 +430,15 @@ function UserAnalyticsLoading() {
   );
 }
 
-function UserAnalyticsError({ message }: { message: string }) {
+function UserAnalyticsError() {
   return (
     <DesignCard
       title="Analytics unavailable"
       icon={WarningCircleIcon}
-      glassmorphic={false}
     >
       <div className="flex flex-col items-center gap-1 py-8 text-center">
         <p className="text-sm text-muted-foreground">We couldn&apos;t load analytics for this user.</p>
-        <p className="text-xs text-muted-foreground/70">{message}</p>
+        <p className="text-xs text-muted-foreground/70">Please try again in a moment.</p>
       </div>
     </DesignCard>
   );
@@ -550,16 +566,8 @@ function ActivityChart({ daily, hasAnyEvent }: { daily: DailyRow[], hasAnyEvent:
               content={
                 <DesignChartTooltipContent
                   labelFormatter={(_label, payload) => {
-                    // Recharts types `item.payload` as `any`, so we narrow it
-                    // explicitly: each point's payload is our `DailyRow`, which
-                    // has a `day: string`. Using `unknown` on the cast keeps
-                    // the rest of the object opaque and still forces the
-                    // `typeof day === "string"` guard below.
-                    for (const item of payload) {
-                      const day = (item.payload as { day?: unknown }).day;
-                      if (typeof day === "string") return formatDayLong(day);
-                    }
-                    return "";
+                    const day = getTooltipDay(payload);
+                    return day === null ? "" : formatDayLong(day);
                   }}
                   indicator="dot"
                 />
@@ -597,14 +605,14 @@ function TopPathsCard({
 }: {
   title: string,
   subtitle: string,
-  icon: React.ElementType,
+  icon: ElementType,
   rows: Array<{ label: string, count: number }>,
   emptyMessage: string,
 }) {
   const maxCount = rows[0]?.count ?? 0;
 
   return (
-    <DesignCard title={title} subtitle={subtitle} icon={icon} glassmorphic={false}>
+    <DesignCard title={title} subtitle={subtitle} icon={icon}>
       {rows.length === 0 ? (
         <div className="flex flex-col items-center gap-1 py-8 text-center">
           <p className="text-sm text-muted-foreground">{emptyMessage}</p>
@@ -651,7 +659,6 @@ function RecentEventsCard({ events }: { events: RecentEventRow[] }) {
       title="Recent activity"
       subtitle={`Latest ${RECENT_EVENTS_LIMIT} events (last ${ANALYTICS_WINDOW_DAYS} days)`}
       icon={ChartLineIcon}
-      glassmorphic={false}
     >
       {events.length === 0 ? (
         <div className="flex flex-col items-center gap-1 py-8 text-center">
@@ -665,14 +672,7 @@ function RecentEventsCard({ events }: { events: RecentEventRow[] }) {
               const label = eventLabel(event);
               return (
                 <li key={`${event.event_at}-${i}`} className="flex items-center gap-3 py-2">
-                  <span
-                    className={cn(
-                      "shrink-0 inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wider",
-                      badge.className,
-                    )}
-                  >
-                    {badge.label}
-                  </span>
+                  <DesignBadge label={badge.label} color={badge.color} size="sm" />
                   <span className="flex-1 min-w-0 truncate text-xs text-foreground">
                     {label}
                   </span>

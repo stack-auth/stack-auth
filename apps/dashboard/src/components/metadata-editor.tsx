@@ -1,30 +1,36 @@
 "use client";
 
+import { DesignCard } from "@/components/design-components";
 import { StyledLink } from "@/components/link";
-import { SettingCard } from "@/components/settings";
 import { Button, cn, SimpleTooltip } from "@/components/ui";
 import { useThemeWatcher } from '@/lib/theme';
 import MonacoEditor from '@monaco-editor/react';
-import { isJsonSerializable } from "@stackframe/stack-shared/dist/utils/json";
+import { DatabaseIcon } from "@phosphor-icons/react";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { parseJson, type Json } from "@stackframe/stack-shared/dist/utils/json";
 import { useEffect, useMemo, useState } from "react";
 
 type MetadataEditorProps = {
   title: string,
   initialValue: string,
   hint: string,
-  onUpdate?: (value: any) => Promise<void>,
+  onUpdate?: (value: Json) => Promise<void>,
 };
 
 export function MetadataEditor({ title, initialValue, onUpdate, hint }: MetadataEditorProps) {
-  const formatJson = (json: string) => JSON.stringify(JSON.parse(json), null, 2);
+  const formatJson = (json: Json) => JSON.stringify(json, null, 2);
   const [hasChanged, setHasChanged] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
 
   const { mounted, theme } = useThemeWatcher();
 
-  const [value, setValue] = useState(formatJson(initialValue));
-  const isJson = useMemo(() => {
-    return isJsonSerializable(value);
+  const initialJson = useMemo(() => {
+    const parsed = parseJson(initialValue);
+    return parsed.status === "ok" ? parsed.data : throwErr("Metadata editor received invalid initial JSON");
+  }, [initialValue]);
+  const [value, setValue] = useState(formatJson(initialJson));
+  const parsedValue = useMemo(() => {
+    return parseJson(value);
   }, [value]);
 
   // Ensure proper mounting lifecycle
@@ -36,10 +42,10 @@ export function MetadataEditor({ title, initialValue, onUpdate, hint }: Metadata
   }, []);
 
   const handleSave = async () => {
-    if (isJson) {
-      const formatted = formatJson(value);
+    if (parsedValue.status === "ok") {
+      const formatted = formatJson(parsedValue.data);
       setValue(formatted);
-      await onUpdate?.(JSON.parse(formatted));
+      await onUpdate?.(parsedValue.data);
       setHasChanged(false);
     }
   };
@@ -85,26 +91,26 @@ export function MetadataEditor({ title, initialValue, onUpdate, hint }: Metadata
       <Button
         variant="ghost"
         onClick={() => {
-          setValue(formatJson(initialValue));
+          setValue(formatJson(initialJson));
           setHasChanged(false);
         }}>
         Revert
       </Button>
       <Button
-        variant={isJson ? "default" : "secondary"}
-        disabled={!isJson}
+        variant={parsedValue.status === "ok" ? "default" : "secondary"}
+        disabled={parsedValue.status !== "ok"}
         onClick={handleSave}>Save</Button>
     </div>
   </div>;
 }
 
 type MetadataSectionProps = {
-  clientMetadata: any,
-  clientReadOnlyMetadata: any,
-  serverMetadata: any,
-  onUpdateClientMetadata: (value: any) => Promise<void>,
-  onUpdateClientReadOnlyMetadata: (value: any) => Promise<void>,
-  onUpdateServerMetadata: (value: any) => Promise<void>,
+  clientMetadata: Json,
+  clientReadOnlyMetadata: Json,
+  serverMetadata: Json,
+  onUpdateClientMetadata: (value: Json) => Promise<void>,
+  onUpdateClientReadOnlyMetadata: (value: Json) => Promise<void>,
+  onUpdateServerMetadata: (value: Json) => Promise<void>,
   docsUrl: string,
   entityName: string,
 };
@@ -120,9 +126,10 @@ export function MetadataSection({
   entityName,
 }: MetadataSectionProps) {
   return (
-    <SettingCard
+    <DesignCard
       title="Metadata"
-      description={
+      icon={DatabaseIcon}
+      subtitle={
         <>
           Use metadata to store a custom JSON object on the {entityName}.{" "}
           <StyledLink href={docsUrl} target="_blank">Learn more in the docs</StyledLink>.
@@ -149,6 +156,6 @@ export function MetadataSection({
           onUpdate={onUpdateServerMetadata}
         />
       </div>
-    </SettingCard>
+    </DesignCard>
   );
 }
