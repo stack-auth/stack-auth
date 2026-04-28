@@ -177,6 +177,7 @@ function renderComponent(props: {
       />;
     }
     case availablePaths.cliAuthConfirm: {
+      redirectIfNotHandler?.('cliAuthConfirm');
       return <CliAuthConfirmation
         fullPage={fullPage}
         {...filterUndefinedINU(componentProps?.CliAuthConfirmation)}
