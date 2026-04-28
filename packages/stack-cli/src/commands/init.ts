@@ -142,7 +142,7 @@ function printNextSteps(args: { mode: string, projectId?: string, dashboardUrl: 
     console.log("    Local dashboard: http://localhost:26700");
   } else if (args.projectId) {
     console.log("  • Manage this project in the dashboard:");
-    console.log(`      ${args.dashboardUrl}/projects/${args.projectId}`);
+    console.log(`      ${args.dashboardUrl}/projects/${encodeURIComponent(args.projectId)}`);
   }
 
   console.log("  • Docs: https://docs.stack-auth.com");
@@ -322,7 +322,8 @@ async function handleLinkFromCloud(flags: Record<string, unknown>, opts: InitOpt
     });
   }
 
-  const project = projects.find((p) => p.id === projectId)!;
+  const project = projects.find((p) => p.id === projectId)
+    ?? throwErr(`Project not found: ${projectId}`);
   await writeProjectKeysToEnv(project, outputDir);
   return { projectId };
 }
