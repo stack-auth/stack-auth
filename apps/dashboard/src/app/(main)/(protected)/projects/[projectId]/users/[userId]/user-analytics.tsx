@@ -132,9 +132,17 @@ const TOP_PAGES_QUERY = `
     toString(count()) AS views
   FROM (
     SELECT
-      COALESCE(
-        NULLIF(CAST(data.path, 'Nullable(String)'), ''),
-        NULLIF(CAST(data.url, 'Nullable(String)'), '')
+      NULLIF(
+        replaceRegexpOne(
+          COALESCE(
+            NULLIF(CAST(data.path, 'Nullable(String)'), ''),
+            NULLIF(CAST(data.url, 'Nullable(String)'), ''),
+            ''
+          ),
+          '[?#].*',
+          ''
+        ),
+        ''
       ) AS path
     FROM events
     WHERE user_id = {userId:String}
@@ -168,8 +176,22 @@ const RECENT_EVENTS_QUERY = `
   SELECT
     event_type,
     CAST(event_at, 'String') AS event_at_str,
-    CAST(data.path, 'Nullable(String)') AS path,
-    CAST(data.url, 'Nullable(String)') AS url,
+    NULLIF(
+      replaceRegexpOne(
+        COALESCE(NULLIF(CAST(data.path, 'Nullable(String)'), ''), ''),
+        '[?#].*',
+        ''
+      ),
+      ''
+    ) AS path,
+    NULLIF(
+      replaceRegexpOne(
+        COALESCE(NULLIF(CAST(data.url, 'Nullable(String)'), ''), ''),
+        '[?#].*',
+        ''
+      ),
+      ''
+    ) AS url,
     CAST(data.text, 'Nullable(String)') AS click_text,
     CAST(data.tag_name, 'Nullable(String)') AS tag_name
   FROM events
