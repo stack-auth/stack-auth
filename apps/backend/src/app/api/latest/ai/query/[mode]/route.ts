@@ -108,6 +108,8 @@ export const POST = createSmartRouteHandler({
     const startedAt = performance.now();
 
     const isAnthropic = model.modelId.startsWith("anthropic/");
+    // Can be optimized: only opt into prompt caching for routes that are hit
+    // frequently enough to amortize the write.
     const systemMessage: ModelMessage = {
       role: "system",
       content: systemPrompt,
