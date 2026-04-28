@@ -200,6 +200,65 @@ const branchSchemaFuzzerConfig = [{
   onboarding: [{
     requireEmailVerification: [true, false],
   }],
+  featureFlags: [{
+    flags: [{
+      "some-flag-id": [{
+        key: ["new-checkout"],
+        description: ["A flag for the new checkout"],
+        type: ["boolean", "multivariate", "json", "numeric", "string"] as const,
+        enabled: [true, false],
+        killSwitch: [true, false],
+        tags: [{ "beta": [true], "internal": [true] }] as const,
+        ownerUserId: ["some-user-id"],
+        dependsOn: ["another-flag-id"],
+        holdoutId: ["some-holdout-id"],
+        defaultVariantKey: ["control", "treatment"],
+        variants: [{
+          "control": [{
+            value: [false],
+          }],
+          "treatment": [{
+            value: [true],
+          }],
+        }],
+        rules: [{
+          "some-rule-id": [{
+            priority: [0, 1, 100],
+            enabled: [true, false],
+            conditions: [{
+              "some-condition-id": [{
+                attribute: ["user.email"],
+                operator: [
+                  "eq", "neq",
+                  "contains", "not_contains",
+                  "regex",
+                  "gt", "gte", "lt", "lte",
+                  "in", "not_in",
+                  "is_set", "is_not_set",
+                  "before", "after",
+                  "semver_eq", "semver_gt", "semver_lt",
+                  "in_cohort",
+                ] as const,
+                value: ["a-value"],
+              }],
+            }],
+            rolloutPercentage: [0, 50, 100],
+            rolloutSeed: ["some-seed"],
+            stickyBy: ["userId", "teamId", "distinctId"] as const,
+            variantKey: ["control", "treatment"],
+            variantWeights: [undefined],
+          }],
+        }],
+      }],
+    }],
+    holdouts: [{
+      "some-holdout-id": [{
+        displayName: ["Some Holdout"],
+        percentage: [0, 5, 100],
+        seed: ["some-seed"],
+      }],
+    }],
+  }],
 }] satisfies FuzzerConfig<BranchConfigNormalizedOverride>;
 
 const environmentSchemaFuzzerConfig = [{

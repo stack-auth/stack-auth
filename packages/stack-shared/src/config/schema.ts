@@ -6,6 +6,7 @@
 
 import * as yup from "yup";
 import { ALL_APPS } from "../apps/apps-config";
+import { featureFlagConditionOperators } from "../feature-flags/types";
 import { DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_THEMES, DEFAULT_EMAIL_THEME_ID } from "../helpers/emails";
 import * as schemaFields from "../schema-fields";
 import { productSchema, userSpecifiedIdSchema, yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
@@ -208,6 +209,119 @@ const branchOnboardingSchema = yupObject({
 });
 
 
+// --- Feature Flags Schema ---
+//
+// Definitions live in config (so they inherit branch/environment overrides for free); evaluation data
+// (exposures, audit, experiments, cohort memberships, scheduled rollouts) lives in dedicated Prisma tables.
+const featureFlagStickyBy = ["userId", "teamId", "distinctId"] as const;
+
+const featureFlagTypes = ["boolean", "multivariate", "json", "numeric", "string"] as const;
+
+export const branchFeatureFlagsSchema = yupObject({
+  flags: yupRecord(
+    userSpecifiedIdSchema("flagId"),
+    yupObject({
+      key: yupString().defined(),
+      description: yupString().optional(),
+      type: yupString().oneOf(featureFlagTypes).defined(),
+      enabled: yupBoolean(),
+      // killSwitch forces the default variant for everyone, ignoring rules. Independent from `enabled`
+      // (which can be flipped back on) so an operator can disable a flag without losing its config.
+      killSwitch: yupBoolean(),
+      tags: yupRecord(
+        yupString().matches(/^[a-z0-9_-]+$/),
+        yupBoolean().isTrue().optional(),
+      ).optional(),
+      ownerUserId: yupString().optional(),
+      // dependsOn: another flag id; this flag only evaluates against rules if the dependency resolves truthy.
+      dependsOn: yupString().optional(),
+      holdoutId: yupString().optional(),
+      variants: yupRecord(
+        userSpecifiedIdSchema("variantId"),
+        yupObject({
+          value: yupMixed(),
+        }),
+      ),
+      defaultVariantKey: yupString(),
+      rules: yupRecord(
+        userSpecifiedIdSchema("ruleId"),
+        yupObject({
+          // Higher priority is evaluated first. Ties broken by id (alphabetical) for determinism.
+          priority: yupNumber().integer().min(0),
+          enabled: yupBoolean(),
+          conditions: yupRecord(
+            userSpecifiedIdSchema("conditionId"),
+            yupObject({
+              // Dotted path into evaluation context (e.g. "user.email", "team.plan", "context.country").
+              attribute: yupString().defined(),
+              operator: yupString().oneOf(featureFlagConditionOperators).defined(),
+              value: yupMixed(),
+            }),
+          ).optional(),
+          // Percentage [0,100] of the addressable audience (after conditions) that gets this rule's variant selection.
+          rolloutPercentage: yupNumber().min(0).max(100),
+          rolloutSeed: yupString().optional(),
+          stickyBy: yupString().oneOf(featureFlagStickyBy).optional(),
+          variantKey: yupString().optional(),
+          variantWeights: yupRecord(
+            userSpecifiedIdSchema("variantId"),
+            yupNumber().min(0).max(1).optional(),
+          ).optional(),
+        }).test(
+          'feature-flag-rule-has-one-variant-selection-mode',
+          'Feature flag rules must specify either variantKey or variantWeights',
+          function(this: yup.TestContext<yup.AnyObject>, rule) {
+            const hasVariantKey = rule.variantKey !== undefined;
+            const variantWeights = Object.values(rule.variantWeights ?? {});
+            const hasVariantWeights = variantWeights.length > 0;
+            if (hasVariantKey === hasVariantWeights) {
+              return this.createError({
+                message: 'Feature flag rules must specify exactly one of variantKey or variantWeights',
+                path: `${this.path}.variantKey`,
+              });
+            }
+            if (hasVariantWeights && !variantWeights.some(weight => (weight ?? 0) > 0)) {
+              return this.createError({
+                message: 'Feature flag rules with variantWeights must have at least one positive weight',
+                path: `${this.path}.variantWeights`,
+              });
+            }
+            return true;
+          },
+        ),
+      ),
+    }),
+  ),
+  holdouts: yupRecord(
+    userSpecifiedIdSchema("holdoutId"),
+    yupObject({
+      displayName: yupString().optional(),
+      // Holdouts globally exclude a percentage of the audience from receiving any non-default variant.
+      percentage: yupNumber().min(0).max(100),
+      seed: yupString().optional(),
+    }),
+  ),
+}).test(
+  'feature-flag-keys-are-unique',
+  'Feature flag keys must be unique',
+  function(this: yup.TestContext<yup.AnyObject>, value) {
+    const seen = new Map<string, string>();
+    for (const [flagId, flag] of Object.entries(value.flags)) {
+      const existingFlagId = seen.get(flag.key);
+      if (existingFlagId !== undefined) {
+        return this.createError({
+          message: `Feature flag key "${flag.key}" is used by both "${existingFlagId}" and "${flagId}"`,
+          path: `${this.path}.flags.${flagId}.key`,
+        });
+      }
+      seen.set(flag.key, flagId);
+    }
+    return true;
+  },
+);
+// --- END Feature Flags Schema ---
+
+
 export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
   "sourceOfTruth",
   "project",
@@ -240,6 +354,8 @@ export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [
   }),
 
   payments: branchPaymentsSchema,
+
+  featureFlags: branchFeatureFlagsSchema,
 
   dbSync: yupObject({
     externalDatabases: yupRecord(
@@ -699,6 +815,43 @@ const organizationConfigDefaults = {
     } as const)
   },
 
+
+  featureFlags: {
+    flags: (key: string) => ({
+      key: undefined,
+      description: undefined,
+      type: undefined,
+      enabled: false,
+      killSwitch: false,
+      tags: undefined,
+      ownerUserId: undefined,
+      dependsOn: undefined,
+      holdoutId: undefined,
+      defaultVariantKey: undefined,
+      variants: (variantKey: string) => ({
+        value: undefined,
+      }),
+      rules: (ruleKey: string) => ({
+        priority: 0,
+        enabled: false,
+        rolloutPercentage: 0,
+        rolloutSeed: undefined,
+        stickyBy: undefined,
+        variantKey: undefined,
+        variantWeights: undefined,
+        conditions: (conditionKey: string) => ({
+          attribute: undefined,
+          operator: undefined,
+          value: undefined,
+        }),
+      }),
+    }),
+    holdouts: (key: string) => ({
+      displayName: undefined,
+      percentage: 0,
+      seed: undefined,
+    }),
+  },
 
   dbSync: {
     externalDatabases: (key: string) => ({

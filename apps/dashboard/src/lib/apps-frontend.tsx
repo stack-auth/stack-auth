@@ -1,5 +1,5 @@
 import { Link } from "@/components/link";
-import { ChartLineIcon, ClipboardTextIcon, CreditCardIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
+import { ChartLineIcon, ClipboardTextIcon, CreditCardIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, FlagIcon, KeyIcon, MailboxIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { StackAdminApp } from "@stackframe/stack";
 import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@stackframe/stack-shared/dist/utils/urls";
@@ -242,6 +242,21 @@ export const ALL_APPS_FRONTEND = {
         <p>Data Vault is an encrypted key-value store for the secrets your app should never expose.</p>
         <p>Create isolated stores for API tokens, recovery codes, or other sensitive values, all protected by your own vault secret.</p>
         <p>Stack only keeps hashed keys and ciphertext, and the SDK ships with examples for reading and writing data safely.</p>
+      </>
+    ),
+  },
+  "feature-flags": {
+    icon: FlagIcon,
+    href: "feature-flags",
+    navigationItems: [
+      { displayName: "Feature Flags", href: "." },
+    ],
+    screenshots: [],
+    storeDescription: (
+      <>
+        <p>Feature Flags ship code without shipping risk.</p>
+        <p>Define boolean and multivariate flags, target users or teams, and roll out gradually with deterministic bucketing — the same evaluator runs server-side and in the SDK so a user always sees the same variant.</p>
+        <p>Pair flags with the Vercel Flags SDK adapter for sub-millisecond edge evaluation.</p>
       </>
     ),
   },

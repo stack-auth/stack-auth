@@ -108,6 +108,12 @@ export const ALL_APPS = {
     tags: ["security", "storage"],
     stage: "beta",
   },
+  "feature-flags": {
+    displayName: "Feature Flags",
+    subtitle: "Targeted rollouts, experiments, and kill switches",
+    tags: ["developers", "operations"],
+    stage: "alpha",
+  },
   "webhooks": {
     displayName: "Webhooks",
     subtitle: "Real-time event notifications and integrations",

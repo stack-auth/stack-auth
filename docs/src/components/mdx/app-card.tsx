@@ -2,7 +2,7 @@
 
 import { ALL_APPS, AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { AppIcon, appSquarePaddingExpression, appSquareWidthExpression } from "@stackframe/stack-shared/dist/apps/apps-ui";
-import { BarChart3, ClipboardList, CreditCard, KeyRound, Mail, Mails, Rocket, ShieldCheck, ShieldEllipsis, Sparkles, Triangle, Tv, UserCog, Users, Vault, Webhook } from "lucide-react";
+import { BarChart3, ClipboardList, CreditCard, Flag, KeyRound, Mail, Mails, Rocket, ShieldCheck, ShieldEllipsis, Sparkles, Triangle, Tv, UserCog, Users, Vault, Webhook } from "lucide-react";
 import Link from "next/link";
 import { cn } from "../../lib/cn";
 
@@ -22,6 +22,7 @@ const APP_ICONS: Record<AppId, React.FunctionComponent<React.SVGProps<SVGSVGElem
   emails: Mail,
   "email-api": Mails,
   "data-vault": Vault,
+  "feature-flags": Flag,
   webhooks: Webhook,
   "tv-mode": Tv,
   "launch-checklist": Rocket,
@@ -121,4 +122,3 @@ export function AppGrid({ appIds, className }: {
     </div>
   );
 }
-

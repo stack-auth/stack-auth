@@ -136,6 +136,86 @@ export async function seed() {
           }
         }
       },
+      featureFlags: {
+        // Realistic-ish flags so the dashboard has something to demo on first run of the
+        // internal project. The /feature-flags-demo page in examples/demo evaluates these.
+        flags: {
+          "demo-new-checkout": {
+            key: "new-checkout",
+            description: "Roll out the redesigned checkout to a slice of users",
+            type: "boolean",
+            enabled: true,
+            killSwitch: false,
+            defaultVariantKey: "off",
+            variants: {
+              on: { value: true },
+              off: { value: false },
+            },
+            rules: {
+              "ramp-25": {
+                priority: 10,
+                enabled: true,
+                rolloutPercentage: 25,
+                rolloutSeed: "new-checkout-2026-04",
+                variantKey: "on",
+              },
+            },
+          },
+          "demo-pricing-experiment": {
+            key: "pricing-experiment",
+            description: "A/B test for the pricing page hero",
+            type: "multivariate",
+            enabled: true,
+            killSwitch: false,
+            defaultVariantKey: "control",
+            variants: {
+              control: { value: "control" },
+              "treatment-a": { value: "treatment-a" },
+              "treatment-b": { value: "treatment-b" },
+            },
+            rules: {
+              "all-traffic": {
+                priority: 0,
+                enabled: true,
+                rolloutPercentage: 100,
+                variantWeights: {
+                  control: 0.5,
+                  "treatment-a": 0.25,
+                  "treatment-b": 0.25,
+                },
+              },
+            },
+          },
+          "demo-internal-tools": {
+            key: "internal-tools",
+            description: "Show internal tooling to @stack-auth.com addresses only",
+            type: "boolean",
+            enabled: true,
+            killSwitch: false,
+            defaultVariantKey: "off",
+            variants: {
+              on: { value: true },
+              off: { value: false },
+            },
+            rules: {
+              "internal-emails": {
+                priority: 100,
+                enabled: true,
+                rolloutPercentage: 100,
+                variantKey: "on",
+                conditions: {
+                  "is-employee": {
+                    attribute: "user.email",
+                    operator: "contains",
+                    value: "@stack-auth.com",
+                  },
+                },
+              },
+            },
+          },
+        },
+        holdouts: {},
+      },
       payments: {
         productLines: {
           plans: {
