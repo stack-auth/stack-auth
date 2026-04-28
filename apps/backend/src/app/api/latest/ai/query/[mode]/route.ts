@@ -13,6 +13,7 @@ import { getVerifiedQaContext } from "@/lib/ai/verified-qa";
 import { SmartResponse } from "@/route-handlers/smart-response";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { validateImageAttachments } from "@stackframe/stack-shared/dist/ai/image-limits";
+import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -44,7 +45,15 @@ export const POST = createSmartRouteHandler({
     }
     const imageValidationResult = validateImageAttachments(messages);
     if (!imageValidationResult.ok) {
-      throw new StatusError(StatusError.BadRequest, imageValidationResult.reason);
+      const { failure } = imageValidationResult;
+      switch (failure.code) {
+        case "too_many": {
+          throw new KnownErrors.TooManyImageAttachments(failure.maxImages);
+        }
+        case "too_large": {
+          throw new KnownErrors.ImageAttachmentTooLarge(failure.maxBytes, failure.actualBytes);
+        }
+      }
     }
 
     const authenticatedApiKey = isAuthenticated
