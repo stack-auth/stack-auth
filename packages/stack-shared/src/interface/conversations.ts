@@ -88,6 +88,7 @@ export const conversationMessageSchema = yupObject({
 
 export const conversationListResponseSchema = yupObject({
   conversations: yupArray(conversationSummarySchema.defined()).defined(),
+  hasMore: yupBoolean().defined(),
 });
 
 export const conversationDetailResponseSchema = yupObject({

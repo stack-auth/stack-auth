@@ -401,10 +401,14 @@ export async function listConversationSummaries(options: {
   query?: string,
   userId?: string,
   includeInternalNotes: boolean,
+  limit?: number,
+  offset?: number,
 }) {
   const searchPattern = options.query == null || options.query.trim() === ""
     ? null
     : `%${options.query.trim().toLowerCase()}%`;
+  const limit = options.limit ?? 200;
+  const offset = options.offset ?? 0;
 
   const rows = await globalPrismaClient.$queryRaw<ConversationSummaryRow[]>(Prisma.sql`
     SELECT
@@ -469,10 +473,15 @@ export async function listConversationSummaries(options: {
         )
       ` : Prisma.empty}
     ORDER BY COALESCE(lm."createdAt", c."createdAt") DESC, c.id DESC
-    LIMIT 200
+    LIMIT ${limit + 1}
+    OFFSET ${offset}
   `);
 
-  return rows.map(summaryFromRow);
+  const hasMore = rows.length > limit;
+  return {
+    conversations: rows.slice(0, limit).map(summaryFromRow),
+    hasMore,
+  };
 }
 
 export async function getConversationDetail(options: {

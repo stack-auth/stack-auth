@@ -2,6 +2,7 @@ import { getConversationDetail, listConversationSummaries } from "@/lib/conversa
 import {
   adaptSchema,
   yupArray,
+  yupBoolean,
   yupMixed,
   yupObject,
   yupString,
@@ -72,6 +73,7 @@ export const publicConversationSummarySchema = yupObject({
 
 export const publicConversationListResponseSchema = yupObject({
   conversations: yupArray(publicConversationSummarySchema).defined(),
+  has_more: yupBoolean().defined(),
 }).defined();
 
 export const publicConversationMessageSchema = yupObject({
@@ -101,7 +103,7 @@ export const publicConversationDetailResponseSchema = yupObject({
   messages: yupArray(publicConversationMessageSchema).defined(),
 }).defined();
 
-type ConversationSummaryInput = Awaited<ReturnType<typeof listConversationSummaries>>[number];
+type ConversationSummaryInput = Awaited<ReturnType<typeof listConversationSummaries>>["conversations"][number];
 type ConversationDetailInput = Awaited<ReturnType<typeof getConversationDetail>>;
 
 export function toPublicConversationSummary(conversation: ConversationSummaryInput) {

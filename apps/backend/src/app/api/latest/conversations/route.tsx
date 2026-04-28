@@ -24,6 +24,8 @@ export const GET = createSmartRouteHandler({
     auth: authenticatedUserAuthSchema,
     query: yupObject({
       query: yupString().optional(),
+      limit: yupNumber().integer().min(1).max(200).optional(),
+      offset: yupNumber().integer().min(0).optional(),
     }).defined(),
     method: yupString().oneOf(["GET"]).defined(),
   }),
@@ -38,13 +40,16 @@ export const GET = createSmartRouteHandler({
       userId: auth.user.id,
       query: query.query,
       includeInternalNotes: false,
+      limit: query.limit,
+      offset: query.offset,
     });
 
     return {
       statusCode: 200 as const,
       bodyType: "json" as const,
       body: {
-        conversations: conversations.map(toPublicConversationSummary),
+        conversations: conversations.conversations.map(toPublicConversationSummary),
+        has_more: conversations.hasMore,
       },
     };
   },

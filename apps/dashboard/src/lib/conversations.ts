@@ -2,7 +2,7 @@ import { buildStackAuthHeaders, type CurrentUser } from "@/lib/api-headers";
 import { getPublicEnvVar } from "@/lib/env";
 import type {
   ConversationDetailResponse,
-  ConversationSummary,
+  ConversationListResponse,
   ConversationPriority,
   ConversationStatus,
 } from "@/lib/conversation-types";
@@ -13,6 +13,8 @@ type ListConversationsOptions = {
   query?: string,
   status?: ConversationStatus,
   userId?: string,
+  limit?: number,
+  offset?: number,
 };
 
 function getBaseUrl() {
@@ -46,9 +48,11 @@ export async function listConversations(currentUser: CurrentUser | null, options
   if (options.query) params.set("query", options.query);
   if (options.status) params.set("status", options.status);
   if (options.userId) params.set("userId", options.userId);
+  if (options.limit != null) params.set("limit", options.limit.toString());
+  if (options.offset != null) params.set("offset", options.offset.toString());
 
   const response = await apiFetch(currentUser, `?${params.toString()}`);
-  return await response.json() as { conversations: ConversationSummary[] };
+  return await response.json() as ConversationListResponse;
 }
 
 export async function getConversation(currentUser: CurrentUser | null, options: {
