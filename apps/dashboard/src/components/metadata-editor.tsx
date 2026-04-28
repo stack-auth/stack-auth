@@ -1,8 +1,8 @@
 "use client";
 
-import { DesignCard } from "@/components/design-components";
+import { DesignButton, DesignCard } from "@/components/design-components";
 import { StyledLink } from "@/components/link";
-import { Button, cn, SimpleTooltip } from "@/components/ui";
+import { cn, SimpleTooltip } from "@/components/ui";
 import { useThemeWatcher } from '@/lib/theme';
 import MonacoEditor from '@monaco-editor/react';
 import { DatabaseIcon } from "@phosphor-icons/react";
@@ -61,13 +61,20 @@ export function MetadataEditor({ title, initialValue, onUpdate, hint }: Metadata
   // Only render Monaco when both mounted states are true
   const shouldRenderMonaco = mounted && isMounted;
 
-  return <div className="flex flex-col">
-    <h3 className='text-sm mb-4 font-semibold'>
-      {title}
-      <SimpleTooltip tooltip={hint} type="info" inline className="ml-2 mb-[2px]" />
-    </h3>
+  return <div className="flex flex-col gap-3">
+    <div className="flex items-center gap-1.5">
+      <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+        {title}
+      </h3>
+      <SimpleTooltip tooltip={hint} type="info" inline />
+    </div>
     {shouldRenderMonaco ? (
-      <div className={cn("rounded-md overflow-hidden", theme !== 'dark' && "border")}>
+      <div
+        className={cn(
+          "overflow-hidden rounded-xl bg-foreground/[0.025] transition-colors duration-150 hover:transition-none hover:bg-foreground/[0.04]",
+          theme === 'dark' && "bg-foreground/[0.04] hover:bg-foreground/[0.06]",
+        )}
+      >
         <MonacoEditor
           key={`monaco-${theme}`} // Force recreation on theme change
           height="240px"
@@ -91,23 +98,28 @@ export function MetadataEditor({ title, initialValue, onUpdate, hint }: Metadata
         />
       </div>
     ) : (
-      <div className={cn("rounded-md overflow-hidden h-[240px] flex items-center justify-center", theme !== 'dark' && "border")}>
+      <div className="h-[240px] overflow-hidden rounded-xl bg-foreground/[0.025] dark:bg-foreground/[0.04] flex items-center justify-center">
         <div className="text-sm text-muted-foreground">Loading editor...</div>
       </div>
     )}
-    <div className={cn('self-end flex items-end gap-2 transition-all h-0 opacity-0 overflow-hidden', hasChanged && 'h-[48px] opacity-100')}>
-      <Button
+    <div className={cn(
+      "self-end flex items-center gap-2 overflow-hidden transition-all duration-150 hover:transition-none h-0 opacity-0",
+      hasChanged && "h-9 opacity-100",
+    )}>
+      <DesignButton
         variant="ghost"
+        size="sm"
         onClick={() => {
           setValue(formatJson(initialJson));
           setHasChanged(false);
         }}>
         Revert
-      </Button>
-      <Button
+      </DesignButton>
+      <DesignButton
         variant={parsedValue.status === "ok" ? "default" : "secondary"}
+        size="sm"
         disabled={parsedValue.status !== "ok"}
-        onClick={handleSave}>Save</Button>
+        onClick={handleSave}>Save</DesignButton>
     </div>
   </div>;
 }
