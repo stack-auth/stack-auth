@@ -1,3 +1,11 @@
+import {
+  DesignAnalyticsCard,
+  DesignCategoryTabs,
+  DesignChartLegend,
+  DesignPillToggle,
+  useInfiniteListWindow,
+  type DesignAnalyticsChartConfig
+} from "@/components/design-components";
 import { useRouter } from "@/components/router";
 import {
   cn,
@@ -5,15 +13,6 @@ import {
 } from "@/components/ui";
 import { Calendar } from "@/components/ui/calendar";
 import { ChartConfig, ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import {
-  DesignAnalyticsCard,
-  type DesignAnalyticsChartConfig,
-  DesignCardTint,
-  DesignCategoryTabs,
-  DesignChartLegend,
-  DesignPillToggle,
-  useInfiniteListWindow,
-} from "@/components/design-components";
 import { Popover, PopoverAnchor, PopoverContent } from "@/components/ui/popover";
 import { UserAvatar } from '@stackframe/stack';
 import { fromNow, isWeekend } from '@stackframe/stack-shared/dist/utils/dates';
@@ -451,7 +450,7 @@ export function StackedBarChartDisplay({
   return (
     <ChartContainer
       config={movingAvgConfig}
-      className="w-full flex-1 min-h-0 !overflow-visible [&_.recharts-wrapper]:!overflow-visible"
+      className="w-full aspect-auto flex-1 min-h-0 !overflow-visible [&_.recharts-wrapper]:!overflow-visible"
       maxHeight={height}
     >
       <ComposedChart
@@ -747,7 +746,7 @@ export function ComposedAnalyticsChart({
   return (
     <ChartContainer
       config={composedChartConfig}
-      className="w-full flex-1 min-h-0 !overflow-visible [&_.recharts-wrapper]:!overflow-visible"
+      className="w-full aspect-auto flex-1 min-h-0 !overflow-visible [&_.recharts-wrapper]:!overflow-visible"
       maxHeight={height}
     >
       <ComposedChart
@@ -1900,23 +1899,38 @@ const BRAND_CONFIG_MAP = new Map(Object.entries(BRAND_CONFIG));
 export function DonutChartDisplay({
   datapoints,
   className,
-  height = 300,
   compact = false,
   gradientColor = "blue",
 }: {
   datapoints: AuthMethodDatapoint[],
   className?: string,
-  height?: number,
   compact?: boolean,
   gradientColor?: GradientColor,
 }) {
   const total = datapoints.reduce((sum, d) => sum + d.count, 0);
+  const hasData = datapoints.length > 0 && total > 0;
+
+  // Static snapshot pie — uses Recharts directly rather than forcing a
+  // time-series chart (AnalyticsChart) to render a single "fake" bucket.
+  // Lightweight, no state, and the pieces of data we actually need here are
+  // just a color + label per slice.
+  const pieData = useMemo(
+    () => datapoints.map((d) => {
+      const brand = BRAND_CONFIG_MAP.get(d.method);
+      const label = typeof brand?.label === "string" ? brand.label : d.method;
+      const color = brand?.color ?? "#8B5CF6";
+      return { key: d.method, label, value: d.count, color };
+    }),
+    [datapoints],
+  );
+
   const innerRadius = compact ? 40 : 60;
   const outerRadius = compact ? 55 : 85;
+  const sizeClass = compact ? "h-[150px] w-[150px]" : "h-[200px] w-[200px]";
 
   return (
     <ChartCard
-      className={className}
+      className={cn("h-full min-h-0", className)}
       gradientColor={gradientColor}
       chart={{ type: "donut", tooltipType: "donut", highlightMode: "dot-hover" }}
     >
@@ -1934,99 +1948,55 @@ export function DonutChartDisplay({
           </div>
         </div>
       </div>
-      <div className={cn(compact ? "p-4 pt-0" : "p-5 pt-0", "flex-1 min-h-0 flex flex-col overflow-visible")}>
-        {datapoints.length === 0 || total === 0 ? (
+      <div className={cn(compact ? "p-4 pt-0" : "p-5 pt-0", "flex-1 min-h-0 flex flex-col items-center justify-center gap-4 overflow-visible")}>
+        {!hasData ? (
           <div className="flex-1 flex items-center justify-center">
             <Typography variant="secondary" className="text-xs text-center">
               No authentication data available
             </Typography>
           </div>
         ) : (
-          <div className="flex flex-col items-center w-full h-full justify-center flex-1 min-h-0 overflow-visible">
-            <ChartContainer
-              config={BRAND_CONFIG}
-              className="flex w-full items-center justify-center flex-1 min-h-0 pb-2 !overflow-visible [&_.recharts-wrapper]:!overflow-visible"
-              maxHeight={height}
-            >
-              <PieChart>
-                <ChartTooltip
-                  cursor={false}
-                  offset={20}
-                  allowEscapeViewBox={{ x: true, y: true }}
-                  wrapperStyle={{ zIndex: 9999, pointerEvents: 'none' }}
-                  content={
-                    <ChartTooltipContent
-                      className={`${tooltipSurfaceClass} px-3.5 py-2.5`}
-                      hideIndicator
-                      nameKey="method"
-                      formatter={(value, _name, item) => {
-                        const key = (item.payload as AuthMethodDatapoint | undefined)?.method;
-                        const brandConfig = key ? BRAND_CONFIG[key as keyof typeof BRAND_CONFIG] : undefined;
-                        const label = brandConfig?.label || _name;
-
-                        if (typeof value !== "number" || !key) {
-                          return null;
-                        }
-
-                        return (
-                          <div className="flex items-center gap-2.5">
-                            <span
-                              className="h-2 w-2 rounded-full ring-2 ring-white/20"
-                              style={{ backgroundColor: `var(--color-${key})` }}
-                            />
-                            <span className="text-[11px] font-medium">
-                              {label}
-                            </span>
-                            <span className="font-mono text-xs font-semibold tabular-nums">
-                              {value}
-                            </span>
-                          </div>
-                        );
-                      }}
-                    />
-                  }
-                />
+          <>
+            <div className={cn("relative aspect-square", sizeClass)}>
+              <PieChart width={compact ? 150 : 200} height={compact ? 150 : 200}>
                 <Pie
-                  data={datapoints.map(x => ({
-                    ...x,
-                    fill: `var(--color-${x.method})`
-                  }))}
-                  dataKey="count"
-                  nameKey="method"
+                  data={pieData}
+                  dataKey="value"
+                  nameKey="label"
                   innerRadius={innerRadius}
                   outerRadius={outerRadius}
-                  paddingAngle={3}
-                  labelLine={false}
+                  paddingAngle={1}
                   isAnimationActive={false}
-                />
+                  stroke="none"
+                >
+                  {pieData.map((slice) => (
+                    <Cell key={slice.key} fill={slice.color} />
+                  ))}
+                </Pie>
               </PieChart>
-            </ChartContainer>
-            <div className={cn("flex w-full flex-wrap justify-center gap-2 shrink-0", compact ? "mt-3" : "mt-4")}>
-              {datapoints.map((item) => {
-                const percentage = total > 0 ? ((item.count / total) * 100).toFixed(0) : 0;
-                return (
-                  <div
-                    key={item.method}
-                    className={cn(
-                      "flex items-center gap-1.5 rounded-full bg-foreground/[0.03] ring-1 ring-foreground/[0.06] transition-colors duration-150 hover:transition-none hover:bg-foreground/[0.05]",
-                      compact ? "px-2.5 py-1 text-[10px]" : "px-3 py-1.5 text-xs"
-                    )}
-                  >
-                    <span
-                      className="h-2 w-2 rounded-full shrink-0"
-                      style={{ backgroundColor: BRAND_CONFIG_MAP.get(item.method)?.color ?? "var(--color-other)" }}
-                    />
-                    <span className="font-medium text-foreground">
-                      {BRAND_CONFIG_MAP.get(item.method)?.label ?? item.method}
-                    </span>
-                    <span className="text-muted-foreground">
-                      {percentage}%
-                    </span>
-                  </div>
-                );
-              })}
+              <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+                <span className="text-[10px] uppercase tracking-wider text-muted-foreground">Total</span>
+                <span className="text-base font-semibold tabular-nums text-foreground">
+                  {total.toLocaleString()}
+                </span>
+              </div>
             </div>
-          </div>
+            <ul className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs min-w-0 w-full">
+              {pieData.map((slice) => (
+                <li key={slice.key} className="flex items-center gap-2 min-w-0">
+                  <span
+                    className="h-2 w-2 rounded-full shrink-0"
+                    style={{ backgroundColor: slice.color }}
+                    aria-hidden
+                  />
+                  <span className="truncate text-muted-foreground">{slice.label}</span>
+                  <span className="ml-auto tabular-nums text-foreground">
+                    {slice.value.toLocaleString()}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </>
         )}
       </div>
     </ChartCard>
@@ -2136,7 +2106,7 @@ export function EmailStackedBarChartDisplay({
   return (
     <ChartContainer
       config={movingAvgConfig}
-      className="w-full flex-1 min-h-0 !overflow-visible [&_.recharts-wrapper]:!overflow-visible"
+      className="w-full aspect-auto flex-1 min-h-0 !overflow-visible [&_.recharts-wrapper]:!overflow-visible"
       maxHeight={height}
     >
       <ComposedChart
@@ -2356,7 +2326,7 @@ export function VisitorsHoverChart({
   return (
     <ChartContainer
       config={visitorsHoverChartConfig}
-      className="w-full flex-1 min-h-0 !overflow-visible [&_.recharts-wrapper]:!overflow-visible"
+      className="w-full aspect-auto flex-1 min-h-0 !overflow-visible [&_.recharts-wrapper]:!overflow-visible"
       maxHeight={height}
     >
       <ComposedChart
@@ -2569,7 +2539,7 @@ export function RevenueHoverChart({
   return (
     <ChartContainer
       config={revenueHoverChartConfig}
-      className="w-full flex-1 min-h-0 !overflow-visible [&_.recharts-wrapper]:!overflow-visible"
+      className="w-full aspect-auto flex-1 min-h-0 !overflow-visible [&_.recharts-wrapper]:!overflow-visible"
       maxHeight={height}
     >
       <ComposedChart
