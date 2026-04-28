@@ -1,7 +1,7 @@
 "use client";
 
 import { CountryCodeInput } from "@/components/country-code-select";
-import { DesignCard, DesignCategoryTabs, DesignDataTable, DesignEditableGrid, type DesignEditableGridItem, DesignMenu, type DesignMenuActionItem, type DesignCategoryTabItem } from "@/components/design-components";
+import { DesignCard, DesignCategoryTabs, DesignDataTable, DesignEditableGrid, DesignMenu, type DesignCategoryTabItem, type DesignEditableGridItem, type DesignMenuActionItem } from "@/components/design-components";
 import { EditableInput } from "@/components/editable-input";
 import { FormDialog, SmartFormDialog } from "@/components/form-dialog";
 import { InputField, SelectField } from "@/components/form-fields";
@@ -119,22 +119,26 @@ function UserHeader({ user }: UserHeaderProps) {
             {
               id: "impersonate",
               label: "Impersonate",
-              onClick: async () => {
-                const expiresInMillis = 1000 * 60 * 60 * 2;
-                const expiresAtDate = new Date(Date.now() + expiresInMillis);
-                const session = await user.createSession({ expiresInMillis });
-                const tokens = await session.getTokens();
-                setImpersonateSnippet(deindent`
-                  document.cookie = 'stack-refresh-${stackAdminApp.projectId}=${tokens.refreshToken}; expires=${expiresAtDate.toUTCString()}; path=/'; 
-                  window.location.reload();
-                `);
+              onClick: () => {
+                runAsynchronouslyWithAlert(async () => {
+                  const expiresInMillis = 1000 * 60 * 60 * 2;
+                  const expiresAtDate = new Date(Date.now() + expiresInMillis);
+                  const session = await user.createSession({ expiresInMillis });
+                  const tokens = await session.getTokens();
+                  setImpersonateSnippet(deindent`
+                    document.cookie = 'stack-refresh-${stackAdminApp.projectId}=${tokens.refreshToken}; expires=${expiresAtDate.toUTCString()}; path=/'; 
+                    window.location.reload();
+                  `);
+                });
               },
             },
             ...user.isMultiFactorRequired ? [{
               id: "remove-2fa",
               label: "Remove 2FA",
-              onClick: async () => {
-                await user.update({ totpMultiFactorSecret: null });
+              onClick: () => {
+                runAsynchronouslyWithAlert(async () => {
+                  await user.update({ totpMultiFactorSecret: null });
+                });
               },
             }] satisfies DesignMenuActionItem[] : [],
             {
