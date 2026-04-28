@@ -3,12 +3,9 @@
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
 import { globalVar } from "@stackframe/stack-shared/dist/utils/globals";
 import React, { useEffect } from "react";
-import { useStackApp } from "..";
+import { useStackApp } from "../lib/hooks";
 import { StackClientApp, StackClientAppJson, stackAppInternalsSymbol } from "../lib/stack-app";
-
-export const StackContext = React.createContext<null | {
-  app: StackClientApp<true>,
-}>(null);
+import { StackContext } from "./stack-context";
 
 export function StackProviderClient(props: {
   app: StackClientAppJson<true, string> | StackClientApp<true>,
