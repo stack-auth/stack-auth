@@ -1,12 +1,8 @@
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { createMcpHandler } from "@vercel/mcp-adapter";
-import { PostHog } from "posthog-node";
 import { z } from "zod";
 
-const postHogKey = getEnvVariable("NEXT_PUBLIC_POSTHOG_KEY", "");
-const nodeClient = postHogKey !== ""
-  ? new PostHog(postHogKey)
-  : null;
+import withPostHog from "@/analytics";
 
 function getBackendApiBaseUrl(): string {
   return (
@@ -42,10 +38,12 @@ const handler = createMcpHandler(
           ),
       },
       async ({ question, reason, userPrompt, conversationId }) => {
-        nodeClient?.capture({
-          event: "ask_stack_auth_mcp",
-          properties: { question, reason },
-          distinctId: "mcp-handler",
+        await withPostHog(async (posthog) => {
+          posthog.capture({
+            event: "ask_stack_auth_mcp",
+            properties: { question, reason },
+            distinctId: "mcp-handler",
+          });
         });
 
         const res = await fetch(`${getBackendApiBaseUrl()}/api/latest/ai/query/generate`, {
