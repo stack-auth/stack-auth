@@ -1,6 +1,5 @@
 "use client";
 
-import { CountryCodeInput } from "@/components/country-code-select";
 import { DesignCard, DesignCategoryTabs, DesignDataTable, DesignEditableGrid, DesignMenu, type DesignCategoryTabItem, type DesignEditableGridItem, type DesignMenuActionItem } from "@/components/design-components";
 import { EditableInput } from "@/components/editable-input";
 import { FormDialog, SmartFormDialog } from "@/components/form-dialog";
@@ -416,23 +415,17 @@ function UserDetails({ user }: { user: ServerUser }) {
       },
     },
     {
-      type: "custom",
+      type: "text",
       icon: <GlobeIcon size={14} />,
       name: "Sign-up country code",
-      children: (
-        <CountryCodeInput
-          value={user.countryCode ?? null}
-          onChange={(newValue) => {
-            runAsynchronouslyWithAlert(async () => {
-              await user.update({
-                countryCode: newValue ? normalizeCountryCode(newValue) : null,
-              });
-            });
-          }}
-          placeholder="-"
-          className="w-full h-7 text-sm"
-        />
-      ),
+      value: user.countryCode ?? "",
+      placeholder: "-",
+      normalizeInput: (value) => value.toUpperCase().replace(/[^A-Z]/g, "").slice(0, 2),
+      onUpdate: async (newValue) => {
+        await user.update({
+          countryCode: newValue.length > 0 ? normalizeCountryCode(newValue) : null,
+        });
+      },
     },
     {
       type: "text",

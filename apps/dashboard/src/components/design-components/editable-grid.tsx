@@ -11,9 +11,10 @@ import {
 } from "@/components/ui";
 import { cn } from "@/lib/utils";
 import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
-import { ArrowCounterClockwise, FloppyDisk } from "@phosphor-icons/react";
-import { useState } from "react";
+import { ArrowCounterClockwise, Check, FloppyDisk, X } from "@phosphor-icons/react";
+import { useRef, useState } from "react";
 import { DesignButton, useDesignEditMode, DesignInput } from "@stackframe/dashboard-ui-components";
 
 export type DesignEditableGridSize = "sm" | "md";
@@ -39,6 +40,7 @@ type TextItem = BaseItemProps & {
   type: "text",
   value: string,
   onUpdate?: (value: string) => Promise<void>,
+  normalizeInput?: (value: string) => string,
   readOnly?: boolean,
   placeholder?: string,
 };
@@ -116,6 +118,7 @@ type DesignEditableGridProps = {
 type DesignEditableInputProps = {
   value: string,
   onUpdate?: (value: string) => Promise<void>,
+  normalizeInput?: (value: string) => string,
   readOnly?: boolean,
   placeholder?: string,
   inputClassName?: string,
@@ -126,6 +129,7 @@ type DesignEditableInputProps = {
 function DesignEditableInput({
   value,
   onUpdate,
+  normalizeInput,
   readOnly,
   placeholder,
   inputClassName,
@@ -134,10 +138,48 @@ function DesignEditableInput({
   editMode,
   sz,
 }: DesignEditableInputProps & { editMode: boolean, sz: typeof sizeConfig[DesignEditableGridSize] }) {
-  return <div className="flex items-center relative w-full">
+  const [editValue, setEditValue] = useState<string | null>(null);
+  const [hasChanged, setHasChanged] = useState(false);
+  const editing = editValue !== null;
+  const forceAllowBlur = useRef(false);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const acceptRef = useRef<HTMLButtonElement>(null);
+  const [handleUpdate, isLoading] = useAsyncCallback(async (nextValue: string) => {
+    await onUpdate?.(nextValue);
+  }, [onUpdate]);
+
+  return <div
+    ref={containerRef}
+    className="flex items-center relative w-full"
+    onFocus={() => {
+      if (!readOnly) {
+        setEditValue(editValue ?? value);
+      }
+    }}
+    onBlur={() => {
+      if (forceAllowBlur.current) return;
+      if (!hasChanged) {
+        setEditValue(null);
+      } else if (confirm("You have unapplied changes. Would you like to save them?")) {
+        acceptRef.current?.click();
+      } else {
+        setEditValue(null);
+        setHasChanged(false);
+      }
+    }}
+    onMouseDown={(ev) => {
+      if (containerRef.current?.contains(ev.target as Node)) {
+        ev.preventDefault();
+        return false;
+      }
+    }}
+  >
     <DesignInput
       type={mode === "password" ? "password" : "text"}
+      ref={inputRef}
       readOnly={readOnly}
+      disabled={isLoading}
       placeholder={placeholder}
       tabIndex={readOnly ? -1 : undefined}
       size="sm"
@@ -151,15 +193,68 @@ function DesignEditableInput({
         !editMode && !readOnly && ghostFieldHoverClasses,
         inputClassName,
       )}
-      value={value}
+      value={editValue ?? value}
       autoComplete="off"
       style={{ textOverflow: "ellipsis" }}
       onChange={(e) => {
-        if (onUpdate) {
-          runAsynchronouslyWithAlert(onUpdate(e.target.value));
+        setEditValue(normalizeInput?.(e.target.value) ?? e.target.value);
+        setHasChanged(true);
+      }}
+      onKeyDown={(e) => {
+        if (e.key === "Enter") {
+          acceptRef.current?.click();
         }
       }}
+      onMouseDown={(ev) => {
+        ev.stopPropagation();
+      }}
     />
+    <div
+      className="flex gap-1 overflow-hidden transition-all duration-200 ease-in-out"
+      style={{
+        width: editing ? "4rem" : 0,
+        marginLeft: editing ? "0.5rem" : 0,
+        opacity: editing ? 1 : 0,
+      }}
+    >
+      {["accept", "reject"].map((action) => (
+        <DesignButton
+          ref={action === "accept" ? acceptRef : undefined}
+          key={action}
+          disabled={isLoading}
+          type="button"
+          variant="plain"
+          size="icon"
+          className={cn(
+            "h-7 w-7 rounded-lg flex items-center justify-center backdrop-blur-sm",
+            "border border-black/[0.08] dark:border-white/[0.08]",
+            "bg-white/75 dark:bg-foreground/[0.04]",
+            "shadow-sm ring-1 ring-black/[0.06] dark:ring-white/[0.06]",
+            "transition-colors duration-150 hover:transition-none",
+            action === "accept"
+              ? "text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/[0.12] hover:ring-emerald-500/30"
+              : "text-red-600 dark:text-red-400 hover:bg-red-500/[0.12] hover:ring-red-500/30",
+          )}
+          onClick={() => runAsynchronouslyWithAlert(async () => {
+            try {
+              forceAllowBlur.current = true;
+              inputRef.current?.blur();
+              if (action === "accept") {
+                await handleUpdate(editValue ?? throwErr("No value to update"));
+              }
+              setEditValue(null);
+              setHasChanged(false);
+            } finally {
+              forceAllowBlur.current = false;
+            }
+          })}
+        >
+          {action === "accept"
+            ? <Check weight="bold" className="h-3.5 w-3.5" />
+            : <X weight="bold" className="h-3.5 w-3.5" />}
+        </DesignButton>
+      ))}
+    </div>
   </div>;
 }
 
@@ -465,6 +560,7 @@ function GridItemValue({ item, editMode, sz }: { item: DesignEditableGridItem, e
         <DesignEditableInput
           value={item.value}
           onUpdate={item.onUpdate}
+          normalizeInput={item.normalizeInput}
           readOnly={item.readOnly}
           placeholder={item.placeholder}
           editMode={editMode}
