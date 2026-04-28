@@ -1,6 +1,10 @@
 "use client";
 
 import {
+  DataGrid,
+  useDataSource,
+  type DataGridColumnDef,
+  createDefaultDataGridState,
   DesignAlert,
   DesignBadge,
   type DesignBadgeColor,
@@ -12,7 +16,6 @@ import {
   DesignPillToggle,
 } from "@stackframe/dashboard-ui-components";
 import {
-  DesignDataTable,
   DesignEditableGrid,
   type DesignEditableGridItem,
   DesignListItemRow,
@@ -23,7 +26,6 @@ import {
 import { Link } from "@/components/link";
 import {
   Button,
-  DataTableColumnHeader,
   Typography,
   cn,
 } from "@/components/ui";
@@ -45,7 +47,6 @@ import {
   WarningCircle,
   XCircle
 } from "@phosphor-icons/react";
-import { ColumnDef } from "@tanstack/react-table";
 import { useMemo, useState } from "react";
 import {
   TimeRange,
@@ -278,47 +279,64 @@ export default function PageClient() {
     { id: "em_04", recipient: "team@stack.dev", subject: "Invite to Stack Auth", sentAt: 1725739200000, status: "sent" },
   ];
 
-  const demoTableColumns = useMemo<ColumnDef<DemoEmailRow>[]>(() => [
+  const demoTableColumns = useMemo<DataGridColumnDef<DemoEmailRow>[]>(() => [
     {
-      accessorKey: "recipient",
-      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Recipient" />,
-      cell: ({ row }) => (
+      id: "recipient",
+      header: "Recipient",
+      accessor: "recipient",
+      width: 200,
+      type: "string",
+      renderCell: ({ value }) => (
         <span className="text-sm font-medium text-foreground">
-          {row.getValue("recipient")}
+          {String(value)}
         </span>
       ),
     },
     {
-      accessorKey: "subject",
-      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Subject" />,
-      cell: ({ row }) => (
+      id: "subject",
+      header: "Subject",
+      accessor: "subject",
+      width: 220,
+      type: "string",
+      renderCell: ({ value }) => (
         <span className="text-sm text-muted-foreground">
-          {row.getValue("subject")}
+          {String(value)}
         </span>
       ),
     },
     {
-      accessorKey: "sentAt",
-      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Sent At" />,
-      cell: ({ row }) => {
-        const value = row.getValue("sentAt") as number;
-        return (
-          <span className="text-xs text-muted-foreground">
-            {demoDateFormatter.format(new Date(value))}
-          </span>
-        );
-      },
+      id: "sentAt",
+      header: "Sent At",
+      accessor: "sentAt",
+      width: 140,
+      type: "number",
+      renderCell: ({ value }) => (
+        <span className="text-xs text-muted-foreground">
+          {demoDateFormatter.format(new Date(Number(value)))}
+        </span>
+      ),
     },
     {
-      accessorKey: "status",
-      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Status" />,
-      cell: ({ row }) => {
-        const status = row.getValue("status") as DemoEmailRow["status"];
+      id: "status",
+      header: "Status",
+      accessor: "status",
+      width: 120,
+      type: "singleSelect",
+      valueOptions: [
+        { value: "sent", label: "Sent" },
+        { value: "failed", label: "Failed" },
+        { value: "scheduled", label: "Scheduled" },
+      ],
+      renderCell: ({ value }) => {
+        const status = String(value) as DemoEmailRow["status"];
         const config = DEMO_STATUS_MAP[status];
         return <DesignBadge label={config.label} color={config.color} size="sm" />;
       },
     },
   ], [demoDateFormatter]);
+
+  const [dtState, setDtState] = useState(() => createDefaultDataGridState(demoTableColumns));
+  const dtData = useDataSource({ data: demoEmailRows, columns: demoTableColumns, getRowId: (r: DemoEmailRow) => r.id, sorting: dtState.sorting, quickSearch: dtState.quickSearch, pagination: dtState.pagination, paginationMode: "client" });
 
   const editableGridItems = useMemo<DesignEditableGridItem[]>(() => [
     {
@@ -1048,11 +1066,16 @@ export default function PageClient() {
               title="Email Log"
               subtitle="Recent delivery activity with quick filters"
             >
-              <DesignDataTable
-                data={demoEmailRows}
+              <DataGrid
                 columns={demoTableColumns}
-                defaultColumnFilters={[]}
-                defaultSorting={[{ id: "sentAt", desc: true }]}
+                rows={dtData.rows}
+                getRowId={(row) => row.id}
+                totalRowCount={dtData.totalRowCount}
+                isLoading={dtData.isLoading}
+                state={dtState}
+                onChange={setDtState}
+                toolbar={false}
+                maxHeight={300}
               />
             </DesignCard>
           </ComponentDemo>
@@ -1060,16 +1083,16 @@ export default function PageClient() {
           <div className="pt-4 border-t border-black/[0.12] dark:border-white/[0.06]">
             <Typography type="label" className="font-semibold mb-3">Props</Typography>
             <PropsTable props={[
-              { name: "title", type: "string", description: "Optional table card header title." },
-              { name: "subtitle", type: "string", description: "Optional supporting text below the header title." },
-              { name: "icon", type: "ReactElement", description: "Optional header icon shown before the title." },
-              { name: "columns", type: "ColumnDef[]", description: "Column definitions for headers and cells." },
-              { name: "data", type: "Array<Record<string, unknown>>", description: "Row data to render in the table." },
-              { name: "defaultColumnFilters", type: "ColumnFiltersState", default: "[]", description: "Initial filter state for table columns." },
-              { name: "defaultSorting", type: "SortingState", description: "Initial sort order for the table." },
-              { name: "showDefaultToolbar", type: "boolean", default: "false", description: "Toggle the built-in toolbar controls." },
-              { name: "viewOptions", type: "boolean", default: "false", description: "Use DataTableViewOptions for column toggles." },
-              { name: "onRowClick", type: "(row) => void", description: "Optional row click handler for navigation." },
+              { name: "columns", type: "DataGridColumnDef[]", description: "Column definitions with id, header, accessor, type, and optional renderCell." },
+              { name: "rows", type: "TRow[]", description: "Row data array returned from useDataSource." },
+              { name: "getRowId", type: "(row) => string", description: "Function to derive a unique row identifier." },
+              { name: "state", type: "DataGridState", description: "Controlled grid state (sorting, pagination, search, visibility)." },
+              { name: "onChange", type: "Dispatch<SetStateAction<DataGridState>>", description: "State setter for the controlled grid state." },
+              { name: "totalRowCount", type: "number", description: "Total number of rows for pagination display." },
+              { name: "isLoading", type: "boolean", default: "false", description: "Shows a loading indicator while data is being fetched." },
+              { name: "toolbar", type: "boolean | false", default: "undefined", description: "Set to false to hide the built-in toolbar." },
+              { name: "onRowClick", type: "(row, rowId, event) => void", description: "Optional row click handler for navigation." },
+              { name: "maxHeight", type: "number", description: "Maximum height in pixels for the grid container." },
             ]} />
           </div>
         </DesignSection>

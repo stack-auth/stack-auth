@@ -1,5 +1,6 @@
 import {
   type MetricsResponse,
+  type MetricsUserCounts,
   type UserActivityResponse,
 } from "@stackframe/stack-shared/dist/interface/admin-metrics";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -22,6 +23,7 @@ export type {
   MetricsResponse,
   MetricsTopReferrer,
   MetricsTopRegion,
+  MetricsUserCounts,
   UserActivityResponse,
 } from "@stackframe/stack-shared/dist/interface/admin-metrics";
 
@@ -65,4 +67,18 @@ export function useUserActivityOrThrow(adminApp: object, userId: string): UserAc
   }
 
   return useUserActivity(userId) as UserActivityResponse;
+}
+
+export function useMetricsUserCountsOrThrow(adminApp: object): MetricsUserCounts {
+  const internals = Reflect.get(adminApp, stackAppInternalsSymbol);
+  if (typeof internals !== "object" || internals == null || !("useMetricsUserCounts" in internals)) {
+    throw new StackAssertionError("Admin app internals are unavailable: missing useMetricsUserCounts");
+  }
+
+  const useMetricsUserCounts = internals.useMetricsUserCounts;
+  if (typeof useMetricsUserCounts !== "function") {
+    throw new StackAssertionError("Admin app internals are unavailable: useMetricsUserCounts is not callable");
+  }
+
+  return useMetricsUserCounts() as MetricsUserCounts;
 }

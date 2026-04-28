@@ -1,7 +1,7 @@
 import { StackAdminInterface } from "@stackframe/stack-shared";
 import { getProductionModeErrors } from "@stackframe/stack-shared/dist/helpers/production-mode";
 import { InternalApiKeyCreateCrudResponse } from "@stackframe/stack-shared/dist/interface/admin-interface";
-import type { MetricsResponse, UserActivityResponse } from "@stackframe/stack-shared/dist/interface/admin-metrics";
+import type { MetricsResponse, MetricsUserCounts, UserActivityResponse } from "@stackframe/stack-shared/dist/interface/admin-metrics";
 import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@stackframe/stack-shared/dist/interface/crud/analytics";
 import { EmailTemplateCrud } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
 import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
@@ -104,6 +104,9 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   });
   private readonly _userActivityCache = createCache(async ([userId]: [string]) => {
     return await this._interface.getUserActivity(userId);
+  });
+  private readonly _metricsUserCountsCache = createCache(async () => {
+    return await this._interface.getMetricsUserCounts();
   });
   private readonly _emailPreviewCache = createCache(async ([themeId, themeTsxSource, templateId, templateTsxSource]: [string | null | false | undefined, string | undefined, string | undefined, string | undefined]) => {
     return await this._interface.renderEmailPreview({ themeId, themeTsxSource, templateId, templateTsxSource });
@@ -555,6 +558,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       super._refreshUsers(),
       this._metricsCache.refresh([false]),
       this._metricsCache.refresh([true]),
+      this._metricsUserCountsCache.refresh([]),
     ]);
   }
 
@@ -567,6 +571,9 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       },
       useUserActivity: (userId: string): UserActivityResponse => {
         return useAsyncCache(this._userActivityCache, [userId] as const, "adminApp.useUserActivity()") as UserActivityResponse;
+      },
+      useMetricsUserCounts: (): MetricsUserCounts => {
+        return useAsyncCache(this._metricsUserCountsCache, [] as const, "adminApp.useMetricsUserCounts()") as MetricsUserCounts;
       },
       // END_PLATFORM
     };

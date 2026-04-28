@@ -296,7 +296,6 @@ function RestrictionDialog({
   );
 }
 
-
 // Restriction banner shown at top of page when user is restricted
 function RestrictionBanner({ user }: { user: ServerUser }) {
   if (!user.isRestricted) return null;
