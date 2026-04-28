@@ -849,7 +849,7 @@ Implementation:
    Body: { expires_in_millis?: number, anon_refresh_token?: string }
    Response: { polling_code: string, login_code: string }
 
-2. Build login URL: {appUrl}/handler/cli-auth-confirm?login_code={login_code}
+2. Build login URL from the app's resolved `urls.cliAuthConfirm` target, using `appUrl` as the base URL when the target is relative, and append `login_code={login_code}`.
 3. Call promptLink(url, loginCode) if provided, or print login code and URL
 
 4. Poll for completion:
