@@ -28,7 +28,6 @@ import {
   Textarea,
   Typography,
   cn,
-  useToast,
 } from "@/components/ui";
 import {
   appendConversationUpdate,
@@ -47,7 +46,7 @@ import { useUser } from "@stackframe/stack";
 import { computeSlaUrgency, type SlaUrgency } from "@stackframe/stack-shared/dist/helpers/support-sla";
 import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
-import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { urlString } from "@stackframe/stack-shared/dist/utils/urls";
 import {
   ArrowLeftIcon,
@@ -346,7 +345,7 @@ function ConversationTeamSlaSidebar(props: {
             >
               Unassign
             </Button>
-            <Button size="sm" disabled={props.settingsSaving} onClick={() => runAsynchronously(props.onSave())}>
+            <Button size="sm" disabled={props.settingsSaving} onClick={() => runAsynchronouslyWithAlert(props.onSave)}>
               {props.settingsSaving ? <Spinner className="mr-2 h-4 w-4" /> : null}
               Save
             </Button>
@@ -716,8 +715,6 @@ function NewConversationDialog(props: {
                   });
                   props.onCreated(result.conversationId, nextUserId);
                   props.onOpenChange(false);
-                } catch (error) {
-                  setErrorMessage(error instanceof Error ? error.message : "Unknown error");
                 } finally {
                   setIsSubmitting(false);
                 }
@@ -767,8 +764,6 @@ function SupportComposer(props: {
       });
       props.onUpdated(nextDetail);
       setBody("");
-    } catch (error) {
-      setErrorMessage(error instanceof Error ? error.message : "Unknown error");
     } finally {
       setIsSubmitting(false);
     }
@@ -866,7 +861,7 @@ function SupportComposer(props: {
               }
               if (event.key === "Enter" && !event.shiftKey) {
                 event.preventDefault();
-                runAsynchronously(submit());
+                runAsynchronouslyWithAlert(submit);
               }
             }}
           />
@@ -881,7 +876,7 @@ function SupportComposer(props: {
                 : "bg-blue-500 hover:bg-blue-500/90",
             )}
             aria-label={mode === "reply" ? "Send reply (disabled)" : "Add note"}
-            onClick={() => runAsynchronously(submit())}
+            onClick={() => runAsynchronouslyWithAlert(submit)}
           >
             {isSubmitting ? (
               <Spinner className="h-4 w-4 text-white" />
@@ -903,7 +898,6 @@ export default function PageClient() {
   const project = adminApp.useProject();
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { toast } = useToast();
 
   const projectId = project.id;
   const selectedConversationId = searchParams.get("conversationId") ?? searchParams.get("threadId");
@@ -985,8 +979,6 @@ export default function PageClient() {
         conversation.conversationId === nextDetail.conversation.conversationId ? nextDetail.conversation : conversation
       )));
       setTeamSheetOpen(false);
-    } catch (error) {
-      setSettingsError(error instanceof Error ? error.message : "Could not save conversation settings.");
     } finally {
       setSettingsSaving(false);
     }
@@ -1326,25 +1318,17 @@ export default function PageClient() {
                               size="sm"
                               className="h-8"
                               onClick={async () => {
-                                try {
-                                  const nextDetail = await appendConversationUpdate(currentUser, {
-                                    projectId,
-                                    conversationId: conversationDetail.conversation.conversationId,
-                                    type: "status",
-                                    status: conversationDetail.conversation.status === "closed" ? "open" : "closed",
-                                  });
-                                  setConversationDetail(nextDetail);
-                                  setConversations((current) => current.map((conversation) => (
-                                    conversation.conversationId === nextDetail.conversation.conversationId ? nextDetail.conversation : conversation
-                                  )));
-                                  setRefreshKey((current) => current + 1);
-                                } catch (error) {
-                                  toast({
-                                    variant: "destructive",
-                                    title: "Could not update conversation status",
-                                    description: error instanceof Error ? error.message : "An unknown error occurred.",
-                                  });
-                                }
+                                const nextDetail = await appendConversationUpdate(currentUser, {
+                                  projectId,
+                                  conversationId: conversationDetail.conversation.conversationId,
+                                  type: "status",
+                                  status: conversationDetail.conversation.status === "closed" ? "open" : "closed",
+                                });
+                                setConversationDetail(nextDetail);
+                                setConversations((current) => current.map((conversation) => (
+                                  conversation.conversationId === nextDetail.conversation.conversationId ? nextDetail.conversation : conversation
+                                )));
+                                setRefreshKey((current) => current + 1);
                               }}
                             >
                               {conversationDetail.conversation.status === "closed" ? "Reopen" : "Close"}
