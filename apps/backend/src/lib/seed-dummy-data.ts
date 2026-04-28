@@ -1168,40 +1168,60 @@ async function seedDummyEmails(options: EmailSeedOptions) {
       ? { type: 'user-primary-email', userId }
       : { type: 'custom-emails', emails: ['unknown@dummy.dev'] };
 
-    await globalPrismaClient.emailOutbox.upsert({
-      where: {
-        tenancyId_id: {
-          tenancyId,
-          id: email.id,
-        },
-      },
-      update: {},
-      create: {
-        tenancyId,
-        id: email.id,
-        tsxSource: '',
-        isHighPriority: false,
-        to: recipient,
-        extraRenderVariables: {},
-        shouldSkipDeliverabilityCheck: false,
-        createdWith: EmailOutboxCreatedWith.PROGRAMMATIC_CALL,
-        scheduledAt: email.createdAt,
-        renderedByWorkerId: email.id,
-        startedRenderingAt: email.createdAt,
-        finishedRenderingAt: email.createdAt,
-        renderedSubject: email.subject,
-        renderedHtml: email.html ?? null,
-        renderedText: email.text ?? null,
-        startedSendingAt: email.createdAt,
-        finishedSendingAt: email.createdAt,
-        canHaveDeliveryInfo: false,
-        sendServerErrorExternalMessage: email.hasError ? 'Delivery failed' : null,
-        sendServerErrorExternalDetails: email.hasError ? {} : Prisma.DbNull,
-        sendServerErrorInternalMessage: email.hasError ? "Delivery failed. This is the internal error message." : null,
-        sendServerErrorInternalDetails: email.hasError ? { internalError: "No internal error details." } : Prisma.DbNull,
-        createdAt: email.createdAt,
-      },
-    });
+    await globalPrismaClient.$executeRaw(Prisma.sql`
+      INSERT INTO "EmailOutbox" (
+        "tenancyId",
+        "id",
+        "createdAt",
+        "updatedAt",
+        "tsxSource",
+        "isHighPriority",
+        "to",
+        "extraRenderVariables",
+        "shouldSkipDeliverabilityCheck",
+        "createdWith",
+        "scheduledAt",
+        "renderedByWorkerId",
+        "startedRenderingAt",
+        "finishedRenderingAt",
+        "renderedSubject",
+        "renderedHtml",
+        "renderedText",
+        "startedSendingAt",
+        "finishedSendingAt",
+        "canHaveDeliveryInfo",
+        "sendServerErrorExternalMessage",
+        "sendServerErrorExternalDetails",
+        "sendServerErrorInternalMessage",
+        "sendServerErrorInternalDetails"
+      ) VALUES (
+        ${tenancyId}::uuid,
+        ${email.id}::uuid,
+        ${email.createdAt},
+        ${email.createdAt},
+        '',
+        false,
+        ${JSON.stringify(recipient)}::jsonb,
+        '{}'::jsonb,
+        false,
+        ${EmailOutboxCreatedWith.PROGRAMMATIC_CALL}::"EmailOutboxCreatedWith",
+        ${email.createdAt},
+        ${email.id}::uuid,
+        ${email.createdAt},
+        ${email.createdAt},
+        ${email.subject},
+        ${email.html ?? null},
+        ${email.text ?? null},
+        ${email.createdAt},
+        ${email.createdAt},
+        false,
+        ${email.hasError ? 'Delivery failed' : null},
+        ${email.hasError ? '{}' : null}::jsonb,
+        ${email.hasError ? "Delivery failed. This is the internal error message." : null},
+        ${email.hasError ? JSON.stringify({ internalError: "No internal error details." }) : null}::jsonb
+      )
+      ON CONFLICT ("tenancyId", "id") DO NOTHING
+    `);
   }
 }
 

@@ -1,6 +1,6 @@
 import { globalPrismaClient } from '@/prisma-client';
 import { runAsynchronouslyAndWaitUntil } from '@/utils/background-tasks';
-import { EmailOutboxCreatedWith } from '@/generated/prisma/client';
+import { EmailOutboxCreatedWith, Prisma } from '@/generated/prisma/client';
 import { DEFAULT_TEMPLATE_IDS } from '@stackframe/stack-shared/dist/helpers/emails';
 import { UsersCrud } from '@stackframe/stack-shared/dist/interface/crud/users';
 import { getEnvBoolean, getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
@@ -51,23 +51,41 @@ export async function sendEmailToMany(options: {
   overrideSubject?: string,
   overrideNotificationCategoryId?: string,
 }) {
-  await globalPrismaClient.emailOutbox.createMany({
-    data: options.recipients.map(recipient => ({
-      tenancyId: options.tenancy.id,
-      tsxSource: options.tsxSource,
-      themeId: options.themeId,
-      isHighPriority: options.isHighPriority,
-      createdWith: options.createdWith.type === "draft" ? EmailOutboxCreatedWith.DRAFT : EmailOutboxCreatedWith.PROGRAMMATIC_CALL,
-      emailDraftId: options.createdWith.type === "draft" ? options.createdWith.draftId : undefined,
-      emailProgrammaticCallTemplateId: options.createdWith.type === "programmatic-call" ? options.createdWith.templateId : undefined,
-      to: serializeRecipient(recipient)!,
-      extraRenderVariables: options.extraVariables,
-      scheduledAt: options.scheduledAt,
-      shouldSkipDeliverabilityCheck: options.shouldSkipDeliverabilityCheck,
-      overrideSubject: options.overrideSubject,
-      overrideNotificationCategoryId: options.overrideNotificationCategoryId,
-    })),
-  });
+  if (options.recipients.length > 0) {
+    await globalPrismaClient.$executeRaw(Prisma.sql`
+      INSERT INTO "EmailOutbox" (
+        "tenancyId",
+        "updatedAt",
+        "tsxSource",
+        "themeId",
+        "isHighPriority",
+        "createdWith",
+        "emailDraftId",
+        "emailProgrammaticCallTemplateId",
+        "to",
+        "extraRenderVariables",
+        "scheduledAt",
+        "shouldSkipDeliverabilityCheck",
+        "overrideSubject",
+        "overrideNotificationCategoryId"
+      ) VALUES ${Prisma.join(options.recipients.map(recipient => Prisma.sql`(
+        ${options.tenancy.id}::uuid,
+        NOW(),
+        ${options.tsxSource},
+        ${options.themeId},
+        ${options.isHighPriority},
+        ${options.createdWith.type === "draft" ? EmailOutboxCreatedWith.DRAFT : EmailOutboxCreatedWith.PROGRAMMATIC_CALL}::"EmailOutboxCreatedWith",
+        ${options.createdWith.type === "draft" ? options.createdWith.draftId : null},
+        ${options.createdWith.type === "programmatic-call" ? options.createdWith.templateId : null},
+        ${JSON.stringify(serializeRecipient(recipient))}::jsonb,
+        ${JSON.stringify(options.extraVariables)}::jsonb,
+        ${options.scheduledAt},
+        ${options.shouldSkipDeliverabilityCheck},
+        ${options.overrideSubject ?? null},
+        ${options.overrideNotificationCategoryId ?? null}
+      )`))}
+    `);
+  }
 
   if (!getEnvBoolean("STACK_EMAIL_BRANCHING_DISABLE_QUEUE_AUTO_TRIGGER")) {
     // The cron job should run runEmailQueueStep() to process the emails, but we call it here again for those self-hosters
