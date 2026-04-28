@@ -1387,6 +1387,7 @@ function ActivityGraph({ userId }: { userId: string }) {
           <Tooltip key={cell.date} delayDuration={0}>
             <TooltipTrigger asChild>
               <div
+                aria-hidden
                 className={cn(
                   "relative w-[9px] h-[9px] rounded-[2px] transition-none hover:z-10 hover:ring-2 hover:ring-foreground",
                   ACTIVITY_COLORS[level],
