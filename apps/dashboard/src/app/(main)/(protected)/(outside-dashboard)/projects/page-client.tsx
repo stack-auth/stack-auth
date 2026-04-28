@@ -134,12 +134,23 @@ export default function PageClient() {
           }
           return;
         }
-        const body = await response.json() as { projects?: Array<{ project_id?: string, absolute_file_path?: string, display_name?: string }> };
+        const body = await response.json() as { projects?: unknown };
         if (cancelled) return;
-        const parsed = (body.projects ?? [])
-          .filter((p): p is { project_id: string, absolute_file_path: string, display_name: string } =>
-            typeof p.project_id === "string" && typeof p.absolute_file_path === "string" && typeof p.display_name === "string",
-          );
+        if (!Array.isArray(body.projects)) {
+          throw new Error("Invalid recent-projects payload");
+        }
+        const parsed = body.projects.map((p: unknown): { project_id: string, absolute_file_path: string, display_name: string } => {
+          if (
+            !p || typeof p !== "object"
+            || typeof (p as Record<string, unknown>).project_id !== "string"
+            || typeof (p as Record<string, unknown>).absolute_file_path !== "string"
+            || typeof (p as Record<string, unknown>).display_name !== "string"
+          ) {
+            throw new Error("Invalid recent-projects payload");
+          }
+          const r = p as Record<string, string>;
+          return { project_id: r.project_id, absolute_file_path: r.absolute_file_path, display_name: r.display_name };
+        });
         setRecentConfigProjects(parsed);
       } catch {
         if (!cancelled) {
