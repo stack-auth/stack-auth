@@ -49,7 +49,7 @@ import { captureError, StackAssertionError, throwErr } from '@stackframe/stack-s
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { ColumnDef } from "@tanstack/react-table";
-import { Suspense, useMemo, useState, type ReactNode } from "react";
+import { Suspense, useCallback, useMemo, useState, type ReactNode } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
@@ -1146,7 +1146,7 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
   const [editingProvider, setEditingProvider] = useState<ServerOAuthProvider | null>(null);
   const { toast } = useToast();
 
-  const handleProviderUpdate = async (provider: ServerOAuthProvider, updates: { allowSignIn?: boolean, allowConnectedAccounts?: boolean }) => {
+  const handleProviderUpdate = useCallback(async (provider: ServerOAuthProvider, updates: { allowSignIn?: boolean, allowConnectedAccounts?: boolean }) => {
     const result = await provider.update(updates);
     if (result.status === "error") {
       if (KnownErrors.OAuthProviderAccountIdAlreadyUsedForSignIn.isInstance(result.error)) {
@@ -1176,9 +1176,9 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
         variant: "success",
       });
     }
-  };
+  }, [toast]);
 
-  const oauthColumns: ColumnDef<ServerOAuthProvider>[] = [
+  const oauthColumns = useMemo<ColumnDef<ServerOAuthProvider>[]>(() => [
     {
       accessorKey: "type",
       header: "Provider",
@@ -1250,7 +1250,7 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
         );
       },
     },
-  ];
+  ], [handleProviderUpdate]);
 
   return (
     <>
