@@ -98,6 +98,8 @@
     "eslint-plugin-react": "^7.37.2",
     "jsdom": "^24.1.3",
     "only-allow": "^1.2.1",
+    "react": "19.2.3",
+    "react-dom": "19.2.3",
     "rimraf": "^5.0.10",
     "tsdown": "^0.20.3",
     "turbo": "^2.8.15",
