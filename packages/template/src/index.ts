@@ -6,7 +6,7 @@ export { defineStackConfig } from "@stackframe/stack-shared/config";
 // IF_PLATFORM react-like
 export type { AnalyticsOptions, AnalyticsReplayOptions } from "./lib/stack-app/apps/implementations/session-replay";
 export { default as StackHandler } from "./components-page/stack-handler";
-export { useStackApp, useUser } from "./lib/hooks";
+export { useFeatureFlag, useFeatureFlags, useStackApp, useUser } from "./lib/hooks";
 export { default as StackProvider } from "./providers/stack-provider";
 export { StackTheme } from './providers/theme-provider';
 

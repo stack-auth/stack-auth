@@ -3,6 +3,7 @@ import { KnownErrors, StackClientInterface } from "@stackframe/stack-shared";
 import type { RequestListener } from "@stackframe/stack-shared/dist/interface/client-interface";
 import { ContactChannelsCrud } from "@stackframe/stack-shared/dist/interface/crud/contact-channels";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
+import type { FeatureFlagEvaluateResult } from "@stackframe/stack-shared/dist/interface/crud/feature-flags";
 import type { CustomerInvoicesListResponse } from "@stackframe/stack-shared/dist/interface/crud/invoices";
 import { ItemCrud } from "@stackframe/stack-shared/dist/interface/crud/items";
 import { NotificationPreferenceCrud } from "@stackframe/stack-shared/dist/interface/crud/notification-preferences";
@@ -55,7 +56,8 @@ import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCrea
 import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, Team, TeamCreateOptions, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
 import { isHostedHandlerUrlForProject, resolveHandlerUrls } from "../../url-targets";
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
-import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
+import { StackClientApp } from "../interfaces/client-app";
+import type { FeatureFlagResult, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
 import { TokenObject, clientVersion, createCache, createCacheBySession, createEmptyTokenStore, getAnalyticsBaseUrl, getDefaultExtraRequestHeaders, getDefaultProjectId, getDefaultPublishableClientKey, getUrls, resolveApiUrls, resolveConstructorOptions } from "./common";
 import { EventTracker } from "./event-tracker";
@@ -137,6 +139,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
     return await this._interface.getClientUserByToken(session);
   });
+  private readonly _featureFlagsCache = createCacheBySession<[string], Record<string, FeatureFlagResult>>(
+    async (session, [keysJson]) => {
+      return await this._getFeatureFlagsForSession(session, this._parseFeatureFlagKeys(keysJson));
+    }
+  );
   private readonly _currentProjectCache = createCache(async () => {
     return Result.orThrow(await this._interface.getClientProject());
   });
@@ -2681,6 +2688,84 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     return useMemo(() => {
       return crud && this._currentUserFromCrud(crud, session);
     }, [crud, session, options?.or]);
+  }
+  // END_PLATFORM
+
+  private _serializeFeatureFlagKeys(keys: readonly string[]): string {
+    return JSON.stringify(keys);
+  }
+
+  private _parseFeatureFlagKeys(keysJson: string): string[] {
+    const parsed = parseJson(keysJson);
+    if (parsed.status !== "ok" || !Array.isArray(parsed.data)) {
+      throw new StackAssertionError("Feature flag cache key was not a serialized string array", { keysJson });
+    }
+    const keys: string[] = [];
+    for (const key of parsed.data) {
+      if (typeof key !== "string") {
+        throw new StackAssertionError("Feature flag cache key contained a non-string value", { keysJson });
+      }
+      keys.push(key);
+    }
+    return keys;
+  }
+
+  private _featureFlagResultFromCrud(result: FeatureFlagEvaluateResult): FeatureFlagResult {
+    return {
+      flagKey: result.flag_key,
+      variantKey: result.variant_key,
+      value: result.value,
+      reason: result.reason,
+      ruleId: result.rule_id,
+    };
+  }
+
+  private async _getFeatureFlagsForSession(
+    session: InternalSession,
+    keys: readonly string[],
+  ): Promise<Record<string, FeatureFlagResult>> {
+    const response = await this._interface.evaluateFeatureFlags({
+      flag_keys: [...keys],
+    }, session);
+    const results = Object.fromEntries(
+      Object.entries(response.results).map(([key, result]) => [key, this._featureFlagResultFromCrud(result)]),
+    );
+    for (const key of new Set(keys)) {
+      if (!(key in results)) {
+        throwErr(`Feature flag evaluate response did not include requested key ${key}`);
+      }
+    }
+    return results;
+  }
+
+  async getFeatureFlags(
+    keys: readonly string[],
+  ): Promise<Record<string, FeatureFlagResult>> {
+    return await this._getFeatureFlagsForSession(await this._getSession(), keys);
+  }
+
+  async getFeatureFlag(
+    key: string,
+  ): Promise<FeatureFlagResult> {
+    const results = await this.getFeatureFlags([key]);
+    return results[key] ?? throwErr(`Feature flag evaluate response did not include requested key ${key}`);
+  }
+
+  // IF_PLATFORM react-like
+  useFeatureFlags(
+    keys: readonly string[],
+  ): Record<string, FeatureFlagResult> {
+    const session = this._useSession();
+    const keysJson = this._serializeFeatureFlagKeys(keys);
+    const dependencies: [InternalSession, string] = [session, keysJson];
+    return useAsyncCache(this._featureFlagsCache, dependencies, "clientApp.useFeatureFlags()");
+  }
+
+  useFeatureFlag(
+    key: string,
+  ): FeatureFlagResult {
+    const results = this.useFeatureFlags([key]);
+    return results[key] ?? throwErr(`Feature flag evaluate response did not include requested key ${key}`);
   }
   // END_PLATFORM
 

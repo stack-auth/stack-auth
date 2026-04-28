@@ -1,5 +1,6 @@
 import { KnownErrors } from "@stackframe/stack-shared";
 import { CurrentUserCrud } from "@stackframe/stack-shared/dist/interface/crud/current-user";
+import type { EvalReason } from "@stackframe/stack-shared/dist/interface/crud/feature-flags";
 import { Result } from "@stackframe/stack-shared/dist/utils/results";
 import { AsyncStoreProperty, AuthLike, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrlOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, ResolvedHandlerUrls, stackAppInternalsSymbol, TokenStoreInit } from "../../common";
 import type { RequestListener } from "@stackframe/stack-shared/dist/interface/client-interface";
@@ -42,6 +43,14 @@ export type StackClientAppConstructorOptions<HasTokenStore extends boolean, Proj
 export type StackClientAppJson<HasTokenStore extends boolean, ProjectId extends string> = StackClientAppConstructorOptions<HasTokenStore, ProjectId> & { inheritsFrom?: undefined } & {
   uniqueIdentifier: string,
   // note: if you add more fields here, make sure to ensure the checkString in the constructor has/doesn't have them
+};
+
+export type FeatureFlagResult = {
+  flagKey: string,
+  variantKey: string | null,
+  value: unknown,
+  reason: EvalReason,
+  ruleId: string | null,
 };
 
 export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId extends string = string> = (
@@ -96,6 +105,13 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
     getUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'throw' }): Promise<ProjectCurrentUser<ProjectId>>,
     getUser(options: GetCurrentUserOptions<HasTokenStore> & { or: 'anonymous' }): Promise<ProjectCurrentUser<ProjectId>>,
     getUser(options?: GetCurrentUserOptions<HasTokenStore>): Promise<ProjectCurrentUser<ProjectId> | null>,
+
+    getFeatureFlag(key: string): Promise<FeatureFlagResult>,
+    getFeatureFlags(keys: readonly string[]): Promise<Record<string, FeatureFlagResult>>,
+    // IF_PLATFORM react-like
+    useFeatureFlag(key: string): FeatureFlagResult,
+    useFeatureFlags(keys: readonly string[]): Record<string, FeatureFlagResult>,
+    // END_PLATFORM
 
     cancelSubscription(options: { productId: string, subscriptionId?: string } | { productId: string, subscriptionId?: string, teamId: string }): Promise<void>,
 

@@ -19,6 +19,7 @@ import { urlString } from '../utils/urls';
 import { ConnectedAccountAccessTokenCrud, ConnectedAccountCrud } from './crud/connected-accounts';
 import { ContactChannelsCrud } from './crud/contact-channels';
 import { CurrentUserCrud } from './crud/current-user';
+import type { FeatureFlagEvaluateRequest, FeatureFlagEvaluateResponse } from './crud/feature-flags';
 import { CustomerInvoicesListResponse, ListCustomerInvoicesOptions } from './crud/invoices';
 import { ItemCrud } from './crud/items';
 import { NotificationPreferenceCrud } from './crud/notification-preferences';
@@ -546,6 +547,25 @@ export class StackClientInterface {
     } catch (e) {
       return Result.error(e instanceof Error ? e : new Error(String(e)));
     }
+  }
+
+  async evaluateFeatureFlags(
+    body: FeatureFlagEvaluateRequest,
+    session: InternalSession | null,
+  ): Promise<FeatureFlagEvaluateResponse> {
+    const response = await this.sendClientRequest(
+      "/feature-flags/evaluate",
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(body),
+      },
+      session,
+    );
+    const responseBody: FeatureFlagEvaluateResponse = await response.json();
+    return responseBody;
   }
 
   protected async sendClientRequestAndCatchKnownError<E extends typeof KnownErrors[keyof KnownErrors]>(

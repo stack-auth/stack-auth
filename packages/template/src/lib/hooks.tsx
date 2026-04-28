@@ -1,8 +1,12 @@
 import { useContext } from "react";
 import { StackContext } from "../providers/stack-provider-client";
-import { GetUserOptions as AppGetUserOptions, CurrentInternalUser, CurrentUser, StackClientApp } from "./stack-app";
+import type { FeatureFlagResult, GetUserOptions as AppGetUserOptions, CurrentInternalUser, CurrentUser, StackClientApp } from "./stack-app";
 
 type GetUserOptions = AppGetUserOptions<true> & {
+  projectIdMustMatch?: string,
+};
+
+type FeatureFlagHookOptions = {
   projectIdMustMatch?: string,
 };
 
@@ -25,6 +29,20 @@ export function useUser(options: GetUserOptions = {}): CurrentUser | CurrentInte
   } else {
     return stackApp.useUser(options) as CurrentUser;
   }
+}
+
+/**
+ * Evaluates one feature flag. Equivalent to `useStackApp().useFeatureFlag(key)`.
+ */
+export function useFeatureFlag(key: string, options: FeatureFlagHookOptions = {}): FeatureFlagResult {
+  return useStackApp(options).useFeatureFlag(key);
+}
+
+/**
+ * Evaluates multiple feature flags. Equivalent to `useStackApp().useFeatureFlags(keys)`.
+ */
+export function useFeatureFlags(keys: readonly string[], options: FeatureFlagHookOptions = {}): Record<string, FeatureFlagResult> {
+  return useStackApp(options).useFeatureFlags(keys);
 }
 
 /**

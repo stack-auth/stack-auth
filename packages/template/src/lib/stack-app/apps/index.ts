@@ -2,6 +2,7 @@ export {
   StackClientApp
 } from "./interfaces/client-app";
 export type {
+  FeatureFlagResult,
   StackClientAppConstructor,
   StackClientAppConstructorOptions,
   StackClientAppJson
@@ -22,4 +23,3 @@ export type {
   StackAdminAppConstructor,
   StackAdminAppConstructorOptions,
 } from "./interfaces/admin-app";
-

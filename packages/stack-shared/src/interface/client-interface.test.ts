@@ -347,6 +347,48 @@ describe("StackClientInterface bot challenge compatibility", () => {
   });
 });
 
+describe("StackClientInterface feature flag evaluation", () => {
+  it("posts requested flag keys and distinct id to the evaluate endpoint", async () => {
+    const fetchMock = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => createJsonResponse({
+      results: {
+        "new-nav": {
+          flag_key: "new-nav",
+          variant_key: "enabled",
+          value: true,
+          reason: "matched_rule",
+          rule_id: "rule-1",
+        },
+      },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const iface = createClientInterface();
+    const result = await iface.evaluateFeatureFlags({
+      distinct_id: "anon-123",
+      flag_keys: ["new-nav"],
+    }, createSession());
+
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const requestUrl = fetchMock.mock.calls[0]?.[0] ?? null;
+    expect(requestUrl).toBe("https://api.example.com/api/v1/feature-flags/evaluate");
+    expect(getRequestBody(fetchMock)).toStrictEqual({
+      distinct_id: "anon-123",
+      flag_keys: ["new-nav"],
+    });
+    expect(result).toStrictEqual({
+      results: {
+        "new-nav": {
+          flag_key: "new-nav",
+          variant_key: "enabled",
+          value: true,
+          reason: "matched_rule",
+          rule_id: "rule-1",
+        },
+      },
+    });
+  });
+});
+
 describe("_withFallback", () => {
   // ---------------------------------------------------------------------------
   // Helpers — reduce boilerplate across tests

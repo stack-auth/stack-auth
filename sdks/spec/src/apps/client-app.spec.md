@@ -326,6 +326,58 @@ Errors (only when or="throw"):
     message: "User is not signed in but getUser was called with { or: 'throw' }."
 
 
+## getFeatureFlag(key)
+
+Evaluates one feature flag through the client-safe evaluate endpoint.
+
+Arguments:
+  key: string - public flag key to evaluate
+
+Returns:
+  {
+    flagKey: string,
+    variantKey: string | null,
+    value: unknown,
+    reason: "missing" | "disabled" | "kill_switch" | "dep_unmet" | "holdout" | "matched_rule" | "default" | "cycle",
+    ruleId: string | null
+  }
+
+Request:
+  POST /api/v1/feature-flags/evaluate
+  Body: { flag_keys: [key] }
+
+Implementation:
+1. Use normal client authentication headers if a session exists.
+2. Do not send user, team, context, cohorts, user_id, or team_id from the client helper.
+   Client-supplied targeting context is spoofable; the backend derives authenticated user
+   context from the access token.
+3. Do not send distinct_id from the SDK helper. Bucketing uses the authenticated Stack user
+   id, including Stack anonymous users when the app has created one.
+4. Convert snake_case response fields to camelCase.
+5. If the requested key is unknown, return the backend "missing" result.
+
+
+## getFeatureFlags(keys)
+
+Batch version of getFeatureFlag.
+
+Arguments:
+  keys: string[] - public flag keys to evaluate
+
+Returns:
+  Record<string, FeatureFlagResult>, keyed by requested flag key.
+
+Request:
+  POST /api/v1/feature-flags/evaluate
+  Body: { flag_keys: keys }
+
+Implementation:
+- Preserve the requested key strings in the request body.
+- The returned record is keyed by flag key. Duplicate input keys collapse to one result.
+- React-like SDKs SHOULD expose useFeatureFlag(key) and useFeatureFlags(keys)
+  backed by the same endpoint and cache equivalent batches by the ordered keys.
+
+
 ## getProject()
 
 Returns: Project

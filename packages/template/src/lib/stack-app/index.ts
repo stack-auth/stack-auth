@@ -3,6 +3,7 @@ export {
   StackServerApp
 } from "./apps";
 export type {
+  FeatureFlagResult,
   StackAdminAppConstructor,
   StackAdminAppConstructorOptions,
   StackClientAppConstructor,
@@ -117,4 +118,3 @@ export type {
   ServerUser,
   User
 } from "./users";
-
