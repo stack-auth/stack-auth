@@ -8,6 +8,7 @@ import { useEffect, useRef, useState } from "react";
 import { useStackApp } from "..";
 import { MaybeFullPage } from "../components/elements/maybe-full-page";
 import { StyledLink } from "../components/link";
+import { stackAppInternalsSymbol } from "../lib/stack-app";
 import { useTranslation } from "../lib/translations";
 
 export function OAuthCallback({ fullPage }: { fullPage?: boolean }) {
@@ -15,10 +16,19 @@ export function OAuthCallback({ fullPage }: { fullPage?: boolean }) {
   const app = useStackApp();
   const called = useRef(false);
   const [showRedirectLink, setShowRedirectLink] = useState(false);
+  const [redirectUrl, setRedirectUrl] = useState<string | null>(null);
 
   useEffect(() => runAsynchronously(async () => {
     if (called.current) return;
     called.current = true;
+    const redirectToError = async (url: URL) => {
+      const urlString = url.toString();
+      if (app[stackAppInternalsSymbol].getRedirectMethod() === "none") {
+        setRedirectUrl(urlString);
+        return;
+      }
+      await app[stackAppInternalsSymbol].redirectToUrl(urlString, { replace: true });
+    };
     try {
       const hasRedirected = await app.callOAuthCallback();
       if (!hasRedirected) {
@@ -30,13 +40,13 @@ export function OAuthCallback({ fullPage }: { fullPage?: boolean }) {
         errorUrl.searchParams.set("errorCode", e.errorCode);
         errorUrl.searchParams.set("message", e.message);
         errorUrl.searchParams.set("details", JSON.stringify(e.details ?? {}));
-        window.location.replace(errorUrl.toString());
+        await redirectToError(errorUrl);
         return;
       }
       captureError("<OAuthCallback />", e);
-      window.location.replace(new URL(app.urls.error, window.location.href).toString());
+      await redirectToError(new URL(app.urls.error, window.location.href));
     }
-  }), []);
+  }), [app]);
 
   useEffect(() => {
     setTimeout(() => setShowRedirectLink(true), 3000);
@@ -56,7 +66,7 @@ export function OAuthCallback({ fullPage }: { fullPage?: boolean }) {
         <div className="flex flex-col justify-center items-center gap-4">
           <Spinner size={20} />
         </div>
-        {showRedirectLink ? <p>{t('If you are not redirected automatically, ')}<StyledLink className="whitespace-nowrap" href={app.urls.home}>{t("click here")}</StyledLink></p> : null}
+        {showRedirectLink || redirectUrl != null ? <p>{t('If you are not redirected automatically, ')}<StyledLink className="whitespace-nowrap" href={redirectUrl ?? app.urls.home}>{t("click here")}</StyledLink></p> : null}
       </div>
     </MaybeFullPage>
   );
