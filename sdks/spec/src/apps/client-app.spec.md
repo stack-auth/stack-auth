@@ -52,6 +52,7 @@ Use an OAuth library (e.g., oauth4webapi) to handle PKCE and state management.
 
 Arguments:
   provider: string - OAuth provider ID (e.g., "google", "github", "microsoft")
+  options.returnTo: string [BROWSER-ONLY, optional] - URL to redirect to after the OAuth callback completes
   
   options.presentationContextProvider: platform-specific [NATIVE-ONLY]
     - iOS/macOS: ASWebAuthenticationPresentationContextProviding
@@ -66,7 +67,8 @@ Note: Additional provider scopes are configured via oauthScopesOnSignIn construc
 Implementation:
 1. Construct full redirect URLs using a fixed callback scheme:
    - Native apps: "stack-auth-mobile-oauth-url://success" and "stack-auth-mobile-oauth-url://error"
-   - Browser: Use window.location to construct absolute URLs
+   - Browser: Use the configured OAuth callback handler URL as redirect_uri and window.location to construct absolute URLs
+   - Browser: If options.returnTo is provided, pass it as afterCallbackRedirectUrl, not as redirect_uri
 
 2. Call getOAuthUrl() with the constructed URLs to get:
    - Authorization URL
@@ -79,7 +81,7 @@ Implementation:
    - Mobile/other: in-memory (passed directly to callback handler)
 
 4. Open the authorization URL:
-   - Browser: window.location.assign(authorization_url)
+   - Browser: perform redirect according to redirectMethod
    - iOS/macOS: ASWebAuthenticationSession with callbackURLScheme: "stack-auth-mobile-oauth-url"
    - Android: Custom Tabs with callback URL registered as deep link
    - Desktop: Open system browser with registered URL scheme for callback
