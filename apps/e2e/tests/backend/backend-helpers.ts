@@ -253,6 +253,10 @@ export async function waitForOutboxEmailWithStatus(subject: string, status: stri
   );
 }
 
+function messageBodyContains(message: Awaited<ReturnType<Mailbox["fetchMessages"]>>[number], text: string) {
+  return message.body?.html.includes(text) || message.body?.text.includes(text) || false;
+}
+
 export namespace Auth {
   export async function fastSignUp(body: any = {}) {
     const { userId } = await User.create(body);
@@ -470,7 +474,7 @@ export namespace Auth {
       `);
       for (let i = 0; true; i++) {
         const messages = await mailbox.fetchMessages();
-        const containsSubstring = messages.some(message => message.subject.includes("Sign in to") && message.body?.html.includes(response.body.nonce));
+        const containsSubstring = messages.some(message => message.subject.includes("Sign in to") && messageBodyContains(message, response.body.nonce));
         if (containsSubstring) {
           break;
         }
@@ -500,7 +504,7 @@ export namespace Auth {
     export async function getSignInCodeFromMailbox(nonce?: string) {
       const mailbox = backendContext.value.mailbox;
       const messages = await mailbox.fetchMessages();
-      const message = messages.filter(message => nonce === undefined || message.body?.html.includes(nonce)).findLast((message) => message.subject.includes("Sign in to")) ?? throwErr("Sign-in code message not found");
+      const message = messages.filter(message => nonce === undefined || messageBodyContains(message, nonce)).findLast((message) => message.subject.includes("Sign in to")) ?? throwErr("Sign-in code message not found");
       const signInCode = message.body?.text.match(/http:\/\/localhost:12345\/some-callback-url\?code=([a-zA-Z0-9]+)/)?.[1] ?? throwErr("Sign-in URL not found");
       return signInCode;
     }
