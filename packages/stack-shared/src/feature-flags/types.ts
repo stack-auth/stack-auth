@@ -19,6 +19,27 @@ export const featureFlagConditionOperators = [
 ] as const;
 export type ConditionOperator = typeof featureFlagConditionOperators[number];
 
+export const maxFeatureFlagRegexPatternLength = 256;
+export const maxFeatureFlagRegexAttributeLength = 2048;
+
+export function getFeatureFlagRegexPatternError(pattern: string): string | undefined {
+  if (pattern.length > maxFeatureFlagRegexPatternLength) {
+    return `Regex patterns must be at most ${maxFeatureFlagRegexPatternLength} characters`;
+  }
+  if (/\\[1-9]/.test(pattern)) {
+    return "Regex patterns cannot use backreferences";
+  }
+  if (/\([^)]*[+*][^)]*\)[+*{]/.test(pattern)) {
+    return "Regex patterns cannot use nested quantifiers";
+  }
+  try {
+    new RegExp(pattern);
+  } catch (e) {
+    return e instanceof Error ? e.message : String(e);
+  }
+  return undefined;
+}
+
 export type FlagCondition = {
   attribute?: string,
   operator?: ConditionOperator,

@@ -151,8 +151,9 @@ export async function createResponse<T extends SmartResponse>(req: NextRequest |
         headers.set(key.toLowerCase(), values);
     }
 
+    const responseBody = [204, 304].includes(status) ? null : arrayBufferBody;
     return new Response(
-      arrayBufferBody,
+      responseBody,
       {
         status,
         headers: [...headers].flatMap(([key, values]) => values.map(v => [key, v] satisfies [string, string])),

@@ -1,7 +1,7 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { evaluateFlag, evaluateFlags, findFlagIdByKey } from "@stackframe/stack-shared/dist/feature-flags/evaluator";
 import type { EvalContext, EvalResult, FeatureFlagsConfig } from "@stackframe/stack-shared/dist/feature-flags/types";
-import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupBoolean, yupMixed, yupNumber, yupObject, yupRecord, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 
 const evalResultSchema = yupObject({
   flag_key: yupString().defined(),
@@ -33,7 +33,7 @@ export const POST = createSmartRouteHandler({
       user: yupRecord(yupString(), yupMixed()).optional(),
       team: yupRecord(yupString(), yupMixed()).optional(),
       context: yupRecord(yupString(), yupMixed()).optional(),
-      cohorts: yupRecord(yupString(), yupMixed()).optional(),
+      cohorts: yupRecord(yupString(), yupBoolean().defined()).optional(),
       // Subset of flag keys to evaluate. If omitted, every flag in the tenancy config is evaluated.
       flag_keys: yupArray(yupString().defined()).optional(),
     }).defined(),
@@ -48,40 +48,48 @@ export const POST = createSmartRouteHandler({
   handler: async ({ auth, body }) => {
     const config: FeatureFlagsConfig = auth.tenancy.config.featureFlags;
 
-    const evalContext: EvalContext = {
+    const callerCanSupplyTargetingContext = auth.type !== "client";
+    const evalContext: EvalContext = callerCanSupplyTargetingContext ? {
       distinctId: body.distinct_id ?? body.user_id ?? auth.user?.id,
       userId: body.user_id ?? auth.user?.id,
       teamId: body.team_id,
-      user: body.user as Record<string, unknown> | undefined,
-      team: body.team as Record<string, unknown> | undefined,
-      context: body.context as Record<string, unknown> | undefined,
-      cohorts: body.cohorts
-        ? Object.fromEntries(Object.entries(body.cohorts).map(([k, v]) => [k, Boolean(v)]))
-        : undefined,
+      user: body.user,
+      team: body.team,
+      context: body.context,
+      cohorts: body.cohorts,
+    } : {
+      distinctId: body.distinct_id ?? auth.user?.id,
+      userId: auth.user?.id,
+      user: auth.user ? {
+        id: auth.user.id,
+        primary_email: auth.user.primary_email,
+        primary_email_verified: auth.user.primary_email_verified,
+        email: auth.user.primary_email,
+      } : undefined,
     };
 
-    const results: Record<string, ReturnType<typeof shape>> = {};
+    const results = new Map<string, ReturnType<typeof shape>>();
     if (body.flag_keys) {
       for (const requestedKey of body.flag_keys) {
         const flagId = findFlagIdByKey(config, requestedKey);
         const result = flagId === undefined
           ? { flagKey: requestedKey, variantKey: undefined, value: undefined, reason: "missing" } satisfies EvalResult
           : evaluateFlag(flagId, config, evalContext);
-        results[requestedKey] = shape(requestedKey, result);
+        results.set(requestedKey, shape(requestedKey, result));
       }
     } else {
       const evaluated = evaluateFlags(config, evalContext);
       for (const [id, result] of Object.entries(evaluated)) {
         const flagDef = config.flags?.[id];
         const userKey = flagDef?.key ?? id;
-        results[userKey] = shape(userKey, result);
+        results.set(userKey, shape(userKey, result));
       }
     }
 
     return {
       statusCode: 200,
       bodyType: "json",
-      body: { results },
+      body: { results: Object.fromEntries(results) },
     };
   },
 });

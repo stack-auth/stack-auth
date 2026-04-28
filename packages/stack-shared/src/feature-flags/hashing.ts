@@ -49,13 +49,15 @@ function murmur3_32(input: string, seed: number = 0): number {
   return h1 >>> 0;
 }
 
+const BUCKET_HASH_SEPARATOR = "\x01";
+
 /**
  * Deterministically map (distinctId, salt) to a uniformly-distributed value in [0, 1).
  * The salt should typically be `${flagKey}.${ruleId ?? ""}.${rolloutSeed ?? ""}`, so the
  * same person can land in different buckets for different flags.
  */
 export function bucket(distinctId: string, salt: string): number {
-  const h = murmur3_32(`${distinctId}${salt}`);
+  const h = murmur3_32(`${distinctId}${BUCKET_HASH_SEPARATOR}${salt}`);
   return h / 0x1_0000_0000;
 }
 

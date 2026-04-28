@@ -206,8 +206,8 @@ export async function seed() {
                 conditions: {
                   "is-employee": {
                     attribute: "user.email",
-                    operator: "contains",
-                    value: "@stack-auth.com",
+                    operator: "regex",
+                    value: "@stack-auth\\.com$",
                   },
                 },
               },

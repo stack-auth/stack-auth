@@ -47,7 +47,7 @@ function makeDefaultFlag(key: string, type: FlagType) {
   return {
     key,
     type,
-    enabled: true,
+    enabled: false,
     killSwitch: false,
     defaultVariantKey: undefined,
     variants: {},

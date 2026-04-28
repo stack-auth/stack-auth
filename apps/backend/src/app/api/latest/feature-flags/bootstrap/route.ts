@@ -1,7 +1,19 @@
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import type { SmartResponse } from "@/route-handlers/smart-response";
 import { _internal as hashingInternal } from "@stackframe/stack-shared/dist/feature-flags/hashing";
 import type { FeatureFlagsConfig, FlagDef } from "@stackframe/stack-shared/dist/feature-flags/types";
-import { adaptSchema, clientOrHigherAuthTypeSchema, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
+
+function deepSortKeys(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(deepSortKeys);
+  if (value == null || typeof value !== "object") return value;
+  return Object.fromEntries(
+    Object.entries(value)
+      .sort(([a], [b]) => stringCompare(a, b))
+      .map(([key, nestedValue]) => [key, deepSortKeys(nestedValue)]),
+  );
+}
 
 export const GET = createSmartRouteHandler({
   metadata: {
@@ -14,21 +26,13 @@ export const GET = createSmartRouteHandler({
       type: clientOrHigherAuthTypeSchema.defined(),
       tenancy: adaptSchema.defined(),
     }).defined(),
+    headers: yupObject({
+      "if-none-match": yupArray(yupString().defined()).optional(),
+    }).defined(),
     method: yupString().oneOf(["GET"]).defined(),
   }),
-  response: yupObject({
-    statusCode: yupNumber().oneOf([200]).defined(),
-    bodyType: yupString().oneOf(["json"]).defined(),
-    body: yupObject({
-      flags: yupMixed().defined(),
-      // Maps developer-facing flag keys to the opaque config ids used by evaluator references.
-      flag_ids_by_key: yupMixed().defined(),
-      holdouts: yupMixed().defined(),
-      // Bumped whenever the rendered config changes; SDKs use it as an ETag for polling.
-      version: yupString().defined(),
-    }).defined(),
-  }),
-  handler: async ({ auth }) => {
+  response: yupMixed<SmartResponse>().defined(),
+  handler: async ({ auth, headers }) => {
     const config: FeatureFlagsConfig = auth.tenancy.config.featureFlags;
     const flagsById: Record<string, Omit<FlagDef, "ownerUserId">> = {};
     const flagIdsByKey: Record<string, string> = {};
@@ -45,16 +49,35 @@ export const GET = createSmartRouteHandler({
     // Stable content-addressed version: SDKs hit this endpoint with `If-None-Match: <version>` and
     // we (eventually) 304 when nothing changed. Using murmur3 keeps this fast enough to recompute
     // per request without caching.
-    const version = hashingInternal.murmur3_32(JSON.stringify({ flags: flagsById, flagIdsByKey, holdouts })).toString(16);
+    const versionPayload = deepSortKeys({ flags: flagsById, flagIdsByKey, holdouts });
+    const version = hashingInternal.murmur3_32(JSON.stringify(versionPayload)).toString(16);
+    const etag = `"${version}"`;
 
+    if (headers["if-none-match"]?.includes(etag) || headers["if-none-match"]?.includes(version)) {
+      return {
+        statusCode: 304,
+        bodyType: "binary",
+        body: new Uint8Array(),
+        headers: {
+          "content-type": ["application/json; charset=utf-8"],
+          etag: [etag],
+        },
+      };
+    }
+
+    const body = {
+      flags: flagsById,
+      flag_ids_by_key: flagIdsByKey,
+      holdouts,
+      version,
+    };
     return {
       statusCode: 200,
-      bodyType: "json",
-      body: {
-        flags: flagsById,
-        flag_ids_by_key: flagIdsByKey,
-        holdouts,
-        version,
+      bodyType: "binary",
+      body: new TextEncoder().encode(JSON.stringify(body)),
+      headers: {
+        "content-type": ["application/json; charset=utf-8"],
+        etag: [etag],
       },
     };
   },

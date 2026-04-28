@@ -223,7 +223,7 @@ export default function PageClient() {
   };
 
   const handleSaveMetadata = async () => {
-    await updateConfig({
+    const ok = await updateConfig({
       adminApp: stackAdminApp,
       configUpdate: {
         ...configUpdate(`featureFlags.flags.${flagId}.description`, description.trim() || null),
@@ -231,7 +231,9 @@ export default function PageClient() {
       },
       pushable: true,
     });
-    toast({ title: "Saved" });
+    if (ok) {
+      toast({ title: "Saved" });
+    }
   };
 
   const handleSaveVariants = async () => {
@@ -245,12 +247,14 @@ export default function PageClient() {
       alert(variants.error);
       return;
     }
-    await updateConfig({
+    const ok = await updateConfig({
       adminApp: stackAdminApp,
       configUpdate: configUpdate(`featureFlags.flags.${flagId}.variants`, variants.value),
       pushable: true,
     });
-    toast({ title: "Variants saved" });
+    if (ok) {
+      toast({ title: "Variants saved" });
+    }
   };
 
   const handleSaveRules = async () => {
@@ -264,22 +268,26 @@ export default function PageClient() {
       alert(rules.error);
       return;
     }
-    await updateConfig({
+    const ok = await updateConfig({
       adminApp: stackAdminApp,
       configUpdate: configUpdate(`featureFlags.flags.${flagId}.rules`, rules.value),
       pushable: true,
     });
-    toast({ title: "Rules saved" });
+    if (ok) {
+      toast({ title: "Rules saved" });
+    }
   };
 
   const handleDelete = async () => {
-    await updateConfig({
+    const ok = await updateConfig({
       adminApp: stackAdminApp,
       configUpdate: { [`featureFlags.flags.${flagId}`]: null },
       pushable: true,
     });
-    toast({ title: "Flag deleted" });
-    router.push(`/projects/${project.id}/feature-flags`);
+    if (ok) {
+      toast({ title: "Flag deleted" });
+      router.push(`/projects/${project.id}/feature-flags`);
+    }
   };
 
   // Live evaluation against current config + the JSON-edited debug context.

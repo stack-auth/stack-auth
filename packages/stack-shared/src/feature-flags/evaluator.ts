@@ -2,7 +2,6 @@
 // have bootstrapped flag definitions locally — both must arrive at the same answer for the same
 // (flag, context) pair, so all bucketing routes through `hashing.ts`.
 
-import { stringCompare } from "../utils/strings";
 import { bucket, weightedVariant } from "./hashing";
 import type {
   ConditionOperator,
@@ -14,6 +13,7 @@ import type {
   FlagRule,
   HoldoutDef,
 } from "./types";
+import { getFeatureFlagRegexPatternError, maxFeatureFlagRegexAttributeLength } from "./types";
 
 function getDottedAttribute(context: EvalContext, attribute: string): unknown {
   const parts = attribute.split(".");
@@ -26,21 +26,68 @@ function getDottedAttribute(context: EvalContext, attribute: string): unknown {
 }
 
 function compareSemver(a: string, b: string): number {
-  const parse = (v: string) => v.split(/[.+-]/).map(p => /^\d+$/.test(p) ? Number(p) : p);
+  const parse = (v: string) => {
+    const withoutBuild = v.split("+", 1)[0];
+    const dashIndex = withoutBuild.indexOf("-");
+    const coreText = dashIndex === -1 ? withoutBuild : withoutBuild.slice(0, dashIndex);
+    const prereleaseText = dashIndex === -1 ? undefined : withoutBuild.slice(dashIndex + 1);
+    const core = coreText.split(".").map(part => /^\d+$/.test(part) ? Number(part) : undefined);
+    const prerelease = prereleaseText?.split(".").map(part => /^\d+$/.test(part) ? Number(part) : part);
+    return { core, prerelease };
+  };
   const av = parse(a);
   const bv = parse(b);
-  const len = Math.max(av.length, bv.length);
+  for (let i = 0; i < 3; i++) {
+    const x = av.core[i];
+    const y = bv.core[i];
+    if (x === undefined || y === undefined) return lexicalCompare(a, b);
+    if (x !== y) return x - y;
+  }
+  if (av.prerelease === undefined && bv.prerelease === undefined) return 0;
+  if (av.prerelease === undefined) return 1;
+  if (bv.prerelease === undefined) return -1;
+  const len = Math.min(av.prerelease.length, bv.prerelease.length);
   for (let i = 0; i < len; i++) {
-    const x = av[i] ?? 0;
-    const y = bv[i] ?? 0;
+    const x = av.prerelease[i];
+    const y = bv.prerelease[i];
     if (typeof x === "number" && typeof y === "number") {
       if (x !== y) return x - y;
+    } else if (typeof x === "number") {
+      return -1;
+    } else if (typeof y === "number") {
+      return 1;
     } else {
-      const cmp = stringCompare(String(x), String(y));
+      const cmp = lexicalCompare(x, y);
       if (cmp !== 0) return cmp;
     }
   }
-  return 0;
+  return av.prerelease.length - bv.prerelease.length;
+}
+
+function lexicalCompare(a: string, b: string): number {
+  return a < b ? -1 : (a > b ? 1 : 0);
+}
+
+const regexCache = new Map<string, RegExp>();
+
+function getCompiledRegex(pattern: string): RegExp | undefined {
+  const existing = regexCache.get(pattern);
+  if (existing !== undefined) return existing;
+  const error = getFeatureFlagRegexPatternError(pattern);
+  if (error !== undefined) return undefined;
+  const regex = new RegExp(pattern);
+  regexCache.set(pattern, regex);
+  return regex;
+}
+
+function isTruthyFlagValue(value: unknown): boolean {
+  if (value == null) return false;
+  if (typeof value === "boolean") return value;
+  if (typeof value === "string") return value.length > 0;
+  if (typeof value === "number") return value !== 0;
+  if (Array.isArray(value)) return value.length > 0;
+  if (typeof value === "object") return Object.keys(value).length > 0;
+  return Boolean(value);
 }
 
 function applyOperator(
@@ -60,11 +107,9 @@ function applyOperator(
     }
     case "regex": {
       if (typeof actual !== "string" || typeof expected !== "string") return false;
-      try {
-        return new RegExp(expected).test(actual);
-      } catch {
-        return false;
-      }
+      if (actual.length > maxFeatureFlagRegexAttributeLength) return false;
+      const regex = getCompiledRegex(expected);
+      return regex?.test(actual) ?? false;
     }
     case "gt": { return typeof actual === "number" && typeof expected === "number" && actual > expected; }
     case "gte": { return typeof actual === "number" && typeof expected === "number" && actual >= expected; }
@@ -143,7 +188,7 @@ function sortRules(rules: FlagDef["rules"]): Array<readonly [string, FlagRule]> 
     const ap = a.priority ?? 0;
     const bp = b.priority ?? 0;
     if (ap !== bp) return bp - ap;
-    return stringCompare(aId, bId);
+    return lexicalCompare(aId, bId);
   });
 }
 
@@ -205,9 +250,7 @@ export function evaluateFlag(
   if (flag.dependsOn) {
     if (seenFlags.has(flag.dependsOn)) return defaultResult("cycle");
     const dep = evaluateFlag(flag.dependsOn, config, context, new Set([...seenFlags, flagKey]));
-    const depTruthy = dep.value === true || (typeof dep.value === "string" && dep.value.length > 0)
-      || (typeof dep.value === "number" && dep.value !== 0);
-    if (!depTruthy) return defaultResult("dep_unmet");
+    if (!isTruthyFlagValue(dep.value)) return defaultResult("dep_unmet");
   }
 
   if (flag.holdoutId) {
@@ -249,11 +292,11 @@ export function evaluateFlags(
   flagKeys?: ReadonlyArray<string>,
 ): Record<string, EvalResult> {
   const keys = flagKeys ?? Object.keys(config.flags ?? {});
-  const out: Record<string, EvalResult> = {};
+  const out = new Map<string, EvalResult>();
   for (const k of keys) {
-    out[k] = evaluateFlag(k, config, context);
+    out.set(k, evaluateFlag(k, config, context));
   }
-  return out;
+  return Object.fromEntries(out);
 }
 
 /**
@@ -412,6 +455,23 @@ import.meta.vitest?.test("dependsOn gates evaluation", ({ expect }) => {
   expect(blocked.value).toBe("z");
 });
 
+import.meta.vitest?.test("dependsOn treats non-empty JSON values as truthy", ({ expect }) => {
+  const config: FeatureFlagsConfig = {
+    flags: {
+      gate: {
+        key: "gate", type: "json", enabled: true, defaultVariantKey: "on",
+        variants: { on: { value: { enabled: true } }, off: { value: {} } },
+      },
+      child: {
+        key: "child", type: "string", enabled: true, defaultVariantKey: "z", dependsOn: "gate",
+        variants: { a: { value: "a" }, z: { value: "z" } },
+        rules: { r: { priority: 0, rolloutPercentage: 100, variantKey: "a" } },
+      },
+    },
+  };
+  expect(evaluateFlag("child", config, { distinctId: "u" }).value).toBe("a");
+});
+
 import.meta.vitest?.test("dependency cycles are broken safely", ({ expect }) => {
   const config: FeatureFlagsConfig = {
     flags: {
@@ -471,6 +531,8 @@ import.meta.vitest?.test("operators: regex, in, gt, is_set, before/after, semver
   expect(ev(make("semver_gt", "1.2.0"), "1.3.0")).toBe(true);
   expect(ev(make("semver_eq", "1.2.0"), "1.2.0")).toBe(true);
   expect(ev(make("semver_lt", "2.0.0"), "1.99.0")).toBe(true);
+  expect(ev(make("semver_gt", "1.0.0-alpha"), "1.0.0")).toBe(true);
+  expect(ev(make("semver_eq", "1.0.0+build1"), "1.0.0+build2")).toBe(true);
 });
 
 import.meta.vitest?.test("in_cohort matches cohort membership in context", ({ expect }) => {

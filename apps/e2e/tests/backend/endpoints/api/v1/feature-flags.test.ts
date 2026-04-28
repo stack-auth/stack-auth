@@ -1,7 +1,7 @@
 import { it } from "../../../../helpers";
 import { evaluateFlag } from "@stackframe/stack-shared/dist/feature-flags/evaluator";
 import type { FeatureFlagsConfig } from "@stackframe/stack-shared/dist/feature-flags/types";
-import { Project, niceBackendFetch } from "../../../backend-helpers";
+import { Auth, Project, niceBackendFetch } from "../../../backend-helpers";
 
 async function setupProjectWithFlags(featureFlags: FeatureFlagsConfig) {
   await Project.createAndSwitch();
@@ -71,7 +71,7 @@ it("/feature-flags/evaluate matches a condition rule and returns the rule varian
 
   const matchResponse = await niceBackendFetch("/api/latest/feature-flags/evaluate", {
     method: "POST",
-    accessType: "client",
+    accessType: "server",
     body: {
       distinct_id: "u",
       user: { email: "alice@beta.io" },
@@ -88,7 +88,7 @@ it("/feature-flags/evaluate matches a condition rule and returns the rule varian
 
   const noMatchResponse = await niceBackendFetch("/api/latest/feature-flags/evaluate", {
     method: "POST",
-    accessType: "client",
+    accessType: "server",
     body: {
       distinct_id: "u",
       user: { email: "alice@other.com" },
@@ -229,6 +229,100 @@ it("/feature-flags/evaluate scopes to flag_keys when provided", async ({ expect 
   expect(Object.keys(response.body.results)).toEqual(["f1"]);
 });
 
+it("/feature-flags/evaluate falls back to the authenticated user id when distinct_id is omitted", async ({ expect }) => {
+  await setupProjectWithFlags({
+    flags: {
+      "rollout-flag": {
+        key: "rollout",
+        type: "boolean",
+        enabled: true,
+        killSwitch: false,
+        defaultVariantKey: "off",
+        variants: { on: { value: true }, off: { value: false } },
+        rules: {
+          partial: {
+            priority: 0, enabled: true, rolloutPercentage: 50, rolloutSeed: "auth-user-fallback", variantKey: "on",
+          },
+        },
+      },
+    },
+  });
+  const { userId } = await Auth.Anonymous.signUp();
+
+  const omittedDistinctId = await niceBackendFetch("/api/latest/feature-flags/evaluate", {
+    method: "POST",
+    accessType: "client",
+    body: { flag_keys: ["rollout"] },
+  });
+  const explicitUserId = await niceBackendFetch("/api/latest/feature-flags/evaluate", {
+    method: "POST",
+    accessType: "client",
+    body: { distinct_id: userId, flag_keys: ["rollout"] },
+  });
+
+  expect(omittedDistinctId.body.results.rollout).toMatchObject({
+    flag_key: "rollout",
+    variant_key: explicitUserId.body.results.rollout.variant_key,
+    value: explicitUserId.body.results.rollout.value,
+  });
+});
+
+it("/feature-flags/evaluate ignores caller-supplied targeting attributes for client-key requests", async ({ expect }) => {
+  await setupProjectWithFlags({
+    flags: {
+      "internal-tools": {
+        key: "internal-tools",
+        type: "boolean",
+        enabled: true,
+        killSwitch: false,
+        defaultVariantKey: "off",
+        variants: { on: { value: true }, off: { value: false } },
+        rules: {
+          employee: {
+            priority: 0,
+            enabled: true,
+            rolloutPercentage: 100,
+            variantKey: "on",
+            conditions: {
+              email: { attribute: "user.email", operator: "regex", value: "@stack-auth\\.com$" },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  const clientResponse = await niceBackendFetch("/api/latest/feature-flags/evaluate", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      distinct_id: "spoofing-client",
+      user: { email: "attacker@stack-auth.com" },
+      flag_keys: ["internal-tools"],
+    },
+  });
+  expect(clientResponse.body.results["internal-tools"]).toMatchObject({
+    variant_key: "off",
+    value: false,
+    reason: "default",
+  });
+
+  const serverResponse = await niceBackendFetch("/api/latest/feature-flags/evaluate", {
+    method: "POST",
+    accessType: "server",
+    body: {
+      distinct_id: "trusted-server",
+      user: { email: "employee@stack-auth.com" },
+      flag_keys: ["internal-tools"],
+    },
+  });
+  expect(serverResponse.body.results["internal-tools"]).toMatchObject({
+    variant_key: "on",
+    value: true,
+    reason: "matched_rule",
+  });
+});
+
 it("/feature-flags/evaluate returns missing for requested unknown flag keys", async ({ expect }) => {
   await setupProjectWithFlags({
     flags: {
@@ -282,6 +376,13 @@ it("/feature-flags/bootstrap returns opaque-id definitions, public key lookup, w
     accessType: "client",
   });
   expect(second.body.version).toBe(first.body.version);
+
+  const revalidated = await niceBackendFetch("/api/latest/feature-flags/bootstrap", {
+    method: "GET",
+    accessType: "client",
+    headers: { "if-none-match": first.headers.get("etag") ?? first.body.version },
+  });
+  expect(revalidated.status).toBe(304);
 });
 
 it("/feature-flags/bootstrap preserves dependency references for local SDK evaluation", async ({ expect }) => {
@@ -324,7 +425,7 @@ it("/feature-flags/bootstrap preserves dependency references for local SDK evalu
 
   const serverResponse = await niceBackendFetch("/api/latest/feature-flags/evaluate", {
     method: "POST",
-    accessType: "client",
+    accessType: "server",
     body: {
       distinct_id: "u",
       user: { email: "alice@beta.io" },

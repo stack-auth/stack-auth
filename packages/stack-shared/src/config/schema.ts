@@ -6,7 +6,7 @@
 
 import * as yup from "yup";
 import { ALL_APPS } from "../apps/apps-config";
-import { featureFlagConditionOperators } from "../feature-flags/types";
+import { featureFlagConditionOperators, getFeatureFlagRegexPatternError } from "../feature-flags/types";
 import { DEFAULT_EMAIL_TEMPLATES, DEFAULT_EMAIL_THEMES, DEFAULT_EMAIL_THEME_ID } from "../helpers/emails";
 import * as schemaFields from "../schema-fields";
 import { productSchema, userSpecifiedIdSchema, yupBoolean, yupDate, yupMixed, yupNever, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "../schema-fields";
@@ -217,6 +217,18 @@ const featureFlagStickyBy = ["userId", "teamId", "distinctId"] as const;
 
 const featureFlagTypes = ["boolean", "multivariate", "json", "numeric", "string"] as const;
 
+type FeatureFlagSchemaValue = {
+  flags?: Record<string, {
+    key: string,
+    variants?: Record<string, unknown>,
+    defaultVariantKey?: string,
+    rules?: Record<string, {
+      variantKey?: string,
+      variantWeights?: Record<string, unknown>,
+    }>,
+  }>,
+};
+
 export const branchFeatureFlagsSchema = yupObject({
   flags: yupRecord(
     userSpecifiedIdSchema("flagId"),
@@ -256,7 +268,27 @@ export const branchFeatureFlagsSchema = yupObject({
               attribute: yupString().defined(),
               operator: yupString().oneOf(featureFlagConditionOperators).defined(),
               value: yupMixed(),
-            }),
+            }).test(
+              'feature-flag-regex-condition-is-safe',
+              'Feature flag regex conditions must use a valid bounded regex',
+              function(this: yup.TestContext<yup.AnyObject>, condition) {
+                if (condition.operator !== "regex") return true;
+                if (typeof condition.value !== "string") {
+                  return this.createError({
+                    message: "Feature flag regex conditions must use a string value",
+                    path: `${this.path}.value`,
+                  });
+                }
+                const error = getFeatureFlagRegexPatternError(condition.value);
+                if (error !== undefined) {
+                  return this.createError({
+                    message: `Feature flag regex condition is invalid: ${error}`,
+                    path: `${this.path}.value`,
+                  });
+                }
+                return true;
+              },
+            ),
           ).optional(),
           // Percentage [0,100] of the addressable audience (after conditions) that gets this rule's variant selection.
           rolloutPercentage: yupNumber().min(0).max(100),
@@ -304,7 +336,8 @@ export const branchFeatureFlagsSchema = yupObject({
 }).test(
   'feature-flag-keys-are-unique',
   'Feature flag keys must be unique',
-  function(this: yup.TestContext<yup.AnyObject>, value) {
+  function(this: yup.TestContext<yup.AnyObject>, value: FeatureFlagSchemaValue | undefined) {
+    if (!value?.flags) return true;
     const seen = new Map<string, string>();
     for (const [flagId, flag] of Object.entries(value.flags)) {
       const existingFlagId = seen.get(flag.key);
@@ -315,6 +348,40 @@ export const branchFeatureFlagsSchema = yupObject({
         });
       }
       seen.set(flag.key, flagId);
+    }
+    return true;
+  },
+).test(
+  'feature-flag-variant-references-exist',
+  'Feature flag variant references must point to existing variants',
+  function(this: yup.TestContext<yup.AnyObject>, value: FeatureFlagSchemaValue | undefined) {
+    if (!value?.flags) return true;
+    for (const [flagId, flag] of Object.entries(value.flags)) {
+      const variants = flag.variants ?? {};
+      const variantKeys = new Set(Object.keys(variants));
+      if (flag.defaultVariantKey !== undefined && !variantKeys.has(flag.defaultVariantKey)) {
+        return this.createError({
+          message: `Feature flag "${flagId}" defaultVariantKey "${flag.defaultVariantKey}" does not exist in variants`,
+          path: `${this.path}.flags.${flagId}.defaultVariantKey`,
+        });
+      }
+      const rules = flag.rules ?? {};
+      for (const [ruleId, rule] of Object.entries(rules)) {
+        if (rule.variantKey !== undefined && !variantKeys.has(rule.variantKey)) {
+          return this.createError({
+            message: `Feature flag "${flagId}" rule "${ruleId}" variantKey "${rule.variantKey}" does not exist in variants`,
+            path: `${this.path}.flags.${flagId}.rules.${ruleId}.variantKey`,
+          });
+        }
+        for (const variantKey of Object.keys(rule.variantWeights ?? {})) {
+          if (!variantKeys.has(variantKey)) {
+            return this.createError({
+              message: `Feature flag "${flagId}" rule "${ruleId}" variantWeights references missing variant "${variantKey}"`,
+              path: `${this.path}.flags.${flagId}.rules.${ruleId}.variantWeights.${variantKey}`,
+            });
+          }
+        }
+      }
     }
     return true;
   },
