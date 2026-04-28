@@ -31,7 +31,7 @@ Most commonly you get an instance of `StackClientApp` by calling [`useStackApp()
     // NEXT_LINE_PLATFORM react-like
     ⤷ useProject(): Project;  //$stack-link-to:#stackclientappuseproject
 
-    signInWithOAuth(provider): void;  //$stack-link-to:#stackclientappsigninwithoauthprovider
+    signInWithOAuth(provider, [options]): void;  //$stack-link-to:#stackclientappsigninwithoauthprovider
     signInWithCredential([options]): Promise<...>;  //$stack-link-to:#stackclientappsigninwithcredentialoptions
     signUpWithCredential([options]): Promise<...>;  //$stack-link-to:#stackclientappsignupwithcredentialoptions
     sendForgotPasswordEmail(email): Promise<...>;  //$stack-link-to:#stackclientappsendforgotpasswordemailemail
@@ -314,14 +314,16 @@ function MyReactComponent() {
 </CollapsibleMethodSection>
 {/* END_PLATFORM */}
 
-<CollapsibleMethodSection method="signInWithOAuth" signature="provider" appType="StackClientApp" defaultOpen={false}>
+<CollapsibleMethodSection method="signInWithOAuth" signature="provider, [options]" appType="StackClientApp" defaultOpen={false}>
   <MethodLayout>
     <MethodContent>
 
 Initiates the OAuth sign-in process with the specified provider.
 
 **Parameters:**
-- `provider` (string) - The OAuth provider type
+- `provider` (string) - The OAuth provider type (e.g., "google", "github", "microsoft")
+- `options?` (object) - Optional configuration
+  - `returnTo?` (string) - URL to redirect to after the OAuth callback completes. If not specified, defaults to the current URL if it contains an `after_auth_return_to` query parameter, otherwise returns to the default post-auth destination.
 
 **Returns:** `Promise<void>`
 
@@ -331,14 +333,35 @@ Initiates the OAuth sign-in process with the specified provider.
 <AsideSection title="Signature">
 
 ```typescript
-declare function signInWithOAuth(provider: string): Promise<void>;
+declare function signInWithOAuth(
+  provider: string,
+  options?: {
+    returnTo?: string;
+  }
+): Promise<void>;
 ```
-</AsideSection> 
+</AsideSection>
 <AsideSection title="Examples">
 
+<Tabs defaultValue="basic">
+  <TabsList>
+    <TabsTrigger value="basic">Basic Usage</TabsTrigger>
+    <TabsTrigger value="with-return-to">With Return URL</TabsTrigger>
+  </TabsList>
+  <TabsContent value="basic">
 ```typescript
 await stackClientApp.signInWithOAuth("google");
 ```
+  </TabsContent>
+  <TabsContent value="with-return-to">
+```typescript
+// Redirect to a specific page after authentication
+await stackClientApp.signInWithOAuth("google", {
+  returnTo: "/dashboard",
+});
+```
+  </TabsContent>
+</Tabs>
 </AsideSection>
     </MethodAside>
   </MethodLayout>

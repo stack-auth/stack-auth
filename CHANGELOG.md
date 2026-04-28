@@ -2,6 +2,12 @@
 
 ---
 
+## 4/28/26
+
+### SDK
+- Added `returnTo` option to `signInWithOAuth()` to specify a custom redirect destination after OAuth authentication completes
+- Fixed OAuth redirects to follow the configured `redirectMethod` instead of hardcoded `window.location` calls, ensuring consistent behavior for apps using custom navigation handlers
+
 ## 1/23/26
 
 ### Payments
