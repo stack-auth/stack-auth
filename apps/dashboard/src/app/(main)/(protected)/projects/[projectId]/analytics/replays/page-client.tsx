@@ -498,6 +498,12 @@ export default function PageClient({ initialReplayId }: PageClientProps) {
   const loadingMoreRef = useRef(false);
 
   useEffect(() => {
+    if (!isStandaloneReplayPage) return;
+    if (selectedRecordingId === initialReplayId && (standaloneReplay == null || standaloneReplay.id === initialReplayId)) return;
+    setSelectedRecordingId(initialReplayId);
+  }, [initialReplayId, isStandaloneReplayPage, selectedRecordingId, standaloneReplay, setSelectedRecordingId]);
+
+  useEffect(() => {
     setReplayShareLinkCopied(false);
   }, [selectedRecordingId]);
 
