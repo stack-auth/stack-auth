@@ -23,6 +23,7 @@ type InitOptions = {
   selectProjectId?: string,
   outputDir?: string,
   agent?: boolean,
+  displayName?: string,
 };
 
 export function registerInitCommand(program: Command) {
@@ -35,8 +36,9 @@ export function registerInitCommand(program: Command) {
     .option("--select-project-id <id>", "Project ID to link (for link-cloud mode)")
     .option("--output-dir <dir>", "Directory to write output files (defaults to cwd)")
     .option("--no-agent", "Skip Claude agent and print setup instructions instead")
+    .option("--display-name <name>", "Project display name (used by create-cloud mode)")
     .action(async (opts: InitOptions) => {
-      const hasFlags = opts.mode != null;
+      const hasFlags = opts.mode != null || opts.configFile != null || opts.selectProjectId != null;
 
       if (!hasFlags && isNonInteractiveEnv()) {
         throw new CliError("stack init requires an interactive terminal. Use --mode flag for non-interactive usage.");
@@ -261,11 +263,12 @@ async function writeProjectKeysToEnv(
   }
 }
 
-async function handleCreateCloud(flags: Record<string, unknown>, _opts: InitOptions, outputDir: string): Promise<{ configPath?: string, projectId?: string }> {
+async function handleCreateCloud(flags: Record<string, unknown>, opts: InitOptions, outputDir: string): Promise<{ configPath?: string, projectId?: string }> {
   const sessionAuth = await ensureLoggedInSession(flags);
   const user = await getInternalUser(sessionAuth);
 
   const newProject = await createProjectInteractively(user, {
+    displayName: opts.displayName,
     defaultDisplayName: path.basename(outputDir),
   });
   console.log(`\nCreated project: ${newProject.displayName} (${newProject.id})\n`);

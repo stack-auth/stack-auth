@@ -23,6 +23,14 @@ type LocalEmulatorProjectMappingRow = {
   projectId: string,
 };
 
+function deriveDisplayLabel(absoluteFilePath: string): string {
+  const base = path.basename(absoluteFilePath);
+  if (base.toLowerCase() === "stack.config.ts") {
+    return path.basename(path.dirname(absoluteFilePath)) || base;
+  }
+  return base;
+}
+
 async function assertLocalEmulatorOwnerTeamReadiness() {
   const internalTenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID);
   const internalPrisma = await getPrismaClientForTenancy(internalTenancy);
@@ -76,7 +84,7 @@ async function getOrCreateLocalEmulatorProjectId(absoluteFilePath: string): Prom
     update: {},
     create: {
       id: projectId,
-      displayName: `Local Emulator: ${path.basename(absoluteFilePath) || "Project"}`,
+      displayName: `Local Emulator: ${deriveDisplayLabel(absoluteFilePath) || "Project"}`,
       description: `Local emulator project for ${absoluteFilePath}`,
       isProductionMode: false,
       ownerTeamId: LOCAL_EMULATOR_OWNER_TEAM_ID,
@@ -327,7 +335,7 @@ export const GET = createSmartRouteHandler({
         projects: rows.map((r) => ({
           project_id: r.projectId,
           absolute_file_path: r.absoluteFilePath,
-          display_name: displayNameById.get(r.projectId) ?? path.basename(r.absoluteFilePath),
+          display_name: displayNameById.get(r.projectId) ?? deriveDisplayLabel(r.absoluteFilePath),
         })),
       },
     };

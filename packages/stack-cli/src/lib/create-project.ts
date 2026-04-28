@@ -12,16 +12,16 @@ export async function createProjectInteractively(
   user: CurrentInternalUser,
   opts: CreateProjectOptions = {},
 ) {
-  let displayName = opts.displayName;
+  let displayName = opts.displayName?.trim();
   if (!displayName) {
     if (isNonInteractiveEnv()) {
       throw new CliError("--display-name is required in non-interactive environments (CI).");
     }
-    displayName = await input({
+    displayName = (await input({
       message: "Project display name:",
       default: opts.defaultDisplayName,
       validate: (v) => v.trim().length > 0 || "Display name cannot be empty.",
-    });
+    })).trim();
   }
 
   const teams = await user.listTeams();
@@ -30,7 +30,7 @@ export async function createProjectInteractively(
   }
 
   return await user.createProject({
-    displayName: displayName.trim(),
+    displayName,
     teamId: teams[0].id,
   });
 }

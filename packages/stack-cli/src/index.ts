@@ -47,9 +47,7 @@ async function main() {
       console.error(`Error: ${err.message}`);
       process.exit(1);
     }
-    reportUnexpectedError(err);
-    await flushSentry();
-    throw err;
+    await handleFatal(err);
   }
 }
 

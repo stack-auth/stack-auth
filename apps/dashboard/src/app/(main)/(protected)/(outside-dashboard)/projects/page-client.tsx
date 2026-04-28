@@ -134,7 +134,7 @@ export default function PageClient() {
           );
         setRecentConfigProjects(parsed);
       } catch {
-        // best-effort — dialog still works without the recent list
+        if (!cancelled) setRecentConfigProjects([]);
       }
     });
     return () => {
