@@ -70,11 +70,17 @@ async function parseResendWebhookPayload(bodyBuffer: ArrayBuffer) {
   });
 }
 
-// Window for matching a Resend webhook event back to an EmailOutbox row by (recipient, time).
-// Generous because delivery info can take minutes; bounces can take up to ~72h.
-const EVENT_MATCH_WINDOW_HOURS = 96;
-
 type EmailEventKind = "delivered" | "delivery_delayed" | "bounced" | "complained";
+
+// Windows for matching a Resend webhook event back to an EmailOutbox row by
+// (recipient, time). Delivery and bounce signals are usually close to sending;
+// spam complaints can arrive much later when a recipient revisits their inbox.
+const EVENT_MATCH_WINDOW_HOURS_BY_KIND = {
+  delivered: 96,
+  delivery_delayed: 96,
+  bounced: 96,
+  complained: 24 * 30,
+} satisfies Record<EmailEventKind, number>;
 
 function emailEventKindFromType(type: string): EmailEventKind | null {
   switch (type) {
@@ -128,11 +134,11 @@ async function processEmailDeliveryEvent(kind: EmailEventKind, payload: ResendWe
         kind === "bounced" ? Prisma.sql`"bouncedAt" = ${eventAt}, "deliveryDelayedAt" = NULL` :
           Prisma.sql`"markedAsSpamAt" = ${eventAt}`;
 
-  // For `delivered` and `bounced` we don't want to overwrite a terminal state if we
-  // somehow receive events out of order. `complained` records a separate user action
-  // (markedAsSpamAt) that is meaningful even after delivery, so the terminal guard
-  // doesn't apply — the typical Resend sequence is email.delivered → email.complained.
-  const terminalGuard = kind === "complained"
+  // For `delivered` and `delivery_delayed` we don't want to overwrite a terminal
+  // delivery state if we somehow receive events out of order. `bounced` and
+  // `complained` are meaningful even after delivery; Resend can send
+  // email.delivered before an async bounce, and users can mark delivered email as spam.
+  const terminalGuard = kind === "complained" || kind === "bounced"
     ? Prisma.sql`TRUE`
     : Prisma.sql`"deliveredAt" IS NULL AND "bouncedAt" IS NULL`;
   const selfGuard = kind === "delivered"
@@ -143,13 +149,17 @@ async function processEmailDeliveryEvent(kind: EmailEventKind, payload: ResendWe
         ? Prisma.sql`"bouncedAt" IS NULL`
         : Prisma.sql`"markedAsSpamAt" IS NULL`;
 
-  const windowStart = new Date(eventAt.getTime() - EVENT_MATCH_WINDOW_HOURS * 60 * 60 * 1000);
+  const eventMatchWindowHours = EVENT_MATCH_WINDOW_HOURS_BY_KIND[kind];
+  const windowStart = new Date(eventAt.getTime() - eventMatchWindowHours * 60 * 60 * 1000);
 
   // Find the single most recent outbox row that matches any recipient and was sent within
   // the window. Match against either:
   //  - `to->emails` array (custom-emails / user-custom-emails with explicit emails), or
   //  - the user's primary email contact channel (user-primary-email,
   //    or user-custom-emails falling back to primary).
+  // Resend's email_id is not stored in EmailOutbox today, so when multiple emails
+  // to the same recipient land inside the match window, this intentionally chooses
+  // the latest one sent no later than the event timestamp.
   // We CTE-select the single best candidate then conditionally UPDATE it.
   const updated = await globalPrismaClient.$queryRaw<{ id: string, tenancyId: string }[]>(Prisma.sql`
     WITH candidate AS (
