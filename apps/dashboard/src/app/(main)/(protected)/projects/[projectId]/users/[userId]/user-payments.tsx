@@ -15,25 +15,16 @@ import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { Suspense, useMemo } from "react";
 import { useAdminApp } from "../../use-admin-app";
 
-// The global transactions endpoint doesn't accept a customer filter, so we
-// pull a page and filter client-side - the same approach the product page
-// (ProductCustomersSection) takes. For most projects this is enough; if it
-// ever isn't, the proper fix is to add `customer_id` to the transactions
-// route and the `listTransactions` SDK method.
 const TRANSACTIONS_PAGE_SIZE = 100;
 
 const DATE_SHORT = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric" });
 const DATE_LONG = new Intl.DateTimeFormat(undefined, { month: "short", day: "numeric", year: "numeric", hour: "numeric", minute: "2-digit" });
 
-type EntryWithCustomer = Extract<TransactionEntry, { customer_type: string, customer_id: string }>;
 type MoneyTransferEntry = Extract<TransactionEntry, { type: "money_transfer" }>;
 type ProductGrantEntry = Extract<TransactionEntry, { type: "product_grant" }>;
 type ItemQuantityChangeEntry = Extract<TransactionEntry, { type: "item_quantity_change" }>;
 type ProductRevocationEntry = Extract<TransactionEntry, { type: "product_revocation" }>;
 
-function isEntryWithCustomer(entry: TransactionEntry): entry is EntryWithCustomer {
-  return "customer_type" in entry && "customer_id" in entry;
-}
 function isMoneyTransferEntry(entry: TransactionEntry): entry is MoneyTransferEntry {
   return entry.type === "money_transfer";
 }
@@ -45,12 +36,6 @@ function isItemQuantityChangeEntry(entry: TransactionEntry): entry is ItemQuanti
 }
 function isProductRevocationEntry(entry: TransactionEntry): entry is ProductRevocationEntry {
   return entry.type === "product_revocation";
-}
-
-function transactionTouchesUser(transaction: Transaction, userId: string): boolean {
-  return transaction.entries.some(
-    (entry) => isEntryWithCustomer(entry) && entry.customer_type === "user" && entry.customer_id === userId,
-  );
 }
 
 function formatUsd(amount: number): string {
@@ -120,12 +105,11 @@ function UserPaymentsContent({ user }: { user: ServerUser }) {
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
 
-  const { transactions: allTransactions } = stackAdminApp.useTransactions({ limit: TRANSACTIONS_PAGE_SIZE });
-
-  const userTransactions = useMemo(
-    () => allTransactions.filter((t) => transactionTouchesUser(t, user.id)),
-    [allTransactions, user.id],
-  );
+  const { transactions: userTransactions } = stackAdminApp.useTransactions({
+    limit: TRANSACTIONS_PAGE_SIZE,
+    customerType: "user",
+    customerId: user.id,
+  });
 
   const userItemIds = useMemo(
     () =>

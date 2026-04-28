@@ -83,6 +83,7 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
       limit?: number,
       type?: TransactionType,
       customerType?: 'user' | 'team' | 'custom',
+      customerId?: string,
     }],
     { transactions: Transaction[], nextCursor: string | null },
     true

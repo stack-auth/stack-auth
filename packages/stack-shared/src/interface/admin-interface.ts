@@ -802,12 +802,13 @@ export class StackAdminInterface extends StackServerInterface {
     return await response.json();
   }
 
-  async listTransactions(params?: { cursor?: string, limit?: number, type?: TransactionType, customerType?: 'user' | 'team' | 'custom' }): Promise<{ transactions: Transaction[], nextCursor: string | null }> {
+  async listTransactions(params?: { cursor?: string, limit?: number, type?: TransactionType, customerType?: 'user' | 'team' | 'custom', customerId?: string }): Promise<{ transactions: Transaction[], nextCursor: string | null }> {
     const qs = new URLSearchParams();
     if (params?.cursor) qs.set('cursor', params.cursor);
     if (typeof params?.limit === 'number') qs.set('limit', String(params.limit));
     if (params?.type) qs.set('type', params.type);
     if (params?.customerType) qs.set('customer_type', params.customerType);
+    if (params?.customerId) qs.set('customer_id', params.customerId);
     const response = await this.sendAdminRequest(
       `/internal/payments/transactions${qs.size ? `?${qs.toString()}` : ''}`,
       { method: 'GET' },
