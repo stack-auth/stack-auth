@@ -5,6 +5,9 @@ import { FilterUndefined, filterUndefined } from "@stackframe/stack-shared/dist/
 import { getRelativePart } from "@stackframe/stack-shared/dist/utils/urls";
 import { notFound, redirect, RedirectType, usePathname, useSearchParams } from 'next/navigation'; // THIS_LINE_PLATFORM next
 import { useMemo } from 'react';
+/* IF_PLATFORM react
+import { useEffect, useRef } from 'react';
+// END_PLATFORM */
 import { SignIn, SignUp, StackServerApp } from "..";
 import { useStackApp } from "../lib/hooks";
 import { HandlerUrls, StackClientApp, stackAppInternalsSymbol } from "../lib/stack-app";
@@ -230,8 +233,12 @@ export function StackHandlerClient(props: BaseHandlerProps & Partial<RouteProps>
   const currentLocation = pathname;
   const searchParamsSource = searchParamsFromHook;
   /* ELSE_IF_PLATFORM react
+  const navigate = stackApp.useNavigate();
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
   const currentLocation = props.location ?? window.location.pathname;
   const searchParamsSource = new URLSearchParams(window.location.search);
+  const redirectTargets: (string | undefined)[] = [];
   END_PLATFORM */
 
   const { path, searchParams, handlerPath } = useMemo(() => {
@@ -278,7 +285,7 @@ export function StackHandlerClient(props: BaseHandlerProps & Partial<RouteProps>
     // IF_PLATFORM next
     redirect(toAbsoluteOrRelativeRedirectTarget(urlObj), RedirectType.replace);
     /* ELSE_IF_PLATFORM react
-    window.location.href = toAbsoluteOrRelativeRedirectTarget(urlObj);
+    redirectTargets.push(toAbsoluteOrRelativeRedirectTarget(urlObj));
     END_PLATFORM */
   };
 
@@ -312,10 +319,37 @@ export function StackHandlerClient(props: BaseHandlerProps & Partial<RouteProps>
     // IF_PLATFORM next
     redirect(result.redirect, RedirectType.replace);
     /* ELSE_IF_PLATFORM react
-    window.location.href = result.redirect;
-    return null;
+    redirectTargets.push(result.redirect);
     END_PLATFORM */
   }
+
+  /* IF_PLATFORM react
+  const redirectTarget = redirectTargets[0];
+  const shouldRenderRedirectFallback = redirectTarget != null && stackApp[stackAppInternalsSymbol].getRedirectMethod() === "none";
+  useEffect(() => {
+    if (redirectTarget == null || shouldRenderRedirectFallback) {
+      return;
+    }
+    navigateRef.current(redirectTarget);
+  }, [redirectTarget, shouldRenderRedirectFallback]);
+
+  if (redirectTarget != null && shouldRenderRedirectFallback) {
+    return (
+      <MessageCard
+        title="Continue"
+        fullPage={props.fullPage}
+        primaryButtonText="Continue"
+        primaryAction={() => window.location.assign(redirectTarget)}
+      >
+        Continue to the next page.
+      </MessageCard>
+    );
+  }
+
+  if (redirectTarget != null) {
+    return null;
+  }
+  END_PLATFORM */
 
   return result;
 }
