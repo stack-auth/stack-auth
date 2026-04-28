@@ -3,7 +3,7 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { ClickHouseError } from "@clickhouse/client";
 import { UserActivityResponseBodySchema } from "@stackframe/stack-shared/dist/interface/admin-metrics";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { StackAssertionError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 
 // Per-user activity heatmap window. Sized to match the 22×16 dashboard grid
 // so every cell maps to exactly one day and we never truncate or pad awkwardly
@@ -44,7 +44,7 @@ export const GET = createSmartRouteHandler({
     const untilExclusive = new Date(todayUtc.getTime() + ONE_DAY_MS);
     const since = new Date(todayUtc.getTime() - (USER_ACTIVITY_WINDOW_DAYS - 1) * ONE_DAY_MS);
 
-    let rows: { day: string, activity: string | number }[] = [];
+    let rows: { day: string, activity: string | number }[];
     try {
       const clickhouseClient = getClickhouseAdminClient();
       const result = await clickhouseClient.query({
@@ -72,14 +72,11 @@ export const GET = createSmartRouteHandler({
       });
       rows = await result.json();
     } catch (error) {
-      // Swallow real ClickHouse errors — that's the "analytics not enabled for
-      // this project / transient query failure" path. Anything else is a
-      // programming bug and should propagate to the smart route handler.
       if (!(error instanceof ClickHouseError)) {
         throw error;
       }
       captureError("internal-user-activity-clickhouse-fallback", new StackAssertionError(
-        "Falling back to empty user activity due to ClickHouse query failure.",
+        "Failed to load user activity due to ClickHouse query failure.",
         {
           cause: error,
           projectId: tenancy.project.id,
@@ -87,6 +84,7 @@ export const GET = createSmartRouteHandler({
           userId,
         },
       ));
+      throw new StatusError(StatusError.ServiceUnavailable, "Analytics activity is temporarily unavailable.");
     }
 
     const byDay = new Map<string, number>();
