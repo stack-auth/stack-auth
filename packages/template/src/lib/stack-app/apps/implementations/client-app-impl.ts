@@ -3477,6 +3477,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       ) => {
         return await this._interface.sendClientRequest(path, requestOptions, await this._getSession(), requestType);
       },
+      getRedirectMethod: () => this._redirectMethod ?? throwErr("Redirect method should have been initialized in the Stack client app constructor"),
+      redirectToUrl: async (url: string | URL, options?: { replace?: boolean }) => {
+        await this._redirectTo({ url, ...options });
+      },
       refreshOwnedProjects: async () => {
         await this._refreshOwnedProjects(await this._getSession());
       },

@@ -6,7 +6,7 @@ import { getRelativePart } from "@stackframe/stack-shared/dist/utils/urls";
 import { notFound, redirect, RedirectType, usePathname, useSearchParams } from 'next/navigation'; // THIS_LINE_PLATFORM next
 import { useMemo } from 'react';
 /* IF_PLATFORM react
-import { useEffect } from 'react';
+import { useEffect, useRef } from 'react';
 // END_PLATFORM */
 import { SignIn, SignUp, StackServerApp } from "..";
 import { useStackApp } from "../lib/hooks";
@@ -233,9 +233,11 @@ export function StackHandlerClient(props: BaseHandlerProps & Partial<RouteProps>
   const searchParamsSource = searchParamsFromHook;
   /* ELSE_IF_PLATFORM react
   const navigate = stackApp.useNavigate();
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
   const currentLocation = props.location ?? window.location.pathname;
   const searchParamsSource = new URLSearchParams(window.location.search);
-  const redirectTargets: string[] = [];
+  const redirectTargets: (string | undefined)[] = [];
   END_PLATFORM */
 
   const { path, searchParams, handlerPath } = useMemo(() => {
@@ -322,12 +324,26 @@ export function StackHandlerClient(props: BaseHandlerProps & Partial<RouteProps>
 
   /* IF_PLATFORM react
   const redirectTarget = redirectTargets[0];
+  const shouldRenderRedirectFallback = redirectTarget != null && stackApp[stackAppInternalsSymbol].getRedirectMethod() === "none";
   useEffect(() => {
-    if (redirectTarget == null) {
+    if (redirectTarget == null || shouldRenderRedirectFallback) {
       return;
     }
-    navigate(redirectTarget);
-  }, [navigate, redirectTarget]);
+    navigateRef.current(redirectTarget);
+  }, [redirectTarget, shouldRenderRedirectFallback]);
+
+  if (redirectTarget != null && shouldRenderRedirectFallback) {
+    return (
+      <MessageCard
+        title="Continue"
+        fullPage={props.fullPage}
+        primaryButtonText="Continue"
+        primaryAction={() => window.location.assign(redirectTarget)}
+      >
+        Continue to the next page.
+      </MessageCard>
+    );
+  }
 
   if (redirectTarget != null) {
     return null;

@@ -95,7 +95,7 @@ it("does not resolve signInWithOAuth after a custom redirectMethod starts naviga
     const redirectResult = clientApp.signInWithOAuth("github").then(() => "resolved");
     const result = await Promise.race([
       redirectResult,
-      new Promise<string>((resolve) => setTimeout(() => resolve("pending"), 2500)),
+      new Promise<string>((resolve) => setTimeout(() => resolve("pending"), 5000)),
     ]);
 
     expect(navigatedUrls).toHaveLength(1);
