@@ -404,9 +404,13 @@ export async function listConversationSummaries(options: {
   limit?: number,
   offset?: number,
 }) {
+  const escapedQuery = options.query?.trim().toLowerCase()
+    .replace(/\\/g, "\\\\")
+    .replace(/%/g, "\\%")
+    .replace(/_/g, "\\_");
   const searchPattern = options.query == null || options.query.trim() === ""
     ? null
-    : `%${options.query.trim().toLowerCase()}%`;
+    : `%${escapedQuery}%`;
   const limit = options.limit ?? 200;
   const offset = options.offset ?? 0;
 
@@ -466,10 +470,10 @@ export async function listConversationSummaries(options: {
       ${options.status != null ? Prisma.sql`AND c.status = ${options.status}` : Prisma.empty}
       ${searchPattern != null ? Prisma.sql`
         AND (
-          LOWER(c.subject) LIKE ${searchPattern}
-          OR LOWER(COALESCE(lm.body, '')) LIKE ${searchPattern}
-          OR LOWER(COALESCE(pu."displayName", '')) LIKE ${searchPattern}
-          OR LOWER(COALESCE(cc."value", '')) LIKE ${searchPattern}
+          LOWER(c.subject) LIKE ${searchPattern} ESCAPE '\\'
+          OR LOWER(COALESCE(lm.body, '')) LIKE ${searchPattern} ESCAPE '\\'
+          OR LOWER(COALESCE(pu."displayName", '')) LIKE ${searchPattern} ESCAPE '\\'
+          OR LOWER(COALESCE(cc."value", '')) LIKE ${searchPattern} ESCAPE '\\'
         )
       ` : Prisma.empty}
     ORDER BY COALESCE(lm."createdAt", c."createdAt") DESC, c.id DESC
