@@ -2,10 +2,12 @@
 
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { Typography } from "@stackframe/stack-ui";
-import { useEffect, useRef, useState } from "react";
-import { type StackClientApp, stackAppInternalsSymbol, useStackApp } from "..";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageCard } from "../components/message-cards/message-card";
 import { useTranslation } from "../lib/translations";
+import { stackAppInternalsSymbol } from "../lib/stack-app/common";
+import type { StackClientApp } from "../lib/stack-app/apps/interfaces/client-app";
+import { useStackApp } from "../lib/hooks";
 
 async function postCliAuthComplete(app: StackClientApp, body: Record<string, unknown>) {
   return await app[stackAppInternalsSymbol].sendRequest("/auth/cli/complete", {
@@ -32,15 +34,45 @@ function markUrlConfirmed() {
   window.history.replaceState({}, "", url.toString());
 }
 
-export function CliAuthConfirmation({ fullPage = true }: { fullPage?: boolean }) {
-  const { t } = useTranslation();
+function getError(err: unknown): Error {
+  return err instanceof Error ? err : new Error(String(err));
+}
+
+function getObjectField(data: unknown, fieldName: string): unknown {
+  return typeof data === "object" && data !== null && fieldName in data
+    ? data[fieldName as keyof typeof data]
+    : undefined;
+}
+
+function getStringField(data: unknown, fieldName: string): string | undefined {
+  const value = getObjectField(data, fieldName);
+  return typeof value === "string" ? value : undefined;
+}
+
+export type CliAuthConfirmationStatus =
+  | "idle"
+  | "invalid"
+  | "authorizing"
+  | "redirecting"
+  | "success"
+  | "error";
+
+export type CliAuthConfirmationState = {
+  status: CliAuthConfirmationStatus,
+  loginCode: string | null,
+  error: Error | null,
+  isLoading: boolean,
+  authorize: () => Promise<void>,
+  retry: () => void,
+};
+
+export function useCliAuthConfirmation(): CliAuthConfirmationState {
   const app = useStackApp();
   const user = app.useUser({ includeRestricted: true });
-  const [authorizing, setAuthorizing] = useState(false);
-  const [success, setSuccess] = useState(false);
+  const [status, setStatus] = useState<Exclude<CliAuthConfirmationStatus, "invalid">>("idle");
   const [error, setError] = useState<Error | null>(null);
   const autoCompleteRef = useRef(false);
-
+  const authorizeInProgressRef = useRef(false);
   const [loginCode] = useState(() => {
     if (typeof window === 'undefined') return null;
     return new URLSearchParams(window.location.search).get("login_code");
@@ -50,48 +82,55 @@ export function CliAuthConfirmation({ fullPage = true }: { fullPage?: boolean })
     return new URLSearchParams(window.location.search).get("confirmed") === "true";
   });
 
+  const completeWithCurrentUser = useCallback(async () => {
+    if (!loginCode) {
+      throw new Error("Missing login code in URL parameters");
+    }
+    if (!user) {
+      throw new Error("Cannot complete CLI authorization without a signed-in user");
+    }
+    const refreshToken = (await user.currentSession.getTokens()).refreshToken;
+    if (!refreshToken) {
+      throw new Error("Could not retrieve session token");
+    }
+    await completeCliAuthWithRefreshToken(app, loginCode, refreshToken);
+  }, [app, loginCode, user]);
+
   useEffect(() => {
     if (!confirmed || !user || autoCompleteRef.current) {
       return;
     }
     autoCompleteRef.current = true;
     runAsynchronouslyWithAlert(async () => {
-      setAuthorizing(true);
+      setStatus("authorizing");
       try {
-        if (!loginCode) {
-          throw new Error("Missing login code in URL parameters");
-        }
-        const refreshToken = (await user.currentSession.getTokens()).refreshToken;
-        if (!refreshToken) {
-          throw new Error("Could not retrieve session token");
-        }
-        await completeCliAuthWithRefreshToken(app, loginCode, refreshToken);
-        setSuccess(true);
+        await completeWithCurrentUser();
+        setStatus("success");
       } catch (err) {
-        setError(err as Error);
-      } finally {
-        setAuthorizing(false);
+        setError(getError(err));
+        setStatus("error");
       }
     });
-  }, [confirmed, user, loginCode, app]);
+  }, [confirmed, user, completeWithCurrentUser]);
 
-  const handleAuthorize = async () => {
-    if (authorizing) {
+  const authorize = useCallback(async () => {
+    if (authorizeInProgressRef.current) {
       return;
     }
-    setAuthorizing(true);
+    authorizeInProgressRef.current = true;
+
     try {
       if (!loginCode) {
-        throw new Error("Missing login code in URL parameters");
+        setError(new Error("Missing login code in URL parameters"));
+        setStatus("error");
+        return;
       }
 
+      setError(null);
+      setStatus("authorizing");
       if (user) {
-        const refreshToken = (await user.currentSession.getTokens()).refreshToken;
-        if (!refreshToken) {
-          throw new Error("Could not retrieve session token");
-        }
-        await completeCliAuthWithRefreshToken(app, loginCode, refreshToken);
-        setSuccess(true);
+        await completeWithCurrentUser();
+        setStatus("success");
         return;
       }
 
@@ -99,8 +138,8 @@ export function CliAuthConfirmation({ fullPage = true }: { fullPage?: boolean })
       if (!checkResult.ok) {
         throw new Error(`Failed to verify login code: ${checkResult.status} ${await checkResult.text()}`);
       }
-      const checkData = await checkResult.json();
-      const cliSessionState: string | null = checkData.cli_session_state ?? null;
+      const checkData: unknown = await checkResult.json();
+      const cliSessionState = getStringField(checkData, "cli_session_state") ?? null;
 
       if (cliSessionState === "anonymous") {
         const claimResult = await postCliAuthComplete(app, { login_code: loginCode, mode: "claim-anon-session" });
@@ -109,30 +148,59 @@ export function CliAuthConfirmation({ fullPage = true }: { fullPage?: boolean })
           throw new Error(`Failed to claim anonymous session: ${claimResult.status} ${await claimResult.text()}`);
         }
 
-        const tokens = await claimResult.json();
+        const tokens: unknown = await claimResult.json();
+        const accessToken = getStringField(tokens, "access_token");
+        const refreshToken = getStringField(tokens, "refresh_token");
+        if (!accessToken || !refreshToken) {
+          throw new Error("Anonymous CLI session claim did not return tokens");
+        }
         await app[stackAppInternalsSymbol].signInWithTokens({
-          accessToken: tokens.access_token,
-          refreshToken: tokens.refresh_token,
+          accessToken,
+          refreshToken,
         });
         // Only mark the URL as confirmed once the anon session is actually
         // bound to the browser; otherwise a failure above would leave a stale
         // confirmed=true in the URL and the auto-complete effect would later
         // bind the CLI to whichever user happens to be signed in.
         markUrlConfirmed();
+        setStatus("redirecting");
         await app.redirectToSignUp({ replace: true });
         return;
       }
 
       markUrlConfirmed();
+      setStatus("redirecting");
       await app.redirectToSignIn({ replace: true });
     } catch (err) {
-      setError(err as Error);
+      setError(getError(err));
+      setStatus("error");
     } finally {
-      setAuthorizing(false);
+      authorizeInProgressRef.current = false;
     }
-  };
+  }, [app, completeWithCurrentUser, loginCode, user]);
 
-  if (success) {
+  const retry = useCallback(() => {
+    setError(null);
+    autoCompleteRef.current = false;
+    setStatus("idle");
+  }, []);
+
+  const visibleStatus = loginCode == null ? "invalid" : status;
+  return {
+    status: visibleStatus,
+    loginCode,
+    error,
+    isLoading: visibleStatus === "authorizing" || visibleStatus === "redirecting",
+    authorize,
+    retry,
+  };
+}
+
+export function CliAuthConfirmation({ fullPage = true }: { fullPage?: boolean }) {
+  const { t } = useTranslation();
+  const cliAuth = useCliAuthConfirmation();
+
+  if (cliAuth.status === "success") {
     return (
       <MessageCard title={t("CLI Authorization Successful")} fullPage={fullPage}>
         <Typography>
@@ -142,28 +210,35 @@ export function CliAuthConfirmation({ fullPage = true }: { fullPage?: boolean })
     );
   }
 
-  if (error) {
+  if (cliAuth.status === "error") {
     return (
       <MessageCard
         title={t("Authorization Failed")}
         fullPage={fullPage}
         primaryButtonText={t("Try Again")}
-        primaryAction={() => {
-          setError(null);
-          autoCompleteRef.current = false;
-        }}
+        primaryAction={cliAuth.retry}
       >
         <Typography className="text-red-600">
           {t("Failed to authorize the CLI application:")}
         </Typography>
         <Typography className="text-red-600">
-          {error.message}
+          {cliAuth.error?.message}
         </Typography>
       </MessageCard>
     );
   }
 
-  if (confirmed && authorizing) {
+  if (cliAuth.status === "invalid") {
+    return (
+      <MessageCard title={t("Invalid CLI Authorization Link")} fullPage={fullPage}>
+        <Typography className="text-red-600">
+          {t("This CLI authorization link is missing a login code. Please return to the command line and start the login process again.")}
+        </Typography>
+      </MessageCard>
+    );
+  }
+
+  if (cliAuth.status === "authorizing" || cliAuth.status === "redirecting") {
     return (
       <MessageCard title={t("Completing Authorization...")} fullPage={fullPage}>
         <Typography>
@@ -177,8 +252,8 @@ export function CliAuthConfirmation({ fullPage = true }: { fullPage?: boolean })
     <MessageCard
       title={t("Authorize CLI Application")}
       fullPage={fullPage}
-      primaryButtonText={authorizing ? t("Authorizing...") : t("Authorize")}
-      primaryAction={handleAuthorize}
+      primaryButtonText={cliAuth.isLoading ? t("Authorizing...") : t("Authorize")}
+      primaryAction={cliAuth.authorize}
     >
       <Typography>
         {t("A command line application is requesting access to your account. Click the button below to authorize it.")}
