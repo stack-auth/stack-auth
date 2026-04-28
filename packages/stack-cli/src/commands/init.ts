@@ -16,8 +16,11 @@ import { isEmulatorImageInstalled } from "./emulator.js";
 import { detectImportPackageFromDir, renderConfigFileContent } from "@stackframe/stack-shared/dist/config-rendering";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
+const VALID_INIT_MODES = ["create", "create-cloud", "link-config", "link-cloud"] as const;
+type InitMode = typeof VALID_INIT_MODES[number];
+
 type InitOptions = {
-  mode?: "create" | "create-cloud" | "link-config" | "link-cloud",
+  mode?: InitMode,
   apps?: string,
   configFile?: string,
   selectProjectId?: string,
@@ -38,6 +41,9 @@ export function registerInitCommand(program: Command) {
     .option("--no-agent", "Skip Claude agent and print setup instructions instead")
     .option("--display-name <name>", "Project display name (used by create-cloud mode)")
     .action(async (opts: InitOptions) => {
+      if (opts.mode != null && !VALID_INIT_MODES.includes(opts.mode)) {
+        throw new CliError(`Invalid --mode: ${opts.mode}. Expected one of: ${VALID_INIT_MODES.join(", ")}.`);
+      }
       const hasFlags = opts.mode != null || opts.configFile != null || opts.selectProjectId != null;
 
       if (!hasFlags && isNonInteractiveEnv()) {
@@ -87,7 +93,7 @@ async function runInit(program: Command, opts: InitOptions) {
   let configPath: string | undefined;
   let projectId: string | undefined;
 
-  if (mode === "link" || mode === "link-config" || mode === "link-cloud") {
+  if (mode === "link-config" || mode === "link-cloud") {
     const result = await handleLink(flags, opts, outputDir, mode);
     configPath = result.configPath;
     projectId = result.projectId;
@@ -143,24 +149,8 @@ function printNextSteps(args: { mode: string, projectId?: string, dashboardUrl: 
   console.log("");
 }
 
-async function handleLink(flags: Record<string, unknown>, opts: InitOptions, outputDir: string, resolvedMode?: string): Promise<{ configPath?: string, projectId?: string }> {
-  let source: "config-file" | "cloud";
-
-  if (resolvedMode === "link-config" || opts.mode === "link-config") {
-    source = "config-file";
-  } else if (resolvedMode === "link-cloud" || opts.mode === "link-cloud") {
-    source = "cloud";
-  } else {
-    source = await select({
-      message: "How would you like to link your project?",
-      choices: [
-        { name: "Link from config file", value: "config-file" as const },
-        { name: "Link from app.stack-auth.com", value: "cloud" as const },
-      ],
-    });
-  }
-
-  if (source === "config-file") {
+async function handleLink(flags: Record<string, unknown>, opts: InitOptions, outputDir: string, resolvedMode: "link-config" | "link-cloud"): Promise<{ configPath?: string, projectId?: string }> {
+  if (resolvedMode === "link-config") {
     return await handleLinkFromConfigFile(opts);
   }
   return await handleLinkFromCloud(flags, opts, outputDir);
@@ -267,9 +257,11 @@ async function handleCreateCloud(flags: Record<string, unknown>, opts: InitOptio
   const sessionAuth = await ensureLoggedInSession(flags);
   const user = await getInternalUser(sessionAuth);
 
+  const { dashboardUrl } = resolveLoginConfig(flags as { projectId?: string });
   const newProject = await createProjectInteractively(user, {
     displayName: opts.displayName,
     defaultDisplayName: path.basename(outputDir),
+    dashboardUrl,
   });
   console.log(`\nCreated project: ${newProject.displayName} (${newProject.id})\n`);
 
@@ -284,8 +276,11 @@ async function handleLinkFromCloud(flags: Record<string, unknown>, opts: InitOpt
   let autoCreatedProjectId: string | null = null;
 
   if (projects.length === 0) {
+    if (opts.selectProjectId) {
+      throw new CliError(`Project '${opts.selectProjectId}' not found among your owned projects. Check the ID or omit --select-project-id to create a new project interactively.`);
+    }
     if (isNonInteractiveEnv()) {
-      throw new CliError("No projects found. Run `stack project create --display-name <name>` first, or set --select-project-id.");
+      throw new CliError("No projects found. Run `stack project create --display-name <name>` first.");
     }
 
     const shouldCreate = await confirm({
@@ -294,11 +289,14 @@ async function handleLinkFromCloud(flags: Record<string, unknown>, opts: InitOpt
     });
 
     if (!shouldCreate) {
-      throw new CliError("You don't own any projects. Create one at app.stack-auth.com or re-run and choose to create one.");
+      const { dashboardUrl } = resolveLoginConfig(flags as { projectId?: string });
+      throw new CliError(`You don't own any projects. Create one at ${dashboardUrl} or re-run and choose to create one.`);
     }
 
+    const { dashboardUrl } = resolveLoginConfig(flags as { projectId?: string });
     const newProject = await createProjectInteractively(user, {
       defaultDisplayName: path.basename(outputDir),
+      dashboardUrl,
     });
     console.log(`\nCreated project: ${newProject.displayName} (${newProject.id})\n`);
     projects = [newProject];

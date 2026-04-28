@@ -1,5 +1,5 @@
 import { Command } from "commander";
-import { resolveSessionAuth } from "../lib/auth.js";
+import { resolveLoginConfig, resolveSessionAuth } from "../lib/auth.js";
 import { getInternalUser } from "../lib/app.js";
 import { createProjectInteractively } from "../lib/create-project.js";
 
@@ -38,9 +38,11 @@ export function registerProjectCommand(program: Command) {
       const flags = program.opts();
       const auth = resolveSessionAuth(flags);
       const user = await getInternalUser(auth);
+      const { dashboardUrl } = resolveLoginConfig(flags as { projectId?: string });
 
       const newProject = await createProjectInteractively(user, {
         displayName: opts.displayName,
+        dashboardUrl,
       });
 
       if (program.opts().json) {

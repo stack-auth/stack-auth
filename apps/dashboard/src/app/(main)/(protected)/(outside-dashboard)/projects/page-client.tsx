@@ -66,6 +66,7 @@ export default function PageClient() {
   const [absoluteConfigFilePath, setAbsoluteConfigFilePath] = useState("");
   const [openingConfigFile, setOpeningConfigFile] = useState(false);
   const [recentConfigProjects, setRecentConfigProjects] = useState<Array<{ project_id: string, absolute_file_path: string, display_name: string }>>([]);
+  const [recentConfigProjectsError, setRecentConfigProjectsError] = useState(false);
   const [projectStatuses, setProjectStatuses] = useState<Map<string, ProjectOnboardingStatus>>(new Map());
   const [loadingProjectStatuses, setLoadingProjectStatuses] = useState(true);
   const router = useRouter();
@@ -122,19 +123,29 @@ export default function PageClient() {
   useEffect(() => {
     if (!openConfigFileDialog || !isLocalEmulator) return;
     let cancelled = false;
+    setRecentConfigProjectsError(false);
     runAsynchronously(async () => {
       try {
         const response = await appInternals.sendRequest("/internal/local-emulator/project", { method: "GET" }, "client");
-        if (!response.ok) return;
+        if (!response.ok) {
+          if (!cancelled) {
+            setRecentConfigProjects([]);
+            setRecentConfigProjectsError(true);
+          }
+          return;
+        }
         const body = await response.json() as { projects?: Array<{ project_id?: string, absolute_file_path?: string, display_name?: string }> };
-        if (cancelled || !body.projects) return;
-        const parsed = body.projects
+        if (cancelled) return;
+        const parsed = (body.projects ?? [])
           .filter((p): p is { project_id: string, absolute_file_path: string, display_name: string } =>
             typeof p.project_id === "string" && typeof p.absolute_file_path === "string" && typeof p.display_name === "string",
           );
         setRecentConfigProjects(parsed);
       } catch {
-        if (!cancelled) setRecentConfigProjects([]);
+        if (!cancelled) {
+          setRecentConfigProjects([]);
+          setRecentConfigProjectsError(true);
+        }
       }
     });
     return () => {
@@ -148,7 +159,7 @@ export default function PageClient() {
       return "Tip: in Finder, right-click the file → hold ⌥ Option → Copy as Pathname, then paste here.";
     }
     if (/Win/i.test(p)) {
-      return "Tip: in File Explorer, Shift + right-click the file → Copy as path, then paste here.";
+      return "Note: the emulator runs in a Linux VM and needs a POSIX path. From WSL, run `wslpath -a stack.config.ts` (or `realpath stack.config.ts`) and paste that here.";
     }
     return "Tip: from your project folder, run `realpath stack.config.ts` in a terminal.";
   }, []);
@@ -160,11 +171,14 @@ export default function PageClient() {
       return;
     }
 
-    const hasUnixAbsolutePath = trimmedPath.startsWith("/");
-    const hasWindowsAbsolutePath = /^[a-zA-Z]:[\\/]/.test(trimmedPath);
-    const hasWindowsUncPath = trimmedPath.startsWith("\\\\");
-    if (!hasUnixAbsolutePath && !hasWindowsAbsolutePath && !hasWindowsUncPath) {
-      toast({ description: "The path must be absolute (e.g. /Users/you/project or /Users/you/project/stack.config.ts).", variant: "destructive" });
+    if (!trimmedPath.startsWith("/")) {
+      const looksWindows = /^[a-zA-Z]:[\\/]/.test(trimmedPath) || trimmedPath.startsWith("\\\\");
+      toast({
+        description: looksWindows
+          ? "The local emulator runs in a Linux VM and only accepts POSIX paths (e.g. /Users/you/project). Windows paths aren't supported — use WSL or the in-VM path."
+          : "The path must be absolute (e.g. /Users/you/project or /Users/you/project/stack.config.ts).",
+        variant: "destructive",
+      });
       return;
     }
 
@@ -334,6 +348,11 @@ export default function PageClient() {
                   ))}
                 </div>
               </div>
+            )}
+            {recentConfigProjectsError && recentConfigProjects.length === 0 && (
+              <Typography variant="secondary" className="text-xs text-destructive">
+                Couldn&apos;t load recent projects. Paste a path below to continue.
+              </Typography>
             )}
             <Input
               autoFocus

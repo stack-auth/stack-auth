@@ -219,8 +219,14 @@ export const POST = createSmartRouteHandler({
     if (!isLocalEmulatorEnabled()) {
       throw new StatusError(StatusError.BadRequest, LOCAL_EMULATOR_ONLY_ENDPOINT_MESSAGE);
     }
-    if (!path.isAbsolute(req.body.absolute_file_path)) {
-      throw new StatusError(StatusError.BadRequest, "absolute_file_path must be an absolute path.");
+    if (!path.posix.isAbsolute(req.body.absolute_file_path)) {
+      const looksWindows = path.win32.isAbsolute(req.body.absolute_file_path);
+      throw new StatusError(
+        StatusError.BadRequest,
+        looksWindows
+          ? "absolute_file_path must be a POSIX absolute path. The local emulator runs in a Linux VM and does not accept Windows-style paths. Use the in-VM path or run the emulator from WSL."
+          : "absolute_file_path must be an absolute path.",
+      );
     }
 
     const inputPath = path.resolve(req.body.absolute_file_path);
