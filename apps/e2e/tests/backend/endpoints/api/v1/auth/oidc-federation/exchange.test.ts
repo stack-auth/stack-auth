@@ -179,7 +179,7 @@ it("rejects when no trust policies are enabled", async ({ expect }) => {
   const token = await mockIdp.signToken({ sub: "workload-1" }, { audience: "anything" });
   const response = await postExchange({ subject_token: token, projectId });
   expect(response.status).toBe(400);
-  expect(response.body.error).toBe("invalid_grant");
+  expect(response.body).toBe("invalid_grant");
 });
 
 it("rejects when the audience doesn't match the policy", async ({ expect }) => {
@@ -217,7 +217,7 @@ it("rejects when a StringEquals claim condition fails", async ({ expect }) => {
   );
   const response = await postExchange({ subject_token: token, projectId });
   expect(response.status).toBe(400);
-  expect(response.body.error).toBe("invalid_grant");
+  expect(response.body).toBe("invalid_grant");
   expect(JSON.stringify(response.body)).not.toContain("StringEquals");
 });
 
