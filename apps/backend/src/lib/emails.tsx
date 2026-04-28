@@ -6,6 +6,7 @@ import { UsersCrud } from '@stackframe/stack-shared/dist/interface/crud/users';
 import { getEnvBoolean, getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import { Json } from '@stackframe/stack-shared/dist/utils/json';
+import { generateUuid } from '@stackframe/stack-shared/dist/utils/uuids';
 import { runEmailQueueStep, serializeRecipient } from './email-queue-step';
 import { LowLevelEmailConfig, isSecureEmailPort } from './emails-low-level';
 import { Tenancy } from './tenancies';
@@ -54,6 +55,7 @@ export async function sendEmailToMany(options: {
   if (options.recipients.length > 0) {
     await globalPrismaClient.$executeRaw(Prisma.sql`
       INSERT INTO "EmailOutbox" (
+        "id",
         "tenancyId",
         "updatedAt",
         "tsxSource",
@@ -69,6 +71,7 @@ export async function sendEmailToMany(options: {
         "overrideSubject",
         "overrideNotificationCategoryId"
       ) VALUES ${Prisma.join(options.recipients.map(recipient => Prisma.sql`(
+        ${generateUuid()}::uuid,
         ${options.tenancy.id}::uuid,
         NOW(),
         ${options.tsxSource},
