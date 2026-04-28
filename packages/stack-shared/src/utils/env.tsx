@@ -76,3 +76,22 @@ export function getNextRuntime() {
 export function getNodeEnvironment() {
   return getEnvVariable("NODE_ENV", "");
 }
+
+/**
+ * Browser-safe access to `process.env` for server-only or genuinely dynamic
+ * env-var lookups. Returns `undefined` when `process` is not defined (e.g. in
+ * a Vite browser bundle without a `process` shim).
+ *
+ * Note: uses `process.env[name]` (bracket form), which is NOT recognized by
+ * Next.js / webpack DefinePlugin for compile-time inlining. If you need
+ * build-time inlining for a `NEXT_PUBLIC_*` var, use the literal dot-form at
+ * the call site, guarded with `typeof process`:
+ *
+ *   const value = (typeof process !== "undefined" ? process.env.NEXT_PUBLIC_FOO : undefined);
+ */
+export function getProcessEnv(name: string): string | undefined {
+  if (typeof process === "undefined" || typeof process.env === "undefined") {
+    return undefined;
+  }
+  return process.env[name];
+}
