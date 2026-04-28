@@ -2,6 +2,12 @@
 
 ---
 
+## 4/28/26
+
+### Bug Fixes
+- Fixed `ReferenceError: process is not defined` errors when using `@stackframe/react` in Vite apps and other bundlers without automatic `process` shims
+- Resolved related sign-in flow errors like `clientSecret must not be empty` that occurred from this issue
+
 ## 1/23/26
 
 ### Payments
