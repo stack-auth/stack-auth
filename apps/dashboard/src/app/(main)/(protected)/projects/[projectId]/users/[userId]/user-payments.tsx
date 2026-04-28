@@ -7,8 +7,8 @@ import {
   DesignMetricCard,
 } from "@/components/design-components";
 import { Skeleton } from "@/components/ui";
-import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, CoinsIcon, GearIcon, PackageIcon, ProhibitIcon, QuestionIcon, ReceiptIcon, ShoppingCartIcon, ShuffleIcon, StackIcon } from "@phosphor-icons/react";
 import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
+import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, CoinsIcon, GearIcon, PackageIcon, ProhibitIcon, QuestionIcon, ReceiptIcon, ShoppingCartIcon, ShuffleIcon, StackIcon } from "@phosphor-icons/react";
 import type { ServerUser } from "@stackframe/stack";
 import type { Transaction, TransactionEntry, TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
@@ -176,7 +176,6 @@ function deriveActiveGrants(transactions: Transaction[], userId: string): Active
 
   const grants: ActiveGrant[] = [];
   for (const transaction of transactions) {
-    if (transaction.adjusted_by.length > 0) continue;
     transaction.entries.forEach((entry, entryIndex) => {
       if (!isProductGrantEntry(entry)) return;
       if (entry.customer_type !== "user" || entry.customer_id !== userId) return;
