@@ -1,5 +1,6 @@
-import { EmailOutboxCreatedWith } from "@/generated/prisma/client";
+import { EmailOutboxCreatedWith, Prisma } from "@/generated/prisma/client";
 import { globalPrismaClient } from "@/prisma-client";
+import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { afterAll, describe, expect, it } from "vitest";
 import { _forTesting } from "./email-queue-step";
 import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "./tenancies";
@@ -23,31 +24,65 @@ describe.sequential("failEmailsStuckInSending", () => {
     nextSendRetryAt?: Date | null,
   }) => {
     const tenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID);
-    const created = await globalPrismaClient.emailOutbox.create({
-      data: {
-        tenancyId: tenancy.id,
-        tsxSource: recoveryTestFilter.tsxSource,
-        themeId: null,
-        isHighPriority: false,
-        to: { type: "custom-emails", emails: ["stuck-test@example.com"] },
-        extraRenderVariables: {},
-        shouldSkipDeliverabilityCheck: true,
-        createdWith: EmailOutboxCreatedWith.PROGRAMMATIC_CALL,
-        scheduledAt: new Date(0),
-        isQueued: true,
-        renderedByWorkerId: "00000000-0000-0000-0000-000000000000",
-        startedRenderingAt: new Date(0),
-        finishedRenderingAt: new Date(0),
-        renderedHtml: "<p>stuck</p>",
-        renderedText: "stuck",
-        renderedSubject: "stuck",
-        renderedIsTransactional: false,
-        startedSendingAt: params.startedSendingAt,
-        finishedSendingAt: params.finishedSendingAt ?? null,
-        sendRetries: params.sendRetries ?? 0,
-        nextSendRetryAt: params.nextSendRetryAt ?? null,
-        isPaused: params.isPaused ?? false,
-      },
+    const id = generateUuid();
+    await globalPrismaClient.$executeRaw(Prisma.sql`
+      INSERT INTO "EmailOutbox" (
+        "tenancyId",
+        "id",
+        "createdAt",
+        "updatedAt",
+        "tsxSource",
+        "themeId",
+        "isHighPriority",
+        "to",
+        "extraRenderVariables",
+        "shouldSkipDeliverabilityCheck",
+        "createdWith",
+        "scheduledAt",
+        "isQueued",
+        "renderedByWorkerId",
+        "startedRenderingAt",
+        "finishedRenderingAt",
+        "renderedHtml",
+        "renderedText",
+        "renderedSubject",
+        "renderedIsTransactional",
+        "startedSendingAt",
+        "finishedSendingAt",
+        "sendRetries",
+        "nextSendRetryAt",
+        "isPaused"
+      )
+      VALUES (
+        ${tenancy.id}::uuid,
+        ${id}::uuid,
+        NOW(),
+        NOW(),
+        ${recoveryTestFilter.tsxSource},
+        NULL,
+        FALSE,
+        ${JSON.stringify({ type: "custom-emails", emails: ["stuck-test@example.com"] })}::jsonb,
+        ${JSON.stringify({})}::jsonb,
+        TRUE,
+        ${EmailOutboxCreatedWith.PROGRAMMATIC_CALL}::"EmailOutboxCreatedWith",
+        ${new Date(0)},
+        TRUE,
+        ${"00000000-0000-0000-0000-000000000000"}::uuid,
+        ${new Date(0)},
+        ${new Date(0)},
+        ${"<p>stuck</p>"},
+        ${"stuck"},
+        ${"stuck"},
+        FALSE,
+        ${params.startedSendingAt},
+        ${params.finishedSendingAt ?? null},
+        ${params.sendRetries ?? 0},
+        ${params.nextSendRetryAt ?? null},
+        ${params.isPaused ?? false}
+      )
+    `);
+    const created = await globalPrismaClient.emailOutbox.findUniqueOrThrow({
+      where: { tenancyId_id: { tenancyId: tenancy.id, id } },
     });
     createdIds.push({ tenancyId: created.tenancyId, id: created.id });
     return created;
