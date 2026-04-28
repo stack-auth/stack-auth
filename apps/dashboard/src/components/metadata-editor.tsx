@@ -17,8 +17,11 @@ type MetadataEditorProps = {
   onUpdate?: (value: Json) => Promise<void>,
 };
 
+function formatJson(json: Json) {
+  return JSON.stringify(json, null, 2);
+}
+
 export function MetadataEditor({ title, initialValue, onUpdate, hint }: MetadataEditorProps) {
-  const formatJson = (json: Json) => JSON.stringify(json, null, 2);
   const [hasChanged, setHasChanged] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
 
@@ -32,6 +35,11 @@ export function MetadataEditor({ title, initialValue, onUpdate, hint }: Metadata
   const parsedValue = useMemo(() => {
     return parseJson(value);
   }, [value]);
+
+  useEffect(() => {
+    setValue(formatJson(initialJson));
+    setHasChanged(false);
+  }, [initialJson]);
 
   // Ensure proper mounting lifecycle
   useEffect(() => {
