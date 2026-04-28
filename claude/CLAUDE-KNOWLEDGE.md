@@ -392,3 +392,9 @@ A: Use a strict root `postinstall` script that rewrites only Next `>=16` app-pag
 
 Q: Why can Turbo-pruned Docker builds fail with `Cannot find module /app/scripts/postinstall-patch-next-async-debug-info.mjs` during `pnpm install`?
 A: In pruned builder stages, we copy `/app/out/json` and run `pnpm install` before copying `/app/out/full`. The root `package.json` still runs `postinstall: node ./scripts/postinstall-patch-next-async-debug-info.mjs`, but that script is not present yet. Fix by copying `scripts/postinstall-patch-next-async-debug-info.mjs` into the builder stage before `pnpm install` (for all Dockerfiles using the prune pattern).
+
+Q: What is the simple custom-page DX for CLI auth confirmation?
+A: Add `cliAuthConfirm` as a normal handler URL target and expose `useCliAuthConfirmation()` from the template package. Custom pages should consume the hook's `status`, `error`, `isLoading`, `authorize()`, and `retry()` instead of calling `/auth/cli/complete` directly. The hook owns reading `login_code`, preserving `confirmed=true`, claiming anonymous CLI sessions, redirecting through sign-in/sign-up, and completing authorization with the current refresh token.
+
+Q: How should the CLI auth login URL be constructed in template tests?
+A: Do not import the concrete template `_StackClientAppImpl` directly from Vitest just to test `promptCliLogin`; it trips the compile-time client-version sentinel. Put the URL construction in a small helper such as `buildCliAuthConfirmUrl()` and have `promptCliLogin` call that helper. Then unit-test the helper with relative/custom `cliAuthConfirm` targets.
