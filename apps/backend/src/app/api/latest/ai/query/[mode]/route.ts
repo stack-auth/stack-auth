@@ -63,6 +63,13 @@ export const POST = createSmartRouteHandler({
     const isDocsOrSearch = systemPromptId === "docs-ask-ai" || systemPromptId === "command-center-ask-ai";
     let systemPrompt = getFullSystemPrompt(systemPromptId);
     if (isDocsOrSearch) {
+      // Stuffing the entire verified QA corpus into the system prompt on every
+      // request is intentionally naive — it grows monotonically with each new
+      // QA pair and re-fetches/re-sends content that's mostly unchanged across
+      // requests. Once the corpus is large enough to matter we should swap to
+      // an embedding-based retriever (top-k by query similarity) and/or cache
+      // the assembled context, but for the current corpus size this is fine
+      // and lets the model see everything
       systemPrompt += await getVerifiedQaContext();
     }
     const tools = await getTools(toolNames, { auth: fullReq.auth, targetProjectId: projectId });
