@@ -181,6 +181,22 @@ export async function updateManagedEmailDomainWebhookStatus(options: {
   return mapRow(rows[0]!);
 }
 
+export async function demoteOtherAppliedManagedEmailDomains(options: {
+  tenancyId: string,
+  keepId: string,
+}): Promise<void> {
+  await globalPrismaClient.$queryRaw(Prisma.sql`
+    UPDATE "ManagedEmailDomain"
+    SET
+      "status" = 'VERIFIED'::"ManagedEmailDomainStatus",
+      "appliedAt" = NULL,
+      "updatedAt" = CURRENT_TIMESTAMP
+    WHERE "tenancyId" = ${options.tenancyId}
+      AND "id" <> ${options.keepId}
+      AND "status" = 'APPLIED'::"ManagedEmailDomainStatus"
+  `);
+}
+
 export async function markManagedEmailDomainApplied(id: string): Promise<ManagedEmailDomain> {
   const rows = await globalPrismaClient.$queryRaw<ManagedEmailDomainRow[]>(Prisma.sql`
     UPDATE "ManagedEmailDomain"
