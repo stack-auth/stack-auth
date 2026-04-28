@@ -77,6 +77,9 @@ const getHostedPagePathForHandlerName = (handlerName: keyof HandlerUrls): string
     case "teamInvitation": {
       return "team-invitation";
     }
+    case "cliAuthConfirm": {
+      return "cli-auth-confirm";
+    }
     case "mfa": {
       return "mfa";
     }
@@ -304,6 +307,12 @@ export const resolveHandlerUrls = (options: { urls: HandlerUrlOptions | undefine
       target: configuredUrls?.teamInvitation ?? defaultTarget,
       fallbackPath: joinHandlerComponentPath(handlerComponentBasePath, "team-invitation"),
       handlerName: "teamInvitation",
+      projectId: options.projectId,
+    }),
+    cliAuthConfirm: resolveUrlTarget({
+      target: configuredUrls?.cliAuthConfirm ?? defaultTarget,
+      fallbackPath: joinHandlerComponentPath(handlerComponentBasePath, "cli-auth-confirm"),
+      handlerName: "cliAuthConfirm",
       projectId: options.projectId,
     }),
     mfa: resolveUrlTarget({

@@ -13,6 +13,7 @@ import { useTranslation } from "../lib/translations";
 export function OAuthCallback({ fullPage }: { fullPage?: boolean }) {
   const { t } = useTranslation();
   const app = useStackApp();
+  const navigate = app.useNavigate();
   const called = useRef(false);
   const [showRedirectLink, setShowRedirectLink] = useState(false);
 
@@ -30,13 +31,13 @@ export function OAuthCallback({ fullPage }: { fullPage?: boolean }) {
         errorUrl.searchParams.set("errorCode", e.errorCode);
         errorUrl.searchParams.set("message", e.message);
         errorUrl.searchParams.set("details", JSON.stringify(e.details ?? {}));
-        window.location.replace(errorUrl.toString());
+        navigate(errorUrl.toString());
         return;
       }
       captureError("<OAuthCallback />", e);
-      window.location.replace(new URL(app.urls.error, window.location.href).toString());
+      navigate(new URL(app.urls.error, window.location.href).toString());
     }
-  }), []);
+  }), [app, navigate]);
 
   useEffect(() => {
     setTimeout(() => setShowRedirectLink(true), 3000);
