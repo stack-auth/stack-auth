@@ -118,6 +118,8 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
       sendAnalyticsEventBatch(body: string, options: { keepalive: boolean }): Promise<Result<Response, Error>>,
       addRequestListener(listener: RequestListener): () => void,
       sendRequest(path: string, requestOptions: RequestInit, requestType?: "client" | "server" | "admin"): Promise<Response>,
+      getRedirectMethod(): RedirectMethod,
+      redirectToUrl(url: string | URL, options?: { replace?: boolean }): Promise<void>,
       signInWithTokens(tokens: { accessToken: string, refreshToken: string }): Promise<void>,
     },
   }
