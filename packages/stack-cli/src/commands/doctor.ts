@@ -327,8 +327,8 @@ function layoutWrapsStackProviderCheck(): CheckSpec {
       }
 
       const content = fs.readFileSync(foundPath, "utf-8");
-      const importsStackProvider = /from\s+["']@stackframe\/stack["']/.test(content)
-        && /\bStackProvider\b/.test(content);
+      const importsStackProvider =
+        /import\s*\{[^}]*\bStackProvider\b[^}]*\}\s*from\s*["']@stackframe\/stack["']/.test(content);
       const wrapsJsx = /<StackProvider\b/.test(content);
 
       const rel = path.relative(ctx.projectDir, foundPath);
@@ -379,7 +379,7 @@ function envVarsCheck(specs: EnvVarSpec[]): CheckSpec {
       const missingSoft: string[] = [];
       for (const spec of specs) {
         const present = spec.names.some((n) => {
-          const v = n in fromFiles ? fromFiles[n] : (process.env[n] ?? "");
+          const v = fromFiles.has(n) ? fromFiles.get(n)! : (process.env[n] ?? "");
           return v.trim().length > 0;
         });
         if (!present) {
@@ -481,9 +481,9 @@ function describeValue(v: unknown): string {
   return typeof v;
 }
 
-function readEnvFiles(projectDir: string): Record<string, string> {
+function readEnvFiles(projectDir: string): Map<string, string> {
   const files = [".env.local", ".env"];
-  const result: Record<string, string> = {};
+  const result = new Map<string, string>();
   for (const f of files) {
     const full = path.join(projectDir, f);
     if (!fs.existsSync(full)) continue;
@@ -493,12 +493,19 @@ function readEnvFiles(projectDir: string): Record<string, string> {
       if (!trimmed || trimmed.startsWith("#")) continue;
       const eq = trimmed.indexOf("=");
       if (eq < 0) continue;
-      const key = trimmed.slice(0, eq).trim();
-      let value = trimmed.slice(eq + 1).trim();
-      if ((value.startsWith("\"") && value.endsWith("\"")) || (value.startsWith("'") && value.endsWith("'"))) {
-        value = value.slice(1, -1);
+      let key = trimmed.slice(0, eq).trim();
+      if (key.startsWith("export ")) key = key.slice("export ".length).trim();
+      const rawValue = trimmed.slice(eq + 1).trimStart();
+      let value: string;
+      const quote = rawValue.startsWith("\"") ? "\"" : rawValue.startsWith("'") ? "'" : null;
+      if (quote) {
+        const end = rawValue.indexOf(quote, 1);
+        value = end > 0 ? rawValue.slice(1, end) : rawValue.slice(1);
+      } else {
+        const commentIdx = rawValue.search(/\s#/);
+        value = (commentIdx >= 0 ? rawValue.slice(0, commentIdx) : rawValue).trimEnd();
       }
-      if (!(key in result)) result[key] = value;
+      if (!result.has(key)) result.set(key, value);
     }
   }
   return result;
