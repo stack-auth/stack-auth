@@ -6,6 +6,7 @@ import { Link } from "@/components/link";
 import { useRouter } from "@/components/router";
 import { cn, Typography } from "@/components/ui";
 import { ALL_APPS_FRONTEND, type AppId, getAppPath } from "@/lib/apps-frontend";
+import { getEnabledAppIds } from "@/lib/apps-utils";
 import {
   type MetricsEmailOverview,
   type MetricsRecentEmail,
@@ -16,7 +17,6 @@ import { CompassIcon, EnvelopeIcon, EnvelopeOpenIcon, GlobeIcon, SquaresFourIcon
 import useResizeObserver from '@react-hook/resize-observer';
 import { useUser } from "@stackframe/stack";
 import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
-import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import { ErrorBoundary } from "next/dist/client/components/error-boundary";
 import { type ElementType, Suspense, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
@@ -997,9 +997,7 @@ function MetricsContent({
   const router = useRouter();
   const data = useMetricsOrThrow(adminApp, includeAnonymous);
   const installedApps = useMemo(
-    () => typedEntries(config.apps.installed)
-      .filter(([_, appConfig]) => appConfig?.enabled === true)
-      .map(([appId]) => appId as AppId),
+    () => getEnabledAppIds(config.apps.installed),
     [config.apps.installed]
   );
   const analyticsEnabled = installedApps.includes("analytics");
