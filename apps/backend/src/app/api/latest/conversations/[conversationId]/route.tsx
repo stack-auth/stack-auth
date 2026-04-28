@@ -57,7 +57,7 @@ export const PATCH = createSmartRouteHandler({
     auth: authenticatedUserAuthSchema,
     params: conversationIdRouteParamsSchema,
     body: yupObject({
-      message: yupString().trim().min(1).defined(),
+      message: yupString().trim().min(1).max(5000).defined(),
     }).defined(),
     method: yupString().oneOf(["PATCH"]).defined(),
   }),
