@@ -1,6 +1,7 @@
 ---
 title: CLI Authentication
 description: How to authenticate a command line application using Stack Auth
+lastModified: "2026-04-28"
 ---
 
 If you're building a command line application that runs in a terminal, you can use Stack Auth to let your users log in to their accounts.
@@ -59,5 +60,87 @@ def get_user_object(access_token):
 user = get_user_object(get_access_token(refresh_token))
 print("The user is logged in as", user['display_name'] or user['primary_email'])
 ```
+
+## Customizing the CLI Auth Confirmation Page
+
+When users authenticate your CLI application, they're redirected to a browser page to confirm the authorization. Stack Auth provides this page at `/handler/cli-auth-confirm` by default, but you can create a custom page to match your application's design.
+
+### Using the `useCliAuthConfirmation` Hook
+
+The `useCliAuthConfirmation()` hook gives you everything you need to build a custom CLI auth confirmation page. It handles the protocol details internally, including reading the login code from the URL, managing authentication state, and completing the authorization.
+
+```tsx title="app/cli-authorize/page.tsx"
+'use client';
+import { useCliAuthConfirmation } from "@stackframe/stack";
+
+export default function CustomCliAuthConfirmPage() {
+  const cliAuth = useCliAuthConfirmation();
+
+  if (cliAuth.status === "invalid") {
+    return (
+      <div>
+        <h1>Invalid CLI authorization link</h1>
+        <p>This link is missing a login code. Please return to the CLI and try again.</p>
+      </div>
+    );
+  }
+
+  if (cliAuth.status === "success") {
+    return (
+      <div>
+        <h1>CLI Authorized</h1>
+        <p>You can close this window and return to the command line.</p>
+      </div>
+    );
+  }
+
+  if (cliAuth.status === "error") {
+    return (
+      <div>
+        <h1>Authorization Failed</h1>
+        <p>{cliAuth.error?.message}</p>
+        <button onClick={cliAuth.retry}>Try again</button>
+      </div>
+    );
+  }
+
+  return (
+    <div>
+      <h1>Authorize CLI Application</h1>
+      <p>A command line application is requesting access to your account.</p>
+      <button onClick={cliAuth.authorize} disabled={cliAuth.isLoading}>
+        {cliAuth.isLoading ? "Authorizing..." : "Authorize"}
+      </button>
+    </div>
+  );
+}
+```
+
+### Hook Return Values
+
+The `useCliAuthConfirmation()` hook returns an object with:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `status` | `"idle" \| "invalid" \| "authorizing" \| "redirecting" \| "success" \| "error"` | Current state of the authorization flow |
+| `error` | `Error \| null` | Error object if status is `"error"` |
+| `isLoading` | `boolean` | `true` when status is `"authorizing"` or `"redirecting"` |
+| `authorize` | `() => Promise<void>` | Function to start the authorization process |
+| `retry` | `() => void` | Function to reset the state and try again |
+
+### Configuring the Custom URL
+
+After creating your custom page, configure Stack Auth to use it:
+
+```tsx title="stack/server.ts"
+export const stackServerApp = new StackServerApp({
+  // ...
+  urls: {
+    cliAuthConfirm: '/cli-authorize',
+  }
+});
+```
+
+Users will now be redirected to your custom page when authorizing CLI applications.
 
 
