@@ -176,6 +176,102 @@ export const postMigration = async (sql: Sql, ctx: Awaited<ReturnType<typeof pre
   `).rejects.toThrow(/Conversation_status_check/);
 
   await expect(sql`
+    INSERT INTO "Conversation" (
+      "id",
+      "tenancyId",
+      "projectUserId",
+      "subject",
+      "status",
+      "priority",
+      "source",
+      "createdAt",
+      "updatedAt",
+      "lastMessageAt"
+    )
+    VALUES (
+      ${randomUUID()}::uuid,
+      ${ctx.tenancyId}::uuid,
+      ${ctx.projectUserId}::uuid,
+      'Broken conversation priority',
+      'open',
+      'invalid',
+      'chat',
+      NOW(),
+      NOW(),
+      NOW()
+    )
+  `).rejects.toThrow(/Conversation_priority_check/);
+
+  await expect(sql`
+    INSERT INTO "Conversation" (
+      "id",
+      "tenancyId",
+      "projectUserId",
+      "subject",
+      "status",
+      "priority",
+      "source",
+      "createdAt",
+      "updatedAt",
+      "lastMessageAt"
+    )
+    VALUES (
+      ${randomUUID()}::uuid,
+      ${ctx.tenancyId}::uuid,
+      ${ctx.projectUserId}::uuid,
+      'Broken conversation source',
+      'open',
+      'high',
+      'invalid',
+      NOW(),
+      NOW(),
+      NOW()
+    )
+  `).rejects.toThrow(/Conversation_source_check/);
+
+  await expect(sql`
+    INSERT INTO "ConversationEntryPoint" (
+      "id",
+      "tenancyId",
+      "conversationId",
+      "channelType",
+      "adapterKey",
+      "isEntryPoint",
+      "createdAt",
+      "updatedAt"
+    )
+    VALUES (
+      ${randomUUID()}::uuid,
+      ${ctx.tenancyId}::uuid,
+      ${conversationId}::uuid,
+      'invalid',
+      'support-chat',
+      true,
+      NOW(),
+      NOW()
+    )
+  `).rejects.toThrow(/ConversationEntryPoint_type_check/);
+
+  await expect(sql`
+    INSERT INTO "ConversationMessage" (
+      "id",
+      "tenancyId",
+      "conversationId",
+      "messageType",
+      "senderType",
+      "createdAt"
+    )
+    VALUES (
+      ${randomUUID()}::uuid,
+      ${ctx.tenancyId}::uuid,
+      ${conversationId}::uuid,
+      'invalid',
+      'user',
+      NOW()
+    )
+  `).rejects.toThrow(/ConversationMessage_messageType_check/);
+
+  await expect(sql`
     INSERT INTO "ConversationMessage" (
       "id",
       "tenancyId",
