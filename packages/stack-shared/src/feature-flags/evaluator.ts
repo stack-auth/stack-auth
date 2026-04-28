@@ -25,22 +25,31 @@ function getDottedAttribute(context: EvalContext, attribute: string): unknown {
   return cursor;
 }
 
-function compareSemver(a: string, b: string): number {
+function compareSemver(a: string, b: string): number | undefined {
+  type ParsedSemver = {
+    core: number[],
+    prerelease: Array<string | number> | undefined,
+  };
   const parse = (v: string) => {
     const withoutBuild = v.split("+", 1)[0];
+    const buildText = v.includes("+") ? v.slice(v.indexOf("+") + 1) : undefined;
+    if (buildText !== undefined && !isValidSemverIdentifierList(buildText, false)) return undefined;
     const dashIndex = withoutBuild.indexOf("-");
     const coreText = dashIndex === -1 ? withoutBuild : withoutBuild.slice(0, dashIndex);
     const prereleaseText = dashIndex === -1 ? undefined : withoutBuild.slice(dashIndex + 1);
-    const core = coreText.split(".").map(part => /^\d+$/.test(part) ? Number(part) : undefined);
-    const prerelease = prereleaseText?.split(".").map(part => /^\d+$/.test(part) ? Number(part) : part);
-    return { core, prerelease };
+    const coreParts = coreText.split(".");
+    if (coreParts.length !== 3 || coreParts.some(part => !/^(0|[1-9]\d*)$/.test(part))) return undefined;
+    if (prereleaseText !== undefined && !isValidSemverIdentifierList(prereleaseText, true)) return undefined;
+    const core = coreParts.map(part => Number(part));
+    const prerelease = prereleaseText?.split(".").map(part => /^(0|[1-9]\d*)$/.test(part) ? Number(part) : part);
+    return { core, prerelease } satisfies ParsedSemver;
   };
   const av = parse(a);
   const bv = parse(b);
+  if (av === undefined || bv === undefined) return undefined;
   for (let i = 0; i < 3; i++) {
     const x = av.core[i];
     const y = bv.core[i];
-    if (x === undefined || y === undefined) return lexicalCompare(a, b);
     if (x !== y) return x - y;
   }
   if (av.prerelease === undefined && bv.prerelease === undefined) return 0;
@@ -62,6 +71,14 @@ function compareSemver(a: string, b: string): number {
     }
   }
   return av.prerelease.length - bv.prerelease.length;
+}
+
+function isValidSemverIdentifierList(value: string, forbidNumericLeadingZeroes: boolean): boolean {
+  if (value.length === 0) return false;
+  return value.split(".").every((part) => {
+    if (!/^[0-9A-Za-z-]+$/.test(part)) return false;
+    return !forbidNumericLeadingZeroes || !/^\d+$/.test(part) || /^(0|[1-9]\d*)$/.test(part);
+  });
 }
 
 function lexicalCompare(a: string, b: string): number {
@@ -150,12 +167,11 @@ function applyOperator(
     case "semver_gt":
     case "semver_lt": {
       if (typeof actual !== "string" || typeof expected !== "string") return false;
-      try {
-        const cmp = compareSemver(actual, expected);
-        if (operator === "semver_eq") return cmp === 0;
-        if (operator === "semver_gt") return cmp > 0;
-        return cmp < 0;
-      } catch { return false; }
+      const cmp = compareSemver(actual, expected);
+      if (cmp === undefined) return false;
+      if (operator === "semver_eq") return cmp === 0;
+      if (operator === "semver_gt") return cmp > 0;
+      return cmp < 0;
     }
     case "in_cohort": {
       if (typeof expected !== "string") return false;
@@ -544,6 +560,10 @@ import.meta.vitest?.test("operators: regex, in, gt, is_set, before/after, semver
   expect(ev(make("semver_lt", "2.0.0"), "1.99.0")).toBe(true);
   expect(ev(make("semver_gt", "1.0.0-alpha"), "1.0.0")).toBe(true);
   expect(ev(make("semver_eq", "1.0.0+build1"), "1.0.0+build2")).toBe(true);
+  expect(ev(make("semver_gt", "1.0.0"), "malformed")).toBe(false);
+  expect(ev(make("semver_gt", "malformed"), "1.0.0")).toBe(false);
+  expect(ev(make("semver_gt", "1.0.0"), "1.0")).toBe(false);
+  expect(ev(make("semver_gt", "1.0.0"), "1.0.0-01")).toBe(false);
 });
 
 import.meta.vitest?.test("in_cohort matches cohort membership in context", ({ expect }) => {

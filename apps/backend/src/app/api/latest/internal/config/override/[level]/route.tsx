@@ -2,6 +2,9 @@ import {
   getBranchConfigOverrideQuery,
   getEnvironmentConfigOverrideQuery,
   getProjectConfigOverrideQuery,
+  overrideBranchConfigOverride,
+  overrideEnvironmentConfigOverride,
+  overrideProjectConfigOverride,
   setBranchConfigOverride,
   setBranchConfigOverrideSource,
   setEnvironmentConfigOverride,
@@ -14,7 +17,6 @@ import { enqueueExternalDbSync } from "@/lib/external-db-sync-queue";
 import { LOCAL_EMULATOR_ENV_CONFIG_BLOCKED_MESSAGE, isLocalEmulatorProject } from "@/lib/local-emulator";
 import { globalPrismaClient, rawQuery } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
-import { override } from "@stackframe/stack-shared/dist/config/format";
 import { branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, migrateConfigOverride, projectConfigSchema } from "@stackframe/stack-shared/dist/config/schema";
 import { adaptSchema, branchConfigSourceSchema, serverOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -58,6 +60,11 @@ const levelConfigs = {
       validateProjectConfigOverride({
         projectConfigOverride: options.config,
       }),
+    override: (options: { projectId: string, branchId: string, config: any }) =>
+      overrideProjectConfigOverride({
+        projectId: options.projectId,
+        projectConfigOverrideOverride: options.config,
+      }),
     requiresSource: false,
   },
   branch: {
@@ -84,6 +91,12 @@ const levelConfigs = {
         projectId: options.projectId,
         branchConfigOverride: options.config,
       }),
+    override: (options: { projectId: string, branchId: string, config: any }) =>
+      overrideBranchConfigOverride({
+        projectId: options.projectId,
+        branchId: options.branchId,
+        branchConfigOverrideOverride: options.config,
+      }),
     requiresSource: true,
   },
   environment: {
@@ -102,6 +115,12 @@ const levelConfigs = {
         projectId: options.projectId,
         branchId: options.branchId,
         environmentConfigOverride: options.config,
+      }),
+    override: (options: { projectId: string, branchId: string, config: any }) =>
+      overrideEnvironmentConfigOverride({
+        projectId: options.projectId,
+        branchId: options.branchId,
+        environmentConfigOverrideOverride: options.config,
       }),
     requiresSource: false,
   },
@@ -298,22 +317,10 @@ export const PATCH = createSmartRouteHandler({
     const levelConfig = levelConfigs[req.params.level];
     const parsedConfig = await parseAndValidateConfig(req.body.config_override_string, levelConfig);
 
-    const oldConfig = await levelConfig.get({
+    const newConfig = await levelConfig.override({
       projectId: req.auth.tenancy.project.id,
       branchId: req.auth.tenancy.branchId,
-    });
-    const newConfig = override(oldConfig, parsedConfig);
-
-    await assertConfigValidBeforeWrite(levelConfig, {
-      projectId: req.auth.tenancy.project.id,
-      branchId: req.auth.tenancy.branchId,
-      config: newConfig,
-    });
-
-    await levelConfig.set({
-      projectId: req.auth.tenancy.project.id,
-      branchId: req.auth.tenancy.branchId,
-      config: newConfig,
+      config: parsedConfig,
     });
 
     await warnOnValidationFailure(levelConfig, {

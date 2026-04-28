@@ -18,6 +18,7 @@ function deepSortKeys(value: unknown): unknown {
 
 export const GET = createSmartRouteHandler({
   metadata: {
+    hidden: true,
     summary: "Bootstrap feature flag definitions for SDK local evaluation",
     description: "Returns the full set of feature flag definitions for the resolved tenancy. Clients cache the payload and evaluate locally; the server's evaluator and the SDK's evaluator are byte-identical.",
     tags: ["Feature Flags"],
@@ -71,7 +72,8 @@ export const GET = createSmartRouteHandler({
     const version = hashingInternal.murmur3_32(JSON.stringify(versionPayload)).toString(16);
     const etag = `"${version}"`;
 
-    if (headers["if-none-match"]?.includes(etag) || headers["if-none-match"]?.includes(version)) {
+    const ifNoneMatchTags = parseIfNoneMatch(headers["if-none-match"] ?? []);
+    if (ifNoneMatchTags.has("*") || ifNoneMatchTags.has(etag) || ifNoneMatchTags.has(version)) {
       const responseHeaders: Record<string, string[]> = {
         etag: [etag],
       };
@@ -100,3 +102,13 @@ export const GET = createSmartRouteHandler({
     };
   },
 });
+
+function parseIfNoneMatch(values: string[]) {
+  return new Set(values.flatMap((value) => (
+    value
+      .split(",")
+      .map((tag) => tag.trim())
+      .map((tag) => tag.startsWith("W/") ? tag.slice(2).trim() : tag)
+      .map((tag) => tag.startsWith("\"") && tag.endsWith("\"") ? tag.slice(1, -1) : tag)
+  )));
+}

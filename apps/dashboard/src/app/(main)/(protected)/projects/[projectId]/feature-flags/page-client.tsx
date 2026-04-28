@@ -96,10 +96,13 @@ export default function PageClient() {
       pushable: true,
     });
 
-    if (ok) {
-      toast({ title: "Feature flag created" });
-      router.push(`/projects/${project.id}/feature-flags/${flagId}`);
+    if (!ok) {
+      alert("Failed to create feature flag. Please try again.");
+      return "prevent-close" as const;
     }
+
+    toast({ title: "Feature flag created" });
+    router.push(`/projects/${project.id}/feature-flags/${flagId}`);
   };
 
   return (
