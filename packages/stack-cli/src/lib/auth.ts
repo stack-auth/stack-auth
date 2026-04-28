@@ -3,7 +3,7 @@ import { AuthError } from "./errors.js";
 
 export const DEFAULT_API_URL = "https://api.stack-auth.com";
 export const DEFAULT_DASHBOARD_URL = "https://app.stack-auth.com";
-export const DEFAULT_PUBLISHABLE_CLIENT_KEY = process.env.STACK_CLI_PUBLISHABLE_CLIENT_KEY ?? "pck_6ypt981excjnk24dmgx5703my25k2f3y2z3qjhbykz3q0";
+export const DEFAULT_PUBLISHABLE_CLIENT_KEY = process.env.STACK_CLI_PUBLISHABLE_CLIENT_KEY ?? "pck_9bbqvqsbh0gdb6smk11d71qg4ktc4rz8ya7cc69yndm7g";
 
 type Flags = {
   projectId?: string,
