@@ -38,6 +38,22 @@ export const conversationIdRouteParamsSchema = yupObject({
   conversationId: yupString().uuid().defined(),
 }).defined();
 
+export function parseConversationListLimit(value: string | undefined) {
+  if (value == null) {
+    return undefined;
+  }
+  const parsed = Number.parseInt(value, 10);
+  return Math.max(1, Math.min(200, Number.isFinite(parsed) ? parsed : 200));
+}
+
+export function parseConversationListOffset(value: string | undefined) {
+  if (value == null) {
+    return undefined;
+  }
+  const parsed = Number.parseInt(value, 10);
+  return Math.max(0, Number.isFinite(parsed) ? parsed : 0);
+}
+
 /**
  * Public (snake_case) response schemas. These are what leaves the API boundary
  * to external consumers; the internal camelCase shapes live in

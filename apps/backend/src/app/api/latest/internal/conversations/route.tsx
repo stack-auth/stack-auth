@@ -8,12 +8,20 @@ import {
   conversationPriorityValues,
   conversationSourceValues,
   conversationStatusValues,
+  type ConversationSource,
 } from "@/lib/conversation-types";
-import { internalDashboardAuthSchema } from "@/lib/conversations-api";
+import { internalDashboardAuthSchema, parseConversationListLimit, parseConversationListOffset } from "@/lib/conversations-api";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { projectIdSchema, userIdSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { globalPrismaClient } from "@/prisma-client";
+
+const conversationEntryPointBySource = {
+  manual: { channelType: "manual", adapterKey: "support-dashboard" },
+  chat: { channelType: "chat", adapterKey: "support-chat" },
+  email: { channelType: "email", adapterKey: "support-dashboard" },
+  api: { channelType: "api", adapterKey: "support-dashboard" },
+} satisfies Record<ConversationSource, { channelType: ConversationSource, adapterKey: string }>;
 
 export const GET = createSmartRouteHandler({
   metadata: {
@@ -27,8 +35,8 @@ export const GET = createSmartRouteHandler({
       query: yupString().optional(),
       status: yupString().oneOf(conversationStatusValues).optional(),
       userId: userIdSchema.optional(),
-      limit: yupNumber().integer().min(1).max(200).optional(),
-      offset: yupNumber().integer().min(0).optional(),
+      limit: yupString().optional(),
+      offset: yupString().optional(),
     }).defined(),
     method: yupString().oneOf(["GET"]).defined(),
   }),
@@ -45,8 +53,8 @@ export const GET = createSmartRouteHandler({
       status: query.status,
       userId: query.userId,
       includeInternalNotes: true,
-      limit: query.limit,
-      offset: query.offset,
+      limit: parseConversationListLimit(query.limit),
+      offset: parseConversationListOffset(query.offset),
     });
 
     return {
@@ -96,14 +104,17 @@ export const POST = createSmartRouteHandler({
       throw new KnownErrors.UserIdDoesNotExist(body.userId);
     }
 
+    const source = body.source ?? "manual";
+    const entryPoint = conversationEntryPointBySource[source];
+
     const result = await createConversation({
       tenancyId: tenancy.id,
       userId: body.userId,
       subject: body.subject,
       priority: body.priority,
-      source: body.source ?? "manual",
-      channelType: body.source ?? "manual",
-      adapterKey: body.source === "chat" ? "support-chat" : "support-dashboard",
+      source,
+      channelType: entryPoint.channelType,
+      adapterKey: entryPoint.adapterKey,
       body: body.initialMessage,
       sender: {
         type: "agent",
