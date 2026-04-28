@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getPagePrompt, isLocalHandlerUrlTarget, resolveHandlerUrls, resolveUnknownHandlerPathFallbackUrl } from "./url-targets";
+import { buildCliAuthConfirmUrl, getPagePrompt, isLocalHandlerUrlTarget, resolveHandlerUrls, resolveUnknownHandlerPathFallbackUrl } from "./url-targets";
 
 describe("handler URL targets", () => {
   afterEach(() => {
@@ -93,6 +93,31 @@ describe("handler URL targets", () => {
 
     expect(urls.signUp).toBe("/sign-up");
     expect(urls.signIn).toBe("https://project-id.example-stack-hosted.test/handler/sign-in");
+    expect(urls.cliAuthConfirm).toBe("https://project-id.example-stack-hosted.test/handler/cli-auth-confirm");
+  });
+
+  it("supports custom CLI auth confirmation targets", () => {
+    const cliAuthConfirmPrompt = getPagePrompt("cliAuthConfirm");
+    if (cliAuthConfirmPrompt == null) {
+      throw new Error("Expected cliAuthConfirm prompt metadata to exist");
+    }
+
+    const urls = resolveHandlerUrls({
+      projectId: "project-id",
+      urls: {
+        cliAuthConfirm: { type: "custom", url: "/cli/authorize", version: cliAuthConfirmPrompt.latestVersion },
+      },
+    });
+
+    expect(urls.cliAuthConfirm).toBe("/cli/authorize");
+  });
+
+  it("builds CLI auth login URLs from the resolved confirmation target", () => {
+    expect(buildCliAuthConfirmUrl({
+      cliAuthConfirmUrl: "/cli/authorize",
+      appUrl: "https://app.example.test/base",
+      loginCode: "login-code",
+    })).toBe("https://app.example.test/cli/authorize?login_code=login-code");
   });
 
   it("uses default target for unknown /handler/* pages", () => {
