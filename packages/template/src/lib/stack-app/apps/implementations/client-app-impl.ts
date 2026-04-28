@@ -53,7 +53,7 @@ import { NotificationCategory } from "../../notification-categories";
 import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
 import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, Team, TeamCreateOptions, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
-import { isHostedHandlerUrlForProject, resolveHandlerUrls } from "../../url-targets";
+import { buildCliAuthConfirmUrl, isHostedHandlerUrlForProject, resolveHandlerUrls } from "../../url-targets";
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackClientApp, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
 import { _StackAdminAppImplIncomplete } from "./admin-app-impl";
@@ -2511,6 +2511,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   async redirectToAccountSettings(options?: RedirectToOptions) { return await this._redirectToHandler("accountSettings", options); }
   async redirectToError(options?: RedirectToOptions) { return await this._redirectToHandler("error", options); }
   async redirectToTeamInvitation(options?: RedirectToOptions) { return await this._redirectToHandler("teamInvitation", options); }
+  async redirectToCliAuthConfirm(options?: RedirectToOptions) { return await this._redirectToHandler("cliAuthConfirm", options); }
   async redirectToMfa(options?: RedirectToOptions) { return await this._redirectToHandler("mfa", options); }
 
   async sendForgotPasswordEmail(email: string, options?: { callbackUrl?: string }): Promise<Result<undefined, KnownErrors["UserNotFound"]>> {
@@ -3073,7 +3074,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     const loginCode = initResult.login_code;
 
     // Step 2: Open the browser for the user to authenticate and display the verification code
-    const url = `${options.appUrl}/handler/cli-auth-confirm?login_code=${encodeURIComponent(loginCode)}`;
+    const url = buildCliAuthConfirmUrl({
+      cliAuthConfirmUrl: this.urls.cliAuthConfirm,
+      appUrl: options.appUrl,
+      loginCode,
+    });
     if (options.promptLink) {
       options.promptLink(url, loginCode);
     } else {

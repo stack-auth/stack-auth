@@ -1,6 +1,6 @@
 import { useContext } from "react";
-import { StackContext } from "../providers/stack-provider-client";
-import { GetUserOptions as AppGetUserOptions, CurrentInternalUser, CurrentUser, StackClientApp } from "./stack-app";
+import { StackContext } from "../providers/stack-context";
+import type { GetUserOptions as AppGetUserOptions, CurrentInternalUser, CurrentUser, StackClientApp } from "./stack-app";
 
 type GetUserOptions = AppGetUserOptions<true> & {
   projectIdMustMatch?: string,
