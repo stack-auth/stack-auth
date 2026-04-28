@@ -3,6 +3,7 @@ import { KnownErrors } from "./known-errors";
 import { isBase64 } from "./utils/bytes";
 import { SUPPORTED_CURRENCIES, type Currency, type MoneyAmount } from "./utils/currency-constants";
 import type { DayInterval, Interval } from "./utils/dates";
+import { getProcessEnv } from "./utils/env";
 import { StackAssertionError } from "./utils/errors";
 import { decodeBasicAuthorizationHeader } from "./utils/http";
 import { allProviders } from "./utils/oauth";
@@ -881,7 +882,7 @@ export const neonAuthorizationHeaderSchema = basicAuthorizationHeaderSchema.test
   const decoded = decodeBasicAuthorizationHeader(value);
   if (decoded === null) return true;
   const [clientId, clientSecret] = decoded;
-  for (const neonClientConfig of JSON.parse(process.env.STACK_INTEGRATION_CLIENTS_CONFIG || '[]')) {
+  for (const neonClientConfig of JSON.parse(getProcessEnv("STACK_INTEGRATION_CLIENTS_CONFIG") || '[]')) {
     if (clientId === neonClientConfig.client_id && clientSecret === neonClientConfig.client_secret) return true;
   }
   return false;
