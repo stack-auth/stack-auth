@@ -473,6 +473,19 @@ type ContactChannelsSectionProps = {
   user: ServerUser,
 };
 
+function BooleanStatusCell({ value, showFalseIcon = true }: { value: boolean, showFalseIcon?: boolean }) {
+  return (
+    <div className="flex justify-center">
+      <span className="sr-only">{value ? "Yes" : "No"}</span>
+      {value ? (
+        <CheckIcon aria-hidden={true} className="mx-auto h-4 w-4 text-green-500" />
+      ) : showFalseIcon ? (
+        <XIcon aria-hidden={true} className="mx-auto h-4 w-4 text-muted-foreground" />
+      ) : null}
+    </div>
+  );
+}
+
 type AddEmailDialogProps = {
   user: ServerUser,
   open: boolean,
@@ -749,33 +762,23 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
     },
     {
       id: "isPrimary",
-      header: "Primary",
+      header: () => <div className="text-center">Primary</div>,
       cell: ({ row }) => (
-        <div className="text-center">
-          {row.original.isPrimary ? <CheckIcon className="mx-auto h-4 w-4 text-green-500" /> : null}
-        </div>
+        <BooleanStatusCell value={row.original.isPrimary} showFalseIcon={false} />
       ),
     },
     {
       id: "isVerified",
-      header: "Verified",
+      header: () => <div className="text-center">Verified</div>,
       cell: ({ row }) => (
-        <div className="text-center">
-          {row.original.isVerified
-            ? <CheckIcon className="mx-auto h-4 w-4 text-green-500" />
-            : <XIcon className="mx-auto h-4 w-4 text-muted-foreground" />}
-        </div>
+        <BooleanStatusCell value={row.original.isVerified} />
       ),
     },
     {
       id: "usedForAuth",
-      header: "Used for sign-in",
+      header: () => <div className="text-center whitespace-nowrap">Used for sign-in</div>,
       cell: ({ row }) => (
-        <div className="text-center">
-          {row.original.usedForAuth
-            ? <CheckIcon className="mx-auto h-4 w-4 text-green-500" />
-            : <XIcon className="mx-auto h-4 w-4 text-muted-foreground" />}
-        </div>
+        <BooleanStatusCell value={row.original.usedForAuth} />
       ),
     },
     {
@@ -1192,24 +1195,16 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
     },
     {
       id: "allowSignIn",
-      header: () => <span className="whitespace-nowrap">Used for sign-in</span>,
+      header: () => <div className="text-center whitespace-nowrap">Used for sign-in</div>,
       cell: ({ row }) => (
-        <div className="text-center">
-          {row.original.allowSignIn
-            ? <CheckIcon className="mx-auto h-4 w-4 text-green-500" />
-            : <XIcon className="mx-auto h-4 w-4 text-muted-foreground" />}
-        </div>
+        <BooleanStatusCell value={row.original.allowSignIn} />
       ),
     },
     {
       id: "allowConnectedAccounts",
-      header: () => <span className="whitespace-nowrap">Used for connected accounts</span>,
+      header: () => <div className="text-center whitespace-nowrap">Used for connected accounts</div>,
       cell: ({ row }) => (
-        <div className="text-center">
-          {row.original.allowConnectedAccounts
-            ? <CheckIcon className="mx-auto h-4 w-4 text-green-500" />
-            : <XIcon className="mx-auto h-4 w-4 text-muted-foreground" />}
-        </div>
+        <BooleanStatusCell value={row.original.allowConnectedAccounts} />
       ),
     },
     {
