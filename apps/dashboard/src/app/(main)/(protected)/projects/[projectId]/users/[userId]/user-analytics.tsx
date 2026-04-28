@@ -160,7 +160,15 @@ const TOP_REFERRERS_QUERY = `
     referrer,
     toString(count()) AS views
   FROM (
-    SELECT NULLIF(CAST(data.referrer, 'Nullable(String)'), '') AS referrer
+    SELECT
+      NULLIF(
+        replaceRegexpOne(
+          COALESCE(NULLIF(CAST(data.referrer, 'Nullable(String)'), ''), ''),
+          '[?#].*',
+          ''
+        ),
+        ''
+      ) AS referrer
     FROM events
     WHERE user_id = {userId:String}
       AND event_type = '$page-view'
