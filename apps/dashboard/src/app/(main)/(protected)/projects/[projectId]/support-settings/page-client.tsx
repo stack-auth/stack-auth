@@ -5,6 +5,7 @@ import { Input, Label, Typography } from "@/components/ui";
 import { useUpdateConfig } from "@/lib/config-update";
 import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { resolveSupportSla, type SupportSlaConfig } from "@stackframe/stack-shared/dist/helpers/support-sla";
+import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
@@ -64,7 +65,7 @@ export default function PageClient() {
                   placeholder="No target"
                   disabled={!sla.enabled}
                   defaultValue={sla.firstResponseMinutes ?? ""}
-                  onBlur={(e) => void saveSla({ ...sla, firstResponseMinutes: parseMinutes(e.currentTarget.value) })}
+                  onBlur={(e) => runAsynchronouslyWithAlert(saveSla({ ...sla, firstResponseMinutes: parseMinutes(e.currentTarget.value) }))}
                 />
                 <Typography variant="secondary" className="text-xs">
                   Time window to send the first agent reply to a new conversation.
@@ -80,7 +81,7 @@ export default function PageClient() {
                   placeholder="No target"
                   disabled={!sla.enabled}
                   defaultValue={sla.nextResponseMinutes ?? ""}
-                  onBlur={(e) => void saveSla({ ...sla, nextResponseMinutes: parseMinutes(e.currentTarget.value) })}
+                  onBlur={(e) => runAsynchronouslyWithAlert(saveSla({ ...sla, nextResponseMinutes: parseMinutes(e.currentTarget.value) }))}
                 />
                 <Typography variant="secondary" className="text-xs">
                   Time window to reply after a user follows up on a pending conversation.
