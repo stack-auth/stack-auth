@@ -490,8 +490,14 @@ function TokenStep(props: {
             min={30}
             max={3600}
             leadingIcon={<ClockIcon className="h-4 w-4" />}
-            value={props.draft.tokenTtlSeconds}
-            onChange={(e) => props.setDraft(d => ({ ...d, tokenTtlSeconds: Number(e.target.value) || 900 }))}
+            value={Number.isFinite(props.draft.tokenTtlSeconds) ? props.draft.tokenTtlSeconds : ""}
+            onChange={(e) => {
+              const tokenTtlSeconds = e.target.valueAsNumber;
+              props.setDraft(d => ({
+                ...d,
+                tokenTtlSeconds: Number.isFinite(tokenTtlSeconds) ? tokenTtlSeconds : Number.NaN,
+              }));
+            }}
           />
         </Field>
         <Typography variant="secondary" className="text-xs">

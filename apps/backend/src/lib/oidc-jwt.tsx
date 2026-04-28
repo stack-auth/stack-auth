@@ -19,6 +19,7 @@ const CLOCK_SKEW_SECONDS = 60;
 const DISCOVERY_NAMESPACE = "oidc-discovery";
 const JWKS_NAMESPACE = "oidc-jwks";
 const FETCH_TIMEOUT_MS = 5000;
+const OIDC_JWT_ALGORITHMS = ["RS256", "RS384", "RS512", "PS256", "PS384", "PS512", "ES256", "ES384", "ES512", "EdDSA"];
 
 function stripTrailingSlash(s: string): string {
   return s.endsWith("/") ? s.slice(0, -1) : s;
@@ -153,6 +154,12 @@ async function invalidateJwks(prisma: PrismaClientTransaction, jwksUrl: string):
   });
 }
 
+async function invalidateDiscovery(prisma: PrismaClientTransaction, issuerUrl: string): Promise<void> {
+  await prisma.cacheEntry.deleteMany({
+    where: { namespace: DISCOVERY_NAMESPACE, cacheKey: stripTrailingSlash(issuerUrl) },
+  });
+}
+
 export class OidcJwtValidationError extends StatusError {
   public override readonly cause?: unknown;
   constructor(public readonly reason: string, options?: { cause?: unknown }) {
@@ -215,6 +222,7 @@ export async function validateOidcJwt(options: ValidateOidcJwtOptions): Promise<
       issuer: doc.issuer,
       audience: audiences,
       clockTolerance: CLOCK_SKEW_SECONDS,
+      algorithms: OIDC_JWT_ALGORITHMS,
     });
   };
 
@@ -225,6 +233,8 @@ export async function validateOidcJwt(options: ValidateOidcJwtOptions): Promise<
     // Cached JWKS may be stale after key rotation — invalidate and retry once.
     if ((error as { code?: unknown }).code === "ERR_JWKS_NO_MATCHING_KEY") {
       await invalidateJwks(prisma, doc.jwks_uri);
+      await invalidateDiscovery(prisma, issuerUrl);
+      doc = await loadDiscovery(issuerUrl, prisma);
       try {
         verifyResult = await verifyOnce();
       } catch (retryError) {

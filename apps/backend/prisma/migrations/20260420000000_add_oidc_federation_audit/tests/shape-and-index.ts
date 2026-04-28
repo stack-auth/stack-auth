@@ -64,29 +64,48 @@ export const postMigration = async (sql: Sql) => {
   await sql`INSERT INTO "Project" ("id", "createdAt", "updatedAt", "displayName", "description", "isProductionMode") VALUES (${otherProjectId}, NOW(), NOW(), 'Test', '', false)`;
   await sql`INSERT INTO "Tenancy" ("id", "createdAt", "updatedAt", "projectId", "branchId", "hasNoOrganization") VALUES (${tenancyId}::uuid, NOW(), NOW(), ${projectId}, 'main', 'TRUE'::"BooleanTrue")`;
   await sql`INSERT INTO "Tenancy" ("id", "createdAt", "updatedAt", "projectId", "branchId", "hasNoOrganization") VALUES (${otherTenancyId}::uuid, NOW(), NOW(), ${otherProjectId}, 'main', 'TRUE'::"BooleanTrue")`;
-  await sql.unsafe(`
-    INSERT INTO "OidcFederationExchangeAudit" ("id", "tenancyId", "policyId", "issuer", "subject", "outcome", "reason", "createdAt")
-    VALUES
-      (gen_random_uuid(), '${tenancyId}', 'policy-a', 'https://idp', 'sub-1', 'success', '', '2026-01-01 00:00:00'),
-      (gen_random_uuid(), '${tenancyId}', 'policy-a', 'https://idp', 'sub-2', 'success', '', '2026-01-02 00:00:00'),
-      (gen_random_uuid(), '${tenancyId}', 'policy-b', '',            '',      'failure', 'nope', '2026-01-03 00:00:00'),
-      (gen_random_uuid(), '${otherTenancyId}', 'policy-a', 'https://idp', 'sub-3', 'success', '', '2026-01-05 00:00:00');
-  `);
 
-  const aggregate = await sql<Array<{ policyId: string, lastAt: Date, total: bigint }>>`
-    SELECT "policyId", MAX("createdAt") AS "lastAt", COUNT(*)::bigint AS total
-    FROM "OidcFederationExchangeAudit"
-    WHERE "tenancyId" = ${tenancyId}
-    GROUP BY "policyId"
-    ORDER BY "policyId"
-  `;
-  expect(aggregate).toHaveLength(2);
-  expect(aggregate[0].policyId).toBe("policy-a");
-  expect(Number(aggregate[0].total)).toBe(2);
-  expect(aggregate[0].lastAt.toISOString()).toBe("2026-01-02T00:00:00.000Z");
-  expect(aggregate[1].policyId).toBe("policy-b");
-  expect(Number(aggregate[1].total)).toBe(1);
+  try {
+    await sql.unsafe(`
+      INSERT INTO "OidcFederationExchangeAudit" ("id", "tenancyId", "policyId", "issuer", "subject", "outcome", "reason", "createdAt")
+      VALUES
+        (gen_random_uuid(), '${tenancyId}', 'policy-a', 'https://idp', 'sub-1', 'success', '', '2026-01-01 00:00:00'),
+        (gen_random_uuid(), '${tenancyId}', 'policy-a', 'https://idp', 'sub-2', 'success', '', '2026-01-02 00:00:00'),
+        (gen_random_uuid(), '${tenancyId}', 'policy-b', '',            '',      'failure', 'nope', '2026-01-03 00:00:00'),
+        (gen_random_uuid(), '${otherTenancyId}', 'policy-a', 'https://idp', 'sub-3', 'success', '', '2026-01-05 00:00:00');
+    `);
 
-  // Clean up so later tests see an empty table.
-  await sql`DELETE FROM "OidcFederationExchangeAudit"`;
+    const beforeDefaultRows = await sql<Array<{ beforeDefault: Date }>>`
+      SELECT CURRENT_TIMESTAMP AS "beforeDefault"
+    `;
+    const defaultRows = await sql<Array<{ createdAt: Date }>>`
+      INSERT INTO "OidcFederationExchangeAudit" ("id", "tenancyId", "policyId", "issuer", "subject", "outcome", "reason")
+      VALUES (gen_random_uuid(), ${otherTenancyId}::uuid, 'policy-default', 'https://idp', 'sub-default', 'success', '')
+      RETURNING "createdAt"
+    `;
+    const afterDefaultRows = await sql<Array<{ afterDefault: Date }>>`
+      SELECT CURRENT_TIMESTAMP AS "afterDefault"
+    `;
+    expect(defaultRows).toHaveLength(1);
+    expect(defaultRows[0].createdAt.getTime()).toBeGreaterThanOrEqual(beforeDefaultRows[0].beforeDefault.getTime());
+    expect(defaultRows[0].createdAt.getTime()).toBeLessThanOrEqual(afterDefaultRows[0].afterDefault.getTime());
+
+    const aggregate = await sql<Array<{ policyId: string, lastAt: Date, total: bigint }>>`
+      SELECT "policyId", MAX("createdAt") AS "lastAt", COUNT(*)::bigint AS total
+      FROM "OidcFederationExchangeAudit"
+      WHERE "tenancyId" = ${tenancyId}
+      GROUP BY "policyId"
+      ORDER BY "policyId"
+    `;
+    expect(aggregate).toHaveLength(2);
+    expect(aggregate[0].policyId).toBe("policy-a");
+    expect(Number(aggregate[0].total)).toBe(2);
+    expect(aggregate[0].lastAt.toISOString()).toBe("2026-01-02T00:00:00.000Z");
+    expect(aggregate[1].policyId).toBe("policy-b");
+    expect(Number(aggregate[1].total)).toBe(1);
+  } finally {
+    await sql`DELETE FROM "OidcFederationExchangeAudit" WHERE "tenancyId" IN (${tenancyId}::uuid, ${otherTenancyId}::uuid)`;
+    await sql`DELETE FROM "Tenancy" WHERE "id" IN (${tenancyId}::uuid, ${otherTenancyId}::uuid)`;
+    await sql`DELETE FROM "Project" WHERE "id" IN (${projectId}, ${otherProjectId})`;
+  }
 };

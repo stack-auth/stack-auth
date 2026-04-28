@@ -1,7 +1,6 @@
 import { fetchOidcDiscoveryDocument } from "@/lib/oidc-jwt";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, adminAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 
 export const POST = createSmartRouteHandler({
   metadata: {
@@ -41,7 +40,6 @@ export const POST = createSmartRouteHandler({
         body: { ok: { issuer: doc.issuer, jwks_uri: doc.jwks_uri } },
       };
     } catch (e) {
-      captureError("oidc-federation-probe-discovery-failed", { issuerUrl: trimmed, error: e });
       const message = e instanceof Error ? e.message : "discovery failed";
       return { statusCode: 200, bodyType: "json" as const, body: { error: message } };
     }

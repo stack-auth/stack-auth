@@ -1,4 +1,5 @@
 import type { PrismaClientTransaction } from "@/prisma-client";
+import { randomBytes } from "node:crypto";
 import { SignJWT, exportJWK, generateKeyPair, type JWK } from "jose";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { OidcJwtValidationError, validateOidcJwt } from "./oidc-jwt";
@@ -10,6 +11,14 @@ import { OidcJwtValidationError, validateOidcJwt } from "./oidc-jwt";
 vi.mock("node:dns/promises", () => ({
   lookup: vi.fn(async () => [{ address: "93.184.216.34", family: 4 }]),
 }));
+
+vi.mock("undici", async (importOriginal) => {
+  const actual = await importOriginal<typeof import("undici")>();
+  return {
+    ...actual,
+    fetch: (...args: Parameters<typeof fetch>) => globalThis.fetch(...args),
+  };
+});
 
 type CacheRow = { namespace: string, cacheKey: string, payload: unknown, expiresAt: Date };
 
@@ -158,6 +167,21 @@ describe("validateOidcJwt", () => {
     await expect(validateOidcJwt({ issuerUrl, audiences: ["stack-auth"], token, prisma })).rejects.toBeInstanceOf(OidcJwtValidationError);
   });
 
+  it("rejects symmetric JWT algorithms even if the JWKS advertises an oct key", async () => {
+    const secret = randomBytes(32);
+    const jwk: JWK = { kty: "oct", k: secret.toString("base64url"), kid: "symmetric-key", alg: "HS256" };
+    installFetchMock({ issuerUrl, jwks: [jwk] });
+    const token = await new SignJWT({ sub: "w" })
+      .setProtectedHeader({ alg: "HS256", kid: "symmetric-key" })
+      .setIssuer(issuerUrl)
+      .setAudience("stack-auth")
+      .setIssuedAt()
+      .setExpirationTime("5m")
+      .sign(secret);
+
+    await expect(validateOidcJwt({ issuerUrl, audiences: ["stack-auth"], token, prisma })).rejects.toBeInstanceOf(OidcJwtValidationError);
+  });
+
   it("fails closed when no audiences are configured", async () => {
     const { privateKey, jwk } = await setupMockIdp({ issuerUrl });
     installFetchMock({ issuerUrl, jwks: [jwk] });
@@ -284,6 +308,39 @@ describe("validateOidcJwt", () => {
 
     const jwksFetchesAfterRotation = fetchMock.mock.calls.filter(c => (typeof c[0] === "string" ? c[0] : c[0].toString()) === jwksUrl).length;
     expect(jwksFetchesAfterRotation).toBe(2); // original prime + refetch after kid-miss
+  });
+
+  it("invalidates discovery when a key miss may be caused by a moved jwks_uri", async () => {
+    const { privateKey: oldPrivateKey, jwk: oldJwk } = await setupMockIdp({ issuerUrl, kid: "old-key" });
+    const { privateKey: newPrivateKey, jwk: newJwk } = await setupMockIdp({ issuerUrl, kid: "new-key" });
+
+    let currentJwksPath = "/jwks-old";
+    const discoveryUrl = `${issuerUrl}/.well-known/openid-configuration`;
+    const fetchMock = vi.fn(async (input: string | URL) => {
+      const url = typeof input === "string" ? input : input.toString();
+      if (url === discoveryUrl) {
+        return new Response(JSON.stringify({ issuer: issuerUrl, jwks_uri: `${issuerUrl}${currentJwksPath}` }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (url === `${issuerUrl}/jwks-old`) {
+        return new Response(JSON.stringify({ keys: [oldJwk] }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      if (url === `${issuerUrl}/jwks-new`) {
+        return new Response(JSON.stringify({ keys: [newJwk] }), { status: 200, headers: { "content-type": "application/json" } });
+      }
+      throw new Error(`unexpected fetch: ${url}`);
+    });
+    vi.stubGlobal("fetch", fetchMock);
+
+    const oldToken = await mintTestToken(oldPrivateKey, { sub: "w" }, { issuer: issuerUrl, audience: "stack-auth", expiresIn: "5m", kid: "old-key" });
+    await expect(validateOidcJwt({ issuerUrl, audiences: ["stack-auth"], token: oldToken, prisma })).resolves.toMatchObject({ subject: "w" });
+
+    currentJwksPath = "/jwks-new";
+    const newToken = await mintTestToken(newPrivateKey, { sub: "w" }, { issuer: issuerUrl, audience: "stack-auth", expiresIn: "5m", kid: "new-key" });
+    await expect(validateOidcJwt({ issuerUrl, audiences: ["stack-auth"], token: newToken, prisma })).resolves.toMatchObject({ subject: "w" });
+
+    const calls = fetchMock.mock.calls.map(c => typeof c[0] === "string" ? c[0] : c[0].toString());
+    expect(calls.filter(url => url === discoveryUrl)).toHaveLength(2);
+    expect(calls).toContain(`${issuerUrl}/jwks-new`);
   });
 
   it("refetches after each cache TTL expires (JWKS 10m, discovery 1h)", async () => {

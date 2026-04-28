@@ -33,10 +33,15 @@ export type OidcFederationTokenStoreOptions = {
   sourceLabel?: string,
 };
 
-type CachedToken = { accessToken: string, refreshAtMs: number };
+type CachedToken = { accessToken: string, refreshAtMs: number, expiresAtMs: number };
 type CachedFailure = { error: OidcFederationExchangeError, expiresAtMs: number };
 
 const NEGATIVE_CACHE_MS = 2_000;
+const TOKEN_EXPIRY_SAFETY_MS = 5_000;
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
 
 export class OidcFederationExchangeError extends Error {
   constructor(message: string, public readonly cause?: unknown) {
@@ -63,7 +68,8 @@ export function createOidcFederationTokenStore(options: {
   // `refreshAtMs` / `now` / `expiresAtMs` are all compared to each other — use
   // `performance.now()` so wall-clock jumps (NTP corrections, suspend/resume, manual
   // clock changes) can't make us reuse an expired token or extend negative caching.
-  const shouldRefresh = (now: number) => !cached || cached.refreshAtMs - now <= 5_000;
+  const shouldRefresh = (now: number) => !cached || cached.refreshAtMs - now <= TOKEN_EXPIRY_SAFETY_MS;
+  const getFallbackToken = (now: number) => cached && cached.expiresAtMs - now > TOKEN_EXPIRY_SAFETY_MS ? cached : null;
 
   const doExchange = async (): Promise<CachedToken> => {
     let subjectToken: string;
@@ -76,7 +82,7 @@ export function createOidcFederationTokenStore(options: {
       throw new OidcFederationExchangeError(`${label} returned an empty OIDC token`);
     }
 
-    const url = new URL("/api/v1/auth/oidc-federation/exchange", getApiBaseUrl());
+    const url = new URL("/api/latest/auth/oidc-federation/exchange", getApiBaseUrl());
     const headers: Record<string, string> = {
       "content-type": "application/json",
       "x-stack-project-id": options.projectId,
@@ -101,11 +107,17 @@ export function createOidcFederationTokenStore(options: {
             const body = await response.text().catch(() => "<unreadable>");
             return { kind: "httpError" as const, status: response.status, body };
           }
-          const json = await response.json() as { access_token?: unknown, expires_in?: unknown };
+          const json = await response.json();
+          if (!isRecord(json)) {
+            throw new OidcFederationExchangeError("OIDC federation exchange response must be a JSON object");
+          }
           return { kind: "ok" as const, json };
         },
       );
     } catch (cause) {
+      if (cause instanceof OidcFederationExchangeError) {
+        throw cause;
+      }
       throw new OidcFederationExchangeError("network error during OIDC federation exchange", cause);
     }
 
@@ -119,8 +131,10 @@ export function createOidcFederationTokenStore(options: {
     if (typeof json.access_token !== "string" || typeof json.expires_in !== "number") {
       throw new OidcFederationExchangeError("OIDC federation exchange response missing access_token or expires_in");
     }
-    const refreshAtMs = performance.now() + Math.floor(json.expires_in * 1000 * 0.8);
-    return { accessToken: json.access_token, refreshAtMs };
+    const now = performance.now();
+    const expiresAtMs = now + Math.floor(json.expires_in * 1000);
+    const refreshAtMs = now + Math.floor(json.expires_in * 1000 * 0.8);
+    return { accessToken: json.access_token, refreshAtMs, expiresAtMs };
   };
 
   const getAccessToken = async (): Promise<string> => {
@@ -146,6 +160,8 @@ export function createOidcFederationTokenStore(options: {
         lastFailure = null;
         return value;
       } catch (err) {
+        const fallbackToken = getFallbackToken(performance.now());
+        if (fallbackToken) return fallbackToken;
         lastFailure = {
           error: err instanceof OidcFederationExchangeError ? err : new OidcFederationExchangeError(String(err), err),
           expiresAtMs: performance.now() + NEGATIVE_CACHE_MS,
@@ -217,7 +233,8 @@ export function fromGithubActionsOidc(options: { audience: string }): OidcFedera
           if (!response.ok) {
             throw new Error(`GitHub Actions OIDC request failed: ${response.status}`);
           }
-          const body = await response.json() as { value?: unknown };
+          const body = await response.json();
+          if (!isRecord(body)) throw new Error("GitHub Actions OIDC response must be a JSON object");
           if (typeof body.value !== "string") throw new Error("GitHub Actions OIDC response is missing `value`");
           return body.value;
         },

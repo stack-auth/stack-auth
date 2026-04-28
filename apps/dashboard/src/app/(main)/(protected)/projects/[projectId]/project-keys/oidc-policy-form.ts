@@ -60,7 +60,8 @@ function parseClaimSection(section: unknown): Record<string, string[]> {
   const out: Record<string, string[]> = {};
   for (const [claim, values] of Object.entries(section as Record<string, unknown>)) {
     if (!isStringArray(values)) throw new Error(`values for claim "${claim}" must be an array of strings`);
-    if (values.length > 0) out[claim] = values.filter(v => v.trim() !== "");
+    const normalizedValues = values.map(v => v.trim()).filter(v => v !== "");
+    if (normalizedValues.length > 0) out[claim] = normalizedValues;
   }
   return out;
 }

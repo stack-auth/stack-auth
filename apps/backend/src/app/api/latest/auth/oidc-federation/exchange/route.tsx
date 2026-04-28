@@ -81,10 +81,35 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(400, "invalid_request: project or branch not found");
     }
 
+    const recordFailure = (failureContext: { policyId: string, issuer: string, subject: string, reason: string }) => {
+      runAsynchronously(logEvent([SystemEventTypes.OidcFederationExchange], {
+        projectId: tenancy.project.id,
+        policyId: failureContext.policyId,
+        issuer: failureContext.issuer,
+        subject: failureContext.subject,
+        outcome: "failure",
+        reason: failureContext.reason,
+      }));
+      runAsynchronously(writeAudit({
+        tenancyId: tenancy.id,
+        policyId: failureContext.policyId,
+        issuer: failureContext.issuer,
+        subject: failureContext.subject,
+        outcome: "failure",
+        reason: failureContext.reason,
+      }));
+    };
+
     const trustPolicies = tenancy.config.oidcFederation.trustPolicies;
     const policyEntries = Object.entries(trustPolicies).filter(([_, policy]) => policy.enabled);
     if (policyEntries.length === 0) {
-      throw new StatusError(400, "invalid_request: no enabled OIDC federation trust policies for this project");
+      recordFailure({
+        policyId: "",
+        issuer: "",
+        subject: "",
+        reason: "no enabled OIDC federation trust policies for this project",
+      });
+      throw new StatusError(400, "invalid_grant");
     }
 
     const attemptReasons: Array<{ policyId: string, reason: string }> = [];
@@ -161,22 +186,7 @@ export const POST = createSmartRouteHandler({
       ? { policyId: bestAttempt.policyId, issuer: bestAttempt.issuer, subject: bestAttempt.subject, reason: reasonForPolicy(bestAttempt.policyId) }
       : { policyId: attemptReasons[0]?.policyId ?? "", issuer: "", subject: "", reason: attemptReasons[0]?.reason ?? "no trust policy matched" };
 
-    runAsynchronously(logEvent([SystemEventTypes.OidcFederationExchange], {
-      projectId: tenancy.project.id,
-      policyId: failureContext.policyId,
-      issuer: failureContext.issuer,
-      subject: failureContext.subject,
-      outcome: "failure",
-      reason: failureContext.reason,
-    }));
-    runAsynchronously(writeAudit({
-      tenancyId: tenancy.id,
-      policyId: failureContext.policyId,
-      issuer: failureContext.issuer,
-      subject: failureContext.subject,
-      outcome: "failure",
-      reason: failureContext.reason,
-    }));
-    throw new StatusError(400, `invalid_request: ${failureContext.reason}`);
+    recordFailure(failureContext);
+    throw new StatusError(400, "invalid_grant");
   },
 });

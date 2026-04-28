@@ -1,6 +1,8 @@
 import { lookup } from "node:dns/promises";
 import { BlockList, isIPv4, isIPv6 } from "node:net";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
+import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
+import { Agent, fetch as undiciFetch, type Dispatcher, type RequestInit as UndiciRequestInit } from "undici";
 
 type LookupAddress = { address: string, family: number };
 type IpFamily = 4 | 6;
@@ -16,14 +18,7 @@ export type SafeFetchJsonResult<T> =
   | { kind: "url-error", reason: string }
   | { kind: "fetch-error", url: URL, reason: string };
 
-type FetchInitWithDispatcher = RequestInit & { dispatcher?: unknown };
 type LookupCallback = (err: NodeJS.ErrnoException | null, address: string, family: number) => void;
-type UndiciAgentLike = { close?: () => Promise<void> | void };
-type UndiciAgentConstructor = new (options: {
-  connect: {
-    lookup: (hostname: string, options: unknown, callback: LookupCallback) => void,
-  },
-}) => UndiciAgentLike;
 
 // Precomputed blocklist of CIDR ranges the server must never dereference. Covers
 // loopback, RFC1918, link-local + cloud metadata, CGNAT, multicast/reserved for
@@ -71,18 +66,18 @@ export async function safeFetchJson<T>(raw: string, options?: {
   const safe = await resolveSafeFetchUrl(raw);
   if (safe.kind !== "ok") return { kind: "url-error", reason: safe.reason };
 
-  let dispatcher: UndiciAgentLike | undefined;
+  let dispatcher: Dispatcher | undefined;
   try {
     dispatcher = createPinnedDispatcher(safe.address, safe.family);
-    const response = await fetch(safe.url.toString(), {
+    const response = await undiciFetch(safe.url.toString(), {
       method: "GET",
       headers: options?.headers,
       signal: AbortSignal.timeout(options?.timeoutMs ?? 5000),
       dispatcher,
-    } as FetchInitWithDispatcher);
+    } satisfies UndiciRequestInit);
 
     if (!response.ok) {
-      const body = await response.text().catch(() => "<unreadable>");
+      const body = await response.text();
       return { kind: "http-error", url: safe.url, status: response.status, body };
     }
     const body = await response.json() as T;
@@ -91,7 +86,7 @@ export async function safeFetchJson<T>(raw: string, options?: {
     const reason = err instanceof Error ? err.message : String(err);
     return { kind: "fetch-error", url: safe.url, reason };
   } finally {
-    await Promise.resolve(dispatcher?.close?.()).catch(() => undefined);
+    if (dispatcher) runAsynchronously(dispatcher.close());
   }
 }
 
@@ -137,11 +132,10 @@ async function resolveSafeFetchUrl(raw: string): Promise<ResolvedSafeFetchUrl | 
   return { kind: "ok", url, address: selected.address, family };
 }
 
-function createPinnedDispatcher(address: string, family: IpFamily): UndiciAgentLike {
-  const { Agent } = require("undici") as { Agent: UndiciAgentConstructor };
+function createPinnedDispatcher(address: string, family: IpFamily): Agent {
   return new Agent({
     connect: {
-      lookup: (_hostname, _options, callback) => {
+      lookup: (_hostname: string, _options: unknown, callback: LookupCallback) => {
         callback(null, address, family);
       },
     },

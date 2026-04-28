@@ -199,6 +199,12 @@ await niceBackendFetch("/api/v1/internal/config/override/environment", {
 ### Q: Where does domain validation logic belong?
 A: Core validation functions (`isValidHostnameWithWildcards`, `matchHostnamePattern`) belong in the shared utils package (`packages/stack-shared/src/utils/urls.tsx`) so they can be used by both frontend and backend.
 
+### Q: How should OIDC federation exchange failures be exposed to callers?
+A: Keep detailed failure reasons in audit rows and system events, but return a generic `invalid_grant` to unauthenticated token-exchange callers. This avoids leaking IdP fetch/JWKS details or trust-policy claim condition details while preserving operator diagnostics.
+
+### Q: What should OIDC JWT verification do on a JWKS key miss?
+A: Restrict `jwtVerify` to asymmetric OIDC algorithms and, on `ERR_JWKS_NO_MATCHING_KEY`, invalidate both the JWKS cache and the discovery cache before retrying. If an IdP moved `jwks_uri`, clearing only the JWKS row keeps retrying the stale URI.
+
 ### Q: How do you simplify validation logic with wildcards?
 A: Replace wildcards with valid placeholders before validation:
 ```typescript

@@ -9,7 +9,7 @@ export async function POST(request: Request) {
     return NextResponse.json({ ok: false, status: 400, error: "projectId and subjectToken are required" }, { status: 400 });
   }
 
-  const res = await fetch(`${BACKEND_URL}/api/v1/auth/oidc-federation/exchange`, {
+  const res = await fetch(`${BACKEND_URL}/api/latest/auth/oidc-federation/exchange`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",

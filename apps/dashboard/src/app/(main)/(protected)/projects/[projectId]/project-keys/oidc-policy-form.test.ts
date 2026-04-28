@@ -64,6 +64,21 @@ describe("draftToPolicy", () => {
     expect(p.claimConditions.stringEquals).toEqual({});
   });
 
+  it("trims claim values before deciding whether to keep claims", () => {
+    const draft: PolicyDraft = {
+      ...baseDraft(),
+      claimConditionsJson: JSON.stringify({
+        stringEquals: {
+          environment: [" production ", "   "],
+          empty: ["  "],
+        },
+      }),
+    };
+    const p = draftToPolicy(draft);
+    expect(Object.values(p.claimConditions.stringEquals?.environment ?? {})).toEqual(["production"]);
+    expect(p.claimConditions.stringEquals?.empty).toBeUndefined();
+  });
+
   it("treats blank JSON as no conditions", () => {
     const draft: PolicyDraft = { ...baseDraft(), claimConditionsJson: "" };
     const p = draftToPolicy(draft);
