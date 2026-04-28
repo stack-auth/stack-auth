@@ -1,5 +1,6 @@
 import { EmailOutboxCreatedWith, Prisma } from "@/generated/prisma/client";
 import { globalPrismaClient } from "@/prisma-client";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import { afterAll, describe, expect, it } from "vitest";
 import { _forTesting } from "./email-queue-step";
@@ -89,6 +90,13 @@ describe.sequential("failEmailsStuckInSending", () => {
   };
 
   afterAll(async () => {
+    // ClickHouse-backed E2E CI verifies synced row counts after tests finish.
+    // Deleting these rows can race that verifier: the insert may have synced
+    // while the tombstone has not, leaving ClickHouse with one extra visible row.
+    if (getEnvVariable("STACK_CLICKHOUSE_URL", "") !== "") {
+      return;
+    }
+
     for (const { tenancyId, id } of createdIds) {
       await globalPrismaClient.emailOutbox.deleteMany({ where: { tenancyId, id } });
     }
