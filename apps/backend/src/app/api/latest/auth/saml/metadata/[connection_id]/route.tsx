@@ -1,0 +1,58 @@
+import { getSoleTenancyFromProjectBranch, DEFAULT_BRANCH_ID } from "@/lib/tenancies";
+import { getSpMetadataXml, SamlConnectionConfig } from "@/saml/saml";
+import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+
+/**
+ * Public-fetchable SP metadata XML for a single SAML connection. The IdP
+ * admin pastes this URL into their IdP UI to configure the SP side.
+ *
+ * V1 design: includes `?project_id=` because the connection ID alone
+ * doesn't identify a tenancy (connection config lives in JSON, not a
+ * Prisma table — we'd otherwise have to scan all tenancies). A reverse
+ * index can be added later if this UX matters more.
+ */
+export const GET = createSmartRouteHandler({
+  metadata: {
+    summary: "SAML SP metadata",
+    description: "Returns the Service Provider metadata XML for a SAML connection — paste into the IdP admin UI to configure the SP side.",
+    tags: ["Saml"],
+  },
+  request: yupObject({
+    params: yupObject({
+      connection_id: yupString().defined(),
+    }).defined(),
+    query: yupObject({
+      project_id: yupString().defined(),
+    }).defined(),
+  }),
+  response: yupObject({
+    statusCode: yupNumber().oneOf([200]).defined(),
+    bodyType: yupString().oneOf(["text"]).defined(),
+    body: yupString().defined(),
+  }),
+  async handler({ params, query }, fullReq) {
+    const tenancy = await getSoleTenancyFromProjectBranch(query.project_id, DEFAULT_BRANCH_ID, true);
+    if (!tenancy) {
+      throw new StatusError(StatusError.NotFound, `Project ${query.project_id} not found`);
+    }
+    const samlConfig = (tenancy.config.auth as { saml?: { connections?: Record<string, SamlConnectionConfig> } }).saml;
+    const connection = samlConfig?.connections?.[params.connection_id];
+    if (!connection) {
+      throw new StatusError(StatusError.NotFound, `SAML connection ${params.connection_id} not found in project ${query.project_id}`);
+    }
+
+    // Derive the public-facing base URL from the request origin so SP
+    // metadata reflects the host the IdP is calling.
+    const reqUrl = new URL(fullReq.url);
+    const baseUrl = `${reqUrl.protocol}//${reqUrl.host}`;
+    const xml = getSpMetadataXml({ ...connection, id: params.connection_id }, baseUrl);
+
+    return {
+      statusCode: 200,
+      bodyType: "text",
+      body: xml,
+    };
+  },
+});
