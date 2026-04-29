@@ -37,9 +37,12 @@ export const GET = createSmartRouteHandler({
     if (!tenancy) {
       throw new StatusError(StatusError.NotFound, `Project ${query.project_id} not found`);
     }
+    if (!(params.connection_id in tenancy.config.auth.saml.connections)) {
+      throw new StatusError(StatusError.NotFound, `SAML connection ${params.connection_id} not found in project ${query.project_id}`);
+    }
     const connection = tenancy.config.auth.saml.connections[params.connection_id];
     if (!connection.idpEntityId || !connection.idpSsoUrl || !connection.idpCertificate) {
-      throw new StatusError(StatusError.NotFound, `SAML connection ${params.connection_id} not found or incompletely configured in project ${query.project_id}`);
+      throw new StatusError(StatusError.NotFound, `SAML connection ${params.connection_id} is incompletely configured (missing IdP entity ID, SSO URL, or certificate)`);
     }
 
     // Derive the public-facing base URL from the request origin so SP

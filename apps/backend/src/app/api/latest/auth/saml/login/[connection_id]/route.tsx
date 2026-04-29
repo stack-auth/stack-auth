@@ -100,12 +100,15 @@ export const GET = createSmartRouteHandler({
       throwCheckApiKeySetError(keyCheck.error, tenancy.project.id, new KnownErrors.InvalidPublishableClientKey(tenancy.project.id));
     }
 
-    const connectionRaw = tenancy.config.auth.saml.connections[params.connection_id];
-    if (!connectionRaw.idpEntityId || !connectionRaw.idpSsoUrl || !connectionRaw.idpCertificate) {
-      throw new StatusError(StatusError.NotFound, `SAML connection ${params.connection_id} is not configured`);
+    if (!(params.connection_id in tenancy.config.auth.saml.connections)) {
+      throw new StatusError(StatusError.NotFound, `SAML connection ${params.connection_id} not found`);
     }
+    const connectionRaw = tenancy.config.auth.saml.connections[params.connection_id];
     if (connectionRaw.allowSignIn === false) {
       throw new StatusError(StatusError.Forbidden, `SAML connection ${params.connection_id} has sign-in disabled`);
+    }
+    if (!connectionRaw.idpEntityId || !connectionRaw.idpSsoUrl || !connectionRaw.idpCertificate) {
+      throw new StatusError(StatusError.NotFound, `SAML connection ${params.connection_id} is incompletely configured`);
     }
 
     if (

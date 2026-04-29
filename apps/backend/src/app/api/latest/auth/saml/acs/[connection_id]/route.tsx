@@ -130,9 +130,12 @@ export const POST = createSmartRouteHandler({
     }
     const prisma = await getPrismaClientForTenancy(tenancy);
 
+    if (!(params.connection_id in tenancy.config.auth.saml.connections)) {
+      throw new StatusError(StatusError.NotFound, `SAML connection ${params.connection_id} not found`);
+    }
     const connectionRaw = tenancy.config.auth.saml.connections[params.connection_id];
     if (!connectionRaw.idpEntityId || !connectionRaw.idpSsoUrl || !connectionRaw.idpCertificate) {
-      throw new StatusError(StatusError.NotFound, `SAML connection ${params.connection_id} is not configured`);
+      throw new StatusError(StatusError.NotFound, `SAML connection ${params.connection_id} is incompletely configured`);
     }
     const connection: SamlConnectionConfig = {
       id: params.connection_id,

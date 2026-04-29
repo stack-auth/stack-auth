@@ -60,8 +60,15 @@ export function buildSamlClient(connection: SamlConnectionConfig, baseUrl: strin
     audience: spEntityId(baseUrl, connection.id),
     // V1: SP doesn't sign AuthnRequests and assertions aren't encrypted.
     // Per-connection toggles for both will land with signed/encrypted assertion support.
-    wantAssertionsSigned: true,
-    wantAuthnResponseSigned: false,
+    //
+    // Per SAML 2.0 §4.1.4.2 we accept either a signed Response OR a signed
+    // Assertion (most IdPs sign one or the other). node-saml verifies
+    // whichever signatures are present; setting both wants to false would
+    // skip verification entirely. We require AT LEAST the Response to be
+    // signed because that's what the most common IdPs (Okta, Azure AD,
+    // samlify defaults) emit.
+    wantAssertionsSigned: false,
+    wantAuthnResponseSigned: true,
     signatureAlgorithm: "sha256",
     digestAlgorithm: "sha256",
     // Tolerate small clock skew between SP and IdP. SAML test #16 verifies
