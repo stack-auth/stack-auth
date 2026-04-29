@@ -1,9 +1,9 @@
 import { ALLOWED_MODEL_IDS } from "@/lib/ai/models";
+import type { StackNextRequest } from "@/next-compat";
 import { preprocessProxyBody } from "@/private";
 import { handleApiRequest } from "@/route-handlers/smart-route-handler";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { NextRequest } from "next/server";
 
 const OPENROUTER_BASE_URL = "https://openrouter.ai/api";
 const PRODUCTION_PROXY_BASE_URL = "https://api.stack-auth.com/api/latest/integrations/ai-proxy";
@@ -38,7 +38,7 @@ function sanitizeBody(raw: ArrayBuffer): Uint8Array {
   return new TextEncoder().encode(JSON.stringify(parsed));
 }
 
-async function proxyToOpenRouter(req: NextRequest, options: { params: Promise<{ path?: string[] }> }) {
+async function proxyToOpenRouter(req: StackNextRequest, options: { params: Promise<{ path?: string[] }> }) {
   const apiKey = getEnvVariable("STACK_OPENROUTER_API_KEY");
   const params = await options.params;
   const subpath = params.path?.join("/") ?? "";

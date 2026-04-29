@@ -11,8 +11,7 @@ import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { urlSchema, yupArray, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
+import { cookies, redirect } from "@/next-compat";
 import { generators } from "openid-client";
 import type { InferType, Schema } from "yup";
 

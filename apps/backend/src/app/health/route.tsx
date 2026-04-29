@@ -1,8 +1,8 @@
+import type { StackNextRequest } from "@/next-compat";
 import { globalPrismaClient } from "@/prisma-client";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
-import { NextRequest } from "next/server";
 
-export async function GET(req: NextRequest) {
+export async function GET(req: StackNextRequest) {
   if (req.nextUrl.searchParams.get("db")) {
     const project = await globalPrismaClient.project.findFirst({});
 

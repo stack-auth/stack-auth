@@ -1,8 +1,8 @@
 import { handleApiRequest } from "@/route-handlers/smart-route-handler";
+import type { StackNextRequest } from "@/next-compat";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { createNodeHttpServerDuplex } from "@stackframe/stack-shared/dist/utils/node-http";
-import { NextRequest, NextResponse } from "next/server";
 import { createOidcProvider } from "../../../../idp";
 
 export const dynamic = "force-dynamic";
@@ -27,7 +27,7 @@ function getOidcCallbackPromise() {
   return _oidcCallbackPromiseCache;
 }
 
-const handler = handleApiRequest(async (req: NextRequest) => {
+const handler = handleApiRequest(async (req: StackNextRequest) => {
   const newUrl = req.url.replace(pathPrefix, "");
   if (newUrl === req.url) {
     throw new StackAssertionError("No path prefix found in request URL. Is the pathPrefix correct?", { newUrl, url: req.url, pathPrefix });
@@ -60,14 +60,13 @@ const handler = handleApiRequest(async (req: NextRequest) => {
   // filter out session cookies; we don't want to keep sessions open, every OAuth flow should start a new session
   headers = headers.filter(([k, v]) => k !== "set-cookie" || !v.toString().match(/^_session\.?/));
 
-  return new NextResponse(body, {
+  return new Response(body, {
     headers: headers,
     status: {
       // our API never returns 301 or 302 by convention, so transform them to 307 or 308
       301: 308,
       302: 307,
     }[serverResponse.statusCode] ?? serverResponse.statusCode,
-    statusText: serverResponse.statusMessage,
   });
 });
 

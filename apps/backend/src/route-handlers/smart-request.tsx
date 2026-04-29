@@ -15,7 +15,7 @@ import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dis
 import { StackAssertionError, StatusError, captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { traceSpan, withTraceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
-import { NextRequest } from "next/server";
+import type { StackNextRequest } from "@/next-compat";
 import * as yup from "yup";
 
 const allowedMethods = ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"] as const;
@@ -70,7 +70,7 @@ export type MergeSmartRequest<T, MSQ = SmartRequest> =
     )
   );
 
-async function validate<T>(obj: SmartRequest, schema: yup.Schema<T>, req: NextRequest | null): Promise<T> {
+async function validate<T>(obj: SmartRequest, schema: yup.Schema<T>, req: StackNextRequest | null): Promise<T> {
   try {
     return await yupValidate(schema, obj, {
       abortEarly: false,
@@ -114,7 +114,7 @@ async function validate<T>(obj: SmartRequest, schema: yup.Schema<T>, req: NextRe
 }
 
 
-async function parseBody(req: NextRequest, bodyBuffer: ArrayBuffer): Promise<SmartRequest["body"]> {
+async function parseBody(req: StackNextRequest, bodyBuffer: ArrayBuffer): Promise<SmartRequest["body"]> {
   const contentType = req.method === "GET" ? undefined : req.headers.get("content-type")?.split(";")[0];
 
   const getText = () => {
@@ -158,7 +158,7 @@ async function parseBody(req: NextRequest, bodyBuffer: ArrayBuffer): Promise<Sma
   }
 }
 
-const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextRequest): Promise<SmartRequestAuth | null> => {
+const parseAuth = withTraceSpan('smart request parseAuth', async (req: StackNextRequest): Promise<SmartRequestAuth | null> => {
   const projectId = req.headers.get("x-stack-project-id");
   const branchId = req.headers.get("x-stack-branch-id") ?? DEFAULT_BRANCH_ID;
   let requestType = req.headers.get("x-stack-access-type");
@@ -328,7 +328,13 @@ const parseAuth = withTraceSpan('smart request parseAuth', async (req: NextReque
   };
 });
 
-export async function createSmartRequest(req: NextRequest, bodyBuffer: ArrayBuffer, options?: { params: Promise<Record<string, string>> }): Promise<SmartRequest> {
+function normalizeParams(params: Record<string, string | string[]>): Record<string, string> {
+  return Object.fromEntries(
+    Object.entries(params).map(([key, value]) => [key, Array.isArray(value) ? value.join("/") : value])
+  );
+}
+
+export async function createSmartRequest(req: StackNextRequest, bodyBuffer: ArrayBuffer, options?: { params: Promise<Record<string, string | string[]>> }): Promise<SmartRequest> {
   return await traceSpan("creating smart request", async () => {
     const urlObject = new URL(req.url);
     const clientVersionMatch = req.headers.get("x-stack-client-version")?.match(/^(\w+)\s+(@[\w\/]+)@([\d.]+)$/);
@@ -343,7 +349,7 @@ export async function createSmartRequest(req: NextRequest, bodyBuffer: ArrayBuff
           .map(([key, values]) => [key, values.map(([_, value]) => value)]),
       ),
       query: Object.fromEntries(urlObject.searchParams.entries()),
-      params: await options?.params ?? {},
+      params: normalizeParams(await options?.params ?? {}),
       auth: await parseAuth(req),
       clientVersion: clientVersionMatch ? {
         platform: clientVersionMatch[1],
@@ -354,6 +360,6 @@ export async function createSmartRequest(req: NextRequest, bodyBuffer: ArrayBuff
   });
 }
 
-export async function validateSmartRequest<T extends DeepPartialSmartRequestWithSentinel>(nextReq: NextRequest | null, smartReq: SmartRequest, schema: yup.Schema<T>): Promise<T> {
+export async function validateSmartRequest<T extends DeepPartialSmartRequestWithSentinel>(nextReq: StackNextRequest | null, smartReq: SmartRequest, schema: yup.Schema<T>): Promise<T> {
   return await validate(smartReq, schema, nextReq);
 }

@@ -1,10 +1,10 @@
 import "../polyfills";
 
+import type { StackNextRequest } from "@/next-compat";
 import { yupArray, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
-import { NextRequest } from "next/server";
 import { createSmartRouteHandler } from "./smart-route-handler";
 
-export function redirectHandler(redirectPath: string, statusCode: 303 | 307 | 308 = 307): (req: NextRequest, options: any) => Promise<Response> {
+export function redirectHandler(redirectPath: string, statusCode: 303 | 307 | 308 = 307): (req: StackNextRequest, options: any) => Promise<Response> {
   return createSmartRouteHandler({
     request: yupObject({
       url: yupString().defined(),

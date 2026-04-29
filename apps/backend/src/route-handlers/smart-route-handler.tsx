@@ -1,6 +1,8 @@
 import "../polyfills";
 
 import { recordRequestStats } from "@/lib/dev-request-stats";
+import { isStackRedirectError } from "@/next-compat";
+import type { StackNextRequest } from "@/next-compat";
 import * as Sentry from "@sentry/nextjs";
 import { EndpointDocumentation } from "@stackframe/stack-shared/dist/crud";
 import { KnownError, KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
@@ -9,7 +11,6 @@ import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, StatusError, captureError, errorToNiceString } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously, wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { traceSpan } from "@stackframe/stack-shared/dist/utils/telemetry";
-import { NextRequest } from "next/server";
 import * as yup from "yup";
 import { DeepPartialSmartRequestWithSentinel, MergeSmartRequest, SmartRequest, createSmartRequest, validateSmartRequest } from "./smart-request";
 import { SmartResponse, createResponse, validateSmartResponse } from "./smart-response";
@@ -64,8 +65,8 @@ let concurrentRequestsInProcess = 0;
  * Catches any errors thrown in the handler and returns a 500 response with the thrown error message. Also logs the
  * request details.
  */
-export function handleApiRequest(handler: (req: NextRequest, options: any, requestId: string) => Promise<Response>): (req: NextRequest, options: any) => Promise<Response> {
-  return async (req: NextRequest, options: any) => {
+export function handleApiRequest(handler: (req: StackNextRequest, options: any, requestId: string) => Promise<Response>): (req: StackNextRequest, options: any) => Promise<Response> {
+  return async (req: StackNextRequest, options: any) => {
     concurrentRequestsInProcess++;
     try {
       const requestId = generateSecureRandomString(80);
@@ -140,6 +141,10 @@ export function handleApiRequest(handler: (req: NextRequest, options: any, reque
           if (!disableExtendedLogging) console.log(`[    RES] [${requestId}] ${req.method} ${censoredUrl}: ${res.status} (in ${time.toFixed(0)}ms)`);
           return res;
         } catch (e) {
+          if (isStackRedirectError(e)) {
+            return e.response;
+          }
+
           let statusError: StatusError;
           try {
             statusError = catchError(e, requestId);
@@ -198,7 +203,7 @@ export type SmartRouteHandler<
   Req extends DeepPartialSmartRequestWithSentinel = DeepPartialSmartRequestWithSentinel,
   Res extends SmartResponse = SmartResponse,
   InitArgs extends [readonly OverloadParam[], SmartRouteHandlerOverloadGenerator<OverloadParam, Req, Res>] | [SmartRouteHandlerOverload<Req, Res>] = any,
-> = ((req: NextRequest, options: any) => Promise<Response>) & {
+> = ((req: StackNextRequest, options: any) => Promise<Response>) & {
   overloads: Map<OverloadParam, SmartRouteHandlerOverload<Req, Res>>,
   invoke: (smartRequest: SmartRequest) => Promise<Res>,
   initArgs: InitArgs,
@@ -243,7 +248,7 @@ export function createSmartRouteHandler<
     throw new StackAssertionError("Duplicate overload parameters");
   }
 
-  const invoke = async (nextRequest: NextRequest | null, requestId: string, smartRequest: SmartRequest, shouldSetContext: boolean = false) => {
+  const invoke = async (nextRequest: StackNextRequest | null, requestId: string, smartRequest: SmartRequest, shouldSetContext: boolean = false) => {
     const reqsParsed: [[Req, SmartRequest], SmartRouteHandlerOverload<Req, Res>][] = [];
     const reqsErrors: unknown[] = [];
     for (const [overloadParam, overload] of overloads.entries()) {

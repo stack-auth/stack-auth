@@ -3,7 +3,7 @@ import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { isIpAddress } from "@stackframe/stack-shared/dist/utils/ips";
 import { pick } from "@stackframe/stack-shared/dist/utils/objects";
-import { headers } from "next/headers";
+import { headers } from "@/next-compat";
 
 // An end user is a person sitting behind a computer screen.
 //

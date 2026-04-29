@@ -14,8 +14,7 @@ import { KnownError, KnownErrors } from "@stackframe/stack-shared";
 import { yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { deindent, extractScopes } from "@stackframe/stack-shared/dist/utils/strings";
-import { cookies } from "next/headers";
-import { redirect } from "next/navigation";
+import { cookies, redirect } from "@/next-compat";
 import { oauthResponseToSmartResponse } from "../../oauth-helpers";
 
 /**

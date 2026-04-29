@@ -5,8 +5,8 @@ import apiVersions from './generated/api-versions.json';
 import routes from './generated/routes.json';
 import './polyfills';
 
-import type { NextRequest } from 'next/server';
-import { NextResponse } from 'next/server';
+import { toStackNextRequest } from './next-compat';
+import type { StackNextRequest } from './next-compat';
 import { SmartRouter } from './smart-router';
 
 const DEV_RATE_LIMIT_MAX_REQUESTS = 100;
@@ -53,8 +53,19 @@ const corsAllowedResponseHeaders = [
   'x-stack-known-error',
 ];
 
-// This function can be marked `async` if using `await` inside
-export async function proxy(request: NextRequest) {
+export type BackendProxyResult =
+  | {
+    type: "response",
+    response: Response,
+  }
+  | {
+    type: "request",
+    request: StackNextRequest,
+    routePathname: string,
+    responseHeaders: Headers,
+  };
+
+export async function proxy(request: StackNextRequest): Promise<BackendProxyResult> {
   const url = new URL(request.url);
   const delay = +getEnvVariable('STACK_ARTIFICIAL_DEVELOPMENT_DELAY_MS', '0');
   if (delay) {
@@ -87,7 +98,7 @@ export async function proxy(request: NextRequest) {
       const waitMs = Math.max(0, DEV_RATE_LIMIT_WINDOW_MS - (now - devRateLimitTimestamps[0]));
       const retryAfterSeconds = Math.max(1, Math.ceil(waitMs / 1000));
 
-      const response = NextResponse.json({
+      const response = Response.json({
         message: 'Artificial development rate limit triggered. Wait before retrying.',
       }, {
         status: 429,
@@ -105,26 +116,27 @@ export async function proxy(request: NextRequest) {
         response.headers.set('Retry-After', retryAfterSeconds.toString());
       }
 
-      return response;
+      return {
+        type: "response",
+        response,
+      };
     } else {
       devRateLimitTimestamps.push(now);
     }
   }
 
   const newRequestHeaders = new Headers(request.headers);
-  // here we could update the request headers (currently we don't)
-
-  const responseInit = isApiRequest ? {
-    request: {
-      headers: newRequestHeaders,
-    },
-    headers: corsHeadersInit,
-  } as const : undefined;
+  const responseHeaders = new Headers(corsHeadersInit);
 
   // we want to allow preflight requests to pass through
   // even if the API route does not implement OPTIONS
   if (request.method === 'OPTIONS' && isApiRequest) {
-    return new Response(null, responseInit);
+    return {
+      type: "response",
+      response: new Response(null, {
+        headers: responseHeaders,
+      }),
+    };
   }
 
   // if no route is available for the requested version, rewrite to newer version
@@ -154,9 +166,23 @@ export async function proxy(request: NextRequest) {
     }
   }
 
-  const newUrl = request.nextUrl.clone();
-  newUrl.pathname = pathname;
-  return NextResponse.rewrite(newUrl, responseInit);
+  if (pathname !== url.pathname) {
+    responseHeaders.set("x-middleware-rewrite", pathname);
+  }
+
+  const requestInit: RequestInit & { duplex: "half" } = {
+    method: request.method,
+    headers: newRequestHeaders,
+    body: request.body,
+    duplex: "half",
+  };
+  const rewrittenRequest = toStackNextRequest(new Request(request.url, requestInit));
+  return {
+    type: "request",
+    request: rewrittenRequest,
+    routePathname: pathname,
+    responseHeaders,
+  };
 }
 
 // See "Matching Paths" below to learn more
