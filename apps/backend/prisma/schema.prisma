@@ -308,6 +308,7 @@ model ProjectUser {
   signUpRiskScoreFreeTrialAbuse Int @default(0) @db.SmallInt
 
   projectUserOAuthAccounts ProjectUserOAuthAccount[]
+  projectUserSamlAccounts  ProjectUserSamlAccount[]
   teamMembers              TeamMember[]
   contactChannels          ContactChannel[]
   authMethods              AuthMethod[]
@@ -317,6 +318,7 @@ model ProjectUser {
   passkeyAuthMethod          PasskeyAuthMethod[]
   otpAuthMethod              OtpAuthMethod[]
   oauthAuthMethod            OAuthAuthMethod[]
+  samlAuthMethod             SamlAuthMethod[]
   projectApiKey              ProjectApiKey[]
   directPermissions          ProjectUserDirectPermission[]
   Project                    Project?                      @relation(fields: [projectId], references: [id])
@@ -486,6 +488,7 @@ model AuthMethod {
   passwordAuthMethod PasswordAuthMethod?
   passkeyAuthMethod  PasskeyAuthMethod?
   oauthAuthMethod    OAuthAuthMethod?
+  samlAuthMethod     SamlAuthMethod?
 
   projectUser ProjectUser @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
 
@@ -625,6 +628,89 @@ model OAuthOuterInfo {
   info       Json
   innerState String   @unique
   expiresAt  DateTime
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// =================== SAML SSO ===================
+//
+// SAML connection *config* (entity ID, IdP cert, ACS URL, attribute mapping,
+// domain, etc.) is stored as JSON in tenancy.config.auth.saml.connections —
+// matching how OAuth provider config (clientId/clientSecret) is stored. The
+// Prisma models below cover only per-user account records and the in-flight
+// AuthnRequest temp store.
+
+// One row per (tenancy, samlConnectionId, NameID). Mirrors
+// ProjectUserOAuthAccount. samlConnectionId is the string key under
+// tenancy.config.auth.saml.connections.
+model ProjectUserSamlAccount {
+  id               String  @default(uuid()) @db.Uuid
+  tenancyId        String  @db.Uuid
+  projectUserId    String? @db.Uuid
+  samlConnectionId String
+  nameId           String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  // Snapshot from the most recent assertion. Used to distinguish accounts
+  // and to populate primary contact channel on first sign-in.
+  email        String?
+  nameIdFormat String?
+
+  // Before the SAML account is connected to a user (e.g. mid-flight), the
+  // projectUser is null. Once the ACS callback creates/links the user, this
+  // is set.
+  projectUser ProjectUser? @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
+
+  // if allowSignIn is true, samlAuthMethod must be set
+  samlAuthMethod SamlAuthMethod?
+  allowSignIn    Boolean         @default(true)
+
+  @@id([tenancyId, id])
+  // A NameID is unique per (project, connection). The same NameID from a
+  // different connection is a distinct identity — this is what enforces
+  // multi-tenant connection isolation at the DB level.
+  @@unique([tenancyId, samlConnectionId, nameId])
+  // Composite for FK relation from SamlAuthMethod.samlAccount.
+  @@unique([tenancyId, samlConnectionId, projectUserId, nameId])
+  @@index([tenancyId, projectUserId])
+  @@index([tenancyId, samlConnectionId])
+}
+
+// Connects a project user to a SamlAuthMethod via a SAML account.
+// Mirrors OAuthAuthMethod.
+model SamlAuthMethod {
+  tenancyId        String @db.Uuid
+  authMethodId     String @db.Uuid
+  samlConnectionId String
+  nameId           String
+  projectUserId    String @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  authMethod  AuthMethod             @relation(fields: [tenancyId, authMethodId], references: [tenancyId, id], onDelete: Cascade)
+  samlAccount ProjectUserSamlAccount @relation(fields: [tenancyId, samlConnectionId, projectUserId, nameId], references: [tenancyId, samlConnectionId, projectUserId, nameId])
+  projectUser ProjectUser            @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
+
+  @@id([tenancyId, authMethodId])
+  // A user has at most one SAML auth method per connection.
+  @@unique([tenancyId, projectUserId, samlConnectionId])
+  @@unique([tenancyId, samlConnectionId, projectUserId, nameId])
+}
+
+// In-flight AuthnRequest state. Mirrors OAuthOuterInfo. Keyed by the
+// AuthnRequest ID so the ACS handler can look up the original context
+// when the IdP POSTs the assertion back via the browser.
+model SamlOuterInfo {
+  // SAML AuthnRequest IDs are XML IDs (xs:ID). They start with a non-numeric
+  // character per spec, so we store as String — not Uuid.
+  id String @id
+
+  info      Json
+  expiresAt DateTime
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
