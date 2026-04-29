@@ -62,14 +62,5 @@ async function handleFatal(err: unknown): Promise<never> {
   process.exit(1);
 }
 
-process.on("uncaughtException", (err) => {
-  // eslint-disable-next-line @typescript-eslint/no-floating-promises
-  handleFatal(err);
-});
-process.on("unhandledRejection", (reason) => {
-  // eslint-disable-next-line @typescript-eslint/no-floating-promises
-  handleFatal(reason);
-});
-
 // eslint-disable-next-line @typescript-eslint/no-floating-promises
 main();
