@@ -2,6 +2,13 @@
 
 ---
 
+## 4/29/26
+
+### Dashboard
+- Added "Copy prompt" button on the project setup page for AI-assisted installation. The button copies a framework-aware prompt that instructs AI agents to run the install command and verify the Stack Auth MCP server is configured.
+
+---
+
 ## 1/23/26
 
 ### Payments
