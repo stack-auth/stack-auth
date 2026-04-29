@@ -1940,6 +1940,63 @@ async function seedBulkSignupsAndActivity(options: {
 }
 
 /**
+ * Pre-creates two SAML connections (acme + globex) on the dummy project that
+ * point at the local mock SAML IdP. Gated on STACK_SEED_ENABLE_SAML='true'.
+ * Fetches the mock IdP's metadata at seed time so the seeded cert matches
+ * the cert the mock generated at startup — the mock currently regenerates
+ * keys per restart, so re-seed if you restart the mock.
+ */
+async function seedSamlConnections(projectId: string): Promise<void> {
+  const mockUrl = getEnvVariable("STACK_MOCK_SAML_URL", "http://localhost:8115");
+  const tenants: Array<{ slug: string, displayName: string, domain: string }> = [
+    { slug: "acme", displayName: "Acme Corp SSO", domain: "acme.test" },
+    { slug: "globex", displayName: "Globex SAML", domain: "globex.test" },
+  ];
+
+  const fetched = await Promise.all(
+    tenants.map(async (t) => {
+      const res = await fetch(`${mockUrl}/idp/${t.slug}/metadata`);
+      if (!res.ok) {
+        throw new Error(`Mock SAML IdP at ${mockUrl}/idp/${t.slug}/metadata returned ${res.status} — is the mock running?`);
+      }
+      const xml = await res.text();
+      // Inline minimal metadata parse to avoid a circular import. Format is
+      // exactly what the mock emits, so a regex is enough; the production
+      // parser at apps/backend/src/saml/metadata-parser.tsx is the
+      // robust one used by the dashboard "paste metadata" form.
+      const entityIdMatch = xml.match(/entityID="([^"]+)"/);
+      const ssoUrlMatch = xml.match(/Binding="urn:oasis:names:tc:SAML:2\.0:bindings:HTTP-Redirect"[^>]*Location="([^"]+)"/);
+      const certMatch = xml.match(/<X509Certificate>([\s\S]+?)<\/X509Certificate>/);
+      if (!entityIdMatch || !ssoUrlMatch || !certMatch) {
+        throw new Error(`Could not parse mock IdP metadata for tenant ${t.slug}`);
+      }
+      return {
+        ...t,
+        idpEntityId: entityIdMatch[1],
+        idpSsoUrl: ssoUrlMatch[1],
+        idpCertificate: certMatch[1].replace(/\s+/g, ""),
+      };
+    }),
+  );
+
+  const overlay: Record<string, unknown> = {};
+  for (const f of fetched) {
+    overlay[`auth.saml.connections.${f.slug}.displayName`] = f.displayName;
+    overlay[`auth.saml.connections.${f.slug}.allowSignIn`] = true;
+    overlay[`auth.saml.connections.${f.slug}.domain`] = f.domain;
+    overlay[`auth.saml.connections.${f.slug}.idpEntityId`] = f.idpEntityId;
+    overlay[`auth.saml.connections.${f.slug}.idpSsoUrl`] = f.idpSsoUrl;
+    overlay[`auth.saml.connections.${f.slug}.idpCertificate`] = f.idpCertificate;
+  }
+
+  await overrideEnvironmentConfigOverride({
+    projectId,
+    branchId: DEFAULT_BRANCH_ID,
+    environmentConfigOverrideOverride: overlay as Parameters<typeof overrideEnvironmentConfigOverride>[0]["environmentConfigOverrideOverride"],
+  });
+}
+
+/**
  * Creates a new project and fills it with dummy data (users, teams, payments, emails, analytics events).
  * Used by both the seed script and the preview project creation endpoint.
  */
@@ -2068,6 +2125,7 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
         "payments.testMode": true,
       },
     }),
+    ...(getEnvVariable("STACK_SEED_ENABLE_SAML", "false") === "true" ? [seedSamlConnections(projectId)] : []),
     ...options.skipGithubConfigSource ? [] : [setBranchConfigOverrideSource({
       projectId,
       branchId: DEFAULT_BRANCH_ID,

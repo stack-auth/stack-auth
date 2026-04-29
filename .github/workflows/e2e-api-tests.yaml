@@ -143,6 +143,15 @@ jobs:
           tail: true
           wait-for: 30s
           log-output-if: true
+      - name: Start mock-saml-idp in background
+        uses: JarvusInnovations/background-action@v1.0.7
+        with:
+          run: pnpm run start:mock-saml-idp --log-order=stream &
+          wait-on: |
+            http://localhost:8115/idp
+          tail: true
+          wait-for: 30s
+          log-output-if: true
       - name: Start run-email-queue in background
         uses: JarvusInnovations/background-action@v1.0.7
         with:
