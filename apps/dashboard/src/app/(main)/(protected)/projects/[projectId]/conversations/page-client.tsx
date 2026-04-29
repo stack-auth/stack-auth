@@ -429,7 +429,9 @@ function SupportChatMessage(props: {
   conversation: ConversationSummary,
 }) {
   const trimmedBody = props.message.body?.trim() ?? "";
-  if (props.message.messageType !== "status-change" && trimmedBody === "") {
+  const attachmentCount = props.message.attachments.length;
+  const hasAttachments = attachmentCount > 0;
+  if (props.message.messageType !== "status-change" && trimmedBody === "" && !hasAttachments) {
     return null;
   }
 
@@ -452,6 +454,7 @@ function SupportChatMessage(props: {
   }
 
   const customerName = props.conversation.userDisplayName ?? props.conversation.userPrimaryEmail ?? "Customer";
+  const bodyContent = trimmedBody !== "" ? trimmedBody : `${attachmentCount} attachment${attachmentCount === 1 ? "" : "s"}`;
 
   if (props.message.messageType === "internal-note") {
     return (
@@ -476,7 +479,7 @@ function SupportChatMessage(props: {
               </Typography>
             </div>
             <Typography className="mt-1.5 whitespace-pre-wrap text-[13px] leading-relaxed text-foreground/85">
-              {trimmedBody}
+              {bodyContent}
             </Typography>
           </div>
         </div>
@@ -502,7 +505,7 @@ function SupportChatMessage(props: {
           {timestampLabel}
         </Typography>
       </div>
-      <Typography className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed">{trimmedBody}</Typography>
+      <Typography className="mt-1 whitespace-pre-wrap text-[13px] leading-relaxed">{bodyContent}</Typography>
     </div>
   );
 
