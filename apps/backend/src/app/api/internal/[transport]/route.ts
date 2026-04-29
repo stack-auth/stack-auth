@@ -1,10 +1,15 @@
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { createMcpHandler } from "@vercel/mcp-adapter";
-import { PostHog } from "posthog-node";
 import { z } from "zod";
 
-const nodeClient = process.env.NEXT_PUBLIC_POSTHOG_KEY
-  ? new PostHog(process.env.NEXT_PUBLIC_POSTHOG_KEY)
-  : null;
+import withPostHog from "@/analytics";
+
+function getBackendApiBaseUrl(): string {
+  return (
+    getEnvVariable("NEXT_PUBLIC_SERVER_STACK_API_URL", "") ||
+    getEnvVariable("NEXT_PUBLIC_STACK_API_URL")
+  ).replace(/\/$/, "");
+}
 
 const handler = createMcpHandler(
   async (server) => {
@@ -29,26 +34,19 @@ const handler = createMcpHandler(
           .string()
           .optional()
           .describe(
-            "Pass the conversationId from a previous response to group related calls into the same conversation. Omit on the first call — the server will generate one and return it.",
+            "Pass the conversationId from a previous response to group related calls into the same conversation. Omit on the first call - the server will generate one and return it.",
           ),
       },
       async ({ question, reason, userPrompt, conversationId }) => {
-        nodeClient?.capture({
-          event: "ask_stack_auth_mcp",
-          properties: { question, reason },
-          distinctId: "mcp-handler",
+        await withPostHog(async (posthog) => {
+          posthog.capture({
+            event: "ask_stack_auth_mcp",
+            properties: { question, reason },
+            distinctId: "mcp-handler",
+          });
         });
 
-        const apiBase = process.env.NEXT_PUBLIC_STACK_API_URL;
-        if (apiBase == null || apiBase === "") {
-          return {
-            content: [{ type: "text", text: "NEXT_PUBLIC_STACK_API_URL is not configured on the docs server." }],
-            isError: true,
-          };
-        }
-
-        const url = `${apiBase.replace(/\/$/, "")}/api/latest/ai/query/generate`;
-        const res = await fetch(url, {
+        const res = await fetch(`${getBackendApiBaseUrl()}/api/latest/ai/query/generate`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
@@ -86,44 +84,15 @@ const handler = createMcpHandler(
         const responseConversationId = body.conversationId ?? conversationId ?? "";
 
         return {
-          content: [{ type: "text", text: `${text.length > 0 ? text : "(empty response)"}\n\n[conversationId: ${responseConversationId} — pass this value as the conversationId parameter in your next ask_stack_auth call to continue this conversation]` }],
+          content: [{ type: "text", text: `${text.length > 0 ? text : "(empty response)"}\n\n[conversationId: ${responseConversationId} - pass this value as the conversationId parameter in your next ask_stack_auth call to continue this conversation]` }],
         };
       },
     );
   },
   {
-    capabilities: {
-      tools: {
-        ask_stack_auth: {
-          description:
-            "Ask the Stack Auth documentation assistant any question about Stack Auth (setup, APIs, SDKs, configuration, troubleshooting).",
-          parameters: {
-            type: "object",
-            properties: {
-              question: {
-                type: "string",
-                description: "The full question to ask about Stack Auth.",
-              },
-              reason: {
-                type: "string",
-                description:
-                  "Why the agent invoked this tool (for analytics and debugging). Not sent to the documentation model.",
-              },
-              userPrompt: {
-                type: "string",
-                description:
-                  "The original user message/prompt that triggered this tool call. Copy the user's exact words.",
-              },
-              conversationId: {
-                type: "string",
-                description:
-                  "Pass the conversationId from a previous response to group related calls. Omit on first call.",
-              },
-            },
-            required: ["question", "reason", "userPrompt"],
-          },
-        },
-      },
+    serverInfo: {
+      name: "stack-auth-mcp",
+      version: "0.1.0",
     },
   },
   {
