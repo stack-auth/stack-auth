@@ -1,62 +1,20 @@
 import { EmailOutboxCreatedWith, Prisma } from "@/generated/prisma/client";
 import { globalPrismaClient } from "@/prisma-client";
-import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { _forTesting } from "./email-queue-step";
-import { DEFAULT_BRANCH_ID } from "./tenancies";
+import { DEFAULT_BRANCH_ID, getSoleTenancyFromProjectBranch } from "./tenancies";
 
 const { failEmailsStuckInSending, STUCK_EMAIL_TIMEOUT_MS } = _forTesting;
 
 // These tests connect to the real dev DB (like payments.test.tsx) and create real EmailOutbox
-// rows against an isolated tenancy. Each row is tagged with a unique tsxSource so recovery only
-// touches rows owned by this test run.
+// rows against the seeded `internal` tenancy. Each row is tagged with a unique tsxSource so we
+// can find and clean up just our test rows.
 describe.sequential("failEmailsStuckInSending", () => {
-  const projectId = generateUuid();
-  const tenancyId = generateUuid();
-  const testRunTag = `stuck-in-sending-test-${generateUuid()}`;
+  const testRunTag = `stuck-in-sending-test-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
   const createdIds: { tenancyId: string, id: string }[] = [];
 
   const recoveryTestFilter = { tsxSource: `/* ${testRunTag} */` };
-
-  beforeAll(async () => {
-    await globalPrismaClient.$executeRaw(Prisma.sql`
-      INSERT INTO "Project" (
-        "id",
-        "createdAt",
-        "updatedAt",
-        "displayName",
-        "description",
-        "isProductionMode"
-      )
-      VALUES (
-        ${projectId},
-        NOW(),
-        NOW(),
-        'Email Queue Step Test',
-        '',
-        FALSE
-      )
-    `);
-    await globalPrismaClient.$executeRaw(Prisma.sql`
-      INSERT INTO "Tenancy" (
-        "id",
-        "createdAt",
-        "updatedAt",
-        "projectId",
-        "branchId",
-        "hasNoOrganization"
-      )
-      VALUES (
-        ${tenancyId}::uuid,
-        NOW(),
-        NOW(),
-        ${projectId},
-        ${DEFAULT_BRANCH_ID},
-        'TRUE'::"BooleanTrue"
-      )
-    `);
-  });
 
   const makeRow = async (params: {
     startedSendingAt: Date | null,
@@ -65,6 +23,7 @@ describe.sequential("failEmailsStuckInSending", () => {
     sendRetries?: number,
     nextSendRetryAt?: Date | null,
   }) => {
+    const tenancy = await getSoleTenancyFromProjectBranch("internal", DEFAULT_BRANCH_ID);
     const id = generateUuid();
     await globalPrismaClient.$executeRaw(Prisma.sql`
       INSERT INTO "EmailOutbox" (
@@ -95,7 +54,7 @@ describe.sequential("failEmailsStuckInSending", () => {
         "isPaused"
       )
       VALUES (
-        ${tenancyId}::uuid,
+        ${tenancy.id}::uuid,
         ${id}::uuid,
         NOW(),
         NOW(),
@@ -123,25 +82,16 @@ describe.sequential("failEmailsStuckInSending", () => {
       )
     `);
     const created = await globalPrismaClient.emailOutbox.findUniqueOrThrow({
-      where: { tenancyId_id: { tenancyId, id } },
+      where: { tenancyId_id: { tenancyId: tenancy.id, id } },
     });
     createdIds.push({ tenancyId: created.tenancyId, id: created.id });
     return created;
   };
 
   afterAll(async () => {
-    // ClickHouse-backed E2E CI verifies synced row counts after tests finish.
-    // Deleting these rows can race that verifier: the insert may have synced
-    // while the tombstone has not, leaving ClickHouse with one extra visible row.
-    if (getEnvVariable("STACK_CLICKHOUSE_URL", "") !== "") {
-      return;
-    }
-
     for (const { tenancyId, id } of createdIds) {
       await globalPrismaClient.emailOutbox.deleteMany({ where: { tenancyId, id } });
     }
-    await globalPrismaClient.tenancy.deleteMany({ where: { id: tenancyId } });
-    await globalPrismaClient.project.deleteMany({ where: { id: projectId } });
   });
 
   it("marks a row as failed when startedSendingAt is older than the stuck timeout", async () => {

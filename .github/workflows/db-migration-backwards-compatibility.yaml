@@ -215,7 +215,7 @@ jobs:
 
       # First test run: base branch with base's migrations
       - name: Run tests (base branch with original migrations)
-        run: pnpm test -- --maxWorkers=4
+        run: pnpm test
 
       # Now copy over current branch's migrations and run migrate
       - name: Replace migrations with current branch migrations
@@ -229,7 +229,7 @@ jobs:
 
       # Second test run: base branch code with new migrations applied
       - name: Run tests (base branch with new migrations)
-        run: pnpm test -- --maxWorkers=4
+        run: pnpm test
 
       - name: Verify data integrity
         run: pnpm run verify-data-integrity --no-bail
@@ -412,7 +412,7 @@ jobs:
 
       # Run tests: current branch code with base branch (old) migrations
       - name: Run tests (current branch code with base branch migrations)
-        run: pnpm test -- --maxWorkers=4
+        run: pnpm test
 
       - name: Verify data integrity
         run: pnpm run verify-data-integrity --no-bail
