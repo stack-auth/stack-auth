@@ -1979,14 +1979,20 @@ async function seedSamlConnections(projectId: string): Promise<void> {
     }),
   );
 
+  // Set the entire connection entry as a single value, not as deep
+  // dot-keys — config normalization with onDotIntoNonObject="ignore"
+  // drops dot-keys that try to navigate into a record entry that
+  // doesn't yet exist (same convention as auth.oauth.providers).
   const overlay: Record<string, unknown> = {};
   for (const f of fetched) {
-    overlay[`auth.saml.connections.${f.slug}.displayName`] = f.displayName;
-    overlay[`auth.saml.connections.${f.slug}.allowSignIn`] = true;
-    overlay[`auth.saml.connections.${f.slug}.domain`] = f.domain;
-    overlay[`auth.saml.connections.${f.slug}.idpEntityId`] = f.idpEntityId;
-    overlay[`auth.saml.connections.${f.slug}.idpSsoUrl`] = f.idpSsoUrl;
-    overlay[`auth.saml.connections.${f.slug}.idpCertificate`] = f.idpCertificate;
+    overlay[`auth.saml.connections.${f.slug}`] = {
+      displayName: f.displayName,
+      allowSignIn: true,
+      domain: f.domain,
+      idpEntityId: f.idpEntityId,
+      idpSsoUrl: f.idpSsoUrl,
+      idpCertificate: f.idpCertificate,
+    };
   }
 
   await overrideEnvironmentConfigOverride({
