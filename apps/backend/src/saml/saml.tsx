@@ -71,6 +71,22 @@ export function buildSamlClient(connection: SamlConnectionConfig, baseUrl: strin
 }
 
 /**
+ * Extract the InResponseTo attribute from a SAMLResponse without verifying
+ * the signature. Used by the ACS handler to look up the matching
+ * SamlOuterInfo (and thus recover the tenancy) BEFORE calling node-saml's
+ * full validation.
+ *
+ * Returns null if the attribute isn't present (which would be the case for
+ * IdP-initiated SSO — out of scope for V1, so the caller treats null as
+ * an error).
+ */
+export function extractInResponseTo(samlResponseB64: string): string | null {
+  const xml = Buffer.from(samlResponseB64, "base64").toString("utf-8");
+  const doc = new DOMParser().parseFromString(xml, "text/xml");
+  return doc.documentElement.getAttribute("InResponseTo");
+}
+
+/**
  * Build the redirect URL the browser should follow to begin SAML SSO. Returns
  * both the URL and the AuthnRequest ID — the ID is stored in SamlOuterInfo
  * so the ACS handler can verify InResponseTo matches.
