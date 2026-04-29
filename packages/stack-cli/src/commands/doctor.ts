@@ -224,7 +224,7 @@ const NEXT_CHECKS: CheckSpec[] = [
 const REACT_CHECKS: CheckSpec[] = [
   packageInstalledCheck("react.package", "@stackframe/react"),
   fileExistsCheck("react.client-app", "Stack client app instance", [
-    "stack/client.ts", "stack/client.tsx",
+    "stack/client.ts", "stack/client.tsx", "stack/client.js", "stack/client.jsx",
   ]),
   envVarsCheck([
     { names: ["VITE_STACK_PROJECT_ID"], severity: "fail" },
@@ -236,7 +236,8 @@ const REACT_CHECKS: CheckSpec[] = [
 const JS_CHECKS: CheckSpec[] = [
   packageInstalledCheck("js.package", "@stackframe/js"),
   fileExistsCheck("js.app", "Stack app instance", [
-    "stack/client.ts", "stack/server.ts",
+    "stack/client.ts", "stack/client.tsx", "stack/client.js", "stack/client.jsx",
+    "stack/server.ts", "stack/server.tsx", "stack/server.js", "stack/server.jsx",
   ]),
   envVarsCheck([
     // PUBLIC_* aliases cover SvelteKit / Astro, which require that prefix
@@ -400,12 +401,13 @@ function envVarsCheck(specs: EnvVarSpec[]): CheckSpec {
           hint: "Set them in .env.local if your project requires them.",
         };
       }
-      const allMissing = [...missingHard, ...missingSoft];
       return {
         id: "env-vars",
-        label: `Missing env vars: ${allMissing.join(", ")}`,
+        label: `Missing env vars: ${missingHard.join(", ")}`,
         status: "fail",
-        detail: "Looked in .env.local, .env, and process.env.",
+        detail: missingSoft.length > 0
+          ? `Looked in .env.local, .env, and process.env. Also missing (may be required depending on dashboard settings): ${missingSoft.join(", ")}.`
+          : "Looked in .env.local, .env, and process.env.",
         hint: "Set the missing variables in .env.local (do not commit secrets).",
       };
     },
