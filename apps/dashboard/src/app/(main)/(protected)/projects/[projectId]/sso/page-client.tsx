@@ -130,7 +130,9 @@ function CreateDialog({ open, onOpenChange }: { open: boolean, onOpenChange: (op
     displayName: yup.string().nonEmpty().label("Display name"),
     domain: yup.string().optional().label("Email domain (for discovery)"),
     idpEntityId: yup.string().nonEmpty().label("IdP Entity ID"),
-    idpSsoUrl: yup.string().url().nonEmpty().label("IdP SSO URL"),
+    // Skip yup's url() — it rejects http://localhost which breaks dev/test setups.
+    // The backend SAML wrapper validates the URL on use.
+    idpSsoUrl: yup.string().nonEmpty().label("IdP SSO URL"),
     idpCertificate: yup.string().nonEmpty().label("IdP signing certificate (X.509, base64)"),
     allowSignIn: yup.boolean().default(true).label("Enable sign-in"),
   });
@@ -161,7 +163,9 @@ function CreateDialog({ open, onOpenChange }: { open: boolean, onOpenChange: (op
               idpCertificate: (values.idpCertificate ?? "").replace(/-----BEGIN CERTIFICATE-----|-----END CERTIFICATE-----|\s+/g, ""),
             },
           } as Parameters<typeof updateConfig>[0]["configUpdate"],
-          pushable: true,
+          // SAML connection fields (cert, IdP URLs) are environment-level
+          // (not pushable) — same as OAuth client secrets.
+          pushable: false,
         });
       }}
     />
@@ -189,7 +193,9 @@ function DeleteDialog({ connectionId, displayName, onClose }: {
           await updateConfig({
             adminApp: stackAdminApp,
             configUpdate: { [`auth.saml.connections.${connectionId}`]: null } as Parameters<typeof updateConfig>[0]["configUpdate"],
-            pushable: true,
+            // SAML connection fields (cert, IdP URLs) are environment-level
+          // (not pushable) — same as OAuth client secrets.
+          pushable: false,
           });
           onClose();
         },
