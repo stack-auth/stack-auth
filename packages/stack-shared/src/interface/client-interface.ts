@@ -1422,6 +1422,112 @@ export class StackClientInterface {
     return Result.ok(location);
   }
 
+  /**
+   * Build the URL the SDK redirects to for SAML SSO. Mirrors getOAuthUrl
+   * but without provider_scope / bot challenge — SAML sign-in is initiated
+   * from a corporate IdP, not a public form.
+   */
+  async getSamlUrl(
+    options: {
+      connectionId: string,
+      redirectUrl: string,
+      errorRedirectUrl: string,
+      afterCallbackRedirectUrl?: string,
+      codeChallenge: string,
+      state: string,
+    }
+  ): Promise<string> {
+    const updatedRedirectUrl = new URL(options.redirectUrl);
+    for (const key of ["code", "state"]) {
+      if (updatedRedirectUrl.searchParams.has(key)) {
+        updatedRedirectUrl.searchParams.delete(key);
+      }
+    }
+    if ("projectOwnerSession" in this.options) {
+      throw new Error("Admin session token is currently not supported for SAML");
+    }
+    const clientSecret = this.options.publishableClientKey ?? publishableClientKeyNotNecessarySentinel;
+    const url = new URL(this.getBestApiUrl() + "/auth/saml/login/" + encodeURIComponent(options.connectionId));
+    url.searchParams.set("client_id", this.projectId);
+    url.searchParams.set("client_secret", clientSecret);
+    url.searchParams.set("redirect_uri", updatedRedirectUrl.toString());
+    url.searchParams.set("scope", "legacy");
+    url.searchParams.set("state", options.state);
+    url.searchParams.set("grant_type", "authorization_code");
+    url.searchParams.set("code_challenge", options.codeChallenge);
+    url.searchParams.set("code_challenge_method", "S256");
+    url.searchParams.set("response_type", "code");
+    url.searchParams.set("error_redirect_uri", options.errorRedirectUrl);
+    if (options.afterCallbackRedirectUrl) {
+      url.searchParams.set("after_callback_redirect_url", options.afterCallbackRedirectUrl);
+    }
+    return url.toString();
+  }
+
+  async authorizeSaml(options: {
+    connectionId: string,
+    redirectUrl: string,
+    errorRedirectUrl: string,
+    afterCallbackRedirectUrl?: string,
+    codeChallenge: string,
+    state: string,
+  }): Promise<string> {
+    if (typeof window === "undefined") {
+      throw new StackAssertionError("authorizeSaml can currently only be called in a browser environment");
+    }
+    await this.options.prepareRequest?.();
+    const url = new URL(await this.getSamlUrl(options));
+    url.searchParams.set("stack_response_mode", "json");
+
+    const rawRes = await fetch(url, { method: "GET" });
+    const processedResponse = await this._processResponse(rawRes);
+    if (processedResponse.status === "error") {
+      throw processedResponse.error;
+    }
+    if (processedResponse.data.status !== 200) {
+      throw new StackAssertionError(`SAML authorize returned an unexpected status: ${processedResponse.data.status}`);
+    }
+    const body = await processedResponse.data.json();
+    if (body == null || typeof body !== "object" || Array.isArray(body)) {
+      throw new StackAssertionError("SAML authorize response body must be an object", { body });
+    }
+    const location = body.location;
+    if (typeof location !== "string") {
+      throw new StackAssertionError("SAML authorize response is missing a redirect location", { body });
+    }
+    return location;
+  }
+
+  /**
+   * Looks up the SAML connection matching an email's domain. Returns null
+   * when no connection matches, so callers can fall back to other sign-in
+   * methods.
+   */
+  async discoverSamlConnection(email: string): Promise<{ connectionId: string, displayName: string } | null> {
+    const url = new URL(this.getBestApiUrl() + "/auth/saml/discover");
+    url.searchParams.set("email", email);
+    url.searchParams.set("project_id", this.projectId);
+    const rawRes = await fetch(url, { method: "GET" });
+    if (rawRes.status === 404) {
+      return null;
+    }
+    const processedResponse = await this._processResponse(rawRes);
+    if (processedResponse.status === "error") {
+      throw processedResponse.error;
+    }
+    if (processedResponse.data.status !== 200) {
+      throw new StackAssertionError(`SAML discover returned an unexpected status: ${processedResponse.data.status}`);
+    }
+    const body = await processedResponse.data.json();
+    if (body == null || typeof body !== "object" || Array.isArray(body)) {
+      throw new StackAssertionError("SAML discover response body must be an object", { body });
+    }
+    return {
+      connectionId: String(body.connection_id),
+      displayName: String(body.display_name),
+    };
+  }
+
   async callOAuthCallback(options: {
     oauthParams: URLSearchParams,
     redirectUri: string,

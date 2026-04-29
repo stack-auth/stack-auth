@@ -2855,6 +2855,63 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   }
 
   /**
+   * Sign in via a configured SAML connection (SP-initiated flow).
+   * Mirrors signInWithOAuth — redirects to /auth/saml/login/[connectionId],
+   * which round-trips through the customer's IdP and back via ACS.
+   */
+  async signInWithSaml(options: {
+    connectionId: string,
+    returnTo?: string,
+  }) {
+    if (typeof window === "undefined") {
+      throw new Error("signInWithSaml can currently only be called in a browser environment");
+    }
+    this._ensurePersistentTokenStore();
+    const currentUrl = new URL(window.location.href);
+    const afterCallbackRedirectUrl = options.returnTo != null
+      ? constructRedirectUrl(options.returnTo, "returnTo")
+      : (currentUrl.searchParams.has("after_auth_return_to") ? currentUrl.toString() : undefined);
+    const { codeChallenge, state } = await saveVerifierAndState();
+
+    const location = await this._interface.authorizeSaml({
+      connectionId: options.connectionId,
+      redirectUrl: constructRedirectUrl(this.urls.oauthCallback, "redirectUrl"),
+      errorRedirectUrl: constructRedirectUrl(this.urls.error, "errorRedirectUrl"),
+      afterCallbackRedirectUrl,
+      codeChallenge,
+      state,
+    });
+    await this._redirectTo({ url: location });
+    await neverResolve();
+  }
+
+  /**
+   * Sign in via SSO discovered by email domain. Looks up the SAML
+   * connection whose `domain` matches the email, then redirects through
+   * SAML. Throws if no matching connection — callers can catch and fall
+   * back to other sign-in methods.
+   */
+  async signInWithSso(options: {
+    email: string,
+    returnTo?: string,
+  }) {
+    const connection = await this._interface.discoverSamlConnection(options.email);
+    if (!connection) {
+      throw new Error(`No SSO connection configured for email domain "${options.email.split("@").pop()}"`);
+    }
+    return await this.signInWithSaml({ connectionId: connection.connectionId, returnTo: options.returnTo });
+  }
+
+  /**
+   * Look up the SAML connection matching an email's domain without
+   * initiating sign-in. The customer's UI can use this to render
+   * branding (e.g. "Sign in with Acme SSO") before the user clicks.
+   */
+  async getSamlConnectionForEmail(email: string): Promise<{ connectionId: string, displayName: string } | null> {
+    return await this._interface.discoverSamlConnection(email);
+  }
+
+  /**
    * Handles MFA verification by redirecting to the OTP page
    */
   protected async _experimentalMfa(error: KnownErrors['MultiFactorAuthenticationRequired'], session: InternalSession): Promise<never> {
