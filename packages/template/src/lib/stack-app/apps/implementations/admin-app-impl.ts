@@ -1,7 +1,7 @@
 import { StackAdminInterface } from "@stackframe/stack-shared";
 import { getProductionModeErrors } from "@stackframe/stack-shared/dist/helpers/production-mode";
 import { InternalApiKeyCreateCrudResponse } from "@stackframe/stack-shared/dist/interface/admin-interface";
-import type { MetricsResponse } from "@stackframe/stack-shared/dist/interface/admin-metrics";
+import type { MetricsResponse, MetricsUserCounts } from "@stackframe/stack-shared/dist/interface/admin-metrics";
 import { AnalyticsQueryOptions, AnalyticsQueryResponse } from "@stackframe/stack-shared/dist/interface/crud/analytics";
 import { EmailTemplateCrud } from "@stackframe/stack-shared/dist/interface/crud/email-templates";
 import { InternalApiKeysCrud } from "@stackframe/stack-shared/dist/interface/crud/internal-api-keys";
@@ -33,7 +33,6 @@ import { PushedConfigSource } from "../../projects";
 import { useAsyncCache } from "./common"; // THIS_LINE_PLATFORM react-like
 
 type BranchConfigSourceApi = yup.InferType<typeof branchConfigSourceSchema>;
-
 /**
  * Converts a PushedConfigSource (SDK camelCase) to BranchConfigSourceApi (API snake_case).
  */
@@ -101,6 +100,9 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
   });
   private readonly _metricsCache = createCache(async ([includeAnonymous]: [boolean]) => {
     return await this._interface.getMetrics(includeAnonymous);
+  });
+  private readonly _metricsUserCountsCache = createCache(async () => {
+    return await this._interface.getMetricsUserCounts();
   });
   private readonly _emailPreviewCache = createCache(async ([themeId, themeTsxSource, templateId, templateTsxSource]: [string | null | false | undefined, string | undefined, string | undefined, string | undefined]) => {
     return await this._interface.renderEmailPreview({ themeId, themeTsxSource, templateId, templateTsxSource });
@@ -552,6 +554,7 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       super._refreshUsers(),
       this._metricsCache.refresh([false]),
       this._metricsCache.refresh([true]),
+      this._metricsUserCountsCache.refresh([]),
     ]);
   }
 
@@ -561,6 +564,9 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
       // IF_PLATFORM react-like
       useMetrics: (includeAnonymous: boolean = false): MetricsResponse => {
         return useAsyncCache(this._metricsCache, [includeAnonymous] as const, "adminApp.useMetrics()") as MetricsResponse;
+      },
+      useMetricsUserCounts: (): MetricsUserCounts => {
+        return useAsyncCache(this._metricsUserCountsCache, [] as const, "adminApp.useMetricsUserCounts()") as MetricsUserCounts;
       }
       // END_PLATFORM
     };
@@ -1136,6 +1142,22 @@ export class _StackAdminAppImplIncomplete<HasTokenStore extends boolean, Project
     return {
       items,
       nextCursor: response.pagination.next_cursor,
+    };
+  }
+
+  async getSessionReplay(sessionReplayId: string): Promise<AdminSessionReplay> {
+    const response = await this._interface.getSessionReplay(sessionReplayId);
+    return {
+      id: response.id,
+      projectUser: {
+        id: response.project_user.id,
+        displayName: response.project_user.display_name,
+        primaryEmail: response.project_user.primary_email,
+      },
+      startedAt: new Date(response.started_at_millis),
+      lastEventAt: new Date(response.last_event_at_millis),
+      chunkCount: response.chunk_count,
+      eventCount: response.event_count,
     };
   }
 
