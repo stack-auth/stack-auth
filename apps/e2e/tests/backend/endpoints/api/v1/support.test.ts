@@ -1,5 +1,5 @@
-import { it } from "../../../../helpers";
-import { Auth, bumpEmailAddress, niceBackendFetch } from "../../../backend-helpers";
+import { STACK_BACKEND_BASE_URL, it, niceFetch } from "../../../../helpers";
+import { Auth, InternalProjectKeys, Project, backendContext, bumpEmailAddress, niceBackendFetch } from "../../../backend-helpers";
 
 it("current user can create and reply to a conversation", async ({ expect }) => {
   await Auth.Otp.signIn();
@@ -253,4 +253,81 @@ it("users cannot access conversations owned by another user", async ({ expect })
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
+});
+
+it("deleting a user preserves and anonymizes their conversations", async ({ expect }) => {
+  const { projectId, adminAccessToken } = await Project.createAndSwitch({
+    config: {
+      magic_link_enabled: true,
+    },
+  });
+  await Auth.Otp.signIn();
+
+  const userResponse = await niceBackendFetch("/api/v1/users/me", {
+    accessType: "server",
+  });
+  const userId = userResponse.body.id;
+  const userEmail = userResponse.body.primary_email;
+
+  const createResponse = await niceBackendFetch("/api/v1/conversations", {
+    accessType: "client",
+    method: "POST",
+    body: {
+      subject: "Please preserve this conversation",
+      message: "This user-identifying sender snapshot should be redacted.",
+    },
+  });
+  expect(createResponse.status).toBe(200);
+  const conversationId = createResponse.body.conversation_id;
+
+  const deleteResponse = await niceBackendFetch(`/api/v1/users/${userId}`, {
+    accessType: "server",
+    method: "DELETE",
+  });
+  expect(deleteResponse).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "success": true },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+
+  backendContext.set({
+    projectKeys: InternalProjectKeys,
+    userAuth: {
+      accessToken: adminAccessToken,
+    },
+  });
+  const detailResponse = await niceFetch(new URL(`/api/v1/internal/conversations/${conversationId}?projectId=${encodeURIComponent(projectId)}`, STACK_BACKEND_BASE_URL), {
+    headers: {
+      "x-stack-access-type": "client",
+      "x-stack-project-id": InternalProjectKeys.projectId,
+      "x-stack-publishable-client-key": InternalProjectKeys.publishableClientKey,
+      "x-stack-access-token": adminAccessToken,
+      "x-stack-allow-anonymous-user": "true",
+    },
+  });
+
+  expect(detailResponse.status).toBe(200);
+  expect(detailResponse.body.conversation).toMatchObject({
+    conversationId,
+    userId: null,
+    userDisplayName: null,
+    userPrimaryEmail: null,
+    subject: "Please preserve this conversation",
+  });
+  expect(detailResponse.body.messages).toHaveLength(1);
+  expect(detailResponse.body.messages[0]).toMatchObject({
+    conversationId,
+    userId: null,
+    body: "This user-identifying sender snapshot should be redacted.",
+    sender: {
+      type: "user",
+      id: null,
+      displayName: null,
+      primaryEmail: null,
+    },
+  });
+  expect(JSON.stringify(detailResponse.body)).not.toContain(userId);
+  expect(JSON.stringify(detailResponse.body)).not.toContain(userEmail);
 });

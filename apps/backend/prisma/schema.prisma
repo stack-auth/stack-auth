@@ -1166,8 +1166,10 @@ model Conversation {
   closedAt      DateTime?
 
   tenancy     Tenancy                @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
-  projectUser ProjectUser?           @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
-  team        Team?                  @relation(fields: [tenancyId, teamId], references: [tenancyId, teamId], onDelete: Cascade)
+  // The DB migration uses PostgreSQL column-scoped ON DELETE SET NULL for the nullable ID only.
+  // Prisma cannot model that for tenant-scoped composite FKs because tenancyId is required.
+  projectUser ProjectUser?           @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: NoAction)
+  team        Team?                  @relation(fields: [tenancyId, teamId], references: [tenancyId, teamId], onDelete: NoAction)
   messages    ConversationMessage[]
   entryPoints ConversationEntryPoint[]
 
