@@ -1,10 +1,10 @@
-import { getAuthContactChannelWithEmailNormalization } from "@/lib/contact-channel";
+import { handleExternalEmailMergeStrategy } from "@/lib/external-auth";
 import { Tenancy } from "@/lib/tenancies";
 import { createOrUpgradeAnonymousUserWithRules, SignUpRuleOptions } from "@/lib/users";
 import { PrismaClientTransaction } from "@/prisma-client";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { captureError, StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
 /**
  * Find an existing OAuth account for sign-in.
@@ -53,8 +53,8 @@ export function getProjectUserIdFromOAuthAccount(
 /**
  * Handle the OAuth email merge strategy.
  *
- * This determines whether a new OAuth sign-up should be linked to an existing user
- * based on email address, according to the project's merge strategy setting.
+ * Thin wrapper around handleExternalEmailMergeStrategy that pulls the
+ * project's OAuth-specific account merge strategy from tenancy config.
  *
  * @returns linkedUserId - The user ID to link to, or null if creating a new user
  * @returns primaryEmailAuthEnabled - Whether the email should be used for auth
@@ -65,52 +65,11 @@ export async function handleOAuthEmailMergeStrategy(
   email: string,
   emailVerified: boolean,
 ): Promise<{ linkedUserId: string | null, primaryEmailAuthEnabled: boolean }> {
-  let primaryEmailAuthEnabled = true;
-  let linkedUserId: string | null = null;
-
-  const existingContactChannel = await getAuthContactChannelWithEmailNormalization(
-    prisma,
-    {
-      tenancyId: tenancy.id,
-      type: "EMAIL",
-      value: email,
-    }
-  );
-
-  // Check if we should link this OAuth account to an existing user based on email
-  if (existingContactChannel && existingContactChannel.usedForAuth) {
-    const accountMergeStrategy = tenancy.config.auth.oauth.accountMergeStrategy;
-    switch (accountMergeStrategy) {
-      case "link_method": {
-        if (!existingContactChannel.isVerified) {
-          throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse("email", email, true);
-        }
-
-        if (!emailVerified) {
-          // TODO: Handle this case
-          const err = new StackAssertionError(
-            "OAuth account merge strategy is set to link_method, but the NEW email is not verified. This is an edge case that we don't handle right now",
-            { existingContactChannel, email, emailVerified }
-          );
-          captureError("oauth-link-method-email-not-verified", err);
-          throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse("email", email);
-        }
-
-        // Link to existing user
-        linkedUserId = existingContactChannel.projectUserId;
-        break;
-      }
-      case "raise_error": {
-        throw new KnownErrors.ContactChannelAlreadyUsedForAuthBySomeoneElse("email", email);
-      }
-      case "allow_duplicates": {
-        primaryEmailAuthEnabled = false;
-        break;
-      }
-    }
-  }
-
-  return { linkedUserId, primaryEmailAuthEnabled };
+  return await handleExternalEmailMergeStrategy(prisma, tenancy, {
+    email,
+    emailVerified,
+    accountMergeStrategy: tenancy.config.auth.oauth.accountMergeStrategy,
+  });
 }
 
 /**
