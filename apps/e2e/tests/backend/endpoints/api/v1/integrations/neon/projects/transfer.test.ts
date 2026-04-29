@@ -215,6 +215,39 @@ it("should fail if the neon client details are missing", async ({ expect }) => {
   `);
 });
 
+it("should fail if the neon client authorization header is malformed", async ({ expect }) => {
+  // This project ID is arbitrary because malformed Basic auth is rejected before any project lookup runs.
+  const projectId = "73782539-cf39-486b-a9f8-9b2893f79ef2";
+  const response = await niceBackendFetch(urlString`/api/v1/integrations/neon/projects/transfer?project_id=${projectId}`, {
+    method: "GET",
+    headers: {
+      "Authorization": "Basic",
+    },
+  });
+  expect(response).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "SCHEMA_ERROR",
+        "details": {
+          "message": deindent\`
+            Request validation failed on GET /api/v1/integrations/neon/projects/transfer:
+              - Authorization header must be in the format "Basic <base64>"
+          \`,
+        },
+        "error": deindent\`
+          Request validation failed on GET /api/v1/integrations/neon/projects/transfer:
+            - Authorization header must be in the format "Basic <base64>"
+        \`,
+      },
+      "headers": Headers {
+        "x-stack-known-error": "SCHEMA_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
 it("should fail to transfer project if the user is not signed in", async ({ expect }) => {
   const provisioned = await provisionProject();
   const projectId = provisioned.body.project_id;
@@ -305,4 +338,3 @@ it("should fail the check if project was already transferred", async ({ expect }
     }
   `);
 });
-

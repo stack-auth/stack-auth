@@ -77,6 +77,9 @@ const getHostedPagePathForHandlerName = (handlerName: keyof HandlerUrls): string
     case "teamInvitation": {
       return "team-invitation";
     }
+    case "cliAuthConfirm": {
+      return "cli-auth-confirm";
+    }
     case "mfa": {
       return "mfa";
     }
@@ -306,6 +309,12 @@ export const resolveHandlerUrls = (options: { urls: HandlerUrlOptions | undefine
       handlerName: "teamInvitation",
       projectId: options.projectId,
     }),
+    cliAuthConfirm: resolveUrlTarget({
+      target: configuredUrls?.cliAuthConfirm ?? defaultTarget,
+      fallbackPath: joinHandlerComponentPath(handlerComponentBasePath, "cli-auth-confirm"),
+      handlerName: "cliAuthConfirm",
+      projectId: options.projectId,
+    }),
     mfa: resolveUrlTarget({
       target: configuredUrls?.mfa ?? defaultTarget,
       fallbackPath: joinHandlerComponentPath(handlerComponentBasePath, "mfa"),
@@ -325,6 +334,17 @@ export const resolveHandlerUrls = (options: { urls: HandlerUrlOptions | undefine
       projectId: options.projectId,
     }),
   };
+};
+
+export const buildCliAuthConfirmUrl = (options: {
+  cliAuthConfirmUrl: string,
+  /** Used as the base URL only when cliAuthConfirmUrl is relative. */
+  appUrl: string,
+  loginCode: string,
+}): string => {
+  const url = new URL(options.cliAuthConfirmUrl, options.appUrl);
+  url.searchParams.set("login_code", options.loginCode);
+  return url.toString();
 };
 
 export const resolveUnknownHandlerPathFallbackUrl = (options: {

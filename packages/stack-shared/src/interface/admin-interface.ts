@@ -5,7 +5,7 @@ import { AccessToken, InternalSession, RefreshToken } from "../sessions";
 import type { MoneyAmount } from "../utils/currency-constants";
 import type { Json } from "../utils/json";
 import { Result } from "../utils/results";
-import type { MetricsResponse } from "./admin-metrics";
+import type { MetricsResponse, MetricsUserCounts } from "./admin-metrics";
 import type { AnalyticsQueryOptions, AnalyticsQueryResponse } from "./crud/analytics";
 import { EmailOutboxCrud } from "./crud/email-outbox";
 import { InternalEmailsCrud } from "./crud/emails";
@@ -13,6 +13,7 @@ import { InternalApiKeysCrud } from "./crud/internal-api-keys";
 import { ProjectPermissionDefinitionsCrud } from "./crud/project-permissions";
 import { ProjectsCrud } from "./crud/projects";
 import type {
+  AdminGetSessionReplayResponse,
   AdminGetSessionReplayAllEventsResponse,
   AdminGetSessionReplayChunkEventsResponse,
   AdminListSessionReplayChunksOptions,
@@ -357,6 +358,17 @@ export class StackAdminInterface extends StackServerInterface {
       null,
     );
     return (await response.json()) as MetricsResponse;
+  }
+
+  async getMetricsUserCounts(): Promise<MetricsUserCounts> {
+    const response = await this.sendAdminRequest(
+      "/internal/metrics/user-counts",
+      {
+        method: "GET",
+      },
+      null,
+    );
+    return (await response.json()) as MetricsUserCounts;
   }
 
   async sendTestEmail(data: {
@@ -818,6 +830,15 @@ export class StackAdminInterface extends StackServerInterface {
     if (typeof params?.click_count_min === "number") qs.set("click_count_min", String(params.click_count_min));
     const response = await this.sendAdminRequest(
       `/internal/session-replays${qs.size ? `?${qs.toString()}` : ""}`,
+      { method: "GET" },
+      null,
+    );
+    return await response.json();
+  }
+
+  async getSessionReplay(sessionReplayId: string): Promise<AdminGetSessionReplayResponse> {
+    const response = await this.sendAdminRequest(
+      `/internal/session-replays/${encodeURIComponent(sessionReplayId)}`,
       { method: "GET" },
       null,
     );

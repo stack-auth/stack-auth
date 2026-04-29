@@ -17,6 +17,7 @@ it("adds provider_scope from oauthScopesOnSignIn for authenticate flow", async (
     },
     {
       client: {
+        redirectMethod: "window",
         oauthScopesOnSignIn: {
           github: ["repo"],
         },
@@ -52,4 +53,56 @@ it("adds provider_scope from oauthScopesOnSignIn for authenticate flow", async (
   expect(scope).toBe("user:email repo");
 }, { timeout: 40_000 });
 
+it("does not resolve signInWithOAuth after a custom redirectMethod starts navigation", async ({ expect }) => {
+  const navigatedUrls: string[] = [];
+  const { clientApp } = await createApp(
+    {
+      config: {
+        oauthProviders: [
+          {
+            id: "github",
+            type: "standard",
+            clientId: "test_client_id",
+            clientSecret: "test_client_secret",
+          },
+        ],
+      },
+    },
+    {
+      client: {
+        redirectMethod: {
+          useNavigate: () => (url) => {
+            navigatedUrls.push(url);
+          },
+          navigate: (url) => {
+            navigatedUrls.push(url);
+          },
+        },
+      },
+    }
+  );
 
+  const previousWindow = globalThis.window;
+  const previousDocument = globalThis.document;
+  globalThis.document = { cookie: "", createElement: () => ({}) } as any;
+  globalThis.window = {
+    location: {
+      href: localRedirectUrl,
+    },
+  } as any;
+
+  try {
+    const redirectResult = clientApp.signInWithOAuth("github").then(() => "resolved");
+    const result = await Promise.race([
+      redirectResult,
+      new Promise<string>((resolve) => setTimeout(() => resolve("pending"), 5000)),
+    ]);
+
+    expect(navigatedUrls).toHaveLength(1);
+    expect(new URL(navigatedUrls[0]).pathname).toBe("/login/oauth/authorize");
+    expect(result).toBe("pending");
+  } finally {
+    globalThis.window = previousWindow;
+    globalThis.document = previousDocument;
+  }
+}, { timeout: 40_000 });
