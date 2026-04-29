@@ -15,16 +15,21 @@ import { Project, niceBackendFetch } from "../../../../../backend-helpers";
 
 async function createProjectWithSamlConnection(slug: string, domain: string) {
   const { projectId } = await Project.createAndSwitch();
-  // Push the SAML connection at the environment level — that's where the
-  // IdP-side fields live. The discovery endpoint reads from the rendered
-  // organization config which folds in env overrides.
+  // Set the entire connection entry as a single value. The override
+  // system handles `auth.saml.connections.{id}: {full object}` cleanly,
+  // but per-field deep dot-keys (e.g. .displayName) on a record entry
+  // that doesn't yet exist get dropped during config normalization with
+  // onDotIntoNonObject="ignore" — same convention as auth.oauth.providers
+  // (see auth-methods/page-client.tsx).
   await Project.updateConfig({
-    [`auth.saml.connections.${slug}.displayName`]: `${slug} SSO`,
-    [`auth.saml.connections.${slug}.allowSignIn`]: true,
-    [`auth.saml.connections.${slug}.domain`]: domain,
-    [`auth.saml.connections.${slug}.idpEntityId`]: `https://idp.${domain}/saml/metadata`,
-    [`auth.saml.connections.${slug}.idpSsoUrl`]: `https://idp.${domain}/saml/sso`,
-    [`auth.saml.connections.${slug}.idpCertificate`]: "MIICertificatePlaceholderForDiscoveryTest=",
+    [`auth.saml.connections.${slug}`]: {
+      displayName: `${slug} SSO`,
+      allowSignIn: true,
+      domain,
+      idpEntityId: `https://idp.${domain}/saml/metadata`,
+      idpSsoUrl: `https://idp.${domain}/saml/sso`,
+      idpCertificate: "MIICertificatePlaceholderForDiscoveryTest=",
+    },
   });
   return { projectId };
 }

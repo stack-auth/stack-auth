@@ -18,11 +18,13 @@ async function setupProjectWithSamlConnection(slug: string, idpHost: string) {
   await Project.createAndSwitch();
   await InternalApiKey.createAndSetProjectKeys();
   await Project.updateConfig({
-    [`auth.saml.connections.${slug}.displayName`]: `${slug} SSO`,
-    [`auth.saml.connections.${slug}.allowSignIn`]: true,
-    [`auth.saml.connections.${slug}.idpEntityId`]: `https://${idpHost}/saml/metadata`,
-    [`auth.saml.connections.${slug}.idpSsoUrl`]: `https://${idpHost}/saml/sso`,
-    [`auth.saml.connections.${slug}.idpCertificate`]: "MIICertificatePlaceholderForLoginTest=",
+    [`auth.saml.connections.${slug}`]: {
+      displayName: `${slug} SSO`,
+      allowSignIn: true,
+      idpEntityId: `https://${idpHost}/saml/metadata`,
+      idpSsoUrl: `https://${idpHost}/saml/sso`,
+      idpCertificate: "MIICertificatePlaceholderForLoginTest=",
+    },
   });
 }
 
@@ -91,6 +93,8 @@ it("returns 404 for an unknown connection ID", async ({ expect }) => {
 
 it("returns 403 when allowSignIn is false on the connection", async ({ expect }) => {
   await setupProjectWithSamlConnection("acme", "idp.acme.test");
+  // The connection already exists, so deep-key updates work (the parent
+  // record entry is navigable now).
   await Project.updateConfig({ "auth.saml.connections.acme.allowSignIn": false });
 
   const response = await niceBackendFetch("/api/v1/auth/saml/login/acme", {

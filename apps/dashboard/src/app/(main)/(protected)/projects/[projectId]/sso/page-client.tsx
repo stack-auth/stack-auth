@@ -144,19 +144,23 @@ function CreateDialog({ open, onOpenChange }: { open: boolean, onOpenChange: (op
       okButton={{ label: "Create" }}
       cancelButton
       onSubmit={async (values) => {
-        const overlay: Record<string, unknown> = {
-          [`auth.saml.connections.${values.id}.displayName`]: values.displayName,
-          [`auth.saml.connections.${values.id}.allowSignIn`]: values.allowSignIn,
-          [`auth.saml.connections.${values.id}.idpEntityId`]: values.idpEntityId,
-          [`auth.saml.connections.${values.id}.idpSsoUrl`]: values.idpSsoUrl,
-          [`auth.saml.connections.${values.id}.idpCertificate`]: (values.idpCertificate ?? "").replace(/-----BEGIN CERTIFICATE-----|-----END CERTIFICATE-----|\s+/g, ""),
-        };
-        if (values.domain) {
-          overlay[`auth.saml.connections.${values.id}.domain`] = values.domain;
-        }
+        // Set the whole connection entry as a single value. Deep dot-keys
+        // (e.g. `auth.saml.connections.X.displayName`) get dropped during
+        // config normalization when the parent record entry doesn't yet
+        // exist — same convention as auth.oauth.providers in the
+        // auth-methods page.
         await updateConfig({
           adminApp: stackAdminApp,
-          configUpdate: overlay as Parameters<typeof updateConfig>[0]["configUpdate"],
+          configUpdate: {
+            [`auth.saml.connections.${values.id}`]: {
+              displayName: values.displayName,
+              allowSignIn: values.allowSignIn,
+              domain: values.domain || undefined,
+              idpEntityId: values.idpEntityId,
+              idpSsoUrl: values.idpSsoUrl,
+              idpCertificate: (values.idpCertificate ?? "").replace(/-----BEGIN CERTIFICATE-----|-----END CERTIFICATE-----|\s+/g, ""),
+            },
+          } as Parameters<typeof updateConfig>[0]["configUpdate"],
           pushable: true,
         });
       }}

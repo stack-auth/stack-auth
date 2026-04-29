@@ -27,6 +27,7 @@ import { localhostUrl } from "../../../../../../helpers/ports";
 import { InternalApiKey, Project, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
 
 const MOCK_SAML_BASE = localhostUrl("15");
+const BACKEND_BASE = localhostUrl("02");
 
 // ---------- helpers ----------
 
@@ -39,7 +40,10 @@ async function fetchMockIdpCertificate(tenantSlug: string): Promise<{
   if (res.status !== 200) {
     throw new Error(`Mock IdP returned ${res.status} for ${tenantSlug} metadata — is mock-saml-idp running on port 8115?`);
   }
-  const xml = res.body as string;
+  // application/xml content-type makes niceFetch return ArrayBuffer; decode it.
+  const xml = typeof res.body === "string"
+    ? res.body
+    : new TextDecoder("utf-8").decode(res.body as ArrayBuffer);
   const entityIdMatch = xml.match(/entityID="([^"]+)"/);
   const ssoMatch = xml.match(/Binding="urn:oasis:names:tc:SAML:2\.0:bindings:HTTP-Redirect"[^>]*Location="([^"]+)"/);
   const certMatch = xml.match(/<X509Certificate>([\s\S]+?)<\/X509Certificate>/);
@@ -58,11 +62,13 @@ async function setupProjectWithMockSamlConnection(connectionId: string, tenantSl
   await InternalApiKey.createAndSetProjectKeys();
   const idp = await fetchMockIdpCertificate(tenantSlug);
   await Project.updateConfig({
-    [`auth.saml.connections.${connectionId}.displayName`]: `${connectionId} SSO`,
-    [`auth.saml.connections.${connectionId}.allowSignIn`]: true,
-    [`auth.saml.connections.${connectionId}.idpEntityId`]: idp.entityId,
-    [`auth.saml.connections.${connectionId}.idpSsoUrl`]: idp.ssoUrl,
-    [`auth.saml.connections.${connectionId}.idpCertificate`]: idp.certificate,
+    [`auth.saml.connections.${connectionId}`]: {
+      displayName: `${connectionId} SSO`,
+      allowSignIn: true,
+      idpEntityId: idp.entityId,
+      idpSsoUrl: idp.ssoUrl,
+      idpCertificate: idp.certificate,
+    },
   });
   return { connectionId, tenantSlug };
 }
@@ -120,13 +126,18 @@ async function runSamlRoundTrip(options: {
   }
 
   // Step 3: extract SAMLResponse from the auto-POST HTML.
-  const html = idpLoginRes.body as string;
+  const html = typeof idpLoginRes.body === "string"
+    ? idpLoginRes.body
+    : new TextDecoder("utf-8").decode(idpLoginRes.body as ArrayBuffer);
   const samlResponseMatch = html.match(/name="SAMLResponse" value="([^"]+)"/);
   if (!samlResponseMatch) throw new Error(`Mock IdP did not return a SAMLResponse form: ${html.slice(0, 200)}`);
   const samlResponse = samlResponseMatch[1].replace(/&#x2F;/g, "/").replace(/&#x3D;/g, "=").replace(/&amp;/g, "&");
 
-  // Step 4: POST to ACS.
-  const acsRes = await niceBackendFetch(`/api/v1/auth/saml/acs/${options.connectionId}`, {
+  // Step 4: POST to ACS — use niceFetch directly so URLSearchParams gets
+  // sent as application/x-www-form-urlencoded. niceBackendFetch always
+  // JSON.stringifies the body, which doesn't work for the IdP-style
+  // form POST that ACS expects.
+  const acsRes = await niceFetch(`${BACKEND_BASE}/api/v1/auth/saml/acs/${options.connectionId}`, {
     method: "POST",
     redirect: "manual",
     body: new URLSearchParams({
@@ -223,7 +234,7 @@ it("rejects replay of a previously-consumed assertion", async ({ expect }) => {
   // Replay the same SAMLResponse — backend should reject because the
   // SamlOuterInfo row was deleted at the end of the first ACS call, so
   // the InResponseTo lookup misses.
-  const replayRes = await niceBackendFetch(`/api/v1/auth/saml/acs/acme`, {
+  const replayRes = await niceFetch(`${BACKEND_BASE}/api/v1/auth/saml/acs/acme`, {
     method: "POST",
     redirect: "manual",
     body: new URLSearchParams({

@@ -12,11 +12,13 @@ import { Project, niceBackendFetch } from "../../../../../backend-helpers";
 async function setupSamlConnection(slug: string) {
   const { projectId } = await Project.createAndSwitch();
   await Project.updateConfig({
-    [`auth.saml.connections.${slug}.displayName`]: `${slug} SSO`,
-    [`auth.saml.connections.${slug}.allowSignIn`]: true,
-    [`auth.saml.connections.${slug}.idpEntityId`]: `https://idp.${slug}.test/saml/metadata`,
-    [`auth.saml.connections.${slug}.idpSsoUrl`]: `https://idp.${slug}.test/saml/sso`,
-    [`auth.saml.connections.${slug}.idpCertificate`]: "MIICertificatePlaceholderForMetadataTest=",
+    [`auth.saml.connections.${slug}`]: {
+      displayName: `${slug} SSO`,
+      allowSignIn: true,
+      idpEntityId: `https://idp.${slug}.test/saml/metadata`,
+      idpSsoUrl: `https://idp.${slug}.test/saml/sso`,
+      idpCertificate: "MIICertificatePlaceholderForMetadataTest=",
+    },
   });
   return { projectId };
 }
@@ -54,11 +56,13 @@ it("returns 404 for an unknown connection ID", async ({ expect }) => {
 
 it("returns 404 when the connection exists but has no IdP cert configured", async ({ expect }) => {
   const { projectId } = await Project.createAndSwitch();
-  // Create a connection at branch level but skip the env-level IdP fields.
+  // Create a connection but skip the IdP-side fields.
   await Project.updateConfig({
-    "auth.saml.connections.partial.displayName": "Partial",
-    "auth.saml.connections.partial.allowSignIn": true,
-    // No idpEntityId / idpSsoUrl / idpCertificate.
+    "auth.saml.connections.partial": {
+      displayName: "Partial",
+      allowSignIn: true,
+      // No idpEntityId / idpSsoUrl / idpCertificate.
+    },
   });
 
   const response = await niceBackendFetch(
