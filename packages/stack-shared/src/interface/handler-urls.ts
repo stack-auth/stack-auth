@@ -15,6 +15,7 @@ export type HandlerPageUrls = Record<
   | "magicLinkCallback"
   | "accountSettings"
   | "teamInvitation"
+  | "cliAuthConfirm"
   | "mfa"
   | "error"
   | "onboarding",
@@ -45,4 +46,3 @@ export {
   type PageVersionEntry,
   type PageVersions
 } from "./page-component-versions";
-
