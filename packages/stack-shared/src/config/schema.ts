@@ -133,6 +133,24 @@ const branchAuthSchema = yupObject({
       }),
     ),
   }),
+  saml: yupObject({
+    // Mirrors auth.oauth.accountMergeStrategy. Falls back to the OAuth strategy
+    // when unset (see saml-account.tsx#handleSamlEmailMergeStrategy), so existing
+    // projects keep consistent merge behavior across protocols.
+    accountMergeStrategy: yupString().oneOf(['link_method', 'raise_error', 'allow_duplicates']).optional(),
+    // Connections — non-sensitive fields here, IdP cert + URLs added at the
+    // environment-config level below, mirroring how oauth.providers splits.
+    connections: yupRecord(
+      userSpecifiedIdSchema("samlConnectionId"),
+      yupObject({
+        displayName: yupString(),
+        allowSignIn: yupBoolean(),
+        // Email domain used by /auth/saml/discover for the signInWithSso flow.
+        // Optional — connections without a domain are addressable by ID only.
+        domain: yupString().optional(),
+      }),
+    ),
+  }),
   signUpRules: yupRecord(
     userSpecifiedIdSchema("signUpRuleId"),
     yupObject({
@@ -307,6 +325,27 @@ export const environmentConfigSchema = branchConfigSchema.concat(yupObject({
           ).optional(),
           allowSignIn: yupBoolean().optional(),
           allowConnectedAccounts: yupBoolean().optional(),
+        }),
+      ),
+    })),
+    saml: branchConfigSchema.getNested("auth").getNested("saml").concat(yupObject({
+      connections: yupRecord(
+        userSpecifiedIdSchema("samlConnectionId"),
+        yupObject({
+          displayName: yupString().optional(),
+          allowSignIn: yupBoolean().optional(),
+          domain: yupString().optional(),
+          // IdP-side fields. The IdP X.509 cert is technically a public key,
+          // but it's environment-specific (different per IdP deployment) so it
+          // belongs here, not at the branch level.
+          idpEntityId: yupString().optional(),
+          idpSsoUrl: yupString().optional(),
+          idpCertificate: yupString().optional(),
+          // Attribute mapping — defaults to email -> "email", displayName -> "displayName".
+          attributeMapping: yupObject({
+            email: yupString().optional(),
+            displayName: yupString().optional(),
+          }).optional(),
         }),
       ),
     })),
@@ -625,6 +664,18 @@ const organizationConfigDefaults = {
         facebookConfigId: undefined,
         microsoftTenantId: undefined,
         appleBundles: undefined,
+      }),
+    },
+    saml: {
+      accountMergeStrategy: undefined,
+      connections: (key: string) => ({
+        displayName: 'Unnamed SAML connection',
+        allowSignIn: true,
+        domain: undefined,
+        idpEntityId: undefined,
+        idpSsoUrl: undefined,
+        idpCertificate: undefined,
+        attributeMapping: undefined,
       }),
     },
     signUpRules: (key: string) => ({

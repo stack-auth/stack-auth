@@ -1,6 +1,7 @@
 import { discoverConnectionByEmail } from "@/saml/discovery";
 import type { SamlConnectionConfig } from "@/saml/saml";
 import { getSoleTenancyFromProjectBranch, DEFAULT_BRANCH_ID } from "@/lib/tenancies";
+import { typedEntries } from "@stackframe/stack-shared/dist/utils/objects";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { emailSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -39,8 +40,21 @@ export const GET = createSmartRouteHandler({
     if (!tenancy) {
       throw new StatusError(StatusError.NotFound, `Project ${query.project_id} not found`);
     }
-    const samlConfig = (tenancy.config.auth as { saml?: { connections?: Record<string, SamlConnectionConfig> } }).saml;
-    const connections = samlConfig?.connections ?? {};
+    // Inject `id` into each connection so it satisfies SamlConnectionConfig —
+    // the config schema stores id as the record key, not a value field.
+    const connections: Record<string, SamlConnectionConfig> = {};
+    for (const [id, conn] of typedEntries(tenancy.config.auth.saml.connections)) {
+      if (!conn.idpEntityId || !conn.idpSsoUrl || !conn.idpCertificate) continue;
+      connections[id] = {
+        id,
+        displayName: conn.displayName,
+        idpEntityId: conn.idpEntityId,
+        idpSsoUrl: conn.idpSsoUrl,
+        idpCertificate: conn.idpCertificate,
+        domain: conn.domain,
+        attributeMapping: conn.attributeMapping,
+      };
+    }
     const matched = discoverConnectionByEmail(connections, query.email);
     if (!matched) {
       throw new StatusError(StatusError.NotFound, "No SAML connection matches this email's domain");

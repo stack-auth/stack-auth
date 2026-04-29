@@ -1,5 +1,5 @@
 import { getSoleTenancyFromProjectBranch, DEFAULT_BRANCH_ID } from "@/lib/tenancies";
-import { getSpMetadataXml, SamlConnectionConfig } from "@/saml/saml";
+import { getSpMetadataXml } from "@/saml/saml";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
@@ -37,17 +37,24 @@ export const GET = createSmartRouteHandler({
     if (!tenancy) {
       throw new StatusError(StatusError.NotFound, `Project ${query.project_id} not found`);
     }
-    const samlConfig = (tenancy.config.auth as { saml?: { connections?: Record<string, SamlConnectionConfig> } }).saml;
-    const connection = samlConfig?.connections?.[params.connection_id];
-    if (!connection) {
-      throw new StatusError(StatusError.NotFound, `SAML connection ${params.connection_id} not found in project ${query.project_id}`);
+    const connection = tenancy.config.auth.saml.connections[params.connection_id];
+    if (!connection.idpEntityId || !connection.idpSsoUrl || !connection.idpCertificate) {
+      throw new StatusError(StatusError.NotFound, `SAML connection ${params.connection_id} not found or incompletely configured in project ${query.project_id}`);
     }
 
     // Derive the public-facing base URL from the request origin so SP
     // metadata reflects the host the IdP is calling.
     const reqUrl = new URL(fullReq.url);
     const baseUrl = `${reqUrl.protocol}//${reqUrl.host}`;
-    const xml = getSpMetadataXml({ ...connection, id: params.connection_id }, baseUrl);
+    const xml = getSpMetadataXml({
+      id: params.connection_id,
+      displayName: connection.displayName,
+      idpEntityId: connection.idpEntityId,
+      idpSsoUrl: connection.idpSsoUrl,
+      idpCertificate: connection.idpCertificate,
+      domain: connection.domain,
+      attributeMapping: connection.attributeMapping,
+    }, baseUrl);
 
     return {
       statusCode: 200,

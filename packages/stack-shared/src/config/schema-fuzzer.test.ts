@@ -51,6 +51,16 @@ const branchSchemaFuzzerConfig = [{
         }],
       }],
     }],
+    saml: [{
+      accountMergeStrategy: ["link_method", "raise_error", "allow_duplicates"],
+      connections: [{
+        "some-saml-connection-id": [{
+          displayName: ["Acme Corp SSO", "Globex SAML"],
+          allowSignIn: [true, false],
+          domain: ["acme.test", "globex.test"],
+        }],
+      }],
+    }],
     signUpRules: [{
       "some-rule-id": [{
         enabled: [true, false],
@@ -216,6 +226,16 @@ const environmentSchemaFuzzerConfig = [{
         facebookConfigId: ["some-facebook-config-id"],
         microsoftTenantId: ["some-microsoft-tenant-id"],
         appleBundles: [{ "some-bundle-id": [{ bundleId: ["com.example.app"] }] }],
+      }]]))] as const,
+    }],
+    saml: [{
+      ...branchSchemaFuzzerConfig[0].auth[0].saml[0],
+      connections: [typedFromEntries(typedEntries(branchSchemaFuzzerConfig[0].auth[0].saml[0].connections[0]).map(([key, value]) => [key, [{
+        ...value[0],
+        idpEntityId: ["https://idp.example.com/saml/metadata"],
+        idpSsoUrl: ["https://idp.example.com/saml/sso"],
+        idpCertificate: ["MIICertificatePlaceholderBase64="],
+        attributeMapping: [{ email: ["email"], displayName: ["displayName"] }],
       }]]))] as const,
     }],
   }],

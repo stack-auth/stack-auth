@@ -60,8 +60,7 @@ export async function handleSamlEmailMergeStrategy(
   // Read SAML-specific strategy from config; fall back to OAuth's strategy if
   // not set, so existing projects keep consistent behavior across protocols
   // until they explicitly opt into a different SAML policy.
-  const samlConfig = (tenancy.config.auth as { saml?: { accountMergeStrategy?: "link_method" | "raise_error" | "allow_duplicates" } }).saml;
-  const accountMergeStrategy = samlConfig?.accountMergeStrategy ?? tenancy.config.auth.oauth.accountMergeStrategy;
+  const accountMergeStrategy = tenancy.config.auth.saml.accountMergeStrategy ?? tenancy.config.auth.oauth.accountMergeStrategy;
   return await handleExternalEmailMergeStrategy(prisma, tenancy, {
     email: params.email,
     emailVerified: params.emailVerified,
