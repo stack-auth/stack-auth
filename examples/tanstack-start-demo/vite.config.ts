@@ -48,39 +48,6 @@ function stackSdkSourceTransforms(): Plugin {
   };
 }
 
-function tanStackStartServerBrowserStub(): Plugin {
-  const virtualModuleId = "\0tanstack-start-server-browser-stub";
-
-  return {
-    name: "tanstack-start-server-browser-stub",
-    enforce: "pre",
-    resolveId(source, _importer, options) {
-      if (source === "@tanstack/react-start/server" && !options.ssr) {
-        return virtualModuleId;
-      }
-
-      return null;
-    },
-    load(id) {
-      if (id !== virtualModuleId) {
-        return null;
-      }
-
-      return `
-        const throwServerOnly = () => {
-          throw new Error("@tanstack/react-start/server was called from the browser bundle");
-        };
-
-        export const getCookie = throwServerOnly;
-        export const getCookies = throwServerOnly;
-        export const setCookie = throwServerOnly;
-        export const deleteCookie = throwServerOnly;
-        export const getRequestHeader = throwServerOnly;
-      `;
-    },
-  };
-}
-
 function watchNodeModules(modules: string[]): Plugin {
   return {
     name: "watch-node-modules",
@@ -164,7 +131,6 @@ export default defineConfig({
   },
   plugins: [
     stackSdkSourceTransforms(),
-    tanStackStartServerBrowserStub(),
     waitForWorkspacePackages(["@stackframe/tanstack-start", "@stackframe/stack-shared", "@stackframe/stack-ui"]),
     watchNodeModules(["@stackframe/tanstack-start", "@stackframe/stack-shared", "@stackframe/stack-ui"]),
     tsConfigPaths(),
