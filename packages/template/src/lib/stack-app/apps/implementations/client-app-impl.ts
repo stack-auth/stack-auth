@@ -38,6 +38,7 @@ import type { TurnstileAction } from "@stackframe/stack-shared/dist/utils/turnst
 import { isRelative } from "@stackframe/stack-shared/dist/utils/urls";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
 import * as tanstackStartServerContext from "@stackframe/tanstack-start/tanstack-start-server-context"; // THIS_LINE_PLATFORM tanstack-start
+import * as TanStackRouter from "@tanstack/react-router"; // THIS_LINE_PLATFORM tanstack-start
 import * as cookie from "cookie";
 import * as NextNavigationUnscrambled from "next/navigation"; // import the entire module to get around some static compiler warnings emitted by Next.js in some cases | THIS_LINE_PLATFORM next
 import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
@@ -568,6 +569,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     this._tokenStoreInit = resolvedOptions.tokenStore;
     this._redirectMethod = resolvedOptions.redirectMethod || (isBrowserLike() ? "window" : "none");
     this._redirectMethod = resolvedOptions.redirectMethod || "nextjs"; // THIS_LINE_PLATFORM next
+    this._redirectMethod = resolvedOptions.redirectMethod || "tanstack-start"; // THIS_LINE_PLATFORM tanstack-start
     this._urlOptions = resolvedOptions.urls ?? {};
     this._oauthScopesOnSignIn = resolvedOptions.oauthScopesOnSignIn ?? {};
     this._prefetchCrossDomainHandoffParamsIfNeeded();
@@ -2463,6 +2465,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     } else if (isReactServer && this._redirectMethod === "nextjs") {
       NextNavigation.redirect(options.url.toString(), options.replace ? NextNavigation.RedirectType.replace : NextNavigation.RedirectType.push);
       // END_PLATFORM
+      // IF_PLATFORM tanstack-start
+    } else if (this._redirectMethod === "tanstack-start" && !isBrowserLike()) {
+      throw TanStackRouter.redirect({ href: options.url.toString(), replace: options.replace });
+      // END_PLATFORM
     } else if (typeof this._redirectMethod === "object" && this._redirectMethod.navigate) {
       this._redirectMethod.navigate(options.url.toString());
     } else {
@@ -2486,6 +2492,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     } else if (this._redirectMethod === "nextjs") {
       const router = NextNavigation.useRouter();
       return (to: string) => router.push(to);
+      // END_PLATFORM
+      // IF_PLATFORM tanstack-start
+    } else if (this._redirectMethod === "tanstack-start") {
+      return (to: string) => window.location.assign(to);
       // END_PLATFORM
     } else {
       return (to: string) => { };
@@ -2530,6 +2540,20 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
 
     await this._redirectIfTrusted(plan.url, options);
+  }
+
+  protected _redirectToHandlerDuringRender(handlerName: keyof HandlerUrls, options?: RedirectToOptions): boolean {
+    // IF_PLATFORM tanstack-start
+    if (this._redirectMethod === "tanstack-start" && !isBrowserLike()) {
+      const rawUrls = getUrls(this._urlOptions, { projectId: this.projectId });
+      const rawHandlerUrl = rawUrls[handlerName];
+      if (!rawHandlerUrl) {
+        throw new Error(`No URL for handler name ${handlerName}`);
+      }
+      throw TanStackRouter.redirect({ href: rawHandlerUrl, replace: options?.replace });
+    }
+    // END_PLATFORM
+    return false;
   }
 
   async redirectToSignIn(options?: RedirectToOptions) { return await this._redirectToHandler("signIn", options); }
@@ -2685,9 +2709,13 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       switch (options?.or) {
         case 'redirect': {
           if (!crud?.is_anonymous && crud?.is_restricted) {
-            runAsynchronously(this.redirectToOnboarding({ replace: true }));
+            if (!this._redirectToHandlerDuringRender("onboarding", { replace: true })) {
+              runAsynchronously(this.redirectToOnboarding({ replace: true }));
+            }
           } else {
-            runAsynchronously(this.redirectToSignIn({ replace: true }));
+            if (!this._redirectToHandlerDuringRender("signIn", { replace: true })) {
+              runAsynchronously(this.redirectToSignIn({ replace: true }));
+            }
           }
           suspend();
           throw new StackAssertionError("suspend should never return");
