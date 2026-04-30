@@ -42,8 +42,13 @@ export const GET = createSmartRouteHandler({
     }
     // Inject `id` into each connection so it satisfies SamlConnectionConfig —
     // the config schema stores id as the record key, not a value field.
+    // Skip connections with sign-in disabled — discover is the entry point
+    // for the signInWithSso flow, so returning a disabled connection would
+    // direct the user through `/auth/saml/login`, where it 403s. Treat
+    // disabled connections as if they didn't exist for discovery purposes.
     const connections: Record<string, SamlConnectionConfig> = {};
     for (const [id, conn] of typedEntries(tenancy.config.auth.saml.connections)) {
+      if (conn.allowSignIn === false) continue;
       if (!conn.idpEntityId || !conn.idpSsoUrl || !conn.idpCertificate) continue;
       connections[id] = {
         id,
