@@ -228,8 +228,9 @@ const snapshotSerializer: SnapshotSerializer = {
           if (headerName === "set-cookie") {
             const partsStrings = value.split(";").map((part) => part.trim());
             let cookieName = partsStrings[0].split("=")[0];
-            if (keyedCookieNamePrefixes.some((prefix) => cookieName.startsWith(prefix))) {
-              cookieName = `${keyedCookieNamePrefixes}<stripped cookie name key>`;
+            const matchedPrefix = keyedCookieNamePrefixes.find((prefix) => cookieName.startsWith(prefix));
+            if (matchedPrefix) {
+              cookieName = `${matchedPrefix}<stripped cookie name key>`;
             }
             const cookieValue = partsStrings[0].split("=")[1];
             const parts = new Map(partsStrings.map((part) => {
