@@ -1940,69 +1940,6 @@ async function seedBulkSignupsAndActivity(options: {
 }
 
 /**
- * Pre-creates two SAML connections (acme + globex) on the dummy project that
- * point at the local mock SAML IdP. Gated on STACK_SEED_ENABLE_SAML='true'.
- * Fetches the mock IdP's metadata at seed time so the seeded cert matches
- * the cert the mock generated at startup — the mock currently regenerates
- * keys per restart, so re-seed if you restart the mock.
- */
-async function seedSamlConnections(projectId: string): Promise<void> {
-  const mockUrl = getEnvVariable("STACK_MOCK_SAML_URL", "http://localhost:8115");
-  const tenants: Array<{ slug: string, displayName: string, domain: string }> = [
-    { slug: "acme", displayName: "Acme Corp SSO", domain: "acme.test" },
-    { slug: "globex", displayName: "Globex SAML", domain: "globex.test" },
-  ];
-
-  const fetched = await Promise.all(
-    tenants.map(async (t) => {
-      const res = await fetch(`${mockUrl}/idp/${t.slug}/metadata`);
-      if (!res.ok) {
-        throw new Error(`Mock SAML IdP at ${mockUrl}/idp/${t.slug}/metadata returned ${res.status} — is the mock running?`);
-      }
-      const xml = await res.text();
-      // Inline minimal metadata parse to avoid a circular import. Format is
-      // exactly what the mock emits, so a regex is enough; the production
-      // parser at apps/backend/src/saml/metadata-parser.tsx is the
-      // robust one used by the dashboard "paste metadata" form.
-      const entityIdMatch = xml.match(/entityID="([^"]+)"/);
-      const ssoUrlMatch = xml.match(/Binding="urn:oasis:names:tc:SAML:2\.0:bindings:HTTP-Redirect"[^>]*Location="([^"]+)"/);
-      const certMatch = xml.match(/<X509Certificate>([\s\S]+?)<\/X509Certificate>/);
-      if (!entityIdMatch || !ssoUrlMatch || !certMatch) {
-        throw new Error(`Could not parse mock IdP metadata for tenant ${t.slug}`);
-      }
-      return {
-        ...t,
-        idpEntityId: entityIdMatch[1],
-        idpSsoUrl: ssoUrlMatch[1],
-        idpCertificate: certMatch[1].replace(/\s+/g, ""),
-      };
-    }),
-  );
-
-  // Set the entire connection entry as a single value, not as deep
-  // dot-keys — config normalization with onDotIntoNonObject="ignore"
-  // drops dot-keys that try to navigate into a record entry that
-  // doesn't yet exist (same convention as auth.oauth.providers).
-  const overlay: Parameters<typeof overrideEnvironmentConfigOverride>[0]["environmentConfigOverrideOverride"] = {};
-  for (const f of fetched) {
-    overlay[`auth.saml.connections.${f.slug}`] = {
-      displayName: f.displayName,
-      allowSignIn: true,
-      domain: f.domain,
-      idpEntityId: f.idpEntityId,
-      idpSsoUrl: f.idpSsoUrl,
-      idpCertificate: f.idpCertificate,
-    };
-  }
-
-  await overrideEnvironmentConfigOverride({
-    projectId,
-    branchId: DEFAULT_BRANCH_ID,
-    environmentConfigOverrideOverride: overlay,
-  });
-}
-
-/**
  * Creates a new project and fills it with dummy data (users, teams, payments, emails, analytics events).
  * Used by both the seed script and the preview project creation endpoint.
  */
@@ -2152,16 +2089,6 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
       },
     }),
   ]);
-
-  // Run sequentially after the parallel block. Both this and the
-  // `payments.testMode` write above target the same environment config,
-  // and `overrideEnvironmentConfigOverride` is read-modify-write — running
-  // them in parallel races and one write clobbers the other (TODO at
-  // config.ts:491 already documents this). Sequencing avoids the race
-  // until the underlying override is wrapped in a serializable txn.
-  if (getEnvVariable("STACK_SEED_ENABLE_SAML", "false") === "true") {
-    await seedSamlConnections(projectId);
-  }
 
   await seedDummyTransactions({
     prisma: dummyPrisma,
