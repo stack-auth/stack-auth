@@ -374,7 +374,7 @@ it("omits subscription-renewal entries for subscription creation invoices", asyn
 
   const creationInvoiceEvent = {
     id: "evt_sub_invoice_creation",
-    type: "invoice.payment_succeeded",
+    type: "invoice.finalized",
     account: accountId,
     data: {
       object: {
@@ -387,7 +387,7 @@ it("omits subscription-renewal entries for subscription creation invoices", asyn
 
   const renewalInvoiceEvent = {
     id: "evt_sub_invoice_cycle",
-    type: "invoice.payment_succeeded",
+    type: "invoice.finalized",
     account: accountId,
     data: {
       object: {
