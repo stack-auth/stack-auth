@@ -4,6 +4,7 @@
     "STACK_*",
     "CRON_SECRET",
     "NEXT_PUBLIC_*",
+    "VITE_*",
     "NEXT_PUBLIC_SENTRY_*",
     "SENTRY_*",
     "VERCEL_GIT_COMMIT_SHA",

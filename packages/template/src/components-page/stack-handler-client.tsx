@@ -237,7 +237,7 @@ export function StackHandlerClient(props: BaseHandlerProps & Partial<RouteProps>
   const navigateRef = useRef(navigate);
   navigateRef.current = navigate;
   const currentLocation = props.location ?? window.location.pathname;
-  const searchParamsSource = new URLSearchParams(window.location.search);
+  const searchParamsSource = new URLSearchParams(typeof window === "undefined" ? "" : window.location.search);
   const redirectTargets: (string | undefined)[] = [];
   END_PLATFORM */
 
