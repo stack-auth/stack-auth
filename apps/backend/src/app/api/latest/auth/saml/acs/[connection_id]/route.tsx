@@ -89,7 +89,7 @@ export const POST = createSmartRouteHandler({
     body: yupMixed().defined(),
     headers: yupMixed().defined(),
   }),
-  async handler({ params, body }) {
+  async handler({ params, body }, fullReq) {
     const samlResponseB64 = (body as Record<string, unknown>).SAMLResponse as string | undefined;
     if (!samlResponseB64) {
       throw new StatusError(StatusError.BadRequest, "Missing SAMLResponse in form body");
@@ -157,7 +157,12 @@ export const POST = createSmartRouteHandler({
     }
 
     try {
-      const baseUrl = new URL(outerInfo.redirectUri).origin;
+      // Must match the SP base URL the login route advertised in the
+      // AuthnRequest — i.e. the backend's own origin, not the customer's
+      // redirect_uri origin. node-saml verifies the assertion's audience
+      // against `spEntityId(baseUrl, connectionId)`.
+      const reqUrl = new URL(fullReq.url);
+      const baseUrl = `${reqUrl.protocol}//${reqUrl.host}`;
       const client = buildSamlClient(connection, baseUrl);
       const assertion = await parseAndVerifyAssertion(client, connection, samlResponseB64, undefined);
 

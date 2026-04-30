@@ -89,7 +89,7 @@ export const GET = createSmartRouteHandler({
       body: yupString().defined(),
     }).defined(),
   ) as unknown as Schema<SmartResponse>,
-  async handler({ params, query }) {
+  async handler({ params, query }, fullReq) {
     const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(query.client_id), true);
     if (!tenancy) {
       throw new KnownErrors.InvalidOAuthClientIdOrSecret(query.client_id);
@@ -133,7 +133,12 @@ export const GET = createSmartRouteHandler({
       attributeMapping: connectionRaw.attributeMapping,
     };
 
-    const baseUrl = new URL(query.redirect_uri).origin;
+    // SP base URL must be the backend's own origin — that's where the ACS
+    // route lives. Using the customer's redirect_uri origin would cause the
+    // IdP to POST the assertion to the customer app (404). Same source as
+    // the metadata route uses, keeping login + metadata consistent.
+    const reqUrl = new URL(fullReq.url);
+    const baseUrl = `${reqUrl.protocol}//${reqUrl.host}`;
     const client = buildSamlClient(connection, baseUrl);
     const { url: samlUrl, requestId } = await buildAuthnRequestUrl(client, query.state);
 
