@@ -43,7 +43,7 @@ import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react
 import type * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { addNewOAuthProviderOrScope, callOAuthCallback } from "../../../auth";
-import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, isSecure as isSecureCookieContext, saveVerifierAndState, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
+import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createCookieHelperSync, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, isSecure as isSecureCookieContext, saveVerifierAndState, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
 import { envVars } from "../../../env";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud } from "../../api-keys";
 import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrlOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, ResolvedHandlerUrls, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
@@ -935,6 +935,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
     switch (tokenStoreInit) {
       case "cookie": {
+        // IF_PLATFORM tanstack-start
+        if (!isBrowserLike()) {
+          return this._getOrCreateTokenStore(cookieHelper, "nextjs-cookie");
+        }
+        // END_PLATFORM
         return this._getBrowserCookieTokenStore();
       }
       case "nextjs-cookie": {
@@ -1029,6 +1034,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
 
   // IF_PLATFORM react-like
   protected _useTokenStore(overrideTokenStoreInit?: TokenStoreInit): Store<TokenObject> {
+    // IF_PLATFORM tanstack-start
+    if (!isBrowserLike()) {
+      return this._getOrCreateTokenStore(createCookieHelperSync(), overrideTokenStoreInit);
+    }
+    // END_PLATFORM
     suspendIfSsr();
     const cookieHelper = createBrowserCookieHelper();
     const tokenStore = this._getOrCreateTokenStore(cookieHelper, overrideTokenStoreInit);

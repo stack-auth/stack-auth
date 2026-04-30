@@ -230,7 +230,7 @@ export function StackHandlerClient(props: BaseHandlerProps & Partial<RouteProps>
   const searchParamsSource = searchParamsFromHook;
   /* ELSE_IF_PLATFORM react
   const currentLocation = props.location ?? window.location.pathname;
-  const searchParamsSource = new URLSearchParams(window.location.search);
+  const searchParamsSource = new URLSearchParams(typeof window === "undefined" ? "" : window.location.search);
   END_PLATFORM */
 
   const { path, searchParams, handlerPath } = useMemo(() => {

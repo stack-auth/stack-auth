@@ -2,6 +2,12 @@
 
 This file contains knowledge learned while working on the codebase in Q&A format.
 
+## Q: How should Dashboard V2 page and component logic be organized?
+A: Keep Dashboard V2 components mostly render-focused by extracting state, derived data, effects, and submit/toggle handlers into `src/hooks/<feature>/use-*.ts` hook modules. Use feature folders such as `hooks/console`, `hooks/projects`, and `hooks/onboarding` instead of defining non-trivial hooks inline in route/component files.
+
+## Q: How is the Dashboard V2 fixed icon rail organized?
+A: `apps/dashboardV2/src/components/console/app-sidebar.tsx` owns the fixed left icon rail. Keep primary app navigation near the top, centered resource/help actions in the middle, and persistent controls such as theme/account at the bottom. Use a shared icon-link helper when adding multiple external rail buttons so Docs/Support-style links do not get duplicated across rail sections.
+
 ## Q: How do anonymous users work in Stack Auth?
 A: Anonymous users are a special type of user that can be created without any authentication. They have `isAnonymous: true` in the database and use different JWT signing keys with a `role: 'anon'` claim. Anonymous JWTs use a prefixed secret ("anon-" + audience) for signing and verification.
 
@@ -361,3 +367,27 @@ A: Invalid `tools` entries are rejected by `requestBodySchema` in `apps/backend/
 
 ## Q: Why did the internal metrics E2E snapshots need to change in April 2026?
 A: The `/api/v1/internal/metrics` response now intentionally includes `analytics_overview.daily_anonymous_visitors_fallback`, `analytics_overview.anonymous_visitors_fallback`, and `active_users_by_country`. Those additions are reflected in `packages/stack-shared/src/interface/admin-metrics.ts` and the backend route, so the E2E snapshots must include them instead of treating them as regressions.
+
+## Q: How should Dashboard V2 avoid depending on the feature flags branch?
+A: Do not reference the `feature-flags` app id, feature flag route, or `FlagIcon` in Dashboard V2 until the feature-flags branch is in the stack. The feature flag implementation lives on `feature-flags-v1`; Dashboard V2 should omit `/projects/$projectId/feature-flags` from `routeTree.gen.ts`, `ProjectSidebarNavTo`, sidebar nav groups, and app icon maps when it is meant to depend only on the TanStack Start integration.
+
+## Q: How should request headers be documented in backend smart-route schemas?
+A: Request `headers` fields must use `yupTuple([innerHeaderSchema])`, not `yupArray(...)`. The smart route layer represents header values as string arrays, while the OpenAPI generator expects each header field schema to be a one-item tuple so it can document the header's scalar value.
+
+## Q: What response body types are supported by the backend OpenAPI generator?
+A: The Fumadocs OpenAPI generator supports documented `json`, `success`, and `empty` response body types. If a smart route returns JSON data, document it as `bodyType: "json"` and return the plain JSON body; using `bodyType: "binary"` for encoded JSON makes `codegen-docs` fail with `Unsupported body type: binary`.
+
+## Q: How is the external TanStack Start Devtools MCP bridge wired into Dashboard V2 during local development?
+A: Dashboard V2 aliases `@barreloflube/tanstack-start-dev-tool-mcp-react` and `@barreloflube/tanstack-start-dev-tool-mcp-shared` to `/Users/barreloflube/Desktop/tanstack-start-dev-tool-mcp` source files in `apps/dashboardV2/vite.config.ts` and `apps/dashboardV2/tsconfig.json`. The Vite `server.fs.allow` list must include both the Stack Auth repo root and the external repo root so Vite can serve the external source. The bridge runs with `pnpm dev:mcp` in the external repo and exposes browser-reported route/query snapshots through MCP tools.
+
+## Q: How should Dashboard V2 avoid cache noise for local virtualized lists?
+A: Use `@tanstack/react-virtual` directly when the rows are already local in memory, such as the project switcher. Reserve React Query-backed `useInfiniteVirtualList` for remote, cursor-backed data. Project-scoped remote queries should include the project id in their query keys, and bulky list queries should set an explicit `gcTime` so inactive pages do not sit in the cache for the default duration.
+
+## Q: Where does Dashboard V2 define global SEO/social metadata and favicon links?
+A: Dashboard V2 defines app-wide document metadata in `apps/dashboardV2/src/routes/__root.tsx` using the TanStack Router `head` option. Put root-level `og:*`, `twitter:*`, `rel="icon"`, `rel="manifest"`, and stylesheet links there so nested routes inherit them through `HeadContent`.
+
+## Q: How can a Dashboard V2 sheet allow background interaction?
+A: The shared `SheetContent` in `apps/dashboardV2/src/components/ui/sheet.tsx` supports `showOverlay={false}`. Combine that with `modal={false}` on `Sheet` for non-blocking detail drawers where outside clicks should close the sheet while still reaching the background target.
+
+## Q: How should Dashboard V2 infinite virtual lists support j/k keyboard navigation?
+A: Use the `keyboardNavigation` option in `apps/dashboardV2/src/hooks/use-infinite-virtual-list.ts`. It handles global `j`/`k` shortcuts, skips text-entry targets, scrolls the selected row into view, and remembers pending down-navigation at the loaded-list boundary so the next page is fetched and selected when it arrives.

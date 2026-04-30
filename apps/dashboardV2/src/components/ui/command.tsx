@@ -3,6 +3,7 @@
 import * as React from "react"
 import { Command as CommandPrimitive } from "cmdk"
 
+import { CheckIcon, MagnifyingGlassIcon } from "@phosphor-icons/react"
 import { cn } from "@/lib/utils"
 import {
   Dialog,
@@ -15,7 +16,6 @@ import {
   InputGroup,
   InputGroupAddon,
 } from "@/components/ui/input-group"
-import { MagnifyingGlassIcon, CheckIcon } from "@phosphor-icons/react"
 
 function Command({
   className,

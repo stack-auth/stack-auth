@@ -16,7 +16,10 @@ export type {
 export type {
   EmailOutboxListOptions,
   EmailOutboxListResult,
-  EmailOutboxUpdateOptions
+  EmailOutboxUpdateOptions,
+  ManagedEmailProviderListItem,
+  ManagedEmailProviderSetupResult,
+  ManagedEmailProviderStatus
 } from "./apps/interfaces/admin-app";
 
 export type {

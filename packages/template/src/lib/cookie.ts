@@ -1,4 +1,5 @@
 import { cookies as rscCookies, headers as rscHeaders } from '@stackframe/stack-sc/force-react-server'; // THIS_LINE_PLATFORM next
+import { getCookie as tssGetCookie, getCookies as tssGetCookies, setCookie as tssSetCookie, deleteCookie as tssDeleteCookie, getRequestHeader as tssGetRequestHeader } from '@tanstack/react-start/server'; // THIS_LINE_PLATFORM tanstack-start
 import { isBrowserLike } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import Cookies from "js-cookie";
@@ -104,11 +105,72 @@ export async function createCookieHelper(): Promise<CookieHelper> {
       await rscCookies(),
       await rscHeaders(),
     );
+    // ELSE_IF_PLATFORM tanstack-start
+    return createTanStackStartCookieHelper();
     // ELSE_PLATFORM
     return await createPlaceholderCookieHelper();
     // END_PLATFORM
   }
 }
+
+export function createCookieHelperSync(): CookieHelper {
+  if (isBrowserLike()) {
+    return createBrowserCookieHelper();
+  }
+  // IF_PLATFORM tanstack-start
+  return createTanStackStartCookieHelper();
+  // ELSE_PLATFORM
+  function throwError(): never {
+    throw new StackAssertionError("Synchronous server cookie helpers are not available on this platform");
+  }
+  return {
+    get: throwError,
+    getAll: throwError,
+    set: throwError,
+    setOrDelete: throwError,
+    delete: throwError,
+  };
+  // END_PLATFORM
+}
+
+// IF_PLATFORM tanstack-start
+function determineSecureFromTanStackStartContext(): boolean {
+  return tssGetRequestHeader("x-forwarded-proto") === "https"
+    || (tssGetCookie("stack-is-https") !== undefined);
+}
+
+function requiresSecureAttribute(name: string): boolean {
+  return name.startsWith("__Host-");
+}
+
+function createTanStackStartCookieHelper(): CookieHelper {
+  const helper: CookieHelper = {
+    get: (name: string) => tssGetCookie(name) ?? null,
+    getAll: () => tssGetCookies(),
+    set: (name: string, value: string, options: SetCookieOptions) => {
+      tssSetCookie(name, value, {
+        secure: options.secure ?? (requiresSecureAttribute(name) || determineSecureFromTanStackStartContext()),
+        maxAge: options.maxAge === "session" ? undefined : options.maxAge,
+        domain: options.domain,
+        sameSite: "lax",
+        path: "/",
+      });
+    },
+    setOrDelete: (name, value, options) => {
+      if (value === null) helper.delete(name, options);
+      else helper.set(name, value, options);
+    },
+    delete: (name: string, options: DeleteCookieOptions) => {
+      tssDeleteCookie(name, {
+        secure: requiresSecureAttribute(name),
+        domain: options.domain,
+        path: "/",
+      });
+    },
+  };
+  return helper;
+}
+// END_PLATFORM
 
 export function createBrowserCookieHelper(): CookieHelper {
   return {
@@ -232,6 +294,8 @@ export async function isSecure(): Promise<boolean> {
   }
   // IF_PLATFORM next
   return determineSecureFromServerContext(await rscCookies(), await rscHeaders());
+  // ELSE_IF_PLATFORM tanstack-start
+  return determineSecureFromTanStackStartContext();
   // END_PLATFORM
   return false;
 }

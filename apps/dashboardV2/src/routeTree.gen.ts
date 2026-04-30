@@ -9,38 +9,388 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
+import { Route as AppRouteImport } from './routes/_app'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as HandlerSplatRouteImport } from './routes/handler.$'
+import { Route as AppProjectsIndexRouteImport } from './routes/_app/projects/index'
+import { Route as AppProjectsNewRouteImport } from './routes/_app/projects/new'
+import { Route as AppProjectsProjectIdRouteImport } from './routes/_app/projects/$projectId'
+import { Route as AppProjectsProjectIdIndexRouteImport } from './routes/_app/projects/$projectId/index'
+import { Route as AppProjectsProjectIdWebhooksRouteImport } from './routes/_app/projects/$projectId/webhooks'
+import { Route as AppProjectsProjectIdUsersRouteImport } from './routes/_app/projects/$projectId/users'
+import { Route as AppProjectsProjectIdTeamsRouteImport } from './routes/_app/projects/$projectId/teams'
+import { Route as AppProjectsProjectIdSettingsRouteImport } from './routes/_app/projects/$projectId/settings'
+import { Route as AppProjectsProjectIdSessionReplaysRouteImport } from './routes/_app/projects/$projectId/session-replays'
+import { Route as AppProjectsProjectIdPermissionsRouteImport } from './routes/_app/projects/$projectId/permissions'
+import { Route as AppProjectsProjectIdPaymentsRouteImport } from './routes/_app/projects/$projectId/payments'
+import { Route as AppProjectsProjectIdOnboardingRouteImport } from './routes/_app/projects/$projectId/onboarding'
+import { Route as AppProjectsProjectIdEventsRouteImport } from './routes/_app/projects/$projectId/events'
+import { Route as AppProjectsProjectIdEmailsRouteImport } from './routes/_app/projects/$projectId/emails'
+import { Route as AppProjectsProjectIdDashboardsRouteImport } from './routes/_app/projects/$projectId/dashboards'
+import { Route as AppProjectsProjectIdAuthMethodsRouteImport } from './routes/_app/projects/$projectId/auth-methods'
+import { Route as AppProjectsProjectIdAppsRouteImport } from './routes/_app/projects/$projectId/apps'
+import { Route as AppProjectsProjectIdApiKeysRouteImport } from './routes/_app/projects/$projectId/api-keys'
+import { Route as AppProjectsProjectIdEmailsIndexRouteImport } from './routes/_app/projects/$projectId/emails/index'
+import { Route as AppProjectsProjectIdEmailsThemesRouteImport } from './routes/_app/projects/$projectId/emails/themes'
+import { Route as AppProjectsProjectIdEmailsTemplatesRouteImport } from './routes/_app/projects/$projectId/emails/templates'
+import { Route as AppProjectsProjectIdEmailsSentRouteImport } from './routes/_app/projects/$projectId/emails/sent'
+import { Route as AppProjectsProjectIdEmailsOutboxRouteImport } from './routes/_app/projects/$projectId/emails/outbox'
+import { Route as AppProjectsProjectIdEmailsDraftsRouteImport } from './routes/_app/projects/$projectId/emails/drafts'
+import { Route as AppProjectsProjectIdEmailsDomainsRouteImport } from './routes/_app/projects/$projectId/emails/domains'
 
+const AppRoute = AppRouteImport.update({
+  id: '/_app',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
+const HandlerSplatRoute = HandlerSplatRouteImport.update({
+  id: '/handler/$',
+  path: '/handler/$',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AppProjectsIndexRoute = AppProjectsIndexRouteImport.update({
+  id: '/projects/',
+  path: '/projects/',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppProjectsNewRoute = AppProjectsNewRouteImport.update({
+  id: '/projects/new',
+  path: '/projects/new',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppProjectsProjectIdRoute = AppProjectsProjectIdRouteImport.update({
+  id: '/projects/$projectId',
+  path: '/projects/$projectId',
+  getParentRoute: () => AppRoute,
+} as any)
+const AppProjectsProjectIdIndexRoute =
+  AppProjectsProjectIdIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AppProjectsProjectIdRoute,
+  } as any)
+const AppProjectsProjectIdWebhooksRoute =
+  AppProjectsProjectIdWebhooksRouteImport.update({
+    id: '/webhooks',
+    path: '/webhooks',
+    getParentRoute: () => AppProjectsProjectIdRoute,
+  } as any)
+const AppProjectsProjectIdUsersRoute =
+  AppProjectsProjectIdUsersRouteImport.update({
+    id: '/users',
+    path: '/users',
+    getParentRoute: () => AppProjectsProjectIdRoute,
+  } as any)
+const AppProjectsProjectIdTeamsRoute =
+  AppProjectsProjectIdTeamsRouteImport.update({
+    id: '/teams',
+    path: '/teams',
+    getParentRoute: () => AppProjectsProjectIdRoute,
+  } as any)
+const AppProjectsProjectIdSettingsRoute =
+  AppProjectsProjectIdSettingsRouteImport.update({
+    id: '/settings',
+    path: '/settings',
+    getParentRoute: () => AppProjectsProjectIdRoute,
+  } as any)
+const AppProjectsProjectIdSessionReplaysRoute =
+  AppProjectsProjectIdSessionReplaysRouteImport.update({
+    id: '/session-replays',
+    path: '/session-replays',
+    getParentRoute: () => AppProjectsProjectIdRoute,
+  } as any)
+const AppProjectsProjectIdPermissionsRoute =
+  AppProjectsProjectIdPermissionsRouteImport.update({
+    id: '/permissions',
+    path: '/permissions',
+    getParentRoute: () => AppProjectsProjectIdRoute,
+  } as any)
+const AppProjectsProjectIdPaymentsRoute =
+  AppProjectsProjectIdPaymentsRouteImport.update({
+    id: '/payments',
+    path: '/payments',
+    getParentRoute: () => AppProjectsProjectIdRoute,
+  } as any)
+const AppProjectsProjectIdOnboardingRoute =
+  AppProjectsProjectIdOnboardingRouteImport.update({
+    id: '/onboarding',
+    path: '/onboarding',
+    getParentRoute: () => AppProjectsProjectIdRoute,
+  } as any)
+const AppProjectsProjectIdEventsRoute =
+  AppProjectsProjectIdEventsRouteImport.update({
+    id: '/events',
+    path: '/events',
+    getParentRoute: () => AppProjectsProjectIdRoute,
+  } as any)
+const AppProjectsProjectIdEmailsRoute =
+  AppProjectsProjectIdEmailsRouteImport.update({
+    id: '/emails',
+    path: '/emails',
+    getParentRoute: () => AppProjectsProjectIdRoute,
+  } as any)
+const AppProjectsProjectIdDashboardsRoute =
+  AppProjectsProjectIdDashboardsRouteImport.update({
+    id: '/dashboards',
+    path: '/dashboards',
+    getParentRoute: () => AppProjectsProjectIdRoute,
+  } as any)
+const AppProjectsProjectIdAuthMethodsRoute =
+  AppProjectsProjectIdAuthMethodsRouteImport.update({
+    id: '/auth-methods',
+    path: '/auth-methods',
+    getParentRoute: () => AppProjectsProjectIdRoute,
+  } as any)
+const AppProjectsProjectIdAppsRoute =
+  AppProjectsProjectIdAppsRouteImport.update({
+    id: '/apps',
+    path: '/apps',
+    getParentRoute: () => AppProjectsProjectIdRoute,
+  } as any)
+const AppProjectsProjectIdApiKeysRoute =
+  AppProjectsProjectIdApiKeysRouteImport.update({
+    id: '/api-keys',
+    path: '/api-keys',
+    getParentRoute: () => AppProjectsProjectIdRoute,
+  } as any)
+const AppProjectsProjectIdEmailsIndexRoute =
+  AppProjectsProjectIdEmailsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AppProjectsProjectIdEmailsRoute,
+  } as any)
+const AppProjectsProjectIdEmailsThemesRoute =
+  AppProjectsProjectIdEmailsThemesRouteImport.update({
+    id: '/themes',
+    path: '/themes',
+    getParentRoute: () => AppProjectsProjectIdEmailsRoute,
+  } as any)
+const AppProjectsProjectIdEmailsTemplatesRoute =
+  AppProjectsProjectIdEmailsTemplatesRouteImport.update({
+    id: '/templates',
+    path: '/templates',
+    getParentRoute: () => AppProjectsProjectIdEmailsRoute,
+  } as any)
+const AppProjectsProjectIdEmailsSentRoute =
+  AppProjectsProjectIdEmailsSentRouteImport.update({
+    id: '/sent',
+    path: '/sent',
+    getParentRoute: () => AppProjectsProjectIdEmailsRoute,
+  } as any)
+const AppProjectsProjectIdEmailsOutboxRoute =
+  AppProjectsProjectIdEmailsOutboxRouteImport.update({
+    id: '/outbox',
+    path: '/outbox',
+    getParentRoute: () => AppProjectsProjectIdEmailsRoute,
+  } as any)
+const AppProjectsProjectIdEmailsDraftsRoute =
+  AppProjectsProjectIdEmailsDraftsRouteImport.update({
+    id: '/drafts',
+    path: '/drafts',
+    getParentRoute: () => AppProjectsProjectIdEmailsRoute,
+  } as any)
+const AppProjectsProjectIdEmailsDomainsRoute =
+  AppProjectsProjectIdEmailsDomainsRouteImport.update({
+    id: '/domains',
+    path: '/domains',
+    getParentRoute: () => AppProjectsProjectIdEmailsRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/handler/$': typeof HandlerSplatRoute
+  '/projects/$projectId': typeof AppProjectsProjectIdRouteWithChildren
+  '/projects/new': typeof AppProjectsNewRoute
+  '/projects/': typeof AppProjectsIndexRoute
+  '/projects/$projectId/api-keys': typeof AppProjectsProjectIdApiKeysRoute
+  '/projects/$projectId/apps': typeof AppProjectsProjectIdAppsRoute
+  '/projects/$projectId/auth-methods': typeof AppProjectsProjectIdAuthMethodsRoute
+  '/projects/$projectId/dashboards': typeof AppProjectsProjectIdDashboardsRoute
+  '/projects/$projectId/emails': typeof AppProjectsProjectIdEmailsRouteWithChildren
+  '/projects/$projectId/events': typeof AppProjectsProjectIdEventsRoute
+  '/projects/$projectId/onboarding': typeof AppProjectsProjectIdOnboardingRoute
+  '/projects/$projectId/payments': typeof AppProjectsProjectIdPaymentsRoute
+  '/projects/$projectId/permissions': typeof AppProjectsProjectIdPermissionsRoute
+  '/projects/$projectId/session-replays': typeof AppProjectsProjectIdSessionReplaysRoute
+  '/projects/$projectId/settings': typeof AppProjectsProjectIdSettingsRoute
+  '/projects/$projectId/teams': typeof AppProjectsProjectIdTeamsRoute
+  '/projects/$projectId/users': typeof AppProjectsProjectIdUsersRoute
+  '/projects/$projectId/webhooks': typeof AppProjectsProjectIdWebhooksRoute
+  '/projects/$projectId/': typeof AppProjectsProjectIdIndexRoute
+  '/projects/$projectId/emails/domains': typeof AppProjectsProjectIdEmailsDomainsRoute
+  '/projects/$projectId/emails/drafts': typeof AppProjectsProjectIdEmailsDraftsRoute
+  '/projects/$projectId/emails/outbox': typeof AppProjectsProjectIdEmailsOutboxRoute
+  '/projects/$projectId/emails/sent': typeof AppProjectsProjectIdEmailsSentRoute
+  '/projects/$projectId/emails/templates': typeof AppProjectsProjectIdEmailsTemplatesRoute
+  '/projects/$projectId/emails/themes': typeof AppProjectsProjectIdEmailsThemesRoute
+  '/projects/$projectId/emails/': typeof AppProjectsProjectIdEmailsIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/handler/$': typeof HandlerSplatRoute
+  '/projects/new': typeof AppProjectsNewRoute
+  '/projects': typeof AppProjectsIndexRoute
+  '/projects/$projectId/api-keys': typeof AppProjectsProjectIdApiKeysRoute
+  '/projects/$projectId/apps': typeof AppProjectsProjectIdAppsRoute
+  '/projects/$projectId/auth-methods': typeof AppProjectsProjectIdAuthMethodsRoute
+  '/projects/$projectId/dashboards': typeof AppProjectsProjectIdDashboardsRoute
+  '/projects/$projectId/events': typeof AppProjectsProjectIdEventsRoute
+  '/projects/$projectId/onboarding': typeof AppProjectsProjectIdOnboardingRoute
+  '/projects/$projectId/payments': typeof AppProjectsProjectIdPaymentsRoute
+  '/projects/$projectId/permissions': typeof AppProjectsProjectIdPermissionsRoute
+  '/projects/$projectId/session-replays': typeof AppProjectsProjectIdSessionReplaysRoute
+  '/projects/$projectId/settings': typeof AppProjectsProjectIdSettingsRoute
+  '/projects/$projectId/teams': typeof AppProjectsProjectIdTeamsRoute
+  '/projects/$projectId/users': typeof AppProjectsProjectIdUsersRoute
+  '/projects/$projectId/webhooks': typeof AppProjectsProjectIdWebhooksRoute
+  '/projects/$projectId': typeof AppProjectsProjectIdIndexRoute
+  '/projects/$projectId/emails/domains': typeof AppProjectsProjectIdEmailsDomainsRoute
+  '/projects/$projectId/emails/drafts': typeof AppProjectsProjectIdEmailsDraftsRoute
+  '/projects/$projectId/emails/outbox': typeof AppProjectsProjectIdEmailsOutboxRoute
+  '/projects/$projectId/emails/sent': typeof AppProjectsProjectIdEmailsSentRoute
+  '/projects/$projectId/emails/templates': typeof AppProjectsProjectIdEmailsTemplatesRoute
+  '/projects/$projectId/emails/themes': typeof AppProjectsProjectIdEmailsThemesRoute
+  '/projects/$projectId/emails': typeof AppProjectsProjectIdEmailsIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/_app': typeof AppRouteWithChildren
+  '/handler/$': typeof HandlerSplatRoute
+  '/_app/projects/$projectId': typeof AppProjectsProjectIdRouteWithChildren
+  '/_app/projects/new': typeof AppProjectsNewRoute
+  '/_app/projects/': typeof AppProjectsIndexRoute
+  '/_app/projects/$projectId/api-keys': typeof AppProjectsProjectIdApiKeysRoute
+  '/_app/projects/$projectId/apps': typeof AppProjectsProjectIdAppsRoute
+  '/_app/projects/$projectId/auth-methods': typeof AppProjectsProjectIdAuthMethodsRoute
+  '/_app/projects/$projectId/dashboards': typeof AppProjectsProjectIdDashboardsRoute
+  '/_app/projects/$projectId/emails': typeof AppProjectsProjectIdEmailsRouteWithChildren
+  '/_app/projects/$projectId/events': typeof AppProjectsProjectIdEventsRoute
+  '/_app/projects/$projectId/onboarding': typeof AppProjectsProjectIdOnboardingRoute
+  '/_app/projects/$projectId/payments': typeof AppProjectsProjectIdPaymentsRoute
+  '/_app/projects/$projectId/permissions': typeof AppProjectsProjectIdPermissionsRoute
+  '/_app/projects/$projectId/session-replays': typeof AppProjectsProjectIdSessionReplaysRoute
+  '/_app/projects/$projectId/settings': typeof AppProjectsProjectIdSettingsRoute
+  '/_app/projects/$projectId/teams': typeof AppProjectsProjectIdTeamsRoute
+  '/_app/projects/$projectId/users': typeof AppProjectsProjectIdUsersRoute
+  '/_app/projects/$projectId/webhooks': typeof AppProjectsProjectIdWebhooksRoute
+  '/_app/projects/$projectId/': typeof AppProjectsProjectIdIndexRoute
+  '/_app/projects/$projectId/emails/domains': typeof AppProjectsProjectIdEmailsDomainsRoute
+  '/_app/projects/$projectId/emails/drafts': typeof AppProjectsProjectIdEmailsDraftsRoute
+  '/_app/projects/$projectId/emails/outbox': typeof AppProjectsProjectIdEmailsOutboxRoute
+  '/_app/projects/$projectId/emails/sent': typeof AppProjectsProjectIdEmailsSentRoute
+  '/_app/projects/$projectId/emails/templates': typeof AppProjectsProjectIdEmailsTemplatesRoute
+  '/_app/projects/$projectId/emails/themes': typeof AppProjectsProjectIdEmailsThemesRoute
+  '/_app/projects/$projectId/emails/': typeof AppProjectsProjectIdEmailsIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/'
+  fullPaths:
+    | '/'
+    | '/handler/$'
+    | '/projects/$projectId'
+    | '/projects/new'
+    | '/projects/'
+    | '/projects/$projectId/api-keys'
+    | '/projects/$projectId/apps'
+    | '/projects/$projectId/auth-methods'
+    | '/projects/$projectId/dashboards'
+    | '/projects/$projectId/emails'
+    | '/projects/$projectId/events'
+    | '/projects/$projectId/onboarding'
+    | '/projects/$projectId/payments'
+    | '/projects/$projectId/permissions'
+    | '/projects/$projectId/session-replays'
+    | '/projects/$projectId/settings'
+    | '/projects/$projectId/teams'
+    | '/projects/$projectId/users'
+    | '/projects/$projectId/webhooks'
+    | '/projects/$projectId/'
+    | '/projects/$projectId/emails/domains'
+    | '/projects/$projectId/emails/drafts'
+    | '/projects/$projectId/emails/outbox'
+    | '/projects/$projectId/emails/sent'
+    | '/projects/$projectId/emails/templates'
+    | '/projects/$projectId/emails/themes'
+    | '/projects/$projectId/emails/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/'
-  id: '__root__' | '/'
+  to:
+    | '/'
+    | '/handler/$'
+    | '/projects/new'
+    | '/projects'
+    | '/projects/$projectId/api-keys'
+    | '/projects/$projectId/apps'
+    | '/projects/$projectId/auth-methods'
+    | '/projects/$projectId/dashboards'
+    | '/projects/$projectId/events'
+    | '/projects/$projectId/onboarding'
+    | '/projects/$projectId/payments'
+    | '/projects/$projectId/permissions'
+    | '/projects/$projectId/session-replays'
+    | '/projects/$projectId/settings'
+    | '/projects/$projectId/teams'
+    | '/projects/$projectId/users'
+    | '/projects/$projectId/webhooks'
+    | '/projects/$projectId'
+    | '/projects/$projectId/emails/domains'
+    | '/projects/$projectId/emails/drafts'
+    | '/projects/$projectId/emails/outbox'
+    | '/projects/$projectId/emails/sent'
+    | '/projects/$projectId/emails/templates'
+    | '/projects/$projectId/emails/themes'
+    | '/projects/$projectId/emails'
+  id:
+    | '__root__'
+    | '/'
+    | '/_app'
+    | '/handler/$'
+    | '/_app/projects/$projectId'
+    | '/_app/projects/new'
+    | '/_app/projects/'
+    | '/_app/projects/$projectId/api-keys'
+    | '/_app/projects/$projectId/apps'
+    | '/_app/projects/$projectId/auth-methods'
+    | '/_app/projects/$projectId/dashboards'
+    | '/_app/projects/$projectId/emails'
+    | '/_app/projects/$projectId/events'
+    | '/_app/projects/$projectId/onboarding'
+    | '/_app/projects/$projectId/payments'
+    | '/_app/projects/$projectId/permissions'
+    | '/_app/projects/$projectId/session-replays'
+    | '/_app/projects/$projectId/settings'
+    | '/_app/projects/$projectId/teams'
+    | '/_app/projects/$projectId/users'
+    | '/_app/projects/$projectId/webhooks'
+    | '/_app/projects/$projectId/'
+    | '/_app/projects/$projectId/emails/domains'
+    | '/_app/projects/$projectId/emails/drafts'
+    | '/_app/projects/$projectId/emails/outbox'
+    | '/_app/projects/$projectId/emails/sent'
+    | '/_app/projects/$projectId/emails/templates'
+    | '/_app/projects/$projectId/emails/themes'
+    | '/_app/projects/$projectId/emails/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AppRoute: typeof AppRouteWithChildren
+  HandlerSplatRoute: typeof HandlerSplatRoute
 }
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
+    '/_app': {
+      id: '/_app'
+      path: ''
+      fullPath: '/'
+      preLoaderRoute: typeof AppRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/': {
       id: '/'
       path: '/'
@@ -48,11 +398,280 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/handler/$': {
+      id: '/handler/$'
+      path: '/handler/$'
+      fullPath: '/handler/$'
+      preLoaderRoute: typeof HandlerSplatRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/_app/projects/': {
+      id: '/_app/projects/'
+      path: '/projects'
+      fullPath: '/projects/'
+      preLoaderRoute: typeof AppProjectsIndexRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/projects/new': {
+      id: '/_app/projects/new'
+      path: '/projects/new'
+      fullPath: '/projects/new'
+      preLoaderRoute: typeof AppProjectsNewRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/projects/$projectId': {
+      id: '/_app/projects/$projectId'
+      path: '/projects/$projectId'
+      fullPath: '/projects/$projectId'
+      preLoaderRoute: typeof AppProjectsProjectIdRouteImport
+      parentRoute: typeof AppRoute
+    }
+    '/_app/projects/$projectId/': {
+      id: '/_app/projects/$projectId/'
+      path: '/'
+      fullPath: '/projects/$projectId/'
+      preLoaderRoute: typeof AppProjectsProjectIdIndexRouteImport
+      parentRoute: typeof AppProjectsProjectIdRoute
+    }
+    '/_app/projects/$projectId/webhooks': {
+      id: '/_app/projects/$projectId/webhooks'
+      path: '/webhooks'
+      fullPath: '/projects/$projectId/webhooks'
+      preLoaderRoute: typeof AppProjectsProjectIdWebhooksRouteImport
+      parentRoute: typeof AppProjectsProjectIdRoute
+    }
+    '/_app/projects/$projectId/users': {
+      id: '/_app/projects/$projectId/users'
+      path: '/users'
+      fullPath: '/projects/$projectId/users'
+      preLoaderRoute: typeof AppProjectsProjectIdUsersRouteImport
+      parentRoute: typeof AppProjectsProjectIdRoute
+    }
+    '/_app/projects/$projectId/teams': {
+      id: '/_app/projects/$projectId/teams'
+      path: '/teams'
+      fullPath: '/projects/$projectId/teams'
+      preLoaderRoute: typeof AppProjectsProjectIdTeamsRouteImport
+      parentRoute: typeof AppProjectsProjectIdRoute
+    }
+    '/_app/projects/$projectId/settings': {
+      id: '/_app/projects/$projectId/settings'
+      path: '/settings'
+      fullPath: '/projects/$projectId/settings'
+      preLoaderRoute: typeof AppProjectsProjectIdSettingsRouteImport
+      parentRoute: typeof AppProjectsProjectIdRoute
+    }
+    '/_app/projects/$projectId/session-replays': {
+      id: '/_app/projects/$projectId/session-replays'
+      path: '/session-replays'
+      fullPath: '/projects/$projectId/session-replays'
+      preLoaderRoute: typeof AppProjectsProjectIdSessionReplaysRouteImport
+      parentRoute: typeof AppProjectsProjectIdRoute
+    }
+    '/_app/projects/$projectId/permissions': {
+      id: '/_app/projects/$projectId/permissions'
+      path: '/permissions'
+      fullPath: '/projects/$projectId/permissions'
+      preLoaderRoute: typeof AppProjectsProjectIdPermissionsRouteImport
+      parentRoute: typeof AppProjectsProjectIdRoute
+    }
+    '/_app/projects/$projectId/payments': {
+      id: '/_app/projects/$projectId/payments'
+      path: '/payments'
+      fullPath: '/projects/$projectId/payments'
+      preLoaderRoute: typeof AppProjectsProjectIdPaymentsRouteImport
+      parentRoute: typeof AppProjectsProjectIdRoute
+    }
+    '/_app/projects/$projectId/onboarding': {
+      id: '/_app/projects/$projectId/onboarding'
+      path: '/onboarding'
+      fullPath: '/projects/$projectId/onboarding'
+      preLoaderRoute: typeof AppProjectsProjectIdOnboardingRouteImport
+      parentRoute: typeof AppProjectsProjectIdRoute
+    }
+    '/_app/projects/$projectId/events': {
+      id: '/_app/projects/$projectId/events'
+      path: '/events'
+      fullPath: '/projects/$projectId/events'
+      preLoaderRoute: typeof AppProjectsProjectIdEventsRouteImport
+      parentRoute: typeof AppProjectsProjectIdRoute
+    }
+    '/_app/projects/$projectId/emails': {
+      id: '/_app/projects/$projectId/emails'
+      path: '/emails'
+      fullPath: '/projects/$projectId/emails'
+      preLoaderRoute: typeof AppProjectsProjectIdEmailsRouteImport
+      parentRoute: typeof AppProjectsProjectIdRoute
+    }
+    '/_app/projects/$projectId/dashboards': {
+      id: '/_app/projects/$projectId/dashboards'
+      path: '/dashboards'
+      fullPath: '/projects/$projectId/dashboards'
+      preLoaderRoute: typeof AppProjectsProjectIdDashboardsRouteImport
+      parentRoute: typeof AppProjectsProjectIdRoute
+    }
+    '/_app/projects/$projectId/auth-methods': {
+      id: '/_app/projects/$projectId/auth-methods'
+      path: '/auth-methods'
+      fullPath: '/projects/$projectId/auth-methods'
+      preLoaderRoute: typeof AppProjectsProjectIdAuthMethodsRouteImport
+      parentRoute: typeof AppProjectsProjectIdRoute
+    }
+    '/_app/projects/$projectId/apps': {
+      id: '/_app/projects/$projectId/apps'
+      path: '/apps'
+      fullPath: '/projects/$projectId/apps'
+      preLoaderRoute: typeof AppProjectsProjectIdAppsRouteImport
+      parentRoute: typeof AppProjectsProjectIdRoute
+    }
+    '/_app/projects/$projectId/api-keys': {
+      id: '/_app/projects/$projectId/api-keys'
+      path: '/api-keys'
+      fullPath: '/projects/$projectId/api-keys'
+      preLoaderRoute: typeof AppProjectsProjectIdApiKeysRouteImport
+      parentRoute: typeof AppProjectsProjectIdRoute
+    }
+    '/_app/projects/$projectId/emails/': {
+      id: '/_app/projects/$projectId/emails/'
+      path: '/'
+      fullPath: '/projects/$projectId/emails/'
+      preLoaderRoute: typeof AppProjectsProjectIdEmailsIndexRouteImport
+      parentRoute: typeof AppProjectsProjectIdEmailsRoute
+    }
+    '/_app/projects/$projectId/emails/themes': {
+      id: '/_app/projects/$projectId/emails/themes'
+      path: '/themes'
+      fullPath: '/projects/$projectId/emails/themes'
+      preLoaderRoute: typeof AppProjectsProjectIdEmailsThemesRouteImport
+      parentRoute: typeof AppProjectsProjectIdEmailsRoute
+    }
+    '/_app/projects/$projectId/emails/templates': {
+      id: '/_app/projects/$projectId/emails/templates'
+      path: '/templates'
+      fullPath: '/projects/$projectId/emails/templates'
+      preLoaderRoute: typeof AppProjectsProjectIdEmailsTemplatesRouteImport
+      parentRoute: typeof AppProjectsProjectIdEmailsRoute
+    }
+    '/_app/projects/$projectId/emails/sent': {
+      id: '/_app/projects/$projectId/emails/sent'
+      path: '/sent'
+      fullPath: '/projects/$projectId/emails/sent'
+      preLoaderRoute: typeof AppProjectsProjectIdEmailsSentRouteImport
+      parentRoute: typeof AppProjectsProjectIdEmailsRoute
+    }
+    '/_app/projects/$projectId/emails/outbox': {
+      id: '/_app/projects/$projectId/emails/outbox'
+      path: '/outbox'
+      fullPath: '/projects/$projectId/emails/outbox'
+      preLoaderRoute: typeof AppProjectsProjectIdEmailsOutboxRouteImport
+      parentRoute: typeof AppProjectsProjectIdEmailsRoute
+    }
+    '/_app/projects/$projectId/emails/drafts': {
+      id: '/_app/projects/$projectId/emails/drafts'
+      path: '/drafts'
+      fullPath: '/projects/$projectId/emails/drafts'
+      preLoaderRoute: typeof AppProjectsProjectIdEmailsDraftsRouteImport
+      parentRoute: typeof AppProjectsProjectIdEmailsRoute
+    }
+    '/_app/projects/$projectId/emails/domains': {
+      id: '/_app/projects/$projectId/emails/domains'
+      path: '/domains'
+      fullPath: '/projects/$projectId/emails/domains'
+      preLoaderRoute: typeof AppProjectsProjectIdEmailsDomainsRouteImport
+      parentRoute: typeof AppProjectsProjectIdEmailsRoute
+    }
   }
 }
 
+interface AppProjectsProjectIdEmailsRouteChildren {
+  AppProjectsProjectIdEmailsDomainsRoute: typeof AppProjectsProjectIdEmailsDomainsRoute
+  AppProjectsProjectIdEmailsDraftsRoute: typeof AppProjectsProjectIdEmailsDraftsRoute
+  AppProjectsProjectIdEmailsOutboxRoute: typeof AppProjectsProjectIdEmailsOutboxRoute
+  AppProjectsProjectIdEmailsSentRoute: typeof AppProjectsProjectIdEmailsSentRoute
+  AppProjectsProjectIdEmailsTemplatesRoute: typeof AppProjectsProjectIdEmailsTemplatesRoute
+  AppProjectsProjectIdEmailsThemesRoute: typeof AppProjectsProjectIdEmailsThemesRoute
+  AppProjectsProjectIdEmailsIndexRoute: typeof AppProjectsProjectIdEmailsIndexRoute
+}
+
+const AppProjectsProjectIdEmailsRouteChildren: AppProjectsProjectIdEmailsRouteChildren =
+  {
+    AppProjectsProjectIdEmailsDomainsRoute:
+      AppProjectsProjectIdEmailsDomainsRoute,
+    AppProjectsProjectIdEmailsDraftsRoute:
+      AppProjectsProjectIdEmailsDraftsRoute,
+    AppProjectsProjectIdEmailsOutboxRoute:
+      AppProjectsProjectIdEmailsOutboxRoute,
+    AppProjectsProjectIdEmailsSentRoute: AppProjectsProjectIdEmailsSentRoute,
+    AppProjectsProjectIdEmailsTemplatesRoute:
+      AppProjectsProjectIdEmailsTemplatesRoute,
+    AppProjectsProjectIdEmailsThemesRoute:
+      AppProjectsProjectIdEmailsThemesRoute,
+    AppProjectsProjectIdEmailsIndexRoute: AppProjectsProjectIdEmailsIndexRoute,
+  }
+
+const AppProjectsProjectIdEmailsRouteWithChildren =
+  AppProjectsProjectIdEmailsRoute._addFileChildren(
+    AppProjectsProjectIdEmailsRouteChildren,
+  )
+
+interface AppProjectsProjectIdRouteChildren {
+  AppProjectsProjectIdApiKeysRoute: typeof AppProjectsProjectIdApiKeysRoute
+  AppProjectsProjectIdAppsRoute: typeof AppProjectsProjectIdAppsRoute
+  AppProjectsProjectIdAuthMethodsRoute: typeof AppProjectsProjectIdAuthMethodsRoute
+  AppProjectsProjectIdDashboardsRoute: typeof AppProjectsProjectIdDashboardsRoute
+  AppProjectsProjectIdEmailsRoute: typeof AppProjectsProjectIdEmailsRouteWithChildren
+  AppProjectsProjectIdEventsRoute: typeof AppProjectsProjectIdEventsRoute
+  AppProjectsProjectIdOnboardingRoute: typeof AppProjectsProjectIdOnboardingRoute
+  AppProjectsProjectIdPaymentsRoute: typeof AppProjectsProjectIdPaymentsRoute
+  AppProjectsProjectIdPermissionsRoute: typeof AppProjectsProjectIdPermissionsRoute
+  AppProjectsProjectIdSessionReplaysRoute: typeof AppProjectsProjectIdSessionReplaysRoute
+  AppProjectsProjectIdSettingsRoute: typeof AppProjectsProjectIdSettingsRoute
+  AppProjectsProjectIdTeamsRoute: typeof AppProjectsProjectIdTeamsRoute
+  AppProjectsProjectIdUsersRoute: typeof AppProjectsProjectIdUsersRoute
+  AppProjectsProjectIdWebhooksRoute: typeof AppProjectsProjectIdWebhooksRoute
+  AppProjectsProjectIdIndexRoute: typeof AppProjectsProjectIdIndexRoute
+}
+
+const AppProjectsProjectIdRouteChildren: AppProjectsProjectIdRouteChildren = {
+  AppProjectsProjectIdApiKeysRoute: AppProjectsProjectIdApiKeysRoute,
+  AppProjectsProjectIdAppsRoute: AppProjectsProjectIdAppsRoute,
+  AppProjectsProjectIdAuthMethodsRoute: AppProjectsProjectIdAuthMethodsRoute,
+  AppProjectsProjectIdDashboardsRoute: AppProjectsProjectIdDashboardsRoute,
+  AppProjectsProjectIdEmailsRoute: AppProjectsProjectIdEmailsRouteWithChildren,
+  AppProjectsProjectIdEventsRoute: AppProjectsProjectIdEventsRoute,
+  AppProjectsProjectIdOnboardingRoute: AppProjectsProjectIdOnboardingRoute,
+  AppProjectsProjectIdPaymentsRoute: AppProjectsProjectIdPaymentsRoute,
+  AppProjectsProjectIdPermissionsRoute: AppProjectsProjectIdPermissionsRoute,
+  AppProjectsProjectIdSessionReplaysRoute:
+    AppProjectsProjectIdSessionReplaysRoute,
+  AppProjectsProjectIdSettingsRoute: AppProjectsProjectIdSettingsRoute,
+  AppProjectsProjectIdTeamsRoute: AppProjectsProjectIdTeamsRoute,
+  AppProjectsProjectIdUsersRoute: AppProjectsProjectIdUsersRoute,
+  AppProjectsProjectIdWebhooksRoute: AppProjectsProjectIdWebhooksRoute,
+  AppProjectsProjectIdIndexRoute: AppProjectsProjectIdIndexRoute,
+}
+
+const AppProjectsProjectIdRouteWithChildren =
+  AppProjectsProjectIdRoute._addFileChildren(AppProjectsProjectIdRouteChildren)
+
+interface AppRouteChildren {
+  AppProjectsProjectIdRoute: typeof AppProjectsProjectIdRouteWithChildren
+  AppProjectsNewRoute: typeof AppProjectsNewRoute
+  AppProjectsIndexRoute: typeof AppProjectsIndexRoute
+}
+
+const AppRouteChildren: AppRouteChildren = {
+  AppProjectsProjectIdRoute: AppProjectsProjectIdRouteWithChildren,
+  AppProjectsNewRoute: AppProjectsNewRoute,
+  AppProjectsIndexRoute: AppProjectsIndexRoute,
+}
+
+const AppRouteWithChildren = AppRoute._addFileChildren(AppRouteChildren)
+
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AppRoute: AppRouteWithChildren,
+  HandlerSplatRoute: HandlerSplatRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

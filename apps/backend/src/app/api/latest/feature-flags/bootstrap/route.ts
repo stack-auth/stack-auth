@@ -2,7 +2,7 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import type { SmartResponse } from "@/route-handlers/smart-response";
 import { _internal as hashingInternal } from "@stackframe/stack-shared/dist/feature-flags/hashing";
 import type { FeatureFlagsConfig, FlagDef } from "@stackframe/stack-shared/dist/feature-flags/types";
-import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
+import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupRecord, yupString, yupTuple, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { stringCompare } from "@stackframe/stack-shared/dist/utils/strings";
 import type { Schema } from "yup";
 
@@ -28,15 +28,20 @@ export const GET = createSmartRouteHandler({
       tenancy: adaptSchema.defined(),
     }).defined(),
     headers: yupObject({
-      "if-none-match": yupArray(yupString().defined()).optional(),
+      "if-none-match": yupTuple([yupString().defined()]).optional(),
     }).defined(),
     method: yupString().oneOf(["GET"]).defined(),
   }),
   response: yupUnion(
     yupObject({
       statusCode: yupNumber().oneOf([200]).defined(),
-      bodyType: yupString().oneOf(["binary"]).defined(),
-      body: yupMixed<Uint8Array>().defined(),
+      bodyType: yupString().oneOf(["json"]).defined(),
+      body: yupObject({
+        flags: yupRecord(yupString(), yupMixed()).defined(),
+        flag_ids_by_key: yupRecord(yupString(), yupString().defined()).defined(),
+        holdouts: yupRecord(yupString(), yupMixed()).defined(),
+        version: yupString().defined(),
+      }).defined(),
       headers: yupObject({
         "content-type": yupArray(yupString().defined()).defined(),
         etag: yupArray(yupString().defined()).defined(),
@@ -94,8 +99,8 @@ export const GET = createSmartRouteHandler({
     };
     return {
       statusCode: 200,
-      bodyType: "binary",
-      body: new TextEncoder().encode(JSON.stringify(body)),
+      bodyType: "json",
+      body,
       headers: responseHeaders,
     };
   },

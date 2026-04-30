@@ -1,0 +1,9 @@
+<svg width="1200" height="630" viewBox="0 0 1200 630" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="1200" height="630" fill="#0A0A0A"/>
+  <rect x="60" y="60" width="1080" height="510" rx="24" fill="#F7F4EE"/>
+  <path d="M213.52 192.57L152.16 162.18C149 160.62 145.3 160.62 142.15 162.17L73.74 195.94V259.25L147.16 295.73L205.75 266.08V287.26L147.16 316.68L73.74 280.68V295.45C73.74 298.51 75.48 301.3 78.23 302.64L143.29 334.45C146.47 336 150.2 335.98 153.36 334.38L220.35 300.44V250.31C220.35 244.76 214.55 241.12 209.55 243.53L162.7 266.08V246.08L220.35 216.89V203.54C220.35 198.89 217.71 194.64 213.52 192.57Z" fill="#0A0A0A"/>
+  <text x="296" y="250" fill="#0A0A0A" font-family="Manrope, Arial, sans-serif" font-size="72" font-weight="700">Stack Auth Dashboard</text>
+  <text x="300" y="320" fill="#3D3A35" font-family="Manrope, Arial, sans-serif" font-size="34" font-weight="500">Auth infrastructure for production.</text>
+  <rect x="300" y="382" width="278" height="54" rx="12" fill="#0A0A0A"/>
+  <text x="328" y="418" fill="#F7F4EE" font-family="Manrope, Arial, sans-serif" font-size="24" font-weight="700">app.stack-auth.com</text>
+</svg>

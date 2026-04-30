@@ -96,7 +96,26 @@ To see all development ports, refer to the index.html of `apps/dev-launchpad/pub
 - The dev server already builds the packages in the background whenever you update a file. If you run into issues with typechecking or linting in a dependency after updating something in a package, just wait a few seconds, and then try again, and they will likely be resolved.
 - When asked to review PR comments, you can use `gh pr status` to get the current pull request you're working on.
 - NEVER EVER AUTOMATICALLY COMMIT OR STAGE ANY CHANGES — DON'T MODIFY GIT WITHOUT USER CONSENT!
-- When building frontend or React code for the dashboard, refer to DESIGN-GUIDE.md.
+- When building frontend or React code for the **legacy dashboard** (`apps/dashboard`), refer to DESIGN-GUIDE.md.
+- **NEVER use italics in UI** (no `italic` class, no `font-style: italic`, no `Instrument_Serif` italic display fonts). This applies to headings, body text, placeholders, "no value" hints — everywhere. Italic looks dated and breaks the V2 aesthetic. Use color/weight/mono variants for emphasis instead.
+
+## Dashboard V2 (`apps/dashboardV2`)
+
+Dashboard V2 is a ground-up rewrite. Rules specific to V2 — these override the legacy guidance above when they conflict:
+
+- **Stack**: TanStack Start + TanStack Router (file-based routes in `src/routes`), shadcn/ui, Tailwind v4, Manrope font, Phosphor icons. Vite, not Next.js. Dev port: `${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}11` (default 8111).
+- **DO NOT** use `DESIGN-GUIDE.md` for V2. **DO** invoke the `frontend-design` skill whenever you scaffold or restyle a V2 page/component. The legacy guide describes the old aesthetic that V2 is replacing.
+- The legacy `apps/dashboard` is considered visually ugly and is being thrown out. **DO NOT** mimic its layout, components, copy, or visual language when building V2. You **may** read it for backend/API contracts (data shapes, endpoints) and for **business logic reference** (filtering rules, state machines, config-update shapes, validation, edge-case handling) — re-implement that logic against V2's own UI primitives. Never copy its UI/layout/styles/components.
+- You have **full freedom to modify the backend** (`apps/backend`) to better fit V2's needs — add/rename endpoints, change response shapes, etc. Keep the legacy dashboard working unless explicitly told otherwise.
+- **Authentication in V2 uses the SDK's `<StackHandler fullPage>` drop-in**, mounted via the splat route at `routes/handler.$.tsx`. It serves all auth flows (sign-in, sign-up, forgot-password, email-verification, oauth-callback, …). Do not hand-roll auth pages — the SDK handler is the source of truth, and replacing it would fragment the auth surface across two codebases.
+- V2 uses TanStack Router, so deep links take the form `http://localhost:<port>/...` (no `/projects/-selector-/` prefix unless explicitly added by V2 routing).
+- V2 uses **React Query** (`@tanstack/react-query`) for all data fetching. The `@tanstack/react-router-ssr-query` integration is already wired up — keep using it for SSR-aware queries.
+- V2 env files: `.env` (template with comments), `.env.development`, `.env.local` (gitignored, dev overrides), `.env.production`.
+- **Env prefixes in V2 are different from the rest of the repo** because V2 is Vite/TanStack Start, not Next.js:
+  - `VITE_STACK_*` — **client-safe public values** (project ID, publishable key, API URL). Inlined into the browser bundle. Read via `import.meta.env`.
+  - `STACK_*` — **server-only secrets** (e.g. `STACK_SECRET_SERVER_KEY`). Read via `process.env` inside TanStack Start server functions / loaders. Vite's `envPrefix` is set to `["VITE_"]` only, so `STACK_*` can never leak into client bundles.
+  - **Never read a `STACK_*` value from a component or any module imported by client code.** If a feature needs a server secret, expose it through a TanStack Start server function and call that function from the client.
+  - `VITE_*` is registered in the root `turbo.json` `globalEnv`, so cache invalidation still works.
 - NEVER implement a hacky solution without EXPLICIT approval from the user. Always go the extra mile to make sure the solution is clean, maintainable, and robust.
 - Fail early, fail loud. Fail fast with an error instead of silently continuing.
 - Do NOT use `as`/`any`/type casts or anything else like that to bypass the type system unless you specifically asked the user about it. Most of the time a place where you would use type casts is not one where you actually need them. Avoid wherever possible.

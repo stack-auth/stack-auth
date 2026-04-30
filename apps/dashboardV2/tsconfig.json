@@ -24,7 +24,9 @@
     "allowJs": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["./src/*"]
+      "@/*": ["./src/*"],
+      "@barreloflube/tanstack-start-dev-tool-mcp-react": ["../../../../tanstack-start-dev-tool-mcp/packages/react/src/index.tsx"],
+      "@barreloflube/tanstack-start-dev-tool-mcp-shared": ["../../../../tanstack-start-dev-tool-mcp/packages/shared/src/index.ts"]
     }
   }
 }

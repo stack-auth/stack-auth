@@ -146,6 +146,19 @@ export type StackAdminApp<HasTokenStore extends boolean = boolean, ProjectId ext
     }): Promise<void>,
     queryAnalytics(options: AnalyticsQueryOptions): Promise<AnalyticsQueryResponse>,
 
+    previewAffectedUsersByOnboardingChange(
+      onboarding: { requireEmailVerification?: boolean },
+      limit?: number,
+    ): Promise<{
+      affectedUsers: Array<{
+        id: string,
+        displayName: string | null,
+        primaryEmail: string | null,
+        restrictedReason: import("@stackframe/stack-shared/dist/schema-fields").RestrictedReason,
+      }>,
+      totalAffectedCount: number,
+    }>,
+
     listSessionReplays(options?: ListSessionReplaysOptions): Promise<ListSessionReplaysResult>,
     listSessionReplayChunks(sessionReplayId: string, options?: ListSessionReplayChunksOptions): Promise<ListSessionReplayChunksResult>,
     getSessionReplayChunkEvents(sessionReplayId: string, chunkId: string): Promise<AdminGetSessionReplayChunkEventsResponse>,
