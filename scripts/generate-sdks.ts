@@ -191,6 +191,14 @@ withGeneratorLock(async () => {
       return baseEditFn({ relativePath, content, platforms: PLATFORMS["react"] });
     },
   });
+
+  generateFromTemplate({
+    src: srcDir,
+    dest: path.resolve(baseDir, "tanstack-start"),
+    editFn: (relativePath, content) => {
+      return baseEditFn({ relativePath, content, platforms: PLATFORMS["tanstack-start"] });
+    },
+  });
 }).catch((error) => {
   console.error(error);
   process.exit(1);
