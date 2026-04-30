@@ -11,6 +11,7 @@ sidebarTitle: Setup
 Before getting started, make sure you have a project set up for your chosen platform:
 
 - **Next.js**: A [Next.js project](https://nextjs.org/docs/getting-started/installation) using the app router (Stack Auth does not support the pages router on Next.js)
+- **TanStack Start**: A [TanStack Start project](https://tanstack.com/start/latest/docs/framework/react/quick-start)
 - **React**: A [React project](https://react.dev/learn/creating-a-react-app) (we show examples with Vite)
 - **JavaScript**: A Node.js project with Express
 - **Python**: A Python environment with your chosen framework (Django, FastAPI, or Flask)
@@ -106,6 +107,11 @@ That's it! The wizard should have created or updated the following files in your
         npm install @stackframe/react
         ```
       </Tab>
+      <Tab title="TanStack Start">
+        ```bash title="Terminal"
+        npm install @stackframe/tanstack-start
+        ```
+      </Tab>
       <Tab title="Express">
         ```bash title="Terminal"
         npm install @stackframe/js
@@ -154,6 +160,12 @@ That's it! The wizard should have created or updated the following files in your
         # Store these in environment variables or directly in the client file during development
         VITE_STACK_PROJECT_ID=<your-project-id>
         VITE_STACK_PUBLISHABLE_CLIENT_KEY=<your-publishable-client-key>
+        ```
+      </Tab>
+      <Tab title="TanStack Start">
+        ```bash title=".env"
+        VITE_STACK_PROJECT_ID=<your-project-id>
+        STACK_SECRET_SERVER_KEY=<your-secret-server-key>
         ```
       </Tab>
       <Tab title="Express">
@@ -235,6 +247,17 @@ That's it! The wizard should have created or updated the following files in your
           publishableClientKey: process.env.VITE_STACK_PUBLISHABLE_CLIENT_KEY || "your-publishable-client-key",
           tokenStore: "cookie",
           // redirectMethod: { useNavigate }, // Set this for non-Next.js frameworks
+        });
+        ```
+      </Tab>
+      <Tab title="TanStack Start">
+        ```typescript title="src/stack/client.ts"
+        import { StackClientApp } from "@stackframe/tanstack-start";
+
+        export const stackClientApp = new StackClientApp({
+          projectId: import.meta.env.VITE_STACK_PROJECT_ID,
+          tokenStore: "cookie",
+          redirectMethod: "window",
         });
         ```
       </Tab>
@@ -388,6 +411,22 @@ That's it! The wizard should have created or updated the following files in your
         }
         ```
       </Tab>
+      <Tab title="TanStack Start">
+        ```typescript title="src/routes/handler/$.tsx"
+        import { StackHandler } from "@stackframe/tanstack-start";
+        import { createFileRoute, useLocation } from "@tanstack/react-router";
+
+        export const Route = createFileRoute("/handler/$")({
+          ssr: false,
+          component: HandlerPage,
+        });
+
+        function HandlerPage() {
+          const { pathname } = useLocation();
+          return <StackHandler fullPage location={pathname} />;
+        }
+        ```
+      </Tab>
       <Tab title="Express">
         ```typescript title="Note"
         // Express doesn't use built-in handlers
@@ -403,8 +442,8 @@ That's it! The wizard should have created or updated the following files in your
     </Tabs>
   </Step>
 
-  <Step title="Add providers (Next.js and React only)">
-    For Next.js and React, wrap your app with Stack providers:
+  <Step title="Add providers (Next.js, TanStack Start, and React only)">
+    For Next.js, TanStack Start, and React, wrap your app with Stack providers:
 
     <Tabs>
       <Tab title="Next.js">
@@ -432,6 +471,42 @@ That's it! The wizard should have created or updated the following files in your
         ```typescript title="Note"
         // Already shown in the App.tsx example above
         // Make sure to wrap your app with StackProvider and StackTheme
+        ```
+      </Tab>
+      <Tab title="TanStack Start">
+        ```typescript title="src/routes/__root.tsx"
+        import { StackProvider, StackTheme } from "@stackframe/tanstack-start";
+        import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
+        import { stackClientApp } from "../stack/client";
+
+        export const Route = createRootRoute({
+          component: RootComponent,
+          shellComponent: RootDocument,
+        });
+
+        function RootComponent() {
+          return (
+            <StackProvider app={stackClientApp}>
+              <StackTheme>
+                <Outlet />
+              </StackTheme>
+            </StackProvider>
+          );
+        }
+
+        function RootDocument({ children }: { children: React.ReactNode }) {
+          return (
+            <html>
+              <head>
+                <HeadContent />
+              </head>
+              <body>
+                {children}
+                <Scripts />
+              </body>
+            </html>
+          );
+        }
         ```
       </Tab>
     </Tabs>
@@ -493,6 +568,15 @@ That's it! Stack is now configured in your project.
 
     # Navigate to the sign-up page
     # http://localhost:5173/handler/sign-up
+    ```
+  </Tab>
+  <Tab title="TanStack Start">
+    ```bash title="Terminal"
+    # Start your TanStack Start app
+    npm run dev
+
+    # Navigate to the sign-up page
+    # http://localhost:3000/handler/sign-up
     ```
   </Tab>
   <Tab title="Express">

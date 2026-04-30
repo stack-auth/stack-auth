@@ -37,13 +37,14 @@ import { BotChallengeExecutionFailedError, BotChallengeUserCancelledError, withB
 import type { TurnstileAction } from "@stackframe/stack-shared/dist/utils/turnstile";
 import { isRelative } from "@stackframe/stack-shared/dist/utils/urls";
 import { generateUuid } from "@stackframe/stack-shared/dist/utils/uuids";
+import * as tanstackStartServerContext from "@stackframe/tanstack-start/tanstack-start-server-context"; // THIS_LINE_PLATFORM tanstack-start
 import * as cookie from "cookie";
 import * as NextNavigationUnscrambled from "next/navigation"; // import the entire module to get around some static compiler warnings emitted by Next.js in some cases | THIS_LINE_PLATFORM next
 import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import type * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
 import { getNewOAuthProviderOrScopeUrl, callOAuthCallback } from "../../../auth";
-import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createCookieHelperSync, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, isSecure as isSecureCookieContext, saveVerifierAndState, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
+import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, isSecure as isSecureCookieContext, saveVerifierAndState, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
 import { envVars } from "../../../env";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud } from "../../api-keys";
 import { ConvexCtx, GetCurrentPartialUserOptions, GetCurrentUserOptions, HandlerUrlOptions, HandlerUrls, OAuthScopesOnSignIn, RedirectMethod, RedirectToOptions, RequestLike, ResolvedHandlerUrls, TokenStoreInit, stackAppInternalsSymbol } from "../../common";
@@ -85,6 +86,26 @@ const NextNavigation = scrambleDuringCompileTime(NextNavigationUnscrambled);
 const prefetchedCrossDomainHandoffTtlMs = 55 * 60 * 1000;
 
 const allClientApps = new Map<string, [checkString: string | undefined, app: StackClientApp<any, any>]>();
+
+// IF_PLATFORM tanstack-start
+function getTanStackStartRequestHeader(name: string): string | null {
+  const { getRequestHeader } = tanstackStartServerContext;
+  if (getRequestHeader == null) {
+    throw new StackAssertionError("TanStack Start request headers are only available during server rendering");
+  }
+  return getRequestHeader(name) ?? null;
+}
+// END_PLATFORM
+
+async function getServerRequestHost(): Promise<string | null> {
+  // IF_PLATFORM next
+  return (await sc.headers?.())?.get("host") ?? null;
+  // ELSE_IF_PLATFORM tanstack-start
+  return getTanStackStartRequestHeader("host");
+  // ELSE_PLATFORM
+  return null;
+  // END_PLATFORM
+}
 
 type StackClientAppImplConstructorOptionsResolved<HasTokenStore extends boolean, ProjectId extends string> = StackClientAppConstructorOptions<HasTokenStore, ProjectId> & { inheritsFrom?: undefined };
 
@@ -828,12 +849,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       let hostname;
       if (isBrowserLike()) {
         hostname = window.location.hostname;
+      } else {
+        hostname = await getServerRequestHost();
       }
-      // IF_PLATFORM next
-      else {
-        hostname = (await sc.headers?.())?.get("host");
-      }
-      // END_PLATFORM
       if (!hostname) {
         console.warn("No hostname found when queueing custom refresh cookie update");
         return;
@@ -1038,7 +1056,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   protected _useTokenStore(overrideTokenStoreInit?: TokenStoreInit): Store<TokenObject> {
     // IF_PLATFORM tanstack-start
     if (!isBrowserLike()) {
-      return this._getOrCreateTokenStore(createCookieHelperSync(), overrideTokenStoreInit);
+      return this._getOrCreateTokenStore(use(createCookieHelper()), overrideTokenStoreInit);
     }
     // END_PLATFORM
     suspendIfSsr();

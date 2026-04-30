@@ -367,7 +367,6 @@ A: Invalid `tools` entries are rejected by `requestBodySchema` in `apps/backend/
 
 ## Q: Why did the internal metrics E2E snapshots need to change in April 2026?
 A: The `/api/v1/internal/metrics` response now intentionally includes `analytics_overview.daily_anonymous_visitors_fallback`, `analytics_overview.anonymous_visitors_fallback`, and `active_users_by_country`. Those additions are reflected in `packages/stack-shared/src/interface/admin-metrics.ts` and the backend route, so the E2E snapshots must include them instead of treating them as regressions.
-
 ## Q: How should Dashboard V2 avoid depending on the feature flags branch?
 A: Do not reference the `feature-flags` app id, feature flag route, or `FlagIcon` in Dashboard V2 until the feature-flags branch is in the stack. The feature flag implementation lives on `feature-flags-v1`; Dashboard V2 should omit `/projects/$projectId/feature-flags` from `routeTree.gen.ts`, `ProjectSidebarNavTo`, sidebar nav groups, and app icon maps when it is meant to depend only on the TanStack Start integration.
 

@@ -4,7 +4,7 @@ import { useAdminApp } from "@/app/(main)/(protected)/projects/[projectId]/use-a
 import { AppStoreEntry } from "@/components/app-store-entry";
 import { useRouter } from "@/components/router";
 import { useUpdateConfig } from "@/lib/config-update";
-import { ALL_APPS_FRONTEND, getAppPath, isSubApp, type AppId } from "@/lib/apps-frontend";
+import { ALL_APPS_FRONTEND, getAppPath, getDocumentationHref, isSubApp, type AppId } from "@/lib/apps-frontend";
 import { isAppEnabled } from "@/lib/apps-utils";
 import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
@@ -28,6 +28,8 @@ export default function AppDetailsPageClient({ appId }: { appId: AppId }) {
   const parentAppFrontend = parentAppId == null ? null : ALL_APPS_FRONTEND[parentAppId];
   const parentAppEnabled = parentAppId == null ? false : isAppEnabled(config.apps.installed, parentAppId);
   const appPath = getAppPath(project.id, appFrontend);
+  const documentationHref = getDocumentationHref(appFrontend);
+  const appDestination = documentationHref ?? appPath;
   const subAppDestinationPath = parentAppFrontend == null
     ? null
     : parentAppEnabled
@@ -40,11 +42,19 @@ export default function AppDetailsPageClient({ appId }: { appId: AppId }) {
       configUpdate: { [`apps.installed.${appId}.enabled`]: true },
       pushable: true,
     });
-    router.push(appPath);
+    if (documentationHref != null) {
+      window.location.href = documentationHref;
+    } else {
+      router.push(appPath);
+    }
   };
 
   const handleOpen = () => {
-    router.push(subAppDestinationPath ?? appPath);
+    if (documentationHref != null) {
+      window.location.href = documentationHref;
+    } else {
+      router.push(subAppDestinationPath ?? appDestination);
+    }
   };
 
   const handleDisable = async () => {

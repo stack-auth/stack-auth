@@ -16,6 +16,17 @@
         "default": "./dist/index.js"
       }
     },
+    "./tanstack-start-server-context": {
+      "types": "./dist/tanstack-start-server-context.combined.d.ts",
+      "import": {
+        "browser": "./dist/esm/tanstack-start-server-context.default.js",
+        "default": "./dist/esm/tanstack-start-server-context.server.js"
+      },
+      "require": {
+        "browser": "./dist/tanstack-start-server-context.default.js",
+        "default": "./dist/tanstack-start-server-context.server.js"
+      }
+    },
     "./convex.config": {
       "types": "./dist/integrations/convex/component/convex.config.d.ts",
       "import": {
@@ -90,12 +101,6 @@
     "react": ">=18.3.0"
   },
   "peerDependenciesMeta": {
-    "@tanstack/react-router": {
-      "optional": true
-    },
-    "@tanstack/react-start": {
-      "optional": true
-    },
     "@types/react": {
       "optional": true
     }
