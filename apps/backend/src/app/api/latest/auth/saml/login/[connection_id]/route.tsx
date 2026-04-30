@@ -18,7 +18,7 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { buildAuthnRequestUrl, buildSamlClient, SamlConnectionConfig } from "@/saml/saml";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { urlSchema, yupArray, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
-import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
+import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -129,7 +129,10 @@ export const GET = createSmartRouteHandler({
       attributeMapping: connectionRaw.attributeMapping,
     };
 
-    const baseUrl = new URL(query.redirect_uri).origin;
+    // Canonical Stack Auth public API origin — must match the metadata route
+    // and ACS validation, since this origin is embedded in the SP entityId
+    // and audience the IdP signs assertions against.
+    const baseUrl = getEnvVariable("NEXT_PUBLIC_STACK_API_URL");
     const client = buildSamlClient(connection, baseUrl);
     const { url: samlUrl, requestId } = await buildAuthnRequestUrl(client, query.state);
 

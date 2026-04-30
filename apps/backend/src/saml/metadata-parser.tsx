@@ -32,19 +32,24 @@ export function parseIdpMetadataXml(xml: string): ParsedIdpMetadata {
     throw new StatusError(StatusError.BadRequest, "IdP metadata has no /md:EntityDescriptor/@entityID");
   }
 
-  // Prefer HTTP-Redirect binding (what we send AuthnRequests over), fall back
-  // to HTTP-POST. Most IdPs publish both.
-  const ssoUrl =
-    (SELECT(
-      "string(/md:EntityDescriptor/md:IDPSSODescriptor/md:SingleSignOnService[@Binding='urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect']/@Location)",
-      doc,
-    ) as string).trim()
-    || (SELECT(
+  // V1: we only emit AuthnRequests over HTTP-Redirect (node-saml's
+  // getAuthorizeUrlAsync produces a Redirect-style GET). Accepting POST-only
+  // metadata would store a POST endpoint that we'd later send a Redirect
+  // request to — likely rejected by the IdP. Reject up-front with a clear
+  // error; POST-binding emission can be added later if needed.
+  const ssoUrl = (SELECT(
+    "string(/md:EntityDescriptor/md:IDPSSODescriptor/md:SingleSignOnService[@Binding='urn:oasis:names:tc:SAML:2.0:bindings:HTTP-Redirect']/@Location)",
+    doc,
+  ) as string).trim();
+  if (!ssoUrl) {
+    const postUrl = (SELECT(
       "string(/md:EntityDescriptor/md:IDPSSODescriptor/md:SingleSignOnService[@Binding='urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST']/@Location)",
       doc,
     ) as string).trim();
-  if (!ssoUrl) {
-    throw new StatusError(StatusError.BadRequest, "IdP metadata has no SingleSignOnService with HTTP-Redirect or HTTP-POST binding");
+    if (postUrl) {
+      throw new StatusError(StatusError.BadRequest, "IdP metadata only advertises an HTTP-POST SingleSignOnService binding. Stack Auth's SAML SP currently requires HTTP-Redirect.");
+    }
+    throw new StatusError(StatusError.BadRequest, "IdP metadata has no SingleSignOnService with HTTP-Redirect binding");
   }
 
   // Prefer the signing-only KeyDescriptor; fall back to one without `use=`

@@ -98,21 +98,44 @@ export const POST = createSmartRouteHandler({
     body: samlConnectionResponseShape,
   }),
   async handler({ auth, body }) {
-    const overlay: Record<string, unknown> = {
-      [`auth.saml.connections.${body.id}.displayName`]: body.display_name,
-      [`auth.saml.connections.${body.id}.allowSignIn`]: body.allow_sign_in,
-      [`auth.saml.connections.${body.id}.idpEntityId`]: body.idp_entity_id,
-      [`auth.saml.connections.${body.id}.idpSsoUrl`]: body.idp_sso_url,
-      [`auth.saml.connections.${body.id}.idpCertificate`]: body.idp_certificate,
-    };
-    if (body.domain !== undefined) {
-      overlay[`auth.saml.connections.${body.id}.domain`] = body.domain;
-    }
-    if (body.attribute_mapping) {
-      overlay[`auth.saml.connections.${body.id}.attributeMapping`] = {
-        email: body.attribute_mapping.email,
-        displayName: body.attribute_mapping.display_name,
+    const exists = body.id in auth.tenancy.config.auth.saml.connections;
+    const prefix = `auth.saml.connections.${body.id}`;
+    const overlay: Record<string, unknown> = {};
+    if (!exists) {
+      // First-time create: write the whole record entry as a nested object.
+      // Dotting into a missing parent record entry is silently dropped by
+      // the config layer (see lib/config validateConfigOverrideSchema), so
+      // child-only updates would 200 with no effect on a brand-new connection.
+      const data: Record<string, unknown> = {
+        displayName: body.display_name,
+        allowSignIn: body.allow_sign_in,
+        idpEntityId: body.idp_entity_id,
+        idpSsoUrl: body.idp_sso_url,
+        idpCertificate: body.idp_certificate,
       };
+      if (body.domain !== undefined) data.domain = body.domain;
+      if (body.attribute_mapping) {
+        data.attributeMapping = {
+          email: body.attribute_mapping.email,
+          displayName: body.attribute_mapping.display_name,
+        };
+      }
+      overlay[prefix] = data;
+    } else {
+      overlay[`${prefix}.displayName`] = body.display_name;
+      overlay[`${prefix}.allowSignIn`] = body.allow_sign_in;
+      overlay[`${prefix}.idpEntityId`] = body.idp_entity_id;
+      overlay[`${prefix}.idpSsoUrl`] = body.idp_sso_url;
+      overlay[`${prefix}.idpCertificate`] = body.idp_certificate;
+      if (body.domain !== undefined) {
+        overlay[`${prefix}.domain`] = body.domain;
+      }
+      if (body.attribute_mapping) {
+        overlay[`${prefix}.attributeMapping`] = {
+          email: body.attribute_mapping.email,
+          displayName: body.attribute_mapping.display_name,
+        };
+      }
     }
 
     await overrideEnvironmentConfigOverride({

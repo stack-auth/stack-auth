@@ -26,6 +26,7 @@ import { buildSamlClient, extractInResponseTo, parseAndVerifyAssertion, SamlConn
 import { InvalidClientError, InvalidScopeError, Request as OAuthRequest, Response as OAuthResponse } from "@node-oauth/oauth2-server";
 import { KnownError, KnownErrors } from "@stackframe/stack-shared";
 import { yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { cookies } from "next/headers";
@@ -137,6 +138,13 @@ export const POST = createSmartRouteHandler({
     if (!connectionRaw.idpEntityId || !connectionRaw.idpSsoUrl || !connectionRaw.idpCertificate) {
       throw new StatusError(StatusError.NotFound, `SAML connection ${params.connection_id} is incompletely configured`);
     }
+    // Defense-in-depth: login already rejects disabled connections, but a
+    // SamlOuterInfo row lives for 10 minutes, so an admin can disable a
+    // connection mid-flow. ACS is the final trust point before issuing an
+    // OAuth code, so re-check here.
+    if (connectionRaw.allowSignIn === false) {
+      throw new StatusError(StatusError.Forbidden, `SAML connection ${params.connection_id} has sign-in disabled`);
+    }
     const connection: SamlConnectionConfig = {
       id: params.connection_id,
       displayName: connectionRaw.displayName,
@@ -153,7 +161,11 @@ export const POST = createSmartRouteHandler({
     }
 
     try {
-      const baseUrl = new URL(outerInfo.redirectUri).origin;
+      // Canonical Stack Auth public API origin — must match login + metadata
+      // so audience/issuer validation lines up with the entity ID the IdP
+      // configured against. The customer's `redirectUri` is for the SDK
+      // post-callback redirect, not the SP origin.
+      const baseUrl = getEnvVariable("NEXT_PUBLIC_STACK_API_URL");
       const client = buildSamlClient(connection, baseUrl);
       const assertion = await parseAndVerifyAssertion(client, connection, samlResponseB64, undefined);
 
