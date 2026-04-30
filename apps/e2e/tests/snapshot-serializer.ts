@@ -131,10 +131,6 @@ const stringRegexReplacements = [
   [new RegExp(`localhost\:${getPortPrefix()}`, "gi"), "localhost:<$$NEXT_PUBLIC_STACK_PORT_PREFIX>"],
   [new RegExp(`localhost\%3A${getPortPrefix()}`, "gi"), "localhost%3A%3C%24NEXT_PUBLIC_STACK_PORT_PREFIX%3E"],
   [/(Timeout exceeded: elapsed )[0-9.]+( ms)/gi, "$1<stripped time>$2"],
-  // SAML AuthnRequest / Response / Assertion IDs (xs:ID format starts with
-  // a non-numeric char, e.g. _abc123). Stripped in error messages and URL
-  // path segments under /auth/saml/(login|acs)/.
-  [/_[a-zA-Z][a-zA-Z0-9_.-]{8,}/g, "<stripped SAML id>"],
   // SAML XML timestamps (e.g. IssueInstant, NotBefore, NotOnOrAfter).
   [/(IssueInstant|NotBefore|NotOnOrAfter)="[^"]+"/g, '$1="<stripped SAML timestamp>"'],
 ] as const;
