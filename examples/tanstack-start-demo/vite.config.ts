@@ -1,4 +1,4 @@
-import fs, { readFileSync } from "node:fs";
+import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { tanstackStart } from "@tanstack/react-start/plugin/vite";
@@ -7,46 +7,7 @@ import { defineConfig, type Plugin } from "vite";
 import { nitro } from "nitro/vite";
 import tsConfigPaths from "vite-tsconfig-paths";
 
-const tanstackStartPackagePath = fileURLToPath(
-  new URL("../../packages/tanstack-start/package.json", import.meta.url),
-);
-const tanstackStartSourcePath = fileURLToPath(
-  new URL("../../packages/tanstack-start/src/index.ts", import.meta.url),
-);
-const tanstackStartSourceRoot = fileURLToPath(
-  new URL("../../packages/tanstack-start/src/", import.meta.url),
-);
 const stackAuthRootPath = fileURLToPath(new URL("../..", import.meta.url));
-const tanstackStartPackageJson = JSON.parse(
-  readFileSync(tanstackStartPackagePath, "utf-8"),
-) as { name: string, version: string };
-
-function stackSdkSourceTransforms(): Plugin {
-  const packageVersionLabel = `js ${tanstackStartPackageJson.name}@${tanstackStartPackageJson.version}`;
-
-  return {
-    name: "stack-sdk-source-transforms",
-    enforce: "pre",
-    transform(code, id) {
-      if (!id.startsWith(tanstackStartSourceRoot)) {
-        return null;
-      }
-
-      const transformedCode = code
-        .replace(/STACK_COMPILE_TIME_CLIENT_PACKAGE_VERSION_SENTINEL/g, packageVersionLabel)
-        .replace(/import\.meta\.vitest/g, "undefined");
-
-      if (transformedCode === code) {
-        return null;
-      }
-
-      return {
-        code: transformedCode,
-        map: null,
-      };
-    },
-  };
-}
 
 function watchNodeModules(modules: string[]): Plugin {
   return {
@@ -108,23 +69,8 @@ export default defineConfig(({ mode }) => {
         allow: [stackAuthRootPath],
       },
     },
-    build: {
-      rollupOptions: {
-        output: {
-          manualChunks(id) {
-            if (id.startsWith(tanstackStartSourceRoot)) {
-              return "stack-auth-sdk";
-            }
-            return undefined;
-          },
-        },
-      },
-    },
     resolve: {
       dedupe: ["react", "react-dom"],
-      alias: {
-        "@stackframe/tanstack-start": tanstackStartSourcePath,
-      },
     },
     ssr: {
       noExternal: [/^@stackframe\//, /^@radix-ui\//],
@@ -133,7 +79,6 @@ export default defineConfig(({ mode }) => {
       include: ["@stackframe/stack-shared", "@stackframe/stack-shared/config"],
     },
     plugins: [
-      stackSdkSourceTransforms(),
       ...(isVitest ? [] : [
         waitForWorkspacePackages(["@stackframe/tanstack-start", "@stackframe/stack-shared", "@stackframe/stack-ui"]),
         watchNodeModules(["@stackframe/tanstack-start", "@stackframe/stack-shared", "@stackframe/stack-ui"]),

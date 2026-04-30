@@ -13,8 +13,6 @@
     "esModuleInterop": true,
     "baseUrl": ".",
     "paths": {
-      "@stackframe/tanstack-start": ["../../packages/tanstack-start/src/index.ts"],
-      "@stackframe/tanstack-start/*": ["../../packages/tanstack-start/src/*"],
       "~/*": ["./src/*"]
     }
   },
