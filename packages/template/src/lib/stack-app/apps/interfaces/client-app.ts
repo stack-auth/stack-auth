@@ -60,6 +60,9 @@ export type StackClientApp<HasTokenStore extends boolean = boolean, ProjectId ex
     readonly urls: Readonly<ResolvedHandlerUrls>,
 
     signInWithOAuth(provider: string, options?: { returnTo?: string }): Promise<void>,
+    signInWithSaml(options: { connectionId: string, returnTo?: string }): Promise<void>,
+    signInWithSso(options: { email: string, returnTo?: string }): Promise<void>,
+    getSamlConnectionForEmail(email: string): Promise<{ connectionId: string, displayName: string } | null>,
     signInWithCredential(options: { email: string, password: string, noRedirect?: boolean }): Promise<Result<undefined, KnownErrors["EmailPasswordMismatch"] | KnownErrors["InvalidTotpCode"]>>,
     signUpWithCredential(options: {
       email: string,

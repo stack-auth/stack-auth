@@ -114,6 +114,31 @@ it("returns SAML_SSO_NOT_ENABLED when the saml-sso app is not installed", async 
   expect((response.body as { code?: string }).code).toBe("SAML_SSO_NOT_ENABLED");
 });
 
+it("returns 404 for a connection whose allowSignIn is disabled", async ({ expect }) => {
+  // Discover is the entry point for signInWithSso — surfacing a disabled
+  // connection here would direct the user through /auth/saml/login, which
+  // intentionally 403s. Treat disabled connections as if they didn't exist.
+  const { projectId } = await Project.createAndSwitch();
+  await Project.updateConfig({
+    "apps.installed.saml-sso": { enabled: true },
+    "auth.saml.connections.acme": {
+      displayName: "acme SSO",
+      allowSignIn: false,
+      domain: "acme.test",
+      idpEntityId: "https://idp.acme.test/saml/metadata",
+      idpSsoUrl: "https://idp.acme.test/saml/sso",
+      idpCertificate: "MIICertificatePlaceholderForDisabledTest=",
+    },
+  });
+
+  const response = await niceBackendFetch(
+    `/api/v1/auth/saml/discover?email=alice@acme.test&project_id=${projectId}`,
+    { method: "GET" },
+  );
+
+  expect(response.status).toBe(404);
+});
+
 it("isolates connections across projects (B's connection is not visible from A)", async ({ expect }) => {
   // Project A has acme; project B has globex. Querying A for globex's domain must miss.
   const { projectId: projectA } = await createProjectWithSamlConnection("acme", "acme.test");
