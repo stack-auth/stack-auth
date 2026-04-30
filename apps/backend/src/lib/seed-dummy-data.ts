@@ -1983,7 +1983,12 @@ async function seedSamlConnections(projectId: string): Promise<void> {
   // dot-keys — config normalization with onDotIntoNonObject="ignore"
   // drops dot-keys that try to navigate into a record entry that
   // doesn't yet exist (same convention as auth.oauth.providers).
-  const overlay: Record<string, unknown> = {};
+  const overlay: Record<string, unknown> = {
+    // SAML SSO is an alpha-stage app and isn't installed by default —
+    // enable it on the dummy project so the seeded connections are usable
+    // without an extra dashboard click.
+    "apps.installed.saml-sso": { enabled: true },
+  };
   for (const f of fetched) {
     overlay[`auth.saml.connections.${f.slug}`] = {
       displayName: f.displayName,

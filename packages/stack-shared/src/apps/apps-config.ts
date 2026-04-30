@@ -78,6 +78,12 @@ export const ALL_APPS = {
     tags: ["auth", "security"],
     stage: "stable",
   },
+  "saml-sso": {
+    displayName: "SAML SSO",
+    subtitle: "Sign-in via corporate SAML 2.0 identity providers",
+    tags: ["auth", "security", "expert"],
+    stage: "alpha",
+  },
   "api-keys": {
     displayName: "API Keys",
     subtitle: "API key generation and management",

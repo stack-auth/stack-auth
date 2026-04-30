@@ -1828,6 +1828,16 @@ const AnalyticsNotEnabled = createKnownErrorConstructor(
   () => [] as const,
 );
 
+const SamlSsoNotEnabled = createKnownErrorConstructor(
+  KnownError,
+  "SAML_SSO_NOT_ENABLED",
+  () => [
+    400,
+    "SAML SSO is not enabled for this project.",
+  ] as const,
+  () => [] as const,
+);
+
 const DefaultPaymentMethodRequired = createKnownErrorConstructor(
   KnownError,
   "DEFAULT_PAYMENT_METHOD_REQUIRED",
@@ -2000,6 +2010,7 @@ export const KnownErrors = {
   AnalyticsQueryTimeout,
   AnalyticsQueryError,
   AnalyticsNotEnabled,
+  SamlSsoNotEnabled,
 } satisfies Record<string, KnownErrorConstructor<any, any>>;
 
 

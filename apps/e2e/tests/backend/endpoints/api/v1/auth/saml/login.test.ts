@@ -18,6 +18,7 @@ async function setupProjectWithSamlConnection(slug: string, idpHost: string) {
   await Project.createAndSwitch();
   await InternalApiKey.createAndSetProjectKeys();
   await Project.updateConfig({
+    "apps.installed.saml-sso": { enabled: true },
     [`auth.saml.connections.${slug}`]: {
       displayName: `${slug} SSO`,
       allowSignIn: true,

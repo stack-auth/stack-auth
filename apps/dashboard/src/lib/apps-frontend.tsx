@@ -1,5 +1,5 @@
 import { Link } from "@/components/link";
-import { ChartLineIcon, ClipboardTextIcon, CreditCardIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
+import { BuildingsIcon, ChartLineIcon, ClipboardTextIcon, CreditCardIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { StackAdminApp } from "@stackframe/stack";
 import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@stackframe/stack-shared/dist/utils/urls";
@@ -159,6 +159,21 @@ export const ALL_APPS_FRONTEND = {
         <p>RBAC helps you model the authorization surface of your product in a structured, auditable way.</p>
         <p>Define project and team permissions with IDs that map directly into your code and compose them into higher-level roles.</p>
         <p>The Stack SDK exposes those definitions everywhere so each environment enforces the same checks.</p>
+      </>
+    ),
+  },
+  "saml-sso": {
+    icon: BuildingsIcon,
+    href: "sso",
+    navigationItems: [
+      { displayName: "SAML SSO", href: "." },
+    ],
+    screenshots: [],
+    storeDescription: (
+      <>
+        <p>SAML SSO lets enterprise customers sign in to your project through their corporate identity provider.</p>
+        <p>Add per-tenant connections with Okta, Azure AD, Google Workspace, or any SAML 2.0 IdP — your customers paste in the SP metadata and ACS URLs from the connection card.</p>
+        <p>The Stack SDK exposes <code>signInWithSso</code> for email-domain discovery and <code>signInWithSaml</code> for explicit connection selection.</p>
       </>
     ),
   },

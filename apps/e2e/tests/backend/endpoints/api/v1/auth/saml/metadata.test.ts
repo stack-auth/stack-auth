@@ -12,6 +12,7 @@ import { Project, niceBackendFetch } from "../../../../../backend-helpers";
 async function setupSamlConnection(slug: string) {
   const { projectId } = await Project.createAndSwitch();
   await Project.updateConfig({
+    "apps.installed.saml-sso": { enabled: true },
     [`auth.saml.connections.${slug}`]: {
       displayName: `${slug} SSO`,
       allowSignIn: true,
@@ -58,6 +59,7 @@ it("returns 404 when the connection exists but has no IdP cert configured", asyn
   const { projectId } = await Project.createAndSwitch();
   // Create a connection but skip the IdP-side fields.
   await Project.updateConfig({
+    "apps.installed.saml-sso": { enabled: true },
     "auth.saml.connections.partial": {
       displayName: "Partial",
       allowSignIn: true,

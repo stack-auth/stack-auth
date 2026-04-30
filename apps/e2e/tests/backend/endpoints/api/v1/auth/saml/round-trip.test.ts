@@ -62,6 +62,7 @@ async function setupProjectWithMockSamlConnection(connectionId: string, tenantSl
   await InternalApiKey.createAndSetProjectKeys();
   const idp = await fetchMockIdpCertificate(tenantSlug);
   await Project.updateConfig({
+    "apps.installed.saml-sso": { enabled: true },
     [`auth.saml.connections.${connectionId}`]: {
       displayName: `${connectionId} SSO`,
       allowSignIn: true,

@@ -12,6 +12,7 @@
  */
 import { overrideEnvironmentConfigOverride, resetEnvironmentConfigOverrideKeys } from "@/lib/config";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
@@ -47,6 +48,9 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth }) {
+    if (!auth.tenancy.config.apps.installed["saml-sso"]?.enabled) {
+      throw new KnownErrors.SamlSsoNotEnabled();
+    }
     const connections = auth.tenancy.config.auth.saml.connections;
     type Conn = (typeof auth.tenancy.config.auth.saml.connections)[string];
     return {
@@ -98,6 +102,9 @@ export const POST = createSmartRouteHandler({
     body: samlConnectionResponseShape,
   }),
   async handler({ auth, body }) {
+    if (!auth.tenancy.config.apps.installed["saml-sso"]?.enabled) {
+      throw new KnownErrors.SamlSsoNotEnabled();
+    }
     const overlay: Record<string, unknown> = {
       [`auth.saml.connections.${body.id}.displayName`]: body.display_name,
       [`auth.saml.connections.${body.id}.allowSignIn`]: body.allow_sign_in,
@@ -160,6 +167,9 @@ export const DELETE = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth, body }) {
+    if (!auth.tenancy.config.apps.installed["saml-sso"]?.enabled) {
+      throw new KnownErrors.SamlSsoNotEnabled();
+    }
     if (!(body.id in auth.tenancy.config.auth.saml.connections)) {
       throw new StatusError(StatusError.NotFound, `SAML connection ${body.id} not found`);
     }

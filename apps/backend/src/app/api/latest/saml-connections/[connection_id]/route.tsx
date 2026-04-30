@@ -5,6 +5,7 @@
  */
 import { adaptSchema, adminAuthTypeSchema, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
 export const GET = createSmartRouteHandler({
@@ -40,6 +41,9 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth, params }) {
+    if (!auth.tenancy.config.apps.installed["saml-sso"]?.enabled) {
+      throw new KnownErrors.SamlSsoNotEnabled();
+    }
     if (!(params.connection_id in auth.tenancy.config.auth.saml.connections)) {
       throw new StatusError(StatusError.NotFound, `SAML connection ${params.connection_id} not found`);
     }

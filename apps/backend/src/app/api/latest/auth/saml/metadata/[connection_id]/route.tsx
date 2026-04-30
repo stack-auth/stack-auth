@@ -1,6 +1,7 @@
 import { getSoleTenancyFromProjectBranch, DEFAULT_BRANCH_ID } from "@/lib/tenancies";
 import { getSpMetadataXml } from "@/saml/saml";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
+import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
 
@@ -36,6 +37,9 @@ export const GET = createSmartRouteHandler({
     const tenancy = await getSoleTenancyFromProjectBranch(query.project_id, DEFAULT_BRANCH_ID, true);
     if (!tenancy) {
       throw new StatusError(StatusError.NotFound, `Project ${query.project_id} not found`);
+    }
+    if (!tenancy.config.apps.installed["saml-sso"]?.enabled) {
+      throw new KnownErrors.SamlSsoNotEnabled();
     }
     if (!(params.connection_id in tenancy.config.auth.saml.connections)) {
       throw new StatusError(StatusError.NotFound, `SAML connection ${params.connection_id} not found in project ${query.project_id}`);

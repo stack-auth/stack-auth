@@ -22,6 +22,7 @@ async function createProjectWithSamlConnection(slug: string, domain: string) {
   // onDotIntoNonObject="ignore" — same convention as auth.oauth.providers
   // (see auth-methods/page-client.tsx).
   await Project.updateConfig({
+    "apps.installed.saml-sso": { enabled: true },
     [`auth.saml.connections.${slug}`]: {
       displayName: `${slug} SSO`,
       allowSignIn: true,
@@ -86,6 +87,31 @@ it("returns 404 for an unknown project_id", async ({ expect }) => {
   );
 
   expect(response.status).toBe(404);
+});
+
+it("returns SAML_SSO_NOT_ENABLED when the saml-sso app is not installed", async ({ expect }) => {
+  // Same setup as createProjectWithSamlConnection but without enabling the app.
+  // Configuring connections without installing the app should never let the
+  // SDK use them — the alpha gate is the first line of defense.
+  const { projectId } = await Project.createAndSwitch();
+  await Project.updateConfig({
+    "auth.saml.connections.acme": {
+      displayName: "acme SSO",
+      allowSignIn: true,
+      domain: "acme.test",
+      idpEntityId: "https://idp.acme.test/saml/metadata",
+      idpSsoUrl: "https://idp.acme.test/saml/sso",
+      idpCertificate: "MIICertificatePlaceholderForGateTest=",
+    },
+  });
+
+  const response = await niceBackendFetch(
+    `/api/v1/auth/saml/discover?email=alice@acme.test&project_id=${projectId}`,
+    { method: "GET" },
+  );
+
+  expect(response.status).toBe(400);
+  expect((response.body as { code?: string }).code).toBe("SAML_SSO_NOT_ENABLED");
 });
 
 it("isolates connections across projects (B's connection is not visible from A)", async ({ expect }) => {

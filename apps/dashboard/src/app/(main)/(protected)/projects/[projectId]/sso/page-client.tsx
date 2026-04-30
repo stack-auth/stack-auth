@@ -5,6 +5,7 @@ import { ActionDialog, Alert, Button, Card, CardContent, CardHeader, Typography 
 import { useUpdateConfig } from "@/lib/config-update";
 import React, { useState } from "react";
 import * as yup from "yup";
+import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
 
@@ -22,6 +23,14 @@ import { useAdminApp } from "../use-admin-app";
  * now connection fields are entered manually.
  */
 export default function PageClient() {
+  return (
+    <AppEnabledGuard appId="saml-sso">
+      <PageContent />
+    </AppEnabledGuard>
+  );
+}
+
+function PageContent() {
   const stackAdminApp = useAdminApp();
   const project = stackAdminApp.useProject();
   const config = project.useConfig();
@@ -194,8 +203,8 @@ function DeleteDialog({ connectionId, displayName, onClose }: {
             adminApp: stackAdminApp,
             configUpdate: { [`auth.saml.connections.${connectionId}`]: null } as Parameters<typeof updateConfig>[0]["configUpdate"],
             // SAML connection fields (cert, IdP URLs) are environment-level
-          // (not pushable) — same as OAuth client secrets.
-          pushable: false,
+            // (not pushable) — same as OAuth client secrets.
+            pushable: false,
           });
           onClose();
         },

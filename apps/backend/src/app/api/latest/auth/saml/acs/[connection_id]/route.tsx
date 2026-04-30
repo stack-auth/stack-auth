@@ -130,6 +130,10 @@ export const POST = createSmartRouteHandler({
     }
     const prisma = await getPrismaClientForTenancy(tenancy);
 
+    if (!tenancy.config.apps.installed["saml-sso"]?.enabled) {
+      throw new KnownErrors.SamlSsoNotEnabled();
+    }
+
     if (!(params.connection_id in tenancy.config.auth.saml.connections)) {
       throw new StatusError(StatusError.NotFound, `SAML connection ${params.connection_id} not found`);
     }
