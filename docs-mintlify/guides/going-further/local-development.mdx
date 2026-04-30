@@ -3,4 +3,225 @@ title: "Local Development"
 description: "Set up and run Stack Auth locally for development and testing"
 ---
 
-This page is under construction. Check back soon for instructions on setting up Stack Auth for local development.
+You can develop with Stack Auth in two ways:
+
+- Use **Stack Auth Cloud from your local app**. This keeps Stack Auth hosted while your app runs on your machine.
+- Use the **local emulator**. This runs the Stack Auth backend, dashboard, email inbox, and mock OAuth services locally.
+
+Both workflows let you run your app with your normal framework dev server, such as `npm run dev`, `pnpm dev`, or `next dev`.
+
+## Cloud-backed local dev
+
+To keep Stack Auth hosted while your app runs locally, create or select a Stack Auth project in the dashboard, then copy the environment variables from the [setup guide](/guides/getting-started/setup) into your local `.env` file.
+
+```env title=".env.local"
+NEXT_PUBLIC_STACK_PROJECT_ID=your-project-id
+STACK_SECRET_SERVER_KEY=ssk_...
+```
+
+If your project is configured to require publishable client keys, also set the public publishable key for your framework:
+
+```env title=".env.local"
+NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY=pck_...
+```
+
+Then start your app:
+
+```sh title="Terminal"
+npm run dev
+```
+
+Use this workflow when you want:
+
+- Hosted dashboard settings to be the source of truth
+- Real OAuth provider setup and redirect URLs
+- Real email delivery behavior
+- Hosted Stack Auth services while your app runs locally
+
+Cloud-backed local development uses the cloud project ID and keys in your local environment. If those values point at your production project, local sign-ins, test users, emails, OAuth accounts, and config changes affect that same production project. Create a separate cloud project for development or testing when you want cloud behavior without touching production data.
+
+<Info>
+  Keep `STACK_SECRET_SERVER_KEY` server-side. In browser-exposed environments, use only the public variables for your framework, such as `NEXT_PUBLIC_STACK_PROJECT_ID`.
+</Info>
+
+## Fully local workflow: emulator-backed dev
+
+Use the [local emulator](/guides/going-further/local-emulator) when you want an isolated Stack Auth environment on your machine. The emulator is useful for testing config changes, working offline after the image is downloaded, and developing against a local `stack.config.ts` file.
+
+The emulator requires QEMU and other system tools. Installing the Stack CLI does not install QEMU; the CLI checks for missing emulator dependencies when you run emulator commands.
+
+Start the emulator:
+
+```sh title="Terminal"
+npx @stackframe/stack-cli@latest emulator start
+```
+
+Open the local dashboard:
+
+```text
+http://127.0.0.1:26700
+```
+
+The backend API is available at:
+
+```text
+http://127.0.0.1:26701
+```
+
+The emulator also exposes local supporting services, including Inbucket for email testing and a mock OAuth server. See the [local emulator guide](/guides/going-further/local-emulator#ports) for the full port list.
+
+## Run your app with emulator credentials
+
+To connect your app to the emulator, use `emulator run`. It starts the emulator if needed, injects local project credentials into your app process, and points the SDK at the local backend.
+
+```sh title="Terminal"
+npx @stackframe/stack-cli@latest emulator run "npm run dev" --config-file ./stack.config.ts
+```
+
+When `--config-file` is provided, the CLI maps your local `stack.config.ts` to an emulator project and injects variables such as:
+
+```text
+NEXT_PUBLIC_STACK_PROJECT_ID
+STACK_SECRET_SERVER_KEY
+NEXT_PUBLIC_STACK_API_URL
+STACK_API_URL
+```
+
+The emulator also injects publishable client key variables, such as `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY`, for projects that use them.
+
+Use the public variable names that match your framework. For example, Next.js reads `NEXT_PUBLIC_STACK_*`, Vite reads `VITE_STACK_*`, and Expo reads `EXPO_PUBLIC_STACK_*`. The emulator injects all of these variants for convenience.
+
+## Local config files
+
+If you use config-file backed development, `stack.config.ts` becomes the local source of truth for Stack Auth settings. The emulator reads that file and creates or updates a matching local project.
+
+Create a config-driven project with the CLI:
+
+```sh title="Terminal"
+npx @stackframe/stack-cli@latest init --mode create --apps authentication
+```
+
+Run against it locally:
+
+```sh title="Terminal"
+npx @stackframe/stack-cli@latest emulator run "npm run dev" --config-file ./stack.config.ts
+```
+
+When you are working with Stack Auth Cloud instead of the emulator, you can use the [CLI config commands](/guides/going-further/cli#config-commands) to pull and push branch config:
+
+```sh title="Terminal"
+npx @stackframe/stack-cli@latest --project-id <project-id> config pull --config-file ./stack.config.ts
+npx @stackframe/stack-cli@latest --project-id <project-id> config push --config-file ./stack.config.ts
+```
+
+## Testing auth flows locally
+
+### Sign-in and sign-up pages
+
+After your app is running, visit the Stack handler routes in your app, for example:
+
+```text
+http://localhost:3000/handler/sign-in
+http://localhost:3000/handler/sign-up
+http://localhost:3000/handler/account-settings
+```
+
+If your app uses a different port, replace `3000` with your app's dev server port.
+
+### Emails
+
+In cloud-backed local dev, emails are sent according to your hosted project settings. In emulator-backed dev, emails are captured locally in Inbucket:
+
+```text
+http://127.0.0.1:26703
+```
+
+Use this for magic links, verification emails, password reset emails, and team invitations without sending real email.
+
+### OAuth providers
+
+In cloud-backed local dev, configure each provider's redirect URL in the provider dashboard. For Stack Auth OAuth providers, the redirect URL is shown in the Stack dashboard when you configure the provider.
+
+In emulator-backed dev, use the emulator's local services and mock OAuth flow instead of creating real provider apps. This keeps local tests isolated from production provider credentials.
+
+## Common local development issues
+
+### The SDK is still calling Stack Auth Cloud
+
+If your app is configured to use the emulator but requests are going to Stack Auth Cloud, make sure your process received the API URL variables:
+
+```text
+STACK_API_URL=http://127.0.0.1:26701
+NEXT_PUBLIC_STACK_API_URL=http://127.0.0.1:26701
+```
+
+The simplest fix is to start your app through `emulator run` instead of starting the emulator and app separately.
+
+### Project ID or key mismatch
+
+If you see authentication failures immediately after startup, check that all Stack Auth variables come from the same project. Do not mix a cloud `NEXT_PUBLIC_STACK_PROJECT_ID` with an emulator `STACK_SECRET_SERVER_KEY`, or a publishable client key from one project with a secret server key from another.
+
+When using `emulator run`, remove conflicting Stack Auth values from your shell or `.env.local` so your app cannot accidentally mix cloud and emulator credentials.
+
+### Redirect URL is not whitelisted
+
+Magic links and OAuth redirects must return to an allowed domain. Add your local app origin, such as `http://localhost:3000`, to the project's allowed domains in the dashboard. If you use the emulator, add it in the local dashboard at `http://127.0.0.1:26700`.
+
+For programmatic handling, this failure appears as `REDIRECT_URL_NOT_WHITELISTED`. See [Known Errors](/guides/other/known-errors) for how known error codes are exposed in SDK and REST responses.
+
+### Emails do not arrive
+
+For cloud-backed local dev, check your email provider settings and spam folder. For emulator-backed dev, open Inbucket at `http://127.0.0.1:26703`; emulator emails are captured there and are not sent to a real inbox.
+
+### Emulator port already in use
+
+The emulator defaults to dashboard port `26700` and backend port `26701`. If a port is already in use, override it before starting the emulator:
+
+```sh title="Terminal"
+EMULATOR_DASHBOARD_PORT=27700 \
+EMULATOR_BACKEND_PORT=27701 \
+npx @stackframe/stack-cli@latest emulator start
+```
+
+See [Local Emulator](/guides/going-further/local-emulator#troubleshooting) for more emulator-specific troubleshooting.
+
+### `run-emulator.sh` permission denied
+
+Some npm installs can leave the bundled emulator script without executable permissions. If `stack emulator start` or `npx @stackframe/stack-cli@latest emulator start` fails with `spawn .../run-emulator.sh EACCES`, apply execute permissions to the path shown in the error:
+
+```sh title="Terminal"
+chmod +x /path/to/node_modules/@stackframe/stack-cli/dist/emulator/run-emulator.sh
+```
+
+For `npx`, the script path is inside npm's temporary cache and may change between runs.
+
+### The emulator starts slowly
+
+The first emulator start downloads the VM image and creates a fast-start snapshot. This can take a few minutes and requires several gigabytes of disk space. Later starts should be much faster.
+
+If the emulator gets into a bad state, reset it:
+
+```sh title="Terminal"
+npx @stackframe/stack-cli@latest emulator reset
+```
+
+This wipes emulator runtime state but keeps downloaded images.
+
+## What to use in CI
+
+For CI that tests your app against Stack Auth Cloud, provide the same project variables you use locally:
+
+```env
+NEXT_PUBLIC_STACK_PROJECT_ID=...
+STACK_SECRET_SERVER_KEY=...
+```
+
+Add `NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY` or the equivalent public variable for your framework if the project requires publishable client keys.
+
+For CI that needs a disposable local Stack Auth instance, run tests through the emulator:
+
+```sh title="Terminal"
+npx @stackframe/stack-cli@latest emulator run "npm test" --config-file ./stack.config.ts
+```
+
+The emulator boots a local VM, so it adds more startup cost than cloud-backed tests. Use it in CI when the test needs local config-file behavior or isolated emulator state.

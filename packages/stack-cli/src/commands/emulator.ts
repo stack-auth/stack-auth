@@ -1,5 +1,5 @@
-import { Command } from "commander";
 import { execFileSync, execSync, spawn } from "child_process";
+import { Command } from "commander";
 import extract from "extract-zip";
 import { chmodSync, createWriteStream, existsSync, mkdirSync, readFileSync, renameSync, unlinkSync } from "fs";
 import { homedir } from "os";
