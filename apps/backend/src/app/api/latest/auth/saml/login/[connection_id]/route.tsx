@@ -20,6 +20,7 @@ import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { urlSchema, yupArray, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { has } from "@stackframe/stack-shared/dist/utils/objects";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import type { Schema } from "yup";
@@ -100,7 +101,7 @@ export const GET = createSmartRouteHandler({
       throwCheckApiKeySetError(keyCheck.error, tenancy.project.id, new KnownErrors.InvalidPublishableClientKey(tenancy.project.id));
     }
 
-    if (!(params.connection_id in tenancy.config.auth.saml.connections)) {
+    if (!has(tenancy.config.auth.saml.connections, params.connection_id)) {
       throw new StatusError(StatusError.NotFound, `SAML connection ${params.connection_id} not found`);
     }
     const connectionRaw = tenancy.config.auth.saml.connections[params.connection_id];

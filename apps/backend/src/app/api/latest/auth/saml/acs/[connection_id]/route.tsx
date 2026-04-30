@@ -21,6 +21,7 @@ import { createSamlUserAndAccount, findExistingSamlAccount, handleSamlEmailMerge
 import { Tenancy, getTenancy } from "@/lib/tenancies";
 import { oauthServer } from "@/oauth";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
+import { Prisma } from "@/generated/prisma/client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { buildSamlClient, extractInResponseTo, parseAndVerifyAssertion, SamlConnectionConfig } from "@/saml/saml";
 import { InvalidClientError, InvalidScopeError, Request as OAuthRequest, Response as OAuthResponse } from "@node-oauth/oauth2-server";
@@ -28,6 +29,7 @@ import { KnownError, KnownErrors } from "@stackframe/stack-shared";
 import { yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { has } from "@stackframe/stack-shared/dist/utils/objects";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -101,9 +103,19 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(StatusError.BadRequest, "SAMLResponse has no InResponseTo (IdP-initiated SSO is not supported in V1)");
     }
 
-    const outerInfoDB = await globalPrismaClient.samlOuterInfo.findUnique({ where: { id: inResponseTo } });
-    if (!outerInfoDB) {
-      throw new StatusError(StatusError.BadRequest, "Unknown InResponseTo — SAMLResponse does not match any pending AuthnRequest. Please try signing in again.");
+    // Atomically consume the SamlOuterInfo row up-front so concurrent
+    // duplicate POSTs (browser retry, captured payload, etc.) can't both
+    // pass a findUnique check before either reaches the delete and each
+    // issue an OAuth code. If downstream verification fails, the client
+    // must restart the flow — that's the cost of a one-shot row.
+    let outerInfoDB;
+    try {
+      outerInfoDB = await globalPrismaClient.samlOuterInfo.delete({ where: { id: inResponseTo } });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2025") {
+        throw new StatusError(StatusError.BadRequest, "Unknown InResponseTo — SAMLResponse does not match any pending AuthnRequest, or it was already consumed. Please try signing in again.");
+      }
+      throw e;
     }
 
     const outerInfo = outerInfoDB.info as unknown as SamlOuterInfoPayload;
@@ -131,7 +143,7 @@ export const POST = createSmartRouteHandler({
     }
     const prisma = await getPrismaClientForTenancy(tenancy);
 
-    if (!(params.connection_id in tenancy.config.auth.saml.connections)) {
+    if (!has(tenancy.config.auth.saml.connections, params.connection_id)) {
       throw new StatusError(StatusError.NotFound, `SAML connection ${params.connection_id} not found`);
     }
     const connectionRaw = tenancy.config.auth.saml.connections[params.connection_id];
@@ -302,11 +314,6 @@ export const POST = createSmartRouteHandler({
         }
         throw error;
       }
-
-      // Replay protection — consume the OuterInfo row so the same assertion
-      // (or a re-issued one from the same AuthnRequest) cannot be replayed.
-      // The next look-up by InResponseTo will 400.
-      await globalPrismaClient.samlOuterInfo.delete({ where: { id: inResponseTo } });
 
       return oauthResponseToSmartResponse(oauthResponse);
     } catch (error) {

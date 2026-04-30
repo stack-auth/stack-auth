@@ -4,6 +4,7 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { has } from "@stackframe/stack-shared/dist/utils/objects";
 
 /**
  * Public-fetchable SP metadata XML for a single SAML connection. The IdP
@@ -44,7 +45,7 @@ export const GET = createSmartRouteHandler({
     if (!tenancy) {
       throw new StatusError(StatusError.NotFound, `Project ${query.project_id} not found`);
     }
-    if (!(params.connection_id in tenancy.config.auth.saml.connections)) {
+    if (!has(tenancy.config.auth.saml.connections, params.connection_id)) {
       throw new StatusError(StatusError.NotFound, `SAML connection ${params.connection_id} not found in project ${query.project_id}`);
     }
     const connection = tenancy.config.auth.saml.connections[params.connection_id];

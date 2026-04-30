@@ -14,6 +14,7 @@ import { overrideEnvironmentConfigOverride, resetEnvironmentConfigOverrideKeys }
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { has } from "@stackframe/stack-shared/dist/utils/objects";
 
 const samlConnectionResponseShape = yupObject({
   id: yupString().defined(),
@@ -98,7 +99,7 @@ export const POST = createSmartRouteHandler({
     body: samlConnectionResponseShape,
   }),
   async handler({ auth, body }) {
-    const exists = body.id in auth.tenancy.config.auth.saml.connections;
+    const exists = has(auth.tenancy.config.auth.saml.connections, body.id);
     const prefix = `auth.saml.connections.${body.id}`;
     const overlay: Record<string, unknown> = {};
     if (!exists) {
@@ -183,7 +184,7 @@ export const DELETE = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ auth, body }) {
-    if (!(body.id in auth.tenancy.config.auth.saml.connections)) {
+    if (!has(auth.tenancy.config.auth.saml.connections, body.id)) {
       throw new StatusError(StatusError.NotFound, `SAML connection ${body.id} not found`);
     }
     await resetEnvironmentConfigOverrideKeys({
