@@ -105,22 +105,31 @@ export const POST = createSmartRouteHandler({
     if (!auth.tenancy.config.apps.installed["saml-sso"]?.enabled) {
       throw new KnownErrors.SamlSsoNotEnabled();
     }
-    const overlay: Record<string, unknown> = {
-      [`auth.saml.connections.${body.id}.displayName`]: body.display_name,
-      [`auth.saml.connections.${body.id}.allowSignIn`]: body.allow_sign_in,
-      [`auth.saml.connections.${body.id}.idpEntityId`]: body.idp_entity_id,
-      [`auth.saml.connections.${body.id}.idpSsoUrl`]: body.idp_sso_url,
-      [`auth.saml.connections.${body.id}.idpCertificate`]: body.idp_certificate,
+    // Write the whole connection entry as a single value. Per-field deep
+    // dot-keys (e.g. `auth.saml.connections.X.displayName`) get dropped
+    // during config normalization with onDotIntoNonObject="ignore" when
+    // the parent record entry doesn't yet exist — same convention as
+    // auth.oauth.providers (see auth-methods/page-client.tsx) and the
+    // dashboard SSO page-client (see commit 5fa9629de).
+    const connectionEntry: Record<string, unknown> = {
+      displayName: body.display_name,
+      allowSignIn: body.allow_sign_in,
+      idpEntityId: body.idp_entity_id,
+      idpSsoUrl: body.idp_sso_url,
+      idpCertificate: body.idp_certificate,
     };
     if (body.domain !== undefined) {
-      overlay[`auth.saml.connections.${body.id}.domain`] = body.domain;
+      connectionEntry.domain = body.domain;
     }
     if (body.attribute_mapping) {
-      overlay[`auth.saml.connections.${body.id}.attributeMapping`] = {
+      connectionEntry.attributeMapping = {
         email: body.attribute_mapping.email,
         displayName: body.attribute_mapping.display_name,
       };
     }
+    const overlay = {
+      [`auth.saml.connections.${body.id}`]: connectionEntry,
+    };
 
     await overrideEnvironmentConfigOverride({
       projectId: auth.tenancy.project.id,
