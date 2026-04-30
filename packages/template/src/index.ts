@@ -12,7 +12,7 @@ export { StackTheme } from './providers/theme-provider';
 
 export { AccountSettings } from "./components-page/account-settings";
 export { AuthPage } from "./components-page/auth-page";
-export { CliAuthConfirmation } from "./components-page/cli-auth-confirm";
+export { CliAuthConfirmation, useCliAuthConfirmation, type CliAuthConfirmationState, type CliAuthConfirmationStatus } from "./components-page/cli-auth-confirm";
 export { EmailVerification } from "./components-page/email-verification";
 export { ForgotPassword } from "./components-page/forgot-password";
 export { PasswordReset } from "./components-page/password-reset";

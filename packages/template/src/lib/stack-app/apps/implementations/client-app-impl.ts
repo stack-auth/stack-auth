@@ -42,7 +42,7 @@ import * as NextNavigationUnscrambled from "next/navigation"; // import the enti
 import React, { useCallback, useMemo } from "react"; // THIS_LINE_PLATFORM react-like
 import type * as yup from "yup";
 import { constructRedirectUrl } from "../../../../utils/url";
-import { addNewOAuthProviderOrScope, callOAuthCallback } from "../../../auth";
+import { getNewOAuthProviderOrScopeUrl, callOAuthCallback } from "../../../auth";
 import { CookieHelper, createBrowserCookieHelper, createCookieHelper, createCookieHelperSync, createPlaceholderCookieHelper, deleteCookie, deleteCookieClient, isSecure as isSecureCookieContext, saveVerifierAndState, setOrDeleteCookie, setOrDeleteCookieClient } from "../../../cookie";
 import { envVars } from "../../../env";
 import { ApiKey, ApiKeyCreationOptions, ApiKeyUpdateOptions, apiKeyCreationOptionsToCrud } from "../../api-keys";
@@ -54,7 +54,7 @@ import { NotificationCategory } from "../../notification-categories";
 import { TeamPermission } from "../../permissions";
 import { AdminOwnedProject, AdminProjectUpdateOptions, Project, adminProjectCreateOptionsToCrud } from "../../projects";
 import { EditableTeamMemberProfile, ReceivedTeamInvitation, SentTeamInvitation, Team, TeamCreateOptions, TeamUpdateOptions, TeamUser, teamCreateOptionsToCrud, teamUpdateOptionsToCrud } from "../../teams";
-import { isHostedHandlerUrlForProject, resolveHandlerUrls } from "../../url-targets";
+import { buildCliAuthConfirmUrl, isHostedHandlerUrlForProject, resolveHandlerUrls } from "../../url-targets";
 import { ActiveSession, Auth, BaseUser, CurrentUser, InternalUserExtra, OAuthProvider, ProjectCurrentUser, SyncedPartialUser, TokenPartialUser, UserExtra, UserUpdateOptions, userUpdateOptionsToCrud, withUserDestructureGuard } from "../../users";
 import { StackClientApp } from "../interfaces/client-app";
 import type { FeatureFlagResult, StackClientAppConstructorOptions, StackClientAppJson } from "../interfaces/client-app";
@@ -227,7 +227,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         }
       }
 
-      await addNewOAuthProviderOrScope(
+      const location = await getNewOAuthProviderOrScopeUrl(
         this._interface,
         {
           provider,
@@ -237,6 +237,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         },
         session,
       );
+      await this._redirectTo({ url: location });
       return await neverResolve();
     }
   );
@@ -430,7 +431,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           Often, you can solve this by calling this function in the browser instead, or by removing the 'or: redirect' option and dealing with the case where the user doesn't have enough permissions.
         `);
       }
-      await addNewOAuthProviderOrScope(
+      const location = await getNewOAuthProviderOrScopeUrl(
         this._interface,
         {
           provider: options.providerId,
@@ -440,6 +441,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         },
         options.session,
       );
+      await this._redirectTo({ url: location });
       return await neverResolve();
     } else if (!hasConnection) {
       return null;
@@ -1694,7 +1696,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       // END_PLATFORM
       async linkConnectedAccount(provider: string, options?: { scopes?: string[] }) {
         const scopeString = options?.scopes?.join(" ") ?? "";
-        await addNewOAuthProviderOrScope(
+        const location = await getNewOAuthProviderOrScopeUrl(
           app._interface,
           {
             provider,
@@ -1704,8 +1706,8 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
           },
           session,
         );
-        // This won't actually be reached since addNewOAuthProviderOrScope redirects
-        await neverResolve();
+        await app._redirectTo({ url: location });
+        return await neverResolve();
       },
       async getOrLinkConnectedAccount(provider: string, options?: { scopes?: string[] }) {
         const connectedAccounts = Result.orThrow(await app._currentUserConnectedAccountsCache.getOrWait([session], "write-only"));
@@ -2528,6 +2530,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   async redirectToAccountSettings(options?: RedirectToOptions) { return await this._redirectToHandler("accountSettings", options); }
   async redirectToError(options?: RedirectToOptions) { return await this._redirectToHandler("error", options); }
   async redirectToTeamInvitation(options?: RedirectToOptions) { return await this._redirectToHandler("teamInvitation", options); }
+  async redirectToCliAuthConfirm(options?: RedirectToOptions) { return await this._redirectToHandler("cliAuthConfirm", options); }
   async redirectToMfa(options?: RedirectToOptions) { return await this._redirectToHandler("mfa", options); }
 
   async sendForgotPasswordEmail(email: string, options?: { callbackUrl?: string }): Promise<Result<undefined, KnownErrors["UserNotFound"]>> {
@@ -2890,16 +2893,20 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     this._ensurePersistentTokenStore();
     const session = await this._getSession();
     const currentUrl = new URL(window.location.href);
-    const afterCallbackRedirectUrl = currentUrl.searchParams.has("after_auth_return_to")
-      ? currentUrl.toString()
-      : undefined;
+    const afterCallbackRedirectUrl = options?.returnTo != null
+      ? constructRedirectUrl(options.returnTo, "returnTo")
+      : (
+        currentUrl.searchParams.has("after_auth_return_to")
+          ? currentUrl.toString()
+          : undefined
+      );
     const siteKeys = this._getBotChallengeSiteKeys();
     const { codeChallenge, state } = await saveVerifierAndState();
 
     const executeOAuth = async (challenge: { token?: string, phase?: "invisible" | "visible", unavailable?: true }) => {
       return await this._interface.authorizeOAuth({
         provider,
-        redirectUrl: constructRedirectUrl(options?.returnTo ?? this.urls.oauthCallback, "redirectUrl"),
+        redirectUrl: constructRedirectUrl(this.urls.oauthCallback, "redirectUrl"),
         errorRedirectUrl: constructRedirectUrl(this.urls.error, "errorRedirectUrl"),
         afterCallbackRedirectUrl,
         type: "authenticate",
@@ -2938,7 +2945,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     }
 
     const location = Result.orThrow(authorizeResult);
-    window.location.assign(location);
+    await this._redirectTo({ url: location });
     await neverResolve();
   }
 
@@ -3168,7 +3175,11 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     const loginCode = initResult.login_code;
 
     // Step 2: Open the browser for the user to authenticate and display the verification code
-    const url = `${options.appUrl}/handler/cli-auth-confirm?login_code=${encodeURIComponent(loginCode)}`;
+    const url = buildCliAuthConfirmUrl({
+      cliAuthConfirmUrl: this.urls.cliAuthConfirm,
+      appUrl: options.appUrl,
+      loginCode,
+    });
     if (options.promptLink) {
       options.promptLink(url, loginCode);
     } else {
@@ -3564,6 +3575,10 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
         requestType: "client" | "server" | "admin" = "client",
       ) => {
         return await this._interface.sendClientRequest(path, requestOptions, await this._getSession(), requestType);
+      },
+      getRedirectMethod: () => this._redirectMethod ?? throwErr("Redirect method should have been initialized in the Stack client app constructor"),
+      redirectToUrl: async (url: string | URL, options?: { replace?: boolean }) => {
+        await this._redirectTo({ url, ...options });
       },
       refreshOwnedProjects: async () => {
         await this._refreshOwnedProjects(await this._getSession());

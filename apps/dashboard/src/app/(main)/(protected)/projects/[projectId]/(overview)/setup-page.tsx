@@ -4,10 +4,10 @@ import { CodeBlock } from '@/components/code-block';
 import { APIEnvKeys, NextJsEnvKeys } from '@/components/env-keys';
 import { InlineCode } from '@/components/inline-code';
 import { StyledLink } from '@/components/link';
-import { Tabs, TabsContent, TabsList, TabsTrigger, Typography, cn } from "@/components/ui";
+import { CopyPromptButton, Tabs, TabsContent, TabsList, TabsTrigger, Typography, cn } from "@/components/ui";
 import { DesignButton } from "@/components/design-components";
 import { useThemeWatcher } from '@/lib/theme';
-import { BookIcon, XIcon } from "@phosphor-icons/react";
+import { BookIcon, SparkleIcon, XIcon } from "@phosphor-icons/react";
 import { use } from "@stackframe/stack-shared/dist/utils/react";
 import { deindent } from '@stackframe/stack-shared/dist/utils/strings';
 import dynamic from "next/dynamic";
@@ -24,6 +24,21 @@ const Globe = dynamic(() => import('react-globe.gl').then((mod) => mod.default),
 
 const commandClasses = "text-red-600 dark:text-red-400";
 const nameClasses = "text-green-600 dark:text-green-500";
+
+const INSTALL_COMMAND_BY_FRAMEWORK = {
+  nextjs: 'npx @stackframe/stack-cli@latest init',
+  react: 'npm install @stackframe/react',
+  javascript: 'npm install @stackframe/js',
+  python: 'pip install requests',
+} as const;
+
+const buildInstallPrompt = (command: string) => deindent`
+  Please run the following command in my project's terminal:
+
+  ${command}
+
+  After it finishes, verify that the Stack Auth MCP server is registered in your AI client config — name: \`stack-auth\`, transport: \`http\`, URL: \`https://mcp.stack-auth.com/\`. The command above should handle this automatically; if for any reason it didn't, please add the MCP server manually so you have live access to Stack Auth docs and APIs.
+`;
 
 export default function SetupPage(props: { toMetrics: () => void }) {
   const adminApp = useAdminApp();
@@ -461,7 +476,18 @@ export default function SetupPage(props: { toMetrics: () => void }) {
         </div>
       </div>
 
-      <div className="flex flex-col mt-10 mx-4">
+      <div className="flex justify-end mt-8 mx-4">
+        <CopyPromptButton
+          variant="outline"
+          size="sm"
+          content={buildInstallPrompt(INSTALL_COMMAND_BY_FRAMEWORK[selectedFramework])}
+        >
+          <SparkleIcon className="w-4 h-4 mr-2 text-purple-500 dark:text-purple-400" weight="fill" />
+          Copy prompt
+        </CopyPromptButton>
+      </div>
+
+      <div className="flex flex-col mt-4 mx-4">
         <ol className="relative text-gray-500 border-s border-gray-200 dark:border-gray-700 dark:text-gray-400 ">
           {[
             {

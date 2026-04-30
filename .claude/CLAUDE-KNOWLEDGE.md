@@ -391,3 +391,6 @@ A: The shared `SheetContent` in `apps/dashboardV2/src/components/ui/sheet.tsx` s
 
 ## Q: How should Dashboard V2 infinite virtual lists support j/k keyboard navigation?
 A: Use the `keyboardNavigation` option in `apps/dashboardV2/src/hooks/use-infinite-virtual-list.ts`. It handles global `j`/`k` shortcuts, skips text-entry targets, scrolls the selected row into view, and remembers pending down-navigation at the loaded-list boundary so the next page is fetched and selected when it arrives.
+
+## Q: How should a TanStack Start SDK package be added without dragging Dashboard V2 logic into the same PR?
+A: Keep the integration PR scoped to generated package registration (`packages/tanstack-start/package.json`, `.gitignore`, `scripts/generate-sdks.ts`, `scripts/utils.ts`), template/package dependency metadata, and SDK runtime changes needed by TanStack Start (`cookie.ts`, token-store handling, handler SSR guard). Leave dashboard routes, hooks, app wiring, and admin API types in the dashboard PR.
