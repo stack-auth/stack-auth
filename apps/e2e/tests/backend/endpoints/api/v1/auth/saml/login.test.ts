@@ -1,4 +1,5 @@
 import { it } from "../../../../../../helpers";
+import { localhostUrl } from "../../../../../../helpers/ports";
 import { InternalApiKey, Project, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
 
 /**
@@ -36,7 +37,7 @@ function loginQuery() {
   return {
     client_id: !branchId ? projectKeys.projectId : `${projectKeys.projectId}#${branchId}`,
     client_secret: projectKeys.publishableClientKey ?? "",
-    redirect_uri: "http://localhost:8101/handler/oauth-callback",
+    redirect_uri: localhostUrl("01", "/handler/oauth-callback"),
     scope: "legacy",
     state: "this-is-some-state",
     grant_type: "authorization_code",

@@ -141,7 +141,7 @@ jobs:
         with:
           run: pnpm run start:mock-saml-idp --log-order=stream &
           wait-on: |
-            http://localhost:6715/idp
+            http://localhost:6742/idp
           tail: true
           wait-for: 30s
           log-output-if: true

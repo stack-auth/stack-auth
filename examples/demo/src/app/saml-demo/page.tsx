@@ -21,7 +21,7 @@ export default function SamlDemoPage() {
       <Typography className="mb-6 text-gray-600">
         Manual end-to-end check for the SAML round-trip against the local mock IdP. Seed the dummy
         project with <code>STACK_SEED_ENABLE_SAML=true</code> first; that pre-creates two
-        connections (acme + globex) pointing at <code>localhost:8115</code>.
+        connections (acme + globex) pointing at <code>localhost:8142</code>.
       </Typography>
 
       <div className="grid gap-6">

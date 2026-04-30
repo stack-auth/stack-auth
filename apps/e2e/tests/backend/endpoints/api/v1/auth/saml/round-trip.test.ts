@@ -2,7 +2,7 @@
  * Full SAML SP-initiated round-trip e2e tests.
  *
  * Drives the entire flow against the running mock-saml-idp service on
- * port 8115:
+ * the mock IdP port (default suffix `42`, e.g. 8142 with prefix 81):
  *
  *   1. Setup project with a SAML connection pointing at the mock IdP
  *      (cert fetched from mock metadata so it matches the mock's
@@ -26,8 +26,9 @@ import { it, niceFetch } from "../../../../../../helpers";
 import { localhostUrl } from "../../../../../../helpers/ports";
 import { InternalApiKey, Project, backendContext, niceBackendFetch } from "../../../../../backend-helpers";
 
-const MOCK_SAML_BASE = localhostUrl("15");
+const MOCK_SAML_BASE = localhostUrl("42");
 const BACKEND_BASE = localhostUrl("02");
+const DASHBOARD_REDIRECT_URI = localhostUrl("01", "/handler/oauth-callback");
 
 // ---------- helpers ----------
 
@@ -38,7 +39,7 @@ async function fetchMockIdpCertificate(tenantSlug: string): Promise<{
 }> {
   const res = await niceFetch(`${MOCK_SAML_BASE}/idp/${tenantSlug}/metadata`);
   if (res.status !== 200) {
-    throw new Error(`Mock IdP returned ${res.status} for ${tenantSlug} metadata — is mock-saml-idp running on port 8115?`);
+    throw new Error(`Mock IdP returned ${res.status} for ${tenantSlug} metadata — is mock-saml-idp running on ${MOCK_SAML_BASE}?`);
   }
   // application/xml content-type makes niceFetch return ArrayBuffer; decode it.
   const xml = typeof res.body === "string"
@@ -74,6 +75,8 @@ async function setupProjectWithMockSamlConnection(connectionId: string, tenantSl
   return { connectionId, tenantSlug };
 }
 
+const ROUND_TRIP_CODE_VERIFIER = "round-trip-code-challenge";
+
 function loginQuery() {
   const projectKeys = backendContext.value.projectKeys;
   if (projectKeys === "no-project") throw new Error("No project keys");
@@ -81,12 +84,13 @@ function loginQuery() {
   return {
     client_id: !branchId ? projectKeys.projectId : `${projectKeys.projectId}#${branchId}`,
     client_secret: projectKeys.publishableClientKey ?? "",
-    redirect_uri: "http://localhost:8101/handler/oauth-callback",
+    redirect_uri: DASHBOARD_REDIRECT_URI,
     scope: "legacy",
     state: "round-trip-test-state",
     grant_type: "authorization_code",
-    code_challenge: "round-trip-code-challenge",
-    code_challenge_method: "S256",
+    // Use plain so the verifier used at token exchange equals the challenge.
+    code_challenge: ROUND_TRIP_CODE_VERIFIER,
+    code_challenge_method: "plain",
     response_type: "code",
   };
 }
@@ -175,8 +179,45 @@ it("full SP-initiated round trip: new user JIT-created", async ({ expect }) => {
   const location = acsRes.headers.get("location");
   expect(location).toBeTruthy();
   const callbackUrl = new URL(location!);
-  // Should contain an OAuth `code` query param.
-  expect(callbackUrl.searchParams.get("code")).toBeTruthy();
+  // Callback origin must match the dashboard redirect_uri the test
+  // submitted, not whatever the default port is — otherwise this test
+  // can pass under a custom port prefix while wired to a non-running app.
+  expect(callbackUrl.origin).toBe(new URL(DASHBOARD_REDIRECT_URI).origin);
+  const code = callbackUrl.searchParams.get("code");
+  expect(code).toBeTruthy();
+
+  // Exchange the code for tokens and verify the JIT user was actually
+  // persisted with the email + display name from the SAML assertion —
+  // otherwise the test only proves "ACS issued a redirect", not "the
+  // SAML account/user link was saved".
+  const projectKeys = backendContext.value.projectKeys;
+  if (projectKeys === "no-project") throw new Error("No project keys");
+  const branchId = backendContext.value.currentBranchId;
+  const tokenRes = await niceBackendFetch("/api/v1/auth/oauth/token", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      client_id: !branchId ? projectKeys.projectId : `${projectKeys.projectId}#${branchId}`,
+      client_secret: projectKeys.publishableClientKey ?? "",
+      code,
+      redirect_uri: DASHBOARD_REDIRECT_URI,
+      code_verifier: ROUND_TRIP_CODE_VERIFIER,
+      grant_type: "authorization_code",
+    },
+  });
+  expect(tokenRes.status).toBe(200);
+  const accessToken = (tokenRes.body as { access_token: string }).access_token;
+  expect(accessToken).toBeTruthy();
+  expect((tokenRes.body as { is_new_user: boolean }).is_new_user).toBe(true);
+
+  const meRes = await niceBackendFetch("/api/v1/users/me", {
+    accessType: "client",
+    headers: { "x-stack-access-token": accessToken },
+  });
+  expect(meRes.status).toBe(200);
+  const me = meRes.body as { primary_email: string | null, display_name: string | null };
+  expect(me.primary_email).toBe("alice@acme.test");
+  expect(me.display_name).toBe("Alice");
 });
 
 it("rejects an assertion with the wrong audience", async ({ expect }) => {

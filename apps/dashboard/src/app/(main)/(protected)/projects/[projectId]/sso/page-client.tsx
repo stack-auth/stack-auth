@@ -3,11 +3,17 @@
 import { SmartFormDialog } from "@/components/form-dialog";
 import { ActionDialog, Alert, Button, Card, CardContent, CardHeader, Typography } from "@/components/ui";
 import { useUpdateConfig } from "@/lib/config-update";
+import { getPublicEnvVar } from "@/lib/env";
 import React, { useState } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../app-enabled-guard";
 import { PageLayout } from "../page-layout";
 import { useAdminApp } from "../use-admin-app";
+
+function getBrowserApiBase(): string {
+  const url = getPublicEnvVar("NEXT_PUBLIC_BROWSER_STACK_API_URL") ?? getPublicEnvVar("NEXT_PUBLIC_STACK_API_URL") ?? "";
+  return url.replace(/\/+$/, "");
+}
 
 /**
  * Dashboard for managing SAML SSO connections on the current project.
@@ -40,6 +46,7 @@ function PageContent() {
   const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const connectionEntries = Object.entries(connections);
+  const apiBase = getBrowserApiBase();
 
   return (
     <PageLayout
@@ -93,12 +100,12 @@ function PageContent() {
                 </Typography>
                 <DetailRow
                   label="SP metadata URL"
-                  value={`/api/v1/auth/saml/metadata/${id}?project_id=${project.id}`}
+                  value={`${apiBase}/api/v1/auth/saml/metadata/${id}?project_id=${project.id}`}
                   mono
                 />
                 <DetailRow
                   label="ACS URL"
-                  value={`/api/v1/auth/saml/acs/${id}`}
+                  value={`${apiBase}/api/v1/auth/saml/acs/${id}`}
                   mono
                 />
               </div>
@@ -111,7 +118,9 @@ function PageContent() {
       <DeleteDialog
         connectionId={deleteId}
         onClose={() => setDeleteId(null)}
-        displayName={deleteId ? connections[deleteId].displayName : null}
+        // Guard against stale deleteId after a config refresh removed the
+        // entry — index types claim non-undefined but the key may be gone.
+        displayName={deleteId && Object.hasOwn(connections, deleteId) ? connections[deleteId].displayName : null}
       />
     </PageLayout>
   );
@@ -160,13 +169,17 @@ function CreateDialog({ open, onOpenChange }: { open: boolean, onOpenChange: (op
         // config normalization when the parent record entry doesn't yet
         // exist — same convention as auth.oauth.providers in the
         // auth-methods page.
+        // Normalize domain on write — discovery does case-insensitive
+        // matching but does not trim, so trailing whitespace from a
+        // pasted value would silently break lookups.
+        const normalizedDomain = values.domain?.trim().toLowerCase() || undefined;
         await updateConfig({
           adminApp: stackAdminApp,
           configUpdate: {
             [`auth.saml.connections.${values.id}`]: {
               displayName: values.displayName,
               allowSignIn: values.allowSignIn,
-              domain: values.domain || undefined,
+              domain: normalizedDomain,
               idpEntityId: values.idpEntityId,
               idpSsoUrl: values.idpSsoUrl,
               idpCertificate: (values.idpCertificate ?? "").replace(/-----BEGIN CERTIFICATE-----|-----END CERTIFICATE-----|\s+/g, ""),

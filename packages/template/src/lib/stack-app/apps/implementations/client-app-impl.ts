@@ -2895,6 +2895,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     email: string,
     returnTo?: string,
   }) {
+    if (typeof window === "undefined") {
+      throw new Error("signInWithSso can currently only be called in a browser environment");
+    }
     const connection = await this._interface.discoverSamlConnection(options.email);
     if (!connection) {
       throw new Error(`No SSO connection configured for email domain "${options.email.split("@").pop()}"`);
