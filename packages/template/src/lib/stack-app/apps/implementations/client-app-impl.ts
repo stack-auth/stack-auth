@@ -84,6 +84,17 @@ const prefetchedCrossDomainHandoffTtlMs = 55 * 60 * 1000;
 
 const allClientApps = new Map<string, [checkString: string | undefined, app: StackClientApp<any, any>]>();
 
+async function getServerRequestHost(): Promise<string | null> {
+  // IF_PLATFORM next
+  return (await sc.headers?.())?.get("host") ?? null;
+  // ELSE_IF_PLATFORM tanstack-start
+  const api = await import(/* @vite-ignore */ "@tanstack/react-start/server");
+  return api.getRequestHeader("host") ?? null;
+  // ELSE_PLATFORM
+  return null;
+  // END_PLATFORM
+}
+
 type StackClientAppImplConstructorOptionsResolved<HasTokenStore extends boolean, ProjectId extends string> = StackClientAppConstructorOptions<HasTokenStore, ProjectId> & { inheritsFrom?: undefined };
 
 export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, ProjectId extends string = string> implements StackClientApp<HasTokenStore, ProjectId> {
@@ -821,12 +832,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       let hostname;
       if (isBrowserLike()) {
         hostname = window.location.hostname;
+      } else {
+        hostname = await getServerRequestHost();
       }
-      // IF_PLATFORM next
-      else {
-        hostname = (await sc.headers?.())?.get("host");
-      }
-      // END_PLATFORM
       if (!hostname) {
         console.warn("No hostname found when queueing custom refresh cookie update");
         return;
@@ -1031,7 +1039,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
   protected _useTokenStore(overrideTokenStoreInit?: TokenStoreInit): Store<TokenObject> {
     // IF_PLATFORM tanstack-start
     if (!isBrowserLike()) {
-        return this._getOrCreateTokenStore(use(createCookieHelper()), overrideTokenStoreInit);
+      return this._getOrCreateTokenStore(use(createCookieHelper()), overrideTokenStoreInit);
     }
     // END_PLATFORM
     suspendIfSsr();

@@ -69,22 +69,23 @@ type DeleteCookieOptions = { noOpIfServerComponent?: boolean, domain?: string };
 
 // IF_PLATFORM tanstack-start
 type TanStackStartServerCookieApi = typeof import("@tanstack/react-start/server");
-const tanStackStartServerCookieApiImportPath = "@tanstack/react-start/server";
 let tanStackStartServerCookieApiPromise: Promise<TanStackStartServerCookieApi> | null = null;
 let tanStackStartCookieHelperPromise: Promise<CookieHelper> | null = null;
 
 declare global {
+  // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
   interface ImportMetaEnv {
     SSR: boolean,
   }
 
+  // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
   interface ImportMeta {
     readonly env: ImportMetaEnv,
   }
 }
 
 async function getTanStackStartServerCookieApi(): Promise<TanStackStartServerCookieApi> {
-  tanStackStartServerCookieApiPromise ??= import(tanStackStartServerCookieApiImportPath);
+  tanStackStartServerCookieApiPromise ??= import(/* @vite-ignore */ "@tanstack/react-start/server");
   return await tanStackStartServerCookieApiPromise;
 }
 // END_PLATFORM

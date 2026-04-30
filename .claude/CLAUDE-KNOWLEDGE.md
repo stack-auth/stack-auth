@@ -361,6 +361,3 @@ A: Invalid `tools` entries are rejected by `requestBodySchema` in `apps/backend/
 
 ## Q: Why did the internal metrics E2E snapshots need to change in April 2026?
 A: The `/api/v1/internal/metrics` response now intentionally includes `analytics_overview.daily_anonymous_visitors_fallback`, `analytics_overview.anonymous_visitors_fallback`, and `active_users_by_country`. Those additions are reflected in `packages/stack-shared/src/interface/admin-metrics.ts` and the backend route, so the E2E snapshots must include them instead of treating them as regressions.
-
-## Q: How should a TanStack Start SDK package be added without dragging Dashboard V2 logic into the same PR?
-A: Keep the integration PR scoped to generated package registration (`packages/tanstack-start/package.json`, `.gitignore`, `scripts/generate-sdks.ts`, `scripts/utils.ts`), template/package dependency metadata, and SDK runtime changes needed by TanStack Start (`cookie.ts`, token-store handling, handler SSR guard). Leave dashboard routes, hooks, app wiring, and admin API types in the dashboard PR.

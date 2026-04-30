@@ -1,5 +1,6 @@
 import { Link } from "@tanstack/react-router";
 import { UserButton } from "@stackframe/tanstack-start";
+import { useEffect, useState } from "react";
 
 export function Header() {
   return (
@@ -14,10 +15,19 @@ export function Header() {
               Protected
             </Link>
           </nav>
-          <UserButton />
+          <ClientMountedUserButton />
         </div>
       </header>
       <div className="h-14" />
     </>
   );
+}
+
+function ClientMountedUserButton() {
+  const [isMounted, setIsMounted] = useState(false);
+  useEffect(() => {
+    setIsMounted(true);
+  }, []);
+
+  return isMounted ? <UserButton /> : <div className="h-9 w-9" />;
 }
