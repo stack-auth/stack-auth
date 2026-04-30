@@ -98,44 +98,52 @@ function waitForWorkspacePackages(packages: string[]): Plugin {
   };
 }
 
-export default defineConfig({
-  server: {
-    port: Number(`${process.env.NEXT_PUBLIC_STACK_PORT_PREFIX || "81"}42`),
-    fs: {
-      allow: [stackAuthRootPath],
+export default defineConfig(({ mode }) => {
+  const isVitest = mode === "test" || process.env.VITEST === "true";
+
+  return {
+    server: {
+      port: Number(`${process.env.NEXT_PUBLIC_STACK_PORT_PREFIX || "81"}42`),
+      fs: {
+        allow: [stackAuthRootPath],
+      },
     },
-  },
-  build: {
-    rollupOptions: {
-      output: {
-        manualChunks(id) {
-          if (id.startsWith(tanstackStartSourceRoot)) {
-            return "stack-auth-sdk";
-          }
-          return undefined;
+    build: {
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.startsWith(tanstackStartSourceRoot)) {
+              return "stack-auth-sdk";
+            }
+            return undefined;
+          },
         },
       },
     },
-  },
-  resolve: {
-    dedupe: ["react", "react-dom"],
-    alias: {
-      "@stackframe/tanstack-start": tanstackStartSourcePath,
+    resolve: {
+      dedupe: ["react", "react-dom"],
+      alias: {
+        "@stackframe/tanstack-start": tanstackStartSourcePath,
+      },
     },
-  },
-  ssr: {
-    noExternal: [/^@stackframe\//, /^@radix-ui\//],
-  },
-  optimizeDeps: {
-    include: ["@stackframe/stack-shared", "@stackframe/stack-shared/config"],
-  },
-  plugins: [
-    stackSdkSourceTransforms(),
-    waitForWorkspacePackages(["@stackframe/tanstack-start", "@stackframe/stack-shared", "@stackframe/stack-ui"]),
-    watchNodeModules(["@stackframe/tanstack-start", "@stackframe/stack-shared", "@stackframe/stack-ui"]),
-    tsConfigPaths(),
-    tanstackStart(),
-    nitro(),
-    viteReact(),
-  ],
+    ssr: {
+      noExternal: [/^@stackframe\//, /^@radix-ui\//],
+    },
+    optimizeDeps: {
+      include: ["@stackframe/stack-shared", "@stackframe/stack-shared/config"],
+    },
+    plugins: [
+      stackSdkSourceTransforms(),
+      ...(isVitest ? [] : [
+        waitForWorkspacePackages(["@stackframe/tanstack-start", "@stackframe/stack-shared", "@stackframe/stack-ui"]),
+        watchNodeModules(["@stackframe/tanstack-start", "@stackframe/stack-shared", "@stackframe/stack-ui"]),
+      ]),
+      tsConfigPaths(),
+      ...(isVitest ? [] : [
+        tanstackStart(),
+        nitro(),
+      ]),
+      viteReact(),
+    ],
+  };
 });
