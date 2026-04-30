@@ -30,6 +30,7 @@ export type EmailConfig = {
 
 export type RedirectMethod = "window"
   | "nextjs" // THIS_LINE_PLATFORM next
+  | "tanstack-start" // THIS_LINE_PLATFORM tanstack-start
   | "none"
   | {
     useNavigate: () => (to: string) => void,
