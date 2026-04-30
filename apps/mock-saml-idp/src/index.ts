@@ -17,7 +17,7 @@ import forge from 'node-forge';
 import * as samlify from 'samlify';
 
 const stackPortPrefix = process.env.NEXT_PUBLIC_STACK_PORT_PREFIX ?? "81";
-const defaultPort = Number(`${stackPortPrefix}15`);
+const defaultPort = Number(`${stackPortPrefix}42`);
 const port = Number(process.env.STACK_SAML_MOCK_PORT ?? process.env.PORT ?? defaultPort);
 const tenantSlugs = (process.env.STACK_MOCK_SAML_TENANTS ?? "acme,globex").split(",").map(s => s.trim()).filter(Boolean);
 
