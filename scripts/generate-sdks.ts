@@ -131,6 +131,14 @@ function baseEditFn(options: {
 withGeneratorLock(async () => {
   const baseDir = path.resolve(__dirname, "..", "packages");
   const srcDir = path.resolve(baseDir, "template");
+  const tanstackStartOnlyTemplateFiles = new Set([
+    "src/tanstack-start-server-context.combined.ts",
+    "src/tanstack-start-server-context.default.ts",
+    "src/tanstack-start-server-context.server.ts",
+  ]);
+  const templateOnlyFiles = new Set([
+    "src/tanstack-start-server-context.d.ts",
+  ]);
 
   // Copy package-template.json to package.json in the template,
   // applying macros and adding a comment field.
@@ -168,7 +176,9 @@ withGeneratorLock(async () => {
         "src/global.d.ts",
       ];
 
-      if (ignores.some((ignorePath) => relativePath.startsWith(ignorePath)) || relativePath.endsWith(".tsx")) {
+      if (tanstackStartOnlyTemplateFiles.has(relativePath) || templateOnlyFiles.has(relativePath)) {
+        return false;
+      } else if (ignores.some((ignorePath) => relativePath.startsWith(ignorePath)) || relativePath.endsWith(".tsx")) {
         return false;
       } else {
         return true;
@@ -182,6 +192,7 @@ withGeneratorLock(async () => {
     editFn: (relativePath, content) => {
       return baseEditFn({ relativePath, content, platforms: PLATFORMS["next"] });
     },
+    filterFn: (relativePath) => !tanstackStartOnlyTemplateFiles.has(relativePath),
   });
 
   generateFromTemplate({
@@ -190,6 +201,7 @@ withGeneratorLock(async () => {
     editFn: (relativePath, content) => {
       return baseEditFn({ relativePath, content, platforms: PLATFORMS["react"] });
     },
+    filterFn: (relativePath) => !tanstackStartOnlyTemplateFiles.has(relativePath),
   });
 
   generateFromTemplate({
@@ -198,6 +210,7 @@ withGeneratorLock(async () => {
     editFn: (relativePath, content) => {
       return baseEditFn({ relativePath, content, platforms: PLATFORMS["tanstack-start"] });
     },
+    filterFn: (relativePath) => !templateOnlyFiles.has(relativePath),
   });
 }).catch((error) => {
   console.error(error);

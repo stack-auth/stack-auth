@@ -1,6 +1,7 @@
 import { cookies as rscCookies, headers as rscHeaders } from '@stackframe/stack-sc/force-react-server'; // THIS_LINE_PLATFORM next
 import { isBrowserLike } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
+import * as tanstackStartServerContext from "@stackframe/tanstack-start/tanstack-start-server-context"; // THIS_LINE_PLATFORM tanstack-start
 import Cookies from "js-cookie";
 import { calculatePKCECodeChallenge, generateRandomCodeVerifier, generateRandomState } from "oauth4webapi";
 
@@ -68,9 +69,33 @@ type SetCookieOptions = { maxAge: number | "session", noOpIfServerComponent?: bo
 type DeleteCookieOptions = { noOpIfServerComponent?: boolean, domain?: string };
 
 // IF_PLATFORM tanstack-start
-type TanStackStartServerCookieApi = typeof import("@tanstack/react-start/server");
-let tanStackStartServerCookieApiPromise: Promise<TanStackStartServerCookieApi> | null = null;
 let tanStackStartCookieHelperPromise: Promise<CookieHelper> | null = null;
+
+function getTanStackStartServerContext() {
+  const {
+    deleteCookie,
+    getCookie,
+    getCookies,
+    getRequestHeader,
+    setCookie,
+  } = tanstackStartServerContext;
+  if (
+    deleteCookie == null
+    || getCookie == null
+    || getCookies == null
+    || getRequestHeader == null
+    || setCookie == null
+  ) {
+    throw new StackAssertionError("TanStack Start server context is only available during server rendering");
+  }
+  return {
+    deleteCookie,
+    getCookie,
+    getCookies,
+    getRequestHeader,
+    setCookie,
+  };
+}
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/consistent-type-definitions
@@ -84,10 +109,6 @@ declare global {
   }
 }
 
-async function getTanStackStartServerCookieApi(): Promise<TanStackStartServerCookieApi> {
-  tanStackStartServerCookieApiPromise ??= import(/* @vite-ignore */ "@tanstack/react-start/server");
-  return await tanStackStartServerCookieApiPromise;
-}
 // END_PLATFORM
 
 function ensureClient() {
@@ -140,7 +161,7 @@ export async function createCookieHelper(): Promise<CookieHelper> {
     // ELSE_IF_PLATFORM tanstack-start
     if (import.meta.env.SSR) {
       const cookieHelperPromise = tanStackStartCookieHelperPromise
-        ?? getTanStackStartServerCookieApi().then((api) => createTanStackStartCookieHelper(api));
+        ?? Promise.resolve(createTanStackStartCookieHelper(getTanStackStartServerContext()));
       tanStackStartCookieHelperPromise = cookieHelperPromise;
       return await cookieHelperPromise;
     }
@@ -168,12 +189,12 @@ export function createCookieHelperSync(): CookieHelper {
 }
 
 // IF_PLATFORM tanstack-start
-function determineSecureFromTanStackStartContext(api: TanStackStartServerCookieApi): boolean {
+function determineSecureFromTanStackStartContext(api: ReturnType<typeof getTanStackStartServerContext>): boolean {
   return api.getRequestHeader("x-forwarded-proto") === "https"
     || (api.getCookie("stack-is-https") !== undefined);
 }
 
-function refreshTanStackStartIsHttpsCookie(api: TanStackStartServerCookieApi) {
+function refreshTanStackStartIsHttpsCookie(api: ReturnType<typeof getTanStackStartServerContext>) {
   api.setCookie("stack-is-https", "true", {
     secure: true,
     maxAge: 60 * 60 * 24 * 365,
@@ -182,7 +203,7 @@ function refreshTanStackStartIsHttpsCookie(api: TanStackStartServerCookieApi) {
   });
 }
 
-function createTanStackStartCookieHelper(api: TanStackStartServerCookieApi): CookieHelper {
+function createTanStackStartCookieHelper(api: ReturnType<typeof getTanStackStartServerContext>): CookieHelper {
   const helper: CookieHelper = {
     get: (name: string) => {
       const all = helper.getAll();
@@ -348,7 +369,7 @@ export async function isSecure(): Promise<boolean> {
   return determineSecureFromServerContext(await rscCookies(), await rscHeaders());
   // ELSE_IF_PLATFORM tanstack-start
   if (import.meta.env.SSR) {
-    return determineSecureFromTanStackStartContext(await getTanStackStartServerCookieApi());
+    return determineSecureFromTanStackStartContext(getTanStackStartServerContext());
   }
   // END_PLATFORM
   return false;
