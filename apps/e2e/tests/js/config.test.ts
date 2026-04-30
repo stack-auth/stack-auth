@@ -130,6 +130,7 @@ describe("getConfig", () => {
           "otp": { "allowSignIn": false },
           "passkey": { "allowSignIn": false },
           "password": { "allowSignIn": true },
+          "saml": { "connections": {} },
           "signUpRules": {},
           "signUpRulesDefaultAction": "allow",
         },
@@ -159,6 +160,7 @@ describe("updateConfig", () => {
         "otp": { "allowSignIn": false },
         "passkey": { "allowSignIn": false },
         "password": { "allowSignIn": true },
+        "saml": { "connections": {} },
         "signUpRules": {},
         "signUpRulesDefaultAction": "allow",
       }
@@ -179,6 +181,7 @@ describe("updateConfig", () => {
         "otp": { "allowSignIn": false },
         "passkey": { "allowSignIn": false },
         "password": { "allowSignIn": true },
+        "saml": { "connections": {} },
         "signUpRules": {},
         "signUpRulesDefaultAction": "allow",
       }
