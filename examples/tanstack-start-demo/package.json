@@ -1,0 +1,45 @@
+{
+  "name": "@stackframe/example-tanstack-start-demo",
+  "version": "2.8.86",
+  "repository": "https://github.com/stack-auth/stack-auth",
+  "description": "TanStack Start demo app for Stack Auth",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "typecheck": "tsc --noEmit",
+    "clean": "rimraf .output && rimraf node_modules",
+    "dev": "vite dev --port ${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}42",
+    "build": "vite build",
+    "start": "node .output/server/index.mjs",
+    "lint": "eslint --ext .ts,.tsx ."
+  },
+  "dependencies": {
+    "@stackframe/tanstack-start": "workspace:*",
+    "@stackframe/stack-shared": "workspace:*",
+    "@stackframe/stack-ui": "workspace:*",
+    "@tanstack/react-router": "^1.168.23",
+    "@tanstack/react-start": "^1.167.42",
+    "@tanstack/react-start-client": "^1.166.40",
+    "@tanstack/react-start-server": "^1.166.41",
+    "@tanstack/start-client-core": "^1.167.17",
+    "@tanstack/start-plugin-core": "^1.167.35",
+    "@tanstack/start-server-core": "^1.167.19",
+    "nitro": "^3.0.0",
+    "react": "19.2.1",
+    "react-dom": "19.2.1"
+  },
+  "devDependencies": {
+    "@types/node": "^22.13.0",
+    "@types/react": "19.2.1",
+    "@types/react-dom": "19.2.1",
+    "@vitejs/plugin-react": "^5.0.0",
+    "autoprefixer": "^10.4.20",
+    "postcss": "^8.4.47",
+    "rimraf": "^5.0.10",
+    "tailwindcss": "^3.4.14",
+    "typescript": "5.9.3",
+    "vite": "^7.0.0",
+    "vite-tsconfig-paths": "^4.3.2"
+  },
+  "packageManager": "pnpm@10.23.0"
+}

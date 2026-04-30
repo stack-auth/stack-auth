@@ -102,12 +102,6 @@
     "@types/react-dom": {
       "optional": true
     },
-    "@tanstack/react-router": {
-      "optional": true
-    },
-    "@tanstack/react-start": {
-      "optional": true
-    },
     "@types/react": {
       "optional": true
     }
