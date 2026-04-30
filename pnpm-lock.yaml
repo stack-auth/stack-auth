@@ -7,7 +7,7 @@ settings:
 overrides:
   '@types/react': ^18.2.0
   '@types/react-dom': ^18.2.0
-  sharp: 0.34.5
+  sharp: ^0.34.5
 
 patchedDependencies:
   openid-client@5.6.4:
@@ -281,7 +281,7 @@ importers:
         specifier: ^7.6.3
         version: 7.6.3
       sharp:
-        specifier: 0.34.5
+        specifier: ^0.34.5
         version: 0.34.5
       spacetimedb:
         specifier: ^2.1.0
@@ -1021,7 +1021,7 @@ importers:
     devDependencies:
       mint:
         specifier: ^4.2.487
-        version: 4.2.487(@radix-ui/react-popover@1.1.15(@types/react-dom@18.3.1)(@types/react@18.3.12)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(@types/node@24.9.2)(@types/react@18.3.12)(encoding@0.1.13)(react-dom@19.2.3(react@19.2.3))(tsx@4.19.3)(typescript@5.9.3)(yaml@2.6.0)
+        version: 4.2.487(@radix-ui/react-popover@1.1.15(@types/react-dom@18.3.1)(@types/react@18.3.12)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(@types/node@20.17.6)(@types/react@18.3.12)(encoding@0.1.13)(react-dom@19.2.3(react@19.2.3))(tsx@4.19.3)(typescript@5.9.3)(yaml@2.6.0)
 
   examples/cjs-test:
     dependencies:
@@ -1569,10 +1569,10 @@ importers:
         version: link:../../packages/stack
       '@supabase/ssr':
         specifier: latest
-        version: 0.10.0(@supabase/supabase-js@2.102.1)
+        version: 0.10.2(@supabase/supabase-js@2.104.1)
       '@supabase/supabase-js':
         specifier: latest
-        version: 2.102.1
+        version: 2.104.1
       jose:
         specifier: ^5.2.2
         version: 5.6.3
@@ -9735,36 +9735,36 @@ packages:
     resolution: {integrity: sha512-SXuhqhuR5FXaYgKTXzZJeqtVA6JKb9IZWaGeEUxHHiOcFy2p51wccO72bYpXwoK4D5pzQOIYLTuAc7etxyMmwg==}
     engines: {node: '>=12.16'}
 
-  '@supabase/auth-js@2.102.1':
-    resolution: {integrity: sha512-2uH2WB0H98TOGDtaFWhxIcR42Dro/VB7VDZanz/4bVJsqioIue1m3TUqu3xciDm2W9r+1LXQvYNsYbQfWmD+uQ==}
+  '@supabase/auth-js@2.104.1':
+    resolution: {integrity: sha512-pqFnDKekq1isqlqnzqzyJ3mzmho+o+FjfVTqhKY3PFlwj2anx3OPznO1kbo1ZEwD8zg1r4EAFf/7pplLyX0ocQ==}
     engines: {node: '>=20.0.0'}
 
-  '@supabase/functions-js@2.102.1':
-    resolution: {integrity: sha512-UcrcKTPnAIo+Yp9Jjq9XXwFbsmgRYY637mwka9ZjmTIWcX/xr1pote4OVvaGQycVY1KTiQgjMvpC0Q0yJhRq3w==}
+  '@supabase/functions-js@2.104.1':
+    resolution: {integrity: sha512-JjAH4JN9rZzxh4plQnILPrQZXAG6ccoRS6z9hQAGmXpRSwJA+7CWbsDV2R82I8MROlGDsjqj1Ot/cWpTfdf6xg==}
     engines: {node: '>=20.0.0'}
 
   '@supabase/phoenix@0.4.0':
     resolution: {integrity: sha512-RHSx8bHS02xwfHdAbX5Lpbo6PXbgyf7lTaXTlwtFDPwOIw64NnVRwFAXGojHhjtVYI+PEPNSWwkL90f4agN3bw==}
 
-  '@supabase/postgrest-js@2.102.1':
-    resolution: {integrity: sha512-InLvXKAYf8BIqiv9jWOYudWB3rU8A9uMbcip5BQ5sLLNPrbO1Ekkr79OvlhZBgMNSppxVyC7wPPGzLxMcTZhlA==}
+  '@supabase/postgrest-js@2.104.1':
+    resolution: {integrity: sha512-RqlLpvgXsjcc27fLyHNGm3zN0KDWXbkdTdaFtaEdX83RsTEqH7BAmshH7zoUMml5lL04naUeRjS3B81O6jZcJw==}
     engines: {node: '>=20.0.0'}
 
-  '@supabase/realtime-js@2.102.1':
-    resolution: {integrity: sha512-h2fCumib/v6u7XMwSPgxnpfimjX4xCEayUHrxWLC7UurfQjUZJ0pmJDgm6yj80DnUerxuulRghwm5zXYysFG/Q==}
+  '@supabase/realtime-js@2.104.1':
+    resolution: {integrity: sha512-dVJHhFB2ErBd0/2qE9G8CedCrGoAtBfL9Q4zbSMXO7b1Cpld916ljSiX21mURUqijPf1WoPQG4Bp/averUzk/g==}
     engines: {node: '>=20.0.0'}
 
-  '@supabase/ssr@0.10.0':
-    resolution: {integrity: sha512-36jIu+DuKzg5EgA3fnH+zHvwASvpKcL4zPgmHoZaULroS5Q4mzeHcM69zJ0sXUHddO5IcHjQNZJ9Vyhl/DdbRw==}
+  '@supabase/ssr@0.10.2':
+    resolution: {integrity: sha512-JFbchN63CXLFHJRNT7udec4/RoD9PmXkSGko3QSO6vUuqGBtSzdmxR7FPfQNr7SuFd65I7Xv46q66ALjEN1cgQ==}
     peerDependencies:
-      '@supabase/supabase-js': ^2.100.1
+      '@supabase/supabase-js': ^2.102.1
 
-  '@supabase/storage-js@2.102.1':
-    resolution: {integrity: sha512-eCL9T4Xpe40nmKlkUJ7Zq/hk34db1xPiT0WL3Iv5MbJqHuCAe5TxhV8Rjqd6DNZrzjtfYObZtYl9jKJaHrivqw==}
+  '@supabase/storage-js@2.104.1':
+    resolution: {integrity: sha512-2bQaLbkRshctkUVuqamwYZDEd+0cGSc9DY9sjh92DcA5hu1F/1AP8p6gxGr76sgdK9Ngi0rh+2Kdh+uC4hcnGA==}
     engines: {node: '>=20.0.0'}
 
-  '@supabase/supabase-js@2.102.1':
-    resolution: {integrity: sha512-bChxPVeLDnYN9M2d/u4fXsvylwSQG5grAl+HN8f+ZD9a9PuVU+Ru+xGmEsk+b9Iz3rJC9ZQnQUJYQ28fApdWYA==}
+  '@supabase/supabase-js@2.104.1':
+    resolution: {integrity: sha512-E0H/CtVmaGjiAy+ieZ5ZB/1EqxXcGdaFaAc23AE5zaYfz6NtCNDcmaEdoGPYMPFH5pE6drGG6e3ljPmkFoGVxQ==}
     engines: {node: '>=20.0.0'}
 
   '@sveltejs/sv-utils@0.0.3':
@@ -18685,6 +18685,7 @@ packages:
 
   uuid@10.0.0:
     resolution: {integrity: sha512-8XkAphELsDnEGrDxUOHB3RGvXz6TeuYSGEZBOjtTtPm2lwhGBjLgOzLHB63IUWfBpNucQjND6d3AOudO+H3RWQ==}
+    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
   uuid@11.1.0:
@@ -18693,6 +18694,7 @@ packages:
 
   uuid@9.0.1:
     resolution: {integrity: sha512-b+1eJOlsR9K8HJpow9Ok3fiWOWSIcIzXodvv0rQjVoOVNpWMpxf1wZNpt4y9h10odCNrqnYp1OBzRktckBe3sA==}
+    deprecated: uuid@10 and below is no longer supported.  For ESM codebases, update to uuid@latest.  For CommonJS codebases, use uuid@11 (but be aware this version will likely be deprecated in 2028).
     hasBin: true
 
   uzip@0.20201231.0:
@@ -22408,29 +22410,12 @@ snapshots:
     optionalDependencies:
       '@types/node': 20.17.6
 
-  '@inquirer/checkbox@4.3.2(@types/node@24.9.2)':
-    dependencies:
-      '@inquirer/ansi': 1.0.2
-      '@inquirer/core': 10.3.2(@types/node@24.9.2)
-      '@inquirer/figures': 1.0.15
-      '@inquirer/type': 3.0.10(@types/node@24.9.2)
-      yoctocolors-cjs: 2.1.3
-    optionalDependencies:
-      '@types/node': 24.9.2
-
   '@inquirer/confirm@5.1.21(@types/node@20.17.6)':
     dependencies:
       '@inquirer/core': 10.3.2(@types/node@20.17.6)
       '@inquirer/type': 3.0.10(@types/node@20.17.6)
     optionalDependencies:
       '@types/node': 20.17.6
-
-  '@inquirer/confirm@5.1.21(@types/node@24.9.2)':
-    dependencies:
-      '@inquirer/core': 10.3.2(@types/node@24.9.2)
-      '@inquirer/type': 3.0.10(@types/node@24.9.2)
-    optionalDependencies:
-      '@types/node': 24.9.2
 
   '@inquirer/core@10.3.2(@types/node@20.17.6)':
     dependencies:
@@ -22445,19 +22430,6 @@ snapshots:
     optionalDependencies:
       '@types/node': 20.17.6
 
-  '@inquirer/core@10.3.2(@types/node@24.9.2)':
-    dependencies:
-      '@inquirer/ansi': 1.0.2
-      '@inquirer/figures': 1.0.15
-      '@inquirer/type': 3.0.10(@types/node@24.9.2)
-      cli-width: 4.1.0
-      mute-stream: 2.0.0
-      signal-exit: 4.1.0
-      wrap-ansi: 6.2.0
-      yoctocolors-cjs: 2.1.3
-    optionalDependencies:
-      '@types/node': 24.9.2
-
   '@inquirer/editor@4.2.23(@types/node@20.17.6)':
     dependencies:
       '@inquirer/core': 10.3.2(@types/node@20.17.6)
@@ -22465,14 +22437,6 @@ snapshots:
       '@inquirer/type': 3.0.10(@types/node@20.17.6)
     optionalDependencies:
       '@types/node': 20.17.6
-
-  '@inquirer/editor@4.2.23(@types/node@24.9.2)':
-    dependencies:
-      '@inquirer/core': 10.3.2(@types/node@24.9.2)
-      '@inquirer/external-editor': 1.0.3(@types/node@24.9.2)
-      '@inquirer/type': 3.0.10(@types/node@24.9.2)
-    optionalDependencies:
-      '@types/node': 24.9.2
 
   '@inquirer/expand@4.0.23(@types/node@20.17.6)':
     dependencies:
@@ -22482,27 +22446,12 @@ snapshots:
     optionalDependencies:
       '@types/node': 20.17.6
 
-  '@inquirer/expand@4.0.23(@types/node@24.9.2)':
-    dependencies:
-      '@inquirer/core': 10.3.2(@types/node@24.9.2)
-      '@inquirer/type': 3.0.10(@types/node@24.9.2)
-      yoctocolors-cjs: 2.1.3
-    optionalDependencies:
-      '@types/node': 24.9.2
-
   '@inquirer/external-editor@1.0.3(@types/node@20.17.6)':
     dependencies:
       chardet: 2.1.1
       iconv-lite: 0.7.0
     optionalDependencies:
       '@types/node': 20.17.6
-
-  '@inquirer/external-editor@1.0.3(@types/node@24.9.2)':
-    dependencies:
-      chardet: 2.1.1
-      iconv-lite: 0.7.0
-    optionalDependencies:
-      '@types/node': 24.9.2
 
   '@inquirer/figures@1.0.15': {}
 
@@ -22515,26 +22464,12 @@ snapshots:
     optionalDependencies:
       '@types/node': 20.17.6
 
-  '@inquirer/input@4.3.1(@types/node@24.9.2)':
-    dependencies:
-      '@inquirer/core': 10.3.2(@types/node@24.9.2)
-      '@inquirer/type': 3.0.10(@types/node@24.9.2)
-    optionalDependencies:
-      '@types/node': 24.9.2
-
   '@inquirer/number@3.0.23(@types/node@20.17.6)':
     dependencies:
       '@inquirer/core': 10.3.2(@types/node@20.17.6)
       '@inquirer/type': 3.0.10(@types/node@20.17.6)
     optionalDependencies:
       '@types/node': 20.17.6
-
-  '@inquirer/number@3.0.23(@types/node@24.9.2)':
-    dependencies:
-      '@inquirer/core': 10.3.2(@types/node@24.9.2)
-      '@inquirer/type': 3.0.10(@types/node@24.9.2)
-    optionalDependencies:
-      '@types/node': 24.9.2
 
   '@inquirer/password@4.0.23(@types/node@20.17.6)':
     dependencies:
@@ -22543,14 +22478,6 @@ snapshots:
       '@inquirer/type': 3.0.10(@types/node@20.17.6)
     optionalDependencies:
       '@types/node': 20.17.6
-
-  '@inquirer/password@4.0.23(@types/node@24.9.2)':
-    dependencies:
-      '@inquirer/ansi': 1.0.2
-      '@inquirer/core': 10.3.2(@types/node@24.9.2)
-      '@inquirer/type': 3.0.10(@types/node@24.9.2)
-    optionalDependencies:
-      '@types/node': 24.9.2
 
   '@inquirer/prompts@7.10.1(@types/node@20.17.6)':
     dependencies:
@@ -22567,35 +22494,20 @@ snapshots:
     optionalDependencies:
       '@types/node': 20.17.6
 
-  '@inquirer/prompts@7.10.1(@types/node@24.9.2)':
+  '@inquirer/prompts@7.9.0(@types/node@20.17.6)':
     dependencies:
-      '@inquirer/checkbox': 4.3.2(@types/node@24.9.2)
-      '@inquirer/confirm': 5.1.21(@types/node@24.9.2)
-      '@inquirer/editor': 4.2.23(@types/node@24.9.2)
-      '@inquirer/expand': 4.0.23(@types/node@24.9.2)
-      '@inquirer/input': 4.3.1(@types/node@24.9.2)
-      '@inquirer/number': 3.0.23(@types/node@24.9.2)
-      '@inquirer/password': 4.0.23(@types/node@24.9.2)
-      '@inquirer/rawlist': 4.1.11(@types/node@24.9.2)
-      '@inquirer/search': 3.2.2(@types/node@24.9.2)
-      '@inquirer/select': 4.4.2(@types/node@24.9.2)
+      '@inquirer/checkbox': 4.3.2(@types/node@20.17.6)
+      '@inquirer/confirm': 5.1.21(@types/node@20.17.6)
+      '@inquirer/editor': 4.2.23(@types/node@20.17.6)
+      '@inquirer/expand': 4.0.23(@types/node@20.17.6)
+      '@inquirer/input': 4.3.1(@types/node@20.17.6)
+      '@inquirer/number': 3.0.23(@types/node@20.17.6)
+      '@inquirer/password': 4.0.23(@types/node@20.17.6)
+      '@inquirer/rawlist': 4.1.11(@types/node@20.17.6)
+      '@inquirer/search': 3.2.2(@types/node@20.17.6)
+      '@inquirer/select': 4.4.2(@types/node@20.17.6)
     optionalDependencies:
-      '@types/node': 24.9.2
-
-  '@inquirer/prompts@7.9.0(@types/node@24.9.2)':
-    dependencies:
-      '@inquirer/checkbox': 4.3.2(@types/node@24.9.2)
-      '@inquirer/confirm': 5.1.21(@types/node@24.9.2)
-      '@inquirer/editor': 4.2.23(@types/node@24.9.2)
-      '@inquirer/expand': 4.0.23(@types/node@24.9.2)
-      '@inquirer/input': 4.3.1(@types/node@24.9.2)
-      '@inquirer/number': 3.0.23(@types/node@24.9.2)
-      '@inquirer/password': 4.0.23(@types/node@24.9.2)
-      '@inquirer/rawlist': 4.1.11(@types/node@24.9.2)
-      '@inquirer/search': 3.2.2(@types/node@24.9.2)
-      '@inquirer/select': 4.4.2(@types/node@24.9.2)
-    optionalDependencies:
-      '@types/node': 24.9.2
+      '@types/node': 20.17.6
 
   '@inquirer/rawlist@4.1.11(@types/node@20.17.6)':
     dependencies:
@@ -22605,14 +22517,6 @@ snapshots:
     optionalDependencies:
       '@types/node': 20.17.6
 
-  '@inquirer/rawlist@4.1.11(@types/node@24.9.2)':
-    dependencies:
-      '@inquirer/core': 10.3.2(@types/node@24.9.2)
-      '@inquirer/type': 3.0.10(@types/node@24.9.2)
-      yoctocolors-cjs: 2.1.3
-    optionalDependencies:
-      '@types/node': 24.9.2
-
   '@inquirer/search@3.2.2(@types/node@20.17.6)':
     dependencies:
       '@inquirer/core': 10.3.2(@types/node@20.17.6)
@@ -22621,15 +22525,6 @@ snapshots:
       yoctocolors-cjs: 2.1.3
     optionalDependencies:
       '@types/node': 20.17.6
-
-  '@inquirer/search@3.2.2(@types/node@24.9.2)':
-    dependencies:
-      '@inquirer/core': 10.3.2(@types/node@24.9.2)
-      '@inquirer/figures': 1.0.15
-      '@inquirer/type': 3.0.10(@types/node@24.9.2)
-      yoctocolors-cjs: 2.1.3
-    optionalDependencies:
-      '@types/node': 24.9.2
 
   '@inquirer/select@4.4.2(@types/node@20.17.6)':
     dependencies:
@@ -22641,23 +22536,9 @@ snapshots:
     optionalDependencies:
       '@types/node': 20.17.6
 
-  '@inquirer/select@4.4.2(@types/node@24.9.2)':
-    dependencies:
-      '@inquirer/ansi': 1.0.2
-      '@inquirer/core': 10.3.2(@types/node@24.9.2)
-      '@inquirer/figures': 1.0.15
-      '@inquirer/type': 3.0.10(@types/node@24.9.2)
-      yoctocolors-cjs: 2.1.3
-    optionalDependencies:
-      '@types/node': 24.9.2
-
   '@inquirer/type@3.0.10(@types/node@20.17.6)':
     optionalDependencies:
       '@types/node': 20.17.6
-
-  '@inquirer/type@3.0.10(@types/node@24.9.2)':
-    optionalDependencies:
-      '@types/node': 24.9.2
 
   '@isaacs/cliui@8.0.2':
     dependencies:
@@ -22796,9 +22677,9 @@ snapshots:
     dependencies:
       langium: 3.3.1
 
-  '@mintlify/cli@4.0.1090(@radix-ui/react-popover@1.1.15(@types/react-dom@18.3.1)(@types/react@18.3.12)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(@types/node@24.9.2)(@types/react@18.3.12)(encoding@0.1.13)(react-dom@19.2.3(react@19.2.3))(tsx@4.19.3)(typescript@5.9.3)(yaml@2.6.0)':
+  '@mintlify/cli@4.0.1090(@radix-ui/react-popover@1.1.15(@types/react-dom@18.3.1)(@types/react@18.3.12)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(@types/node@20.17.6)(@types/react@18.3.12)(encoding@0.1.13)(react-dom@19.2.3(react@19.2.3))(tsx@4.19.3)(typescript@5.9.3)(yaml@2.6.0)':
     dependencies:
-      '@inquirer/prompts': 7.9.0(@types/node@24.9.2)
+      '@inquirer/prompts': 7.9.0(@types/node@20.17.6)
       '@mintlify/common': 1.0.835(@radix-ui/react-popover@1.1.15(@types/react-dom@18.3.1)(@types/react@18.3.12)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(@types/react@18.3.12)(encoding@0.1.13)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(tsx@4.19.3)(typescript@5.9.3)(yaml@2.6.0)
       '@mintlify/link-rot': 3.0.1010(@radix-ui/react-popover@1.1.15(@types/react-dom@18.3.1)(@types/react@18.3.12)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(@types/react@18.3.12)(encoding@0.1.13)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(tsx@4.19.3)(typescript@5.9.3)(yaml@2.6.0)
       '@mintlify/prebuild': 1.0.977(@radix-ui/react-popover@1.1.15(@types/react-dom@18.3.1)(@types/react@18.3.12)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(@types/react@18.3.12)(encoding@0.1.13)(react-dom@19.2.3(react@19.2.3))(react@19.2.3)(tsx@4.19.3)(typescript@5.9.3)(yaml@2.6.0)
@@ -22811,7 +22692,7 @@ snapshots:
       front-matter: 4.0.2
       fs-extra: 11.2.0
       ink: 6.3.0(@types/react@18.3.12)(react@19.2.3)
-      inquirer: 12.3.0(@types/node@24.9.2)
+      inquirer: 12.3.0(@types/node@20.17.6)
       js-yaml: 4.1.0
       mdast-util-mdx-jsx: 3.2.0
       open: 8.4.2
@@ -29205,21 +29086,21 @@ snapshots:
 
   '@stripe/stripe-js@7.7.0': {}
 
-  '@supabase/auth-js@2.102.1':
+  '@supabase/auth-js@2.104.1':
     dependencies:
       tslib: 2.8.1
 
-  '@supabase/functions-js@2.102.1':
+  '@supabase/functions-js@2.104.1':
     dependencies:
       tslib: 2.8.1
 
   '@supabase/phoenix@0.4.0': {}
 
-  '@supabase/postgrest-js@2.102.1':
+  '@supabase/postgrest-js@2.104.1':
     dependencies:
       tslib: 2.8.1
 
-  '@supabase/realtime-js@2.102.1':
+  '@supabase/realtime-js@2.104.1':
     dependencies:
       '@supabase/phoenix': 0.4.0
       '@types/ws': 8.18.1
@@ -29229,23 +29110,23 @@ snapshots:
       - bufferutil
       - utf-8-validate
 
-  '@supabase/ssr@0.10.0(@supabase/supabase-js@2.102.1)':
+  '@supabase/ssr@0.10.2(@supabase/supabase-js@2.104.1)':
     dependencies:
-      '@supabase/supabase-js': 2.102.1
+      '@supabase/supabase-js': 2.104.1
       cookie: 1.0.2
 
-  '@supabase/storage-js@2.102.1':
+  '@supabase/storage-js@2.104.1':
     dependencies:
       iceberg-js: 0.8.1
       tslib: 2.8.1
 
-  '@supabase/supabase-js@2.102.1':
+  '@supabase/supabase-js@2.104.1':
     dependencies:
-      '@supabase/auth-js': 2.102.1
-      '@supabase/functions-js': 2.102.1
-      '@supabase/postgrest-js': 2.102.1
-      '@supabase/realtime-js': 2.102.1
-      '@supabase/storage-js': 2.102.1
+      '@supabase/auth-js': 2.104.1
+      '@supabase/functions-js': 2.104.1
+      '@supabase/postgrest-js': 2.104.1
+      '@supabase/realtime-js': 2.104.1
+      '@supabase/storage-js': 2.104.1
     transitivePeerDependencies:
       - bufferutil
       - utf-8-validate
@@ -29979,6 +29860,7 @@ snapshots:
   '@types/node@24.9.2':
     dependencies:
       undici-types: 7.16.0
+    optional: true
 
   '@types/nodemailer@6.4.15':
     dependencies:
@@ -33098,7 +32980,7 @@ snapshots:
       debug: 4.4.3
       enhanced-resolve: 5.17.1
       eslint: 8.57.1
-      eslint-module-utils: 2.12.0(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.6.3)(eslint@8.57.1)
+      eslint-module-utils: 2.12.0(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.6.3(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-plugin-import@2.31.0(@typescript-eslint/parser@8.56.1(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1))(eslint@8.57.1))(eslint@8.57.1)
       fast-glob: 3.3.3
       get-tsconfig: 4.8.1
       is-bun-module: 1.2.1
@@ -33141,7 +33023,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  eslint-module-utils@2.12.0(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.6.3)(eslint@8.57.1):
+  eslint-module-utils@2.12.0(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.6.3(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-plugin-import@2.31.0(@typescript-eslint/parser@8.56.1(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1))(eslint@8.57.1))(eslint@8.57.1):
     dependencies:
       debug: 3.2.7
     optionalDependencies:
@@ -33219,7 +33101,7 @@ snapshots:
       doctrine: 2.1.0
       eslint: 8.57.1
       eslint-import-resolver-node: 0.3.9
-      eslint-module-utils: 2.12.0(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.6.3)(eslint@8.57.1)
+      eslint-module-utils: 2.12.0(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-import-resolver-typescript@3.6.3(@typescript-eslint/parser@6.21.0(eslint@8.57.1)(typescript@5.9.3))(eslint-import-resolver-node@0.3.9)(eslint-plugin-import@2.31.0(@typescript-eslint/parser@8.56.1(eslint@8.57.1)(typescript@5.9.3))(eslint@8.57.1))(eslint@8.57.1))(eslint@8.57.1)
       hasown: 2.0.2
       is-core-module: 2.15.1
       is-glob: 4.0.3
@@ -35125,12 +35007,12 @@ snapshots:
       react: 19.2.3
       react-dom: 19.2.3(react@19.2.3)
 
-  inquirer@12.3.0(@types/node@24.9.2):
+  inquirer@12.3.0(@types/node@20.17.6):
     dependencies:
-      '@inquirer/core': 10.3.2(@types/node@24.9.2)
-      '@inquirer/prompts': 7.10.1(@types/node@24.9.2)
-      '@inquirer/type': 3.0.10(@types/node@24.9.2)
-      '@types/node': 24.9.2
+      '@inquirer/core': 10.3.2(@types/node@20.17.6)
+      '@inquirer/prompts': 7.10.1(@types/node@20.17.6)
+      '@inquirer/type': 3.0.10(@types/node@20.17.6)
+      '@types/node': 20.17.6
       ansi-escapes: 4.3.2
       mute-stream: 2.0.0
       run-async: 3.0.0
@@ -36613,9 +36495,9 @@ snapshots:
     dependencies:
       minipass: 7.1.2
 
-  mint@4.2.487(@radix-ui/react-popover@1.1.15(@types/react-dom@18.3.1)(@types/react@18.3.12)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(@types/node@24.9.2)(@types/react@18.3.12)(encoding@0.1.13)(react-dom@19.2.3(react@19.2.3))(tsx@4.19.3)(typescript@5.9.3)(yaml@2.6.0):
+  mint@4.2.487(@radix-ui/react-popover@1.1.15(@types/react-dom@18.3.1)(@types/react@18.3.12)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(@types/node@20.17.6)(@types/react@18.3.12)(encoding@0.1.13)(react-dom@19.2.3(react@19.2.3))(tsx@4.19.3)(typescript@5.9.3)(yaml@2.6.0):
     dependencies:
-      '@mintlify/cli': 4.0.1090(@radix-ui/react-popover@1.1.15(@types/react-dom@18.3.1)(@types/react@18.3.12)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(@types/node@24.9.2)(@types/react@18.3.12)(encoding@0.1.13)(react-dom@19.2.3(react@19.2.3))(tsx@4.19.3)(typescript@5.9.3)(yaml@2.6.0)
+      '@mintlify/cli': 4.0.1090(@radix-ui/react-popover@1.1.15(@types/react-dom@18.3.1)(@types/react@18.3.12)(react-dom@19.2.3(react@19.2.3))(react@19.2.3))(@types/node@20.17.6)(@types/react@18.3.12)(encoding@0.1.13)(react-dom@19.2.3(react@19.2.3))(tsx@4.19.3)(typescript@5.9.3)(yaml@2.6.0)
     transitivePeerDependencies:
       - '@radix-ui/react-popover'
       - '@types/node'
@@ -40724,7 +40606,8 @@ snapshots:
 
   undici-types@6.21.0: {}
 
-  undici-types@7.16.0: {}
+  undici-types@7.16.0:
+    optional: true
 
   undici@6.19.8: {}
 

@@ -113,7 +113,7 @@ The command prints project credentials as JSON:
 }
 ```
 
-For development servers, `emulator run` starts the emulator, injects credentials into the child process, and stops the emulator when the child exits:
+For development servers, `emulator run` starts the emulator if needed, injects credentials into the child process, and stops the emulator when the child exits if it started that emulator instance:
 
 ```sh title="Terminal"
 npx @stackframe/stack-cli@latest emulator run "npm run dev" --config-file ./stack.config.ts
