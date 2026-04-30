@@ -7,9 +7,10 @@
  * connection isolation.
  *
  * IMPORTANT: Uses `samlify` deliberately because the backend SAML wrapper
- * uses `@node-saml/node-saml`. Different libraries on each side means a bug
- * in either library's signature canonicalization surfaces as a test failure
- * instead of being masked by both sides agreeing.
+ * (added in the stacked backend PR) uses `@node-saml/node-saml`. Different
+ * libraries on each side means a bug in either library's signature
+ * canonicalization surfaces as a test failure instead of being masked by
+ * both sides agreeing.
  */
 import express from 'express';
 import handlebars from 'handlebars';
@@ -198,38 +199,68 @@ function isoNow(offsetMs = 0): string {
   return new Date(Date.now() + offsetMs).toISOString();
 }
 
-async function buildAssertion(
-  tenant: TenantState,
-  parsed: ParsedRequest,
-  user: { email: string, displayName: string },
-): Promise<{ samlResponseB64: string, acsUrl: string }> {
-  const misbehavior = tenant.nextMisbehavior;
+type AssertionFields = {
+  audience: string,
+  inResponseTo: string,
+  conditionsNotBefore: string,
+  conditionsNotOnOrAfter: string,
+};
+
+type AssertionResult = {
+  samlResponseB64: string,
+  acsUrl: string,
+  relayState: string,
+};
+
+function consumeNextMisbehavior(tenant: TenantState): Misbehavior {
+  const m = tenant.nextMisbehavior;
   tenant.nextMisbehavior = { kind: 'none' };
+  return m;
+}
 
-  // `replay`: re-emit the cached response.
-  if (misbehavior.kind === 'replay') {
-    if (!tenant.lastResponse) {
-      throw new Error('replay misbehavior requested but no previous response cached for this tenant');
-    }
-    return { samlResponseB64: tenant.lastResponse.samlResponseB64, acsUrl: tenant.lastResponse.acsUrl };
-  }
-
-  // `bad-signature` and `sign-with-tenant`: sign with another tenant's key.
-  let signingTenant: TenantState = tenant;
+function resolveSigningTenant(tenant: TenantState, misbehavior: Misbehavior): TenantState {
   if (misbehavior.kind === 'bad-signature') {
     const other = Array.from(tenants.values()).find(t => t.slug !== tenant.slug);
     if (!other) {
       throw new Error('bad-signature misbehavior requires at least 2 tenants configured');
     }
-    signingTenant = other;
-  } else if (misbehavior.kind === 'sign-with-tenant') {
+    return other;
+  }
+  if (misbehavior.kind === 'sign-with-tenant') {
     const other = tenants.get(misbehavior.tenant);
     if (!other) {
       throw new Error(`sign-with-tenant misbehavior references unknown tenant ${misbehavior.tenant}`);
     }
-    signingTenant = other;
+    return other;
   }
+  return tenant;
+}
 
+function buildAssertionFields(parsed: ParsedRequest, misbehavior: Misbehavior): AssertionFields {
+  return {
+    audience: misbehavior.kind === 'wrong-audience'
+      ? 'https://wrong.example/audience'
+      : parsed.issuer,
+    inResponseTo: misbehavior.kind === 'wrong-in-response-to'
+      ? `_mock_misbehave_${Math.random().toString(36).slice(2)}`
+      : parsed.requestId,
+    conditionsNotBefore: misbehavior.kind === 'not-yet-valid'
+      ? isoNow(60 * 60 * 1000) // +1 hour
+      : isoNow(-30 * 1000),
+    conditionsNotOnOrAfter: misbehavior.kind === 'expired'
+      ? isoNow(-60 * 1000) // expired 1 minute ago
+      : isoNow(ASSERTION_LIFETIME_MS),
+  };
+}
+
+async function renderLoginResponseXml(
+  signingTenant: TenantState,
+  issuerEntityId: string,
+  parsed: ParsedRequest,
+  user: { email: string, displayName: string },
+  fields: AssertionFields,
+  misbehavior: Misbehavior,
+): Promise<string> {
   // Build inline SP — derive from the AuthnRequest to avoid pre-registration.
   const sp = samlify.ServiceProvider({
     entityID: parsed.issuer,
@@ -238,23 +269,6 @@ async function buildAssertion(
       Location: parsed.acsUrl,
     }],
   });
-
-  // Compute the substitution map. Misbehaviors mutate this.
-  const audience = misbehavior.kind === 'wrong-audience'
-    ? 'https://wrong.example/audience'
-    : parsed.issuer;
-
-  const inResponseTo = misbehavior.kind === 'wrong-in-response-to'
-    ? `_mock_misbehave_${Math.random().toString(36).slice(2)}`
-    : parsed.requestId;
-
-  const conditionsNotBefore = misbehavior.kind === 'not-yet-valid'
-    ? isoNow(60 * 60 * 1000) // +1 hour
-    : isoNow(-30 * 1000);
-
-  const conditionsNotOnOrAfter = misbehavior.kind === 'expired'
-    ? isoNow(-60 * 1000) // expired 1 minute ago
-    : isoNow(ASSERTION_LIFETIME_MS);
 
   const result = await signingTenant.idp.createLoginResponse(
     sp,
@@ -271,16 +285,16 @@ async function buildAssertion(
         .replace(/\{AssertionID\}/g, assertionId)
         .replace(/\{IssueInstant\}/g, issueInstant)
         .replace(/\{Destination\}/g, parsed.acsUrl)
-        .replace(/\{Issuer\}/g, tenant.entityId)
+        .replace(/\{Issuer\}/g, issuerEntityId)
         .replace(/\{StatusCode\}/g, 'urn:oasis:names:tc:SAML:2.0:status:Success')
         .replace(/\{NameID\}/g, user.email)
         .replace(/\{NameIDFormat\}/g, 'urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress')
         .replace(/\{SubjectConfirmationDataNotOnOrAfter\}/g, isoNow(ASSERTION_LIFETIME_MS))
         .replace(/\{SubjectRecipient\}/g, parsed.acsUrl)
-        .replace(/\{InResponseTo\}/g, inResponseTo)
-        .replace(/\{ConditionsNotBefore\}/g, conditionsNotBefore)
-        .replace(/\{ConditionsNotOnOrAfter\}/g, conditionsNotOnOrAfter)
-        .replace(/\{Audience\}/g, audience)
+        .replace(/\{InResponseTo\}/g, fields.inResponseTo)
+        .replace(/\{ConditionsNotBefore\}/g, fields.conditionsNotBefore)
+        .replace(/\{ConditionsNotOnOrAfter\}/g, fields.conditionsNotOnOrAfter)
+        .replace(/\{Audience\}/g, fields.audience)
         .replace(/\{Email\}/g, user.email)
         .replace(/\{DisplayName\}/g, user.displayName);
 
@@ -297,12 +311,60 @@ async function buildAssertion(
     },
   );
 
-  const samlResponseB64 = result.context;
-  // Cache for `replay` misbehavior (only happy-path responses get cached).
-  if (misbehavior.kind === 'none') {
-    tenant.lastResponse = { samlResponseB64, relayState: parsed.relayState, acsUrl: parsed.acsUrl };
+  return result.context;
+}
+
+function cacheReplayableResponse(tenant: TenantState, parsed: ParsedRequest, samlResponseB64: string): void {
+  tenant.lastResponse = {
+    samlResponseB64,
+    relayState: parsed.relayState,
+    acsUrl: parsed.acsUrl,
+  };
+}
+
+async function buildAssertion(
+  tenant: TenantState,
+  parsed: ParsedRequest,
+  user: { email: string, displayName: string },
+): Promise<AssertionResult> {
+  const misbehavior = consumeNextMisbehavior(tenant);
+
+  // True replay: re-emit the previous response *and* the previous RelayState
+  // so the entire POST body matches the cached one. (Returning fresh
+  // RelayState here would test "old response + new state", which is a
+  // different attack class than replay.)
+  if (misbehavior.kind === 'replay') {
+    if (!tenant.lastResponse) {
+      throw new Error('replay misbehavior requested but no previous response cached for this tenant');
+    }
+    return {
+      samlResponseB64: tenant.lastResponse.samlResponseB64,
+      acsUrl: tenant.lastResponse.acsUrl,
+      relayState: tenant.lastResponse.relayState,
+    };
   }
-  return { samlResponseB64, acsUrl: parsed.acsUrl };
+
+  const signingTenant = resolveSigningTenant(tenant, misbehavior);
+  const fields = buildAssertionFields(parsed, misbehavior);
+  const samlResponseB64 = await renderLoginResponseXml(
+    signingTenant,
+    tenant.entityId,
+    parsed,
+    user,
+    fields,
+    misbehavior,
+  );
+
+  // Only happy-path responses get cached for replay.
+  if (misbehavior.kind === 'none') {
+    cacheReplayableResponse(tenant, parsed, samlResponseB64);
+  }
+
+  return {
+    samlResponseB64,
+    acsUrl: parsed.acsUrl,
+    relayState: parsed.relayState,
+  };
 }
 
 // ---------- HTTP server --------------------------------------------------
@@ -402,8 +464,8 @@ app.post('/idp/:tenant/login', async (req, res) => {
   }
   try {
     const parsed = await parseAuthnRequestRedirect(samlRequest, relayState);
-    const { samlResponseB64, acsUrl } = await buildAssertion(t, parsed, { email, displayName });
-    res.send(autoPostForm({ acsUrl, samlResponse: samlResponseB64, relayState }));
+    const { samlResponseB64, acsUrl, relayState: outRelayState } = await buildAssertion(t, parsed, { email, displayName });
+    res.send(autoPostForm({ acsUrl, samlResponse: samlResponseB64, relayState: outRelayState }));
   } catch (err: any) {
     res.status(500).send(`Mock IdP failed to build assertion: ${err.message}`);
   }
