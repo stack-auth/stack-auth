@@ -85,6 +85,7 @@ describe("basic config operations", () => {
           "otp": { "allowSignIn": false },
           "passkey": { "allowSignIn": false },
           "password": { "allowSignIn": true },
+          "saml": { "connections": {} },
           "signUpRules": {},
           "signUpRulesDefaultAction": "allow",
         },
