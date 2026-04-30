@@ -11,6 +11,7 @@ import { getPrismaClientForTenancy, globalPrismaClient, type PrismaClientTransac
 import { ALL_APPS } from '@stackframe/stack-shared/dist/apps/apps-config';
 import { DEFAULT_EMAIL_THEME_ID } from '@stackframe/stack-shared/dist/helpers/emails';
 import { type AdminUserProjectsCrud, type ProjectsCrud } from '@stackframe/stack-shared/dist/interface/crud/projects';
+import { type Config } from '@stackframe/stack-shared/dist/config/format';
 import { DayInterval } from '@stackframe/stack-shared/dist/utils/dates';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
 import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
@@ -95,9 +96,9 @@ type SeedDummyUsersOptions = {
 };
 
 type PaymentsSetup = {
-  paymentsProducts: Record<string, unknown>,
-  paymentsBranchOverride: Record<string, unknown>,
-  paymentsEnvironmentOverride: Record<string, unknown>,
+  paymentsProducts: Record<string, Config>,
+  paymentsBranchOverride: Config,
+  paymentsEnvironmentOverride: Config,
 };
 
 type TransactionsSeedOptions = {
@@ -707,16 +708,16 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
   return userEmailToId;
 }
 
-function buildDummyPaymentsSetup(): PaymentsSetup {
+export function buildDummyPaymentsSetup(): PaymentsSetup {
   const monthlyInterval: DayInterval = [1, 'month'];
   const yearlyInterval: DayInterval = [1, 'year'];
   const twoWeekInterval: DayInterval = [2, 'week'];
 
-  const paymentsProducts: Record<string, unknown> = {
+  const paymentsProducts: Record<string, Config> = {
     'starter': {
       displayName: 'Starter',
       productLineId: 'workspace',
-      customerType: 'user',
+      customerType: 'team',
       serverOnly: false,
       stackable: false,
       freeTrial: twoWeekInterval as any,
@@ -744,7 +745,7 @@ function buildDummyPaymentsSetup(): PaymentsSetup {
     'growth': {
       displayName: 'Growth',
       productLineId: 'workspace',
-      customerType: 'user',
+      customerType: 'team',
       serverOnly: false,
       stackable: false,
       prices: {
@@ -780,7 +781,7 @@ function buildDummyPaymentsSetup(): PaymentsSetup {
     'regression-addon': {
       displayName: 'Regression Add-on',
       productLineId: 'add_ons',
-      customerType: 'user',
+      customerType: 'team',
       serverOnly: false,
       stackable: true,
       prices: {
@@ -818,19 +819,19 @@ function buildDummyPaymentsSetup(): PaymentsSetup {
     items: {
       studio_seats: {
         displayName: 'Studio Seats',
-        customerType: 'user',
+        customerType: 'team',
       },
       review_passes: {
         displayName: 'Reviewer Passes',
-        customerType: 'user',
+        customerType: 'team',
       },
       automation_minutes: {
         displayName: 'Automation Minutes',
-        customerType: 'user',
+        customerType: 'team',
       },
       snapshot_credits: {
         displayName: 'Snapshot Credits',
-        customerType: 'user',
+        customerType: 'team',
       },
     },
     products: paymentsProducts,
