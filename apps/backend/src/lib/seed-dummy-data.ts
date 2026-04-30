@@ -1947,7 +1947,11 @@ async function seedBulkSignupsAndActivity(options: {
  * keys per restart, so re-seed if you restart the mock.
  */
 async function seedSamlConnections(projectId: string): Promise<void> {
-  const mockUrl = getEnvVariable("STACK_MOCK_SAML_URL", "http://localhost:8115");
+  // Default URL is derived from NEXT_PUBLIC_STACK_PORT_PREFIX so a non-default
+  // prefix (e.g. running multiple dev environments side by side) doesn't make
+  // the seed reach into a stale service from a different stack.
+  const portPrefix = getEnvVariable("NEXT_PUBLIC_STACK_PORT_PREFIX", "81");
+  const mockUrl = getEnvVariable("STACK_MOCK_SAML_URL", `http://localhost:${portPrefix}42`);
   const tenants: Array<{ slug: string, displayName: string, domain: string }> = [
     { slug: "acme", displayName: "Acme Corp SSO", domain: "acme.test" },
     { slug: "globex", displayName: "Globex SAML", domain: "globex.test" },
@@ -1955,9 +1959,10 @@ async function seedSamlConnections(projectId: string): Promise<void> {
 
   const fetched = await Promise.all(
     tenants.map(async (t) => {
-      const res = await fetch(`${mockUrl}/idp/${t.slug}/metadata`);
+      const metadataUrl = new URL(`/idp/${encodeURIComponent(t.slug)}/metadata`, mockUrl);
+      const res = await fetch(metadataUrl, { signal: AbortSignal.timeout(10_000) });
       if (!res.ok) {
-        throw new Error(`Mock SAML IdP at ${mockUrl}/idp/${t.slug}/metadata returned ${res.status} — is the mock running?`);
+        throw new Error(`Mock SAML IdP at ${metadataUrl.toString()} returned ${res.status} — is the mock running?`);
       }
       const xml = await res.text();
       // Inline minimal metadata parse to avoid a circular import. Format is

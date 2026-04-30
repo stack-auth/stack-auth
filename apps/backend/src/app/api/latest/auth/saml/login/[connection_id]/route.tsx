@@ -18,8 +18,9 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { buildAuthnRequestUrl, buildSamlClient, SamlConnectionConfig } from "@/saml/saml";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { urlSchema, yupArray, yupNumber, yupObject, yupString, yupUnion } from "@stackframe/stack-shared/dist/schema-fields";
-import { getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
+import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { has } from "@stackframe/stack-shared/dist/utils/objects";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import type { Schema } from "yup";
@@ -89,7 +90,7 @@ export const GET = createSmartRouteHandler({
       body: yupString().defined(),
     }).defined(),
   ) as unknown as Schema<SmartResponse>,
-  async handler({ params, query }, fullReq) {
+  async handler({ params, query }) {
     const tenancy = await getSoleTenancyFromProjectBranch(...getProjectBranchFromClientId(query.client_id), true);
     if (!tenancy) {
       throw new KnownErrors.InvalidOAuthClientIdOrSecret(query.client_id);
@@ -104,7 +105,7 @@ export const GET = createSmartRouteHandler({
       throw new KnownErrors.SamlSsoNotEnabled();
     }
 
-    if (!(params.connection_id in tenancy.config.auth.saml.connections)) {
+    if (!has(tenancy.config.auth.saml.connections, params.connection_id)) {
       throw new StatusError(StatusError.NotFound, `SAML connection ${params.connection_id} not found`);
     }
     const connectionRaw = tenancy.config.auth.saml.connections[params.connection_id];
@@ -133,12 +134,10 @@ export const GET = createSmartRouteHandler({
       attributeMapping: connectionRaw.attributeMapping,
     };
 
-    // SP base URL must be the backend's own origin — that's where the ACS
-    // route lives. Using the customer's redirect_uri origin would cause the
-    // IdP to POST the assertion to the customer app (404). Same source as
-    // the metadata route uses, keeping login + metadata consistent.
-    const reqUrl = new URL(fullReq.url);
-    const baseUrl = `${reqUrl.protocol}//${reqUrl.host}`;
+    // Canonical Stack Auth public API origin — must match the metadata route
+    // and ACS validation, since this origin is embedded in the SP entityId
+    // and audience the IdP signs assertions against.
+    const baseUrl = getEnvVariable("NEXT_PUBLIC_STACK_API_URL");
     const client = buildSamlClient(connection, baseUrl);
     const { url: samlUrl, requestId } = await buildAuthnRequestUrl(client, query.state);
 

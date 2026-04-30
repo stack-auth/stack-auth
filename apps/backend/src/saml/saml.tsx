@@ -170,13 +170,19 @@ export async function parseAndVerifyAssertion(
   const emailAttr = connection.attributeMapping?.email ?? "email";
   const displayNameAttr = connection.attributeMapping?.displayName ?? "displayName";
 
+  // Only fall back to NameID for email when its Format explicitly says it's
+  // an email address — many IdPs use persistent/opaque identifiers as NameID
+  // (e.g. `00u123...`), and ACS treats `assertion.email` as a verified email.
+  // Promoting an opaque subject identifier to verified email identity would
+  // let an IdP-side identifier collide with or override real user emails.
+  const nameIdIsEmail = profile.nameIDFormat === "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress";
   return {
     nameId: profile.nameID,
     nameIdFormat: profile.nameIDFormat,
     // node-saml types inResponseTo as a loose object; coerce to string defensively.
     inResponseTo: profile.inResponseTo ? String(profile.inResponseTo) : null,
     attributes,
-    email: pickFirst(attributes[emailAttr]) ?? profile.nameID,
+    email: pickFirst(attributes[emailAttr]) ?? (nameIdIsEmail ? profile.nameID : null),
     displayName: pickFirst(attributes[displayNameAttr]) ?? null,
   };
 }

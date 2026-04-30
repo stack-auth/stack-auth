@@ -1,7 +1,8 @@
 import { handleExternalEmailMergeStrategy } from "@/lib/external-auth";
 import { Tenancy } from "@/lib/tenancies";
 import { createOrUpgradeAnonymousUserWithRules, SignUpRuleOptions } from "@/lib/users";
-import { PrismaClientTransaction } from "@/prisma-client";
+import { PrismaClientTransaction, retryTransaction } from "@/prisma-client";
+import type { PrismaClient } from "@/generated/prisma/client";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
@@ -71,10 +72,13 @@ export async function handleSamlEmailMergeStrategy(
 /**
  * Link a verified SAML identity to an already-existing user (matched by email).
  * Mirrors linkOAuthAccountToUser. Creates one ProjectUserSamlAccount and one
- * AuthMethod with a nested SamlAuthMethod.
+ * AuthMethod with a nested SamlAuthMethod — atomically, so a partial failure
+ * can't leave a sign-in-enabled SAML account row without the matching
+ * auth-method state (which findExistingSamlAccount would still treat as a
+ * valid identity).
  */
 export async function linkSamlAccountToUser(
-  prisma: PrismaClientTransaction,
+  prisma: Omit<PrismaClient, "$on">,
   params: {
     tenancyId: string,
     samlConnectionId: string,
@@ -84,32 +88,34 @@ export async function linkSamlAccountToUser(
     projectUserId: string,
   },
 ): Promise<{ samlAccountId: string }> {
-  const samlAccount = await prisma.projectUserSamlAccount.create({
-    data: {
-      tenancyId: params.tenancyId,
-      samlConnectionId: params.samlConnectionId,
-      nameId: params.nameId,
-      nameIdFormat: params.nameIdFormat,
-      email: params.email,
-      projectUserId: params.projectUserId,
-    },
-  });
+  return await retryTransaction(prisma, async (tx) => {
+    const samlAccount = await tx.projectUserSamlAccount.create({
+      data: {
+        tenancyId: params.tenancyId,
+        samlConnectionId: params.samlConnectionId,
+        nameId: params.nameId,
+        nameIdFormat: params.nameIdFormat,
+        email: params.email,
+        projectUserId: params.projectUserId,
+      },
+    });
 
-  await prisma.authMethod.create({
-    data: {
-      tenancyId: params.tenancyId,
-      projectUserId: params.projectUserId,
-      samlAuthMethod: {
-        create: {
-          projectUserId: params.projectUserId,
-          samlConnectionId: params.samlConnectionId,
-          nameId: params.nameId,
+    await tx.authMethod.create({
+      data: {
+        tenancyId: params.tenancyId,
+        projectUserId: params.projectUserId,
+        samlAuthMethod: {
+          create: {
+            projectUserId: params.projectUserId,
+            samlConnectionId: params.samlConnectionId,
+            nameId: params.nameId,
+          },
         },
       },
-    },
-  });
+    });
 
-  return { samlAccountId: samlAccount.id };
+    return { samlAccountId: samlAccount.id };
+  });
 }
 
 /**

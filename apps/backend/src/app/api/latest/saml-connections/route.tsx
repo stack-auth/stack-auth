@@ -15,6 +15,7 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
 import { adaptSchema, adminAuthTypeSchema, yupArray, yupBoolean, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { has } from "@stackframe/stack-shared/dist/utils/objects";
 
 const samlConnectionResponseShape = yupObject({
   id: yupString().defined(),
@@ -105,31 +106,45 @@ export const POST = createSmartRouteHandler({
     if (!auth.tenancy.config.apps.installed["saml-sso"]?.enabled) {
       throw new KnownErrors.SamlSsoNotEnabled();
     }
-    // Write the whole connection entry as a single value. Per-field deep
-    // dot-keys (e.g. `auth.saml.connections.X.displayName`) get dropped
-    // during config normalization with onDotIntoNonObject="ignore" when
-    // the parent record entry doesn't yet exist — same convention as
-    // auth.oauth.providers (see auth-methods/page-client.tsx) and the
-    // dashboard SSO page-client (see commit 5fa9629de).
-    const connectionEntry: Record<string, unknown> = {
-      displayName: body.display_name,
-      allowSignIn: body.allow_sign_in,
-      idpEntityId: body.idp_entity_id,
-      idpSsoUrl: body.idp_sso_url,
-      idpCertificate: body.idp_certificate,
-    };
-    if (body.domain !== undefined) {
-      connectionEntry.domain = body.domain;
-    }
-    if (body.attribute_mapping) {
-      connectionEntry.attributeMapping = {
-        email: body.attribute_mapping.email,
-        displayName: body.attribute_mapping.display_name,
+    const exists = has(auth.tenancy.config.auth.saml.connections, body.id);
+    const prefix = `auth.saml.connections.${body.id}`;
+    const overlay: Record<string, unknown> = {};
+    if (!exists) {
+      // First-time create: write the whole record entry as a nested object.
+      // Dotting into a missing parent record entry is silently dropped by
+      // the config layer (see lib/config validateConfigOverrideSchema), so
+      // child-only updates would 200 with no effect on a brand-new connection.
+      const data: Record<string, unknown> = {
+        displayName: body.display_name,
+        allowSignIn: body.allow_sign_in,
+        idpEntityId: body.idp_entity_id,
+        idpSsoUrl: body.idp_sso_url,
+        idpCertificate: body.idp_certificate,
       };
+      if (body.domain !== undefined) data.domain = body.domain;
+      if (body.attribute_mapping) {
+        data.attributeMapping = {
+          email: body.attribute_mapping.email,
+          displayName: body.attribute_mapping.display_name,
+        };
+      }
+      overlay[prefix] = data;
+    } else {
+      overlay[`${prefix}.displayName`] = body.display_name;
+      overlay[`${prefix}.allowSignIn`] = body.allow_sign_in;
+      overlay[`${prefix}.idpEntityId`] = body.idp_entity_id;
+      overlay[`${prefix}.idpSsoUrl`] = body.idp_sso_url;
+      overlay[`${prefix}.idpCertificate`] = body.idp_certificate;
+      if (body.domain !== undefined) {
+        overlay[`${prefix}.domain`] = body.domain;
+      }
+      if (body.attribute_mapping) {
+        overlay[`${prefix}.attributeMapping`] = {
+          email: body.attribute_mapping.email,
+          displayName: body.attribute_mapping.display_name,
+        };
+      }
     }
-    const overlay = {
-      [`auth.saml.connections.${body.id}`]: connectionEntry,
-    };
 
     await overrideEnvironmentConfigOverride({
       projectId: auth.tenancy.project.id,
@@ -179,7 +194,7 @@ export const DELETE = createSmartRouteHandler({
     if (!auth.tenancy.config.apps.installed["saml-sso"]?.enabled) {
       throw new KnownErrors.SamlSsoNotEnabled();
     }
-    if (!(body.id in auth.tenancy.config.auth.saml.connections)) {
+    if (!has(auth.tenancy.config.auth.saml.connections, body.id)) {
       throw new StatusError(StatusError.NotFound, `SAML connection ${body.id} not found`);
     }
     await resetEnvironmentConfigOverrideKeys({

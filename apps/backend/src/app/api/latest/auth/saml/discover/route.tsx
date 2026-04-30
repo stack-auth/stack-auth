@@ -26,6 +26,12 @@ export const GET = createSmartRouteHandler({
     query: yupObject({
       email: emailSchema.defined(),
       project_id: yupString().defined(),
+      // Optional — connections live under a tenancy/branch, and login
+      // resolves the branch from `client_id` (`projectId#branchId`). If the
+      // SDK is targeting a non-default branch, it must pass the same
+      // branch_id here so discovery returns the connection that login will
+      // actually use.
+      branch_id: yupString().optional(),
     }).defined(),
   }),
   response: yupObject({
@@ -37,7 +43,7 @@ export const GET = createSmartRouteHandler({
     }).defined(),
   }),
   async handler({ query }) {
-    const tenancy = await getSoleTenancyFromProjectBranch(query.project_id, DEFAULT_BRANCH_ID, true);
+    const tenancy = await getSoleTenancyFromProjectBranch(query.project_id, query.branch_id ?? DEFAULT_BRANCH_ID, true);
     if (!tenancy) {
       throw new StatusError(StatusError.NotFound, `Project ${query.project_id} not found`);
     }

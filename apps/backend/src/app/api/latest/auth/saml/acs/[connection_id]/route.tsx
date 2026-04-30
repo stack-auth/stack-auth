@@ -21,12 +21,15 @@ import { createSamlUserAndAccount, findExistingSamlAccount, handleSamlEmailMerge
 import { Tenancy, getTenancy } from "@/lib/tenancies";
 import { oauthServer } from "@/oauth";
 import { getPrismaClientForTenancy, globalPrismaClient } from "@/prisma-client";
+import { Prisma } from "@/generated/prisma/client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { buildSamlClient, extractInResponseTo, parseAndVerifyAssertion, SamlConnectionConfig } from "@/saml/saml";
 import { InvalidClientError, InvalidScopeError, Request as OAuthRequest, Response as OAuthResponse } from "@node-oauth/oauth2-server";
 import { KnownError, KnownErrors } from "@stackframe/stack-shared";
 import { yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
+import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
+import { has } from "@stackframe/stack-shared/dist/utils/objects";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -89,7 +92,7 @@ export const POST = createSmartRouteHandler({
     body: yupMixed().defined(),
     headers: yupMixed().defined(),
   }),
-  async handler({ params, body }, fullReq) {
+  async handler({ params, body }) {
     const samlResponseB64 = (body as Record<string, unknown>).SAMLResponse as string | undefined;
     if (!samlResponseB64) {
       throw new StatusError(StatusError.BadRequest, "Missing SAMLResponse in form body");
@@ -100,9 +103,19 @@ export const POST = createSmartRouteHandler({
       throw new StatusError(StatusError.BadRequest, "SAMLResponse has no InResponseTo (IdP-initiated SSO is not supported in V1)");
     }
 
-    const outerInfoDB = await globalPrismaClient.samlOuterInfo.findUnique({ where: { id: inResponseTo } });
-    if (!outerInfoDB) {
-      throw new StatusError(StatusError.BadRequest, "Unknown InResponseTo — SAMLResponse does not match any pending AuthnRequest. Please try signing in again.");
+    // Atomically consume the SamlOuterInfo row up-front so concurrent
+    // duplicate POSTs (browser retry, captured payload, etc.) can't both
+    // pass a findUnique check before either reaches the delete and each
+    // issue an OAuth code. If downstream verification fails, the client
+    // must restart the flow — that's the cost of a one-shot row.
+    let outerInfoDB;
+    try {
+      outerInfoDB = await globalPrismaClient.samlOuterInfo.delete({ where: { id: inResponseTo } });
+    } catch (e) {
+      if (e instanceof Prisma.PrismaClientKnownRequestError && e.code === "P2025") {
+        throw new StatusError(StatusError.BadRequest, "Unknown InResponseTo — SAMLResponse does not match any pending AuthnRequest, or it was already consumed. Please try signing in again.");
+      }
+      throw e;
     }
 
     const outerInfo = outerInfoDB.info as unknown as SamlOuterInfoPayload;
@@ -134,12 +147,19 @@ export const POST = createSmartRouteHandler({
       throw new KnownErrors.SamlSsoNotEnabled();
     }
 
-    if (!(params.connection_id in tenancy.config.auth.saml.connections)) {
+    if (!has(tenancy.config.auth.saml.connections, params.connection_id)) {
       throw new StatusError(StatusError.NotFound, `SAML connection ${params.connection_id} not found`);
     }
     const connectionRaw = tenancy.config.auth.saml.connections[params.connection_id];
     if (!connectionRaw.idpEntityId || !connectionRaw.idpSsoUrl || !connectionRaw.idpCertificate) {
       throw new StatusError(StatusError.NotFound, `SAML connection ${params.connection_id} is incompletely configured`);
+    }
+    // Defense-in-depth: login already rejects disabled connections, but a
+    // SamlOuterInfo row lives for 10 minutes, so an admin can disable a
+    // connection mid-flow. ACS is the final trust point before issuing an
+    // OAuth code, so re-check here.
+    if (connectionRaw.allowSignIn === false) {
+      throw new StatusError(StatusError.Forbidden, `SAML connection ${params.connection_id} has sign-in disabled`);
     }
     const connection: SamlConnectionConfig = {
       id: params.connection_id,
@@ -157,12 +177,11 @@ export const POST = createSmartRouteHandler({
     }
 
     try {
-      // Must match the SP base URL the login route advertised in the
-      // AuthnRequest — i.e. the backend's own origin, not the customer's
-      // redirect_uri origin. node-saml verifies the assertion's audience
-      // against `spEntityId(baseUrl, connectionId)`.
-      const reqUrl = new URL(fullReq.url);
-      const baseUrl = `${reqUrl.protocol}//${reqUrl.host}`;
+      // Canonical Stack Auth public API origin — must match login + metadata
+      // so audience/issuer validation lines up with the entity ID the IdP
+      // configured against. The customer's `redirectUri` is for the SDK
+      // post-callback redirect, not the SP origin.
+      const baseUrl = getEnvVariable("NEXT_PUBLIC_STACK_API_URL");
       const client = buildSamlClient(connection, baseUrl);
       const assertion = await parseAndVerifyAssertion(client, connection, samlResponseB64, undefined);
 
@@ -299,11 +318,6 @@ export const POST = createSmartRouteHandler({
         }
         throw error;
       }
-
-      // Replay protection — consume the OuterInfo row so the same assertion
-      // (or a re-issued one from the same AuthnRequest) cannot be replayed.
-      // The next look-up by InResponseTo will 400.
-      await globalPrismaClient.samlOuterInfo.delete({ where: { id: inResponseTo } });
 
       return oauthResponseToSmartResponse(oauthResponse);
     } catch (error) {
