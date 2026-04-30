@@ -392,3 +392,6 @@ A: Use a strict root `postinstall` script that rewrites only Next `>=16` app-pag
 
 Q: Why can Turbo-pruned Docker builds fail with `Cannot find module /app/scripts/postinstall-patch-next-async-debug-info.mjs` during `pnpm install`?
 A: In pruned builder stages, we copy `/app/out/json` and run `pnpm install` before copying `/app/out/full`. The root `package.json` still runs `postinstall: node ./scripts/postinstall-patch-next-async-debug-info.mjs`, but that script is not present yet. Fix by copying `scripts/postinstall-patch-next-async-debug-info.mjs` into the builder stage before `pnpm install` (for all Dockerfiles using the prune pattern).
+
+Q: Why can feature flag E2E tests fail with `The key "featureFlags" is not valid` on a branch that adds the schema?
+A: The backend routes import generated package output from `@stackframe/stack-shared/dist`. If the dev package generator has not rebuilt that dist after adding `featureFlags` to the schema/app ids, backend E2E setup calls like `Project.updatePushedConfig({ featureFlags: ... })` still run against the old schema and reject the key before the test logic starts.

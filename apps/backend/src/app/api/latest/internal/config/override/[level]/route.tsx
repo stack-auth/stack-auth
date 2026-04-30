@@ -18,6 +18,7 @@ import { LOCAL_EMULATOR_ENV_CONFIG_BLOCKED_MESSAGE, isLocalEmulatorProject } fro
 import { globalPrismaClient, rawQuery } from "@/prisma-client";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { branchConfigSchema, environmentConfigSchema, getConfigOverrideErrors, migrateConfigOverride, projectConfigSchema } from "@stackframe/stack-shared/dist/config/schema";
+import { override } from "@stackframe/stack-shared/dist/config/format";
 import { adaptSchema, branchConfigSourceSchema, serverOrHigherAuthTypeSchema, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StackAssertionError, StatusError, captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import * as yup from "yup";
@@ -317,10 +318,22 @@ export const PATCH = createSmartRouteHandler({
     const levelConfig = levelConfigs[req.params.level];
     const parsedConfig = await parseAndValidateConfig(req.body.config_override_string, levelConfig);
 
-    const newConfig = await levelConfig.override({
+    const oldConfig = await levelConfig.get({
       projectId: req.auth.tenancy.project.id,
       branchId: req.auth.tenancy.branchId,
-      config: parsedConfig,
+    });
+    const newConfig = override(oldConfig, parsedConfig);
+
+    await assertConfigValidBeforeWrite(levelConfig, {
+      projectId: req.auth.tenancy.project.id,
+      branchId: req.auth.tenancy.branchId,
+      config: newConfig,
+    });
+
+    await levelConfig.set({
+      projectId: req.auth.tenancy.project.id,
+      branchId: req.auth.tenancy.branchId,
+      config: newConfig,
     });
 
     await warnOnValidationFailure(levelConfig, {

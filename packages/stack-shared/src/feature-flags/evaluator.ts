@@ -175,7 +175,7 @@ function applyOperator(
     }
     case "in_cohort": {
       if (typeof expected !== "string") return false;
-      return Boolean(cohorts?.[expected]);
+      return cohorts !== undefined && Object.prototype.hasOwnProperty.call(cohorts, expected) && cohorts[expected] === true;
     }
   }
 }
@@ -258,6 +258,16 @@ export function evaluateFlag(
   context: EvalContext,
   seenFlags: ReadonlySet<string> = new Set(),
 ): EvalResult {
+  if (seenFlags.has(flagKey)) {
+    const flag = config.flags?.[flagKey];
+    return {
+      flagKey,
+      variantKey: flag?.defaultVariantKey,
+      value: variantValue(flag ?? {}, flag?.defaultVariantKey),
+      reason: "cycle",
+    };
+  }
+
   const flag = config.flags?.[flagKey];
   if (!flag) {
     return { flagKey, variantKey: undefined, value: undefined, reason: "missing" };
@@ -275,8 +285,8 @@ export function evaluateFlag(
   if (flag.enabled === false) return defaultResult("disabled");
 
   if (flag.dependsOn) {
-    if (seenFlags.has(flag.dependsOn)) return defaultResult("cycle");
     const dep = evaluateFlag(flag.dependsOn, config, context, new Set([...seenFlags, flagKey]));
+    if (dep.reason === "cycle") return defaultResult("cycle");
     if (!isTruthyFlagValue(dep.value)) return defaultResult("dep_unmet");
   }
 
@@ -513,6 +523,21 @@ import.meta.vitest?.test("dependency cycles are broken safely", ({ expect }) => 
   expect(r.value).toBe(false);
 });
 
+import.meta.vitest?.test("dependency cycles do not pass through truthy defaults", ({ expect }) => {
+  const config: FeatureFlagsConfig = {
+    flags: {
+      a: { key: "a", type: "boolean", enabled: true, defaultVariantKey: "on", dependsOn: "b",
+        variants: { on: { value: true }, off: { value: false } },
+        rules: { all: { variantKey: "off" } } },
+      b: { key: "b", type: "boolean", enabled: true, defaultVariantKey: "on", dependsOn: "a",
+        variants: { on: { value: true }, off: { value: false } } },
+    },
+  };
+  const r = evaluateFlag("a", config, { distinctId: "u" });
+  expect(r.reason).toBe("cycle");
+  expect(r.value).toBe(true);
+});
+
 import.meta.vitest?.test("holdout excludes a slice from any variant", ({ expect }) => {
   const config: FeatureFlagsConfig = {
     flags: {
@@ -580,6 +605,22 @@ import.meta.vitest?.test("in_cohort matches cohort membership in context", ({ ex
     },
   };
   expect(evaluateFlag("f", config, { distinctId: "u", cohorts: { vips: true } }).value).toBe(true);
+  expect(evaluateFlag("f", config, { distinctId: "u", cohorts: {} }).value).toBe(false);
+});
+
+import.meta.vitest?.test("in_cohort ignores inherited object properties", ({ expect }) => {
+  const config: FeatureFlagsConfig = {
+    flags: {
+      f: {
+        key: "f", type: "boolean", enabled: true, defaultVariantKey: "off",
+        variants: { on: { value: true }, off: { value: false } },
+        rules: { r: {
+          priority: 0, rolloutPercentage: 100, variantKey: "on",
+          conditions: { c: { attribute: "user.id", operator: "in_cohort", value: "toString" } },
+        } },
+      },
+    },
+  };
   expect(evaluateFlag("f", config, { distinctId: "u", cohorts: {} }).value).toBe(false);
 });
 

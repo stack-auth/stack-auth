@@ -49,6 +49,7 @@ export const POST = createSmartRouteHandler({
     const config: FeatureFlagsConfig = auth.tenancy.config.featureFlags;
 
     const callerCanSupplyTargetingContext = auth.type !== "client";
+    const verifiedPrimaryEmail = auth.user?.primary_email_verified ? auth.user.primary_email ?? undefined : undefined;
     const evalContext: EvalContext = callerCanSupplyTargetingContext ? {
       distinctId: body.distinct_id ?? body.user_id ?? auth.user?.id,
       userId: body.user_id ?? auth.user?.id,
@@ -58,13 +59,13 @@ export const POST = createSmartRouteHandler({
       context: body.context,
       cohorts: body.cohorts,
     } : {
-      distinctId: auth.user?.id,
+      distinctId: body.distinct_id ?? auth.user?.id,
       userId: auth.user?.id,
       user: auth.user ? {
         id: auth.user.id,
-        primary_email: auth.user.primary_email,
+        primary_email: verifiedPrimaryEmail,
         primary_email_verified: auth.user.primary_email_verified,
-        email: auth.user.primary_email,
+        email: verifiedPrimaryEmail,
       } : undefined,
     };
 

@@ -16,14 +16,25 @@ const apiUrl = process.env.NEXT_PUBLIC_STACK_API_URL;
 const projectId = process.env.NEXT_PUBLIC_STACK_PROJECT_ID;
 const publishableClientKey = process.env.NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY;
 
+function getRequiredPublicEnv(name: string, value: string | undefined): string {
+  if (value == null || value.length === 0) {
+    throw new Error(`Expected ${name} to be configured for the feature flags demo`);
+  }
+  return value;
+}
+
+function getDemoApiUrl(): string {
+  return getRequiredPublicEnv("NEXT_PUBLIC_STACK_API_URL", apiUrl).replace(/\/+$/, "");
+}
+
 async function evaluateFlags(body: Record<string, unknown>): Promise<Record<string, EvalResult>> {
-  const res = await fetch(`${apiUrl}/api/latest/feature-flags/evaluate`, {
+  const res = await fetch(`${getDemoApiUrl()}/api/latest/feature-flags/evaluate`, {
     method: "POST",
     headers: {
       "content-type": "application/json",
       "x-stack-access-type": "client",
-      "x-stack-project-id": projectId ?? "",
-      "x-stack-publishable-client-key": publishableClientKey ?? "",
+      "x-stack-project-id": getRequiredPublicEnv("NEXT_PUBLIC_STACK_PROJECT_ID", projectId),
+      "x-stack-publishable-client-key": getRequiredPublicEnv("NEXT_PUBLIC_STACK_PUBLISHABLE_CLIENT_KEY", publishableClientKey),
     },
     body: JSON.stringify(body),
   });

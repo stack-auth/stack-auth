@@ -218,16 +218,57 @@ const featureFlagStickyBy = ["userId", "teamId", "distinctId"] as const;
 const featureFlagTypes = ["boolean", "multivariate", "json", "numeric", "string"] as const;
 
 type FeatureFlagSchemaValue = {
+  holdouts?: Record<string, unknown>,
   flags?: Record<string, {
     key: string,
+    type?: string,
     variants?: Record<string, unknown>,
     defaultVariantKey?: string,
+    dependsOn?: string,
+    holdoutId?: string,
     rules?: Record<string, {
       variantKey?: string,
       variantWeights?: Record<string, unknown>,
     }>,
   }>,
 };
+
+function isJsonCompatibleFeatureFlagValue(value: unknown): boolean {
+  if (value === null) return true;
+  if (typeof value === "string" || typeof value === "boolean") return true;
+  if (typeof value === "number") return Number.isFinite(value);
+  if (Array.isArray(value)) {
+    return value.every((item) => item !== undefined && isJsonCompatibleFeatureFlagValue(item));
+  }
+  if (value !== undefined && typeof value === "object") {
+    return Object.values(value).every((nestedValue) => nestedValue !== undefined && isJsonCompatibleFeatureFlagValue(nestedValue));
+  }
+  return false;
+}
+
+function getFeatureFlagVariantValueError(flagType: string | undefined, variantValue: unknown): string | undefined {
+  switch (flagType) {
+    case "boolean": {
+      return typeof variantValue === "boolean" ? undefined : "boolean flag variants must have boolean values";
+    }
+    case "numeric": {
+      return typeof variantValue === "number" && Number.isFinite(variantValue) ? undefined : "numeric flag variants must have finite number values";
+    }
+    case "string": {
+      return typeof variantValue === "string" ? undefined : "string flag variants must have string values";
+    }
+    case "json": {
+      return isJsonCompatibleFeatureFlagValue(variantValue) ? undefined : "json flag variants must have JSON-compatible values";
+    }
+    case "multivariate":
+    case undefined: {
+      return undefined;
+    }
+    default: {
+      return `unknown flag type "${flagType}"`;
+    }
+  }
+}
 
 export const branchFeatureFlagsSchema = yupObject({
   flags: yupRecord(
@@ -356,6 +397,8 @@ export const branchFeatureFlagsSchema = yupObject({
   'Feature flag variant references must point to existing variants',
   function(this: yup.TestContext<yup.AnyObject>, value: FeatureFlagSchemaValue | undefined) {
     if (!value?.flags) return true;
+    const flagIds = new Set(Object.keys(value.flags));
+    const holdoutIds = new Set(Object.keys(value.holdouts ?? {}));
     for (const [flagId, flag] of Object.entries(value.flags)) {
       const variants = flag.variants ?? {};
       const variantKeys = new Set(Object.keys(variants));
@@ -364,6 +407,28 @@ export const branchFeatureFlagsSchema = yupObject({
           message: `Feature flag "${flagId}" defaultVariantKey "${flag.defaultVariantKey}" does not exist in variants`,
           path: `${this.path}.flags.${flagId}.defaultVariantKey`,
         });
+      }
+      if (flag.dependsOn !== undefined && !flagIds.has(flag.dependsOn)) {
+        return this.createError({
+          message: `Feature flag "${flagId}" dependsOn "${flag.dependsOn}" does not reference an existing flag`,
+          path: `${this.path}.flags.${flagId}.dependsOn`,
+        });
+      }
+      if (flag.holdoutId !== undefined && !holdoutIds.has(flag.holdoutId)) {
+        return this.createError({
+          message: `Feature flag "${flagId}" holdoutId "${flag.holdoutId}" does not reference an existing holdout`,
+          path: `${this.path}.flags.${flagId}.holdoutId`,
+        });
+      }
+      for (const [variantKey, variant] of Object.entries(variants)) {
+        const variantValue = variant != null && typeof variant === "object" && !Array.isArray(variant) ? (variant as { value?: unknown }).value : undefined;
+        const variantValueError = getFeatureFlagVariantValueError(flag.type, variantValue);
+        if (variantValueError !== undefined) {
+          return this.createError({
+            message: `Feature flag "${flagId}" variant "${variantKey}" is invalid: ${variantValueError}`,
+            path: `${this.path}.flags.${flagId}.variants.${variantKey}.value`,
+          });
+        }
       }
       const rules = flag.rules ?? {};
       for (const [ruleId, rule] of Object.entries(rules)) {
@@ -387,6 +452,52 @@ export const branchFeatureFlagsSchema = yupObject({
   },
 );
 // --- END Feature Flags Schema ---
+
+import.meta.vitest?.test("branchFeatureFlagsSchema rejects missing dependency and holdout references", async ({ expect }) => {
+  await expect(branchFeatureFlagsSchema.validate({
+    flags: {
+      child: {
+        key: "child",
+        type: "boolean",
+        dependsOn: "missing-gate",
+        holdoutId: "missing-holdout",
+        defaultVariantKey: "off",
+        variants: {
+          off: { value: false },
+        },
+      },
+    },
+    holdouts: {},
+  })).rejects.toThrow('Feature flag "child" dependsOn "missing-gate" does not reference an existing flag');
+});
+
+import.meta.vitest?.test("branchFeatureFlagsSchema validates variant values against flag type", async ({ expect }) => {
+  await expect(branchFeatureFlagsSchema.validate({
+    flags: {
+      flag: {
+        key: "flag",
+        type: "boolean",
+        defaultVariantKey: "on",
+        variants: {
+          on: { value: "true" },
+        },
+      },
+    },
+  })).rejects.toThrow('Feature flag "flag" variant "on" is invalid: boolean flag variants must have boolean values');
+
+  await expect(branchFeatureFlagsSchema.validate({
+    flags: {
+      flag: {
+        key: "flag",
+        type: "numeric",
+        defaultVariantKey: "one",
+        variants: {
+          one: { value: 1 },
+        },
+      },
+    },
+  })).resolves.toBeDefined();
+});
 
 
 export const branchConfigSchema = canNoLongerBeOverridden(projectConfigSchema, [

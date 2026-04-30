@@ -292,11 +292,34 @@ export default function PageClient() {
 
   // Live evaluation against current config + the JSON-edited debug context.
   const debugResult = (() => {
+    const parsedVariants = tryParseJson(variantsJson);
+    if (!parsedVariants.ok) return { error: `Invalid variants JSON: ${parsedVariants.error}` };
+    const variants = validateVariants(parsedVariants.value);
+    if (!variants.ok) return { error: variants.error };
+
+    const parsedRules = tryParseJson(rulesJson);
+    if (!parsedRules.ok) return { error: `Invalid rules JSON: ${parsedRules.error}` };
+    const rules = validateRules(parsedRules.value);
+    if (!rules.ok) return { error: rules.error };
+
     const parsed = tryParseJson(debugContextJson);
     if (!parsed.ok) return { error: parsed.error };
     const ctx = validateEvalContext(parsed.value);
     if (!ctx.ok) return { error: ctx.error };
-    const cfg: FeatureFlagsConfig = config.featureFlags;
+
+    const cfg: FeatureFlagsConfig = {
+      ...config.featureFlags,
+      flags: {
+        ...config.featureFlags.flags,
+        [flagId]: {
+          ...flag,
+          description: description.trim() || undefined,
+          defaultVariantKey: defaultVariantKey.trim() || undefined,
+          variants: variants.value,
+          rules: rules.value,
+        },
+      },
+    };
     return { result: evaluateFlag(flagId, cfg, ctx.value) };
   })();
 

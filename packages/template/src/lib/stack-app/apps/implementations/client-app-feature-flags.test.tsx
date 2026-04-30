@@ -88,7 +88,9 @@ function createInterface(
     projectId,
     publishableClientKey: "pck_test",
   });
-  vi.spyOn(iface, "evaluateFeatureFlags").mockImplementation(async (body) => await evaluateFeatureFlags(body));
+  Object.assign(iface, {
+    evaluateFeatureFlags: async (body: FeatureFlagEvaluateRequest) => await evaluateFeatureFlags(body),
+  });
   return iface;
 }
 
@@ -176,6 +178,9 @@ describe("StackClientApp feature flag evaluation", () => {
 
     await expect(app.getFeatureFlags(["present", "omitted"])).rejects.toThrow(
       "Feature flag evaluate response did not include requested key omitted",
+    );
+    await expect(app.getFeatureFlags(["present", "toString"])).rejects.toThrow(
+      "Feature flag evaluate response did not include requested key toString",
     );
   });
 

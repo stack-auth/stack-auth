@@ -205,7 +205,7 @@ const branchSchemaFuzzerConfig = [{
       "some-flag-id": [{
         key: ["new-checkout"],
         description: ["A flag for the new checkout"],
-        type: ["boolean", "multivariate", "json", "numeric", "string"] as const,
+        type: ["boolean"] as const,
         enabled: [true, false],
         killSwitch: [true, false],
         tags: [{ "beta": [true], "internal": [true] }] as const,
@@ -249,6 +249,24 @@ const branchSchemaFuzzerConfig = [{
             variantWeights: [undefined],
           }],
         }],
+      }],
+      "another-flag-id": [{
+        key: ["dependency-flag"],
+        description: [undefined],
+        type: ["boolean"] as const,
+        enabled: [true],
+        killSwitch: [false],
+        tags: [undefined],
+        ownerUserId: [undefined],
+        dependsOn: [undefined],
+        holdoutId: [undefined],
+        defaultVariantKey: ["on"],
+        variants: [{
+          "on": [{
+            value: [true],
+          }],
+        }],
+        rules: [{}],
       }],
     }],
     holdouts: [{

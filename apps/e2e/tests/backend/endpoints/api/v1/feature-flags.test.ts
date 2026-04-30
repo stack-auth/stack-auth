@@ -1,7 +1,8 @@
 import { it } from "../../../../helpers";
 import { evaluateFlag } from "@stackframe/stack-shared/dist/feature-flags/evaluator";
 import type { FeatureFlagsConfig } from "@stackframe/stack-shared/dist/feature-flags/types";
-import { Auth, Project, niceBackendFetch } from "../../../backend-helpers";
+import { Auth, Project, backendContext, createMailbox, niceBackendFetch } from "../../../backend-helpers";
+import { randomUUID } from "node:crypto";
 
 async function setupProjectWithFlags(featureFlags: FeatureFlagsConfig) {
   await Project.createAndSwitch();
@@ -229,8 +230,48 @@ it("/feature-flags/evaluate scopes to flag_keys when provided", async ({ expect 
   expect(Object.keys(response.body.results)).toEqual(["f1"]);
 });
 
-it("/feature-flags/evaluate falls back to the authenticated user id when distinct_id is omitted", async ({ expect }) => {
+it("/internal/config/override PATCH rejects feature flag updates that make the merged config invalid", async ({ expect }) => {
   await setupProjectWithFlags({
+    flags: {
+      "flag-a": { key: "a", type: "boolean", enabled: true, defaultVariantKey: "off",
+        variants: { off: { value: false } }, rules: {} },
+      "flag-b": { key: "b", type: "boolean", enabled: true, defaultVariantKey: "off",
+        variants: { off: { value: false } }, rules: {} },
+    },
+  });
+
+  const response = await niceBackendFetch("/api/latest/internal/config/override/branch", {
+    method: "PATCH",
+    accessType: "admin",
+    body: {
+      config_override_string: JSON.stringify({
+        "featureFlags.flags.flag-b": {
+          key: "a",
+          type: "boolean",
+          enabled: true,
+          defaultVariantKey: "off",
+          variants: { off: { value: false } },
+          rules: {},
+        },
+      }),
+    },
+  });
+  expect(response.status).toBe(400);
+
+  const stillValidResponse = await niceBackendFetch("/api/latest/feature-flags/evaluate", {
+    method: "POST",
+    accessType: "client",
+    body: { flag_keys: ["b"] },
+  });
+  expect(stillValidResponse.body.results.b).toMatchObject({
+    flag_key: "b",
+    variant_key: "off",
+    value: false,
+  });
+});
+
+it("/feature-flags/evaluate uses client distinct_id when provided and auth user id when omitted", async ({ expect }) => {
+  const featureFlags: FeatureFlagsConfig = {
     flags: {
       "rollout-flag": {
         key: "rollout",
@@ -246,7 +287,8 @@ it("/feature-flags/evaluate falls back to the authenticated user id when distinc
         },
       },
     },
-  });
+  };
+  await setupProjectWithFlags(featureFlags);
   const { userId } = await Auth.Anonymous.signUp();
 
   const omittedDistinctId = await niceBackendFetch("/api/latest/feature-flags/evaluate", {
@@ -257,13 +299,20 @@ it("/feature-flags/evaluate falls back to the authenticated user id when distinc
   const explicitUserId = await niceBackendFetch("/api/latest/feature-flags/evaluate", {
     method: "POST",
     accessType: "client",
-    body: { distinct_id: "caller-supplied-id-is-ignored", flag_keys: ["rollout"] },
+    body: { distinct_id: "caller-supplied-id-is-used", flag_keys: ["rollout"] },
   });
 
+  const omittedExpected = evaluateFlag("rollout-flag", featureFlags, { distinctId: userId, userId });
+  const explicitExpected = evaluateFlag("rollout-flag", featureFlags, { distinctId: "caller-supplied-id-is-used", userId });
   expect(omittedDistinctId.body.results.rollout).toMatchObject({
     flag_key: "rollout",
-    variant_key: explicitUserId.body.results.rollout.variant_key,
-    value: explicitUserId.body.results.rollout.value,
+    variant_key: omittedExpected.variantKey,
+    value: omittedExpected.value,
+  });
+  expect(explicitUserId.body.results.rollout).toMatchObject({
+    flag_key: "rollout",
+    variant_key: explicitExpected.variantKey,
+    value: explicitExpected.value,
   });
 });
 
@@ -320,6 +369,47 @@ it("/feature-flags/evaluate ignores caller-supplied targeting attributes for cli
     variant_key: "on",
     value: true,
     reason: "matched_rule",
+  });
+});
+
+it("/feature-flags/evaluate does not expose unverified primary email as trusted client targeting context", async ({ expect }) => {
+  await setupProjectWithFlags({
+    flags: {
+      "internal-tools": {
+        key: "internal-tools",
+        type: "boolean",
+        enabled: true,
+        defaultVariantKey: "off",
+        variants: { on: { value: true }, off: { value: false } },
+        rules: {
+          employee: {
+            priority: 0,
+            enabled: true,
+            rolloutPercentage: 100,
+            variantKey: "on",
+            conditions: {
+              email: { attribute: "user.email", operator: "regex", value: "@stack-auth\\.com$" },
+            },
+          },
+        },
+      },
+    },
+  });
+
+  backendContext.set({ mailbox: createMailbox(`unverified-feature-flag-user--${randomUUID()}@stack-auth.com`) });
+  await Auth.Password.signUpWithEmail({ noWaitForEmail: true });
+
+  const response = await niceBackendFetch("/api/latest/feature-flags/evaluate", {
+    method: "POST",
+    accessType: "client",
+    body: {
+      flag_keys: ["internal-tools"],
+    },
+  });
+  expect(response.body.results["internal-tools"]).toMatchObject({
+    variant_key: "off",
+    value: false,
+    reason: "default",
   });
 });
 

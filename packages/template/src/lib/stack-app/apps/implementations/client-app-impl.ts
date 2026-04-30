@@ -2731,7 +2731,7 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
       Object.entries(response.results).map(([key, result]) => [key, this._featureFlagResultFromCrud(result)]),
     );
     for (const key of new Set(keys)) {
-      if (!(key in results)) {
+      if (!Object.prototype.hasOwnProperty.call(results, key)) {
         throwErr(`Feature flag evaluate response did not include requested key ${key}`);
       }
     }
