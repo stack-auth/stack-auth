@@ -230,11 +230,7 @@ export function useAsyncCache<D extends any[], T>(cache: AsyncCache<D, Result<T>
   const promise = React.useSyncExternalStore(
     subscribe,
     getSnapshot,
-    // IF_PLATFORM tanstack-start
     getSnapshot,
-    // ELSE_PLATFORM
-    () => throwErr(new Error("getServerSnapshot should never be called in useAsyncCache because we restrict to CSR earlier"))
-    // END_PLATFORM
   );
 
   const result = use(promise);
