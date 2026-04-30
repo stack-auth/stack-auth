@@ -1,6 +1,8 @@
+/* stylelint-disable scss/at-rule-no-unknown */
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+/* stylelint-enable scss/at-rule-no-unknown */
 
 :root {
   color-scheme: light;
