@@ -1983,12 +1983,10 @@ async function seedSamlConnections(projectId: string): Promise<void> {
   // dot-keys — config normalization with onDotIntoNonObject="ignore"
   // drops dot-keys that try to navigate into a record entry that
   // doesn't yet exist (same convention as auth.oauth.providers).
-  const overlay: Record<string, unknown> = {
-    // SAML SSO is an alpha-stage app and isn't installed by default —
-    // enable it on the dummy project so the seeded connections are usable
-    // without an extra dashboard click.
-    "apps.installed.saml-sso": { enabled: true },
-  };
+  // No need to set `apps.installed.saml-sso.enabled` here — the dummy
+  // project's branch config (above) installs every entry in ALL_APPS,
+  // including alpha-stage apps, when excludeAlphaApps isn't set.
+  const overlay: Parameters<typeof overrideEnvironmentConfigOverride>[0]["environmentConfigOverrideOverride"] = {};
   for (const f of fetched) {
     overlay[`auth.saml.connections.${f.slug}`] = {
       displayName: f.displayName,
@@ -2003,7 +2001,7 @@ async function seedSamlConnections(projectId: string): Promise<void> {
   await overrideEnvironmentConfigOverride({
     projectId,
     branchId: DEFAULT_BRANCH_ID,
-    environmentConfigOverrideOverride: overlay as Parameters<typeof overrideEnvironmentConfigOverride>[0]["environmentConfigOverrideOverride"],
+    environmentConfigOverrideOverride: overlay,
   });
 }
 
@@ -2136,7 +2134,6 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
         "payments.testMode": true,
       },
     }),
-    ...(getEnvVariable("STACK_SEED_ENABLE_SAML", "false") === "true" ? [seedSamlConnections(projectId)] : []),
     ...options.skipGithubConfigSource ? [] : [setBranchConfigOverrideSource({
       projectId,
       branchId: DEFAULT_BRANCH_ID,
@@ -2158,6 +2155,16 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
       },
     }),
   ]);
+
+  // Run sequentially after the parallel block. Both this and the
+  // `payments.testMode` write above target the same environment config,
+  // and `overrideEnvironmentConfigOverride` is read-modify-write — running
+  // them in parallel races and one write clobbers the other (TODO at
+  // config.ts:491 already documents this). Sequencing avoids the race
+  // until the underlying override is wrapped in a serializable txn.
+  if (getEnvVariable("STACK_SEED_ENABLE_SAML", "false") === "true") {
+    await seedSamlConnections(projectId);
+  }
 
   await seedDummyTransactions({
     prisma: dummyPrisma,
