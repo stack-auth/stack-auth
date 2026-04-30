@@ -1,5 +1,4 @@
 import { cookies as rscCookies, headers as rscHeaders } from '@stackframe/stack-sc/force-react-server'; // THIS_LINE_PLATFORM next
-import { getCookie as tssGetCookie, getCookies as tssGetCookies, setCookie as tssSetCookie, deleteCookie as tssDeleteCookie, getRequestHeader as tssGetRequestHeader } from '@tanstack/react-start/server'; // THIS_LINE_PLATFORM tanstack-start
 import { isBrowserLike } from '@stackframe/stack-shared/dist/utils/env';
 import { StackAssertionError } from '@stackframe/stack-shared/dist/utils/errors';
 import Cookies from "js-cookie";
@@ -68,6 +67,28 @@ import { calculatePKCECodeChallenge, generateRandomCodeVerifier, generateRandomS
 type SetCookieOptions = { maxAge: number | "session", noOpIfServerComponent?: boolean, domain?: string, secure?: boolean };
 type DeleteCookieOptions = { noOpIfServerComponent?: boolean, domain?: string };
 
+// IF_PLATFORM tanstack-start
+type TanStackStartServerCookieApi = typeof import("@tanstack/react-start/server");
+const tanStackStartServerCookieApiImportPath = "@tanstack/react-start/server";
+let tanStackStartServerCookieApiPromise: Promise<TanStackStartServerCookieApi> | null = null;
+let tanStackStartCookieHelperPromise: Promise<CookieHelper> | null = null;
+
+declare global {
+  interface ImportMetaEnv {
+    SSR: boolean,
+  }
+
+  interface ImportMeta {
+    readonly env: ImportMetaEnv,
+  }
+}
+
+async function getTanStackStartServerCookieApi(): Promise<TanStackStartServerCookieApi> {
+  tanStackStartServerCookieApiPromise ??= import(tanStackStartServerCookieApiImportPath);
+  return await tanStackStartServerCookieApiPromise;
+}
+// END_PLATFORM
+
 function ensureClient() {
   if (!isBrowserLike()) {
     throw new Error("cookieClient functions can only be called in a browser environment, yet window is undefined");
@@ -116,7 +137,13 @@ export async function createCookieHelper(): Promise<CookieHelper> {
       await rscHeaders(),
     );
     // ELSE_IF_PLATFORM tanstack-start
-    return createTanStackStartCookieHelper();
+    if (import.meta.env.SSR) {
+      const cookieHelperPromise = tanStackStartCookieHelperPromise
+        ?? getTanStackStartServerCookieApi().then((api) => createTanStackStartCookieHelper(api));
+      tanStackStartCookieHelperPromise = cookieHelperPromise;
+      return await cookieHelperPromise;
+    }
+    return await createPlaceholderCookieHelper();
     // ELSE_PLATFORM
     return await createPlaceholderCookieHelper();
     // END_PLATFORM
@@ -127,9 +154,6 @@ export function createCookieHelperSync(): CookieHelper {
   if (isBrowserLike()) {
     return createBrowserCookieHelper();
   }
-  // IF_PLATFORM tanstack-start
-  return createTanStackStartCookieHelper();
-  // ELSE_PLATFORM
   function throwError(): never {
     throw new StackAssertionError("Synchronous server cookie helpers are not available on this platform");
   }
@@ -140,17 +164,16 @@ export function createCookieHelperSync(): CookieHelper {
     setOrDelete: throwError,
     delete: throwError,
   };
-  // END_PLATFORM
 }
 
 // IF_PLATFORM tanstack-start
-function determineSecureFromTanStackStartContext(): boolean {
-  return tssGetRequestHeader("x-forwarded-proto") === "https"
-    || (tssGetCookie("stack-is-https") !== undefined);
+function determineSecureFromTanStackStartContext(api: TanStackStartServerCookieApi): boolean {
+  return api.getRequestHeader("x-forwarded-proto") === "https"
+    || (api.getCookie("stack-is-https") !== undefined);
 }
 
-function refreshTanStackStartIsHttpsCookie() {
-  tssSetCookie("stack-is-https", "true", {
+function refreshTanStackStartIsHttpsCookie(api: TanStackStartServerCookieApi) {
+  api.setCookie("stack-is-https", "true", {
     secure: true,
     maxAge: 60 * 60 * 24 * 365,
     sameSite: "lax",
@@ -158,7 +181,7 @@ function refreshTanStackStartIsHttpsCookie() {
   });
 }
 
-function createTanStackStartCookieHelper(): CookieHelper {
+function createTanStackStartCookieHelper(api: TanStackStartServerCookieApi): CookieHelper {
   const helper: CookieHelper = {
     get: (name: string) => {
       const all = helper.getAll();
@@ -166,13 +189,13 @@ function createTanStackStartCookieHelper(): CookieHelper {
     },
     getAll: () => {
       // set a helper cookie, see comment in `NextCookieHelper.set` below
-      refreshTanStackStartIsHttpsCookie();
-      return tssGetCookies();
+      refreshTanStackStartIsHttpsCookie(api);
+      return api.getCookies();
     },
     set: (name: string, value: string, options: SetCookieOptions) => {
       validateCookieOptions(name, options);
-      tssSetCookie(name, value, {
-        secure: requiresSecureAttribute(name) || (options.secure ?? determineSecureFromTanStackStartContext()),
+      api.setCookie(name, value, {
+        secure: requiresSecureAttribute(name) || (options.secure ?? determineSecureFromTanStackStartContext(api)),
         maxAge: options.maxAge === "session" ? undefined : options.maxAge,
         domain: options.domain,
         sameSite: "lax",
@@ -185,8 +208,8 @@ function createTanStackStartCookieHelper(): CookieHelper {
     },
     delete: (name: string, options: DeleteCookieOptions) => {
       validateCookieOptions(name, options);
-      const secure = requiresSecureAttribute(name) || determineSecureFromTanStackStartContext();
-      tssDeleteCookie(name, {
+      const secure = requiresSecureAttribute(name) || determineSecureFromTanStackStartContext(api);
+      api.deleteCookie(name, {
         secure,
         domain: options.domain,
         path: "/",
@@ -323,7 +346,9 @@ export async function isSecure(): Promise<boolean> {
   // IF_PLATFORM next
   return determineSecureFromServerContext(await rscCookies(), await rscHeaders());
   // ELSE_IF_PLATFORM tanstack-start
-  return determineSecureFromTanStackStartContext();
+  if (import.meta.env.SSR) {
+    return determineSecureFromTanStackStartContext(await getTanStackStartServerCookieApi());
+  }
   // END_PLATFORM
   return false;
 }
