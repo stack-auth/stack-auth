@@ -147,14 +147,6 @@
       "optional": true
     },
     "//": "END_PLATFORM",
-    "//": "IF_PLATFORM tanstack-start",
-    "@tanstack/react-router": {
-      "optional": true
-    },
-    "@tanstack/react-start": {
-      "optional": true
-    },
-    "//": "END_PLATFORM",
     "@types/react": {
       "optional": true
     }

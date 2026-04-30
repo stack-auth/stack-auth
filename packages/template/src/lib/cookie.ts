@@ -96,6 +96,16 @@ export async function createPlaceholderCookieHelper(): Promise<CookieHelper> {
   };
 }
 
+function requiresSecureAttribute(name: string): boolean {
+  return name.startsWith("__Host-");
+}
+
+function validateCookieOptions(name: string, options: DeleteCookieOptions | SetCookieOptions) {
+  if (requiresSecureAttribute(name) && options.domain !== undefined) {
+    throw new StackAssertionError("__Host- cookies must not specify a Domain attribute");
+  }
+}
+
 export async function createCookieHelper(): Promise<CookieHelper> {
   if (isBrowserLike()) {
     return createBrowserCookieHelper();
@@ -139,17 +149,30 @@ function determineSecureFromTanStackStartContext(): boolean {
     || (tssGetCookie("stack-is-https") !== undefined);
 }
 
-function requiresSecureAttribute(name: string): boolean {
-  return name.startsWith("__Host-");
+function refreshTanStackStartIsHttpsCookie() {
+  tssSetCookie("stack-is-https", "true", {
+    secure: true,
+    maxAge: 60 * 60 * 24 * 365,
+    sameSite: "lax",
+    path: "/",
+  });
 }
 
 function createTanStackStartCookieHelper(): CookieHelper {
   const helper: CookieHelper = {
-    get: (name: string) => tssGetCookie(name) ?? null,
-    getAll: () => tssGetCookies(),
+    get: (name: string) => {
+      const all = helper.getAll();
+      return all[name] ?? null;
+    },
+    getAll: () => {
+      // set a helper cookie, see comment in `NextCookieHelper.set` below
+      refreshTanStackStartIsHttpsCookie();
+      return tssGetCookies();
+    },
     set: (name: string, value: string, options: SetCookieOptions) => {
+      validateCookieOptions(name, options);
       tssSetCookie(name, value, {
-        secure: options.secure ?? (requiresSecureAttribute(name) || determineSecureFromTanStackStartContext()),
+        secure: requiresSecureAttribute(name) || (options.secure ?? determineSecureFromTanStackStartContext()),
         maxAge: options.maxAge === "session" ? undefined : options.maxAge,
         domain: options.domain,
         sameSite: "lax",
@@ -161,8 +184,10 @@ function createTanStackStartCookieHelper(): CookieHelper {
       else helper.set(name, value, options);
     },
     delete: (name: string, options: DeleteCookieOptions) => {
+      validateCookieOptions(name, options);
+      const secure = requiresSecureAttribute(name) || determineSecureFromTanStackStartContext();
       tssDeleteCookie(name, {
-        secure: requiresSecureAttribute(name),
+        secure,
         domain: options.domain,
         path: "/",
       });
@@ -228,6 +253,7 @@ function createNextCookieHelper(
       }, {} as Record<string, string>);
     },
     set: (name: string, value: string, options: SetCookieOptions) => {
+      validateCookieOptions(name, options);
       // Whenever the client is on HTTPS, we want to set the Secure flag on the cookie.
       //
       // This is not easy to find out on a Next.js server, so see the algorithm at the top of this file.
@@ -239,10 +265,11 @@ function createNextCookieHelper(
 
       try {
         rscCookiesAwaited.set(name, value, {
-          secure: isSecureCookie,
+          secure: requiresSecureAttribute(name) || isSecureCookie,
           maxAge: options.maxAge === "session" ? undefined : options.maxAge,
           domain: options.domain,
           sameSite: "lax",
+          path: "/",
         });
       } catch (e) {
         handleCookieError(e, options);
@@ -257,10 +284,11 @@ function createNextCookieHelper(
     },
     delete(name: string, options: DeleteCookieOptions) {
       try {
+        validateCookieOptions(name, options);
         if (options.domain !== undefined) {
-          rscCookiesAwaited.delete({ name, domain: options.domain });
+          rscCookiesAwaited.delete({ name, domain: options.domain, path: "/" });
         } else {
-          rscCookiesAwaited.delete(name);
+          rscCookiesAwaited.delete({ name, path: "/" });
         }
       } catch (e) {
         handleCookieError(e, options);
@@ -363,12 +391,14 @@ function _internalShouldSetPartitionedClient() {
 }
 
 function setCookieClientInternal(name: string, value: string, options: SetCookieOptions) {
-  const secure = options.secure ?? determineSecureFromClientContext();
+  validateCookieOptions(name, options);
+  const secure = requiresSecureAttribute(name) || (options.secure ?? determineSecureFromClientContext());
   const partitioned = shouldSetPartitionedClient();
   Cookies.set(name, value, {
     expires: options.maxAge === "session" ? undefined : new Date(Date.now() + (options.maxAge) * 1000),
     domain: options.domain,
     secure,
+    path: "/",
     sameSite: "Lax",
     ...(partitioned ? {
       partitioned,
@@ -378,11 +408,12 @@ function setCookieClientInternal(name: string, value: string, options: SetCookie
 }
 
 function deleteCookieClientInternal(name: string, options: DeleteCookieOptions) {
+  validateCookieOptions(name, options);
   for (const partitioned of [true, false]) {
     if (options.domain !== undefined) {
-      Cookies.remove(name, { domain: options.domain, secure: determineSecureFromClientContext(), partitioned });
+      Cookies.remove(name, { domain: options.domain, secure: determineSecureFromClientContext(), partitioned, path: "/" });
     }
-    Cookies.remove(name, { secure: determineSecureFromClientContext(), partitioned });
+    Cookies.remove(name, { secure: requiresSecureAttribute(name) || determineSecureFromClientContext(), partitioned, path: "/" });
   }
 }
 

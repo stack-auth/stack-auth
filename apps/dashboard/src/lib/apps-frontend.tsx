@@ -1,11 +1,12 @@
 import { Link } from "@/components/link";
-import { ChartLineIcon, ClipboardTextIcon, CreditCardIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
+import { ChartLineIcon, ClipboardTextIcon, CodeIcon, CreditCardIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { StackAdminApp } from "@stackframe/stack";
 import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@stackframe/stack-shared/dist/utils/urls";
 import Image, { StaticImageData } from "next/image";
 import ConvexLogo from "../../public/convex-logo.png";
 import NeonLogo from "../../public/neon-logo.png";
+import TanStackStartLogo from "../../public/tanstack-start-logo.png";
 import VercelLogo from "../../public/vercel-logo.svg";
 
 export type AppId = keyof typeof ALL_APPS;
@@ -25,6 +26,7 @@ type BreadcrumbDefinition = {
 type AppNavigationItem = {
   displayName: string,
   href: string,
+  external?: boolean,
   matchPath?: (relativePart: string) => boolean,
   getBreadcrumbItems?: (stackAdminApp: StackAdminApp<false>, relativePart: string) => Promise<BreadcrumbDefinition | null | undefined>,
 };
@@ -33,6 +35,7 @@ export type AppFrontend = {
   icon: React.FunctionComponent<React.SVGProps<SVGSVGElement>>,
   logo?: React.FunctionComponent<{}>,
   href: string,
+  documentationHref?: string,
   screenshots: (string | StaticImageData)[],
   storeDescription: JSX.Element,
 } & (
@@ -57,12 +60,24 @@ export function isSubApp(appFrontend: AppFrontend): appFrontend is SubAppFronten
   return "parentAppId" in appFrontend;
 }
 
+export function getDocumentationHref(appFrontend: AppFrontend): string | null {
+  return "documentationHref" in appFrontend ? appFrontend.documentationHref ?? null : null;
+}
+
 export function getAppPath(projectId: string, appFrontend: AppFrontend) {
   const url = new URL(appFrontend.href, `${DUMMY_ORIGIN}/projects/${projectId}/`);
   return getRelativePart(url);
 }
 
+function isExternalHref(href: string) {
+  return href.startsWith("http://") || href.startsWith("https://");
+}
+
 export function getItemPath(projectId: string, appFrontend: NavigableAppFrontend, item: AppNavigationItem) {
+  if (item.external || isExternalHref(item.href)) {
+    return item.href;
+  }
+
   const url = new URL(item.href, new URL(appFrontend.href, `${DUMMY_ORIGIN}/projects/${projectId}/`) + "/");
   return getRelativePart(url);
 }
@@ -82,6 +97,10 @@ export function testAppPath(projectId: string, appFrontend: AppFrontend, fullUrl
 }
 
 export function testItemPath(projectId: string, appFrontend: NavigableAppFrontend, item: AppNavigationItem, fullUrl: URL) {
+  if (item.external || isExternalHref(item.href)) {
+    return false;
+  }
+
   if (item.matchPath) return item.matchPath(getRelativePart(fullUrl));
 
   const url = new URL(getItemPath(projectId, appFrontend, item), fullUrl);
@@ -333,6 +352,27 @@ export const ALL_APPS_FRONTEND = {
     screenshots: getScreenshots('vercel', 2),
     storeDescription: <>Deploy your Stack Auth project to <Link href="https://vercel.com" target="_blank">Vercel</Link> with the Vercel x Stack Auth integration.</>,
   },
+  "tanstack-start": {
+    icon: CodeIcon,
+    logo: () => <Image src={TanStackStartLogo} alt="TanStack Start logo" />,
+    href: "tanstack-start",
+    documentationHref: "https://docs.stack-auth.com/guides/integrations/tanstack-start/overview",
+    navigationItems: [
+      {
+        displayName: "Docs",
+        href: "https://docs.stack-auth.com/guides/integrations/tanstack-start/overview",
+        external: true,
+      },
+    ],
+    screenshots: [],
+    storeDescription: (
+      <>
+        <p>TanStack Start integration adds Stack Auth to full-stack React apps built with TanStack Router and Vite.</p>
+        <p>Install the alpha `@stackframe/tanstack-start` package, wire the Stack provider into your root route, and mount the built-in auth handler pages under your app origin.</p>
+        <p>The dashboard sidebar entry opens the integration docs so your team can jump back to setup instructions from the project.</p>
+      </>
+    ),
+  },
   analytics: {
     icon: ChartLineIcon,
     href: "analytics",
@@ -445,4 +485,3 @@ async function getEmailDraftBreadcrumbItems(stackAdminApp: StackAdminApp<false>,
     },
   ];
 }
-

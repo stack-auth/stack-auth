@@ -9,18 +9,30 @@
   "exports": {
     ".": {
       "types": "./dist/index.d.ts",
-      "import": "./dist/esm/index.js",
-      "require": "./dist/index.js"
+      "import": {
+        "default": "./dist/esm/index.js"
+      },
+      "require": {
+        "default": "./dist/index.js"
+      }
     },
     "./convex.config": {
       "types": "./dist/integrations/convex/component/convex.config.d.ts",
-      "import": "./dist/esm/integrations/convex/component/convex.config.js",
-      "require": "./dist/integrations/convex/component/convex.config.js"
+      "import": {
+        "default": "./dist/esm/integrations/convex/component/convex.config.js"
+      },
+      "require": {
+        "default": "./dist/integrations/convex/component/convex.config.js"
+      }
     },
     "./convex-auth.config": {
       "types": "./dist/integrations/convex.d.ts",
-      "import": "./dist/esm/integrations/convex.js",
-      "require": "./dist/integrations/convex.js"
+      "import": {
+        "default": "./dist/esm/integrations/convex.js"
+      },
+      "require": {
+        "default": "./dist/integrations/convex.js"
+      }
     }
   },
   "homepage": "https://stack-auth.com",
@@ -78,12 +90,6 @@
     "react": ">=18.3.0"
   },
   "peerDependenciesMeta": {
-    "@tanstack/react-router": {
-      "optional": true
-    },
-    "@tanstack/react-start": {
-      "optional": true
-    },
     "@types/react": {
       "optional": true
     }
