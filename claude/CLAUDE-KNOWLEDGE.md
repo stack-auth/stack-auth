@@ -1,5 +1,20 @@
 # CLAUDE Knowledge Base
 
+Q: How should Dashboard V2 entity drawers update the URL without moving the page?
+A: When opening, closing, or switching project entity detail drawers through search params such as `userId` and `teamId`, build an href from the current `window.location.href` with `getProjectEntityDrawerHref` and pass it to TanStack Router `navigate` with `resetScroll: false`. These drawer state changes are in-page UI state, so the route and scroll position should both be preserved.
+
+Q: How should Dashboard V2 keep project pages aligned consistently?
+A: Use the shared `ProjectPageHeader` and `ProjectPageMain` defaults from `apps/dashboardV2/src/components/console/project-page.tsx` for route-level width and padding. Avoid per-route `maxWidthClassName` overrides like `max-w-5xl`, `max-w-3xl`, or custom wide table widths unless a page has a genuinely exceptional layout need; otherwise headers and content drift horizontally between project pages.
+
+Q: How should Dashboard V2 session replay user backlinks open the user drawer?
+A: The Users page opens its detail drawer from the `userId` search param, so session replay user links must navigate to `/projects/$projectId/users` with `search={{ userId: user.id }}`. Navigating to the users route without that search param only opens the table page.
+
+Q: How should Dashboard V2 drawers support browser history and cross-drawer links?
+A: Put drawer selection in route search params (for example `?teamId=...` on Teams and `?userId=...` on Users) and make the selected id the source of truth for the drawer open state. Cross-drawer links should navigate to the target route with that search param set, so browser back/forward and the `ProjectDetailSheet` history buttons move between drawer states naturally.
+
+Q: Why can Dashboard V2 pages flash the project skeleton during SDK cache refreshes?
+A: SDK hooks like `adminApp.useTeams()` and `team.useUsers()` suspend while their underlying async cache is refreshing. Since project routes are wrapped in Suspense with `ProjectContentSkeleton`, calling those hooks directly in the route render path can blank the whole page during mutations. Keep the last successful data in local state and run the suspending SDK hook inside a tiny cache-sync child wrapped by `<Suspense fallback={null}>`; render from the cached state so refreshes update the screen only when fresh data resolves.
+
 Q: How are the development ports derived now that NEXT_PUBLIC_STACK_PORT_PREFIX exists?
 A: Host ports use `${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}` plus the two-digit suffix (e.g., Postgres is `${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}28`, Inbucket SMTP `${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}29`, POP3 `${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}30`, and OTLP `${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}31` by default).
 
@@ -401,3 +416,51 @@ A: Do not import the concrete template `_StackClientAppImpl` directly from Vites
 
 Q: How should a conflicted `pnpm-lock.yaml` be resolved after merging package metadata changes?
 A: Prefer `pnpm install --lockfile-only` from the repo root after resolving package manifests. pnpm can ignore the broken conflicted lockfile and recompute a consistent lock graph from the current workspace package.json files.
+
+Q: How should Dashboard V2 email source/preview editors avoid page scroll?
+A: Make the email route shell own the viewport with `ProjectPage className="h-svh min-h-0 overflow-hidden"`, pass a `h-full min-h-0 flex-1 overflow-hidden` wrapper around the outlet, and let each editor page use a full flex chain (`flex h-full min-h-0 flex-1 flex-col overflow-hidden`). The template/theme/draft editor cards should be `h-full min-h-0 overflow-hidden`, with the source/preview split as `grid min-h-0 flex-1 overflow-hidden`; textareas and preview iframes then use `h-full min-h-0` instead of fixed `h-[...]`/`min-h-[...]` sizing. Because the shared `Textarea` defaults to `field-sizing-content`, code-editor textareas must override it with `[field-sizing:fixed] overflow-auto` or they will grow to their content and break the viewport-height layout.
+
+Q: How should Dashboard V2 email editor tabs preserve vertical editor space?
+A: Do not put a full-width resource heading/action row above the source editor. Put the resource title/count/create button inside the left list pane, keep the right editor starting at the same top edge, and make the editor header compact (title/id/delete in one row, no "Editing" eyebrow). Use tighter page padding (`ProjectPageMain py-4`) and editor card spacing (`p-3 gap-3`) so the source/preview panes get the recovered height.
+
+Q: How should Dashboard V2 email TSX source fields be implemented?
+A: Use a shared CodeMirror 6 wrapper in `apps/dashboardV2/src/components/projects/emails/code-editor.tsx` instead of the shared `Textarea`. The wrapper should own fixed-height scrolling inside its parent (`h-full min-h-0`), enable TSX syntax via `@codemirror/lang-javascript` with `{ jsx: true, typescript: true }`, and expose a controlled `value/onChange` API for templates, themes, and drafts. Keep visual styling in `EditorView.theme` using Dashboard V2 CSS variables so the editor works in both light and dark modes.
+
+Q: How should Dashboard V2 virtual data grids render inside height-constrained route shells?
+A: Keep using the shared `VirtualDataGrid`, but opt it into container scrolling when the route shell uses `h-svh`/`overflow-hidden` instead of normal page scrolling. The grid should virtualize against its own scroll element and use a local sticky header (`top-0`), otherwise window-based row offsets can make rows render underneath the search/header band.
+
+Q: How should Dashboard V2 email template editors avoid duplicate selected-resource chrome?
+A: The templates/themes list already shows the selected resource name and short ID, so the editor detail pane should start with editing controls/content. Keep the template theme selector in the editor, render the no-theme sentinel through a `SelectValue` label function so `__no_theme__` never leaks into the trigger, and place delete actions on the active sidebar item instead of in the detail pane.
+
+Q: How should Dashboard V2 email outbox status filters live inside the virtual grid header?
+A: Pass a `headerAccessory` React node into `VirtualDataGrid` and render it on the right side of the search row. For the outbox, use the shared `ToggleGroup`/`ToggleGroupItem` switcher with the current `StatusFilter` as a single selected value, and treat any non-`all` status as an active filter so empty filtered results show the grid empty state.
+
+Q: When should Dashboard V2 outbox show the full-page empty state versus the grid empty state?
+A: Only show the full-page "No outgoing emails" empty state when the unfiltered outbox is empty. If search text or a status filter is active, keep `VirtualDataGrid` mounted so the header controls remain visible and let the grid show "No emails match the current filters."
+
+Q: How should Dashboard V2 sent email recipients link back to users?
+A: Sent email API recipients can be humanized as `User ID: <id>`. In the V2 sent email detail sheet, parse that exact prefix and link it to `/projects/$projectId/users` with `search: { userId }`, which opens the existing user detail sheet. Leave normal email recipients as plain text.
+
+Q: Which Dashboard V2 email route tables should use `VirtualDataGrid`?
+A: Route-level email resource lists should use `apps/dashboardV2/src/components/ui/virtual-data-grid.tsx` for consistent sticky headers, skeletons, keyboard behavior, and search/filter chrome. This includes sent emails, outbox emails, and the managed email domains list. Small modal record tables, such as DNS records inside the domains dialog, can stay as compact `Table` markup because they are not scrollable route-level lists.
+
+Q: How should the Dashboard V2 project switcher preserve the current route when changing projects?
+A: In `apps/dashboardV2/src/components/console/project-switcher.tsx`, use TanStack Router relative navigation with `to: "."`, a params updater that replaces only `projectId`, and `search: (previous) => previous`. This keeps the current child route and query params, instead of navigating every project selection back to `/projects/$projectId`.
+
+Q: Why can Dashboard V2 show a thin gap between the project sidebar and project page?
+A: The app rail is 3.25rem wide, while the nested project `SidebarProvider` resets `--sidebar-width-icon` to 3rem for its own collapsed state. Do not use the nested `--sidebar-width-icon` to offset the fixed project sidebar; define an inherited `--app-sidebar-width` in `_app.tsx`, use it for the fixed app rail and the outer content padding, and offset `ProjectSidebar` with `left-[var(--app-sidebar-width)]`.
+
+Q: How should Dashboard V2 route-level data grids support row keyboard navigation?
+A: Put row navigation shortcuts in the shared grid layer. `apps/dashboardV2/src/components/ui/virtual-data-grid.tsx` handles global `j`/`n` for next row and `k` for previous row while skipping text-entry targets, then calls `onSelectItemKey` and scrolls the selected row into view. Route-level resource lists such as Teams should use `VirtualDataGrid` instead of local card/table shortcut handlers when they need drawer-opening row selection.
+
+Q: Why did the Dashboard V2 email domains grid show empty space above the table header?
+A: The managed email domains route uses a short, page-positioned `VirtualDataGrid`, not a height-constrained container-scrolling grid like Outbox/Sent. Passing `PROJECT_PAGE_HEADER_WITH_NAV_STICKY_TOP_CLASS` made the sticky header apply `top-[88px]` inside the table frame before the page had scrolled, creating an empty band above the column headers. Leave `stickyTopClassName` unset for that domains grid so it uses the local `top-0` default; keep the page-header sticky offset only for page-scrolling grids that actually need to stick below the project header.
+
+Q: How should Dashboard V2 derive the users table Auth methods column?
+A: Use the `ServerUser` auth-method fields directly: `hasPassword` for Password, `otpAuthEnabled` for Email OTP, `passkeyAuthEnabled` for Passkey, `oauthProviders` for connected OAuth provider IDs, and `isAnonymous` for Anonymous. Do not rely on deprecated `emailAuthEnabled` for this column; it can miss the specific method and make valid users appear as `None`.
+
+Q: How should Dashboard V2 links open the user detail drawer?
+A: Link to `/projects/$projectId/users` with `search: { userId }`. The users route owns `UserDetailSheet` state from the `userId` search param, so upstream pages such as overview, sent emails, teams, and session replays should deep-link there instead of owning separate drawer state.
+
+Q: Why can Dashboard V2 KPI delta text look vertically misaligned?
+A: Avoid mixing an `inline-flex` metric value with normal text under `items-baseline`; browsers synthesize the inline-flex baseline from its box, which can make labels like "vs yesterday" sit a few pixels off. Use `items-center` on the row and `leading-none` on both pieces when the intent is visual center alignment.

@@ -6,6 +6,7 @@ import { useUser } from "@stackframe/tanstack-start"
 import type { CurrentInternalUser } from "@stackframe/tanstack-start"
 
 import { cn } from "@/lib/utils"
+import { useCurrentUserTeamsQuery, useOwnedProjectsQuery } from "@/lib/stack/react-query"
 import {
   Popover,
   PopoverContent,
@@ -62,8 +63,8 @@ function buildRows(projects: ReadonlyArray<OwnedProject>, teams: ReadonlyArray<T
 
 export function ProjectSwitcher({ currentProjectId }: { currentProjectId: string }) {
   const user = useUser({ or: "redirect", projectIdMustMatch: "internal" })
-  const projects = user.useOwnedProjects()
-  const teams = user.useTeams()
+  const { data: projects = [] } = useOwnedProjectsQuery(user)
+  const { data: teams = [] } = useCurrentUserTeamsQuery(user)
   const navigate = useNavigate()
   const [open, setOpen] = React.useState(false)
 
@@ -85,7 +86,11 @@ export function ProjectSwitcher({ currentProjectId }: { currentProjectId: string
 
   const goTo = (id: string) => {
     setOpen(false)
-    navigate({ to: "/projects/$projectId", params: { projectId: id } })
+    navigate({
+      to: ".",
+      params: (previous) => ({ ...previous, projectId: id }),
+      search: (previous) => previous,
+    })
   }
 
   const goToAll = () => {
@@ -99,6 +104,7 @@ export function ProjectSwitcher({ currentProjectId }: { currentProjectId: string
   return (
     <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
+        id="project-switcher-trigger"
         aria-label="Switch project"
         title="Switch project"
         className="grid size-7 shrink-0 place-items-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground hover:transition-none group-data-[collapsible=icon]:hidden"

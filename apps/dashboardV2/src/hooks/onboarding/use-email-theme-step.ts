@@ -1,6 +1,8 @@
 import { useEffect } from "react"
 import type { AdminOwnedProject } from "@stackframe/tanstack-start"
 
+import { useEmailThemesQuery, useLoadedAdminProjectConfig } from "@/lib/stack/react-query"
+
 export type UseEmailThemeStepOptions = {
   project: AdminOwnedProject,
   selectedThemeId: string | null,
@@ -12,8 +14,8 @@ export function useEmailThemeStep({
   selectedThemeId,
   setSelectedThemeId,
 }: UseEmailThemeStepOptions) {
-  const themes = project.app.useEmailThemes()
-  const config = project.useConfig()
+  const themes = useEmailThemesQuery(project.app).data ?? []
+  const config = useLoadedAdminProjectConfig(project)
   const currentId = config.emails.selectedThemeId
 
   useEffect(() => {

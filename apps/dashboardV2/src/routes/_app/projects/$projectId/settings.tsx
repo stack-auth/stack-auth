@@ -33,32 +33,35 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  ProjectPage,
+  ProjectPageHeader,
+  ProjectPageMain,
+} from "@/components/console/project-page"
 import { useAdminApp } from "@/lib/stack/admin-app"
+import {
+  useAdminProject,
+  useLoadedAdminProjectConfig,
+  useStackAuthQueryInvalidation,
+} from "@/lib/stack/react-query"
 
 export const Route = createFileRoute("/_app/projects/$projectId/settings")({
   component: ProjectSettingsPage,
 })
 
 function ProjectSettingsPage() {
-  const adminApp = useAdminApp()
-  adminApp.useProject()
+  useAdminProject(useAdminApp())
 
   return (
-    <div className="flex flex-col">
-      <header className="border-b">
-        <div className="mx-auto flex h-[52px] w-full max-w-3xl items-center justify-between gap-3 px-6">
-          <h1 className="font-heading text-base font-semibold tracking-tight">
-            Settings
-          </h1>
-        </div>
-      </header>
+    <ProjectPage>
+      <ProjectPageHeader title="Settings" />
 
-      <main className="mx-auto w-full max-w-3xl flex-1 space-y-8 px-6 py-8">
+      <ProjectPageMain className="space-y-8">
         <GeneralCard />
         <DomainsCard />
         <DangerZoneCard />
-      </main>
-    </div>
+      </ProjectPageMain>
+    </ProjectPage>
   )
 }
 
@@ -68,7 +71,8 @@ function ProjectSettingsPage() {
 
 function GeneralCard() {
   const adminApp = useAdminApp()
-  const project = adminApp.useProject()
+  const project = useAdminProject(adminApp)
+  const { invalidateProject } = useStackAuthQueryInvalidation()
 
   const [displayName, setDisplayName] = useState(project.displayName)
   const [description, setDescription] = useState(project.description ?? "")
@@ -95,12 +99,14 @@ function GeneralCard() {
       return
     }
     await project.update({ displayName: trimmedName })
+    await invalidateProject(project.id)
     toast.success("Display name updated.")
   }
 
   const saveDescription = async () => {
     if (!descriptionDirty) return
     await project.update({ description: trimmedDescription })
+    await invalidateProject(project.id)
     toast.success("Description updated.")
   }
 
@@ -202,8 +208,8 @@ type TrustedDomainEntry = {
 
 function useTrustedDomains(): { allowLocalhost: boolean, domains: Array<TrustedDomainEntry> } {
   const adminApp = useAdminApp()
-  const project = adminApp.useProject()
-  const config = project.useConfig()
+  const project = useAdminProject(adminApp)
+  const config = useLoadedAdminProjectConfig(project)
 
   // The schema declares `domains.trustedDomains` as a record `{ [id]: { baseUrl, handlerPath } }`.
   // The SDK's rendered-config type guarantees the shape; we still validate the leaf fields below
@@ -229,12 +235,14 @@ function useTrustedDomains(): { allowLocalhost: boolean, domains: Array<TrustedD
 
 function DomainsCard() {
   const adminApp = useAdminApp()
-  const project = adminApp.useProject()
+  const project = useAdminProject(adminApp)
+  const { invalidateProjectConfig } = useStackAuthQueryInvalidation()
   const { allowLocalhost, domains } = useTrustedDomains()
 
   const toggleAllowLocalhost = async (next: boolean) => {
     try {
       await project.updateConfig({ "domains.allowLocalhost": next })
+      await invalidateProjectConfig(project.id)
       toast.success(next ? "Localhost is now allowed." : "Localhost is no longer allowed.")
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to update localhost setting.")
@@ -283,12 +291,14 @@ function DomainsCard() {
 
 function DomainList({ domains }: { domains: Array<TrustedDomainEntry> }) {
   const adminApp = useAdminApp()
-  const project = adminApp.useProject()
+  const project = useAdminProject(adminApp)
+  const { invalidateProjectConfig } = useStackAuthQueryInvalidation()
 
   const removeDomain = async (id: string) => {
     try {
       // Path-notation null erases the entry; sibling entries in the record are preserved.
       await project.updateConfig({ [`domains.trustedDomains.${id}`]: null })
+      await invalidateProjectConfig(project.id)
       toast.success("Trusted domain removed.")
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Failed to remove domain.")
@@ -338,7 +348,8 @@ function DomainList({ domains }: { domains: Array<TrustedDomainEntry> }) {
 
 function AddDomainForm({ existingIds }: { existingIds: Array<string> }) {
   const adminApp = useAdminApp()
-  const project = adminApp.useProject()
+  const project = useAdminProject(adminApp)
+  const { invalidateProjectConfig } = useStackAuthQueryInvalidation()
 
   const [baseUrl, setBaseUrl] = useState("")
   const [handlerPath, setHandlerPath] = useState("/handler")
@@ -379,6 +390,7 @@ function AddDomainForm({ existingIds }: { existingIds: Array<string> }) {
           handlerPath: trimmedPath,
         },
       })
+      await invalidateProjectConfig(project.id)
       toast.success("Trusted domain added.")
       setBaseUrl("")
       setHandlerPath("/handler")
@@ -432,7 +444,7 @@ function AddDomainForm({ existingIds }: { existingIds: Array<string> }) {
 
 function DangerZoneCard() {
   const adminApp = useAdminApp()
-  const project = adminApp.useProject()
+  const project = useAdminProject(adminApp)
   const navigate = useNavigate()
 
   const [open, setOpen] = useState(false)

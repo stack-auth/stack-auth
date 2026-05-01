@@ -1,8 +1,17 @@
 import * as React from "react"
 import { useUser } from "@stackframe/tanstack-start"
-import { useParams } from "@tanstack/react-router"
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors"
-import type { StackAdminApp } from "@stackframe/tanstack-start"
+import type { AdminProject, StackAdminApp } from "@stackframe/tanstack-start"
+
+import { AdminAppContext } from "@/lib/stack/admin-app-context"
+import {
+  useAdminProjectConfig,
+  useAdminProjectQuery,
+  useOwnedProjectsQuery,
+  useProjectQueryWarmup,
+} from "@/lib/stack/react-query"
+
+export { useAdminApp, useAdminAppIfExists, useProjectId } from "@/lib/stack/admin-app-context"
 
 /**
  * Context wiring for the per-project `StackAdminApp` instance.
@@ -13,36 +22,88 @@ import type { StackAdminApp } from "@stackframe/tanstack-start"
  * re-deriving it.
  */
 
-const AdminAppContext = React.createContext<StackAdminApp<false> | null>(null)
-
 type AdminAppProviderProps = {
   projectId: string,
   children: React.ReactNode,
+  fallback?: React.ReactNode,
 }
 
-export function AdminAppProvider({ projectId, children }: AdminAppProviderProps) {
+export function AdminAppProvider({ projectId, children, fallback = null }: AdminAppProviderProps) {
   const user = useUser({ or: "redirect", projectIdMustMatch: "internal" })
-  const projects = user.useOwnedProjects()
+  const { data: projects } = useOwnedProjectsQuery(user)
+  if (projects == null) {
+    return fallback
+  }
   const project = projects.find((p) => p.id === projectId)
     ?? throwErr(`Project ${projectId} not found among the current user's owned projects.`)
 
   return (
     <AdminAppContext.Provider value={project.app}>
-      {children}
+      <AdminProjectPrefetch fallback={fallback}>{children}</AdminProjectPrefetch>
     </AdminAppContext.Provider>
   )
 }
 
-export function useAdminApp(): StackAdminApp<false> {
-  const ctx = React.useContext(AdminAppContext)
-  return ctx ?? throwErr("useAdminApp() must be called inside an <AdminAppProvider>.")
+function AdminProjectPrefetch({
+  children,
+  fallback,
+}: {
+  children: React.ReactNode,
+  fallback: React.ReactNode,
+}) {
+  const adminApp = React.useContext(AdminAppContext)
+    ?? throwErr("AdminProjectPrefetch must be rendered inside an <AdminAppContext.Provider>.")
+  const projectQuery = useAdminProjectQuery(adminApp)
+  const project = projectQuery.data
+  if (projectQuery.error != null) {
+    throw projectQuery.error
+  }
+  if (project == null) {
+    return fallback
+  }
+
+  return (
+    <AdminProjectConfigPrefetch adminApp={adminApp} project={project} fallback={fallback}>
+      {children}
+    </AdminProjectConfigPrefetch>
+  )
 }
 
-export function useAdminAppIfExists(): StackAdminApp<false> | null {
-  return React.useContext(AdminAppContext)
+function AdminProjectConfigPrefetch({
+  adminApp,
+  project,
+  fallback,
+  children,
+}: {
+  adminApp: StackAdminApp<false>,
+  project: AdminProject,
+  fallback: React.ReactNode,
+  children: React.ReactNode,
+}) {
+  const configQuery = useAdminProjectConfig(project)
+  if (configQuery.error != null) {
+    throw configQuery.error
+  }
+  if (configQuery.data == null) {
+    return fallback
+  }
+
+  return (
+    <ProjectQueryWarmup adminApp={adminApp} project={project}>
+      {children}
+    </ProjectQueryWarmup>
+  )
 }
 
-export function useProjectId(): string {
-  const params = useParams({ from: "/_app/projects/$projectId" })
-  return params.projectId
+function ProjectQueryWarmup({
+  adminApp,
+  project,
+  children,
+}: {
+  adminApp: StackAdminApp<false>,
+  project: AdminProject,
+  children: React.ReactNode,
+}) {
+  useProjectQueryWarmup(adminApp, project)
+  return children
 }

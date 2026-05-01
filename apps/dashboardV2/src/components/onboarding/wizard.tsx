@@ -18,6 +18,7 @@ import type { AdminOwnedProject } from "@stackframe/tanstack-start"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Spinner } from "@/components/ui/spinner"
+import { useCurrentUserTeamsQuery } from "@/lib/stack/react-query"
 
 export type StepId =
   | "basics"
@@ -41,7 +42,7 @@ export function ProjectOnboardingWizard() {
 
   // basics
   const [displayName, setDisplayName] = useState("")
-  const teams = user.useTeams()
+  const teams = useCurrentUserTeamsQuery(user).data ?? []
   const [teamId, setTeamId] = useState<string | null>(() => teams[0]?.id ?? null)
   useEffect(() => {
     if (teamId == null && teams.length > 0) {

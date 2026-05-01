@@ -18,6 +18,12 @@ const tanstackStartSourcePath = fileURLToPath(
 const tanstackStartSourceRoot = fileURLToPath(
   new URL("../../packages/tanstack-start/src/", import.meta.url),
 )
+const tanstackStartServerContextDefaultSourcePath = fileURLToPath(
+  new URL("../../packages/tanstack-start/src/tanstack-start-server-context.default.ts", import.meta.url),
+)
+const tanstackStartServerContextServerSourcePath = fileURLToPath(
+  new URL("../../packages/tanstack-start/src/tanstack-start-server-context.server.ts", import.meta.url),
+)
 const agentDevtoolsReactSourcePath = fileURLToPath(
   new URL("../../../../tanstack-start-dev-tool-mcp/packages/react/src/index.tsx", import.meta.url),
 )
@@ -97,6 +103,24 @@ function tanStackStartServerBrowserStub(): Plugin {
   }
 }
 
+function stackTanStackStartSourceExports(): Plugin {
+  const serverContextExport = "@stackframe/tanstack-start/tanstack-start-server-context"
+
+  return {
+    name: "stack-tanstack-start-source-exports",
+    enforce: "pre",
+    resolveId(source, _importer, options) {
+      if (source !== serverContextExport) {
+        return null
+      }
+
+      return options.ssr
+        ? tanstackStartServerContextServerSourcePath
+        : tanstackStartServerContextDefaultSourcePath
+    },
+  }
+}
+
 const config = defineConfig({
   // Use Vite's default `VITE_` prefix only. We deliberately do NOT expose
   // `STACK_*` to the client bundle — that prefix is reserved for server-only
@@ -121,11 +145,11 @@ const config = defineConfig({
   },
   resolve: {
     dedupe: ["react", "react-dom"],
-    alias: {
-      "@stackframe/tanstack-start": tanstackStartSourcePath,
-      "@barreloflube/tanstack-start-dev-tool-mcp-react": agentDevtoolsReactSourcePath,
-      "@barreloflube/tanstack-start-dev-tool-mcp-shared": agentDevtoolsSharedSourcePath,
-    },
+    alias: [
+      { find: /^@stackframe\/tanstack-start$/, replacement: tanstackStartSourcePath },
+      { find: /^@barreloflube\/tanstack-start-dev-tool-mcp-react$/, replacement: agentDevtoolsReactSourcePath },
+      { find: /^@barreloflube\/tanstack-start-dev-tool-mcp-shared$/, replacement: agentDevtoolsSharedSourcePath },
+    ],
   },
   server: {
     fs: {
@@ -134,6 +158,7 @@ const config = defineConfig({
   },
   plugins: [
     stackSdkSourceTransforms(),
+    stackTanStackStartSourceExports(),
     tanStackStartServerBrowserStub(),
     devtools(),
     nitro(),

@@ -61,7 +61,16 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import {
+  ProjectPage,
+  ProjectPageHeader,
+  ProjectPageMain,
+} from "@/components/console/project-page"
 import { useAdminApp } from "@/lib/stack/admin-app"
+import {
+  useInternalApiKeysQuery,
+  useStackAuthQueryInvalidation,
+} from "@/lib/stack/react-query"
 
 export const Route = createFileRoute("/_app/projects/$projectId/api-keys")({
   component: ApiKeysPage,
@@ -85,7 +94,8 @@ function formatDate(d: Date): string {
 
 function ApiKeysPage() {
   const adminApp = useAdminApp()
-  const apiKeys = adminApp.useInternalApiKeys()
+  const apiKeysQuery = useInternalApiKeysQuery(adminApp)
+  const apiKeys = apiKeysQuery.data ?? []
 
   const [createOpen, setCreateOpen] = useState(false)
 
@@ -98,19 +108,17 @@ function ApiKeysPage() {
   )
 
   return (
-    <div className="flex flex-col">
-      <header className="border-b">
-        <div className="mx-auto flex h-[52px] w-full max-w-5xl items-center justify-between gap-3 px-6">
-          <h1 className="font-heading text-base font-semibold tracking-tight">
-            API keys
-          </h1>
+    <ProjectPage>
+      <ProjectPageHeader
+        title="API keys"
+        actions={(
           <Button onClick={() => setCreateOpen(true)}>
             <PlusIcon /> Create key
           </Button>
-        </div>
-      </header>
+        )}
+      />
 
-      <main className="mx-auto w-full max-w-5xl flex-1 space-y-6 px-6 py-8">
+      <ProjectPageMain className="space-y-6">
         {sorted.length === 0 ? (
           <Empty>
             <EmptyHeader>
@@ -150,13 +158,13 @@ function ApiKeysPage() {
             </Table>
           </div>
         )}
-      </main>
+      </ProjectPageMain>
 
       <CreateApiKeyDialog
         open={createOpen}
         onOpenChange={setCreateOpen}
       />
-    </div>
+    </ProjectPage>
   )
 }
 
@@ -257,7 +265,7 @@ function RevokeApiKeyDialog({
 }: {
   apiKey: InternalApiKey,
   open: boolean,
-  onOpenChange: (open: boolean) => void,
+  onOpenChange: (nextOpen: boolean) => void,
 }) {
   const handleRevoke = async () => {
     await apiKey.revoke()
@@ -327,9 +335,10 @@ function CreateApiKeyDialog({
   onOpenChange,
 }: {
   open: boolean,
-  onOpenChange: (open: boolean) => void,
+  onOpenChange: (nextOpen: boolean) => void,
 }) {
   const adminApp = useAdminApp()
+  const { invalidateInternalApiKeys } = useStackAuthQueryInvalidation()
   const [form, setForm] = useState<FormState>(defaultFormState)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -378,6 +387,7 @@ function CreateApiKeyDialog({
         hasSecretServerKey: form.hasSecret,
         hasSuperSecretAdminKey: form.hasSuperSecret,
       })
+      await invalidateInternalApiKeys(adminApp.projectId)
       setCreated(result)
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to create API key.")

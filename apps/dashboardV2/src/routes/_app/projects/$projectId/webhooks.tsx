@@ -3,7 +3,7 @@
  *
  * Implementation choice: a thin custom UI built directly on top of the Svix
  * Management API. We obtain a scoped Svix token and base URL from
- * `adminApp.useSvixToken()` (see
+ * `useSvixTokenQuery()` (see
  * `packages/template/src/lib/stack-app/apps/interfaces/admin-app.ts`) and
  * authenticate with `Authorization: Bearer ${token}`. The Svix `app_id`
  * matches the Stack Auth project id (verified against the legacy webhooks
@@ -77,12 +77,11 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
-  Sheet,
-  SheetContent,
   SheetDescription,
   SheetHeader,
   SheetTitle,
 } from "@/components/ui/sheet"
+import { ProjectDetailSheet } from "@/components/console/project-detail-sheet"
 import {
   Table,
   TableBody,
@@ -92,7 +91,15 @@ import {
   TableRow,
 } from "@/components/ui/table"
 import { Textarea } from "@/components/ui/textarea"
+import {
+  ProjectPage,
+  ProjectPageHeader,
+  ProjectPageMain,
+} from "@/components/console/project-page"
+import { cn } from "@/lib/utils"
 import { useAdminApp } from "@/lib/stack/admin-app"
+import { useSvixTokenQuery } from "@/lib/stack/react-query"
+import { useTableKeyboardSelection } from "@/hooks/use-table-keyboard-selection"
 
 export const Route = createFileRoute("/_app/projects/$projectId/webhooks")({
   component: WebhooksPage,
@@ -102,44 +109,55 @@ const WEBHOOKS_QUERY_GC_TIME_MS = 2 * 60 * 1000
 
 // -------------------------------------------------------------------- types --
 
+function WebhooksSkeleton() {
+  return (
+    <ProjectPage>
+      <PageHeader onCreate={null} />
+      <ProjectPageMain className="space-y-6">
+        <TableSkeleton rows={4} cols={5} />
+      </ProjectPageMain>
+    </ProjectPage>
+  )
+}
+
 type SvixEndpoint = {
-  id: string,
-  url: string,
-  description: string,
-  disabled: boolean,
-  filterTypes: Array<string> | null,
-  createdAt: string,
-  updatedAt: string,
+  id: string
+  url: string
+  description: string
+  disabled: boolean
+  filterTypes: Array<string> | null
+  createdAt: string
+  updatedAt: string
 }
 
 type SvixListResponse<T> = {
-  data: Array<T>,
-  iterator: string | null,
-  done: boolean,
+  data: Array<T>
+  iterator: string | null
+  done: boolean
 }
 
 type SvixEndpointRaw = {
-  id: string,
-  url: string,
-  description?: string,
-  disabled?: boolean,
-  filterTypes?: Array<string> | null,
-  createdAt: string,
-  updatedAt: string,
+  id: string
+  url: string
+  description?: string
+  disabled?: boolean
+  filterTypes?: Array<string> | null
+  createdAt: string
+  updatedAt: string
 }
 
 type SvixMessageAttempt = {
-  id: string,
-  status: number, // 0 success, 1 pending, 2 failing, 3 sending
-  responseStatusCode: number,
-  timestamp: string,
-  msgId: string,
+  id: string
+  status: number // 0 success, 1 pending, 2 failing, 3 sending
+  responseStatusCode: number
+  timestamp: string
+  msgId: string
 }
 
 type SvixError = {
-  status: number,
-  body: unknown,
-  message: string,
+  status: number
+  body: unknown
+  message: string
 }
 
 // -------------------------------------------------------- HTTP plumbing -----
@@ -151,18 +169,18 @@ function buildSvixUrl(baseUrl: string, path: string): string {
 }
 
 async function svixFetch<T>(args: {
-  baseUrl: string,
-  token: string,
-  method: "GET" | "POST" | "PATCH" | "DELETE",
-  path: string,
-  body?: unknown,
+  baseUrl: string
+  token: string
+  method: "GET" | "POST" | "PATCH" | "DELETE"
+  path: string
+  body?: unknown
 }): Promise<T> {
   const res = await fetch(buildSvixUrl(args.baseUrl, args.path), {
     method: args.method,
     headers: {
-      "Authorization": `Bearer ${args.token}`,
+      Authorization: `Bearer ${args.token}`,
       "Content-Type": "application/json",
-      "Accept": "application/json",
+      Accept: "application/json",
     },
     body: args.body == null ? undefined : JSON.stringify(args.body),
   })
@@ -180,10 +198,12 @@ async function svixFetch<T>(args: {
       status: res.status,
       body: parsed,
       message:
-        (parsed != null && typeof parsed === "object" && "detail" in parsed && typeof (parsed).detail === "string"
+        (parsed != null &&
+        typeof parsed === "object" &&
+        "detail" in parsed &&
+        typeof parsed.detail === "string"
           ? (parsed as { detail: string }).detail
-          : null)
-        ?? `Svix request failed: ${res.status} ${res.statusText}`,
+          : null) ?? `Svix request failed: ${res.status} ${res.statusText}`,
     }
     throw new Error(err.message)
   }
@@ -194,7 +214,7 @@ async function svixFetch<T>(args: {
     // call this where the type is `void`/`undefined`, so this is safe.
     return undefined as T
   }
-  return await res.json() as T
+  return (await res.json()) as T
 }
 
 function normalizeEndpoint(e: SvixEndpointRaw): SvixEndpoint {
@@ -214,31 +234,57 @@ function normalizeEndpoint(e: SvixEndpointRaw): SvixEndpoint {
 function WebhooksPage() {
   const adminApp = useAdminApp()
   const projectId = adminApp.projectId
-  const svixToken = adminApp.useSvixToken()
+  const svixTokenQuery = useSvixTokenQuery(adminApp)
+  const svixToken = svixTokenQuery.data
 
-  const tokenError = svixToken.url == null || svixToken.url.trim() === ""
-    ? "Svix is not configured for this deployment. The dashboard could not obtain a Svix server URL."
-    : svixToken.token.trim() === ""
-      ? "Stack Auth could not issue a Svix token for this project."
-      : null
+  if (svixTokenQuery.isError) {
+    return (
+      <ProjectPage>
+        <PageHeader onCreate={null} />
+        <ProjectPageMain className="space-y-6">
+          <Alert variant="destructive">
+            <WarningCircleIcon />
+            <AlertTitle>Webhooks are unavailable</AlertTitle>
+            <AlertDescription>
+              {svixTokenQuery.error instanceof Error
+                ? svixTokenQuery.error.message
+                : "Failed to load Svix token."}
+            </AlertDescription>
+          </Alert>
+        </ProjectPageMain>
+      </ProjectPage>
+    )
+  }
+
+  if (svixToken == null) {
+    return <WebhooksSkeleton />
+  }
+
+  const tokenError =
+    svixToken.url == null || svixToken.url.trim() === ""
+      ? "Svix is not configured for this deployment. The dashboard could not obtain a Svix server URL."
+      : svixToken.token.trim() === ""
+        ? "Stack Auth could not issue a Svix token for this project."
+        : null
 
   if (tokenError != null) {
     return (
-      <div className="flex flex-col">
+      <ProjectPage>
         <PageHeader onCreate={null} />
-        <main className="mx-auto w-full max-w-5xl flex-1 space-y-6 px-6 py-8">
+        <ProjectPageMain className="space-y-6">
           <Alert variant="destructive">
             <WarningCircleIcon />
             <AlertTitle>Webhooks are unavailable</AlertTitle>
             <AlertDescription>{tokenError}</AlertDescription>
           </Alert>
-        </main>
-      </div>
+        </ProjectPageMain>
+      </ProjectPage>
     )
   }
 
   // Refined, non-null. Captured locally so closures don't need to re-narrow.
-  const baseUrl = svixToken.url ?? throwErr("svixToken.url unexpectedly null after guard")
+  const baseUrl =
+    svixToken.url ?? throwErr("svixToken.url unexpectedly null after guard")
   return (
     <WebhooksPageInner
       projectId={projectId}
@@ -253,11 +299,14 @@ function WebhooksPageInner({
   baseUrl,
   token,
 }: {
-  projectId: string,
-  baseUrl: string,
-  token: string,
+  projectId: string
+  baseUrl: string
+  token: string
 }) {
   const [createOpen, setCreateOpen] = useState(false)
+  const [selectedEndpointId, setSelectedEndpointId] = useState<string | null>(
+    null
+  )
 
   const endpointsQuery = useQuery({
     queryKey: ["svix-endpoints", projectId],
@@ -273,11 +322,18 @@ function WebhooksPageInner({
     gcTime: WEBHOOKS_QUERY_GC_TIME_MS,
   })
 
+  useTableKeyboardSelection({
+    items: endpointsQuery.data ?? [],
+    getItemKey: (endpoint) => endpoint.id,
+    selectedItemKey: selectedEndpointId,
+    onSelectItemKey: setSelectedEndpointId,
+  })
+
   return (
-    <div className="flex flex-col">
+    <ProjectPage>
       <PageHeader onCreate={() => setCreateOpen(true)} />
 
-      <main className="mx-auto w-full max-w-5xl flex-1 space-y-6 px-6 py-8">
+      <ProjectPageMain className="space-y-6">
         {endpointsQuery.isError ? (
           <Alert variant="destructive">
             <WarningCircleIcon />
@@ -290,9 +346,7 @@ function WebhooksPageInner({
           </Alert>
         ) : null}
 
-        {endpointsQuery.isLoading ? (
-          <TableSkeleton rows={4} cols={5} />
-        ) : null}
+        {endpointsQuery.isLoading ? <TableSkeleton rows={4} cols={5} /> : null}
 
         {endpointsQuery.data != null ? (
           endpointsQuery.data.length === 0 ? (
@@ -333,6 +387,11 @@ function WebhooksPageInner({
                       projectId={projectId}
                       baseUrl={baseUrl}
                       token={token}
+                      selected={selectedEndpointId === endpoint.id}
+                      onOpenDetail={() => setSelectedEndpointId(endpoint.id)}
+                      onDetailOpenChange={(nextOpen) => {
+                        if (!nextOpen) setSelectedEndpointId(null)
+                      }}
                     />
                   ))}
                 </TableBody>
@@ -340,7 +399,7 @@ function WebhooksPageInner({
             </div>
           )
         ) : null}
-      </main>
+      </ProjectPageMain>
 
       <CreateEndpointDialog
         open={createOpen}
@@ -349,28 +408,22 @@ function WebhooksPageInner({
         baseUrl={baseUrl}
         token={token}
       />
-    </div>
+    </ProjectPage>
   )
 }
 
-function PageHeader({
-  onCreate,
-}: {
-  onCreate: (() => void) | null,
-}) {
+function PageHeader({ onCreate }: { onCreate: (() => void) | null }) {
   return (
-    <header className="border-b">
-      <div className="mx-auto flex h-[52px] w-full max-w-5xl items-center justify-between gap-3 px-6">
-        <h1 className="font-heading text-base font-semibold tracking-tight">
-          Webhooks
-        </h1>
-        {onCreate != null ? (
+    <ProjectPageHeader
+      title="Webhooks"
+      actions={
+        onCreate != null ? (
           <Button onClick={onCreate}>
             <PlusIcon /> New endpoint
           </Button>
-        ) : null}
-      </div>
-    </header>
+        ) : null
+      }
+    />
   )
 }
 
@@ -381,13 +434,18 @@ function EndpointRow({
   projectId,
   baseUrl,
   token,
+  selected,
+  onOpenDetail,
+  onDetailOpenChange,
 }: {
-  endpoint: SvixEndpoint,
-  projectId: string,
-  baseUrl: string,
-  token: string,
+  endpoint: SvixEndpoint
+  projectId: string
+  baseUrl: string
+  token: string
+  selected: boolean
+  onOpenDetail: () => void
+  onDetailOpenChange: (nextOpen: boolean) => void
 }) {
-  const [detailOpen, setDetailOpen] = useState(false)
   const [editOpen, setEditOpen] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const adminApp = useAdminApp()
@@ -407,18 +465,26 @@ function EndpointRow({
     }
   }
 
-  const eventTypeLabel = endpoint.filterTypes == null || endpoint.filterTypes.length === 0
-    ? "All events"
-    : `${endpoint.filterTypes.length} type${endpoint.filterTypes.length === 1 ? "" : "s"}`
+  const eventTypeLabel =
+    endpoint.filterTypes == null || endpoint.filterTypes.length === 0
+      ? "All events"
+      : `${endpoint.filterTypes.length} type${endpoint.filterTypes.length === 1 ? "" : "s"}`
 
   return (
     <>
-      <TableRow className={endpoint.disabled ? "opacity-60" : undefined}>
+      <TableRow
+        className={cn(
+          "transition-colors hover:bg-muted/50 hover:transition-none",
+          endpoint.disabled && "opacity-60",
+          selected && "bg-muted/70"
+        )}
+        aria-current={selected ? "true" : undefined}
+      >
         <TableCell>
           <button
             type="button"
-            onClick={() => setDetailOpen(true)}
-            className="text-left text-xs font-medium hover:underline transition-colors hover:transition-none"
+            onClick={onOpenDetail}
+            className="text-left text-xs font-medium transition-colors hover:underline hover:transition-none"
           >
             {endpoint.url}
           </button>
@@ -454,7 +520,7 @@ function EndpointRow({
               <DotsThreeIcon />
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
-              <DropdownMenuItem onClick={() => setDetailOpen(true)}>
+              <DropdownMenuItem onClick={onOpenDetail}>
                 View details
               </DropdownMenuItem>
               <DropdownMenuItem onClick={handleSendTest}>
@@ -479,8 +545,8 @@ function EndpointRow({
         projectId={projectId}
         baseUrl={baseUrl}
         token={token}
-        open={detailOpen}
-        onOpenChange={setDetailOpen}
+        open={selected}
+        onOpenChange={onDetailOpenChange}
       />
       <EditEndpointDialog
         endpoint={endpoint}
@@ -516,8 +582,8 @@ function EndpointRow({
 // ------------------------------------------------------------ create dialog --
 
 type CreateFormState = {
-  url: string,
-  description: string,
+  url: string
+  description: string
 }
 
 function defaultCreateForm(): CreateFormState {
@@ -541,11 +607,11 @@ function CreateEndpointDialog({
   baseUrl,
   token,
 }: {
-  open: boolean,
-  onOpenChange: (open: boolean) => void,
-  projectId: string,
-  baseUrl: string,
-  token: string,
+  open: boolean
+  onOpenChange: (nextOpen: boolean) => void
+  projectId: string
+  baseUrl: string
+  token: string
 }) {
   const queryClient = useQueryClient()
   const [form, setForm] = useState<CreateFormState>(defaultCreateForm)
@@ -560,12 +626,15 @@ function CreateEndpointDialog({
         path: `/api/v1/app/${encodeURIComponent(projectId)}/endpoint/`,
         body: {
           url: values.url,
-          description: values.description.length > 0 ? values.description : undefined,
+          description:
+            values.description.length > 0 ? values.description : undefined,
         },
       })
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["svix-endpoints", projectId] })
+      await queryClient.invalidateQueries({
+        queryKey: ["svix-endpoints", projectId],
+      })
     },
   })
 
@@ -599,7 +668,9 @@ function CreateEndpointDialog({
       })
       handleClose(false)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to create endpoint.")
+      setError(
+        err instanceof Error ? err.message : "Failed to create endpoint."
+      )
     }
   }
 
@@ -631,11 +702,15 @@ function CreateEndpointDialog({
             </div>
 
             <div className="space-y-1.5">
-              <Label htmlFor="webhook-description">Description (optional)</Label>
+              <Label htmlFor="webhook-description">
+                Description (optional)
+              </Label>
               <Textarea
                 id="webhook-description"
                 value={form.description}
-                onChange={(e) => setForm({ ...form, description: e.target.value })}
+                onChange={(e) =>
+                  setForm({ ...form, description: e.target.value })
+                }
                 placeholder="What is this endpoint used for?"
               />
             </div>
@@ -685,12 +760,12 @@ function EditEndpointDialog({
   open,
   onOpenChange,
 }: {
-  endpoint: SvixEndpoint,
-  projectId: string,
-  baseUrl: string,
-  token: string,
-  open: boolean,
-  onOpenChange: (open: boolean) => void,
+  endpoint: SvixEndpoint
+  projectId: string
+  baseUrl: string
+  token: string
+  open: boolean
+  onOpenChange: (nextOpen: boolean) => void
 }) {
   const queryClient = useQueryClient()
   const [description, setDescription] = useState(endpoint.description)
@@ -698,7 +773,7 @@ function EditEndpointDialog({
   const [error, setError] = useState<string | null>(null)
 
   const editMutation = useMutation({
-    mutationFn: async (values: { url: string, description: string }) => {
+    mutationFn: async (values: { url: string; description: string }) => {
       return await svixFetch<SvixEndpointRaw>({
         baseUrl,
         token,
@@ -711,7 +786,9 @@ function EditEndpointDialog({
       })
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["svix-endpoints", projectId] })
+      await queryClient.invalidateQueries({
+        queryKey: ["svix-endpoints", projectId],
+      })
     },
   })
 
@@ -733,10 +810,15 @@ function EditEndpointDialog({
       return
     }
     try {
-      await editMutation.mutateAsync({ url: url.trim(), description: description.trim() })
+      await editMutation.mutateAsync({
+        url: url.trim(),
+        description: description.trim(),
+      })
       handleClose(false)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to update endpoint.")
+      setError(
+        err instanceof Error ? err.message : "Failed to update endpoint."
+      )
     }
   }
 
@@ -770,7 +852,9 @@ function EditEndpointDialog({
                 onChange={(e) => setDescription(e.target.value)}
               />
             </div>
-            {error != null ? <p className="text-xs text-destructive">{error}</p> : null}
+            {error != null ? (
+              <p className="text-xs text-destructive">{error}</p>
+            ) : null}
           </div>
 
           <DialogFooter>
@@ -802,12 +886,12 @@ function DeleteEndpointDialog({
   open,
   onOpenChange,
 }: {
-  endpoint: SvixEndpoint,
-  projectId: string,
-  baseUrl: string,
-  token: string,
-  open: boolean,
-  onOpenChange: (open: boolean) => void,
+  endpoint: SvixEndpoint
+  projectId: string
+  baseUrl: string
+  token: string
+  open: boolean
+  onOpenChange: (nextOpen: boolean) => void
 }) {
   const queryClient = useQueryClient()
   const [error, setError] = useState<string | null>(null)
@@ -822,7 +906,9 @@ function DeleteEndpointDialog({
       })
     },
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: ["svix-endpoints", projectId] })
+      await queryClient.invalidateQueries({
+        queryKey: ["svix-endpoints", projectId],
+      })
     },
   })
 
@@ -832,7 +918,9 @@ function DeleteEndpointDialog({
       await deleteMutation.mutateAsync()
       onOpenChange(false)
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete endpoint.")
+      setError(
+        err instanceof Error ? err.message : "Failed to delete endpoint."
+      )
     }
   }
 
@@ -842,8 +930,7 @@ function DeleteEndpointDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>Delete this endpoint?</AlertDialogTitle>
           <AlertDialogDescription>
-            <span className="font-medium text-foreground">{endpoint.url}</span>
-            {" "}
+            <span className="font-medium text-foreground">{endpoint.url}</span>{" "}
             will stop receiving events immediately. This cannot be undone.
           </AlertDialogDescription>
         </AlertDialogHeader>
@@ -871,39 +958,43 @@ function EndpointDetailSheet({
   open,
   onOpenChange,
 }: {
-  endpoint: SvixEndpoint,
-  projectId: string,
-  baseUrl: string,
-  token: string,
-  open: boolean,
-  onOpenChange: (open: boolean) => void,
+  endpoint: SvixEndpoint
+  projectId: string
+  baseUrl: string
+  token: string
+  open: boolean
+  onOpenChange: (nextOpen: boolean) => void
 }) {
   return (
-    <Sheet open={open} onOpenChange={onOpenChange}>
-      <SheetContent className="w-full sm:max-w-xl gap-0 overflow-y-auto">
-        <SheetHeader>
-          <SheetTitle className="text-lg">{endpoint.url}</SheetTitle>
-          <SheetDescription>
-            {endpoint.description.length > 0 ? endpoint.description : "No description"}
-          </SheetDescription>
-        </SheetHeader>
+    <ProjectDetailSheet
+      open={open}
+      onOpenChange={onOpenChange}
+      className="gap-0 overflow-y-auto"
+    >
+      <SheetHeader>
+        <SheetTitle className="text-lg">{endpoint.url}</SheetTitle>
+        <SheetDescription>
+          {endpoint.description.length > 0
+            ? endpoint.description
+            : "No description"}
+        </SheetDescription>
+      </SheetHeader>
 
-        <div className="space-y-6 px-6 pb-6">
-          <SigningSecretSection
-            endpoint={endpoint}
-            projectId={projectId}
-            baseUrl={baseUrl}
-            token={token}
-          />
-          <RecentDeliveriesSection
-            endpoint={endpoint}
-            projectId={projectId}
-            baseUrl={baseUrl}
-            token={token}
-          />
-        </div>
-      </SheetContent>
-    </Sheet>
+      <div className="space-y-6 px-6 pb-6">
+        <SigningSecretSection
+          endpoint={endpoint}
+          projectId={projectId}
+          baseUrl={baseUrl}
+          token={token}
+        />
+        <RecentDeliveriesSection
+          endpoint={endpoint}
+          projectId={projectId}
+          baseUrl={baseUrl}
+          token={token}
+        />
+      </div>
+    </ProjectDetailSheet>
   )
 }
 
@@ -913,10 +1004,10 @@ function SigningSecretSection({
   baseUrl,
   token,
 }: {
-  endpoint: SvixEndpoint,
-  projectId: string,
-  baseUrl: string,
-  token: string,
+  endpoint: SvixEndpoint
+  projectId: string
+  baseUrl: string
+  token: string
 }) {
   const [revealed, setRevealed] = useState(false)
   const [copied, setCopied] = useState(false)
@@ -946,7 +1037,7 @@ function SigningSecretSection({
   return (
     <section className="space-y-2">
       <div className="flex items-center justify-between">
-        <h3 className="font-heading text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+        <h3 className="font-heading text-xs font-semibold tracking-[0.18em] text-muted-foreground uppercase">
           Signing secret
         </h3>
       </div>
@@ -954,20 +1045,24 @@ function SigningSecretSection({
         Use this secret to verify the webhook signature on incoming requests.
       </p>
       <div className="flex items-center gap-1.5 rounded-md border bg-muted/30 px-2 py-1.5">
-        <code className="flex-1 truncate font-mono text-[11px]">
-          {!revealed
-            ? "•".repeat(40)
-            : secretQuery.isLoading
-              ? "Loading…"
+        {revealed && secretQuery.isLoading ? (
+          <Skeleton className="h-4 flex-1" />
+        ) : (
+          <code className="flex-1 truncate font-mono text-[11px]">
+            {!revealed
+              ? "•".repeat(40)
               : secretQuery.isError
                 ? "Failed to load"
-                : secretQuery.data ?? ""}
-        </code>
+                : (secretQuery.data ?? "")}
+          </code>
+        )}
         <Button
           type="button"
           variant="ghost"
           size="icon-sm"
-          aria-label={revealed ? "Hide signing secret" : "Reveal signing secret"}
+          aria-label={
+            revealed ? "Hide signing secret" : "Reveal signing secret"
+          }
           onClick={() => setRevealed(!revealed)}
         >
           {revealed ? <EyeSlashIcon /> : <EyeIcon />}
@@ -988,7 +1083,9 @@ function SigningSecretSection({
           <WarningCircleIcon />
           <AlertTitle>Could not load signing secret</AlertTitle>
           <AlertDescription>
-            {secretQuery.error instanceof Error ? secretQuery.error.message : "Unknown error"}
+            {secretQuery.error instanceof Error
+              ? secretQuery.error.message
+              : "Unknown error"}
           </AlertDescription>
         </Alert>
       ) : null}
@@ -996,13 +1093,21 @@ function SigningSecretSection({
   )
 }
 
-function attemptStatusLabel(status: number): { label: string, variant: "secondary" | "destructive" | "outline" } {
+function attemptStatusLabel(status: number): {
+  label: string
+  variant: "secondary" | "destructive" | "outline"
+} {
   switch (status) {
-    case 0: return { label: "Success", variant: "secondary" }
-    case 1: return { label: "Pending", variant: "outline" }
-    case 2: return { label: "Failing", variant: "destructive" }
-    case 3: return { label: "Sending", variant: "outline" }
-    default: return { label: `Unknown (${status})`, variant: "outline" }
+    case 0:
+      return { label: "Success", variant: "secondary" }
+    case 1:
+      return { label: "Pending", variant: "outline" }
+    case 2:
+      return { label: "Failing", variant: "destructive" }
+    case 3:
+      return { label: "Sending", variant: "outline" }
+    default:
+      return { label: `Unknown (${status})`, variant: "outline" }
   }
 }
 
@@ -1012,10 +1117,10 @@ function RecentDeliveriesSection({
   baseUrl,
   token,
 }: {
-  endpoint: SvixEndpoint,
-  projectId: string,
-  baseUrl: string,
-  token: string,
+  endpoint: SvixEndpoint
+  projectId: string
+  baseUrl: string
+  token: string
 }) {
   const attemptsQuery = useQuery({
     queryKey: ["svix-message-attempts", projectId, endpoint.id],
@@ -1033,18 +1138,18 @@ function RecentDeliveriesSection({
 
   return (
     <section className="space-y-2">
-      <h3 className="font-heading text-xs font-semibold uppercase tracking-[0.18em] text-muted-foreground">
+      <h3 className="font-heading text-xs font-semibold tracking-[0.18em] text-muted-foreground uppercase">
         Recent deliveries
       </h3>
-      {attemptsQuery.isLoading ? (
-        <TableSkeleton rows={5} cols={3} />
-      ) : null}
+      {attemptsQuery.isLoading ? <TableSkeleton rows={5} cols={3} /> : null}
       {attemptsQuery.isError ? (
         <Alert variant="destructive">
           <WarningCircleIcon />
           <AlertTitle>Could not load delivery attempts</AlertTitle>
           <AlertDescription>
-            {attemptsQuery.error instanceof Error ? attemptsQuery.error.message : "Unknown error"}
+            {attemptsQuery.error instanceof Error
+              ? attemptsQuery.error.message
+              : "Unknown error"}
           </AlertDescription>
         </Alert>
       ) : null}
@@ -1089,7 +1194,7 @@ function RecentDeliveriesSection({
   )
 }
 
-function TableSkeleton({ rows, cols }: { rows: number, cols: number }) {
+function TableSkeleton({ rows, cols }: { rows: number; cols: number }) {
   return (
     <div className="rounded-lg border">
       <Table>

@@ -28,11 +28,12 @@ function AppLayout() {
       defaultOpen
       style={
         {
-          "--sidebar-width-icon": "3.25rem",
+          "--app-sidebar-width": "3.25rem",
+          "--sidebar-width-icon": "var(--app-sidebar-width)",
         } as React.CSSProperties
       }
     >
-      <div className="flex min-h-svh w-full ps-(--sidebar-width-icon)">
+      <div className="flex min-h-svh w-full ps-(--app-sidebar-width)">
         <AppSidebar />
         <SidebarInset className="flex min-w-0 flex-1 flex-col">
           <Suspense fallback={<AppSuspenseFallback />}>

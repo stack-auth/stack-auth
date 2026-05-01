@@ -4,6 +4,7 @@ import type { AdminOwnedProject } from "@stackframe/tanstack-start"
 
 import { cn } from "@/lib/utils"
 import { useEmailThemeStep } from "@/hooks/onboarding/use-email-theme-step"
+import { useEmailPreviewQuery } from "@/lib/stack/react-query"
 
 type EmailThemeStepProps = {
   project: AdminOwnedProject,
@@ -102,10 +103,10 @@ function ThemePreview({
   project: AdminOwnedProject,
   themeId: string,
 }) {
-  const previewHtml = project.app.useEmailPreview({
+  const previewHtml = useEmailPreviewQuery({
     themeId,
     templateTsxSource: previewTemplateSource,
-  })
+  }, project.app).data ?? ""
 
   return (
     <iframe
@@ -116,4 +117,3 @@ function ThemePreview({
     />
   )
 }
-

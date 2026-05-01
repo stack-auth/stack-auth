@@ -20,7 +20,6 @@ import { Route as AppProjectsProjectIdWebhooksRouteImport } from './routes/_app/
 import { Route as AppProjectsProjectIdUsersRouteImport } from './routes/_app/projects/$projectId/users'
 import { Route as AppProjectsProjectIdTeamsRouteImport } from './routes/_app/projects/$projectId/teams'
 import { Route as AppProjectsProjectIdSettingsRouteImport } from './routes/_app/projects/$projectId/settings'
-import { Route as AppProjectsProjectIdSessionReplaysRouteImport } from './routes/_app/projects/$projectId/session-replays'
 import { Route as AppProjectsProjectIdPermissionsRouteImport } from './routes/_app/projects/$projectId/permissions'
 import { Route as AppProjectsProjectIdPaymentsRouteImport } from './routes/_app/projects/$projectId/payments'
 import { Route as AppProjectsProjectIdOnboardingRouteImport } from './routes/_app/projects/$projectId/onboarding'
@@ -30,7 +29,14 @@ import { Route as AppProjectsProjectIdDashboardsRouteImport } from './routes/_ap
 import { Route as AppProjectsProjectIdAuthMethodsRouteImport } from './routes/_app/projects/$projectId/auth-methods'
 import { Route as AppProjectsProjectIdAppsRouteImport } from './routes/_app/projects/$projectId/apps'
 import { Route as AppProjectsProjectIdApiKeysRouteImport } from './routes/_app/projects/$projectId/api-keys'
+import { Route as AppProjectsProjectIdSessionReplaysIndexRouteImport } from './routes/_app/projects/$projectId/session-replays/index'
+import { Route as AppProjectsProjectIdPaymentsIndexRouteImport } from './routes/_app/projects/$projectId/payments/index'
 import { Route as AppProjectsProjectIdEmailsIndexRouteImport } from './routes/_app/projects/$projectId/emails/index'
+import { Route as AppProjectsProjectIdSessionReplaysSessionIdRouteImport } from './routes/_app/projects/$projectId/session-replays/$sessionId'
+import { Route as AppProjectsProjectIdPaymentsTransactionsRouteImport } from './routes/_app/projects/$projectId/payments/transactions'
+import { Route as AppProjectsProjectIdPaymentsSettingsRouteImport } from './routes/_app/projects/$projectId/payments/settings'
+import { Route as AppProjectsProjectIdPaymentsProductsRouteImport } from './routes/_app/projects/$projectId/payments/products'
+import { Route as AppProjectsProjectIdPaymentsCustomersRouteImport } from './routes/_app/projects/$projectId/payments/customers'
 import { Route as AppProjectsProjectIdEmailsThemesRouteImport } from './routes/_app/projects/$projectId/emails/themes'
 import { Route as AppProjectsProjectIdEmailsTemplatesRouteImport } from './routes/_app/projects/$projectId/emails/templates'
 import { Route as AppProjectsProjectIdEmailsSentRouteImport } from './routes/_app/projects/$projectId/emails/sent'
@@ -97,12 +103,6 @@ const AppProjectsProjectIdSettingsRoute =
     path: '/settings',
     getParentRoute: () => AppProjectsProjectIdRoute,
   } as any)
-const AppProjectsProjectIdSessionReplaysRoute =
-  AppProjectsProjectIdSessionReplaysRouteImport.update({
-    id: '/session-replays',
-    path: '/session-replays',
-    getParentRoute: () => AppProjectsProjectIdRoute,
-  } as any)
 const AppProjectsProjectIdPermissionsRoute =
   AppProjectsProjectIdPermissionsRouteImport.update({
     id: '/permissions',
@@ -157,11 +157,53 @@ const AppProjectsProjectIdApiKeysRoute =
     path: '/api-keys',
     getParentRoute: () => AppProjectsProjectIdRoute,
   } as any)
+const AppProjectsProjectIdSessionReplaysIndexRoute =
+  AppProjectsProjectIdSessionReplaysIndexRouteImport.update({
+    id: '/session-replays/',
+    path: '/session-replays/',
+    getParentRoute: () => AppProjectsProjectIdRoute,
+  } as any)
+const AppProjectsProjectIdPaymentsIndexRoute =
+  AppProjectsProjectIdPaymentsIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AppProjectsProjectIdPaymentsRoute,
+  } as any)
 const AppProjectsProjectIdEmailsIndexRoute =
   AppProjectsProjectIdEmailsIndexRouteImport.update({
     id: '/',
     path: '/',
     getParentRoute: () => AppProjectsProjectIdEmailsRoute,
+  } as any)
+const AppProjectsProjectIdSessionReplaysSessionIdRoute =
+  AppProjectsProjectIdSessionReplaysSessionIdRouteImport.update({
+    id: '/session-replays/$sessionId',
+    path: '/session-replays/$sessionId',
+    getParentRoute: () => AppProjectsProjectIdRoute,
+  } as any)
+const AppProjectsProjectIdPaymentsTransactionsRoute =
+  AppProjectsProjectIdPaymentsTransactionsRouteImport.update({
+    id: '/transactions',
+    path: '/transactions',
+    getParentRoute: () => AppProjectsProjectIdPaymentsRoute,
+  } as any)
+const AppProjectsProjectIdPaymentsSettingsRoute =
+  AppProjectsProjectIdPaymentsSettingsRouteImport.update({
+    id: '/settings',
+    path: '/settings',
+    getParentRoute: () => AppProjectsProjectIdPaymentsRoute,
+  } as any)
+const AppProjectsProjectIdPaymentsProductsRoute =
+  AppProjectsProjectIdPaymentsProductsRouteImport.update({
+    id: '/products',
+    path: '/products',
+    getParentRoute: () => AppProjectsProjectIdPaymentsRoute,
+  } as any)
+const AppProjectsProjectIdPaymentsCustomersRoute =
+  AppProjectsProjectIdPaymentsCustomersRouteImport.update({
+    id: '/customers',
+    path: '/customers',
+    getParentRoute: () => AppProjectsProjectIdPaymentsRoute,
   } as any)
 const AppProjectsProjectIdEmailsThemesRoute =
   AppProjectsProjectIdEmailsThemesRouteImport.update({
@@ -213,9 +255,8 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId/emails': typeof AppProjectsProjectIdEmailsRouteWithChildren
   '/projects/$projectId/events': typeof AppProjectsProjectIdEventsRoute
   '/projects/$projectId/onboarding': typeof AppProjectsProjectIdOnboardingRoute
-  '/projects/$projectId/payments': typeof AppProjectsProjectIdPaymentsRoute
+  '/projects/$projectId/payments': typeof AppProjectsProjectIdPaymentsRouteWithChildren
   '/projects/$projectId/permissions': typeof AppProjectsProjectIdPermissionsRoute
-  '/projects/$projectId/session-replays': typeof AppProjectsProjectIdSessionReplaysRoute
   '/projects/$projectId/settings': typeof AppProjectsProjectIdSettingsRoute
   '/projects/$projectId/teams': typeof AppProjectsProjectIdTeamsRoute
   '/projects/$projectId/users': typeof AppProjectsProjectIdUsersRoute
@@ -227,7 +268,14 @@ export interface FileRoutesByFullPath {
   '/projects/$projectId/emails/sent': typeof AppProjectsProjectIdEmailsSentRoute
   '/projects/$projectId/emails/templates': typeof AppProjectsProjectIdEmailsTemplatesRoute
   '/projects/$projectId/emails/themes': typeof AppProjectsProjectIdEmailsThemesRoute
+  '/projects/$projectId/payments/customers': typeof AppProjectsProjectIdPaymentsCustomersRoute
+  '/projects/$projectId/payments/products': typeof AppProjectsProjectIdPaymentsProductsRoute
+  '/projects/$projectId/payments/settings': typeof AppProjectsProjectIdPaymentsSettingsRoute
+  '/projects/$projectId/payments/transactions': typeof AppProjectsProjectIdPaymentsTransactionsRoute
+  '/projects/$projectId/session-replays/$sessionId': typeof AppProjectsProjectIdSessionReplaysSessionIdRoute
   '/projects/$projectId/emails/': typeof AppProjectsProjectIdEmailsIndexRoute
+  '/projects/$projectId/payments/': typeof AppProjectsProjectIdPaymentsIndexRoute
+  '/projects/$projectId/session-replays/': typeof AppProjectsProjectIdSessionReplaysIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -240,9 +288,7 @@ export interface FileRoutesByTo {
   '/projects/$projectId/dashboards': typeof AppProjectsProjectIdDashboardsRoute
   '/projects/$projectId/events': typeof AppProjectsProjectIdEventsRoute
   '/projects/$projectId/onboarding': typeof AppProjectsProjectIdOnboardingRoute
-  '/projects/$projectId/payments': typeof AppProjectsProjectIdPaymentsRoute
   '/projects/$projectId/permissions': typeof AppProjectsProjectIdPermissionsRoute
-  '/projects/$projectId/session-replays': typeof AppProjectsProjectIdSessionReplaysRoute
   '/projects/$projectId/settings': typeof AppProjectsProjectIdSettingsRoute
   '/projects/$projectId/teams': typeof AppProjectsProjectIdTeamsRoute
   '/projects/$projectId/users': typeof AppProjectsProjectIdUsersRoute
@@ -254,7 +300,14 @@ export interface FileRoutesByTo {
   '/projects/$projectId/emails/sent': typeof AppProjectsProjectIdEmailsSentRoute
   '/projects/$projectId/emails/templates': typeof AppProjectsProjectIdEmailsTemplatesRoute
   '/projects/$projectId/emails/themes': typeof AppProjectsProjectIdEmailsThemesRoute
+  '/projects/$projectId/payments/customers': typeof AppProjectsProjectIdPaymentsCustomersRoute
+  '/projects/$projectId/payments/products': typeof AppProjectsProjectIdPaymentsProductsRoute
+  '/projects/$projectId/payments/settings': typeof AppProjectsProjectIdPaymentsSettingsRoute
+  '/projects/$projectId/payments/transactions': typeof AppProjectsProjectIdPaymentsTransactionsRoute
+  '/projects/$projectId/session-replays/$sessionId': typeof AppProjectsProjectIdSessionReplaysSessionIdRoute
   '/projects/$projectId/emails': typeof AppProjectsProjectIdEmailsIndexRoute
+  '/projects/$projectId/payments': typeof AppProjectsProjectIdPaymentsIndexRoute
+  '/projects/$projectId/session-replays': typeof AppProjectsProjectIdSessionReplaysIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -271,9 +324,8 @@ export interface FileRoutesById {
   '/_app/projects/$projectId/emails': typeof AppProjectsProjectIdEmailsRouteWithChildren
   '/_app/projects/$projectId/events': typeof AppProjectsProjectIdEventsRoute
   '/_app/projects/$projectId/onboarding': typeof AppProjectsProjectIdOnboardingRoute
-  '/_app/projects/$projectId/payments': typeof AppProjectsProjectIdPaymentsRoute
+  '/_app/projects/$projectId/payments': typeof AppProjectsProjectIdPaymentsRouteWithChildren
   '/_app/projects/$projectId/permissions': typeof AppProjectsProjectIdPermissionsRoute
-  '/_app/projects/$projectId/session-replays': typeof AppProjectsProjectIdSessionReplaysRoute
   '/_app/projects/$projectId/settings': typeof AppProjectsProjectIdSettingsRoute
   '/_app/projects/$projectId/teams': typeof AppProjectsProjectIdTeamsRoute
   '/_app/projects/$projectId/users': typeof AppProjectsProjectIdUsersRoute
@@ -285,7 +337,14 @@ export interface FileRoutesById {
   '/_app/projects/$projectId/emails/sent': typeof AppProjectsProjectIdEmailsSentRoute
   '/_app/projects/$projectId/emails/templates': typeof AppProjectsProjectIdEmailsTemplatesRoute
   '/_app/projects/$projectId/emails/themes': typeof AppProjectsProjectIdEmailsThemesRoute
+  '/_app/projects/$projectId/payments/customers': typeof AppProjectsProjectIdPaymentsCustomersRoute
+  '/_app/projects/$projectId/payments/products': typeof AppProjectsProjectIdPaymentsProductsRoute
+  '/_app/projects/$projectId/payments/settings': typeof AppProjectsProjectIdPaymentsSettingsRoute
+  '/_app/projects/$projectId/payments/transactions': typeof AppProjectsProjectIdPaymentsTransactionsRoute
+  '/_app/projects/$projectId/session-replays/$sessionId': typeof AppProjectsProjectIdSessionReplaysSessionIdRoute
   '/_app/projects/$projectId/emails/': typeof AppProjectsProjectIdEmailsIndexRoute
+  '/_app/projects/$projectId/payments/': typeof AppProjectsProjectIdPaymentsIndexRoute
+  '/_app/projects/$projectId/session-replays/': typeof AppProjectsProjectIdSessionReplaysIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -304,7 +363,6 @@ export interface FileRouteTypes {
     | '/projects/$projectId/onboarding'
     | '/projects/$projectId/payments'
     | '/projects/$projectId/permissions'
-    | '/projects/$projectId/session-replays'
     | '/projects/$projectId/settings'
     | '/projects/$projectId/teams'
     | '/projects/$projectId/users'
@@ -316,7 +374,14 @@ export interface FileRouteTypes {
     | '/projects/$projectId/emails/sent'
     | '/projects/$projectId/emails/templates'
     | '/projects/$projectId/emails/themes'
+    | '/projects/$projectId/payments/customers'
+    | '/projects/$projectId/payments/products'
+    | '/projects/$projectId/payments/settings'
+    | '/projects/$projectId/payments/transactions'
+    | '/projects/$projectId/session-replays/$sessionId'
     | '/projects/$projectId/emails/'
+    | '/projects/$projectId/payments/'
+    | '/projects/$projectId/session-replays/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -329,9 +394,7 @@ export interface FileRouteTypes {
     | '/projects/$projectId/dashboards'
     | '/projects/$projectId/events'
     | '/projects/$projectId/onboarding'
-    | '/projects/$projectId/payments'
     | '/projects/$projectId/permissions'
-    | '/projects/$projectId/session-replays'
     | '/projects/$projectId/settings'
     | '/projects/$projectId/teams'
     | '/projects/$projectId/users'
@@ -343,7 +406,14 @@ export interface FileRouteTypes {
     | '/projects/$projectId/emails/sent'
     | '/projects/$projectId/emails/templates'
     | '/projects/$projectId/emails/themes'
+    | '/projects/$projectId/payments/customers'
+    | '/projects/$projectId/payments/products'
+    | '/projects/$projectId/payments/settings'
+    | '/projects/$projectId/payments/transactions'
+    | '/projects/$projectId/session-replays/$sessionId'
     | '/projects/$projectId/emails'
+    | '/projects/$projectId/payments'
+    | '/projects/$projectId/session-replays'
   id:
     | '__root__'
     | '/'
@@ -361,7 +431,6 @@ export interface FileRouteTypes {
     | '/_app/projects/$projectId/onboarding'
     | '/_app/projects/$projectId/payments'
     | '/_app/projects/$projectId/permissions'
-    | '/_app/projects/$projectId/session-replays'
     | '/_app/projects/$projectId/settings'
     | '/_app/projects/$projectId/teams'
     | '/_app/projects/$projectId/users'
@@ -373,7 +442,14 @@ export interface FileRouteTypes {
     | '/_app/projects/$projectId/emails/sent'
     | '/_app/projects/$projectId/emails/templates'
     | '/_app/projects/$projectId/emails/themes'
+    | '/_app/projects/$projectId/payments/customers'
+    | '/_app/projects/$projectId/payments/products'
+    | '/_app/projects/$projectId/payments/settings'
+    | '/_app/projects/$projectId/payments/transactions'
+    | '/_app/projects/$projectId/session-replays/$sessionId'
     | '/_app/projects/$projectId/emails/'
+    | '/_app/projects/$projectId/payments/'
+    | '/_app/projects/$projectId/session-replays/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -461,13 +537,6 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppProjectsProjectIdSettingsRouteImport
       parentRoute: typeof AppProjectsProjectIdRoute
     }
-    '/_app/projects/$projectId/session-replays': {
-      id: '/_app/projects/$projectId/session-replays'
-      path: '/session-replays'
-      fullPath: '/projects/$projectId/session-replays'
-      preLoaderRoute: typeof AppProjectsProjectIdSessionReplaysRouteImport
-      parentRoute: typeof AppProjectsProjectIdRoute
-    }
     '/_app/projects/$projectId/permissions': {
       id: '/_app/projects/$projectId/permissions'
       path: '/permissions'
@@ -531,12 +600,61 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AppProjectsProjectIdApiKeysRouteImport
       parentRoute: typeof AppProjectsProjectIdRoute
     }
+    '/_app/projects/$projectId/session-replays/': {
+      id: '/_app/projects/$projectId/session-replays/'
+      path: '/session-replays'
+      fullPath: '/projects/$projectId/session-replays/'
+      preLoaderRoute: typeof AppProjectsProjectIdSessionReplaysIndexRouteImport
+      parentRoute: typeof AppProjectsProjectIdRoute
+    }
+    '/_app/projects/$projectId/payments/': {
+      id: '/_app/projects/$projectId/payments/'
+      path: '/'
+      fullPath: '/projects/$projectId/payments/'
+      preLoaderRoute: typeof AppProjectsProjectIdPaymentsIndexRouteImport
+      parentRoute: typeof AppProjectsProjectIdPaymentsRoute
+    }
     '/_app/projects/$projectId/emails/': {
       id: '/_app/projects/$projectId/emails/'
       path: '/'
       fullPath: '/projects/$projectId/emails/'
       preLoaderRoute: typeof AppProjectsProjectIdEmailsIndexRouteImport
       parentRoute: typeof AppProjectsProjectIdEmailsRoute
+    }
+    '/_app/projects/$projectId/session-replays/$sessionId': {
+      id: '/_app/projects/$projectId/session-replays/$sessionId'
+      path: '/session-replays/$sessionId'
+      fullPath: '/projects/$projectId/session-replays/$sessionId'
+      preLoaderRoute: typeof AppProjectsProjectIdSessionReplaysSessionIdRouteImport
+      parentRoute: typeof AppProjectsProjectIdRoute
+    }
+    '/_app/projects/$projectId/payments/transactions': {
+      id: '/_app/projects/$projectId/payments/transactions'
+      path: '/transactions'
+      fullPath: '/projects/$projectId/payments/transactions'
+      preLoaderRoute: typeof AppProjectsProjectIdPaymentsTransactionsRouteImport
+      parentRoute: typeof AppProjectsProjectIdPaymentsRoute
+    }
+    '/_app/projects/$projectId/payments/settings': {
+      id: '/_app/projects/$projectId/payments/settings'
+      path: '/settings'
+      fullPath: '/projects/$projectId/payments/settings'
+      preLoaderRoute: typeof AppProjectsProjectIdPaymentsSettingsRouteImport
+      parentRoute: typeof AppProjectsProjectIdPaymentsRoute
+    }
+    '/_app/projects/$projectId/payments/products': {
+      id: '/_app/projects/$projectId/payments/products'
+      path: '/products'
+      fullPath: '/projects/$projectId/payments/products'
+      preLoaderRoute: typeof AppProjectsProjectIdPaymentsProductsRouteImport
+      parentRoute: typeof AppProjectsProjectIdPaymentsRoute
+    }
+    '/_app/projects/$projectId/payments/customers': {
+      id: '/_app/projects/$projectId/payments/customers'
+      path: '/customers'
+      fullPath: '/projects/$projectId/payments/customers'
+      preLoaderRoute: typeof AppProjectsProjectIdPaymentsCustomersRouteImport
+      parentRoute: typeof AppProjectsProjectIdPaymentsRoute
     }
     '/_app/projects/$projectId/emails/themes': {
       id: '/_app/projects/$projectId/emails/themes'
@@ -614,6 +732,33 @@ const AppProjectsProjectIdEmailsRouteWithChildren =
     AppProjectsProjectIdEmailsRouteChildren,
   )
 
+interface AppProjectsProjectIdPaymentsRouteChildren {
+  AppProjectsProjectIdPaymentsCustomersRoute: typeof AppProjectsProjectIdPaymentsCustomersRoute
+  AppProjectsProjectIdPaymentsProductsRoute: typeof AppProjectsProjectIdPaymentsProductsRoute
+  AppProjectsProjectIdPaymentsSettingsRoute: typeof AppProjectsProjectIdPaymentsSettingsRoute
+  AppProjectsProjectIdPaymentsTransactionsRoute: typeof AppProjectsProjectIdPaymentsTransactionsRoute
+  AppProjectsProjectIdPaymentsIndexRoute: typeof AppProjectsProjectIdPaymentsIndexRoute
+}
+
+const AppProjectsProjectIdPaymentsRouteChildren: AppProjectsProjectIdPaymentsRouteChildren =
+  {
+    AppProjectsProjectIdPaymentsCustomersRoute:
+      AppProjectsProjectIdPaymentsCustomersRoute,
+    AppProjectsProjectIdPaymentsProductsRoute:
+      AppProjectsProjectIdPaymentsProductsRoute,
+    AppProjectsProjectIdPaymentsSettingsRoute:
+      AppProjectsProjectIdPaymentsSettingsRoute,
+    AppProjectsProjectIdPaymentsTransactionsRoute:
+      AppProjectsProjectIdPaymentsTransactionsRoute,
+    AppProjectsProjectIdPaymentsIndexRoute:
+      AppProjectsProjectIdPaymentsIndexRoute,
+  }
+
+const AppProjectsProjectIdPaymentsRouteWithChildren =
+  AppProjectsProjectIdPaymentsRoute._addFileChildren(
+    AppProjectsProjectIdPaymentsRouteChildren,
+  )
+
 interface AppProjectsProjectIdRouteChildren {
   AppProjectsProjectIdApiKeysRoute: typeof AppProjectsProjectIdApiKeysRoute
   AppProjectsProjectIdAppsRoute: typeof AppProjectsProjectIdAppsRoute
@@ -622,14 +767,15 @@ interface AppProjectsProjectIdRouteChildren {
   AppProjectsProjectIdEmailsRoute: typeof AppProjectsProjectIdEmailsRouteWithChildren
   AppProjectsProjectIdEventsRoute: typeof AppProjectsProjectIdEventsRoute
   AppProjectsProjectIdOnboardingRoute: typeof AppProjectsProjectIdOnboardingRoute
-  AppProjectsProjectIdPaymentsRoute: typeof AppProjectsProjectIdPaymentsRoute
+  AppProjectsProjectIdPaymentsRoute: typeof AppProjectsProjectIdPaymentsRouteWithChildren
   AppProjectsProjectIdPermissionsRoute: typeof AppProjectsProjectIdPermissionsRoute
-  AppProjectsProjectIdSessionReplaysRoute: typeof AppProjectsProjectIdSessionReplaysRoute
   AppProjectsProjectIdSettingsRoute: typeof AppProjectsProjectIdSettingsRoute
   AppProjectsProjectIdTeamsRoute: typeof AppProjectsProjectIdTeamsRoute
   AppProjectsProjectIdUsersRoute: typeof AppProjectsProjectIdUsersRoute
   AppProjectsProjectIdWebhooksRoute: typeof AppProjectsProjectIdWebhooksRoute
   AppProjectsProjectIdIndexRoute: typeof AppProjectsProjectIdIndexRoute
+  AppProjectsProjectIdSessionReplaysSessionIdRoute: typeof AppProjectsProjectIdSessionReplaysSessionIdRoute
+  AppProjectsProjectIdSessionReplaysIndexRoute: typeof AppProjectsProjectIdSessionReplaysIndexRoute
 }
 
 const AppProjectsProjectIdRouteChildren: AppProjectsProjectIdRouteChildren = {
@@ -640,15 +786,18 @@ const AppProjectsProjectIdRouteChildren: AppProjectsProjectIdRouteChildren = {
   AppProjectsProjectIdEmailsRoute: AppProjectsProjectIdEmailsRouteWithChildren,
   AppProjectsProjectIdEventsRoute: AppProjectsProjectIdEventsRoute,
   AppProjectsProjectIdOnboardingRoute: AppProjectsProjectIdOnboardingRoute,
-  AppProjectsProjectIdPaymentsRoute: AppProjectsProjectIdPaymentsRoute,
+  AppProjectsProjectIdPaymentsRoute:
+    AppProjectsProjectIdPaymentsRouteWithChildren,
   AppProjectsProjectIdPermissionsRoute: AppProjectsProjectIdPermissionsRoute,
-  AppProjectsProjectIdSessionReplaysRoute:
-    AppProjectsProjectIdSessionReplaysRoute,
   AppProjectsProjectIdSettingsRoute: AppProjectsProjectIdSettingsRoute,
   AppProjectsProjectIdTeamsRoute: AppProjectsProjectIdTeamsRoute,
   AppProjectsProjectIdUsersRoute: AppProjectsProjectIdUsersRoute,
   AppProjectsProjectIdWebhooksRoute: AppProjectsProjectIdWebhooksRoute,
   AppProjectsProjectIdIndexRoute: AppProjectsProjectIdIndexRoute,
+  AppProjectsProjectIdSessionReplaysSessionIdRoute:
+    AppProjectsProjectIdSessionReplaysSessionIdRoute,
+  AppProjectsProjectIdSessionReplaysIndexRoute:
+    AppProjectsProjectIdSessionReplaysIndexRoute,
 }
 
 const AppProjectsProjectIdRouteWithChildren =

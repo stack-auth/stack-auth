@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react"
 import {
+  BracketsCurlyIcon,
   ChartLineIcon,
   ClipboardTextIcon,
   CreditCardIcon,
@@ -25,6 +26,11 @@ import type { AppId } from "@stackframe/stack-shared/dist/apps/apps-config"
 import type { AdminProject } from "@stackframe/tanstack-start"
 
 import { useAdminApp } from "@/lib/stack/admin-app"
+import {
+  useAdminProject,
+  useLoadedAdminProjectConfig,
+  useStackAuthQueryInvalidation,
+} from "@/lib/stack/react-query"
 
 // Apps hidden from the dashboardV2 explore page even when present in shared config.
 const HIDDEN_APP_IDS = new Set<AppId>(["feature-flags"])
@@ -49,6 +55,7 @@ const APP_ICONS: Record<VisibleAppId, PhosphorIcon> = {
   neon: PlugsConnectedIcon,
   convex: PlugsConnectedIcon,
   vercel: PlugsConnectedIcon,
+  "tanstack-start": BracketsCurlyIcon,
   analytics: ChartLineIcon,
 }
 
@@ -80,8 +87,8 @@ export function isAppEnabled(
 
 export function useAppsPage() {
   const adminApp = useAdminApp()
-  const project: AdminProject = adminApp.useProject()
-  const config = project.useConfig()
+  const project = useAdminProject(adminApp)
+  const config = useLoadedAdminProjectConfig(project)
 
   const [searchQuery, setSearchQuery] = useState("")
   const [selectedCategory, setSelectedCategory] = useState<string>("all")
@@ -163,6 +170,7 @@ export function useAppCard({
 }) {
   const app = ALL_APPS[appId]
   const Icon = APP_ICONS[appId]
+  const { invalidateProjectConfig } = useStackAuthQueryInvalidation()
   const [confirmOpen, setConfirmOpen] = useState(false)
   const [pending, setPending] = useState(false)
 
@@ -170,6 +178,7 @@ export function useAppCard({
     setPending(true)
     try {
       await project.updateConfig({ [`apps.installed.${appId}.enabled`]: next })
+      await invalidateProjectConfig(project.id)
     } finally {
       setPending(false)
     }

@@ -10,6 +10,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+import { useCurrentUserTeamsQuery } from "@/lib/stack/react-query"
 
 type BasicsStepProps = {
   displayName: string,
@@ -25,7 +26,7 @@ export function BasicsStep({
   setTeamId,
 }: BasicsStepProps) {
   const user = useUser({ or: "redirect", projectIdMustMatch: "internal" })
-  const teams = user.useTeams()
+  const teams = useCurrentUserTeamsQuery(user).data ?? []
   const teamsById = new Map(teams.map((t) => [t.id, t]))
 
   return (

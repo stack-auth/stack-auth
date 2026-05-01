@@ -3,7 +3,6 @@ import { createFileRoute } from "@tanstack/react-router"
 import { ShieldCheckIcon } from "@phosphor-icons/react"
 import { toast } from "sonner"
 
-import type { AdminProject } from "@stackframe/tanstack-start"
 import type { RestrictedReason } from "@stackframe/stack-shared/dist/schema-fields"
 
 import {
@@ -26,7 +25,17 @@ import {
 } from "@/components/ui/card"
 import { Label } from "@/components/ui/label"
 import { Switch } from "@/components/ui/switch"
+import {
+  ProjectPage,
+  ProjectPageHeader,
+  ProjectPageMain,
+} from "@/components/console/project-page"
 import { useAdminApp } from "@/lib/stack/admin-app"
+import {
+  useAdminProject,
+  useLoadedAdminProjectConfig,
+  useStackAuthQueryInvalidation,
+} from "@/lib/stack/react-query"
 
 export const Route = createFileRoute("/_app/projects/$projectId/onboarding")({
   component: OnboardingPage,
@@ -46,10 +55,9 @@ type PendingEnable = {
 
 function OnboardingPage() {
   const adminApp = useAdminApp()
-  // See note in auth-methods.tsx — adminApp.useProject() resolves to AdminProject
-  // at runtime; the type intersection widens it, so we re-narrow here.
-  const project: AdminProject = adminApp.useProject()
-  const config = project.useConfig()
+  const project = useAdminProject(adminApp)
+  const config = useLoadedAdminProjectConfig(project)
+  const { invalidateProjectConfig } = useStackAuthQueryInvalidation()
   const isEnabled = config.onboarding.requireEmailVerification
 
   const [pending, setPending] = React.useState<boolean | null>(null)
@@ -62,6 +70,7 @@ function OnboardingPage() {
       await project.updateConfig({
         "onboarding.requireEmailVerification": next,
       })
+      await invalidateProjectConfig(project.id)
     } catch (err) {
       toast.error(
         err instanceof Error
@@ -104,16 +113,10 @@ function OnboardingPage() {
   }
 
   return (
-    <div className="flex flex-col">
-      <header className="border-b">
-        <div className="mx-auto flex h-[52px] w-full max-w-5xl items-center justify-between gap-3 px-6">
-          <h1 className="font-heading text-base font-semibold tracking-tight">
-            Onboarding
-          </h1>
-        </div>
-      </header>
+    <ProjectPage>
+      <ProjectPageHeader title="Onboarding" />
 
-      <main className="mx-auto w-full max-w-5xl flex-1 space-y-8 px-6 py-8">
+      <ProjectPageMain className="space-y-8">
         <section className="space-y-3">
           <h2 className="font-heading text-sm font-medium tracking-tight">
             Requirements
@@ -149,7 +152,7 @@ function OnboardingPage() {
             </CardContent>
           </Card>
         </section>
-      </main>
+      </ProjectPageMain>
 
       <AlertDialog
         open={confirming != null}
@@ -208,6 +211,6 @@ function OnboardingPage() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
-    </div>
+    </ProjectPage>
   )
 }

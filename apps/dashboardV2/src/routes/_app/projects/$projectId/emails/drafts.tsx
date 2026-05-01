@@ -41,8 +41,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
+import { CodeEditor } from "@/components/projects/emails/code-editor"
 import { useAdminApp } from "@/lib/stack/admin-app"
+import {
+  useEmailDraftsQuery,
+  useEmailPreviewQuery,
+  useEmailThemesQuery,
+  useStackAuthQueryInvalidation,
+} from "@/lib/stack/react-query"
 
 export const Route = createFileRoute("/_app/projects/$projectId/emails/drafts")({
   component: DraftsPage,
@@ -60,8 +66,8 @@ type Draft = {
 
 function DraftsPage() {
   const adminApp = useAdminApp()
-  const drafts = adminApp.useEmailDrafts()
-  const themes = adminApp.useEmailThemes()
+  const drafts = useEmailDraftsQuery(adminApp).data ?? []
+  const themes = useEmailThemesQuery(adminApp).data ?? []
 
   const [createOpen, setCreateOpen] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
@@ -94,69 +100,72 @@ function DraftsPage() {
     : sortedDrafts.find((d) => d.id === selectedId) ?? null
 
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <h2 className="font-heading text-base font-medium tracking-tight">
-            Email drafts
-          </h2>
-          <Badge variant="outline">{drafts.length}</Badge>
-        </div>
-        <Button onClick={() => setCreateOpen(true)}>
-          <PlusIcon />
-          New draft
-        </Button>
-      </div>
-
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       {drafts.length === 0 ? (
-        <DraftsEmpty onCreate={() => setCreateOpen(true)} />
+        <div className="flex h-full min-h-0 flex-col gap-4">
+          <EmailListHeader
+            title="Email drafts"
+            count={drafts.length}
+            actionLabel="New draft"
+            onCreate={() => setCreateOpen(true)}
+          />
+          <DraftsEmpty onCreate={() => setCreateOpen(true)} />
+        </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[18rem_1fr]">
-          <ul className="flex flex-col gap-1 self-start rounded-md ring-1 ring-foreground/10">
-            {sortedDrafts.map((d) => {
-              const active = d.id === selectedId
-              const themeName =
-                typeof d.themeId === "string"
-                  ? themesById.get(d.themeId)?.displayName ?? d.themeId
-                  : null
-              return (
-                <li key={d.id}>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedId(d.id)}
-                    className={
-                      "flex w-full flex-col items-start gap-1 rounded-md px-3 py-2 text-start transition-colors hover:transition-none " +
-                      (active
-                        ? "bg-accent text-foreground"
-                        : "hover:bg-accent/40")
-                    }
-                  >
-                    <span className="flex w-full items-center justify-between gap-2">
-                      <span className="truncate text-xs font-medium">
-                        {d.displayName}
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-hidden lg:grid-cols-[18rem_minmax(0,1fr)]">
+          <div className="flex min-h-0 flex-col gap-2">
+            <EmailListHeader
+              title="Email drafts"
+              count={drafts.length}
+              actionLabel="New draft"
+              onCreate={() => setCreateOpen(true)}
+            />
+            <ul className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto rounded-md ring-1 ring-foreground/10">
+              {sortedDrafts.map((d) => {
+                const active = d.id === selectedId
+                const themeName =
+                  typeof d.themeId === "string"
+                    ? themesById.get(d.themeId)?.displayName ?? d.themeId
+                    : null
+                return (
+                  <li key={d.id}>
+                    <button
+                      type="button"
+                      onClick={() => setSelectedId(d.id)}
+                      className={
+                        "flex w-full flex-col items-start gap-1 rounded-md px-3 py-2 text-start transition-colors hover:transition-none " +
+                        (active
+                          ? "bg-accent text-foreground"
+                          : "hover:bg-accent/40")
+                      }
+                    >
+                      <span className="flex w-full items-center justify-between gap-2">
+                        <span className="truncate text-xs font-medium">
+                          {d.displayName}
+                        </span>
+                        {d.sentAt != null ? (
+                          <Badge variant="secondary" className="shrink-0 gap-1">
+                            <CheckCircleIcon />
+                            Sent
+                          </Badge>
+                        ) : null}
                       </span>
-                      {d.sentAt != null ? (
-                        <Badge variant="secondary" className="shrink-0 gap-1">
-                          <CheckCircleIcon />
-                          Sent
-                        </Badge>
-                      ) : null}
-                    </span>
-                    <span className="flex items-center gap-1 font-mono text-[10px] text-muted-foreground">
-                      {d.id.slice(0, 8)}
-                      {themeName ? (
-                        <Badge variant="outline" className="font-mono">
-                          {themeName}
-                        </Badge>
-                      ) : null}
-                    </span>
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
+                      <span className="flex items-center gap-1 font-mono text-[10px] text-muted-foreground">
+                        {d.id.slice(0, 8)}
+                        {themeName ? (
+                          <Badge variant="outline" className="font-mono">
+                            {themeName}
+                          </Badge>
+                        ) : null}
+                      </span>
+                    </button>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
 
-          <div className="min-w-0">
+          <div className="h-full min-h-0 min-w-0 overflow-hidden">
             {selected == null ? (
               <p className="py-12 text-center text-xs text-muted-foreground">
                 Select a draft to edit.
@@ -184,6 +193,33 @@ function DraftsPage() {
         onOpenChange={setCreateOpen}
         onCreated={(id) => setSelectedId(id)}
       />
+    </div>
+  )
+}
+
+function EmailListHeader({
+  title,
+  count,
+  actionLabel,
+  onCreate,
+}: {
+  title: string,
+  count: number,
+  actionLabel: string,
+  onCreate: () => void,
+}) {
+  return (
+    <div className="flex h-8 shrink-0 items-center justify-between gap-2">
+      <div className="flex min-w-0 items-center gap-2">
+        <h2 className="truncate font-heading text-sm font-medium tracking-tight">
+          {title}
+        </h2>
+        <Badge variant="outline">{count}</Badge>
+      </div>
+      <Button size="sm" onClick={onCreate}>
+        <PlusIcon />
+        {actionLabel}
+      </Button>
     </div>
   )
 }
@@ -219,10 +255,11 @@ function CreateDraftDialog({
   onCreated,
 }: {
   open: boolean,
-  onOpenChange: (open: boolean) => void,
+  onOpenChange: (nextOpen: boolean) => void,
   onCreated: (id: string) => void,
 }) {
   const adminApp = useAdminApp()
+  const { invalidateEmailDrafts } = useStackAuthQueryInvalidation()
   const [displayName, setDisplayName] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -243,6 +280,7 @@ function CreateDraftDialog({
     setError(null)
     try {
       const { id } = await adminApp.createEmailDraft({ displayName: name })
+      await invalidateEmailDrafts(adminApp.projectId)
       toast.success(`Draft "${name}" created.`)
       reset()
       onOpenChange(false)
@@ -323,6 +361,7 @@ function DraftEditor({
   onDeleted: () => void,
 }) {
   const adminApp = useAdminApp()
+  const { invalidateEmailDrafts } = useStackAuthQueryInvalidation()
   const isLocked = sentAt != null
 
   const [displayName, setDisplayName] = useState(initialDisplayName)
@@ -344,10 +383,10 @@ function DraftEditor({
     )
 
   // Live preview reflects the current (unsaved) editor state.
-  const previewHtml = adminApp.useEmailPreview({
+  const previewHtml = useEmailPreviewQuery({
     themeId: currentThemeIdForPreview,
     templateTsxSource: tsxSource,
-  })
+  }, adminApp).data ?? ""
 
   const handleSave = async () => {
     if (isLocked) return
@@ -360,6 +399,7 @@ function DraftEditor({
         themeId: themeIdToSend,
         tsxSource,
       })
+      await invalidateEmailDrafts(adminApp.projectId)
       toast.success("Draft saved.")
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save draft.")
@@ -369,6 +409,7 @@ function DraftEditor({
   const handleDelete = async () => {
     try {
       await adminApp.deleteEmailDraft(draftId)
+      await invalidateEmailDrafts(adminApp.projectId)
       toast.success("Draft deleted.")
       setDeleteOpen(false)
       onDeleted()
@@ -379,28 +420,27 @@ function DraftEditor({
   }
 
   return (
-    <div className="space-y-4 rounded-md ring-1 ring-foreground/10 p-4">
-      <div className="flex items-start justify-between gap-3">
+    <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden rounded-md p-3 ring-1 ring-foreground/10">
+      <div className="flex shrink-0 items-center justify-between gap-3">
         <div className="min-w-0">
-          <p className="font-mono text-[10px] tracking-wider text-muted-foreground uppercase">
-            Editing
-          </p>
-          <h3 className="truncate font-heading text-base font-medium">
+          <h3 className="truncate font-heading text-sm font-medium">
             {initialDisplayName}
           </h3>
           <p className="font-mono text-[10px] text-muted-foreground">
             {draftId}
           </p>
         </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="text-destructive hover:text-destructive"
-          onClick={() => setDeleteOpen(true)}
-        >
-          <TrashIcon />
-          Delete
-        </Button>
+        <div className="flex shrink-0 items-center gap-2">
+          <Button
+            variant="outline"
+            size="sm"
+            className="text-destructive hover:text-destructive"
+            onClick={() => setDeleteOpen(true)}
+          >
+            <TrashIcon />
+            Delete
+          </Button>
+        </div>
       </div>
 
       {isLocked ? (
@@ -413,8 +453,8 @@ function DraftEditor({
         </Alert>
       ) : null}
 
-      <div className="space-y-1.5">
-        <Label htmlFor="draft-displayname">Display name</Label>
+      <div className="grid shrink-0 gap-2 lg:grid-cols-[6rem_minmax(0,1fr)] lg:items-center">
+        <Label htmlFor="draft-displayname" className="text-xs">Display name</Label>
         <Input
           id="draft-displayname"
           value={displayName}
@@ -423,8 +463,8 @@ function DraftEditor({
         />
       </div>
 
-      <div className="space-y-1.5">
-        <Label htmlFor="draft-theme">Theme</Label>
+      <div className="grid shrink-0 gap-2 lg:grid-cols-[6rem_minmax(0,1fr)] lg:items-center">
+        <Label htmlFor="draft-theme" className="text-xs">Theme</Label>
         <Select
           value={themeIdValue}
           onValueChange={(v) => {
@@ -432,7 +472,7 @@ function DraftEditor({
           }}
           disabled={isLocked}
         >
-          <SelectTrigger id="draft-theme" className="w-full">
+          <SelectTrigger id="draft-theme" className="h-8 w-full">
             <SelectValue placeholder="No theme" />
           </SelectTrigger>
           <SelectContent>
@@ -446,25 +486,23 @@ function DraftEditor({
         </Select>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="space-y-1.5">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden lg:grid-cols-2">
+        <div className="flex min-h-0 flex-col gap-1.5">
           <Label htmlFor="draft-source">TSX source</Label>
-          <Textarea
-            id="draft-source"
+          <CodeEditor
+            ariaLabel="Draft TSX source"
             value={tsxSource}
-            onChange={(e) => setTsxSource(e.target.value)}
-            spellCheck={false}
             readOnly={isLocked}
-            className="min-h-[420px] font-mono text-[11px] leading-relaxed"
+            onChange={setTsxSource}
           />
         </div>
-        <div className="space-y-1.5">
+        <div className="flex min-h-0 flex-col gap-1.5">
           <Label>Live preview</Label>
           <iframe
             title="Email draft preview"
             srcDoc={previewHtml}
             sandbox=""
-            className="h-[420px] w-full rounded-md bg-white ring-1 ring-foreground/10"
+            className="min-h-0 w-full flex-1 rounded-md bg-white ring-1 ring-foreground/10"
           />
         </div>
       </div>
@@ -476,7 +514,7 @@ function DraftEditor({
         </Alert>
       ) : null}
 
-      <div className="flex items-center justify-end gap-2">
+      <div className="flex shrink-0 items-center justify-end gap-2">
         <Button onClick={handleSave} disabled={!dirty || isLocked}>
           Save
         </Button>

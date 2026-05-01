@@ -2,11 +2,32 @@
 
 This file contains knowledge learned while working on the codebase in Q&A format.
 
+## Q: How should Dashboard V2 keep detail-sheet navigation on the current page?
+A: Project entity detail sheets are rendered by the shared `/projects/$projectId` layout, not by individual pages. User/team links should set `userId` or `teamId` on the current route's search params (for example via `ProjectUserDrawerLink`) instead of linking to `/users` or `/teams`; the layout reads those params and swaps the drawer content while the underlying page stays put. Entity sheet components should use callbacks such as `onViewTeam`/`onViewMember` instead of hard-coding routes.
+
+## Q: How should Dashboard V2 render the email theme editor preview?
+A: Pass `previewTemplateSource` from `@stackframe/stack-shared/dist/helpers/emails` as `templateTsxSource` when calling `useEmailPreviewQuery` for a theme. The backend `/emails/render-email` endpoint requires either `template_id` or `template_tsx_source`; calling it with only `themeId` fails schema validation and leaves the iframe blank unless the page surfaces the query error.
+
+## Q: How does the legacy dashboard count users on the users page?
+A: `apps/dashboard/src/app/(main)/(protected)/projects/[projectId]/users/page-client.tsx` uses `useMetricsUserCountsOrThrow`, which calls the admin app internals `useMetricsUserCounts()` hook backed by `/internal/metrics/user-counts`. The displayed signed-up count is `metrics.total_users - metrics.anonymous_users`; anonymous users are shown separately only when present. The legacy users table searches server-side through `stackAdminApp.listUsers({ query, includeRestricted: true, includeAnonymous: false })` by default.
+
+## Q: How should Dashboard V2 create user checkout and impersonation actions?
+A: `ServerUser` from `@stackframe/tanstack-start` includes customer methods, so V2 can call `user.createCheckoutUrl({ productId })` directly after filtering `adminApp.useProject().useConfig().payments.products` to `customerType === "user"`. For impersonation, call `user.createSession({ expiresInMillis, isImpersonation: true })`, require a non-null refresh token, and show a console snippet that sets `stack-refresh-${adminApp.projectId}` before reloading.
+
+## Q: What reusable component should Dashboard V2 use for dense virtualized data grids?
+A: Use `apps/dashboardV2/src/components/ui/virtual-data-grid.tsx`. `VirtualDataGrid` owns the sticky search/header, shared column grid template, skeleton rows, window virtualization, infinite-load trigger, row selection, and `j/k` keyboard navigation. Pages should pass typed columns (`VirtualDataGridColumn<TItem, TSortId>[]`), sorted items, search state, sort state, and row-specific renderers/actions.
+
+## Q: How should Dashboard V2 virtualized grids size their scroll area when the server knows the total row count?
+A: Pass `totalCount` to `VirtualDataGrid`. When present, the grid uses `max(totalCount, loaded rows + loader)` as the virtualizer count so the document scrollbar reflects the full dataset before every row is loaded. Leave `totalCount` undefined for searches or filters that do not have a server-provided filtered total.
+
 ## Q: How should Dashboard V2 page and component logic be organized?
 A: Keep Dashboard V2 components mostly render-focused by extracting state, derived data, effects, and submit/toggle handlers into `src/hooks/<feature>/use-*.ts` hook modules. Use feature folders such as `hooks/console`, `hooks/projects`, and `hooks/onboarding` instead of defining non-trivial hooks inline in route/component files.
 
 ## Q: How is the Dashboard V2 fixed icon rail organized?
 A: `apps/dashboardV2/src/components/console/app-sidebar.tsx` owns the fixed left icon rail. Keep primary app navigation near the top, centered resource/help actions in the middle, and persistent controls such as theme/account at the bottom. Use a shared icon-link helper when adding multiple external rail buttons so Docs/Support-style links do not get duplicated across rail sections.
+
+## Q: How should Dashboard V2 avoid SSR hydration mismatches from generated element IDs?
+A: Do not let visible SSR markup depend on generated IDs from `React.useId()` or Base UI trigger defaults when the surrounding tree can differ between server and client. Pass stable semantic IDs to Base UI triggers and to shared wrappers such as `ChartContainer`; make IDs required in shared components when missing IDs would otherwise fall back to generated DOM attributes or injected CSS selectors.
 
 ## Q: How do anonymous users work in Stack Auth?
 A: Anonymous users are a special type of user that can be created without any authentication. They have `isAnonymous: true` in the database and use different JWT signing keys with a `role: 'anon'` claim. Anonymous JWTs use a prefixed secret ("anon-" + audience) for signing and verification.
@@ -393,3 +414,21 @@ A: Use the `keyboardNavigation` option in `apps/dashboardV2/src/hooks/use-infini
 
 ## Q: How should a TanStack Start SDK package be added without dragging Dashboard V2 logic into the same PR?
 A: Keep the integration PR scoped to generated package registration (`packages/tanstack-start/package.json`, `.gitignore`, `scripts/generate-sdks.ts`, `scripts/utils.ts`), template/package dependency metadata, and SDK runtime changes needed by TanStack Start (`cookie.ts`, token-store handling, handler SSR guard). Leave dashboard routes, hooks, app wiring, and admin API types in the dashboard PR.
+
+## Q: How should Dashboard V2 format compact relative dates in admin tables?
+A: Put Dashboard V2-specific date display helpers in `apps/dashboardV2/src/lib/dates.ts` and cover them with a real `*.test.ts` file, because this package's Vitest config only discovers test/spec files. The users table uses `formatRecentDashboardDate`, which shows compact relative values like `3 mins ago` and `6 months ago`, then switches to an absolute date once the value is outside the six-month window.
+
+## Q: How can Dashboard V2 combine TanStack Table column resizing with virtualized grid rows?
+A: Keep TanStack Table as the sizing source of truth: enable `columnResizeMode: "onChange"`, store `ColumnSizingState`, derive `gridTemplateColumns` from `table.getVisibleLeafColumns().map(column => \`\${column.getSize()}px\`)`, and pass that same template to the sticky header, virtual rows, empty row, and loader row. This prevents header/body drift while still allowing resize handles on each `<th>`.
+
+## Q: How should Dashboard V2 keep project page headers and virtual table sticky offsets consistent?
+A: Use `apps/dashboardV2/src/components/console/project-page.tsx` for project-level shells: `ProjectPage`, `ProjectPageHeader`, and `ProjectPageMain`. Page headers are sticky at the viewport top with the shared 52px height. Page-level `VirtualDataGrid` tables should use `PROJECT_PAGE_HEADER_STICKY_TOP_CLASS`; tables under a header with sub-navigation, such as Emails, should use `PROJECT_PAGE_HEADER_WITH_NAV_STICKY_TOP_CLASS`.
+
+## Q: What z-index should Dashboard V2 fixed sidebars use relative to sticky page headers?
+A: Fixed sidebars from `apps/dashboardV2/src/components/ui/sidebar.tsx` should sit above sticky page chrome. The shared project page header uses `z-30`, so the desktop sidebar container uses `z-40`; otherwise a sticky header can overlay the sidebar hit area and steal clicks from lower nav items.
+
+## Q: How should Dashboard V2 make clickable buttons show the pointer cursor?
+A: Put `cursor-pointer` on the shared `buttonVariants` base class in `apps/dashboardV2/src/components/ui/button.tsx` so all `Button` usages inherit the expected affordance. Route-local custom `<button>` elements, such as Teams page cards and member row links, still need `cursor-pointer` on their own class names because they do not use the shared `Button` primitive.
+
+## Q: Is Dashboard V2 users-table sorting and search server-side?
+A: Search is server-side: `apps/dashboardV2/src/routes/_app/projects/$projectId/users.tsx` includes the trimmed search text in the React Query key and passes it as `query` to `adminApp.listUsers`, which maps to the backend `/users?query=...` filter. Sorting in V2 is currently client-side over the already loaded infinite-query pages via `sortUsers(items, sort)`; the V2 page does not pass `orderBy` or `desc` to `listUsers`, even though the backend supports `order_by=signed_up_at` and `desc` for server-side signed-up sorting.

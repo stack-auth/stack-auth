@@ -97,6 +97,10 @@ const NAV_GROUPS: ReadonlyArray<ProjectSidebarNavGroup<NavItem["Icon"]>> = [
   },
 ]
 
+function navItemDomId(to: NavTo) {
+  return `project-sidebar-${to.replaceAll("/", "-").replaceAll("$", "")}`
+}
+
 export function ProjectSidebar() {
   const { project, projectId, isMac, visibleGroups, isActive } = useProjectSidebar(NAV_GROUPS)
 
@@ -104,7 +108,7 @@ export function ProjectSidebar() {
     <Sidebar
       collapsible="icon"
       side="left"
-      className="border-e data-[side=left]:left-[var(--sidebar-width-icon)]!"
+      className="overflow-hidden rounded-e-lg border-e data-[side=left]:left-[var(--app-sidebar-width)]!"
     >
       <SidebarHeader>
         <div className="flex items-center gap-2 px-1.5 py-1 group-data-[collapsible=icon]:px-0 group-data-[collapsible=icon]:justify-center">
@@ -134,6 +138,7 @@ export function ProjectSidebar() {
                   return (
                     <SidebarMenuItem key={to}>
                       <SidebarMenuButton
+                        id={navItemDomId(to)}
                         isActive={active}
                         tooltip={label}
                         render={

@@ -1,5 +1,10 @@
 import { Link, Outlet, createFileRoute, useRouterState } from "@tanstack/react-router"
 
+import {
+  ProjectPage,
+  ProjectPageHeader,
+  ProjectPageMain,
+} from "@/components/console/project-page"
 import { cn } from "@/lib/utils"
 
 export const Route = createFileRoute("/_app/projects/$projectId/emails")({
@@ -33,16 +38,11 @@ function EmailsLayout() {
   const { location } = useRouterState()
 
   return (
-    <div className="flex flex-col">
-      <header className="border-b">
-        <div className="mx-auto w-full max-w-6xl px-6 pt-3">
-          <div className="flex flex-wrap items-center justify-between gap-3 pb-1">
-            <h1 className="font-heading text-base font-semibold tracking-tight">
-              Emails
-            </h1>
-          </div>
-
-          <nav className="mt-2 -mb-px flex items-center gap-1">
+    <ProjectPage className="h-svh max-h-svh min-h-0 overflow-hidden">
+      <ProjectPageHeader
+        title="Emails"
+        nav={(
+          <nav className="-mb-px flex items-center gap-1">
             {SUB_NAV.map((item) => {
               const href = item.to.replace("$projectId", projectId)
               const active = location.pathname === href || location.pathname.startsWith(`${href}/`)
@@ -63,12 +63,14 @@ function EmailsLayout() {
               )
             })}
           </nav>
-        </div>
-      </header>
+        )}
+      />
 
-      <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-6">
-        <Outlet />
-      </main>
-    </div>
+      <ProjectPageMain className="h-[calc(100svh-88px)] min-h-0 flex-none overflow-hidden py-4">
+        <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
+          <Outlet />
+        </div>
+      </ProjectPageMain>
+    </ProjectPage>
   )
 }

@@ -15,6 +15,11 @@ import {
   EmptyTitle,
 } from "@/components/ui/empty"
 import { CreateTeamDialog } from "@/components/console/create-team-dialog"
+import {
+  ProjectPage,
+  ProjectPageHeader,
+  ProjectPageMain,
+} from "@/components/console/project-page"
 import {  useProjectsPage } from "@/hooks/projects/use-projects-page"
 
 export const Route = createFileRoute("/_app/projects/")({
@@ -36,13 +41,11 @@ function ProjectsPage() {
   } = useProjectsPage()
 
   return (
-    <div className="flex min-h-svh flex-col">
-      <header className="border-b">
-        <div className="mx-auto flex h-[52px] w-full max-w-6xl items-center justify-between gap-3 px-6">
-          <h1 className="font-heading text-base font-semibold tracking-tight">
-            Projects
-          </h1>
-          <div className="flex items-center gap-2">
+    <ProjectPage>
+      <ProjectPageHeader
+        title="Projects"
+        actions={(
+          <>
             <div className="relative w-56">
               <MagnifyingGlassIcon className="absolute start-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground" />
               <Input
@@ -60,11 +63,11 @@ function ProjectsPage() {
               <PlusIcon />
               New project
             </Button>
-          </div>
-        </div>
-      </header>
+          </>
+        )}
+      />
 
-      <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-6">
+      <ProjectPageMain className="py-6">
         {teams.length === 0 ? (
           <NoTeamsEmpty onCreateTeam={() => setCreateTeamOpen(true)} />
         ) : (
@@ -89,10 +92,10 @@ function ProjectsPage() {
             ) : null}
           </div>
         )}
-      </main>
+      </ProjectPageMain>
 
       <CreateTeamDialog open={createTeamOpen} onOpenChange={setCreateTeamOpen} />
-    </div>
+    </ProjectPage>
   )
 }
 

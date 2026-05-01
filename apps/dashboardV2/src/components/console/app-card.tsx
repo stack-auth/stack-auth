@@ -1,4 +1,4 @@
-import { ChartLineIcon, CheckIcon,
+import { BracketsCurlyIcon, ChartLineIcon, CheckIcon,
   ClipboardTextIcon,
   CreditCardIcon,
   EnvelopeSimpleIcon,
@@ -41,6 +41,7 @@ export const APP_ICONS: Record<VisibleAppId, PhosphorIcon> = {
   neon: PlugsConnectedIcon,
   convex: PlugsConnectedIcon,
   vercel: PlugsConnectedIcon,
+  "tanstack-start": BracketsCurlyIcon,
   analytics: ChartLineIcon,
 }
 

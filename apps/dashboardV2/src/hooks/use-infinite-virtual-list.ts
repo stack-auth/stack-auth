@@ -14,15 +14,18 @@ export type InfiniteVirtualQueryFn<TItem, TCursor> = (
   ctx: QueryFunctionContext<QueryKey, TCursor | undefined>,
 ) => Promise<InfiniteVirtualPage<TItem, TCursor>>
 
-export type UseInfiniteVirtualListOptions<TItem, TCursor> = {
+export type UseInfiniteListQueryOptions<TItem, TCursor> = {
   queryKey: QueryKey,
   queryFn: InfiniteVirtualQueryFn<TItem, TCursor>,
-  initialPageParam?: TCursor,
-  estimateSize: number | ((index: number) => number),
-  overscan?: number,
   enabled?: boolean,
   staleTime?: number,
   gcTime?: number,
+  initialPageParam?: TCursor,
+}
+
+export type UseInfiniteVirtualListOptions<TItem, TCursor> = UseInfiniteListQueryOptions<TItem, TCursor> & {
+  estimateSize: number | ((index: number) => number),
+  overscan?: number,
   /** Distance in items from the end at which to prefetch the next page. Default 5. */
   prefetchThreshold?: number,
   /** When provided, virtualizer uses this scroll element instead of the internal parent ref. */
@@ -48,6 +51,9 @@ export type UseInfiniteVirtualListOptions<TItem, TCursor> = {
 export type UseInfiniteVirtualListResult<TItem> = {
   parentRef: React.RefObject<HTMLDivElement>,
   virtualizer: Virtualizer<HTMLElement, Element>,
+} & UseInfiniteListQueryResult<TItem>
+
+export type UseInfiniteListQueryResult<TItem> = {
   items: Array<TItem>,
   isLoading: boolean,
   isError: boolean,
@@ -56,6 +62,55 @@ export type UseInfiniteVirtualListResult<TItem> = {
   hasNextPage: boolean,
   fetchNextPage: () => void,
   refetch: () => void,
+}
+
+export function useInfiniteListQuery<TItem, TCursor = string>(
+  options: UseInfiniteListQueryOptions<TItem, TCursor>,
+): UseInfiniteListQueryResult<TItem> {
+  const {
+    queryKey,
+    queryFn,
+    initialPageParam,
+    enabled = true,
+    staleTime,
+    gcTime,
+  } = options
+
+  const query = useInfiniteQuery<
+    InfiniteVirtualPage<TItem, TCursor>,
+    Error,
+    InfiniteData<InfiniteVirtualPage<TItem, TCursor>, TCursor | undefined>,
+    QueryKey,
+    TCursor | undefined
+  >({
+    queryKey,
+    queryFn,
+    initialPageParam: initialPageParam,
+    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    enabled,
+    staleTime,
+    gcTime,
+  })
+
+  const items = useMemo(
+    () => query.data?.pages.flatMap((p) => p.items) ?? [],
+    [query.data],
+  )
+
+  const fetchNextPage = useCallback(() => {
+    runAsynchronously(query.fetchNextPage())
+  }, [query])
+
+  return {
+    items,
+    isLoading: query.isLoading,
+    isError: query.isError,
+    error: query.error,
+    isFetchingNextPage: query.isFetchingNextPage,
+    hasNextPage: !!query.hasNextPage,
+    fetchNextPage,
+    refetch: query.refetch,
+  }
 }
 
 export function useInfiniteVirtualList<TItem, TCursor = string>(
@@ -79,28 +134,16 @@ export function useInfiniteVirtualList<TItem, TCursor = string>(
   const parentRef = useRef<HTMLDivElement>(null)
   const pendingKeyboardNavigationRef = useRef<{ direction: 1 | -1, fromIndex: number } | null>(null)
 
-  const query = useInfiniteQuery<
-    InfiniteVirtualPage<TItem, TCursor>,
-    Error,
-    InfiniteData<InfiniteVirtualPage<TItem, TCursor>, TCursor | undefined>,
-    QueryKey,
-    TCursor | undefined
-  >({
+  const query = useInfiniteListQuery({
     queryKey,
     queryFn,
-    initialPageParam: initialPageParam,
-    getNextPageParam: (lastPage) => lastPage.nextCursor ?? undefined,
+    initialPageParam,
     enabled,
     staleTime,
     gcTime,
   })
 
-  const items = useMemo(
-    () => query.data?.pages.flatMap((p) => p.items) ?? [],
-    [query.data],
-  )
-
-  const hasNextPage = !!query.hasNextPage
+  const { items, hasNextPage, isFetchingNextPage, fetchNextPage } = query
   const count = items.length + (hasNextPage ? 1 : 0)
 
   const estimateSizeFn = useCallback(
@@ -115,10 +158,6 @@ export function useInfiniteVirtualList<TItem, TCursor = string>(
     overscan,
   })
 
-  const fetchNextPage = useCallback(() => {
-    runAsynchronously(query.fetchNextPage())
-  }, [query])
-
   // Recompute sizes when the consumer signals rows changed shape.
   useEffect(() => {
     if (measureKey !== undefined) virtualizer.measure()
@@ -131,12 +170,12 @@ export function useInfiniteVirtualList<TItem, TCursor = string>(
     const last = virtualItems[virtualItems.length - 1]
     if (
       hasNextPage &&
-      !query.isFetchingNextPage &&
+      !isFetchingNextPage &&
       last.index >= items.length - prefetchThreshold
     ) {
       fetchNextPage()
     }
-  }, [virtualItems, hasNextPage, query.isFetchingNextPage, items.length, prefetchThreshold, fetchNextPage])
+  }, [virtualItems, hasNextPage, isFetchingNextPage, items.length, prefetchThreshold, fetchNextPage])
 
   const defaultSelectableIndexes = useMemo(
     () => items.map((_, index) => index),
@@ -182,7 +221,7 @@ export function useInfiniteVirtualList<TItem, TCursor = string>(
     if (selectableIndexes.length === 0) {
       if (direction === 1 && hasNextPage) {
         pendingKeyboardNavigationRef.current = { direction, fromIndex: -1 }
-        if (!query.isFetchingNextPage) fetchNextPage()
+        if (!isFetchingNextPage) fetchNextPage()
       }
       return
     }
@@ -207,7 +246,7 @@ export function useInfiniteVirtualList<TItem, TCursor = string>(
         direction,
         fromIndex: selectableIndexes[selectedPosition],
       }
-      if (!query.isFetchingNextPage) fetchNextPage()
+      if (!isFetchingNextPage) fetchNextPage()
     }
   }, [
     keyboardNavigationEnabled,
@@ -216,7 +255,7 @@ export function useInfiniteVirtualList<TItem, TCursor = string>(
     selectableIndexes,
     selectedKeyboardIndex,
     hasNextPage,
-    query.isFetchingNextPage,
+    isFetchingNextPage,
     fetchNextPage,
     selectKeyboardIndex,
   ])
@@ -249,7 +288,7 @@ export function useInfiniteVirtualList<TItem, TCursor = string>(
   }, [keyboardNavigationEnabled, nextKey, previousKey, navigateKeyboardSelection])
 
   useEffect(() => {
-    if (!keyboardNavigationEnabled || query.isFetchingNextPage) return
+    if (!keyboardNavigationEnabled || isFetchingNextPage) return
 
     const pending = pendingKeyboardNavigationRef.current
     if (pending == null) return
@@ -272,7 +311,7 @@ export function useInfiniteVirtualList<TItem, TCursor = string>(
     pendingKeyboardNavigationRef.current = null
   }, [
     keyboardNavigationEnabled,
-    query.isFetchingNextPage,
+    isFetchingNextPage,
     selectableIndexes,
     hasNextPage,
     fetchNextPage,
@@ -282,14 +321,7 @@ export function useInfiniteVirtualList<TItem, TCursor = string>(
   return {
     parentRef,
     virtualizer,
-    items,
-    isLoading: query.isLoading,
-    isError: query.isError,
-    error: query.error,
-    isFetchingNextPage: query.isFetchingNextPage,
-    hasNextPage,
-    fetchNextPage,
-    refetch: query.refetch,
+    ...query,
   }
 }
 

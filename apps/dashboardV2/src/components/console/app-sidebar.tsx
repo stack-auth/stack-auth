@@ -49,12 +49,13 @@ export function AppSidebar() {
   const { user, location, initials } = useAppSidebar()
 
   return (
-    <aside className="fixed inset-y-0 left-0 z-20 flex h-svh w-(--sidebar-width-icon) flex-col items-center border-e bg-sidebar pb-2">
+    <aside className="fixed inset-y-0 left-0 z-20 flex h-svh w-(--app-sidebar-width) flex-col items-center overflow-hidden rounded-e-lg border-e bg-sidebar pb-2">
       <div className="flex h-[52px] w-full items-center justify-center">
         <Button
           size="icon-lg"
           aria-label="Stack Auth"
           className="bg-primary text-primary-foreground hover:bg-primary/80"
+          nativeButton={false}
           render={<Link to="/projects" />}
         >
           <img src="/logo.svg" alt="" className="h-5 w-auto invert dark:invert-0" />
@@ -73,6 +74,7 @@ export function AppSidebar() {
               title={label}
               data-active={isActive || undefined}
               className="data-[active]:bg-muted data-[active]:text-foreground"
+              nativeButton={false}
               render={<Link to={to} />}
             >
               <Icon weight={isActive ? "fill" : "regular"} />
@@ -94,6 +96,7 @@ export function AppSidebar() {
 
         <DropdownMenu>
           <DropdownMenuTrigger
+            id="app-sidebar-account-menu-trigger"
             render={
               <Button
                 variant="ghost"
@@ -155,6 +158,7 @@ function IconRailLink({
       size="icon-lg"
       aria-label={label}
       title={label}
+      nativeButton={false}
       render={<a href={href} target="_blank" rel="noreferrer noopener" />}
     >
       <Icon />

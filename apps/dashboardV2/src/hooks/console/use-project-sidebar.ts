@@ -2,7 +2,7 @@ import { useEffect, useState } from "react"
 import { useRouterState } from "@tanstack/react-router"
 import type { AppId } from "@stackframe/stack-shared/dist/apps/apps-config"
 
-import { useAdminApp } from "@/lib/stack/admin-app"
+import { useAdminProject, useLoadedAdminProjectConfig } from "@/lib/stack/react-query"
 
 export type ProjectSidebarNavTo =
   | "/projects/$projectId"
@@ -38,9 +38,8 @@ export type ProjectSidebarNavGroup<TIcon> = {
 export function useProjectSidebar<TIcon>(
   navGroups: ReadonlyArray<ProjectSidebarNavGroup<TIcon>>,
 ) {
-  const adminApp = useAdminApp()
-  const project = adminApp.useProject()
-  const config = project.useConfig()
+  const project = useAdminProject()
+  const config = useLoadedAdminProjectConfig(project)
   const projectId = project.id
   const { location } = useRouterState()
   // Detect platform on the client. Pre-mount we render the Windows/Linux label

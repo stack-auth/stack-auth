@@ -30,6 +30,7 @@ import {
 } from "@/components/ui/dropdown-menu"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Textarea } from "@/components/ui/textarea"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
@@ -48,7 +49,17 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from "@/components/ui/empty"
+import {
+  ProjectPage,
+  ProjectPageHeader,
+  ProjectPageMain,
+} from "@/components/console/project-page"
 import { useAdminApp } from "@/lib/stack/admin-app"
+import {
+  useProjectPermissionDefinitionsQuery,
+  useStackAuthQueryInvalidation,
+  useTeamPermissionDefinitionsQuery,
+} from "@/lib/stack/react-query"
 
 export const Route = createFileRoute("/_app/projects/$projectId/permissions")({
   component: PermissionsPage,
@@ -67,13 +78,15 @@ type PermissionDef = {
   containedPermissionIds: Array<string>,
 }
 
+type PermissionDefinitionKind = "team" | "project"
+
 type PermissionsSectionProps = {
   /** UI label, e.g. "Team permissions". */
   label: string,
   /** Singular form, e.g. "team permission". */
   singular: string,
-  /** Read hook returning the current list of definitions (suspense-style). */
-  useDefinitions: () => Array<PermissionDef>,
+  kind: PermissionDefinitionKind,
+  useDefinitions: () => { data: Array<PermissionDef> | undefined },
   /** Create a new permission definition. Throws on failure. */
   create: (data: {
     id: string,
@@ -99,16 +112,10 @@ function PermissionsPage() {
   const adminApp = useAdminApp()
 
   return (
-    <div className="flex flex-col">
-      <header className="border-b">
-        <div className="mx-auto flex h-[52px] w-full max-w-5xl items-center justify-between gap-3 px-6">
-          <h1 className="font-heading text-base font-semibold tracking-tight">
-            Permissions
-          </h1>
-        </div>
-      </header>
+    <ProjectPage>
+      <ProjectPageHeader title="Permissions" />
 
-      <main className="mx-auto w-full max-w-5xl flex-1 space-y-6 px-6 py-8">
+      <ProjectPageMain className="space-y-6">
         <Tabs defaultValue="team">
           <TabsList>
             <TabsTrigger value="team">Team permissions</TabsTrigger>
@@ -119,7 +126,8 @@ function PermissionsPage() {
             <PermissionsSection
               label="Team permissions"
               singular="team permission"
-              useDefinitions={() => adminApp.useTeamPermissionDefinitions()}
+              kind="team"
+              useDefinitions={() => useTeamPermissionDefinitionsQuery(adminApp)}
               create={(data) => adminApp.createTeamPermissionDefinition(data)}
               update={(id, data) => adminApp.updateTeamPermissionDefinition(id, data)}
               remove={(id) => adminApp.deleteTeamPermissionDefinition(id)}
@@ -130,27 +138,33 @@ function PermissionsPage() {
             <PermissionsSection
               label="Project permissions"
               singular="project permission"
-              useDefinitions={() => adminApp.useProjectPermissionDefinitions()}
+              kind="project"
+              useDefinitions={() => useProjectPermissionDefinitionsQuery(adminApp)}
               create={(data) => adminApp.createProjectPermissionDefinition(data)}
               update={(id, data) => adminApp.updateProjectPermissionDefinition(id, data)}
               remove={(id) => adminApp.deleteProjectPermissionDefinition(id)}
             />
           </TabsContent>
         </Tabs>
-      </main>
-    </div>
+      </ProjectPageMain>
+    </ProjectPage>
   )
 }
 
 function PermissionsSection({
   label,
   singular,
+  kind,
   useDefinitions,
   create,
   update,
   remove,
 }: PermissionsSectionProps) {
-  const definitions = useDefinitions()
+  const adminApp = useAdminApp()
+  const { invalidatePermissionDefinitions } = useStackAuthQueryInvalidation()
+  const definitionsQuery = useDefinitions()
+  const definitions = definitionsQuery.data
+  const visibleDefinitions = definitions ?? []
   const [createOpen, setCreateOpen] = React.useState(false)
   const [editing, setEditing] = React.useState<PermissionDef | null>(null)
   const [deleting, setDeleting] = React.useState<PermissionDef | null>(null)
@@ -163,7 +177,7 @@ function PermissionsSection({
             {label}
           </h2>
           <span className="font-mono text-[11px] tracking-wider text-muted-foreground">
-            {definitions.length}
+            {definitions == null ? "..." : definitions.length}
           </span>
         </div>
         <Button size="sm" onClick={() => setCreateOpen(true)}>
@@ -172,7 +186,9 @@ function PermissionsSection({
         </Button>
       </div>
 
-      {definitions.length === 0 ? (
+      {definitions == null ? (
+        <PermissionsSectionSkeleton />
+      ) : definitions.length === 0 ? (
         <Empty className="rounded-lg ring-1 ring-foreground/10">
           <EmptyHeader>
             <EmptyMedia variant="icon">
@@ -247,9 +263,10 @@ function PermissionsSection({
         singular={singular}
         open={createOpen}
         onOpenChange={setCreateOpen}
-        existing={definitions}
+        existing={visibleDefinitions}
         onSubmit={async ({ id, description, containedPermissionIds }) => {
           await create({ id, description, containedPermissionIds })
+          await invalidatePermissionDefinitions(adminApp.projectId, kind)
         }}
       />
 
@@ -260,10 +277,11 @@ function PermissionsSection({
         onOpenChange={(o) => {
           if (!o) setEditing(null)
         }}
-        existing={definitions}
+        existing={visibleDefinitions}
         initial={editing}
         onSubmit={async ({ id, description, containedPermissionIds }) => {
           await update(id, { description, containedPermissionIds })
+          await invalidatePermissionDefinitions(adminApp.projectId, kind)
         }}
       />
 
@@ -293,6 +311,7 @@ function PermissionsSection({
                 const target = deleting
                 if (target == null) return
                 await remove(target.id)
+                await invalidatePermissionDefinitions(adminApp.projectId, kind)
                 setDeleting(null)
               }}
             >
@@ -302,6 +321,26 @@ function PermissionsSection({
         </AlertDialogContent>
       </AlertDialog>
     </section>
+  )
+}
+
+function PermissionsSectionSkeleton() {
+  return (
+    <ul className="divide-y rounded-lg ring-1 ring-foreground/10">
+      {Array.from({ length: 3 }).map((_, index) => (
+        <li key={index} className="flex items-start justify-between gap-4 p-4">
+          <div className="min-w-0 flex-1 space-y-2">
+            <Skeleton className="h-5 w-36 rounded-md" />
+            <Skeleton className="h-4 w-full max-w-md" />
+            <div className="flex gap-1 pt-1">
+              <Skeleton className="h-5 w-20 rounded-full" />
+              <Skeleton className="h-5 w-24 rounded-full" />
+            </div>
+          </div>
+          <Skeleton className="size-8 rounded-md" />
+        </li>
+      ))}
+    </ul>
   )
 }
 

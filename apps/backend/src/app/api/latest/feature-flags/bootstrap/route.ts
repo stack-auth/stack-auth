@@ -87,12 +87,15 @@ export const GET = createSmartRouteHandler({
       };
     }
 
+    // The body is JSON-serializable at runtime, but FlagDef and HoldoutDef are
+    // declared with yup-derived types (containing `any` for variant values), so
+    // TypeScript can't statically prove they extend the recursive Json type.
     const body = {
       flags: flagsById,
       flag_ids_by_key: flagIdsByKey,
       holdouts,
       version,
-    };
+    } as Record<string, any>;
     const responseHeaders: Record<string, string[]> = {
       "content-type": ["application/json; charset=utf-8"],
       etag: [etag],

@@ -41,8 +41,14 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
-import { Textarea } from "@/components/ui/textarea"
+import { CodeEditor } from "@/components/projects/emails/code-editor"
 import { useAdminApp } from "@/lib/stack/admin-app"
+import {
+  useEmailPreviewQuery,
+  useEmailTemplatesQuery,
+  useEmailThemesQuery,
+  useStackAuthQueryInvalidation,
+} from "@/lib/stack/react-query"
 
 export const Route = createFileRoute("/_app/projects/$projectId/emails/templates")({
   component: TemplatesPage,
@@ -50,13 +56,29 @@ export const Route = createFileRoute("/_app/projects/$projectId/emails/templates
 
 const NO_THEME_VALUE = "__no_theme__"
 
+function getThemeSelectLabel(
+  value: unknown,
+  themes: Array<{ id: string, displayName: string }>
+) {
+  if (value === NO_THEME_VALUE) {
+    return "Default theme"
+  }
+  if (typeof value !== "string") {
+    throw new Error("Expected email template theme select value to be a string.")
+  }
+  return themes.find((theme) => theme.id === value)?.displayName ?? value
+}
+
 function TemplatesPage() {
   const adminApp = useAdminApp()
-  const templates = adminApp.useEmailTemplates()
-  const themes = adminApp.useEmailThemes()
+  const templates = useEmailTemplatesQuery(adminApp).data ?? []
+  const themes = useEmailThemesQuery(adminApp).data ?? []
+  const { invalidateEmailTemplates } = useStackAuthQueryInvalidation()
 
   const [createOpen, setCreateOpen] = useState(false)
   const [selectedId, setSelectedId] = useState<string | null>(null)
+  const [templatePendingDeleteId, setTemplatePendingDeleteId] = useState<string | null>(null)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   // Auto-select first template once loaded.
   useEffect(() => {
@@ -75,62 +97,105 @@ function TemplatesPage() {
     ? null
     : templates.find((t) => t.id === selectedId) ?? null
 
+  const templatePendingDelete = templatePendingDeleteId == null
+    ? null
+    : templates.find((t) => t.id === templatePendingDeleteId) ?? null
+
+  const handleDeleteTemplate = async () => {
+    if (templatePendingDelete == null) {
+      throw new Error("Tried to delete an email template without a selected template.")
+    }
+
+    setDeleteError(null)
+    await adminApp.deleteEmailTemplate(templatePendingDelete.id)
+    await invalidateEmailTemplates(adminApp.projectId)
+    toast.success("Template deleted.")
+    setTemplatePendingDeleteId(null)
+    setSelectedId((currentSelectedId) =>
+      currentSelectedId === templatePendingDelete.id ? null : currentSelectedId
+    )
+  }
+
   return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <h2 className="font-heading text-base font-medium tracking-tight">
-            Email templates
-          </h2>
-          <Badge variant="outline">{templates.length}</Badge>
-        </div>
-        <Button onClick={() => setCreateOpen(true)}>
-          <PlusIcon />
-          New template
-        </Button>
-      </div>
-
+    <div className="flex h-full min-h-0 flex-1 flex-col overflow-hidden">
       {templates.length === 0 ? (
-        <TemplatesEmpty onCreate={() => setCreateOpen(true)} />
+        <div className="flex h-full min-h-0 flex-col gap-4">
+          <EmailListHeader
+            title="Email templates"
+            count={templates.length}
+            actionLabel="New template"
+            onCreate={() => setCreateOpen(true)}
+          />
+          <TemplatesEmpty onCreate={() => setCreateOpen(true)} />
+        </div>
       ) : (
-        <div className="grid grid-cols-1 gap-4 lg:grid-cols-[18rem_1fr]">
-          <ul className="flex flex-col gap-1 self-start rounded-md ring-1 ring-foreground/10">
-            {templates.map((t) => {
-              const active = t.id === selectedId
-              const themeName =
-                t.themeId != null
-                  ? themesById.get(t.themeId)?.displayName ?? t.themeId
-                  : null
-              return (
-                <li key={t.id}>
-                  <button
-                    type="button"
-                    onClick={() => setSelectedId(t.id)}
-                    className={
-                      "flex w-full flex-col items-start gap-1 rounded-md px-3 py-2 text-start transition-colors hover:transition-none " +
-                      (active
-                        ? "bg-accent text-foreground"
-                        : "hover:bg-accent/40")
-                    }
-                  >
-                    <span className="truncate text-xs font-medium">
-                      {t.displayName}
-                    </span>
-                    <span className="flex items-center gap-1 font-mono text-[10px] text-muted-foreground">
-                      {t.id.slice(0, 8)}
-                      {themeName ? (
-                        <Badge variant="outline" className="font-mono">
-                          {themeName}
-                        </Badge>
+        <div className="grid min-h-0 flex-1 grid-cols-1 gap-3 overflow-hidden lg:grid-cols-[18rem_minmax(0,1fr)]">
+          <div className="flex min-h-0 flex-col gap-2">
+            <EmailListHeader
+              title="Email templates"
+              count={templates.length}
+              actionLabel="New template"
+              onCreate={() => setCreateOpen(true)}
+            />
+            {deleteError != null ? (
+              <Alert variant="destructive">
+                <AlertTitle>Could not delete template</AlertTitle>
+                <AlertDescription>{deleteError}</AlertDescription>
+              </Alert>
+            ) : null}
+            <ul className="flex min-h-0 flex-1 flex-col gap-1 overflow-y-auto rounded-md ring-1 ring-foreground/10">
+              {templates.map((t) => {
+                const active = t.id === selectedId
+                const themeName =
+                  t.themeId != null
+                    ? themesById.get(t.themeId)?.displayName ?? t.themeId
+                    : null
+                return (
+                  <li key={t.id}>
+                    <div
+                      className={
+                        "flex w-full items-start gap-1 rounded-md px-2 py-2 transition-colors hover:transition-none " +
+                        (active
+                          ? "bg-accent text-foreground"
+                          : "hover:bg-accent/40")
+                      }
+                    >
+                      <button
+                        type="button"
+                        onClick={() => setSelectedId(t.id)}
+                        className="min-w-0 flex-1 text-start"
+                      >
+                        <span className="block truncate text-xs font-medium">
+                          {t.displayName}
+                        </span>
+                        <span className="mt-1 flex items-center gap-1 font-mono text-[10px] text-muted-foreground">
+                          {t.id.slice(0, 8)}
+                          {themeName ? (
+                            <Badge variant="outline" className="font-mono">
+                              {themeName}
+                            </Badge>
+                          ) : null}
+                        </span>
+                      </button>
+                      {active ? (
+                        <Button
+                          variant="ghost"
+                          size="icon-sm"
+                          aria-label={`Delete template ${t.displayName}`}
+                          className="text-destructive hover:text-destructive"
+                          onClick={() => setTemplatePendingDeleteId(t.id)}
+                        >
+                          <TrashIcon />
+                        </Button>
                       ) : null}
-                    </span>
-                  </button>
-                </li>
-              )
-            })}
-          </ul>
+                    </div>
+                  </li>
+                )
+              })}
+            </ul>
+          </div>
 
-          <div className="min-w-0">
+          <div className="h-full min-h-0 min-w-0 overflow-hidden">
             {selected == null ? (
               <p className="py-12 text-center text-xs text-muted-foreground">
                 Select a template to edit.
@@ -139,11 +204,9 @@ function TemplatesPage() {
               <TemplateEditor
                 key={selected.id}
                 templateId={selected.id}
-                initialDisplayName={selected.displayName}
                 initialThemeId={selected.themeId ?? null}
                 initialTsxSource={selected.tsxSource}
                 themes={themes}
-                onDeleted={() => setSelectedId(null)}
               />
             )}
           </div>
@@ -155,6 +218,66 @@ function TemplatesPage() {
         onOpenChange={setCreateOpen}
         onCreated={(id) => setSelectedId(id)}
       />
+
+      <AlertDialog
+        open={templatePendingDelete != null}
+        onOpenChange={(open) => {
+          if (!open) setTemplatePendingDeleteId(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this template?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. The template "{templatePendingDelete?.displayName}"
+              will be permanently removed.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              variant="destructive"
+              onClick={async () => {
+                try {
+                  await handleDeleteTemplate()
+                } catch (err) {
+                  setDeleteError(err instanceof Error ? err.message : "Failed to delete template.")
+                  setTemplatePendingDeleteId(null)
+                }
+              }}
+            >
+              Delete
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  )
+}
+
+function EmailListHeader({
+  title,
+  count,
+  actionLabel,
+  onCreate,
+}: {
+  title: string,
+  count: number,
+  actionLabel: string,
+  onCreate: () => void,
+}) {
+  return (
+    <div className="flex h-8 shrink-0 items-center justify-between gap-2">
+      <div className="flex min-w-0 items-center gap-2">
+        <h2 className="truncate font-heading text-sm font-medium tracking-tight">
+          {title}
+        </h2>
+        <Badge variant="outline">{count}</Badge>
+      </div>
+      <Button size="sm" onClick={onCreate}>
+        <PlusIcon />
+        {actionLabel}
+      </Button>
     </div>
   )
 }
@@ -190,10 +313,11 @@ function CreateTemplateDialog({
   onCreated,
 }: {
   open: boolean,
-  onOpenChange: (open: boolean) => void,
+  onOpenChange: (nextOpen: boolean) => void,
   onCreated: (id: string) => void,
 }) {
   const adminApp = useAdminApp()
+  const { invalidateEmailTemplates } = useStackAuthQueryInvalidation()
   const [displayName, setDisplayName] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -214,6 +338,7 @@ function CreateTemplateDialog({
     setError(null)
     try {
       const { id } = await adminApp.createEmailTemplate(name)
+      await invalidateEmailTemplates(adminApp.projectId)
       toast.success(`Template "${name}" created.`)
       reset()
       onOpenChange(false)
@@ -278,30 +403,22 @@ function CreateTemplateDialog({
 
 function TemplateEditor({
   templateId,
-  initialDisplayName,
   initialThemeId,
   initialTsxSource,
   themes,
-  onDeleted,
 }: {
   templateId: string,
-  initialDisplayName: string,
   initialThemeId: string | null,
   initialTsxSource: string,
   themes: Array<{ id: string, displayName: string }>,
-  onDeleted: () => void,
 }) {
   const adminApp = useAdminApp()
+  const { invalidateEmailTemplates } = useStackAuthQueryInvalidation()
   const [tsxSource, setTsxSource] = useState(initialTsxSource)
   const [themeIdValue, setThemeIdValue] = useState<string>(
     initialThemeId ?? NO_THEME_VALUE
   )
   const [error, setError] = useState<string | null>(null)
-  const [deleteOpen, setDeleteOpen] = useState(false)
-
-  // Note: displayName is shown read-only because the SDK's
-  // `updateEmailTemplate(id, tsxSource, themeId)` does not accept a display
-  // name. Renaming is not currently exposed by the SDK.
 
   const dirty =
     tsxSource !== initialTsxSource ||
@@ -310,7 +427,7 @@ function TemplateEditor({
   // Fetch a sandboxed live preview against the SAVED state (not the dirty
   // textarea) — re-rendering on every keystroke would hammer the server. Save
   // to refresh the preview.
-  const previewHtml = adminApp.useEmailPreview({ templateId })
+  const previewHtml = useEmailPreviewQuery({ templateId }, adminApp).data ?? ""
 
   const handleSave = async () => {
     setError(null)
@@ -318,6 +435,7 @@ function TemplateEditor({
       themeIdValue === NO_THEME_VALUE ? null : themeIdValue
     try {
       await adminApp.updateEmailTemplate(templateId, tsxSource, themeIdToSend)
+      await invalidateEmailTemplates(adminApp.projectId)
       toast.success("Template saved.")
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to save template.")
@@ -335,53 +453,20 @@ function TemplateEditor({
     }
   }
 
-  const handleDelete = async () => {
-    try {
-      await adminApp.deleteEmailTemplate(templateId)
-      toast.success("Template deleted.")
-      setDeleteOpen(false)
-      onDeleted()
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to delete template.")
-      setDeleteOpen(false)
-    }
-  }
-
   return (
-    <div className="space-y-4 rounded-md ring-1 ring-foreground/10 p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="font-mono text-[10px] tracking-wider text-muted-foreground uppercase">
-            Editing
-          </p>
-          <h3 className="truncate font-heading text-base font-medium">
-            {initialDisplayName}
-          </h3>
-          <p className="font-mono text-[10px] text-muted-foreground">
-            {templateId}
-          </p>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          className="text-destructive hover:text-destructive"
-          onClick={() => setDeleteOpen(true)}
-        >
-          <TrashIcon />
-          Delete
-        </Button>
-      </div>
-
-      <div className="space-y-1.5">
-        <Label htmlFor="template-theme">Theme</Label>
+    <div className="flex h-full min-h-0 flex-col gap-3 overflow-hidden rounded-md p-3 ring-1 ring-foreground/10">
+      <div className="grid shrink-0 gap-2 lg:grid-cols-[4rem_minmax(0,1fr)] lg:items-center">
+        <Label htmlFor="template-theme" className="text-xs">Theme</Label>
         <Select
           value={themeIdValue}
           onValueChange={(v) => {
             if (typeof v === "string") setThemeIdValue(v)
           }}
         >
-          <SelectTrigger id="template-theme" className="w-full">
-            <SelectValue placeholder="Default theme" />
+          <SelectTrigger id="template-theme" className="h-8 w-full">
+            <SelectValue placeholder="Default theme">
+              {(value: unknown) => getThemeSelectLabel(value, themes)}
+            </SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value={NO_THEME_VALUE}>Default theme</SelectItem>
@@ -394,24 +479,22 @@ function TemplateEditor({
         </Select>
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-        <div className="space-y-1.5">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden lg:grid-cols-2">
+        <div className="flex min-h-0 flex-col gap-1.5">
           <Label htmlFor="template-source">TSX source</Label>
-          <Textarea
-            id="template-source"
+          <CodeEditor
+            ariaLabel="Template TSX source"
             value={tsxSource}
-            onChange={(e) => setTsxSource(e.target.value)}
-            spellCheck={false}
-            className="min-h-[420px] font-mono text-[11px] leading-relaxed"
+            onChange={setTsxSource}
           />
         </div>
-        <div className="space-y-1.5">
+        <div className="flex min-h-0 flex-col gap-1.5">
           <Label>Preview (saved state)</Label>
           <iframe
             title="Email preview"
             srcDoc={previewHtml}
             sandbox=""
-            className="h-[420px] w-full rounded-md bg-white ring-1 ring-foreground/10"
+            className="min-h-0 w-full flex-1 rounded-md bg-white ring-1 ring-foreground/10"
           />
         </div>
       </div>
@@ -423,7 +506,7 @@ function TemplateEditor({
         </Alert>
       ) : null}
 
-      <div className="flex items-center justify-between gap-2">
+      <div className="flex shrink-0 items-center justify-between gap-2">
         <Button variant="ghost" size="sm" onClick={handleRewriteWithAi}>
           <MagicWandIcon />
           Rewrite with AI
@@ -433,23 +516,6 @@ function TemplateEditor({
         </Button>
       </div>
 
-      <AlertDialog open={deleteOpen} onOpenChange={setDeleteOpen}>
-        <AlertDialogContent>
-          <AlertDialogHeader>
-            <AlertDialogTitle>Delete this template?</AlertDialogTitle>
-            <AlertDialogDescription>
-              This action cannot be undone. The template "{initialDisplayName}"
-              will be permanently removed.
-            </AlertDialogDescription>
-          </AlertDialogHeader>
-          <AlertDialogFooter>
-            <AlertDialogCancel>Cancel</AlertDialogCancel>
-            <AlertDialogAction variant="destructive" onClick={handleDelete}>
-              Delete
-            </AlertDialogAction>
-          </AlertDialogFooter>
-        </AlertDialogContent>
-      </AlertDialog>
     </div>
   )
 }

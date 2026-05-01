@@ -4,6 +4,8 @@ import { fileToBase64 } from "@stackframe/stack-shared/dist/utils/base64"
 import { toast } from "sonner"
 import type { ChangeEvent, FormEvent } from "react"
 
+import { useStackAuthQueryInvalidation } from "@/lib/stack/react-query"
+
 export type CreatedTeam = {
   id: string,
   displayName: string,
@@ -19,6 +21,7 @@ export function useCreateTeamDialog({
   onCreated,
 }: UseCreateTeamDialogOptions) {
   const user = useUser({ or: "redirect" })
+  const { invalidateCurrentUserTeams } = useStackAuthQueryInvalidation()
   const [displayName, setDisplayName] = useState("")
   const [profileImageUrl, setProfileImageUrl] = useState("")
   const [uploading, setUploading] = useState(false)
@@ -71,6 +74,7 @@ export function useCreateTeamDialog({
         displayName: name,
         profileImageUrl: profileImageUrl.trim() || undefined,
       })
+      await invalidateCurrentUserTeams(user.id)
       toast.success("Team created")
       onCreated?.({ id: team.id, displayName: team.displayName })
       reset()

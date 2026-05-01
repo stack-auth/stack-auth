@@ -15,7 +15,7 @@
  *   - recently_registered (slim user projection)
  */
 
-import { useMemo, useState } from "react"
+import { Suspense, useMemo, useState } from "react"
 import { Link, createFileRoute } from "@tanstack/react-router"
 import {
   ArrowDownIcon,
@@ -51,28 +51,77 @@ import type {
   MetricsDataPoint,
   MetricsResponse,
 } from "@stackframe/stack-shared/dist/interface/admin-metrics"
+import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema"
+import type { AdminProject, InternalApiKey } from "@stackframe/tanstack-start"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardAction, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart"
 import { Progress } from "@/components/ui/progress"
+import { Skeleton } from "@/components/ui/skeleton"
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group"
+import {
+  ProjectPage,
+  ProjectPageHeader,
+  ProjectPageMain,
+} from "@/components/console/project-page"
+import { ProjectUserDrawerLink } from "@/components/console/project-entity-drawer-link"
 import { useAdminApp } from "@/lib/stack/admin-app"
 import { useFavicon } from "@/hooks/use-favicon"
-import { useMetrics } from "@/hooks/use-metrics"
+import {
+  useAdminProject,
+  useInternalApiKeysQuery,
+  useLoadedAdminProjectConfig,
+  useMetricsQuery,
+} from "@/lib/stack/react-query"
 
 export const Route = createFileRoute("/_app/projects/$projectId/")({
   component: ProjectOverviewPage,
 })
 
 function ProjectOverviewPage() {
-  const adminApp = useAdminApp()
-  const project = adminApp.useProject()
-  const config = project.useConfig()
-  const apiKeys = adminApp.useInternalApiKeys()
-  const metrics = useMetrics(adminApp, false)
+  return (
+    <Suspense fallback={<ProjectOverviewSkeleton />}>
+      <ProjectOverviewContent />
+    </Suspense>
+  )
+}
 
+function ProjectOverviewContent() {
+  const adminApp = useAdminApp()
+  const project = useAdminProject(adminApp)
+  const config = useLoadedAdminProjectConfig(project)
+  const apiKeysQuery = useInternalApiKeysQuery(adminApp)
+  const metricsQuery = useMetricsQuery(adminApp, false)
+  const apiKeys = apiKeysQuery.data
+  const metrics = metricsQuery.data
+
+  if (apiKeys == null || metrics == null) {
+    return <ProjectOverviewSkeleton />
+  }
+
+  return (
+    <ProjectOverviewLoaded
+      project={project}
+      config={config}
+      apiKeys={apiKeys}
+      metrics={metrics}
+    />
+  )
+}
+
+function ProjectOverviewLoaded({
+  project,
+  config,
+  apiKeys,
+  metrics,
+}: {
+  project: AdminProject,
+  config: CompleteConfig,
+  apiKeys: Array<InternalApiKey>,
+  metrics: MetricsResponse,
+}) {
   const installedApps = useMemo(() => {
     const installed = config.apps.installed as Record<string, { enabled?: boolean } | undefined>
     const out = new Set<string>()
@@ -112,20 +161,14 @@ function ProjectOverviewPage() {
   const topCountries = useMemo(() => topCountriesFrom(metrics.users_by_country, 5), [metrics.users_by_country])
 
   return (
-    <div className="flex min-h-svh flex-col">
-      <header className="border-b">
-        <div className="mx-auto flex h-[52px] w-full max-w-6xl items-center justify-between gap-3 px-6">
-          <div className="flex items-center gap-3">
-            <h1 className="font-heading text-base font-semibold tracking-tight">
-              {project.displayName}
-            </h1>
-            <LiveDot count={metrics.live_users} />
-          </div>
-          <CopyableId value={project.id} />
-        </div>
-      </header>
+    <ProjectPage>
+      <ProjectPageHeader
+        title={project.displayName}
+        badge={<LiveDot count={metrics.live_users} />}
+        actions={<CopyableId value={project.id} />}
+      />
 
-      <main className="mx-auto w-full max-w-6xl flex-1 space-y-6 px-6 py-6">
+      <ProjectPageMain className="space-y-6 py-6">
         {/* KPI strip */}
         <section className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
           <KpiCard
@@ -372,10 +415,9 @@ function ProjectOverviewPage() {
                 <ul className="divide-y">
                   {metrics.recently_registered.slice(0, 6).map((user) => (
                     <li key={user.id}>
-                      <Link
-                        to="/projects/$projectId/users"
-                        params={{ projectId: project.id }}
-                        className="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-muted/40 hover:transition-none"
+                      <ProjectUserDrawerLink
+                        userId={user.id}
+                        className="flex w-full items-center gap-3 px-4 py-3 text-left text-foreground transition-colors hover:bg-muted/40 hover:no-underline hover:transition-none"
                       >
                         <Avatar size="sm">
                           {user.profile_image_url ? (
@@ -402,7 +444,7 @@ function ProjectOverviewPage() {
                           <UserPlusIcon className="size-3.5" />
                           <span>{formatRelative(new Date(user.signed_up_at_millis))}</span>
                         </div>
-                      </Link>
+                      </ProjectUserDrawerLink>
                     </li>
                   ))}
                 </ul>
@@ -447,8 +489,141 @@ function ProjectOverviewPage() {
             </CardContent>
           </Card>
         </section>
-      </main>
-    </div>
+      </ProjectPageMain>
+    </ProjectPage>
+  )
+}
+
+function ProjectOverviewSkeleton() {
+  return (
+    <ProjectPage>
+      <ProjectPageHeader
+        title={<Skeleton className="h-5 w-36" />}
+        badge={<Skeleton className="h-5 w-16 rounded-full" />}
+        actions={(
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-6 w-44" />
+            <Skeleton className="size-8 rounded-md" />
+          </div>
+        )}
+      />
+
+      <ProjectPageMain className="space-y-6 py-6">
+        <section className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+          {Array.from({ length: 6 }).map((_kpi, i) => (
+            <Card key={i} size="sm">
+              <CardContent className="flex flex-col gap-2">
+                <div className="flex items-center justify-between gap-2">
+                  <Skeleton className="h-3 w-20" />
+                  <Skeleton className="size-3.5 rounded-sm" />
+                </div>
+                <Skeleton className="h-7 w-16" />
+                <Skeleton className="h-3 w-24" />
+              </CardContent>
+            </Card>
+          ))}
+        </section>
+
+        <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          <OverviewChartSkeleton className="lg:col-span-2" />
+          <OverviewChartSkeleton />
+        </section>
+
+        <section className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+          {Array.from({ length: 3 }).map((_card, i) => (
+            <Card key={i}>
+              <CardHeader>
+                <Skeleton className="h-4 w-28" />
+                <Skeleton className="h-3 w-44" />
+              </CardHeader>
+              <CardContent className="space-y-3">
+                {Array.from({ length: 4 }).map((_rowSkeleton, row) => (
+                  <div key={row} className="space-y-1.5">
+                    <div className="flex items-center justify-between gap-3">
+                      <Skeleton className="h-3 w-24" />
+                      <Skeleton className="h-3 w-10" />
+                    </div>
+                    <Skeleton className="h-1.5 w-full rounded-full" />
+                  </div>
+                ))}
+              </CardContent>
+            </Card>
+          ))}
+        </section>
+
+        <section className="space-y-3">
+          <div className="flex items-center justify-between">
+            <Skeleton className="h-5 w-28" />
+            <Skeleton className="h-4 w-20" />
+          </div>
+          <Card>
+            <CardContent className="p-0">
+              <ul className="divide-y">
+                {Array.from({ length: 5 }).map((_user, i) => (
+                  <li key={i} className="flex items-center gap-3 px-4 py-3">
+                    <Skeleton className="size-8 rounded-full" />
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      <Skeleton className="h-4 w-40" />
+                      <Skeleton className="h-3 w-56" />
+                    </div>
+                    <Skeleton className="h-4 w-20" />
+                  </li>
+                ))}
+              </ul>
+            </CardContent>
+          </Card>
+        </section>
+
+        <section className="space-y-3">
+          <Skeleton className="h-5 w-16" />
+          <Card>
+            <CardHeader>
+              <Skeleton className="h-5 w-36" />
+              <Skeleton className="h-4 w-52" />
+            </CardHeader>
+            <CardContent className="space-y-4">
+              {Array.from({ length: 4 }).map((_detail, i) => (
+                <div key={i} className="grid grid-cols-[8rem_1fr] items-center gap-3">
+                  <Skeleton className="h-3 w-20" />
+                  <Skeleton className="h-5 w-48" />
+                </div>
+              ))}
+            </CardContent>
+          </Card>
+        </section>
+      </ProjectPageMain>
+    </ProjectPage>
+  )
+}
+
+function OverviewChartSkeleton({ className }: { className?: string }) {
+  return (
+    <Card className={className}>
+      <CardHeader>
+        <div className="flex items-start justify-between gap-3">
+          <div className="space-y-2">
+            <Skeleton className="h-4 w-28" />
+            <div className="flex gap-1.5">
+              <Skeleton className="h-5 w-20 rounded-full" />
+              <Skeleton className="h-5 w-16 rounded-full" />
+              <Skeleton className="h-5 w-24 rounded-full" />
+            </div>
+          </div>
+          <Skeleton className="h-8 w-20 rounded-md" />
+        </div>
+      </CardHeader>
+      <CardContent>
+        <div className="flex h-60 items-end gap-2 border-b border-l px-3 pb-3">
+          {[46, 72, 54, 86, 64, 92, 58, 76, 68, 82, 60, 74].map((height, i) => (
+            <Skeleton
+              key={i}
+              className="flex-1 rounded-t-sm"
+              style={{ height: `${height}%` }}
+            />
+          ))}
+        </div>
+      </CardContent>
+    </Card>
   )
 }
 
@@ -627,7 +802,7 @@ function DauSplitChart({
 }) {
   const visibleSeries = DAU_SERIES.filter((s) => visible.includes(s.key))
   return (
-    <ChartContainer config={dauChartConfig} className="h-60 w-full">
+    <ChartContainer id="project-overview-dau-split" config={dauChartConfig} className="h-60 w-full">
       {chartType === "area" ? (
         <AreaChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
           <defs>
@@ -709,7 +884,7 @@ const signupsChartConfig = {
 
 function SignupsChart({ data }: { data: Array<MetricsDataPoint> }) {
   return (
-    <ChartContainer config={signupsChartConfig} className="h-60 w-full">
+    <ChartContainer id="project-overview-signups" config={signupsChartConfig} className="h-60 w-full">
       <BarChart data={data} margin={{ top: 8, right: 8, bottom: 0, left: 0 }}>
         <CartesianGrid vertical={false} strokeDasharray="3 3" />
         <XAxis
@@ -741,7 +916,7 @@ const revenueChartConfig = {
 
 function RevenueSpark({ data }: { data: Array<{ date: string, new_cents: number }> }) {
   return (
-    <ChartContainer config={revenueChartConfig} className="h-20 w-full">
+    <ChartContainer id="project-overview-revenue" config={revenueChartConfig} className="h-20 w-full">
       <LineChart data={data} margin={{ top: 4, right: 0, bottom: 0, left: 0 }}>
         <Line
           type="monotone"
@@ -801,12 +976,12 @@ function KpiCard({ label, value, Icon, delta, deltaLabel, hint, tone }: KpiCardP
         </p>
         <div className="min-h-[1rem] text-[11px] leading-tight">
           {showDelta ? (
-            <p className="flex items-baseline gap-1 truncate">
+            <p className="flex items-center gap-1 truncate">
               <span
                 className={
                   positive
-                    ? "inline-flex items-center gap-0.5 text-success"
-                    : "inline-flex items-center gap-0.5 text-destructive"
+                    ? "inline-flex items-center gap-0.5 leading-none text-success"
+                    : "inline-flex items-center gap-0.5 leading-none text-destructive"
                 }
               >
                 {positive ? (
@@ -817,7 +992,7 @@ function KpiCard({ label, value, Icon, delta, deltaLabel, hint, tone }: KpiCardP
                 {Math.abs(delta).toFixed(0)}%
               </span>
               {deltaLabel ? (
-                <span className="text-muted-foreground truncate">{deltaLabel}</span>
+                <span className="truncate leading-none text-muted-foreground">{deltaLabel}</span>
               ) : null}
             </p>
           ) : hint ? (

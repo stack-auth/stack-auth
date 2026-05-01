@@ -1,9 +1,9 @@
-import { StackClientApp } from "@stackframe/tanstack-start"
 import {
   STACK_API_URL,
   STACK_PROJECT_ID,
   STACK_PUBLISHABLE_CLIENT_KEY,
 } from "@/lib/env"
+import { StackClientApp } from "@stackframe/tanstack-start"
 
 /**
  * Singleton StackClientApp for dashboardV2. Mirrors the legacy dashboard's
@@ -14,7 +14,11 @@ export const stackApp = new StackClientApp({
   projectId: STACK_PROJECT_ID,
   publishableClientKey: STACK_PUBLISHABLE_CLIENT_KEY,
   tokenStore: "cookie",
-  redirectMethod: "window",
+  analytics: {
+    replays: {
+      enabled: true,
+    }
+  },
   urls: {
     afterSignIn: "/projects",
     afterSignUp: "/projects",

@@ -3,6 +3,7 @@ import { useNavigate } from "@tanstack/react-router"
 import { useUser } from "@stackframe/tanstack-start"
 
 import { useProjectsDau } from "@/hooks/use-projects-dau"
+import { useCurrentUserTeamsQuery, useOwnedProjectsQuery } from "@/lib/stack/react-query"
 
 export type OwnedProject = {
   id: string,
@@ -14,8 +15,8 @@ export type OwnedProject = {
 
 export function useProjectsPage() {
   const user = useUser({ or: "redirect", projectIdMustMatch: "internal" })
-  const projects = user.useOwnedProjects() as unknown as Array<OwnedProject>
-  const teams = user.useTeams()
+  const { data: projects = [] } = useOwnedProjectsQuery(user)
+  const { data: teams = [] } = useCurrentUserTeamsQuery(user)
   const navigate = useNavigate()
 
   const dauQuery = useProjectsDau()

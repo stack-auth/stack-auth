@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useMemo, useState } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query"
 import { toast } from "sonner"
@@ -12,6 +12,7 @@ import {
 } from "@phosphor-icons/react"
 import type { StackAdminApp } from "@stackframe/tanstack-start"
 
+import type { VirtualDataGridColumn } from "@/components/ui/virtual-data-grid"
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import {
   AlertDialog,
@@ -51,6 +52,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table"
+import { VirtualDataGrid } from "@/components/ui/virtual-data-grid"
 import { useAdminApp, useProjectId } from "@/lib/stack/admin-app"
 
 type ManagedEmailProviderListItem = Awaited<
@@ -68,6 +70,9 @@ export const Route = createFileRoute("/_app/projects/$projectId/emails/domains")
 })
 
 const MANAGED_EMAIL_DOMAINS_QUERY_GC_TIME_MS = 2 * 60 * 1000
+const DOMAIN_ROW_HEIGHT = 52
+const DOMAIN_TABLE_FRAME_CLASS =
+  "rounded-lg border [clip-path:inset(0_round_var(--radius-lg))]"
 
 type DomainStatus = ManagedEmailProviderStatus["status"]
 
@@ -169,6 +174,10 @@ function DomainsPage() {
   }
 
   const items = listQuery.data ?? []
+  const columns = useDomainColumns({
+    onViewRecords: handleViewRecords,
+    onRequestApply: (row) => setConfirmApply(row),
+  })
 
   return (
     <div className="space-y-6">
@@ -186,7 +195,20 @@ function DomainsPage() {
       </div>
 
       {listQuery.isPending ? (
-        <p className="py-12 text-center text-sm text-muted-foreground">Loading…</p>
+        <VirtualDataGrid
+          columns={columns}
+          items={[]}
+          getItemKey={(row) => row.domainId}
+          rowHeight={DOMAIN_ROW_HEIGHT}
+          isLoading
+          skeletonRows={4}
+          hasNextPage={false}
+          isFetchingNextPage={false}
+          fetchNextPage={() => {}}
+          isSearching={false}
+          emptyMessage=""
+          frameClassName={DOMAIN_TABLE_FRAME_CLASS}
+        />
       ) : listQuery.isError ? (
         <Alert variant="destructive">
           <AlertTitle>Couldn't load domains</AlertTitle>
@@ -197,12 +219,19 @@ function DomainsPage() {
       ) : items.length === 0 ? (
         <DomainsEmpty onAdd={() => setSetupOpen(true)} />
       ) : (
-        <DomainsTable
-          rows={items}
-          onViewRecords={(row) => {
-            void handleViewRecords(row)
-          }}
-          onRequestApply={(row) => setConfirmApply(row)}
+        <VirtualDataGrid
+          columns={columns}
+          items={items}
+          getItemKey={(row) => row.domainId}
+          rowHeight={DOMAIN_ROW_HEIGHT}
+          isLoading={false}
+          hasNextPage={false}
+          isFetchingNextPage={false}
+          fetchNextPage={() => {}}
+          isSearching={false}
+          emptyMessage=""
+          frameClassName={DOMAIN_TABLE_FRAME_CLASS}
+          keyboardNavigationDisabled
         />
       )}
 
@@ -292,60 +321,71 @@ function DomainsEmpty({ onAdd }: { onAdd: () => void }) {
   )
 }
 
-function DomainsTable({
-  rows,
+function useDomainColumns({
   onViewRecords,
   onRequestApply,
 }: {
-  rows: ReadonlyArray<ManagedEmailProviderListItem>,
-  onViewRecords: (row: ManagedEmailProviderListItem) => void,
+  onViewRecords: (row: ManagedEmailProviderListItem) => Promise<void>,
   onRequestApply: (row: ManagedEmailProviderListItem) => void,
 }) {
-  return (
-    <div className="overflow-x-auto rounded-lg border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead>Domain</TableHead>
-            <TableHead>Sender</TableHead>
-            <TableHead>Status</TableHead>
-            <TableHead className="w-[260px] text-right">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {rows.map((row) => {
-            const canApply = row.status === "verified"
-            return (
-              <TableRow key={row.domainId}>
-                <TableCell className="font-mono text-xs">{row.subdomain}</TableCell>
-                <TableCell className="font-mono text-xs">
-                  {row.senderLocalPart}@{row.subdomain}
-                </TableCell>
-                <TableCell>
-                  <Badge variant={statusVariant(row.status)}>{statusLabel(row.status)}</Badge>
-                </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onViewRecords(row)}
-                    >
-                      View DNS records
-                    </Button>
-                    {canApply ? (
-                      <Button size="sm" onClick={() => onRequestApply(row)}>
-                        Apply
-                      </Button>
-                    ) : null}
-                  </div>
-                </TableCell>
-              </TableRow>
-            )
-          })}
-        </TableBody>
-      </Table>
-    </div>
+  return useMemo<Array<VirtualDataGridColumn<ManagedEmailProviderListItem, string>>>(
+    () => [
+      {
+        id: "domain",
+        label: "Domain",
+        width: "minmax(0,1.1fr)",
+        renderCell: (row) => (
+          <span className="block min-w-0 truncate font-mono text-xs">
+            {row.subdomain}
+          </span>
+        ),
+      },
+      {
+        id: "sender",
+        label: "Sender",
+        width: "minmax(0,1.3fr)",
+        renderCell: (row) => (
+          <span className="block min-w-0 truncate font-mono text-xs">
+            {row.senderLocalPart}@{row.subdomain}
+          </span>
+        ),
+      },
+      {
+        id: "status",
+        label: "Status",
+        width: "minmax(0,0.8fr)",
+        renderCell: (row) => (
+          <Badge variant={statusVariant(row.status)}>{statusLabel(row.status)}</Badge>
+        ),
+      },
+      {
+        id: "actions",
+        label: "Actions",
+        width: "16.25rem",
+        headerClassName: "justify-end",
+        cellClassName: "justify-end",
+        renderCell: (row) => {
+          const canApply = row.status === "verified"
+          return (
+            <div className="flex justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={async () => await onViewRecords(row)}
+              >
+                View DNS records
+              </Button>
+              {canApply ? (
+                <Button size="sm" onClick={() => onRequestApply(row)}>
+                  Apply
+                </Button>
+              ) : null}
+            </div>
+          )
+        },
+      },
+    ],
+    [onRequestApply, onViewRecords],
   )
 }
 
