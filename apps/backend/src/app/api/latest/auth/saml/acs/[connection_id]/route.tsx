@@ -84,7 +84,12 @@ export const POST = createSmartRouteHandler({
     params: yupObject({
       connection_id: yupString().defined(),
     }).defined(),
-    body: yupMixed().defined(),
+    // ACS is exposed to arbitrary IdP/browser POSTs. Reject malformed
+    // bodies with a clean 400 before they reach base64/XML parsing.
+    body: yupObject({
+      SAMLResponse: yupString().defined(),
+      RelayState: yupString().optional(),
+    }).defined(),
   }),
   response: yupObject({
     statusCode: yupNumber().oneOf([303, 307]).defined(),
@@ -93,12 +98,14 @@ export const POST = createSmartRouteHandler({
     headers: yupMixed().defined(),
   }),
   async handler({ params, body }) {
-    const samlResponseB64 = (body as Record<string, unknown>).SAMLResponse as string | undefined;
-    if (!samlResponseB64) {
-      throw new StatusError(StatusError.BadRequest, "Missing SAMLResponse in form body");
-    }
+    const samlResponseB64 = body.SAMLResponse;
 
-    const inResponseTo = extractInResponseTo(samlResponseB64);
+    let inResponseTo: string | null;
+    try {
+      inResponseTo = extractInResponseTo(samlResponseB64);
+    } catch {
+      throw new StatusError(StatusError.BadRequest, "SAMLResponse is not valid base64-encoded XML");
+    }
     if (!inResponseTo) {
       throw new StatusError(StatusError.BadRequest, "SAMLResponse has no InResponseTo (IdP-initiated SSO is not supported in V1)");
     }
@@ -229,7 +236,7 @@ export const POST = createSmartRouteHandler({
                   );
                   if (existing) {
                     return {
-                      id: existing.projectUserId ?? throwAssertion("SAML account exists but has no associated user"),
+                      id: existing.projectUserId,
                       newUser: false,
                       afterCallbackRedirectUrl: outerInfo.afterCallbackRedirectUrl,
                     };
@@ -327,7 +334,3 @@ export const POST = createSmartRouteHandler({
     }
   },
 });
-
-function throwAssertion(msg: string): never {
-  throw new StackAssertionError(msg);
-}

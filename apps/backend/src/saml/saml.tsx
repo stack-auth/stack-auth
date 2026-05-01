@@ -58,6 +58,11 @@ export function buildSamlClient(connection: SamlConnectionConfig, baseUrl: strin
     callbackUrl: spAcsUrl(baseUrl, connection.id),
     idpCert: pemToBareCert(connection.idpCertificate),
     audience: spEntityId(baseUrl, connection.id),
+    // Bind the assertion to the configured IdP entity so a Response signed
+    // by the same cert but issued under a different entity (e.g. another
+    // SSO app from the same vendor reusing a signing key) is rejected.
+    // node-saml compares this against the Response/Assertion <Issuer>.
+    idpIssuer: connection.idpEntityId,
     // V1: SP doesn't sign AuthnRequests and assertions aren't encrypted.
     // Per-connection toggles for both will land with signed/encrypted assertion support.
     //

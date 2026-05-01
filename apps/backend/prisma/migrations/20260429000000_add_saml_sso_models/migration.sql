@@ -7,7 +7,7 @@
 CREATE TABLE "ProjectUserSamlAccount" (
     "id" UUID NOT NULL,
     "tenancyId" UUID NOT NULL,
-    "projectUserId" UUID,
+    "projectUserId" UUID NOT NULL,
     "samlConnectionId" TEXT NOT NULL,
     "nameId" TEXT NOT NULL,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,

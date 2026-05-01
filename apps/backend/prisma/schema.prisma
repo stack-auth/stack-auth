@@ -645,9 +645,9 @@ model OAuthOuterInfo {
 // ProjectUserOAuthAccount. samlConnectionId is the string key under
 // tenancy.config.auth.saml.connections.
 model ProjectUserSamlAccount {
-  id               String  @default(uuid()) @db.Uuid
-  tenancyId        String  @db.Uuid
-  projectUserId    String? @db.Uuid
+  id               String @default(uuid()) @db.Uuid
+  tenancyId        String @db.Uuid
+  projectUserId    String @db.Uuid
   samlConnectionId String
   nameId           String
 
@@ -659,10 +659,11 @@ model ProjectUserSamlAccount {
   email        String?
   nameIdFormat String?
 
-  // Before the SAML account is connected to a user (e.g. mid-flight), the
-  // projectUser is null. Once the ACS callback creates/links the user, this
-  // is set.
-  projectUser ProjectUser? @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
+  // SAML accounts always reference a real user — the ACS handler creates
+  // (or links) the user before persisting the account row, so there is no
+  // intermediate "unlinked" state. This invariant lets findExistingSamlAccount
+  // assume projectUserId is non-null without a runtime fallback.
+  projectUser ProjectUser @relation(fields: [tenancyId, projectUserId], references: [tenancyId, projectUserId], onDelete: Cascade)
 
   // if allowSignIn is true, samlAuthMethod must be set
   samlAuthMethod SamlAuthMethod?

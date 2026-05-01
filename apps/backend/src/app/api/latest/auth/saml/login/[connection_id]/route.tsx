@@ -171,12 +171,22 @@ export const GET = createSmartRouteHandler({
 
     // Browser-redirect mode: set a CSRF cookie keyed to the AuthnRequest ID.
     // The ACS route checks this cookie before honoring the assertion.
+    //
+    // SAML's normal flow has the IdP browser-POSTing the assertion back to
+    // ACS cross-site, so this cookie must be SameSite=None (with Secure).
+    // Default Lax would silently drop on the cross-site POST, leaving ACS
+    // to consume the one-shot SamlOuterInfo row before failing the cookie
+    // check. In dev we don't have HTTPS, and `Secure` is required for
+    // SameSite=None, so we fall back to Lax — the mock IdP runs on the
+    // same registrable domain (localhost) where Lax is sent on POST.
+    const isDev = getNodeEnvironment() === "development";
     (await cookies()).set(
       "stack-saml-inner-" + requestId,
       "true",
       {
         httpOnly: true,
-        secure: getNodeEnvironment() !== "development",
+        secure: !isDev,
+        sameSite: isDev ? "lax" : "none",
         maxAge: 60 * SAML_OUTER_TTL_MINUTES,
       },
     );

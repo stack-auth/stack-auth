@@ -100,6 +100,20 @@ export const POST = createSmartRouteHandler({
   }),
   async handler({ auth, body }) {
     const exists = has(auth.tenancy.config.auth.saml.connections, body.id);
+
+    // Discovery picks the first connection whose domain matches the email's
+    // domain, so allowing two connections to claim the same domain would
+    // make /auth/saml/discover non-deterministic. Reject collisions up front.
+    if (body.domain) {
+      const newDomain = body.domain.toLowerCase();
+      type Conn = (typeof auth.tenancy.config.auth.saml.connections)[string];
+      const entries = Object.entries(auth.tenancy.config.auth.saml.connections) as Array<[string, Conn]>;
+      const conflict = entries.find(([id, c]) => id !== body.id && c.domain && c.domain.toLowerCase() === newDomain);
+      if (conflict) {
+        throw new StatusError(StatusError.BadRequest, `Another SAML connection (${conflict[0]}) already claims domain "${body.domain}". Domains must be unique per project.`);
+      }
+    }
+
     const prefix = `auth.saml.connections.${body.id}`;
     const overlay: Record<string, unknown> = {};
     if (!exists) {

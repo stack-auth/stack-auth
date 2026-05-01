@@ -5,7 +5,6 @@ import { PrismaClientTransaction, retryTransaction } from "@/prisma-client";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { UsersCrud } from "@stackframe/stack-shared/dist/interface/crud/users";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { StackAssertionError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 
 /**
  * Find an existing SAML account by NameID within a connection. Used when the
@@ -37,15 +36,6 @@ export async function findExistingSamlAccount(
     return null;
   }
   return account;
-}
-
-export function getProjectUserIdFromSamlAccount(
-  account: Awaited<ReturnType<typeof findExistingSamlAccount>>,
-): string {
-  if (!account) {
-    throw new StackAssertionError("SAML account is null");
-  }
-  return account.projectUserId ?? throwErr("SAML account exists but has no associated user");
 }
 
 /**
