@@ -61,7 +61,8 @@
               "guides/going-further/stack-app",
               "guides/going-further/backend-integration",
               "guides/going-further/local-development",
-              "guides/going-further/user-metadata"
+              "guides/going-further/user-metadata",
+              "guides/going-further/migrations"
             ]
           },
           {

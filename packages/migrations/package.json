@@ -1,0 +1,48 @@
+{
+  "name": "@stackframe/migrations",
+  "version": "2.8.86",
+  "repository": "https://github.com/stack-auth/stack-auth",
+  "description": "Migration utilities for moving users, organizations, and auth data from other auth providers to Stack Auth.",
+  "main": "dist/index.js",
+  "type": "module",
+  "bin": {
+    "stack-migrate": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "rimraf dist && tsdown",
+    "dev": "tsdown --watch",
+    "lint": "eslint .",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "files": [
+    "README.md",
+    "dist",
+    "CHANGELOG.md",
+    "LICENSE"
+  ],
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "require": {
+        "default": "./dist/index.js"
+      },
+      "default": "./dist/esm/index.js"
+    },
+    "./better-auth": {
+      "types": "./dist/adapters/better-auth.d.ts",
+      "require": {
+        "default": "./dist/adapters/better-auth.js"
+      },
+      "default": "./dist/esm/adapters/better-auth.js"
+    }
+  },
+  "devDependencies": {
+    "@types/node": "20.17.6",
+    "rimraf": "^6.0.1",
+    "tsdown": "^0.20.3",
+    "typescript": "5.9.3",
+    "vitest": "^1.6.0"
+  },
+  "packageManager": "pnpm@10.23.0"
+}

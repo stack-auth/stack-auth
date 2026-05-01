@@ -1,0 +1,99 @@
+---
+title: Migrations
+description: Migrate users, organizations, passwords, and OAuth accounts from other auth providers to Stack Auth.
+---
+
+# Migrations
+
+Stack Auth provides `@stackframe/migrations` for moving auth data from other providers into Stack Auth.
+
+The recommended strategy is to use the best migration logic that already exists for your source provider, then swap the persistence layer so the normalized records are imported into Stack Auth. For example, if your source provider has a Better Auth migration, you can let Better Auth do the provider-specific transformation and use Stack Auth as the persistence target.
+
+```bash
+pnpm add @stackframe/migrations
+```
+
+## Better Auth as the migration engine
+
+Better Auth migration guides often transform provider data into Better Auth model writes such as `user`, `account`, `organization`, and `member`. Instead of writing those records to a Better Auth database, create Stack Auth migration persistence and write to its adapter.
+
+```ts
+import { createBetterAuthStackPersistence } from "@stackframe/migrations";
+
+const persistence = createBetterAuthStackPersistence();
+
+// Example write shape. In a real migration, these calls come from
+// the source-provider migration code after it normalizes the data.
+await persistence.adapter.create({
+  model: "user",
+  data: {
+    id: "workos-user-id",
+    email: "user@example.com",
+    emailVerified: true,
+    name: "Ada Lovelace",
+  },
+});
+
+await persistence.adapter.create({
+  model: "account",
+  data: {
+    id: "credential-account-id",
+    userId: "workos-user-id",
+    accountId: "workos-user-id",
+    providerId: "credential",
+    password: "$2a$10$...",
+  },
+});
+
+await persistence.flushToStackAuth({
+  apiUrl: "https://api.stack-auth.com",
+  projectId: process.env.STACK_PROJECT_ID!,
+  secretServerKey: process.env.STACK_SECRET_SERVER_KEY!,
+});
+```
+
+## What gets migrated
+
+The Better Auth persistence adapter currently maps:
+
+- `user` records to Stack Auth users
+- credential `account` records to Stack Auth password hashes
+- OAuth `account` records to Stack Auth OAuth providers
+- `organization` records to Stack Auth teams
+- `member` records to Stack Auth team memberships
+
+Stack Auth stores source ids in `server_metadata.migration` and Better Auth details in `server_metadata.better_auth`, so you can keep an audit trail and build id maps during cutover.
+
+## Password hashes
+
+Stack Auth accepts bcrypt hashes through `password_hash`. If the normalized Better Auth account contains another hash type, the migration fails by default so you do not silently import users who cannot sign in.
+
+If you want to import users without unsupported password hashes, pass:
+
+```ts
+persistence.buildPlan({ unsupportedPasswordHashAction: "omit" });
+```
+
+or:
+
+```ts
+await persistence.flushToStackAuth(stackConfig, {
+  unsupportedPasswordHashAction: "omit",
+});
+```
+
+Users imported this way should go through password reset or another sign-in method.
+
+## OAuth provider ids
+
+If your Better Auth provider ids differ from the provider ids configured in Stack Auth, pass a provider id map:
+
+```ts
+await persistence.flushToStackAuth(stackConfig, {
+  providerIdMap: new Map([
+    ["oauth_github", "github"],
+  ]),
+});
+```
+
+Configure the matching OAuth providers in Stack Auth before importing users.
