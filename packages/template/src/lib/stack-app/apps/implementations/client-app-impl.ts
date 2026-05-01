@@ -2866,6 +2866,9 @@ export class _StackClientAppImplIncomplete<HasTokenStore extends boolean, Projec
     if (typeof window === "undefined") {
       throw new Error("signInWithSaml can currently only be called in a browser environment");
     }
+    if (this._redirectMethod === "none") {
+      throw new Error("signInWithSaml requires a redirectMethod that performs navigation; got 'none'");
+    }
     this._ensurePersistentTokenStore();
     const currentUrl = new URL(window.location.href);
     const afterCallbackRedirectUrl = options.returnTo != null
