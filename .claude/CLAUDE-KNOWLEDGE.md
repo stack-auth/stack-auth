@@ -361,3 +361,6 @@ A: Invalid `tools` entries are rejected by `requestBodySchema` in `apps/backend/
 
 ## Q: Why did the internal metrics E2E snapshots need to change in April 2026?
 A: The `/api/v1/internal/metrics` response now intentionally includes `analytics_overview.daily_anonymous_visitors_fallback`, `analytics_overview.anonymous_visitors_fallback`, and `active_users_by_country`. Those additions are reflected in `packages/stack-shared/src/interface/admin-metrics.ts` and the backend route, so the E2E snapshots must include them instead of treating them as regressions.
+
+## Q: Why can environment config override writes fail with a product/product-line customer type warning after creating a preview project?
+A: The environment override endpoint validates the new environment override against the rendered branch config. Preview dummy payments data must therefore be internally coherent: products assigned to a product line need the same `customerType` as that product line, otherwise unrelated environment patches can fail with warnings like `Product "growth" has customer type "user" but its product line "workspace" has customer type "team"`.
