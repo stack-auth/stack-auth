@@ -121,10 +121,12 @@ export async function linkSamlAccountToUser(
 /**
  * Create a new user from a verified SAML identity. JIT provisioning — runs
  * when no existing account or matching email is found. Mirrors
- * createOAuthUserAndAccount.
+ * createOAuthUserAndAccount. The AuthMethod and ProjectUserSamlAccount writes
+ * are wrapped in a transaction so a failure on the second write can't leave
+ * an orphaned bare AuthMethod tied to the new user.
  */
 export async function createSamlUserAndAccount(
-  prisma: PrismaClientTransaction,
+  prisma: Omit<PrismaClient, "$on">,
   tenancy: Tenancy,
   params: {
     samlConnectionId: string,
@@ -157,29 +159,31 @@ export async function createSamlUserAndAccount(
     params.signUpRuleOptions,
   );
 
-  const authMethod = await prisma.authMethod.create({
-    data: {
-      tenancyId: tenancy.id,
-      projectUserId: newUser.id,
-    },
-  });
-
-  const samlAccount = await prisma.projectUserSamlAccount.create({
-    data: {
-      tenancyId: tenancy.id,
-      samlConnectionId: params.samlConnectionId,
-      nameId: params.nameId,
-      nameIdFormat: params.nameIdFormat,
-      email: params.email,
-      projectUserId: newUser.id,
-      samlAuthMethod: {
-        create: {
-          authMethodId: authMethod.id,
-        },
+  return await retryTransaction(prisma, async (tx) => {
+    const authMethod = await tx.authMethod.create({
+      data: {
+        tenancyId: tenancy.id,
+        projectUserId: newUser.id,
       },
-      allowSignIn: true,
-    },
-  });
+    });
 
-  return { projectUserId: newUser.id, samlAccountId: samlAccount.id };
+    const samlAccount = await tx.projectUserSamlAccount.create({
+      data: {
+        tenancyId: tenancy.id,
+        samlConnectionId: params.samlConnectionId,
+        nameId: params.nameId,
+        nameIdFormat: params.nameIdFormat,
+        email: params.email,
+        projectUserId: newUser.id,
+        samlAuthMethod: {
+          create: {
+            authMethodId: authMethod.id,
+          },
+        },
+        allowSignIn: true,
+      },
+    });
+
+    return { projectUserId: newUser.id, samlAccountId: samlAccount.id };
+  });
 }
