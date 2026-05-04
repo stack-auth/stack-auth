@@ -38,7 +38,7 @@ import { stackAppInternalsSymbol } from "@/lib/stack-app-internals";
 import { closestCenter, DndContext, KeyboardSensor, PointerSensor, useSensor, useSensors, type DragEndEvent } from '@dnd-kit/core';
 import { arrayMove, SortableContext, sortableKeyboardCoordinates, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ArrowsDownUpIcon, CheckIcon, PencilSimpleIcon, PlusIcon, TrashIcon, XIcon } from "@phosphor-icons/react";
+import { ArrowsDownUpIcon, CaretDownIcon, CaretRightIcon, CheckIcon, CheckCircleIcon, CircleNotchIcon, PencilSimpleIcon, PlusIcon, SlidersIcon, TrashIcon, XCircleIcon, XIcon } from "@phosphor-icons/react";
 import type { CompleteConfig } from "@stackframe/stack-shared/dist/config/schema";
 import { useAsyncCallback } from "@stackframe/stack-shared/dist/hooks/use-async-callback";
 import type { SignUpRule, SignUpRuleAction } from "@stackframe/stack-shared/dist/interface/crud/sign-up-rules";
@@ -764,11 +764,10 @@ function DefaultActionCard({
 
 const DEFAULT_TURNSTILE_OVERRIDE = "__default__";
 
-function TestRulesCard({
-  stackAdminApp,
-}: {
-  stackAdminApp: ReturnType<typeof useAdminApp>,
-}) {
+
+// Shared hook used by every TestRulesCard variant - encapsulates all the state
+// and the API call so the variants can focus purely on the UI.
+function useTestRulesState(stackAdminApp: ReturnType<typeof useAdminApp>) {
   const [email, setEmail] = useState('');
   const [authMethod, setAuthMethod] = useState<SignUpRulesTestResult['context']['auth_method']>('password');
   const [oauthProvider, setOauthProvider] = useState('');
@@ -836,83 +835,88 @@ function TestRulesCard({
     setResult(data);
   }, [authMethod, botRiskScoreOverride, countryCodeOverride, email, freeTrialAbuseRiskScoreOverride, oauthProvider, stackAdminApp, turnstileResultOverride]);
 
-  const handleAuthMethodChange = (value: string) => {
-    if (value === 'password' || value === 'otp' || value === 'oauth' || value === 'passkey') {
-      setAuthMethod(value);
-      if (value !== 'oauth') {
-        setOauthProvider('');
-      }
-    }
+  return {
+    email, setEmail,
+    authMethod, setAuthMethod,
+    oauthProvider, setOauthProvider,
+    countryCodeOverride, setCountryCodeOverride,
+    turnstileResultOverride, setTurnstileResultOverride,
+    botRiskScoreOverride, setBotRiskScoreOverride,
+    freeTrialAbuseRiskScoreOverride, setFreeTrialAbuseRiskScoreOverride,
+    result,
+    runTest,
+    isRunning,
   };
+}
 
-  const evaluations = result?.evaluations ?? [];
-  const matchedEvaluations = evaluations.filter((evaluation) => evaluation.status === 'matched');
-  const decisionRule = result?.outcome.decision_rule_id
-    ? evaluations.find((evaluation) => evaluation.rule_id === result.outcome.decision_rule_id)
-    : undefined;
-  const restrictedRule = result?.outcome.restricted_because_of_rule_id
-    ? evaluations.find((evaluation) => evaluation.rule_id === result.outcome.restricted_because_of_rule_id)
-    : undefined;
+type TestRulesState = ReturnType<typeof useTestRulesState>;
 
-  const outcomeLabel = result?.outcome.should_allow ? 'Allow' : 'Reject';
-  const outcomeTone = result?.outcome.should_allow
-    ? "bg-green-500/10 text-green-700 dark:text-green-400 border-green-500/20"
-    : "bg-red-500/10 text-red-700 dark:text-red-400 border-red-500/20";
-
-  const actionBadgeClassName = (type: SignUpRulesTestEvaluation['action']['type']) => cn(
+function actionBadgeClassNameFor(type: SignUpRulesTestEvaluation['action']['type']) {
+  return cn(
     "text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded",
     type === 'allow' && "bg-green-500/10 text-green-600 dark:text-green-400",
     type === 'reject' && "bg-red-500/10 text-red-600 dark:text-red-400",
     type === 'restrict' && "bg-yellow-500/10 text-yellow-600 dark:text-yellow-400",
     type === 'log' && "bg-blue-500/10 text-blue-600 dark:text-blue-400",
   );
+}
 
-  const statusBadgeClassName = (status: SignUpRulesTestEvaluationStatus) => cn(
-    "text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded",
-    status === 'matched' && "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400",
-    status === 'not_matched' && "bg-muted/60 text-muted-foreground",
-    status === 'disabled' && "bg-muted/60 text-muted-foreground",
-    status === 'missing_condition' && "bg-amber-500/10 text-amber-600 dark:text-amber-400",
-    status === 'error' && "bg-red-500/10 text-red-600 dark:text-red-400",
-  );
+const DECISION_LABEL: Record<SignUpRulesTestResult['outcome']['decision'], string> = {
+  allow: 'Allowed by rule',
+  reject: 'Rejected by rule',
+  'default-allow': 'Allowed by default',
+  'default-reject': 'Rejected by default',
+};
 
-  const statusLabel: Record<SignUpRulesTestEvaluationStatus, string> = {
-    matched: 'Matched',
-    not_matched: 'No match',
-    disabled: 'Disabled',
-    missing_condition: 'No condition',
-    error: 'Error',
-  };
+const STATUS_LABEL: Record<SignUpRulesTestEvaluationStatus, string> = {
+  matched: 'Matched',
+  not_matched: 'No match',
+  disabled: 'Disabled',
+  missing_condition: 'No condition',
+  error: 'Error',
+};
 
-  const decisionLabel: Record<SignUpRulesTestResult['outcome']['decision'], string> = {
-    allow: 'Allowed by rule',
-    reject: 'Rejected by rule',
-    'default-allow': 'Allowed by default',
-    'default-reject': 'Rejected by default',
-  };
+// Essentials-first test rules card with a collapsible "Advanced" panel
+// and an outcome-forward results view. The outcome box mounts as soon as
+// a run kicks off so users see a loading indicator before it resolves.
+function TestRulesCard({ state }: { state: TestRulesState }) {
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const { result, isRunning } = state;
+
+  // Keep the results region mounted across loading -> result transitions
+  // so we can animate the color/icon change smoothly.
+  const hasRun = isRunning || result !== null;
+
+  const matchedCount = result?.evaluations.filter((e) => e.status === 'matched').length ?? 0;
+  const decisionRule = result?.outcome.decision_rule_id
+    ? result.evaluations.find((e) => e.rule_id === result.outcome.decision_rule_id)
+    : undefined;
+  const restrictedRule = result?.outcome.restricted_because_of_rule_id
+    && result.outcome.restricted_because_of_rule_id !== result.outcome.decision_rule_id
+    ? result.evaluations.find((e) => e.rule_id === result.outcome.restricted_because_of_rule_id)
+    : undefined;
 
   return (
-    <div className="grid gap-4 lg:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
-      <div className="space-y-3">
-        <div className="grid gap-3 md:grid-cols-2">
+    <div className="space-y-5">
+      <div className="space-y-4">
+        <div className="grid gap-3 md:grid-cols-[2fr_1fr]">
           <div className="space-y-1.5">
-            <Typography variant="secondary" className="text-xs uppercase tracking-wide">
-              Email
-            </Typography>
+            <label className="text-sm font-medium">Email</label>
             <Input
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              value={state.email}
+              onChange={(e) => state.setEmail(e.target.value)}
               placeholder="user@company.com"
             />
           </div>
           <div className="space-y-1.5">
-            <Typography variant="secondary" className="text-xs uppercase tracking-wide">
-              Auth method
-            </Typography>
-            <Select value={authMethod} onValueChange={handleAuthMethodChange}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
+            <label className="text-sm font-medium">Sign-up method</label>
+            <Select value={state.authMethod} onValueChange={(v) => {
+              if (v === 'password' || v === 'otp' || v === 'oauth' || v === 'passkey') {
+                state.setAuthMethod(v);
+                if (v !== 'oauth') state.setOauthProvider('');
+              }
+            }}>
+              <SelectTrigger><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="password">Password</SelectItem>
                 <SelectItem value="otp">OTP</SelectItem>
@@ -923,247 +927,213 @@ function TestRulesCard({
           </div>
         </div>
 
-        <div className="space-y-1.5">
-          <Typography variant="secondary" className="text-xs uppercase tracking-wide">
-            OAuth provider
-          </Typography>
-          <Input
-            value={oauthProvider}
-            onChange={(e) => setOauthProvider(e.target.value)}
-            placeholder={authMethod === 'oauth' ? "google" : "Only used for OAuth"}
-            disabled={authMethod !== 'oauth'}
-            list="sign-up-rule-test-oauth-providers"
-          />
-          <datalist id="sign-up-rule-test-oauth-providers">
-            {OAUTH_PROVIDER_OPTIONS.map((provider) => (
-              <option key={provider} value={provider} />
-            ))}
-          </datalist>
-        </div>
+        <button
+          type="button"
+          onClick={() => setShowAdvanced((v) => !v)}
+          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+        >
+          {showAdvanced ? <CaretDownIcon className="h-3.5 w-3.5" /> : <CaretRightIcon className="h-3.5 w-3.5" />}
+          <SlidersIcon className="h-3.5 w-3.5" />
+          Advanced options
+          <span className="text-muted-foreground/70">
+            (OAuth provider, country, risk scores, turnstile)
+          </span>
+        </button>
 
-        <div className="grid gap-3 md:grid-cols-4">
-          <div className="space-y-1.5">
-            <Typography variant="secondary" className="text-xs uppercase tracking-wide">
-              Country code override
-            </Typography>
-            <CountryCodeInput
-              value={countryCodeOverride || null}
-              onChange={(val) => setCountryCodeOverride(val ?? "")}
-            />
+        {showAdvanced && (
+          <div className="rounded-lg border border-dashed p-4 space-y-3 bg-muted/20">
+            {state.authMethod === 'oauth' && (
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">OAuth provider</label>
+                <Input
+                  value={state.oauthProvider}
+                  onChange={(e) => state.setOauthProvider(e.target.value)}
+                  placeholder="google"
+                  list="sign-up-rule-test-oauth-providers-v1"
+                />
+                <datalist id="sign-up-rule-test-oauth-providers-v1">
+                  {OAUTH_PROVIDER_OPTIONS.map((p) => <option key={p} value={p} />)}
+                </datalist>
+              </div>
+            )}
+            <div className="grid gap-3 md:grid-cols-2">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Country</label>
+                <CountryCodeInput
+                  value={state.countryCodeOverride || null}
+                  onChange={(val) => state.setCountryCodeOverride(val ?? "")}
+                />
+                <Typography variant="secondary" className="text-[11px]">Leave blank to use real geolocation.</Typography>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Turnstile result</label>
+                <Select value={state.turnstileResultOverride} onValueChange={(v) => {
+                  if (v === DEFAULT_TURNSTILE_OVERRIDE || v === "ok" || v === "invalid" || v === "error") {
+                    state.setTurnstileResultOverride(v);
+                  }
+                }}>
+                  <SelectTrigger><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value={DEFAULT_TURNSTILE_OVERRIDE}>Use real result</SelectItem>
+                    <SelectItem value="ok">OK</SelectItem>
+                    <SelectItem value="invalid">Invalid</SelectItem>
+                    <SelectItem value="error">Error</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Bot risk score</label>
+                <Input
+                  value={state.botRiskScoreOverride}
+                  onChange={(e) => state.setBotRiskScoreOverride(e.target.value)}
+                  placeholder="0-100 (blank = real)"
+                  inputMode="numeric"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium">Free trial abuse score</label>
+                <Input
+                  value={state.freeTrialAbuseRiskScoreOverride}
+                  onChange={(e) => state.setFreeTrialAbuseRiskScoreOverride(e.target.value)}
+                  placeholder="0-100 (blank = real)"
+                  inputMode="numeric"
+                />
+              </div>
+            </div>
           </div>
-          <div className="space-y-1.5">
-            <Typography variant="secondary" className="text-xs uppercase tracking-wide">
-              Bot score override
-            </Typography>
-            <Input
-              value={botRiskScoreOverride}
-              onChange={(e) => setBotRiskScoreOverride(e.target.value)}
-              placeholder="0-100"
-              inputMode="numeric"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Typography variant="secondary" className="text-xs uppercase tracking-wide">
-              Free trial abuse override
-            </Typography>
-            <Input
-              value={freeTrialAbuseRiskScoreOverride}
-              onChange={(e) => setFreeTrialAbuseRiskScoreOverride(e.target.value)}
-              placeholder="0-100"
-              inputMode="numeric"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Typography variant="secondary" className="text-xs uppercase tracking-wide">
-              Turnstile override
-            </Typography>
-            <Select value={turnstileResultOverride} onValueChange={(value) => {
-              if (value === DEFAULT_TURNSTILE_OVERRIDE || value === "ok" || value === "invalid" || value === "error") {
-                setTurnstileResultOverride(value);
-              }
-            }}>
-              <SelectTrigger>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value={DEFAULT_TURNSTILE_OVERRIDE}>Default (use real result)</SelectItem>
-                <SelectItem value="ok">OK</SelectItem>
-                <SelectItem value="invalid">Invalid</SelectItem>
-                <SelectItem value="error">Error</SelectItem>
-              </SelectContent>
-            </Select>
-          </div>
-        </div>
+        )}
 
-        <div className="flex items-center gap-2">
+        <div className="flex justify-end">
           <Button
-            size="sm"
-            onClick={() => runAsynchronouslyWithAlert(runTest)}
-            loading={isRunning}
+            size="lg"
+            onClick={() => runAsynchronouslyWithAlert(state.runTest)}
+            loading={state.isRunning}
           >
             Run test
           </Button>
-          <Typography variant="secondary" className="text-xs">
-            Simulate a sign-up request to preview which rules trigger.
-          </Typography>
-          <Typography variant="secondary" className="text-xs">
-            Leave overrides blank to derive country code and risk scores on the server from request geolocation and signup context.
-          </Typography>
         </div>
       </div>
 
-      <div className="space-y-3">
-        {!result ? (
-          <Alert>
-            Run a test to preview which rules trigger and what the sign-up outcome would be.
-          </Alert>
-        ) : (
-          <>
-            <div className={cn("rounded-lg border p-3 space-y-1", outcomeTone)}>
-              <div className="flex items-center justify-between">
-                <Typography className="text-sm font-semibold">Outcome</Typography>
-                <span className="text-xs font-semibold uppercase tracking-wide">{outcomeLabel}</span>
-              </div>
-              <Typography variant="secondary" className="text-xs">
-                {decisionLabel[result.outcome.decision]}
-              </Typography>
-              {decisionRule && (
-                <Typography variant="secondary" className="text-xs">
-                  Decision rule: {decisionRule.display_name || decisionRule.rule_id}
-                </Typography>
-              )}
-              {decisionRule?.action.message && (
-                <Typography variant="secondary" className="text-xs">
-                  Rejection reason: {decisionRule.action.message}
-                </Typography>
-              )}
-              {restrictedRule && (
-                <Typography variant="secondary" className="text-xs">
-                  Restricted by: {restrictedRule.display_name || restrictedRule.rule_id}
-                </Typography>
-              )}
-            </div>
-
-            <div className="rounded-lg border p-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <Typography className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Triggered rules
-                </Typography>
-                <Typography variant="secondary" className="text-[11px]">
-                  {matchedEvaluations.length} matched
-                </Typography>
-              </div>
-              {matchedEvaluations.length === 0 ? (
-                <Typography variant="secondary" className="text-xs">
-                  No rules matched. Default action applies.
-                </Typography>
-              ) : (
-                <div className="space-y-2">
-                  {matchedEvaluations.map((evaluation) => (
-                    <div
-                      key={evaluation.rule_id}
-                      className="flex items-center justify-between gap-2 rounded-md bg-background/60 px-2.5 py-2 ring-1 ring-foreground/[0.04]"
-                    >
-                      <div className="min-w-0">
-                        <Typography className="text-xs font-medium truncate">
-                          {evaluation.display_name || evaluation.rule_id}
-                        </Typography>
-                        <Typography variant="secondary" className="text-[10px] truncate">
-                          {evaluation.condition || "No condition"}
-                        </Typography>
-                      </div>
-                      <div className="flex items-center gap-1.5 flex-shrink-0">
-                        <span className={actionBadgeClassName(evaluation.action.type)}>
-                          {evaluation.action.type}
-                        </span>
-                        {evaluation.rule_id === result.outcome.decision_rule_id && (
-                          <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded bg-foreground/5 text-foreground">
-                            Decision
-                          </span>
-                        )}
-                        {evaluation.rule_id === result.outcome.restricted_because_of_rule_id && (
-                          <span className="text-[10px] font-bold uppercase tracking-wide px-2 py-0.5 rounded bg-yellow-500/10 text-yellow-600 dark:text-yellow-400">
-                            Restrict
-                          </span>
-                        )}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="rounded-lg border p-3 space-y-2">
-              <div className="flex items-center justify-between">
-                <Typography className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                  Evaluation trace
-                </Typography>
-                <Typography variant="secondary" className="text-[11px]">
-                  {evaluations.length} evaluated
-                </Typography>
-              </div>
-              {evaluations.length === 0 ? (
-                <Typography variant="secondary" className="text-xs">
-                  No rules configured yet.
-                </Typography>
-              ) : (
-                <div className="space-y-1 max-h-48 overflow-auto pr-1">
-                  {evaluations.map((evaluation) => (
-                    <div
-                      key={evaluation.rule_id}
-                      className="flex items-center justify-between gap-2 rounded-md px-2 py-1.5 hover:bg-muted/40 transition-colors hover:transition-none"
-                      title={evaluation.error ?? undefined}
-                    >
-                      <div className="min-w-0">
-                        <Typography className="text-xs font-medium truncate">
-                          {evaluation.display_name || evaluation.rule_id}
-                        </Typography>
-                        <Typography variant="secondary" className="text-[10px] truncate">
-                          {evaluation.condition || "No condition"}
-                        </Typography>
-                      </div>
-                      <div className="flex items-center gap-1.5 flex-shrink-0">
-                        <span className={actionBadgeClassName(evaluation.action.type)}>
-                          {evaluation.action.type}
-                        </span>
-                        <span className={statusBadgeClassName(evaluation.status)}>
-                          {statusLabel[evaluation.status]}
-                        </span>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="rounded-lg border p-3 space-y-1">
-              <Typography className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
-                Normalized context
-              </Typography>
-              <Typography variant="secondary" className="text-xs">
-                Email: {result.context.email || "(empty)"}
-              </Typography>
-              <Typography variant="secondary" className="text-xs">
-                Email domain: {result.context.email_domain || "(empty)"}
-              </Typography>
-              <Typography variant="secondary" className="text-xs">
-                Country code: {result.context.country_code || "(empty)"}
-              </Typography>
-              <Typography variant="secondary" className="text-xs">
-                OAuth provider: {result.context.oauth_provider || "(empty)"}
-              </Typography>
-              <Typography variant="secondary" className="text-xs">
-                Turnstile result: {result.context.turnstile_result}
-              </Typography>
-              <Typography variant="secondary" className="text-xs">
-                Risk score (bot): {result.context.risk_scores.bot}
-              </Typography>
-              <Typography variant="secondary" className="text-xs">
-                Risk score (free trial abuse): {result.context.risk_scores.free_trial_abuse}
-              </Typography>
-            </div>
-          </>
+      <div
+        className={cn(
+          "grid transition-[grid-template-rows,opacity,margin] duration-300 ease-out",
+          hasRun ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
         )}
+      >
+        <div className="overflow-hidden">
+          <div className="space-y-3">
+            {/* Outcome hero — mounts on run start with neutral/loading style,
+                then fades into green/red once the result arrives. */}
+            <div
+              className={cn(
+                "rounded-xl border-2 p-5 flex items-center gap-4 transition-colors duration-500 ease-out",
+                !result && "bg-muted/30 border-muted-foreground/20 text-muted-foreground",
+                result?.outcome.should_allow && "bg-green-500/5 border-green-500/30 text-green-700 dark:text-green-400",
+                result && !result.outcome.should_allow && "bg-red-500/5 border-red-500/30 text-red-700 dark:text-red-400",
+              )}
+            >
+              <div className="relative h-10 w-10 flex-shrink-0">
+                <CircleNotchIcon
+                  className={cn(
+                    "absolute inset-0 h-10 w-10 text-muted-foreground/60 animate-spin transition-opacity duration-200",
+                    result ? "opacity-0" : "opacity-100",
+                  )}
+                />
+                <CheckCircleIcon
+                  weight="fill"
+                  className={cn(
+                    "absolute inset-0 h-10 w-10 transition-opacity duration-300",
+                    result?.outcome.should_allow ? "opacity-100" : "opacity-0",
+                  )}
+                />
+                <XCircleIcon
+                  weight="fill"
+                  className={cn(
+                    "absolute inset-0 h-10 w-10 transition-opacity duration-300",
+                    result && !result.outcome.should_allow ? "opacity-100" : "opacity-0",
+                  )}
+                />
+              </div>
+              <div className="flex-1 min-w-0">
+                <Typography className="text-xl font-bold">
+                  {!result && "Running test…"}
+                  {result && `Sign-up would ${result.outcome.should_allow ? 'be allowed' : 'be rejected'}`}
+                </Typography>
+                <Typography variant="secondary" className="text-sm">
+                  {!result && "Evaluating configured rules."}
+                  {result && (
+                    <>
+                      {DECISION_LABEL[result.outcome.decision]}
+                      {decisionRule && <> — <span className="font-medium">{decisionRule.display_name || decisionRule.rule_id}</span></>}
+                    </>
+                  )}
+                </Typography>
+                {restrictedRule && (
+                  <Typography variant="secondary" className="text-xs mt-1">
+                    Restricted by: <span className="font-medium">{restrictedRule.display_name || restrictedRule.rule_id}</span>
+                  </Typography>
+                )}
+                {decisionRule?.action.message && (
+                  <Typography variant="secondary" className="text-xs mt-1 italic">
+                    Reason: {decisionRule.action.message}
+                  </Typography>
+                )}
+              </div>
+            </div>
+
+            {/* Matched rules + context only render once the result arrives; they
+                slide in underneath the outcome hero. */}
+            <div
+              className={cn(
+                "grid transition-[grid-template-rows,opacity] duration-300 ease-out",
+                result ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0",
+              )}
+            >
+              <div className="overflow-hidden space-y-3">
+                {result && (
+                  <>
+                    <details className="rounded-lg border bg-background/40">
+                      <summary className="cursor-pointer px-4 py-2.5 text-sm font-medium flex items-center justify-between">
+                        <span>Rule evaluations</span>
+                        <span className="text-xs text-muted-foreground">{matchedCount} matched of {result.evaluations.length}</span>
+                      </summary>
+                      <div className="px-4 pb-3 space-y-1">
+                        {result.evaluations.map((e) => (
+                          <div key={e.rule_id} className="flex items-center gap-2 py-1.5 border-t first:border-t-0">
+                            <span className={cn(
+                              "h-2 w-2 rounded-full flex-shrink-0",
+                              e.status === 'matched' && "bg-emerald-500",
+                              e.status === 'not_matched' && "bg-muted-foreground/30",
+                              e.status === 'disabled' && "bg-muted-foreground/20",
+                              e.status === 'error' && "bg-red-500",
+                              e.status === 'missing_condition' && "bg-amber-500",
+                            )} />
+                            <span className="text-sm font-medium truncate flex-1">{e.display_name || e.rule_id}</span>
+                            <span className="text-[11px] text-muted-foreground">{STATUS_LABEL[e.status]}</span>
+                            <span className={actionBadgeClassNameFor(e.action.type)}>{e.action.type}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </details>
+
+                    <details className="rounded-lg border bg-background/40">
+                      <summary className="cursor-pointer px-4 py-2.5 text-sm font-medium">Resolved context</summary>
+                      <div className="px-4 pb-3 pt-1 grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                        <div><span className="text-muted-foreground">Email: </span>{result.context.email || "(empty)"}</div>
+                        <div><span className="text-muted-foreground">Domain: </span>{result.context.email_domain || "(empty)"}</div>
+                        <div><span className="text-muted-foreground">Country: </span>{result.context.country_code || "(empty)"}</div>
+                        <div><span className="text-muted-foreground">OAuth provider: </span>{result.context.oauth_provider || "(empty)"}</div>
+                        <div><span className="text-muted-foreground">Turnstile: </span>{result.context.turnstile_result}</div>
+                        <div><span className="text-muted-foreground">Bot score: </span>{result.context.risk_scores.bot}</div>
+                        <div><span className="text-muted-foreground">Free-trial abuse: </span>{result.context.risk_scores.free_trial_abuse}</div>
+                      </div>
+                    </details>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -1174,14 +1144,16 @@ function TestRulesDialog({
 }: {
   stackAdminApp: ReturnType<typeof useAdminApp>,
 }) {
+  const state = useTestRulesState(stackAdminApp);
+
   return (
     <Dialog>
       <DialogTrigger asChild>
-        <Button size="sm" variant="secondary">
+        <Button variant="secondary">
           Open tester
         </Button>
       </DialogTrigger>
-      <DialogContent className="max-w-5xl">
+      <DialogContent className="max-w-3xl">
         <DialogHeader>
           <DialogTitle>Test sign-up rules</DialogTitle>
           <DialogDescription>
@@ -1189,7 +1161,7 @@ function TestRulesDialog({
           </DialogDescription>
         </DialogHeader>
         <DialogBody>
-          <TestRulesCard stackAdminApp={stackAdminApp} />
+          <TestRulesCard state={state} />
         </DialogBody>
       </DialogContent>
     </Dialog>
@@ -1450,13 +1422,16 @@ export default function PageClient() {
         title="Sign-up Rules"
         description="Create rules to control who can sign up. Rules are evaluated in order from top to bottom."
         actions={
-          <Button
-            onClick={handleAddRule}
-            disabled={isAnyEditing || hasOrderChanges}
-          >
-            <PlusIcon className="h-4 w-4 mr-2" />
-            Add rule
-          </Button>
+          <div className="flex items-center gap-2">
+            <TestRulesDialog stackAdminApp={stackAdminApp} />
+            <Button
+              onClick={handleAddRule}
+              disabled={isAnyEditing || hasOrderChanges}
+            >
+              <PlusIcon className="h-4 w-4 mr-2" />
+              Add rule
+            </Button>
+          </div>
         }
       >
         {/* Rules list and default action */}
@@ -1586,19 +1561,6 @@ export default function PageClient() {
             value={defaultAction}
             onChange={(v) => runAsynchronouslyWithAlert(handleDefaultActionChange(v))}
           />
-          <div className="pt-10">
-            <div className="relative rounded-xl border border-dashed border-border/70 bg-muted/10 p-4">
-              <div className="flex flex-wrap items-center justify-between gap-3">
-                <div>
-                  <Typography className="text-sm font-semibold">Test rules</Typography>
-                  <Typography variant="secondary" className="text-xs">
-                    Try sample sign-ups without touching the live flow.
-                  </Typography>
-                </div>
-                <TestRulesDialog stackAdminApp={stackAdminApp} />
-              </div>
-            </div>
-          </div>
         </div>
 
         {/* Delete confirmation dialog */}

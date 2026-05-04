@@ -232,6 +232,41 @@ it("handles invalid SQL query", async ({ expect }) => {
   `);
 });
 
+it("does not leak data from the internal cross-project users table via type-mismatch errors", async ({ expect }) => {
+  const response = await runQuery({
+    query: "SELECT if(1, primary_email, 1) AS leaked FROM analytics_internal.users LIMIT 1",
+  });
+
+  expect(response.status).toBe(400);
+  const errorText = JSON.stringify(response.body);
+  expect(errorText).not.toContain("@");
+  expect(errorText).not.toMatch(/primary_email\s*[:=]\s*['"]/);
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "ANALYTICS_QUERY_ERROR",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 386 There is no supertype for types String, UInt8 because some of them are String\\\\/FixedString\\\\/Enum and some of them are not: In scope SELECT if(1, primary_email, 1) AS leaked FROM analytics_internal.users LIMIT 1. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 386 There is no supertype for types String, UInt8 because some of them are String\\\\/FixedString\\\\/Enum and some of them are not: In scope SELECT if(1, primary_email, 1) AS leaked FROM analytics_internal.users LIMIT 1. 
+        \`,
+      },
+      "headers": Headers {
+        "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
 it("can execute query returning multiple rows", async ({ expect }) => {
   const response = await runQuery({ query: "SELECT arrayJoin([0, 1, 2]) AS number" });
 
@@ -1648,6 +1683,40 @@ it("does not leak column names from restricted tables via illegal type of argume
           Error during execution of this query.
           
           As you are in development mode, you can see the full error: 43 Argument for function arrayJoin must be Array or Map: In scope SELECT arrayJoin(query) FROM system.query_log. 
+        \`,
+      },
+      "headers": Headers {
+        "x-stack-known-error": "ANALYTICS_QUERY_ERROR",
+        <some fields may have been hidden>,
+      },
+    }
+  `);
+});
+
+it("does not leak data from restricted tables via type-mismatch errors (code 386)", async ({ expect }) => {
+  // ClickHouse resolves types before checking permissions, so a code 386
+  // referencing a restricted table column would otherwise leak its type.
+  // 386 is classified unsafe so the raw message must not reach prod.
+  const response = await runQuery({
+    query: "SELECT if(1, query, 1) FROM system.query_log",
+  });
+
+  expect(stripQueryId(response, expect)).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 400,
+      "body": {
+        "code": "ANALYTICS_QUERY_ERROR",
+        "details": {
+          "error": deindent\`
+            Error during execution of this query.
+            
+            As you are in development mode, you can see the full error: 386 There is no supertype for types String, UInt8 because some of them are String\\\\/FixedString\\\\/Enum and some of them are not: In scope SELECT if(1, query, 1) FROM system.query_log. 
+          \`,
+        },
+        "error": deindent\`
+          Error during execution of this query.
+          
+          As you are in development mode, you can see the full error: 386 There is no supertype for types String, UInt8 because some of them are String\\\\/FixedString\\\\/Enum and some of them are not: In scope SELECT if(1, query, 1) FROM system.query_log. 
         \`,
       },
       "headers": Headers {

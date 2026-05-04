@@ -62,9 +62,41 @@ export function registerInitCommand(program: Command) {
     });
 }
 
+function validateOptions(opts: InitOptions) {
+  if (opts.selectProjectId && opts.configFile) {
+    throw new CliError("--select-project-id and --config-file cannot be used together.");
+  }
+
+  const incompatible: Record<NonNullable<InitOptions["mode"]>, Array<keyof InitOptions>> = {
+    "create": ["selectProjectId", "configFile"],
+    "create-cloud": ["selectProjectId", "configFile", "apps"],
+    "link-config": ["selectProjectId", "apps"],
+    "link-cloud": ["configFile", "apps"],
+  };
+  const flagNames: Partial<Record<keyof InitOptions, string>> = {
+    selectProjectId: "--select-project-id",
+    configFile: "--config-file",
+    apps: "--apps",
+  };
+
+  if (opts.mode) {
+    for (const key of incompatible[opts.mode]) {
+      if (opts[key] != null) {
+        throw new CliError(`${flagNames[key]} cannot be used with --mode ${opts.mode}.`);
+      }
+    }
+  }
+}
+
 async function runInit(program: Command, opts: InitOptions) {
   const flags = program.opts();
   const outputDir = opts.outputDir ? path.resolve(opts.outputDir) : process.cwd();
+
+  if (!fs.existsSync(outputDir)) {
+    throw new CliError(`Output directory does not exist: ${outputDir}`);
+  }
+
+  validateOptions(opts);
 
   console.log("Welcome to Stack Auth!\n");
 
@@ -396,6 +428,21 @@ async function handleCreate(opts: InitOptions, outputDir: string): Promise<{ con
   const importPackage = detectImportPackageFromDir(path.dirname(configPath));
   const content = renderConfigFileContent(config, importPackage);
   fs.mkdirSync(path.dirname(configPath), { recursive: true });
+
+  if (fs.existsSync(configPath)) {
+    if (isNonInteractiveEnv()) {
+      throw new CliError(`Config file already exists at ${configPath}. Refusing to overwrite in non-interactive mode.`);
+    }
+    const shouldOverwrite = await confirm({
+      message: `Config file already exists at ${configPath}. Overwrite?`,
+      default: false,
+    });
+    if (!shouldOverwrite) {
+      console.log("\nLeaving existing config file unchanged.");
+      return { configPath };
+    }
+  }
+
   fs.writeFileSync(configPath, content);
 
   console.log(`\nConfig file written to ${configPath}`);

@@ -87,6 +87,7 @@
     "@stackframe/stack-shared": "workspace:*",
     "@upstash/qstash": "^2.8.2",
     "@vercel/functions": "^2.0.0",
+    "@vercel/mcp-adapter": "^1.0.0",
     "@vercel/otel": "^1.10.4",
     "@vercel/sandbox": "^1.2.0",
     "ai": "^6.0.0",

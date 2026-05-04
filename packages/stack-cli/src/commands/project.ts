@@ -2,6 +2,7 @@ import { Command } from "commander";
 import { resolveLoginConfig, resolveSessionAuth } from "../lib/auth.js";
 import { getInternalUser } from "../lib/app.js";
 import { createProjectInteractively } from "../lib/create-project.js";
+import { createProjectInteractively } from "../lib/create-project.js";
 
 export function registerProjectCommand(program: Command) {
   const project = program

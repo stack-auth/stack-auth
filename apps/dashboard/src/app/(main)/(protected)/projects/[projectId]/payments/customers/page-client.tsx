@@ -17,15 +17,10 @@ import {
   SelectValue,
   SimpleTooltip,
   Skeleton,
-  Table,
-  TableBody,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
   Typography,
   toast,
 } from "@/components/ui";
+import { createDefaultDataGridState, DataGrid, useDataSource, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
 import { useUpdateConfig } from "@/lib/config-update";
 import { CaretUpDownIcon } from "@phosphor-icons/react";
 import { KnownErrors } from "@stackframe/stack-shared";
@@ -437,121 +432,120 @@ function CustomerSelector(props: CustomerSelectorProps) {
   );
 }
 
+type ItemTableRow = {
+  itemId: string,
+  displayName: string,
+};
+
+// TODO(ui-fixes-minor): `ItemQuantityCell` and `ItemActionsCell` each call
+// `adminApp.useItem(...)` per row. For a customer with N items that's N
+// independent Suspense boundaries + N fetches. Fine at the typical row
+// counts on this page, but if the item list ever grows large, hoist the
+// lookups into the parent (fetch all items in one pass, pass a
+// `Map<itemId, item>` down, read synchronously in `renderCell`). Per the
+// DataGrid iron rules: hooks-in-components-inside-renderCell is legal but
+// expensive — prefer parent-level bulk fetch when feasible.
 function ItemTable(props: {
   items: Array<[string, { displayName?: string | null }]>,
   customer: SelectedCustomer | null,
 }) {
+  const data = useMemo<ItemTableRow[]>(
+    () => props.items.map(([itemId, itemConfig]) => ({
+      itemId,
+      displayName: itemConfig.displayName ?? itemId,
+    })),
+    [props.items],
+  );
+
+  const columns = useMemo<DataGridColumnDef<ItemTableRow>[]>(() => [
+    {
+      id: "item",
+      header: "Item",
+      width: 320,
+      accessor: "displayName",
+      renderCell: ({ row }) => (
+        <div className="flex flex-col gap-0.5">
+          <span className="font-medium">{row.displayName}</span>
+          <span className="text-xs font-mono text-muted-foreground">{row.itemId}</span>
+        </div>
+      ),
+    },
+    {
+      id: "quantity",
+      header: "Quantity",
+      width: 180,
+      sortable: false,
+      renderCell: ({ row }) => props.customer ? (
+        <Suspense fallback={<Skeleton className="h-4 w-12" />}>
+          <ItemQuantityCell itemId={row.itemId} customer={props.customer} />
+        </Suspense>
+      ) : null,
+    },
+    {
+      id: "actions",
+      header: "Actions",
+      width: 220,
+      align: "right",
+      sortable: false,
+      renderCell: ({ row }) => props.customer ? (
+        <Suspense fallback={<Skeleton className="h-9 w-24" />}>
+          <ItemActionsCell itemId={row.itemId} itemDisplayName={row.displayName} customer={props.customer} />
+        </Suspense>
+      ) : null,
+    },
+  ], [props.customer]);
+
+  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
+  const gridData = useDataSource({
+    data,
+    columns,
+    getRowId: (row) => row.itemId,
+    sorting: gridState.sorting,
+    quickSearch: gridState.quickSearch,
+    pagination: gridState.pagination,
+    paginationMode: "client",
+  });
+
   return (
-    <div className="rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-[320px]">Item</TableHead>
-            <TableHead className="w-[180px]">Quantity</TableHead>
-            <TableHead className="w-[220px] text-right">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {props.items.map(([itemId, itemConfig]) => (
-            props.customer ? (
-              <ItemRowSuspense
-                key={itemId}
-                itemId={itemId}
-                itemDisplayName={itemConfig.displayName ?? itemId}
-                customer={props.customer}
-              />
-            ) : (
-              <TableRow key={itemId}>
-                <TableCell className="align-top">
-                  <div className="flex flex-col gap-0.5">
-                    <span className="font-medium">{itemConfig.displayName ?? itemId}</span>
-                    <span className="text-xs font-mono text-muted-foreground">{itemId}</span>
-                  </div>
-                </TableCell>
-                <TableCell className="align-top" />
-                <TableCell className="align-top" />
-              </TableRow>
-            )
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+    <DataGrid
+      columns={columns}
+      rows={gridData.rows}
+      getRowId={(row) => row.itemId}
+      totalRowCount={gridData.totalRowCount}
+      state={gridState}
+      onChange={setGridState}
+      toolbar={false}
+      footer={false}
+    />
   );
 }
 
-function ItemRowSuspense(props: ItemRowProps) {
-  return (
-    <Suspense
-      fallback={
-        <TableRow>
-          <TableCell>
-            <div className="flex flex-col gap-2">
-              <Skeleton className="h-4 w-40" />
-              <Skeleton className="h-3 w-24" />
-            </div>
-          </TableCell>
-          <TableCell>
-            <Skeleton className="h-4 w-12" />
-          </TableCell>
-          <TableCell className="text-right">
-            <div className="flex justify-end gap-2">
-              <Skeleton className="h-9 w-24" />
-              <Skeleton className="h-9 w-24" />
-            </div>
-          </TableCell>
-        </TableRow>
-      }
-    >
-      <ItemRowContent {...props} />
-    </Suspense>
-  );
-}
-
-type ItemRowProps = {
-  itemId: string,
-  itemDisplayName: string,
-  customer: SelectedCustomer,
-};
-
-function ItemRowContent(props: ItemRowProps) {
+function ItemQuantityCell({ itemId, customer }: { itemId: string, customer: SelectedCustomer }) {
   const adminApp = useAdminApp();
+  const item = useItemForCustomer(adminApp, customer, itemId);
+  return <span className="font-medium">{item.quantity}</span>;
+}
+
+function ItemActionsCell({ itemId, itemDisplayName, customer }: { itemId: string, itemDisplayName: string, customer: SelectedCustomer }) {
   const [isAdjustOpen, setIsAdjustOpen] = useState(false);
-
-  const item = useItemForCustomer(adminApp, props.customer, props.itemId);
-
   return (
     <>
-      <TableRow>
-        <TableCell className="align-top">
-          <div className="flex flex-col gap-0.5">
-            <span className="font-medium">{props.itemDisplayName}</span>
-            <span className="text-xs font-mono text-muted-foreground">{props.itemId}</span>
-          </div>
-        </TableCell>
-        <TableCell className="align-middle">
-          <div className="flex flex-col gap-1 text-sm">
-            <span className="font-medium">{item.quantity}</span>
-          </div>
-        </TableCell>
-        <TableCell className="align-top">
-          <div className="flex justify-end gap-2">
-            <Button variant="outline" size="sm" onClick={() => setIsAdjustOpen(true)}>
-              Adjust
-            </Button>
-          </div>
-        </TableCell>
-      </TableRow>
-
+      <div className="flex justify-end gap-2">
+        <Button variant="outline" size="sm" onClick={() => setIsAdjustOpen(true)}>
+          Adjust
+        </Button>
+      </div>
       <AdjustItemQuantityDialog
         open={isAdjustOpen}
         onOpenChange={setIsAdjustOpen}
-        customer={props.customer}
-        itemId={props.itemId}
-        itemLabel={props.itemDisplayName}
+        customer={customer}
+        itemId={itemId}
+        itemLabel={itemDisplayName}
       />
     </>
   );
 }
+
 
 function useItemForCustomer(
   adminApp: ReturnType<typeof useAdminApp>,
@@ -731,38 +725,44 @@ function handleItemQuantityError(error: unknown) {
 }
 
 function ItemTableSkeleton(props: { rows: number }) {
+  const columns = useMemo<DataGridColumnDef<{ id: number }>[]>(() => [
+    { id: "item", header: "Item", width: 320, renderCell: () => (
+      <div className="flex flex-col gap-2">
+        <Skeleton className="h-4 w-32" />
+        <Skeleton className="h-3 w-24" />
+      </div>
+    ) },
+    { id: "quantity", header: "Quantity", width: 180, renderCell: () => <Skeleton className="h-4 w-10" /> },
+    { id: "actions", header: "Actions", width: 220, align: "right", renderCell: () => (
+      <div className="flex justify-end gap-2">
+        <Skeleton className="h-9 w-24" />
+        <Skeleton className="h-9 w-24" />
+      </div>
+    ) },
+  ], []);
+
+  const data = useMemo(() => Array.from({ length: props.rows }, (_, i) => ({ id: i })), [props.rows]);
+  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
+  const gridData = useDataSource({
+    data,
+    columns,
+    getRowId: (row) => String(row.id),
+    sorting: gridState.sorting,
+    quickSearch: gridState.quickSearch,
+    pagination: gridState.pagination,
+    paginationMode: "client",
+  });
+
   return (
-    <div className="rounded-md border">
-      <Table>
-        <TableHeader>
-          <TableRow>
-            <TableHead className="w-[320px]">Item</TableHead>
-            <TableHead className="w-[180px]">Quantity</TableHead>
-            <TableHead className="w-[220px] text-right">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {Array.from({ length: props.rows }).map((_, index) => (
-            <TableRow key={index}>
-              <TableCell>
-                <div className="flex flex-col gap-2">
-                  <Skeleton className="h-4 w-32" />
-                  <Skeleton className="h-3 w-24" />
-                </div>
-              </TableCell>
-              <TableCell>
-                <Skeleton className="h-4 w-10" />
-              </TableCell>
-              <TableCell className="text-right">
-                <div className="flex justify-end gap-2">
-                  <Skeleton className="h-9 w-24" />
-                  <Skeleton className="h-9 w-24" />
-                </div>
-              </TableCell>
-            </TableRow>
-          ))}
-        </TableBody>
-      </Table>
-    </div>
+    <DataGrid
+      columns={columns}
+      rows={gridData.rows}
+      getRowId={(row) => String(row.id)}
+      totalRowCount={gridData.totalRowCount}
+      state={gridState}
+      onChange={setGridState}
+      toolbar={false}
+      footer={false}
+    />
   );
 }
