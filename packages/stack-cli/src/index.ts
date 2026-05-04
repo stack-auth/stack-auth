@@ -11,6 +11,7 @@ import { registerInitCommand } from "./commands/init.js";
 import { registerProjectCommand } from "./commands/project.js";
 import { registerEmulatorCommand } from "./commands/emulator.js";
 import { registerFixCommand } from "./commands/fix.js";
+import { registerDoctorCommand } from "./commands/doctor.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -33,6 +34,7 @@ registerInitCommand(program);
 registerProjectCommand(program);
 registerEmulatorCommand(program);
 registerFixCommand(program);
+registerDoctorCommand(program);
 
 async function main() {
   try {
