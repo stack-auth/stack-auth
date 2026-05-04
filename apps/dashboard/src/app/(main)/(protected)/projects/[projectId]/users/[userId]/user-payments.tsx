@@ -4,16 +4,18 @@ import {
   DesignBadge,
   type DesignBadgeColor,
   DesignCard,
-  DesignMetricCard,
 } from "@/components/design-components";
-import { Skeleton } from "@/components/ui";
+import { cn, Skeleton } from "@/components/ui";
 import type { Icon as PhosphorIcon } from "@phosphor-icons/react";
-import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, CoinsIcon, GearIcon, PackageIcon, ProhibitIcon, QuestionIcon, ReceiptIcon, ShoppingCartIcon, ShuffleIcon, StackIcon } from "@phosphor-icons/react";
+import { ArrowClockwiseIcon, ArrowCounterClockwiseIcon, CoinsIcon, GearIcon, ProhibitIcon, QuestionIcon, ShoppingCartIcon, ShuffleIcon } from "@phosphor-icons/react";
+import type { DataGridColumnDef } from "@stackframe/dashboard-ui-components";
 import type { ServerUser } from "@stackframe/stack";
 import type { Transaction, TransactionEntry, TransactionType } from "@stackframe/stack-shared/dist/interface/crud/transactions";
 import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { Suspense, useMemo } from "react";
 import { useAdminApp } from "../../use-admin-app";
+import { UserPageMetricCard } from "./user-page-metric-card";
+import { UserPageTableSection } from "./user-page-table-section";
 
 const TRANSACTIONS_PAGE_SIZE = 100;
 
@@ -89,12 +91,12 @@ function UserPaymentsLoading() {
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {Array.from({ length: 3 }).map((_, i) => (
-          <Skeleton key={i} className="h-[120px] rounded-2xl" />
+          <Skeleton key={i} className="h-[64px] rounded-2xl" />
         ))}
       </div>
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Skeleton className="h-[260px] rounded-2xl" />
-        <Skeleton className="h-[260px] rounded-2xl" />
+      <div className="flex flex-col gap-6">
+        <Skeleton className="h-[180px] rounded-2xl" />
+        <Skeleton className="h-[180px] rounded-2xl" />
       </div>
     </div>
   );
@@ -123,9 +125,9 @@ function UserPaymentsContent({ user }: { user: ServerUser }) {
     <div className="flex flex-col gap-4">
       <MetricsRow userId={user.id} transactions={userTransactions} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <ProductsCard userId={user.id} transactions={userTransactions} />
-        <TransactionsCard userId={user.id} transactions={userTransactions} />
+      <div className="flex flex-col gap-6">
+        <ProductsTableSection userId={user.id} transactions={userTransactions} />
+        <TransactionsTableSection userId={user.id} transactions={userTransactions} />
       </div>
 
       <ItemsCard userId={user.id} itemIds={userItemIds} />
@@ -240,74 +242,88 @@ function MetricsRow({ userId, transactions }: { userId: string, transactions: Tr
 
   return (
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-      <DesignMetricCard
+      <UserPageMetricCard
         label="Active subscriptions"
         value={activeSubscriptions}
         description={activeSubscriptions === 0 ? "None" : `${activeSubscriptions} running`}
-        icon={StackIcon}
         gradient="blue"
       />
-      <DesignMetricCard
+      <UserPageMetricCard
         label="Products owned"
         value={productsOwned}
         description={productsOwned === 0 ? "None" : `${activeGrants.length} distinct`}
-        icon={PackageIcon}
         gradient="purple"
       />
-      <DesignMetricCard
+      <UserPageMetricCard
         label="Lifetime spend"
         value={formatUsd(lifetimeSpendUsd)}
         description={transactionCount === 0 ? "No transactions" : `Across ${transactionCount} transaction${transactionCount === 1 ? "" : "s"}`}
-        icon={ReceiptIcon}
         gradient="green"
       />
     </div>
   );
 }
 
-function ProductsCard({ userId, transactions }: { userId: string, transactions: Transaction[] }) {
+function ProductsTableSection({ userId, transactions }: { userId: string, transactions: Transaction[] }) {
   const grants = useMemo(() => deriveActiveGrants(transactions, userId), [transactions, userId]);
+  const columns = useMemo<DataGridColumnDef<ActiveGrant>[]>(() => [
+    {
+      id: "productDisplayName",
+      accessor: "productDisplayName",
+      header: "Product",
+      width: 240,
+      flex: 1,
+      sortable: false,
+      renderCell: ({ row }) => (
+        <span className="truncate text-sm font-medium text-foreground">{row.productDisplayName}</span>
+      ),
+    },
+    {
+      id: "type",
+      header: "Type",
+      width: 130,
+      sortable: false,
+      renderCell: ({ row }) => (
+        <DesignBadge
+          label={row.subscriptionId ? "Subscription" : "One-time"}
+          color={row.subscriptionId ? "blue" : "purple"}
+          size="sm"
+        />
+      ),
+    },
+    {
+      id: "quantity",
+      accessor: "quantity",
+      header: "Quantity",
+      width: 100,
+      align: "right",
+      sortable: false,
+      renderCell: ({ row }) => (
+        <span className="font-medium tabular-nums text-foreground">
+          {row.stackable ? row.quantity : 1}
+        </span>
+      ),
+    },
+    {
+      id: "grantedAt",
+      accessor: "grantedAt",
+      header: "Granted",
+      width: 140,
+      sortable: false,
+      renderCell: ({ row }) => (
+        <span className="text-sm text-muted-foreground">{DATE_SHORT.format(row.grantedAt)}</span>
+      ),
+    },
+  ], []);
 
   return (
-    <DesignCard
+    <UserPageTableSection
       title="Products & subscriptions"
-      subtitle={grants.length === 0 ? "No products granted" : `${grants.length} active`}
-      icon={PackageIcon}
-    >
-      {grants.length === 0 ? (
-        <div className="flex flex-col items-center gap-1 py-8 text-center">
-          <p className="text-sm text-muted-foreground">This user has no active products or subscriptions.</p>
-        </div>
-      ) : (
-        <ul className="divide-y divide-foreground/[0.05]">
-          {grants.map((grant) => (
-            <li key={grant.key} className="flex items-center gap-3 py-2.5">
-              <div className="flex flex-1 min-w-0 flex-col gap-0.5">
-                <div className="flex items-center gap-2 min-w-0">
-                  <span className="truncate text-sm font-medium text-foreground">
-                    {grant.productDisplayName}
-                  </span>
-                  {grant.stackable && grant.quantity > 1 ? (
-                    <span className="shrink-0 rounded-md bg-foreground/[0.06] px-1.5 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground">
-                      x{grant.quantity}
-                    </span>
-                  ) : null}
-                </div>
-                <span className="text-xs text-muted-foreground">
-                  {grant.subscriptionId ? "Subscription - " : "One-time - "}
-                  Granted {DATE_SHORT.format(grant.grantedAt)}
-                </span>
-              </div>
-              <DesignBadge
-                label={grant.subscriptionId ? "Subscription" : "One-time"}
-                color={grant.subscriptionId ? "blue" : "purple"}
-                size="sm"
-              />
-            </li>
-          ))}
-        </ul>
-      )}
-    </DesignCard>
+      columns={columns}
+      rows={grants}
+      getRowId={(grant) => grant.key}
+      emptyLabel="This user has no active products or subscriptions."
+    />
   );
 }
 
@@ -347,78 +363,101 @@ function transactionDetailForUser(transaction: Transaction, userId: string): str
   return "-";
 }
 
-function TransactionsCard({ userId, transactions }: { userId: string, transactions: Transaction[] }) {
+function TransactionsTableSection({ userId, transactions }: { userId: string, transactions: Transaction[] }) {
   const ordered = useMemo(
     () => [...transactions].sort((a, b) => b.created_at_millis - a.created_at_millis),
     [transactions],
   );
-
-  return (
-    <DesignCard
-      title="Transaction history"
-      subtitle={
-        ordered.length === 0
-          ? "No transactions recorded"
-          : `${ordered.length} most recent`
-      }
-      icon={ReceiptIcon}
-    >
-      {ordered.length === 0 ? (
-        <div className="flex flex-col items-center gap-1 py-8 text-center">
-          <p className="text-sm text-muted-foreground">This user has no transactions.</p>
-        </div>
-      ) : (
-        <div className="max-h-[320px] overflow-y-auto -mx-1 px-1">
-          <ul className="divide-y divide-foreground/[0.05]">
-            {ordered.map((transaction) => (
-              <TransactionRow key={transaction.id} transaction={transaction} userId={userId} />
-            ))}
-          </ul>
-        </div>
-      )}
-    </DesignCard>
-  );
-}
-
-function TransactionRow({ transaction, userId }: { transaction: Transaction, userId: string }) {
-  const { label, Icon } = formatTransactionTypeLabel(transaction.type);
-  const signedUsd = transactionSignedUsdForUser(transaction, userId);
-  const refunded = transaction.adjusted_by.length > 0;
-  const detail = transactionDetailForUser(transaction, userId);
-  const badge = transactionStatusBadge(transaction, refunded);
-
-  return (
-    <li className="flex items-center gap-3 py-2">
-      <div className="flex h-7 w-7 items-center justify-center rounded-md bg-foreground/[0.06]">
-        <Icon className="h-4 w-4 text-foreground/70" aria-hidden />
-      </div>
-      <div className="flex flex-1 min-w-0 flex-col">
-        <div className="flex items-center gap-2 min-w-0">
-          <span className="truncate text-sm font-medium text-foreground">{label}</span>
-          {badge ? <DesignBadge label={badge.label} color={badge.color} size="sm" /> : null}
-        </div>
+  const columns = useMemo<DataGridColumnDef<Transaction>[]>(() => [
+    {
+      id: "type",
+      header: "Type",
+      width: 190,
+      sortable: false,
+      renderCell: ({ row }) => {
+        const { label, Icon } = formatTransactionTypeLabel(row.type);
+        return (
+          <div className="flex items-center gap-2 min-w-0">
+            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-foreground/[0.06]">
+              <Icon className="h-4 w-4 text-foreground/70" aria-hidden />
+            </div>
+            <span className="truncate text-sm font-medium text-foreground">{label}</span>
+          </div>
+        );
+      },
+    },
+    {
+      id: "detail",
+      header: "Detail",
+      width: 240,
+      flex: 1,
+      sortable: false,
+      renderCell: ({ row }) => (
+        <span className="truncate text-sm text-muted-foreground">{transactionDetailForUser(row, userId)}</span>
+      ),
+    },
+    {
+      id: "createdAt",
+      accessor: (transaction) => transaction.created_at_millis,
+      header: "Date",
+      width: 140,
+      sortable: false,
+      renderCell: ({ row }) => (
         <span
-          className="truncate text-xs text-muted-foreground tabular-nums"
-          title={DATE_LONG.format(new Date(transaction.created_at_millis))}
+          className="text-sm text-muted-foreground tabular-nums"
+          title={DATE_LONG.format(new Date(row.created_at_millis))}
         >
-          {DATE_SHORT.format(new Date(transaction.created_at_millis))} - {detail}
+          {DATE_SHORT.format(new Date(row.created_at_millis))}
         </span>
-      </div>
-      <div className="text-right">
-        {transaction.test_mode ? (
-          <span className="text-xs font-medium text-muted-foreground">Test</span>
-        ) : signedUsd != null ? (
+      ),
+    },
+    {
+      id: "amount",
+      header: "Amount",
+      width: 120,
+      align: "right",
+      sortable: false,
+      renderCell: ({ row }) => {
+        if (row.test_mode) {
+          return <span className="text-xs font-medium text-muted-foreground">Test</span>;
+        }
+        const signedUsd = transactionSignedUsdForUser(row, userId);
+        if (signedUsd == null) {
+          return <span className="text-xs text-muted-foreground">-</span>;
+        }
+        return (
           <span
-            className={`text-sm font-medium tabular-nums ${signedUsd < 0 ? "text-muted-foreground" : "text-foreground"}`}
+            className={cn(
+              "text-sm font-medium tabular-nums",
+              signedUsd < 0 ? "text-muted-foreground" : "text-foreground",
+            )}
           >
             {signedUsd < 0 ? "-" : ""}
             {formatUsd(Math.abs(signedUsd))}
           </span>
-        ) : (
-          <span className="text-xs text-muted-foreground">-</span>
-        )}
-      </div>
-    </li>
+        );
+      },
+    },
+    {
+      id: "status",
+      header: "Status",
+      width: 110,
+      sortable: false,
+      renderCell: ({ row }) => {
+        const badge = transactionStatusBadge(row, row.adjusted_by.length > 0);
+        return badge ? <DesignBadge label={badge.label} color={badge.color} size="sm" /> : <span className="text-sm text-muted-foreground">-</span>;
+      },
+    },
+  ], [userId]);
+
+  return (
+    <UserPageTableSection
+      title="Transaction history"
+      columns={columns}
+      rows={ordered}
+      getRowId={(transaction) => transaction.id}
+      emptyLabel="This user has no transactions."
+    />
   );
 }
 

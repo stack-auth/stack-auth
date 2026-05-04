@@ -1,6 +1,6 @@
 "use client";
 
-import { DesignCard, DesignCategoryTabs, DesignDataTable, DesignEditableGrid, DesignMenu, type DesignCategoryTabItem, type DesignEditableGridItem, type DesignMenuActionItem } from "@/components/design-components";
+import { DesignCategoryTabs, DesignEditableGrid, DesignMenu, type DesignCategoryTabItem, type DesignEditableGridItem, type DesignMenuActionItem } from "@/components/design-components";
 import { EditableInput } from "@/components/editable-input";
 import { FormDialog, SmartFormDialog } from "@/components/form-dialog";
 import { InputField, SelectField } from "@/components/form-fields";
@@ -38,7 +38,7 @@ import { ALL_APPS_FRONTEND } from "@/lib/apps-frontend";
 import { isAppEnabled } from "@/lib/apps-utils";
 import { parseRiskScore } from "@/lib/risk-score-utils";
 import { useUserActivityOrThrow } from "@/lib/stack-app-internals";
-import { AtIcon, CalendarIcon, CheckIcon, DatabaseIcon, EnvelopeIcon, GlobeIcon, HashIcon, ProhibitIcon, ShieldIcon, SquareIcon, UsersIcon, XIcon } from "@phosphor-icons/react";
+import { AtIcon, CalendarIcon, CheckIcon, DatabaseIcon, EnvelopeIcon, GlobeIcon, HashIcon, ProhibitIcon, ShieldIcon, SquareIcon, XIcon } from "@phosphor-icons/react";
 import { ServerContactChannel, ServerOAuthProvider, ServerTeam, ServerUser } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
@@ -47,14 +47,14 @@ import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { captureError, StackAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
-import { createDefaultDataGridState, DataGrid, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
-import { ColumnDef } from "@tanstack/react-table";
+import { type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
 import { Suspense, useCallback, useMemo, useState, type ReactNode } from "react";
 import * as yup from "yup";
 import { AppEnabledGuard } from "../../app-enabled-guard";
 import { PageLayout } from "../../page-layout";
 import { useAdminApp } from "../../use-admin-app";
 import { UserAnalyticsSection } from "./user-analytics";
+import { UserPageTableSection } from "./user-page-table-section";
 import { UserPaymentsSection } from "./user-payments";
 
 const userMetadataDocsUrl = "https://docs.stack-auth.com/docs/concepts/custom-user-data";
@@ -483,54 +483,6 @@ function BooleanStatusCell({ value, showFalseIcon = true }: { value: boolean, sh
         <XIcon aria-hidden={true} className="mx-auto h-4 w-4 text-muted-foreground" />
       ) : null}
     </div>
-  );
-}
-
-type UserPageTableSectionProps<TRow> = {
-  title: string,
-  actions?: ReactNode,
-  columns: readonly DataGridColumnDef<TRow>[],
-  rows: readonly TRow[],
-  getRowId: (row: TRow) => string,
-  emptyLabel: string,
-};
-
-function UserPageTableSection<TRow,>({
-  title,
-  actions,
-  columns,
-  rows,
-  getRowId,
-  emptyLabel,
-}: UserPageTableSectionProps<TRow>) {
-  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
-
-  return (
-    <section className="flex flex-col gap-3">
-      <div className="flex items-center justify-between gap-3">
-        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
-          {title}
-        </h2>
-        {actions}
-      </div>
-      <DataGrid
-        columns={columns}
-        rows={rows}
-        getRowId={getRowId}
-        state={gridState}
-        onChange={setGridState}
-        toolbar={false}
-        footer={false}
-        fillHeight={false}
-        rowHeight="auto"
-        estimatedRowHeight={44}
-        emptyState={
-          <div className="mx-auto flex max-w-md flex-col items-center gap-2 py-8">
-            <div className="text-sm font-medium text-muted-foreground">{emptyLabel}</div>
-          </div>
-        }
-      />
-    </section>
   );
 }
 
@@ -969,42 +921,60 @@ function UserTeamsSection({ user }: { user: ServerUser }) {
   const stackAdminApp = useAdminApp();
   const teams = user.useTeams();
 
-  const teamColumns = useMemo<ColumnDef<ServerTeam>[]>(() => [
+  const teamColumns = useMemo<DataGridColumnDef<ServerTeam>[]>(() => [
     {
-      accessorKey: "id",
+      id: "id",
+      accessor: "id",
       header: "Team ID",
-      cell: ({ row }) => (
-        <div className="font-mono text-xs bg-muted px-2 py-1 rounded max-w-[120px] truncate">
-          {row.original.id}
+      width: 180,
+      sortable: false,
+      renderCell: ({ row }) => (
+        <div className="font-mono text-xs bg-muted px-2 py-1 rounded max-w-[180px] truncate">
+          {row.id}
         </div>
       ),
     },
     {
-      accessorKey: "displayName",
+      id: "displayName",
+      accessor: "displayName",
       header: "Display Name",
-      cell: ({ row }) => (
-        <span className="font-medium">{row.original.displayName || '-'}</span>
+      width: 220,
+      flex: 1,
+      sortable: false,
+      renderCell: ({ row }) => (
+        <span className="font-medium">{row.displayName || '-'}</span>
       ),
     },
     {
       id: "createdAt",
+      accessor: "createdAt",
       header: "Created At",
-      cell: ({ row }) => (
+      width: 140,
+      sortable: false,
+      renderCell: ({ row }) => (
         <span className="text-sm text-muted-foreground">
-          {row.original.createdAt.toLocaleDateString()}
+          {row.createdAt.toLocaleDateString()}
         </span>
       ),
     },
     {
       id: "actions",
-      cell: ({ row }) => (
+      header: "",
+      width: 44,
+      minWidth: 44,
+      maxWidth: 44,
+      sortable: false,
+      hideable: false,
+      resizable: false,
+      align: "right",
+      renderCell: ({ row }) => (
         <div className="flex justify-end">
           <ActionCell
             items={[
               {
                 item: "View Team",
                 onClick: () => {
-                  window.open(`/projects/${stackAdminApp.projectId}/teams/${row.original.id}`, '_blank', 'noopener');
+                  window.open(`/projects/${encodeURIComponent(stackAdminApp.projectId)}/teams/${encodeURIComponent(row.id)}`, '_blank', 'noopener');
                 },
               },
             ]}
@@ -1015,24 +985,13 @@ function UserTeamsSection({ user }: { user: ServerUser }) {
   ], [stackAdminApp.projectId]);
 
   return (
-    <DesignCard
+    <UserPageTableSection
       title="Teams"
-      subtitle="Teams this user belongs to"
-      icon={UsersIcon}
-    >
-      {teams.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 py-8">
-          <p className='text-sm text-muted-foreground text-center'>
-            No teams found
-          </p>
-        </div>
-      ) : (
-        <DesignDataTable
-          columns={teamColumns}
-          data={teams}
-        />
-      )}
-    </DesignCard>
+      columns={teamColumns}
+      rows={teams}
+      getRowId={(team) => team.id}
+      emptyLabel="No teams found"
+    />
   );
 }
 

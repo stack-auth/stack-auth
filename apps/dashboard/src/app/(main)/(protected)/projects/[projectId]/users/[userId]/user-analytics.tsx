@@ -7,15 +7,15 @@ import {
   DesignChartCard,
   DesignChartContainer,
   DesignChartTooltipContent,
-  DesignMetricCard,
   getDesignChartColor,
 } from "@/components/design-components";
 import { Skeleton, Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui";
-import { ChartBarIcon, ChartLineIcon, CursorClickIcon, EyeIcon, GlobeIcon, MonitorPlayIcon, WarningCircleIcon } from "@phosphor-icons/react";
+import { WarningCircleIcon } from "@phosphor-icons/react";
+import type { DataGridColumnDef } from "@stackframe/dashboard-ui-components";
 import { ServerUser } from "@stackframe/stack";
 import { captureError, throwErr } from "@stackframe/stack-shared/dist/utils/errors";
 import { runAsynchronously } from "@stackframe/stack-shared/dist/utils/promises";
-import { useEffect, useMemo, useState, type ElementType } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Area,
   AreaChart,
@@ -25,6 +25,8 @@ import {
   YAxis,
 } from "recharts";
 import { useAdminApp } from "../../use-admin-app";
+import { UserPageMetricCard } from "./user-page-metric-card";
+import { UserPageTableSection } from "./user-page-table-section";
 
 const ANALYTICS_WINDOW_DAYS = 30;
 const TOP_PAGES_LIMIT = 10;
@@ -447,15 +449,15 @@ function UserAnalyticsLoading() {
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         {Array.from({ length: 4 }).map((_, i) => (
-          <Skeleton key={i} className="h-[120px] rounded-2xl" />
+          <Skeleton key={i} className="h-[64px] rounded-2xl" />
         ))}
       </div>
       <Skeleton className="h-[280px] rounded-2xl" />
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <Skeleton className="h-[260px] rounded-2xl" />
-        <Skeleton className="h-[260px] rounded-2xl" />
+      <div className="flex flex-col gap-6">
+        <Skeleton className="h-[180px] rounded-2xl" />
+        <Skeleton className="h-[180px] rounded-2xl" />
+        <Skeleton className="h-[220px] rounded-2xl" />
       </div>
-      <Skeleton className="h-[320px] rounded-2xl" />
     </div>
   );
 }
@@ -489,56 +491,47 @@ function UserAnalyticsLoaded({ data }: { data: AnalyticsData }) {
   return (
     <div className="flex flex-col gap-4">
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-        <DesignMetricCard
+        <UserPageMetricCard
           label="Total Events"
           value={formatCompact(data.summary.total_events)}
           description={`Last ${ANALYTICS_WINDOW_DAYS} days`}
-          icon={ChartBarIcon}
           gradient="blue"
         />
-        <DesignMetricCard
+        <UserPageMetricCard
           label="Page Views"
           value={formatCompact(data.summary.page_views)}
           description={lastActive ? `Last seen ${lastActive.toLocaleDateString()}` : "No recent activity"}
-          icon={EyeIcon}
           gradient="cyan"
         />
-        <DesignMetricCard
+        <UserPageMetricCard
           label="Clicks"
           value={formatCompact(data.summary.clicks)}
           description={`Across ${ANALYTICS_WINDOW_DAYS}-day window`}
-          icon={CursorClickIcon}
           gradient="green"
         />
-        <DesignMetricCard
+        <UserPageMetricCard
           label="Sessions"
           value={formatCompact(data.summary.sessions)}
           description="Recorded replays"
-          icon={MonitorPlayIcon}
           gradient="purple"
         />
       </div>
 
       <ActivityChart daily={dense} hasAnyEvent={hasAnyEvent} />
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        <TopPathsCard
+      <div className="flex flex-col gap-6">
+        <TopPathsTableSection
           title="Top Pages"
-          subtitle={`Last ${ANALYTICS_WINDOW_DAYS} days`}
-          icon={ChartLineIcon}
           rows={data.topPages.map((p) => ({ label: p.path, count: p.views }))}
           emptyMessage="No page views yet"
         />
-        <TopPathsCard
+        <TopPathsTableSection
           title="Top Referrers"
-          subtitle={`Last ${ANALYTICS_WINDOW_DAYS} days`}
-          icon={GlobeIcon}
           rows={data.topReferrers.map((r) => ({ label: r.referrer, count: r.views }))}
           emptyMessage="No referrer data yet"
         />
+        <RecentEventsTableSection events={data.recent} />
       </div>
-
-      <RecentEventsCard events={data.recent} />
     </div>
   );
 }
@@ -626,95 +619,130 @@ function ActivityChart({ daily, hasAnyEvent }: { daily: DailyRow[], hasAnyEvent:
   );
 }
 
-function TopPathsCard({
+type TopPathsTableRow = {
+  label: string,
+  count: number,
+};
+
+function TopPathsTableSection({
   title,
-  subtitle,
-  icon,
   rows,
   emptyMessage,
 }: {
   title: string,
-  subtitle: string,
-  icon: ElementType,
-  rows: Array<{ label: string, count: number }>,
+  rows: TopPathsTableRow[],
   emptyMessage: string,
 }) {
   const maxCount = rows[0]?.count ?? 0;
+  const columns = useMemo<DataGridColumnDef<TopPathsTableRow>[]>(() => [
+    {
+      id: "label",
+      accessor: "label",
+      header: "Path",
+      width: 280,
+      flex: 1,
+      sortable: false,
+      renderCell: ({ row }) => {
+        const fillPercent = maxCount > 0 ? (row.count / maxCount) * 100 : 0;
+        return (
+          <div className="relative -mx-2 flex w-[calc(100%+1rem)] items-center overflow-hidden rounded-lg px-2 py-1.5">
+            <div
+              className="absolute inset-y-0 left-0 rounded-lg bg-blue-500/10 dark:bg-blue-400/10"
+              style={{ width: `${fillPercent}%` }}
+              aria-hidden
+            />
+            <Tooltip delayDuration={150}>
+              <TooltipTrigger asChild>
+                <span className="relative truncate text-xs text-foreground">
+                  {row.label}
+                </span>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="text-xs max-w-[360px] break-all">
+                {row.label}
+              </TooltipContent>
+            </Tooltip>
+          </div>
+        );
+      },
+    },
+    {
+      id: "count",
+      accessor: "count",
+      header: "Views",
+      width: 110,
+      align: "right",
+      sortable: false,
+      renderCell: ({ row }) => (
+        <span className="text-sm font-medium tabular-nums text-foreground">
+          {row.count.toLocaleString()}
+        </span>
+      ),
+    },
+  ], [maxCount]);
 
   return (
-    <DesignCard title={title} subtitle={subtitle} icon={icon}>
-      {rows.length === 0 ? (
-        <div className="flex flex-col items-center gap-1 py-8 text-center">
-          <p className="text-sm text-muted-foreground">{emptyMessage}</p>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-1">
-          {rows.map((row) => {
-            const fillPercent = maxCount > 0 ? (row.count / maxCount) * 100 : 0;
-            return (
-              <div
-                key={row.label}
-                className="relative flex items-center justify-between gap-3 rounded-lg px-2.5 py-1.5 overflow-hidden"
-              >
-                <div
-                  className="absolute inset-y-0 left-0 rounded-lg bg-blue-500/10 dark:bg-blue-400/10"
-                  style={{ width: `${fillPercent}%` }}
-                  aria-hidden
-                />
-                <Tooltip delayDuration={150}>
-                  <TooltipTrigger asChild>
-                    <span className="relative truncate text-xs text-foreground max-w-[75%]">
-                      {row.label}
-                    </span>
-                  </TooltipTrigger>
-                  <TooltipContent side="top" className="text-xs max-w-[360px] break-all">
-                    {row.label}
-                  </TooltipContent>
-                </Tooltip>
-                <span className="relative text-xs font-medium tabular-nums text-foreground">
-                  {row.count.toLocaleString()}
-                </span>
-              </div>
-            );
-          })}
-        </div>
-      )}
-    </DesignCard>
+    <UserPageTableSection
+      title={title}
+      columns={columns}
+      rows={rows}
+      getRowId={(row) => row.label}
+      emptyLabel={emptyMessage}
+    />
   );
 }
 
-function RecentEventsCard({ events }: { events: RecentEventRow[] }) {
+type RecentEventTableRow = RecentEventRow & {
+  id: string,
+};
+
+function RecentEventsTableSection({ events }: { events: RecentEventRow[] }) {
+  const rows = useMemo<RecentEventTableRow[]>(
+    () => events.map((event, index) => ({ ...event, id: `${event.event_at}-${index}` })),
+    [events],
+  );
+  const columns = useMemo<DataGridColumnDef<RecentEventTableRow>[]>(() => [
+    {
+      id: "event_type",
+      accessor: "event_type",
+      header: "Event",
+      width: 140,
+      sortable: false,
+      renderCell: ({ row }) => {
+        const badge = eventTypeBadge(row.event_type);
+        return <DesignBadge label={badge.label} color={badge.color} size="sm" />;
+      },
+    },
+    {
+      id: "label",
+      header: "Detail",
+      width: 280,
+      flex: 1,
+      sortable: false,
+      renderCell: ({ row }) => (
+        <span className="truncate text-sm text-foreground">{eventLabel(row)}</span>
+      ),
+    },
+    {
+      id: "event_at",
+      accessor: "event_at",
+      header: "Time",
+      width: 150,
+      sortable: false,
+      renderCell: ({ row }) => (
+        <span className="text-sm tabular-nums text-muted-foreground">
+          {formatEventAt(row.event_at)}
+        </span>
+      ),
+    },
+  ], []);
+
   return (
-    <DesignCard
+    <UserPageTableSection
       title="Recent activity"
-      subtitle={`Latest ${RECENT_EVENTS_LIMIT} events (last ${ANALYTICS_WINDOW_DAYS} days)`}
-      icon={ChartLineIcon}
-    >
-      {events.length === 0 ? (
-        <div className="flex flex-col items-center gap-1 py-8 text-center">
-          <p className="text-sm text-muted-foreground">No recent events for this user.</p>
-        </div>
-      ) : (
-        <div className="max-h-[420px] overflow-y-auto -mx-1 px-1">
-          <ul className="divide-y divide-foreground/[0.05]">
-            {events.map((event, i) => {
-              const badge = eventTypeBadge(event.event_type);
-              const label = eventLabel(event);
-              return (
-                <li key={`${event.event_at}-${i}`} className="flex items-center gap-3 py-2">
-                  <DesignBadge label={badge.label} color={badge.color} size="sm" />
-                  <span className="flex-1 min-w-0 truncate text-xs text-foreground">
-                    {label}
-                  </span>
-                  <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
-                    {formatEventAt(event.event_at)}
-                  </span>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      )}
-    </DesignCard>
+      columns={columns}
+      rows={rows}
+      getRowId={(row) => row.id}
+      emptyLabel="No recent events for this user."
+    />
   );
 }
