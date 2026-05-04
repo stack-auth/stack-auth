@@ -528,8 +528,17 @@ it("accepts batch and debits event quota correctly", async ({ expect }) => {
   const { ownerTeamId } = await setupProjectWithPlan("free");
   await Auth.Otp.signIn();
 
-  // Drain async logEvent debits (sign-in triggers token-refresh/sign-up-rule events asynchronously) before measuring baseline.
-  const quantityBeforeBatch = await waitForItemQuantityToStabilize(ownerTeamId, ITEM_IDS.analyticsEvents);
+  // Drain async logEvent debits (sign-in triggers token-refresh/sign-up-rule
+  // events asynchronously) before measuring baseline. The
+  // `minimumElapsedMs` guards against the failure mode where stability is
+  // declared before the async events have had a chance to fire — without
+  // it the test reads e.g. 100000, declares it stable, then ~5s later the
+  // async events land and the post-batch read is short by 2.
+  const quantityBeforeBatch = await waitForItemQuantityToStabilize(
+    ownerTeamId,
+    ITEM_IDS.analyticsEvents,
+    { minimumElapsedMs: 5000 },
+  );
 
   const now = Date.now();
   const eventCount = 3;
@@ -561,7 +570,13 @@ it("rejects batch when remaining quota is less than batch size and does not debi
   // Drain async logEvent debits before forcing the quota down to a known
   // value — otherwise a trailing in-flight debit would push it negative
   // after we set it to 2 and break the post-condition.
-  await waitForItemQuantityToStabilize(ownerTeamId, ITEM_IDS.analyticsEvents);
+  // `minimumElapsedMs` guards against returning before the async events
+  // have started firing.
+  await waitForItemQuantityToStabilize(
+    ownerTeamId,
+    ITEM_IDS.analyticsEvents,
+    { minimumElapsedMs: 5000 },
+  );
   await setItemQuantity(ownerTeamId, ITEM_IDS.analyticsEvents, 2);
 
   const res = await uploadEventBatch({

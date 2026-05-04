@@ -76,37 +76,45 @@ export async function waitForItemQuantityToReach(
 }
 
 /**
- * Polls the item quantity every 500ms until it stops changing for 8 reads
- * in a row (~4 seconds of no movement), then returns the stable value.
- * Throws if no stable value is observed within 15 seconds.
+ * Polls the item quantity every 500ms until it stops changing for
+ * `stableForReads` reads in a row, then returns the stable value. Throws
+ * if no stable value is observed within `timeoutMs`.
  *
  * Use this when you DON'T know the exact target — for example, after
  * `Auth.Otp.signIn()` triggers an unknown number of async logEvent debits
  * (token-refresh + sign-up-rule events) and you just want them to drain
  * before measuring a baseline.
  *
- * The 4-second stability window is deliberately conservative: a shorter
- * one (we tried 1.2s) exits during brief lulls between batches of late-
- * arriving sign-up-rule debits and lets ~2 extra debits land between the
- * baseline read and the next test request, breaking exact-quota
- * assertions.
+ *
+ * `options.minimumElapsedMs` (default 0) refuses to return until at least
+ * that much wall time has passed since the function was called, even if
+ * the quantity has been stable the whole time. This is useful when the
+ * caller knows async events should fire but hasn't seen them yet — it
+ * prevents the function from declaring stability before the async work
+ * has even started.
  */
 export async function waitForItemQuantityToStabilize(
   ownerTeamId: string,
   itemId: ItemId,
+  options: { minimumElapsedMs?: number } = {},
 ): Promise<number> {
   const pollIntervalMs = 500;
-  const stableForReads = 8;
-  const timeoutMs = 15000;
+  const stableForReads = 16;
+  const timeoutMs = 30000;
+  const minimumElapsedMs = options.minimumElapsedMs ?? 0;
   const startedAt = performance.now();
 
   let last = await getItemQuantity(ownerTeamId, itemId);
   let stableReads = 1;
 
-  while (stableReads < stableForReads) {
-    if (performance.now() - startedAt > timeoutMs) {
+  while (true) {
+    const elapsed = performance.now() - startedAt;
+    if (stableReads >= stableForReads && elapsed >= minimumElapsedMs) {
+      return last;
+    }
+    if (elapsed > timeoutMs) {
       throw new StackAssertionError(`Item quantity did not stabilise within timeout`, {
-        ownerTeamId, itemId, last, stableReads, stableForReads, timeoutMs,
+        ownerTeamId, itemId, last, stableReads, stableForReads, timeoutMs, minimumElapsedMs,
       });
     }
 
@@ -120,6 +128,4 @@ export async function waitForItemQuantityToStabilize(
       last = next;
     }
   }
-
-  return last;
 }
