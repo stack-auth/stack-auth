@@ -1368,9 +1368,20 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
   );
 }
 
-const ACTIVITY_GRID_COLUMNS = 16;
-const ACTIVITY_GRID_ROWS = 22;
+const ACTIVITY_GRID_COLUMNS = 7;
+const ACTIVITY_GRID_ROWS = 53;
 const ACTIVITY_GRID_CELLS = ACTIVITY_GRID_COLUMNS * ACTIVITY_GRID_ROWS;
+const ACTIVITY_CELL_SIZE_PX = 8;
+const ACTIVITY_GRID_GAP_PX = 2;
+const ACTIVITY_WEEKDAY_LABELS = [
+  { label: "M", ariaLabel: "Monday" },
+  { label: "", ariaLabel: null },
+  { label: "W", ariaLabel: "Wednesday" },
+  { label: "", ariaLabel: null },
+  { label: "F", ariaLabel: "Friday" },
+  { label: "", ariaLabel: null },
+  { label: "S", ariaLabel: "Sunday" },
+] as const;
 
 // Activity heatmap color ramp. Indexed by 0 = no activity, 1..4 = increasing
 // intensity (buckets based on the user's own max activity over the window).
@@ -1417,15 +1428,52 @@ function formatActivityDate(isoDate: string): string {
   return ACTIVITY_TOOLTIP_DATE_FORMATTER.format(date);
 }
 
+function parseActivityDate(isoDate: string): Date {
+  const [year, month, day] = isoDate.split("-").map(Number);
+  return new Date(Date.UTC(year, month - 1, day));
+}
+
+function formatActivityIsoDate(date: Date): string {
+  return date.toISOString().slice(0, 10);
+}
+
+function getMondayWeekStart(date: Date): Date {
+  const weekStart = new Date(date);
+  weekStart.setUTCHours(0, 0, 0, 0);
+  const dayIndex = (weekStart.getUTCDay() + 6) % 7;
+  weekStart.setUTCDate(weekStart.getUTCDate() - dayIndex);
+  return weekStart;
+}
+
 function ActivityShell({ children }: { children: ReactNode }) {
   return (
     <div className="hidden xl:flex flex-col items-end gap-1.5 shrink-0 pt-1">
       <span className="text-[11px] font-medium text-muted-foreground tracking-wide uppercase">Activity</span>
       <div
-        className="grid gap-[3px]"
+        className="grid text-[9px] leading-none text-muted-foreground/70"
         style={{
-          gridTemplateColumns: `repeat(${ACTIVITY_GRID_COLUMNS}, 9px)`,
-          gridTemplateRows: `repeat(${ACTIVITY_GRID_ROWS}, 9px)`,
+          gap: ACTIVITY_GRID_GAP_PX,
+          gridTemplateColumns: `repeat(${ACTIVITY_GRID_COLUMNS}, ${ACTIVITY_CELL_SIZE_PX}px)`,
+        }}
+      >
+        {ACTIVITY_WEEKDAY_LABELS.map((day, index) => (
+          <span
+            key={`${day.ariaLabel ?? "spacer"}-${index}`}
+            className="flex justify-center"
+            aria-label={day.ariaLabel ?? undefined}
+            aria-hidden={day.ariaLabel == null}
+            style={{ width: ACTIVITY_CELL_SIZE_PX }}
+          >
+            {day.label}
+          </span>
+        ))}
+      </div>
+      <div
+        className="grid"
+        style={{
+          gap: ACTIVITY_GRID_GAP_PX,
+          gridTemplateColumns: `repeat(${ACTIVITY_GRID_COLUMNS}, ${ACTIVITY_CELL_SIZE_PX}px)`,
+          gridTemplateRows: `repeat(${ACTIVITY_GRID_ROWS}, ${ACTIVITY_CELL_SIZE_PX}px)`,
           gridAutoFlow: "row",
         }}
       >
@@ -1440,7 +1488,12 @@ function ActivityLoadingFallback() {
   return (
     <ActivityShell>
       {cells.map((_, i) => (
-        <div key={i} className={cn("w-[9px] h-[9px] rounded-[2px]", ACTIVITY_COLORS[0])} aria-hidden />
+        <div
+          key={i}
+          className={cn("rounded-[2px]", ACTIVITY_COLORS[0])}
+          style={{ width: ACTIVITY_CELL_SIZE_PX, height: ACTIVITY_CELL_SIZE_PX }}
+          aria-hidden
+        />
       ))}
     </ActivityShell>
   );
@@ -1450,9 +1503,27 @@ function ActivityGraph({ userId }: { userId: string }) {
   const stackAdminApp = useAdminApp();
   const { data_points: dataPoints } = useUserActivityOrThrow(stackAdminApp, userId);
 
-  // Tail the window so the most recent day always lands on the last cell,
-  // even if the backend decides to extend the window later.
-  const cells = useMemo(() => dataPoints.slice(-ACTIVITY_GRID_CELLS), [dataPoints]);
+  const activityByDate = useMemo(
+    () => new Map(dataPoints.map((point) => [point.date, point.activity])),
+    [dataPoints],
+  );
+  const cells = useMemo(() => {
+    const latestDate = dataPoints.length > 0
+      ? parseActivityDate(dataPoints[dataPoints.length - 1].date)
+      : new Date();
+    const startDate = getMondayWeekStart(latestDate);
+    startDate.setUTCDate(startDate.getUTCDate() - (ACTIVITY_GRID_ROWS - 1) * ACTIVITY_GRID_COLUMNS);
+
+    return Array.from({ length: ACTIVITY_GRID_CELLS }, (_, index) => {
+      const date = new Date(startDate);
+      date.setUTCDate(startDate.getUTCDate() + index);
+      const isoDate = formatActivityIsoDate(date);
+      return {
+        date: isoDate,
+        activity: activityByDate.get(isoDate) ?? 0,
+      };
+    });
+  }, [activityByDate, dataPoints]);
   const maxActivity = useMemo(
     () => cells.reduce((acc, c) => Math.max(acc, c.activity), 0),
     [cells],
@@ -1468,12 +1539,13 @@ function ActivityGraph({ userId }: { userId: string }) {
               <div
                 aria-hidden
                 className={cn(
-                  "relative w-[9px] h-[9px] rounded-[2px] transition-none hover:z-10 hover:ring-2 hover:ring-foreground",
+                  "relative rounded-[2px] transition-none hover:z-10 hover:ring-2 hover:ring-foreground",
                   ACTIVITY_COLORS[level],
                 )}
+                style={{ width: ACTIVITY_CELL_SIZE_PX, height: ACTIVITY_CELL_SIZE_PX }}
               />
             </TooltipTrigger>
-            <TooltipContent side="top" className="text-xs">
+            <TooltipContent side="left" sideOffset={8} collisionPadding={8} className="z-[100] whitespace-nowrap text-xs">
               <div className="font-medium">
                 {cell.activity} {cell.activity === 1 ? "event" : "events"}
               </div>
@@ -1529,16 +1601,18 @@ function UserPage({ user }: { user: ServerUser }) {
 
   return (
     <PageLayout>
-      <div className="flex flex-col gap-6">
+      <div className="relative flex flex-col gap-6 xl:pr-24">
         <RestrictionBanner user={user} />
-        <div className="flex items-start justify-between gap-6">
+        <div className="absolute right-0 top-0 z-[100] hidden xl:block">
+          <Suspense fallback={<ActivityLoadingFallback />}>
+            <ActivityGraph userId={user.id} />
+          </Suspense>
+        </div>
+        <div className="flex items-start">
           <div className="flex min-w-0 flex-1 flex-col gap-4">
             <UserHeader user={user} />
             <UserDetails user={user} />
           </div>
-          <Suspense fallback={<ActivityLoadingFallback />}>
-            <ActivityGraph userId={user.id} />
-          </Suspense>
         </div>
         {visibleTabs.length > 0 && (
           <DesignCategoryTabs
