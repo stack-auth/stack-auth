@@ -84,6 +84,12 @@ export const ALL_APPS = {
     tags: ["auth", "security", "developers"],
     stage: "stable",
   },
+  "migrations": {
+    displayName: "Migrations",
+    subtitle: "Import users and teams from other auth providers",
+    tags: ["auth", "operations"],
+    stage: "alpha",
+  },
   "payments": {
     displayName: "Payments",
     subtitle: "Payment processing and subscription management",

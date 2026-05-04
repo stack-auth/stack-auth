@@ -1,5 +1,5 @@
 import { Link } from "@/components/link";
-import { ChartLineIcon, ClipboardTextIcon, CreditCardIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
+import { ArrowsClockwiseIcon, ChartLineIcon, ClipboardTextIcon, CreditCardIcon, EnvelopeSimpleIcon, FingerprintSimpleIcon, KeyIcon, MailboxIcon, RocketIcon, ShieldCheckIcon, SparkleIcon, TelevisionSimpleIcon, TriangleIcon, UserGearIcon, UsersIcon, VaultIcon, WebhooksLogoIcon } from "@phosphor-icons/react";
 import { StackAdminApp } from "@stackframe/stack";
 import { ALL_APPS } from "@stackframe/stack-shared/dist/apps/apps-config";
 import { getRelativePart, isChildUrl } from "@stackframe/stack-shared/dist/utils/urls";
@@ -174,6 +174,21 @@ export const ALL_APPS_FRONTEND = {
         <p>API Keys keeps every environment credentialed without sacrificing control.</p>
         <p>Issue publishable client keys or secret server keys with configurable expirations and copy the values before they disappear.</p>
         <p>When a credential is no longer trusted, revoke or rotate it instantly from the dashboard.</p>
+      </>
+    ),
+  },
+  migrations: {
+    icon: ArrowsClockwiseIcon,
+    href: "migrations",
+    navigationItems: [
+      { displayName: "Migrations", href: "." },
+    ],
+    screenshots: [],
+    storeDescription: (
+      <>
+        <p>Migrations imports users, teams, OAuth accounts, and password hashes from other auth providers into Stack Auth.</p>
+        <p>Queue provider jobs from the dashboard while credentials stay encrypted and backend workers handle retries.</p>
+        <p>Use Better Auth-shaped provider migrations as the normalization layer so the hard provider-specific parsing stays reusable.</p>
       </>
     ),
   },
@@ -445,4 +460,3 @@ async function getEmailDraftBreadcrumbItems(stackAdminApp: StackAdminApp<false>,
     },
   ];
 }
-

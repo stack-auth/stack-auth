@@ -73,6 +73,7 @@ model Tenancy {
   organizationId      String?              @db.Uuid
   hasNoOrganization   BooleanTrue?
   emailOutboxes       EmailOutbox[]
+  authDataMigrationJobs AuthDataMigrationJob[]
   sessionReplays      SessionReplay[]
   sessionReplayChunks SessionReplayChunk[]
   managedEmailDomains ManagedEmailDomain[]
@@ -1074,6 +1075,39 @@ model EmailOutboxProcessingMetadata {
   updatedAt DateTime @updatedAt
 
   lastExecutedAt DateTime?
+}
+
+model AuthDataMigrationJob {
+  tenancyId String @db.Uuid
+  id        String @default(uuid()) @db.Uuid
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  projectId String
+  branchId  String
+  provider  String
+  status    String @default("PENDING")
+
+  encryptedCredentials Json
+  createdByProjectUserId String? @db.Uuid
+
+  attemptCount  Int @default(0)
+  maxAttempts   Int @default(5)
+  nextAttemptAt DateTime? @default(now())
+
+  startedAt  DateTime?
+  finishedAt DateTime?
+
+  lastErrorExternalMessage String?
+  lastErrorInternalDetails Json?
+  result                   Json?
+
+  tenancy Tenancy @relation(fields: [tenancyId], references: [id], onDelete: Cascade)
+
+  @@id([tenancyId, id])
+  @@index([status, nextAttemptAt, createdAt], map: "AuthDataMigrationJob_queue_idx")
+  @@index([tenancyId, createdAt], map: "AuthDataMigrationJob_tenancy_created_idx")
 }
 
 model EmailDraft {

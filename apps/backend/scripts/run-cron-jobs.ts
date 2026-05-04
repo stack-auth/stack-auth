@@ -6,6 +6,7 @@ import { Result } from "@stackframe/stack-shared/dist/utils/results";
 const endpoints = [
   "/api/latest/internal/external-db-sync/sequencer",
   "/api/latest/internal/external-db-sync/poller",
+  "/api/latest/internal/auth-migrations/process",
 ];
 
 async function main() {
