@@ -17,7 +17,7 @@ async function abortablePrompt<T>(promise: Promise<T>): Promise<T> {
   try {
     return await promise;
   } catch (error: unknown) {
-    if (error != null && typeof error === "object" && "name" in error && (error as { name: unknown }).name === "ExitPromptError") {
+    if (error != null && typeof error === "object" && "name" in error && error.name === "ExitPromptError") {
       console.log("\nAborted.");
       process.exit(0);
     }
