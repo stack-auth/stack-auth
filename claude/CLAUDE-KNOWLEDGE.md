@@ -398,3 +398,12 @@ A: Add `cliAuthConfirm` as a normal handler URL target and expose `useCliAuthCon
 
 Q: How should the CLI auth login URL be constructed in template tests?
 A: Do not import the concrete template `_StackClientAppImpl` directly from Vitest just to test `promptCliLogin`; it trips the compile-time client-version sentinel. Put the URL construction in a small helper such as `buildCliAuthConfirmUrl()` and have `promptCliLogin` call that helper. Then unit-test the helper with relative/custom `cliAuthConfirm` targets.
+
+Q: Where does the Stack Auth MCP endpoint live after splitting it out of the backend?
+A: The MCP server is its own Next.js workspace app at `apps/mcp` (`@stackframe/mcp`) and runs locally on port suffix `42` (`http://localhost:${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}42`). It keeps `/api/internal/mcp` for internal/test compatibility, redirects `/` to `/mcp`, and uses `/mcp` as the public MCP endpoint. Browser `GET /mcp` shows the setup page; protocol `POST /mcp` runs JSON-RPC. The service calls the backend through `NEXT_PUBLIC_SERVER_STACK_API_URL` or `NEXT_PUBLIC_STACK_API_URL`.
+
+Q: What should the standalone MCP setup page look like?
+A: Restore the docs-style MCP setup page from Git history around commit `39b2f56ff`: centered Stack Auth + MCP icon row, "MCP Setup" intro text, tabs for Cursor/VS Code/Claude Code/Claude Desktop/Windsurf/ChatGPT/Gemini CLI, a "Markdown Instructions" copy block, and the features list. In the standalone service, keep the old content shape but update every server URL to `https://mcp.stack-auth.com/mcp`.
+
+Q: What copy should be visible on the standalone MCP setup page intro?
+A: The standalone `apps/mcp` setup page should show the "MCP Setup" heading and client setup tabs without the old explanatory intro paragraphs. The "Markdown Instructions" README copy block should remain available, but collapsed by default inside a native `<details class="markdown-section">` accordion.
