@@ -106,7 +106,7 @@ function EmailPreviewContent({
 
   return (
     <iframe
-      sandbox=""
+      sandbox="allow-scripts"
       srcDoc={inertPreviewHtml}
       className="w-full h-full border-0"
       title="Email Preview"
@@ -693,7 +693,7 @@ function EmailPreviewEditableContent({
 
   return (
     <iframe
-      sandbox=""
+      sandbox="allow-scripts"
       ref={iframeRef}
       srcDoc={editableHtml}
       className="w-full h-full border-0"
