@@ -1418,7 +1418,6 @@ const USER_PAGE_TABS = [
   { id: "authentication", label: "Authentication", appId: "authentication" },
   { id: "teams", label: "Teams", appId: "teams" },
   { id: "payments", label: "Payments", appId: "payments" },
-  { id: "emails", label: "Emails", appId: "emails" },
   { id: "analytics", label: "Analytics", appId: "analytics" },
   { id: "metadata", label: "Metadata", appId: null, icon: DatabaseIcon },
 ] as const satisfies readonly UserPageTabConfig[];
@@ -1427,15 +1426,6 @@ type UserPageTab = typeof USER_PAGE_TABS[number]["id"];
 
 function isUserPageTab(id: string): id is UserPageTab {
   return USER_PAGE_TABS.some((tab) => tab.id === id);
-}
-
-function TabPlaceholder({ label }: { label: string }) {
-  return (
-    <div className="flex flex-col items-center justify-center py-16 text-muted-foreground gap-2">
-      <p className="text-sm font-medium">{label}</p>
-      <p className="text-xs">Coming soon</p>
-    </div>
-  );
 }
 
 function UserPage({ user }: { user: ServerUser }) {
@@ -1497,7 +1487,6 @@ function UserPage({ user }: { user: ServerUser }) {
         )}
         {activeTab === "teams" && <UserTeamsSection user={user} />}
         {activeTab === "payments" && <UserPaymentsSection user={user} />}
-        {activeTab === "emails" && <TabPlaceholder label="Emails" />}
         {activeTab === "analytics" && <UserAnalyticsSection user={user} />}
         {activeTab === "metadata" && (
           <MetadataSection
