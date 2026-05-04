@@ -130,6 +130,21 @@ function getBotChallengeRequestFields(botChallenge: BotChallengeInput | undefine
   };
 }
 
+async function encodeAnalyticsBody(jsonBody: string): Promise<{ body: BodyInit, contentType: string }> {
+  const CompressionStreamCtor: typeof CompressionStream | undefined =
+    (globalVar as { CompressionStream?: typeof CompressionStream }).CompressionStream;
+  if (typeof CompressionStreamCtor !== "function" || typeof Blob === "undefined" || typeof Response === "undefined") {
+    return { body: jsonBody, contentType: "application/json" };
+  }
+  try {
+    const stream = new Blob([jsonBody]).stream().pipeThrough(new CompressionStreamCtor("gzip"));
+    const buffer = await new Response(stream).arrayBuffer();
+    return { body: new Uint8Array(buffer), contentType: "application/octet-stream" };
+  } catch {
+    return { body: jsonBody, contentType: "application/json" };
+  }
+}
+
 export class StackClientInterface {
   private pendingNetworkDiagnostics?: ReturnType<StackClientInterface["_runNetworkDiagnosticsInner"]>;
   private _requestListeners = new Set<RequestListener>();
@@ -529,12 +544,16 @@ export class StackClientInterface {
     options: { keepalive: boolean },
   ): Promise<Result<Response, Error>> {
     try {
+      // Encode body as gzip + application/octet-stream so keyword-matching
+      // adblockers can't see substrings like "$click" in the request payload.
+      // The server accepts both encoded and plain JSON for back-compat.
+      const encoded = await encodeAnalyticsBody(body);
       const response = await this.sendClientRequest(
         "/analytics/events/batch",
         {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body,
+          headers: { "Content-Type": encoded.contentType },
+          body: encoded.body,
           keepalive: options.keepalive,
         },
         session,

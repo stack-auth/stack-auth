@@ -5,10 +5,13 @@ import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { adaptSchema, clientOrHigherAuthTypeSchema, yupArray, yupMixed, yupNumber, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import * as zlib from "node:zlib";
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[089ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const MAX_EVENTS = 500;
+const MAX_COMPRESSED_BYTES = 1 * 1024 * 1024;
+const MAX_DECOMPRESSED_BYTES = 8 * 1024 * 1024;
 
 // Lone surrogates (\uD800-\uDFFF not part of a valid pair) are technically
 // representable in JS strings but rejected by ClickHouse's JSON parser.
@@ -19,7 +22,7 @@ const LONE_SURROGATE_RE = /[\uD800-\uDBFF](?![\uDC00-\uDFFF])|(?<![\uD800-\uDBFF
 
 function stripLoneSurrogates(value: unknown): unknown {
   if (typeof value === "string") {
-    return value.replace(LONE_SURROGATE_RE, "\uFFFD");
+    return value.replace(LONE_SURROGATE_RE, "�");
   }
   if (Array.isArray(value)) {
     return value.map(stripLoneSurrogates);
@@ -30,6 +33,35 @@ function stripLoneSurrogates(value: unknown): unknown {
     );
   }
   return value;
+}
+
+// Bodies sent as application/octet-stream are gzipped JSON. The encoding is
+// purely to evade keyword-matching adblockers (e.g. filters on "$click").
+// We gunzip + JSON.parse here so the rest of the schema can validate the
+// decoded object normally.
+function maybeDecodeBinaryBody(value: unknown): unknown {
+  let bytes: Uint8Array | undefined;
+  if (value instanceof ArrayBuffer) {
+    bytes = new Uint8Array(value);
+  } else if (value instanceof Uint8Array) {
+    bytes = value;
+  }
+  if (!bytes) return value;
+
+  if (bytes.byteLength > MAX_COMPRESSED_BYTES) {
+    throw new StatusError(StatusError.BadRequest, "Encoded analytics body too large");
+  }
+  let decompressed: Buffer;
+  try {
+    decompressed = zlib.gunzipSync(bytes, { maxOutputLength: MAX_DECOMPRESSED_BYTES });
+  } catch {
+    throw new StatusError(StatusError.BadRequest, "Invalid encoded analytics body");
+  }
+  try {
+    return JSON.parse(decompressed.toString("utf-8"));
+  } catch {
+    throw new StatusError(StatusError.BadRequest, "Invalid encoded analytics body");
+  }
 }
 
 export const POST = createSmartRouteHandler({
@@ -57,7 +89,7 @@ export const POST = createSmartRouteHandler({
           data: yupMixed().defined(),
         }).defined(),
       ).defined().min(1).max(MAX_EVENTS),
-    }).defined(),
+    }).defined().transform((_value, originalValue) => maybeDecodeBinaryBody(originalValue)),
   }),
   response: yupObject({
     statusCode: yupNumber().oneOf([200]).defined(),

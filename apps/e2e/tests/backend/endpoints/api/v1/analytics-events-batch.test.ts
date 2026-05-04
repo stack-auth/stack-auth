@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { gzipSync } from "node:zlib";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { it } from "../../../../helpers";
 import { Auth, Project, backendContext, niceBackendFetch } from "../../../backend-helpers";
@@ -158,6 +159,62 @@ it("accepts valid $click events", async ({ expect }) => {
       "headers": Headers { <some fields may have been hidden> },
     }
   `);
+});
+
+it("accepts a gzipped binary body (adblocker-evasion encoding)", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  await Auth.Otp.signIn();
+
+  const now = Date.now();
+  const payload = {
+    session_replay_segment_id: randomUUID(),
+    batch_id: randomUUID(),
+    sent_at_ms: now,
+    events: [
+      {
+        event_type: "$click",
+        event_at_ms: now - 50,
+        data: {
+          tag_name: "button",
+          text: "Encoded",
+          href: null,
+          selector: "button.encoded",
+          x: 1, y: 2, page_x: 1, page_y: 2,
+          viewport_width: 100, viewport_height: 100,
+        },
+      },
+    ],
+  };
+  const compressed = gzipSync(Buffer.from(JSON.stringify(payload), "utf-8"));
+
+  const res = await niceBackendFetch("/api/v1/analytics/events/batch", {
+    method: "POST",
+    accessType: "client",
+    rawBody: compressed,
+  });
+
+  expect(res).toMatchInlineSnapshot(`
+    NiceResponse {
+      "status": 200,
+      "body": { "inserted": 1 },
+      "headers": Headers { <some fields may have been hidden> },
+    }
+  `);
+});
+
+it("rejects a binary body that isn't valid gzip", async ({ expect }) => {
+  await Project.createAndSwitch({ config: { magic_link_enabled: true } });
+  await Project.updateConfig({ apps: { installed: { analytics: { enabled: true } } } });
+  await Auth.Otp.signIn();
+
+  const res = await niceBackendFetch("/api/v1/analytics/events/batch", {
+    method: "POST",
+    accessType: "client",
+    rawBody: new Uint8Array([0, 1, 2, 3, 4, 5]),
+  });
+
+  expect(res.status).toBe(400);
 });
 
 it("handles click event data containing a truncated surrogate pair (lone high surrogate)", async ({ expect }) => {

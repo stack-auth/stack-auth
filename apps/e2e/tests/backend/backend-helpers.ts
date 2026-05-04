@@ -128,6 +128,8 @@ function expectSnakeCase(obj: unknown, path: string): void {
 export async function niceBackendFetch(url: string | URL, options?: Omit<NiceRequestInit, "body" | "headers"> & {
   accessType?: null | "client" | "server" | "admin",
   body?: unknown,
+  rawBody?: Uint8Array,
+  rawContentType?: string,
   headers?: Record<string, string | undefined>,
   omitPublishableClientKey?: boolean,
   userAuth?: {
@@ -135,7 +137,10 @@ export async function niceBackendFetch(url: string | URL, options?: Omit<NiceReq
     refreshToken?: string,
   },
 }): Promise<NiceResponse> {
-  const { body, headers, accessType, omitPublishableClientKey, userAuth: userAuthOverride, ...otherOptions } = options ?? {};
+  const { body, rawBody, rawContentType, headers, accessType, omitPublishableClientKey, userAuth: userAuthOverride, ...otherOptions } = options ?? {};
+  if (body !== undefined && rawBody !== undefined) {
+    throw new StackAssertionError("niceBackendFetch: pass either body or rawBody, not both");
+  }
   if (typeof body === "object") {
     expectSnakeCase(body, "req.body");
   }
@@ -147,8 +152,11 @@ export async function niceBackendFetch(url: string | URL, options?: Omit<NiceReq
   const res = await niceFetch(fullUrl, {
     ...otherOptions,
     ...body !== undefined ? { body: JSON.stringify(body) } : {},
+    ...rawBody !== undefined ? { body: rawBody as BodyInit } : {},
     headers: filterUndefined({
-      "content-type": body !== undefined ? "application/json" : undefined,
+      "content-type": rawBody !== undefined
+        ? (rawContentType ?? "application/octet-stream")
+        : body !== undefined ? "application/json" : undefined,
       "x-stack-access-type": accessType ?? undefined,
       ...projectKeys !== "no-project" && accessType ? {
         "x-stack-project-id": projectKeys.projectId,
