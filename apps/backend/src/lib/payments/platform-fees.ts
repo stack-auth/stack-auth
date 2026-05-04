@@ -36,6 +36,18 @@ export function computeApplicationFeeAmount(options: { amountStripeUnits: number
   return Math.round(options.amountStripeUnits * bps / 10000);
 }
 
+/**
+ * Returns the fee as a decimal percent for Stripe's `application_fee_percent`
+ * (subscription) parameter, or `undefined` for projects that aren't billed.
+ *
+ * `bps / 100` is intentional float division — the rest of the module uses
+ * integer arithmetic to avoid IEEE-754 noise on charge-amount math, but the
+ * subscription path requires a decimal because that's the shape Stripe's API
+ * accepts. This is safe for the current 90 bps (→ 0.9, which serialises
+ * cleanly), and any future bps value must produce a number with at most 4
+ * decimal places after IEEE-754 rounding — that's the maximum precision
+ * Stripe documents for `application_fee_percent`.
+ */
 export function getApplicationFeePercentOrUndefined(projectId: string): number | undefined {
   const bps = getApplicationFeeBps(projectId);
   if (bps === 0) return undefined;
