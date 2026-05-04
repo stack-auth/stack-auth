@@ -1,14 +1,18 @@
+import { throwErr } from "@stackframe/stack-shared/dist/utils/errors";
+
 // 0.9% of every Stripe money movement on a non-internal project is collected
 // as a platform fee, ridden along via Stripe's native application_fee_*
 // params on the PaymentIntent / Subscription. Refunds keep our charge-leg
 // fee with the platform via `refund_application_fee: false` at the refund
 // site — there is no separate refund-leg collection.
+//
+// Stored as basis points (1 bps = 1/10000 = 0.01%) instead of a decimal
+// percentage so all fee math is integer arithmetic — `0.9 * 5000 / 100` is
+// `45.000000000000004` in IEEE-754, but `90 * 5000 / 10000` is exactly `45`.
 export const APPLICATION_FEE_BPS = 90;
 
-const INTERNAL_PROJECT_ID = "internal";
-
 export function getApplicationFeeBps(projectId: string): number {
-  if (projectId === INTERNAL_PROJECT_ID) return 0;
+  if (projectId === "internal") return 0;
   return APPLICATION_FEE_BPS;
 }
 
@@ -24,6 +28,9 @@ export function getApplicationFeeBps(projectId: string): number {
  * complexity than the precision is worth here.
  */
 export function computeApplicationFeeAmount(options: { amountStripeUnits: number, projectId: string }): number {
+  if (options.amountStripeUnits < 0) {
+    throwErr("computeApplicationFeeAmount received negative amount", { amountStripeUnits: options.amountStripeUnits });
+  }
   const bps = getApplicationFeeBps(options.projectId);
   if (bps === 0) return 0;
   return Math.round(options.amountStripeUnits * bps / 10000);
@@ -59,6 +66,9 @@ import.meta.vitest?.describe("platform fee helpers", (test) => {
   });
   test("computeApplicationFeeAmount is 0 for internal project even on large charges", ({ expect }) => {
     expect(computeApplicationFeeAmount({ amountStripeUnits: 10000, projectId: "internal" })).toBe(0);
+  });
+  test("computeApplicationFeeAmount throws on negative amounts", ({ expect }) => {
+    expect(() => computeApplicationFeeAmount({ amountStripeUnits: -1, projectId: "p" })).toThrow(/negative amount/);
   });
   test("getApplicationFeePercentOrUndefined returns 0.9 for non-internal", ({ expect }) => {
     expect(getApplicationFeePercentOrUndefined("proj_abc")).toBe(0.9);

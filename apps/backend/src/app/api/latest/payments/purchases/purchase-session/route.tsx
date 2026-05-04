@@ -93,20 +93,6 @@ export const POST = createSmartRouteHandler({
         const existingItem = existingStripeSub.items.data[0];
         const product = await stripe.products.create({ name: data.product.displayName ?? "Subscription" });
         if (selectedPrice.interval) {
-          // TODO (platform-fees): this is a plan-switch mid-cycle that returns
-          // `latest_invoice.confirmation_secret`, so an upgrade/proration invoice
-          // is created synchronously. `application_fee_percent` is applied to
-          // invoices generated from the subscription's normal billing cycle, but
-          // per Stripe's subscription/proration docs the immediately-generated
-          // upgrade invoice may not inherit the newly-set fee percent — i.e. we
-          // may miss collecting our 0.9% on the proration invoice itself even
-          // though all later renewals of the new plan are covered. Best-effort
-          // until we either (a) observe the behaviour against a real onboarded
-          // Connect account, or (b) listen for the resulting `invoice.created`
-          // webhook and stamp `application_fee_amount` on the invoice before it
-          // finalises.
-          // Refs: https://docs.stripe.com/connect/subscriptions
-          //       https://docs.stripe.com/billing/subscriptions/prorations
           const applicationFeePercent = getApplicationFeePercentOrUndefined(tenancy.project.id);
           const updated = await stripe.subscriptions.update(conflicting.stripeSubscriptionId, {
             payment_behavior: 'default_incomplete',
