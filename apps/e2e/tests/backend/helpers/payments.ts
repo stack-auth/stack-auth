@@ -83,8 +83,8 @@ export async function createLiveModeOneTimePurchaseTransaction(options: { quanti
   const product = config.payments.products["otp-product"];
 
   const idSuffix = randomUUID().replace(/-/g, "");
-  const eventId = `evt_otp_refund_${idSuffix}`;
-  const paymentIntentId = `pi_otp_refund_${idSuffix}`;
+  const eventId = `evt_otp_purchase_${idSuffix}`;
+  const paymentIntentId = `pi_otp_purchase_${idSuffix}`;
   const paymentIntentPayload = {
     id: eventId,
     type: "payment_intent.succeeded",
