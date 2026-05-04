@@ -544,9 +544,6 @@ export class StackClientInterface {
     options: { keepalive: boolean },
   ): Promise<Result<Response, Error>> {
     try {
-      // Encode body as gzip + application/octet-stream so keyword-matching
-      // adblockers can't see substrings like "$click" in the request payload.
-      // The server accepts both encoded and plain JSON for back-compat.
       const encoded = await encodeAnalyticsBody(body);
       const response = await this.sendClientRequest(
         "/analytics/events/batch",
