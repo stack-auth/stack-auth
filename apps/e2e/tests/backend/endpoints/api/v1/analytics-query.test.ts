@@ -1,8 +1,10 @@
-import { PLAN_LIMITS, PlanId } from "@stackframe/stack-shared/dist/plans";
+import { ITEM_IDS, PLAN_LIMITS, PlanId } from "@stackframe/stack-shared/dist/plans";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
 import { it } from "../../../../helpers";
 import { Project, User, niceBackendFetch, withInternalProject } from "../../../backend-helpers";
+import { waitForItemQuantityToReach } from "../../../payment-quota-helpers";
 
 async function runQuery(body: { query: string, params?: Record<string, string>, timeout_ms?: number }) {
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
@@ -28,10 +30,10 @@ async function runQueryWithPlan(planId: PlanId, body: { query: string, params?: 
         body: { product_id: planId },
       });
       if (grantResponse.status !== 200) {
-        throw new Error(`Failed to grant plan '${planId}' to team '${ownerTeamId}': ${JSON.stringify(grantResponse.body)}`);
+        throw new StackAssertionError(`Failed to grant plan '${planId}' to team '${ownerTeamId}'`, { response: grantResponse });
       }
     });
-    await wait(2000);
+    await waitForItemQuantityToReach(ownerTeamId, ITEM_IDS.analyticsTimeoutSeconds, PLAN_LIMITS[planId].analyticsTimeoutSeconds);
   }
 
   const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
@@ -103,7 +105,7 @@ it("can fetch query timing by query_id", async ({ expect }) => {
   expect(response.status).toBe(200);
   expect(queryId).toEqual(expect.any(String));
   if (typeof queryId !== "string") {
-    throw new Error("Expected analytics query response to include query_id.");
+    throw new StackAssertionError("Expected analytics query response to include query_id");
   }
 
   const timingResponse = await fetchQueryTimingWithRetry(queryId);
@@ -128,7 +130,7 @@ it("does not allow fetching timing for another project's query", async ({ expect
   expect(projectAQuery.status).toBe(200);
   expect(projectAQueryId).toEqual(expect.any(String));
   if (typeof projectAQueryId !== "string") {
-    throw new Error("Expected analytics query response to include query_id.");
+    throw new StackAssertionError("Expected analytics query response to include query_id");
   }
 
   await Project.createAndSwitch({ config: { magic_link_enabled: true } });
@@ -1787,8 +1789,8 @@ it("rejects analytics queries when the timeout quota is zero (would otherwise se
     );
     expect(drainResponse.status).toBe(200);
   });
-  // Let the timefold process
-  await wait(2000);
+  // Wait for the bulldozer timefold to materialize the drained quota.
+  await waitForItemQuantityToReach(ownerTeamId, ITEM_IDS.analyticsTimeoutSeconds, 0);
 
   const response = await niceBackendFetch("/api/v1/internal/analytics/query", {
     method: "POST",

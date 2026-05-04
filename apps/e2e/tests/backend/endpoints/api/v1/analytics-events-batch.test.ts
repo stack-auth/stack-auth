@@ -1,8 +1,15 @@
-import { PLAN_LIMITS, type PlanId } from "@stackframe/stack-shared/dist/plans";
+import { ITEM_IDS, PLAN_LIMITS, type PlanId } from "@stackframe/stack-shared/dist/plans";
+import { StackAssertionError } from "@stackframe/stack-shared/dist/utils/errors";
 import { wait } from "@stackframe/stack-shared/dist/utils/promises";
 import { randomUUID } from "node:crypto";
 import { it } from "../../../../helpers";
 import { Auth, Project, backendContext, niceBackendFetch, withInternalProject } from "../../../backend-helpers";
+import {
+  getItemQuantity,
+  setItemQuantity,
+  waitForItemQuantityToReach,
+  waitForItemQuantityToStabilize,
+} from "../../../payment-quota-helpers";
 
 async function uploadEventBatch(options: {
   sessionReplaySegmentId: string,
@@ -492,47 +499,19 @@ async function setupProjectWithPlan(planId: PlanId) {
         body: { product_id: planId },
       });
       if (grantResponse.status !== 200) {
-        throw new Error(`Failed to grant plan '${planId}' to team '${ownerTeamId}': ${JSON.stringify(grantResponse.body)}`);
+        throw new StackAssertionError(`Failed to grant plan '${planId}' to team '${ownerTeamId}'`, { response: grantResponse });
       }
     });
   }
-  await wait(3000);
+  await waitForItemQuantityToReach(ownerTeamId, ITEM_IDS.analyticsEvents, PLAN_LIMITS[planId].analyticsEvents);
   return { ownerTeamId };
-}
-
-async function getEventItemQuantity(ownerTeamId: string) {
-  return await withInternalProject(async () => {
-    const response = await niceBackendFetch(`/api/v1/payments/items/team/${ownerTeamId}/analytics_events`, {
-      accessType: "server",
-    });
-    if (response.status !== 200) {
-      throw new Error(`Failed to get analytics_events item: ${JSON.stringify(response.body)}`);
-    }
-    return response.body.quantity as number;
-  });
-}
-
-async function setEventItemQuantity(ownerTeamId: string, quantity: number) {
-  const currentQuantity = await getEventItemQuantity(ownerTeamId);
-  const delta = quantity - currentQuantity;
-
-  await withInternalProject(async () => {
-    const response = await niceBackendFetch(`/api/v1/payments/items/team/${ownerTeamId}/analytics_events/update-quantity?allow_negative=true`, {
-      method: "POST",
-      accessType: "server",
-      body: { delta },
-    });
-    if (response.status !== 200) {
-      throw new Error(`Failed to set analytics_events quantity: ${JSON.stringify(response.body)}`);
-    }
-  });
 }
 
 it("rejects batch when analytics event quota is exhausted", async ({ expect }) => {
   const { ownerTeamId } = await setupProjectWithPlan("free");
   await Auth.Otp.signIn();
 
-  await setEventItemQuantity(ownerTeamId, 0);
+  await setItemQuantity(ownerTeamId, ITEM_IDS.analyticsEvents, 0);
 
   const res = await uploadEventBatch({
     sessionReplaySegmentId: randomUUID(),
@@ -549,10 +528,8 @@ it("accepts batch and debits event quota correctly", async ({ expect }) => {
   const { ownerTeamId } = await setupProjectWithPlan("free");
   await Auth.Otp.signIn();
 
-  // Wait for async logEvent debits (sign-in triggers token-refresh/sign-up-rule events asynchronously)
-  await wait(6000);
-
-  const quantityBeforeBatch = await getEventItemQuantity(ownerTeamId);
+  // Drain async logEvent debits (sign-in triggers token-refresh/sign-up-rule events asynchronously) before measuring baseline.
+  const quantityBeforeBatch = await waitForItemQuantityToStabilize(ownerTeamId, ITEM_IDS.analyticsEvents);
 
   const now = Date.now();
   const eventCount = 3;
@@ -570,7 +547,7 @@ it("accepts batch and debits event quota correctly", async ({ expect }) => {
   expect(res.status).toBe(200);
   expect(res.body.inserted).toBe(eventCount);
 
-  const afterQuantity = await getEventItemQuantity(ownerTeamId);
+  const afterQuantity = await getItemQuantity(ownerTeamId, ITEM_IDS.analyticsEvents);
   expect(afterQuantity).toBe(quantityBeforeBatch - eventCount);
 });
 
@@ -581,9 +558,11 @@ it("rejects batch when remaining quota is less than batch size and does not debi
   const { ownerTeamId } = await setupProjectWithPlan("free");
   await Auth.Otp.signIn();
 
-  // Wait for async logEvent debits (sign-in triggers events asynchronously)
-  await wait(6000);
-  await setEventItemQuantity(ownerTeamId, 2);
+  // Drain async logEvent debits before forcing the quota down to a known
+  // value — otherwise a trailing in-flight debit would push it negative
+  // after we set it to 2 and break the post-condition.
+  await waitForItemQuantityToStabilize(ownerTeamId, ITEM_IDS.analyticsEvents);
+  await setItemQuantity(ownerTeamId, ITEM_IDS.analyticsEvents, 2);
 
   const res = await uploadEventBatch({
     sessionReplaySegmentId: randomUUID(),
@@ -599,20 +578,20 @@ it("rejects batch when remaining quota is less than batch size and does not debi
   expect(res.status).toBe(400);
   expect(res.body.code).toBe("ITEM_QUANTITY_INSUFFICIENT_AMOUNT");
 
-  const quantityAfter = await getEventItemQuantity(ownerTeamId);
+  const quantityAfter = await getItemQuantity(ownerTeamId, ITEM_IDS.analyticsEvents);
   expect(quantityAfter).toBe(2);
 });
 
 it("free plan starts with correct analytics event allocation", async ({ expect }) => {
   const { ownerTeamId } = await setupProjectWithPlan("free");
 
-  const quantity = await getEventItemQuantity(ownerTeamId);
+  const quantity = await getItemQuantity(ownerTeamId, ITEM_IDS.analyticsEvents);
   expect(quantity).toBe(PLAN_LIMITS.free.analyticsEvents);
 });
 
 it("team plan starts with correct analytics event allocation", async ({ expect }) => {
   const { ownerTeamId } = await setupProjectWithPlan("team");
 
-  const quantity = await getEventItemQuantity(ownerTeamId);
+  const quantity = await getItemQuantity(ownerTeamId, ITEM_IDS.analyticsEvents);
   expect(quantity).toBe(PLAN_LIMITS.team.analyticsEvents);
 });
