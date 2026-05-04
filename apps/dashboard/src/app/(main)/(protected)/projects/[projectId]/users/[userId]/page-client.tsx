@@ -38,7 +38,7 @@ import { ALL_APPS_FRONTEND } from "@/lib/apps-frontend";
 import { isAppEnabled } from "@/lib/apps-utils";
 import { parseRiskScore } from "@/lib/risk-score-utils";
 import { useUserActivityOrThrow } from "@/lib/stack-app-internals";
-import { AtIcon, CalendarIcon, CheckIcon, DatabaseIcon, EnvelopeIcon, GlobeIcon, HashIcon, KeyIcon, ProhibitIcon, ShieldIcon, SquareIcon, UsersIcon, XIcon } from "@phosphor-icons/react";
+import { AtIcon, CalendarIcon, CheckIcon, DatabaseIcon, EnvelopeIcon, GlobeIcon, HashIcon, ProhibitIcon, ShieldIcon, SquareIcon, UsersIcon, XIcon } from "@phosphor-icons/react";
 import { ServerContactChannel, ServerOAuthProvider, ServerTeam, ServerUser } from "@stackframe/stack";
 import { KnownErrors } from "@stackframe/stack-shared";
 import { AppId } from "@stackframe/stack-shared/dist/apps/apps-config";
@@ -47,6 +47,7 @@ import { fromNow } from "@stackframe/stack-shared/dist/utils/dates";
 import { captureError, StackAssertionError, throwErr } from '@stackframe/stack-shared/dist/utils/errors';
 import { runAsynchronouslyWithAlert } from "@stackframe/stack-shared/dist/utils/promises";
 import { deindent } from "@stackframe/stack-shared/dist/utils/strings";
+import { createDefaultDataGridState, DataGrid, type DataGridColumnDef } from "@stackframe/dashboard-ui-components";
 import { ColumnDef } from "@tanstack/react-table";
 import { Suspense, useCallback, useMemo, useState, type ReactNode } from "react";
 import * as yup from "yup";
@@ -485,6 +486,54 @@ function BooleanStatusCell({ value, showFalseIcon = true }: { value: boolean, sh
   );
 }
 
+type UserPageTableSectionProps<TRow> = {
+  title: string,
+  actions?: ReactNode,
+  columns: readonly DataGridColumnDef<TRow>[],
+  rows: readonly TRow[],
+  getRowId: (row: TRow) => string,
+  emptyLabel: string,
+};
+
+function UserPageTableSection<TRow,>({
+  title,
+  actions,
+  columns,
+  rows,
+  getRowId,
+  emptyLabel,
+}: UserPageTableSectionProps<TRow>) {
+  const [gridState, setGridState] = useState(() => createDefaultDataGridState(columns));
+
+  return (
+    <section className="flex flex-col gap-3">
+      <div className="flex items-center justify-between gap-3">
+        <h2 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+          {title}
+        </h2>
+        {actions}
+      </div>
+      <DataGrid
+        columns={columns}
+        rows={rows}
+        getRowId={getRowId}
+        state={gridState}
+        onChange={setGridState}
+        toolbar={false}
+        footer={false}
+        fillHeight={false}
+        rowHeight="auto"
+        estimatedRowHeight={44}
+        emptyState={
+          <div className="mx-auto flex max-w-md flex-col items-center gap-2 py-8">
+            <div className="text-sm font-medium text-muted-foreground">{emptyLabel}</div>
+          </div>
+        }
+      />
+    </section>
+  );
+}
+
 type AddEmailDialogProps = {
   user: ServerUser,
   open: boolean,
@@ -754,36 +803,57 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
     await channel.update({ isPrimary: true });
   };
 
-  const contactChannelColumns = useMemo<ColumnDef<ServerContactChannel>[]>(() => [
+  const contactChannelColumns = useMemo<DataGridColumnDef<ServerContactChannel>[]>(() => [
     {
-      accessorKey: "value",
+      id: "value",
+      accessor: "value",
       header: "E-Mail",
+      width: 220,
+      flex: 1,
+      sortable: false,
     },
     {
       id: "isPrimary",
-      header: () => <div className="text-center">Primary</div>,
-      cell: ({ row }) => (
-        <BooleanStatusCell value={row.original.isPrimary} showFalseIcon={false} />
+      header: "Primary",
+      width: 90,
+      align: "center",
+      sortable: false,
+      renderCell: ({ row }) => (
+        <BooleanStatusCell value={row.isPrimary} showFalseIcon={false} />
       ),
     },
     {
       id: "isVerified",
-      header: () => <div className="text-center">Verified</div>,
-      cell: ({ row }) => (
-        <BooleanStatusCell value={row.original.isVerified} />
+      header: "Verified",
+      width: 90,
+      align: "center",
+      sortable: false,
+      renderCell: ({ row }) => (
+        <BooleanStatusCell value={row.isVerified} />
       ),
     },
     {
       id: "usedForAuth",
-      header: () => <div className="text-center whitespace-nowrap">Used for sign-in</div>,
-      cell: ({ row }) => (
-        <BooleanStatusCell value={row.original.usedForAuth} />
+      header: "Used for sign-in",
+      width: 140,
+      align: "center",
+      sortable: false,
+      renderCell: ({ row }) => (
+        <BooleanStatusCell value={row.usedForAuth} />
       ),
     },
     {
       id: "actions",
-      cell: ({ row }) => {
-        const channel = row.original;
+      header: "",
+      width: 44,
+      minWidth: 44,
+      maxWidth: 44,
+      sortable: false,
+      hideable: false,
+      resizable: false,
+      align: "right",
+      renderCell: ({ row }) => {
+        const channel = row;
         return (
           <div className="flex justify-end">
             <ActionCell
@@ -875,9 +945,12 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
         />
       )}
 
-      <DesignCard
+      <UserPageTableSection
         title="Contact Channels"
-        icon={EnvelopeIcon}
+        columns={contactChannelColumns}
+        rows={contactChannels}
+        getRowId={(channel) => channel.id}
+        emptyLabel="No contact channels"
         actions={
           <Button
             variant="outline"
@@ -887,20 +960,7 @@ function ContactChannelsSection({ user }: ContactChannelsSectionProps) {
             Add E-mail
           </Button>
         }
-      >
-        {contactChannels.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 py-8">
-            <p className='text-sm text-muted-foreground text-center'>
-              No contact channels
-            </p>
-          </div>
-        ) : (
-          <DesignDataTable
-            columns={contactChannelColumns}
-            data={contactChannels}
-          />
-        )}
-      </DesignCard>
+      />
     </>
   );
 }
@@ -1173,43 +1233,73 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
     }
   }, [toast]);
 
-  const oauthColumns = useMemo<ColumnDef<ServerOAuthProvider>[]>(() => [
+  const oauthColumns = useMemo<DataGridColumnDef<ServerOAuthProvider>[]>(() => [
     {
-      accessorKey: "type",
+      id: "type",
+      accessor: "type",
       header: "Provider",
-      cell: ({ row }) => (
-        <span className="capitalize font-medium">{row.original.type}</span>
+      width: 140,
+      sortable: false,
+      renderCell: ({ row }) => (
+        <span className="capitalize font-medium">{row.type}</span>
       ),
     },
     {
-      accessorKey: "email",
+      id: "email",
+      accessor: "email",
       header: "Email",
+      width: 180,
+      flex: 1,
+      sortable: false,
+      renderCell: ({ row }) => (
+        <span className="block max-w-full truncate text-sm text-muted-foreground" title={row.email}>
+          {row.email ?? "No email"}
+        </span>
+      ),
     },
     {
-      accessorKey: "accountId",
+      id: "accountId",
+      accessor: "accountId",
       header: "Account ID",
-      cell: ({ row }) => (
-        <span className="font-mono text-xs truncate block max-w-[160px]">{row.original.accountId}</span>
+      width: 180,
+      flex: 1,
+      sortable: false,
+      renderCell: ({ row }) => (
+        <span className="font-mono text-xs truncate block max-w-[160px]">{row.accountId}</span>
       ),
     },
     {
       id: "allowSignIn",
-      header: () => <div className="text-center whitespace-nowrap">Used for sign-in</div>,
-      cell: ({ row }) => (
-        <BooleanStatusCell value={row.original.allowSignIn} />
+      header: "Used for sign-in",
+      width: 140,
+      align: "center",
+      sortable: false,
+      renderCell: ({ row }) => (
+        <BooleanStatusCell value={row.allowSignIn} />
       ),
     },
     {
       id: "allowConnectedAccounts",
-      header: () => <div className="text-center whitespace-nowrap">Used for connected accounts</div>,
-      cell: ({ row }) => (
-        <BooleanStatusCell value={row.original.allowConnectedAccounts} />
+      header: "Used for connected accounts",
+      width: 190,
+      align: "center",
+      sortable: false,
+      renderCell: ({ row }) => (
+        <BooleanStatusCell value={row.allowConnectedAccounts} />
       ),
     },
     {
       id: "actions",
-      cell: ({ row }) => {
-        const provider = row.original;
+      header: "",
+      width: 44,
+      minWidth: 44,
+      maxWidth: 44,
+      sortable: false,
+      hideable: false,
+      resizable: false,
+      align: "right",
+      renderCell: ({ row }) => {
+        const provider = row;
         return (
           <div className="flex justify-end">
             <ActionCell
@@ -1258,9 +1348,12 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
         />
       )}
 
-      <DesignCard
+      <UserPageTableSection
         title="OAuth Providers"
-        icon={KeyIcon}
+        columns={oauthColumns}
+        rows={oauthProviders}
+        getRowId={(provider) => provider.id}
+        emptyLabel="No OAuth providers connected"
         actions={
           <Button
             variant="outline"
@@ -1270,20 +1363,7 @@ function OAuthProvidersSection({ user }: OAuthProvidersSectionProps) {
             Add Provider
           </Button>
         }
-      >
-        {oauthProviders.length === 0 ? (
-          <div className="flex flex-col items-center gap-2 py-8">
-            <p className='text-sm text-muted-foreground text-center'>
-              No OAuth providers connected
-            </p>
-          </div>
-        ) : (
-          <DesignDataTable
-            columns={oauthColumns}
-            data={oauthProviders}
-          />
-        )}
-      </DesignCard>
+      />
     </>
   );
 }
