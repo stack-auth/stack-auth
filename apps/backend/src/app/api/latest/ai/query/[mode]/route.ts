@@ -13,13 +13,9 @@ import { SmartResponse } from "@/route-handlers/smart-response";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { validateImageAttachments } from "@stackframe/stack-shared/dist/ai/image-limits";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
-import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
 import { yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
-import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
-import { Json } from "@stackframe/stack-shared/dist/utils/json";
-import { generateText, stepCountIs, streamText, type ModelMessage } from "ai";
-import { ModelMessage } from "ai";
+import type { ModelMessage } from "ai";
 
 function getStepLimit(systemPromptId: SystemPromptId, hasTools: boolean): number {
   if (!hasTools) return 1;
@@ -118,7 +114,12 @@ export const POST = createSmartRouteHandler({
         },
       }),
     };
-    const cachedMessages: ModelMessage[] = [systemMessage, ...(messages as ModelMessage[])];
+    // Cast: the schema narrows role and leaves content as unknown, but the
+    // AI SDK accepts a superset (role: "system" etc.). We've intentionally
+    // excluded `system` at the schema layer to prevent prompt-injection via
+    // client-supplied system messages — see schema.ts.
+    const modelMessages = messages as unknown as ModelMessage[];
+    const cachedMessages: ModelMessage[] = [systemMessage, ...modelMessages];
 
     const ctx: ModeContext = { model, cachedMessages, toolsArg, stepLimit, common, startedAt };
     const extras = {
