@@ -1,6 +1,8 @@
-import { initSentry, reportUnexpectedError, flushSentry } from "./lib/sentry.js";
+import { initSentry } from "./lib/sentry.js";
 initSentry();
 
+import * as Sentry from "@sentry/node";
+import { captureError } from "@stackframe/stack-shared/dist/utils/errors";
 import { Command } from "commander";
 import { readFileSync } from "fs";
 import { fileURLToPath } from "url";
@@ -47,19 +49,11 @@ async function main() {
       console.error(`Error: ${err.message}`);
       process.exit(1);
     }
-    await handleFatal(err);
+    captureError("stack-cli-fatal", err);
+    await Sentry.flush(2000);
+    console.error(err);
+    process.exit(1);
   }
-}
-
-async function handleFatal(err: unknown): Promise<never> {
-  try {
-    reportUnexpectedError(err);
-    await flushSentry();
-  } catch {
-    // best-effort
-  }
-  console.error(err);
-  process.exit(1);
 }
 
 // eslint-disable-next-line @typescript-eslint/no-floating-promises

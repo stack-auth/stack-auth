@@ -1,4 +1,7 @@
 import * as Sentry from "@sentry/node";
+import { getEnvVariable, getNodeEnvironment } from "@stackframe/stack-shared/dist/utils/env";
+import { registerErrorSink } from "@stackframe/stack-shared/dist/utils/errors";
+import { ignoreUnhandledRejection } from "@stackframe/stack-shared/dist/utils/promises";
 import { sentryBaseConfig } from "@stackframe/stack-shared/dist/utils/sentry";
 import { nicify } from "@stackframe/stack-shared/dist/utils/strings";
 import { readFileSync } from "fs";
@@ -8,8 +11,6 @@ import { fileURLToPath } from "url";
 
 // Replaced at build time by tsdown `define`. Empty = not configured (dev/unbuilt).
 declare const __STACK_CLI_SENTRY_DSN__: string;
-
-let initialized = false;
 
 function readPackageVersion(): string | undefined {
   try {
@@ -56,17 +57,13 @@ function scrubValue(value: unknown, key?: string): unknown {
 }
 
 export function initSentry() {
-  if (initialized) return;
-  if (process.env.NODE_ENV === "development" || process.env.CI) return;
-
   const dsn = typeof __STACK_CLI_SENTRY_DSN__ === "string" ? __STACK_CLI_SENTRY_DSN__ : "";
-  if (!dsn) return;
-
   const version = readPackageVersion();
 
   Sentry.init({
     ...sentryBaseConfig,
     dsn,
+    enabled: !!dsn && getNodeEnvironment() !== "development" && !getEnvVariable("CI", ""),
     release: version ? `stack-cli@${version}` : undefined,
     environment: "production",
     sendDefaultPii: false,
@@ -92,19 +89,8 @@ export function initSentry() {
     },
   });
 
-  initialized = true;
-}
-
-export function reportUnexpectedError(err: unknown) {
-  if (!initialized) return;
-  Sentry.captureException(err);
-}
-
-export async function flushSentry() {
-  if (!initialized) return;
-  try {
-    await Sentry.flush(2000);
-  } catch {
-    // best-effort
-  }
+  registerErrorSink((location, error) => {
+    Sentry.captureException(error, { extra: { location } });
+    ignoreUnhandledRejection(Sentry.flush(2000));
+  });
 }
