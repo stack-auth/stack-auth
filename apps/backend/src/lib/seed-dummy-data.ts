@@ -11,6 +11,7 @@ import { getPrismaClientForTenancy, globalPrismaClient, type PrismaClientTransac
 import { ALL_APPS } from '@stackframe/stack-shared/dist/apps/apps-config';
 import { DEFAULT_EMAIL_THEME_ID } from '@stackframe/stack-shared/dist/helpers/emails';
 import { type AdminUserProjectsCrud, type ProjectsCrud } from '@stackframe/stack-shared/dist/interface/crud/projects';
+import { type Config } from '@stackframe/stack-shared/dist/config/format';
 import { DayInterval } from '@stackframe/stack-shared/dist/utils/dates';
 import { getEnvVariable } from '@stackframe/stack-shared/dist/utils/env';
 import { throwErr } from '@stackframe/stack-shared/dist/utils/errors';
@@ -94,18 +95,21 @@ type SeedDummyUsersOptions = {
   teamNameToId: Map<string, string>,
 };
 
+type PaymentsProducts = {
+  [productId: string]: Config | undefined,
+};
+
 type PaymentsSetup = {
-  paymentsProducts: Record<string, unknown>,
-  paymentsBranchOverride: Record<string, unknown>,
-  paymentsEnvironmentOverride: Record<string, unknown>,
+  paymentsProducts: PaymentsProducts,
+  paymentsBranchOverride: Config,
+  paymentsEnvironmentOverride: Config,
 };
 
 type TransactionsSeedOptions = {
   prisma: PrismaClientTransaction,
   tenancyId: string,
   teamNameToId: Map<string, string>,
-  userEmailToId: Map<string, string>,
-  paymentsProducts: Record<string, unknown>,
+  paymentsProducts: PaymentsProducts,
 };
 
 type EmailSeedOptions = {
@@ -707,16 +711,16 @@ async function seedDummyUsers(options: SeedDummyUsersOptions): Promise<Map<strin
   return userEmailToId;
 }
 
-function buildDummyPaymentsSetup(): PaymentsSetup {
+export function buildDummyPaymentsSetup(): PaymentsSetup {
   const monthlyInterval: DayInterval = [1, 'month'];
   const yearlyInterval: DayInterval = [1, 'year'];
   const twoWeekInterval: DayInterval = [2, 'week'];
 
-  const paymentsProducts: Record<string, unknown> = {
+  const paymentsProducts: PaymentsProducts = {
     'starter': {
       displayName: 'Starter',
       productLineId: 'workspace',
-      customerType: 'user',
+      customerType: 'team',
       serverOnly: false,
       stackable: false,
       freeTrial: twoWeekInterval as any,
@@ -744,7 +748,7 @@ function buildDummyPaymentsSetup(): PaymentsSetup {
     'growth': {
       displayName: 'Growth',
       productLineId: 'workspace',
-      customerType: 'user',
+      customerType: 'team',
       serverOnly: false,
       stackable: false,
       prices: {
@@ -780,7 +784,7 @@ function buildDummyPaymentsSetup(): PaymentsSetup {
     'regression-addon': {
       displayName: 'Regression Add-on',
       productLineId: 'add_ons',
-      customerType: 'user',
+      customerType: 'team',
       serverOnly: false,
       stackable: true,
       prices: {
@@ -818,19 +822,19 @@ function buildDummyPaymentsSetup(): PaymentsSetup {
     items: {
       studio_seats: {
         displayName: 'Studio Seats',
-        customerType: 'user',
+        customerType: 'team',
       },
       review_passes: {
         displayName: 'Reviewer Passes',
-        customerType: 'user',
+        customerType: 'team',
       },
       automation_minutes: {
         displayName: 'Automation Minutes',
-        customerType: 'user',
+        customerType: 'team',
       },
       snapshot_credits: {
         displayName: 'Snapshot Credits',
-        customerType: 'user',
+        customerType: 'team',
       },
     },
     products: paymentsProducts,
@@ -895,12 +899,10 @@ async function seedDummyTransactions(options: TransactionsSeedOptions) {
     prisma,
     tenancyId,
     teamNameToId,
-    userEmailToId,
     paymentsProducts,
   } = options;
 
   const resolveTeamId = (teamName: string) => teamNameToId.get(teamName) ?? throwErr(`Unknown dummy project team ${teamName}`);
-  const resolveUserId = (email: string) => userEmailToId.get(email) ?? throwErr(`Unknown dummy project user ${email}`);
   const resolveProduct = (productId: string): Prisma.InputJsonValue => {
     const product = paymentsProducts[productId];
     if (!product) {
@@ -944,8 +946,8 @@ async function seedDummyTransactions(options: TransactionsSeedOptions) {
     },
     {
       id: DUMMY_SEED_IDS.subscriptions.mateoGrowthAnnual,
-      customerType: CustomerType.USER,
-      customerId: resolveUserId('mateo.silva@dummy.dev'),
+      customerType: CustomerType.TEAM,
+      customerId: resolveTeamId('Growth Loop'),
       productId: 'growth',
       priceId: 'annual',
       product: resolveProduct('growth'),
@@ -1089,8 +1091,8 @@ async function seedDummyTransactions(options: TransactionsSeedOptions) {
   const oneTimePurchaseSeeds: OneTimePurchaseSeed[] = [
     {
       id: DUMMY_SEED_IDS.oneTimePurchases.ameliaSeatPack,
-      customerType: CustomerType.USER,
-      customerId: resolveUserId('amelia.chen@dummy.dev'),
+      customerType: CustomerType.TEAM,
+      customerId: resolveTeamId('Design Systems Lab'),
       productId: 'starter',
       priceId: 'monthly',
       product: resolveProduct('starter'),
@@ -2094,7 +2096,6 @@ export async function seedDummyProject(options: SeedDummyProjectOptions): Promis
     prisma: dummyPrisma,
     tenancyId: dummyTenancy.id,
     teamNameToId,
-    userEmailToId,
     paymentsProducts,
   });
 

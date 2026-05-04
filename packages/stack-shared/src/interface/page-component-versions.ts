@@ -1419,6 +1419,59 @@ export function getCustomPagePrompts(): Record<PageComponentKey, CustomPagePromp
       `,
       versions: {},
     }),
+    cliAuthConfirm: createCustomPagePrompt({
+      key: "cliAuthConfirm",
+      title: "CLI Auth Confirmation",
+      minSdkVersion: "0.0.1",
+      structure: deindent`
+        - Use \`useCliAuthConfirmation()\`.
+        - If \`status === "invalid"\`, show an invalid-link state.
+        - If \`status === "success"\`, tell the user they can close the browser and return to the CLI.
+        - If \`status === "error"\`, show the error and a retry action.
+        - Otherwise, show a confirmation step that calls \`authorize()\`.
+        - Use \`isLoading\` to disable or show loading on the confirmation action while the hook is authorizing or redirecting.
+      `,
+      reactExample: deindent`
+        export default function CustomCliAuthConfirmPage() {
+          const cliAuth = useCliAuthConfirmation();
+
+          if (cliAuth.status === "invalid") {
+            return <MessageCard title="Invalid CLI authorization link" />;
+          }
+
+          if (cliAuth.status === "success") {
+            return <MessageCard title="CLI authorized">You can close this window and return to the command line.</MessageCard>;
+          }
+
+          if (cliAuth.status === "error") {
+            return (
+              <MessageCard
+                title="CLI authorization failed"
+                primaryButtonText="Try again"
+                primaryAction={cliAuth.retry}
+              >
+                {cliAuth.error?.message}
+              </MessageCard>
+            );
+          }
+
+          return (
+            <MessageCard
+              title="Authorize CLI application"
+              primaryButtonText={cliAuth.isLoading ? "Authorizing..." : "Authorize"}
+              primaryAction={cliAuth.authorize}
+            >
+              A command line application is requesting access to your account.
+            </MessageCard>
+          );
+        }
+      `,
+      notes: deindent`
+        - Be explicit about the account being authorized. CLI auth grants a refresh token to the command line application.
+        - The hook owns the protocol details: reading \`login_code\`, preserving confirmed state across redirects, claiming anonymous sessions, and completing authorization.
+      `,
+      versions: {},
+    }),
     mfa: createCustomPagePrompt({
       key: "mfa",
       title: "MFA",
