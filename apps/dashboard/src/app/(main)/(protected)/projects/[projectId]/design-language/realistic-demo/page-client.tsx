@@ -10,9 +10,6 @@ import {
   AvatarFallback,
   Button,
   Checkbox,
-  DataTable,
-  DataTableColumnHeader,
-  DataTableViewOptions,
   Input,
   Select,
   SelectContent,
@@ -37,8 +34,8 @@ import {
 } from "@phosphor-icons/react";
 import { Bar, BarChart, CartesianGrid, Cell, XAxis, YAxis, type TooltipProps } from "recharts";
 import { isWeekend } from "@stackframe/stack-shared/dist/utils/dates";
-import { ColumnDef, Table as TableType } from "@tanstack/react-table";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { DataGrid, useDataSource, type DataGridColumnDef, createDefaultDataGridState } from "@stackframe/dashboard-ui-components";
+import { useCallback, useMemo, useState } from "react";
 import { PageLayout } from "../../page-layout";
 
 type IncidentSeverity = "critical" | "high" | "medium";
@@ -322,29 +319,6 @@ function CategoryTabs({
   );
 }
 
-function TableInstanceBridge<T>({
-  tableInstance,
-  onTableInstance,
-  onVisibilityChange,
-}: {
-  tableInstance: TableType<T>,
-  onTableInstance: (table: TableType<T>) => void,
-  onVisibilityChange: (visibility: Record<string, boolean>) => void,
-}) {
-  useEffect(() => {
-    onTableInstance(tableInstance);
-  }, [tableInstance, onTableInstance]);
-
-  const currentVisibility = tableInstance.getState().columnVisibility;
-  const visibilityKey = JSON.stringify(currentVisibility);
-  useEffect(() => {
-    onVisibilityChange(currentVisibility as Record<string, boolean>);
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- serialized visibility key intentionally controls updates
-  }, [visibilityKey, onVisibilityChange]);
-
-  return null;
-}
-
 export default function PageClient() {
   const [environment, setEnvironment] = useState("production");
   const [timeWindow, setTimeWindow] = useState("7d");
@@ -352,8 +326,7 @@ export default function PageClient() {
   const [compactMode, setCompactMode] = useState(false);
   const [includeBackfill, setIncludeBackfill] = useState(true);
   const [notificationFrequency, setNotificationFrequency] = useState("every_update");
-  const [incidentTable, setIncidentTable] = useState<TableType<IncidentRow> | null>(null);
-  const [incidentTableVisibility, setIncidentTableVisibility] = useState({});
+
 
   const categories = useMemo(() => [
     { id: "operations", label: "Operations", count: INCIDENTS.length },
@@ -405,46 +378,74 @@ export default function PageClient() {
     },
   ], [simulateSave]);
 
-  const incidentColumns = useMemo<ColumnDef<IncidentRow>[]>(() => [
+  const incidentColumns = useMemo<DataGridColumnDef<IncidentRow>[]>(() => [
     {
-      accessorKey: "service",
-      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Service" />,
-      cell: ({ row }) => (
+      id: "service",
+      header: "Service",
+      accessor: "service",
+      width: 260,
+      type: "string",
+      renderCell: ({ row }) => (
         <div className="min-w-[220px]">
-          <Typography className="text-sm font-medium">{row.original.service}</Typography>
-          <Typography variant="secondary" className="text-xs">{row.original.id}</Typography>
+          <Typography className="text-sm font-medium">{row.service}</Typography>
+          <Typography variant="secondary" className="text-xs">{row.id}</Typography>
         </div>
       ),
     },
     {
-      accessorKey: "severity",
-      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Severity" />,
-      cell: ({ row }) => {
-        const severity = SEVERITY_META.get(row.original.severity);
-        if (!severity) throw new Error(`Unknown severity: ${row.original.severity}`);
+      id: "severity",
+      header: "Severity",
+      accessor: "severity",
+      width: 120,
+      type: "singleSelect",
+      valueOptions: [
+        { value: "critical", label: "Critical" },
+        { value: "high", label: "High" },
+        { value: "medium", label: "Medium" },
+      ],
+      renderCell: ({ row }) => {
+        const severity = SEVERITY_META.get(row.severity);
+        if (!severity) throw new Error(`Unknown severity: ${row.severity}`);
         return <StatusBadge label={severity.label} color={severity.color} size="sm" />;
       },
     },
     {
-      accessorKey: "owner",
-      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Owner" />,
-      cell: ({ row }) => <Typography className="text-sm">{row.original.owner}</Typography>,
+      id: "owner",
+      header: "Owner",
+      accessor: "owner",
+      width: 150,
+      type: "string",
+      renderCell: ({ row }) => <Typography className="text-sm">{row.owner}</Typography>,
     },
     {
-      accessorKey: "startedAt",
-      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Started" />,
-      cell: ({ row }) => <Typography variant="secondary" className="text-xs">{row.original.startedAt}</Typography>,
+      id: "startedAt",
+      header: "Started",
+      accessor: "startedAt",
+      width: 120,
+      type: "string",
+      renderCell: ({ row }) => <Typography variant="secondary" className="text-xs">{row.startedAt}</Typography>,
     },
     {
-      accessorKey: "status",
-      header: ({ column }) => <DataTableColumnHeader column={column} columnTitle="Status" />,
-      cell: ({ row }) => {
-        const status = INCIDENT_STATUS_META.get(row.original.status);
-        if (!status) throw new Error(`Unknown status: ${row.original.status}`);
+      id: "status",
+      header: "Status",
+      accessor: "status",
+      width: 130,
+      type: "singleSelect",
+      valueOptions: [
+        { value: "investigating", label: "Investigating" },
+        { value: "mitigated", label: "Mitigated" },
+        { value: "monitoring", label: "Monitoring" },
+      ],
+      renderCell: ({ row }) => {
+        const status = INCIDENT_STATUS_META.get(row.status);
+        if (!status) throw new Error(`Unknown status: ${row.status}`);
         return <StatusBadge label={status.label} color={status.color} size="sm" />;
       },
     },
   ], []);
+
+  const [incidentGridState, setIncidentGridState] = useState(() => createDefaultDataGridState(incidentColumns));
+  const incidentData = useDataSource({ data: INCIDENTS, columns: incidentColumns, getRowId: (r: IncidentRow) => r.id, sorting: incidentGridState.sorting, quickSearch: incidentGridState.quickSearch, pagination: incidentGridState.pagination, paginationMode: "client" });
 
   return (
     <PageLayout
@@ -569,32 +570,20 @@ export default function PageClient() {
                       <SectionHeader icon={SquaresFourIcon} title="Open Incidents" />
                       <Typography variant="secondary" className="text-sm mt-1">Operational incident queue with owners and current mitigation state</Typography>
                     </div>
-                    {incidentTable && (
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <DataTableViewOptions
-                          key={JSON.stringify(incidentTableVisibility)}
-                          table={incidentTable}
-                        />
-                      </div>
-                    )}
                   </div>
                 </div>
 
-                <div className="border-t border-black/[0.12] dark:border-white/[0.06] px-5 pb-5 [&_div.rounded-md.border]:border-0 [&_div.rounded-md.border]:shadow-none">
-                  <DataTable
+                <div className="border-t border-black/[0.12] dark:border-white/[0.06] px-5 pb-5">
+                  <DataGrid
                     columns={incidentColumns}
-                    data={INCIDENTS}
-                    defaultColumnFilters={[]}
-                    defaultSorting={[{ id: "severity", desc: false }]}
-                    showDefaultToolbar={false}
-                    showResetFilters={false}
-                    toolbarRender={(table) => (
-                      <TableInstanceBridge
-                        tableInstance={table}
-                        onTableInstance={setIncidentTable}
-                        onVisibilityChange={setIncidentTableVisibility}
-                      />
-                    )}
+                    rows={incidentData.rows}
+                    getRowId={(row) => row.id}
+                    totalRowCount={incidentData.totalRowCount}
+                    isLoading={incidentData.isLoading}
+                    state={incidentGridState}
+                    onChange={setIncidentGridState}
+                    toolbar={false}
+                    maxHeight={400}
                   />
                 </div>
               </GlassCard>

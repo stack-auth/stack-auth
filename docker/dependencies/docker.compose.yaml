@@ -148,9 +148,11 @@ services:
     image: jaegertracing/all-in-one:latest
     environment:
       - COLLECTOR_OTLP_ENABLED=true
+      - MEMORY_MAX_TRACES=50000
     ports:
       - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}07:16686"  # Jaeger UI
       - "${NEXT_PUBLIC_STACK_PORT_PREFIX:-81}31:4318"    # OTLP Endpoint
+    mem_limit: 1g
     restart: always
 
   # ================= svix =================

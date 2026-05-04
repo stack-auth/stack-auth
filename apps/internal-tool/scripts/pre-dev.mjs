@@ -24,6 +24,7 @@ const publish = spawnSync("pnpm", ["spacetime:publish:local"], {
 });
 
 if (publish.status !== 0) {
+  console.warn(`[internal-tool] spacetime publish failed (status ${publish.status}); exiting`);                                                                                                                                                                                                                                                                                                                                         
   process.exit(publish.status ?? 1);
 }
 

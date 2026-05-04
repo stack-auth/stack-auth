@@ -8,14 +8,17 @@ import { createEmailThemeTool } from "./create-email-theme";
 import { createDocsTools } from "./docs";
 import { createSqlQueryTool } from "./sql-query";
 
-export type ToolName =
-  | "docs"
-  | "sql-query"
-  | "create-email-theme"
-  | "create-email-template"
-  | "create-email-draft"
-  | "update-dashboard"
-  | "patch-dashboard";
+export const TOOL_NAMES = [
+  "docs",
+  "sql-query",
+  "create-email-theme",
+  "create-email-template",
+  "create-email-draft",
+  "update-dashboard",
+  "patch-dashboard"
+] as const;
+export type ToolName = typeof TOOL_NAMES[number]
+
 
 export type ToolContext = {
   auth: SmartRequestAuth | null,
@@ -23,7 +26,7 @@ export type ToolContext = {
 };
 
 export async function getTools(
-  toolNames: ToolName[],
+  toolNames: readonly ToolName[],
   context: ToolContext
 ): Promise<ToolSet> {
   const tools: ToolSet = {};
@@ -92,7 +95,7 @@ export function validateToolNames(toolNames: unknown): toolNames is ToolName[] {
     "create-email-template",
     "create-email-draft",
     "update-dashboard",
-    "patch-dashboard",
+    "patch-dashboard"
   ];
 
   return toolNames.every((name) => validToolNames.includes(name as ToolName));

@@ -7,15 +7,18 @@ import type { CommonLogFields, ModeContext } from "@/lib/ai/types";
 import { selectModel } from "@/lib/ai/models";
 import { getFullSystemPrompt, type SystemPromptId } from "@/lib/ai/prompts";
 import { requestBodySchema } from "@/lib/ai/schema";
-import { getTools, validateToolNames } from "@/lib/ai/tools";
+import { getTools } from "@/lib/ai/tools";
 import { getVerifiedQaContext } from "@/lib/ai/qa/verified-qa";
 import { SmartResponse } from "@/route-handlers/smart-response";
 import { createSmartRouteHandler } from "@/route-handlers/smart-route-handler";
 import { validateImageAttachments } from "@stackframe/stack-shared/dist/ai/image-limits";
 import { KnownErrors } from "@stackframe/stack-shared/dist/known-errors";
+import { ChatContent } from "@stackframe/stack-shared/dist/interface/admin-interface";
 import { yupMixed, yupObject, yupString } from "@stackframe/stack-shared/dist/schema-fields";
 import { getEnvVariable } from "@stackframe/stack-shared/dist/utils/env";
 import { StatusError } from "@stackframe/stack-shared/dist/utils/errors";
+import { Json } from "@stackframe/stack-shared/dist/utils/json";
+import { generateText, stepCountIs, streamText, type ModelMessage } from "ai";
 import { ModelMessage } from "ai";
 
 function getStepLimit(systemPromptId: SystemPromptId, hasTools: boolean): number {
@@ -54,11 +57,6 @@ export const POST = createSmartRouteHandler({
   response: yupMixed<SmartResponse>().defined(),
   async handler({ params, body }, fullReq) {
     const { mode } = params;
-
-    if (!validateToolNames(body.tools)) {
-      throw new StatusError(StatusError.BadRequest, `Invalid tool names in request.`);
-    }
-
     const isAuthenticated = fullReq.auth != null;
     const { quality, speed, systemPrompt: systemPromptId, tools: toolNames, messages, projectId } = body;
 

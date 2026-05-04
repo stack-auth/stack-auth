@@ -35,6 +35,7 @@ EMULATOR_DASHBOARD_PORT="${EMULATOR_DASHBOARD_PORT:-26700}"
 EMULATOR_BACKEND_PORT="${EMULATOR_BACKEND_PORT:-26701}"
 EMULATOR_MINIO_PORT="${EMULATOR_MINIO_PORT:-26702}"
 EMULATOR_INBUCKET_PORT="${EMULATOR_INBUCKET_PORT:-26703}"
+EMULATOR_MOCK_OAUTH_PORT="${EMULATOR_MOCK_OAUTH_PORT:-26704}"
 
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -214,6 +215,7 @@ write_runtime_config_iso() {
     printf "STACK_EMULATOR_BACKEND_HOST_PORT=%s\n" "$EMULATOR_BACKEND_PORT"
     printf "STACK_EMULATOR_MINIO_HOST_PORT=%s\n" "$EMULATOR_MINIO_PORT"
     printf "STACK_EMULATOR_INBUCKET_HOST_PORT=%s\n" "$EMULATOR_INBUCKET_PORT"
+    printf "STACK_EMULATOR_MOCK_OAUTH_HOST_PORT=%s\n" "$EMULATOR_MOCK_OAUTH_PORT"
     printf "STACK_EMULATOR_VM_DIR_HOST=%s\n" "$vm_dir_host"
   } > "$cfg_dir/runtime.env"
   cp "$base_env" "$cfg_dir/base.env"
@@ -351,11 +353,12 @@ build_qemu_cmd() {
   netdev+=",hostfwd=tcp:127.0.0.1:${EMULATOR_BACKEND_PORT}-:${PORT_PREFIX}02"
   netdev+=",hostfwd=tcp:127.0.0.1:${EMULATOR_MINIO_PORT}-:9090"
   netdev+=",hostfwd=tcp:127.0.0.1:${EMULATOR_INBUCKET_PORT}-:9001"
-  # Mock OAuth server: browser redirects land on `localhost:${PORT_PREFIX}14`
-  # (backend sets STACK_OAUTH_MOCK_URL to that value), so we forward host:port
-  # ↔ VM:port on the same number. Collides with pnpm dev, but the two modes
-  # are mutually exclusive.
-  netdev+=",hostfwd=tcp:127.0.0.1:${PORT_PREFIX}14-:${PORT_PREFIX}14"
+  # Mock OAuth server: the VM-internal mock binds to $EMULATOR_MOCK_OAUTH_PORT
+  # (overrides the pnpm-dev default of ${PORT_PREFIX}14 via STACK_OAUTH_MOCK_PORT
+  # threaded through runtime-config.iso). Host and guest use the same port so
+  # the OIDC issuer URL `http://localhost:${EMULATOR_MOCK_OAUTH_PORT}` resolves
+  # identically from the browser and from the backend inside the VM.
+  netdev+=",hostfwd=tcp:127.0.0.1:${EMULATOR_MOCK_OAUTH_PORT}-:${EMULATOR_MOCK_OAUTH_PORT}"
 
   # In snapshot-resume mode the QEMU command-line MUST match the device set
   # used at snapshot capture time, otherwise migration replay fails (broken
@@ -499,7 +502,7 @@ tail_vm_logs() {
 }
 
 ensure_ports_free() {
-  local ports=("$EMULATOR_DASHBOARD_PORT" "$EMULATOR_BACKEND_PORT" "$EMULATOR_MINIO_PORT" "$EMULATOR_INBUCKET_PORT" "${PORT_PREFIX}14")
+  local ports=("$EMULATOR_DASHBOARD_PORT" "$EMULATOR_BACKEND_PORT" "$EMULATOR_MINIO_PORT" "$EMULATOR_INBUCKET_PORT" "$EMULATOR_MOCK_OAUTH_PORT")
   local port
   for port in "${ports[@]}"; do
     if lsof -iTCP:"$port" -sTCP:LISTEN >/dev/null 2>&1; then
@@ -761,7 +764,7 @@ cmd_start() {
 
   info "Starting QEMU local emulator"
   info "Arch: $ARCH | Accel: $ACCEL"
-  info "Ports: Dashboard=$EMULATOR_DASHBOARD_PORT Backend=$EMULATOR_BACKEND_PORT MinIO=$EMULATOR_MINIO_PORT Inbucket=$EMULATOR_INBUCKET_PORT"
+  info "Ports: Dashboard=$EMULATOR_DASHBOARD_PORT Backend=$EMULATOR_BACKEND_PORT MinIO=$EMULATOR_MINIO_PORT Inbucket=$EMULATOR_INBUCKET_PORT MockOAuth=$EMULATOR_MOCK_OAUTH_PORT"
 
   local using_snapshot=0
   if snapshot_available; then
