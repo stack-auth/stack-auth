@@ -313,6 +313,39 @@ export function renderSetupPageHtml(): string {
         margin-bottom: 32px;
       }
 
+      @keyframes card-in-left {
+        from {
+          opacity: 0;
+          transform: translateX(-80px);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(0);
+        }
+      }
+
+      @keyframes card-in-right {
+        from {
+          opacity: 0;
+          transform: translateX(80px);
+        }
+        to {
+          opacity: 1;
+          transform: translateX(0);
+        }
+      }
+
+      @keyframes plus-in {
+        from {
+          opacity: 0;
+          transform: scale(0.6);
+        }
+        to {
+          opacity: 1;
+          transform: scale(1);
+        }
+      }
+
       .stack-icon,
       .mcp-icon {
         width: 128px;
@@ -323,6 +356,29 @@ export function renderSetupPageHtml(): string {
         border-radius: 18px;
         background: var(--panel);
         font-weight: 700;
+        opacity: 0;
+      }
+
+      .stack-icon {
+        animation: card-in-left 700ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      }
+
+      .mcp-icon {
+        animation: card-in-right 700ms cubic-bezier(0.22, 1, 0.36, 1) forwards;
+      }
+
+      .plus {
+        opacity: 0;
+        animation: plus-in 400ms cubic-bezier(0.22, 1, 0.36, 1) 500ms forwards;
+      }
+
+      @media (prefers-reduced-motion: reduce) {
+        .stack-icon,
+        .mcp-icon,
+        .plus {
+          animation: none;
+          opacity: 1;
+        }
       }
 
       .stack-icon {
@@ -373,6 +429,7 @@ export function renderSetupPageHtml(): string {
       .intro {
         max-width: 760px;
         margin: 0 auto 32px;
+        text-align: center;
       }
 
       .tabs {
@@ -579,10 +636,6 @@ export function renderSetupPageHtml(): string {
         <div class="plus">+</div>
         <div class="mcp-icon">MCP</div>
       </div>
-
-      <section class="intro">
-        <h1>MCP Setup</h1>
-      </section>
 
       ${renderTabs()}
 
